@@ -190,6 +190,7 @@ void handle_key_event(const void* native_event)
         if(og::runtime::current_session->raw_key_ == SDLK_ESCAPE)
             og::runtime::current_session->input_continue_ = true;
         og::runtime::current_session->key_press_event_ = 1;
+        ++og::runtime::current_session->key_press_serial_;
 
         if(event.key.key == SDLK_F10)
         {

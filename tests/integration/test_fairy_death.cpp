@@ -252,16 +252,33 @@ static int fairy_injector(void* data)
     // directly so coverage builds do not depend on processing 12 injected NEXT
     // clicks before the HIRE ME button path is exercised.
     fprintf(stderr, "  [test] cycling to fairy (cycle_guy x%d)\n", FAERIE_INDEX);
-    for (int i = 0; i < FAERIE_INDEX + 2 &&
-                    (!og::runtime::current_session->current_guy_ ||
-                     og::runtime::current_session->current_guy_->family != FAMILY_FAERIE);
-         i++) {
-        pks().hire_session->next_family();
-        og::runtime::current_session->current_type_ =
-            pks().hire_session->family_index();
-        if (const guy* recruit = pks().hire_session->current_recruit())
-            og::runtime::current_session->current_guy_ =
-                std::make_unique<guy>(*recruit);
+    // The hire screen draws current_guy_ every frame, so replacing that
+    // unique_ptr from here would free a portrait the menu thread is reading
+    // (#257). The whole cycle runs as one task between two frames.
+    //
+    // pks().hire_session is a raw pointer to the HireSession that lives on
+    // create_hire_menu's stack and is nulled on the way out, so the task
+    // re-checks it on the menu thread: a task that lands on the frame the
+    // hire screen exits must cycle nothing rather than dereference the dead
+    // session. The family check below then fails the run honestly.
+    if (!run_on_main_thread([] {
+            auto* const session = pks().hire_session;
+            if (session == nullptr)
+                return;
+            for (int i = 0; i < FAERIE_INDEX + 2 &&
+                            (!og::runtime::current_session->current_guy_ ||
+                             og::runtime::current_session->current_guy_->family !=
+                                 FAMILY_FAERIE);
+                 i++) {
+                session->next_family();
+                og::runtime::current_session->current_type_ =
+                    session->family_index();
+                if (const guy* recruit = session->current_recruit())
+                    og::runtime::current_session->current_guy_ =
+                        std::make_unique<guy>(*recruit);
+            }
+        })) {
+        return fail_fairy_run(state, "hire menu cycle never reached the menu thread");
     }
 
     if (!og::runtime::current_session->current_guy_ ||
@@ -307,10 +324,13 @@ static int fairy_injector(void* data)
     if (fairy->family != FAMILY_FAERIE)
         return fail_fairy_run(state, "expected lone hired unit to be the fairy");
 
-    fairy->constitution = kFairyFragileConstitution;
-    fairy->armor = kFairyFragileArmor;
-
-    og::runtime::current_session->myscreen_->save_data.scen_num = 4;
+    // Roster stats and the level id land on the menu thread too: the team
+    // menu's per-frame label sync reads both (#257).
+    (void)run_on_main_thread([fairy] {
+        fairy->constitution = kFairyFragileConstitution;
+        fairy->armor = kFairyFragileArmor;
+        og::runtime::current_session->myscreen_->save_data.scen_num = 4;
+    });
     set_game_speed(0.0f);
 
     fprintf(stderr, "  [test] clicking go\n");

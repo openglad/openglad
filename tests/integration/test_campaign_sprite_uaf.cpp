@@ -227,6 +227,12 @@ int set_campaign_flow_injector(void*)
     if (!wait_for_counter_above(campaign_picker_testing_entered_count,
                                 entered_before))
         return 2;
+    // The SET CAMPAIGN click is still HELD when the picker enters (the
+    // entered counter bumps before interact()'s release lands), and the
+    // picker's entry baseline holds fire until that click has been seen up
+    // once (pointer handoff). Let the release land in its own picker frame
+    // before pressing again — same cadence idiom as the BACK click below.
+    SDL_Delay(300);
     // ENTER ID sits under DELETE/RESET; take its center from the pure layout.
     const og::ui::PickerRect id_button =
         og::ui::campaign_picker_layout().id_button;

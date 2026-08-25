@@ -31,6 +31,7 @@
 #include <openglad/core/util.h>
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <functional>
 #include <list>
@@ -112,6 +113,8 @@ namespace og::ui {
 void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
                                         const button* buttons,
                                         int highlighted_button);
+void picker_testing_apply_row_states(const MenuScreenSpec& spec,
+                                     button* buttons, int num_buttons);
 }
 #endif
 
@@ -579,7 +582,7 @@ static int base_camp_row_train_injector(void* data)
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    SDL_Delay(750);  // entry settle (fades are instant under TESTING)
     // Tap the rendered name itself, not the center of the wide row hit zone.
     // Round 6 places NAME at x=88; row 1 remains y=59..68.
     const auto [mapped_x, mapped_y] =
@@ -737,7 +740,7 @@ static int base_camp_scenario_line_injector(void* data)
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    SDL_Delay(750);  // entry settle (fades are instant under TESTING)
     const auto [mapped_x, mapped_y] =
         ui_canvas_to_window(30.0f, 19.0f);
     inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
@@ -1690,8 +1693,6 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
         });
     }
     state.local_seat_indices = {0, 1};
-    state.seat_page =
-        og::ui::PageModel::make(5, kBaseCampSeatCardsPerPage);
     og::ui::install_base_camp_state_for_screen(&state);
 
     const og::ui::MenuScreenSpec& spec =
@@ -1706,14 +1707,17 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
     int highlighted = kBaseCampSeatCardBase + 1;
     spec.nav.rewire(buttons, count, highlighted);
     ASSERT_EQ(kBaseCampSeatCardBase + 1, highlighted);
-    ASSERT_FALSE(buttons[kBaseCampSeatPagePrevIndex].hidden);
-    ASSERT_FALSE(buttons[kBaseCampSeatPageNextIndex].hidden);
+    // Two of this machine's seats and two ADD PLAYER placeholders: the three
+    // remote seats are counted on the header line, never in the rail.
+    for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot)
+        ASSERT_FALSE(buttons[kBaseCampSeatCardBase + slot].hidden) << slot;
 
     constexpr int kCanvasWidth = 320;
     constexpr int kCanvasHeight = 200;
-    // The whole rail, from the '+' at the panel's left edge to the '>' on
-    // its right rail. The selected card's rect comes off the live button so
-    // a re-spaced rail (#236) cannot silently aim this probe at a gutter.
+    // The whole rail, from the first slot on the panel's left edge to the
+    // last on its right rail. The selected card's rect comes off the live
+    // button so a re-gridded rail cannot silently aim this probe at a
+    // gutter.
     constexpr int kRailLeft = 8;
     constexpr int kRailTop = 162;
     constexpr int kRailRight = 313;
@@ -1722,9 +1726,9 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
     constexpr int kRailHeight = kRailBottom - kRailTop + 1;
     const int kSelectedCardX = buttons[kBaseCampSeatCardBase + 1].x;
     const int kSelectedCardY = buttons[kBaseCampSeatCardBase + 1].y;
-    const int kLabelFocusRight = kSelectedCardX + 47;
+    const int kLabelFocusRight = kSelectedCardX + 59;
     const int kFocusBottom = kSelectedCardY + 10;
-    const int kChipX = kSelectedCardX + 48;
+    const int kChipX = kSelectedCardX + 60;
     const int kChipY = kSelectedCardY + 1;
     constexpr int kChipSize = 8;
 
@@ -2207,7 +2211,179 @@ og::sim::LobbyPlayer make_foreign_lobby_player(std::uint8_t player_index,
     return player;
 }
 
+// --- The placeholder paths, end to end through the REAL click dispatch ----
+//
+// The direct on_spec_row drives above pin the rule; these pin that a finger
+// on the rail reaches it. A bare slot is an ordinary button, so it goes
+// through leftmouse -> vbutton::leftclick -> MenuSpecRow like every other
+// row, and a full lobby's slot is an ordinary DISABLED button, which the
+// engine makes inert before the handler ever sees it.
+
+struct SlotClickFlowState
+{
+    bool finished = false;
+    bool saw_rail = false;
+    bool slot_offered_a_seat = false;
+    bool slot_became_a_card = false;
+    std::string slot_one_label_after;
+};
+
+int add_player_slot_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<SlotClickFlowState*>(data);
+    if (!wait_for_interactable("seat_card_1", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    state->saw_rail = true;
+    state->slot_offered_a_seat =
+        wait_for_interactable_label("seat_card_1", "ADD PLAYER", 5000);
+    SDL_Delay(300);
+    interact("seat_card_1");
+    // Wait on the SEAT, not on a clock: the slot stops offering a seat only
+    // once the lobby has actually published one.
+    state->slot_became_a_card =
+        wait_for_interactable_label_change("seat_card_1", "ADD PLAYER", 5000);
+    state->slot_one_label_after = interactable_label("seat_card_1");
+    SDL_Delay(300);
+    interact("back");
+    state->finished = true;
+    return 0;
+}
+
+int lobby_full_slot_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<SlotClickFlowState*>(data);
+    if (!wait_for_interactable("seat_card_1", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    state->saw_rail = true;
+    state->slot_offered_a_seat =
+        wait_for_interactable_label("seat_card_1", "LOBBY FULL", 5000);
+    SDL_Delay(300);
+    interact("seat_card_1");
+    SDL_Delay(500);
+    state->slot_one_label_after = interactable_label("seat_card_1");
+    interact("back");
+    state->finished = true;
+    return 0;
+}
+
 } // namespace
+
+// ADD PLAYER SUCCESS. A click on the bare slot beside the card claims a seat
+// and the slot becomes that seat's card — the placeholder is the door, and
+// the door is the same one the retired [+] opened.
+TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
+{
+#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
+    GTEST_SKIP() << "this build seats one local player";
+#else
+    trace_clear();
+    FactoryMappingGuard mapping_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.save_name = "IRON KETTLE BAND";
+    auto hero = std::make_unique<guy>(FAMILY_SOLDIER);
+    hero->name = "GORT";
+    save.team_list[0] = std::move(hero);
+    save.team_size = 1;
+
+    SlotClickFlowState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(add_player_slot_injector, "add_player_slot", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    (void)create_team_menu(0);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "the injector should unwind";
+    ASSERT_TRUE(state.saw_rail) << "flow must reach the seat rail";
+    EXPECT_TRUE(state.slot_offered_a_seat)
+        << "slot one must read ADD PLAYER beside a single claimed seat";
+    EXPECT_TRUE(state.slot_became_a_card)
+        << "the click must claim a seat, not just repaint";
+    // Exact, not a prefix: ensure_unique_seat_mapping lands the second seat
+    // on the arrow profile, so the whole face is known — "P2 " + the arrow
+    // glyphs + the two load-bearing chip-clearance pads.
+    EXPECT_EQ(std::format("P2 {}  ", og::input::kArrowGlyphs),
+              state.slot_one_label_after)
+        << "the new seat lands in the slot that was clicked, as P2";
+    EXPECT_TRUE(trace_contains("basecamp", "seat_add local_count=2"))
+        << "the slot runs the add path itself, gates included";
+    EXPECT_EQ(2, static_cast<int>(save.numplayers));
+    save.reset();
+#endif
+}
+
+// LOBBY FULL. Sixteen seats in the lobby and one of them this machine's: the
+// three slots this machine could otherwise fill go DIMMED, and a click on one
+// is eaten by the engine's Disabled gate — no add, no popup, no seat.
+TEST(ViewTeam, base_camp_lobby_full_slot_is_inert_under_a_real_click)
+{
+#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
+    GTEST_SKIP() << "this build seats one local player";
+#else
+    trace_clear();
+    FactoryMappingGuard mapping_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.save_name = "IRON KETTLE BAND";
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;
+    lobby.active_local_count = 1u;
+    for (std::uint8_t index = 0;
+         index < static_cast<std::uint8_t>(og::sim::kMaxGlobalPlayers);
+         ++index)
+    {
+        lobby.players.push_back(make_foreign_lobby_player(
+            index, "net-crowd", index == 0 ? "IRON KETTLE BAND" : "OTHERS",
+            0, 0));
+    }
+    lobby.local_indices = {0};
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    SlotClickFlowState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(lobby_full_slot_injector, "lobby_full_slot", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    (void)create_team_menu(0);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "the injector should unwind";
+    ASSERT_TRUE(state.saw_rail) << "flow must reach the seat rail";
+    EXPECT_TRUE(state.slot_offered_a_seat)
+        << "a slot the lobby cannot fill must say so, not vanish";
+    EXPECT_EQ("LOBBY FULL", state.slot_one_label_after)
+        << "and it must still say so after the click";
+    EXPECT_TRUE(
+        trace_contains("menu_engine", "disabled_row_click seat_card_1"))
+        << "the click landed on the dimmed slot";
+    EXPECT_EQ(0, lobby.add_seat_calls)
+        << "a dimmed slot must never reach the add path";
+    EXPECT_FALSE(trace_contains("basecamp", "seat_add"));
+    save.reset();
+#endif
+}
 
 TEST(ViewTeam, stable_seat_token_rejects_reindexed_display_handle)
 {
@@ -2391,7 +2567,11 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     save.reset();
 }
 
-TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
+// The rail is THIS MACHINE'S seats. A five-seat lobby in which this client
+// owns exactly one (global P5) shows ONE card and three ADD PLAYER slots —
+// the four remote seats are counted on the header line and listed in VIEW
+// LEVEL's SEATS report, and no rail slot ever names another company.
+TEST(ViewTeam, base_camp_seat_rail_shows_only_this_machines_seats)
 {
     trace_clear();
     FactoryMappingGuard mapping_guard;
@@ -2429,7 +2609,7 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     og::ui::BaseCampScreenState state;
     og::ui::base_camp_refresh_rows(state);
     ASSERT_EQ(5u, state.seats.size());
-    ASSERT_EQ(2, state.seat_page.page_count());
+    ASSERT_EQ(1u, state.local_seat_indices.size());
     for (int i = 0; i < 5; ++i)
         EXPECT_EQ(i, state.seats[static_cast<std::size_t>(i)].player_index);
 
@@ -2443,33 +2623,26 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     const int count = picker_createmenu_button_count();
     int highlighted = kBaseCampSeatCardBase;
     base_spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_FALSE(buttons[kBaseCampSeatPagePrevIndex].hidden);
-    EXPECT_FALSE(buttons[kBaseCampSeatPageNextIndex].hidden);
-    EXPECT_EQ("P1 IRO ", buttons[kBaseCampSeatCardBase].label);
-    EXPECT_EQ("P4 IRO ", buttons[kBaseCampSeatCardBase + 3].label);
-
-    // A foreign card is informational only and names the full company.
-    trace_clear();
-    EXPECT_EQ(MENU_OK,
-              base_spec.on_spec_row(kBaseCampSeatCardBase, &state));
-    EXPECT_TRUE(trace_contains("popup", "Iron Host"));
-    EXPECT_TRUE(lobby.seat_team_calls.empty());
-
-    // Page 2 contains only P5, which this client owns.
-    EXPECT_EQ(MENU_OK,
-              base_spec.on_spec_row(kBaseCampSeatPageNextIndex, &state));
-    EXPECT_EQ(1, state.seat_page.page);
-    // Stepping beyond the final page is a no-op.
-    EXPECT_EQ(MENU_OK,
-              base_spec.on_spec_row(kBaseCampSeatPageNextIndex, &state));
-    EXPECT_EQ(1, state.seat_page.page);
-    buttons = picker_createmenu_buttons();
-    base_spec.nav.rewire(buttons, count, highlighted);
     // The owned card names this machine's FIRST local profile (design §2.3):
-    // global P5, local slot 0, factory WASD.
-    EXPECT_EQ("P5 WASD ", buttons[kBaseCampSeatCardBase].label);
-    for (int card = 1; card < kBaseCampSeatCardsPerPage; ++card)
-        EXPECT_TRUE(buttons[kBaseCampSeatCardBase + card].hidden);
+    // global P5, local slot 0, factory WASD. Slot zero, not slot four — the
+    // rail indexes local slots, so a machine that owns one seat shows it
+    // first however high its global P# runs.
+    EXPECT_EQ("P5 WASD  ", buttons[kBaseCampSeatCardBase].label);
+    for (int slot = 1; slot < kBaseCampSeatCardsPerPage; ++slot)
+    {
+        EXPECT_FALSE(buttons[kBaseCampSeatCardBase + slot].hidden) << slot;
+        EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + slot].label)
+            << slot;
+    }
+    // The four remote seats are on the header line's census, never in the
+    // rail: "Iron Host" appears on no slot face.
+    for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot)
+    {
+        EXPECT_EQ(std::string::npos,
+                  buttons[kBaseCampSeatCardBase + slot].label.find("IRO"))
+            << "slot " << slot << " names a foreign company";
+    }
+    EXPECT_TRUE(lobby.seat_team_calls.empty());
 
     // Clicking that card opens the stable-token editor in production. Drive
     // its TEAM row directly here so the test never depends on a blocking
@@ -2534,8 +2707,6 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     save.ctf_team_count = 2;
     local->team = 1;
     og::ui::base_camp_refresh_rows(state);
-    ASSERT_EQ(1, state.seat_page.page)
-        << "refresh preserves a still-valid page";
     EXPECT_EQ(MENU_OK,
               editor_spec.on_spec_row(
                   kSeatSettingsTeamIndex, &editor_state));
@@ -2607,8 +2778,8 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     world.type = old_world_type;
     set_mounted_campaign_for_testing(old_mounted_campaign);
 
-    // Disconnect/shrink while parked on page two clamps to page one and
-    // removes both pager arrows.
+    // Dropping this machine's only seat while four remote ones remain leaves
+    // a rail of four ADD PLAYER slots — never a rail of other people's seats.
     lobby.players.erase(
         std::remove_if(
             lobby.players.begin(), lobby.players.end(),
@@ -2616,13 +2787,18 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
                 return player.player_index == 4;
             }),
         lobby.players.end());
+    lobby.local_indices.clear();
     og::ui::base_camp_refresh_rows(state);
-    EXPECT_EQ(0, state.seat_page.page);
-    EXPECT_EQ(1, state.seat_page.page_count());
+    EXPECT_EQ(4u, state.seats.size());
+    EXPECT_TRUE(state.local_seat_indices.empty());
     buttons = picker_createmenu_buttons();
     base_spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_TRUE(buttons[kBaseCampSeatPagePrevIndex].hidden);
-    EXPECT_TRUE(buttons[kBaseCampSeatPageNextIndex].hidden);
+    for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot)
+    {
+        EXPECT_FALSE(buttons[kBaseCampSeatCardBase + slot].hidden) << slot;
+        EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + slot].label)
+            << slot;
+    }
 
     og::ui::install_seat_settings_state_for_screen(nullptr);
     og::ui::install_base_camp_state_for_screen(nullptr);
@@ -2680,12 +2856,20 @@ TEST(ViewTeam, base_camp_seat_chip_pointer_click_cycles_team_in_place)
     const og::ui::MenuScreenSpec& spec =
         *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
     ASSERT_NE(nullptr, spec.on_spec_row);
+    ASSERT_NE(nullptr, spec.nav.rewire);
     button* buttons = picker_createmenu_buttons();
+    // The rail lays itself out per frame, so the chip zone has to be read off
+    // the LIVE card, not the static table. One local seat on an ordinary
+    // desktop puts that card in slot zero with three ADD PLAYER slots beside
+    // it; the chip zone is the face's last ten pixels plus 2px of grace.
+    int highlighted = kBaseCampSeatCardBase;
+    spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
     const button& card = buttons[kBaseCampSeatCardBase];
-    ASSERT_EQ(57, card.sizex) << "card face width is the chip zone's anchor";
+    ASSERT_EQ(70, card.sizex) << "card face width is the chip zone's anchor";
+    ASSERT_EQ(8, card.x) << "the rail's first slot opens on the left rail";
 
-    // Chip-body click (the drawn 8x8 chip starts at card_x+48).
-    pks().menu_click_x = card.x + 52;
+    // Chip-body click (the drawn 8x8 chip starts at card_x+60).
+    pks().menu_click_x = card.x + 65;
     pks().menu_click_y = card.y + 5;
     lobby.ready_state = true;
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
@@ -2700,8 +2884,8 @@ TEST(ViewTeam, base_camp_seat_chip_pointer_click_cycles_team_in_place)
     EXPECT_EQ(1, state.seats[0].team)
         << "the handler re-collects seats so this frame's chip digit is new";
 
-    // Zone left boundary: card_x+46 (2px grace before the drawn chip).
-    pks().menu_click_x = card.x + 46;
+    // Zone left boundary: card_x+58 (2px grace before the drawn chip).
+    pks().menu_click_x = card.x + 58;
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
     ASSERT_EQ(2u, lobby.seat_team_calls.size());
     EXPECT_EQ(2, lobby.seat_team_calls.back().second);
@@ -2716,7 +2900,7 @@ TEST(ViewTeam, base_camp_seat_chip_pointer_click_cycles_team_in_place)
 
     // The wrap: classic team 4 advances back to team 1 — the seat editor's
     // exact sequence (its own test pins the same wrap).
-    pks().menu_click_x = card.x + 52;
+    pks().menu_click_x = card.x + 65;
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
     ASSERT_EQ(4u, lobby.seat_team_calls.size());
     EXPECT_EQ(0, lobby.seat_team_calls.back().second);
@@ -2738,11 +2922,12 @@ TEST(ViewTeam, base_camp_seat_chip_pointer_click_cycles_team_in_place)
 }
 
 // ---------------------------------------------------------------------------
-// #202 gating: the chip zone obeys the card's ownership gates. A foreign
-// (networked, non-editable) seat's chip click names the owning company and
-// mutates nothing; a spectator machine's chip click points at + instead.
+// #202 gating, redesigned: the chip zone can no longer reach a foreign seat
+// because no rail slot ever holds one. The rail is this machine's seats, so a
+// chip-region click on a slot this machine has not claimed lands on the ADD
+// PLAYER door instead — never on someone else's team.
 // ---------------------------------------------------------------------------
-TEST(ViewTeam, base_camp_seat_chip_click_foreign_seat_stays_inert)
+TEST(ViewTeam, base_camp_seat_chip_click_never_reaches_a_foreign_seat)
 {
     trace_clear();
     FactoryMappingGuard mapping_guard;
@@ -2769,30 +2954,376 @@ TEST(ViewTeam, base_camp_seat_chip_click_foreign_seat_stays_inert)
 
     const og::ui::MenuScreenSpec& spec =
         *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.on_spec_row);
     button* buttons = picker_createmenu_buttons();
-    const button& card = buttons[kBaseCampSeatCardBase];
+    int highlighted = kBaseCampSeatCardBase;
+    spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
 
-    // Card 0 is Iron Host's seat: its chip is read-only for this machine.
-    pks().menu_click_x = card.x + 52;
-    pks().menu_click_y = card.y + 5;
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
-    EXPECT_TRUE(trace_contains("popup", "Iron Host"));
-    EXPECT_TRUE(lobby.seat_team_calls.empty())
-        << "a foreign chip click must never issue a team change";
+    // Slot zero is THIS machine's seat (global P2), not the host's P1 — the
+    // remote seat is on the header line's census and in VIEW LEVEL's SEATS
+    // report, and nowhere on this row.
+    EXPECT_EQ("P2 WASD  ", buttons[kBaseCampSeatCardBase].label);
+    for (int slot = 1; slot < kBaseCampSeatCardsPerPage; ++slot)
+    {
+        EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + slot].label)
+            << slot;
+    }
 
-    // Spectator machine (an owned wire seat lingering at zero active local
-    // seats): the chip is inert there too.
-    lobby.active_local_count = 0;
-    og::ui::base_camp_refresh_rows(state);
+    // A chip-region click on slot ONE (a placeholder) runs the add door, not
+    // a team cycle: there is no seat under it whose team could change.
+    const button& placeholder = buttons[kBaseCampSeatCardBase + 1];
+    pks().menu_click_x = placeholder.x + 65;
+    pks().menu_click_y = placeholder.y + 5;
     trace_clear();
-    const button& own_card = buttons[kBaseCampSeatCardBase + 1];
-    pks().menu_click_x = own_card.x + 52;
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase + 1, &state));
-    EXPECT_TRUE(trace_contains("popup", "PRESS + TO ADD A PLAYER"))
-        << "a spectator chip click pops, never mutates";
-    EXPECT_TRUE(lobby.seat_team_calls.empty());
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampSeatCardBase + 1, &state));
+    EXPECT_TRUE(lobby.seat_team_calls.empty())
+        << "a placeholder's chip region must never issue a team change";
+    EXPECT_FALSE(trace_contains("popup", "Iron Host"))
+        << "no rail slot may name another company";
+
+    // The owned slot's chip still cycles: the gate is ownership of the SLOT,
+    // and this machine owns slot zero.
+    const button& own_card = buttons[kBaseCampSeatCardBase];
+    pks().menu_click_x = own_card.x + 65;
+    pks().menu_click_y = own_card.y + 5;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
+    ASSERT_EQ(1u, lobby.seat_team_calls.size());
+    EXPECT_EQ(1, lobby.seat_team_calls.back().first)
+        << "the chip targets the seat's GLOBAL player index";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// The rail's ink. A bare slot used to be a GHOST — an empty recess drawn by
+// the content pass, unclickable chrome. It is a real labelled button now, so
+// this pins that the ADD PLAYER ink lands on the slot's own grid x, that a
+// placeholder is a raised button rather than the old recess, that a full
+// lobby dims the same face, and that the team chip moved with the widened
+// card.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_seat_rail_draws_labelled_placeholders_and_the_chip)
+{
+    struct ScreenStateGuard {
+        ~ScreenStateGuard()
+        {
+            og::ui::install_base_camp_state_for_screen(nullptr);
+            clear_allbuttons();
+            pks().menu_nav_enabled = false;
+            og::runtime::current_session->myscreen_->save_data.reset();
+        }
+    } guard;
+    FactoryMappingGuard mapping_guard;
+
+    screen* const output = og::runtime::current_session->myscreen_;
+    SaveData& save = output->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.save_name = "MY COMPANY";
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.local_indices = {0};
+    lobby.players.push_back(
+        make_foreign_lobby_player(0, "net-me", "MY COMPANY", 0, 0));
+    lobby.players.front().team = 0;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(1u, state.seats.size());
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    button* const buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    init_buttons(buttons, count);
+    int highlighted = kBaseCampSeatCardBase;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    // One card and three ADD PLAYER slots on the fixed grid.
+    const button& card = buttons[kBaseCampSeatCardBase];
+    ASSERT_EQ(8, card.x);
+    ASSERT_EQ(164, card.y);
+    ASSERT_EQ(70, card.sizex);
+    for (int slot = 1; slot < kBaseCampSeatCardsPerPage; ++slot)
+    {
+        const button& face = buttons[kBaseCampSeatCardBase + slot];
+        ASSERT_FALSE(face.hidden) << "a placeholder is a real button now";
+        ASSERT_EQ(8 + 78 * slot, face.x) << "slot " << slot;
+        ASSERT_EQ("ADD PLAYER", face.label) << "slot " << slot;
+    }
+    constexpr int kSlotOneX = 86;
+    constexpr int kSlotTwoX = 164;
+    constexpr int kStaleCardX = 46;  // where the retired rail put card 0
+
+    const auto render = [&]() {
+        output->fastbox(0, 0, 320, 200, PURE_BLACK);
+        spec.draw_background(&state);
+        draw_buttons(buttons, count);
+        spec.draw_content(&state);
+    };
+    const auto capture_block = [&](int x0, int y0, int w, int h) {
+        std::vector<Uint32> block;
+        block.reserve(static_cast<std::size_t>(w * h));
+        for (int y = y0; y < y0 + h; ++y) {
+            for (int x = x0; x < x0 + w; ++x) {
+                Uint8 red = 0;
+                Uint8 green = 0;
+                Uint8 blue = 0;
+                output->get_pixel(x, y, &red, &green, &blue);
+                block.push_back((static_cast<Uint32>(red) << 16) |
+                                (static_cast<Uint32>(green) << 8) |
+                                static_cast<Uint32>(blue));
+            }
+        }
+        return block;
+    };
+
+    render();
+
+    // The chip's 8x8 black surround sits at card_x + 60 now (the face's last
+    // ten pixels, one of which stays face so the chip is not nipped by the
+    // right bevel). Its whole top row is one solid PURE_BLACK run, which the
+    // backdrop and the card face never produce — so the run is its signature.
+    const auto solid_black_run = [&](int x0, int y) {
+        Uint8 red = 0;
+        Uint8 green = 0;
+        Uint8 blue = 0;
+        output->get_pixel(0, 0, &red, &green, &blue);
+        const Uint32 black = (static_cast<Uint32>(red) << 16) |
+            (static_cast<Uint32>(green) << 8) | static_cast<Uint32>(blue);
+        const std::vector<Uint32> run = capture_block(x0, y, 8, 1);
+        return std::all_of(run.begin(), run.end(),
+                           [black](Uint32 pixel) { return pixel == black; });
+    };
+    EXPECT_TRUE(solid_black_run(card.x + 60, card.y + 1))
+        << "the team chip draws on the card the rail actually placed";
+    EXPECT_FALSE(solid_black_run(kStaleCardX + 48, card.y + 1))
+        << "nothing is left behind at the retired rail's card slot";
+
+    // The two ADD PLAYER slots paint the same face and the same ink, on the
+    // grid, and neither is the empty recess a ghost used to be.
+    const std::vector<Uint32> slot_one =
+        capture_block(kSlotOneX, card.y, 70, 10);
+    const std::vector<Uint32> slot_two =
+        capture_block(kSlotTwoX, card.y, 70, 10);
+    const std::vector<Uint32> offset_by_one =
+        capture_block(kSlotOneX - 1, card.y, 70, 10);
+    EXPECT_EQ(slot_one, slot_two)
+        << "the two ADD PLAYER slots are the same button on the same grid";
+    EXPECT_NE(slot_one, offset_by_one)
+        << "the probe would pass one pixel off, so the match above is real";
+    output->draw_button_inverted(8, 100, 70, 10);
+    const std::vector<Uint32> empty_recess = capture_block(8, 100, 70, 10);
+    EXPECT_NE(empty_recess, slot_one)
+        << "a placeholder is a labelled button, not the retired ghost recess";
+    // ...and it is not a blank raised face either: the ADD PLAYER INK is on
+    // it. Blank slot two's label, redraw, and compare the two faces — same
+    // rect, same bevel, same button, differing only by the glyphs. An empty
+    // or unwritten label would make these identical.
+    vbutton* const slot_two_live =
+        og::runtime::current_session
+            ->allbuttons_[static_cast<std::size_t>(kBaseCampSeatCardBase + 2)];
+    ASSERT_NE(nullptr, slot_two_live);
+    const std::string kept_label = slot_two_live->label;
+    slot_two_live->label = "";
+    render();
+    const std::vector<Uint32> blank_face =
+        capture_block(kSlotTwoX, card.y, 70, 10);
+    slot_two_live->label = kept_label;
+    render();
+    EXPECT_NE(blank_face, slot_two)
+        << "the ADD PLAYER glyphs must actually be painted on the slot";
+    EXPECT_NE(blank_face, empty_recess)
+        << "and even bare, the slot is a raised button, not the old recess";
+    // And specifically the LAST glyph. "ADD PLAYER" is ten characters with no
+    // trailing pad, so vdisplay centers it from x+6 and the final "R" occupies
+    // x+60..x+64 — the very columns a card's chip clearance cuts away. The
+    // focus-ring probe below is only meaningful because this ink is there.
+    constexpr int kLastGlyphFirstCol = 60;
+    constexpr int kLastGlyphCols = 5;
+    const auto last_glyph_columns = [&](const std::vector<Uint32>& block) {
+        std::vector<Uint32> ink;
+        for (int row = 0; row < 10; ++row) {
+            for (int col = 0; col < kLastGlyphCols; ++col) {
+                ink.push_back(block[static_cast<std::size_t>(
+                    row * 70 + kLastGlyphFirstCol + col)]);
+            }
+        }
+        return ink;
+    };
+    EXPECT_NE(last_glyph_columns(blank_face), last_glyph_columns(slot_two))
+        << "the final glyph of ADD PLAYER lands in the card's chip columns";
+
+    // KEYBOARD FOCUS on a bare slot. A card's ring is cut back ten pixels so
+    // it cannot paint over the numbered team chip; a placeholder has no chip
+    // and a pad-less ten-glyph label, so it takes the FULL face ring. Sample
+    // the pulse until both extremes have been seen and hold the rule at each:
+    // the ring is yellow, it stays inside the slot, it hugs the full 70px face
+    // symmetrically, and it never touches that last glyph.
+    output->fastbox(0, 0, 4, 4, YELLOW);
+    Uint8 yellow_r = 0;
+    Uint8 yellow_g = 0;
+    Uint8 yellow_b = 0;
+    output->get_pixel(1, 1, &yellow_r, &yellow_g, &yellow_b);
+    const Uint32 kYellow = (static_cast<Uint32>(yellow_r) << 16) |
+        (static_cast<Uint32>(yellow_g) << 8) |
+        static_cast<Uint32>(yellow_b);
+
+    // The whole rail band, so a ring that escaped onto a neighbour or the
+    // panel bevel is caught rather than sampled around.
+    constexpr int kRailLeft = 8;
+    constexpr int kRailTop = 162;
+    constexpr int kRailWidth = 313 - kRailLeft + 1;
+    constexpr int kRailHeight = 176 - kRailTop + 1;
+    const auto probe_placeholder_focus = [&](int slot, const char* what) {
+        const button& face = buttons[kBaseCampSeatCardBase + slot];
+        const int face_x = face.x;
+        const int face_y = face.y;
+        render();
+        const std::vector<Uint32> baseline =
+            capture_block(kRailLeft, kRailTop, kRailWidth, kRailHeight);
+        // The pulse insets by 0..3px. Both ends must be observed: the widest
+        // ring is the one a chip clearance would visibly cut, and the tightest
+        // proves the probe is reading a live pulse rather than a still frame.
+        // (The extremes are sampled as bands — sinf lands EXACTLY on +/-1 for
+        // a vanishing slice of the period, so pinning inset == 0 would be a
+        // coin flip.)
+        bool saw_wide_ring = false;
+        bool saw_tight_ring = false;
+        for (int sample = 0;
+             sample < 500 && !(saw_wide_ring && saw_tight_ring); ++sample)
+        {
+            render();
+            pks().menu_nav_enabled = true;
+            og::ui::picker_testing_draw_menu_highlight(
+                spec, buttons, kBaseCampSeatCardBase + slot);
+            const std::vector<Uint32> focused =
+                capture_block(kRailLeft, kRailTop, kRailWidth, kRailHeight);
+
+            int min_x = kRailLeft + kRailWidth;
+            int max_x = kRailLeft - 1;
+            int min_y = kRailTop + kRailHeight;
+            int max_y = kRailTop - 1;
+            for (int y = 0; y < kRailHeight; ++y) {
+                for (int x = 0; x < kRailWidth; ++x) {
+                    const std::size_t at =
+                        static_cast<std::size_t>(y * kRailWidth + x);
+                    if (focused[at] == baseline[at])
+                        continue;
+                    const int px = kRailLeft + x;
+                    const int py = kRailTop + y;
+                    ASSERT_EQ(kYellow, focused[at])
+                        << what << ": focus painted something that is not the "
+                                   "ring at (" << px << "," << py << ")";
+                    // The interior ring's own convention: draw_highlight_
+                    // interior boxes x..x+sizex inclusive, so the outermost
+                    // pulse lands one past the face's last column (the same
+                    // edge the move-up column's ring uses).
+                    ASSERT_GE(px, face_x) << what;
+                    ASSERT_LE(px, face_x + face.sizex) << what;
+                    ASSERT_GE(py, face_y) << what;
+                    ASSERT_LE(py, face_y + face.sizey) << what;
+                    min_x = std::min(min_x, px);
+                    max_x = std::max(max_x, px);
+                    min_y = std::min(min_y, py);
+                    max_y = std::max(max_y, py);
+                }
+            }
+            ASSERT_LE(min_x, max_x) << what << ": no focus ring was drawn";
+
+            // THE RULE. Both insets are measured against the FULL 70px face.
+            // A chip clearance here would push the right inset out to ten and
+            // strand the ring inside the label.
+            const int left_inset = min_x - face_x;
+            const int right_inset = face_x + face.sizex - max_x;
+            EXPECT_LE(left_inset, 3) << what;
+            EXPECT_LE(right_inset, 3)
+                << what << ": the ring must hug the bare slot's full face, "
+                           "not a card's chip-cleared one";
+            EXPECT_LE(std::abs(left_inset - right_inset), 1)
+                << what << ": the pulse insets both edges by the same step "
+                           "(float truncation allows one pixel)";
+
+            // The last glyph survives. Only the ring's two horizontal runs
+            // (min_y / max_y) may cross the label at all.
+            for (int py = min_y + 1; py < max_y; ++py) {
+                for (int col = 0; col < kLastGlyphCols; ++col) {
+                    const int px = face_x + kLastGlyphFirstCol + col;
+                    const std::size_t at = static_cast<std::size_t>(
+                        (py - kRailTop) * kRailWidth + px - kRailLeft);
+                    ASSERT_EQ(baseline[at], focused[at])
+                        << what << ": the ring struck through the label's "
+                                   "last glyph at (" << px << "," << py << ")";
+                }
+            }
+
+            if (right_inset <= 1)
+                saw_wide_ring = true;
+            if (right_inset >= 3)
+                saw_tight_ring = true;
+            SDL_Delay(5);
+        }
+        EXPECT_TRUE(saw_wide_ring)
+            << what << ": never observed the ring near its outermost, where a "
+                       "chip clearance would show";
+        EXPECT_TRUE(saw_tight_ring)
+            << what << ": never observed the ring at its innermost";
+        pks().menu_nav_enabled = false;
+    };
+    probe_placeholder_focus(1, "ADD PLAYER");
+
+    // A FULL LOBBY dims the same face — and the dim comes from the ENGINE'S
+    // gate pass (menu_screen_runner apply_row_states: Disabled =>
+    // live->color = GREY), driven here exactly as the loop drives it, so a
+    // test that painted grey by hand can never stand in for it.
+    for (int i = 0; i < 15; ++i)
+    {
+        lobby.players.push_back(make_foreign_lobby_player(
+            static_cast<std::uint8_t>(i + 1), "net-x", "OTHER", 0, 0));
+    }
+    og::ui::base_camp_refresh_rows(state);
+    spec.nav.rewire(buttons, count, highlighted);
+    ASSERT_NE(nullptr,
+              spec.rows[kBaseCampSeatCardBase + 1].state_override);
+    EXPECT_EQ(og::ui::RowState::Disabled,
+              spec.rows[kBaseCampSeatCardBase + 1].state_override(
+                  og::ui::MenuLabelContext{}));
+    EXPECT_EQ("LOBBY FULL", buttons[kBaseCampSeatCardBase + 1].label);
+    og::ui::picker_testing_apply_row_states(spec, buttons, count);
+    for (int slot = 1; slot < kBaseCampSeatCardsPerPage; ++slot)
+    {
+        const int ordinal = kBaseCampSeatCardBase + slot;
+        vbutton* const live =
+            og::runtime::current_session
+                ->allbuttons_[static_cast<std::size_t>(ordinal)];
+        ASSERT_NE(nullptr, live);
+        EXPECT_EQ(GREY, live->color)
+            << "slot " << slot << ": the gate pass dims a Disabled slot";
+        EXPECT_EQ(0, live->myfunc)
+            << "slot " << slot << ": and makes it inert";
+        EXPECT_EQ("LOBBY FULL", live->label) << "slot " << slot;
+    }
+    render();
+    const std::vector<Uint32> dimmed =
+        capture_block(kSlotOneX, card.y, 70, 10);
+    EXPECT_NE(slot_one, dimmed)
+        << "a slot the lobby cannot fill must not look like one it can";
+    EXPECT_EQ(dimmed, capture_block(kSlotTwoX, card.y, 70, 10))
+        << "every dimmed slot wears the same face";
+    // LOBBY FULL is Disabled but still navigable, so keyboard focus lands on
+    // it too — and its ten pad-less glyphs need the same clearance-free ring.
+    probe_placeholder_focus(1, "LOBBY FULL");
+
     save.reset();
 }
 
@@ -3167,9 +3698,11 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
             1, static_cast<int>(ControlDirectionMode::FourDirection),
             KEY_UP));
 
-    // Drive the real Base Camp [+] boundary. Authority appends the
-    // replacement to this machine's local-seat order, so it must resolve to
-    // the freed tail profile (WASD), not clone the surviving arrow profile.
+    // Drive the real Base Camp ADD PLAYER boundary through the first BARE
+    // slot (this machine holds one seat, so slot one is the door). Authority
+    // appends the replacement to this machine's local-seat order, so it must
+    // resolve to the freed tail profile (WASD), not clone the surviving arrow
+    // profile.
     og::ui::install_seat_settings_state_for_screen(nullptr);
     lobby.seat_to_publish_on_add =
         make_foreign_lobby_player(
@@ -3183,7 +3716,7 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     ASSERT_NE(nullptr, base_spec.on_spec_row);
     EXPECT_EQ(
         MENU_OK,
-        base_spec.on_spec_row(kBaseCampAddSeatIndex, &base_state));
+        base_spec.on_spec_row(kBaseCampSeatCardBase + 1, &base_state));
     ASSERT_TRUE(lobby.active_local_count.has_value());
     EXPECT_EQ(2u, *lobby.active_local_count);
     EXPECT_EQ(
@@ -3244,7 +3777,7 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 #endif
 }
 
-TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
+TEST(ViewTeam, base_camp_zero_seat_state_activates_through_the_first_slot)
 {
     FactoryMappingGuard mapping_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -3267,7 +3800,8 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
     // Local sessions own every synthetic seat, including the one retained
     // for a zero-player spectator. They do not need a network ownership list.
     // The old Player Settings right-click painted a separate SPECTATOR status;
-    // Base Camp now makes that state actionable in-place as SPEC + [+].
+    // Base Camp makes that state actionable in place — the seat reads SPEC and
+    // the slot beside it is the ADD PLAYER door.
     lobby.networked = false;
     lobby.local_indices.clear();
     {
@@ -3283,25 +3817,27 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
         spec.nav.rewire(
             buttons, picker_createmenu_button_count(), highlighted);
         EXPECT_FALSE(buttons[kBaseCampSeatCardBase].hidden);
-        EXPECT_EQ("P7 SPEC ", buttons[kBaseCampSeatCardBase].label);
-        EXPECT_FALSE(buttons[kBaseCampAddSeatIndex].hidden);
+        EXPECT_EQ("P7 SPEC  ", buttons[kBaseCampSeatCardBase].label);
+        // The door out of the spectator state is the slot beside the SPEC
+        // card, not a [+] somewhere else on the row.
+        EXPECT_FALSE(buttons[kBaseCampSeatCardBase + 1].hidden);
+        EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + 1].label);
         ASSERT_NE(nullptr,
-                  spec.rows[kBaseCampAddSeatIndex].state_override);
+                  spec.rows[kBaseCampSeatCardBase + 1].state_override);
         EXPECT_EQ(
             og::ui::RowState::Visible,
-            spec.rows[kBaseCampAddSeatIndex].state_override(
+            spec.rows[kBaseCampSeatCardBase + 1].state_override(
                 og::ui::MenuLabelContext{}));
-        trace_clear();
-        EXPECT_EQ(MENU_OK,
-                  spec.on_spec_row(kBaseCampSeatCardBase, &state));
-        EXPECT_TRUE(trace_contains("popup", "PRESS + TO ADD A PLAYER"));
+        // The SPEC card itself opens its own editor rather than popping a
+        // note about a button that no longer exists.
         EXPECT_TRUE(lobby.seat_team_calls.empty());
         og::ui::install_base_camp_state_for_screen(nullptr);
     }
 
     // A current network spectator publishes no owned placeholder at all:
     // the dormant reconnect token is server-private, so the client sees zero
-    // cards and cannot READY. [+] asks authority to activate and publish P1.
+    // cards and cannot READY. The first slot asks authority to activate and
+    // publish P1.
     lobby.networked = true;
     lobby.players.clear();
     lobby.local_indices.clear();
@@ -3316,34 +3852,45 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
 
         og::ui::install_base_camp_state_for_screen(&state);
         button* buttons = picker_createmenu_buttons();
-        int highlighted = kBaseCampAddSeatIndex;
+        int highlighted = kBaseCampSeatCardBase;
         spec.nav.rewire(
             buttons, picker_createmenu_button_count(), highlighted);
-        EXPECT_TRUE(buttons[kBaseCampSeatCardBase].hidden);
-        EXPECT_FALSE(buttons[kBaseCampAddSeatIndex].hidden);
+        // Four ADD PLAYER slots and no card at all: the rail of a machine
+        // sitting in a lobby with nobody of its own in it.
+        for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot)
+        {
+            EXPECT_FALSE(buttons[kBaseCampSeatCardBase + slot].hidden)
+                << slot;
+            EXPECT_EQ("ADD PLAYER",
+                      buttons[kBaseCampSeatCardBase + slot].label)
+                << slot;
+        }
         EXPECT_TRUE(buttons[kCreateMenuReadyIndex].hidden);
         ASSERT_NE(nullptr,
-                  spec.rows[kBaseCampAddSeatIndex].state_override);
+                  spec.rows[kBaseCampSeatCardBase].state_override);
         EXPECT_EQ(
             og::ui::RowState::Visible,
-            spec.rows[kBaseCampAddSeatIndex].state_override(
+            spec.rows[kBaseCampSeatCardBase].state_override(
                 og::ui::MenuLabelContext{}));
         EXPECT_TRUE(lobby.seat_team_calls.empty());
 
-        // [+] activates the authority's dormant token and publishes its new
-        // active seat. One touch-collapsed duplicate is debounced.
+        // Activating slot zero asks authority to activate the dormant token
+        // and publish its new active seat. One touch-collapsed duplicate is
+        // debounced.
         trace_clear();
         EXPECT_EQ(MENU_OK,
-                  spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+                  spec.on_spec_row(kBaseCampSeatCardBase, &state));
         ASSERT_EQ(1, lobby.add_seat_calls);
         ASSERT_TRUE(lobby.active_local_count.has_value());
         EXPECT_EQ(1u, *lobby.active_local_count);
         buttons = picker_createmenu_buttons();
         spec.nav.rewire(
             buttons, picker_createmenu_button_count(), highlighted);
-        EXPECT_EQ("P1 WASD ", buttons[kBaseCampSeatCardBase].label);
+        EXPECT_EQ("P1 WASD  ", buttons[kBaseCampSeatCardBase].label);
+        // The seat landed in slot zero, so the SECOND slot is the door now —
+        // and the debounce is on the DOOR, not on the ordinal.
         EXPECT_EQ(MENU_OK,
-                  spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+                  spec.on_spec_row(kBaseCampSeatCardBase + 1, &state));
         EXPECT_EQ(1, lobby.add_seat_calls);
         EXPECT_TRUE(trace_contains("basecamp", "seat_add_debounced"));
         og::ui::install_base_camp_state_for_screen(nullptr);
@@ -3354,10 +3901,11 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
 
 // #249: a phone is a single-seat device — its touchscreen is the only
 // controller it has. The card names the SCREEN (naming a keyboard mapping
-// would name keys the device does not have), [+] goes inert while nothing
-// else is attached, and a seat the player cycled onto a real pad keeps
+// would name keys the device does not have), the rail shrinks to ONE slot
+// while nothing else is attached (an offer the hardware cannot accept is
+// worse than no offer), and a seat the player cycled onto a real pad keeps
 // naming that pad.
-TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_plus)
+TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_the_rail)
 {
     FactoryMappingGuard mapping_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -3383,7 +3931,7 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_plus)
         *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
     ASSERT_NE(nullptr, spec.nav.rewire);
     ASSERT_NE(nullptr, spec.on_spec_row);
-    ASSERT_NE(nullptr, spec.rows[kBaseCampAddSeatIndex].state_override);
+    ASSERT_NE(nullptr, spec.rows[kBaseCampSeatCardBase + 1].state_override);
 
     og::ui::BaseCampScreenState state;
     og::ui::base_camp_refresh_rows(state);
@@ -3394,27 +3942,46 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_plus)
     int highlighted = kBaseCampSeatCardBase;
     button* buttons = picker_createmenu_buttons();
     spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
-    // Desktop: the card names the seat's keyboard mapping, [+] is live.
-    EXPECT_EQ("P1 WASD ", buttons[kBaseCampSeatCardBase].label);
+    // Desktop: the card names the seat's keyboard mapping, and three ADD
+    // PLAYER slots stand beside it on the fixed grid.
+    EXPECT_EQ("P1 WASD  ", buttons[kBaseCampSeatCardBase].label);
     EXPECT_EQ(og::ui::RowState::Visible,
-              spec.rows[kBaseCampAddSeatIndex].state_override(
+              spec.rows[kBaseCampSeatCardBase + 1].state_override(
                   og::ui::MenuLabelContext{}));
+    EXPECT_EQ(8, buttons[kBaseCampSeatCardBase].x);
+    EXPECT_EQ(86, buttons[kBaseCampSeatCardBase + 1].x);
+    EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + 1].label);
 
     input_hardware_state().single_seat_device = true;
     buttons = picker_createmenu_buttons();
     spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
-    EXPECT_EQ("P1 SCRN ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P1 SCRN  ", buttons[kBaseCampSeatCardBase].label);
+    // The phone's rail is ONE card and nothing else: no slot on this device
+    // can be claimed, so no slot is offered. The lone card starts where every
+    // other left-aligned control does.
+    EXPECT_EQ(8, buttons[kBaseCampSeatCardBase].x);
+    EXPECT_EQ(buttons[kCreateMenuBackIndex].x,
+              buttons[kBaseCampSeatCardBase].x)
+        << "the lone card opens on BACK's left edge";
+    for (int slot = 1; slot < kBaseCampSeatCardsPerPage; ++slot)
+    {
+        EXPECT_TRUE(buttons[kBaseCampSeatCardBase + slot].hidden)
+            << "slot " << slot << " must not offer a seat the phone cannot "
+                                  "seat";
+        EXPECT_EQ(og::ui::RowState::Hidden,
+                  spec.rows[kBaseCampSeatCardBase + slot].state_override(
+                      og::ui::MenuLabelContext{}))
+            << "slot " << slot;
+    }
     EXPECT_LE(buttons[kBaseCampSeatCardBase].label.size(),
               static_cast<std::size_t>(kBaseCampSeatCardLabelBudget));
     EXPECT_EQ(' ', buttons[kBaseCampSeatCardBase].label.back())
         << "the team-chip clearance pad is load-bearing";
-    // Nothing else is attached, so this machine is full at one seat, and
-    // the device-capped rail hides [+] outright (pause-menu consistency).
-    EXPECT_EQ(og::ui::RowState::Hidden,
-              spec.rows[kBaseCampAddSeatIndex].state_override(
-                  og::ui::MenuLabelContext{}));
+    // A slot the device cap hides is still the add DOOR if something drives
+    // it anyway (a stale click, a scripted dispatch): the gate lives in the
+    // handler, so it answers with the hardware instruction, not a seat.
     trace_clear();
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase + 1, &state));
     EXPECT_TRUE(trace_contains("popup", "ATTACH A GAMEPAD TO ADD SEATS"));
     EXPECT_EQ(0, lobby.add_seat_calls);
 
@@ -3422,7 +3989,7 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_plus)
     player_joy[0].index = 0;
     buttons = picker_createmenu_buttons();
     spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
-    EXPECT_EQ("P1 JOY1 ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P1 JOY1  ", buttons[kBaseCampSeatCardBase].label);
 
     og::ui::install_base_camp_state_for_screen(nullptr);
     save.reset();
@@ -3976,7 +4543,7 @@ static int base_camp_train_rename_injector(void* data)
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    SDL_Delay(750);  // entry settle (fades are instant under TESTING)
     interact("roster_row_1");
 
     if (!wait_for_interactable("rename", 10000)) {

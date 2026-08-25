@@ -557,7 +557,17 @@ TEST(MassCoverage, video_fade_between) {
     SDL_DestroySurface(d);
 }
 
-TEST(MassCoverage, video_fadeblack) { (void)og::runtime::current_session->myscreen_->fadeblack(true); }
+TEST(MassCoverage, video_fadeblack)
+{
+    // The test boundary leaves the window black: a fade-out there has
+    // nothing to fade and is skipped (0). Present a frame so there is
+    // something to fade out, then out (1), then in (1).
+    screen& scr = *og::runtime::current_session->myscreen_;
+    ASSERT_EQ(0, scr.fadeblack(false)) << "idempotent on a black window";
+    scr.buffer_to_screen(0, 0, scr.canvas_w(), scr.canvas_h());
+    ASSERT_EQ(1, scr.fadeblack(false));
+    ASSERT_EQ(1, scr.fadeblack(true));
+}
 TEST(MassCoverage, video_darken_screen) { og::runtime::current_session->myscreen_->darken_screen(); }
 
 // text.cpp uncovered

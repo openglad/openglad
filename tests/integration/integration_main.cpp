@@ -2,15 +2,21 @@
 
 #include <SDL3/SDL.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <unistd.h>
+#include <utility>
+#include <vector>
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -29,25 +35,32 @@ extern "C" void __gcov_dump(void);
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
+#include <openglad/platform/video_sdl.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+// Main-thread task queue, declared for injectors in tests/test_interact.h and
+// defined at the bottom of this file.
+void drain_main_thread_tasks();
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_set_force_real_dialogs(bool enabled);
+void campaign_picker_testing_set_auto_accept(bool enabled);
 #endif
 
 namespace {
@@ -77,6 +90,11 @@ void reset_integration_ui_state()
         og::runtime::current_session->input_hw_->mouse_buttons = 0;
         og::runtime::current_session->input_hw_->picker_was_left_down = false;
         og::runtime::current_session->input_hw_->picker_was_right_down = false;
+        // Also drop the collapsed-tap pending-click queue (file-static in
+        // input.cpp, unreachable from here by field writes): a test that
+        // clicked inside a self-pumping surface must not leak phantom
+        // clicks into the next test under --gtest_shuffle.
+        reset_mouse_click_tracking();
     }
 
     if (og::runtime::current_session->picker_ != nullptr) {
@@ -168,6 +186,14 @@ void reset_integration_ui_state()
     g_test_game_epoch.store(0, std::memory_order_release);
     picker_testing_yes_or_no_queue_clear();
     picker_testing_set_force_real_dialogs(false);
+    // #237: a test that aborted mid-screen (or left an override pending) must
+    // not leak transition state into the tests declared after it — and the
+    // window it left (black after an exit fade, or showing its last frame)
+    // must not either: every canvas counts as presented as it stands.
+    og::ui::menu_transition_testing_reset();
+    if (og::runtime::current_session->myscreen_ != nullptr)
+        og::runtime::current_session->myscreen_->testing_reset_window_state();
+    campaign_picker_testing_set_auto_accept(true);
 #endif
     results_screen_testing_set_force_full(false);
 }
@@ -180,17 +206,124 @@ void handle_test_signal(int sig)
     _exit(128 + sig);
 }
 
+// --- Main-thread task queue (issue #257) -----------------------------------
+// Injector threads post state mutations here; the menu runner drains them at
+// the top of each frame. See tests/test_interact.h for the contract.
+std::mutex s_main_thread_task_mutex;
+std::condition_variable s_main_thread_task_cv;
+std::vector<std::pair<std::uint64_t, std::function<void()>>>
+    s_main_thread_tasks;
+std::uint64_t s_main_thread_task_next = 0;
+// High-water mark of tickets that actually RAN. Tasks run in post order, so
+// one mark answers every waiter — as long as the discarded set below is
+// consulted FIRST: cancelling ticket N and then running N+1 would otherwise
+// report N as run.
+std::uint64_t s_main_thread_task_settled = 0;
+// Tickets resolved by cancellation instead of execution (a wait that timed
+// out, or a drain at a test boundary). A waiter on one of these gets false.
+std::set<std::uint64_t> s_main_thread_tasks_discarded;
+// Bumped by every drain. A batch the pump already swapped out of the queue
+// re-checks it before each task, so a task belonging to a finished test can
+// never run inside the next one.
+std::uint64_t s_main_thread_task_generation = 0;
+
+// What a waiter sees for its ticket.
+enum class MainThreadTaskFate
+{
+    Pending,
+    Ran,
+    Discarded,
+};
+
+MainThreadTaskFate main_thread_task_fate_locked(std::uint64_t ticket)
+{
+    if (s_main_thread_tasks_discarded.count(ticket) != 0)
+        return MainThreadTaskFate::Discarded;
+    if (s_main_thread_task_settled >= ticket)
+        return MainThreadTaskFate::Ran;
+    return MainThreadTaskFate::Pending;
+}
+
+// Removes a still-queued task and marks it discarded. Returns false when the
+// ticket is no longer in the queue (already run, or mid-flight on the pump).
+bool cancel_queued_main_thread_task_locked(std::uint64_t ticket)
+{
+    for (auto it = s_main_thread_tasks.begin(); it != s_main_thread_tasks.end();
+         ++it)
+    {
+        if (it->first != ticket)
+            continue;
+        s_main_thread_tasks.erase(it);
+        s_main_thread_tasks_discarded.insert(ticket);
+        return true;
+    }
+    return false;
+}
+
+// Installed as og::ui::g_picker_main_thread_pump. Tasks run OUTSIDE the queue
+// lock (they re-enter menu/lobby code freely) and settle in post order.
+void run_main_thread_tasks()
+{
+    std::vector<std::pair<std::uint64_t, std::function<void()>>> batch;
+    std::uint64_t generation = 0;
+    {
+        std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+        batch.swap(s_main_thread_tasks);
+        generation = s_main_thread_task_generation;
+    }
+    for (auto& [ticket, task] : batch)
+    {
+        bool run_it = false;
+        {
+            std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+            // A drain (or this ticket's own timeout) landed while the batch
+            // was running: the rest of it belongs to a scope that is over.
+            run_it = s_main_thread_task_generation == generation &&
+                     s_main_thread_tasks_discarded.count(ticket) == 0;
+        }
+        if (run_it && task)
+            task();
+        {
+            std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+            if (run_it)
+                s_main_thread_task_settled = ticket;
+            else
+                s_main_thread_tasks_discarded.insert(ticket);
+        }
+        s_main_thread_task_cv.notify_all();
+    }
+}
+
 class WorldCleanupListener final : public ::testing::EmptyTestEventListener
 {
 public:
     void OnTestStart(const ::testing::TestInfo&) override
     {
+        drain_main_thread_tasks();
+        og::ui::g_picker_main_thread_pump = &run_main_thread_tasks;
         reset_integration_ui_state();
+        // After the window reset above: the reset itself never fades.
+        og::video_testing::reset_fade_violations();
     }
 
     void OnTestEnd(const ::testing::TestInfo&) override
     {
+        og::ui::g_picker_main_thread_pump = nullptr;
+        drain_main_thread_tasks();
+        // Fade-ownership invariants (video_sdl.h): a fade-in over a window
+        // that is not black, or a fade-out of a buffer the window never
+        // showed. Every flow test in this binary is an oracle for the class;
+        // read BEFORE the reset below so a violation always fails the test
+        // that caused it.
+        for (const std::string& violation :
+             og::video_testing::fade_violation_messages())
+        {
+            ADD_FAILURE() << "FADE VIOLATION: " << violation
+                          << " — see docs/menu-engine.md, \"Drawing and "
+                             "transitions\"";
+        }
         reset_integration_ui_state();
+        og::video_testing::reset_fade_violations();
     }
 };
 
@@ -248,6 +381,93 @@ void seed_stray_company_slots_from_env()
 std::mutex& get_allbuttons_mutex()
 {
     return s_allbuttons_mutex;
+}
+
+std::uint64_t post_main_thread_task(std::function<void()> task)
+{
+    std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+    const std::uint64_t ticket = ++s_main_thread_task_next;
+    s_main_thread_tasks.emplace_back(ticket, std::move(task));
+    return ticket;
+}
+
+bool wait_for_main_thread_task(std::uint64_t ticket, int timeout_ms)
+{
+    const auto ticket_id = static_cast<unsigned long long>(ticket);
+    std::unique_lock<std::mutex> lock(s_main_thread_task_mutex);
+    MainThreadTaskFate fate = MainThreadTaskFate::Pending;
+    const bool resolved = s_main_thread_task_cv.wait_for(
+        lock, std::chrono::milliseconds(timeout_ms), [ticket, &fate] {
+            fate = main_thread_task_fate_locked(ticket);
+            return fate != MainThreadTaskFate::Pending;
+        });
+    if (resolved)
+    {
+        if (fate == MainThreadTaskFate::Ran)
+            return true;
+        std::fprintf(stderr,
+                     "  [interact] main-thread task %llu was DISCARDED before "
+                     "it ran\n",
+                     ticket_id);
+        return false;
+    }
+    // Timed out. Cancel the ticket so it can never run later — against a
+    // caller's stack that has since gone away, or inside the next test.
+    if (cancel_queued_main_thread_task_locked(ticket))
+    {
+        std::fprintf(stderr,
+                     "  [interact] TIMEOUT waiting for main-thread task %llu "
+                     "(%d ms); cancelled while still queued\n",
+                     ticket_id, timeout_ms);
+        return false;
+    }
+    // Not in the queue: it either settled in the instant the wait expired, or
+    // the pump is running it right now. A running task cannot be cancelled,
+    // so wait for it to finish rather than returning to a scope it may still
+    // be reading.
+    if (main_thread_task_fate_locked(ticket) == MainThreadTaskFate::Ran)
+        return true;
+    std::fprintf(stderr,
+                 "  [interact] TIMEOUT waiting for main-thread task %llu "
+                 "(%d ms); it is already running — waiting it out\n",
+                 ticket_id, timeout_ms);
+    const bool finished = s_main_thread_task_cv.wait_for(
+        lock, std::chrono::milliseconds(timeout_ms), [ticket, &fate] {
+            fate = main_thread_task_fate_locked(ticket);
+            return fate != MainThreadTaskFate::Pending;
+        });
+    if (finished && fate == MainThreadTaskFate::Ran)
+        return true;
+    if (!finished)
+    {
+        // The pump never came back. Nothing can make this safe; say so loudly
+        // and report the task as not run.
+        s_main_thread_tasks_discarded.insert(ticket);
+        std::fprintf(stderr,
+                     "  [interact] main-thread task %llu NEVER FINISHED (%d "
+                     "ms); its captures may still be read\n",
+                     ticket_id, timeout_ms);
+    }
+    return false;
+}
+
+void drain_main_thread_tasks()
+{
+    {
+        std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+        s_main_thread_tasks.clear();
+        // Every posted ticket that has not run yet is discarded: the queued
+        // ones cleared just now, plus anything a batch still holds (the
+        // generation bump stops the pump from running those). A task the
+        // pump happens to be executing at this instant is counted with them
+        // — it belongs to a scope that is already over, so its waiter is
+        // told "not run" rather than being handed a result nobody can use.
+        for (std::uint64_t ticket = s_main_thread_task_settled + 1;
+             ticket <= s_main_thread_task_next; ++ticket)
+            s_main_thread_tasks_discarded.insert(ticket);
+        ++s_main_thread_task_generation;
+    }
+    s_main_thread_task_cv.notify_all();
 }
 
 int main(int argc, char** argv)

@@ -406,7 +406,26 @@ public:
 
     virtual void fade_between24(void* surface, const Uint8* from, const Uint8* to, int amount) = 0;
     virtual int fade_between(void* old_surface, void* new_surface, void* dest_surface) = 0;
+    // Fade ownership (docs/menu-engine.md, "Drawing and transitions"):
+    // fadeblack(false) blends the ACTIVE render buffer to black and is a
+    // no-op (returns 0, no FadeBetween) while the window already shows
+    // black; fadeblack(true) blends the composed buffer in from black.
+    // Whoever fades a screen in fades it out, at its own exit, while its
+    // last presented frame is still the buffer.
     virtual int fadeblack(bool fade_in) = 0;
+    // True while the window shows black: never presented, or a completed
+    // fade-out with no present since. The single source of truth.
+    virtual bool window_is_black() = 0;
+#ifdef TESTING
+    // Test boundary reset: the window is black and every canvas counts as
+    // presented as it stands. See Screen::testing_reset_window_state.
+    virtual void testing_reset_window_state() = 0;
+    // Records a fade-ownership violation the video layer cannot see at the
+    // fade itself (an ENTRY that found an unfaded window — the outgoing
+    // screen skipped its exit fade-out). Same sink as the two fade-site
+    // invariants: traced, logged, and failed by the integration listener.
+    virtual void testing_report_fade_violation(const char* what) = 0;
+#endif
 
     virtual std::array<unsigned char, 768>& ourpalette_ref() = 0;
     virtual std::array<unsigned char, 768>& redpalette_ref() = 0;

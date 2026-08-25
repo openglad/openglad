@@ -6,6 +6,7 @@
 #pragma once
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
@@ -615,14 +616,6 @@ struct BaseCampSessionCensus {
 BaseCampSessionCensus count_base_camp_session_census(
     const std::vector<og::sim::LobbyPlayer>& players);
 
-// The host machine's human identity for the joiner's "HOST:" display:
-// its company name, falling back to that seat's display name when the company
-// is empty. Neither string participates in identity or grouping. Clipped to
-// the 16-char COMPANY column budget. Empty until a host seat exists in the
-// replicated state.
-std::string base_camp_host_display_name(
-    const std::vector<og::sim::LobbyPlayer>& players);
-
 // --- §9.12 header line-B character budgets ---
 //
 // The band's ink starts at x=10 and its readability strip pads 2px on each
@@ -649,14 +642,15 @@ inline constexpr int kBaseCampLineBCharsHireHidden =
 
 // §9.12 header line B, networked HEALTHY shape — the G5 session status
 // (role + room code + census), SHAPED to fit `max_chars`:
-//   host:   "HOSTING <ROOM> - <n> MACH / <p> PLYR"  (no room: the census
-//           alone after HOSTING)
-//   joiner: "IN <ROOM> - HOST: <name16>"  (no room: "JOINED - HOST: ...";
-//           host not yet known: the room half alone)
-// A narrow band takes compact spellings rather than a byte cut: the census
-// abbreviates to "<n>M / <p>P", the joiner drops "HOST: " (the company is
-// what names the lobby), and a company that still over-runs loses whole
-// words. Room codes display-clip at 12 chars (relay codes are "GLAD-XXXX").
+//   host:   "HOSTING <ROOM>: <p> PLAYERS / <n> MACHINES"
+//   joiner: "IN <ROOM>: <p> PLAYERS / <n> MACHINES"  (no room: "JOINED: ...")
+// PLAYERS lead: the seat rail shows this machine's seats only, so the size
+// of the lobby has no other home on the screen. A narrower band takes a
+// whole shorter spelling rather than a byte cut — "<p> PLAYERS/<n> PCS",
+// then "<p>P/<n>M", then the room code goes. A count of one takes the
+// singular ("1 PLAYER", "1 MACHINE", "1 PC") — always the shorter spelling,
+// so it can never push a rung off a band the plural fit. Room codes
+// display-clip at 12 chars (relay codes are "GLAD-XXXX").
 std::string format_base_camp_session_status(
     bool is_host,
     std::string_view room_code,
@@ -841,6 +835,85 @@ struct ScenarioRosterRow {
     int level = 1;
     int count = 1;
 };
+
+// --- Base Camp player-seat rail geometry (#243, redesigned) ---
+//
+// The rail is THIS MACHINE'S four seat slots and nothing else. Remote seats
+// are counted on the header line and listed in VIEW LEVEL's SEATS report;
+// they never take a slot here, so the rail needs no pager and no [+] at its
+// left end. A slot holding one of this machine's seats draws a card; a slot
+// past them is a real ADD PLAYER button (or a dimmed LOBBY FULL one) whose
+// activation is the add path itself.
+//
+// The grid is FIXED, so a slot never moves when its neighbour appears: four
+// 70px faces at x = 8 / 86 / 164 / 242, gutter 8, closing exactly on the
+// panel's right rail (4*70 + 3*8 = 304 = 312 - 8). The face is a label
+// contract (kBaseCampSeatCardLabelBudget = 70/6 characters).
+inline constexpr int kSeatRailX0 = 8;        // the panel's left rail (BACK's x)
+inline constexpr int kSeatRailRightX = 312;  // exclusive: the panel's right rail
+inline constexpr int kSeatRailGap = 8;
+inline constexpr int kSeatRailCardWidth = 70;
+inline constexpr int kSeatRailSlots = 4;     // this machine's seat ceiling
+static_assert(kSeatRailSlots * kSeatRailCardWidth +
+                      (kSeatRailSlots - 1) * kSeatRailGap ==
+                  kSeatRailRightX - kSeatRailX0,
+              "the four slots close on both of the panel's margins");
+// og::sim::kMaxGlobalPlayers, restated so this pure header need not pull the
+// transport contract into every picker TU. menu_screen_specs.cpp
+// static_asserts that the two still agree.
+inline constexpr int kSeatRailGlobalSeatCap = 16;
+
+// The one question behind every bare slot: can another seat be claimed right
+// now? Kept as data so the rail's chrome and the button's row state can never
+// disagree about the answer.
+struct SeatClaimability {
+    bool multiplayer_enabled = true;  // false in a DISABLE_MULTIPLAYER build
+    int local_count = 0;              // seats this machine already owns
+    int local_seat_cap = MAX_PLAYERS; // og::input::local_seat_cap()
+    int global_count = 0;             // seats across the whole lobby
+    int global_cap = kSeatRailGlobalSeatCap;
+};
+
+// Seats this machine may still claim: the smaller headroom of the two caps,
+// never negative, and zero when the build has no multiplayer at all.
+int seats_still_claimable(const SeatClaimability& claim);
+
+// Slots the rail shows at all. What limits the rail is the DEVICE, never the
+// lobby: a phone with no pad shows exactly one slot (#249 — an offer the
+// hardware cannot accept is worse than no offer), a phone with two pads
+// three, a desktop four. A build with no multiplayer has one seat and no
+// door to a second.
+int base_camp_seat_rail_slot_cap(const SeatClaimability& claim);
+
+// Bare slots after this machine's own seats: every remaining slot inside the
+// device cap. A slot the lobby cannot currently fill still appears — dimmed,
+// saying LOBBY FULL — because "there is a seat here and it is spoken for"
+// is the honest answer; only hardware removes the slot entirely.
+int base_camp_seat_rail_placeholder_count(const SeatClaimability& claim);
+
+struct SeatRailLayout {
+    int card_w = kSeatRailCardWidth;
+    // The fixed four-slot grid. slot_x[0 .. shown_cards) hold this machine's
+    // seats and the next placeholder_count are ADD PLAYER / LOBBY FULL
+    // buttons; any slot past those is hidden (draw_buttons and leftmouse both
+    // skip hidden rows) but keeps its grid x so nothing shifts when it
+    // returns.
+    std::array<int, kSeatRailSlots> slot_x{};
+    int shown_cards = 0;
+    int placeholder_count = 0;
+
+    [[nodiscard]] int slot_count() const
+    {
+        return shown_cards + placeholder_count;
+    }
+};
+
+// The rail's per-frame geometry: the fixed grid plus how many of its slots
+// are live this frame. Nothing justifies and nothing packs — a slot's x is a
+// property of the slot, not of how many neighbours it has, so a card cannot
+// slide sideways when a player joins or leaves.
+SeatRailLayout base_camp_seat_rail_layout(int visible_cards,
+                                          int placeholder_count);
 
 // --- Player seats (#218 seat block) ---
 

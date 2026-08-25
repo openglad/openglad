@@ -1,6 +1,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/ui/level_editor_state.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
@@ -759,4 +760,273 @@ TEST(LevelEditorInteractions, object_brush_team_stays_in_the_authorable_range)
 {
     ASSERT_EQ(0, level_editor_test_object_brush_team_range())
         << "object-brush team range failed at the negated check index";
+}
+
+namespace
+{
+int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+            ++fades;
+    }
+    return fades;
+}
+
+// Ends the editor as soon as the door's two way-in fades have landed — or
+// after a bounded wait, so a regression that drops one fails the pin instead
+// of hanging the group.
+int editor_door_fade_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    constexpr int kTimeoutMs = 8000;
+    for (int waited = 0; waited < kTimeoutMs && count_fade_between_traces() < 2;
+         waited += 10)
+        SDL_Delay(10);
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return 0;
+}
+} // namespace
+
+// #237 flow pin, the LEVEL EDITOR door through the REAL body: the door notes
+// Fade, and level_editor()'s LegacyMenuFade spends it — the still-open menu
+// fades out, the editor's first composed frame fades in, and the editor
+// fades itself out at its exit (before its post-loop reset draw and clear
+// touch the buffer). Dropping the fade-in (as the editor once did) left the
+// door at 1 fade in against 2 back, the asymmetry the invariant forbids.
+// Counted here: the editor's first-frame fade-in (the test boundary leaves
+// the window black, so the door's fade-out of the "menu" is a traceless
+// no-op), then the editor's own exit fade-out. Its partner, the parent menu
+// loop's fade-in off the black window, has no parent loop in this test —
+// the black window is asserted instead, and
+// MenuEngine.nested_menu_door_bracket_* pins the loop half.
+TEST(LevelEditorInteractions, level_editor_door_fades_symmetrically)
+{
+    og::ui::menu_transition_testing_reset();
+    og::runtime::current_session->myscreen_->world().end = 0;
+    trace_clear();
+
+    SDL_Thread* thread = SDL_CreateThread(editor_door_fade_injector,
+                                          "editor_door_fade", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)og::ui::run_nested_menu_door(&level_editor);
+
+    SDL_WaitThread(thread, nullptr);
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    const int total = count_fade_between_traces();
+    EXPECT_EQ(2, total)
+        << "over a black window the door fades the editor's first frame in, "
+           "and the editor opens the way back with its own exit fade-out";
+    EXPECT_TRUE(og::runtime::current_session->myscreen_->window_is_black())
+        << "the editor's exit leaves the window black; the still-open parent "
+           "menu loop's next present is the matching fade-in";
+    og::ui::menu_transition_testing_reset();
+}
+
+// ---------------------------------------------------------------------------
+// The editor-exit phantom click (the reporter's literal scenario): exit the
+// LEVEL EDITOR through its own File -> Exit menu, hover BEGIN NEW GAME during
+// the fade back to the main menu — and BEGIN NEW GAME activates itself.
+// Mechanism: the editor pumps its own events and reads the mouse only via
+// query_mouse_no_poll(), so every click made inside it mints a coordinate-less
+// collapsed-tap pending click (input.cpp g_pending_left_clicks); the main
+// menu's leftmouse() then pairs one with the LIVE pointer on its first
+// post-door frame. The pointer-handoff rule (docs/menu-engine.md, "Pointer
+// handoff") forbids exactly this: no screen may consume a click minted on
+// another surface.
+
+#include <openglad/interface/ui/picker_ui_state.h>
+#include "test_interact.h"
+
+void picker_main(Sint32 argc, char** argv);
+extern int g_picker_mainmenu_calls;
+extern int g_picker_max_mainmenu_calls;
+
+static inline PickerState& pks_phantom()
+{
+    return *og::runtime::current_session->picker_;
+}
+
+namespace
+{
+struct PhantomClickState {
+    std::atomic<bool> started{false};
+    std::atomic<bool> editor_opened{false};
+    std::atomic<bool> editor_closed{false};
+    std::atomic<bool> phantom_fired{false};
+    std::atomic<bool> finished{false};
+};
+
+// Editor clicks go through the same UI-canvas-pinned transform interact()
+// uses: under picker_main the window runs at the configured scale (2x), so
+// raw window coordinates would land on the wrong editor pixels. While the
+// editor is open both canvases are 320x200, so the UI transform is exact.
+void phantom_click_at_canvas(int game_x, int game_y, int delay_ms)
+{
+    const auto [wx, wy] = ui_canvas_to_window(static_cast<float>(game_x),
+                                              static_cast<float>(game_y));
+    if (delay_ms > 0) {
+        inject_click(static_cast<int>(wx), static_cast<int>(wy), delay_ms);
+    } else {
+        // A quick tap: press+release land in one editor pump (a collapsed
+        // tap — the exact shape the pending-click queue exists for).
+        inject_mouse_down(static_cast<int>(wx), static_cast<int>(wy));
+        inject_mouse_up(static_cast<int>(wx), static_cast<int>(wy));
+    }
+}
+
+// Bounded wait on the FadeBetween trace count — the editor-side observable.
+// allbuttons[] is NOT one: the editor never rebuilds it, so main-menu ids
+// stay visible to has_interactable() while the editor is open.
+bool phantom_wait_for_fades(int at_least, int timeout_ms)
+{
+    for (int waited = 0; waited < timeout_ms; waited += 10) {
+        if (count_fade_between_traces() >= at_least)
+            return true;
+        SDL_Delay(10);
+    }
+    return count_fade_between_traces() >= at_least;
+}
+
+void cleanup_phantom_picker_state()
+{
+    for (int i = 0; i < 5; i++) {
+        pks_phantom().backdrops[static_cast<std::size_t>(i)].reset();
+        pks_phantom().backpics[i].free();
+    }
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    pks_phantom().main_columns_pix.reset();
+    pks_phantom().main_columns_data.free();
+    pks_phantom().main_title_logo_pix.reset();
+    pks_phantom().main_title_logo_data.free();
+}
+
+int editor_exit_phantom_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    PhantomClickState* st = static_cast<PhantomClickState*>(data);
+    st->started = true;
+
+    if (!wait_for_interactable("level_edit", 10000)) {
+        st->finished = true;
+        return 1;
+    }
+    SDL_Delay(750);
+    const int fades_before_door = count_fade_between_traces();
+    interact("level_edit");
+
+    // Editor entry = the door's two way-in fades (the still-open menu's
+    // fade-out plus the editor's first-frame fade-in). Bounded wait so a
+    // regression fails instead of hanging the group.
+    if (!phantom_wait_for_fades(fades_before_door + 2, 10000)) {
+        // Recovery so the group never hangs: end whatever is open, then
+        // leave; the editor_opened guard reds the test.
+        og::runtime::current_session->myscreen_->world().end = 1;
+        SDL_Delay(500);
+        interact("quit");
+        st->finished = true;
+        return 2;
+    }
+    st->editor_opened = true;
+    SDL_Delay(500);  // let the editor's loop settle on its first frames
+
+    // The reporter's exit, at the editor's own menu geometry
+    // (level_editor.cpp menu init: File 0..30 x 0..20 opens Campaign >/
+    // Level >/Exit rows at x 0..65, 20px pitch — Exit is y 60..80; the
+    // save-confirm it can raise is answered instantly from the TESTING
+    // queue the test armed, with no event loop run).
+    phantom_click_at_canvas(15, 10, 30);   // File (opens on the release)
+    SDL_Delay(300);
+    phantom_click_at_canvas(32, 70, 0);    // Exit — a quick collapsed tap
+    // The hover: ONLY a motion, queued right behind Exit's release so the
+    // pointer is over BEGIN NEW GAME (80,55 140x20 -> centre (150,65))
+    // before the main menu's first post-door frame. No click follows.
+    {
+        const auto [mx, my] = ui_canvas_to_window(150.0f, 65.0f);
+        inject_mouse_motion(static_cast<int>(mx), static_cast<int>(my));
+    }
+
+    // The way back is two more fades: the editor's own exit fade-out plus
+    // the parent menu loop's fade-in off the black window.
+    if (!phantom_wait_for_fades(fades_before_door + 4, 10000)) {
+        og::runtime::current_session->myscreen_->world().end = 1;
+        SDL_Delay(500);
+        interact("quit");
+        st->finished = true;
+        return 3;
+    }
+    st->editor_closed = true;
+
+    // The phantom: pre-fix, one of the File/Exit pending clicks is spent
+    // at the hovered pointer on the menu's first post-door frame,
+    // activating BEGIN NEW GAME and opening the company-name-entry screen.
+    if (wait_for_interactable("company_name_accept", 2500)) {
+        st->phantom_fired = true;
+        SDL_Delay(750);
+        interact("back");  // escape the name entry so the test cannot hang
+        SDL_Delay(300);
+        wait_for_interactable("level_edit", 10000);
+    }
+
+    SDL_Delay(500);
+    interact("quit");  // ends mainmenu(); the TESTING call cap does the rest
+    st->finished = true;
+    return 0;
+}
+} // namespace
+
+TEST(LevelEditorInteractions, editor_exit_clicks_cannot_activate_the_main_menu)
+{
+    og::ui::menu_transition_testing_reset();
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    // A save of our own so the flow is deterministic under --gtest_shuffle
+    // (picker_main loads save0 and the editor opens that campaign's level).
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign =
+        "gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    // The editor's entry path can mark the level changed, so File -> Exit
+    // raises the "Quit without saving?" confirm. Queue the YES: the TESTING
+    // prompt path answers from the queue and returns at once — it runs no
+    // event loop, so the collapsed-tap pending queue the phantom rides on
+    // is untouched, exactly as in the reporter's clean-exit scenario.
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+
+    trace_clear();
+    PhantomClickState st;
+    SDL_Thread* thread = SDL_CreateThread(editor_exit_phantom_injector,
+                                          "phantom_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_phantom_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    og::runtime::current_session->myscreen_->world().end = 0;
+    picker_testing_yes_or_no_queue_clear();
+
+    ASSERT_TRUE(st.started.load()) << "injector thread never started";
+    ASSERT_TRUE(st.finished.load()) << "injector thread never finished";
+    ASSERT_TRUE(st.editor_opened.load())
+        << "guard: the LEVEL EDITOR door never opened, the pin has no teeth";
+    ASSERT_TRUE(st.editor_closed.load())
+        << "guard: the File->Exit clicks never closed the editor";
+    EXPECT_FALSE(st.phantom_fired.load())
+        << "phantom click: the File->Exit clicks made INSIDE the editor were "
+           "spent on the main menu — hovering BEGIN NEW GAME during the fade "
+           "activated it with no click";
+    og::ui::menu_transition_testing_reset();
 }

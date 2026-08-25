@@ -31,6 +31,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -4457,31 +4458,6 @@ TEST(BaseCampMpDisplay, session_census_counts_machines_and_players)
     EXPECT_EQ(5, census.players);
 }
 
-TEST(BaseCampMpDisplay, host_display_name_prefers_company_over_wire_name)
-{
-    // §9.12: player names are machine-generated "net-<hex>" wire ids, so
-    // the joiner's HOST: display uses the host machine's company (the
-    // format_go_blockers naming convention), 16-char COMPANY clip.
-    const std::vector<og::sim::LobbyPlayer> players = {
-        make_lobby_seat(0, "net-h", "A COMPANY NAME PAST SIXTEEN", true,
-                        false, 1, 0),
-        make_lobby_seat(1, "net-j", "JOIN CO", false, false, 1, 0),
-    };
-    EXPECT_EQ("A COMPANY NAME P",
-              og::ui::base_camp_host_display_name(players));
-
-    // Empty company falls back to the seat's display name. It is presentation
-    // only; the server-issued machine ID remains the grouping authority.
-    const std::vector<og::sim::LobbyPlayer> bare = {
-        make_lobby_seat(0, "net-h#2", "", true, false, 1, 0)};
-    EXPECT_EQ("net-h#2", og::ui::base_camp_host_display_name(bare));
-
-    // No host seat yet (pre-election): empty.
-    const std::vector<og::sim::LobbyPlayer> unelected = {
-        make_lobby_seat(1, "net-j", "JOIN CO", false, false, 1, 0)};
-    EXPECT_EQ("", og::ui::base_camp_host_display_name(unelected));
-}
-
 TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
 {
     const std::vector<og::sim::LobbyPlayer> players = {
@@ -4513,55 +4489,65 @@ TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
     EXPECT_GT(ink_right_edge(kWide + 1), og::ui::kBaseCampLineBPagerWallX)
         << "the wide budget must be the WIDEST that clears the pagers";
 
-    // §9.12 host shape on the wide band: role + room + census. "MACH /
-    // PLYR" is the recorded budget latitude (spelled-out overruns at
-    // double digits).
-    EXPECT_EQ("HOSTING GLAD-7Q2F - 2 MACH / 3 PLYR",
+    // The rail shows THIS machine's seats only, so line B is where the size
+    // of the lobby lives — players first, machines second. Every rung below
+    // is a whole spelling; the ladder falls between them and never cuts one.
+    //
+    // WIDE band, everyday counts: the spelled-out rung lands on exactly 41.
+    EXPECT_EQ("HOSTING GLAD-7Q2F: 3 PLAYERS / 2 MACHINES",
               og::ui::format_base_camp_session_status(true, "GLAD-7Q2F",
                                                       players, kWide));
-    // Relay-less (LAN) host: the census alone.
-    EXPECT_EQ("HOSTING 2 MACH / 3 PLYR",
+    EXPECT_EQ(static_cast<std::size_t>(kWide),
+              og::ui::format_base_camp_session_status(true, "GLAD-7Q2F",
+                                                      players, kWide).size())
+        << "the widest rung is sized to the widest band";
+    // Relay-less (LAN) host: no room code to carry.
+    EXPECT_EQ("HOSTING: 3 PLAYERS / 2 MACHINES",
               og::ui::format_base_camp_session_status(true, "", players,
                                                       kWide));
 
-    // §9.12 joiner shape: room + the host machine's company.
-    EXPECT_EQ("IN GLAD-7Q2F - HOST: IRON KETTLE BAND",
+    // The joiner's line carries the same census. "HOST: <company>" is gone:
+    // the host's company is on every one of its roster rows, and the count
+    // of everyone in the lobby is on none of them.
+    EXPECT_EQ("IN GLAD-7Q2F: 3 PLAYERS / 2 MACHINES",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
                                                       players, kWide));
     // Direct (LAN) joiner: no room code.
-    EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND",
+    EXPECT_EQ("JOINED: 3 PLAYERS / 2 MACHINES",
               og::ui::format_base_camp_session_status(false, "", players,
                                                       kWide));
-    // Host not yet known (pre-election on a dedicated server).
-    EXPECT_EQ("IN GLAD-7Q2F",
+    // Pre-first-state: an empty roster still answers honestly.
+    EXPECT_EQ("IN GLAD-7Q2F: 0 PLAYERS / 0 MACHINES",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
                                                       {}, kWide));
-    EXPECT_EQ("JOINED",
+    EXPECT_EQ("JOINED: 0 PLAYERS / 0 MACHINES",
               og::ui::format_base_camp_session_status(false, "", {}, kWide));
 
-    // The NARROW band (the shape every shipped campaign renders today —
-    // the default composition shows HIRE): the everyday host line is 35,
-    // one character over, so the census takes its compact spelling rather
-    // than losing "PLYR" to a byte cut. The joiner drops the "HOST: "
-    // label instead of the company that names the lobby.
-    EXPECT_EQ("HOSTING GLAD-7Q2F - 2M / 3P",
+    // The NARROW band (the shape every shipped campaign renders today — the
+    // default composition shows HIRE): "MACHINES" costs six characters more
+    // than the room code is worth, so the second rung says PCS and lands on
+    // exactly 34.
+    EXPECT_EQ("HOSTING GLAD-7Q2F: 3 PLAYERS/2 PCS",
               og::ui::format_base_camp_session_status(true, "GLAD-7Q2F",
                                                       players, kNarrow));
-    EXPECT_EQ("HOSTING 2 MACH / 3 PLYR",
+    EXPECT_EQ(static_cast<std::size_t>(kNarrow),
+              og::ui::format_base_camp_session_status(
+                  true, "GLAD-7Q2F", players, kNarrow).size())
+        << "the everyday rung is sized to the everyday band";
+    EXPECT_EQ("HOSTING: 3 PLAYERS / 2 MACHINES",
               og::ui::format_base_camp_session_status(true, "", players,
                                                       kNarrow))
         << "a shape that already fits keeps the spelled-out census";
-    EXPECT_EQ("IN GLAD-7Q2F - IRON KETTLE BAND",
+    EXPECT_EQ("IN GLAD-7Q2F: 3 PLAYERS/2 PCS",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
                                                       players, kNarrow));
-    EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND",
+    EXPECT_EQ("JOINED: 3 PLAYERS / 2 MACHINES",
               og::ui::format_base_camp_session_status(false, "", players,
-                                                      kNarrow))
-        << "the LAN joiner shape fits as-is and keeps its label";
+                                                      kNarrow));
 
-    // Budget pins: the absolute worst shapes fit BOTH bands — host at the
-    // 16-seat global cap, joiner at the full 16-char company clip; a
-    // pathological room code display-clips at 12.
+    // Budget pins: the absolute worst shapes fit BOTH bands — the 16-seat
+    // global cap on 16 machines, and a pathological room code that display-
+    // clips at 12.
     std::vector<og::sim::LobbyPlayer> sixteen;
     for (int i = 0; i < 16; ++i) {
         sixteen.push_back(make_lobby_seat(
@@ -4569,42 +4555,36 @@ TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
             std::format("net-{:02}", i).c_str(), "C", i == 0, false, 1, 0,
             static_cast<og::sim::LobbyMachineId>(i + 1)));
     }
-    const std::vector<og::sim::LobbyPlayer> long_company = {
-        make_lobby_seat(0, "net-h", "A COMPANY NAME PAST SIXTEEN", true,
-                        false, 1, 0, 1)};
     for (const int budget : {kNarrow, kWide}) {
         EXPECT_LE(og::ui::format_base_camp_session_status(
                       true, "GLAD-XXXX", sixteen, budget).size(),
                   static_cast<std::size_t>(budget))
             << "16-seat host at budget " << budget;
         EXPECT_LE(og::ui::format_base_camp_session_status(
-                      false, "GLAD-XXXX", players, budget).size(),
+                      false, "GLAD-XXXX", sixteen, budget).size(),
                   static_cast<std::size_t>(budget))
-            << "joiner at budget " << budget;
+            << "16-seat joiner at budget " << budget;
         EXPECT_LE(og::ui::format_base_camp_session_status(
                       true, "GLAD-TOO-LONG-CODE", sixteen, budget).size(),
                   static_cast<std::size_t>(budget))
             << "pathological room code at budget " << budget;
-        EXPECT_LE(og::ui::format_base_camp_session_status(
-                      false, "GLAD-TOO-LONG-CODE", long_company, budget)
-                      .size(),
-                  static_cast<std::size_t>(budget))
-            << "pathological room code + company at budget " << budget;
     }
-    EXPECT_EQ("HOSTING GLAD-XXXX - 16 MACH / 16 PLYR",
+    // Two-digit counts push the spelled-out rung past even the wide band, so
+    // the ladder drops a whole rung at a time.
+    EXPECT_EQ("HOSTING GLAD-XXXX: 16 PLAYERS/16 PCS",
               og::ui::format_base_camp_session_status(true, "GLAD-XXXX",
                                                       sixteen, kWide));
-    EXPECT_EQ("HOSTING GLAD-XXXX - 16M / 16P",
+    EXPECT_EQ("HOSTING GLAD-XXXX: 16P/16M",
               og::ui::format_base_camp_session_status(true, "GLAD-XXXX",
                                                       sixteen, kNarrow));
-    // Room 12 + company 16 is the joiner's exact-fit worst case at 34.
-    EXPECT_EQ("IN GLAD-TOO-LON - A COMPANY NAME P",
+    // Room 12 + two-digit counts is the joiner's exact-fit worst case at 34.
+    EXPECT_EQ("IN GLAD-TOO-LON: 16 PLAYERS/16 PCS",
               og::ui::format_base_camp_session_status(
-                  false, "GLAD-TOO-LONG-CODE", long_company, kNarrow));
+                  false, "GLAD-TOO-LONG-CODE", sixteen, kNarrow));
 }
 
 // The composer's budget is a parameter, not a constant: narrower callers
-// (and any future band) shed the room code and whole words rather than
+// (and any future band) drop a whole rung, then the room code, rather than
 // emitting a byte-cut line.
 TEST(BaseCampMpDisplay, session_status_degrades_by_shape_not_by_byte_cut)
 {
@@ -4617,29 +4597,53 @@ TEST(BaseCampMpDisplay, session_status_degrades_by_shape_not_by_byte_cut)
     }
     // Too narrow even for the compact census beside a room code: the room
     // half goes (the NETWORKING screen keeps the authoritative code).
-    EXPECT_EQ("HOSTING 16M / 16P",
+    EXPECT_EQ("HOSTING: 16P/16M",
               og::ui::format_base_camp_session_status(true, "GLAD-7Q2F",
+                                                      sixteen, 20));
+    EXPECT_EQ("JOINED: 16P/16M",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
                                                       sixteen, 20));
 
     const std::vector<og::sim::LobbyPlayer> kettle = {
         make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 1, 0,
                         1)};
-    // The company sheds a whole word when one survives past half the
-    // remaining budget...
-    EXPECT_EQ("IN GLAD-7Q2F - IRON KETTLE",
+    // Each rung is taken whole while it fits and abandoned whole when it
+    // does not — never a prefix of the rung above. ONE IS ONE: a lobby of one
+    // says PLAYER / MACHINE / PC, never the "1 PLAYERS" that told the reader
+    // the line could not count. The singular is always the shorter spelling,
+    // so it can never push a rung off a band it used to fit — here it makes
+    // the widest rung 34 characters instead of 38.
+    EXPECT_EQ("IN GLAD-7Q2F: 1 PLAYER / 1 MACHINE",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 36));
+    EXPECT_EQ(std::size_t{34},
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 34).size());
+    EXPECT_EQ("IN GLAD-7Q2F: 1 PLAYER / 1 MACHINE",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 34))
+        << "the singular rung fits a band the plural one would have missed";
+    EXPECT_EQ("IN GLAD-7Q2F: 1 PLAYER/1 PC",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 33));
+    EXPECT_EQ("IN GLAD-7Q2F: 1P/1M",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
                                                       kettle, 26));
-    EXPECT_EQ("IN GLAD-7Q2F - IRON",
-              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
-                                                      kettle, 20));
-    // ...and takes the bytes when the whole-word remainder would say less
-    // than they do.
-    const std::vector<og::sim::LobbyPlayer> lopsided = {
-        make_lobby_seat(0, "net-h", "A VERYLONGNAMEHERE", true, false, 1, 0,
+    // A machine with two seats in it: the players half pluralizes on its own
+    // count, the machines half does not.
+    const std::vector<og::sim::LobbyPlayer> two_on_one = {
+        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 1, 0, 1),
+        make_lobby_seat(1, "net-h2", "IRON KETTLE BAND", false, false, 1, 0,
                         1)};
-    EXPECT_EQ("IN GLAD-7Q2F - A VERYLONGN",
+    EXPECT_EQ("IN GLAD-7Q2F: 2 PLAYERS / 1 MACHINE",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
-                                                      lopsided, 26));
+                                                      two_on_one, 40));
+    EXPECT_EQ("IN GLAD-7Q2F: 2 PLAYERS/1 PC",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      two_on_one, 34));
+    EXPECT_EQ("JOINED: 1P/1M",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 18));
     // The hard floor: every shape still honors the budget.
     for (int budget = 1; budget <= 45; ++budget) {
         EXPECT_LE(og::ui::format_base_camp_session_status(
@@ -4664,7 +4668,7 @@ TEST(BaseCampMpDisplay, line_b_gives_the_alert_slot_and_color_precedence)
         std::nullopt, true, "GLAD-7Q2F", players,
         og::ui::kBaseCampLineBCharsHireHidden);
     EXPECT_FALSE(healthy.alert);
-    EXPECT_EQ("HOSTING GLAD-7Q2F - 1 MACH / 1 PLYR", healthy.text);
+    EXPECT_EQ("HOSTING GLAD-7Q2F: 1 PLAYER / 1 MACHINE", healthy.text);
 
     // Degraded: the alert takes the slot AND the color (§9.12 precedence —
     // the ORANGE mapping rides the alert flag).
@@ -5457,4 +5461,170 @@ TEST(LevelPickerLayout, status_labels_match_the_progress_report)
     EXPECT_STREQ("CLEARED", og::ui::level_row_status_label(true, true));
     EXPECT_STREQ("CURRENT", og::ui::level_row_status_label(false, true));
     EXPECT_STREQ("", og::ui::level_row_status_label(false, false));
+}
+
+// ---------------------------------------------------------------------------
+// The Base Camp seat rail. It used to window the whole lobby behind a [+]
+// and two pagers, so its geometry changed with the number of players and a
+// card could slide sideways under a finger already on its way down. The rail
+// is THIS MACHINE'S four seats now, on a grid that never moves; these pin the
+// grid and the rule that decides what each slot is.
+
+TEST(SeatRailLayout, the_four_slots_are_a_fixed_grid_across_the_panel)
+{
+    // Four 70px faces, 8px gutters, opening on BACK's left edge and closing
+    // on the panel's right rail with no remainder. Every one of these numbers
+    // is also written into the static spec table (test_menu_layout pins the
+    // rects); they must not move by a pixel.
+    const og::ui::SeatRailLayout rail =
+        og::ui::base_camp_seat_rail_layout(4, 0);
+    EXPECT_EQ(8, rail.slot_x[0]);
+    EXPECT_EQ(86, rail.slot_x[1]);
+    EXPECT_EQ(164, rail.slot_x[2]);
+    EXPECT_EQ(242, rail.slot_x[3]);
+    EXPECT_EQ(70, rail.card_w);
+    EXPECT_EQ(og::ui::kSeatRailX0, rail.slot_x[0]);
+    EXPECT_EQ(og::ui::kSeatRailRightX, rail.slot_x[3] + rail.card_w);
+    for (int slot = 1; slot < og::ui::kSeatRailSlots; ++slot) {
+        EXPECT_EQ(og::ui::kSeatRailGap,
+                  rail.slot_x[static_cast<std::size_t>(slot)] -
+                      (rail.slot_x[static_cast<std::size_t>(slot - 1)] +
+                       rail.card_w))
+            << "gutter " << slot;
+    }
+    // The face IS the label budget: 70/6 = 11 characters, which is what makes
+    // "ADD PLAYER" and "LOBBY FULL" (10 each) fit a bare slot.
+    EXPECT_EQ(11, og::ui::kSeatRailCardWidth / 6);
+    EXPECT_LE(std::string_view("ADD PLAYER").size() * 6,
+              static_cast<std::size_t>(og::ui::kSeatRailCardWidth));
+    EXPECT_LE(std::string_view("LOBBY FULL").size() * 6,
+              static_cast<std::size_t>(og::ui::kSeatRailCardWidth));
+}
+
+TEST(SeatRailLayout, a_slot_keeps_its_x_however_many_neighbours_are_live)
+{
+    // The whole point of the fixed grid: slot 2 is at 164 whether it is the
+    // last card, the first placeholder, or hidden behind a device cap. The
+    // old rail justified and packed, so claiming a seat moved every card on
+    // the row out from under the pointer that claimed it.
+    const og::ui::SeatRailLayout full =
+        og::ui::base_camp_seat_rail_layout(4, 0);
+    int checked = 0;
+    for (int cards = 0; cards <= og::ui::kSeatRailSlots; ++cards) {
+        for (int placeholders = 0;
+             placeholders <= og::ui::kSeatRailSlots; ++placeholders) {
+            const og::ui::SeatRailLayout rail =
+                og::ui::base_camp_seat_rail_layout(cards, placeholders);
+            ++checked;
+            const std::string shape = std::format(
+                "cards={} placeholders={}", cards, placeholders);
+            EXPECT_EQ(full.slot_x, rail.slot_x) << shape;
+            EXPECT_EQ(70, rail.card_w) << shape;
+            EXPECT_EQ(cards, rail.shown_cards) << shape;
+            // A slot is a card or a placeholder, never both, and the row
+            // never grows a fifth.
+            EXPECT_EQ(std::min(placeholders, og::ui::kSeatRailSlots - cards),
+                      rail.placeholder_count)
+                << shape;
+            EXPECT_LE(rail.slot_count(), og::ui::kSeatRailSlots) << shape;
+            EXPECT_GE(rail.slot_count(), cards) << shape;
+        }
+    }
+    EXPECT_EQ(25, checked) << "every card/placeholder pairing was exercised";
+
+    // A phone's lone slot opens on the left rail, where BACK and every other
+    // left-aligned control on the screen opens (#249).
+    const og::ui::SeatRailLayout phone =
+        og::ui::base_camp_seat_rail_layout(1, 0);
+    EXPECT_EQ(og::ui::kSeatRailX0, phone.slot_x[0]);
+    EXPECT_EQ(1, phone.slot_count());
+}
+
+TEST(SeatRailSlots, the_device_decides_how_many_slots_the_rail_has)
+{
+    using og::ui::base_camp_seat_rail_slot_cap;
+    using og::ui::SeatClaimability;
+
+    // Desktop: the build limit.
+    EXPECT_EQ(4, base_camp_seat_rail_slot_cap(SeatClaimability{}));
+    // Phone with nothing attached, then one pad, then two, then plenty.
+    EXPECT_EQ(1, base_camp_seat_rail_slot_cap(
+                     SeatClaimability{.local_seat_cap = 1}));
+    EXPECT_EQ(2, base_camp_seat_rail_slot_cap(
+                     SeatClaimability{.local_seat_cap = 2}));
+    EXPECT_EQ(3, base_camp_seat_rail_slot_cap(
+                     SeatClaimability{.local_seat_cap = 3}));
+    EXPECT_EQ(4, base_camp_seat_rail_slot_cap(
+                     SeatClaimability{.local_seat_cap = 9}))
+        << "the rail has four slots however many pads are plugged in";
+    // A build with no multiplayer has one seat and no door to a second.
+    EXPECT_EQ(1, base_camp_seat_rail_slot_cap(
+                     SeatClaimability{.multiplayer_enabled = false}));
+    // The LOBBY the machine is in never removes a slot — that is the dimmed
+    // face's job, not the grid's.
+    EXPECT_EQ(4, base_camp_seat_rail_slot_cap(
+                     SeatClaimability{.local_count = 1, .global_count = 16}));
+}
+
+TEST(SeatRailSlots, placeholders_fill_every_slot_the_device_can_still_seat)
+{
+    using og::ui::base_camp_seat_rail_placeholder_count;
+    using og::ui::SeatClaimability;
+
+    // Desktop, one seat claimed: three bare slots.
+    EXPECT_EQ(3, base_camp_seat_rail_placeholder_count(
+                     SeatClaimability{.local_count = 1, .global_count = 1}));
+    // Two claimed, two bare.
+    EXPECT_EQ(2, base_camp_seat_rail_placeholder_count(
+                     SeatClaimability{.local_count = 2, .global_count = 2}));
+    // Four claimed: the rail is full and offers nothing.
+    EXPECT_EQ(0, base_camp_seat_rail_placeholder_count(
+                     SeatClaimability{.local_count = 4, .global_count = 4}));
+    // A phone with nothing attached: one card and NO bare slot — an offer
+    // the hardware cannot accept is worse than no offer (#249).
+    EXPECT_EQ(0, base_camp_seat_rail_placeholder_count(SeatClaimability{
+                     .local_count = 1, .local_seat_cap = 1,
+                     .global_count = 1}));
+    // A pad opens exactly one more.
+    EXPECT_EQ(1, base_camp_seat_rail_placeholder_count(SeatClaimability{
+                     .local_count = 1, .local_seat_cap = 2,
+                     .global_count = 1}));
+    // A DISABLE_MULTIPLAYER build: one seat, nothing beside it.
+    EXPECT_EQ(0, base_camp_seat_rail_placeholder_count(SeatClaimability{
+                     .multiplayer_enabled = false, .local_count = 1}));
+    // THE FULL LOBBY STILL SHOWS ITS SLOTS. The rail is this machine's
+    // hardware; a full lobby dims the face (LOBBY FULL) rather than deleting
+    // a seat the player can see they own the room for.
+    EXPECT_EQ(3, base_camp_seat_rail_placeholder_count(
+                     SeatClaimability{.local_count = 1, .global_count = 16}));
+    EXPECT_EQ(0, og::ui::seats_still_claimable(
+                     SeatClaimability{.local_count = 1, .global_count = 16}))
+        << "which is exactly what the dimmed face says";
+    // Nothing claimed yet (a connected spectator): four bare slots.
+    EXPECT_EQ(4, base_camp_seat_rail_placeholder_count(
+                     SeatClaimability{.global_count = 3}));
+    // A seat that outlived its cap (a pad unplugged under a live seat) never
+    // produces a negative count.
+    EXPECT_EQ(0, base_camp_seat_rail_placeholder_count(SeatClaimability{
+                     .local_count = 3, .local_seat_cap = 1,
+                     .global_count = 3}));
+}
+
+TEST(SeatRailSlots, claimability_answers_the_dimmed_face_question)
+{
+    using og::ui::SeatClaimability;
+    using og::ui::seats_still_claimable;
+
+    EXPECT_EQ(2, seats_still_claimable(
+                     SeatClaimability{.local_count = 2, .global_count = 2}));
+    EXPECT_EQ(0, seats_still_claimable(
+                     SeatClaimability{.local_count = 4, .global_count = 4}));
+    // The lobby ceiling binds before the local cap does.
+    EXPECT_EQ(2, seats_still_claimable(
+                     SeatClaimability{.local_count = 1, .global_count = 14}));
+    EXPECT_EQ(0, seats_still_claimable(
+                     SeatClaimability{.local_count = 1, .global_count = 16}));
+    // A DISABLE_MULTIPLAYER build has no second seat to offer at all.
+    EXPECT_EQ(0, seats_still_claimable(
+                     SeatClaimability{.multiplayer_enabled = false}));
 }

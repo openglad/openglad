@@ -77,6 +77,11 @@ short& input_key_press_event_ref()
     return og::runtime::current_session->key_press_event_;
 }
 
+unsigned query_key_press_serial()
+{
+    return og::runtime::current_session->key_press_serial_;
+}
+
 short& input_text_input_event_ref()
 {
     return og::runtime::current_session->text_input_event_;
@@ -604,6 +609,7 @@ void handle_mouse_event(const void* native_event)
     case og::input_native::EventType::MouseWheel:
         og::runtime::current_session->scroll_amount_ = static_cast<short>(5*event.wheel_y);
         og::runtime::current_session->key_press_event_ = 1;
+        ++og::runtime::current_session->key_press_serial_;
         break;
 
 #ifndef USE_TOUCH_INPUT
@@ -891,6 +897,7 @@ void handle_mouse_event(const void* native_event)
             
             
             og::runtime::current_session->key_press_event_ = 1;
+        ++og::runtime::current_session->key_press_serial_;
             mouse_state.left = 1;
             mouse_state.x = x;
             mouse_state.y = y;
@@ -918,14 +925,17 @@ void handle_joy_event(const void* native_event)
         if (event.joy_axis_value > JOY_DEAD_ZONE ||
             event.joy_axis_value < -JOY_DEAD_ZONE)
             og::runtime::current_session->key_press_event_ = 1;
+        ++og::runtime::current_session->key_press_serial_;
         break;
     case og::input_native::EventType::JoyButtonDown:
         og::runtime::current_session->key_press_event_ = 1;
+        ++og::runtime::current_session->key_press_serial_;
         break;
     case og::input_native::EventType::JoyHatMotion:
         // A hat returning to center is a release, not a press.
         if (event.joy_hat_value != 0)
             og::runtime::current_session->key_press_event_ = 1;
+        ++og::runtime::current_session->key_press_serial_;
         break;
     default:
         break;
@@ -1737,6 +1747,27 @@ void reset_mouse_click_tracking()
     hw().picker_was_left_down = mouse_state.left;
     hw().picker_was_right_down = mouse_state.right;
 }
+
+void acknowledge_mouse_presses()
+{
+    // The pointer-handoff rule (docs/menu-engine.md, "Pointer handoff"): a
+    // surface acknowledges the presses it saw. This is query_mouse()'s
+    // observed-press bookkeeping without the poll — the callers run their
+    // own pumps, and a second poll here would steal their events. A press
+    // and release that land inside ONE pump still mint a collapsed tap,
+    // exactly as they do for a query_mouse() surface.
+    g_mouse_left_unqueried_press = false;
+    g_mouse_right_unqueried_press = false;
+}
+
+#ifdef TESTING
+namespace og::input {
+int testing_pending_left_clicks()
+{
+    return g_pending_left_clicks;
+}
+} // namespace og::input
+#endif
 
 bool take_pending_left_click()
 {

@@ -32,9 +32,11 @@
 
 #include "picker_sdl_defs.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -84,8 +86,8 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
                          int highlighted_button)
 {
     // The compact Base Camp seat rail packs a numbered team chip into each
-    // card's last nine pixels, and the move-up column hugs the roster
-    // panel's inner face. Their focus ring must stay inside the selected
+    // card's right end, and the move-up column hugs the roster panel's inner
+    // face. Their focus ring must stay inside the selected
     // control so it cannot paint over the chip or the panel bevel. Bounded
     // to the rail/move-up band (33..48): the appended gameplay-zone rows
     // past it take the normal exterior focus ring.
@@ -93,15 +95,22 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
         highlighted_button >= kBaseCampInteriorRingFirstIndex &&
         highlighted_button <= kBaseCampInteriorRingLastIndex)
     {
+        // The chip clearance belongs to the slots that HAVE a chip. A bare
+        // slot's ADD PLAYER / LOBBY FULL face is ten pad-less glyphs whose
+        // last one ends at x+64 — cutting the ring back over the chip zone
+        // there would strike through the label instead of clearing a chip
+        // that isn't drawn. Ask the count the chip pass paints.
         if (highlighted_button >= kBaseCampSeatCardBase &&
             highlighted_button <
-                kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage)
+                kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage &&
+            base_camp_rail_slot_has_chip(highlighted_button -
+                                         kBaseCampSeatCardBase))
         {
-            // The numbered chip occupies the final nine pixels of a seat
-            // card. Keep the pulsing ring around the label face so the
-            // highlight never erases the chip's border or glyph.
+            // Keep the pulsing ring around the label face so the highlight
+            // never erases the chip's border or glyph. The clearance is
+            // derived from the card geometry, not typed here.
             button label_face = buttons[highlighted_button];
-            label_face.sizex -= 10;
+            label_face.sizex -= og::ui::base_camp_seat_chip_ring_clearance();
             draw_highlight_interior(label_face);
         }
         else
@@ -172,12 +181,18 @@ void apply_row_states(const SpecRowView& rows, button* buttons,
             if (live != nullptr) {
                 live->myfunc = 0;
                 live->color = GREY;  // draw dimmed
+                // GREY lands on the same palette shade as the shadow edges,
+                // so the face would swallow the right and bottom bevels and
+                // the row would read as a half-drawn card. The flag steps
+                // those two edges one shade darker for the dim face.
+                live->dimmed = true;
             }
         } else {
             const Sint32 fun = button_action_id(row.action);
             buttons[i].myfun = fun;
             if (live != nullptr) {
                 live->myfunc = fun;
+                live->dimmed = false;
                 if (row.color == nullptr)
                     live->color = BUTTON_FACING;
             }
@@ -272,8 +287,80 @@ constexpr MenuBuildVariant kCompiledBuildVariant =
     MenuBuildVariant::Native;
 #endif
 
-// One-shot: set by the post-game teardown, consumed by the next screen.
-bool g_suppress_entry_fade_out = false;
+// #237 depth-rule transition state (session-scoped): the menu-stack depth
+// run_menu_screen brackets around every entry, and the one-shot entry-fade
+// override. Whether the window is black is NOT here — the video layer owns
+// that (screen::window_is_black()).
+struct MenuTransitionState {
+    int depth = 0;
+    // Tri-state: no note / Fade / Instant (see note_menu_entry_fade).
+    std::optional<MenuEntryFade> entry_fade{};
+};
+MenuTransitionState g_menu_transition;
+
+// RAII depth bracket: every run_menu_screen entry — including the early
+// remote-start returns — restores the depth it found.
+struct MenuDepthScope {
+    MenuDepthScope() { ++g_menu_transition.depth; }
+    ~MenuDepthScope() { --g_menu_transition.depth; }
+    MenuDepthScope(const MenuDepthScope&) = delete;
+    MenuDepthScope& operator=(const MenuDepthScope&) = delete;
+};
+
+// Exit-owned fade-out (#237 ownership rule): a fading entry fades its own
+// last frame out on EVERY return path — the remote-start returns, a
+// MENU_REDRAW exit, a MENU_EXIT, a frame_tick veto — while that frame is
+// still the render buffer (every exit leaves the loop above the bottom-of-
+// loop compose/present block, so nothing draws after the last present). An
+// Instant note still pending here means the door being opened is instant
+// (NETWORKING): skip, and leave the note for that door's entry to consume.
+struct ScreenFadeScope {
+    bool active;
+    explicit ScreenFadeScope(bool fades) : active(fades) {}
+    ~ScreenFadeScope()
+    {
+        if (!active)
+            return;
+        if (g_menu_transition.entry_fade == MenuEntryFade::Instant) {
+            // Traced so a flow pin can hold that this happens on exactly
+            // the door it is meant for (NETWORKING) and nowhere else.
+            TRACE("video", "exit fade skipped: Instant note pending");
+            return;
+        }
+        og::runtime::current_session->myscreen_->fadeblack(0);
+    }
+    ScreenFadeScope(const ScreenFadeScope&) = delete;
+    ScreenFadeScope& operator=(const ScreenFadeScope&) = delete;
+};
+
+// The entry invariant (#237, docs/menu-engine.md): a fading entry expects a
+// BLACK window — the outgoing screen faded itself out at its exit. Finding
+// it unfaded means that screen skipped its exit fade-out, and the entry's
+// own fade-out below is now doing the outgoing screen's job: the deferred
+// fade the ownership rule exists to forbid. Under TESTING that is a
+// violation (the listener fails the test); the entry still fades out either
+// way, because production must never hard-cut. A nested main-menu door
+// (a Fade note: CLOUD SAVES, the LEVEL EDITOR) is the one entry whose
+// outgoing screen has NOT exited — the parent is still open beneath it — so
+// its fade-out of the parent's frame is the door's by contract, not a
+// violation.
+void check_entry_found_black_window(std::optional<MenuEntryFade> override_fade,
+                                    const char* screen_name)
+{
+#ifdef TESTING
+    screen* const scr = og::runtime::current_session->myscreen_;
+    if (scr->window_is_black() || override_fade == MenuEntryFade::Fade)
+        return;
+    const std::string what =
+        std::string("entry found an unfaded window: the previous surface "
+                    "exited without its fade-out (") +
+        (screen_name != nullptr ? screen_name : "") + ")";
+    scr->testing_report_fade_violation(what.c_str());
+#else
+    (void)override_fade;
+    (void)screen_name;
+#endif
+}
 
 bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant)
 {
@@ -290,17 +377,98 @@ bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant
 
 } // namespace
 
-void suppress_next_menu_entry_fade_out()
+void note_menu_entry_fade(MenuEntryFade fade)
 {
-    g_suppress_entry_fade_out = true;
+    g_menu_transition.entry_fade = fade;
 }
 
-bool consume_suppressed_menu_entry_fade_out()
+namespace {
+
+std::optional<MenuEntryFade> consume_menu_entry_fade()
 {
-    const bool suppressed = g_suppress_entry_fade_out;
-    g_suppress_entry_fade_out = false;
-    return suppressed;
+    const std::optional<MenuEntryFade> fade = g_menu_transition.entry_fade;
+    g_menu_transition.entry_fade.reset();
+    return fade;
 }
+
+} // namespace
+
+int menu_screen_depth()
+{
+    return g_menu_transition.depth;
+}
+
+LegacyMenuFade::LegacyMenuFade(const char* screen_name)
+{
+    // Swallow-even-if-unused: a nested entry clears a stale note too.
+    const std::optional<MenuEntryFade> override_fade = consume_menu_entry_fade();
+    if (override_fade == MenuEntryFade::Instant)
+        return;
+    if (g_menu_transition.depth != 0 && override_fade != MenuEntryFade::Fade)
+        return;
+    active_ = true;
+    fade_in_pending_ = true;
+    exit_fade_owed_ = true;
+    // Normally a no-op: the previous screen's exit already faded out and
+    // fadeblack(0) skips a black window. An unfaded window here is the
+    // entry invariant's violation (still faded, never hard-cut).
+    check_entry_found_black_window(override_fade, screen_name);
+    og::runtime::current_session->myscreen_->fadeblack(0);
+}
+
+LegacyMenuFade::~LegacyMenuFade()
+{
+    end();
+}
+
+void LegacyMenuFade::fade_out_at_exit()
+{
+    exit_fade_owed_ = true;
+}
+
+void LegacyMenuFade::present_first(screen& scr)
+{
+    if (active_ && fade_in_pending_) {
+        fade_in_pending_ = false;
+        // fadeblack presents the composed buffer itself.
+        scr.fadeblack(1);
+        return;
+    }
+    scr.buffer_to_screen(0, 0, scr.canvas_w(), scr.canvas_h());
+}
+
+void LegacyMenuFade::end()
+{
+    if (!exit_fade_owed_ || ended_)
+        return;
+    ended_ = true;
+    og::runtime::current_session->myscreen_->fadeblack(0);
+}
+
+Sint32 run_nested_menu_door(Sint32 (*body)())
+{
+    // The nested entry fades the still-open parent out and itself in; its
+    // own exit fades it out again, and the parent loop's next present finds a
+    // black window and fades back in (run_menu_screen's loop present).
+    note_menu_entry_fade(MenuEntryFade::Fade);
+    const Sint32 result = body();
+    // Pointer handoff (menu_screen_spec.h): the door hands the still-open
+    // parent a clean pointer. A legacy body's leaked collapsed-tap pending
+    // clicks (and an impatient click during the body's exit fade) are
+    // dropped here — the parent's next leftmouse() must never spend a click
+    // minted on the door's surface at wherever the pointer has moved to
+    // (the editor-exit phantom-activation bug). A click during the PARENT's
+    // own fade-in lands after this line and stays honored.
+    reset_mouse_click_tracking();
+    return result;
+}
+
+#ifdef TESTING
+void menu_transition_testing_reset()
+{
+    g_menu_transition = {};
+}
+#endif
 
 #ifdef TESTING
 void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
@@ -329,6 +497,23 @@ std::vector<const MenuButtonSpec*> materialized_spec_rows(
     return materialized_spec_rows_for(spec, kCompiledBuildVariant);
 }
 
+#ifdef TESTING
+// The production gate pass, for tests that drive a spec's draw hooks without
+// the loop around them: the Disabled dim (live->color = GREY) and the inert
+// myfun/myfunc are what this writes, and a test that painted them by hand
+// would prove nothing about the engine.
+void picker_testing_apply_row_states(const MenuScreenSpec& spec,
+                                     button* buttons, int num_buttons)
+{
+    const SpecRowView spec_rows = materialized_spec_rows(spec);
+    const MenuLabelContext context = build_label_context(spec);
+    RowState states[MAX_BUTTONS] = {};
+    apply_row_states(spec_rows, buttons,
+                     std::min(num_buttons, static_cast<int>(MAX_BUTTONS)),
+                     context, states);
+}
+#endif
+
 void materialize_menu_buttons_for(const MenuScreenSpec& spec,
                                   MenuBuildVariant variant,
                                   std::vector<button>& out)
@@ -355,10 +540,31 @@ void materialize_menu_buttons(const MenuScreenSpec& spec,
 
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 {
-    // Consumed unconditionally: the flag is a hand-off from the screen that
-    // ran last, so whichever screen opens next must clear it even when it
-    // does not fade around its entry.
-    const bool skip_entry_fade_out = consume_suppressed_menu_entry_fade_out();
+    // #237 depth rule: a Screen fades exactly when this entry crosses the
+    // main-menu boundary — nothing else on the menu stack (depth 1). Every
+    // main-menu door fades symmetrically, the way in and the way back;
+    // everything deeper (Base Camp's strip and roster doors, settings' own
+    // subscreens, the company list's BACKUPS view) is instant both ways, and
+    // Overlay screens (the pause family) never fade. A noted MenuEntryFade
+    // overrides the derivation in either direction for the doors the depth
+    // alone cannot classify.
+    const MenuDepthScope depth_scope;
+    const std::optional<MenuEntryFade> override_fade = consume_menu_entry_fade();
+    // Two decisions, deliberately separate. owns_transition: this screen is
+    // a boundary surface (a depth-1 Screen, or a nested main-menu door) and
+    // OWES its last frame's fade-out at exit no matter how it was entered.
+    // should_fade: it also fades IN now — unless an Instant note says the
+    // previous surface is still on the window by design (Base Camp returning
+    // from the NETWORKING door). A screen entered instantly still fades out
+    // on its way to the main menu; only a pending Instant note at exit (the
+    // NETWORKING door itself) skips that.
+    const bool owns_transition = spec.kind == MenuScreenKind::Screen
+        && (g_menu_transition.depth == 1 || override_fade == MenuEntryFade::Fade);
+    const bool should_fade = owns_transition
+        && override_fade != MenuEntryFade::Instant;
+    // Whoever owns the transition fades out: declared here, before any
+    // return path, so the last presented frame fades out on every exit.
+    const ScreenFadeScope fade_scope(owns_transition);
     // Sequence the D3 accessors: buttons() fills the vector count() reads.
     button* buttons = spec.buttons_accessor();
     const int num_buttons = spec.count_accessor();
@@ -380,6 +586,11 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     int highlighted_button = spec.default_highlight;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     clear_keyboard();
+    // Pointer handoff (menu_screen_spec.h): every engine screen starts from
+    // a fresh pointer baseline — a click completed on the previous surface
+    // is dropped, a button still held becomes the edge baseline, and a
+    // press that begins after this line is a normal fresh click.
+    reset_mouse_click_tracking();
     apply_art_bindings(spec_rows, num_buttons);
 
     RowState states[MAX_BUTTONS] = {};
@@ -395,40 +606,30 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         apply_nav_program(spec, buttons, num_buttons, highlighted_button);
     }
 
-    if (spec.enter == EnterTransition::FadeAroundEntry) {
-        // The legacy team-build entry, verbatim: fade the previous screen
-        // out, compose the cold first frame, and fade it in (fadeblack
-        // presents the buffer itself; the first highlighted frame follows in
-        // the loop, after the level-reload guard). Content must be present in
-        // this compose: Base Camp's roster ink is a content hook while its
-        // deploy X is a button, and splitting them across the fade makes the
-        // control pop in as the first full frame replaces the partial one.
-        screen* scr = og::runtime::current_session->myscreen_;
-        // ...unless the post-game teardown already faded to black (#200): the
-        // fade-out would run over the stale menu image the UI canvas still
-        // holds and play the same transition a second time.
-        if (!skip_entry_fade_out)
-            scr->fadeblack(0);
-        if (spec.backdrop)
-            draw_backdrop();
-        if (spec.draw_background != nullptr)
-            spec.draw_background(screen_state);
-        draw_buttons(buttons, num_buttons);
-        if (spec.draw_content != nullptr)
-            spec.draw_content(screen_state);
-        scr->fadeblack(1);
-    }
-
-    if (spec.enter == EnterTransition::FadeWithInitialDraw) {
-        // The legacy mainmenu entry, verbatim: settle one timer tick, fade
-        // the previous menu out, compose the first frame in the buffer, and
-        // fade it in (fadeblack presents the buffer itself — no
-        // buffer_to_screen here). Injector SDL_Delay(750) cadence depends on
-        // this exact sequence.
+    // Cold first frame, FADING entries only: the fade brackets need a fully
+    // composed frame (labels bound, content, highlight — Base Camp's roster
+    // ink is a content hook while its deploy X is a button, and splitting
+    // them across the fade makes the control pop in as the first full frame
+    // replaces the partial one). Non-fading entries paint nothing here: the
+    // loop's first iteration composes and presents AFTER the frame_tick veto
+    // check, so a screen whose first tick ends it (a dead host's pause, a
+    // vanished seat) never flashes a frame — the pre-#237 behavior. (Fades
+    // are instant under TESTING — FadeBetween skips the animation — so no
+    // injector cadence depends on this sequence.)
+    if (should_fade) {
+        screen* const scr = og::runtime::current_session->myscreen_;
+        // The legacy mainmenu entry cadence: settle one timer tick, then
+        // fade whatever is still on the window out. Normally a no-op: the
+        // previous screen's exit already faded out (the ownership rule), and
+        // fadeblack(0) skips a black window. An unfaded window here means
+        // that screen skipped its exit fade — the entry invariant's
+        // violation under TESTING (and the video layer separately flags a
+        // buffer that no longer matches the window). The fade-out still
+        // runs: production never hard-cuts.
         reset_timer();
         while (query_timer() < 1)
             ;
-        screen* scr = og::runtime::current_session->myscreen_;
+        check_entry_found_black_window(override_fade, spec.name);
         scr->fadeblack(0);
         {
             const MenuLabelContext context = build_label_context(spec);
@@ -443,6 +644,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
             spec.draw_content(screen_state);
         draw_menu_highlight(spec, buttons, highlighted_button);
         // Zardus: PORT: fade from black
+        // fadeblack presents the composed buffer itself.
         scr->fadeblack(1);
         grab_mouse();
     }
@@ -450,6 +652,11 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     int frame = 0;
     Sint32 retvalue = 0;
     while (!(retvalue & MENU_EXIT)) {
+        // Frame-top main-thread work handoff (null outside tests): runs
+        // before the poll so an injector's save write is complete before
+        // anything on this frame reads it.
+        if (g_picker_main_thread_pump != nullptr)
+            g_picker_main_thread_pump();
         if (spec.polls_lobby)
             picker_lobby_poll();
 
@@ -595,11 +802,26 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
         draw_menu_highlight(spec, buttons, highlighted_button);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        // A nested door (run_nested_menu_door) faded its own last frame out
+        // on the way back, so this loop's next present finds a black window:
+        // present THAT frame with fadeblack(1) so the parent screen fades
+        // back in. Only a FADING entry does this — its exit scope owns the
+        // matching fade-out. A non-fading entry over a black window (an
+        // instant door, an Overlay) presents plainly: "instant" means
+        // exactly that, and a fade-in nobody fades out again is the shape
+        // this rule forbids.
+        if (fade_scope.active
+            && og::runtime::current_session->myscreen_->window_is_black())
+            og::runtime::current_session->myscreen_->fadeblack(1);
+        else
+            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
         // The ONE asyncify yield per iteration (emscripten contract).
         og::input_native::sleep_ms(10);
     }
 
+    // Pointer handoff, the exit half: a nested engine screen hands its
+    // parent a clean pointer without the parent having to know a child ran.
+    reset_mouse_click_tracking();
     return spec.exit_value;
 }
 

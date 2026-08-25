@@ -193,8 +193,11 @@ code in the same commit (`wasm_helpers.js`, `wasm-networking.spec.js`,
 zone spares, so no established Base Camp ordinal moved; the ceiling
 (`kCreateMenuButtonCount`, `MAX_BUTTONS`, `SessionState::kMaxButtons`) goes
 72 → 73. The per-frame rewire runs BACK ↔ DIFFICULTY ↔ SCENARIO and drops
-seat card one onto DIFFICULTY (it is the door under that card's face; the
-empty slot used to force a doubled SCENARIO link). The difficulty screen's
+seat slot one onto DIFFICULTY (the door under that slot's face; the empty slot
+used to force a doubled SCENARIO link). The rail's later widening to four
+70px slots moved slot one's face left over BACK, but the strip's four doors
+still take the rail's four slots one apiece — re-pointing slot one at BACK
+would leave the strip a door short of a keyboard route down from the rail. The difficulty screen's
 `remote_start` scope becomes `TeamBuildScope` like every other Base Camp
 child, so a host GO launches a joiner parked inside it.
 

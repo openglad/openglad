@@ -345,8 +345,8 @@ bool compact_player_controls_after_removal(int removed_player_index, int active_
         return false;
 
     // Control profiles are a four-entry pool. Compact the surviving seats,
-    // then rotate the freed profile to the first inactive slot so a later [+]
-    // reuses that distinct mapping. Resetting the tail by its array index
+    // then rotate the freed profile to the first inactive slot so a later ADD
+    // PLAYER reuses that distinct mapping. Resetting the tail by its array index
     // cloned P4's THGF defaults after P1 was removed from a four-seat game.
     sync_runtime_keys_to_active_mode(removed_player_index);
     std::array<std::array<int, NUM_KEYS>, 2> removed_keys{};

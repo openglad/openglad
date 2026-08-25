@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+class screen;
+
 namespace og::ui {
 
 // Rows that do not apply to the target platform are dropped at
@@ -133,12 +135,23 @@ enum class RemoteStartExit : std::uint8_t {
     BreakWithSelection,
 };
 
-// Per-screen entry transition timing (injector SDL_Delay(750) cadence
-// depends on this being preserved exactly).
-enum class EnterTransition : std::uint8_t {
-    None,
-    FadeAroundEntry,
-    FadeWithInitialDraw,
+// Which transition family a screen belongs to (#237, docs/menu-engine.md
+// "Drawing and transitions"). Screen is a full-window menu surface; Overlay
+// is a true modal drawn over a live scene (the pause family) and never
+// fades. Whether a Screen actually fades is DERIVED per entry by
+// run_menu_screen — never declared per screen: it fades exactly when the
+// entry crosses the main-menu boundary (menu-stack depth 1, nothing else
+// open) and never when nested under an already-open menu screen. The two
+// doors the depth rule cannot see either way — the main menu's own nested
+// screens (CLOUD SAVES, LEVEL EDITOR) and the Base Camp strip door whose
+// legacy screen runs at depth 0 (NETWORKING) — override the derivation with
+// note_menu_entry_fade() below. Note: fades are instant under TESTING
+// (FadeBetween skips the animation), so the injector SDL_Delay(750) waits
+// around menu entries are generic settles, not fade timing — several guard
+// transitions that never faded at all.
+enum class MenuScreenKind : std::uint8_t {
+    Screen,
+    Overlay,
 };
 
 // Reserved for a future dynamic row-template consumer.
@@ -159,7 +172,7 @@ struct MenuScreenSpec {
     // PickerInterceptScope value the screen runs under; 0 = inherit the
     // ambient scope (subscreens never change it).
     int intercept_scope = 0;
-    EnterTransition enter = EnterTransition::None;
+    MenuScreenKind kind = MenuScreenKind::Screen;
     int default_highlight = 0;
     bool right_click_enabled = false;
     // Subscreens whose BACK carries MENU_REDRAW (VIEW TEAM, MATCHUP and the
@@ -228,13 +241,144 @@ std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
 // spec.exit_value (or propagates a remote-start MENU_EXIT).
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr);
 
-// Post-game teardown hand-off (#200): the code that ends a mission already
-// fades the presented canvas to black, so the next screen's
-// EnterTransition::FadeAroundEntry must skip its own fade-out instead of
-// fading the stale menu image out a second time. One-shot; the fade-in still
-// runs. consume_* is the runner's own read-and-clear.
-void suppress_next_menu_entry_fade_out();
-bool consume_suppressed_menu_entry_fade_out();
+// #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").
+//
+// THE RULE: whoever fades a screen IN fades it OUT, at its own exit, while
+// its last presented frame is still the render buffer. A fade-out is never
+// deferred to the incoming screen — that deferral left arbitrary door-site
+// code (setup, clears, mounts) between the outgoing screen's last present and
+// its fade-out, and every such site was a fresh chance to blacken the buffer
+// and turn the fade into a hard cut (the HELP, new-company and campaign-intro
+// regressions). run_menu_screen brackets a fading entry with an RAII scope
+// whose destructor fades out on EVERY return path; legacy presenters use
+// LegacyMenuFade (below) the same way.
+//
+// THE STATE: the video layer is the single source of truth for "the window
+// is black" (screen::window_is_black(); set by a completed fadeblack(0),
+// cleared by every present). fadeblack(0) on a black window is a no-op, so a
+// teardown or door that already faded out never plays a second, black-to-
+// black fade, and no screen has to be told about it — the "faded to black"
+// note this replaced is gone.
+//
+// THE INVARIANTS (TESTING; each one traces ("video", "FADE VIOLATION: ..."),
+// counts in og::video_testing::g_fade_violations, and fails the running test
+// through integration_main's listener). Exactly three things fire:
+//   * fadeblack(1) on a window that is not black — "fade-in without a
+//     fade-out" (checked by the video layer at the fade);
+//   * fadeblack(0) when the render buffer differs from what the window last
+//     showed — "fade-out from a frame that was never presented" (checked by
+//     the video layer at the fade; "showed" is the rect each present
+//     declared, so a clear, a stale redraw, or a draw outside every present's
+//     rect all count);
+//   * a fading ENTRY (run_menu_screen at depth 1, or an active
+//     LegacyMenuFade) that finds the window not black — "entry found an
+//     unfaded window: the previous surface exited without its fade-out"
+//     (checked by the runner before its entry fade-out, which still runs so
+//     production never hard-cuts). The one entry exempt by definition is a
+//     nested main-menu door under a Fade note: its parent has not exited,
+//     and fading the still-open parent out is that door's own job.
+// Nothing else is checked: in particular a missing fade-in, or a fade at a
+// door the depth rule says should be instant, is caught only by the per-leg
+// count pins.
+//
+// The POINTER HANDOFF contract is the fade rule's sibling (docs/
+// menu-engine.md, "Pointer handoff"): a surface owns its pointer state. It
+// acknowledges the presses it saw — query_mouse() per frame, or
+// acknowledge_mouse_presses() after a self-run pump — and hands back a
+// clean pointer when it returns; no screen may consume a click minted on
+// another surface. The collapsed-tap pending queue carries no coordinates,
+// so a leaked click lands wherever the pointer sits when the next screen
+// drains it (the editor-exit phantom click). run_menu_screen re-baselines
+// (reset_mouse_click_tracking) at entry and before its loop-exit return;
+// run_nested_menu_door re-baselines after its body returns. A click during
+// the PARENT's own fade-in is a genuine click at the pointer's position and
+// stays honored — that is what the collapsed-tap queue is for.
+
+// One-shot override for the NEXT menu entry, the escape hatch on both sides
+// of the depth rule. Instant suppresses the fade a depth-0/depth-1 entry
+// would otherwise play (NETWORKING: a Base Camp strip door whose legacy
+// screen runs at depth 0, so the rule would fade it like a main-menu door);
+// Fade forces one on an entry the rule leaves instant (the main menu's own
+// nested doors — see run_nested_menu_door). Consumed by every entry —
+// including nested and Overlay entries and LegacyMenuFade — with the
+// swallow-even-if-unused property, so a note nobody used cannot leak one
+// screen forward. An Instant note that is still pending when a fading screen
+// EXITS classifies the door being opened as instant: the exit skips its
+// fade-out and leaves the note for that door's entry (NETWORKING again —
+// Base Camp exits before the legacy screen runs, and the door is instant
+// both ways). Instant suppresses ONLY that entry's fade-in: a screen entered
+// under it still OWNS its exit fade (Base Camp back from NETWORKING fades
+// out on its way to the main menu like any boundary surface) unless a fresh
+// Instant note is pending at that exit.
+enum class MenuEntryFade : std::uint8_t {
+    Fade,
+    Instant,
+};
+void note_menu_entry_fade(MenuEntryFade fade);
+
+// The bracket both nested main-menu doors share (CLOUD SAVES from the main
+// menu's own spec-row dispatch, LEVEL EDITOR from ButtonAction::DoLevelEdit):
+// their screens run INSIDE the still-open main menu, so no depth the rule can
+// read distinguishes them from a Base Camp subscreen. It notes Fade so the
+// nested entry fades — out of the still-open menu's frame, and back in on its
+// own first composed frame — and the body's own exit (the runner's scope, or
+// the editor's LegacyMenuFade) fades the door out; the parent loop's next
+// present finds a black window and fades back in. Precondition on a legacy
+// BODY: its exit fade must run while the canvas holding its last presented
+// frame is still ACTIVE (the editor calls LegacyMenuFade::end() before
+// releasing its classic world-canvas pin; reading last_presented_canvas()
+// after that release would name a freshly allocated, never-drawn surface).
+Sint32 run_nested_menu_door(Sint32 (*body)());
+
+// Current menu-stack depth (0 = no engine screen open). run_menu_screen
+// increments it around every entry; the depth-1 entry of a
+// MenuScreenKind::Screen is the main-menu-boundary crossing that fades.
+int menu_screen_depth();
+
+// The ownership rule for legacy full-screen presenters that never call
+// run_menu_screen (campaign select, the results panel, the level editor, the
+// campaign intro scroller, NETWORKING). The constructor decides whether this
+// entry fades — a context switch (no engine screen open) or a Fade note,
+// never an Instant note — and fades the presented surface out at once (a
+// no-op if the window is already black; an unfaded window is the entry
+// invariant's violation under TESTING). present_first() presents the first
+// composed frame: fadeblack(1) when this entry fades, a plain full-frame
+// present otherwise (safe as the loop's every-frame present). end() fades
+// the screen's last presented frame out; the destructor is its backstop on
+// every return path. Call end() explicitly where the last frame must be
+// faded BEFORE later teardown touches the buffer or the active canvas.
+//
+// fade_out_at_exit(): a screen that entered INSTANTLY but leaves its context
+// still owns its exit. NETWORKING is the case: an instant Base Camp strip
+// door on the way in and on BACK, but a successful hookup leaves the
+// lobby-config context for Base Camp's fading re-entry, and that re-entry
+// must find a black window. The screen calls this on that exit path, and
+// end() then fades its last frame out exactly as an active scope would.
+// The screen name is for the violation message only.
+class LegacyMenuFade {
+public:
+    explicit LegacyMenuFade(const char* screen_name = "legacy screen");
+    ~LegacyMenuFade();
+    LegacyMenuFade(const LegacyMenuFade&) = delete;
+    LegacyMenuFade& operator=(const LegacyMenuFade&) = delete;
+
+    bool active() const { return active_; }
+    bool fade_in_pending() const { return active_ && fade_in_pending_; }
+    void present_first(screen& scr);
+    void fade_out_at_exit();
+    void end();
+
+private:
+    bool active_ = false;
+    bool fade_in_pending_ = false;
+    bool exit_fade_owed_ = false;
+    bool ended_ = false;
+};
+
+#ifdef TESTING
+// Reset the transition state (depth 0, no pending override) between tests.
+void menu_transition_testing_reset();
+#endif
 
 // Registry of picker-screen ownership. Runtime screens carry their spec;
 // legacy screens carry their blocking entry point. NETWORKING is owned by
@@ -347,14 +491,16 @@ struct BaseCampScreenState {
     // owned, the replicated wire copy when foreign.
     std::vector<BaseCampDisplaySlot> slots;
     PageModel page{};
-    // The live lobby's globally indexed player seats, sorted by player_index,
-    // plus a four-card page window for the Base Camp assignment rail. Unlike
-    // character TEAM colors above, these assignments are transient per-level
-    // player/view ownership and never rewrite a company roster.
+    // The live lobby's globally indexed player seats, sorted by player_index.
+    // Unlike character TEAM colors above, these assignments are transient
+    // per-level player/view ownership and never rewrite a company roster.
+    // `local_seat_indices` is THIS machine's seats in local-slot order — the
+    // seat rail's four slots read it directly and never page (remote seats
+    // are counted on the header line and listed in VIEW LEVEL's SEATS
+    // report), so there is no seat page window here.
     std::vector<og::sim::LobbyPlayer> seats;
     std::vector<std::uint8_t> local_seat_indices;
-    PageModel seat_page{};
-    // Accepted + activations are debounced like deploy taps: touch click
+    // Accepted ADD PLAYER activations are debounced like deploy taps: touch click
     // collapsing can otherwise create two local seats from one visible tap.
     // Denials never stamp, so retry-after-capacity remains immediate.
     std::int64_t last_seat_add_ms = -1;

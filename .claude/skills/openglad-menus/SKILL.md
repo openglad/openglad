@@ -96,10 +96,15 @@ the constants silently relabels the wrong button. Append new rows at the end;
 when a restructure is unavoidable, update the constants, the per-frame sync
 code, and the layout tests in the same change.
 
-Base Camp has two independent page windows: eight roster rows and four
-player-seat cards. The **SEATS**, **<**, card, and **>** controls have their own
-indices and navigation. Do not couple seat paging to roster paging, and keep
-both arrows hidden unless the seat list spans multiple pages.
+Base Camp has exactly one page window: the eight roster rows. The seat rail
+below it is not paged — it is this machine's four fixed slots (ordinals
+35..38), and remote seats never appear there. A slot holding one of this
+machine's seats draws a card; a bare slot is the ADD PLAYER door on the same
+ordinal (LOBBY FULL and dimmed when the lobby has no room, hidden outright
+past what the device can seat). Ordinals 33, 34, 39 and 40 are parked spares
+— the retired `[+]` and the two seat pagers — re-parked every frame. The
+header's line B carries the players/machines census that the rail no longer
+shows.
 
 Two consumers select TEXT menu items by 1-based position and break silently
 on reorders: `scripts/test_text_picker_interactive.sh` and the scripted drive
@@ -133,6 +138,19 @@ Split background fills into a pre-pass before `draw_buttons`; keep text after.
 Content also OVERDRAWS buttons: the main menu's grey SETTINGS heading band
 (drawn in the content pass) once painted over a button placed in its row —
 layout pins don't see overdraw, only screenshot read-back does.
+
+Two palette traps in the same family:
+
+- **A dimmed face can eat its own bevels.** `GREY` (the RowState::Disabled
+  face) resolves to the SAME shade as `BUTTON_RIGHT`/`BUTTON_BOTTOM`, so a
+  disabled row drew as a card with a flat right edge until `vbutton::dimmed`
+  stepped those two edges one shade darker. Any new face color needs the same
+  check against 11..15.
+- **A band of raw backdrop between two opaque things reads as a defect.** The
+  title art runs behind every picker screen; an 8px gutter framed a fragment
+  of its grey blade so exactly that reviewers read it as a stray glyph. Paint
+  a band its own ground (pre-buttons, opaque) when chrome floats in it — that
+  also makes the local and networked frames identical there.
 
 ## Borrowing a viewscreen for previews (camera leak)
 

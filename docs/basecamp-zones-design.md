@@ -45,8 +45,11 @@ became unreachable; the freed value is documented as free.
   one hides it (`kBaseCampLineBChars*` in `picker_common.h`, derived from
   the wall x and static_asserted against the button geometry). The
   networked session status composes to the live budget — a narrow band
-  takes compact spellings ("2M / 3P", the joiner's "HOST: " label
-  dropped) rather than a mid-word cut.
+  takes a whole shorter spelling ("3 PLAYERS/2 PCS", then "3P/2M", then the
+  room code goes) rather than a mid-word cut, and a count of one takes the
+  singular ("1 PLAYER / 1 MACHINE", "1 PLAYER/1 PC") — always the shorter
+  spelling, so it never costs a rung its band. Players lead the census
+  because the seat rail shows only this machine's seats.
 
 ## The widget contract
 

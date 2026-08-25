@@ -29,6 +29,7 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/interface/session_state.h>
 #include <algorithm>
@@ -211,11 +212,19 @@ void vbutton::vdisplay()
     }
     else
     {
+        // A dimmed (inert) face sits on the same palette shade as the normal
+        // shadow edges, so those two step one shade darker to keep the bevel
+        // readable — the lit edges are already well clear of it. The shade
+        // ramp 11..15 is contiguous, so "one darker" is exactly one index.
+        const unsigned char shadow_right = static_cast<unsigned char>(
+            dimmed ? BUTTON_RIGHT - 1 : BUTTON_RIGHT);
+        const unsigned char shadow_bottom = static_cast<unsigned char>(
+            dimmed ? BUTTON_BOTTOM - 1 : BUTTON_BOTTOM);
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc,xend-1,yend-1,color,1,1); // front
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc,xend-2,yloc,BUTTON_TOP,1,1); // top edge
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc+1,xloc,yend-2,BUTTON_LEFT,1,1); // left
-        og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT,1,1); // right
-        og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM,1,1); // bottom
+        og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,shadow_right,1,1); // right
+        og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,shadow_bottom,1,1); // bottom
         if (label.size())
             mytext.write_xy( static_cast<short>( static_cast<size_t>((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
@@ -229,6 +238,12 @@ void vbutton::vdisplay(Sint32 status)
     if (!status) // do normal
     {
         vdisplay();
+        // The released face is presented like the pressed one above: an
+        // activation that EXITS its screen never reaches the loop's next
+        // present, and the exit fade reads the buffer — which must hold a
+        // frame the window has shown (#237 ownership; the video layer flags
+        // a released face the window never saw as a stale redraw).
+        og::runtime::current_session->myscreen_->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
         return;
     }
     
@@ -335,7 +350,7 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
         {
             og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
             vdisplay(1);
-            vdisplay();
+            vdisplay(0); // pressed, then released — both presented
             if (myfunc)
             {
                 // Coordinate-free activation: never leave a stale pointer
@@ -358,7 +373,7 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
         {
             og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
             vdisplay(1);
-            vdisplay();
+            vdisplay(0); // pressed, then released — both presented
             if (myfunc)
             {
                 // Pointer activation: stamp the UI-canvas position that hit
@@ -735,7 +750,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::ToggleLobbyReady:
         return teams_toggle_ready();
     case ButtonAction::DoLevelEdit:
-        return level_editor();
+        // #237: the LEVEL EDITOR is a main-menu door whose loop runs NESTED
+        // inside the open main menu, exactly like CLOUD SAVES — same bracket.
+        return og::ui::run_nested_menu_door(&level_editor);
     case ButtonAction::YesOrNo:
         return yes_or_no(arg);
     case ButtonAction::MainOptions:

@@ -26,6 +26,7 @@
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <array>
 #include <cstring>
 #ifdef __EMSCRIPTEN__
@@ -301,8 +302,12 @@ int cleanup()
 	int red,green,blue; //buffers: PORT: changed to ints
 	query_palette_reg(static_cast<unsigned char>(0), &red, &green, &blue); // Resets palette to read mode
 	release_timer();
-	og::runtime::current_session->myscreen_->clear();
-	og::runtime::current_session->myscreen_->refresh();
+	// #237 ownership: the intro fades its last page out itself. After a
+	// completed last page this is a no-op (the window is already black); a
+	// key abort mid-page fades that page out instead of hard-cutting. Either
+	// way the window is black, so the main menu's entry fades in only — the
+	// cold-start black-to-black 500ms fade (#200's shape) cannot come back.
+	og::runtime::current_session->myscreen_->fadeblack(FADE_TO);
 
 		for (i = 0; i<256; i++)
 		{
@@ -367,5 +372,9 @@ int show(int howlong)
 
 	set_web_intro_tap_ready(false);
 	if (og::runtime::current_session->myscreen_->fadeblack(FADE_TO) == -1) return -1;
+	// A tap during this page's closing fade mints its pending click AFTER
+	// the loop's drain above — spend it here so the intro keeps its own
+	// promise: no click made on the intro leaks into whatever follows.
+	while (take_pending_left_click()) {}
 	return 1;
 }

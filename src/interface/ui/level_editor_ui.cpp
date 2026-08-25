@@ -183,6 +183,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 	while (!done)
 	{
         get_input_events(POLL);
+        // Pointer handoff: this prompt pumps its own events and reads the
+        // pointer level directly — acknowledge its presses so its clicks
+        // cannot mint collapsed-tap pending clicks for a later surface.
+        acknowledge_mouse_presses();
 #ifdef TESTING
         if (s_prompt_block_click_pending.exchange(
                 false, std::memory_order_acquire))

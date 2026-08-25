@@ -1,9 +1,13 @@
 #include <openglad/interface/screen.h>
+#include <openglad/interface/input.h>
+#include "test_input_helpers.h"
+#include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -31,12 +35,110 @@ static SurfacePtr make_surface_masks(int w, int h, int depth,
 }
 } // namespace
 
-TEST(VideoFade, video_fadeblack_smoke_in_and_out)
+TEST(VideoFade, video_fadeblack_out_then_in_tracks_the_window)
 {
-    // In TESTING, FadeBetween skips animation but still exercises surface checks + blits.
-    int r1 = og::runtime::current_session->myscreen_->fadeblack(true);
-    int r2 = og::runtime::current_session->myscreen_->fadeblack(false);
-    ASSERT_TRUE(r1 >= 0 && r2 >= 0) << "fadeblack should return non-negative status";
+    // In TESTING, FadeBetween skips animation but still exercises surface
+    // checks + blits. The order is the ownership rule's: a presented frame
+    // fades OUT, then the buffer fades IN over the black that left; a fade-in
+    // first would be the "fade-in without a fade-out" violation the listener
+    // fails tests on.
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(scr->window_is_black())
+        << "the test boundary leaves the window black, as an exit fade does";
+    scr->buffer_to_screen(0, 0, 320, 200);
+    ASSERT_FALSE(scr->window_is_black()) << "a present clears the flag";
+    ASSERT_EQ(1, scr->fadeblack(false)) << "fade-to-black completes";
+    ASSERT_TRUE(scr->window_is_black()) << "a completed fade-out blackens the window";
+    ASSERT_EQ(0, scr->fadeblack(false))
+        << "a second fade-out is a no-op on a black window (returns 0, no fade)";
+    ASSERT_TRUE(scr->window_is_black());
+    ASSERT_EQ(1, scr->fadeblack(true)) << "fade-from-black completes";
+    ASSERT_FALSE(scr->window_is_black()) << "the fade-in's present clears the flag";
+}
+
+// A fade's key-press abort means a press DURING the fade — an edge on the
+// press serial — never the latch left over from the screen that just exited:
+// the tap that dismissed the campaign intro (Backspace/Esc) used to end the
+// scroller's own fade-out on its first frame. The latch itself is untouched
+// by a fade: the intro's pages read it to abort, and a fade must not spend
+// it for them.
+TEST(VideoFade, video_fade_leaves_the_key_latch_alone_and_counts_presses)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    scr->buffer_to_screen(0, 0, 320, 200);
+    clear_key_press_event();
+    input_key_press_event_ref() = 1;  // the dismissal tap, still latched
+    const unsigned serial_before = query_key_press_serial();
+    ASSERT_EQ(1, scr->fadeblack(false)) << "the fade-out runs";
+    ASSERT_EQ(1, query_key_press_event())
+        << "a fade never clears the latch — the intro's abort reads it";
+    ASSERT_EQ(serial_before, query_key_press_serial())
+        << "no key was pressed during the fade, so the serial is unchanged";
+    ASSERT_TRUE(scr->window_is_black());
+    ASSERT_EQ(1, scr->fadeblack(true)) << "the fade-in runs";
+    ASSERT_EQ(1, query_key_press_event()) << "still latched after the fade-in";
+
+    // A real press advances the serial (the edge the animation aborts on).
+    clear_key_press_event();
+    inject_key_down(SDLK_SPACE);
+    get_input_events(POLL);
+    ASSERT_EQ(1, query_key_press_event()) << "the press latched";
+    ASSERT_EQ(serial_before + 1, query_key_press_serial())
+        << "and advanced the serial exactly once";
+    clear_key_press_event();
+    clear_events();
+}
+
+// The "never presented" invariant holds a present to the rect it DECLARED: a
+// partial-rect present (a pressed button face, the help scroller's dialog
+// rect) vouches for nothing outside it, so a draw outside that rect is still
+// unpresented at the next fade-out. (The nearest present path happens to
+// upload the whole surface; the SAI/Eagle path refreshes only the rect of
+// its scaled scratch. The declared rect is the honest lower bound.)
+TEST(VideoFade, video_fadeblack_out_after_a_draw_outside_the_presented_rect_is_a_violation)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_EQ(0, og::video_testing::g_fade_violations.load());
+
+    // A full-frame present: everything on the window matches the buffer.
+    scr->clearbuffer();
+    scr->fastbox(0, 0, 320, 200, 40);
+    scr->buffer_to_screen(0, 0, 320, 200);
+    ASSERT_FALSE(scr->window_is_black());
+
+    // Control: a draw inside a rect, presented by that rect, then a fade-out
+    // — the fade reads exactly what the window shows. No violation.
+    scr->fastbox(100, 50, 40, 20, 90);
+    scr->buffer_to_screen(100, 50, 40, 20);
+    ASSERT_EQ(1, scr->fadeblack(false)) << "fade-out completes";
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load())
+        << "a draw covered by its own partial present is presented";
+    ASSERT_TRUE(scr->window_is_black());
+
+    // Bring a frame back the honest way (fade-in from the buffer), then the
+    // shape under test: a partial present of one rect, a draw OUTSIDE it,
+    // and a fade-out. The window never showed that draw.
+    ASSERT_EQ(1, scr->fadeblack(true));
+    scr->fastbox(100, 50, 40, 20, 120);
+    scr->buffer_to_screen(100, 50, 40, 20);
+    scr->fastbox(200, 150, 30, 30, 200);  // outside the presented rect
+    ASSERT_EQ(1, scr->fadeblack(false))
+        << "production still fades — the violation is a TESTING report";
+    EXPECT_EQ(1, og::video_testing::g_fade_violations.load())
+        << "a draw outside every present's rect is a fade from a frame the "
+           "window never showed";
+    const std::vector<std::string> violations =
+        og::video_testing::fade_violation_messages();
+    ASSERT_EQ(1u, violations.size());
+    EXPECT_NE(std::string::npos,
+              violations.front().find("fade-out from a frame that was never presented"))
+        << violations.front();
+    EXPECT_NE(std::string::npos,
+              violations.front().find("x 200..229, y 150..179 of 320x200"))
+        << "the report names the culprit draw's bounding box: "
+        << violations.front();
+    // Triggered on purpose; the listener would otherwise fail this test.
+    og::video_testing::reset_fade_violations();
 }
 
 

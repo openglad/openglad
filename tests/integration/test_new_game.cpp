@@ -77,7 +77,29 @@ struct NewGameState {
     bool finished;
     bool saw_team_menu;
     bool saw_networking_button;
+    // #237 derivation pin: fades counted across the BEGIN NEW GAME door.
+    // -1 means the injector never reached the read.
+    int fades_added_by_name_entry;
+    // #237 symmetry leg: fades counted across the name-entry BACK, from the
+    // cancel click to the re-presented main menu. -1 = never read.
+    int fades_added_by_name_entry_back;
 };
+
+// Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
+// traces exactly one "video" line per fade — so counting those lines counts
+// fades. The #237 rule is derived inside run_menu_screen rather than declared
+// on a spec, so only driving the real door proves which side a screen is on.
+static int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+            ++fades;
+    }
+    return fades;
+}
 
 static int new_game_injector(void* data)
 {
@@ -90,19 +112,27 @@ static int new_game_injector(void* data)
     SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
+    // #237: the new-game cut is a context switch, and name entry is its first
+    // step — so its entry fades, unlike the doors that stay inside the menu
+    // cluster.
+    const int fades_before_new_game = count_fade_between_traces();
     interact("begin_new_game");
 
     // §2.2: BEGIN NEW GAME now opens the name-entry screen first. Accept the
     // generated company name to found the company.
     wait_for_interactable("company_name_accept", 5000);
-    SDL_Delay(750);  // FadeAroundEntry settle
+    SDL_Delay(750);  // menu-entry settle
+    state->fades_added_by_name_entry =
+        count_fade_between_traces() - fades_before_new_game;
     fprintf(stderr, "  [test] accepting generated company name\n");
     interact("company_name_accept");
 
     // The campaign intro no longer runs inside picker_prepare_new_game_setup
-    // (issue #186: it moved behind the campaign select, whose TESTING
-    // short-circuit skips it here), so the flow proceeds to the team-build
-    // menu without further input.
+    // (issue #186: it moved behind the campaign select). Under TESTING the
+    // browser auto-accepts the current campaign and the intro scroller
+    // dismisses itself, each after one real presented frame, so the flow
+    // proceeds to the team-build menu without further input (the per-leg
+    // fades of those two screens are pinned in test_fade_ownership.cpp).
     SDL_Delay(500);
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
@@ -141,7 +171,7 @@ TEST(NewGame, begin_new_game) {
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    NewGameState state = { false, false, false, false };
+    NewGameState state = { false, false, false, false, -1, -1 };
     SDL_Thread* thread = SDL_CreateThread(new_game_injector, "new_game_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -166,6 +196,13 @@ TEST(NewGame, begin_new_game) {
 
     // §2.2: the name-entry ACCEPT founded the company (traced with the chosen
     // display name), and that name landed in the 40-byte save_name field.
+    // #237, derived rather than declared: BEGIN NEW GAME is a context switch
+    // and name entry is its first step, so the entry fades out and back in
+    // exactly once. (Contrast the LOAD / BACKUPS doors, pinned at 0 in
+    // test_company_list.)
+    EXPECT_EQ(2, state.fades_added_by_name_entry)
+        << "#237: the name-entry screen is the new-game context switch — its "
+           "entry must fade out and in exactly once";
     ASSERT_TRUE(trace_contains("name_entry", "accept")) << "name-entry ACCEPT should have fired";
     ASSERT_FALSE(og::runtime::current_session->myscreen_->save_data.save_name.empty())
         << "the founded company's display name should be stamped into save_name";
@@ -187,13 +224,26 @@ static int name_entry_cancel_injector(void* data)
 
     // Name-entry appears. Reroll the suggestion, then BACK out (cancel).
     if (wait_for_interactable("company_name_reroll", 5000)) {
-        SDL_Delay(750);  // FadeAroundEntry settle
+        SDL_Delay(750);  // menu-entry settle
         fprintf(stderr, "  [test] clicking REROLL\n");
         interact("company_name_reroll");
         SDL_Delay(300);  // let the click release before the next press
         fprintf(stderr, "  [test] clicking BACK (cancel)\n");
+        // #237 symmetry: the way back out of a main-menu door owes exactly
+        // what the way in cost — the door fades out, the re-entered main menu
+        // fades in.
+        const int fades_before_back = count_fade_between_traces();
         interact("back");
         state->saw_team_menu = true;  // reused flag: reached & left name-entry
+        // The re-entered main menu is a SECOND mainmenu call, so this flow
+        // runs with g_picker_max_mainmenu_calls = 2 and leaves through QUIT.
+        if (wait_for_interactable("begin_new_game", 5000)) {
+            SDL_Delay(750);  // menu-entry settle
+            state->fades_added_by_name_entry_back =
+                count_fade_between_traces() - fades_before_back;
+            fprintf(stderr, "  [test] quitting from the main menu\n");
+            interact("quit");
+        }
     }
 
     state->finished = true;
@@ -212,13 +262,16 @@ TEST(NewGame, name_entry_back_cancels_without_founding) {
         "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    NewGameState state = { false, false, false, false };
+    NewGameState state = { false, false, false, false, -1, -1 };
     SDL_Thread* thread =
         SDL_CreateThread(name_entry_cancel_injector, "name_entry_cancel", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
+    // 2: the door's way in is one mainmenu call, the way back re-enters it —
+    // and the #237 return-leg pin can only be measured on a main menu that
+    // actually re-runs (the cap short-circuits present_menu straight to QUIT).
+    g_picker_max_mainmenu_calls = 2;
 
     picker_main(0, nullptr);
 
@@ -232,6 +285,9 @@ TEST(NewGame, name_entry_back_cancels_without_founding) {
     ASSERT_TRUE(state.saw_team_menu) << "should have reached the name-entry screen";
     ASSERT_TRUE(trace_contains("name_entry", "reroll")) << "REROLL should have fired";
     ASSERT_TRUE(trace_contains("name_entry", "cancel")) << "BACK should have cancelled";
+    EXPECT_EQ(2, state.fades_added_by_name_entry_back)
+        << "#237 symmetry: cancelling name entry returns to the main menu — "
+           "the way back must fade exactly as much as the way in (2)";
     // The loaded game survived: cancel founded nothing, so no reset ran.
     ASSERT_EQ(424242u, og::runtime::current_session->myscreen_->save_data.totalcash)
         << "cancel must not reset the loaded game";
@@ -281,7 +337,7 @@ static int name_entry_edit_injector(void* data)
     interact("begin_new_game");
 
     if (wait_for_interactable("company_name_value", 5000)) {
-        SDL_Delay(750);  // FadeAroundEntry settle
+        SDL_Delay(750);  // menu-entry settle
         fprintf(stderr, "  [test] clicking the name strip to edit\n");
         interact("company_name_value");  // opens input_string_value (blocks)
         SDL_Delay(400);  // let the engine dispatch + the editor start + clear
@@ -294,10 +350,10 @@ static int name_entry_edit_injector(void* data)
         interact("company_name_accept");
     }
 
-    // No campaign intro here anymore (issue #186: it moved behind the
-    // campaign select, skipped under TESTING) — the flow reaches team build
-    // on its own. Unwind back to the main menu so picker_main can hit its
-    // Quit gate.
+    // The campaign select and intro run un-driven under TESTING (auto-accept
+    // and auto-dismiss after one presented frame each) — the flow reaches
+    // team build on its own. Unwind back to the main menu so picker_main can
+    // hit its Quit gate.
     SDL_Delay(500);
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
@@ -313,7 +369,7 @@ static int name_entry_edit_injector(void* data)
 TEST(NewGame, name_entry_edit_strip_sets_company_name) {
     trace_clear();
 
-    NewGameState state = { false, false, false, false };
+    NewGameState state = { false, false, false, false, -1, -1 };
     SDL_Thread* thread =
         SDL_CreateThread(name_entry_edit_injector, "name_entry_edit", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
@@ -359,6 +415,7 @@ struct ContinuePlayerCountState {
     bool saw_three_seats = false;
     unsigned char live_count_after_continue = 0;
     std::array<bool, 4> visible_seat_cards{};
+    bool fourth_slot_offers_a_seat = false;
     std::string founded_slot;
     std::string continued_slot;
 };
@@ -379,30 +436,33 @@ static int continue_player_count_injector(void* data)
         return 0;
 
     // picker_prepare_new_game_setup no longer blocks on the campaign intro
-    // (issue #186); the flow lands on Base Camp directly.
+    // (issue #186); the campaign select and intro run un-driven under
+    // TESTING and the flow lands on Base Camp on its own.
     if (!wait_for_team_menu())
         return 0;
     state->saw_initial_base_camp = true;
     state->founded_slot = og::data::active_company_slot();
     SDL_Delay(750);
-    if (!wait_for_interactable("add_seat", 5000))
+    // A slot with no seat in it IS the add door: with one seat claimed, slot
+    // one wears ADD PLAYER, and the click lands when it stops wearing it.
+    if (!wait_for_interactable_label("seat_card_1", "ADD PLAYER", 5000))
         return 0;
     state->saw_seat_add = true;
     SDL_Delay(300);
     fprintf(stderr, "  [test] adding local seat 2 in Base Camp\n");
-    interact("add_seat");
-    if (!wait_for_interactable("seat_card_1", 5000))
+    interact("seat_card_1");
+    if (!wait_for_interactable_label_change("seat_card_1", "ADD PLAYER", 5000))
         return 0;
-    // The + row deliberately rejects a second activation inside 250 ms so a
-    // touch release cannot create two seats. Cross that boundary before the
+    // The add door deliberately rejects a second activation inside 250 ms so
+    // a touch release cannot create two seats. Cross that boundary before the
     // intentional second click.
     SDL_Delay(300);
     fprintf(stderr, "  [test] adding local seat 3 in Base Camp\n");
-    interact("add_seat");
-    if (!wait_for_interactable("seat_card_2", 5000))
+    interact("seat_card_2");
+    if (!wait_for_interactable_label_change("seat_card_2", "ADD PLAYER", 5000))
         return 0;
 
-    // Let the + release edge clear before injecting the next press.
+    // Let the release edge clear before injecting the next press.
     SDL_Delay(300);
     fprintf(stderr, "  [test] backing out of the new company's Base Camp\n");
     interact("back");
@@ -417,15 +477,20 @@ static int continue_player_count_injector(void* data)
         return 0;
     state->saw_continued_base_camp = true;
     state->continued_slot = og::data::active_company_slot();
+    // All four slots are on screen; three of them hold this machine's seats
+    // and the fourth still offers one. "Seat card" now means "a slot that is
+    // not the ADD PLAYER door".
+    const auto seat_card = [](int index) {
+        const std::string label =
+            interactable_label("seat_card_" + std::to_string(index));
+        return !label.empty() && label != "ADD PLAYER" &&
+            label != "LOBBY FULL";
+    };
     const auto wait_for_three_seat_cards = [&] {
         int elapsed = 0;
         constexpr int poll_interval = 50;
         while (elapsed < 5000) {
-            const bool first = has_interactable("seat_card_0");
-            const bool second = has_interactable("seat_card_1");
-            const bool third = has_interactable("seat_card_2");
-            const bool fourth = has_interactable("seat_card_3");
-            if (first && second && third && !fourth)
+            if (seat_card(0) && seat_card(1) && seat_card(2) && !seat_card(3))
                 return true;
             SDL_Delay(poll_interval);
             elapsed += poll_interval;
@@ -435,9 +500,10 @@ static int continue_player_count_injector(void* data)
     state->saw_three_seats = wait_for_three_seat_cards();
     for (std::size_t index = 0; index < state->visible_seat_cards.size();
          ++index) {
-        state->visible_seat_cards[index] =
-            has_interactable("seat_card_" + std::to_string(index));
+        state->visible_seat_cards[index] = seat_card(static_cast<int>(index));
     }
+    state->fourth_slot_offers_a_seat =
+        interactable_label("seat_card_3") == "ADD PLAYER";
 
     // Let CONTINUE's click-release edge clear before clicking BACK; otherwise
     // the synthetic second click can be swallowed and leave picker_main open.
@@ -515,6 +581,8 @@ TEST(NewGame, player_count_survives_back_then_continue)
     EXPECT_TRUE(state.visible_seat_cards[2]);
     EXPECT_FALSE(state.visible_seat_cards[3])
         << "three local players must render exactly three seat cards";
+    EXPECT_TRUE(state.fourth_slot_offers_a_seat)
+        << "the fourth slot stays on screen as the ADD PLAYER door";
 
     // The session setting must not leak into the company file. Offset 132 is
     // retained solely so historical GTL readers see a valid one-player save.

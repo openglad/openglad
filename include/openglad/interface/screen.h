@@ -297,6 +297,11 @@ public:
     void fade_between24(void* surface, const Uint8* from, const Uint8* to, int amount) override;
     int fade_between(void* old_surface, void* new_surface, void* dest_surface) override;
     int fadeblack(bool fade_in) override;
+    bool window_is_black() override;
+#ifdef TESTING
+    void testing_reset_window_state() override;
+    void testing_report_fade_violation(const char* what) override;
+#endif
     std::array<unsigned char, 768>& ourpalette_ref() override { return ourpalette; }
     std::array<unsigned char, 768>& redpalette_ref() override { return redpalette; }
     std::array<unsigned char, 768>& bluepalette_ref() override { return bluepalette; }

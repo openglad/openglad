@@ -108,7 +108,10 @@ static int injector_thread_exit_detail_menu(void* data)
     const Uint64 deadline = SDL_GetTicks() + 5000;
     while (SDL_GetTicks() < deadline)
     {
-        if (og::runtime::current_session->allbuttons_[0] != nullptr) // "back" is index 0 in details_buttons
+        // Through the locking accessor: a raw allbuttons_[] read races
+        // init_buttons' publication (#257). BACK is the detail menu's
+        // first row, so its arrival means the menu is up.
+        if (has_interactable("back"))
             break;
         SDL_Delay(5);
     }

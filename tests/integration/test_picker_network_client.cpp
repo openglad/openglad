@@ -4957,8 +4957,8 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             host_client->lobby_players(),
             og::ui::kBaseCampLineBCharsHireVisible);
         EXPECT_FALSE(header.alert) << "healthy link: status, not the alert";
-        EXPECT_EQ("HOSTING 2 MACH / 2 PLYR", header.text)
-            << "the host's line B carries role + census";
+        EXPECT_EQ("HOSTING: 2 PLAYERS / 2 MACHINES", header.text)
+            << "the host's line B carries role + census, players first";
     }
 
     // ---- Same window, JOINER view: own row first, the host's two rows
@@ -4990,9 +4990,10 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             join_client->lobby_players(),
             og::ui::kBaseCampLineBCharsHireVisible);
         EXPECT_FALSE(header.alert) << "healthy link: status, not the alert";
-        EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND", header.text)
-            << "the joiner's line B names the host machine's company "
-               "(direct join: no room code)";
+        EXPECT_EQ("JOINED: 2 PLAYERS / 2 MACHINES", header.text)
+            << "the joiner's line B carries the same census the host's does "
+               "(direct join: no room code). The host's company is on every "
+               "one of its roster rows; the census is on none of them.";
     }
 
     // ---- §2.9 flow 5 / §4.2 per-level reassembly, through the PRODUCTION
@@ -7874,10 +7875,11 @@ TEST(PickerNetworkClient,
             host_client->lobby_players(),
             og::ui::kBaseCampLineBCharsHireVisible);
         EXPECT_FALSE(header.alert);
-        EXPECT_EQ("HOSTING GLAD-XKCD - 1M / 1P", header.text)
-            << "a healthy hosted room shows role + room + census (the "
-               "compact census: the spelled-out shape is 35, one over the "
-               "band beside HIRE)";
+        EXPECT_EQ("HOSTING GLAD-XKCD: 1 PLAYER/1 PC", header.text)
+            << "a healthy hosted room shows role + room + census; beside "
+               "HIRE the band is 34, so the census takes its everyday "
+               "spelling rather than losing a word to a byte cut — and a "
+               "lobby of one says PLAYER and PC, not PLAYERS and PCS";
     }
 
     relay_server->stop();

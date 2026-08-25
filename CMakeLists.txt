@@ -394,6 +394,16 @@ add_custom_target(check_render_no_sim_writes
     VERBATIM
 )
 
+# Every fadeblack() caller is classified in scripts/fadeblack_sites.txt: fade
+# ownership (#237) only holds while the set of screens that fade stays the
+# deliberate one. See the script header.
+add_custom_target(check_fadeblack_sites
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_fadeblack_sites.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking every fadeblack() call site is classified"
+    VERBATIM
+)
+
 # --------------------------------------------------------------------------
 # Python-driven repo checks: resolve the interpreter at configure time.
 #
@@ -687,7 +697,9 @@ if(NOT EMSCRIPTEN)
     configure_openglad_sdl_target(og_interface)
     # og_interface contains src/interface/render/; enforce render stays read-only
     # on synced entity state (the drawcycle-class guard).
-    add_dependencies(og_interface check_render_no_sim_writes og_git_hash_gen)
+    # The fade call sites straddle src/interface/ui/ and src/platform/sdl/, so
+    # the allowlist guard hangs off both components.
+    add_dependencies(og_interface check_render_no_sim_writes check_fadeblack_sites og_git_hash_gen)
     target_include_directories(og_interface PRIVATE ${CMAKE_BINARY_DIR})
     target_link_libraries(og_interface PUBLIC
         og_core
@@ -719,7 +731,7 @@ if(NOT EMSCRIPTEN)
     if(NOT EMSCRIPTEN)
         target_link_libraries(og_platform_sdl PRIVATE og_ext_ixwebsocket)
     endif()
-    add_dependencies(og_platform_sdl check_vendor_leaks)
+    add_dependencies(og_platform_sdl check_vendor_leaks check_fadeblack_sites)
 
     add_library(og_platform_emscripten_transport STATIC
         ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp

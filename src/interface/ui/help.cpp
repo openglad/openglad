@@ -36,6 +36,7 @@
 #include <openglad/interface/ui/scroll_view_layout.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include "picker_sdl_defs.h"
@@ -130,10 +131,12 @@ bool help_testing_force_scroll_text()
 // GetLine(int index) should return a std::string for the given line index.
 // Note: this code has been redone to work in 'scanlines,'
 //       so that the text scrolls by pixels rather than lines.
+// entry_fade (optional): the campaign intro's context-switch fade — its
+// first frame fades in through the scope instead of the partial-rect present.
 template <typename GetLine>
 static short scroll_text_view(screen* scr, int num_lines, int box_width,
     const char* title, Sint32 buf_x, Sint32 buf_y, Sint32 buf_w, Sint32 buf_h,
-    GetLine get_line)
+    GetLine get_line, og::ui::LegacyMenuFade* entry_fade = nullptr)
 {
 	ScopedUiCanvas canvas_target(*scr);
 	// Flow the source lines to the frame's character budget before display
@@ -396,9 +399,24 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			int cont_x = HELPTEXT_LEFT + chrome_w/2 - cont_len*3;
 			mytext.write_xy(cont_x, HELPTEXT_TOP+98,
 			                CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
-			scr->buffer_to_screen(frame.blit_x, frame.blit_y,
-			                      frame.blit_w, frame.blit_h);
+			if (entry_fade != nullptr && entry_fade->fade_in_pending())
+				entry_fade->present_first(*scr);
+			else
+				scr->buffer_to_screen(frame.blit_x, frame.blit_y,
+				                      frame.blit_w, frame.blit_h);
 			changed = 0;
+#ifdef TESTING
+			TRACE("help", "scroller presented");
+			// The un-driven scroller (the campaign intro inside every BEGIN
+			// NEW GAME flow) dismisses itself once its first frame is on the
+			// window, so the leg runs for real — fades included — without
+			// an injector keypress. A test that drives the view forces it.
+			if (!help_testing_force_scroll_text())
+			{
+				TRACE("help", "scroller auto-dismissed");
+				break;
+			}
+#endif
 		}
 
 		if (query_input_continue())
@@ -442,7 +460,8 @@ short read_scenario(screen *s)
 // read_campaign_intro and the campaign browser's MORE control (which passes
 // the highlighted — not necessarily current — campaign id).
 static short scroll_campaign_description(screen *s,
-	const std::string& campaign_id)
+	const std::string& campaign_id,
+	og::ui::LegacyMenuFade* entry_fade = nullptr)
 {
 	CampaignData data(campaign_id);
 	if (!data.load())
@@ -452,7 +471,7 @@ static short scroll_campaign_description(screen *s,
 	return scroll_text_view(s,
 		static_cast<int>(data.description.size()), 240,
 		data.title.c_str(), HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8, 244, 119,
-		[&](int idx) { return data.getDescriptionLine(idx); });
+		[&](int idx) { return data.getDescriptionLine(idx); }, entry_fade);
 }
 
 short show_campaign_description(screen *scr, const std::string& campaign_id)
@@ -468,7 +487,13 @@ short show_campaign_description(screen *scr, const std::string& campaign_id)
 
 short read_campaign_intro(screen *s)
 {
-	return scroll_campaign_description(s, s->save_data.current_campaign);
+	// #237 ownership: the intro is the context switch between campaign
+	// select (which faded itself out) and Base Camp — it fades its first
+	// frame in over black and fades itself out on dismissal, while its last
+	// frame is still the buffer. Base Camp then finds a black window.
+	og::ui::LegacyMenuFade entry_fade("campaign intro");
+	return scroll_campaign_description(s, s->save_data.current_campaign,
+	                                   &entry_fade);
 }
 
 
@@ -909,15 +934,12 @@ Sint32 show_general_help()
 	HelpScreenState state;
 	help_switch_tab(state, HelpTab::Controls, true);
 
-	og::runtime::current_session->myscreen_->clearbuffer();
 	// A wheel notch queued before entry must not page the first frame.
 	(void)get_and_reset_scroll_amount();
 
 	g_help_screen_state = &state;
 	(void)og::ui::run_menu_screen(og::ui::help_menu_screen_spec(), &state);
 	g_help_screen_state = nullptr;
-
-	og::runtime::current_session->myscreen_->clearbuffer();
 
 	// Drain a still-held Escape: the re-entered main menu's QUIT row carries
 	// KEYSTATE_ESCAPE and would consume the same press.

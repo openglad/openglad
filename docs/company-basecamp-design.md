@@ -85,18 +85,22 @@ level, and experience fields.
 - Tap the deploy box to deploy or bench a character.
 - Tap the team box to cycle the character's combat team.
 - Tap the name or row body to train that character.
-- Use **+** at the left end of the seat rail to add a local seat. A machine
-  may contribute four active seats and a network lobby may contain sixteen.
-  Four cards are shown at a time; **<** and **>** page the rail when it grows
-  past the visible window.
-- Open an owned seat card to edit that player. The top row contains
+- The seat rail is **this machine's** four seats and nothing else. A slot with
+  no seat in it is a button reading **ADD PLAYER**; tap it to claim that seat.
+  A machine may contribute four active seats and a network lobby may contain
+  sixteen. When the lobby is at its sixteen-seat ceiling the remaining slots
+  dim and read **LOBBY FULL**.
+- The rail shrinks to what the device can seat. A phone with no gamepad shows
+  one card and nothing beside it; each gamepad attached to it adds one slot,
+  up to four. An offer the hardware cannot accept is worse than no offer.
+- Open a seat card to edit that player. The top row contains
   **4-DIRECTION**/**8-DIRECTION**, **REMAP**, and **RESET**. The bottom row
   contains **TEAM** and **REMOVE PLAYER**. In a network lobby the last action
-  becomes **SPECTATE** when it removes the machine's final active seat. Use
-  **+** to return from spectator mode.
-- Player numbers are lobby-wide. A local card says **YOU**; a remote card uses
-  a short company abbreviation. Remote cards are read-only and identify the
-  company that controls them.
+  becomes **SPECTATE** when it removes the machine's final active seat. Tap
+  any **ADD PLAYER** slot to return from spectator mode.
+- Player numbers are lobby-wide, so a card can read **P5** on a machine that
+  owns one seat. Other machines' seats are never in the rail: the header line
+  counts them and **VIEW LEVEL** lists them by name and team.
 - Multiple seats may deliberately choose the same team for co-op or team
   matchups. Seats on different teams oppose one another.
 - The full seat and team overview lives in **VIEW LEVEL**, on the Scenario
@@ -105,10 +109,6 @@ level, and experience fields.
 - Network guests may inspect foreign rows but cannot mutate them.
 
 ![Owned seat settings](media/team-selection/seat-settings.png)
-
-| Seats 1–4 | Seats 5–7 |
-|---|---|
-| ![Base Camp seat page one](media/team-selection/basecamp-seats-page-1.png) | ![Base Camp seat page two](media/team-selection/basecamp-seats-page-2.png) |
 
 Adding or removing seats and choosing their teams changes the current session.
 Those choices survive leaving Base Camp and returning through **CONTINUE**, but
@@ -245,8 +245,8 @@ Ready state belongs to a machine, not a character. Roster or relevant lobby
 changes clear readiness. A client with an active seat but an empty roster may
 ready without supplying a hero. A machine with no active seat remains
 connected as a spectator, has no **READY** action, and does not consume player
-capacity or a gameplay binding; **+** can reactivate its dormant stable seat
-token. Start validation checks participating machines and returns a specific
+capacity or a gameplay binding; any **ADD PLAYER** slot reactivates its dormant
+stable seat token. Start validation checks participating machines and returns a specific
 denial when the roster cannot satisfy the requested local views.
 
 ### 4.4 Ownership and controls
@@ -258,7 +258,9 @@ Changing a seat assignment never recolors a character. With cross-control
 disabled, input may claim only eligible characters owned by that player or
 machine.
 
-The visible `P#` is a dense lobby-wide display ordinal and may change when a
+The seat rail shows only the seats this machine owns, in local-slot order, so
+slot **k** of the rail is always local controller profile **k**. The visible
+`P#` on that card is a dense lobby-wide display ordinal and may change when a
 seat or machine leaves. Team-change and remove commands therefore target a
 separate stable, server-issued seat token. Removing a middle seat re-densifies
 the display ordinals without changing its siblings' tokens. The server also
@@ -332,22 +334,74 @@ network rows hide that action and use the wider ownership hit area instead.
 
 ### 9.12 Network status
 
-The second header line shows host/join role, room, and machine/player census.
-A degraded-link alert takes the same line and its warning color.
+The second header line shows host/join role, room, and the census — **players
+first**, then machines, because the seat rail shows only this machine's seats
+and the size of the lobby has nowhere else to live. It reads
+`HOSTING GLAD-7Q2F: 3 PLAYERS / 2 MACHINES` (or `IN <room>: ...` for a guest).
+A narrower band takes a whole shorter spelling rather than a byte cut:
+`3 PLAYERS/2 PCS`, then `3P/2M`, then the room code goes. One is one: a lobby
+of one reads `1 PLAYER`, `1 MACHINE`, `1 PC` — the singular is always the
+shorter spelling, so it can never cost a rung the band it used to fit. The
+joiner's line
+no longer names the host company — every one of the host's roster rows already
+does, and none of them carries the census. A degraded-link alert takes the
+same line and its warning color.
 
-### 9.14 Eight-row page
+### 9.14 Eight-row page and the seat rail
 
 Eight roster rows fit above the independent player-seat rail while leaving the
-column header clear. The rail reads left to right: **+**, then a four-card
-window between **<** and **>**. Every neighbour on the row is seven pixels
-apart, the **+** starts on BACK's left edge, and the **>** closes on the
-panel's right rail. The scenario summary is a direct click target.
+column header clear. The scenario summary is a direct click target.
 
-The rail once opened with a **SEATS** label that led to the team overview.
-That was a second, worse-placed door to a screen the Scenario menu already
-owned, and it cost the cards their breathing room — the four faces sat a
-single pixel apart. Issue #236 spent the label's width on the gutters and
-gave its ordinal to the **+**.
+The rail is four slots on a **fixed** grid: 70-pixel faces at x = 8, 86, 164
+and 242, an 8-pixel gutter between them, opening on BACK's left edge and
+closing on the panel's right rail with no remainder (4x70 + 3x8 = 304 = 312 -
+8). Slot **k** is at 8 + 78k whether or not its neighbours are on screen, so a
+card can never slide sideways under a finger already on its way down to it.
+The face never changes width; it is an eleven-character label budget that the
+seat names, **ADD PLAYER**, **LOBBY FULL** and the team chip all depend on.
+The chip owns the face's last ten pixels — eight for the chip and one of face
+either side of it, so it is framed on the right exactly as it is above and
+below — and a seat label's two trailing pads are what centre its ink over the
+zone the chip leaves rather than over the whole face. A bare slot has no chip
+to dodge, so **ADD PLAYER** and **LOBBY FULL** centre on the face itself.
+
+The rail's band — everything between the roster panel's bottom bevel and the
+command strip — is painted black before the buttons draw. The title backdrop
+runs behind this screen, and the 8-pixel gutters framed a fragment of its grey
+blade so neatly that it read as a stray glyph between two cards. One ground
+under the whole row also makes a networked frame and a local one identical
+here. The band is 17 pixels for a 10-pixel card: 3 above and 4 below, because
+an odd budget cannot split evenly and the heavier gap belongs under the rail,
+where the command strip's own bevel already separates.
+
+A dimmed slot is still a whole card. The disabled face shade collides with the
+button shadow shade, so a dimmed face steps its right and bottom bevels one
+shade darker; without that, **LOBBY FULL** rendered as a card with a flat
+right edge.
+
+What varies is how many slots are live, and that is a property of the DEVICE,
+never of the lobby: four on a desktop, one on a phone with nothing attached,
+one more per gamepad. A slot past the device cap is absent. A slot inside it
+with no seat in it is a real button reading **ADD PLAYER** whose activation is
+the add path itself — the same debounce, the same capacity gates, the same
+gamepad auto-claim. When the lobby is at its sixteen-seat ceiling that button
+dims and reads **LOBBY FULL** instead: the seat is still this machine's to
+offer, and the reason it cannot be taken is somewhere else.
+
+The rail once windowed the whole lobby. It opened with a **SEATS** label that
+led to the team overview — a second, worse-placed door to a screen the
+Scenario menu already owned — and it cost the cards their breathing room, the
+four faces sitting a single pixel apart. Issue #236 spent the label's width on
+the gutters and gave its ordinal to a **+** at the left end; issue #243
+stopped the leftover width from collecting in the holes hidden controls left
+behind, drawing empty recesses (ghosts) where a seat could still land. Both
+were fixes to a premise that was wrong: remote seats were in the rail, which
+forced a pager, which forced a moving grid, which forced the **+** to live
+somewhere the cards were not. Restricting the rail to this machine's seats
+retires the **+**, both pagers and the ghosts at once — the ghost became the
+button it was always miming, and remote seats moved to the two places that
+already described them, the header line's census and **VIEW LEVEL**'s seat
+report.
 
 ### 9.19 Company List geometry
 

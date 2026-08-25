@@ -19,6 +19,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -202,6 +203,24 @@ bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs) {
   return false;
 }
 
+// One keyboard-nav step, applied through the engine's testing hook (real key
+// events can't be driven from an injector thread — the blocking
+// hold-and-release loops in handle_menu_nav eat them mid-press).
+void menu_nav_step(int key) {
+  g_test_menu_nav_key = key;
+  SDL_Delay(200);
+}
+
+// Park the pointer at game coords (x, y). interact() leaves the cursor on the
+// button it clicked, and that hover highlight is the same yellow as the
+// keyboard-focus outline — a focus shot can only be told apart from a hover
+// one once no button is hovered.
+void park_pointer_at(float x, float y) {
+  const auto [win_x, win_y] = ui_canvas_to_window(x, y);
+  inject_mouse_motion(static_cast<int>(win_x), static_cast<int>(win_y));
+  SDL_Delay(200);
+}
+
 struct RosterSeed {
   const char *name;
   int family;
@@ -273,7 +292,36 @@ void reap_all_companies() {
 struct ShotState {
   bool finished = false;
   int captures = 0;
+  // #237 derivation pin, for the flows that drive a real door: the fades a
+  // door added, or -1 when the injector never reached the read.
+  int fades_added_by_nested_door = -1;
 };
+
+// Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
+// traces exactly one "video" line per fade — so counting those lines counts
+// fades. The #237 rule is derived inside run_menu_screen from the menu-stack
+// depth, so only a real door driven through the real screens can pin which
+// side of the rule a screen is on.
+int count_fade_between_traces() {
+  std::lock_guard<std::mutex> lock(g_trace_mutex);
+  int fades = 0;
+  for (const TraceEntry &entry : g_trace_buffer) {
+    if (entry.category == "video" &&
+        entry.message.find("FadeBetween") != std::string::npos) {
+      ++fades;
+    }
+  }
+  return fades;
+}
+
+// One main-menu-boundary crossing = one fadeblack(0) + one fadeblack(1), and
+// under TESTING each traces exactly one FadeBetween line
+// (menu_screen_runner.cpp run_menu_screen). The main menu's FIRST entry
+// finds the window already black — a process starts black, and the test
+// boundary resets it black — so only its fade-in runs (fade ownership: a
+// fade-out belongs to the surface that leaves, and nothing left).
+constexpr int kFadesPerCrossing = 2;
+constexpr int kMainMenuEntryFades = 1;
 
 // --- 1. main menu, no companies --------------------------------------------
 
@@ -281,7 +329,7 @@ int mainmenu_no_company_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   wait_for_interactable("begin_new_game", 5000);
-  SDL_Delay(1500); // FadeWithInitialDraw settle
+  SDL_Delay(1500); // menu-entry settle
   state->captures += capture_frame("mainmenu_no_company");
   interact("quit");
   state->finished = true;
@@ -343,17 +391,31 @@ TEST(UxShots, b_mainmenu_with_company) {
 // The global CONTROLS capture retired with that screen: per-player controls
 // are shot from the seat-settings probe below.
 
+// #237 symmetry pin, the second main-menu door driven end to end (HELP is the
+// other): GAME SETTINGS must fade on the way in and on the way back. On
+// master it entered instantly and faded only on the return — the reported bug.
+std::atomic<int> g_settings_fades_at_door{-1};
+std::atomic<int> g_settings_fades_inside_settings{-1};
+std::atomic<int> g_settings_fades_after_return{-1};
+
 int game_settings_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   if (wait_for_interactable("options", 5000)) {
     SDL_Delay(1500);
+    g_settings_fades_at_door = count_fade_between_traces();
     interact("options");
     if (wait_for_interactable("options_back", 5000)) {
       SDL_Delay(1500);
+      g_settings_fades_inside_settings = count_fade_between_traces();
       state->captures += capture_frame("game_settings");
       SDL_Delay(300);
       interact("options_back");
+    }
+    if (wait_for_interactable("begin_new_game", 10000)) {
+      SDL_Delay(750);
+      g_settings_fades_after_return = count_fade_between_traces();
+      interact("quit");
     }
   }
   state->finished = true;
@@ -363,18 +425,31 @@ int game_settings_injector(void *data) {
 TEST(UxShots, b1_game_settings) {
   trace_clear();
   reap_all_companies();
+  g_settings_fades_at_door = -1;
+  g_settings_fades_inside_settings = -1;
+  g_settings_fades_after_return = -1;
   ShotState state;
   SDL_Thread *thread =
       SDL_CreateThread(game_settings_injector, "ux_settings", &state);
   ASSERT_TRUE(thread != nullptr);
   g_picker_mainmenu_calls = 0;
-  g_picker_max_mainmenu_calls = 1;
+  // Two: the SETTINGS round trip re-presents the main menu, and the return
+  // fade is half of what this test pins.
+  g_picker_max_mainmenu_calls = 2;
   picker_main(0, nullptr);
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  ASSERT_EQ(kMainMenuEntryFades, g_settings_fades_at_door.load())
+      << "#237: the main menu's first entry fades in over the black window";
+  ASSERT_EQ(kFadesPerCrossing, g_settings_fades_inside_settings.load() -
+                                   g_settings_fades_at_door.load())
+      << "#237: the GAME SETTINGS door must fade on the way IN";
+  ASSERT_EQ(kFadesPerCrossing, g_settings_fades_after_return.load() -
+                                   g_settings_fades_inside_settings.load())
+      << "#237: and exactly as much on the way BACK";
 }
 
 // --- 2b. per-seat settings --------------------------------------------------
@@ -388,13 +463,22 @@ int seat_settings_injector(void *data) {
   if (wait_for_interactable("continue_game", 5000)) {
     SDL_Delay(1500);
     interact("continue_game");
+    int fades_before_door = -1;
     if (wait_for_team_menu() &&
         wait_for_interactable("seat_card_0", 5000)) {
       SDL_Delay(500);
+      // #237: the seat editor is a door on the OPEN Base Camp — a nested
+      // run_menu_screen entry, which never fades. (Base Camp's own entry
+      // from the main menu is the boundary crossing, and that one does.)
+      fades_before_door = count_fade_between_traces();
       interact("seat_card_0");
     }
     if (wait_for_interactable("seat_settings_back", 5000)) {
       SDL_Delay(1500);
+      if (fades_before_door >= 0) {
+        state->fades_added_by_nested_door =
+            count_fade_between_traces() - fades_before_door;
+      }
       state->captures += capture_frame("seat_settings");
       interact("seat_settings_back");
     }
@@ -428,6 +512,9 @@ TEST(UxShots, b2_seat_settings) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  EXPECT_EQ(0, state.fades_added_by_nested_door)
+      << "#237: a door opened from the open Base Camp is a nested entry — it "
+         "must add no fade";
 }
 
 // --- 3. name entry ----------------------------------------------------------
@@ -475,7 +562,7 @@ int company_list_injector(void *data) {
   SDL_Delay(1500);
   interact("load_company");
   if (wait_for_interactable("company_row_0", 5000)) {
-    SDL_Delay(1500); // FadeAroundEntry settle
+    SDL_Delay(1500); // menu-entry settle
     state->captures += capture_frame("company_list");
     interact("back");
   }
@@ -636,7 +723,18 @@ TEST(UxShots, f_backups) {
 struct NamedShot {
   ShotState state;
   const char *name;
+  // Optional pixel oracle run on the captured frame; a failed check does not
+  // count the capture, so the caller's ASSERT_EQ on `captures` is its verdict.
+  FrameCheck check = nullptr;
 };
+
+// The machine's seat declaration is LIVE SESSION state: it survives CONTINUE
+// on purpose (docs §2.5), which means it also survives from one shot in this
+// binary to the next. Every rail shot declares the count it means to film.
+void declare_local_seats(int count) {
+  og::runtime::current_session->myscreen_->save_data.numplayers =
+      static_cast<unsigned char>(count);
+}
 
 int basecamp_shot_injector(void *data) {
   og::runtime::ensure_thread_session();
@@ -679,21 +777,23 @@ int basecamp_paged_injector(void *data) {
         og::runtime::current_session->myscreen_->save_data.save_name.c_str(),
         has_interactable("roster_page_next") ? 1 : 0);
     {
-      const std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
-      fprintf(stderr, "  [uxshot] lobby players=%d\n",
-              static_cast<int>(players.size()));
-      for (const auto &p : players)
-        fprintf(stderr, "  [uxshot]   seat team=%d slots=%d company='%s'\n",
-                static_cast<int>(p.team),
-                static_cast<int>(p.character_slots.size()), p.company.c_str());
+      // Reading the seat roster walks LobbyServer state the menu thread's
+      // poll mutates, so the whole diagnostic runs there (#257).
+      (void)run_on_main_thread([] {
+        const std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
+        fprintf(stderr, "  [uxshot] lobby players=%d\n",
+                static_cast<int>(players.size()));
+        for (const auto &p : players)
+          fprintf(stderr, "  [uxshot]   seat team=%d slots=%d company='%s'\n",
+                  static_cast<int>(p.team),
+                  static_cast<int>(p.character_slots.size()), p.company.c_str());
+      });
     }
     shot->state.captures += capture_frame("basecamp_paged_p1");
     if (has_interactable("roster_page_next")) {
       interact("roster_page_next");
       SDL_Delay(1500);
       shot->state.captures += capture_frame("basecamp_paged_p2");
-      SDL_Delay(120);
-      shot->state.captures += capture_frame("basecamp_paged_p2b");
     }
     SDL_Delay(200);
     interact("back");
@@ -706,21 +806,33 @@ int basecamp_paged_injector(void *data) {
   return 0;
 }
 
-int basecamp_three_seats_injector(void *data) {
+// A bare slot IS the add door, so growing the rail means clicking slot 1,
+// then slot 2, then slot 3 — each one waits until it stops saying ADD PLAYER
+// before the next click, and the 250 ms debounce is crossed between them.
+struct SeatGrowthShot {
+  ShotState state;
+  const char *name = nullptr;
+  int target_seats = 1;  // seats this machine should end up holding
+};
+
+int basecamp_local_seats_injector(void *data) {
   og::runtime::ensure_thread_session();
-  NamedShot *shot = static_cast<NamedShot *>(data);
+  SeatGrowthShot *shot = static_cast<SeatGrowthShot *>(data);
   wait_for_interactable("continue_game", 5000);
   SDL_Delay(1500);
   interact("continue_game");
-  if (wait_for_team_menu() &&
-      wait_for_interactable("add_seat", 5000)) {
-    SDL_Delay(300);
-    interact("add_seat");
-    if (wait_for_interactable("seat_card_1", 5000)) {
-      SDL_Delay(300);  // cross the intentional 250 ms + debounce
-      interact("add_seat");
+  if (wait_for_team_menu()) {
+    bool grown = true;
+    for (int slot = 1; slot < shot->target_seats && grown; ++slot) {
+      const std::string id = "seat_card_" + std::to_string(slot);
+      grown = wait_for_interactable_label(id, "ADD PLAYER", 5000);
+      if (!grown)
+        break;
+      SDL_Delay(300);  // cross the intentional 250 ms add debounce
+      interact(id);
+      grown = wait_for_interactable_label_change(id, "ADD PLAYER", 5000);
     }
-    if (wait_for_interactable("seat_card_2", 5000)) {
+    if (grown) {
       SDL_Delay(1500);
       shot->state.captures += capture_frame(shot->name);
     }
@@ -735,7 +847,23 @@ int basecamp_three_seats_injector(void *data) {
   return 0;
 }
 
+void run_basecamp_seat_growth_shot(SeatGrowthShot &shot) {
+  declare_local_seats(1);
+  SDL_Thread *thread =
+      SDL_CreateThread(basecamp_local_seats_injector, "ux_bc_seats", &shot);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 2;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(shot.state.finished);
+  ASSERT_GE(shot.state.captures, 1);
+}
+
 void run_basecamp_shot(NamedShot &shot, int (*injector)(void *)) {
+  declare_local_seats(1);
   SDL_Thread *thread = SDL_CreateThread(injector, "ux_bc", &shot);
   ASSERT_TRUE(thread != nullptr);
   g_picker_mainmenu_calls = 0;
@@ -759,6 +887,47 @@ TEST(UxShots, g_basecamp_solo) {
   run_basecamp_shot(shot, &basecamp_shot_injector);
 }
 
+// #249: the phone shape — a single-seat device has ONE slot, so the rail is
+// a lone seat card flush on the panel's left rail and nothing else. No ADD
+// PLAYER placeholder: an offer the hardware cannot accept is worse than none.
+int basecamp_phone_shot_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  NamedShot *shot = static_cast<NamedShot *>(data);
+  wait_for_interactable("continue_game", 10000);
+  SDL_Delay(1500);  // menu-entry settle
+  interact("continue_game");
+  if (wait_for_interactable("hire_troops", kTeamMenuTimeoutMs)) {
+    SDL_Delay(1500);
+    shot->state.captures += capture_frame(shot->name);
+    SDL_Delay(200);
+    interact("back");
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  shot->state.finished = true;
+  return 0;
+}
+
+// Restores the desktop device class even when an ASSERT unwinds the test.
+struct SingleSeatDeviceGuard {
+  SingleSeatDeviceGuard() { og::input::set_single_seat_device(true); }
+  ~SingleSeatDeviceGuard() { og::input::set_single_seat_device(false); }
+};
+
+TEST(UxShots, g2_basecamp_phone_single_seat) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  SingleSeatDeviceGuard phone;
+  NamedShot shot;
+  shot.name = "basecamp_phone_single_seat";
+  run_basecamp_shot(shot, &basecamp_phone_shot_injector);
+}
+
 TEST(UxShots, h_basecamp_empty) {
   trace_clear();
   CompanySlotCleanup cleanup{{"save0"}};
@@ -769,15 +938,161 @@ TEST(UxShots, h_basecamp_empty) {
   run_basecamp_shot(shot, &basecamp_shot_injector);
 }
 
+// The rail's three interesting local shapes. basecamp_solo already shows
+// 1 card + 3 ADD PLAYER; these are 2+2, 3+1, and the full 4+0 — the only
+// shape with no placeholder in it, and the one that proves 4*70 + 3*8 closes
+// on the panel's right rail.
+TEST(UxShots, i_basecamp_two_local_seats) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  SeatGrowthShot shot;
+  shot.name = "basecamp_two_local_seats";
+  shot.target_seats = 2;
+  run_basecamp_seat_growth_shot(shot);
+}
+
 TEST(UxShots, i_basecamp_three_local_seats) {
   trace_clear();
   CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
-  NamedShot shot;
+  SeatGrowthShot shot;
   shot.name = "basecamp_three_local_seats";
-  run_basecamp_shot(shot, &basecamp_three_seats_injector);
+  shot.target_seats = 3;
+  run_basecamp_seat_growth_shot(shot);
+}
+
+TEST(UxShots, i_basecamp_four_local_seats) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  SeatGrowthShot shot;
+  shot.name = "basecamp_four_local_seats";
+  shot.target_seats = 4;
+  run_basecamp_seat_growth_shot(shot);
+}
+
+// --- 9b. keyboard focus on a bare slot --------------------------------------
+
+// The rail's fixed grid, restated from the drawing side: slot k opens at
+// x = 8 + 78k and the face is 70 wide (og::ui::kSeatRail*), the cards run
+// y=164..173, and row 168 is mid-face — clear of the label ink's top and
+// bottom rows and of both horizontal bevels (the lobby_full oracle below
+// reads the same row).
+constexpr int kSeatCardX(int slot) {
+  return og::ui::kSeatRailX0 +
+         slot * (og::ui::kSeatRailCardWidth + og::ui::kSeatRailGap);
+}
+constexpr int kSeatCardTopY = 164;
+constexpr int kSeatCardHeight = 10;
+
+// Pixels where two rail slots' faces disagree, compared cell for cell at the
+// same offset inside each card.
+std::size_t seat_card_diff(const FramePixels &rgb, int slot_a, int slot_b) {
+  std::size_t differing = 0;
+  for (int dy = 0; dy < kSeatCardHeight; ++dy) {
+    for (int dx = 0; dx < og::ui::kSeatRailCardWidth; ++dx) {
+      const int y = kSeatCardTopY + dy;
+      const auto at = [&](int slot) {
+        return (static_cast<std::size_t>(y) * 320 +
+                static_cast<std::size_t>(kSeatCardX(slot) + dx)) *
+               3;
+      };
+      const std::size_t ia = at(slot_a);
+      const std::size_t ib = at(slot_b);
+      if (rgb[ia] != rgb[ib] || rgb[ia + 1] != rgb[ib + 1] ||
+          rgb[ia + 2] != rgb[ib + 2])
+        ++differing;
+    }
+  }
+  return differing;
+}
+
+// Solo leaves slots 1, 2 and 3 wearing the same ADD PLAYER face on the same
+// fixed grid, so the three cards are pixel-identical — until the keyboard
+// highlight lands on one of them. That makes the OTHER two their own
+// reference: no palette entry is named here, and a focus ring that never
+// arrived (or landed on the wrong slot) fails instead of quietly producing a
+// screenshot of three idle placeholders.
+bool check_placeholder_focus_ring(const FramePixels &rgb) {
+  const std::size_t focused = seat_card_diff(rgb, 1, 2);
+  const std::size_t idle = seat_card_diff(rgb, 2, 3);
+  if (idle != 0) {
+    fprintf(stderr,
+            "  [uxshot] placeholder focus: the two unfocused ADD PLAYER "
+            "slots differ in %zu pixels — no clean reference\n",
+            idle);
+    return false;
+  }
+  // The interior ring is a box inside a 70x10 face: even at the pulse's
+  // deepest inset it draws well over a hundred pixels. Twenty is a floor no
+  // stray glyph shift could clear, not a measurement.
+  if (focused < 20) {
+    fprintf(stderr,
+            "  [uxshot] placeholder focus: slot 1 differs from its idle "
+            "neighbour in only %zu pixels — no focus ring\n",
+            focused);
+    return false;
+  }
+  return true;
+}
+
+// The keyboard route to a bare slot, walked with saturating steps rather than
+// a counted path: every roster column's DOWN chain drains onto the rail and
+// then onto the command strip, whose rows have no down-link, so a surplus
+// DOWN is a no-op. The same holds for LEFT along the strip, which ends on
+// BACK. From BACK the rail's documented entry is UP (its leftmost live slot,
+// this machine's own seat here) and one RIGHT reaches slot 1 — the first
+// placeholder. Counting nothing means a roster page of a different length
+// cannot silently move the focus somewhere else.
+int basecamp_placeholder_focus_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  NamedShot *shot = static_cast<NamedShot *>(data);
+  wait_for_interactable("continue_game", 5000);
+  SDL_Delay(1500);
+  interact("continue_game");
+  if (wait_for_team_menu()) {
+    SDL_Delay(1500);
+    // Left of the panel's rail and above the cards: no button owns this
+    // pixel, so nothing is hovered when the shot is taken.
+    park_pointer_at(2.0f, 162.0f);
+    for (int i = 0; i < 12; ++i)
+      menu_nav_step(KEY_DOWN);
+    for (int i = 0; i < 5; ++i)
+      menu_nav_step(KEY_LEFT);
+    menu_nav_step(KEY_UP);
+    menu_nav_step(KEY_RIGHT);
+    // menu_nav_enabled expires 5 s after the last press (picker_input.cpp),
+    // and the ring is only drawn while it holds — so the capture follows the
+    // last step immediately.
+    shot->state.captures += capture_frame(shot->name, shot->check);
+    SDL_Delay(200);
+    interact("back");
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  shot->state.finished = true;
+  return 0;
+}
+
+TEST(UxShots, g3_basecamp_placeholder_focus) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  NamedShot shot;
+  shot.name = "basecamp_placeholder_focus";
+  shot.check = &check_placeholder_focus_ring;
+  run_basecamp_shot(shot, &basecamp_placeholder_focus_injector);
 }
 
 // --- 10-12. networked base camp: host / joiner / degraded alert -------------
@@ -878,7 +1193,7 @@ int basecamp_net_injector(void *data) {
   NamedShot *shot = static_cast<NamedShot *>(data);
   if (wait_for_team_menu()) {
     SDL_Delay(1500);
-    shot->state.captures += capture_frame(shot->name);
+    shot->state.captures += capture_frame(shot->name, shot->check);
     SDL_Delay(200);
     interact("back");
   }
@@ -950,6 +1265,12 @@ void run_basecamp_net_shot(const char *name, bool host_view,
   shot.name = name;
   SDL_Thread *thread = SDL_CreateThread(basecamp_net_injector, "ux_net", &shot);
   ASSERT_TRUE(thread != nullptr);
+  // The local shapes reach Base Camp through picker_main, which loads the
+  // title backdrop on the way in; these fixtures build the screen directly,
+  // so they load it themselves. Without it every pixel the chrome does not
+  // cover captures flat black — the frame no player ever sees — and the
+  // networked shots cannot be compared with the local ones at all.
+  picker_load_menu_backdrops();
   create_team_menu(0);
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
@@ -989,22 +1310,18 @@ bool wait_for_interactable_at(const std::string &id, int x, int y,
   return false;
 }
 
-// Seven authoritative seats exercise the compact four-card rail, its pager,
-// and the VIEW LEVEL seat block reached through SCENARIO (#218 — the
-// surviving home of the seat->team overview). Internal network names
-// intentionally differ from public company names so the screenshots catch
-// any accidental transport-identity leak.
+// Seven authoritative seats across four machines, TWO of them this client's.
+// The rail shows those two and offers two more; the other five live on the
+// header line's census and in the VIEW LEVEL seat block reached through
+// SCENARIO (#218 — the surviving home of the seat->team overview). Internal
+// network names intentionally differ from public company names so the
+// screenshots catch any accidental transport-identity leak.
 int many_seats_view_level_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   if (wait_for_team_menu()) {
     SDL_Delay(1500);
-    state->captures += capture_frame("basecamp_net_seats_p1");
-    if (wait_for_interactable("seat_page_next", 5000)) {
-      interact("seat_page_next");
-      SDL_Delay(750);
-      state->captures += capture_frame("basecamp_net_seats_p2");
-    }
+    state->captures += capture_frame("basecamp_net_seats");
     interact("scenario");
     if (wait_for_interactable("view_scenario", 5000)) {
       SDL_Delay(300);
@@ -1045,10 +1362,118 @@ int many_seats_view_level_injector(void *data) {
 
 // --- VIEW LEVEL staged preview (#218, C10) ---------------------------------
 
+// The first staged frame, kept for the frame-to-frame comparison below.
+FramePixels g_view_level_first_frame;
+// The SCENARIO screen captured before the viewer ever opened: the backdrop as
+// it looks with a camera nobody has borrowed yet.
+FramePixels g_menu_before_viewer_frame;
+
+// The backdrop strip the #251 pin watches: everything under the preview frame,
+// down to the bottom of the canvas.
+constexpr int kBackdropStripTopY = 160;
+
+// The viewer's three button faces (kViewScenarioRows in menu_screen_specs).
+// Their labels are static, but a highlight box pulses up to 3 px OUTSIDE the
+// rect it decorates (picker_input.cpp draw_highlight insets by
+// sin(ticks_ms/300)*3), so the excluded rects carry that pulse as a margin.
+// Everything left in the strip is backdrop or static chrome.
+constexpr int kHighlightPulse = 3;
+struct ShotRect {
+  int x, y, w, h;
+};
+constexpr ShotRect kViewScenarioButtonRects[] = {
+    {10, 170, 44, 20}, {220, 170, 40, 20}, {270, 170, 40, 20}};
+
+bool in_rect_with_pulse(const ShotRect &r, int x, int y) {
+  return x >= r.x - kHighlightPulse && x <= r.x + r.w + kHighlightPulse &&
+         y >= r.y - kHighlightPulse && y <= r.y + r.h + kHighlightPulse;
+}
+
+bool in_view_scenario_button(int x, int y) {
+  for (const ShotRect &r : kViewScenarioButtonRects) {
+    if (in_rect_with_pulse(r, x, y))
+      return true;
+  }
+  return false;
+}
+
+// The SCENARIO screen's own BACK face. The cross-screen comparison below
+// straddles two screens, so it has to skip the button chrome of BOTH: the
+// hover ring draw_buttons paints at yloc-1 and the focus box draw_highlight
+// pulses up to 3 px outside the rect land in the same rows as the backdrop
+// bands, at different x on each screen.
+constexpr ShotRect kScenarioBackRect = {30, 170, 60, 20};
+
+bool in_cross_screen_button(int x, int y) {
+  return in_view_scenario_button(x, y) ||
+         in_rect_with_pulse(kScenarioBackRect, x, y);
+}
+
+// Rows that carry nothing but backdrop on BOTH the SCENARIO screen and the
+// open viewer: the gap between the viewer's report-frame bevel (its bottom
+// edge is row 160) and the y=170 button band, and everything below both
+// screens' buttons. Comparing these ACROSS the two screens is what catches a
+// camera the borrow left at a fixed offset — a displacement that never
+// changes is identical in both in-viewer frames and invisible to the
+// frame-to-frame half.
+constexpr int kBackdropOnlyBands[][2] = {{161, 170}, {190, 200}};
+
+// Differing pixels between two frames over rows [y0, y1). `skip` (optional)
+// names the button chrome to leave out of the comparison.
+using PixelSkip = bool (*)(int, int);
+std::size_t frame_diff_count(const FramePixels &a, const FramePixels &b, int y0,
+                             int y1, PixelSkip skip) {
+  std::size_t differing = 0;
+  for (int y = y0; y < y1; ++y) {
+    for (int x = 0; x < 320; ++x) {
+      if (skip != nullptr && skip(x, y))
+        continue;
+      const std::size_t i =
+          (static_cast<std::size_t>(y) * 320 + static_cast<std::size_t>(x)) * 3;
+      if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2])
+        ++differing;
+    }
+  }
+  return differing;
+}
+
+// Wait-on-condition for the pan: poll the LIVE preview band through the same
+// presenter handshake capture_frame uses until it differs from the reference
+// frame. The pan is a triangle wave over query_timer at ~55 ms per pixel, so
+// this normally returns on the first poll; the ceiling is generous because a
+// loaded host can deschedule the presenter for seconds.
+bool wait_for_preview_band_pan(const FramePixels &reference, int timeout_ms) {
+  if (reference.size() != static_cast<std::size_t>(320 * 200 * 3))
+    return false;
+  screen *scr = og::runtime::current_session->myscreen_;
+  for (int waited = 0; waited < timeout_ms; waited += 100) {
+    SDL_Delay(100);
+    PresentedFramePause frame_pause;
+    if (!frame_pause.acquired())
+      return false;
+    for (int y = kViewScenarioPreviewBandY;
+         y < kViewScenarioPreviewBandY + kViewScenarioPreviewBandH; ++y) {
+      for (int x = kViewScenarioPreviewBandX;
+           x < kViewScenarioPreviewBandX + kViewScenarioPreviewBandW; ++x) {
+        Uint8 r = 0, g = 0, b = 0;
+        scr->get_pixel(x, y, &r, &g, &b);
+        const std::size_t i = (static_cast<std::size_t>(y) * 320 +
+                               static_cast<std::size_t>(x)) *
+                              3;
+        if (reference[i] != r || reference[i + 1] != g || reference[i + 2] != b)
+          return true;
+      }
+    }
+  }
+  fprintf(stderr, "  [uxshot] preview band never moved within %d ms\n",
+          timeout_ms);
+  return false;
+}
+
 // The band region the staged world renders into: (8,16)-(310,91) in classic
 // coordinates (picker_sdl_defs kViewScenarioPreviewBand*). A healed staged
 // pitch fills the band with terrain, so a blank band means the pane died.
-bool check_view_level_staged_band(const FramePixels &rgb) {
+bool staged_band_is_populated(const FramePixels &rgb) {
   std::size_t nonblack = 0;
   for (int y = 16; y < 16 + 76; ++y) {
     for (int x = 8; x < 8 + 303; ++x) {
@@ -1063,6 +1488,97 @@ bool check_view_level_staged_band(const FramePixels &rgb) {
             nonblack);
     return false;
   }
+  return true;
+}
+
+// The pre-viewer reference frame.
+bool stash_menu_before_viewer(const FramePixels &rgb) {
+  if (rgb.size() != static_cast<std::size_t>(320 * 200 * 3)) {
+    fprintf(stderr, "  [uxshot] pre-viewer frame is the wrong size\n");
+    return false;
+  }
+  g_menu_before_viewer_frame = rgb;
+  return true;
+}
+
+// The first in-viewer frame: checked against the pre-viewer backdrop, then
+// kept as the reference the second one is judged against.
+bool check_view_level_staged_band(const FramePixels &rgb) {
+  if (!staged_band_is_populated(rgb))
+    return false;
+  if (g_menu_before_viewer_frame.size() != rgb.size()) {
+    fprintf(stderr, "  [uxshot] no pre-viewer frame to compare against\n");
+    return false;
+  }
+  // The bands skip both screens' button chrome, but a keyboard-navigated
+  // highlight would move the focus box onto a DIFFERENT row than the mouse
+  // cadence this flow uses. State the assumption instead of inheriting it.
+  if (pks().menu_nav_enabled) {
+    fprintf(stderr, "  [uxshot] menu nav is enabled: the backdrop bands would "
+                    "carry a keyboard focus ring\n");
+    return false;
+  }
+  for (const auto &band : kBackdropOnlyBands) {
+    const std::size_t moved =
+        frame_diff_count(g_menu_before_viewer_frame, rgb, band[0], band[1],
+                         &in_cross_screen_button);
+    if (moved != 0) {
+      fprintf(stderr,
+              "  [uxshot] backdrop rows %d..%d differ from the pre-viewer "
+              "menu: %zu px\n",
+              band[0], band[1] - 1, moved);
+      return false;
+    }
+  }
+  g_view_level_first_frame = rgb;
+  return true;
+}
+
+// Set when the ONLY thing wrong with a candidate frame is that it landed on
+// the same pan phase as the reference. The pan is a triangle wave and the
+// frame the wait observed is not the frame the capture handshake freezes, so
+// an apex between the two can hand back an identical band; that draw is worth
+// retrying. Every other failure below is a real one and must not be retried.
+std::atomic<bool> g_view_level_pan_phase_collided{false};
+
+// #251, the second half of the intra-screen camera pin. draw_backdrop() paints
+// the four menu quadrants THROUGH viewob[0] at the top of the same hook that
+// then lends the view to the staged preview, so a camera left behind on the
+// view slides the whole menu background by the previous frame's pan offset.
+// Every other pin samples the camera after the viewer has already exited; only
+// frames captured WHILE it is open can see the slide. This one holds the
+// backdrop still between two pan phases; check_view_level_staged_band holds it
+// against the pre-viewer menu.
+bool check_view_level_staged_panned(const FramePixels &rgb) {
+  g_view_level_pan_phase_collided = false;
+  if (!staged_band_is_populated(rgb))
+    return false;
+  if (g_view_level_first_frame.size() != rgb.size()) {
+    fprintf(stderr, "  [uxshot] no first staged frame to compare against\n");
+    return false;
+  }
+  const std::size_t backdrop_diff =
+      frame_diff_count(g_view_level_first_frame, rgb, kBackdropStripTopY, 200,
+                       &in_view_scenario_button);
+  const std::size_t band_diff = frame_diff_count(
+      g_view_level_first_frame, rgb, kViewScenarioPreviewBandY,
+      kViewScenarioPreviewBandY + kViewScenarioPreviewBandH, nullptr);
+  if (backdrop_diff != 0) {
+    fprintf(stderr,
+            "  [uxshot] backdrop strip moved between staged frames: %zu px\n",
+            backdrop_diff);
+    return false;
+  }
+  // Teeth: without a live pan the identical-backdrop half above would pass on
+  // a frozen screen.
+  if (band_diff == 0) {
+    fprintf(stderr, "  [uxshot] preview band never panned between frames\n");
+    g_view_level_pan_phase_collided = true;
+    return false;
+  }
+  fprintf(stderr,
+          "  [uxshot] staged pan: backdrop strip %zu px moved, band %zu px\n",
+          backdrop_diff, band_diff);
   return true;
 }
 
@@ -1113,7 +1629,8 @@ int view_level_staged_injector(void *data) {
       // left-packed VIEW LEVEL | PROGRESS row.
       if (wait_for_interactable("ctf_teams", 5000)) {
         SDL_Delay(300);
-        state->captures += capture_frame("scenario_match_band");
+        state->captures +=
+            capture_frame("scenario_match_band", &stash_menu_before_viewer);
       }
       interact("view_scenario");
       // The pane-heal trace is the "viewer is up and staged" signal.
@@ -1127,6 +1644,31 @@ int view_level_staged_injector(void *data) {
         SDL_Delay(800);
         state->captures +=
             capture_frame("view_level_staged", &check_view_level_staged_band);
+        // #251: a second frame from further along the same pan, so the
+        // backdrop can be judged against a frame that is unquestionably a
+        // different pan phase. The wait and the capture freeze two different
+        // frames, so the triangle wave can turn back between them and hand
+        // the check a frame at the reference offset; that collision alone is
+        // retried (bounded, each attempt waiting on the live band again — no
+        // flat delay), and any other failure stands.
+        for (int attempt = 0; attempt < 3; ++attempt) {
+          if (!wait_for_preview_band_pan(g_view_level_first_frame, 8000))
+            break;
+          if (capture_frame("view_level_staged_panned",
+                            &check_view_level_staged_panned)) {
+            state->captures += 1;
+            break;
+          }
+          if (!g_view_level_pan_phase_collided.load()) {
+            fprintf(stderr, "  [uxshot] panned capture failed for a reason "
+                            "other than pan phase; not retrying\n");
+            break;
+          }
+          fprintf(stderr,
+                  "  [uxshot] panned capture landed on the reference pan "
+                  "phase; retrying (attempt %d)\n",
+                  attempt + 1);
+        }
         SDL_Delay(200);
         interact("back");
       }
@@ -1167,6 +1709,9 @@ int view_level_staged_injector(void *data) {
 // (UXSHOTS_DIR) and the blank-frame guard for the pane.
 TEST(UxShots, n_view_level_staged) {
   trace_clear();
+  g_view_level_first_frame.clear();
+  g_menu_before_viewer_frame.clear();
+  g_view_level_pan_phase_collided = false;
   CompanySlotCleanup cleanup{{"save0"}};
   {
     SaveData sd;
@@ -1201,10 +1746,16 @@ TEST(UxShots, n_view_level_staged) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
-  // All three shots: the reshaped SCENARIO screen (#218 match-settings
-  // band), the staged band, then the HIRE portrait drawn in the same menu
-  // session right after the viewer closed.
-  ASSERT_EQ(3, state.captures);
+  // Only the healed branch borrows viewob[0], so a degraded pane would leave
+  // the #251 comparison with nothing to catch.
+  ASSERT_TRUE(trace_contains("picker", "view_scenario pane gen="))
+      << "the staged pane never healed: the camera pin below has no teeth";
+  // All four shots: the reshaped SCENARIO screen (#218 match-settings band),
+  // two staged frames a pan apart (#251), then the HIRE portrait drawn in the
+  // same menu session right after the viewer closed. A shot whose pixel
+  // oracle failed is not counted, so this equality is the pass/fail line for
+  // every check above.
+  ASSERT_EQ(4, state.captures);
 
   // The save0 load mounted the modes campaign; restore the default.
   (void)unmount_campaign_package_with_error(get_mounted_campaign());
@@ -1236,13 +1787,74 @@ TEST(UxShots, n_view_level_seats) {
   SDL_Thread *thread =
       SDL_CreateThread(many_seats_view_level_injector, "ux_seats", &state);
   ASSERT_TRUE(thread != nullptr);
+  picker_load_menu_backdrops();  // see run_basecamp_net_shot
   create_team_menu(0);
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
   ASSERT_TRUE(state.finished);
-  // Rail p1/p2, the VIEW LEVEL seat block, and the networked DIFFICULTY
-  // screen with the re-homed CTRL row (#218).
-  ASSERT_EQ(4, state.captures);
+  // The two-card rail over a seven-seat lobby, the VIEW LEVEL seat block,
+  // and the networked DIFFICULTY screen with the re-homed CTRL row (#218).
+  ASSERT_EQ(3, state.captures);
+}
+
+// A dimmed row is still a whole card. GREY, the disabled face shade, lands on
+// the same palette entry as BUTTON_RIGHT/BUTTON_BOTTOM, so an unguarded dim
+// swallows its own right and bottom bevels and the card reads as 69px wide
+// with a flat right edge. The three LOBBY FULL slots end at x=155/233/311
+// (card x + 69); each of those columns must differ from the face pixel beside
+// it. Row 168 is mid-face, clear of the label's ink and both horizontal
+// bevels.
+bool lobby_full_slots_keep_their_right_bevel(const FramePixels &rgb) {
+  const auto pixel = [&rgb](int x, int y) {
+    const std::size_t at = (static_cast<std::size_t>(y) * 320 +
+                            static_cast<std::size_t>(x)) *
+        3;
+    return std::array<Uint8, 3>{rgb[at], rgb[at + 1], rgb[at + 2]};
+  };
+  bool ok = true;
+  for (const int bevel_x : {155, 233, 311}) {
+    if (pixel(bevel_x, 168) == pixel(bevel_x - 1, 168)) {
+      fprintf(stderr,
+              "  [uxshot] LOBBY FULL card's right bevel at x=%d dissolved "
+              "into its dimmed face\n",
+              bevel_x);
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+// A LOBBY AT THE CEILING. Sixteen seats, one of them this machine's: the rail
+// still shows all four of this machine's slots, and the three it cannot fill
+// wear a dimmed LOBBY FULL face. The header line reads the census that makes
+// it true.
+TEST(UxShots, n_basecamp_lobby_full) {
+  trace_clear();
+  seed_session_save_for_net();
+  FakeNetLobbyClient client;
+  client.host_view = false;
+  client.players.push_back(make_probe_seat(
+      0, "net-host", "IRON KETTLE BAND", true, true, foreign_roster(), 0, 1));
+  for (std::uint8_t index = 1; index < 16; ++index) {
+    client.players.push_back(make_probe_seat(
+        index, "net-crowd", index == 7 ? "JOIN RIVER BAND" : "OTHER BAND",
+        false, index % 2 == 0, {}, static_cast<short>(index % 4),
+        static_cast<og::sim::LobbyMachineId>(index / 2 + 1)));
+  }
+  client.local_indices = {7};
+  ActiveLobbyGuard guard(&client);
+  NamedShot shot;
+  shot.name = "basecamp_lobby_full";
+  shot.check = &lobby_full_slots_keep_their_right_bevel;
+  SDL_Thread *thread =
+      SDL_CreateThread(basecamp_net_injector, "ux_full", &shot);
+  ASSERT_TRUE(thread != nullptr);
+  picker_load_menu_backdrops();  // see run_basecamp_net_shot
+  create_team_menu(0);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  ASSERT_TRUE(shot.state.finished);
+  ASSERT_EQ(1, shot.state.captures);
 }
 
 // --- 13. full-screen help (#168): all three tabs plus a paged state -------
@@ -1390,31 +2002,26 @@ bool check_help_editor_focused(const FramePixels &rgb) {
   return true;
 }
 
-// One keyboard-nav step, applied through the engine's testing hook (real key
-// events can't be driven from an injector thread).
-void help_nav_step(int key) {
-  g_test_menu_nav_key = key;
-  SDL_Delay(200);
-}
+// Park the pointer over the HELP content frame (see park_pointer_at).
+void help_park_pointer() { park_pointer_at(300.0f, 100.0f); }
 
-// Park the pointer over the content frame. interact() leaves the cursor on the
-// button it clicked, and that hover highlight is the same yellow as the
-// keyboard-focus outline — the focus shot can only be told apart from its
-// reference once no button is hovered.
-void help_park_pointer() {
-  const auto [win_x, win_y] = ui_canvas_to_window(300.0f, 100.0f);
-  inject_mouse_motion(static_cast<int>(win_x), static_cast<int>(win_y));
-  SDL_Delay(200);
-}
+// #237 symmetry pin: HELP is a main-menu door, so it fades on the way in AND
+// on the way back. The round trip is three crossings — the main menu's own
+// entry, the HELP door, and the main menu's re-entry behind BACK.
+std::atomic<int> g_help_fades_at_door{-1};
+std::atomic<int> g_help_fades_inside_help{-1};
+std::atomic<int> g_help_fades_after_return{-1};
 
 int help_screen_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   wait_for_interactable("help", 5000);
-  SDL_Delay(1500); // FadeWithInitialDraw settle on the main menu
+  SDL_Delay(1500); // menu-entry settle on the main menu
+  g_help_fades_at_door = count_fade_between_traces();
   interact("help");
   if (wait_for_interactable("help_tab_classes", 5000)) {
     SDL_Delay(500);
+    g_help_fades_inside_help = count_fade_between_traces();
     state->captures +=
         capture_frame("help_controls", &check_help_controls_merged);
     if (wait_for_interactable("help_page_next", 2000)) {
@@ -1434,9 +2041,9 @@ int help_screen_injector(void *data) {
     help_park_pointer();
     state->captures += capture_frame("help_editor", &check_help_editor_merged);
     // Walk the keyboard highlight from BACK onto the active (EDITOR) tab.
-    help_nav_step(KEY_UP);
-    help_nav_step(KEY_RIGHT);
-    help_nav_step(KEY_RIGHT);
+    menu_nav_step(KEY_UP);
+    menu_nav_step(KEY_RIGHT);
+    menu_nav_step(KEY_RIGHT);
     state->captures +=
         capture_frame("help_editor_focus", &check_help_editor_focused);
     SDL_Delay(300);
@@ -1444,6 +2051,7 @@ int help_screen_injector(void *data) {
   }
   if (wait_for_interactable("begin_new_game", 10000)) {
     SDL_Delay(750);
+    g_help_fades_after_return = count_fade_between_traces();
     interact("quit");
   }
   state->finished = true;
@@ -1453,6 +2061,11 @@ int help_screen_injector(void *data) {
 TEST(UxShots, n_help_screen) {
   trace_clear();
   reap_all_companies();
+  // File-scope atomics: re-arm them here so a --gtest_repeat iteration cannot
+  // inherit the previous one's counts.
+  g_help_fades_at_door = -1;
+  g_help_fades_inside_help = -1;
+  g_help_fades_after_return = -1;
   ShotState state;
   SDL_Thread *thread =
       SDL_CreateThread(help_screen_injector, "ux_help", &state);
@@ -1465,6 +2078,24 @@ TEST(UxShots, n_help_screen) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(5, state.captures);
+  // Exact, not relative: the trace buffer was cleared at the top of this
+  // test, so everything counted here belongs to this run. Three crossings:
+  // the main menu's own entry, the HELP door, and the main menu's re-entry.
+  ASSERT_EQ(kMainMenuEntryFades, g_help_fades_at_door.load())
+      << "#237: the main menu's first entry fades in over the black window "
+         "(nothing left, so nothing fades out)";
+  ASSERT_EQ(kMainMenuEntryFades + 2 * kFadesPerCrossing,
+            g_help_fades_after_return.load())
+      << "#237: the HELP door and the way back are BOTH main-menu crossings "
+         "— the round trip adds two fades, symmetrically";
+  // The symmetry invariant itself, as two measured deltas.
+  ASSERT_EQ(kFadesPerCrossing,
+            g_help_fades_inside_help.load() - g_help_fades_at_door.load())
+      << "#237: the HELP door must fade on the way IN";
+  ASSERT_EQ(kFadesPerCrossing,
+            g_help_fades_after_return.load() - g_help_fades_inside_help.load())
+      << "#237: and exactly as much on the way BACK — the asymmetry this "
+         "rule exists to kill";
 }
 
 TEST(UxShots, i_basecamp_paged) {
@@ -1482,7 +2113,10 @@ TEST(UxShots, i_basecamp_paged) {
   NamedShot shot;
   shot.name = "basecamp_paged_p1";
   run_basecamp_shot(shot, &basecamp_paged_injector);
-  ASSERT_EQ(3, shot.state.captures);
+  // Page 1 and page 2 — two states, two frames. The third capture this used
+  // to take was page 2 again, 120ms later: a byte-identical duplicate that
+  // proved nothing and cost a reviewer a comparison.
+  ASSERT_EQ(2, shot.state.captures);
 }
 
 } // namespace

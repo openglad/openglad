@@ -4593,7 +4593,7 @@ private:
                     !awaiting_round_ready_reset_)
                 {
                     // The correlated result can be empty when the global
-                    // capacity rejects a spectator's [+]. Empty is still a
+                    // capacity rejects a spectator's ADD PLAYER. Empty is still a
                     // complete authoritative answer and must stop retries.
                     join_confirmation_pending_ = false;
                     pending_join_request_id_ = 0;

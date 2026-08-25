@@ -167,16 +167,20 @@ static int op_injector(void* data)
     // Programmatically crank every stat to ludicrous levels
     state->num_hired = og::runtime::current_session->myscreen_->save_data.team_size;
     fprintf(stderr, "  [test] hired %d characters, cheating stats\n", state->num_hired);
-    for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; i++) {
-        guy* g = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].get();
-        if (g) {
-            g->strength = 200;
-            g->dexterity = 200;
-            g->constitution = 200;
-            g->intelligence = 200;
-            g->armor = 200;
+    // On the menu thread (#257): the team menu draws these roster fields
+    // every frame.
+    (void)run_on_main_thread([] {
+        for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; i++) {
+            guy* g = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].get();
+            if (g) {
+                g->strength = 200;
+                g->dexterity = 200;
+                g->constitution = 200;
+                g->intelligence = 200;
+                g->armor = 200;
+            }
         }
-    }
+    });
 
     // Set up for auto-win: remove exits so level completes when enemies die
     g_test_remove_exits = true;

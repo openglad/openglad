@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
@@ -524,9 +525,31 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
     // The popup and results panel share the fixed UI surface. Restore the
     // nearest-scaled gameplay backdrop so the closed popup does not remain
-    // visible around the results panel.
+    // visible around the results panel — and PRESENT it: the fade below
+    // reads the buffer, and a fade may only read a frame the window has
+    // shown (#237 ownership). The popup vanishes on this present, exactly as
+    // it did on the fade's first blended frame.
     if (canvas_target.entered_from_world())
+    {
         output.prepare_ui_canvas_from_world();
+        og::runtime::current_session->myscreen_->refresh();
+    }
+
+    // #237 ownership: the mission's tail — its last frame with the ending
+    // popup dismissed over it, re-presented just above — is this function's
+    // surface, and it exits HERE: fade it out now, while that frame is still
+    // the buffer, so the results panel's entry below finds the black window
+    // the ownership rule promises every entry. (Idempotent for a caller that
+    // already faded to black.) The dismissed popup stays a modal and never
+    // fades.
+    output.fadeblack(0);
+
+    // #237 ownership rule, applied by hand (this hand-rolled loop never
+    // enters run_menu_screen): gameplay -> results is a context switch — the
+    // first composed panel frame fades in at the loop's first present, and
+    // the panel fades out again when this scope ends (before the canvas
+    // restore above it).
+    og::ui::LegacyMenuFade entry_fade("results");
 
     // Clear any stale input events after popup closes
     // This helps prevent ASYNCIFY state issues in Emscripten
@@ -715,6 +738,12 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
         // Get keys and stuff
         get_input_events(POLL);
+        // Pointer handoff: this loop consumes clicks with its own sampled
+        // edge detector below, never query_mouse(), so acknowledge the
+        // presses it saw or each click mints a collapsed-tap pending click
+        // that leaks into the next menu (the native twin of the web-only
+        // reset in picker_reinit_after_game).
+        acknowledge_mouse_presses();
 
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
 
@@ -1104,9 +1133,10 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	        }
         
         draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        // The first frame fades in; every later one presents plainly (#237).
+        entry_fade.present_first(*og::runtime::current_session->myscreen_);
         og::input_native::sleep_ms(10);
-        
+
         frame++;
         if(frame > 1000000)
             frame = 0;

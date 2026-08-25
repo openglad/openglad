@@ -7,13 +7,29 @@ namespace
 std::atomic<std::uint64_t> s_campaign_picker_entered_count{0};
 std::atomic<std::uint64_t> s_campaign_picker_action_count{0};
 std::atomic<bool> s_campaign_picker_abort_pending{false};
+// Default ON: an un-driven browser accepts the current campaign after its
+// first presented frame (pick_campaign). The integration listener re-arms it
+// at every test start; tests that drive the browser disarm it.
+std::atomic<bool> s_campaign_picker_auto_accept{true};
 } // namespace
+
+void campaign_picker_testing_set_auto_accept(bool enabled)
+{
+    s_campaign_picker_auto_accept.store(enabled, std::memory_order_release);
+}
+
+bool campaign_picker_testing_auto_accept()
+{
+    return s_campaign_picker_auto_accept.load(std::memory_order_acquire);
+}
 
 void campaign_picker_testing_input_reset()
 {
     s_campaign_picker_entered_count.store(0, std::memory_order_release);
     s_campaign_picker_action_count.store(0, std::memory_order_release);
     s_campaign_picker_abort_pending.store(false, std::memory_order_release);
+    // A test resetting the browser's input is about to DRIVE it.
+    s_campaign_picker_auto_accept.store(false, std::memory_order_release);
 }
 
 void campaign_picker_testing_abort()

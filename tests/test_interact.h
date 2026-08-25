@@ -5,6 +5,8 @@
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
 #include "test_input_helpers.h"
+#include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -12,6 +14,42 @@
 // Mutex to synchronize access to allbuttons[] between injector threads
 // and the main thread during menu transitions. Defined in integration_main.cpp.
 std::mutex& get_allbuttons_mutex();
+
+// Main-thread task queue (issue #257). An injector thread that mutates state
+// the menu loop reads every frame (save_data, cfg, the hire session, the live
+// roster) must NOT write it directly: SaveData::completed_levels and cfg are
+// node-based maps, and one concurrent insert dangles an iterator the main
+// thread is walking. Post the mutation instead — the menu runner drains the
+// queue at the top of each frame (og::ui::g_picker_main_thread_pump), so the
+// write lands between frames, ordered against the lobby poll, the stage
+// digest, and the label sync.
+//
+// Only engine-hosted screens (run_menu_screen) pump; a task posted while no
+// menu loop is running waits out its timeout and is CANCELLED there and then.
+// All three are defined in integration_main.cpp.
+using MainThreadTaskTicket = std::uint64_t;
+MainThreadTaskTicket post_main_thread_task(std::function<void()> task);
+// Blocks until the posted task has finished running. Returns true only when
+// the task actually ran on the menu thread; the ceiling is generous on
+// purpose. On timeout the ticket is cancelled before this returns — a task
+// that missed its window never runs afterwards, so a lambda may capture the
+// caller's locals by reference — and the return is false. False also comes
+// back for a task the between-tests drain threw away unrun; a discarded task
+// is never reported as a success.
+bool wait_for_main_thread_task(MainThreadTaskTicket ticket,
+                               int timeout_ms = 15000);
+// Discards every queued-but-unrun task and releases its waiters with false.
+// Runs between tests so a task left behind by an injector can never execute
+// inside the next test's menu loop.
+void drain_main_thread_tasks();
+
+// Post + wait in one call, the shape nearly every injector wants.
+inline bool run_on_main_thread(std::function<void()> task,
+                               int timeout_ms = 15000)
+{
+    return wait_for_main_thread_task(post_main_thread_task(std::move(task)),
+                                     timeout_ms);
+}
 
 struct AllButtonsLock final
 {
@@ -99,6 +137,69 @@ inline bool wait_for_interactable(const std::string& id, int timeout_ms = 5000)
     return false;
 }
 
+// The live label of a visible interactable, or "" when it is absent/hidden.
+// Base Camp's seat slots are one ordinal wearing two faces (a seat card or an
+// ADD PLAYER door), so presence alone no longer tells an injector what a slot
+// IS — the label does.
+inline std::string interactable_label(const std::string& id)
+{
+    og::runtime::ensure_thread_session();
+    AllButtonsLock lock;
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        vbutton* const live =
+            og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
+        if (live == nullptr || live->id != id || live->hidden)
+            continue;
+        return live->label;
+    }
+    return {};
+}
+
+// Block until a visible interactable carries an exact label. The wait-on-
+// condition form of "the click landed": a slot that became a seat card names
+// its controller, and one that did not still says ADD PLAYER.
+inline bool wait_for_interactable_label(const std::string& id,
+                                        const std::string& label,
+                                        int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (interactable_label(id) == label)
+            return true;
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for '%s' to read '%s' (%d ms; now "
+            "'%s')\n",
+            id.c_str(), label.c_str(), timeout_ms,
+            interactable_label(id).c_str());
+    return false;
+}
+
+// Block until a visible interactable STOPS carrying a label — the "this slot
+// changed identity" wait, for cases where the new text is not known up front.
+inline bool wait_for_interactable_label_change(const std::string& id,
+                                               const std::string& old_label,
+                                               int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        const std::string now = interactable_label(id);
+        if (!now.empty() && now != old_label)
+            return true;
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for '%s' to stop reading '%s' "
+            "(%d ms)\n",
+            id.c_str(), old_label.c_str(), timeout_ms);
+    return false;
+}
+
 // Click an interactable by ID. Finds the button, computes center in game coords,
 // converts to window coords, injects SDL click event.
 inline void interact(const std::string& id)
@@ -153,7 +254,7 @@ inline bool accept_generated_company_name(int timeout_ms = 5000)
 {
     if (!wait_for_interactable("company_name_accept", timeout_ms))
         return false;
-    SDL_Delay(750);  // FadeAroundEntry settle (fadeblack eats events)
+    SDL_Delay(750);  // menu-entry settle (fades are instant under TESTING)
     fprintf(stderr, "  [test] accepting generated company name\n");
     interact("company_name_accept");
     return true;

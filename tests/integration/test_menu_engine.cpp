@@ -22,6 +22,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
@@ -33,6 +34,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/platform/video_sdl.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
@@ -394,7 +396,79 @@ TEST(MenuEngine, blocking_control_remap_polls_and_aborts_for_remote_start)
            "sequence as soon as the host start is launchable";
 }
 
-TEST(MenuEngine, fade_around_entry_composes_content_before_fade_in)
+// ---------------------------------------------------------------------------
+// #257 queue contract: a ticket whose wait timed out, and a ticket a drain
+// threw away, are both CANCELLED — the pump must never run either one
+// afterwards, and neither may be reported to its waiter as a success. The
+// control task proves the pump really ran during the same frames, so the
+// zero below is a cancellation and not a dead pump.
+namespace
+{
+
+std::atomic<int> g_cancelled_task_runs{0};
+std::atomic<int> g_control_task_runs{0};
+
+bool task_queue_probe_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1) {
+        // Posted from the menu thread itself: the NEXT frame's pump runs it.
+        (void)post_main_thread_task([] { ++g_control_task_runs; });
+    }
+    return frame < 4;
+}
+
+} // namespace
+
+TEST(MenuEngine, timed_out_and_drained_main_thread_tasks_never_run)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    g_cancelled_task_runs = 0;
+    g_control_task_runs = 0;
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "task_queue_probe");
+    spec.frame_tick = &task_queue_probe_frame_tick;
+    g_synth_spec = &spec;
+
+    // Case 1 — the wait timed out. No menu loop is running here, so nothing
+    // can pump this ticket: the wait must expire AND take the task out of
+    // the queue with it.
+    const MainThreadTaskTicket timed_out =
+        post_main_thread_task([] { ++g_cancelled_task_runs; });
+    EXPECT_FALSE(wait_for_main_thread_task(timed_out, 250))
+        << "a task no pump can reach must not report success";
+    // Four real frames of pump. The control task (posted from inside the
+    // loop) runs; the cancelled one may not.
+    (void)og::ui::run_menu_screen(spec);
+    EXPECT_EQ(1, g_control_task_runs.load())
+        << "the pump must have run during those frames, or the zero below "
+           "proves nothing";
+    EXPECT_EQ(0, g_cancelled_task_runs.load())
+        << "#257: a timed-out task must never execute later — its captures "
+           "may be gone by then";
+
+    // Case 2 — a drain discards what it clears, and the waiter is released
+    // with false, never with a settled mark the drain moved past it.
+    const MainThreadTaskTicket drained =
+        post_main_thread_task([] { ++g_cancelled_task_runs; });
+    drain_main_thread_tasks();
+    EXPECT_FALSE(wait_for_main_thread_task(drained, 250))
+        << "a drained task must be reported as not run";
+    (void)og::ui::run_menu_screen(spec);
+    EXPECT_EQ(2, g_control_task_runs.load())
+        << "the second run must have pumped too";
+    EXPECT_EQ(0, g_cancelled_task_runs.load())
+        << "#257: a drained task belongs to a scope that is over — the next "
+           "screen's pump must not run it";
+}
+
+TEST(MenuEngine, depth_one_entry_composes_content_before_fade_in)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {
         {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
@@ -405,8 +479,8 @@ TEST(MenuEngine, fade_around_entry_composes_content_before_fade_in)
     FakeLobbyClient lobby;
     og::ui::install_active_picker_lobby_client(&lobby);
 
+    // Default kind (Screen) at depth 1: the #237 derivation fades this entry.
     og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "fade_content");
-    spec.enter = og::ui::EnterTransition::FadeAroundEntry;
     spec.draw_content = &synth_draw_content;
     spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
     g_synth_spec = &spec;
@@ -417,6 +491,810 @@ TEST(MenuEngine, fade_around_entry_composes_content_before_fade_in)
     EXPECT_EQ(1, g_synth_content_draws)
         << "the cold fade frame must include content before the loop's first "
            "full draw";
+}
+
+// ---------------------------------------------------------------------------
+// #237 depth rule: whether an entry fades is DERIVED (kind + menu-stack
+// depth), never declared per screen. Under TESTING each fadeblack lands in
+// FadeBetween's test-mode branch, tracing exactly one line per fade.
+namespace
+{
+
+int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+        {
+            ++fades;
+        }
+    }
+    return fades;
+}
+
+// Nested-entry probe: the parent's first frame_tick opens the child screen
+// (the subscreen-door shape), then ends the parent loop.
+const og::ui::MenuScreenSpec* g_depth_rule_child_spec = nullptr;
+int g_depth_rule_child_content_draws = 0;
+
+void depth_rule_child_draw_content(void* /*state*/)
+{
+    ++g_depth_rule_child_content_draws;
+}
+
+// The child paints its first frame through the LOOP (after the frame_tick
+// veto check — a non-fading entry composes nothing before it, so a screen
+// vetoed on frame 1 flashes nothing) and exits on its second tick.
+bool depth_rule_child_frame_tick(void* /*state*/, int frame)
+{
+    return frame < 2;
+}
+
+// Set to force the nested entry below through the Fade override (the shape
+// CLOUD SAVES and the LEVEL EDITOR use).
+bool g_depth_rule_child_fade_override = false;
+
+bool depth_rule_parent_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1 && g_depth_rule_child_spec != nullptr)
+    {
+        if (g_depth_rule_child_fade_override)
+            og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Fade);
+        (void)og::ui::run_menu_screen(*g_depth_rule_child_spec);
+        return false;  // end the parent loop after the child returns
+    }
+    return frame < 3;
+}
+
+// The run_nested_menu_door probe: the door body is the nested screen, and
+// the parent loop keeps running afterwards so its next present finds the
+// black window the door's exit left and fades back in.
+int g_nested_door_fades_at_open = -1;
+int g_nested_door_fades_inside_door = -1;
+int g_nested_door_fades_after_return = -1;
+
+// Samples INSIDE the nested screen, on its first loop frame: after its entry
+// fade-out + fade-in, before its own exit fade-out — exactly the cost of the
+// way in. (Sampling in the door body after run_menu_screen returned would
+// already include the exit fade, which the ownership rule moved there.)
+bool nested_door_child_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1)
+        g_nested_door_fades_inside_door = count_fade_between_traces();
+    return frame < 2;
+}
+
+Sint32 nested_door_body()
+{
+    if (g_depth_rule_child_spec != nullptr)
+        (void)og::ui::run_menu_screen(*g_depth_rule_child_spec);
+    return MENU_REDRAW;
+}
+
+// The LEGACY door-body shape (the level editor): the body runs no runner
+// entry at all, so it applies the ownership rule by hand — LegacyMenuFade
+// consumes the door's Fade note, fades the still-open parent out, fades the
+// body's first composed frame in at present_first(), and fades the body out
+// when the scope ends. Dropping any half of that is the 1-in / 2-back
+// asymmetry the editor door once shipped.
+int g_legacy_door_fades_inside_door = -1;
+
+Sint32 legacy_nested_door_body()
+{
+    og::ui::LegacyMenuFade entry_fade;
+    screen* const scr = og::runtime::current_session->myscreen_;
+    // The body's own loop, one frame of it: compose, then present once.
+    entry_fade.present_first(*scr);
+    // Sampled inside the door, before the scope's exit fade-out: this is
+    // exactly the cost of the way in.
+    g_legacy_door_fades_inside_door = count_fade_between_traces();
+    return MENU_REDRAW;
+}
+
+// Which body the parent's door opens (the runner-shaped one, or the legacy
+// hand-rolled one). Set by each test before the parent loop runs.
+Sint32 (*g_nested_door_body_fn)() = nullptr;
+
+bool nested_door_parent_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1)
+    {
+        g_nested_door_fades_at_open = count_fade_between_traces();
+        (void)og::ui::run_nested_menu_door(g_nested_door_body_fn);
+        // Keep the loop alive: the fade back in happens on the NEXT present.
+        return true;
+    }
+    if (frame == 2)
+    {
+        // The parent's frame-1 present (the fade back in) has landed; its
+        // own exit fade-out has not.
+        g_nested_door_fades_after_return = count_fade_between_traces();
+    }
+    return frame < 3;
+}
+
+} // namespace
+
+TEST(MenuEngine, depth_rule_root_entry_fades_in_and_out_at_exit)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "depth_root");
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+
+    // The test boundary leaves the window black — what every exit fade
+    // leaves, and what the ownership rule promises every entry.
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->window_is_black());
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "a depth-1 Screen entry is a context switch: the entry fade-out "
+           "is a no-op on the black window the previous exit left, then one "
+           "fade-in — and, the ownership rule, one fade-out of its own last "
+           "frame at exit";
+    EXPECT_TRUE(og::runtime::current_session->myscreen_->window_is_black())
+        << "the exit fade-out leaves the window black for whatever opens next";
+    EXPECT_EQ(0, og::ui::menu_screen_depth())
+        << "the RAII depth bracket must restore on exit";
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load());
+}
+
+TEST(MenuEngine, depth_rule_entry_over_an_unfaded_window_is_a_violation)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "depth_black");
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+
+    // A teardown (a gameplay exit, the intro's last page) genuinely faded
+    // the window to black — no note, the video layer knows. (The boundary
+    // already left it black; the fade is the no-op that proves it.)
+    EXPECT_EQ(0, scr->fadeblack(0));
+    ASSERT_TRUE(scr->window_is_black());
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "a black window suppresses the entry fade-out (#200: fadeblack(0) "
+           "is a no-op on a black window); the fade-in and the exit "
+           "fade-out remain";
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load());
+
+    // The state is the WINDOW's, not a one-shot note: put a frame on it
+    // that nobody fades out, and the next entry finds it unfaded. The entry
+    // still fades it out (production never hard-cuts) — and under TESTING
+    // that deferred fade-out is the entry invariant's violation: the surface
+    // on the window exited without its own fade-out.
+    scr->buffer_to_screen(0, 0, 320, 200);
+    ASSERT_FALSE(scr->window_is_black());
+    g_start_game_requested = true;
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(3, count_fade_between_traces())
+        << "an unfaded frame is still faded out on entry, then in, and out "
+           "at exit";
+    EXPECT_EQ(1, og::video_testing::g_fade_violations.load())
+        << "the entry that absorbed the missing exit fade must report it";
+    const std::vector<std::string> violations =
+        og::video_testing::fade_violation_messages();
+    ASSERT_EQ(1u, violations.size());
+    EXPECT_EQ("entry found an unfaded window: the previous surface exited "
+              "without its fade-out (depth_black)",
+              violations.front());
+    // This test triggered the violation on purpose; the listener would
+    // otherwise fail it at OnTestEnd.
+    og::video_testing::reset_fade_violations();
+}
+
+TEST(MenuEngine, depth_rule_nested_entry_never_fades)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec child = make_synth_spec(kRows, 1, "depth_child");
+    child.draw_content = &depth_rule_child_draw_content;
+    child.frame_tick = &depth_rule_child_frame_tick;
+    child.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "depth_parent");
+    parent.frame_tick = &depth_rule_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = &child;
+    g_depth_rule_child_content_draws = 0;
+    g_start_game_requested = false;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_depth_rule_child_spec = nullptr;
+
+    EXPECT_EQ(1, g_depth_rule_child_content_draws)
+        << "the nested child paints exactly its one loop frame — no pre-loop "
+           "cold compose on a non-fading entry, no missed frame either";
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "only the parent's depth-1 entry fades (in over the black window "
+           "the boundary left, and out again at its exit); a nested "
+           "run_menu_screen call (a subscreen door) produces ZERO fades on "
+           "either side";
+}
+
+TEST(MenuEngine, entry_fade_override_instant_suppresses_a_depth_one_fade)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "entry_instant");
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(0, count_fade_between_traces())
+        << "an Instant override (the NETWORKING door, whose Base Camp parent "
+           "already exited) suppresses the depth-1 fade — entry and exit";
+
+    // One-shot: the note was consumed by that entry.
+    g_start_game_requested = true;
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "the override is one-shot — the next depth-1 entry fades again "
+           "(in over the black window, and out at its exit)";
+
+    // Swallow-even-if-unused: an Overlay entry consumes a stale override.
+    og::ui::MenuScreenSpec overlay = make_synth_spec(kRows, 1, "entry_ov");
+    overlay.kind = og::ui::MenuScreenKind::Overlay;
+    overlay.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &overlay;
+    g_start_game_requested = true;
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(overlay));
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+    // The overlay's remote-start return presented nothing, so the window is
+    // still black from the previous exit — the state every fading entry
+    // expects. A leaked Instant note would make this crossing 0.
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->window_is_black());
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "a non-fading entry must still clear the override or it "
+           "suppresses the NEXT main-menu crossing's fade";
+}
+
+// The Instant note's other job under the ownership rule: NETWORKING is an
+// instant door that Base Camp EXITS to open, so the note is set inside Base
+// Camp (the click intercept) and Base Camp's exit scope must honor it —
+// skip the exit fade-out and leave the note for the door's entry.
+namespace
+{
+
+bool instant_exit_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1)
+        og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
+    return frame < 2;
+}
+
+} // namespace
+
+TEST(MenuEngine, instant_note_pending_at_exit_skips_the_exit_fade)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "instant_exit");
+    spec.frame_tick = &instant_exit_frame_tick;
+    g_synth_spec = &spec;
+    g_start_game_requested = false;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(spec);
+    EXPECT_EQ(1, count_fade_between_traces())
+        << "entry fade-in only: an Instant note pending at exit means the "
+           "door being opened is instant, so the exit fade-out is skipped";
+    EXPECT_TRUE(trace_contains("video", "exit fade skipped: Instant note pending"))
+        << "the skipped exit fade is traced, so flow pins can hold it to the "
+           "one door it is for";
+    EXPECT_FALSE(scr->window_is_black())
+        << "the screen's last frame stays on the window for the instant door";
+
+    // The note survives the exit for the door's own entry to consume: that
+    // entry fades nothing IN. It still OWNS its exit — a screen entered
+    // instantly (Base Camp back from the NETWORKING door) fades its last
+    // frame out when it leaves for a boundary crossing, unless another
+    // Instant note is pending at that exit.
+    g_start_game_requested = true;
+    spec.frame_tick = nullptr;
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(1, count_fade_between_traces())
+        << "the pending Instant note makes the entry instant (no fade-in); "
+           "the exit fade-out is still owed and runs";
+    EXPECT_TRUE(scr->window_is_black())
+        << "the instantly-entered screen fades its last frame out on exit";
+}
+
+TEST(MenuEngine, entry_fade_override_fade_forces_a_nested_entry_to_fade)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec child = make_synth_spec(kRows, 1, "entry_fade_child");
+    child.frame_tick = &depth_rule_child_frame_tick;
+    child.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+
+    og::ui::MenuScreenSpec parent =
+        make_synth_spec(kRows, 1, "entry_fade_parent");
+    parent.frame_tick = &depth_rule_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = &child;
+    g_start_game_requested = false;
+
+    // Control: the same nested entry with NO override adds zero fades.
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "control: without an override only the parent's depth-1 entry "
+           "fades (in over the black window, out at exit) — the nested door "
+           "adds nothing";
+
+    // The CLOUD SAVES / LEVEL EDITOR shape: a Fade override makes the same
+    // nested entry fade out, in, and — owning its exit — out again. The
+    // parent ends right after the child returns, so its own exit fade-out
+    // finds the window already black and is a no-op. (The control run's exit
+    // left the window black, exactly as the boundary did before it.)
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->window_is_black());
+    g_depth_rule_child_fade_override = true;
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_depth_rule_child_fade_override = false;
+    g_depth_rule_child_spec = nullptr;
+    EXPECT_EQ(4, count_fade_between_traces())
+        << "a Fade override forces the nested entry to fade: the parent's "
+           "fade-in plus the door's own fade-out (of the still-open parent — "
+           "not a violation, the parent has not exited) + fade-in + exit "
+           "fade-out";
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load())
+        << "a nested door's fade-out of its still-open parent is the door's "
+           "by contract";
+}
+
+TEST(MenuEngine, nested_menu_door_bracket_fades_symmetrically)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec child = make_synth_spec(kRows, 1, "door_child");
+    child.frame_tick = &nested_door_child_frame_tick;
+    child.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "door_parent");
+    parent.frame_tick = &nested_door_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = &child;
+    g_start_game_requested = false;
+    g_nested_door_fades_at_open = -1;
+    g_nested_door_fades_inside_door = -1;
+    g_nested_door_fades_after_return = -1;
+    g_nested_door_body_fn = &nested_door_body;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_depth_rule_child_spec = nullptr;
+
+    // The real CLOUD SAVES / LEVEL EDITOR round trip: parent entry (1, in
+    // over the black window the boundary left), then the door's two halves,
+    // measured as deltas so the symmetry invariant — fades(in) ==
+    // fades(back) — is what is asserted. Under the ownership rule the way
+    // back is the nested screen's OWN exit fade-out plus the parent loop's
+    // fade-in off the black window it finds.
+    ASSERT_EQ(1, g_nested_door_fades_at_open)
+        << "the parent's own depth-1 entry must have faded in before the door";
+    ASSERT_EQ(3, g_nested_door_fades_inside_door)
+        << "the way in is a fade-out plus the nested entry's fade-in";
+    ASSERT_NE(-1, g_nested_door_fades_after_return)
+        << "the parent loop never ran a frame after the door";
+    EXPECT_EQ(6, count_fade_between_traces())
+        << "1 (parent entry) + 2 (door in) + 2 (door back) + 1 (the parent's "
+           "own exit fade-out)";
+    EXPECT_EQ(2, g_nested_door_fades_inside_door - g_nested_door_fades_at_open)
+        << "#237 symmetry: entering a nested main-menu door fades exactly "
+           "once (out + in)";
+    EXPECT_EQ(2, g_nested_door_fades_after_return - g_nested_door_fades_inside_door)
+        << "#237 symmetry: the way back must fade exactly as much as the way "
+           "in — the door fades itself out and the parent loop fades back in";
+}
+
+// The other half of run_nested_menu_door's contract: the LEVEL EDITOR shape,
+// whose body is a hand-rolled loop rather than a run_menu_screen entry. The
+// door alone cannot make that door symmetric — the body applies the
+// ownership rule by hand through LegacyMenuFade (out of the parent, in on its
+// first frame, out at its exit). Regression pin for the editor's discarded
+// fade-in (1 in / 2 back).
+TEST(MenuEngine, nested_menu_door_bracket_is_symmetric_for_a_legacy_body)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "door_parent");
+    parent.frame_tick = &nested_door_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = nullptr;
+    g_start_game_requested = false;
+    g_nested_door_fades_at_open = -1;
+    g_nested_door_fades_after_return = -1;
+    g_legacy_door_fades_inside_door = -1;
+    g_nested_door_body_fn = &legacy_nested_door_body;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_nested_door_body_fn = nullptr;
+
+    ASSERT_EQ(1, g_nested_door_fades_at_open)
+        << "the parent's own depth-1 entry must have faded in before the door";
+    ASSERT_NE(-1, g_legacy_door_fades_inside_door)
+        << "the legacy door body never ran";
+    ASSERT_NE(-1, g_nested_door_fades_after_return)
+        << "the parent loop never ran a frame after the door";
+    const int fades_in = g_legacy_door_fades_inside_door -
+        g_nested_door_fades_at_open;
+    const int fades_back = g_nested_door_fades_after_return -
+        g_legacy_door_fades_inside_door;
+    EXPECT_EQ(2, fades_in)
+        << "#237: a legacy door body must honor the Fade note — the scope's "
+           "fade-out of the parent plus its own fadeblack(1) first frame";
+    EXPECT_EQ(2, fades_back)
+        << "the scope fades the body out at its exit and the parent loop "
+           "fades back in";
+    EXPECT_EQ(fades_back, fades_in)
+        << "#237 symmetry, the reported bug class: a door that fades once in "
+           "and twice back is exactly what the invariant forbids";
+    EXPECT_EQ(6, count_fade_between_traces())
+        << "1 (parent entry) + 2 (in) + 2 (back) + 1 (the parent's own exit)";
+}
+
+namespace
+{
+// The OFFENDER shape behind the editor-exit phantom click: a legacy door
+// body that pumps its own events (get_input_events(POLL)) and never runs
+// query_mouse()'s press acknowledgement, so a click made ON the body mints
+// a collapsed-tap pending click through the real input.cpp path — a click
+// with no coordinates. The body then parks the pointer over the parent's
+// row and returns, exactly the File->Exit-then-hover repro.
+Sint32 phantom_minting_door_body()
+{
+    og::ui::LegacyMenuFade entry_fade;
+    screen* const scr = og::runtime::current_session->myscreen_;
+    entry_fade.present_first(*scr);
+
+    // One click on the body's own surface, at the body's own coordinates
+    // (the viewport centre — inside the active canvas so the DOWN counts),
+    // pumped by the body itself with no acknowledgement between the frames.
+    const int cx = static_cast<int>(
+        og::runtime::current_session->viewport_offset_x_ +
+        og::runtime::current_session->viewport_w_ / 2);
+    const int cy = static_cast<int>(
+        og::runtime::current_session->viewport_offset_y_ +
+        og::runtime::current_session->viewport_h_ / 2);
+    inject_mouse_down(cx, cy);
+    get_input_events(POLL);
+    inject_mouse_up(cx, cy);
+    get_input_events(POLL);
+
+    // The hover: ONLY a motion, onto the parent row's centre (engine_back
+    // is 10,10 50x15 -> game (35,17)), before the body returns.
+    const auto [row_x, row_y] = ui_canvas_to_window(35.0f, 17.0f);
+    inject_mouse_motion(static_cast<int>(row_x), static_cast<int>(row_y));
+    get_input_events(POLL);
+    return MENU_REDRAW;
+}
+} // namespace
+
+// The pointer-handoff contract at the door (docs/menu-engine.md, "Pointer
+// handoff"): no screen may consume a click minted on another surface. The
+// parent's only row is its exit row, so a phantom activation breaks the
+// parent loop before its post-door frame and the frame-2 sample stays -1 —
+// a latch-free observable that cannot hang.
+TEST(MenuEngine, nested_door_exit_click_cannot_activate_the_parent_row)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+    reset_mouse_click_tracking();
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "door_parent");
+    parent.frame_tick = &nested_door_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = nullptr;
+    g_start_game_requested = false;
+    g_nested_door_fades_at_open = -1;
+    g_nested_door_fades_inside_door = -1;
+    g_nested_door_fades_after_return = -1;
+    g_nested_door_body_fn = &phantom_minting_door_body;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_nested_door_body_fn = nullptr;
+
+    ASSERT_EQ(1, g_nested_door_fades_at_open)
+        << "the parent's own depth-1 entry must have faded in before the door";
+    ASSERT_NE(-1, g_nested_door_fades_after_return)
+        << "the parent loop never reached its post-door frame: the click "
+           "minted INSIDE the door was spent on the parent's row at the "
+           "hovered pointer position (phantom activation)";
+    EXPECT_EQ(0, og::input::testing_pending_left_clicks())
+        << "the door must hand the parent a clean pointer: no pending click "
+           "minted on the door's surface may survive the handoff";
+    reset_mouse_click_tracking();
+}
+
+TEST(MenuEngine, depth_rule_overlay_never_fades_even_over_a_black_window)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "depth_overlay");
+    spec.kind = og::ui::MenuScreenKind::Overlay;
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+
+    // A teardown genuinely left the window black.
+    scr->fadeblack(0);
+    ASSERT_TRUE(scr->window_is_black());
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(0, count_fade_between_traces())
+        << "an Overlay (the pause family) never fades, even at depth 1 and "
+           "even over a black window";
+    EXPECT_TRUE(scr->window_is_black())
+        << "the remote-start return presented nothing, so the window state "
+           "is untouched: it is the WINDOW's, not a note an entry swallows";
+}
+
+TEST(MenuEngine, legacy_menu_fade_owns_out_in_and_out_again)
+{
+    EngineTestGuard guard;
+    og::ui::menu_transition_testing_reset();
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    // Instant-noted door (the NETWORKING shape): inactive — no fade on
+    // entry, a plain first present, no fade at exit.
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
+    trace_clear();
+    {
+        og::ui::LegacyMenuFade entry_fade;
+        EXPECT_FALSE(entry_fade.active());
+        EXPECT_FALSE(entry_fade.fade_in_pending());
+        entry_fade.present_first(*scr);
+    }
+    EXPECT_EQ(0, count_fade_between_traces());
+    EXPECT_FALSE(scr->window_is_black());
+
+    // Bare context switch (depth 0) over a frame nobody faded out (the
+    // instant screen's plain present above): the construction fade-out
+    // still runs — production never hard-cuts — and under TESTING it is
+    // the entry invariant's violation, named after the screen. Then the
+    // first present fades in and the scope's end fades out again.
+    trace_clear();
+    ASSERT_FALSE(scr->window_is_black());
+    {
+        og::ui::LegacyMenuFade entry_fade("legacy_test");
+        EXPECT_TRUE(entry_fade.active());
+        EXPECT_TRUE(entry_fade.fade_in_pending());
+        EXPECT_EQ(1, count_fade_between_traces())
+            << "the previous frame fades out at construction";
+        EXPECT_TRUE(scr->window_is_black());
+        EXPECT_EQ(1, og::video_testing::g_fade_violations.load())
+            << "that fade-out was the previous surface's job";
+        {
+            const std::vector<std::string> violations =
+                og::video_testing::fade_violation_messages();
+            ASSERT_EQ(1u, violations.size());
+            EXPECT_EQ("entry found an unfaded window: the previous surface "
+                      "exited without its fade-out (legacy_test)",
+                      violations.front());
+        }
+        // Triggered on purpose; the listener would otherwise fail this test.
+        og::video_testing::reset_fade_violations();
+        entry_fade.present_first(*scr);
+        EXPECT_EQ(2, count_fade_between_traces())
+            << "the first present fades in";
+        EXPECT_FALSE(entry_fade.fade_in_pending());
+        EXPECT_FALSE(scr->window_is_black());
+        entry_fade.present_first(*scr);
+        EXPECT_EQ(2, count_fade_between_traces())
+            << "every later present is plain";
+    }
+    EXPECT_EQ(3, count_fade_between_traces())
+        << "the scope's end fades the screen's last frame out";
+    EXPECT_TRUE(scr->window_is_black());
+
+    // Already-black hand-off (a teardown faded first): no entry fade-out —
+    // fadeblack(0) is a no-op on a black window — but the fade-in and the
+    // exit fade-out are still owed.
+    trace_clear();
+    {
+        og::ui::LegacyMenuFade entry_fade;
+        EXPECT_TRUE(entry_fade.active());
+        EXPECT_EQ(0, count_fade_between_traces());
+        entry_fade.present_first(*scr);
+        EXPECT_EQ(1, count_fade_between_traces());
+        // end() is explicit for bodies that must fade before later teardown
+        // touches the buffer; it is idempotent and the destructor backs it.
+        entry_fade.end();
+        EXPECT_EQ(2, count_fade_between_traces());
+        entry_fade.end();
+        EXPECT_EQ(2, count_fade_between_traces()) << "end() is idempotent";
+    }
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "the destructor adds nothing after an explicit end()";
+
+    // Instant-in, fade-out-at-exit (the NETWORKING hookup shape): an
+    // Instant-noted scope fades nothing on entry and presents plainly, but
+    // the screen leaves its context on a successful hookup and owns that
+    // exit — fade_out_at_exit() makes end() fade its last frame out, so the
+    // fading entry behind it finds a black window.
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
+    trace_clear();
+    {
+        og::ui::LegacyMenuFade entry_fade("legacy_hookup");
+        EXPECT_FALSE(entry_fade.active());
+        entry_fade.present_first(*scr);
+        EXPECT_EQ(0, count_fade_between_traces()) << "instant in";
+        EXPECT_FALSE(scr->window_is_black());
+        entry_fade.fade_out_at_exit();
+    }
+    EXPECT_EQ(1, count_fade_between_traces())
+        << "the exit fade-out runs even though the entry did not fade in";
+    EXPECT_TRUE(scr->window_is_black());
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load());
+}
+
+// The override's other half at depth 0's mirror: nested under an open menu
+// screen the legacy scope normally declines (Base Camp's SET CAMPAIGN), and
+// a Fade note flips exactly that decision.
+namespace
+{
+
+bool g_legacy_nested_fade_result = false;
+int g_legacy_nested_fade_traces = -1;
+bool g_legacy_nested_note_fade = false;
+
+bool legacy_nested_fade_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1)
+    {
+        if (g_legacy_nested_note_fade)
+            og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Fade);
+        trace_clear();
+        og::ui::LegacyMenuFade entry_fade;
+        g_legacy_nested_fade_result = entry_fade.active();
+        g_legacy_nested_fade_traces = count_fade_between_traces();
+        return false;
+    }
+    return frame < 3;
+}
+
+} // namespace
+
+TEST(MenuEngine, legacy_entry_fade_override_reaches_a_nested_depth)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "legacy_nested");
+    parent.frame_tick = &legacy_nested_fade_frame_tick;
+    g_synth_spec = &parent;
+    g_start_game_requested = false;
+
+    g_legacy_nested_note_fade = false;
+    g_legacy_nested_fade_result = true;
+    g_legacy_nested_fade_traces = -1;
+    (void)og::ui::run_menu_screen(parent);
+    EXPECT_FALSE(g_legacy_nested_fade_result)
+        << "nested under an open menu screen the legacy scope declines";
+    EXPECT_EQ(0, g_legacy_nested_fade_traces);
+
+    g_legacy_nested_note_fade = true;
+    g_legacy_nested_fade_result = false;
+    g_legacy_nested_fade_traces = -1;
+    (void)og::ui::run_menu_screen(parent);
+    g_legacy_nested_note_fade = false;
+    EXPECT_TRUE(g_legacy_nested_fade_result)
+        << "a Fade override reaches a nested legacy entry too";
+    EXPECT_EQ(1, g_legacy_nested_fade_traces)
+        << "it fades the surface out at construction and owes the fade-in";
 }
 
 // ---------------------------------------------------------------------------
@@ -448,8 +1326,12 @@ int dual_surface_injector(void* data)
     SDL_Delay(300);
 
     // The lobby-rewrites-save moment: no click precedes this write, so only
-    // the runner's per-frame label sync can surface it.
-    og::runtime::current_session->myscreen_->save_data.respawn_mode = 2;
+    // the runner's per-frame label sync can surface it. Posting it keeps
+    // that intent — the write still lands with no click, just between two
+    // frames instead of inside one (#257).
+    (void)run_on_main_thread([] {
+        og::runtime::current_session->myscreen_->save_data.respawn_mode = 2;
+    });
 
     const std::string want = "Respawns: Everyone";
     for (int attempt = 0; attempt < 100; ++attempt) {
@@ -1286,12 +2168,13 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
     const og::ui::MenuScreenSpec& spec = og::ui::company_list_menu_screen_spec();
 
     // Spec obligations (§2.3): main-scope remote start (a host GO launches a
-    // peer parked in the list), lobby poll, fade entry, the old load loop's
-    // BACK-first highlight, generic MenuSpecRow dispatch.
+    // peer parked in the list), lobby poll, the old load loop's BACK-first
+    // highlight, generic MenuSpecRow dispatch. Fading is derived (#237): a
+    // Screen kind, entered at depth 1 through the LOAD door, so it fades.
     EXPECT_EQ(std::string("company_list"), spec.name);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
     EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
-    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, spec.enter);
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_TRUE(spec.polls_lobby);
     EXPECT_EQ(24, spec.default_highlight);
     EXPECT_TRUE(spec.on_spec_row != nullptr);
@@ -1547,12 +2430,13 @@ TEST(MenuEngine, company_backups_spec_shape_and_nav_variants)
         og::ui::company_backups_menu_screen_spec();
 
     // Spec obligations (§2.4): main-scope remote start (a host GO launches a
-    // peer parked in the sub-view), lobby poll, fade entry, row-0 highlight
-    // (the newest snapshot), generic MenuSpecRow dispatch.
+    // peer parked in the sub-view), lobby poll, row-0 highlight (the newest
+    // snapshot), generic MenuSpecRow dispatch. Fading is derived (#237): a
+    // Screen kind opened NESTED under the Company List, so it does not fade.
     EXPECT_EQ(std::string("company_backups"), spec.name);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
     EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
-    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, spec.enter);
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_TRUE(spec.polls_lobby);
     EXPECT_EQ(0, spec.default_highlight);
     EXPECT_TRUE(spec.on_spec_row != nullptr);
@@ -1824,12 +2708,13 @@ TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
     EXPECT_NE(nullptr, scenario->on_reset)
         << "a nested screen's reset must trigger the reload guard";
 
-    // TEAM BUILD: fade-bracketed entry, nested MENU_REDRAWs consumed by
-    // reset_buttons (exit_on_redraw false), reload guard on both hooks.
+    // TEAM BUILD: a Screen (its run_picker top-level entry fades by the #237
+    // derivation), nested MENU_REDRAWs consumed by reset_buttons
+    // (exit_on_redraw false), reload guard on both hooks.
     const og::ui::MenuScreenSpec* team_build =
         og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
     ASSERT_NE(nullptr, team_build);
-    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, team_build->enter);
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, team_build->kind);
     EXPECT_FALSE(team_build->exit_on_redraw);
     EXPECT_EQ(MENU_EXIT, team_build->exit_value);
     EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
@@ -1991,9 +2876,10 @@ TEST(MenuEngine, help_screen_spec_shape_pins)
     EXPECT_TRUE(spec.exit_on_redraw);
     EXPECT_EQ(MENU_REDRAW, spec.exit_value);
     EXPECT_TRUE(spec.polls_lobby);
-    // DELIBERATE: today's help has no entry fade (and #200 is reworking the
-    // FadeAroundEntry path).
-    EXPECT_EQ(og::ui::EnterTransition::None, spec.enter);
+    // Fading is derived (#237): a Screen kind entered at depth 1 through the
+    // main menu's HELP door, so it fades — and so does the main menu behind
+    // BACK. (HELP has no Base Camp row; ShowHelp is main-menu-only.)
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_EQ(kHelpMenuBackIndex, spec.default_highlight);
     EXPECT_NE(nullptr, spec.frame_tick) << "wheel -> page steps";
     EXPECT_NE(nullptr, spec.on_spec_row) << "tab/pager dispatch";
@@ -2337,8 +3223,8 @@ std::vector<ExpectedSpecRow> build_expected_shape(
 } // namespace
 
 // Registry + spec-shape pins. The main menu keeps the legacy remote-start
-// check (MainScope, break-with-selection), fade-bracketed entry, and
-// exit-bearing return. Player-count editing now belongs to Base Camp.
+// check (MainScope, break-with-selection) and exit-bearing return.
+// Player-count editing now belongs to Base Camp.
 TEST(MenuEngine, main_menu_registry_and_spec_shape)
 {
     const og::ui::MenuScreenHost& host =
@@ -2351,7 +3237,10 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
     EXPECT_EQ(og::ui::RemoteStartExit::BreakWithSelection,
               spec.remote_start_exit);
-    EXPECT_EQ(og::ui::EnterTransition::FadeWithInitialDraw, spec.enter);
+    // Fading is derived (#237): a Screen kind at a run_picker top-level
+    // entry (depth 1) fades; after the intro the window is already black,
+    // so the cold-start fade-out is the video layer's no-op.
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_TRUE(spec.polls_lobby);
     EXPECT_FALSE(spec.right_click_enabled);
     EXPECT_EQ(1, spec.default_highlight);  // continue_game, as the legacy loop
@@ -2993,6 +3882,15 @@ struct MenuCallbackStateGuard
 
     ~MenuCallbackStateGuard()
     {
+        // Drop the installed lobby client FIRST. Every test that uses this
+        // guard also stack-allocates a FakeLobbyClient after it, so that
+        // double is already destroyed by the time this runs — and
+        // install_base_camp_state_for_screen re-derives the seat rail, which
+        // reads picker_lobby_players(). Without this the rail walks a dead
+        // double (SIGSEGV copying its player vector). EngineTestGuard, which
+        // is declared before this one, still restores the real client after
+        // us.
+        og::ui::install_active_picker_lobby_client(nullptr);
         og::ui::install_base_camp_state_for_screen(nullptr);
         og::ui::install_seat_settings_state_for_screen(nullptr);
         og::ui::install_company_list_state_for_screen(nullptr);
@@ -3300,17 +4198,40 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     const int count = spec.count_accessor();
     int highlighted = kBaseCampSeatCardBase;
 
-    // Five seats create the two-page rail. With [+] unavailable, GO's up
-    // link must land on NEXT, and punctuation is ignored in the compact
-    // remote-company abbreviation.
-    buttons[kBaseCampAddSeatIndex].hidden = true;
+    // Five seats in the lobby, ONE of them this machine's (global P5). The
+    // rail shows that one card and three ADD PLAYER slots; GO's up-link lands
+    // on the rail's rightmost slot.
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("P1 IRO ", buttons[kBaseCampSeatCardBase].label);
-    EXPECT_EQ(kBaseCampSeatPageNextIndex,
+    EXPECT_EQ("P5 WASD  ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + 1].label);
+    EXPECT_EQ(kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage - 1,
               buttons[kCreateMenuGoIndex].nav.up);
 
-    // #236: the ordinal the '+' vacated answers nothing at all.
-    EXPECT_EQ(0, spec.on_spec_row(kBaseCampSeatRailSpareIndex, &state));
+    // A local index the ROSTER does not carry stops the rail rather than
+    // leaving a hole in it: the lobby and the collected roster can disagree
+    // for a frame after a join, and a slot that claimed "card" with nothing to
+    // name would draw a blank face. Seat 9 is not in this five-seat lobby, so
+    // the rail names the one seat it can and offers the rest as doors.
+    lobby.local_indices = {0, 9};
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.local_seat_indices.size())
+        << "the fixture must hand the rail a local index the roster lacks";
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("P1 WASD  ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + 1].label)
+        << "the hole becomes a door, not a blank card";
+    ASSERT_NE(nullptr, spec.rows[kBaseCampSeatCardBase + 1].state_override);
+    EXPECT_EQ(og::ui::RowState::Visible,
+              spec.rows[kBaseCampSeatCardBase + 1].state_override(
+                  og::ui::MenuLabelContext{}));
+    lobby.local_indices = {4};
+    og::ui::base_camp_refresh_rows(state);
+    spec.nav.rewire(buttons, count, highlighted);
+    ASSERT_EQ("P5 WASD  ", buttons[kBaseCampSeatCardBase].label);
+
+    // The four parked rail ordinals answer nothing at all.
+    for (const int spare : kBaseCampSeatRailSpares)
+        EXPECT_EQ(0, spec.on_spec_row(spare, &state)) << "spare " << spare;
 
     const int untouched_highlight = 123;
     int defensive_highlight = untouched_highlight;
@@ -3320,13 +4241,16 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
 
 #ifndef DISABLE_MULTIPLAYER
     // Each denial is separately observable and must avoid calling the next
-    // layer. Rewind the debounce stamp so the capacity rule is what decides.
+    // layer — and every one of them is reached THROUGH A SLOT, because the
+    // slot is the door. Rewind the debounce stamp so the capacity rule is
+    // what decides. A slot the rail has no seat for is the add path: with
+    // one local seat that is slot one.
+    constexpr int kBareSlot = kBaseCampSeatCardBase + 1;
     state.last_seat_add_ms = -1;
     lobby.local_seats = MAX_PLAYERS;
     lobby.add_seat_calls = 0;
     trace_clear();
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBareSlot, &state));
     EXPECT_EQ(0, lobby.add_seat_calls);
     EXPECT_TRUE(trace_contains("popup", "LOCAL LIMIT IS 4"));
 
@@ -3338,8 +4262,7 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
             static_cast<std::uint8_t>(i), "FULL LOBBY"));
     }
     trace_clear();
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBareSlot, &state));
     EXPECT_EQ(0, lobby.add_seat_calls);
     EXPECT_TRUE(trace_contains("popup", "LOBBY FULL"));
 
@@ -3348,10 +4271,29 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     lobby.local_indices = {0};
     lobby.add_seat_result = false;
     trace_clear();
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBareSlot, &state));
     EXPECT_EQ(1, lobby.add_seat_calls);
     EXPECT_TRUE(trace_contains("popup", "ADD DENIED"));
+
+    // THE DEVICE CAP IS ENFORCED BY THE DOOR, not by the lobby client behind
+    // it: picker_lobby_add_local_seat is a build-limit backstop only. Drive a
+    // slot on a single-seat device with a seat already claimed and the add
+    // must die at the gate, naming the hardware.
+    {
+        const bool saved_device_class =
+            input_hardware_state().single_seat_device;
+        input_hardware_state().single_seat_device = true;
+        state.last_seat_add_ms = -1;
+        lobby.local_seats = 1;
+        lobby.add_seat_result = true;
+        lobby.add_seat_calls = 0;
+        trace_clear();
+        EXPECT_EQ(MENU_OK, spec.on_spec_row(kBareSlot, &state));
+        EXPECT_EQ(0, lobby.add_seat_calls)
+            << "the device cap must stop the add before the lobby sees it";
+        EXPECT_TRUE(trace_contains("popup", "ATTACH A GAMEPAD TO ADD SEATS"));
+        input_hardware_state().single_seat_device = saved_device_class;
+    }
 #endif
 }
 

@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -114,7 +115,27 @@ struct FlowState {
     bool finished = false;
     bool saw_cloud_screen = false;
     bool clicked_all = false;
+    // #237 symmetry pin, the nested main-menu door (run_nested_menu_door):
+    // CLOUD SAVES runs INSIDE the still-open main menu, so the depth rule
+    // cannot see it and the door site brackets the fade by hand.
+    int fades_added_by_cloud_door = -1;
+    int fades_added_by_cloud_return = -1;
 };
+
+// Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
+// traces exactly one "video" line per fade — so counting those lines counts
+// fades.
+int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+            ++fades;
+    }
+    return fades;
+}
 
 // Block until a trace line shows up, the way wait_for_interactable polls the
 // button list. trace_contains takes the trace mutex, so the injector thread
@@ -140,13 +161,17 @@ int cloud_flow_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
 
     wait_for_interactable("cloud", 10000);
-    SDL_Delay(750);  // FadeWithInitialDraw settle
+    SDL_Delay(750);  // menu-entry settle
     fprintf(stderr, "  [test] clicking CLOUD\n");
+    const int fades_before_door = count_fade_between_traces();
     interact("cloud");
 
+    int fades_inside_cloud = -1;
     if (wait_for_interactable("cloud_passphrase", 5000)) {
         state->saw_cloud_screen = true;
         SDL_Delay(750);
+        state->fades_added_by_cloud_door =
+            count_fade_between_traces() - fades_before_door;
         fprintf(stderr, "  [test] setting the passphrase (queued)\n");
         interact("cloud_passphrase");
 
@@ -175,6 +200,7 @@ int cloud_flow_injector(void* data)
         if (ok) {
             SDL_Delay(750);
             fprintf(stderr, "  [test] leaving the cloud screen\n");
+            fades_inside_cloud = count_fade_between_traces();
             interact("back");
         }
         state->clicked_all = ok;
@@ -182,6 +208,10 @@ int cloud_flow_injector(void* data)
 
     if (wait_for_interactable("begin_new_game", 10000)) {
         SDL_Delay(750);
+        if (fades_inside_cloud >= 0) {
+            state->fades_added_by_cloud_return =
+                count_fade_between_traces() - fades_inside_cloud;
+        }
         fprintf(stderr, "  [test] quitting from the main menu\n");
         interact("quit");
     }
@@ -268,6 +298,16 @@ TEST(CloudUi, upload_then_download_through_the_cloud_screen)
     ASSERT_TRUE(state.saw_cloud_screen) << "the CLOUD door must open";
     ASSERT_TRUE(state.clicked_all)
         << "every cloud button must have come back interactable in time";
+
+    // #237: CLOUD SAVES is a main-menu door whose screen runs nested inside
+    // the still-open main menu — no depth distinguishes it from a Base Camp
+    // subscreen, so run_nested_menu_door brackets both halves by hand.
+    EXPECT_EQ(2, state.fades_added_by_cloud_door)
+        << "#237: the CLOUD door must fade on the way IN (fade-out + the "
+           "nested entry's fade-in)";
+    EXPECT_EQ(2, state.fades_added_by_cloud_return)
+        << "#237 symmetry: and exactly as much on the way BACK — the door "
+           "fades out and the main-menu loop fades its next frame in";
 
     // Passphrase: the DERIVED key persisted (D9), pinned to the D2 vector.
     EXPECT_EQ("73270125791ba273", cfg.get_setting("cloud", "key"));

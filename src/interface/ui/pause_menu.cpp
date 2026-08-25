@@ -977,7 +977,10 @@ constexpr MenuScreenSpec make_pause_menu_spec()
     spec.nav = {.kind = NavProgramKind::Rewire, .rewire = &pause_menu_rewire};
     spec.remote_start = RemoteStartScope::None;
     spec.default_highlight = kPauseMenuResumeIndex;
-    spec.enter = EnterTransition::None;
+    // A true modal over the live (darkened) world: Overlay never fades,
+    // even at depth 1 — the only screens carrying this kind are the pause
+    // family (#237).
+    spec.kind = MenuScreenKind::Overlay;
     spec.backdrop = false;
     spec.polls_lobby = false;
     spec.draw_background = &pause_menu_draw_background;
@@ -1000,7 +1003,8 @@ constexpr MenuScreenSpec make_pause_player_spec()
                 .rewire = &pause_player_rewire};
     spec.remote_start = RemoteStartScope::None;
     spec.default_highlight = kPausePlayerInputIndex;
-    spec.enter = EnterTransition::None;
+    // Pause family: a mid-mission modal card, never faded (#237).
+    spec.kind = MenuScreenKind::Overlay;
     spec.exit_on_redraw = true;
     spec.backdrop = false;
     spec.polls_lobby = false;

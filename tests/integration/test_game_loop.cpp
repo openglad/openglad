@@ -5727,6 +5727,12 @@ struct WorldZoomGameGuard
         cfg.apply_setting("graphics", "zoom", "0.5");
         cfg.apply_setting("graphics", "smoothing", "off");
         apply_world_scale_from_cfg();
+        // The production precondition for glad_init's fade: the picker's UI
+        // frame is on the window. An earlier test may have left World as the
+        // last presented canvas, and the zoom above just REALLOCATED that
+        // surface — glad_init would fade a canvas the window never showed.
+        s->set_active_canvas(CanvasTarget::UI);
+        s->refresh();
     }
 
     ~WorldZoomGameGuard()
@@ -5995,6 +6001,11 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
     for (int i = 0; i < 2; i++)
         canvas_zoom_gameplay::expect_pane_matches_layout(
             s, i, initial_world.w, initial_world.h);
+    // The resize reallocated the World canvas; present a frame on it as the
+    // running game loop would, so the next glad_init's fade-out reads a
+    // canvas the window has shown (the fade-ownership invariant).
+    s->redraw();
+    s->swap();
 
     // ---- 4 players: quadrants on the grown canvas --------------------------
     s->world().end = 0;

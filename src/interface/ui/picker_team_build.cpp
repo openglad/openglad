@@ -971,17 +971,27 @@ static Sint32 preview_pan_offset(Sint32 span, Sint32 ticks_per_px)
     return phase < span ? phase : span * 2 - phase;
 }
 
-// Borrowing the picker's viewob[0] must leave no residue on it. Nulling
-// control makes viewscreen::redraw take its control-less branch, which copies
-// the staged level's camera ONTO THE VIEW (render/view.cpp: topx =
-// data->level_visuals().topx). screen::relayout_views() then restores the
-// view's RECT and nothing else — viewscreen::resize never writes topx/topy,
-// which are set exactly once at construction — so the pan offset used to
-// survive the whole menu session and shift every pixie draw that goes through
-// the view: the picker backdrop, the graphic buttons, the main-menu logo and
-// the HIRE/TRAIN portrait walker (whose canvas-direct bevel stayed put, hence
-// "an empty box"). Destructor-based restore because the healed branch below
-// early-returns; a restore written at the end of the function never runs.
+// THE INVARIANT (#251): no menu draw may observe the preview camera. Every
+// menu pixie — the backdrop quadrants, the graphic buttons, the main-menu
+// logo, the HIRE/TRAIN portrait walker — is blitted as
+// `xpos - view->topx + view->xloc` through viewob[0], so any camera or
+// geometry this preview leaves on the view displaces the whole menu until
+// level start (the HIRE "empty box" report). Two halves keep it true:
+// draw_backdrop() below must stay ABOVE the borrow, and this guard restores
+// every camera and rect field the borrow writes (resize also restarts the
+// view's radar and sets screen::redrawme — both inert under the picker,
+// which draws no radar and reconstructs every view at launch).
+//
+// It writes more than it looks: nulling control makes viewscreen::redraw take
+// its control-less branch, which copies the staged level's camera onto the
+// view (render/view.cpp: topx = data->level_visuals().topx), and the band
+// resize rewrites the whole render rect. topx/topy are otherwise assigned
+// exactly once, at construction — viewscreen::resize never touches them — so
+// no relayout can undo them; restoring the rect here as well is both exact
+// (screen::relayout_views re-derives it from prefs[PREF_VIEW] instead of the
+// PREF_VIEW_FULL the picker forces at entry) and free of relayout's side
+// effects. Destructor-based because the healed branch below early-returns; a
+// restore written at the end of the function never runs.
 namespace
 {
 class ScopedBorrowedView
@@ -989,7 +999,11 @@ class ScopedBorrowedView
 public:
     explicit ScopedBorrowedView(viewscreen& view)
         : view_(view), topx_(view.topx), topy_(view.topy),
-          control_(view.control), following_(view.following_)
+          xloc_(view.xloc), yloc_(view.yloc), xview_(view.xview),
+          yview_(view.yview), endx_(view.endx), endy_(view.endy),
+          slot_x_(view.slot_x_), slot_y_(view.slot_y_), slot_w_(view.slot_w_),
+          slot_h_(view.slot_h_), control_(view.control),
+          following_(view.following_)
     {
     }
 
@@ -997,6 +1011,16 @@ public:
     {
         view_.topx = topx_;
         view_.topy = topy_;
+        view_.xloc = xloc_;
+        view_.yloc = yloc_;
+        view_.xview = xview_;
+        view_.yview = yview_;
+        view_.endx = endx_;
+        view_.endy = endy_;
+        view_.slot_x_ = slot_x_;
+        view_.slot_y_ = slot_y_;
+        view_.slot_w_ = slot_w_;
+        view_.slot_h_ = slot_h_;
         view_.control = control_;
         view_.following_ = following_;
     }
@@ -1008,6 +1032,16 @@ private:
     viewscreen& view_;
     Sint32 topx_;
     Sint32 topy_;
+    Sint32 xloc_;
+    Sint32 yloc_;
+    Sint32 xview_;
+    Sint32 yview_;
+    Sint32 endx_;
+    Sint32 endy_;
+    Sint32 slot_x_;
+    Sint32 slot_y_;
+    Sint32 slot_w_;
+    Sint32 slot_h_;
     walker* control_;
     bool following_;
 };
@@ -1019,8 +1053,7 @@ private:
 // camera from the level's own LevelVisuals — TRAP B dangling-control never
 // applies because the pane never points control at a staged walker). Slow
 // horizontal pan surveys pitches wider than the band (direct-geometry views
-// have no zoom); geometry is restored via relayout_views after every draw and
-// the camera by ScopedBorrowedView.
+// have no zoom); ScopedBorrowedView restores the camera and the geometry.
 // Degradation states render text into the band — never a crash, never a
 // stale world presented as the stage; the census fallback lines still render
 // below through the content pass.
@@ -1067,7 +1100,6 @@ void picker_view_scenario_staged_draw_background(void* screen_state)
                          kViewScenarioPreviewBandW, kViewScenarioPreviewBandH);
             (void)view->redraw(state->scenario.get(), /*draw_radar=*/false);
         }
-        scr->relayout_views();
         return;
     }
 
@@ -1140,16 +1172,19 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
     TRACE("picker", "view_scenario lines=%d page=%d",
           static_cast<int>(state.lines.size()), state.pager.page);
 
-    og::runtime::current_session->myscreen_->clearbuffer();
-
+    // No pre-run clear (#237 ownership): the spec's draw_background clears
+    // and repaints, and a clear between the previous screen's last present
+    // and a fade-out is the hard-cut class the video layer flags.
     pks().view_scenario_page_step = 0;
     g_view_scenario_engine_state = &state;
     const Sint32 retvalue = og::ui::run_menu_screen(
         og::ui::view_scenario_menu_screen_spec(), &state);
     g_view_scenario_engine_state = nullptr;
 
-    og::runtime::current_session->myscreen_->clearbuffer();
-
+    // No post-run clear (#237 ownership): a MENU_EXIT propagating through
+    // here (a remote start) reaches Base Camp's exit fade, which must read
+    // this screen's last presented frame. Base Camp's draw_background
+    // repaints on the ordinary BACK.
     if (retvalue & MENU_EXIT)
         return retvalue;
 
@@ -1516,7 +1551,8 @@ Sint32 create_progress_menu(Sint32 arg1)
     // legacy loop (it only normalized it and moved on).
     (void)arg1;
 
-    og::runtime::current_session->myscreen_->clearbuffer();
+    // No pre-run clear (#237 ownership — see create_view_scenario_menu);
+    // picker_progress_menu_engine_draw_background clears.
 
     // Get accessible levels
     std::vector<int> level_ids = get_accessible_levels();
@@ -1561,7 +1597,7 @@ Sint32 create_progress_menu(Sint32 arg1)
     const Sint32 retvalue = og::ui::run_menu_screen(
         og::ui::progress_menu_screen_spec(), &state);
 
-    og::runtime::current_session->myscreen_->clearbuffer();
+    // No post-run clear (#237 ownership — see create_view_scenario_menu).
     if (retvalue & MENU_EXIT)
         return retvalue;
     return MENU_REDRAW;
@@ -1857,7 +1893,8 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
 // StartGame selected instead of re-detecting the start one loop later).
 Sint32 create_hire_menu(Sint32 arg1)
 {
-	og::runtime::current_session->myscreen_->clearbuffer();
+	// No pre-run clear (#237 ownership — see create_view_scenario_menu);
+	// picker_backdrop_draw_background clears.
 
     og::ui::HireSession hire_session(og::runtime::current_session->myscreen_->save_data, og::runtime::current_session->current_team_num_);
     pks().hire_session = &hire_session;
@@ -1882,7 +1919,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         og::ui::run_menu_screen(og::ui::hire_menu_screen_spec(), &state);
 
 	pks().hire_session = nullptr;
-	og::runtime::current_session->myscreen_->clearbuffer();
+	// No post-run clear (#237 ownership — see create_view_scenario_menu).
 	//myscreen->clearscreen();
 	return retvalue;
 }
@@ -2177,7 +2214,8 @@ Sint32 create_train_menu(Sint32 arg1)
 		return MENU_OK;
 	}
 
-	og::runtime::current_session->myscreen_->clearbuffer();
+	// No pre-run clear (#237 ownership — see create_view_scenario_menu);
+	// picker_backdrop_draw_background clears.
 
     og::ui::TrainSession train_session(save);
     // §2.5 per-row TRAIN: a stashed base-camp seed slot opens the session
@@ -2209,7 +2247,7 @@ Sint32 create_train_menu(Sint32 arg1)
 
 	pks().train_session = nullptr;
 	pks().old_guy = nullptr;
-	og::runtime::current_session->myscreen_->clearbuffer();
+	// No post-run clear (#237 ownership — see create_view_scenario_menu).
 	//myscreen->clearscreen();
     if ((retvalue & MENU_EXIT) && team_build_start_selected())
     {
@@ -2760,9 +2798,10 @@ Sint32 go_menu(Sint32 arg1)
         og::runtime::current_session->myscreen_->set_active_canvas(
             og::runtime::current_session->myscreen_->last_presented_canvas());
         og::runtime::current_session->myscreen_->fadeblack(0);
-        // #200: this IS the fade back to the menu. Base Camp's entry must not
-        // play a second one over the stale pause-menu image.
-        og::ui::suppress_next_menu_entry_fade_out();
+        // #200: this IS the fade back to the menu (a no-op when the results
+        // panel already faded itself out). The window is black from here, so
+        // Base Camp's entry cannot play a second fade over the stale
+        // pause-menu image — fadeblack(0) skips a black window.
 
         // Zardus: PORT: doesn't seem to be neccessary
         og::runtime::current_session->myscreen_->clearbuffer();

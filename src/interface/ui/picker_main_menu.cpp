@@ -96,11 +96,10 @@ bool picker_prepare_new_game_setup()
 	// Starting new game .. The campaign intro is NOT shown here anymore:
 	// the campaign select comes next, and the intro belongs to the campaign
 	// the player actually picks (SdlPickerClient::show_campaign_select).
-	release_mouse();
-	game->clearbuffer();
-	game->swap();
-	game->refresh();
-	grab_mouse();
+	// #237 ownership: name entry's exit already faded its own frame out
+	// (run_menu_screen's exit scope), so the window is black here and the
+	// clears above and below touch nothing a fade will read. Campaign select
+	// fades its first frame in over that black.
 	game->clear();
 
 	// Clear the playable-family labeling counters.

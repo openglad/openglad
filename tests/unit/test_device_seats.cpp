@@ -70,8 +70,9 @@ TEST(DeviceSeats, screen_owner_token_covers_the_keyboard_seat_only)
 
 TEST(DeviceSeats, screen_owner_label_fits_the_seat_card_face)
 {
-    // The seat card face is nine characters including "P{n} " and the
-    // load-bearing trailing pad (picker_sdl_defs.h), so the token owns four.
+    // The seat card face is eleven characters including "P{n} " and the
+    // load-bearing trailing pad (picker_sdl_defs.h), and a two-digit lobby-
+    // wide P# eats one more, so the token stays inside four.
     EXPECT_EQ(4u, std::strlen(og::input::kScreenSeatOwnerLabel));
     EXPECT_STREQ("SCRN", og::input::kScreenSeatOwnerLabel);
 }

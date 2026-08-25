@@ -116,6 +116,13 @@ class vbutton
 		std::unique_ptr<pixieN> mypixie;
 		int hotkey;
 		unsigned char color;
+		// Drawn as an inert row: the face dims to GREY, which lands on the
+		// SAME palette shade as BUTTON_RIGHT/BUTTON_BOTTOM. Left alone, a
+		// dimmed button's right and bottom bevels dissolve into its face and
+		// it reads as a half-drawn card with a flat right edge. When this is
+		// set, vdisplay steps those two edges one shade darker so all four
+		// bevels survive at the dim shade.
+		bool dimmed = false;
 		bool hidden;
         bool no_draw;  // Does not draw but still accepts clicks
 };
