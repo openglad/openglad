@@ -1,6 +1,6 @@
 ---
 name: openglad-dev-environment
-description: Local development environment for OpenGlad — the nix flake, local-vs-CI configuration divergence, accepted local test failures and standing rulings, git hygiene traps, agent-orchestration traps, and setting up a fresh machine. Use whenever a local test result disagrees with CI, a tool seems missing, a full local ctest run has unexplained reds, worktrees or subagents produce surprising state, or development moves to a new machine.
+description: Local development environment for OpenGlad — the nix flake, tmpfs build-dir placement and cleanup, local-vs-CI configuration divergence, accepted local test failures and standing rulings, git hygiene traps, agent-orchestration traps, and setting up a fresh machine. Use whenever you are about to configure or build any preset, a local test result disagrees with CI, a tool seems missing, a full local ctest run has unexplained reds, worktrees or subagents produce surprising state, or development moves to a new machine.
 ---
 
 # OpenGlad dev environment
@@ -10,6 +10,48 @@ tools come from `flake.nix` (add missing ones there — never hand-roll a
 utility a package provides, never apt/snap-install, never source
 ~/emsdk), presets only, no in-source configure. This file covers what
 AGENTS.md doesn't: divergence, accepted failures, and traps.
+
+## Builds live in tmpfs
+
+`/tmp` is tmpfs on this machine (~61G). Build trees go in
+`/tmp/openglad-builds/<checkout>/<preset>`, where `<checkout>` is the
+basename of the source tree — so the main repo and each worktree get
+their own subfolder and never collide. Presets hardcode `binaryDir` to
+`${sourceDir}/build/<preset>`, so the mechanism is a per-preset
+symlink, not a `-B` override (`cmake --build --preset` would ignore
+one). Before configuring ANY preset, run this idempotent snippet:
+
+```bash
+preset=ci-test                      # whichever preset you're building
+tgt="/tmp/openglad-builds/$(basename "$PWD")/$preset"
+mkdir -p "$tgt" build
+[ -L "build/$preset" ] || rm -rf "build/$preset"
+ln -sfn "$tgt" "build/$preset"
+```
+
+- Run it EVERY time before `cmake --preset ...`: tmpfs is wiped on
+  reboot, leaving `build/<preset>` a dangling symlink that makes
+  configure fail; the `mkdir -p` heals it.
+- Symlink per-preset only — never the whole `build/` dir. `build/media`
+  (capture tooling output) and other non-preset contents stay real.
+- RAM is shared and each preset tree runs to a few GB (more when
+  FetchContent builds SDL3), so cleanup is part of the workflow, not
+  optional.
+
+**Cleanup.** When a build tree is no longer needed (task done, branch
+merged, preset abandoned), `rm -rf` its tmpfs dir and the symlink. And
+whenever you're about to build — or otherwise notice the folder —
+sweep anything over a day old plus the dangling symlinks it leaves:
+
+```bash
+find /tmp/openglad-builds -mindepth 2 -maxdepth 2 \
+  ! -newermt '1 day ago' -exec rm -rf {} + 2>/dev/null
+find build -maxdepth 1 -xtype l -delete 2>/dev/null
+```
+
+(Preset-dir mtime is a good staleness proxy: ninja rewrites
+`.ninja_log` at the build root on every build.) The parity companion
+worktree's build follows the same pattern.
 
 ## Local green is not CI green (four known divergences)
 
