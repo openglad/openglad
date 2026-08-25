@@ -628,6 +628,9 @@ CAMPAIGN_HOOK_SIGS: Dict[str, str] = {
     "picker_menu": "fun(page_id: string): og.CampaignPage?",
     "picker_action": "fun(entry_id: string): og.CampaignActionResult?",
     "base_camp": "fun(): og.CampaignZone?",
+    # The one hook that is a TABLE, not a function (docs/lineup-design.md
+    # §3.3): the LINEUP page's bot-squad names and its fighter pricer.
+    "lineup": "og.CampaignLineup",
 }
 
 
@@ -1332,6 +1335,26 @@ def generate(repo_root: Path) -> str:
                  "intelligence", "armor", "team", "tag", "save_slot"):
         out.append(f"---@field {stat} integer")
     out.append("---@field deployed boolean")
+    out.append("")
+    out.append("-- One fighter handed to lineup.power: the ENGINE's own")
+    out.append("-- derived stats (guy bonuses + family bases, already")
+    out.append("-- truncated to integers), so a book prices exactly what")
+    out.append("-- the sim would field. fire_frequency is busy ticks after")
+    out.append("-- an attack -- lower is faster.")
+    out.append("---@class og.LineupPowerRow")
+    out.append("---@field family string")
+    for stat in ("level", "hp", "mp", "armor", "damage", "stepsize",
+                 "fire_frequency"):
+        out.append(f"---@field {stat} integer")
+    out.append("")
+    out.append("-- The LINEUP table: bot-squad preset names for the page's")
+    out.append("-- cycler (<= 8, each clipped to 6 upper-case chars; 0 =")
+    out.append("-- AUTO and 1 = NONE are engine-owned and never named) and")
+    out.append("-- `power`, which prices one fighter for the team bands.")
+    out.append("-- At least one of the two is required.")
+    out.append("---@class og.CampaignLineup")
+    out.append("---@field presets? string[]")
+    out.append("---@field power? fun(row: og.LineupPowerRow): integer")
     out.append("")
     out.append("-- Hook table for og.register_campaign_hooks. `vars` names")
     out.append("-- the campaign state keys (max 64, each 1-32 chars of")

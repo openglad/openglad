@@ -21,7 +21,9 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -1290,15 +1292,31 @@ bool set_preferred_team(SaveData& save, short team)
     return true;
 }
 
+bool set_guy_team(SaveData& save, int slot_index, short team)
+{
+    if (team < 0 || team >= 4)
+        return false;
+    if (slot_index < 0 || slot_index >= MAX_TEAM_SIZE)
+        return false;
+    guy* member = save.team_list[static_cast<std::size_t>(slot_index)].get();
+    if (member == nullptr)
+        return false;
+    member->teamnum = team;
+    return true;
+}
+
 short cycle_guy_team(SaveData& save, int slot_index, int dir)
 {
     if (slot_index < 0 || slot_index >= MAX_TEAM_SIZE)
         return -1;
-    guy* member = save.team_list[static_cast<std::size_t>(slot_index)].get();
+    const guy* member = save.team_list[static_cast<std::size_t>(slot_index)].get();
     if (member == nullptr)
         return -1;
+    // The wrap is this helper's own rule; the WRITE is the one setter every
+    // team-assignment surface shares (docs/lineup-design.md §5).
     const int next = ((member->teamnum + dir) % 4 + 4) % 4;
-    member->teamnum = static_cast<short>(next);
+    if (!set_guy_team(save, slot_index, static_cast<short>(next)))
+        return -1;
     return static_cast<short>(next);
 }
 
@@ -3593,6 +3611,521 @@ std::vector<std::string> format_scenario_report_lines(
         lines.push_back(clip_line(std::move(text)));
     }
     return lines;
+}
+
+// --- LINEUP support ---
+
+namespace {
+
+// The family combat bases a fighter would actually spawn with. A family the
+// registry does not carry (an unmounted pack class, or a .gtl family byte
+// the save carries with no range check) prices as a soldier — the picker's
+// own rule at picker_compute_guy_derived_stats.
+const FamilyDescriptor* guy_family_descriptor(const guy& g)
+{
+    const FamilyDescriptor* descriptor =
+        get_family_descriptor(static_cast<int>(g.family));
+    if (descriptor == nullptr)
+        descriptor = get_family_descriptor(FAMILY_SOLDIER);
+    return descriptor;
+}
+
+CombatBases guy_combat_bases(const guy& g)
+{
+    const FamilyDescriptor* descriptor = guy_family_descriptor(g);
+    return descriptor != nullptr ? descriptor->combat : CombatBases{};
+}
+
+}  // namespace
+
+// --- LINEUP (docs/lineup-design.md) ------------------------------------
+
+bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
+                                  bool zone_can_team, bool assign_mode)
+{
+    if (slot_index < 0 || slot_index >= MAX_TEAM_SIZE)
+        return false;
+    if (save.team_list[static_cast<std::size_t>(slot_index)] == nullptr)
+        return false;
+    if (!picker_lobby_save_slot_editable(slot_index))
+        return false;
+    if (!zone_can_team)
+        return false;
+    return !assign_mode;
+}
+
+bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
+                                  const CampaignZoneSession* zone,
+                                  bool assign_mode)
+{
+    const bool can_team = zone == nullptr || zone->roster().can_team;
+    return lineup_fighter_team_editable(save, slot_index, can_team,
+                                        assign_mode);
+}
+
+DerivedStats compute_derived_stats(const guy& g)
+{
+    const CombatBases bases = guy_combat_bases(g);
+    return compute_derived_stats(g, bases.hp, bases.melee_damage,
+                                 bases.stepsize, bases.fire_delay);
+}
+
+float derived_fire_delay(const guy& g)
+{
+    const float delay =
+        guy_combat_bases(g).fire_delay - g.get_fire_frequency_bonus();
+    return delay < 1.0f ? 1.0f : delay;
+}
+
+std::optional<long long> lineup_power_for_guy(const guy& g)
+{
+    if (!og::script::hooks::campaign_lineup_registered())
+        return std::nullopt;
+    const DerivedStats ds = compute_derived_stats(g);
+    og::script::hooks::LineupPowerRow row;
+    // The name is the picker's own display helper (an unknown family reads
+    // "BEAST"); only the NUMBERS fall back to a soldier's.
+    row.family = family_display_name(static_cast<int>(g.family));
+    row.level = static_cast<int>(g.level);
+    // Truncation at the boundary, the §4.1 discipline: the campaign's
+    // arithmetic is integer (og.div raises on a float), so the engine
+    // hands over integers rather than making every book truncate.
+    row.hp = static_cast<int>(ds.hp);
+    row.mp = static_cast<int>(ds.mp);
+    row.armor = static_cast<int>(ds.def);
+    row.damage = static_cast<int>(ds.atk);
+    row.stepsize = static_cast<int>(ds.spd);
+    row.fire_frequency = static_cast<int>(derived_fire_delay(g));
+    long long power = 0;
+    if (!og::script::hooks::campaign_fighter_power(row, power))
+        return std::nullopt;
+    return power;
+}
+
+std::string lineup_seat_label(const og::sim::LobbyPlayer& seat,
+                              std::string_view short_name)
+{
+    const std::string owner = short_name.empty()
+        ? company_abbreviation(seat.company)
+        : std::string(short_name);
+    return std::format("P{} {}", static_cast<int>(seat.player_index) + 1,
+                       owner);
+}
+
+namespace {
+
+// Sum a band's prices. ONE unpriced fighter voids the whole band: a total
+// that silently omits a member is worse than no number at all.
+struct LineupPowerAccumulator {
+    long long total = 0;
+    bool valid = true;
+
+    void add(const LineupPowerFn& power, const guy& member)
+    {
+        if (!valid)
+            return;
+        if (!power) {
+            valid = false;
+            return;
+        }
+        const std::optional<long long> priced = power(member);
+        if (!priced.has_value()) {
+            valid = false;
+            return;
+        }
+        total += *priced;
+    }
+
+    [[nodiscard]] std::optional<long long> result(int fighter_count) const
+    {
+        if (!valid || fighter_count <= 0)
+            return std::nullopt;
+        return total;
+    }
+};
+
+}  // namespace
+
+std::array<LineupTeamBand, 4> build_lineup_bands(
+    const SaveData& own,
+    std::span<const og::sim::LobbyPlayer> players,
+    std::span<const std::uint8_t> local_player_indices,
+    bool networked,
+    const LineupPowerFn& power,
+    const std::function<std::string(std::uint8_t)>& local_seat_short_name)
+{
+    std::array<LineupTeamBand, 4> bands{};
+    std::array<LineupPowerAccumulator, 4> prices{};
+    for (int team = 0; team < 4; ++team)
+        bands[static_cast<std::size_t>(team)].team = team;
+
+    for (const og::sim::LobbyPlayer& seat : players)
+    {
+        if (seat.team < 0 || seat.team >= 4)
+            continue;
+        LineupTeamBand& band = bands[static_cast<std::size_t>(seat.team)];
+        ++band.seat_count;
+        const bool is_local =
+            std::find(local_player_indices.begin(), local_player_indices.end(),
+                      seat.player_index) != local_player_indices.end();
+        std::string short_name;
+        if (is_local && local_seat_short_name)
+            short_name = local_seat_short_name(seat.player_index);
+        band.seat_labels.push_back(lineup_seat_label(seat, short_name));
+    }
+
+    if (networked)
+    {
+        // Networked, the lobby is the whole census: every machine's own
+        // company reaches this one as replicated slots, so counting the
+        // local save again would count this machine's fighters twice.
+        for (const og::sim::LobbyPlayer& seat : players)
+        {
+            for (const og::sim::LobbyCharacterSlot& slot : seat.character_slots)
+            {
+                if (!slot.deployed)
+                    continue;
+                const short team = slot.character.teamnum;
+                if (team < 0 || team >= 4)
+                    continue;
+                LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
+                ++band.fighter_count;
+                const std::unique_ptr<guy> member =
+                    make_base_camp_display_guy(slot.character);
+                prices[static_cast<std::size_t>(team)].add(power, *member);
+            }
+        }
+    }
+    else
+    {
+        for (const auto& member : own.team_list)
+        {
+            if (member == nullptr || !member->deployed)
+                continue;
+            const short team = member->teamnum;
+            if (team < 0 || team >= 4)
+                continue;
+            LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
+            ++band.fighter_count;
+            prices[static_cast<std::size_t>(team)].add(power, *member);
+        }
+    }
+
+    for (std::size_t team = 0; team < bands.size(); ++team)
+    {
+        LineupTeamBand& band = bands[team];
+        band.has_seat = band.seat_count > 0;
+        band.power = prices[team].result(band.fighter_count);
+        if (band.seat_count > 0 && band.fighter_count < band.seat_count)
+        {
+            band.diag = LineupTeamBand::Diag::NeedsFighters;
+            band.needs = band.seat_count - band.fighter_count;
+        }
+        else if (band.seat_count == 0 && band.fighter_count > 0)
+        {
+            band.diag = LineupTeamBand::Diag::NoSeatAi;
+        }
+    }
+    return bands;
+}
+
+// --- LINEUP labels ---
+
+std::string format_lineup_bots_label(short squad,
+                                     std::span<const std::string> preset_names)
+{
+    if (squad <= 0)
+        return "BOTS: AUTO";
+    if (squad == 1)
+        return "BOTS: NONE";
+    const std::size_t index = static_cast<std::size_t>(squad) - 2u;
+    if (index >= preset_names.size())
+    {
+        // A joiner clamps bot_squad without ever holding the preset list
+        // (§3.1), so the ordinal has to be able to speak for itself.
+        return std::format("BOTS: #{}", static_cast<int>(squad) - 1);
+    }
+    return "BOTS: " +
+        clip_chars(preset_names[index],
+                   og::script::hooks::kLineupPresetNameMax);
+}
+
+std::string format_lineup_level_label(short level)
+{
+    if (level <= 0 || level > 9)
+        return "LV: AUTO";
+    return std::format("LV {}", static_cast<int>(level));
+}
+
+std::string format_lineup_census(const LineupTeamBand& band)
+{
+    switch (band.diag)
+    {
+    case LineupTeamBand::Diag::NeedsFighters:
+        return band.needs == 1
+            ? std::string("NEEDS 1 FIGHTER")
+            : std::format("NEEDS {} FIGHTERS", band.needs);
+    case LineupTeamBand::Diag::NoSeatAi:
+        return "NO SEAT: AI";
+    case LineupTeamBand::Diag::None:
+        break;
+    }
+    if (band.fighter_count <= 0)
+        return "NO FIGHTERS";
+    if (band.fighter_count == 1)
+        return "1 FIGHTER";
+    return std::format("{} FIGHTERS", band.fighter_count);
+}
+
+std::string format_lineup_power(std::optional<long long> power)
+{
+    return power.has_value() ? std::format("POWER {}", *power)
+                             : std::string("POWER --");
+}
+
+namespace {
+
+// AUTO, NONE and the presets on one wheel; `dir` may be any step.
+short cycle_lineup_value(short current, int count, int dir)
+{
+    if (count <= 0)
+        return 0;
+    int value = (current >= 0 && current < count) ? current : 0;
+    long long next = (static_cast<long long>(value) + dir) % count;
+    if (next < 0)
+        next += count;
+    return static_cast<short>(next);
+}
+
+}  // namespace
+
+short cycle_lineup_bots(short current, int preset_count, int dir)
+{
+    const int presets =
+        std::clamp(preset_count, 0, og::script::hooks::kMaxBotPresets);
+    return cycle_lineup_value(current, 2 + presets, dir);
+}
+
+short cycle_lineup_level(short current, int dir)
+{
+    return cycle_lineup_value(current, 10, dir);
+}
+
+// --- SPLIT ---
+
+LineupSplitPlan split_company(const SaveData& save,
+                              std::span<const short> local_seat_teams,
+                              LineupSplit mode,
+                              const LineupPowerFn& power,
+                              const std::function<bool(int)>& editable)
+{
+    LineupSplitPlan plan;
+
+    std::vector<short> teams;
+    for (const short team : local_seat_teams)
+    {
+        if (team < 0 || team >= 4)
+            continue;
+        if (std::find(teams.begin(), teams.end(), team) == teams.end())
+            teams.push_back(team);
+    }
+    std::sort(teams.begin(), teams.end());
+    if (teams.empty())
+        return plan;
+
+    struct Candidate {
+        int slot = 0;
+        long long power = 0;
+        int level = 0;
+    };
+    std::vector<Candidate> candidates;
+    bool priced = static_cast<bool>(power);
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+    {
+        const guy* member = save.team_list[static_cast<std::size_t>(slot)].get();
+        if (member == nullptr || !member->deployed)
+            continue;  // the bench is not in tonight's draft
+        if (editable && !editable(slot))
+        {
+            ++plan.locked;
+            continue;
+        }
+        Candidate candidate;
+        candidate.slot = slot;
+        candidate.level = static_cast<int>(member->level);
+        if (priced)
+        {
+            const std::optional<long long> value = power(*member);
+            if (value.has_value())
+                candidate.power = *value;
+            else
+                priced = false;  // no metric: the whole draft falls to level
+        }
+        candidates.push_back(candidate);
+    }
+    if (candidates.empty())
+        return plan;
+
+    // A single seated team leaves nothing to divide: every mode is ALL TO 1.
+    if (mode == LineupSplit::AllToFirst || teams.size() == 1)
+    {
+        for (const Candidate& candidate : candidates)
+            plan.moves.emplace_back(candidate.slot, teams.front());
+        return plan;
+    }
+
+    if (mode == LineupSplit::Fair)
+    {
+        std::stable_sort(candidates.begin(), candidates.end(),
+                         [priced](const Candidate& a, const Candidate& b) {
+                             const long long lhs = priced ? a.power : a.level;
+                             const long long rhs = priced ? b.power : b.level;
+                             if (lhs != rhs)
+                                 return lhs > rhs;  // strongest first
+                             return a.slot < b.slot;
+                         });
+    }
+
+    const int count = static_cast<int>(teams.size());
+    for (std::size_t pick = 0; pick < candidates.size(); ++pick)
+    {
+        const int round = static_cast<int>(pick) / count;
+        const int within = static_cast<int>(pick) % count;
+        // EVEN deals round-robin; FAIR snakes, so the last pick of a round
+        // is also the first pick of the next one.
+        const int index = (mode == LineupSplit::Fair && (round % 2) == 1)
+            ? count - 1 - within
+            : within;
+        plan.moves.emplace_back(candidates[pick].slot,
+                                teams[static_cast<std::size_t>(index)]);
+    }
+    return plan;
+}
+
+int apply_split(SaveData& save,
+                std::span<const std::pair<int, short>> moves)
+{
+    int moved = 0;
+    for (const auto& [slot, team] : moves)
+    {
+        const guy* member = (slot >= 0 && slot < MAX_TEAM_SIZE)
+            ? save.team_list[static_cast<std::size_t>(slot)].get()
+            : nullptr;
+        if (member == nullptr || member->teamnum == team)
+            continue;
+        if (set_guy_team(save, slot, team))
+            ++moved;
+    }
+    return moved;
+}
+
+// --- Networking machine rows ---
+
+std::vector<NetworkingMachineRow> build_networking_machine_rows(
+    std::span<const og::sim::LobbyPlayer> players,
+    std::span<const std::uint8_t> local_player_indices,
+    int label_chars)
+{
+    struct Machine {
+        std::uint64_t key = 0;
+        og::sim::LobbyMachineId machine_id = og::sim::kInvalidLobbyMachineId;
+        std::uint8_t first_index = 0xff;
+        std::string name;
+        std::string company;
+        std::vector<int> seats;
+        bool is_host = false;
+        bool is_local = false;
+        bool all_ready = true;
+    };
+    std::vector<Machine> machines;
+    for (std::size_t index = 0; index < players.size(); ++index)
+    {
+        const og::sim::LobbyPlayer& player = players[index];
+        const std::uint64_t key = lobby_machine_group_key(player, index);
+        auto it = std::find_if(machines.begin(), machines.end(),
+                               [key](const Machine& m) { return m.key == key; });
+        if (it == machines.end())
+        {
+            Machine machine;
+            machine.key = key;
+            machine.machine_id = player.machine_id;
+            machine.first_index = player.player_index;
+            machine.name = player.name;
+            machine.company = player.company;
+            machines.push_back(std::move(machine));
+            it = std::prev(machines.end());
+        }
+        if (player.player_index < it->first_index)
+        {
+            it->first_index = player.player_index;
+            if (!player.name.empty())
+                it->name = player.name;
+        }
+        if (it->company.empty())
+            it->company = player.company;
+        it->seats.push_back(static_cast<int>(player.player_index) + 1);
+        it->is_host = it->is_host || player.is_host;
+        it->all_ready = it->all_ready && player.ready;
+        it->is_local = it->is_local ||
+            std::find(local_player_indices.begin(), local_player_indices.end(),
+                      player.player_index) != local_player_indices.end();
+    }
+    std::stable_sort(machines.begin(), machines.end(),
+                     [](const Machine& a, const Machine& b) {
+                         return a.first_index < b.first_index;
+                     });
+
+    const std::size_t budget =
+        label_chars > 0 ? static_cast<std::size_t>(label_chars) : 0u;
+    std::vector<NetworkingMachineRow> rows;
+    rows.reserve(machines.size());
+    for (std::size_t index = 0; index < machines.size(); ++index)
+    {
+        Machine& machine = machines[index];
+        std::sort(machine.seats.begin(), machine.seats.end());
+        // A machine's display NAME: its transport name is an opaque
+        // net-<hex> identity on a relay lobby, so an empty one falls back
+        // to the company abbreviation — never to nothing.
+        const std::string name = machine.name.empty()
+            ? company_abbreviation(machine.company)
+            : clip_chars(machine.name, 10);
+        std::string head = std::format("M{} {}", index + 1, name);
+        if (machine.is_host)
+            head += " (HOST)";
+        if (machine.is_local)
+            head += " (YOU)";
+        std::string seats;
+        for (const int seat : machine.seats)
+        {
+            if (!seats.empty())
+                seats += ' ';
+            seats += std::format("P{}", seat);
+        }
+        if (!seats.empty())
+            head += "  " + seats;
+        const std::string company =
+            "  " + clip_chars(machine.company, 16);
+        // Whole-token degradation, cheapest fact first: READY is derivable
+        // from the colour the row draws in, the company is a courtesy, and
+        // only the identity is worth clipping mid-word.
+        std::string label = head + company;
+        if (machine.all_ready)
+            label += "  READY";
+        if (label.size() > budget)
+            label = head + company;
+        if (label.size() > budget)
+            label = head;
+        if (label.size() > budget)
+            label = clip_chars(std::move(label), budget);
+
+        NetworkingMachineRow row;
+        row.machine_id = machine.machine_id;
+        row.label = std::move(label);
+        row.is_host = machine.is_host;
+        row.is_local = machine.is_local;
+        rows.push_back(std::move(row));
+    }
+    return rows;
 }
 
 } // namespace og::ui

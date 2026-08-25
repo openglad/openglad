@@ -291,4 +291,57 @@ std::vector<std::string> campaign_registered_vars();
 // test enumerates the surface here. No sim path reads it.
 std::vector<std::string> og_function_names();
 
+// --- LINEUP (docs/lineup-design.md §3.3, §4) ---------------------------
+//
+// The fourth campaign hook is a TABLE, not a function:
+//
+//   og.register_campaign_hooks({ ...,
+//     lineup = {
+//       presets = { "BALANCED", "CASTERS" },   -- bot squad names
+//       power   = function(row) return <int> end,
+//     } })
+//
+// `presets` names the bot-squad cycler's entries (ordinal 2.. on the
+// LINEUP page; 0 = AUTO, 1 = NONE are engine-owned and never named by a
+// campaign). `power` prices ONE fighter from its derived stats so the
+// bands can show POWER n; the engine never knows what either means.
+
+// The cycler's ceiling. A joiner clamps bot_squad to [0, 1 + this] with
+// no preset list at all, so the bound lives in the engine, not the book.
+inline constexpr int kMaxBotPresets = 8;
+// Preset names ride a 12-char face as "BOTS: <NAME>", so 6 chars is the
+// whole room. Longer names are clipped at registration (never refused —
+// a name is cosmetic and must not cost a campaign its whole book).
+inline constexpr std::size_t kLineupPresetNameMax = 6;
+
+// One fighter, priced. The values are the ENGINE's own derived stats
+// (og::ui::compute_derived_stats — the same guy-bonus + family-base
+// derivation spawn applies), already truncated to integers, so a
+// campaign's power function reads exactly what the sim would field.
+struct LineupPowerRow {
+    std::string family;
+    int level = 0;
+    int hp = 0;
+    int mp = 0;
+    int armor = 0;
+    int damage = 0;
+    int stepsize = 0;
+    int fire_frequency = 0;  // busy ticks after an attack; lower is faster
+};
+
+// True when the active registration carries a `lineup` table. Same
+// conflict/scriptless rules as campaign_picker_registered.
+bool campaign_lineup_registered();
+
+// The registered preset names, in declared order (<= kMaxBotPresets, each
+// clipped to kLineupPresetNameMax upper-case chars). False — leaving `out`
+// untouched — when no lineup table is registered; true with an EMPTY list
+// for a lineup table that registers only `power`.
+bool campaign_lineup_presets(std::vector<std::string>& out);
+
+// Dispatches lineup.power(row) under the campaign fence. False — the band
+// shows `--` — when no power function is registered, the hook errors, or
+// it answers anything but a number.
+bool campaign_fighter_power(const LineupPowerRow& row, long long& out);
+
 }  // namespace og::script::hooks

@@ -127,6 +127,13 @@ struct VmState {
     int campaign_hooks_ref = -1;  // table: 1 = picker_menu,
                                   // 2 = picker_action, 3 = base_camp
     std::vector<std::string> campaign_vars;  // sim-visible names, in order
+    // The `lineup` table (docs/lineup-design.md §3.3): its preset NAMES are
+    // plain data, copied out here so the menus can label the bot cycler
+    // without entering Lua; only lineup.power lives in the registry table
+    // (slot 4). `campaign_lineup_registered` stays true for a lineup that
+    // carries power alone — an empty name list is a real answer.
+    std::vector<std::string> campaign_lineup_presets;
+    bool campaign_lineup_registered = false;
     bool campaign_registered = false;
     std::string campaign_source;            // registering chunk (diagnostics)
     std::string campaign_conflict_source;   // second registrant; ""=no conflict

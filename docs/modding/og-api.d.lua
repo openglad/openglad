@@ -437,6 +437,30 @@
 ---@field save_slot integer
 ---@field deployed boolean
 
+-- One fighter handed to lineup.power: the ENGINE's own
+-- derived stats (guy bonuses + family bases, already
+-- truncated to integers), so a book prices exactly what
+-- the sim would field. fire_frequency is busy ticks after
+-- an attack -- lower is faster.
+---@class og.LineupPowerRow
+---@field family string
+---@field level integer
+---@field hp integer
+---@field mp integer
+---@field armor integer
+---@field damage integer
+---@field stepsize integer
+---@field fire_frequency integer
+
+-- The LINEUP table: bot-squad preset names for the page's
+-- cycler (<= 8, each clipped to 6 upper-case chars; 0 =
+-- AUTO and 1 = NONE are engine-owned and never named) and
+-- `power`, which prices one fighter for the team bands.
+-- At least one of the two is required.
+---@class og.CampaignLineup
+---@field presets? string[]
+---@field power? fun(row: og.LineupPowerRow): integer
+
 -- Hook table for og.register_campaign_hooks. `vars` names
 -- the campaign state keys (max 64, each 1-32 chars of
 -- [a-z0-9_]) that level scripts may read via
@@ -445,6 +469,7 @@
 ---@class og.CampaignHooks
 ---@field vars? string[]
 ---@field base_camp? fun(): og.CampaignZone?
+---@field lineup? og.CampaignLineup
 ---@field picker_action? fun(entry_id: string): og.CampaignActionResult?
 ---@field picker_menu? fun(page_id: string): og.CampaignPage?
 

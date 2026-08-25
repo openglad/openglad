@@ -1126,12 +1126,17 @@ int og_set_entity_hooks(lua_State* L)
 // one non-hook key). Parsed by scripts/modding/gen_api_stubs.py — keep the
 // spelling and location.
 constexpr const char* kCampaignHookNames[] = {"picker_menu", "picker_action",
-                                              "base_camp"};
+                                              "base_camp", "lineup"};
 
 // Slots of the campaign_hooks_ref registry table.
 constexpr lua_Integer kCampaignMenuSlot = 1;
 constexpr lua_Integer kCampaignActionSlot = 2;
 constexpr lua_Integer kCampaignZoneSlot = 3;
+// `lineup` is a TABLE, not a function: only its `power` member lives in
+// the registry table. The preset NAMES are plain data and are copied out
+// to the VmState at registration, so the menus can read them without
+// entering Lua at all (docs/lineup-design.md §3.3).
+constexpr lua_Integer kCampaignLineupPowerSlot = 4;
 
 // "chunkname:line" of the caller, for the duplicate-registration record.
 std::string campaign_caller_source(lua_State* L)
@@ -1176,8 +1181,8 @@ int og_register_campaign_hooks(lua_State* L)
             if (lua_type(L, -1) != LUA_TSTRING)
                 return luaL_error(
                     L, "og.register_campaign_hooks: keys are 'vars', "
-                       "'picker_menu', 'picker_action' and 'base_camp' "
-                       "(got a %s key)",
+                       "'picker_menu', 'picker_action', 'base_camp' and "
+                       "'lineup' (got a %s key)",
                     luaL_typename(L, -1));
             const std::string key = lua_tostring(L, -1);
             bool known = false;
@@ -1206,10 +1211,94 @@ int og_register_campaign_hooks(lua_State* L)
     if (has_zone && !lua_isfunction(L, 4))
         return luaL_error(L, "og.register_campaign_hooks: 'base_camp' "
                              "must be a function");
-    if (!has_menu && !has_action && !has_zone)
+    lua_getfield(L, 1, "lineup");         // abs index 5
+    const bool has_lineup = !lua_isnil(L, 5);
+    if (has_lineup && !lua_istable(L, 5))
+        return luaL_error(L, "og.register_campaign_hooks: 'lineup' must "
+                             "be a table of { presets, power }");
+    std::vector<std::string> lineup_presets;
+    bool has_lineup_power = false;
+    if (has_lineup) {
+        // Same "the typo is caught by the pass that can still reject the
+        // pack" discipline as the outer key walk.
+        static const char* const kLineupKeys[] = {"presets", "power"};
+        lua_pushnil(L);
+        while (lua_next(L, 5) != 0) {
+            lua_pop(L, 1);  // value; the key stays for the next iteration
+            if (lua_type(L, -1) != LUA_TSTRING)
+                return luaL_error(
+                    L, "og.register_campaign_hooks: 'lineup' keys are "
+                       "'presets' and 'power' (got a %s key)",
+                    luaL_typename(L, -1));
+            const std::string key = lua_tostring(L, -1);
+            bool known = false;
+            for (const char* n : kLineupKeys)
+                known = known || key == n;
+            if (!known) {
+                const std::vector<const char*> names(std::begin(kLineupKeys),
+                                                     std::end(kLineupKeys));
+                const std::string hint = did_you_mean(key, names);
+                return luaL_error(
+                    L, "og.register_campaign_hooks: unknown 'lineup' key "
+                       "'%s'%s",
+                    key.c_str(), hint.c_str());
+            }
+        }
+        lua_getfield(L, 5, "power");
+        has_lineup_power = !lua_isnil(L, -1);
+        if (has_lineup_power && !lua_isfunction(L, -1))
+            return luaL_error(L, "og.register_campaign_hooks: "
+                                 "'lineup.power' must be a function");
+        lua_pop(L, 1);
+        lua_getfield(L, 5, "presets");
+        if (!lua_isnil(L, -1)) {
+            if (!lua_istable(L, -1))
+                return luaL_error(L, "og.register_campaign_hooks: "
+                                     "'lineup.presets' must be an array of "
+                                     "names");
+            const lua_Integer count =
+                static_cast<lua_Integer>(lua_rawlen(L, -1));
+            if (count > hooks::kMaxBotPresets)
+                return luaL_error(
+                    L, "og.register_campaign_hooks: 'lineup.presets' names "
+                       "%d squads (max %d)",
+                    static_cast<int>(count), hooks::kMaxBotPresets);
+            for (lua_Integer i = 1; i <= count; i++) {
+                lua_rawgeti(L, -1, i);
+                if (lua_type(L, -1) != LUA_TSTRING)
+                    return luaL_error(
+                        L, "og.register_campaign_hooks: lineup.presets[%d] "
+                           "must be a string",
+                        static_cast<int>(i));
+                std::size_t len = 0;
+                const char* name = lua_tolstring(L, -1, &len);
+                std::string clipped(name, len);
+                if (clipped.empty())
+                    return luaL_error(
+                        L, "og.register_campaign_hooks: lineup.presets[%d] "
+                           "is empty",
+                        static_cast<int>(i));
+                // Clip, never refuse: the name is a 6-char cycler face and
+                // a cosmetic overrun must not cost the campaign its book.
+                if (clipped.size() > hooks::kLineupPresetNameMax)
+                    clipped.resize(hooks::kLineupPresetNameMax);
+                for (char& ch : clipped) {
+                    ch = static_cast<char>(std::toupper(
+                        static_cast<unsigned char>(ch)));
+                }
+                lineup_presets.push_back(std::move(clipped));
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);  // presets
+        if (!has_lineup_power && lineup_presets.empty())
+            return luaL_error(L, "og.register_campaign_hooks: 'lineup' "
+                                 "carries neither 'presets' nor 'power'");
+    }
+    if (!has_menu && !has_action && !has_zone && !has_lineup)
         return luaL_error(L, "og.register_campaign_hooks: register at least "
                              "one of 'picker_menu' / 'picker_action' / "
-                             "'base_camp'");
+                             "'base_camp' / 'lineup'");
 
     std::vector<std::string> vars;
     lua_getfield(L, 1, "vars");
@@ -1294,7 +1383,15 @@ int og_register_campaign_hooks(lua_State* L)
             coverage_declare_hook(L, "campaign/base_camp");
         lua_rawseti(L, -2, kCampaignZoneSlot);
     }
+    if (has_lineup_power) {
+        lua_getfield(L, 5, "power");
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/lineup_power");
+        lua_rawseti(L, -2, kCampaignLineupPowerSlot);
+    }
     lua_pop(L, 1);
+    st->campaign_lineup_registered = has_lineup;
+    st->campaign_lineup_presets = std::move(lineup_presets);
     st->campaign_vars = std::move(vars);
     st->campaign_registered = true;
     st->campaign_source = campaign_caller_source(L);
@@ -3366,6 +3463,77 @@ bool campaign_picker_action(const std::string& entry_id,
     }
     pop_dispatch_gen(L, gen);
     return true;
+}
+
+bool campaign_lineup_registered()
+{
+    const VmState* st = campaign_vm_state();
+    return st != nullptr && st->campaign_lineup_registered;
+}
+
+bool campaign_lineup_presets(std::vector<std::string>& out)
+{
+    const VmState* st = campaign_vm_state();
+    if (st == nullptr || !st->campaign_lineup_registered)
+        return false;
+    out = st->campaign_lineup_presets;
+    return true;
+}
+
+bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignLineupPowerSlot))
+        return false;
+    CampaignDispatchScope scope(*st, impl);
+    if (!scope.armed()) {
+        lua_pop(L, 1);
+        return false;
+    }
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_createtable(L, 0, 8);
+    const auto set_string = [L](const char* key, const std::string& value) {
+        lua_pushstring(L, key);
+        lua_pushlstring(L, value.data(), value.size());
+        lua_rawset(L, -3);
+    };
+    const auto set_int = [L](const char* key, int value) {
+        lua_pushstring(L, key);
+        lua_pushinteger(L, value);
+        lua_rawset(L, -3);
+    };
+    set_string("family", row.family);
+    set_int("level", row.level);
+    set_int("hp", row.hp);
+    set_int("mp", row.mp);
+    set_int("armor", row.armor);
+    set_int("damage", row.damage);
+    set_int("stepsize", row.stepsize);
+    set_int("fire_frequency", row.fire_frequency);
+    bool ok = false;
+    if (impl.protected_call("campaign:lineup_power", 1, 1)) {
+        // A number, or nothing: a price the engine cannot read is no price
+        // at all, and the band shows `--` rather than an invented figure.
+        // lua_isnumber would accept the STRING "42"; a price must be a
+        // number the book actually computed.
+        if (lua_type(L, -1) == LUA_TNUMBER) {
+            out = static_cast<long long>(lua_tonumber(L, -1));
+            ok = true;
+        } else {
+            const std::string message =
+                std::string("campaign lineup.power returned a ") +
+                luaL_typename(L, -1) + ", not a number";
+            LogError("class pack: {}\n", message);
+            impl.record_error("campaign:lineup_power", message.c_str());
+        }
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return ok;
 }
 
 bool campaign_zone_registered()
