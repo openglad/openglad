@@ -22,8 +22,11 @@
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/ui/picker_common.h>
 
 #include <algorithm>
+#include <optional>
 #include <cstdint>
 #include <map>
 #include <set>
@@ -1544,4 +1547,205 @@ TEST_F(CampaignHooksTest, campaign_var_reads_world_values)
     EXPECT_EQ("neg -2", log[1]);
     EXPECT_EQ("missing 0", log[2]);
     current_game = nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// The LINEUP hook (docs/lineup-design.md §3.3, §4)
+// ---------------------------------------------------------------------------
+
+TEST_F(CampaignHooksTest, lineup_registers_presets_and_prices_a_fighter)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = {
+    presets = { "BALANCED", "casters", "FAIR" },
+    power = function(row)
+      return row.hp * 2 + row.level
+    end,
+  },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+
+    std::vector<std::string> presets;
+    ASSERT_TRUE(hooks::campaign_lineup_presets(presets));
+    ASSERT_EQ(3u, presets.size());
+    EXPECT_EQ("BALANC", presets[0]) << "clipped to the 6-char cycler face";
+    EXPECT_EQ("CASTER", presets[1]) << "and upper-cased";
+    EXPECT_EQ("FAIR", presets[2]);
+
+    hooks::LineupPowerRow row;
+    row.family = "SOLDIER";
+    row.level = 7;
+    row.hp = 30;
+    long long power = -1;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(67, power);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, lineup_power_reads_the_whole_row)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row)
+    return row.hp + row.mp + row.armor + row.damage + row.stepsize +
+           row.fire_frequency + row.level +
+           (row.family == "MAGE" and 4 or 0)
+  end },
+}))LUA");
+    hooks::LineupPowerRow row;
+    row.family = "MAGE";  // 4
+    row.level = 1;
+    row.hp = 2;
+    row.mp = 4;
+    row.armor = 8;
+    row.damage = 16;
+    row.stepsize = 32;
+    row.fire_frequency = 64;
+    long long power = 0;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(131, power);
+}
+
+TEST_F(CampaignHooksTest, lineup_presets_alone_still_register)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { "BRUTES" } },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+    std::vector<std::string> presets;
+    ASSERT_TRUE(hooks::campaign_lineup_presets(presets));
+    EXPECT_EQ(std::vector<std::string>{"BRUTES"}, presets);
+    // No power function: the bands show `--`.
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+}
+
+TEST_F(CampaignHooksTest, lineup_power_alone_registers_an_empty_preset_list)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return 1 end },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+    std::vector<std::string> presets{"STALE"};
+    ASSERT_TRUE(hooks::campaign_lineup_presets(presets));
+    EXPECT_TRUE(presets.empty()) << "AUTO/NONE only, and that is an answer";
+}
+
+TEST_F(CampaignHooksTest, no_lineup_hook_means_no_lineup)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id) return { title = "BOOK" } end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_FALSE(hooks::campaign_lineup_registered());
+    std::vector<std::string> presets{"STALE"};
+    EXPECT_FALSE(hooks::campaign_lineup_presets(presets));
+    EXPECT_EQ(std::vector<std::string>{"STALE"}, presets)
+        << "a refusal leaves the caller's list alone";
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+}
+
+TEST_F(CampaignHooksTest, lineup_power_that_errors_answers_false)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return nil + 1 end },
+}))LUA");
+    hooks::LineupPowerRow row;
+    long long power = 12345;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(12345, power) << "the caller's value is untouched";
+    EXPECT_FALSE(vm_errors().empty());
+}
+
+TEST_F(CampaignHooksTest, lineup_power_that_returns_a_non_number_answers_false)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return "4200" end },
+}))LUA");
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_TRUE(errors_contain("not a number"));
+}
+
+TEST_F(CampaignHooksTest, lineup_is_fenced_like_every_other_campaign_hook)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return og.rand(10) end },
+}))LUA");
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_FALSE(vm_errors().empty())
+        << "the sim RNG stays fenced under campaign dispatch";
+}
+
+TEST_F(CampaignHooksTest, lineup_registration_rejections)
+{
+    struct Case {
+        const char* source;
+        const char* needle;
+    };
+    const Case cases[] = {
+        {R"LUA(og.register_campaign_hooks({ lineup = 7 }))LUA",
+         "'lineup' must be a table"},
+        {R"LUA(og.register_campaign_hooks({ lineup = { power = 7 } }))LUA",
+         "'lineup.power' must be a function"},
+        {R"LUA(og.register_campaign_hooks({ lineup = { presets = "X" } }))LUA",
+         "'lineup.presets' must be an array"},
+        {R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { 1 }, power = function(r) return 1 end } }))LUA",
+         "lineup.presets[1] must be a string"},
+        {R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { "" }, power = function(r) return 1 end } }))LUA",
+         "lineup.presets[1] is empty"},
+        {R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { "A","B","C","D","E","F","G","H","I" } } }))LUA",
+         "names 9 squads (max 8)"},
+        {R"LUA(og.register_campaign_hooks({ lineup = { presests = {} } }))LUA",
+         "unknown 'lineup' key 'presests'"},
+        {R"LUA(og.register_campaign_hooks({ lineup = {} }))LUA",
+         "carries neither 'presets' nor 'power'"},
+    };
+    for (const Case& c : cases) {
+        clear_pack_scripts();
+        register_script(c.source);
+        EXPECT_FALSE(hooks::campaign_lineup_registered()) << c.needle;
+        EXPECT_TRUE(errors_contain(c.needle)) << c.needle;
+    }
+}
+
+TEST_F(CampaignHooksTest, lineup_alone_is_a_whole_registration)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { "SKIRM" } },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered())
+        << "a book with only a lineup table is still a book";
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, lineup_power_for_guy_bridges_the_engine_stats)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return row.hp * 2 + row.level end },
+}))LUA");
+    guy fighter(FAMILY_SOLDIER);
+    fighter.level = 5;
+    const og::ui::DerivedStats stats = og::ui::compute_derived_stats(fighter);
+    const std::optional<long long> power =
+        og::ui::lineup_power_for_guy(fighter);
+    ASSERT_TRUE(power.has_value());
+    EXPECT_EQ(static_cast<long long>(stats.hp) * 2 + 5, *power)
+        << "the row carries the engine's own derived stats";
+}
+
+TEST_F(CampaignHooksTest, lineup_power_for_guy_is_nothing_without_a_hook)
+{
+    register_script(R"LUA(og.log("a campaign with no lineup"))LUA");
+    guy fighter(FAMILY_SOLDIER);
+    EXPECT_FALSE(og::ui::lineup_power_for_guy(fighter).has_value());
 }

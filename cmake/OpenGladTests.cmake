@@ -801,6 +801,7 @@ og_add_unit_group(og_unit_families FILES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_family_orc.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_family_thief.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_lineup_common.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_menu_spec.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_cloud_save_client.cpp
 )

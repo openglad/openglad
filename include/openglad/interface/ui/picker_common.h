@@ -337,6 +337,17 @@ struct DerivedStats {
 DerivedStats compute_derived_stats(const guy& g,
     float base_hp, float base_damage, float base_stepsize, float base_fire_freq);
 
+// The same derivation with the family's own combat bases resolved from the
+// family registry (a family the registry does not carry prices as a
+// soldier, the picker's rule). Headless: no loader, no session.
+DerivedStats compute_derived_stats(const guy& g);
+
+// The fire delay the derivation used: base fire_delay minus the guy's
+// bonus, floored at 1 (lower is faster). DerivedStats keeps only the
+// 10/delay display rate, and the campaign power hook is handed the raw
+// stat the sim fields.
+float derived_fire_delay(const guy& g);
+
 // --- Difficulty ---
 
 // Cycle to the next difficulty setting. Returns (current + 1) % DIFFICULTY_SETTINGS.
@@ -453,6 +464,12 @@ bool set_preferred_team(SaveData& save, short team);
 // (t % 4 + 4) % 4 rule as the train menu). Returns the new team, or -1 when
 // the slot is empty/out of range.
 short cycle_guy_team(SaveData& save, int slot_index, int dir);
+
+// Write a roster slot's fighting team outright (docs/lineup-design.md §5):
+// the ONE writer every team-assignment surface goes through, cycle_guy_team
+// included. False — with no mutation — for a team outside [0,4) or a slot
+// that is out of range or empty.
+bool set_guy_team(SaveData& save, int slot_index, short team);
 
 // The local seat order gameplay derives (game.cpp view_teams): distinct
 // NONZERO DEPLOYED roster teams in slot order, with my_team hoisted to the
@@ -1427,6 +1444,154 @@ private:
     void select_current_slot();
     void clamp_working_stats();
 };
+
+// --- LINEUP (docs/lineup-design.md) ------------------------------------
+
+class CampaignZoneSession;
+
+// The eight per-team bot knobs as the LINEUP surfaces hold them. WP-B owns
+// the persistence chain (SaveData -> LobbySettings -> world); the helpers
+// here take the values as plain data so they stay headlessly testable.
+// squad: 0 = AUTO, 1 = NONE, 2.. = preset ordinal. level: 0 = AUTO, 1..9.
+struct LineupBotKnobs {
+    std::array<short, 4> squad{};
+    std::array<short, 4> level{};
+};
+
+// May this slot's fighting team be edited here? The single predicate behind
+// BOTH the Base Camp roster chip (local) and the LINEUP fighter list (all
+// modes): the save slot is editable, the campaign's zone composition allows
+// team changes, and the roster is not in assign mode (the chip column is
+// spoken for). Deliberately NOT gated on `networked`: repairing a colour
+// mismatch between a seat and its own company is exactly what the fighter
+// list exists for (§2.2).
+bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
+                                  bool zone_can_team, bool assign_mode);
+// Same predicate against a live zone session; a null zone = full capability.
+bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
+                                  const CampaignZoneSession* zone,
+                                  bool assign_mode);
+
+// One fighter's price, or nothing when the campaign registers no metric.
+using LineupPowerFn = std::function<std::optional<long long>(const guy&)>;
+
+// og::ui::compute_derived_stats + the campaign `lineup.power` hook (§4).
+// Nothing when no campaign hook is registered or the hook refuses — the
+// band then shows `POWER --` and SPLIT FAIR falls back to level order.
+std::optional<long long> lineup_power_for_guy(const guy& g);
+
+// One LINEUP team band: who sits on the team, who fights for it, and what
+// the page says about the mismatch between the two.
+struct LineupTeamBand {
+    int team = 0;
+    bool has_seat = false;
+    int seat_count = 0;
+    std::vector<std::string> seat_labels;  // "P1 WASD", "P3 BOB"
+    int fighter_count = 0;                 // deployed characters on the team
+    std::optional<long long> power;        // nullopt = no metric
+    // The two informational diagnostics (§2.1). They replace the census in
+    // the disabled grey; GO keeps its own refusal.
+    enum class Diag {
+        None,
+        NeedsFighters,  // seats outnumber deployed fighters (the M4 refusal)
+        NoSeatAi,       // fighters with no seat: they fight under AI
+    };
+    Diag diag = Diag::None;
+    int needs = 0;  // NeedsFighters: how many more the team wants
+};
+
+// The seat chip's owner label: "P{n} {short}". `short_name` is the local
+// seat's input-mapping short name where the caller can resolve one (the
+// base_camp_seat_label convention); an empty one falls back to the owning
+// company's three-letter abbreviation, which is all a remote seat has.
+std::string lineup_seat_label(const og::sim::LobbyPlayer& seat,
+                              std::string_view short_name);
+
+// The four bands. Seats come from `players` (every machine in the lobby);
+// fighters are the deployed characters on each team — replicated across
+// every player's slots when `networked`, this machine's own save when not,
+// so a fighter is counted exactly once either way. `power` prices one
+// fighter (empty = no metric); `local_seat_short_name` names a local seat's
+// controller (empty = company abbreviations everywhere).
+std::array<LineupTeamBand, 4> build_lineup_bands(
+    const SaveData& own,
+    std::span<const og::sim::LobbyPlayer> players,
+    std::span<const std::uint8_t> local_player_indices,
+    bool networked,
+    const LineupPowerFn& power,
+    const std::function<std::string(std::uint8_t)>& local_seat_short_name = {});
+
+// --- LINEUP labels (exact strings; every one of them is pinned) ---
+
+// "BOTS: AUTO" / "BOTS: NONE" / "BOTS: <NAME>" (12-char face, names clipped
+// to 6). A preset ordinal the caller has no name for — a joiner clamps
+// without ever seeing the list — renders "BOTS: #n" rather than lying AUTO.
+std::string format_lineup_bots_label(short squad,
+                                     std::span<const std::string> preset_names);
+// "LV: AUTO" / "LV 5". Out-of-range levels read AUTO.
+std::string format_lineup_level_label(short level);
+// "5 FIGHTERS" / "1 FIGHTER" / "NO FIGHTERS", or the band's diagnostic:
+// "NEEDS 2 FIGHTERS" / "NEEDS 1 FIGHTER" / "NO SEAT: AI".
+std::string format_lineup_census(const LineupTeamBand& band);
+// "POWER 4200" / "POWER --".
+std::string format_lineup_power(std::optional<long long> power);
+
+// The two cyclers. `preset_count` is clamped to kMaxBotPresets, so a squad
+// cycles AUTO -> NONE -> presets -> AUTO and a level AUTO -> 1..9 -> AUTO.
+// `dir` may be any step; a current value outside the range enters at AUTO.
+short cycle_lineup_bots(short current, int preset_count, int dir);
+short cycle_lineup_level(short current, int dir);
+
+// --- SPLIT (§5) --------------------------------------------------------
+
+enum class LineupSplit {
+    Even,        // slot order, dealt round-robin
+    Fair,        // power desc (tie: slot), snake draft
+    AllToFirst,  // everyone onto the lowest-numbered seated team
+};
+
+// What a SPLIT would do: the full assignment (slot -> team, slot order for
+// Even/AllToFirst, draft order for Fair) plus how many deployed characters
+// the editable predicate refused to move.
+struct LineupSplitPlan {
+    std::vector<std::pair<int, short>> moves;
+    int locked = 0;
+};
+
+// Deterministic, pure, and never applied on its own. `local_seat_teams` is
+// this machine's seat->team derivation (duplicates and out-of-range values
+// dropped, the rest ascending); benched characters are skipped; `editable`
+// (empty = everything editable) keeps a locked slot where it is and counts
+// it. A single seated team makes every mode ALL TO 1. Without a `power`
+// metric, Fair sorts by level descending.
+LineupSplitPlan split_company(const SaveData& save,
+                              std::span<const short> local_seat_teams,
+                              LineupSplit mode,
+                              const LineupPowerFn& power,
+                              const std::function<bool(int)>& editable);
+
+// Write a plan through set_guy_team. Returns how many slots actually moved.
+int apply_split(SaveData& save,
+                std::span<const std::pair<int, short>> moves);
+
+// --- Networking machine rows (§6) --------------------------------------
+
+// One row of the Networking submenu's PLAYERS list: a MACHINE, not a seat.
+struct NetworkingMachineRow {
+    og::sim::LobbyMachineId machine_id = og::sim::kInvalidLobbyMachineId;
+    std::string label;
+    bool is_host = false;
+    bool is_local = false;
+};
+
+// One row per machine, ordered by its lowest player_index. The label is
+// "M1 <NAME> (HOST) (YOU)  P1 P2  <COMPANY>  READY", degraded WHOLE TOKEN
+// to `label_chars` — READY goes first, then the company, and only then does
+// what is left get clipped.
+std::vector<NetworkingMachineRow> build_networking_machine_rows(
+    std::span<const og::sim::LobbyPlayer> players,
+    std::span<const std::uint8_t> local_player_indices,
+    int label_chars = 39);
 
 // --- Template implementations ---
 
