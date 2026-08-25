@@ -96,6 +96,21 @@ text::~text()
     // Shared font pixies are freed via text_shutdown().
 }
 
+// Re-read the glyph box from the font pixie in hand. The pixies are shared
+// lazily-loaded statics: a text constructed before its file could be read
+// cached a 0x0 box, and a later text's constructor loads the pixie for real
+// without touching that stale copy. A 0-wide glyph blit clips to nothing, so
+// a dialog header drawn through such a text came out blank while the body
+// text -- a different text object, built after the load -- painted fine
+// (issue #259). Called from every measuring and drawing entry point.
+void text::sync_geometry()
+{
+    if (letters == nullptr)
+        return;
+    sizex = static_cast<short>(letters->w);
+    sizey = static_cast<short>(letters->h);
+}
+
 void text_shutdown()
 {
     letters1.free();
@@ -103,6 +118,7 @@ void text_shutdown()
 }
 Sint32 text::query_width(std::string_view string) // returns width, in pixels
 {
+	sync_geometry();
 	std::size_t i = 0;
 	Sint32 over = 0;
 
@@ -123,6 +139,7 @@ Sint32 text::query_width(std::string_view string) // returns width, in pixels
 
 Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color)
 {
+	sync_geometry();
 	for (std::size_t i = 0; i < string.size(); i++)
 	{
 		const Sint32 xi = x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
@@ -135,6 +152,7 @@ Sint32 text::write_formatted(Sint32 x, Sint32 y, const char* str,
                               unsigned char color, bool center, bool shadow,
                               bool use_alpha, Uint8 alpha)
 {
+	sync_geometry();
     Sint32 base_x = x;
     const std::size_t len = strlen(str);
     if (center)
@@ -197,6 +215,7 @@ Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string)
 Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color,
                      short to_buffer)
 {
+	sync_geometry();
 	std::size_t i = 0;
 	Sint32 over = 0;
 
@@ -232,6 +251,7 @@ Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, short to_buff
 Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color,
                      viewscreen *whereto)
 {
+	sync_geometry();
 	for (std::size_t i = 0; i < string.size(); i++)
 	{
 		const Sint32 xi = x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
@@ -297,6 +317,7 @@ Sint32 text::write_y(Sint32 y, std::string_view string, viewscreen *whereto)
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
                           short to_buffer)
 {
+	sync_geometry();
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, color);
 
@@ -314,6 +335,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 Sint32 text::write_xy_flat(Sint32 x, Sint32 y, std::string_view string,
                            unsigned char color, short to_buffer)
 {
+	sync_geometry();
 	if (sizex <= 0 || sizey <= 0)
 		return 0;
 
@@ -349,6 +371,7 @@ Sint32 text::write_xy_flat(Sint32 x, Sint32 y, std::string_view string,
 
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer)
 {
+	sync_geometry();
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 
@@ -366,6 +389,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer)
 
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color)
 {
+	sync_geometry();
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
@@ -375,6 +399,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color)
 
 Sint32 text::write_char_xy_alpha(Sint32 x, Sint32 y, char letter, unsigned char color, Uint8 alpha)
 {
+	sync_geometry();
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
@@ -388,6 +413,7 @@ Sint32 text::write_char_xy_alpha(Sint32 x, Sint32 y, char letter, unsigned char 
 
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter)
 {
+	sync_geometry();
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
@@ -398,6 +424,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter)
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
                           viewscreen *whereto)
 {
+	sync_geometry();
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
@@ -414,6 +441,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, viewscreen *whereto)
 {
+	sync_geometry();
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;

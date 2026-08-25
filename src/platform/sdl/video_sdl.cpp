@@ -577,6 +577,16 @@ Sint32 sdl_video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
 	textwidth = dialogtext.query_width(header);
 	left = centerx - (textwidth/2);
 
+#ifdef TESTING
+	TRACE("dialog", "draw_dialog header='%s' left=%d y=%d sizex=%d sizey=%d "
+	      "frames=%u valid=%d canvas=%dx%d target=%d",
+	      header ? header : "(null)", left, y1 + 6,
+	      static_cast<int>(dialogtext.sizex), static_cast<int>(dialogtext.sizey),
+	      dialogtext.letters ? dialogtext.letters->frames : 0u,
+	      dialogtext.letters && dialogtext.letters->valid() ? 1 : 0,
+	      active_canvas_w(), active_canvas_h(),
+	      static_cast<int>(active_canvas()));
+#endif
 	if (header && header[0] != '\0') // display a title?
 		dialogtext.write_xy(left, y1+6, header,
 		                    static_cast<unsigned char>(RED), 1); // draw header to buffer

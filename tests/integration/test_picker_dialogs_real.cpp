@@ -4,6 +4,11 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
+#include <algorithm>
+#include <cstring>
+#include <string>
+#include <vector>
+
 // picker_dialogs.cpp symbols
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
@@ -210,4 +215,139 @@ TEST(PickerDialogsReal, picker_dialogs_popup_dialog_real_click_ok)
     SDL_WaitThread(thread, &thread_result);
 
     ASSERT_TRUE(st.started && st.finished) << "popup dialog injector should run";
+}
+
+// --- #259: the dialog header band -----------------------------------------
+// Geometry mirrors compute_dialog_bounds (src/interface/ui/picker_dialogs.cpp)
+// and sdl_video::draw_dialog: never hard-code the y, so a bounds change moves
+// the probe with the box instead of silently reading empty grey.
+namespace
+{
+constexpr int kDialogPixPerChar = 6;   // compute_dialog_bounds' PIX_PER_CHAR
+constexpr int kDialogTitlePitch = 9;   // its title pitch
+
+struct DialogBandGeometry
+{
+    int x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    int header_top = 0, header_bottom = 0;   // draw_dialog's header field
+    int body_top = 0, body_bottom = 0;       // draw_dialog's message field
+};
+
+DialogBandGeometry dialog_band_geometry(const char* title,
+                                        const std::vector<std::string>& lines)
+{
+    int w = static_cast<int>(strlen(title)) * kDialogTitlePitch;
+    for (const std::string& line : lines)
+        w = std::max(w, static_cast<int>(line.size()) * kDialogPixPerChar);
+    const int h = 30 + 10 * static_cast<int>(lines.size());
+
+    DialogBandGeometry g;
+    g.x1 = 160 - w / 2 - 12;
+    g.x2 = 160 + w / 2 + 12;
+    g.y1 = 80 - h / 2;
+    g.y2 = 80 + h / 2;
+    g.header_top = g.y1 + 4;
+    g.header_bottom = g.y1 + 18;
+    g.body_top = g.y1 + 20;
+    g.body_bottom = g.y2 - 4;
+    return g;
+}
+
+// The header font (pix/textbig.png) is a single-index pixie: every lit glyph
+// pixel carries palette entry 40, the pure red that draw_dialog asks for, and
+// the header bar under it is the neutral grey of palette entry 12. So "the
+// title is on screen" is exactly "red pixels inside the header field".
+std::size_t count_red(int x1, int x2, int y1, int y2)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    std::size_t red = 0;
+    for (int y = y1; y <= y2; ++y)
+        for (int x = x1; x <= x2; ++x)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            scr->get_pixel(x, y, &r, &g, &b);
+            if (r > 150 && g + 60 < r && b + 60 < r)
+                ++red;
+        }
+    return red;
+}
+
+std::size_t count_blue(int x1, int x2, int y1, int y2)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    std::size_t blue = 0;
+    for (int y = y1; y <= y2; ++y)
+        for (int x = x1; x <= x2; ++x)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            scr->get_pixel(x, y, &r, &g, &b);
+            if (b > 100 && r + 30 < b && g + 30 < b)
+                ++blue;
+        }
+    return blue;
+}
+} // namespace
+
+TEST(PickerDialogsReal, dialog_header_paints_inside_its_own_field)
+{
+    ViewportGuard viewport_guard;
+    CanvasRoutingGuard canvas_guard;
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, 0);
+
+    const char* title = "Victory!";
+    const std::vector<std::string> lines{"You have won the battle!"};
+    const DialogBandGeometry g = dialog_band_geometry(title, lines);
+
+    screen* const scr = og::runtime::current_session->myscreen_;
+    const Sint32 left = scr->draw_dialog(g.x1, g.y1, g.x2, g.y2, title);
+    scr->text_normal.write_xy(left + 9, g.body_top + 4, lines[0].c_str(),
+                              static_cast<unsigned char>(DARK_BLUE), 1);
+
+    const std::size_t header_red =
+        count_red(g.x1 + 4, g.x2 - 4, g.header_top, g.header_bottom);
+    const std::size_t body_blue =
+        count_blue(g.x1 + 4, g.x2 - 4, g.body_top, g.body_bottom);
+
+    EXPECT_GT(header_red, 40u)
+        << "#259: the dialog title must paint inside the header field";
+    EXPECT_GT(body_blue, 40u)
+        << "control: the message body must paint too (if this is 0 the probe "
+           "is measuring the wrong band, not a header regression)";
+}
+
+TEST(PickerDialogsReal, dialog_header_survives_stale_cached_font_geometry)
+{
+    ViewportGuard viewport_guard;
+    CanvasRoutingGuard canvas_guard;
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+
+    // The #259 mechanism: a text built before its shared font pixie could be
+    // read keeps a 0x0 glyph box, while a later text loads the pixie for real.
+    // The blit then clips to nothing and the header comes out blank over an
+    // intact body. Geometry is re-read at use, so a stale cache cannot do it.
+    text& big = og::runtime::current_session->myscreen_->text_big;
+    const short saved_x = big.sizex;
+    const short saved_y = big.sizey;
+    ASSERT_TRUE(big.letters != nullptr && big.letters->valid())
+        << "the header font must be loaded for this test to mean anything";
+    big.sizex = 0;
+    big.sizey = 0;
+
+    const char* title = "Victory!";
+    const std::vector<std::string> lines{"You have won the battle!"};
+    const DialogBandGeometry g = dialog_band_geometry(title, lines);
+
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, 0);
+    og::runtime::current_session->myscreen_->draw_dialog(g.x1, g.y1, g.x2, g.y2,
+                                                        title);
+    const std::size_t header_red =
+        count_red(g.x1 + 4, g.x2 - 4, g.header_top, g.header_bottom);
+
+    big.sizex = saved_x;
+    big.sizey = saved_y;
+
+    EXPECT_GT(header_red, 40u)
+        << "#259: a stale cached glyph box must not blank the dialog header";
+    EXPECT_EQ(saved_x, big.sizex) << "the live geometry must match the pixie";
 }
