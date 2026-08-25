@@ -4,6 +4,7 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/pack_transfer.h>
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -33,6 +34,10 @@ struct LobbySaveDataEquivalent {
     // Match time limit in sim ticks (protocol v15; see LobbySettings).
     // 0 = the map's own value.
     std::int16_t time_limit = 0;
+    // Per-team bot squad / bot level (protocol v16; see LobbySettings).
+    // 0 = AUTO on both.
+    std::array<std::int16_t, SCORE_TEAM_COUNT> bot_squad = {};
+    std::array<std::int16_t, SCORE_TEAM_COUNT> bot_level = {};
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;

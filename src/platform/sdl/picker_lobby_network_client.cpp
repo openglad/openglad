@@ -1593,6 +1593,8 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.cross_control = state.settings.cross_control;
     equivalent.infinite_gold = state.settings.infinite_gold;
     equivalent.time_limit = state.settings.time_limit;
+    equivalent.bot_squad = state.settings.bot_squad;
+    equivalent.bot_level = state.settings.bot_level;
 
     for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
@@ -1682,6 +1684,11 @@ LobbyStateApplyResult apply_lobby_state_to_save(
     save.cross_control = state.settings.cross_control;
     save.infinite_gold = state.settings.infinite_gold;
     save.time_limit = state.settings.time_limit;
+    for (std::size_t team = 0; team < save.bot_squad.size(); ++team)
+    {
+        save.bot_squad[team] = state.settings.bot_squad[team];
+        save.bot_level[team] = state.settings.bot_level[team];
+    }
     save.numplayers = static_cast<unsigned char>(
         spectator_mode
             ? 0u
@@ -1844,6 +1851,17 @@ og::sim::LobbyMessage make_remove_seat_message(
     return message;
 }
 
+// LINEUP §6: the host's "remove that machine" request. The target is a
+// machine id, not a seat token, because a kick takes the whole machine.
+og::sim::LobbyMessage make_kick_message(og::sim::LobbyMachineId machine_id)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyKickMessage{
+        .machine_id = machine_id,
+    };
+    return message;
+}
+
 og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
 {
     og::sim::LobbyMessage message;
@@ -1994,6 +2012,13 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     settings.cross_control = save.cross_control;
     settings.infinite_gold = save.infinite_gold;
     settings.time_limit = save.time_limit;
+    // Per-team bot knobs (protocol v16 / GTL v18, LINEUP §3.1): the same
+    // dropped-field rule as every other lobby-negotiated match setting.
+    for (std::size_t team = 0; team < settings.bot_squad.size(); ++team)
+    {
+        settings.bot_squad[team] = save.bot_squad[team];
+        settings.bot_level[team] = save.bot_level[team];
+    }
     // Protocol v12: shared-teams rule rides the wire (matchup: versus).
     settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
 
@@ -3013,6 +3038,52 @@ public:
         return echoed != nullptr && echoed->team == team;
     }
 
+    // LINEUP §6: the host removes one foreign MACHINE. Own seats and unknown
+    // ids are refused here as well as on the server — the client-side check
+    // keeps a mis-wired row from spending a round trip, the server-side one
+    // is the authority (a crafted client reaches it directly).
+    bool kick_machine(og::sim::LobbyMachineId machine_id) override
+    {
+        if (!local_client_transport_ || !state_.has_value() ||
+            machine_id == og::sim::kInvalidLobbyMachineId)
+        {
+            return false;
+        }
+        for (const og::sim::LobbyPlayer* const seat :
+             og::ui::detail::find_local_seats(*state_))
+        {
+            if (seat->machine_id == machine_id)
+                return false; // leaving is disconnect_session(), not a kick
+        }
+        const bool known = std::any_of(
+            state_->players.begin(), state_->players.end(),
+            [machine_id](const og::sim::LobbyPlayer& player) {
+                return player.machine_id == machine_id;
+            });
+        if (!known)
+            return false;
+
+        og::ui::detail::send_lobby_message(
+            *local_client_transport_,
+            local_client_transport_->local_peer_id(),
+            og::ui::detail::make_kick_message(machine_id));
+        poll_and_apply();
+        return true;
+    }
+
+    // LINEUP §6: stop hosting. Tearing the server and its transports down is
+    // exactly shutdown()'s job, and every connected peer sees the link drop.
+    bool disconnect_session() override
+    {
+        if (!combined_transport_ && !local_client_transport_ &&
+            server_ == nullptr)
+        {
+            return false;
+        }
+        shutdown();
+        return true;
+    }
+
     bool set_ready(bool ready) override
     {
         if (!local_client_transport_)
@@ -3994,6 +4065,11 @@ public:
     // to the §9.12 session status.
     [[nodiscard]] std::optional<std::string> connection_alert() const override
     {
+        // LINEUP §6: the host's kick outranks every link state. The server
+        // sends the notice and then drops us, so without this the only thing
+        // on screen would be a bare "connection lost".
+        if (was_kicked_)
+            return "KICKED BY HOST";
         if (!transport_)
             return "Status: connecting";
         switch (transport_->link_state())
@@ -4076,6 +4152,21 @@ public:
                         *state_, target_seat_id);
                 return echoed != nullptr && echoed->team == team;
             });
+    }
+
+    // LINEUP §6: leave the session. shutdown() drops the transport, which is
+    // what the host sees; the caller swaps in a local client afterwards.
+    bool disconnect_session() override
+    {
+        if (!transport_)
+            return false;
+        shutdown();
+        return true;
+    }
+
+    [[nodiscard]] bool was_kicked() const noexcept override
+    {
+        return was_kicked_;
     }
 
     bool set_ready(bool ready) override
@@ -4627,6 +4718,18 @@ private:
             break;
 
         case og::sim::TypedReceivedMessageKind::LobbyMessage:
+            // LINEUP §6: the host's kick notice, sent immediately before the
+            // server drops this peer. Latch it — the connection dies right
+            // after, so the flag is the only surviving evidence of WHY, and
+            // it must outlive shutdown() so the swap-in code can still read
+            // it. Nothing else in this client's lifetime clears it.
+            if (message.lobby_message &&
+                message.lobby_message->kind() ==
+                    og::sim::LobbyMessageKind::Kicked)
+            {
+                was_kicked_ = true;
+                break;
+            }
             if (message.lobby_message &&
                 message.lobby_message->kind() ==
                     og::sim::LobbyMessageKind::StartGame)
@@ -4865,6 +4968,10 @@ private:
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
     // Staged lobby (#218, C9): the joiner's staged preview mirror.
     og::server::StagedPreviewMirror preview_mirror_;
+    // LINEUP §6: latched on a LobbyKickedMessage. Deliberately NOT cleared by
+    // shutdown() — the kick is followed immediately by the disconnect, and the
+    // UI reads this after tearing the client down to explain the drop.
+    bool was_kicked_ = false;
 };
 
 } // namespace

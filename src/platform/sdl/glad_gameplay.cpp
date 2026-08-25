@@ -116,6 +116,13 @@ void apply_lobby_game_start_config(
     save.cross_control = static_cast<short>(config_save.cross_control);
     save.infinite_gold = static_cast<short>(config_save.infinite_gold);
     save.time_limit = static_cast<short>(config_save.time_limit);
+    for (std::size_t team = 0; team < save.bot_squad.size(); ++team)
+    {
+        save.bot_squad[team] =
+            static_cast<short>(config_save.bot_squad[team]);
+        save.bot_level[team] =
+            static_cast<short>(config_save.bot_level[team]);
+    }
     // The old network handoff collapsed every allied-mode client onto team 0.
     // allied_mode remains in the save/replay format, but Base Camp's explicit
     // per-seat assignment is now authoritative in every mode.

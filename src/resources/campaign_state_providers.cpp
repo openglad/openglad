@@ -88,6 +88,22 @@ short* match_setting_slot(SaveData& save, const std::string& name)
         return &save.generator_rate;
     if (name == "time_limit")
         return &save.time_limit;
+    // The eight per-team bot knobs (LINEUP §3.1): "bot_squad_1".."bot_level_4",
+    // the trailing digit being the 1-based team.
+    if (name.size() == 11 && name.compare(0, 10, "bot_squad_") == 0)
+    {
+        const int team = name[10] - '1';
+        if (team >= 0 && team < SCORE_TEAM_COUNT)
+            return &save.bot_squad[static_cast<std::size_t>(team)];
+        return nullptr;
+    }
+    if (name.size() == 11 && name.compare(0, 10, "bot_level_") == 0)
+    {
+        const int team = name[10] - '1';
+        if (team >= 0 && team < SCORE_TEAM_COUNT)
+            return &save.bot_level[static_cast<std::size_t>(team)];
+        return nullptr;
+    }
     return nullptr;
 }
 
@@ -155,6 +171,24 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
             ? static_cast<short>(std::clamp<std::int32_t>(value, 720, 21600))
             : static_cast<short>(0);
         return true;
+    }
+    // Per-team bot knobs (LINEUP §3.1). 0 = AUTO is legal, so both clamp
+    // rather than refuse; the bounds come from the ONE og::sim
+    // implementation the lobby sanitizer uses, so a scripted preset can
+    // never publish a value the server would bounce.
+    if (name.size() == 11 && name[10] >= '1' &&
+        name[10] < static_cast<char>('1' + SCORE_TEAM_COUNT))
+    {
+        if (name.compare(0, 10, "bot_squad_") == 0)
+        {
+            out = static_cast<short>(og::sim::clamp_bot_squad(value));
+            return true;
+        }
+        if (name.compare(0, 10, "bot_level_") == 0)
+        {
+            out = static_cast<short>(og::sim::clamp_bot_level(value));
+            return true;
+        }
     }
     return false; // unknown name
 }

@@ -597,6 +597,10 @@ struct ViewScenarioKey
     // LIMIT change must invalidate the cached staged world like any other
     // knob — without it the viewer keeps promising the old deadline.
     short time_limit = 0;
+    // LINEUP §3.1: the staged preview bakes the resolved bot fills, so a
+    // squad/level change must invalidate the cached staged world too.
+    std::array<short, 4> bot_squad = {};
+    std::array<short, 4> bot_level = {};
     std::uint32_t stage_generation = 0;
     // Seat block (#218): digest of the displayed seat facts. REQUIRED as a
     // key member because ready flips deliberately never restage
@@ -701,6 +705,8 @@ static ViewScenarioKey view_scenario_current_key(const SaveData& save)
     key.capture_limit = save.ctf_capture_limit;
     key.respawn_ticks = save.ctf_respawn_ticks;
     key.time_limit = save.time_limit;
+    key.bot_squad = save.bot_squad;
+    key.bot_level = save.bot_level;
     key.save_campaign = save.current_campaign;
     key.mounted_campaign = get_mounted_campaign();
     og::ui::IPickerLobbyClient* const lobby =

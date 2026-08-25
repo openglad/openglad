@@ -169,6 +169,58 @@ public:
     std::vector<og::sim::LobbyPlayer> players;
     bool restrict_editable_slots = false;
     std::array<bool, MAX_TEAM_SIZE> editable_slots{};
+
+    // LINEUP §6 seam (kick / disconnect / kicked receipt).
+    bool kick_machine(og::sim::LobbyMachineId machine_id) override
+    {
+        kicked_machines.push_back(machine_id);
+        return kick_result;
+    }
+    bool disconnect_session() override
+    {
+        ++disconnect_calls;
+        return disconnect_result;
+    }
+    [[nodiscard]] bool was_kicked() const noexcept override
+    {
+        return was_kicked_result;
+    }
+
+    std::vector<og::sim::LobbyMachineId> kicked_machines;
+    bool kick_result = true;
+    int disconnect_calls = 0;
+    bool disconnect_result = true;
+    bool was_kicked_result = false;
+};
+
+// A client that overrides NOTHING past the pure virtuals, so the
+// IPickerLobbyClient defaults for the LINEUP §6 seam are exercised as the
+// contract every non-networked client inherits.
+class DefaultSeamPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
 };
 
 struct ActivePickerLobbyClientGuard
@@ -868,6 +920,54 @@ TEST(PickerFuncs, picker_lobby_host_controls_visible_follows_active_client_bound
 
     EXPECT_TRUE(picker_lobby_host_controls_visible());
     picker_lobby_shutdown();
+}
+
+// LINEUP §6: the three free functions are the UI's only handle on the kick /
+// disconnect seam, and each must forward to the ACTIVE client and answer
+// false with no client installed (the local/offline case WP-F swaps in).
+TEST(PickerFuncs, picker_lobby_kick_and_disconnect_forward_to_the_active_client)
+{
+    picker_lobby_shutdown();
+    EXPECT_FALSE(picker_lobby_kick_machine(7u))
+        << "no client installed: nothing to kick";
+    EXPECT_FALSE(picker_lobby_disconnect_session());
+    EXPECT_FALSE(picker_lobby_was_kicked());
+
+    ContractPickerLobbyClient client;
+    client.was_kicked_result = true;
+    {
+        ActivePickerLobbyClientGuard guard(&client);
+        EXPECT_TRUE(picker_lobby_kick_machine(0x1234u));
+        ASSERT_EQ(1u, client.kicked_machines.size());
+        EXPECT_EQ(0x1234u, client.kicked_machines.front())
+            << "the machine id must reach the client unchanged";
+        EXPECT_TRUE(picker_lobby_disconnect_session());
+        EXPECT_EQ(1, client.disconnect_calls);
+        EXPECT_TRUE(picker_lobby_was_kicked());
+
+        // A refusal propagates as a refusal, not as a silent success.
+        client.kick_result = false;
+        client.disconnect_result = false;
+        EXPECT_FALSE(picker_lobby_kick_machine(0x99u));
+        EXPECT_FALSE(picker_lobby_disconnect_session());
+        EXPECT_EQ(2u, client.kicked_machines.size());
+        EXPECT_EQ(2, client.disconnect_calls);
+    }
+
+    // The base-class defaults: a client with no networking behind it refuses
+    // both requests and has never been kicked.
+    DefaultSeamPickerLobbyClient plain;
+    {
+        ActivePickerLobbyClientGuard guard(&plain);
+        EXPECT_FALSE(picker_lobby_kick_machine(1u));
+        EXPECT_FALSE(picker_lobby_disconnect_session());
+        EXPECT_FALSE(picker_lobby_was_kicked());
+    }
+
+    picker_lobby_shutdown();
+    EXPECT_FALSE(picker_lobby_kick_machine(7u));
+    EXPECT_FALSE(picker_lobby_disconnect_session());
+    EXPECT_FALSE(picker_lobby_was_kicked());
 }
 
 TEST(PickerFuncs, picker_replace_lobby_client_is_transactional_on_initialize_failure)
