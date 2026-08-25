@@ -1,4 +1,5 @@
 #include <openglad/interface/screen.h>
+#include <openglad/interface/input.h>
 #include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -52,6 +53,27 @@ TEST(VideoFade, video_fadeblack_out_then_in_tracks_the_window)
     ASSERT_TRUE(scr->window_is_black());
     ASSERT_EQ(1, scr->fadeblack(true)) << "fade-from-black completes";
     ASSERT_FALSE(scr->window_is_black()) << "the fade-in's present clears the flag";
+}
+
+// A fade's key-press abort means a press DURING the fade, never one left over
+// from the screen that just exited: the tap that dismissed the campaign intro
+// (Backspace/Esc) used to end the scroller's own fade-out on its first frame.
+// FadeBetween clears the sticky press flag when the fade starts (the same
+// path both branches take), so a pending press is spent, not inherited.
+TEST(VideoFade, video_fade_start_spends_a_pending_key_press)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    scr->buffer_to_screen(0, 0, 320, 200);
+    clear_key_press_event();
+    input_key_press_event_ref() = 1;  // the dismissal tap, still remembered
+    ASSERT_EQ(1, scr->fadeblack(false)) << "the fade-out runs";
+    ASSERT_EQ(0, query_key_press_event())
+        << "starting a fade clears the stale press so the animation cannot "
+           "abort on a key the previous screen already consumed";
+    ASSERT_TRUE(scr->window_is_black());
+    input_key_press_event_ref() = 1;
+    ASSERT_EQ(1, scr->fadeblack(true)) << "the fade-in runs";
+    ASSERT_EQ(0, query_key_press_event()) << "the fade-in clears it too";
 }
 
 // The "never presented" invariant holds a present to the rect it DECLARED: a

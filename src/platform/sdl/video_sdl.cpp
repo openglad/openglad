@@ -3788,6 +3788,13 @@ int sdl_video::FadeBetween(
 		old_locked = false;
 	}
 
+	// The animation below aborts on a key press, and key_press_event_ is a
+	// sticky "pressed since the last clear" flag — the tap that dismissed
+	// the previous screen would still be set here and end this fade on its
+	// first frame. Clear it now so the abort means a press DURING the fade
+	// (a held key keeps skipping: OS key repeat re-sets it mid-fade).
+	clear_key_press_event();
+
 	//Fade from old to new surface.  Effect takes constant time.
 #ifdef TESTING
 	// In test mode, just do a direct blit instead of animated fade
