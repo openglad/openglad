@@ -203,6 +203,24 @@ bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs) {
   return false;
 }
 
+// One keyboard-nav step, applied through the engine's testing hook (real key
+// events can't be driven from an injector thread — the blocking
+// hold-and-release loops in handle_menu_nav eat them mid-press).
+void menu_nav_step(int key) {
+  g_test_menu_nav_key = key;
+  SDL_Delay(200);
+}
+
+// Park the pointer at game coords (x, y). interact() leaves the cursor on the
+// button it clicked, and that hover highlight is the same yellow as the
+// keyboard-focus outline — a focus shot can only be told apart from a hover
+// one once no button is hovered.
+void park_pointer_at(float x, float y) {
+  const auto [win_x, win_y] = ui_canvas_to_window(x, y);
+  inject_mouse_motion(static_cast<int>(win_x), static_cast<int>(win_y));
+  SDL_Delay(200);
+}
+
 struct RosterSeed {
   const char *name;
   int family;
@@ -958,6 +976,123 @@ TEST(UxShots, i_basecamp_four_local_seats) {
   shot.name = "basecamp_four_local_seats";
   shot.target_seats = 4;
   run_basecamp_seat_growth_shot(shot);
+}
+
+// --- 9b. keyboard focus on a bare slot --------------------------------------
+
+// The rail's fixed grid, restated from the drawing side: slot k opens at
+// x = 8 + 78k and the face is 70 wide (og::ui::kSeatRail*), the cards run
+// y=164..173, and row 168 is mid-face — clear of the label ink's top and
+// bottom rows and of both horizontal bevels (the lobby_full oracle below
+// reads the same row).
+constexpr int kSeatCardX(int slot) {
+  return og::ui::kSeatRailX0 +
+         slot * (og::ui::kSeatRailCardWidth + og::ui::kSeatRailGap);
+}
+constexpr int kSeatCardTopY = 164;
+constexpr int kSeatCardHeight = 10;
+
+// Pixels where two rail slots' faces disagree, compared cell for cell at the
+// same offset inside each card.
+std::size_t seat_card_diff(const FramePixels &rgb, int slot_a, int slot_b) {
+  std::size_t differing = 0;
+  for (int dy = 0; dy < kSeatCardHeight; ++dy) {
+    for (int dx = 0; dx < og::ui::kSeatRailCardWidth; ++dx) {
+      const int y = kSeatCardTopY + dy;
+      const auto at = [&](int slot) {
+        return (static_cast<std::size_t>(y) * 320 +
+                static_cast<std::size_t>(kSeatCardX(slot) + dx)) *
+               3;
+      };
+      const std::size_t ia = at(slot_a);
+      const std::size_t ib = at(slot_b);
+      if (rgb[ia] != rgb[ib] || rgb[ia + 1] != rgb[ib + 1] ||
+          rgb[ia + 2] != rgb[ib + 2])
+        ++differing;
+    }
+  }
+  return differing;
+}
+
+// Solo leaves slots 1, 2 and 3 wearing the same ADD PLAYER face on the same
+// fixed grid, so the three cards are pixel-identical — until the keyboard
+// highlight lands on one of them. That makes the OTHER two their own
+// reference: no palette entry is named here, and a focus ring that never
+// arrived (or landed on the wrong slot) fails instead of quietly producing a
+// screenshot of three idle placeholders.
+bool check_placeholder_focus_ring(const FramePixels &rgb) {
+  const std::size_t focused = seat_card_diff(rgb, 1, 2);
+  const std::size_t idle = seat_card_diff(rgb, 2, 3);
+  if (idle != 0) {
+    fprintf(stderr,
+            "  [uxshot] placeholder focus: the two unfocused ADD PLAYER "
+            "slots differ in %zu pixels — no clean reference\n",
+            idle);
+    return false;
+  }
+  // The interior ring is a box inside a 70x10 face: even at the pulse's
+  // deepest inset it draws well over a hundred pixels. Twenty is a floor no
+  // stray glyph shift could clear, not a measurement.
+  if (focused < 20) {
+    fprintf(stderr,
+            "  [uxshot] placeholder focus: slot 1 differs from its idle "
+            "neighbour in only %zu pixels — no focus ring\n",
+            focused);
+    return false;
+  }
+  return true;
+}
+
+// The keyboard route to a bare slot, walked with saturating steps rather than
+// a counted path: every roster column's DOWN chain drains onto the rail and
+// then onto the command strip, whose rows have no down-link, so a surplus
+// DOWN is a no-op. The same holds for LEFT along the strip, which ends on
+// BACK. From BACK the rail's documented entry is UP (its leftmost live slot,
+// this machine's own seat here) and one RIGHT reaches slot 1 — the first
+// placeholder. Counting nothing means a roster page of a different length
+// cannot silently move the focus somewhere else.
+int basecamp_placeholder_focus_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  NamedShot *shot = static_cast<NamedShot *>(data);
+  wait_for_interactable("continue_game", 5000);
+  SDL_Delay(1500);
+  interact("continue_game");
+  if (wait_for_team_menu()) {
+    SDL_Delay(1500);
+    // Left of the panel's rail and above the cards: no button owns this
+    // pixel, so nothing is hovered when the shot is taken.
+    park_pointer_at(2.0f, 162.0f);
+    for (int i = 0; i < 12; ++i)
+      menu_nav_step(KEY_DOWN);
+    for (int i = 0; i < 5; ++i)
+      menu_nav_step(KEY_LEFT);
+    menu_nav_step(KEY_UP);
+    menu_nav_step(KEY_RIGHT);
+    // menu_nav_enabled expires 5 s after the last press (picker_input.cpp),
+    // and the ring is only drawn while it holds — so the capture follows the
+    // last step immediately.
+    shot->state.captures += capture_frame(shot->name, shot->check);
+    SDL_Delay(200);
+    interact("back");
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  shot->state.finished = true;
+  return 0;
+}
+
+TEST(UxShots, g3_basecamp_placeholder_focus) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  NamedShot shot;
+  shot.name = "basecamp_placeholder_focus";
+  shot.check = &check_placeholder_focus_ring;
+  run_basecamp_shot(shot, &basecamp_placeholder_focus_injector);
 }
 
 // --- 10-12. networked base camp: host / joiner / degraded alert -------------
@@ -1867,22 +2002,8 @@ bool check_help_editor_focused(const FramePixels &rgb) {
   return true;
 }
 
-// One keyboard-nav step, applied through the engine's testing hook (real key
-// events can't be driven from an injector thread).
-void help_nav_step(int key) {
-  g_test_menu_nav_key = key;
-  SDL_Delay(200);
-}
-
-// Park the pointer over the content frame. interact() leaves the cursor on the
-// button it clicked, and that hover highlight is the same yellow as the
-// keyboard-focus outline — the focus shot can only be told apart from its
-// reference once no button is hovered.
-void help_park_pointer() {
-  const auto [win_x, win_y] = ui_canvas_to_window(300.0f, 100.0f);
-  inject_mouse_motion(static_cast<int>(win_x), static_cast<int>(win_y));
-  SDL_Delay(200);
-}
+// Park the pointer over the HELP content frame (see park_pointer_at).
+void help_park_pointer() { park_pointer_at(300.0f, 100.0f); }
 
 // #237 symmetry pin: HELP is a main-menu door, so it fades on the way in AND
 // on the way back. The round trip is three crossings — the main menu's own
@@ -1920,9 +2041,9 @@ int help_screen_injector(void *data) {
     help_park_pointer();
     state->captures += capture_frame("help_editor", &check_help_editor_merged);
     // Walk the keyboard highlight from BACK onto the active (EDITOR) tab.
-    help_nav_step(KEY_UP);
-    help_nav_step(KEY_RIGHT);
-    help_nav_step(KEY_RIGHT);
+    menu_nav_step(KEY_UP);
+    menu_nav_step(KEY_RIGHT);
+    menu_nav_step(KEY_RIGHT);
     state->captures +=
         capture_frame("help_editor_focus", &check_help_editor_focused);
     SDL_Delay(300);
