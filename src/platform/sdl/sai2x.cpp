@@ -1962,7 +1962,10 @@ std::size_t surface_row_bytes(const SDL_Surface* surface)
 void Screen::testing_snapshot_presented(SDL_Surface* surface, int x, int y,
                                         int w, int h)
 {
-	if (surface == nullptr)
+	// A degenerate surface (zero-sized or pixel-less — the scaler's
+	// fail-closed probes present those) shows nothing worth remembering.
+	if (surface == nullptr || surface->pixels == nullptr || surface->w <= 0 ||
+	    surface->h <= 0)
 		return;
 	PresentedSnapshot* slot = nullptr;
 	for (PresentedSnapshot& candidate : presented_snapshots_)
@@ -1990,6 +1993,12 @@ void Screen::testing_snapshot_presented(SDL_Surface* surface, int x, int y,
 		slot->pixels = SDL_CreateSurface(surface->w, surface->h, surface->format);
 		if (slot->pixels == nullptr)
 			return;
+		if (slot->pixels->pixels == nullptr)
+		{
+			SDL_DestroySurface(slot->pixels);
+			slot->pixels = nullptr;
+			return;
+		}
 		// A fresh snapshot is black everywhere the first present does not
 		// cover: nothing outside its rect has been shown yet.
 		memset(slot->pixels->pixels, 0,
