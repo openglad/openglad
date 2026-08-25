@@ -232,6 +232,16 @@ inline constexpr int kBaseCampSeatCardLabelBudget = 11;
 // normal exterior ring.
 inline constexpr int kBaseCampInteriorRingFirstIndex = kBaseCampAddSeatIndex;
 inline constexpr int kBaseCampInteriorRingLastIndex = 48;
+namespace og::ui {
+// True when rail slot k (0..3) is a SEAT CARD this frame — the only shape
+// that packs a numbered team chip into the face's last nine pixels, and so
+// the only one whose focus ring needs the chip clearance. A bare slot's
+// ADD PLAYER / LOBBY FULL label is ten glyphs with no trailing pad: its ink
+// runs to x+64, and a ring cut back to x+60 would strike through it.
+// Reads the rewire's cached frame shape — the same one the chip pass reads,
+// so the ring and the chip can never disagree about which slots have one.
+bool base_camp_rail_slot_has_chip(int slot);
+} // namespace og::ui
 // --- The appended gameplay-zone band (docs/basecamp-zones-design.md
 // "Bounds arithmetic"): ordinals 49..71, statically PARKED at zero-size
 // rects with empty labels (gate-lattice safe) and re-banded per frame by the

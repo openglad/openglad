@@ -4126,6 +4126,28 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     EXPECT_EQ(kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage - 1,
               buttons[kCreateMenuGoIndex].nav.up);
 
+    // A local index the ROSTER does not carry stops the rail rather than
+    // leaving a hole in it: the lobby and the collected roster can disagree
+    // for a frame after a join, and a slot that claimed "card" with nothing to
+    // name would draw a blank face. Seat 9 is not in this five-seat lobby, so
+    // the rail names the one seat it can and offers the rest as doors.
+    lobby.local_indices = {0, 9};
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.local_seat_indices.size())
+        << "the fixture must hand the rail a local index the roster lacks";
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("P1 WASD ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + 1].label)
+        << "the hole becomes a door, not a blank card";
+    ASSERT_NE(nullptr, spec.rows[kBaseCampSeatCardBase + 1].state_override);
+    EXPECT_EQ(og::ui::RowState::Visible,
+              spec.rows[kBaseCampSeatCardBase + 1].state_override(
+                  og::ui::MenuLabelContext{}));
+    lobby.local_indices = {4};
+    og::ui::base_camp_refresh_rows(state);
+    spec.nav.rewire(buttons, count, highlighted);
+    ASSERT_EQ("P5 WASD ", buttons[kBaseCampSeatCardBase].label);
+
     // The four parked rail ordinals answer nothing at all.
     for (const int spare : kBaseCampSeatRailSpares)
         EXPECT_EQ(0, spec.on_spec_row(spare, &state)) << "spare " << spare;

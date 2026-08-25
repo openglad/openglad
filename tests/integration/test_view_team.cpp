@@ -31,6 +31,7 @@
 #include <openglad/core/util.h>
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <functional>
 #include <list>
@@ -112,6 +113,8 @@ namespace og::ui {
 void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
                                         const button* buttons,
                                         int highlighted_button);
+void picker_testing_apply_row_states(const MenuScreenSpec& spec,
+                                     button* buttons, int num_buttons);
 }
 #endif
 
@@ -2311,9 +2314,12 @@ TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
         << "slot one must read ADD PLAYER beside a single claimed seat";
     EXPECT_TRUE(state.slot_became_a_card)
         << "the click must claim a seat, not just repaint";
-    EXPECT_EQ("P2 ", state.slot_one_label_after.substr(0, 3))
-        << "the new seat lands in the slot that was clicked, as P2: '"
-        << state.slot_one_label_after << "'";
+    // Exact, not a prefix: ensure_unique_seat_mapping lands the second seat
+    // on the arrow profile, so the whole face is known — "P2 " + the arrow
+    // glyphs + the load-bearing chip-clearance pad.
+    EXPECT_EQ(std::format("P2 {} ", og::input::kArrowGlyphs),
+              state.slot_one_label_after)
+        << "the new seat lands in the slot that was clicked, as P2";
     EXPECT_TRUE(trace_contains("basecamp", "seat_add local_count=2"))
         << "the slot runs the add path itself, gates included";
     EXPECT_EQ(2, static_cast<int>(save.numplayers));
@@ -3138,11 +3144,147 @@ TEST(ViewTeam, base_camp_seat_rail_draws_labelled_placeholders_and_the_chip)
         << "the ADD PLAYER glyphs must actually be painted on the slot";
     EXPECT_NE(blank_face, empty_recess)
         << "and even bare, the slot is a raised button, not the old recess";
+    // And specifically the LAST glyph. "ADD PLAYER" is ten characters with no
+    // trailing pad, so vdisplay centers it from x+6 and the final "R" occupies
+    // x+60..x+64 — the very columns a card's chip clearance cuts away. The
+    // focus-ring probe below is only meaningful because this ink is there.
+    constexpr int kLastGlyphFirstCol = 60;
+    constexpr int kLastGlyphCols = 5;
+    const auto last_glyph_columns = [&](const std::vector<Uint32>& block) {
+        std::vector<Uint32> ink;
+        for (int row = 0; row < 10; ++row) {
+            for (int col = 0; col < kLastGlyphCols; ++col) {
+                ink.push_back(block[static_cast<std::size_t>(
+                    row * 70 + kLastGlyphFirstCol + col)]);
+            }
+        }
+        return ink;
+    };
+    EXPECT_NE(last_glyph_columns(blank_face), last_glyph_columns(slot_two))
+        << "the final glyph of ADD PLAYER lands in the card's chip columns";
 
-    // A FULL LOBBY dims the same face. Mirror the engine's one-line gate rule
-    // (menu_screen_runner apply_row_states: Disabled => live->color = GREY)
-    // off the row's own state_override, so the paint and the state can never
-    // drift apart here.
+    // KEYBOARD FOCUS on a bare slot. A card's ring is cut back ten pixels so
+    // it cannot paint over the numbered team chip; a placeholder has no chip
+    // and a pad-less ten-glyph label, so it takes the FULL face ring. Sample
+    // the pulse until both extremes have been seen and hold the rule at each:
+    // the ring is yellow, it stays inside the slot, it hugs the full 70px face
+    // symmetrically, and it never touches that last glyph.
+    output->fastbox(0, 0, 4, 4, YELLOW);
+    Uint8 yellow_r = 0;
+    Uint8 yellow_g = 0;
+    Uint8 yellow_b = 0;
+    output->get_pixel(1, 1, &yellow_r, &yellow_g, &yellow_b);
+    const Uint32 kYellow = (static_cast<Uint32>(yellow_r) << 16) |
+        (static_cast<Uint32>(yellow_g) << 8) |
+        static_cast<Uint32>(yellow_b);
+
+    // The whole rail band, so a ring that escaped onto a neighbour or the
+    // panel bevel is caught rather than sampled around.
+    constexpr int kRailLeft = 8;
+    constexpr int kRailTop = 162;
+    constexpr int kRailWidth = 313 - kRailLeft + 1;
+    constexpr int kRailHeight = 176 - kRailTop + 1;
+    const auto probe_placeholder_focus = [&](int slot, const char* what) {
+        const button& face = buttons[kBaseCampSeatCardBase + slot];
+        const int face_x = face.x;
+        const int face_y = face.y;
+        render();
+        const std::vector<Uint32> baseline =
+            capture_block(kRailLeft, kRailTop, kRailWidth, kRailHeight);
+        // The pulse insets by 0..3px. Both ends must be observed: the widest
+        // ring is the one a chip clearance would visibly cut, and the tightest
+        // proves the probe is reading a live pulse rather than a still frame.
+        // (The extremes are sampled as bands — sinf lands EXACTLY on +/-1 for
+        // a vanishing slice of the period, so pinning inset == 0 would be a
+        // coin flip.)
+        bool saw_wide_ring = false;
+        bool saw_tight_ring = false;
+        for (int sample = 0;
+             sample < 500 && !(saw_wide_ring && saw_tight_ring); ++sample)
+        {
+            render();
+            pks().menu_nav_enabled = true;
+            og::ui::picker_testing_draw_menu_highlight(
+                spec, buttons, kBaseCampSeatCardBase + slot);
+            const std::vector<Uint32> focused =
+                capture_block(kRailLeft, kRailTop, kRailWidth, kRailHeight);
+
+            int min_x = kRailLeft + kRailWidth;
+            int max_x = kRailLeft - 1;
+            int min_y = kRailTop + kRailHeight;
+            int max_y = kRailTop - 1;
+            for (int y = 0; y < kRailHeight; ++y) {
+                for (int x = 0; x < kRailWidth; ++x) {
+                    const std::size_t at =
+                        static_cast<std::size_t>(y * kRailWidth + x);
+                    if (focused[at] == baseline[at])
+                        continue;
+                    const int px = kRailLeft + x;
+                    const int py = kRailTop + y;
+                    ASSERT_EQ(kYellow, focused[at])
+                        << what << ": focus painted something that is not the "
+                                   "ring at (" << px << "," << py << ")";
+                    // The interior ring's own convention: draw_highlight_
+                    // interior boxes x..x+sizex inclusive, so the outermost
+                    // pulse lands one past the face's last column (the same
+                    // edge the move-up column's ring uses).
+                    ASSERT_GE(px, face_x) << what;
+                    ASSERT_LE(px, face_x + face.sizex) << what;
+                    ASSERT_GE(py, face_y) << what;
+                    ASSERT_LE(py, face_y + face.sizey) << what;
+                    min_x = std::min(min_x, px);
+                    max_x = std::max(max_x, px);
+                    min_y = std::min(min_y, py);
+                    max_y = std::max(max_y, py);
+                }
+            }
+            ASSERT_LE(min_x, max_x) << what << ": no focus ring was drawn";
+
+            // THE RULE. Both insets are measured against the FULL 70px face.
+            // A chip clearance here would push the right inset out to ten and
+            // strand the ring inside the label.
+            const int left_inset = min_x - face_x;
+            const int right_inset = face_x + face.sizex - max_x;
+            EXPECT_LE(left_inset, 3) << what;
+            EXPECT_LE(right_inset, 3)
+                << what << ": the ring must hug the bare slot's full face, "
+                           "not a card's chip-cleared one";
+            EXPECT_LE(std::abs(left_inset - right_inset), 1)
+                << what << ": the pulse insets both edges by the same step "
+                           "(float truncation allows one pixel)";
+
+            // The last glyph survives. Only the ring's two horizontal runs
+            // (min_y / max_y) may cross the label at all.
+            for (int py = min_y + 1; py < max_y; ++py) {
+                for (int col = 0; col < kLastGlyphCols; ++col) {
+                    const int px = face_x + kLastGlyphFirstCol + col;
+                    const std::size_t at = static_cast<std::size_t>(
+                        (py - kRailTop) * kRailWidth + px - kRailLeft);
+                    ASSERT_EQ(baseline[at], focused[at])
+                        << what << ": the ring struck through the label's "
+                                   "last glyph at (" << px << "," << py << ")";
+                }
+            }
+
+            if (right_inset <= 1)
+                saw_wide_ring = true;
+            if (right_inset >= 3)
+                saw_tight_ring = true;
+            SDL_Delay(5);
+        }
+        EXPECT_TRUE(saw_wide_ring)
+            << what << ": never observed the ring near its outermost, where a "
+                       "chip clearance would show";
+        EXPECT_TRUE(saw_tight_ring)
+            << what << ": never observed the ring at its innermost";
+        pks().menu_nav_enabled = false;
+    };
+    probe_placeholder_focus(1, "ADD PLAYER");
+
+    // A FULL LOBBY dims the same face — and the dim comes from the ENGINE'S
+    // gate pass (menu_screen_runner apply_row_states: Disabled =>
+    // live->color = GREY), driven here exactly as the loop drives it, so a
+    // test that painted grey by hand can never stand in for it.
     for (int i = 0; i < 15; ++i)
     {
         lobby.players.push_back(make_foreign_lobby_player(
@@ -3156,19 +3298,19 @@ TEST(ViewTeam, base_camp_seat_rail_draws_labelled_placeholders_and_the_chip)
               spec.rows[kBaseCampSeatCardBase + 1].state_override(
                   og::ui::MenuLabelContext{}));
     EXPECT_EQ("LOBBY FULL", buttons[kBaseCampSeatCardBase + 1].label);
+    og::ui::picker_testing_apply_row_states(spec, buttons, count);
     for (int slot = 1; slot < kBaseCampSeatCardsPerPage; ++slot)
     {
         const int ordinal = kBaseCampSeatCardBase + slot;
-        if (spec.rows[ordinal].state_override(og::ui::MenuLabelContext{}) ==
-            og::ui::RowState::Disabled)
-        {
-            vbutton* const live =
-                og::runtime::current_session
-                    ->allbuttons_[static_cast<std::size_t>(ordinal)];
-            ASSERT_NE(nullptr, live);
-            live->color = GREY;
-            live->label = buttons[ordinal].label;
-        }
+        vbutton* const live =
+            og::runtime::current_session
+                ->allbuttons_[static_cast<std::size_t>(ordinal)];
+        ASSERT_NE(nullptr, live);
+        EXPECT_EQ(GREY, live->color)
+            << "slot " << slot << ": the gate pass dims a Disabled slot";
+        EXPECT_EQ(0, live->myfunc)
+            << "slot " << slot << ": and makes it inert";
+        EXPECT_EQ("LOBBY FULL", live->label) << "slot " << slot;
     }
     render();
     const std::vector<Uint32> dimmed =
@@ -3177,6 +3319,9 @@ TEST(ViewTeam, base_camp_seat_rail_draws_labelled_placeholders_and_the_chip)
         << "a slot the lobby cannot fill must not look like one it can";
     EXPECT_EQ(dimmed, capture_block(kSlotTwoX, card.y, 70, 10))
         << "every dimmed slot wears the same face";
+    // LOBBY FULL is Disabled but still navigable, so keyboard focus lands on
+    // it too — and its ten pad-less glyphs need the same clearance-free ring.
+    probe_placeholder_focus(1, "LOBBY FULL");
 
     save.reset();
 }

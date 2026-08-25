@@ -3842,12 +3842,12 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     }
     // Every vertical link into the rail lands on its leftmost visible slot,
     // and the strip's right end climbs to its rightmost. On a phone that is
-    // the same single slot; with no rail at all (a build with neither seats
-    // nor a door to one), links from above skip it to BACK.
-    const int rail_first = rail.empty() ? -1 : rail.front();
-    const int rail_last = rail.empty() ? -1 : rail.back();
-    const int rail_entry =
-        rail_first >= 0 ? rail_first : kCreateMenuBackIndex;
+    // the same single slot — and there is always at least that one:
+    // base_camp_seat_rail_slot_cap clamps to 1, so slot 0 is either this
+    // machine's first seat or the ADD PLAYER door into it, never hidden. The
+    // rail cannot be empty, so no link into it needs a fallback.
+    const int rail_first = rail.front();
+    const int rail_last = rail.back();
     for (std::size_t index = 0; index < rail.size(); ++index) {
         button& control = buttons[rail[index]];
         control.nav.left = index > 0 ? rail[index - 1] : -1;
@@ -4187,7 +4187,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         else if (band_below_roster_top >= 0)
             down_exit = band_below_roster_top;
         else
-            down_exit = rail_entry;
+            down_exit = rail_first;
         buttons[bands_above[i].top].nav.up = up_exit;
         buttons[bands_above[i].bottom].nav.down = down_exit;
     }
@@ -4203,7 +4203,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             up_exit = kCreateMenuHireIndex;
         const int down_exit = i + 1 < bands_below.size()
             ? bands_below[i + 1].top
-            : rail_entry;
+            : rail_first;
         buttons[bands_below[i].top].nav.up = up_exit;
         buttons[bands_below[i].bottom].nav.down = down_exit;
     }
@@ -4216,12 +4216,12 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         : (can_hire ? kCreateMenuHireIndex : -1);
     const int dep_down_exit = band_below_roster_top >= 0
         ? band_below_roster_top
-        : rail_entry;
+        : rail_first;
     // The roster's body column drops onto the rail's leftmost live slot —
     // which IS the rail's entry now that no [+] or pager sits left of it.
     const int body_down_exit = band_below_roster_top >= 0
         ? band_below_roster_top
-        : rail_entry;
+        : rail_first;
 
     // Roster nav (the classic chains, walked over the presence arrays so a
     // capability-hidden column never strands a link).
@@ -4320,7 +4320,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         ? kBaseCampRowBodyBase + first_body
         : (roster_top >= 0
                ? roster_top
-               : (spine_first >= 0 ? spine_first : rail_entry));
+               : (spine_first >= 0 ? spine_first : rail_first));
     buttons[kBaseCampPagePrevIndex].nav = {
         .up = -1,
         .down = pager_down,
@@ -4335,7 +4335,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     // HIRE bridges the header band into the gameplay spine.
     buttons[kCreateMenuHireIndex].nav = {
         .up = -1,
-        .down = spine_first >= 0 ? spine_first : rail_entry,
+        .down = spine_first >= 0 ? spine_first : rail_first,
         .left = networked ? -1 : kBaseCampScenarioLineIndex,
         .right = pagers ? kBaseCampPagePrevIndex : -1};
 
@@ -4403,11 +4403,11 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                 card_down[static_cast<std::size_t>(slot)];
         }
     }
-    const auto visible_card_or_rail = [buttons, rail_entry](int card) {
+    const auto visible_card_or_rail = [buttons, rail_first](int card) {
         return card >= 0 && card < kBaseCampSeatCardsPerPage &&
                 !buttons[kBaseCampSeatCardBase + card].hidden
             ? kBaseCampSeatCardBase + card
-            : rail_entry;
+            : rail_first;
     };
     buttons[kCreateMenuBackIndex].nav = {
         .up = rail_first, .down = -1, .left = -1,
@@ -4469,7 +4469,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         && buttons[highlighted_button].hidden)
     {
         highlighted_button =
-            can_hire ? kCreateMenuHireIndex : rail_entry;
+            can_hire ? kCreateMenuHireIndex : rail_first;
     }
 
     for (int i = 0; i < count; ++i)
@@ -4548,9 +4548,12 @@ void base_camp_draw_content(void* screen_state)
     strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
 
     // Line B: solo scenario/deploy header, or the §9.12 (G5) networked
-    // session status — role + room code + machine/player census ("HOSTING
-    // GLAD-XXXX - 2 MACH / 3 PLYR" / "IN GLAD-XXXX - HOST: <company>") —
-    // with the degraded-link alert (join connecting/failed/lost, host
+    // session status — role + room code + player/machine census, players
+    // first ("HOSTING GLAD-XXXX: 3 PLAYERS / 2 MACHINES", falling through
+    // "3 PLAYERS/2 PCS" and "3P/2M" as the band narrows; a joiner reads
+    // "IN GLAD-XXXX: ..." and no longer names the host's company, which
+    // every one of its roster rows already carries) — with the
+    // degraded-link alert (join connecting/failed/lost, host
     // relay drop) keeping slot AND color precedence until the link heals.
     // This is the base-camp home of the lobby clients' status lines — the
     // pre-reshape team-build screen drew them at the same spot. The READY
@@ -6957,6 +6960,11 @@ const MenuScreenSpec& company_list_menu_screen_spec()
         .exit_value = MENU_REDRAW,
     };
     return spec;
+}
+
+bool base_camp_rail_slot_has_chip(int slot)
+{
+    return slot >= 0 && slot < g_base_camp_rail_frame_shape.shown_cards;
 }
 
 void install_base_camp_state_for_screen(BaseCampScreenState* state)

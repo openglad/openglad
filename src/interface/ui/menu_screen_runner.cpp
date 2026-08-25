@@ -32,6 +32,7 @@
 
 #include "picker_sdl_defs.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
@@ -94,9 +95,16 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
         highlighted_button >= kBaseCampInteriorRingFirstIndex &&
         highlighted_button <= kBaseCampInteriorRingLastIndex)
     {
+        // The chip clearance belongs to the slots that HAVE a chip. A bare
+        // slot's ADD PLAYER / LOBBY FULL face is ten pad-less glyphs whose
+        // last one ends at x+64 — cutting the ring back to x+60 there would
+        // strike through the label instead of clearing a chip that isn't
+        // drawn. Ask the frame shape the chip pass reads.
         if (highlighted_button >= kBaseCampSeatCardBase &&
             highlighted_button <
-                kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage)
+                kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage &&
+            base_camp_rail_slot_has_chip(highlighted_button -
+                                         kBaseCampSeatCardBase))
         {
             // The numbered chip occupies the final nine pixels of a seat
             // card. Keep the pulsing ring around the label face so the
@@ -473,6 +481,23 @@ std::vector<const MenuButtonSpec*> materialized_spec_rows(
 {
     return materialized_spec_rows_for(spec, kCompiledBuildVariant);
 }
+
+#ifdef TESTING
+// The production gate pass, for tests that drive a spec's draw hooks without
+// the loop around them: the Disabled dim (live->color = GREY) and the inert
+// myfun/myfunc are what this writes, and a test that painted them by hand
+// would prove nothing about the engine.
+void picker_testing_apply_row_states(const MenuScreenSpec& spec,
+                                     button* buttons, int num_buttons)
+{
+    const SpecRowView spec_rows = materialized_spec_rows(spec);
+    const MenuLabelContext context = build_label_context(spec);
+    RowState states[MAX_BUTTONS] = {};
+    apply_row_states(spec_rows, buttons,
+                     std::min(num_buttons, static_cast<int>(MAX_BUTTONS)),
+                     context, states);
+}
+#endif
 
 void materialize_menu_buttons_for(const MenuScreenSpec& spec,
                                   MenuBuildVariant variant,
