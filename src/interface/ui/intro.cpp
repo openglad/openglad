@@ -372,5 +372,9 @@ int show(int howlong)
 
 	set_web_intro_tap_ready(false);
 	if (og::runtime::current_session->myscreen_->fadeblack(FADE_TO) == -1) return -1;
+	// A tap during this page's closing fade mints its pending click AFTER
+	// the loop's drain above — spend it here so the intro keeps its own
+	// promise: no click made on the intro leaks into whatever follows.
+	while (take_pending_left_click()) {}
 	return 1;
 }

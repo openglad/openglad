@@ -502,6 +502,12 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 
 	};
     
+    // Pointer handoff (docs/menu-engine.md): level-triggered rows — hold
+    // fire until the door click's button has been seen up once, so it
+    // cannot click through onto a row on frame one.
+    reset_mouse_click_tracking();
+    bool saw_left_release = !query_mouse_no_poll().left;
+
     bool done = false;
 #ifdef TESTING
     s_level_picker_entered_count.fetch_add(1, std::memory_order_release);
@@ -535,7 +541,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	        int mx = static_cast<int>(mymouse.x);
 	        int my = static_cast<int>(mymouse.y);
         
-        bool do_click = mymouse.left;
+        if (!mymouse.left)
+            saw_left_release = true;
+        bool do_click = mymouse.left && saw_left_release;
 #ifdef TESTING
         if (s_level_picker_click_pending.exchange(
                 false, std::memory_order_acquire))

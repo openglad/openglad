@@ -738,6 +738,12 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
         // Get keys and stuff
         get_input_events(POLL);
+        // Pointer handoff: this loop consumes clicks with its own sampled
+        // edge detector below, never query_mouse(), so acknowledge the
+        // presses it saw or each click mints a collapsed-tap pending click
+        // that leaks into the next menu (the native twin of the web-only
+        // reset in picker_reinit_after_game).
+        acknowledge_mouse_presses();
 
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
 

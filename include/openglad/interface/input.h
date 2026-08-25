@@ -693,11 +693,30 @@ inline MouseState& query_mouse_no_poll() { return mouse_state; }
 // A press that begins after this call remains a normal fresh click.
 void reset_mouse_click_tracking();
 
+// Pointer-handoff bookkeeping for surfaces that run their OWN event pump and
+// read the pointer through query_mouse_no_poll() (the level editor, the
+// results panel, the editor's text prompt). Such a surface never runs
+// query_mouse()'s "press observed" acknowledgement, so every click made on
+// it would mint a collapsed-tap pending click — a click with no coordinates
+// that the NEXT surface's detector would spend at wherever the pointer is by
+// then (the editor-exit phantom-activation bug). Call once per frame, after
+// the pump: exactly query_mouse()'s observed-press bookkeeping WITHOUT the
+// poll — polling here would steal the surface's own events.
+void acknowledge_mouse_presses();
+
 // Collapsed touch-tap clicks (press+release inside one event pump, invisible
 // to sampled up->down edge detection). Click detectors OR these into their
 // edge results; each call consumes one pending click.
 bool take_pending_left_click();
 bool take_pending_right_click();
+
+#ifdef TESTING
+namespace og::input {
+// Test-only read of the collapsed-tap queue depth: the pointer-handoff
+// invariant is "zero pending clicks survive a surface boundary".
+int testing_pending_left_clicks();
+} // namespace og::input
+#endif
 
 unsigned char convert_to_ascii(int scancode);
 

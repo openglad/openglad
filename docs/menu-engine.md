@@ -246,6 +246,46 @@ no line numbers, so editing around a fade never rots the list.
 The demo compositor (`demo.cpp`) presents through its own `SDL_RenderPresent`
 and never fades; it is documented here rather than hooked.
 
+### Pointer handoff: a surface owns its pointer state
+
+The fade rule's sibling, born from the editor-exit phantom click (File →
+Exit in the LEVEL EDITOR, hover BEGIN NEW GAME during the fade back — it
+activated itself): a surface **acknowledges the presses it saw, and hands
+back a clean pointer when it returns. No screen may consume a click minted
+on another surface.**
+
+The mechanism being contained is the collapsed-tap pending queue in
+`input.cpp`: a release whose press no `query_mouse()` observed mints a
+pending click — deliberately, because a web tap can land press+release
+inside one pump. The queue carries **no coordinates**; a consumer pairs a
+pending click with the LIVE pointer. A surface that pumps its own events
+and reads the pointer through `query_mouse_no_poll()` therefore mints one
+phantom per click unless it acknowledges its presses, and whatever it
+leaks is spent by the next screen's `leftmouse()` at wherever the pointer
+has moved to — the 500 ms fade is merely the delay that lets it travel.
+
+Obligations:
+
+- A self-pumping surface calls `acknowledge_mouse_presses()` once per
+  frame, after its pump — `query_mouse()`'s observed-press bookkeeping
+  without the poll (a second poll would steal the surface's own events).
+  The level editor, the results panel, and the editor's text prompt do
+  this; surfaces that call `query_mouse()` every frame (HELP is the
+  model) are already correct.
+- `run_menu_screen` re-baselines the pointer
+  (`reset_mouse_click_tracking()`) beside `clear_keyboard()` at entry,
+  and again before its loop-exit return — every engine screen starts
+  from and returns a clean pointer.
+- `run_nested_menu_door` re-baselines after its body returns, so a
+  legacy body hands the still-open parent a clean pointer even if it
+  leaked, and an impatient click during the door's exit fade is dropped
+  with it. A click during the PARENT's own fade-in is a genuine click at
+  the pointer's position and stays honored — that is what the
+  collapsed-tap queue is for.
+- Level-triggered pickers (campaign select, the level picker) hold fire
+  at entry until the door click's button has been seen up once, so a
+  held button cannot click through onto a row on frame one.
+
 Fades are instant under TESTING (`FadeBetween` blits once and traces instead
 of animating), so injector `SDL_Delay(750)` waits are generic settles, not
 fade timing. Two TESTING hooks keep the campaign-intro leg inside every BEGIN

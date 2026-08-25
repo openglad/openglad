@@ -1748,6 +1748,27 @@ void reset_mouse_click_tracking()
     hw().picker_was_right_down = mouse_state.right;
 }
 
+void acknowledge_mouse_presses()
+{
+    // The pointer-handoff rule (docs/menu-engine.md, "Pointer handoff"): a
+    // surface acknowledges the presses it saw. This is query_mouse()'s
+    // observed-press bookkeeping without the poll — the callers run their
+    // own pumps, and a second poll here would steal their events. A press
+    // and release that land inside ONE pump still mint a collapsed tap,
+    // exactly as they do for a query_mouse() surface.
+    g_mouse_left_unqueried_press = false;
+    g_mouse_right_unqueried_press = false;
+}
+
+#ifdef TESTING
+namespace og::input {
+int testing_pending_left_clicks()
+{
+    return g_pending_left_clicks;
+}
+} // namespace og::input
+#endif
+
 bool take_pending_left_click()
 {
     if (g_pending_left_clicks > 0)

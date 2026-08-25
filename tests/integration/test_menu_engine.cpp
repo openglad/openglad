@@ -1022,6 +1022,87 @@ TEST(MenuEngine, nested_menu_door_bracket_is_symmetric_for_a_legacy_body)
         << "1 (parent entry) + 2 (in) + 2 (back) + 1 (the parent's own exit)";
 }
 
+namespace
+{
+// The OFFENDER shape behind the editor-exit phantom click: a legacy door
+// body that pumps its own events (get_input_events(POLL)) and never runs
+// query_mouse()'s press acknowledgement, so a click made ON the body mints
+// a collapsed-tap pending click through the real input.cpp path — a click
+// with no coordinates. The body then parks the pointer over the parent's
+// row and returns, exactly the File->Exit-then-hover repro.
+Sint32 phantom_minting_door_body()
+{
+    og::ui::LegacyMenuFade entry_fade;
+    screen* const scr = og::runtime::current_session->myscreen_;
+    entry_fade.present_first(*scr);
+
+    // One click on the body's own surface, at the body's own coordinates
+    // (the viewport centre — inside the active canvas so the DOWN counts),
+    // pumped by the body itself with no acknowledgement between the frames.
+    const int cx = static_cast<int>(
+        og::runtime::current_session->viewport_offset_x_ +
+        og::runtime::current_session->viewport_w_ / 2);
+    const int cy = static_cast<int>(
+        og::runtime::current_session->viewport_offset_y_ +
+        og::runtime::current_session->viewport_h_ / 2);
+    inject_mouse_down(cx, cy);
+    get_input_events(POLL);
+    inject_mouse_up(cx, cy);
+    get_input_events(POLL);
+
+    // The hover: ONLY a motion, onto the parent row's centre (engine_back
+    // is 10,10 50x15 -> game (35,17)), before the body returns.
+    const auto [row_x, row_y] = ui_canvas_to_window(35.0f, 17.0f);
+    inject_mouse_motion(static_cast<int>(row_x), static_cast<int>(row_y));
+    get_input_events(POLL);
+    return MENU_REDRAW;
+}
+} // namespace
+
+// The pointer-handoff contract at the door (docs/menu-engine.md, "Pointer
+// handoff"): no screen may consume a click minted on another surface. The
+// parent's only row is its exit row, so a phantom activation breaks the
+// parent loop before its post-door frame and the frame-2 sample stays -1 —
+// a latch-free observable that cannot hang.
+TEST(MenuEngine, nested_door_exit_click_cannot_activate_the_parent_row)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+    reset_mouse_click_tracking();
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "door_parent");
+    parent.frame_tick = &nested_door_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = nullptr;
+    g_start_game_requested = false;
+    g_nested_door_fades_at_open = -1;
+    g_nested_door_fades_inside_door = -1;
+    g_nested_door_fades_after_return = -1;
+    g_nested_door_body_fn = &phantom_minting_door_body;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_nested_door_body_fn = nullptr;
+
+    ASSERT_EQ(1, g_nested_door_fades_at_open)
+        << "the parent's own depth-1 entry must have faded in before the door";
+    ASSERT_NE(-1, g_nested_door_fades_after_return)
+        << "the parent loop never reached its post-door frame: the click "
+           "minted INSIDE the door was spent on the parent's row at the "
+           "hovered pointer position (phantom activation)";
+    EXPECT_EQ(0, og::input::testing_pending_left_clicks())
+        << "the door must hand the parent a clean pointer: no pending click "
+           "minted on the door's surface may survive the handoff";
+    reset_mouse_click_tracking();
+}
+
 TEST(MenuEngine, depth_rule_overlay_never_fades_even_over_a_black_window)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {

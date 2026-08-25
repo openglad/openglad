@@ -451,7 +451,16 @@ Sint32 run_nested_menu_door(Sint32 (*body)())
     // own exit fades it out again, and the parent loop's next present finds a
     // black window and fades back in (run_menu_screen's loop present).
     note_menu_entry_fade(MenuEntryFade::Fade);
-    return body();
+    const Sint32 result = body();
+    // Pointer handoff (menu_screen_spec.h): the door hands the still-open
+    // parent a clean pointer. A legacy body's leaked collapsed-tap pending
+    // clicks (and an impatient click during the body's exit fade) are
+    // dropped here — the parent's next leftmouse() must never spend a click
+    // minted on the door's surface at wherever the pointer has moved to
+    // (the editor-exit phantom-activation bug). A click during the PARENT's
+    // own fade-in lands after this line and stays honored.
+    reset_mouse_click_tracking();
+    return result;
 }
 
 #ifdef TESTING
@@ -577,6 +586,11 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     int highlighted_button = spec.default_highlight;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     clear_keyboard();
+    // Pointer handoff (menu_screen_spec.h): every engine screen starts from
+    // a fresh pointer baseline — a click completed on the previous surface
+    // is dropped, a button still held becomes the edge baseline, and a
+    // press that begins after this line is a normal fresh click.
+    reset_mouse_click_tracking();
     apply_art_bindings(spec_rows, num_buttons);
 
     RowState states[MAX_BUTTONS] = {};
@@ -805,6 +819,9 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         og::input_native::sleep_ms(10);
     }
 
+    // Pointer handoff, the exit half: a nested engine screen hands its
+    // parent a clean pointer without the parent having to know a child ran.
+    reset_mouse_click_tracking();
     return spec.exit_value;
 }
 

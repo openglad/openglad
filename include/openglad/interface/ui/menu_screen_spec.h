@@ -280,6 +280,19 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 // Nothing else is checked: in particular a missing fade-in, or a fade at a
 // door the depth rule says should be instant, is caught only by the per-leg
 // count pins.
+//
+// The POINTER HANDOFF contract is the fade rule's sibling (docs/
+// menu-engine.md, "Pointer handoff"): a surface owns its pointer state. It
+// acknowledges the presses it saw — query_mouse() per frame, or
+// acknowledge_mouse_presses() after a self-run pump — and hands back a
+// clean pointer when it returns; no screen may consume a click minted on
+// another surface. The collapsed-tap pending queue carries no coordinates,
+// so a leaked click lands wherever the pointer sits when the next screen
+// drains it (the editor-exit phantom click). run_menu_screen re-baselines
+// (reset_mouse_click_tracking) at entry and before its loop-exit return;
+// run_nested_menu_door re-baselines after its body returns. A click during
+// the PARENT's own fade-in is a genuine click at the pointer's position and
+// stays honored — that is what the collapsed-tap queue is for.
 
 // One-shot override for the NEXT menu entry, the escape hatch on both sides
 // of the depth rule. Instant suppresses the fade a depth-0/depth-1 entry

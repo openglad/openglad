@@ -193,3 +193,75 @@ TEST(InputMore, collapsed_right_click_is_delivered_exactly_once)
         << "the collapsed click is a one-shot event";
     reset_mouse_click_tracking();
 }
+
+// The mint behind the editor-exit phantom click: a surface that pumps its
+// own events and never runs query_mouse() leaves every press "unqueried",
+// so every release mints a collapsed-tap pending click. The per-frame
+// acknowledgement is the fix at the mint; the handoff reset is the fix at
+// the boundary.
+TEST(InputMore, acknowledge_mouse_presses_stops_the_collapsed_tap_mint)
+{
+    clear_events();
+    mouse_state.left = false;
+    mouse_state.right = false;
+    input_hardware_state().picker_was_left_down = false;
+    input_hardware_state().picker_was_right_down = false;
+    reset_mouse_click_tracking();
+
+    auto mouse_event = [](Uint32 type) {
+        SDL_Event event{};
+        event.type = type;
+        event.button.button = SDL_BUTTON_LEFT;
+        event.button.down = type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+        event.button.clicks = 1;
+        event.button.x = og::runtime::current_session->viewport_offset_x_ +
+            og::runtime::current_session->viewport_w_ / 2.0f;
+        event.button.y = og::runtime::current_session->viewport_offset_y_ +
+            og::runtime::current_session->viewport_h_ / 2.0f;
+        return event;
+    };
+    SDL_Event down = mouse_event(SDL_EVENT_MOUSE_BUTTON_DOWN);
+    SDL_Event up = mouse_event(SDL_EVENT_MOUSE_BUTTON_UP);
+
+    // An unacknowledged pump (the pre-fix level editor shape) accumulates
+    // one pending click per click.
+    handle_mouse_event(down);
+    handle_mouse_event(up);
+    handle_mouse_event(down);
+    handle_mouse_event(up);
+    ASSERT_EQ(2, og::input::testing_pending_left_clicks())
+        << "an unacknowledged pump mints one collapsed tap per click";
+    EXPECT_TRUE(take_pending_left_click());
+    EXPECT_TRUE(take_pending_left_click());
+    EXPECT_FALSE(take_pending_left_click());
+
+    // acknowledge_mouse_presses() between the press frame and the release
+    // frame is query_mouse()'s bookkeeping: the release mints nothing.
+    handle_mouse_event(down);
+    acknowledge_mouse_presses();
+    handle_mouse_event(up);
+    ASSERT_EQ(0, og::input::testing_pending_left_clicks());
+    EXPECT_FALSE(take_pending_left_click())
+        << "an acknowledged press must not mint a pending click on release";
+
+    // Per-press bookkeeping, not a standing veto: a press and release that
+    // both land before the next acknowledgement still mint their tap.
+    handle_mouse_event(down);
+    handle_mouse_event(up);
+    EXPECT_TRUE(take_pending_left_click())
+        << "a collapsed pair between acknowledgements is a real tap";
+    EXPECT_FALSE(take_pending_left_click());
+
+    // And the surface handoff drops whatever an offender accumulated.
+    handle_mouse_event(down);
+    handle_mouse_event(up);
+    handle_mouse_event(down);
+    handle_mouse_event(up);
+    ASSERT_EQ(2, og::input::testing_pending_left_clicks());
+    reset_mouse_click_tracking();
+    ASSERT_EQ(0, og::input::testing_pending_left_clicks());
+    EXPECT_FALSE(take_pending_left_click())
+        << "reset_mouse_click_tracking must drop the accumulated queue";
+
+    reset_mouse_click_tracking();
+}

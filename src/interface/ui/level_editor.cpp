@@ -3972,6 +3972,14 @@ Sint32 level_editor()
             }
         }
 
+		// Pointer handoff (docs/menu-engine.md): the editor pumps its own
+		// events and reads the pointer via query_mouse_no_poll(), so it must
+		// acknowledge the presses it saw once per frame — or every click made
+		// here mints a coordinate-less collapsed-tap pending click that the
+		// next surface (the main menu after File -> Exit) would spend at
+		// wherever the pointer has moved to (the phantom-activation bug).
+		acknowledge_mouse_presses();
+
 		short scroll_delta = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)
 		// Only scroll the tile selector when touching it and you've already moved a bit

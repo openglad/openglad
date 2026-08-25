@@ -90,6 +90,11 @@ void reset_integration_ui_state()
         og::runtime::current_session->input_hw_->mouse_buttons = 0;
         og::runtime::current_session->input_hw_->picker_was_left_down = false;
         og::runtime::current_session->input_hw_->picker_was_right_down = false;
+        // Also drop the collapsed-tap pending-click queue (file-static in
+        // input.cpp, unreachable from here by field writes): a test that
+        // clicked inside a self-pumping surface must not leak phantom
+        // clicks into the next test under --gtest_shuffle.
+        reset_mouse_click_tracking();
     }
 
     if (og::runtime::current_session->picker_ != nullptr) {

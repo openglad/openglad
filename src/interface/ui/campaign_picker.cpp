@@ -520,6 +520,14 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	};
 	sync_visibility();
 
+    // Pointer handoff (docs/menu-engine.md): this browser opens off a click
+    // on another surface, and its rows are LEVEL-triggered (do_click below
+    // fires while the button is down). Start from a fresh baseline and hold
+    // fire until the door click's button has been seen up once, so it cannot
+    // click through onto a row on frame one.
+    reset_mouse_click_tracking();
+    bool saw_left_release = !query_mouse_no_poll().left;
+
     bool done = false;
     int last_highlighted = highlighted_button;
 #ifdef TESTING
@@ -581,7 +589,9 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         int mx = static_cast<int>(mymouse.x);
         int my = static_cast<int>(mymouse.y);
 
-        bool do_click = mymouse.left;
+        if (!mymouse.left)
+            saw_left_release = true;
+        bool do_click = mymouse.left && saw_left_release;
 		bool do_prev = !buttons[prev_index].hidden && ((do_click && prev.x <= mx && mx <= prev.x + prev.w
                && prev.y <= my && my <= prev.y + prev.h) || (retvalue == OG_OK && highlighted_button == prev_index));
         bool do_next = !buttons[next_index].hidden && ((do_click && next.x <= mx && mx <= next.x + next.w
