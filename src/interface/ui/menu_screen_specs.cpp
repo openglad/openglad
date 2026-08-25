@@ -1548,6 +1548,11 @@ void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
                      !row.affordable))
                 {
                     live->color = GREY;
+                    // One rule for every dim face: GREY collides with the
+                    // shadow shade, so a dimmed row steps its right/bottom
+                    // bevels darker and stays a whole card. The gate pass
+                    // clears the flag on every non-dim row each frame.
+                    live->dimmed = true;
                 } else if (row.is_level() && level_rows_actionable) {
                     live->color = og::ui::kReadyGoFaceGo;
                 }
@@ -2411,9 +2416,11 @@ constexpr int kBaseCampSeatCardPitch =
 // left, running to the card's right edge. Pointer clicks inside the zone
 // cycle the seat's team; the rest of the card (and every coordinate-free
 // activation) opens the seat editor. DERIVED from the face so a width change
-// carries the chip with it: the chip owns the last nine pixels, which is
-// also the half-cell the label's trailing pad buys back.
-constexpr int kBaseCampSeatChipOffsetX = kBaseCampSeatCardWidth - 9;
+// carries the chip with it: the chip owns the last TEN pixels, which leaves
+// it a 1px margin of face on the right exactly like the 1px it keeps top and
+// bottom — at nine it butted the right bevel and read as nipped. Ten is also
+// the full cell the label's two trailing pads buy back.
+constexpr int kBaseCampSeatChipOffsetX = kBaseCampSeatCardWidth - 10;
 constexpr int kBaseCampSeatChipZoneOffsetX = kBaseCampSeatChipOffsetX - 2;
 constexpr int kBaseCampSeatCardX0 = kBaseCampSeatRailX0;
 constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
@@ -2424,8 +2431,26 @@ static_assert(kBaseCampSeatCardX[kBaseCampSeatCardsPerPage - 1] +
                       kBaseCampSeatCardWidth ==
                   kBaseCampPanelRightX,
               "the seat rail closes on the panel's right rail");
+// The rail's own band: everything between the roster panel's bottom bevel
+// (y=160) and the command strip (y=178), which draw_background paints black
+// so the cards sit on one ground. 17px for a 10px card is a 3px gap above and
+// 4px below — ACCEPTED, not drift: an odd budget cannot split evenly, and the
+// alternatives both cost more than the pixel is worth (shrinking the panel to
+// 159 shortens the roster's face; growing the card to 11 breaks the button
+// grid's row height). The heavier gap sits under the rail, where the command
+// strip's own bevel already reads as a separator.
+constexpr int kBaseCampSeatRailBandY = 161;
+constexpr int kBaseCampSeatRailBandHeight = 17;
 constexpr int kBaseCampSeatRailY = 164;
 constexpr int kBaseCampSeatRailHeight = 10;
+static_assert(kBaseCampSeatRailY - kBaseCampSeatRailBandY == 3,
+              "3px of band above the rail");
+static_assert(kBaseCampSeatRailBandY + kBaseCampSeatRailBandHeight -
+                      (kBaseCampSeatRailY + kBaseCampSeatRailHeight) == 4,
+              "4px of band below the rail");
+static_assert(kBaseCampSeatRailBandY + kBaseCampSeatRailBandHeight ==
+                  kBaseCampStripY,
+              "the band closes where the command strip opens");
 // The two labels a bare slot wears. Both are 10 characters — one under the
 // 11-char face budget, which is what the 70px width bought.
 constexpr const char* kBaseCampAddPlayerLabel = "ADD PLAYER";
@@ -2575,6 +2600,19 @@ BaseCampRailSeats base_camp_rail_seats(const BaseCampScreenState* state)
         ++out.count;
     }
     return out;
+}
+
+// How many rail slots carry a numbered team chip this frame. ONE answer for
+// the two consumers that must agree — the chip draw pass and the focus ring's
+// chip clearance — because they read different sources: the frame shape is
+// what the buttons on screen were laid out from, while the seat list is what
+// the state can name RIGHT NOW, and a roster refresh between the rewire and
+// the draw moves only the second. A chip may only ever index a seat that
+// exists, and the ring may only ever dodge a chip that is drawn.
+int base_camp_rail_chip_cards(const BaseCampScreenState* state)
+{
+    return std::min(g_base_camp_rail_frame_shape.shown_cards,
+                    base_camp_rail_seats(state).count);
 }
 
 // The claim the RAIL answers to. Identical to the lobby's, except that
@@ -2968,21 +3006,34 @@ std::string base_camp_seat_label(const BaseCampScreenState& state,
         owner = local_slot >= 0 ? std::string("SPEC")
                                 : company_abbreviation(seat.company);
     }
-    // The trailing visual pad shifts the visible centered ink one half-cell
-    // left, keeping the 8px numbered team chip clear on the 70px face.
-    // The pad is part of the 11-char face budget, and so is a two-digit P#:
-    // a global P16 seat keeps its mapping name one character shorter.
+    // TWO trailing visual pads shift the visible centered ink a full cell
+    // left, which centers it over the chip-free zone (the face minus the last
+    // ten pixels, which the chip owns) instead of over the whole face. One pad
+    // only bought a half cell and left the ink 2px right of that zone's
+    // middle, so a card's label and a bare slot's ADD PLAYER — centered on
+    // the same row with no chip to dodge — read as two different conventions.
+    // The pads are part of the 11-char face budget, and so is a two-digit P#:
+    // "P16 " + a 5-char mapping short name + 2 pads is exactly 11, so a global
+    // P16 seat still names its controller in full.
     const std::string prefix =
         std::format("P{} ", static_cast<int>(seat.player_index) + 1);
+    constexpr std::size_t kTrailingPads = 2;
+    static_assert(std::string_view("P16 ").size() +
+                          static_cast<std::size_t>(
+                              og::input::kMappingShortNameMaxLength) +
+                          kTrailingPads <=
+                      static_cast<std::size_t>(kBaseCampSeatCardLabelBudget),
+                  "the widest seat card — a two-digit P# and a full-length "
+                  "mapping short name — still fits its face with both pads");
     const std::size_t room =
-        prefix.size() + 1 < static_cast<std::size_t>(
-                                kBaseCampSeatCardLabelBudget)
+        prefix.size() + kTrailingPads <
+                static_cast<std::size_t>(kBaseCampSeatCardLabelBudget)
         ? static_cast<std::size_t>(kBaseCampSeatCardLabelBudget) -
-              prefix.size() - 1
+              prefix.size() - kTrailingPads
         : 0u;
     if (owner.size() > room)
         owner.resize(room);
-    return prefix + owner + " ";
+    return prefix + owner + std::string(kTrailingPads, ' ');
 }
 
 std::vector<short> base_camp_selectable_seat_teams(const SaveData& save)
@@ -4494,6 +4545,20 @@ void base_camp_draw_background(void* screen_state)
     // instead of touching bevels.
     game->draw_button(8, 28, 311, 160, 2, 1);
 
+    // The seat rail's ground, painted here (pre-buttons) so the cards land on
+    // it instead of under it. The rail band is the one place on this screen
+    // where raw backdrop shows between opaque chrome — the title art's grey
+    // blade runs straight through x=15..133, and the 8px gutters framed it so
+    // neatly that it read as a stray glyph wedged between two cards. This is
+    // the lines A/B readability-strip idiom taken opaque: the goal is not just
+    // legible ink but ONE ground under the whole row, so a networked frame and
+    // a local one are pixel-identical in the band whatever the backdrop is
+    // doing behind them. Spans the panel's own outside-to-outside line (8..311)
+    // and the full 17px between the panel's bottom bevel and the command strip.
+    game->fastbox(kBaseCampSeatRailX0, kBaseCampSeatRailBandY,
+                  kBaseCampPanelRightX - kBaseCampSeatRailX0,
+                  kBaseCampSeatRailBandHeight, PURE_BLACK);
+
     // NO readability strips inside the panel (the one-screen rule): the
     // black strip idiom exists to lift text off the title-screen BACKDROP,
     // and the panel's own opaque face already does that. Charcoal bars and
@@ -4769,12 +4834,11 @@ void base_camp_draw_content(void* screen_state)
         // draw_buttons like every other row — there is no chrome left for
         // this pass to paint. Only the chips are ours.
         //
-        // Positions come from the frame's laid-out shape; the COUNT must
-        // clamp to the seats st holds right now — the roster can refresh
-        // between the rewire and this draw, and a chip may only ever index
-        // a seat that exists.
+        // Positions come from the frame's laid-out shape; the COUNT comes
+        // from base_camp_rail_chip_cards, the one answer the focus ring's
+        // clearance reads too.
         const BaseCampRailSeats chip_seats = base_camp_rail_seats(st);
-        const int chip_cards = std::min(rail.shown_cards, chip_seats.count);
+        const int chip_cards = base_camp_rail_chip_cards(st);
         for (int card = 0; card < chip_cards; ++card) {
             const og::sim::LobbyPlayer& seat =
                 *chip_seats.seat[static_cast<std::size_t>(card)];
@@ -6964,7 +7028,18 @@ const MenuScreenSpec& company_list_menu_screen_spec()
 
 bool base_camp_rail_slot_has_chip(int slot)
 {
-    return slot >= 0 && slot < g_base_camp_rail_frame_shape.shown_cards;
+    // The SAME count the chip pass paints. Asking the frame shape alone let
+    // the ring clear a chip on a slot whose seat had left the roster since
+    // the rewire — cutting the ring back over a label with nothing beside it.
+    return slot >= 0 && slot < base_camp_rail_chip_cards(g_base_camp_state);
+}
+
+int base_camp_seat_chip_ring_clearance()
+{
+    // The chip owns [chip_offset, card_w). The ring's right column is drawn
+    // AT x + sizex (the +1 convention), so the cut has to be one wider than
+    // the chip's own run for that column to land on the face pixel before it.
+    return kBaseCampSeatCardWidth - kBaseCampSeatChipOffsetX + 1;
 }
 
 void install_base_camp_state_for_screen(BaseCampScreenState* state)

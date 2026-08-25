@@ -4608,16 +4608,39 @@ TEST(BaseCampMpDisplay, session_status_degrades_by_shape_not_by_byte_cut)
         make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 1, 0,
                         1)};
     // Each rung is taken whole while it fits and abandoned whole when it
-    // does not — never a prefix of the rung above.
-    EXPECT_EQ("IN GLAD-7Q2F: 1 PLAYERS / 1 MACHINES",
+    // does not — never a prefix of the rung above. ONE IS ONE: a lobby of one
+    // says PLAYER / MACHINE / PC, never the "1 PLAYERS" that told the reader
+    // the line could not count. The singular is always the shorter spelling,
+    // so it can never push a rung off a band it used to fit — here it makes
+    // the widest rung 34 characters instead of 38.
+    EXPECT_EQ("IN GLAD-7Q2F: 1 PLAYER / 1 MACHINE",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
                                                       kettle, 36));
-    EXPECT_EQ("IN GLAD-7Q2F: 1 PLAYERS/1 PCS",
+    EXPECT_EQ(std::size_t{34},
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
-                                                      kettle, 35));
+                                                      kettle, 34).size());
+    EXPECT_EQ("IN GLAD-7Q2F: 1 PLAYER / 1 MACHINE",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 34))
+        << "the singular rung fits a band the plural one would have missed";
+    EXPECT_EQ("IN GLAD-7Q2F: 1 PLAYER/1 PC",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 33));
     EXPECT_EQ("IN GLAD-7Q2F: 1P/1M",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
-                                                      kettle, 28));
+                                                      kettle, 26));
+    // A machine with two seats in it: the players half pluralizes on its own
+    // count, the machines half does not.
+    const std::vector<og::sim::LobbyPlayer> two_on_one = {
+        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 1, 0, 1),
+        make_lobby_seat(1, "net-h2", "IRON KETTLE BAND", false, false, 1, 0,
+                        1)};
+    EXPECT_EQ("IN GLAD-7Q2F: 2 PLAYERS / 1 MACHINE",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      two_on_one, 40));
+    EXPECT_EQ("IN GLAD-7Q2F: 2 PLAYERS/1 PC",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      two_on_one, 34));
     EXPECT_EQ("JOINED: 1P/1M",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
                                                       kettle, 18));
@@ -4645,7 +4668,7 @@ TEST(BaseCampMpDisplay, line_b_gives_the_alert_slot_and_color_precedence)
         std::nullopt, true, "GLAD-7Q2F", players,
         og::ui::kBaseCampLineBCharsHireHidden);
     EXPECT_FALSE(healthy.alert);
-    EXPECT_EQ("HOSTING GLAD-7Q2F: 1 PLAYERS / 1 MACHINES", healthy.text);
+    EXPECT_EQ("HOSTING GLAD-7Q2F: 1 PLAYER / 1 MACHINE", healthy.text);
 
     // Degraded: the alert takes the slot AND the color (§9.12 precedence —
     // the ORANGE mapping rides the alert flag).

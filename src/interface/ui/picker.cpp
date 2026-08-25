@@ -210,11 +210,13 @@ void picker_mainmenu_loop()
     }
 }
 
-static void picker_initialize_shared_menu_state()
+// The tiled title backdrop every picker screen composes over: four quadrant
+// pixies pinned to the 320x200 corners. Factored out of menu entry so the one
+// loader serves both callers — picker_main below and the UX-shot probe, whose
+// networked fixtures build a screen directly and would otherwise capture a
+// frame no player ever sees (chrome on black).
+void picker_load_menu_backdrops()
 {
-    clear_allbuttons();
-
-    // Set backdrops to nullptr
     pks().backpics[0] = read_pixie_file("mainul.png");
     pks().backpics[1] = read_pixie_file("mainur.png");
     pks().backpics[2] = read_pixie_file("mainll.png");
@@ -228,6 +230,13 @@ static void picker_initialize_shared_menu_state()
     pks().backdrops[2]->setxy(0, 100);
     pks().backdrops[3] = make_picker_pixie(pks().backpics[3]);
     pks().backdrops[3]->setxy(160, 100);
+}
+
+static void picker_initialize_shared_menu_state()
+{
+    clear_allbuttons();
+
+    picker_load_menu_backdrops();
 
     og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
     // No clear here (#237 ownership): whatever the window shows when the

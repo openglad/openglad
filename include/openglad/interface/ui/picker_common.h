@@ -647,8 +647,10 @@ inline constexpr int kBaseCampLineBCharsHireHidden =
 // PLAYERS lead: the seat rail shows this machine's seats only, so the size
 // of the lobby has no other home on the screen. A narrower band takes a
 // whole shorter spelling rather than a byte cut — "<p> PLAYERS/<n> PCS",
-// then "<p>P/<n>M", then the room code goes. Room codes display-clip at 12
-// chars (relay codes are "GLAD-XXXX").
+// then "<p>P/<n>M", then the room code goes. A count of one takes the
+// singular ("1 PLAYER", "1 MACHINE", "1 PC") — always the shorter spelling,
+// so it can never push a rung off a band the plural fit. Room codes
+// display-clip at 12 chars (relay codes are "GLAD-XXXX").
 std::string format_base_camp_session_status(
     bool is_host,
     std::string_view room_code,

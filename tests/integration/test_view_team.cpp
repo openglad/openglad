@@ -1726,9 +1726,9 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
     constexpr int kRailHeight = kRailBottom - kRailTop + 1;
     const int kSelectedCardX = buttons[kBaseCampSeatCardBase + 1].x;
     const int kSelectedCardY = buttons[kBaseCampSeatCardBase + 1].y;
-    const int kLabelFocusRight = kSelectedCardX + 60;
+    const int kLabelFocusRight = kSelectedCardX + 59;
     const int kFocusBottom = kSelectedCardY + 10;
-    const int kChipX = kSelectedCardX + 61;
+    const int kChipX = kSelectedCardX + 60;
     const int kChipY = kSelectedCardY + 1;
     constexpr int kChipSize = 8;
 
@@ -2316,8 +2316,8 @@ TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
         << "the click must claim a seat, not just repaint";
     // Exact, not a prefix: ensure_unique_seat_mapping lands the second seat
     // on the arrow profile, so the whole face is known — "P2 " + the arrow
-    // glyphs + the load-bearing chip-clearance pad.
-    EXPECT_EQ(std::format("P2 {} ", og::input::kArrowGlyphs),
+    // glyphs + the two load-bearing chip-clearance pads.
+    EXPECT_EQ(std::format("P2 {}  ", og::input::kArrowGlyphs),
               state.slot_one_label_after)
         << "the new seat lands in the slot that was clicked, as P2";
     EXPECT_TRUE(trace_contains("basecamp", "seat_add local_count=2"))
@@ -2627,7 +2627,7 @@ TEST(ViewTeam, base_camp_seat_rail_shows_only_this_machines_seats)
     // global P5, local slot 0, factory WASD. Slot zero, not slot four — the
     // rail indexes local slots, so a machine that owns one seat shows it
     // first however high its global P# runs.
-    EXPECT_EQ("P5 WASD ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P5 WASD  ", buttons[kBaseCampSeatCardBase].label);
     for (int slot = 1; slot < kBaseCampSeatCardsPerPage; ++slot)
     {
         EXPECT_FALSE(buttons[kBaseCampSeatCardBase + slot].hidden) << slot;
@@ -2861,14 +2861,14 @@ TEST(ViewTeam, base_camp_seat_chip_pointer_click_cycles_team_in_place)
     // The rail lays itself out per frame, so the chip zone has to be read off
     // the LIVE card, not the static table. One local seat on an ordinary
     // desktop puts that card in slot zero with three ADD PLAYER slots beside
-    // it; the chip zone is the face's last nine pixels plus 2px of grace.
+    // it; the chip zone is the face's last ten pixels plus 2px of grace.
     int highlighted = kBaseCampSeatCardBase;
     spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
     const button& card = buttons[kBaseCampSeatCardBase];
     ASSERT_EQ(70, card.sizex) << "card face width is the chip zone's anchor";
     ASSERT_EQ(8, card.x) << "the rail's first slot opens on the left rail";
 
-    // Chip-body click (the drawn 8x8 chip starts at card_x+61).
+    // Chip-body click (the drawn 8x8 chip starts at card_x+60).
     pks().menu_click_x = card.x + 65;
     pks().menu_click_y = card.y + 5;
     lobby.ready_state = true;
@@ -2884,8 +2884,8 @@ TEST(ViewTeam, base_camp_seat_chip_pointer_click_cycles_team_in_place)
     EXPECT_EQ(1, state.seats[0].team)
         << "the handler re-collects seats so this frame's chip digit is new";
 
-    // Zone left boundary: card_x+59 (2px grace before the drawn chip).
-    pks().menu_click_x = card.x + 59;
+    // Zone left boundary: card_x+58 (2px grace before the drawn chip).
+    pks().menu_click_x = card.x + 58;
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
     ASSERT_EQ(2u, lobby.seat_team_calls.size());
     EXPECT_EQ(2, lobby.seat_team_calls.back().second);
@@ -2963,7 +2963,7 @@ TEST(ViewTeam, base_camp_seat_chip_click_never_reaches_a_foreign_seat)
     // Slot zero is THIS machine's seat (global P2), not the host's P1 — the
     // remote seat is on the header line's census and in VIEW LEVEL's SEATS
     // report, and nowhere on this row.
-    EXPECT_EQ("P2 WASD ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P2 WASD  ", buttons[kBaseCampSeatCardBase].label);
     for (int slot = 1; slot < kBaseCampSeatCardsPerPage; ++slot)
     {
         EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + slot].label)
@@ -3090,8 +3090,9 @@ TEST(ViewTeam, base_camp_seat_rail_draws_labelled_placeholders_and_the_chip)
 
     render();
 
-    // The chip's 8x8 black surround sits at card_x + 61 now (the face's last
-    // nine pixels). Its whole top row is one solid PURE_BLACK run, which the
+    // The chip's 8x8 black surround sits at card_x + 60 now (the face's last
+    // ten pixels, one of which stays face so the chip is not nipped by the
+    // right bevel). Its whole top row is one solid PURE_BLACK run, which the
     // backdrop and the card face never produce — so the run is its signature.
     const auto solid_black_run = [&](int x0, int y) {
         Uint8 red = 0;
@@ -3104,7 +3105,7 @@ TEST(ViewTeam, base_camp_seat_rail_draws_labelled_placeholders_and_the_chip)
         return std::all_of(run.begin(), run.end(),
                            [black](Uint32 pixel) { return pixel == black; });
     };
-    EXPECT_TRUE(solid_black_run(card.x + 61, card.y + 1))
+    EXPECT_TRUE(solid_black_run(card.x + 60, card.y + 1))
         << "the team chip draws on the card the rail actually placed";
     EXPECT_FALSE(solid_black_run(kStaleCardX + 48, card.y + 1))
         << "nothing is left behind at the retired rail's card slot";
@@ -3816,7 +3817,7 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_through_the_first_slot)
         spec.nav.rewire(
             buttons, picker_createmenu_button_count(), highlighted);
         EXPECT_FALSE(buttons[kBaseCampSeatCardBase].hidden);
-        EXPECT_EQ("P7 SPEC ", buttons[kBaseCampSeatCardBase].label);
+        EXPECT_EQ("P7 SPEC  ", buttons[kBaseCampSeatCardBase].label);
         // The door out of the spectator state is the slot beside the SPEC
         // card, not a [+] somewhere else on the row.
         EXPECT_FALSE(buttons[kBaseCampSeatCardBase + 1].hidden);
@@ -3885,7 +3886,7 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_through_the_first_slot)
         buttons = picker_createmenu_buttons();
         spec.nav.rewire(
             buttons, picker_createmenu_button_count(), highlighted);
-        EXPECT_EQ("P1 WASD ", buttons[kBaseCampSeatCardBase].label);
+        EXPECT_EQ("P1 WASD  ", buttons[kBaseCampSeatCardBase].label);
         // The seat landed in slot zero, so the SECOND slot is the door now —
         // and the debounce is on the DOOR, not on the ordinal.
         EXPECT_EQ(MENU_OK,
@@ -3943,7 +3944,7 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_the_rail)
     spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
     // Desktop: the card names the seat's keyboard mapping, and three ADD
     // PLAYER slots stand beside it on the fixed grid.
-    EXPECT_EQ("P1 WASD ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P1 WASD  ", buttons[kBaseCampSeatCardBase].label);
     EXPECT_EQ(og::ui::RowState::Visible,
               spec.rows[kBaseCampSeatCardBase + 1].state_override(
                   og::ui::MenuLabelContext{}));
@@ -3954,7 +3955,7 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_the_rail)
     input_hardware_state().single_seat_device = true;
     buttons = picker_createmenu_buttons();
     spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
-    EXPECT_EQ("P1 SCRN ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P1 SCRN  ", buttons[kBaseCampSeatCardBase].label);
     // The phone's rail is ONE card and nothing else: no slot on this device
     // can be claimed, so no slot is offered. The lone card starts where every
     // other left-aligned control does.
@@ -3988,7 +3989,7 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_the_rail)
     player_joy[0].index = 0;
     buttons = picker_createmenu_buttons();
     spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
-    EXPECT_EQ("P1 JOY1 ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P1 JOY1  ", buttons[kBaseCampSeatCardBase].label);
 
     og::ui::install_base_camp_state_for_screen(nullptr);
     save.reset();

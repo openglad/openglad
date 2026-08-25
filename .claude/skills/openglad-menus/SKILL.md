@@ -139,6 +139,19 @@ Content also OVERDRAWS buttons: the main menu's grey SETTINGS heading band
 (drawn in the content pass) once painted over a button placed in its row —
 layout pins don't see overdraw, only screenshot read-back does.
 
+Two palette traps in the same family:
+
+- **A dimmed face can eat its own bevels.** `GREY` (the RowState::Disabled
+  face) resolves to the SAME shade as `BUTTON_RIGHT`/`BUTTON_BOTTOM`, so a
+  disabled row drew as a card with a flat right edge until `vbutton::dimmed`
+  stepped those two edges one shade darker. Any new face color needs the same
+  check against 11..15.
+- **A band of raw backdrop between two opaque things reads as a defect.** The
+  title art runs behind every picker screen; an 8px gutter framed a fragment
+  of its grey blade so exactly that reviewers read it as a stray glyph. Paint
+  a band its own ground (pre-buttons, opaque) when chrome floats in it — that
+  also makes the local and networked frames identical there.
+
 ## Borrowing a viewscreen for previews (camera leak)
 
 `screen::relayout_views()` restores view RECTS but never the CAMERA

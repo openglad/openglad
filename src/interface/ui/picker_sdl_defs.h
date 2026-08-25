@@ -223,8 +223,10 @@ inline constexpr std::array<int, 4> kBaseCampSeatRailSpares{
 inline constexpr int kBaseCampMoveUpBase = 41; // roster_up_0..7 = 41..48
 inline constexpr int kBaseCampSeatCardsPerPage = 4;
 // The 70px seat card is drawn without the beveled inset, so its budget is the
-// full face: 70 / 6 = 11 characters, trailing pad included. Eleven is what
-// makes "ADD PLAYER" and "LOBBY FULL" (10 each) fit a bare slot.
+// full face: 70 / 6 = 11 characters, a seat label's two trailing pads
+// included. Eleven is what makes "ADD PLAYER" and "LOBBY FULL" (10 each) fit
+// a bare slot, and what leaves the widest card ("P16 " + a 5-char mapping
+// short name + both pads) exactly filling its face.
 inline constexpr int kBaseCampSeatCardLabelBudget = 11;
 // The compact seat-rail/move-up band's ordinal bounds: draw_menu_highlight
 // keeps its interior focus ring INSIDE this range so a card's ring can never
@@ -234,13 +236,18 @@ inline constexpr int kBaseCampInteriorRingFirstIndex = kBaseCampAddSeatIndex;
 inline constexpr int kBaseCampInteriorRingLastIndex = 48;
 namespace og::ui {
 // True when rail slot k (0..3) is a SEAT CARD this frame — the only shape
-// that packs a numbered team chip into the face's last nine pixels, and so
-// the only one whose focus ring needs the chip clearance. A bare slot's
-// ADD PLAYER / LOBBY FULL label is ten glyphs with no trailing pad: its ink
-// runs to x+64, and a ring cut back to x+60 would strike through it.
-// Reads the rewire's cached frame shape — the same one the chip pass reads,
-// so the ring and the chip can never disagree about which slots have one.
+// that packs a numbered team chip into the face's right end, and so the only
+// one whose focus ring needs the chip clearance. A bare slot's ADD PLAYER /
+// LOBBY FULL label is ten glyphs with no trailing pad: its ink runs to x+64,
+// and a ring cut back over the chip zone would strike through it. Answers
+// with the same count the chip pass paints, so the ring and the chip can
+// never disagree about which slots have one.
 bool base_camp_rail_slot_has_chip(int slot);
+// Pixels at a seat card's right end the focus ring must give up so its
+// (inclusive, +1-convention) right column lands on the last face pixel BEFORE
+// the chip. Derived from the card width and the chip offset — a geometry
+// change moves the ring with the chip instead of stranding a literal here.
+int base_camp_seat_chip_ring_clearance();
 } // namespace og::ui
 // --- The appended gameplay-zone band (docs/basecamp-zones-design.md
 // "Bounds arithmetic"): ordinals 49..71, statically PARKED at zero-size

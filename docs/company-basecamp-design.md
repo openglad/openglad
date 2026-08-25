@@ -339,7 +339,10 @@ first**, then machines, because the seat rail shows only this machine's seats
 and the size of the lobby has nowhere else to live. It reads
 `HOSTING GLAD-7Q2F: 3 PLAYERS / 2 MACHINES` (or `IN <room>: ...` for a guest).
 A narrower band takes a whole shorter spelling rather than a byte cut:
-`3 PLAYERS/2 PCS`, then `3P/2M`, then the room code goes. The joiner's line
+`3 PLAYERS/2 PCS`, then `3P/2M`, then the room code goes. One is one: a lobby
+of one reads `1 PLAYER`, `1 MACHINE`, `1 PC` — the singular is always the
+shorter spelling, so it can never cost a rung the band it used to fit. The
+joiner's line
 no longer names the host company — every one of the host's roster rows already
 does, and none of them carries the census. A degraded-link alert takes the
 same line and its warning color.
@@ -356,8 +359,25 @@ closing on the panel's right rail with no remainder (4x70 + 3x8 = 304 = 312 -
 card can never slide sideways under a finger already on its way down to it.
 The face never changes width; it is an eleven-character label budget that the
 seat names, **ADD PLAYER**, **LOBBY FULL** and the team chip all depend on.
-The chip owns the face's last nine pixels, and the label's trailing pad is what
-keeps the centred ink clear of it.
+The chip owns the face's last ten pixels — eight for the chip and one of face
+either side of it, so it is framed on the right exactly as it is above and
+below — and a seat label's two trailing pads are what centre its ink over the
+zone the chip leaves rather than over the whole face. A bare slot has no chip
+to dodge, so **ADD PLAYER** and **LOBBY FULL** centre on the face itself.
+
+The rail's band — everything between the roster panel's bottom bevel and the
+command strip — is painted black before the buttons draw. The title backdrop
+runs behind this screen, and the 8-pixel gutters framed a fragment of its grey
+blade so neatly that it read as a stray glyph between two cards. One ground
+under the whole row also makes a networked frame and a local one identical
+here. The band is 17 pixels for a 10-pixel card: 3 above and 4 below, because
+an odd budget cannot split evenly and the heavier gap belongs under the rail,
+where the command strip's own bevel already separates.
+
+A dimmed slot is still a whole card. The disabled face shade collides with the
+button shadow shade, so a dimmed face steps its right and bottom bevels one
+shade darker; without that, **LOBBY FULL** rendered as a card with a flat
+right edge.
 
 What varies is how many slots are live, and that is a property of the DEVICE,
 never of the lobby: four on a desktop, one on a phone with nothing attached,

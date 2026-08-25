@@ -86,8 +86,8 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
                          int highlighted_button)
 {
     // The compact Base Camp seat rail packs a numbered team chip into each
-    // card's last nine pixels, and the move-up column hugs the roster
-    // panel's inner face. Their focus ring must stay inside the selected
+    // card's right end, and the move-up column hugs the roster panel's inner
+    // face. Their focus ring must stay inside the selected
     // control so it cannot paint over the chip or the panel bevel. Bounded
     // to the rail/move-up band (33..48): the appended gameplay-zone rows
     // past it take the normal exterior focus ring.
@@ -97,20 +97,20 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
     {
         // The chip clearance belongs to the slots that HAVE a chip. A bare
         // slot's ADD PLAYER / LOBBY FULL face is ten pad-less glyphs whose
-        // last one ends at x+64 — cutting the ring back to x+60 there would
-        // strike through the label instead of clearing a chip that isn't
-        // drawn. Ask the frame shape the chip pass reads.
+        // last one ends at x+64 — cutting the ring back over the chip zone
+        // there would strike through the label instead of clearing a chip
+        // that isn't drawn. Ask the count the chip pass paints.
         if (highlighted_button >= kBaseCampSeatCardBase &&
             highlighted_button <
                 kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage &&
             base_camp_rail_slot_has_chip(highlighted_button -
                                          kBaseCampSeatCardBase))
         {
-            // The numbered chip occupies the final nine pixels of a seat
-            // card. Keep the pulsing ring around the label face so the
-            // highlight never erases the chip's border or glyph.
+            // Keep the pulsing ring around the label face so the highlight
+            // never erases the chip's border or glyph. The clearance is
+            // derived from the card geometry, not typed here.
             button label_face = buttons[highlighted_button];
-            label_face.sizex -= 10;
+            label_face.sizex -= og::ui::base_camp_seat_chip_ring_clearance();
             draw_highlight_interior(label_face);
         }
         else
@@ -181,12 +181,18 @@ void apply_row_states(const SpecRowView& rows, button* buttons,
             if (live != nullptr) {
                 live->myfunc = 0;
                 live->color = GREY;  // draw dimmed
+                // GREY lands on the same palette shade as the shadow edges,
+                // so the face would swallow the right and bottom bevels and
+                // the row would read as a half-drawn card. The flag steps
+                // those two edges one shade darker for the dim face.
+                live->dimmed = true;
             }
         } else {
             const Sint32 fun = button_action_id(row.action);
             buttons[i].myfun = fun;
             if (live != nullptr) {
                 live->myfunc = fun;
+                live->dimmed = false;
                 if (row.color == nullptr)
                     live->color = BUTTON_FACING;
             }

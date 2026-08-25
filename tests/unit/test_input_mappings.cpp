@@ -215,8 +215,9 @@ TEST(InputMappings, unspellable_clusters_fall_back_to_custom)
 TEST(InputMappings, short_names_fit_the_base_camp_seat_card)
 {
     // ARROWS renders as the font's arrow glyphs (up/left/down/right) on
-    // every SDL display surface; "P2 \x01\x03\x02\x04 " is eight of the eleven
-    // characters the 70px seat-slot face holds.
+    // every SDL display surface; "P2 \x01\x03\x02\x04  " is nine of the eleven
+    // characters the 70px seat-slot face holds (three of them the P# prefix,
+    // two the trailing pads that center the ink over the chip-free zone).
     ASSERT_EQ(og::input::kArrowGlyphs, mapping_short_name("ARROWS"));
     ASSERT_EQ("\x01\x03\x02\x04", mapping_short_name("ARROWS"));
     ASSERT_EQ("WASD", mapping_short_name("WASD"));

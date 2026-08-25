@@ -7875,10 +7875,11 @@ TEST(PickerNetworkClient,
             host_client->lobby_players(),
             og::ui::kBaseCampLineBCharsHireVisible);
         EXPECT_FALSE(header.alert);
-        EXPECT_EQ("HOSTING GLAD-XKCD: 1 PLAYERS/1 PCS", header.text)
+        EXPECT_EQ("HOSTING GLAD-XKCD: 1 PLAYER/1 PC", header.text)
             << "a healthy hosted room shows role + room + census; beside "
                "HIRE the band is 34, so the census takes its everyday "
-               "spelling rather than losing a word to a byte cut";
+               "spelling rather than losing a word to a byte cut — and a "
+               "lobby of one says PLAYER and PC, not PLAYERS and PCS";
     }
 
     relay_server->stop();

@@ -4121,7 +4121,7 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     // rail shows that one card and three ADD PLAYER slots; GO's up-link lands
     // on the rail's rightmost slot.
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("P5 WASD ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P5 WASD  ", buttons[kBaseCampSeatCardBase].label);
     EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + 1].label);
     EXPECT_EQ(kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage - 1,
               buttons[kCreateMenuGoIndex].nav.up);
@@ -4136,7 +4136,7 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     ASSERT_EQ(2u, state.local_seat_indices.size())
         << "the fixture must hand the rail a local index the roster lacks";
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("P1 WASD ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P1 WASD  ", buttons[kBaseCampSeatCardBase].label);
     EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + 1].label)
         << "the hole becomes a door, not a blank card";
     ASSERT_NE(nullptr, spec.rows[kBaseCampSeatCardBase + 1].state_override);
@@ -4146,7 +4146,7 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     lobby.local_indices = {4};
     og::ui::base_camp_refresh_rows(state);
     spec.nav.rewire(buttons, count, highlighted);
-    ASSERT_EQ("P5 WASD ", buttons[kBaseCampSeatCardBase].label);
+    ASSERT_EQ("P5 WASD  ", buttons[kBaseCampSeatCardBase].label);
 
     // The four parked rail ordinals answer nothing at all.
     for (const int spare : kBaseCampSeatRailSpares)

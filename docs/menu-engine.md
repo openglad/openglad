@@ -37,7 +37,11 @@ A `MenuScreenSpec` supplies:
 
 Rows are materialized into the existing `button`/`vbutton` surfaces. Hidden
 rows disappear from both pointer and keyboard navigation. Disabled rows remain
-visible but have no action.
+visible but have no action, and draw with a dimmed face. That dim shade
+collides with the palette entry the button shadow uses, so a dimmed row also
+steps its right and bottom bevels one shade darker (`vbutton::dimmed`);
+without it a disabled row loses two of its four bevels and reads as a
+half-drawn card.
 
 Dynamic company and backup lists use fixed row tables windowed by `PageModel`.
 Stable row IDs and button ordinals are therefore preserved between pages.

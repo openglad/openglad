@@ -138,11 +138,13 @@ seat settings, minus TEAM):
 
 ### 2.3 Base Camp seat cards
 
-`"P1 YOU "` → `"P1 {SHORT} "` for local seats, where SHORT is the mapping
+`"P1 YOU "` → `"P1 {SHORT}  "` for local seats, where SHORT is the mapping
 short name (≤5 chars: `WASD`, `ARROW`, `IJKL`, `TFGH`, `JOY1`, or the derived
 movement cluster for customs). Budget: the seat card face is exactly 11 chars
-(70px / 6) and the trailing space is load-bearing (team chip clearance):
-`"P2 ARROW "` = 9, well inside it. The rail holds only this machine's seats,
+(70px / 6) and BOTH trailing spaces are load-bearing — they centre the visible
+ink over the zone the team chip leaves rather than over the whole face:
+`"P2 ARROW  "` = 10, and the widest shape, `"P16 ARROW  "`, is exactly 11. The
+rail holds only this machine's seats,
 so no card carries a foreign company abbreviation any more. The shared seat
 identity strings are unchanged.
 

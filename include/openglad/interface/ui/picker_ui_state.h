@@ -144,3 +144,11 @@ struct PickerState {
     int menu_click_x = -1;
     int menu_click_y = -1;
 };
+
+// Load the four quadrant pixies of the picker's tiled title backdrop into the
+// session's PickerState. picker_main runs this once when it builds the shared
+// menu state; anything that composes a picker screen WITHOUT going through
+// picker_main — the UX-shot probe's direct create_team_menu fixtures — must
+// run it too, or its capture shows the screen's chrome floating on black
+// instead of the frame a player sees.
+void picker_load_menu_backdrops();

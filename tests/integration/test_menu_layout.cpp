@@ -1875,9 +1875,10 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_slot_matrix_labels_and_nav)
 
                     if (is_card)
                     {
-                        // Design §2.3: a local card names its INPUT mapping.
-                        // The face is exactly eleven characters INCLUDING the
-                        // load-bearing trailing pad.
+                        // Design §2.3: a local card names its INPUT mapping,
+                        // followed by the two load-bearing trailing pads that
+                        // center the visible ink over the chip-free zone
+                        // rather than over the whole face.
                         // #249: on a single-seat device the touchscreen IS
                         // the controller, so the FIRST seat names the screen
                         // instead of keys the device does not have. A later
@@ -1887,11 +1888,12 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_slot_matrix_labels_and_nav)
                             (phone && slot == 0)
                             ? og::input::kScreenSeatOwnerLabel
                             : kSlotOwner[static_cast<std::size_t>(slot)];
-                        EXPECT_EQ(std::format("P{} {} ", slot + 1, owner),
+                        EXPECT_EQ(std::format("P{} {}  ", slot + 1, owner),
                                   face.label)
                             << where;
-                        EXPECT_EQ(' ', face.label.back())
-                            << where << ": the chip clearance pad is "
+                        ASSERT_GE(face.label.size(), 2u) << where;
+                        EXPECT_EQ("  ", face.label.substr(face.label.size() - 2))
+                            << where << ": both chip-clearance pads are "
                                         "load-bearing";
                     }
                     else if (is_full)

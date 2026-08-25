@@ -1729,14 +1729,23 @@ std::string format_base_camp_session_status(
     const std::string room_part = room.empty()
         ? head
         : std::format("{} {}", is_host ? "HOSTING" : "IN", room);
+    // One is one. A solo host reading "1 PLAYERS / 1 MACHINES" is the line
+    // telling him it cannot count, and the singular is always the SHORTER
+    // spelling — it can never push a rung off its band.
+    const auto counted = [](int value, std::string_view one,
+                            std::string_view many) {
+        return std::format("{} {}", value, value == 1 ? one : many);
+    };
     // The ladder, widest first: each rung is a whole spelling that either
     // fits or falls to the next — never a byte cut of the one above.
     // "PCS" is the everyday word for the thing "MACHINES" names precisely;
-    // at 1-digit counts the two rungs land exactly on the 41 and 34 bands.
+    // at 1-digit plural counts the two rungs land exactly on the 41 and 34
+    // bands, and the singular forms sit a word inside them.
     const std::array<std::string, 3> rungs{
-        std::format("{} PLAYERS / {} MACHINES", census.players,
-                    census.machines),
-        std::format("{} PLAYERS/{} PCS", census.players, census.machines),
+        std::format("{} / {}", counted(census.players, "PLAYER", "PLAYERS"),
+                    counted(census.machines, "MACHINE", "MACHINES")),
+        std::format("{}/{}", counted(census.players, "PLAYER", "PLAYERS"),
+                    counted(census.machines, "PC", "PCS")),
         std::format("{}P/{}M", census.players, census.machines)};
     for (const std::string& rung : rungs) {
         std::string status = std::format("{}: {}", room_part, rung);

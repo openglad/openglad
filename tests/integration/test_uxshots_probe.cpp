@@ -19,6 +19,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -704,6 +705,9 @@ TEST(UxShots, f_backups) {
 struct NamedShot {
   ShotState state;
   const char *name;
+  // Optional pixel oracle run on the captured frame; a failed check does not
+  // count the capture, so the caller's ASSERT_EQ on `captures` is its verdict.
+  FrameCheck check = nullptr;
 };
 
 // The machine's seat declaration is LIVE SESSION state: it survives CONTINUE
@@ -772,8 +776,6 @@ int basecamp_paged_injector(void *data) {
       interact("roster_page_next");
       SDL_Delay(1500);
       shot->state.captures += capture_frame("basecamp_paged_p2");
-      SDL_Delay(120);
-      shot->state.captures += capture_frame("basecamp_paged_p2b");
     }
     SDL_Delay(200);
     interact("back");
@@ -1056,7 +1058,7 @@ int basecamp_net_injector(void *data) {
   NamedShot *shot = static_cast<NamedShot *>(data);
   if (wait_for_team_menu()) {
     SDL_Delay(1500);
-    shot->state.captures += capture_frame(shot->name);
+    shot->state.captures += capture_frame(shot->name, shot->check);
     SDL_Delay(200);
     interact("back");
   }
@@ -1128,6 +1130,12 @@ void run_basecamp_net_shot(const char *name, bool host_view,
   shot.name = name;
   SDL_Thread *thread = SDL_CreateThread(basecamp_net_injector, "ux_net", &shot);
   ASSERT_TRUE(thread != nullptr);
+  // The local shapes reach Base Camp through picker_main, which loads the
+  // title backdrop on the way in; these fixtures build the screen directly,
+  // so they load it themselves. Without it every pixel the chrome does not
+  // cover captures flat black — the frame no player ever sees — and the
+  // networked shots cannot be compared with the local ones at all.
+  picker_load_menu_backdrops();
   create_team_menu(0);
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
@@ -1644,6 +1652,7 @@ TEST(UxShots, n_view_level_seats) {
   SDL_Thread *thread =
       SDL_CreateThread(many_seats_view_level_injector, "ux_seats", &state);
   ASSERT_TRUE(thread != nullptr);
+  picker_load_menu_backdrops();  // see run_basecamp_net_shot
   create_team_menu(0);
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
@@ -1651,6 +1660,33 @@ TEST(UxShots, n_view_level_seats) {
   // The two-card rail over a seven-seat lobby, the VIEW LEVEL seat block,
   // and the networked DIFFICULTY screen with the re-homed CTRL row (#218).
   ASSERT_EQ(3, state.captures);
+}
+
+// A dimmed row is still a whole card. GREY, the disabled face shade, lands on
+// the same palette entry as BUTTON_RIGHT/BUTTON_BOTTOM, so an unguarded dim
+// swallows its own right and bottom bevels and the card reads as 69px wide
+// with a flat right edge. The three LOBBY FULL slots end at x=155/233/311
+// (card x + 69); each of those columns must differ from the face pixel beside
+// it. Row 168 is mid-face, clear of the label's ink and both horizontal
+// bevels.
+bool lobby_full_slots_keep_their_right_bevel(const FramePixels &rgb) {
+  const auto pixel = [&rgb](int x, int y) {
+    const std::size_t at = (static_cast<std::size_t>(y) * 320 +
+                            static_cast<std::size_t>(x)) *
+        3;
+    return std::array<Uint8, 3>{rgb[at], rgb[at + 1], rgb[at + 2]};
+  };
+  bool ok = true;
+  for (const int bevel_x : {155, 233, 311}) {
+    if (pixel(bevel_x, 168) == pixel(bevel_x - 1, 168)) {
+      fprintf(stderr,
+              "  [uxshot] LOBBY FULL card's right bevel at x=%d dissolved "
+              "into its dimmed face\n",
+              bevel_x);
+      ok = false;
+    }
+  }
+  return ok;
 }
 
 // A LOBBY AT THE CEILING. Sixteen seats, one of them this machine's: the rail
@@ -1674,9 +1710,11 @@ TEST(UxShots, n_basecamp_lobby_full) {
   ActiveLobbyGuard guard(&client);
   NamedShot shot;
   shot.name = "basecamp_lobby_full";
+  shot.check = &lobby_full_slots_keep_their_right_bevel;
   SDL_Thread *thread =
       SDL_CreateThread(basecamp_net_injector, "ux_full", &shot);
   ASSERT_TRUE(thread != nullptr);
+  picker_load_menu_backdrops();  // see run_basecamp_net_shot
   create_team_menu(0);
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
@@ -1954,7 +1992,10 @@ TEST(UxShots, i_basecamp_paged) {
   NamedShot shot;
   shot.name = "basecamp_paged_p1";
   run_basecamp_shot(shot, &basecamp_paged_injector);
-  ASSERT_EQ(3, shot.state.captures);
+  // Page 1 and page 2 — two states, two frames. The third capture this used
+  // to take was page 2 again, 120ms later: a byte-identical duplicate that
+  // proved nothing and cost a reviewer a comparison.
+  ASSERT_EQ(2, shot.state.captures);
 }
 
 } // namespace

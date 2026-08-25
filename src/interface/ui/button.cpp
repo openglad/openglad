@@ -212,11 +212,19 @@ void vbutton::vdisplay()
     }
     else
     {
+        // A dimmed (inert) face sits on the same palette shade as the normal
+        // shadow edges, so those two step one shade darker to keep the bevel
+        // readable — the lit edges are already well clear of it. The shade
+        // ramp 11..15 is contiguous, so "one darker" is exactly one index.
+        const unsigned char shadow_right = static_cast<unsigned char>(
+            dimmed ? BUTTON_RIGHT - 1 : BUTTON_RIGHT);
+        const unsigned char shadow_bottom = static_cast<unsigned char>(
+            dimmed ? BUTTON_BOTTOM - 1 : BUTTON_BOTTOM);
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc,xend-1,yend-1,color,1,1); // front
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc,xend-2,yloc,BUTTON_TOP,1,1); // top edge
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc+1,xloc,yend-2,BUTTON_LEFT,1,1); // left
-        og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT,1,1); // right
-        og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM,1,1); // bottom
+        og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,shadow_right,1,1); // right
+        og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,shadow_bottom,1,1); // bottom
         if (label.size())
             mytext.write_xy( static_cast<short>( static_cast<size_t>((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);

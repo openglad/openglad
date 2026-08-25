@@ -3701,6 +3701,42 @@ Sint32 level_editor()
 	std::uint32_t last_ticks = og::input_native::ticks_ms();
 	std::uint32_t start_ticks = last_ticks;
 
+	// One composer for the editor's frame, called once COLD below and then by
+	// the loop's redraw branch. LevelEditorData::draw prepares one
+	// smart-smoothed scenery + crisp UI transaction; present only after every
+	// layer (including the controller cursor) is complete, because the
+	// gameplay overlay is single-use. The first call fades in (#237): the
+	// editor's canvas is pinned classic (a shared surface), so it fades the
+	// real first frame, not a stale UI image. Later calls present plainly.
+	// `data` is function-static, so it is named directly rather than
+	// captured (a lambda cannot capture non-automatic storage).
+	const auto compose_and_present = [&mymouse, &entry_fade]() {
+	    eds().redraw = 0;
+	    data.draw(og::runtime::current_session->myscreen_);
+
+	    #ifdef USE_CONTROLLER_INPUT
+	    {
+	        ScopedGameplayUiCanvas editor_ui(
+	            *og::runtime::current_session->myscreen_);
+	        og::runtime::current_session->myscreen_->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
+	        og::runtime::current_session->myscreen_->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
+	    }
+	    #else
+	    (void)mymouse;
+	    #endif
+	    entry_fade.present_first(*og::runtime::current_session->myscreen_);
+	};
+
+	// #237 ownership: whoever fades IN composes first. The loop below polls
+	// input before it ever reaches its redraw branch, and a button face
+	// presents itself when it is pressed — so on a stretched first iteration
+	// a click already in the queue puts a frame on screen BETWEEN the door's
+	// fade-out and this fade-in, which the video layer reports as a fade-in
+	// without a fade-out. Compose and present the cold frame here, ahead of
+	// the first poll; from then on the loop only refreshes a screen the fade
+	// already owns.
+	compose_and_present();
+
 	//
 	// This is the main program loop
 	//
@@ -4170,26 +4206,7 @@ Sint32 level_editor()
 		
 		// Redraw screen
 		if (eds().redraw)
-		{
-            eds().redraw = 0;
-			data.draw(og::runtime::current_session->myscreen_);
-			
-			#ifdef USE_CONTROLLER_INPUT
-			{
-				ScopedGameplayUiCanvas editor_ui(
-					*og::runtime::current_session->myscreen_);
-				og::runtime::current_session->myscreen_->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
-				og::runtime::current_session->myscreen_->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
-			}
-			#endif
-			// LevelEditorData::draw prepares one smart-smoothed scenery + crisp
-			// UI transaction. Present only after every layer (including the
-			// controller cursor) is complete: the gameplay overlay is single-use.
-			// The first frame fades in (#237): the editor's canvas is pinned
-			// classic (shared surface), so this fades the real first frame,
-			// not a stale UI image. Every later frame presents plainly.
-			entry_fade.present_first(*og::runtime::current_session->myscreen_);
-		}
+			compose_and_present();
 
         og::input_native::sleep_ms(10);
 
