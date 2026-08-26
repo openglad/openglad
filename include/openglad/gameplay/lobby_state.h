@@ -383,7 +383,29 @@ lobby_effective_team_mask(const LobbySettings& settings) noexcept
     const std::uint8_t authored = published_authored == 0
         ? kAllLobbyTeamMask
         : published_authored;
-    return og::sim::effective_team_mask(authored, settings.ctf_team_count);
+    const std::uint8_t effective =
+        og::sim::effective_team_mask(authored, settings.ctf_team_count);
+    // A team the host set to BOTS: OFF leaves the match entirely (A2), so
+    // it leaves the seat domain with it — a joiner cannot pick a colour
+    // that will not be fielded, and the settings-change reteam sweeps any
+    // seat already sitting there. Versus only: on a classic campaign the
+    // knobs are stored and the map decides, so an OFF value there must not
+    // narrow anybody's choice. If OFF emptied the domain the mask stands
+    // unfiltered — a lobby with nowhere to sit can seat nobody at all, and
+    // a crafted client must not be able to arrange that.
+    std::uint8_t seated = effective;
+    for (std::int16_t team = 0; team < SCORE_TEAM_COUNT; ++team)
+    {
+        const auto index = static_cast<std::size_t>(team);
+        if (index < settings.bot_squad.size() &&
+            settings.bot_squad[index] == kBotSquadOff)
+        {
+            seated = static_cast<std::uint8_t>(
+                seated & ~static_cast<std::uint8_t>(
+                             1u << static_cast<unsigned>(team)));
+        }
+    }
+    return seated != 0 ? seated : effective;
 }
 
 inline bool lobby_team_is_selectable(const LobbySettings& settings,

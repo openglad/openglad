@@ -405,7 +405,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     wild.scenario_id = 500;
     wild.difficulty = 1;
     wild.allied_mode = 1;
-    wild.ctf_team_count = 9;       // -> 4
+    wild.ctf_team_count = 9;       // retired (A3) -> 0, always
     wild.ctf_capture_limit = 99;   // -> 50
     wild.ctf_respawn_ticks = 5;    // nonzero -> raised to 12
     wild.time_limit = 30;          // nonzero -> raised to 720 (#241)
@@ -418,7 +418,8 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     server.poll_incoming_messages();
 
     og::sim::LobbyState state = server.state();
-    EXPECT_EQ(4, state.settings.ctf_team_count);
+    EXPECT_EQ(0, state.settings.ctf_team_count)
+        << "the retired TEAMS knob heals to Auto whatever it is sent (A3)";
     EXPECT_EQ(50, state.settings.ctf_capture_limit);
     EXPECT_EQ(12, state.settings.ctf_respawn_ticks);
     EXPECT_EQ(720, state.settings.time_limit);
@@ -437,7 +438,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
 
     // In-range values (and the 0 = map/default sentinels) pass through.
     og::sim::LobbySettings sane = wild;
-    sane.ctf_team_count = 3;
+    sane.ctf_team_count = 3;  // a v18 save's legacy value
     sane.ctf_capture_limit = 0;
     sane.ctf_respawn_ticks = 0;
     sane.time_limit = 0; // the map's own value survives the sanitizer
@@ -450,14 +451,17 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     server.poll_incoming_messages();
 
     state = server.state();
-    EXPECT_EQ(3, state.settings.ctf_team_count);
+    EXPECT_EQ(0, state.settings.ctf_team_count)
+        << "a legacy 2/3/4 heals to Auto on first sanitize — the one-time "
+           "documented migration";
     EXPECT_EQ(0, state.settings.ctf_capture_limit);
     EXPECT_EQ(0, state.settings.ctf_respawn_ticks);
     EXPECT_EQ(0, state.settings.time_limit);
 
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
-    EXPECT_EQ(3, equivalent.ctf_team_count);
+    EXPECT_EQ(0, equivalent.ctf_team_count)
+        << "and the healed value is what the launch equivalent carries";
     EXPECT_EQ(0, equivalent.ctf_capture_limit);
     EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
     EXPECT_EQ(0, equivalent.time_limit);
@@ -488,9 +492,9 @@ TEST(LobbyServer, sanitize_admits_troops_matched_and_equivalent_carries_it)
                           {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
     server.poll_incoming_messages();
 
-    // The retired TEAMS sentinel 5 no longer passes: it clamps to 4 like
-    // any junk above the numeric range — the D30 migration heal for the
-    // playtest-era saves that stored it.
+    // The whole TEAMS field is retired (A3): the old Teams: Match sentinel
+    // 5, a legacy 2/3/4 and junk all heal to Auto, and the band's BOTS: OFF
+    // is where dropping a team lives now.
     og::sim::LobbySettings retired = server.state().settings;
     retired.ctf_team_count = 5;
     og::sim::LobbyMessage retired_message;
@@ -500,8 +504,8 @@ TEST(LobbyServer, sanitize_admits_troops_matched_and_equivalent_carries_it)
     };
     transport.queue_lobby_message(11u, retired_message);
     server.poll_incoming_messages();
-    EXPECT_EQ(4, server.state().settings.ctf_team_count)
-        << "the old Teams: Match sentinel heals to 4 (D30)";
+    EXPECT_EQ(0, server.state().settings.ctf_team_count)
+        << "every value of the retired knob is Auto";
 
     // Exactly kTroopsMatched (3) passes the troops sanitize (D27) — the
     // one new legal value; TROOPS: FAIR rides this field.
@@ -552,7 +556,7 @@ TEST(LobbyServer, sanitize_admits_troops_matched_and_equivalent_carries_it)
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
     EXPECT_EQ(og::sim::kTroopsMatched, equivalent.ctf_strip_scenario_troops);
-    EXPECT_EQ(4, equivalent.ctf_team_count) << "the healed team count rides";
+    EXPECT_EQ(0, equivalent.ctf_team_count) << "the healed team count rides";
 }
 
 TEST(LobbyServer, non_host_matched_settings_change_is_dropped)
@@ -1422,6 +1426,13 @@ og::sim::LobbyMessage make_settings_change_message(
     return message;
 }
 
+// A versus lobby with one team's BOTS knob turned OFF (amendment A2): the
+// team leaves the match, and with it the seat domain. This is the narrowing
+// the retired TEAMS count used to do.
+og::sim::LobbySettings make_lobby_settings_with_team_off(
+    std::int16_t off_team,
+    std::uint8_t authored_team_mask = 0);
+
 og::sim::LobbySettings make_ctf_lobby_settings(
     std::int16_t team_count = 0,
     std::uint8_t authored_team_mask = 0)
@@ -1436,6 +1447,17 @@ og::sim::LobbySettings make_ctf_lobby_settings(
     // Protocol v12: the versus/shared-teams rule rides this flag (the host
     // derives it from the campaign's matchup: yaml key).
     settings.shared_teams = 1;
+    return settings;
+}
+
+og::sim::LobbySettings make_lobby_settings_with_team_off(
+    std::int16_t off_team,
+    std::uint8_t authored_team_mask)
+{
+    og::sim::LobbySettings settings =
+        make_ctf_lobby_settings(0, authored_team_mask);
+    settings.bot_squad[static_cast<std::size_t>(off_team)] =
+        og::sim::kBotSquadOff;
     return settings;
 }
 
@@ -1470,6 +1492,41 @@ TEST(LobbyState, ctf_team_domain_uses_authored_order_and_safe_fallback)
 
     settings.ctf_team_count = 0;
     EXPECT_EQ(0b1101u, og::sim::lobby_effective_team_mask(settings));
+}
+
+// Amendment A2: a team whose BOTS knob reads OFF is not fielded, so it is
+// not a seat either — the seat domain and the match domain are one answer.
+TEST(LobbyState, bots_off_leaves_the_seat_domain)
+{
+    og::sim::LobbySettings settings = make_ctf_lobby_settings();
+    settings.ctf_authored_team_mask = 0b1111u;
+    ASSERT_EQ(0b1111u, og::sim::lobby_effective_team_mask(settings));
+
+    settings.bot_squad[2] = og::sim::kBotSquadOff;
+    EXPECT_EQ(0b1011u, og::sim::lobby_effective_team_mask(settings));
+    EXPECT_FALSE(og::sim::lobby_team_is_selectable(settings, 2));
+    EXPECT_TRUE(og::sim::lobby_team_is_selectable(settings, 3));
+
+    // AUTO and NONE are both "on": NONE only says no BOTS (ruling
+    // 2026-08-26), which is not the same claim as OFF.
+    settings.bot_squad[3] = og::sim::kBotSquadNone;
+    settings.bot_squad[1] = og::sim::kBotSquadAuto;
+    EXPECT_EQ(0b1011u, og::sim::lobby_effective_team_mask(settings));
+
+    settings.bot_squad[0] = og::sim::kBotSquadOff;
+    EXPECT_EQ(0b1010u, og::sim::lobby_effective_team_mask(settings));
+    EXPECT_EQ(1, og::sim::lobby_first_selectable_team(settings));
+
+    // A lobby with nowhere to sit can seat nobody, so the last OFF does not
+    // take the domain with it: the unfiltered mask stands.
+    settings.bot_squad.fill(og::sim::kBotSquadOff);
+    EXPECT_EQ(0b1111u, og::sim::lobby_effective_team_mask(settings));
+
+    // Classic (non-versus): the knobs are stored and the map decides, so OFF
+    // narrows nothing.
+    settings.shared_teams = 0;
+    EXPECT_EQ(og::sim::kAllLobbyTeamMask,
+              og::sim::lobby_effective_team_mask(settings));
 }
 
 TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
@@ -1749,7 +1806,7 @@ TEST(LobbyServer, classic_lobby_allows_shared_explicit_teams)
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
 }
 
-TEST(LobbyServer, ctf_team_count_clamps_team_choice)
+TEST(LobbyServer, bots_off_clamps_team_choice)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
@@ -1762,12 +1819,15 @@ TEST(LobbyServer, ctf_team_count_clamps_team_choice)
         22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
     server.poll_incoming_messages();
 
+    og::sim::LobbySettings two_teams = make_ctf_lobby_settings();
+    two_teams.bot_squad[2] = og::sim::kBotSquadOff;
+    two_teams.bot_squad[3] = og::sim::kBotSquadOff;
     transport.queue_lobby_message(
-        11u, make_settings_change_message(make_ctf_lobby_settings(2)));
+        11u, make_settings_change_message(two_teams));
     server.poll_incoming_messages();
 
-    // Team 3 is outside the explicit 2-team range: the change resolves back
-    // to the guest's current (in-range) team.
+    // Team 3 is switched OFF: the change resolves back to the guest's
+    // current (fielded) team.
     transport.queue_lobby_message(
         22u, make_team_change_message(server.state().players[1], 3));
     server.poll_incoming_messages();
@@ -1779,7 +1839,7 @@ TEST(LobbyServer, ctf_team_count_clamps_team_choice)
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().players[1].team);
 
-    // A fresh join asking for team 3 is resolved into the valid range.
+    // A fresh join asking for the OFF team is resolved into the domain.
     server.connect_client(33u);
     transport.queue_lobby_message(
         33u, make_join_message("Third", 3, {make_slot(2u, 300, "Third Guy", FAMILY_MAGE)}));
@@ -1829,18 +1889,20 @@ TEST(LobbyServer, sparse_ctf_authored_domain_matches_gameplay_and_reteams)
     server.poll_incoming_messages();
     EXPECT_EQ(2, server.state().players[1].team);
 
-    // Explicit 2 means gameplay's first two AUTHORED teams {0,2}, not the
-    // numeric range {0,1}. Team 2 remains valid and team 1 remains rejected.
+    // Switching authored team 2 OFF narrows the same domain the other way
+    // (A2 — the retired TEAMS count's job): the seat sitting on it is
+    // re-resolved to the first fielded team, and a request to go back is
+    // denied like any unauthored colour.
     transport.queue_lobby_message(
         11u,
         make_settings_change_message(
-            make_ctf_lobby_settings(2, kTeamsZeroTwoThree)));
+            make_lobby_settings_with_team_off(2, kTeamsZeroTwoThree)));
     server.poll_incoming_messages();
-    EXPECT_EQ(2, server.state().players[1].team);
+    EXPECT_EQ(0, server.state().players[1].team);
     transport.queue_lobby_message(
-        22u, make_team_change_message(server.state().players[1], 1));
+        22u, make_team_change_message(server.state().players[1], 2));
     server.poll_incoming_messages();
-    EXPECT_EQ(2, server.state().players[1].team);
+    EXPECT_EQ(0, server.state().players[1].team);
 
     // A new level's authored domain invalidates the old assignment. The
     // settings transition deterministically moves it to the first active
@@ -1873,16 +1935,18 @@ TEST(LobbyServer, settings_change_reteams_out_of_range_players)
     server.poll_incoming_messages();
     ASSERT_EQ(3, server.state().players[1].team);
 
-    // Lowering the CTF team count to 2 strands the guest on team 3: the
-    // server re-resolves the seat into range without repainting the fighter.
+    // The host turning team 3's BOTS knob to OFF strands the guest there:
+    // the server re-resolves the seat into the fielded domain without
+    // repainting the fighter (A2 — "the existing settings-change reteam
+    // handles any residual").
     transport.clear_sent_messages();
     transport.queue_lobby_message(
-        11u, make_settings_change_message(make_ctf_lobby_settings(2)));
+        11u, make_settings_change_message(make_lobby_settings_with_team_off(3)));
     server.poll_incoming_messages();
 
     ASSERT_EQ(2u, server.state().players.size());
     EXPECT_GE(server.state().players[1].team, 0);
-    EXPECT_LT(server.state().players[1].team, 2);
+    EXPECT_NE(3, server.state().players[1].team);
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
     ASSERT_EQ(2u, transport.sent_messages().size());

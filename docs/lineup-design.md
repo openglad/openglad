@@ -494,3 +494,51 @@ pins; then in parallel W4-A (fable) Lua activation OFF + offset
 resolver + camp page + staged rows, W4-C (fable) SDL SCENARIO re-grid,
 SCORE relabel, LINEUP OFF refusal + LV labels + flows, W4-G (opus)
 terminals + position repins. Gate, visual read-back, media refresh.
+
+## As built: the W4-B layer (2026-08-26)
+
+The engine half of A1/A2/A3/A6 is in. What the other three packages
+have to know, so nobody re-derives it:
+
+- **One scale, everywhere.** `bot_squad` is `0 AUTO / 1 OFF / 2 NONE /
+  3.. preset`, named once in `lobby_state.h` as `kBotSquadAuto`,
+  `kBotSquadOff`, `kBotSquadNone`, `kBotSquadPresetBase` and bounded by
+  `kMaxBotSquad = kBotSquadPresetBase - 1 + kMaxBotPresets` (10). The
+  same numbers ride the knob, the wire, the save AND the banked preview
+  fact, so no layer translates. **The Lua half of the renumber is
+  W4-A's**: `mode_match.lua preset_for` must become
+  `BOT_PRESETS[knob - 2]`, and the raw knob values hand-written in
+  `test_staged_report.cpp` / `test_staged_rules.cpp` / `test_modes_*.cpp`
+  each move up by one. Until that lands, the three staged tests that
+  assert a preset NAME read the wrong entry.
+- **The fact code is two digits.** `bank_lineup_facts` packs
+  `ordinal * 10 + level` per team into a base-100 field, so ordinals
+  above 9 do not fit: a campaign registering a **seventh** preset would
+  need a wider field (the shipped book has five, top ordinal 7). Recorded
+  here rather than fixed, because widening the field costs a snapshot
+  bump.
+- **`bot_level` is signed now.** `[-5, +5]`, one clamp home
+  (`clamp_bot_level`), zero = AUTO. `LV: AUTO` / `LV +2` / `LV -1`, and
+  the wheel is AUTO, +1..+5, -5..-1. Save and wire fields were already
+  signed 16-bit, so **GTL v18, protocol 16, snapshot v12 and replay v18
+  are unchanged** by this whole amendment.
+- **OFF narrows the seat domain in `lobby_effective_team_mask`**, after
+  the versus check (a classic campaign stores the knobs and the map
+  decides, so OFF must not narrow anything there) and with one guard: if
+  OFF would empty the domain, the unfiltered mask stands — a lobby with
+  nowhere to sit can seat nobody, and a crafted client must not be able
+  to arrange that. The settings-change reteam needed no new rule: it
+  already sweeps against this mask.
+- **`ctf_team_count` is inert, not gone.** The field keeps its place in
+  the save and on the wire; `sanitize_settings`, both
+  `sync_world_from_save_data` twins and `apply_snapshot` all write 0.
+  `og.match_setting("team_count")` still answers (always 0);
+  `og.campaign_match_get/set("team_count")` now raise unknown-name —
+  **`campaign_picker.lua` still reads it** (the MATCH SETUP TEAMS row and
+  the rules digest), which is W4-A's camp-page work and is red until it
+  lands.
+- **`cycle_ctf_team_count` / `format_ctf_teams_label` are retired stubs**
+  (write Auto / answer `"Teams: Auto"`), left compiling for the three
+  callers W4-C and W4-G still own: `picker.cpp:3431`,
+  `picker_team_build.cpp:423`, `text_picker.cpp:1331`. Delete the pair
+  with the last caller.
