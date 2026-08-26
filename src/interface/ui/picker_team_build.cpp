@@ -315,11 +315,12 @@ void ensure_highlighted_button_visible(const button* buttons,
 // the rewire lives on the spec in menu_screen_specs.cpp.
 
 // Full-graph rewire for the SCENARIO subscreen (pattern b): two visibility
-// axes — SET CAMPAIGN / SET LEVEL / TROOPS gate on the host,
-// TEAMS / LIMIT (#218, re-homed from MATCHUP) gate on the versus campaign
-// and stay visible to joiners as read-only labels. LINEUP
-// (docs/lineup-design.md §2) is always visible, like its row-mates. Every
-// link is written on every call so no variant inherits a stale one.
+// axes — SET CAMPAIGN / SET LEVEL / TROOPS gate on the host, SCORE (#218,
+// re-homed from MATCHUP; A5) gates on the versus campaign and stays visible
+// to joiners as a read-only label. LINEUP (docs/lineup-design.md §2) is
+// always visible, like its row-mates; the parked spare (ordinal 7, the
+// retired TEAMS cell) is never linked. Every link is written on every call
+// so no variant inherits a stale one.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
                                    bool host_controls_visible,
@@ -338,48 +339,48 @@ void picker_wire_scenario_menu_nav(button* buttons,
         {.up = kScenarioMenuSetCampaignIndex,
          .down = kScenarioMenuViewScenarioIndex};
 
+    // y=140 knob row: TROOPS (30, host-gated) | SCORE (120, versus-gated) |
+    // (210) free. What DOWN from the y=100 row lands on is the visible
+    // member under it, else the other one, else BACK.
+    const int troops_or = host ? kScenarioMenuTroopsIndex : -1;
+    const int score_or = match ? kScenarioMenuCtfCapsIndex : -1;
+    const int under_left = troops_or >= 0 ? troops_or
+                         : (score_or >= 0 ? score_or : kScenarioMenuBackIndex);
+    const int under_right = score_or >= 0 ? score_or
+                          : (troops_or >= 0 ? troops_or : kScenarioMenuBackIndex);
+
     // y=100 row: VIEW LEVEL <-> PROGRESS <-> LINEUP; up-links close for
     // joiners.
     const int row_up = host ? kScenarioMenuSetLevelIndex : -1;
     buttons[kScenarioMenuViewScenarioIndex].nav =
         {.up = row_up,
-         .down = match ? kScenarioMenuCtfTeamsIndex : kScenarioMenuBackIndex,
+         .down = under_left,
          .right = kScenarioMenuProgressIndex};
     buttons[kScenarioMenuProgressIndex].nav =
         {.up = row_up,
-         .down = host ? kScenarioMenuTroopsIndex
-                      : (match ? kScenarioMenuCtfCapsIndex
-                               : kScenarioMenuBackIndex),
+         .down = under_right,
          .left = kScenarioMenuViewScenarioIndex,
          .right = kScenarioMenuLineupIndex};
     buttons[kScenarioMenuLineupIndex].nav =
         {.up = row_up,
-         .down = match ? kScenarioMenuCtfCapsIndex : kScenarioMenuBackIndex,
+         .down = under_right,
          .left = kScenarioMenuProgressIndex};
 
-    // y=140 match-settings band: TEAMS (30) | TROOPS (120) | LIMIT (210).
-    // TROOPS is host-gated, TEAMS/LIMIT versus-gated, so the horizontal
-    // chain skips whichever member is hidden this frame.
-    buttons[kScenarioMenuCtfTeamsIndex].nav =
+    buttons[kScenarioMenuTroopsIndex].nav =
         {.up = kScenarioMenuViewScenarioIndex,
          .down = kScenarioMenuBackIndex,
-         .right = host ? kScenarioMenuTroopsIndex
-                       : kScenarioMenuCtfCapsIndex};
-    buttons[kScenarioMenuTroopsIndex].nav =
+         .right = score_or};
+    buttons[kScenarioMenuCtfCapsIndex].nav =
         {.up = kScenarioMenuProgressIndex,
          .down = kScenarioMenuBackIndex,
-         .left = match ? kScenarioMenuCtfTeamsIndex : -1,
-         .right = match ? kScenarioMenuCtfCapsIndex : -1};
-    buttons[kScenarioMenuCtfCapsIndex].nav =
-        {.up = kScenarioMenuLineupIndex,
-         .down = kScenarioMenuBackIndex,
-         .left = host ? kScenarioMenuTroopsIndex
-                      : kScenarioMenuCtfTeamsIndex};
+         .left = troops_or};
+    buttons[kScenarioMenuSpareIndex].nav = {};
 
-    // BACK climbs into the nearest visible x=30 column member.
+    // BACK climbs into the nearest visible member above it: the x=30
+    // column's TROOPS, else SCORE, else VIEW LEVEL.
     buttons[kScenarioMenuBackIndex].nav =
-        {.up = match ? kScenarioMenuCtfTeamsIndex
-                     : kScenarioMenuViewScenarioIndex};
+        {.up = troops_or >= 0 ? troops_or
+             : (score_or >= 0 ? score_or : kScenarioMenuViewScenarioIndex)};
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -410,18 +411,15 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
         og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex]
             ->label = buttons[kScenarioMenuTroopsIndex].label;
     }
-    // TEAMS / LIMIT (#218, re-homed from MATCHUP): versus campaigns only,
-    // and — unlike TROOPS — visible to JOINERS as read-only labels (the
-    // host's turns land in the lobby-synced save and the same re-derive
-    // shows them; change_ctf_teams/change_ctf_caps popup for a non-host).
+    // SCORE (#218, re-homed from MATCHUP; A5): versus campaigns only, and —
+    // unlike TROOPS — visible to JOINERS as a read-only label (the host's
+    // turns land in the lobby-synced save and the same re-derive shows
+    // them; change_ctf_caps popups for a non-host).
     const bool match_settings_visible = og::ui::is_versus_campaign(save);
-    for (const int index :
-         {kScenarioMenuCtfTeamsIndex, kScenarioMenuCtfCapsIndex})
     {
+        const int index = kScenarioMenuCtfCapsIndex;
         buttons[index].hidden = !match_settings_visible;
-        buttons[index].label = index == kScenarioMenuCtfTeamsIndex
-            ? og::ui::format_ctf_teams_label(save)
-            : og::ui::format_ctf_caps_label(save);
+        buttons[index].label = og::ui::format_ctf_score_label(save);
         sync_button_hidden_state(buttons, index);
         if (og::runtime::current_session
                 ->allbuttons_[static_cast<std::size_t>(index)] != nullptr)
@@ -431,6 +429,9 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
                 ->label = buttons[index].label;
         }
     }
+    // The retired TEAMS cell stays parked (A3) whatever the frame says.
+    buttons[kScenarioMenuSpareIndex].hidden = true;
+    sync_button_hidden_state(buttons, kScenarioMenuSpareIndex);
     // LINEUP (the ordinal the MATCHUP door vacated) is never gated: a
     // joiner opens the page read-only (docs/lineup-design.md §2.3).
     picker_wire_scenario_menu_nav(buttons, num_buttons,

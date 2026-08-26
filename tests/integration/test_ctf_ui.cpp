@@ -226,30 +226,30 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
         EXPECT_FALSE(scenario[kScenarioMenuLineupIndex].hidden) << campaign;
         EXPECT_EQ("view_scenario",
                   scenario[kScenarioMenuViewScenarioIndex].id) << campaign;
-        EXPECT_EQ("ctf_teams", scenario[kScenarioMenuCtfTeamsIndex].id)
+        // The TEAMS cycler retired into LINEUP's BOTS: OFF (amendment
+        // A1/A3); its ordinal is a parked spare, SCORE keeps its index.
+        EXPECT_EQ("scenario_spare", scenario[kScenarioMenuSpareIndex].id)
             << campaign;
+        EXPECT_TRUE(scenario[kScenarioMenuSpareIndex].hidden) << campaign;
         EXPECT_EQ("ctf_caps", scenario[kScenarioMenuCtfCapsIndex].id)
             << campaign;
         EXPECT_FALSE(scenario[kScenarioMenuViewScenarioIndex].hidden)
             << campaign;
     }
 
-    // Match Teams and Score Limit are SCENARIO rows now (#218, re-homed
-    // from MATCHUP): their handlers cycle the save fields and refresh the
-    // SCENARIO descriptor labels — like the scenario-troops control, which
-    // moved to the same band before it.
+    // The score limit is a SCENARIO row now (#218, re-homed from MATCHUP;
+    // SCORE since A5): its handler cycles the save field and refreshes the
+    // SCENARIO descriptor label — like the scenario-troops control, which
+    // moved to the same row before it. TEAMS is retired (A3): no handler,
+    // no cell, and the field it wrote is inert.
     save.current_campaign = "modes";
-    save.ctf_team_count = 2;
+    save.ctf_team_count = 0;
     save.ctf_capture_limit = 0;
     save.ctf_strip_scenario_troops = 0;
 
     button* scenario_rows = picker_scenariomenu_buttons();
     EXPECT_EQ("troops", scenario_rows[kScenarioMenuTroopsIndex].id);
 
-    // TEAMS is retired (amendment A3): the cell still exists until the
-    // SCENARIO re-grid removes it, and it answers Auto whatever it held.
-    (void)change_ctf_teams();
-    EXPECT_EQ(0, (int)save.ctf_team_count);
     (void)change_ctf_caps();
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
     (void)change_ctf_troops();
@@ -259,8 +259,8 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
         og::runtime::current_session->picker_->scenariomenu_buttons;
     ASSERT_EQ(static_cast<std::size_t>(kScenarioMenuButtonCount),
               live_scenario.size());
-    EXPECT_EQ("Teams: Auto", live_scenario[kScenarioMenuCtfTeamsIndex].label);
-    EXPECT_EQ("Limit: 1", live_scenario[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ("SCORE: 1", live_scenario[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ("", live_scenario[kScenarioMenuSpareIndex].label);
     EXPECT_EQ("TROOPS: OWN", live_scenario[kScenarioMenuTroopsIndex].label);
 
     (void)change_ctf_troops();
@@ -470,8 +470,9 @@ struct TeamsFlowState
     bool finished = false;
     bool subscreen_opened = false;
     bool ctf_buttons_hidden = false;
-    bool you_on_team_0 = false;
-    bool you_on_team_1 = false;
+    bool score_map_seen = false;
+    bool teams_cell_gone = false;
+    bool score_relabelled = false;
     bool viewer_opened = false;
     bool viewer_back_seen = false;
     // TROOPS lives on the SCENARIO screen; one flag per state it flips to.
@@ -499,11 +500,11 @@ int teams_local_flow_injector(void* data)
     interact("scenario");
 
     // Classic campaign: TROOPS shows for the host, but the versus-only
-    // TEAMS / LIMIT rows stay hidden — the re-homed rows keep MATCHUP's
-    // classic-campaign gate.
+    // SCORE row stays hidden — the re-homed row keeps MATCHUP's
+    // classic-campaign gate (and the retired TEAMS cell never shows).
     state->subscreen_opened = wait_for_interactable("troops", 10000);
     SDL_Delay(300);
-    state->ctf_buttons_hidden = !has_interactable("ctf_teams") &&
+    state->ctf_buttons_hidden = !has_interactable("scenario_spare") &&
         !has_interactable("ctf_caps");
 
     // VIEW LEVEL: framed report over a scratch load; BACK returns.
@@ -537,26 +538,25 @@ int teams_ctf_settings_flow_injector(void* data)
     SDL_Delay(750);
     interact("continue_game");
 
-    // Team build -> SCENARIO submenu, where the whole match-settings band
-    // lives now (#218): TEAMS | TROOPS | LIMIT at y=140.
+    // Team build -> SCENARIO submenu, where the knob row lives now (#218,
+    // A5): TROOPS | SCORE at y=140 (the TEAMS cell retired into LINEUP).
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
     interact("scenario");
 
-    // CTF campaign + local host: the versus-gated TEAMS / LIMIT rows show.
-    state->subscreen_opened = wait_for_interactable("ctf_teams", 10000);
+    // CTF campaign + local host: the versus-gated SCORE row shows, reading
+    // the map's own target; the retired TEAMS cell never does.
+    state->subscreen_opened = wait_for_interactable("ctf_caps", 10000);
     SDL_Delay(300);
+    state->score_map_seen =
+        wait_for_interactable_label("ctf_caps", "SCORE: MAP", 5000);
+    state->teams_cell_gone = !has_interactable("scenario_spare") &&
+        !has_interactable("ctf_teams");
 
     // Each label can flip while the previous click's press is still held;
     // settle after every wait so the next down-transition isn't swallowed.
-    interact("ctf_teams");
-    state->you_on_team_0 =
-        wait_for_interactable_label("ctf_teams", "Teams: 2", 5000);
-    SDL_Delay(300);
-    interact("ctf_caps");
-    state->you_on_team_1 =
-        wait_for_interactable_label("ctf_caps", "Limit: 1", 5000);
+    state->score_relabelled = click_until_label("ctf_caps", "SCORE: 1");
     SDL_Delay(300);
 
     // TROOPS shares the band, host-gated like SET CAMPAIGN. The cycle
@@ -832,7 +832,7 @@ TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
     EXPECT_TRUE(state.subscreen_opened)
         << "SCENARIO should show TROOPS to the host";
     EXPECT_TRUE(state.ctf_buttons_hidden)
-        << "classic campaigns hide the versus-only TEAMS / LIMIT rows";
+        << "classic campaigns hide the versus-only SCORE row";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
 
     EXPECT_EQ(0, save.my_team)
@@ -852,8 +852,9 @@ TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
 }
 
 // The CTF settings flow at the knobs' new home (#218 — transformed from
-// the retired MATCHUP flow, same knob assertions): a versus campaign + host
-// shows TEAMS / TROOPS / LIMIT on SCENARIO and each cycler relabels live.
+// the retired MATCHUP flow, same knob assertions; A5 relabelled LIMIT to
+// SCORE and retired TEAMS): a versus campaign + host shows TROOPS | SCORE
+// on SCENARIO and each cycler relabels live.
 TEST(CtfUi, scenario_ctf_settings_flow)
 {
     trace_clear();
@@ -876,9 +877,10 @@ TEST(CtfUi, scenario_ctf_settings_flow)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.subscreen_opened)
-        << "CTF campaign + host shows TEAMS / LIMIT on SCENARIO";
-    EXPECT_TRUE(state.you_on_team_0) << "Teams cycle should relabel";
-    EXPECT_TRUE(state.you_on_team_1) << "Limit cycle should relabel";
+        << "CTF campaign + host shows SCORE on SCENARIO";
+    EXPECT_TRUE(state.score_map_seen) << "SCORE reads MAP for the map's own";
+    EXPECT_TRUE(state.teams_cell_gone) << "the TEAMS cell is retired (A3)";
+    EXPECT_TRUE(state.score_relabelled) << "SCORE cycle should relabel";
     EXPECT_TRUE(state.troops_row_seen)
         << "TROOPS should be visible to the host on SCENARIO";
     EXPECT_TRUE(state.troops_own_seen) << "Troops cycle should relabel to OWN";
@@ -887,7 +889,7 @@ TEST(CtfUi, scenario_ctf_settings_flow)
     EXPECT_TRUE(state.troops_all_seen)
         << "Troops cycle should wrap back to ALL";
 
-    EXPECT_EQ(2, (int)save.ctf_team_count);
+    EXPECT_EQ(0, (int)save.ctf_team_count) << "inert since A3: nothing writes it";
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
     EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops);
 
@@ -1058,8 +1060,11 @@ int view_scenario_refresh_injector(void* data)
     state->restages_before_change = count_stage_trace_containing("restaged");
     // Save write + lobby commit as one menu-thread task (#257): the commit
     // races the main thread's poll_and_apply from here.
+    // The knob is SCORE (A5): TEAMS is retired and inert (A3), so a
+    // ctf_team_count write no longer moves the lobby's settings.
     (void)run_on_main_thread([] {
-        og::runtime::current_session->myscreen_->save_data.ctf_team_count = 3;
+        og::runtime::current_session->myscreen_->save_data.ctf_capture_limit =
+            3;
         picker_lobby_sync_settings_from_save();
     });
     state->refresh_seen =
@@ -1120,7 +1125,7 @@ TEST(CtfUi, view_scenario_rebuilds_when_settings_change_underneath)
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
     EXPECT_TRUE(state.refresh_seen)
-        << "a TEAMS change under the open viewer must rebuild the report "
+        << "a SCORE change under the open viewer must rebuild the report "
            "(the refresh trace)";
     EXPECT_GE(count_picker_trace_containing("view_scenario refresh lines="), 1);
 

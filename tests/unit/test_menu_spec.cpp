@@ -120,13 +120,14 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
     og::ui::cycle_ctf_team_count(save);
     EXPECT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
 
+    // A5: the score limit says what it is. MAP = the level's own target.
     save.ctf_capture_limit = 0;
-    EXPECT_EQ("Limit: Map", og::ui::format_ctf_caps_label(save));
-    const char* cap_labels[] = {"Limit: 1", "Limit: 3", "Limit: 5",
-                                "Limit: 10", "Limit: Map"};
+    EXPECT_EQ("SCORE: MAP", og::ui::format_ctf_score_label(save));
+    const char* cap_labels[] = {"SCORE: 1", "SCORE: 3", "SCORE: 5",
+                                "SCORE: 10", "SCORE: MAP"};
     for (const char* label : cap_labels) {
         og::ui::cycle_ctf_capture_limit(save);
-        EXPECT_EQ(label, og::ui::format_ctf_caps_label(save));
+        EXPECT_EQ(label, og::ui::format_ctf_score_label(save));
     }
 
     // Three states, same cycle on every campaign (matched-teams D28).

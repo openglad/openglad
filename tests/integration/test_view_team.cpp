@@ -4439,25 +4439,20 @@ TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
     int highlighted = kScenarioMenuBackIndex;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
 
-    // Joiner + versus: TEAMS / LIMIT visible read-only; the host-gated
-    // SET CAMPAIGN / SET LEVEL / TROOPS hide; labels are the formatters'.
-    EXPECT_FALSE(buttons[kScenarioMenuCtfTeamsIndex].hidden);
+    // Joiner + versus: SCORE visible read-only; the host-gated SET CAMPAIGN
+    // / SET LEVEL / TROOPS hide; the label is the formatter's (A5: SCORE,
+    // MAP = the level's own target). The retired TEAMS cell (A3) is a
+    // parked spare on every frame.
+    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
     EXPECT_FALSE(buttons[kScenarioMenuCtfCapsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetCampaignIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetLevelIndex].hidden);
     EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
         << "the LINEUP door is never gated (docs/lineup-design.md §2.3)";
-    EXPECT_EQ("Teams: Auto", buttons[kScenarioMenuCtfTeamsIndex].label);
-    EXPECT_EQ("Limit: Map", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ("SCORE: MAP", buttons[kScenarioMenuCtfCapsIndex].label);
 
-    // Joiner clicks: §2.7 denial — popup, TRACE, no cycle, no sync.
-    trace_clear();
-    EXPECT_EQ(MENU_OK, change_ctf_teams());
-    EXPECT_TRUE(trace_contains("teams", "ctf_teams_denied"));
-    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
-    EXPECT_EQ(0, (int)save.ctf_team_count);
-    EXPECT_EQ(0, lobby.settings_syncs);
+    // Joiner click: §2.7 denial — popup, TRACE, no cycle, no sync.
     trace_clear();
     EXPECT_EQ(MENU_OK, change_ctf_caps());
     EXPECT_TRUE(trace_contains("teams", "ctf_caps_denied"));
@@ -4466,34 +4461,27 @@ TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
     EXPECT_EQ(0, lobby.settings_syncs);
 
     // A host's lobby-synced turn reaches the joiner's read-only label
-    // through the same per-frame re-derive TROOPS uses. The probe rides
-    // LIMIT: TEAMS is retired (amendment A3) and its face is the constant
-    // "Teams: Auto" now, which could not tell a re-derive from a memory.
+    // through the same per-frame re-derive TROOPS uses.
     save.ctf_capture_limit = 5;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
-    EXPECT_EQ("Limit: 5", buttons[kScenarioMenuCtfCapsIndex].label);
-    EXPECT_EQ("Teams: Auto", buttons[kScenarioMenuCtfTeamsIndex].label);
+    EXPECT_EQ("SCORE: 5", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
+        << "the spare never wakes, whatever the save holds";
 
-    // Host clicks: cycle + sync + both-surface refresh. The retired TEAMS
-    // click still syncs (the cell is live until the SCENARIO re-grid takes
-    // it) and still answers Auto.
+    // Host click: cycle + sync + both-surface refresh.
     lobby.host = true;
     save.ctf_capture_limit = 0;
-    EXPECT_EQ(MENU_OK, change_ctf_teams());
-    EXPECT_EQ(0, (int)save.ctf_team_count);
-    EXPECT_EQ(1, lobby.settings_syncs);
-    EXPECT_EQ("Teams: Auto",
-              pks().scenariomenu_buttons[kScenarioMenuCtfTeamsIndex].label);
     EXPECT_EQ(MENU_OK, change_ctf_caps());
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
-    EXPECT_EQ(2, lobby.settings_syncs);
-    EXPECT_EQ("Limit: 1",
+    EXPECT_EQ(1, lobby.settings_syncs);
+    EXPECT_EQ("SCORE: 1",
               pks().scenariomenu_buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ(0, (int)save.ctf_team_count) << "inert since A3";
 
-    // Non-versus campaign: the pair hides for host and joiner alike.
+    // Non-versus campaign: SCORE hides for host and joiner alike.
     save.current_campaign = "gladiator";
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
-    EXPECT_TRUE(buttons[kScenarioMenuCtfTeamsIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden);
     EXPECT_FALSE(buttons[kScenarioMenuTroopsIndex].hidden)
         << "TROOPS keeps its host-axis gate on classic campaigns";

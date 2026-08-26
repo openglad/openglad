@@ -1320,17 +1320,20 @@ TEST(PickerCommon, format_ctf_labels)
     ASSERT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save))
         << "retired (A3): the label never speaks for a stale save value";
 
-    ASSERT_EQ("Limit: Map", og::ui::format_ctf_caps_label(save));
+    // A5: "SCORE: MAP" / "SCORE: n" — the score limit, named as such.
+    ASSERT_EQ("SCORE: MAP", og::ui::format_ctf_score_label(save));
     save.ctf_capture_limit = 5;
-    ASSERT_EQ("Limit: 5", og::ui::format_ctf_caps_label(save));
+    ASSERT_EQ("SCORE: 5", og::ui::format_ctf_score_label(save));
 
     // The SDL team-build buttons are 80px faces drawing 6px/char centered
     // text with no clipping: every label must stay inside the classic
-    // 12-char budget (longest is "Teams: Auto" / "Limit: 10").
+    // 12-char budget (longest is "Teams: Auto" / "SCORE: MAP").
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 10;
     ASSERT_LE(og::ui::format_ctf_teams_label(save).size(), 12u);
-    ASSERT_LE(og::ui::format_ctf_caps_label(save).size(), 12u);
+    ASSERT_LE(og::ui::format_ctf_score_label(save).size(), 12u);
+    save.ctf_capture_limit = 0;
+    ASSERT_LE(og::ui::format_ctf_score_label(save).size(), 12u);
 }
 
 TEST(PickerCommon, is_versus_campaign_reads_matchup_key)

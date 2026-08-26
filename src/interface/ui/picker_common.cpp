@@ -2080,11 +2080,12 @@ std::string format_ctf_teams_label(const SaveData&)
     return "Teams: Auto";  // retired: A3, see cycle_ctf_team_count
 }
 
-std::string format_ctf_caps_label(const SaveData& save)
+std::string format_ctf_score_label(const SaveData& save)
 {
+    // 80px face = 12 chars; "SCORE: MAP" is 10, "SCORE: 10" 9.
     if (save.ctf_capture_limit <= 0)
-        return "Limit: Map";
-    return std::format("Limit: {}", save.ctf_capture_limit);
+        return "SCORE: MAP";
+    return std::format("SCORE: {}", save.ctf_capture_limit);
 }
 
 std::string format_ctf_troops_label(const SaveData& save)
@@ -4150,6 +4151,34 @@ short cycle_lineup_bots(short current, int preset_count, int dir)
         std::clamp(preset_count, 0, og::script::hooks::kMaxBotPresets);
     return cycle_lineup_value(
         current, og::sim::kBotSquadPresetBase + presets, dir);
+}
+
+short lineup_bots_wheel_next(const LineupTeamBand& band, short current,
+                             int preset_count, int dir,
+                             bool* refused_off)
+{
+    if (refused_off != nullptr)
+        *refused_off = false;
+    short next = cycle_lineup_bots(current, preset_count, dir);
+    // A team with a seat or a deployed fighter is ON by definition (A2):
+    // OFF there would be a lie the activation fold cannot honour, so the
+    // wheel skips it. A zero step stays put even on OFF — a band that
+    // already reads OFF (a fighter deployed onto it later) turns off it
+    // with the next real step.
+    const bool occupied = band.seat_count > 0 || band.fighter_count > 0;
+    if (occupied && next == og::sim::kBotSquadOff && dir != 0)
+    {
+        if (refused_off != nullptr)
+            *refused_off = true;
+        next = cycle_lineup_bots(next, preset_count, dir > 0 ? 1 : -1);
+    }
+    return next;
+}
+
+std::string lineup_off_refusal_toast(const LineupTeamBand& band)
+{
+    return std::format("TEAM {} HAS {}", band.team + 1,
+                       band.seat_count > 0 ? "PLAYERS" : "FIGHTERS");
 }
 
 short cycle_lineup_level(short current, int dir)

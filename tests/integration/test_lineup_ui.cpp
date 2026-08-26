@@ -524,21 +524,73 @@ void seed_session_save_for_net(const std::string& campaign, short scen_num)
 }
 
 // ---------------------------------------------------------------------------
-// Flow 1: SCENARIO carries the LINEUP door; the page opens; the host's
-// per-team knobs cycle with save-value pins; BOTS: NONE lands on an occupied
-// team exactly as it does on an empty one (§2.3, ruling 2026-08-26 — one
-// write rule on all three clients, no refusal, no toast).
+// Flow 1: SCENARIO carries the LINEUP door over the re-gridded TROOPS |
+// SCORE row (A5); the page opens; the host's per-team knobs cycle with
+// save-value pins. The BOTS wheel is AUTO / OFF / NONE / presets (A1):
+// OFF on the seated team is REFUSED with a toast and the wheel steps past
+// it onto NONE (A2 — the refusal that was wrong for NONE is right for
+// OFF); OFF on an empty team is accepted, and VIEW LEVEL censuses that
+// team out of the match. The LV wheel is an offset (A6): +1 ... -1.
 
 struct LineupKnobsFlowState
 {
     bool finished = false;
     bool door_seen = false;
+    bool score_cell_seen = false;
     bool page_opened = false;
-    bool level_cycled = false;
-    bool bots_none_on_empty_team = false;
-    bool bots_none_on_occupied_team = false;
+    bool level_plus_one = false;
+    bool level_plus_two = false;
+    bool level_minus_one = false;
+    bool bots_off_refused_on_seated_team = false;
+    bool bots_off_on_empty_team = false;
+    bool viewer_opened = false;
+    bool red_team_line_seen = false;
+    bool yellow_team_line_seen = false;
+    std::string teams_active_line;
     int captures = 0;
 };
+
+// Walk a knob through consecutive labels, one click per step (each step
+// waits for its own label, so a swallowed click is retried, never skipped;
+// the 300ms settle after every label flip is the menus-skill rule — the
+// press is still held when the label flips, and a second press without a
+// release is silently dropped).
+bool click_through_labels(const std::string& id,
+                          const std::vector<std::string>& labels)
+{
+    for (const std::string& label : labels) {
+        if (!click_until_label(id, label, 3, 2000))
+            return false;
+        SDL_Delay(300);
+    }
+    return true;
+}
+
+// Poll a trace category for a substring (the wait_for_picker_trace idiom).
+bool wait_for_trace(const char* category, const char* substring,
+                    int timeout_ms)
+{
+    for (int elapsed = 0; elapsed < timeout_ms; elapsed += 50) {
+        if (trace_contains(category, substring))
+            return true;
+        SDL_Delay(50);
+    }
+    fprintf(stderr, "  [lineup] TIMEOUT waiting for trace '%s'\n", substring);
+    return false;
+}
+
+std::string first_picker_trace_line_containing(const char* needle)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == "picker" &&
+            entry.message.find(needle) != std::string::npos)
+        {
+            return entry.message;
+        }
+    }
+    return std::string();
+}
 
 int lineup_knobs_flow_injector(void* data)
 {
@@ -549,8 +601,11 @@ int lineup_knobs_flow_injector(void* data)
         return 0;
     }
     state->door_seen = true;
+    // The re-gridded knob row: SCORE at TROOPS' right hand, reading MAP.
+    state->score_cell_seen =
+        wait_for_interactable_label("ctf_caps", "SCORE: MAP", 5000);
     SDL_Delay(750);
-    state->captures += capture_frame("scenario_with_lineup_door");
+    state->captures += capture_frame("scenario_regrid");
     SDL_Delay(200);
     interact("lineup");
 
@@ -560,23 +615,62 @@ int lineup_knobs_flow_injector(void* data)
     if (state->page_opened) {
         SDL_Delay(750);
 
-        // LV knob on band 1: AUTO -> +1 (the offset wheel, A6).
-        state->level_cycled =
+        // LV on band 2: AUTO -> +1 -> +2 (the offset wheel, A6).
+        state->level_plus_one =
             click_until_label("lineup_level_1", "LV +1");
         SDL_Delay(300);
-        // BOTS on the unoccupied team 2 may reach NONE (no seat, no
-        // fighters there in this fixture) — two turns of the wheel now,
-        // OFF sits between AUTO and NONE (A1).
-        state->bots_none_on_empty_team =
-            click_until_label("lineup_bots_1", "BOTS: NONE", 4);
+        state->level_plus_two =
+            click_until_label("lineup_level_1", "LV +2");
         SDL_Delay(300);
-        // BOTS on team 1 (the seat + every fighter): NONE is just as legal
-        // there — one cycle off AUTO lands on it and it sticks.
-        state->bots_none_on_occupied_team =
-            click_until_label("lineup_bots_0", "BOTS: NONE", 4);
+        // LV on band 3: the whole wheel round to -1 (up first, then the
+        // minus side, A6), one label per click.
+        state->level_minus_one = click_through_labels(
+            "lineup_level_2",
+            {"LV +1", "LV +2", "LV +3", "LV +4", "LV +5", "LV -5", "LV -4",
+             "LV -3", "LV -2", "LV -1"});
+        SDL_Delay(300);
+
+        // BOTS on team 1 (the seat + every fighter): OFF is refused — the
+        // wheel steps over it onto NONE and the toast says why.
+        state->bots_off_refused_on_seated_team =
+            click_until_label("lineup_bots_0", "BOTS: NONE", 3);
+        // The toast is still up (2.5s): freeze it.
+        state->captures += capture_frame("lineup_off_refused");
+        SDL_Delay(300);
+        // BOTS on the unoccupied team 4: OFF is one turn off AUTO and it
+        // sticks.
+        state->bots_off_on_empty_team =
+            click_until_label("lineup_bots_3", "BOTS: OFF", 3);
+        SDL_Delay(2600);  // let the refusal toast lapse before the capture
+        state->captures += capture_frame("lineup_off_and_offset");
         SDL_Delay(300);
 
         interact("back");  // LINEUP -> SCENARIO
+    }
+
+    // VIEW LEVEL: the staged census has no row for the OFF team (A2: it
+    // left the active mask like a TEAMS-dropped team did).
+    if (wait_for_interactable("view_scenario", 10000)) {
+        SDL_Delay(750);
+        interact("view_scenario");
+        state->viewer_opened =
+            wait_for_interactable_at("back", 10, 170, 10000);
+        if (state->viewer_opened) {
+            state->red_team_line_seen = wait_for_trace(
+                "picker", "view_scenario line   RED TEAM  ACTIVE", 10000);
+            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+            state->yellow_team_line_seen = trace_contains(
+                "picker", "view_scenario line   YELLOW TEAM  ACTIVE");
+            state->teams_active_line =
+                first_picker_trace_line_containing("TEAMS ACTIVE");
+            SDL_Delay(300);
+            state->captures += capture_frame("view_level_off_team");
+            SDL_Delay(300);
+            interact("back");
+            SDL_Delay(300);
+            (void)wait_for_interactable("progress", 10000);
+            SDL_Delay(300);
+        }
     }
     injector_unwind_from_scenario();
     state->finished = true;
@@ -587,11 +681,13 @@ int lineup_knobs_flow_injector(void* data)
 
 } // namespace
 
-TEST(LineupUi, scenario_door_knob_cycles_and_none_everywhere)
+TEST(LineupUi, scenario_door_off_refused_on_seated_team_and_accepted_on_empty)
 {
     trace_clear();
     SavedPickerSave save_guard;
-    write_save0_with_fighters("modes", 500, 1,
+    // Level 300 (TDM) authors four teams, so an OFF on team 4 has a team to
+    // take out of the census; one seat and two fighters hold team 1.
+    write_save0_with_fighters("modes", 300, 1,
                               {{"Alpha", 3, true, 0}, {"Beta", 2, true, 0}});
 
     LineupKnobsFlowState state;
@@ -608,26 +704,45 @@ TEST(LineupUi, scenario_door_knob_cycles_and_none_everywhere)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.door_seen) << "SCENARIO should carry the LINEUP door";
+    EXPECT_TRUE(state.score_cell_seen) << "SCORE: MAP on the knob row (A5)";
     EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
-    EXPECT_TRUE(state.level_cycled) << "LV knob should cycle AUTO -> +1";
-    EXPECT_TRUE(state.bots_none_on_empty_team)
-        << "BOTS on an empty team reaches NONE";
-    EXPECT_TRUE(state.bots_none_on_occupied_team)
-        << "BOTS on the occupied team reaches NONE too";
-    EXPECT_EQ(1, static_cast<int>(save.bot_level[1]))
+    EXPECT_TRUE(state.level_plus_one) << "LV knob should cycle AUTO -> +1";
+    EXPECT_TRUE(state.level_plus_two) << "...and on to +2";
+    EXPECT_TRUE(state.level_minus_one)
+        << "the LV wheel runs +1..+5, -5..-1 one label per click";
+    EXPECT_TRUE(state.bots_off_refused_on_seated_team)
+        << "BOTS on the seated team steps over OFF onto NONE";
+    EXPECT_TRUE(state.bots_off_on_empty_team)
+        << "BOTS on an empty team lands on OFF";
+    EXPECT_EQ(2, static_cast<int>(save.bot_level[1]))
         << "the LV cycle lands in the save knob";
-    EXPECT_EQ(og::sim::kBotSquadNone, save.bot_squad[1])
-        << "the empty team's NONE lands in the save knob";
-    // Both knob writes survived every later per-frame picker_lobby_poll(),
-    // which copies the lobby settings back over the save: the value is only
-    // still NONE because change_lineup_bots pushed it into the lobby first.
+    EXPECT_EQ(-1, static_cast<int>(save.bot_level[2]))
+        << "a full turn of the offset wheel ends on -1";
+    // Every knob write survived every later per-frame picker_lobby_poll(),
+    // which copies the lobby settings back over the save: the values are
+    // only still there because change_lineup_* pushed them into the lobby
+    // first.
     EXPECT_EQ(og::sim::kBotSquadNone, save.bot_squad[0])
-        << "the occupied team's NONE lands and stays synced";
-    EXPECT_FALSE(trace_contains("lineup", "bots_none_refused"))
-        << "NONE is never refused";
-    EXPECT_FALSE(trace_contains("lineup", "toast TEAM "))
-        << "NONE raises no toast";
-    EXPECT_EQ(1, state.captures) << "the SCENARIO capture should land";
+        << "the seated team's wheel skipped OFF and holds NONE";
+    EXPECT_NE(og::sim::kBotSquadOff, save.bot_squad[0])
+        << "OFF never reached the save for a team with players";
+    EXPECT_EQ(og::sim::kBotSquadOff, save.bot_squad[3])
+        << "the empty team's OFF lands in the save knob";
+    EXPECT_TRUE(trace_contains("lineup", "bots_off_refused team=0"))
+        << "the refusal traces";
+    EXPECT_TRUE(trace_contains("lineup", "toast TEAM 1 HAS PLAYERS"))
+        << "the toast names the seat, not the fighters";
+    EXPECT_FALSE(trace_contains("lineup", "bots_off_refused team=3"))
+        << "an empty team is never refused";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.red_team_line_seen)
+        << "the seated team is staged and censused";
+    EXPECT_FALSE(state.yellow_team_line_seen)
+        << "the OFF team has no row: it left the active mask (A2)";
+    EXPECT_NE(std::string::npos, state.teams_active_line.find("3 TEAMS ACTIVE"))
+        << "three of the map's four teams remain: '"
+        << state.teams_active_line << "'";
+    EXPECT_EQ(4, state.captures) << "all four captures should land";
 
     restore_gladiator_mount();
 }
@@ -657,19 +772,6 @@ struct LineupPresetFlowState
     int captures = 0;
 };
 
-// Poll a trace category for a substring (the wait_for_picker_trace idiom).
-bool wait_for_trace(const char* category, const char* substring,
-                    int timeout_ms)
-{
-    for (int elapsed = 0; elapsed < timeout_ms; elapsed += 50) {
-        if (trace_contains(category, substring))
-            return true;
-        SDL_Delay(50);
-    }
-    fprintf(stderr, "  [lineup] TIMEOUT waiting for trace '%s'\n", substring);
-    return false;
-}
-
 int lineup_preset_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -688,14 +790,15 @@ int lineup_preset_flow_injector(void* data)
     }
     SDL_Delay(750);
 
-    // TEAM 2's BOTS knob: AUTO -> NONE -> BALANC (ordinal 2 — the first
-    // entry of the campaign's own BOT_PRESETS, named by the lineup hook,
-    // never by the engine).
+    // TEAM 2's BOTS knob: AUTO -> OFF -> NONE -> BALANC (ordinal 3, the
+    // preset base — the first entry of the campaign's own BOT_PRESETS,
+    // named by the lineup hook, never by the engine). Team 2 is empty in
+    // this fixture, so OFF is a legal stop on the way.
     state->preset_labelled =
         click_until_label("lineup_bots_1", "BOTS: BALANC", 5);
     SDL_Delay(300);
-    // ...and its level: AUTO -> LV 1 -> LV 2 -> LV 3.
-    state->level_labelled = click_until_label("lineup_level_1", "LV 3", 6);
+    // ...and its level offset: AUTO -> +1 -> +2 -> +3 (A6).
+    state->level_labelled = click_until_label("lineup_level_1", "LV +3", 6);
     SDL_Delay(300);
 
     // The TEAM 1 band's POWER, priced exactly as the screen prices it: the
@@ -775,11 +878,11 @@ TEST(LineupUi, modes_preset_knobs_reach_the_labels_and_the_staged_world)
         << "the modes campaign must register the lineup hook";
     EXPECT_TRUE(state.preset_labelled)
         << "the BOTS cycler must reach the campaign preset BALANC";
-    EXPECT_TRUE(state.level_labelled) << "the LV cycler must reach LV 3";
-    EXPECT_EQ(2, static_cast<int>(save.bot_squad[1]))
-        << "BALANC is ordinal 2 in the save knob";
+    EXPECT_TRUE(state.level_labelled) << "the LV cycler must reach LV +3";
+    EXPECT_EQ(og::sim::kBotSquadPresetBase, save.bot_squad[1])
+        << "BALANC is the preset base ordinal (3) in the save knob";
     EXPECT_EQ(3, static_cast<int>(save.bot_level[1]))
-        << "the explicit level lands in the save knob";
+        << "the explicit offset lands in the save knob";
     ASSERT_TRUE(state.team1_power.has_value())
         << "the registered hook prices the deployed company: POWER n, not --";
     EXPECT_GT(*state.team1_power, 0)

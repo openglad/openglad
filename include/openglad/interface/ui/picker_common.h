@@ -1096,8 +1096,10 @@ std::string format_allied_mode_label(const SaveData& save);
 // RETIRED (A3): always "Teams: Auto". See cycle_ctf_team_count.
 std::string format_ctf_teams_label(const SaveData& save);
 
-// Format the capture limit label ("Capture Limit: Map default" or ": N").
-std::string format_ctf_caps_label(const SaveData& save);
+// Format the score-limit label ("SCORE: MAP" for the level's own target,
+// "SCORE: N" otherwise — captures, goals, kills; amendment A5). The old
+// "Limit:" word answered the maintainer's "what is LIMIT?" with nothing.
+std::string format_ctf_score_label(const SaveData& save);
 
 // Format the scenario-troops label ("TROOPS: ALL" when keeping the authored
 // cast, "TROOPS: OWN" when stripping it, "TROOPS: FAIR" when stripping plus
@@ -1583,6 +1585,19 @@ std::string format_lineup_power_cell(std::optional<long long> power,
 // range enters at AUTO.
 short cycle_lineup_bots(short current, int preset_count, int dir);
 short cycle_lineup_level(short current, int dir);
+
+// The BOTS wheel as a BAND turns it (amendment A2): cycle_lineup_bots, except
+// that OFF is refused on a team that is on by definition — one with a seat
+// or a deployed fighter — and the wheel steps past it to the next value in
+// `dir`. `refused_off` (optional) reports that a refusal happened, so the
+// caller can raise lineup_off_refusal_toast; the wheel itself never lands on
+// OFF for such a band, whatever the step. One rule for all three clients.
+short lineup_bots_wheel_next(const LineupTeamBand& band, short current,
+                             int preset_count, int dir,
+                             bool* refused_off = nullptr);
+// "TEAM n HAS PLAYERS" (a seat is on the team) / "TEAM n HAS FIGHTERS"
+// (deployed fighters only) — the toast that explains the refusal above.
+std::string lineup_off_refusal_toast(const LineupTeamBand& band);
 
 // --- SPLIT (§5) --------------------------------------------------------
 

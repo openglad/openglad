@@ -1234,8 +1234,9 @@ bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
 // ---------------------------------------------------------------------------
 // SCENARIO subscreen (§1.8 step 5): the column at x=30 stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | PROGRESS | LINEUP row and the versus-gated
-// y=140 match-settings band (TEAMS | TROOPS | LIMIT, #218); BACK sits apart at
+// always-visible VIEW LEVEL | PROGRESS | LINEUP row and the y=140 knob row
+// (TROOPS host-gated | SCORE versus-gated, (210,140) free — amendment A5;
+// the TEAMS cell retired into LINEUP's BOTS: OFF, A1/A3); BACK sits apart at
 // (30,170) so no other screen's "back" shares its geometry (injector tests
 // disambiguate the per-screen "back" buttons by position). Static nav
 // encodes the host+versus (all-visible) variant; the sync (hide + rewire)
@@ -1248,7 +1249,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 30, .y = 170, .w = 60, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 7}},
+     .nav = {.up = 6}},
     {.id = "set_campaign", .label = "SET CAMPAIGN",
      .x = 30, .y = 40, .w = 80, .h = 15,
      .action = ButtonAction::DoPickCampaign, .arg = -1,
@@ -1260,12 +1261,13 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "view_scenario", .label = "VIEW LEVEL",
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
-     .nav = {.up = 2, .down = 7, .right = 5}},
+     .nav = {.up = 2, .down = 6, .right = 5}},
     // The ordinal the MATCHUP door vacated (#218), reclaimed by the LINEUP
     // door (docs/lineup-design.md §2): the y=100 row reads VIEW LEVEL |
     // PROGRESS | LINEUP on the declared 30/120/210 grid, above the y=140
-    // match-settings band where composition already lives. Deliberately NOT
-    // host-gated — joiners open the page read-only (§2.3).
+    // knob row where composition already lives. Deliberately NOT
+    // host-gated — joiners open the page read-only (§2.3). Its cell below,
+    // (210,140), is free since TEAMS retired (A5), so DOWN lands on SCORE.
     {.id = "lineup", .label = "LINEUP",
      .x = 210, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::OpenLineup, .arg = -1,
@@ -1274,33 +1276,39 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "progress", .label = "PROGRESS",
      .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateProgressMenu, .arg = -1,
-     .nav = {.up = 2, .down = 6, .left = 3, .right = 4}},
+     .nav = {.up = 2, .down = 8, .left = 3, .right = 4}},
     // Scenario troops: keep the authored cast, or strip all of it.
     // Host-gated like SET CAMPAIGN and SET LEVEL; joiners read the label off
-    // the lobby-synced save. It sits at (120,140) rather than the y=70 cell
-    // beside SET LEVEL because scenario_menu_draw_content paints the level
-    // title strip from x=114 across that whole row AFTER draw_buttons, so a
-    // button there would be overprinted. (120,140) is the free grid cell of
-    // the y=140 match-settings band, between TEAMS and LIMIT.
+    // the lobby-synced save. It sits on the y=140 row rather than the y=70
+    // cell beside SET LEVEL because scenario_menu_draw_content paints the
+    // level title strip from x=114 across that whole row AFTER
+    // draw_buttons, so a button there would be overprinted. It leads the
+    // row at (30,140) since the TEAMS cell retired (A5): TROOPS sets what
+    // BOTS: AUTO resolves to on an empty team (A4), SCORE beside it.
     {.id = "troops", .label = "TROOPS: ALL",
-     .x = 120, .y = 140, .w = 80, .h = 15,
-     .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
-     .nav = {.up = 5, .down = 0, .left = 7, .right = 8}},
-    // Match Teams / Score Limit, re-homed from MATCHUP (#218): match rules
-    // belong on the scenario axis (the TEAMS -> TROOPS migration precedent),
-    // and this keeps third-party versus packs' access (docs/
-    // camp-controls-design.md). They complete the y=140 band around TROOPS.
-    // Versus campaigns only; joiners see the read-only label (the lobby-
-    // synced save feeds the per-frame re-derive) while the host acts.
-    // Static labels are the formatters' defaults (both re-derive per frame).
-    {.id = "ctf_teams", .label = "Teams: Auto",
      .x = 30, .y = 140, .w = 80, .h = 15,
-     .action = ButtonAction::CycleCtfTeamCount, .arg = -1,
-     .nav = {.up = 3, .down = 0, .right = 6}},
-    {.id = "ctf_caps", .label = "Limit: Map",
-     .x = 210, .y = 140, .w = 80, .h = 15,
+     .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
+     .nav = {.up = 3, .down = 0, .right = 8}},
+    // The retired TEAMS cycler's ordinal (docs/lineup-design.md A1/A3:
+    // deactivating an authored team is LINEUP's BOTS: OFF now). Parked
+    // exactly like the Base Camp's seat_rail_spare and the MATCHUP door
+    // before it — zero-size rect, empty label, hidden, no nav — so
+    // kScenarioMenuCtfCapsIndex and every pin below never shifted.
+    {.id = "scenario_spare", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuSpareIndex,
+     .hidden = true},
+    // Score limit, re-homed from MATCHUP (#218) and relabelled SCORE (A5:
+    // captures, goals, kills; MAP = the level's own target): match rules
+    // belong on the scenario axis (the TEAMS -> TROOPS migration
+    // precedent), and this keeps third-party versus packs' access (docs/
+    // camp-controls-design.md). Versus campaigns only; joiners see the
+    // read-only label (the lobby-synced save feeds the per-frame re-derive)
+    // while the host acts. The static label is the formatter's default.
+    {.id = "ctf_caps", .label = "SCORE: MAP",
+     .x = 120, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
-     .nav = {.up = 4, .down = 0, .left = 6}},
+     .nav = {.up = 5, .down = 0, .left = 6}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change

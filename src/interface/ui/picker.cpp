@@ -3413,32 +3413,13 @@ static void refresh_scenariomenu_button_label(int button_index,
        pks().scenariomenu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
-// Match Teams / Score Limit live on the SCENARIO screen now (#218, re-homed
-// from MATCHUP). Their rows stay VISIBLE to networked joiners as read-only
-// labels — so unlike the old hidden-for-joiners MATCHUP rows, the callbacks
-// carry the §2.7 host gate themselves (popup + TRACE, no local cycle: a
-// joiner-side cycle would show a lie until the next settings broadcast).
-Sint32 change_ctf_teams()
-{
-   SaveData& save = og::runtime::current_session->myscreen_->save_data;
-   if (!picker_lobby_host_controls_visible())
-   {
-       TRACE("teams", "ctf_teams_denied");
-       popup_dialog("HOST CONTROLS THIS SETTING",
-                    "Only the host may\nchange match teams");
-       return MENU_OK;
-   }
-   og::ui::cycle_ctf_team_count(save);
-
-   refresh_scenariomenu_button_label(kScenarioMenuCtfTeamsIndex,
-                                     og::ui::format_ctf_teams_label(save));
-
-   picker_lobby_sync_settings_from_save();
-   picker_settings_autosave();
-
-   return MENU_OK;
-}
-
+// The score limit lives on the SCENARIO screen now (#218, re-homed from
+// MATCHUP; the TEAMS cycler beside it retired into LINEUP's BOTS: OFF —
+// docs/lineup-design.md A1/A3). Its row stays VISIBLE to networked joiners
+// as a read-only label — so unlike the old hidden-for-joiners MATCHUP rows,
+// the callback carries the §2.7 host gate itself (popup + TRACE, no local
+// cycle: a joiner-side cycle would show a lie until the next settings
+// broadcast).
 Sint32 change_ctf_caps()
 {
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -3452,7 +3433,7 @@ Sint32 change_ctf_caps()
    og::ui::cycle_ctf_capture_limit(save);
 
    refresh_scenariomenu_button_label(kScenarioMenuCtfCapsIndex,
-                                     og::ui::format_ctf_caps_label(save));
+                                     og::ui::format_ctf_score_label(save));
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
@@ -3546,11 +3527,27 @@ Sint32 change_lineup_bots(Sint32 team)
    std::vector<std::string> presets;
    (void)og::script::hooks::campaign_lineup_presets(presets);
    const std::size_t t = static_cast<std::size_t>(team);
-   // §2.3 (ruling 2026-08-26): NONE is legal on ANY team — it means
-   // "never bots on this team" and cannot deactivate anyone, so the wheel
-   // is exactly og::ui::cycle_lineup_bots on all three clients.
-   const short next = og::ui::cycle_lineup_bots(
-       save.bot_squad[t], static_cast<int>(presets.size()), 1);
+   // The wheel is AUTO / OFF / NONE / presets (A1). NONE is legal on ANY
+   // team (§2.3: "never bots here" deactivates nobody); OFF is not — a
+   // team with a seat or a deployed fighter is on by definition (A2), so
+   // the shared rule (og::ui::lineup_bots_wheel_next, one implementation
+   // for all three clients) steps past OFF there and this surface says why
+   // with a toast. The band is censused the way the page draws it (the
+   // same seat picture, no pricing).
+   const LineupSeatView view = picker_lineup_seat_view();
+   const std::array<og::ui::LineupTeamBand, 4> bands =
+       og::ui::build_lineup_bands(save, view.players, view.local_indices,
+                                  picker_lobby_session_established(),
+                                  og::ui::LineupPowerFn{});
+   bool refused_off = false;
+   const short next = og::ui::lineup_bots_wheel_next(
+       bands[t], save.bot_squad[t], static_cast<int>(presets.size()), 1,
+       &refused_off);
+   if (refused_off)
+   {
+       TRACE("lineup", "bots_off_refused team=%d", static_cast<int>(team));
+       og::ui::lineup_show_toast(og::ui::lineup_off_refusal_toast(bands[t]));
+   }
    save.bot_squad[t] = og::sim::clamp_bot_squad(next);
    TRACE("lineup", "bots team=%d squad=%d", static_cast<int>(team),
          static_cast<int>(save.bot_squad[t]));

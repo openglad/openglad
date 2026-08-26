@@ -179,7 +179,8 @@ Sint32 set_difficulty();
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
-Sint32 change_ctf_teams();
+// change_ctf_teams retired with the TEAMS cycler (docs/lineup-design.md
+// A1/A3): deactivating an authored team is LINEUP's BOTS: OFF now.
 Sint32 change_ctf_caps();
 Sint32 change_ctf_troops();
 Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
@@ -307,7 +308,10 @@ enum class ButtonAction : Sint32
     EditNetworkRoomCode = 57,
     SubmitNetworkHost = 58,
     SubmitNetworkJoin = 59,
-    CycleCtfTeamCount = 60,
+    // 60 was CycleCtfTeamCount — SCENARIO's TEAMS cycler. Retired with
+    // docs/lineup-design.md amendment A1/A3 (its one power, deactivating an
+    // authored team, is LINEUP's BOTS: OFF; the field is inert). Value
+    // retired, do not reuse.
     CycleCtfCaptureLimit = 61,
     // 62 was CreateTeamsMenu — the SCENARIO door to the MATCHUP subscreen.
     // The screen retired with #218 (its seat/team overview is VIEW LEVEL's

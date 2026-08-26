@@ -488,7 +488,7 @@ std::string format_binding_panel_line(const char* label,
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
 // SET CAMPAIGN / SET LEVEL / TROOPS keep their host-only visibility here and
-// the re-homed TEAMS / LIMIT rows their versus-only visibility (per-frame
+// the re-homed SCORE row its versus-only visibility (per-frame
 // sync_scenario_menu_host_control_visibility); BACK / VIEW LEVEL / PROGRESS
 // / LINEUP are always visible (LINEUP is deliberately NOT host-gated:
 // joiners open it read-only — docs/lineup-design.md §2.3).
@@ -503,12 +503,19 @@ inline constexpr int kScenarioMenuViewScenarioIndex = 3;
 inline constexpr int kScenarioMenuLineupIndex = 4;
 inline constexpr int kScenarioMenuProgressIndex = 5;
 // Appended (index contract: growth is append-only). Host-gated like
-// SET CAMPAIGN / SET LEVEL.
+// SET CAMPAIGN / SET LEVEL. Leads the y=140 knob row at (30,140) since the
+// TEAMS cell retired (docs/lineup-design.md amendment A3/A5).
 inline constexpr int kScenarioMenuTroopsIndex = 6;
-// Match Teams / Score Limit, re-homed from MATCHUP (#218): they complete
-// the y=140 match-settings band around TROOPS. Versus campaigns only;
-// joiners get the read-only label (visible, host-actionable).
-inline constexpr int kScenarioMenuCtfTeamsIndex = 7;
+// The retired TEAMS cycler's ordinal (A1/A3: its one power — deactivating an
+// authored team — is LINEUP's BOTS: OFF now). Parked exactly like the
+// Base Camp's seat_rail_spare and the MATCHUP door before it: zero-size
+// rect, empty label, hidden, no nav — so kScenarioMenuCtfCapsIndex and the
+// count keep their values (growth is append-only, retirement is a park).
+inline constexpr int kScenarioMenuSpareIndex = 7;
+// Score limit, re-homed from MATCHUP (#218), relabelled SCORE (A5): the
+// second cell of the y=140 knob row, TROOPS (30,140) | SCORE (120,140),
+// (210,140) free. Versus campaigns only; joiners get the read-only label
+// (visible, host-actionable).
 inline constexpr int kScenarioMenuCtfCapsIndex = 8;
 inline constexpr int kScenarioMenuButtonCount = 9;
 

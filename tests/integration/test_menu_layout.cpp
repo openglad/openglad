@@ -2536,13 +2536,14 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 
 // SCENARIO subscreen static table: the x=30 column stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | PROGRESS | LINEUP row and the y=140
-// match-settings band TEAMS | TROOPS | LIMIT (#218 — ctf_teams/ctf_caps
-// re-homed from MATCHUP; the retired MATCHUP door's ordinal 4 is the
-// LINEUP door now — docs/lineup-design.md §2 — so every index below it
-// kept its value); BACK sits at (30,170) so no other screen's "back"
-// shares its geometry. Static nav encodes the host+versus (all-visible)
-// variant.
+// always-visible VIEW LEVEL | PROGRESS | LINEUP row and the y=140 knob row
+// TROOPS | SCORE with (210,140) free (#218 — ctf_caps re-homed from
+// MATCHUP; docs/lineup-design.md A5 re-gridded the row when the TEAMS
+// cycler retired into LINEUP's BOTS: OFF — its ordinal 7 is a parked
+// spare, the retired MATCHUP door's ordinal 4 is the LINEUP door — so
+// every index kept its value); BACK sits at (30,170) so no other screen's
+// "back" shares its geometry. Static nav encodes the host+versus
+// (all-visible) variant.
 TEST(MenuLayout, scenariomenu_static_layout)
 {
     button* buttons = picker_scenariomenu_buttons();
@@ -2558,15 +2559,15 @@ TEST(MenuLayout, scenariomenu_static_layout)
         bool hidden = false;
     };
     static const ExpectedButton kExpected[] = {
-        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 7}},
+        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 6}},
         {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
         {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
-        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 7, .right = 5}},
+        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 6, .right = 5}},
         {"lineup", "LINEUP", 210, 100, 80, 15, MenuNav{.up = 2, .down = 8, .left = 5}},
-        {"progress", "PROGRESS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 6, .left = 3, .right = 4}},
-        {"troops", "TROOPS: ALL", 120, 140, 80, 15, MenuNav{.up = 5, .down = 0, .left = 7, .right = 8}},
-        {"ctf_teams", "Teams: Auto", 30, 140, 80, 15, MenuNav{.up = 3, .down = 0, .right = 6}},
-        {"ctf_caps", "Limit: Map", 210, 140, 80, 15, MenuNav{.up = 4, .down = 0, .left = 6}},
+        {"progress", "PROGRESS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 8, .left = 3, .right = 4}},
+        {"troops", "TROOPS: ALL", 30, 140, 80, 15, MenuNav{.up = 3, .down = 0, .right = 8}},
+        {"scenario_spare", "", 0, 0, 0, 0, MenuNav{}, true},
+        {"ctf_caps", "SCORE: MAP", 120, 140, 80, 15, MenuNav{.up = 5, .down = 0, .left = 6}},
     };
 
     for (int i = 0; i < count; ++i)
@@ -2594,50 +2595,61 @@ TEST(MenuLayout, scenariomenu_static_layout)
     EXPECT_EQ(kScenarioMenuLineupIndex, 4);
     EXPECT_EQ(kScenarioMenuProgressIndex, 5);
     EXPECT_EQ(kScenarioMenuTroopsIndex, 6);
-    EXPECT_EQ(kScenarioMenuCtfTeamsIndex, 7);
+    EXPECT_EQ(kScenarioMenuSpareIndex, 7);
     EXPECT_EQ(kScenarioMenuCtfCapsIndex, 8);
     EXPECT_EQ(kScenarioMenuButtonCount, 9);
 
     // The LINEUP door completes the y=100 row on the declared grid: same
-    // baseline as PROGRESS, same x=210 column as LIMIT below it.
+    // baseline as PROGRESS, on the x=210 column; the cell under it is free
+    // (A5), so nothing else claims x=210.
     EXPECT_EQ(buttons[kScenarioMenuLineupIndex].y,
               buttons[kScenarioMenuProgressIndex].y)
         << "LINEUP shares the VIEW LEVEL | PROGRESS baseline";
-    EXPECT_EQ(buttons[kScenarioMenuLineupIndex].x,
-              buttons[kScenarioMenuCtfCapsIndex].x)
-        << "LINEUP sits on the x=210 column over LIMIT";
+    EXPECT_EQ(210, buttons[kScenarioMenuLineupIndex].x);
+    for (int i = 0; i < count; ++i)
+    {
+        if (i == kScenarioMenuLineupIndex)
+            continue;
+        EXPECT_NE(210, buttons[i].x)
+            << buttons[i].id << " claims the free x=210 cell";
+    }
 
     // Grid RELATIONS (the menus discipline: exact tables pin
     // self-consistency, relations pin alignment). Declared columns
-    // x=30/120/210; the x=30 column stacks five faces; the y=100 row and
-    // the y=140 band each share one baseline; all seven grid faces are
-    // 80x15.
+    // x=30/120/210; the x=30 column stacks five faces (BACK, SET CAMPAIGN,
+    // SET LEVEL, VIEW LEVEL, TROOPS); the x=120 column PROGRESS over SCORE;
+    // the y=100 row and the y=140 knob row each share one baseline; all six
+    // grid faces are 80x15. The parked spare has no geometry at all.
     for (const int left_col : {kScenarioMenuBackIndex,
                                kScenarioMenuSetCampaignIndex,
                                kScenarioMenuSetLevelIndex,
                                kScenarioMenuViewScenarioIndex,
-                               kScenarioMenuCtfTeamsIndex})
+                               kScenarioMenuTroopsIndex})
         EXPECT_EQ(30, buttons[left_col].x) << buttons[left_col].id;
     EXPECT_EQ(buttons[kScenarioMenuProgressIndex].x,
-              buttons[kScenarioMenuTroopsIndex].x)
-        << "PROGRESS left-packs into the x=120 column over TROOPS";
-    EXPECT_EQ(210, buttons[kScenarioMenuCtfCapsIndex].x);
+              buttons[kScenarioMenuCtfCapsIndex].x)
+        << "PROGRESS left-packs into the x=120 column over SCORE";
+    EXPECT_EQ(120, buttons[kScenarioMenuCtfCapsIndex].x);
     EXPECT_EQ(buttons[kScenarioMenuViewScenarioIndex].y,
               buttons[kScenarioMenuProgressIndex].y);
-    EXPECT_EQ(buttons[kScenarioMenuCtfTeamsIndex].y,
-              buttons[kScenarioMenuTroopsIndex].y);
     EXPECT_EQ(buttons[kScenarioMenuTroopsIndex].y,
               buttons[kScenarioMenuCtfCapsIndex].y);
+    EXPECT_EQ(buttons[kScenarioMenuTroopsIndex].y,
+              buttons[kScenarioMenuViewScenarioIndex].y +
+                  buttons[kScenarioMenuViewScenarioIndex].sizey + 25)
+        << "the knob row keeps its 40px pitch under the y=100 row";
     for (const int face : {kScenarioMenuViewScenarioIndex,
                            kScenarioMenuLineupIndex,
                            kScenarioMenuProgressIndex,
                            kScenarioMenuTroopsIndex,
-                           kScenarioMenuCtfTeamsIndex,
                            kScenarioMenuCtfCapsIndex})
     {
         EXPECT_EQ(80, buttons[face].sizex) << buttons[face].id;
         EXPECT_EQ(15, buttons[face].sizey) << buttons[face].id;
     }
+    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
+    EXPECT_EQ(0, buttons[kScenarioMenuSpareIndex].sizex);
+    EXPECT_EQ(0, buttons[kScenarioMenuSpareIndex].sizey);
 
     // The campaign-name / level-title strips draw from x=116 (32-char clip,
     // 6px/char): they must clear the x=30 button column's right edge.
@@ -2656,7 +2668,6 @@ TEST(MenuLayout, scenariomenu_static_layout)
         const int strip_top = buttons[strip_index].y + 3;
         for (const int row_index : {kScenarioMenuProgressIndex,
                                     kScenarioMenuTroopsIndex,
-                                    kScenarioMenuCtfTeamsIndex,
                                     kScenarioMenuCtfCapsIndex})
         {
             const button& row = buttons[row_index];
@@ -2716,12 +2727,14 @@ TEST(MenuLayout, view_scenario_staged_band_geometry)
 }
 
 // Two visibility axes since the MATCHUP re-home (#218): SET CAMPAIGN /
-// SET LEVEL / TROOPS hide on the host axis, TEAMS / LIMIT on the
-// versus-campaign axis (visible to joiners as read-only labels). Every
-// {host} x {versus} combination must leave the visible graph closed and
-// fully keyboard-reachable — TROOPS lost its only static .up when the
-// MATCHUP door parked, so the rewire is what keeps the whole y=140 band
-// reachable in every variant.
+// SET LEVEL / TROOPS hide on the host axis, SCORE on the versus-campaign
+// axis (visible to joiners as a read-only label). Every {host} x {versus}
+// combination must leave the visible graph closed and fully
+// keyboard-reachable — TROOPS lost its only static .up when the MATCHUP
+// door parked, so the rewire is what keeps the whole y=140 row reachable
+// in every variant. The parked spare (ordinal 7) is hidden in all four and
+// never linked; DOWN from the y=100 row lands on the visible knob under it
+// (A5: LINEUP's cell is free, so it drops to SCORE, else TROOPS).
 TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
 {
     for (const bool host_visible : {true, false})
@@ -2733,7 +2746,6 @@ TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
             buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
             buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
             buttons[kScenarioMenuTroopsIndex].hidden = !host_visible;
-            buttons[kScenarioMenuCtfTeamsIndex].hidden = !match_visible;
             buttons[kScenarioMenuCtfCapsIndex].hidden = !match_visible;
             picker_wire_scenario_menu_nav(buttons, count, host_visible,
                                           match_visible);
@@ -2745,6 +2757,20 @@ TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
                     .c_str());
             EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
                 << "the LINEUP door is never gated (§2.3)";
+            EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
+                << "the retired TEAMS cell stays parked";
+            const int expect_down = match_visible ? kScenarioMenuCtfCapsIndex
+                : (host_visible ? kScenarioMenuTroopsIndex
+                                : kScenarioMenuBackIndex);
+            EXPECT_EQ(expect_down, buttons[kScenarioMenuLineupIndex].nav.down)
+                << "LINEUP drops onto SCORE, else TROOPS, else BACK";
+            EXPECT_EQ(expect_down,
+                      buttons[kScenarioMenuProgressIndex].nav.down);
+            const int expect_up = host_visible ? kScenarioMenuTroopsIndex
+                : (match_visible ? kScenarioMenuCtfCapsIndex
+                                 : kScenarioMenuViewScenarioIndex);
+            EXPECT_EQ(expect_up, buttons[kScenarioMenuBackIndex].nav.up)
+                << "BACK climbs into TROOPS, else SCORE, else VIEW LEVEL";
         }
     }
 }
