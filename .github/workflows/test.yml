@@ -206,7 +206,7 @@ jobs:
     runs-on: ubuntu-latest
     # The sanitizer suite outgrew 30 minutes once IXWebSocket gained a TLS
     # build and the multi-seat networking tests landed.
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
