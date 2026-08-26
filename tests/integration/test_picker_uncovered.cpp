@@ -225,7 +225,7 @@ TEST(PickerUncovered, picker_team_wraps_on_negative_step)
 
     ASSERT_EQ(4, (int)change_teamnum(-1)) << "change_teamnum should return OK";
     ASSERT_EQ(3, (int)og::runtime::current_session->current_guy_->teamnum) << "change_teamnum should wrap 0 -> 3 for arg -1";
-    ASSERT_STREQ("Playing on Team 4", og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label.c_str()) << "team label should wrap to Team 4";
+    ASSERT_STREQ("Team 4", og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label.c_str()) << "team label should wrap to Team 4";
 
     og::runtime::current_session->current_guy_->teamnum = static_cast<short>(0);
     og::runtime::current_session->current_team_num_ = static_cast<short>(0);

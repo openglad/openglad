@@ -160,6 +160,11 @@ int picker_help_button_count();
 // Campaign zone submenu (the scripted page chassis) — engine screen.
 button* picker_zone_submenu_buttons();
 int picker_zone_submenu_button_count();
+// LINEUP + FIGHTERS (docs/lineup-design.md §2) — engine screens.
+button* picker_lineup_buttons();
+int picker_lineup_button_count();
+button* picker_lineup_fighters_buttons();
+int picker_lineup_fighters_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
@@ -402,15 +407,17 @@ std::string format_binding_panel_line(const char* label,
 // SET CAMPAIGN / SET LEVEL / TROOPS keep their host-only visibility here and
 // the re-homed TEAMS / LIMIT rows their versus-only visibility (per-frame
 // sync_scenario_menu_host_control_visibility); BACK / VIEW LEVEL / PROGRESS
-// are always visible and the spare is never visible.
+// / LINEUP are always visible (LINEUP is deliberately NOT host-gated:
+// joiners open it read-only — docs/lineup-design.md §2.3).
 inline constexpr int kScenarioMenuBackIndex = 0;
 inline constexpr int kScenarioMenuSetCampaignIndex = 1;
 inline constexpr int kScenarioMenuSetLevelIndex = 2;
 inline constexpr int kScenarioMenuViewScenarioIndex = 3;
-// The retired MATCHUP door's ordinal (#218), parked as a permanently-hidden
-// zero-size spare (the kBaseCampSeatRailSpareIndex precedent) so every
-// index below keeps its value.
-inline constexpr int kScenarioMenuSpareIndex = 4;
+// The retired MATCHUP door's ordinal (#218), parked as a spare until the
+// LINEUP door (docs/lineup-design.md §2) reclaimed it: the y=100 row now
+// reads VIEW LEVEL | PROGRESS | LINEUP with no table growth and every
+// index below keeping its value.
+inline constexpr int kScenarioMenuLineupIndex = 4;
 inline constexpr int kScenarioMenuProgressIndex = 5;
 // Appended (index contract: growth is append-only). Host-gated like
 // SET CAMPAIGN / SET LEVEL.
@@ -451,6 +458,109 @@ inline constexpr int kZoneSubmenuPanelBottomY = 158;
 inline constexpr std::size_t kZoneSubmenuRowLabelChars =
     (kZoneSubmenuRowWidth - 8) / 6;  // 48
 
+// --- LINEUP screen layout contract (docs/lineup-design.md §2) --------------
+// One engine-hosted screen: title band, FOUR team bands of equal pitch, one
+// action strip. The grid is declared here and every rect derives from it
+// (the menus discipline: a literal coordinate that appears once is a future
+// 1px drift); the layout tests assert the RELATIONS (equal pitch, shared
+// column x across bands, strip flush right) as well as the exact table.
+// Positional indices into kLineupMenuRows / picker_lineup_buttons():
+inline constexpr int kLineupBackIndex = 0;
+inline constexpr int kLineupBotsBase = 1;   // lineup_bots_t = 1 + t
+inline constexpr int kLineupLevelBase = 5;  // lineup_level_t = 5 + t
+inline constexpr int kLineupFightersIndex = 9;
+inline constexpr int kLineupSplitEvenIndex = 10;
+inline constexpr int kLineupSplitFairIndex = 11;
+inline constexpr int kLineupUniteIndex = 12;
+inline constexpr int kLineupButtonCount = 13;
+// The opaque grey ground painted PRE-buttons (a band of raw backdrop
+// between two opaque things reads as a defect — the menus skill).
+inline constexpr int kLineupPanelX1 = 8;
+inline constexpr int kLineupPanelY1 = 20;
+inline constexpr int kLineupPanelX2 = 311;
+inline constexpr int kLineupPanelY2 = 170;
+// Four bands at band_y(t) = 24 + 36*t (24/60/96/132), 34 px tall each.
+inline constexpr int kLineupBandY0 = 24;
+inline constexpr int kLineupBandPitch = 36;
+inline constexpr int kLineupBandHeight = 34;
+constexpr int lineup_band_y(int team)
+{
+    return kLineupBandY0 + kLineupBandPitch * team;
+}
+// Header line at y+2: team chip | "TEAM n" | POWER | seat run.
+inline constexpr int kLineupHeaderDy = 2;
+inline constexpr int kLineupChipX = 12;
+inline constexpr int kLineupChipSize = 10;
+inline constexpr int kLineupTeamTextX = 26;
+inline constexpr int kLineupPowerTextX = 70;
+inline constexpr int kLineupSeatRunX = 150;
+inline constexpr int kLineupSeatRunRightX = 306;
+inline constexpr int kLineupSeatRunChars =
+    (kLineupSeatRunRightX - kLineupSeatRunX) / 6;  // 26, then "+n"
+// Knob row at y+15: BOTS face | LV face | census/diagnostic text.
+inline constexpr int kLineupKnobDy = 15;
+inline constexpr int kLineupKnobH = 15;
+inline constexpr int kLineupBotsX = 12;
+inline constexpr int kLineupBotsW = 80;
+inline constexpr int kLineupLevelX = 98;
+inline constexpr int kLineupLevelW = 56;
+inline constexpr int kLineupCensusX = 162;
+inline constexpr int kLineupCensusDy = 19;
+// The title band's right-hand slot: an active toast wins it, else the
+// networked session census (right-aligned, ending on the panel edge).
+inline constexpr int kLineupTitleCensusChars = 40;
+// Action strip: BACK | FIGHTERS | SPLIT EVEN | SPLIT FAIR | UNITE, one 6px
+// gutter, closing flush on the Base Camp panel rail (x=312).
+inline constexpr int kLineupStripY = 176;
+inline constexpr int kLineupStripH = 18;
+inline constexpr int kLineupStripGap = 6;
+inline constexpr int kLineupStripRightX = 312;
+inline constexpr int kLineupBackX = 8;
+inline constexpr int kLineupBackW = 44;
+inline constexpr int kLineupFightersX =
+    kLineupBackX + kLineupBackW + kLineupStripGap;              // 58
+inline constexpr int kLineupFightersW = 62;
+inline constexpr int kLineupSplitEvenX =
+    kLineupFightersX + kLineupFightersW + kLineupStripGap;      // 126
+inline constexpr int kLineupSplitW = 68;
+inline constexpr int kLineupSplitFairX =
+    kLineupSplitEvenX + kLineupSplitW + kLineupStripGap;        // 200
+inline constexpr int kLineupUniteX =
+    kLineupSplitFairX + kLineupSplitW + kLineupStripGap;        // 274
+inline constexpr int kLineupUniteW = kLineupStripRightX - kLineupUniteX;  // 38
+static_assert(kLineupUniteX + kLineupUniteW == kLineupStripRightX,
+              "the action strip closes flush on the panel rail");
+static_assert(lineup_band_y(3) + kLineupKnobDy + kLineupKnobH <
+                  kLineupPanelY2,
+              "the last band's knob row stays inside the panel");
+
+// The lobby's seat picture as LINEUP consumes it. A LOCAL session's lobby
+// owns every seat it lists but reports EMPTY local_player_indices by
+// contract (picker_lobby_client.h), and an uninitialized local lobby lists
+// nothing at all — this helper applies the Base Camp recipe (all seats
+// local; synthesize from the save when the lobby is empty) so the bands,
+// the knob occupancy check, and the SPLIT actions all read one picture.
+struct LineupSeatView {
+    std::vector<og::sim::LobbyPlayer> players;  // sorted by player_index
+    std::vector<std::uint8_t> local_indices;    // THIS machine's seats
+};
+LineupSeatView picker_lineup_seat_view();
+
+// --- FIGHTERS list layout contract (docs/lineup-design.md §2.2) ------------
+// The Base Camp roster row grid verbatim (menu_screen_specs.cpp shares its
+// kBaseCampRow* / column constants with this screen's table — never retyped
+// literals): 8 rows/page at y=45+14r, deploy box x=23 w=14, chip x=61, name
+// x=88, class x=164, level x=236, POWER where EXP sat at x=264. Footer at
+// y=169 (BACK 10 / PREV 220 / NEXT 270 — the zone-submenu footer split, so
+// this screen's "back" shares no other screen's geometry).
+inline constexpr int kLineupFightersRowsPerPage = 8;
+inline constexpr int kLineupFightersDeployBase = 0;  // fighter_dep_r = 0..7
+inline constexpr int kLineupFightersBodyBase = 8;    // fighter_row_r = 8..15
+inline constexpr int kLineupFightersBackIndex = 16;
+inline constexpr int kLineupFightersPrevIndex = 17;
+inline constexpr int kLineupFightersNextIndex = 18;
+inline constexpr int kLineupFightersButtonCount = 19;
+
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
@@ -465,14 +575,15 @@ void picker_wire_scenario_menu_nav(button* buttons, int count,
 // The SCENARIO screen's per-frame visibility/label/nav sync (the spec's
 // Rewire program): host-gates SET CAMPAIGN / SET LEVEL / TROOPS,
 // versus-gates TEAMS / LIMIT (visible read-only for joiners), re-derives
-// the three settings labels from the save on both surfaces, parks the
-// spare, and rewires the graph through picker_wire_scenario_menu_nav.
+// the three settings labels from the save on both surfaces (LINEUP stays
+// visible for everyone), and rewires the graph through
+// picker_wire_scenario_menu_nav.
 void sync_scenario_menu_host_control_visibility(button* buttons,
                                                 int num_buttons,
                                                 int& highlighted_button);
 
 // --- TRAIN screen layout contract ------------------------------------------
-// Positional index of the team cycler ("Playing on Team N") in
+// Positional index of the team cycler ("Team N") in
 // kTrainMenuRows / picker_trainmenu_buttons(). The train content pass and
 // the ChangeTeam/cycle callbacks write its live label/outline by this index
 // (the G8 sweep of the raw allbuttons_[18] writes when VIEW TEAM retired).

@@ -410,6 +410,11 @@ enum class MenuScreenId : std::uint8_t {
     // The Base Camp zone submenu (the scripted page chassis) — registered
     // so the G5 remote-start sweep proves its preemption.
     CampaignZoneSubmenu,
+    // LINEUP (docs/lineup-design.md §2): the four-band team overview opened
+    // from SCENARIO, and its FIGHTERS list (this machine's company, one row
+    // per slot, team cycler + deploy toggle).
+    Lineup,
+    LineupFighters,
     Count,
 };
 
@@ -682,5 +687,58 @@ void install_zone_submenu_state_for_screen(ZoneSubmenuScreenState* state);
 // zone dispatch toasts the refusal instead of popping a modal.
 Sint32 run_campaign_zone_submenu(const std::string& page_id,
                                  bool* opened = nullptr);
+
+// --- LINEUP (docs/lineup-design.md §2) -------------------------------------
+
+// LINEUP screen state: the team-build family's level-reload cursor plus the
+// message-line toast (BOTS: NONE refusals, SPLIT outcomes — never a modal:
+// a modal strands a networked joiner mid-GO). Public so tests can drive the
+// per-frame rewire's visibility variants; production state is owned by
+// create_lineup_menu. The null installed state renders the read-only shape
+// (knobs hidden, splits hidden, bands from the live save/lobby).
+struct LineupScreenState {
+    short last_level_id = -1;
+    bool was_reset = false;
+    std::string toast;
+    std::int64_t toast_until_ms = 0;
+};
+
+// FIGHTERS list state: the display window over this machine's company (one
+// row per occupied team_list slot, benched rows included), the zone session
+// whose roster capabilities gate the team cycler and deploy toggle, and the
+// same toast contract as LINEUP. Public for the rewire-variant tests;
+// production state is owned by open_lineup_fighters.
+struct LineupFightersScreenState {
+    short last_level_id = -1;
+    bool was_reset = false;
+    // Occupied save slots in team_list order; row i of the current page
+    // shows slots[page.first_index() + i].
+    std::vector<int> slots;
+    PageModel page{};
+    CampaignZoneSession* zone = nullptr;
+    std::string toast;
+    std::int64_t toast_until_ms = 0;
+};
+
+// LINEUP: title band, four team bands of equal pitch (header chip/POWER/
+// seats, BOTS/LV knob faces, census text), and the BACK | FIGHTERS |
+// SPLIT EVEN | SPLIT FAIR | UNITE action strip.
+const MenuScreenSpec& lineup_menu_screen_spec();
+// FIGHTERS: the Base Camp roster row grid (8 rows/page) with a deploy box
+// and a row-body team cycler per row, and the BACK/PREV/NEXT footer.
+const MenuScreenSpec& lineup_fighters_menu_screen_spec();
+
+// Install the state the per-frame rewires/draw hooks read (the company-list
+// seam pattern; null renders the empty/read-only shape).
+void install_lineup_state_for_screen(LineupScreenState* state);
+void install_lineup_fighters_state_for_screen(
+    LineupFightersScreenState* state);
+
+// Re-collect the FIGHTERS slot list from the save and clamp the page window.
+void lineup_fighters_refresh_rows(LineupFightersScreenState& state);
+
+// Show a toast on the installed LINEUP state (no-op when none installed).
+// TRACEd ("lineup") so tests assert deterministically.
+void lineup_show_toast(std::string text);
 
 } // namespace og::ui

@@ -2536,12 +2536,13 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 
 // SCENARIO subscreen static table: the x=30 column stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | PROGRESS row and the y=140 match-settings
-// band TEAMS | TROOPS | LIMIT (#218 — ctf_teams/ctf_caps re-homed from
-// MATCHUP; the retired MATCHUP door's ordinal 4 is a parked zero-size
-// spare so every index below it kept its value); BACK sits at (30,170)
-// so no other screen's "back" shares its geometry. Static nav encodes the
-// host+versus (all-visible) variant.
+// always-visible VIEW LEVEL | PROGRESS | LINEUP row and the y=140
+// match-settings band TEAMS | TROOPS | LIMIT (#218 — ctf_teams/ctf_caps
+// re-homed from MATCHUP; the retired MATCHUP door's ordinal 4 is the
+// LINEUP door now — docs/lineup-design.md §2 — so every index below it
+// kept its value); BACK sits at (30,170) so no other screen's "back"
+// shares its geometry. Static nav encodes the host+versus (all-visible)
+// variant.
 TEST(MenuLayout, scenariomenu_static_layout)
 {
     button* buttons = picker_scenariomenu_buttons();
@@ -2561,11 +2562,11 @@ TEST(MenuLayout, scenariomenu_static_layout)
         {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
         {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
         {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 7, .right = 5}},
-        {"scenario_spare", "", 0, 0, 0, 0, MenuNav{}, true},
-        {"progress", "PROGRESS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 6, .left = 3}},
+        {"lineup", "LINEUP", 210, 100, 80, 15, MenuNav{.up = 2, .down = 8, .left = 5}},
+        {"progress", "PROGRESS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 6, .left = 3, .right = 4}},
         {"troops", "TROOPS: ALL", 120, 140, 80, 15, MenuNav{.up = 5, .down = 0, .left = 7, .right = 8}},
         {"ctf_teams", "Teams: Auto", 30, 140, 80, 15, MenuNav{.up = 3, .down = 0, .right = 6}},
-        {"ctf_caps", "Limit: Map", 210, 140, 80, 15, MenuNav{.up = 5, .down = 0, .left = 6}},
+        {"ctf_caps", "Limit: Map", 210, 140, 80, 15, MenuNav{.up = 4, .down = 0, .left = 6}},
     };
 
     for (int i = 0; i < count; ++i)
@@ -2590,17 +2591,27 @@ TEST(MenuLayout, scenariomenu_static_layout)
     EXPECT_EQ(kScenarioMenuSetCampaignIndex, 1);
     EXPECT_EQ(kScenarioMenuSetLevelIndex, 2);
     EXPECT_EQ(kScenarioMenuViewScenarioIndex, 3);
-    EXPECT_EQ(kScenarioMenuSpareIndex, 4);
+    EXPECT_EQ(kScenarioMenuLineupIndex, 4);
     EXPECT_EQ(kScenarioMenuProgressIndex, 5);
     EXPECT_EQ(kScenarioMenuTroopsIndex, 6);
     EXPECT_EQ(kScenarioMenuCtfTeamsIndex, 7);
     EXPECT_EQ(kScenarioMenuCtfCapsIndex, 8);
     EXPECT_EQ(kScenarioMenuButtonCount, 9);
 
+    // The LINEUP door completes the y=100 row on the declared grid: same
+    // baseline as PROGRESS, same x=210 column as LIMIT below it.
+    EXPECT_EQ(buttons[kScenarioMenuLineupIndex].y,
+              buttons[kScenarioMenuProgressIndex].y)
+        << "LINEUP shares the VIEW LEVEL | PROGRESS baseline";
+    EXPECT_EQ(buttons[kScenarioMenuLineupIndex].x,
+              buttons[kScenarioMenuCtfCapsIndex].x)
+        << "LINEUP sits on the x=210 column over LIMIT";
+
     // Grid RELATIONS (the menus discipline: exact tables pin
     // self-consistency, relations pin alignment). Declared columns
     // x=30/120/210; the x=30 column stacks five faces; the y=100 row and
-    // the y=140 band each share one baseline; all six grid faces are 80x15.
+    // the y=140 band each share one baseline; all seven grid faces are
+    // 80x15.
     for (const int left_col : {kScenarioMenuBackIndex,
                                kScenarioMenuSetCampaignIndex,
                                kScenarioMenuSetLevelIndex,
@@ -2618,6 +2629,7 @@ TEST(MenuLayout, scenariomenu_static_layout)
     EXPECT_EQ(buttons[kScenarioMenuTroopsIndex].y,
               buttons[kScenarioMenuCtfCapsIndex].y);
     for (const int face : {kScenarioMenuViewScenarioIndex,
+                           kScenarioMenuLineupIndex,
                            kScenarioMenuProgressIndex,
                            kScenarioMenuTroopsIndex,
                            kScenarioMenuCtfTeamsIndex,
@@ -2731,10 +2743,328 @@ TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
                             host_visible ? "host" : "joiner",
                             match_visible ? "versus" : "classic")
                     .c_str());
-            EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
-                << "the parked MATCHUP-door spare must never show";
+            EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
+                << "the LINEUP door is never gated (§2.3)";
         }
     }
+}
+
+// LINEUP grid relations (docs/lineup-design.md §2.4; the exact table is the
+// test_menu_pins oracle): four bands of EQUAL pitch, one shared column x per
+// knob across all bands, knob rows inside the panel, and the action strip
+// closing flush on x=312 with uniform 6px gutters.
+TEST(MenuLayout, lineup_band_and_strip_relations)
+{
+    button* buttons = picker_lineup_buttons();
+    const int count = picker_lineup_button_count();
+    ASSERT_EQ(kLineupButtonCount, count);
+
+    // Equal band pitch, derived from the knob faces themselves.
+    const int pitch = buttons[kLineupBotsBase + 1].y -
+        buttons[kLineupBotsBase + 0].y;
+    EXPECT_EQ(kLineupBandPitch, pitch);
+    for (int t = 0; t < 4; ++t)
+    {
+        const button& bots = buttons[kLineupBotsBase + t];
+        const button& level = buttons[kLineupLevelBase + t];
+        // Shared columns across every band.
+        EXPECT_EQ(buttons[kLineupBotsBase].x, bots.x) << "band " << t;
+        EXPECT_EQ(buttons[kLineupLevelBase].x, level.x) << "band " << t;
+        // One baseline per band's knob row.
+        EXPECT_EQ(bots.y, level.y) << "band " << t;
+        EXPECT_EQ(lineup_band_y(t) + kLineupKnobDy, bots.y) << "band " << t;
+        if (t > 0)
+        {
+            EXPECT_EQ(pitch, bots.y - buttons[kLineupBotsBase + t - 1].y)
+                << "unequal band pitch at band " << t;
+        }
+        // LV opens right after BOTS with one gutter.
+        EXPECT_EQ(bots.x + bots.sizex + 6, level.x) << "band " << t;
+        // The knob row stays inside the opaque panel.
+        EXPECT_GT(bots.y, kLineupPanelY1);
+        EXPECT_LT(bots.y + bots.sizey, kLineupPanelY2);
+    }
+
+    // Action strip: one baseline, uniform 6px gutters, flush right on 312.
+    const int strip[] = {kLineupBackIndex, kLineupFightersIndex,
+                         kLineupSplitEvenIndex, kLineupSplitFairIndex,
+                         kLineupUniteIndex};
+    for (const int index : strip)
+    {
+        EXPECT_EQ(kLineupStripY, buttons[index].y) << buttons[index].id;
+        EXPECT_EQ(kLineupStripH, buttons[index].sizey) << buttons[index].id;
+    }
+    for (std::size_t i = 1; i < std::size(strip); ++i)
+    {
+        const button& prev = buttons[strip[i - 1]];
+        const button& next = buttons[strip[i]];
+        EXPECT_EQ(prev.x + prev.sizex + kLineupStripGap, next.x)
+            << next.id << " breaks the strip gutter";
+    }
+    EXPECT_EQ(kLineupStripRightX,
+              buttons[kLineupUniteIndex].x +
+                  buttons[kLineupUniteIndex].sizex)
+        << "the strip closes flush on the panel rail";
+
+    // Label budgets: centered labels draw with no clipping at 6px/char.
+    for (int i = 0; i < count; ++i)
+    {
+        EXPECT_LE(static_cast<int>(buttons[i].label.size()) * 6,
+                  buttons[i].sizex)
+            << buttons[i].id << " label '" << buttons[i].label
+            << "' escapes its face";
+    }
+
+    check_no_overlaps(buttons, count, "lineup");
+    check_bounds(buttons, count, "lineup");
+    check_nav_closed_and_reachable(buttons, count, kLineupBackIndex,
+                                   "lineup_static");
+}
+
+// LINEUP nav variants (§2.3): the knobs hide for joiners and dim (visible,
+// engine-inert) on classic campaigns; SPLIT EVEN / SPLIT FAIR hide when
+// this machine holds fewer than two seats. Every {host, joiner} x
+// {versus, classic} x {1, 2 local seats} combination must leave the
+// visible graph closed and fully keyboard-reachable.
+TEST(MenuLayout, lineup_nav_variants_keyboard_reachable)
+{
+    struct LineupVariantLobby final : og::ui::IPickerLobbyClient
+    {
+        void initialize_from_save() override {}
+        void shutdown() override {}
+        void sync_from_save() override {}
+        void sync_roster_from_save() override {}
+        void sync_settings_from_save() override {}
+        void poll_and_apply() override {}
+        void set_player_mode(int) override {}
+        bool request_start_game() override { return false; }
+        [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+        build_game_start_config() const override { return std::nullopt; }
+        [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+        consume_game_start_config() override { return std::nullopt; }
+        [[nodiscard]] bool start_request_pending() const noexcept override
+        {
+            return false;
+        }
+        [[nodiscard]] bool is_networked_session() const noexcept override
+        {
+            return true;
+        }
+        [[nodiscard]] bool host_controls_visible() const noexcept override
+        {
+            return host;
+        }
+        [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players()
+            const override
+        {
+            return players;
+        }
+        [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
+            const override
+        {
+            return local_indices;
+        }
+
+        bool host = true;
+        std::vector<og::sim::LobbyPlayer> players;
+        std::vector<std::uint8_t> local_indices;
+    } lobby;
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(&lobby);
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string saved_campaign = save.current_campaign;
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::Lineup).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+
+    for (const bool host : {true, false})
+    {
+        for (const bool versus : {true, false})
+        {
+            for (const int seats : {1, 2})
+            {
+                lobby.host = host;
+                lobby.players.clear();
+                lobby.local_indices.clear();
+                for (int seat = 0; seat < seats; ++seat)
+                {
+                    og::sim::LobbyPlayer player;
+                    player.player_index = static_cast<std::uint8_t>(seat);
+                    player.team = static_cast<short>(seat);
+                    lobby.players.push_back(player);
+                    lobby.local_indices.push_back(
+                        static_cast<std::uint8_t>(seat));
+                }
+                save.current_campaign = versus ? "modes" : "gladiator";
+
+                button* buttons = picker_lineup_buttons();
+                const int count = picker_lineup_button_count();
+                // Mirror the runner's gate pass for the knob rows (their
+                // state_override), then the production rewire.
+                og::ui::MenuLabelContext context;
+                context.save = &save;
+                context.is_host = host;
+                context.is_networked = true;
+                const std::vector<const og::ui::MenuButtonSpec*> rows =
+                    og::ui::materialized_spec_rows(spec);
+                ASSERT_EQ(static_cast<int>(rows.size()), count);
+                for (int i = 0; i < count; ++i)
+                {
+                    if (rows[static_cast<std::size_t>(i)]->state_override ==
+                        nullptr)
+                        continue;
+                    buttons[i].hidden =
+                        rows[static_cast<std::size_t>(i)]->state_override(
+                            context) == og::ui::RowState::Hidden;
+                }
+                int highlighted = kLineupBackIndex;
+                spec.nav.rewire(buttons, count, highlighted);
+
+                const std::string name = std::format(
+                    "lineup_{}_{}_{}seat", host ? "host" : "joiner",
+                    versus ? "versus" : "classic", seats);
+                check_nav_closed_and_reachable(buttons, count,
+                                               kLineupBackIndex,
+                                               name.c_str());
+                for (int t = 0; t < 4; ++t)
+                {
+                    EXPECT_EQ(!host,
+                              buttons[kLineupBotsBase + t].hidden)
+                        << name << " band " << t;
+                    EXPECT_EQ(!host,
+                              buttons[kLineupLevelBase + t].hidden)
+                        << name << " band " << t;
+                }
+                EXPECT_EQ(seats < 2,
+                          buttons[kLineupSplitEvenIndex].hidden) << name;
+                EXPECT_EQ(seats < 2,
+                          buttons[kLineupSplitFairIndex].hidden) << name;
+                EXPECT_FALSE(buttons[kLineupUniteIndex].hidden)
+                    << name << ": UNITE is always offered";
+            }
+        }
+    }
+
+    save.current_campaign = saved_campaign;
+    og::ui::install_active_picker_lobby_client(saved_client);
+}
+
+// FIGHTERS list (§2.2): the Base Camp roster row grid verbatim — 8 rows at
+// y=45+14r, deploy box x=23 w=14, row body opening on the chip column x=61
+// — with the zone-submenu footer split (BACK 10 / PREV 220 / NEXT 270 at
+// y=169). The literals here are the independent oracle for the shared
+// constants in menu_screen_specs.cpp.
+TEST(MenuLayout, lineup_fighters_layout_matches_base_camp_grid)
+{
+    button* buttons = picker_lineup_fighters_buttons();
+    const int count = picker_lineup_fighters_button_count();
+    ASSERT_EQ(kLineupFightersButtonCount, count);
+
+    for (int r = 0; r < kLineupFightersRowsPerPage; ++r)
+    {
+        const button& dep = buttons[kLineupFightersDeployBase + r];
+        const button& body = buttons[kLineupFightersBodyBase + r];
+        EXPECT_EQ("fighter_dep_" + std::to_string(r), dep.id);
+        EXPECT_EQ("fighter_row_" + std::to_string(r), body.id);
+        EXPECT_EQ(23, dep.x) << dep.id;
+        EXPECT_EQ(14, dep.sizex) << dep.id;
+        EXPECT_EQ(45 + 14 * r, dep.y) << dep.id;
+        EXPECT_EQ(10, dep.sizey) << dep.id;
+        EXPECT_EQ(61, body.x) << body.id;
+        EXPECT_EQ(dep.y, body.y) << body.id;
+        EXPECT_EQ(10, body.sizey) << body.id;
+        EXPECT_TRUE(body.no_draw)
+            << body.id << ": the row text IS the affordance";
+        // The body ends on the panel's inner face, like the Base Camp rows'
+        // controls.
+        EXPECT_EQ(310, body.x + body.sizex) << body.id;
+        if (r > 0)
+        {
+            EXPECT_EQ(14, dep.y - buttons[kLineupFightersDeployBase + r - 1].y)
+                << "unequal row pitch at row " << r;
+        }
+    }
+
+    const button& back = buttons[kLineupFightersBackIndex];
+    EXPECT_EQ("back", back.id);
+    EXPECT_EQ(10, back.x);
+    EXPECT_EQ(169, back.y);
+    EXPECT_EQ(44, back.sizex);
+    EXPECT_EQ(20, back.sizey);
+    const button& prev = buttons[kLineupFightersPrevIndex];
+    const button& next = buttons[kLineupFightersNextIndex];
+    EXPECT_EQ(220, prev.x);
+    EXPECT_EQ(270, next.x);
+    EXPECT_EQ(prev.y, back.y);
+    EXPECT_EQ(next.y, back.y);
+    EXPECT_TRUE(prev.hidden) << "pagers start hidden (single page)";
+    EXPECT_TRUE(next.hidden);
+
+    check_no_overlaps(buttons, count, "lineup_fighters");
+    check_bounds(buttons, count, "lineup_fighters");
+}
+
+// The FIGHTERS rewire over a real paged company: 10 occupied slots make two
+// pages (8 + 2); the pagers show, the second page hides the empty rows, and
+// both windows leave the graph closed and reachable.
+TEST(MenuLayout, lineup_fighters_rewire_pages_and_reachability)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    for (int i = 0; i < 10; ++i)
+    {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = "F" + std::to_string(i);
+        member->deployed = (i % 2) == 0;
+        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
+    }
+    save.team_size = 10;
+
+    og::ui::LineupFightersScreenState state;
+    og::ui::lineup_fighters_refresh_rows(state);
+    EXPECT_EQ(10, static_cast<int>(state.slots.size()));
+    EXPECT_TRUE(state.page.multi_page());
+    og::ui::install_lineup_fighters_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::LineupFighters).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    for (const int page : {0, 1})
+    {
+        state.page.page = page;
+        button* buttons = picker_lineup_fighters_buttons();
+        const int count = picker_lineup_fighters_button_count();
+        int highlighted = kLineupFightersBackIndex;
+        spec.nav.rewire(buttons, count, highlighted);
+        const int visible_rows = page == 0 ? 8 : 2;
+        for (int r = 0; r < kLineupFightersRowsPerPage; ++r)
+        {
+            EXPECT_EQ(r >= visible_rows,
+                      buttons[kLineupFightersBodyBase + r].hidden)
+                << "page " << page << " row " << r;
+        }
+        EXPECT_FALSE(buttons[kLineupFightersPrevIndex].hidden);
+        EXPECT_FALSE(buttons[kLineupFightersNextIndex].hidden);
+        // The deploy glyph rides the button label on the visible window.
+        EXPECT_EQ("X", buttons[kLineupFightersDeployBase].label)
+            << "page " << page << ": first visible row is deployed";
+        check_nav_closed_and_reachable(
+            buttons, count, kLineupFightersBackIndex,
+            page == 0 ? "lineup_fighters_p1" : "lineup_fighters_p2");
+    }
+
+    og::ui::install_lineup_fighters_state_for_screen(nullptr);
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    (void)picker_lineup_fighters_buttons();
 }
 
 TEST(MenuLayout, main_options_nav_indices_in_range)

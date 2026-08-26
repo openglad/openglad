@@ -4446,7 +4446,8 @@ TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
     EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetCampaignIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetLevelIndex].hidden);
-    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
+    EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
+        << "the LINEUP door is never gated (docs/lineup-design.md §2.3)";
     EXPECT_EQ("Teams: Auto", buttons[kScenarioMenuCtfTeamsIndex].label);
     EXPECT_EQ("Limit: Map", buttons[kScenarioMenuCtfCapsIndex].label);
 
