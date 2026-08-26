@@ -3762,6 +3762,196 @@ TEST(MenuLayout, networking_text_does_not_overlap_buttons)
     }
 }
 
+namespace
+{
+// One LINEUP §6 mode variant for the session-mode sync. In a session the
+// list rows are PLAYERS machine rows; the host may kick only foreign,
+// non-host machines — model that as every row past the first (the local
+// machine leads the list by lowest player_index).
+NetworkingMenuModeState networking_mode_variant(bool networked, bool host,
+                                                int rows)
+{
+    NetworkingMenuModeState mode;
+    mode.networked = networked;
+    mode.host = host;
+    mode.list_rows = rows;
+    for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
+        mode.row_actionable[static_cast<std::size_t>(slot)] =
+            networked && host && slot > 0 && slot < rows;
+    return mode;
+}
+} // namespace
+
+// LINEUP §6: the session-mode table shape. HOST/JOIN and the native DIRECT
+// (LAN) fields hide, DISCONNECT appears in JOIN's EXACT rect (shared-cell
+// identity — the two are never visible together), the room-code value stays
+// visible but keyboard-dead, and only kickable machine rows keep an action.
+TEST(MenuLayout, networking_session_mode_table_shape)
+{
+    button* buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    ASSERT_EQ(kNetworkingMenuButtonCount, count);
+
+    // The appended DISCONNECT row: JOIN's rect, hidden while idle.
+    const button& join = buttons[kNetworkingMenuJoinIndex];
+    const button& disconnect = buttons[kNetworkingMenuDisconnectIndex];
+    EXPECT_EQ("network_disconnect", disconnect.id);
+    EXPECT_EQ(join.x, disconnect.x);
+    EXPECT_EQ(join.y, disconnect.y);
+    EXPECT_EQ(join.sizex, disconnect.sizex);
+    EXPECT_EQ(join.sizey, disconnect.sizey);
+    EXPECT_TRUE(disconnect.hidden) << "DISCONNECT hides while idle";
+    // Label budget on the 74px face (centered, no clipping).
+    EXPECT_LE(disconnect.label.size() * 6,
+              static_cast<std::size_t>(disconnect.sizex - 8))
+        << "DISCONNECT label overflows its face";
+    // Machine-row budget stays inside the row face the same way.
+    EXPECT_LE(kNetworkingMenuMachineRowLabelChars * 6,
+              static_cast<std::size_t>(PICKER_NETWORKING_ROOM_WIDTH - 8));
+
+    // Hosting, two machines: rows 0..1 visible, row 1 kickable.
+    std::vector<button> hosting(buttons, buttons + count);
+    picker_apply_networking_menu_mode(hosting.data(), count,
+                                      networking_mode_variant(true, true, 2));
+    EXPECT_TRUE(hosting[kNetworkingMenuHostIndex].hidden);
+    EXPECT_TRUE(hosting[kNetworkingMenuJoinIndex].hidden);
+#ifndef __EMSCRIPTEN__
+    EXPECT_TRUE(hosting[kNetworkingMenuIpIndex].hidden);
+    EXPECT_TRUE(hosting[kNetworkingMenuPortIndex].hidden);
+    EXPECT_TRUE(hosting[kNetworkingMenuToggleIndex].hidden);
+#endif
+    EXPECT_FALSE(hosting[kNetworkingMenuDisconnectIndex].hidden);
+    EXPECT_EQ(button_action_id(ButtonAction::NetworkingDisconnect),
+              hosting[kNetworkingMenuDisconnectIndex].myfun);
+    EXPECT_FALSE(hosting[kNetworkingMenuRoomValueIndex].hidden);
+    EXPECT_EQ(0, hosting[kNetworkingMenuRoomValueIndex].myfun)
+        << "session room-code line is read-only";
+    EXPECT_FALSE(hosting[kNetworkingMenuRoomFirstIndex + 0].hidden);
+    EXPECT_EQ(0, hosting[kNetworkingMenuRoomFirstIndex + 0].myfun)
+        << "the host's own machine row is inert";
+    EXPECT_FALSE(hosting[kNetworkingMenuRoomFirstIndex + 1].hidden);
+    EXPECT_EQ(button_action_id(ButtonAction::NetworkingMachineRow),
+              hosting[kNetworkingMenuRoomFirstIndex + 1].myfun)
+        << "a foreign machine row is the kick affordance";
+    for (int slot = 2; slot < kNetworkingMenuRoomSlots; ++slot)
+        EXPECT_TRUE(hosting[static_cast<std::size_t>(
+                        kNetworkingMenuRoomFirstIndex + slot)].hidden)
+            << "row past the machine count";
+    check_no_overlaps(hosting.data(), count, "networking_session_hosting");
+    check_bounds(hosting.data(), count, "networking_session_hosting");
+
+    // Joined: same shape, every machine row inert.
+    std::vector<button> joined(buttons, buttons + count);
+    picker_apply_networking_menu_mode(joined.data(), count,
+                                      networking_mode_variant(true, false, 2));
+    EXPECT_FALSE(joined[kNetworkingMenuDisconnectIndex].hidden);
+    for (int slot = 0; slot < 2; ++slot)
+        EXPECT_EQ(0, joined[static_cast<std::size_t>(
+                         kNetworkingMenuRoomFirstIndex + slot)].myfun)
+            << "joiner machine rows are inert";
+
+    // Idle round-trip: re-applying the idle mode over a session-shaped
+    // table restores every classic flag and action id.
+    std::vector<button> round_trip(hosting);
+    picker_apply_networking_menu_mode(round_trip.data(), count,
+                                      networking_mode_variant(false, true, 0));
+    EXPECT_FALSE(round_trip[kNetworkingMenuHostIndex].hidden);
+    EXPECT_FALSE(round_trip[kNetworkingMenuJoinIndex].hidden);
+    EXPECT_TRUE(round_trip[kNetworkingMenuDisconnectIndex].hidden);
+    EXPECT_EQ(button_action_id(ButtonAction::EditNetworkRoomCode),
+              round_trip[kNetworkingMenuRoomValueIndex].myfun);
+#ifndef __EMSCRIPTEN__
+    EXPECT_FALSE(round_trip[kNetworkingMenuIpIndex].hidden);
+    EXPECT_EQ(button_action_id(ButtonAction::EditNetworkAddress),
+              round_trip[kNetworkingMenuIpIndex].myfun);
+#endif
+    for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
+    {
+        const auto row = static_cast<std::size_t>(
+            kNetworkingMenuRoomFirstIndex + slot);
+        EXPECT_TRUE(round_trip[row].hidden);
+        EXPECT_EQ(button_action_id(ButtonAction::JoinRelayRoomListEntry),
+                  round_trip[row].myfun);
+    }
+}
+
+// LINEUP §6 BFS matrix: {Idle, Hosting, Joined} x {0..5 list rows} on this
+// build (the other build runs the same test compiled its way). Every visible
+// button keyboard-reachable from BACK, no link into a hidden button.
+TEST(MenuLayout, networking_nav_reachable_for_all_modes_and_row_counts)
+{
+    button* buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    ASSERT_EQ(kNetworkingMenuButtonCount, count);
+
+    struct ModeCase
+    {
+        const char* name;
+        bool networked;
+        bool host;
+    };
+    constexpr ModeCase kModes[] = {
+        {"idle", false, false},
+        {"hosting", true, true},
+        {"joined", true, false},
+    };
+    for (const ModeCase& mode_case : kModes)
+    {
+        for (int rows = 0; rows <= kNetworkingMenuRoomSlots; ++rows)
+        {
+            std::vector<button> variant(buttons, buttons + count);
+            picker_apply_networking_menu_mode(
+                variant.data(), count,
+                networking_mode_variant(mode_case.networked, mode_case.host,
+                                        rows));
+            const std::string name = std::format("networking_{}_rows_{}",
+                                                 mode_case.name, rows);
+            check_nav_closed_and_reachable(variant.data(), count,
+                                           kNetworkingMenuBackIndex,
+                                           name.c_str());
+            check_no_overlaps(variant.data(), count, name.c_str());
+            check_bounds(variant.data(), count, name.c_str());
+        }
+    }
+}
+
+// LINEUP §6: the session copy fits the panel frame — the PLAYERS header in
+// the ACTIVE GAMES header slot, and the "Waiting for players..." line drawn
+// below the last machine row for 0- and 1-row lists.
+TEST(MenuLayout, networking_session_copy_fits_within_panel_frame)
+{
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    const int fx1 = PICKER_NETWORKING_FRAME_X1;
+    const int fy1 = PICKER_NETWORKING_FRAME_Y1;
+    const int fx2 = PICKER_NETWORKING_FRAME_X2;
+    const int fy2 = PICKER_NETWORKING_FRAME_Y2;
+    const auto fits = [&](int x, int y, int w, int h, const char* what) {
+        EXPECT_GE(x, fx1) << what << " clips the frame's left edge";
+        EXPECT_GE(y, fy1) << what << " clips the frame's top edge";
+        EXPECT_LE(x + w, fx2) << what << " clips the frame's right edge";
+        EXPECT_LE(y + h, fy2) << what << " clips the frame's bottom edge";
+    };
+
+    const int header_w = mytext.query_width(std::string_view("PLAYERS"));
+    fits(160 - header_w / 2, PICKER_NETWORKING_ROOMS_HEADER_Y, header_w,
+         mytext.sizey, "PLAYERS header");
+
+    const std::string_view waiting = "Waiting for players...";
+    const int waiting_w = mytext.query_width(waiting);
+    for (int shown_rows = 0; shown_rows <= 1; ++shown_rows)
+    {
+        fits(160 - waiting_w / 2,
+             PICKER_NETWORKING_ROOM_Y +
+                 shown_rows * PICKER_NETWORKING_ROOM_PITCH + 2,
+             waiting_w, mytext.sizey, "waiting line");
+    }
+
+    // The KICKED toast budget: 44 chars of 6px centered at 160 stay inside
+    // the frame's inner face.
+    fits(160 - (44 * 6) / 2, PICKER_NETWORKING_ROOMS_HEADER_Y, 44 * 6,
+         mytext.sizey, "toast budget");
+}
+
 
 namespace
 {

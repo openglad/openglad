@@ -606,6 +606,51 @@ bool picker_replace_lobby_client(
     return true;
 }
 
+namespace
+{
+// LINEUP §6: the owning slot behind picker_revert_lobby_client_if_kicked().
+// SdlPickerClient registers its lobby_client_ member for the session's
+// lifetime; the per-frame kicked check can only swap through a registered
+// owner (never through a test-installed stub).
+std::unique_ptr<og::ui::IPickerLobbyClient>* g_picker_lobby_client_owner =
+    nullptr;
+} // namespace
+
+bool picker_revert_lobby_client_if_kicked()
+{
+    if (g_picker_lobby_client_owner == nullptr)
+        return false;
+    std::unique_ptr<og::ui::IPickerLobbyClient>& owner =
+        *g_picker_lobby_client_owner;
+    // A test stub installed over the owned client keeps its own lifecycle;
+    // the swap below must only ever retire the client it owns.
+    if (!owner || og::ui::active_picker_lobby_client() != owner.get())
+        return false;
+    if (!owner->was_kicked())
+        return false;
+
+    TRACE("networking", "kicked by host: reverting to local lobby client");
+    try
+    {
+        if (!picker_replace_lobby_client(
+                owner, og::ui::create_local_picker_lobby_client(),
+                "NETWORKING", /*show_success_popup=*/false))
+        {
+            return false;
+        }
+    }
+    catch (const std::exception& error)
+    {
+        popup_dialog("NETWORKING", error.what());
+        return false;
+    }
+    // Why everything just reverted. connection_alert() carried the same
+    // "KICKED BY HOST" line-B banner between the kick landing and this
+    // frame; the modal is safe here — there is no lobby left to strand.
+    popup_dialog("NETWORKING", "KICKED BY HOST");
+    return true;
+}
+
 bool picker_join_game(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client)
 {
@@ -683,10 +728,15 @@ public:
         : lobby_client_(og::ui::create_local_picker_lobby_client())
     {
         og::ui::install_active_picker_lobby_client(lobby_client_.get());
+        // LINEUP §6: the kicked-joiner per-frame check swaps through this
+        // owning slot (picker_revert_lobby_client_if_kicked).
+        g_picker_lobby_client_owner = &lobby_client_;
     }
 
     ~SdlPickerClient() override
     {
+        if (g_picker_lobby_client_owner == &lobby_client_)
+            g_picker_lobby_client_owner = nullptr;
         if (og::ui::active_picker_lobby_client() == lobby_client_.get())
             og::ui::install_active_picker_lobby_client(nullptr);
     }
@@ -799,7 +849,25 @@ public:
         // not broken.
         og::ui::LegacyMenuFade entry_fade("networking");
 
+        // LINEUP §6 session-mode state: the machine rows exactly as drawn
+        // (snapshot discipline — a click dispatches against the labels the
+        // player saw), and a transient message-line toast.
+        std::vector<og::ui::NetworkingMachineRow> machine_rows;
+        std::string toast_text;
+        std::uint32_t toast_until_ms = 0;
+        const auto show_toast = [&](std::string message) {
+            // Keep the centered line inside the panel frame's inner face
+            // (44 chars * 6px = 264px within the 272px interior).
+            if (message.size() > 44) message.resize(44);
+            toast_text = std::move(message);
+            toast_until_ms = og::input_native::ticks_ms() + 2500;
+        };
+
         auto visible_room_count = [&]() -> int {
+            // Session modes repurpose the list rows as PLAYERS machine rows;
+            // relay-room discovery never runs there (LINEUP §6).
+            if (picker_lobby_is_networked())
+                return 0;
             if (!networking_settings_.use_room_code ||
                 !relay_room_snapshot_is_current())
             {
@@ -811,6 +879,16 @@ public:
         };
 
         auto sync_button_labels = [&]() {
+            const bool session = picker_lobby_is_networked();
+            const bool host_controls = picker_lobby_host_controls_visible();
+            machine_rows.clear();
+            if (session)
+            {
+                machine_rows = og::ui::build_networking_machine_rows(
+                    picker_lobby_players(),
+                    picker_lobby_local_player_indices(),
+                    static_cast<int>(kNetworkingMenuMachineRowLabelChars));
+            }
 #ifndef __EMSCRIPTEN__
             buttons[kNetworkingMenuIpIndex].label =
                 networking_settings_.ip_address.empty()
@@ -825,28 +903,68 @@ public:
                     ? "ROOM CODE: ON"
                     : "ROOM CODE: OFF";
 #endif
-            buttons[kNetworkingMenuRoomValueIndex].label =
-                networking_settings_.room_code.empty()
-                    ? std::string(kRoomCodePlaceholder)
-                    : networking_settings_.room_code;
+            if (session)
+            {
+                // Read-only session line: the relay room code this session
+                // advertises/joined through, or DIRECT for a LAN session.
+                const std::string session_code =
+                    picker_lobby_session_room_code();
+                buttons[kNetworkingMenuRoomValueIndex].label =
+                    session_code.empty() ? std::string("DIRECT")
+                                         : session_code;
+            }
+            else
+            {
+                buttons[kNetworkingMenuRoomValueIndex].label =
+                    networking_settings_.room_code.empty()
+                        ? std::string(kRoomCodePlaceholder)
+                        : networking_settings_.room_code;
+            }
 
             const int room_count = visible_room_count();
+            const int list_rows = session
+                ? std::min(static_cast<int>(machine_rows.size()),
+                           kNetworkingMenuRoomSlots)
+                : room_count;
+            NetworkingMenuModeState mode;
+            mode.networked = session;
+            mode.host = host_controls;
+            mode.list_rows = list_rows;
             for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
             {
                 button& row = buttons[kNetworkingMenuRoomFirstIndex + slot];
-                row.hidden = slot >= room_count;
-                row.label = slot < room_count
-                    ? og::ui::format_relay_room_button_label(
-                          relay_rooms_.rooms[static_cast<std::size_t>(slot)],
-                          kNetworkingMenuRoomLabelChars)
-                    : std::string();
+                if (session)
+                {
+                    const bool in_range = slot < list_rows;
+                    row.label = in_range
+                        ? machine_rows[static_cast<std::size_t>(slot)].label
+                        : std::string();
+                    // Only the host may kick, and only a foreign, non-host
+                    // machine; every other row is an inert census line.
+                    mode.row_actionable[static_cast<std::size_t>(slot)] =
+                        in_range && host_controls &&
+                        !machine_rows[static_cast<std::size_t>(slot)]
+                             .is_local &&
+                        !machine_rows[static_cast<std::size_t>(slot)].is_host;
+                }
+                else
+                {
+                    row.label = slot < list_rows
+                        ? og::ui::format_relay_room_button_label(
+                              relay_rooms_
+                                  .rooms[static_cast<std::size_t>(slot)],
+                              kNetworkingMenuRoomLabelChars)
+                        : std::string();
+                }
             }
-            picker_wire_networking_menu_nav(buttons, num_buttons, room_count);
+            picker_apply_networking_menu_mode(buttons, num_buttons, mode);
             if (buttons[highlighted_button].hidden)
                 highlighted_button = kNetworkingMenuRoomValueIndex;
 
             // Both label surfaces: the static rows above and the live
-            // vbuttons (labels AND the room rows' hidden flags).
+            // vbuttons (labels, hidden flags AND the mode-dependent action
+            // ids — leftclick and keyboard FIRE both dispatch through the
+            // vbutton's myfunc). An inert-but-visible row dims.
             for (std::size_t i = 0;
                  i < static_cast<std::size_t>(num_buttons);
                  ++i)
@@ -857,6 +975,10 @@ public:
                         buttons[i].label;
                     og::runtime::current_session->allbuttons_[i]->hidden =
                         buttons[i].hidden;
+                    og::runtime::current_session->allbuttons_[i]->myfunc =
+                        buttons[i].myfun;
+                    og::runtime::current_session->allbuttons_[i]->dimmed =
+                        !buttons[i].hidden && buttons[i].myfun == 0;
                 }
             }
         };
@@ -880,6 +1002,10 @@ public:
             const bool room_update_was_pending = relay_rooms_.update_pending;
             poll_relay_room_list_request();
             picker_lobby_poll();
+            // LINEUP §6: a joiner parked HERE when the kick lands reverts on
+            // this same per-frame check the Team Build screens run; the next
+            // sync below re-derives the idle shape from the local client.
+            (void)picker_revert_lobby_client_if_kicked();
             // Sample and dispatch input before starting any room-list request.
             const bool sampled_pointer_action = leftmouse(buttons) != 0;
             if (sampled_pointer_action)
@@ -965,6 +1091,72 @@ public:
                 reinitialize_buttons();
                 break;
             }
+            case ButtonAction::NetworkingMachineRow:
+            {
+                // LINEUP §6 kick: host only, foreign machines only — the
+                // mode sync leaves every other row keyboard/click-dead, so
+                // reaching here with a live slot IS a kickable row.
+                const int slot = pks().networking_clicked_room_slot;
+                pks().networking_clicked_room_slot = -1;
+                if (picker_lobby_is_networked() &&
+                    picker_lobby_host_controls_visible() && slot >= 0 &&
+                    slot < static_cast<int>(machine_rows.size()))
+                {
+                    const og::ui::NetworkingMachineRow row =
+                        machine_rows[static_cast<std::size_t>(slot)];
+                    if (!row.is_local && !row.is_host)
+                    {
+                        const std::string prompt =
+                            row.label + "\nKick this machine?";
+                        if (yes_or_no_prompt("KICK", prompt.c_str(), false) &&
+                            picker_lobby_kick_machine(row.machine_id))
+                        {
+                            TRACE("networking", "KICKED %s",
+                                  row.label.c_str());
+                            show_toast("KICKED " + row.label);
+                        }
+                    }
+                }
+                reinitialize_buttons();
+                break;
+            }
+            case ButtonAction::NetworkingDisconnect:
+                // LINEUP §6 disconnect, both roles: confirm, tear the
+                // network client down (a host's server teardown drops every
+                // peer through the transport), swap in a fresh local client
+                // re-initialized from the save — the same install/teardown
+                // order picker_host_game uses, via picker_replace_lobby_client
+                // — and return to Team Build.
+                if (picker_lobby_is_networked() &&
+                    yes_or_no_prompt("DISCONNECT", "Leave this session?",
+                                     false))
+                {
+                    (void)picker_lobby_disconnect_session();
+                    bool swapped = false;
+                    try
+                    {
+                        swapped = picker_replace_lobby_client(
+                            lobby_client_,
+                            og::ui::create_local_picker_lobby_client(),
+                            "NETWORKING", /*show_success_popup=*/false);
+                    }
+                    catch (const std::exception& error)
+                    {
+                        popup_dialog("NETWORKING", error.what());
+                    }
+                    if (swapped)
+                    {
+                        TRACE("networking", "DISCONNECTED");
+                        popup_dialog("NETWORKING", "DISCONNECTED");
+                        // The BACK exit shape: Base Camp re-enters
+                        // instantly (the wrapper's Instant note), so no
+                        // fade-out here.
+                        cancel_relay_room_list_request();
+                        return false;
+                    }
+                }
+                reinitialize_buttons();
+                break;
             default:
                 break;
             }
@@ -1012,17 +1204,41 @@ public:
                     field.y + (field.sizey - mytext.sizey) / 2;
                 mytext.write_xy(label_x, label_y, label, DARK_BLUE);
             };
+            const bool session_view = picker_lobby_is_networked();
             draw_field_label(kNetworkingMenuRoomValueIndex, "ROOM CODE");
 #ifndef __EMSCRIPTEN__
-            draw_field_label(kNetworkingMenuIpIndex, "JOIN IP / HOST");
-            draw_field_label(kNetworkingMenuPortIndex, "PORT");
-            mytext.write_xy_center(160, PICKER_NETWORKING_DIRECT_HEADER_Y,
-                                   DARK_BLUE, "DIRECT (LAN)");
+            if (!session_view)
+            {
+                draw_field_label(kNetworkingMenuIpIndex, "JOIN IP / HOST");
+                draw_field_label(kNetworkingMenuPortIndex, "PORT");
+                mytext.write_xy_center(160,
+                                       PICKER_NETWORKING_DIRECT_HEADER_Y,
+                                       DARK_BLUE, "DIRECT (LAN)");
+            }
 #endif
+            // LINEUP §6: the session view heads the same list area PLAYERS.
             mytext.write_xy_center(160, PICKER_NETWORKING_ROOMS_HEADER_Y,
-                                   DARK_BLUE, "ACTIVE GAMES");
+                                   DARK_BLUE,
+                                   session_view ? "PLAYERS" : "ACTIVE GAMES");
 
-            if (visible_room_count() == 0)
+            if (session_view)
+            {
+                // A lone machine (its own row still lists) waits below it.
+                const int shown_rows = std::min(
+                    static_cast<int>(machine_rows.size()),
+                    kNetworkingMenuRoomSlots);
+                if (shown_rows <= 1)
+                {
+                    const std::string_view waiting = "Waiting for players...";
+                    mytext.write_xy(
+                        160 - mytext.query_width(waiting) / 2,
+                        PICKER_NETWORKING_ROOM_Y +
+                            shown_rows * PICKER_NETWORKING_ROOM_PITCH + 2,
+                        waiting,
+                        DARK_BLUE);
+                }
+            }
+            else if (visible_room_count() == 0)
             {
                 std::string_view rooms_status;
                 if (!networking_settings_.use_room_code)
@@ -1050,17 +1266,36 @@ public:
             const Sint32 instruction_y =
                 buttons[kNetworkingMenuJoinIndex].y -
                 PICKER_NETWORKING_INSTRUCTION_GAP - instruction_height;
-            for (std::size_t line_index = 0;
-                 line_index < instruction_lines.size();
-                 ++line_index)
+            if (!session_view)
             {
-                const std::string_view line = instruction_lines[line_index];
+                // The HOST/JOIN guidance describes buttons a session hides.
+                for (std::size_t line_index = 0;
+                     line_index < instruction_lines.size();
+                     ++line_index)
+                {
+                    const std::string_view line =
+                        instruction_lines[line_index];
+                    mytext.write_xy(
+                        160 - mytext.query_width(line) / 2,
+                        instruction_y +
+                            static_cast<Sint32>(line_index) *
+                                instruction_pitch,
+                        line,
+                        DARK_BLUE);
+                }
+            }
+
+            // Message-line toast ("KICKED <machine>"), drawn in the
+            // instruction band until its stamp expires.
+            if (!toast_text.empty() &&
+                static_cast<std::int32_t>(og::input_native::ticks_ms() -
+                                          toast_until_ms) < 0)
+            {
                 mytext.write_xy(
-                    160 - mytext.query_width(line) / 2,
-                    instruction_y +
-                        static_cast<Sint32>(line_index) * instruction_pitch,
-                    line,
-                    DARK_BLUE);
+                    160 - mytext.query_width(toast_text) / 2,
+                    instruction_y + instruction_height - mytext.sizey,
+                    toast_text,
+                    YELLOW);
             }
 
             draw_highlight(buttons[highlighted_button]);
@@ -1480,6 +1715,10 @@ private:
     // errors back off harder so an unreachable relay is not hammered.
     void refresh_relay_room_list(bool force)
     {
+        // LINEUP §6: no relay-room discovery while a session is live — the
+        // list area belongs to the PLAYERS machine rows.
+        if (picker_lobby_is_networked())
+            return;
         if (!networking_settings_.use_room_code || relay_rooms_.request)
             return;
         const std::uint32_t now = og::input_native::ticks_ms();
@@ -1723,6 +1962,9 @@ static const button k_networking_menu_buttons[] =
         button("network_room_2", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 2 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 2, MenuNav{}, true),
         button("network_room_3", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 3 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 3, MenuNav{}, true),
         button("network_room_4", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 4 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 4, MenuNav{}, true),
+        // LINEUP §6: session-mode DISCONNECT, drawn in JOIN's exact rect —
+        // the two are never visible in the same mode. Hidden while idle.
+        button("network_disconnect", "DISCONNECT", KEYSTATE_UNKNOWN, 205, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::NetworkingDisconnect), -1, MenuNav{}, true),
     };
 #else
 // Native: ROOM CODE + ACTIVE GAMES lead; the direct JOIN IP / PORT rows keep
@@ -1742,6 +1984,9 @@ static const button k_networking_menu_buttons[] =
         button("network_room_2", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 2 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 2, MenuNav{}, true),
         button("network_room_3", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 3 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 3, MenuNav{}, true),
         button("network_room_4", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 4 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 4, MenuNav{}, true),
+        // LINEUP §6: session-mode DISCONNECT, drawn in JOIN's exact rect —
+        // the two are never visible in the same mode. Hidden while idle.
+        button("network_disconnect", "DISCONNECT", KEYSTATE_UNKNOWN, 205, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::NetworkingDisconnect), -1, MenuNav{}, true),
     };
 #endif
 
@@ -1796,11 +2041,14 @@ button* picker_networking_buttons()
     return pks().networking_buttons.data();
 }
 
-// NETWORKING subscreen nav graph for `visible_rooms` visible ACTIVE GAMES
-// rows. Deterministic rewire (teams-menu pattern): nav never links to a
-// hidden room row, and every visible button stays reachable from BACK.
+// NETWORKING subscreen nav graph for `visible_rooms` visible list rows.
+// Deterministic rewire (teams-menu pattern): nav never links to a hidden
+// row, and every visible button stays reachable from BACK. Session modes
+// (LINEUP §6) share one graph on both builds — the LAN fields, HOST and
+// JOIN are hidden there and never linked.
 void picker_wire_networking_menu_nav(button* buttons, int count,
-                                     int visible_rooms)
+                                     int visible_rooms,
+                                     bool networked_session)
 {
     if (buttons == nullptr || count < kNetworkingMenuButtonCount)
         return;
@@ -1823,6 +2071,33 @@ void picker_wire_networking_menu_nav(button* buttons, int count,
         buttons[index].nav.down = slot + 1 < visible_rooms
             ? index + 1
             : -1; // patched to the section below the list per build
+    }
+
+    if (networked_session)
+    {
+        // Session graph (both builds): room-code value -> machine rows ->
+        // action row (BACK | DISCONNECT) -> wrap. The inert room-code value
+        // stays in the cycle (visible-for-nav, Enter is a no-op — the
+        // engine's Disabled-row convention).
+        const int above_actions =
+            last_room >= 0 ? last_room : kNetworkingMenuRoomValueIndex;
+        buttons[kNetworkingMenuRoomValueIndex].nav.up =
+            kNetworkingMenuBackIndex;
+        buttons[kNetworkingMenuRoomValueIndex].nav.down =
+            first_room >= 0 ? first_room : kNetworkingMenuBackIndex;
+        if (last_room >= 0)
+            buttons[last_room].nav.down = kNetworkingMenuBackIndex;
+        buttons[kNetworkingMenuBackIndex].nav.up = above_actions;
+        buttons[kNetworkingMenuBackIndex].nav.down =
+            kNetworkingMenuRoomValueIndex;
+        buttons[kNetworkingMenuBackIndex].nav.right =
+            kNetworkingMenuDisconnectIndex;
+        buttons[kNetworkingMenuDisconnectIndex].nav.up = above_actions;
+        buttons[kNetworkingMenuDisconnectIndex].nav.left =
+            kNetworkingMenuBackIndex;
+        buttons[kNetworkingMenuDisconnectIndex].nav.down =
+            kNetworkingMenuRoomValueIndex;
+        return;
     }
 
 #ifdef __EMSCRIPTEN__
@@ -1873,6 +2148,68 @@ void picker_wire_networking_menu_nav(button* buttons, int count,
     buttons[kNetworkingMenuJoinIndex].nav.left = kNetworkingMenuHostIndex;
     buttons[kNetworkingMenuJoinIndex].nav.down = kNetworkingMenuRoomValueIndex;
 #endif
+}
+
+// The per-frame mode sync for the static NETWORKING table (LINEUP §6):
+// deterministic full-write of every mode-dependent hidden flag and action id
+// (pattern b — no variant inherits a stale one), then the graph rewire.
+// Idle restores the classic ACTIVE GAMES shape byte for byte.
+void picker_apply_networking_menu_mode(button* buttons, int count,
+                                       const NetworkingMenuModeState& mode)
+{
+    if (buttons == nullptr || count < kNetworkingMenuButtonCount)
+        return;
+    const int list_rows =
+        std::clamp(mode.list_rows, 0, kNetworkingMenuRoomSlots);
+
+    // Action row: HOST/JOIN are idle-only, DISCONNECT is session-only.
+    buttons[kNetworkingMenuHostIndex].hidden = mode.networked;
+    buttons[kNetworkingMenuHostIndex].myfun =
+        button_action_id(ButtonAction::SubmitNetworkHost);
+    buttons[kNetworkingMenuJoinIndex].hidden = mode.networked;
+    buttons[kNetworkingMenuJoinIndex].myfun =
+        button_action_id(ButtonAction::SubmitNetworkJoin);
+    buttons[kNetworkingMenuDisconnectIndex].hidden = !mode.networked;
+    buttons[kNetworkingMenuDisconnectIndex].myfun =
+        button_action_id(ButtonAction::NetworkingDisconnect);
+
+#ifndef __EMSCRIPTEN__
+    // The DIRECT (LAN) fields exist only while idle.
+    buttons[kNetworkingMenuIpIndex].hidden = mode.networked;
+    buttons[kNetworkingMenuIpIndex].myfun =
+        button_action_id(ButtonAction::EditNetworkAddress);
+    buttons[kNetworkingMenuPortIndex].hidden = mode.networked;
+    buttons[kNetworkingMenuPortIndex].myfun =
+        button_action_id(ButtonAction::EditNetworkPort);
+    buttons[kNetworkingMenuToggleIndex].hidden = mode.networked;
+    buttons[kNetworkingMenuToggleIndex].myfun =
+        button_action_id(ButtonAction::ToggleNetworkRoomCode);
+#endif
+
+    // The room-code value stays visible in a session as the read-only
+    // <code>/DIRECT line — keyboard-dead like an engine Disabled row.
+    buttons[kNetworkingMenuRoomValueIndex].hidden = false;
+    buttons[kNetworkingMenuRoomValueIndex].myfun = mode.networked
+        ? 0
+        : button_action_id(ButtonAction::EditNetworkRoomCode);
+
+    // List rows: relay rooms while idle, machine rows in a session (only
+    // the host's kickable foreign machines stay clickable there).
+    for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
+    {
+        button& row = buttons[kNetworkingMenuRoomFirstIndex + slot];
+        row.hidden = slot >= list_rows;
+        if (!mode.networked)
+            row.myfun =
+                button_action_id(ButtonAction::JoinRelayRoomListEntry);
+        else
+            row.myfun = mode.row_actionable[static_cast<std::size_t>(slot)]
+                ? button_action_id(ButtonAction::NetworkingMachineRow)
+                : 0;
+    }
+
+    picker_wire_networking_menu_nav(buttons, count, list_rows,
+                                    mode.networked);
 }
 
 int picker_networking_button_count()

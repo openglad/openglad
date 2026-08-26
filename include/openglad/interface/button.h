@@ -408,12 +408,11 @@ enum class ButtonAction : Sint32
     // dispatch, which calls og::ui::run_campaign_zone_submenu with the
     // clicked row's own page id.)
     ToggleCrossControl = 106,
-    // LINEUP (docs/lineup-design.md §2): values 107..119 are reserved for
-    // the LINEUP/FIGHTERS screens (WP-E); the Networking three-mode UI
-    // (WP-F) takes 120..125 concurrently — do not hand either range to
-    // anything else. The FIGHTERS list itself dispatches through
-    // MenuSpecRow (101), so only the door, the eight knob cyclers' two
-    // actions, and the action strip burn ids here.
+    // LINEUP (docs/lineup-design.md §2): values 107..119 belong to the
+    // LINEUP/FIGHTERS screens; 120..125 to the Networking session UI.
+    // The FIGHTERS list itself dispatches through MenuSpecRow (101), so
+    // only the door, the knob cyclers' two actions, and the action strip
+    // burn ids here.
     OpenLineup = 107,          // SCENARIO door -> the LINEUP screen
     CycleLineupBots = 108,     // arg = team 0..3 (save.bot_squad[t])
     CycleLineupLevel = 109,    // arg = team 0..3 (save.bot_level[t])
@@ -422,6 +421,16 @@ enum class ButtonAction : Sint32
     LineupSplitFair = 112,     // snake draft by power (level fallback)
     LineupUnite = 113,         // ALL TO 1 (lowest local seated team)
     // 114..119 reserved for LINEUP follow-ups (docs/lineup-design.md).
+    // NETWORKING subscreen PLAYERS list (LINEUP §6, session modes): the five
+    // list rows repurposed as one row per lobby MACHINE (arg = list slot
+    // 0..4, stashed like JoinRelayRoomListEntry); a host clicking a foreign
+    // row starts the KICK confirm. Own/host rows and every joiner row are
+    // inert (myfun = 0) and never dispatch this.
+    NetworkingMachineRow = 120,
+    // NETWORKING subscreen DISCONNECT (LINEUP §6, both roles): confirm,
+    // tear the network client down, swap in a fresh local client and return
+    // to Team Build. Values 122..125 remain reserved.
+    NetworkingDisconnect = 121,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)
