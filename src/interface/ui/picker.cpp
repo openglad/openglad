@@ -3459,30 +3459,11 @@ Sint32 change_lineup_bots(Sint32 team)
    std::vector<std::string> presets;
    (void)og::script::hooks::campaign_lineup_presets(presets);
    const std::size_t t = static_cast<std::size_t>(team);
-   short next = og::ui::cycle_lineup_bots(
+   // §2.3 (ruling 2026-08-26): NONE is legal on ANY team — it means
+   // "never bots on this team" and cannot deactivate anyone, so the wheel
+   // is exactly og::ui::cycle_lineup_bots on all three clients.
+   const short next = og::ui::cycle_lineup_bots(
        save.bot_squad[t], static_cast<int>(presets.size()), 1);
-   if (next == 1)
-   {
-       // §2.3: BOTS: NONE on a team that still has a seat or a deployed
-       // fighter is refused with a toast — LINEUP never reseats anyone.
-       // The wheel skips over NONE so the presets stay reachable.
-       const LineupSeatView view = picker_lineup_seat_view();
-       const std::array<og::ui::LineupTeamBand, 4> bands =
-           og::ui::build_lineup_bands(save, view.players,
-                                      view.local_indices,
-                                      picker_lobby_is_networked(), {});
-       const og::ui::LineupTeamBand& band = bands[t];
-       if (band.has_seat || band.fighter_count > 0)
-       {
-           TRACE("lineup", "bots_none_refused team=%d", static_cast<int>(team));
-           og::ui::lineup_show_toast(
-               band.has_seat
-                   ? std::format("TEAM {} HAS PLAYERS", team + 1)
-                   : std::format("TEAM {} HAS FIGHTERS", team + 1));
-           next = og::ui::cycle_lineup_bots(
-               next, static_cast<int>(presets.size()), 1);
-       }
-   }
    save.bot_squad[t] = og::sim::clamp_bot_squad(next);
    TRACE("lineup", "bots team=%d squad=%d", static_cast<int>(team),
          static_cast<int>(save.bot_squad[t]));

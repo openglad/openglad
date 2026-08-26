@@ -512,8 +512,9 @@ void seed_session_save_for_net(const std::string& campaign, short scen_num)
 
 // ---------------------------------------------------------------------------
 // Flow 1: SCENARIO carries the LINEUP door; the page opens; the host's
-// per-team knobs cycle with save-value pins; BOTS: NONE on an occupied team
-// refuses with a toast and never sticks.
+// per-team knobs cycle with save-value pins; BOTS: NONE lands on an occupied
+// team exactly as it does on an empty one (§2.3, ruling 2026-08-26 — one
+// write rule on all three clients, no refusal, no toast).
 
 struct LineupKnobsFlowState
 {
@@ -522,7 +523,7 @@ struct LineupKnobsFlowState
     bool page_opened = false;
     bool level_cycled = false;
     bool bots_none_on_empty_team = false;
-    bool bots_zero_kept_auto = false;
+    bool bots_none_on_occupied_team = false;
     int captures = 0;
 };
 
@@ -555,11 +556,10 @@ int lineup_knobs_flow_injector(void* data)
         state->bots_none_on_empty_team =
             click_until_label("lineup_bots_1", "BOTS: NONE");
         SDL_Delay(300);
-        // BOTS on team 1 (the seat + every fighter): NONE is refused with
-        // a toast and the wheel skips back to AUTO.
-        interact("lineup_bots_0");
-        state->bots_zero_kept_auto =
-            wait_for_interactable_label("lineup_bots_0", "BOTS: AUTO", 5000);
+        // BOTS on team 1 (the seat + every fighter): NONE is just as legal
+        // there — one cycle off AUTO lands on it and it sticks.
+        state->bots_none_on_occupied_team =
+            click_until_label("lineup_bots_0", "BOTS: NONE");
         SDL_Delay(300);
 
         interact("back");  // LINEUP -> SCENARIO
@@ -573,7 +573,7 @@ int lineup_knobs_flow_injector(void* data)
 
 } // namespace
 
-TEST(LineupUi, scenario_door_knob_cycles_and_none_refusal)
+TEST(LineupUi, scenario_door_knob_cycles_and_none_everywhere)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -598,18 +598,21 @@ TEST(LineupUi, scenario_door_knob_cycles_and_none_refusal)
     EXPECT_TRUE(state.level_cycled) << "LV knob should cycle AUTO -> 1";
     EXPECT_TRUE(state.bots_none_on_empty_team)
         << "BOTS on an empty team reaches NONE";
-    EXPECT_TRUE(state.bots_zero_kept_auto)
-        << "the refused NONE must skip back to AUTO";
+    EXPECT_TRUE(state.bots_none_on_occupied_team)
+        << "BOTS on the occupied team reaches NONE too";
     EXPECT_EQ(1, static_cast<int>(save.bot_level[1]))
         << "the LV cycle lands in the save knob";
     EXPECT_EQ(1, static_cast<int>(save.bot_squad[1]))
         << "the empty team's NONE lands in the save knob";
-    EXPECT_EQ(0, static_cast<int>(save.bot_squad[0]))
-        << "the occupied team keeps AUTO after the refusal";
-    EXPECT_TRUE(trace_contains("lineup", "bots_none_refused team=0"))
-        << "the refusal must trace";
-    EXPECT_TRUE(trace_contains("lineup", "toast TEAM 1 HAS"))
-        << "the refusal toast must trace";
+    // Both knob writes survived every later per-frame picker_lobby_poll(),
+    // which copies the lobby settings back over the save: the value is only
+    // still 1 because change_lineup_bots pushed it into the lobby first.
+    EXPECT_EQ(1, static_cast<int>(save.bot_squad[0]))
+        << "the occupied team's NONE lands and stays synced";
+    EXPECT_FALSE(trace_contains("lineup", "bots_none_refused"))
+        << "NONE is never refused";
+    EXPECT_FALSE(trace_contains("lineup", "toast TEAM "))
+        << "NONE raises no toast";
     EXPECT_EQ(1, state.captures) << "the SCENARIO capture should land";
 
     restore_gladiator_mount();
