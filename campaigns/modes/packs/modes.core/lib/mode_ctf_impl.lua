@@ -743,11 +743,10 @@ local function decide(level, inputs)
       end
     end
   end
-  -- Under TROOPS:OWN/FAIR the lobby request wins the COUNT — roster flag
-  -- teams plus authored backfill (issue #218), TEAMS: Auto = the authored
-  -- flag-team count (2026-08-18 directive); under TROOPS:ALL the raw
-  -- requested count over the authored flag teams (no manifest default —
-  -- the verified per-mode Auto asymmetry).
+  -- The shared activation rule (lineup A1/A2): every authored flag team
+  -- is the map's own value under TROOPS:ALL too (no manifest default —
+  -- the verified per-mode Auto asymmetry, auto_default 0), minus the
+  -- OFF teams, plus every occupied team.
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, 0)
   -- Deliberately NOT match.resolve_limit: the middle term here is the

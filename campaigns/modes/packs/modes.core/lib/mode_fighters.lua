@@ -155,10 +155,15 @@ end
 -- The lineup knobs (lineup §3.2) reach the band through TEAM 1's pair —
 -- the band is ONE fighter population, so the first team's knobs govern
 -- it: NONE fields nothing, a preset's families replace the caller's
--- roster, an explicit level replaces the formula. FAIR reads as AUTO
--- here (no families, and the solver does not fit the band's hard shape
--- of SINGLES — one bot per free slot, whatever a preset.count says —
--- PLAN_BASE stays untouched, the design's own carve-out).
+-- roster, the LV offset (amendment A6) rides on top of the formula
+-- through mode_match.resolve_level — the same clamp(base + offset, 1, 9)
+-- the team modes apply. OFF reads as NONE here: the band has no team to
+-- take out of a mask (every fighter wears a band byte), so the one thing
+-- OFF can still mean is "no bots" — it cannot empty the band of its
+-- deployed fighters any more than it can empty a seated team. FAIR reads
+-- as AUTO here (no families, and the solver does not fit the band's
+-- hard shape of SINGLES — one bot per free slot, whatever a preset.count
+-- says — PLAN_BASE stays untouched, the design's own carve-out).
 --
 -- The pairs of teams 2-4 are DEAD in a band mode: every fighter wears a
 -- band byte, no score team ever fields a squad, so bot_squad_2..4 and
@@ -176,7 +181,7 @@ end
 -- modes refuse on this number BEFORE touching the world, so no knob shape
 -- can reach an error() from a half-applied init.
 local function planned_count(deployed_count, target)
-  if band_knob() == 1 then
+  if match.squad_off(band_knob()) then
     return deployed_count
   end
   return og.max(deployed_count, target)
@@ -185,17 +190,16 @@ end
 local function fill_bots(count, target, id_base, bitmap_slot, cursor_slot,
                          roster)
   local knob = band_knob()
-  if knob == 1 then
+  if match.squad_off(knob) then
     return count
   end
   local preset_roster = match.preset_families(knob)
   if preset_roster ~= nil then
     roster = preset_roster
   end
-  local level = og.match_setting("bot_level_1")
-  if level <= 0 then
-    level = og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
-  end
+  -- Team 1's LV offset over the legacy formula (A6): resolve_level reads
+  -- the team-0 pair, the band's own.
+  local level = match.resolve_level(0, match.difficulty_level())
   local bitmap = og.mode_get(bitmap_slot)
   for c = 0, C.FFA_TEAM_COUNT - 1 do
     if count < target then

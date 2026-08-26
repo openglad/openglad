@@ -88,9 +88,12 @@ end
 -- test_mode_bindings (matched-teams D27/D29).
 local MATCHED_TROOPS = 3
 
--- One normalization rule for every team-count consumer: Auto (raw <= 0)
+-- One normalization rule for the manifest team count: Auto (raw <= 0)
 -- means "no numeric clamp" — count 0; junk counts (5+) pass through to
--- activate_teams' clamp.
+-- activate_teams' clamp. The lobby TEAMS request that once fed this is
+-- retired (lineup amendment A1/A3): the only count left is the manifest
+-- row's own default, and the OFF wheel value is how a team leaves the
+-- mask now (mode_match.activation).
 local function normalize_team_count(raw)
   if raw <= 0 then
     return 0
@@ -98,12 +101,14 @@ local function normalize_team_count(raw)
   return raw
 end
 
--- The team-activation clamp (og.effective_team_mask's rule applied to an
--- arbitrary authored domain — CTF activates flag teams, not marker teams):
--- a normalized count of 0 (requested <= 0) takes every authored team;
--- otherwise the first clamp(count, 2, 4) authored teams in index order.
-local function activate_teams(authored_mask, requested)
-  local count = normalize_team_count(requested)
+-- The team-activation clamp over an arbitrary authored domain (CTF
+-- activates flag teams, not marker teams): a normalized count of 0
+-- (count <= 0) takes every authored team; otherwise the first
+-- clamp(count, 2, 4) authored teams in index order. `count` is the
+-- map's own value — the manifest row.teams under TROOPS: ALL — never a
+-- lobby request.
+local function activate_teams(authored_mask, count)
+  count = normalize_team_count(count)
   if count <= 0 then
     return authored_mask
   end

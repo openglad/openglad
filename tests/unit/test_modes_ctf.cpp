@@ -293,7 +293,9 @@ TEST_F(ModesCtf, init_demotes_to_inactive_below_two_flag_teams)
     EXPECT_FALSE(fx.world().mode.active) << "the demotion is latched";
 }
 
-TEST_F(ModesCtf, init_strips_teams_beyond_requested_count)
+// BOTS: OFF on a flag team (lineup A1/A2, the successor of the retired
+// TEAMS count) drops it exactly as TEAMS: 2 did: flag, troops and squad.
+TEST_F(ModesCtf, init_strips_teams_switched_off)
 {
     ModesCtfWorld fx;
     fx.spawn_flag(flag_family_, 0, 96, 96);
@@ -309,7 +311,8 @@ TEST_F(ModesCtf, init_strips_teams_beyond_requested_count)
     fx.spawn_anchor(2, 128, 832);
     fx.spawn_anchor(3, 512, 832);
     walker* stripped_living = fx.spawn_living(FAMILY_ORC, 2, 200, 760);
-    fx.world().ctf_requested_team_count = 2;
+    fx.world().ctf_requested_bot_squad[2] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
 
     fx.tick(1);
 
@@ -385,27 +388,48 @@ TEST_F(ModesCtf, blocked_anchor_bot_fill_falls_back_to_flag_home)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
-// The modes.md §4.10 sparse-activation shape: flags on {0, 2, 3} with a
-// requested count of 2 activate {0, 2} in index order; roster walkers on
-// the stripped team survive.
-TEST_F(ModesCtf, sparse_flag_teams_activate_in_index_order)
+// The modes.md §4.10 sparse shape under the amendment: flags on {0, 2, 3}
+// with team 3 OFF activate {0, 2} and strip team 3's troops; the same
+// knob beside a deployed fighter on team 3 is ignored — the roster keeps
+// the team on, and nothing on it is stripped (lineup A2: a team is on
+// when anything is on it).
+TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
 {
-    ModesCtfWorld fx;
-    fx.spawn_flag(flag_family_, 0, 96, 96);
-    fx.spawn_flag(flag_family_, 2, 480, 800);
-    fx.spawn_flag(flag_family_, 3, 480, 160);
-    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
-    fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
-    walker* stripped = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
-    walker* kept_hero = fx.spawn_hero(FAMILY_SOLDIER, 3, 520, 200, 7);
-    fx.world().ctf_requested_team_count = 2;
-    fx.tick(1);
+    {
+        ModesCtfWorld fx;
+        fx.spawn_flag(flag_family_, 0, 96, 96);
+        fx.spawn_flag(flag_family_, 2, 480, 800);
+        fx.spawn_flag(flag_family_, 3, 480, 160);
+        fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+        fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
+        walker* stripped = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
+        fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+        fx.tick(1);
 
-    ASSERT_TRUE(fx.ctf_active());
-    EXPECT_EQ(5, fx.var(kSlotTeamMask)) << "active mask is {0, 2}";
-    EXPECT_EQ(2, fx.var(kSlotTeamCount));
-    EXPECT_TRUE(stripped->dead());
-    EXPECT_FALSE(kept_hero->dead()) << "roster walkers are never stripped";
+        ASSERT_TRUE(fx.ctf_active());
+        EXPECT_EQ(5, fx.var(kSlotTeamMask)) << "active mask is {0, 2}";
+        EXPECT_EQ(2, fx.var(kSlotTeamCount));
+        EXPECT_TRUE(stripped->dead());
+    }
+    {
+        ModesCtfWorld fx;
+        fx.spawn_flag(flag_family_, 0, 96, 96);
+        fx.spawn_flag(flag_family_, 2, 480, 800);
+        fx.spawn_flag(flag_family_, 3, 480, 160);
+        fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+        fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
+        walker* troop = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
+        walker* kept_hero = fx.spawn_hero(FAMILY_SOLDIER, 3, 520, 200, 7);
+        fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+        fx.tick(1);
+
+        ASSERT_TRUE(fx.ctf_active());
+        EXPECT_EQ(1 + 4 + 8, fx.var(kSlotTeamMask))
+            << "a deployed fighter keeps an OFF team on";
+        EXPECT_EQ(3, fx.var(kSlotTeamCount));
+        EXPECT_FALSE(kept_hero->dead()) << "roster walkers are never stripped";
+        EXPECT_FALSE(troop->dead()) << "an on team keeps its troops";
+    }
 }
 
 TEST_F(ModesCtf, map_capture_limit_comes_from_flag_level_and_request_wins)
@@ -797,7 +821,6 @@ TEST_F(ModesCtf, multi_carry_capture_awards_all_flags)
     walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
     fx.spawn_living(FAMILY_SOLDIER, 1, 500, 150);
     fx.spawn_living(FAMILY_SOLDIER, 2, 500, 760);
-    fx.world().ctf_requested_team_count = 3;
     fx.tick(1);
     ASSERT_EQ(3, fx.var(kSlotTeamCount));
 
@@ -1302,7 +1325,6 @@ TEST_F(ModesCtf, one_blink_drops_every_carried_flag)
     walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
     fx.spawn_living(FAMILY_SOLDIER, 1, 500, 150);
     fx.spawn_living(FAMILY_SOLDIER, 2, 500, 760);
-    fx.world().ctf_requested_team_count = 3;
     fx.world().ctf_requested_respawn_ticks = 5000;
     fx.tick(1);
     ASSERT_EQ(3, fx.var(kSlotTeamCount));
@@ -1942,7 +1964,6 @@ TEST_F(ModesCtf, director_partitions_roles_exactly)
     walker* flag0 = fx.spawn_flag(flag_family_, 0, 96, 96);
     fx.spawn_flag(flag_family_, 1, 544, 800);
     walker* flag2 = fx.spawn_flag(flag_family_, 2, 544, 96);
-    fx.world().ctf_requested_team_count = 3;
     // Oblist order fixes the partition: m0 carrier, m1/m2 defenders
     // (ceil(5/3) = 2 of the 5 remaining), attacker m3, escort m4,
     // attacker m5.
@@ -2009,7 +2030,6 @@ TEST_F(ModesCtf, director_targets_enemy_carried_flag_at_its_live_position)
     fx.spawn_flag(flag_family_, 0, 96, 96);
     walker* flag1 = fx.spawn_flag(flag_family_, 1, 544, 800);
     fx.spawn_flag(flag_family_, 2, 544, 96);
-    fx.world().ctf_requested_team_count = 3;
     fx.spawn_living(FAMILY_SOLDIER, 0, 128, 128, ACT_SIT);  // defender
     walker* attacker = fx.spawn_living(FAMILY_SOLDIER, 0, 320, 480, ACT_SIT);
     fx.spawn_living(FAMILY_SOLDIER, 1, 544, 700, ACT_CONTROL);
