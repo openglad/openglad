@@ -15,6 +15,7 @@
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -1447,6 +1448,78 @@ og.register_campaign_hooks({
     }
 
     picker_lobby_set_player_mode(1);
+    restore_gladiator_mount();
+}
+
+// §2.2: the FIGHTERS screen's capabilities come from the campaign zone, and
+// the zone is a function of campaign state the level cursor is part of. A
+// host changing the level under a parked joiner therefore has to move this
+// screen's capabilities with it — base_camp_frame_tick refetches on exactly
+// this guard. Without the refetch the screen kept the previous level's
+// composition: deploy boxes still live on a level that forbids deploying.
+TEST(LineupUi, fighters_refetches_the_zone_after_a_level_change)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    for (auto& slot : save.team_list)
+        slot.reset();
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = "PARKED";
+    member->deployed = true;
+    save.team_list[0] = std::move(member);
+    save.team_size = 1;
+    save.scen_num = 1;
+    save.current_campaign = "gladiator";
+    restore_gladiator_mount();
+
+    // The composition reads the LEVEL: deploying is forbidden on level 2.
+    SyntheticZoneScriptGuard zone_script(R"LUA(
+og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+                           can_deploy = og.campaign_current_level() ~= 2 } } }
+  end,
+})
+)LUA");
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.roster().can_deploy) << "level 1 deploys";
+
+    og::ui::LineupFightersScreenState state;
+    state.last_level_id = save.scen_num;
+    state.zone = &zone;
+    og::ui::lineup_fighters_refresh_rows(state);
+    og::ui::install_lineup_fighters_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::LineupFighters).spec;
+    ASSERT_NE(nullptr, spec.frame_tick);
+
+    // A quiet frame changes nothing.
+    EXPECT_TRUE(spec.frame_tick(&state, 0));
+    EXPECT_TRUE(zone.roster().can_deploy);
+
+    // The host moves the lobby to level 2 under the open screen.
+    save.scen_num = 2;
+    EXPECT_TRUE(spec.frame_tick(&state, 0));
+    EXPECT_FALSE(zone.roster().can_deploy)
+        << "the zone must be refetched with the new level cursor";
+    EXPECT_TRUE(trace_contains("zone", "refetch"));
+
+    // ...and the deploy boxes really do go inert on the next rewire.
+    button* const buttons = picker_lineup_fighters_buttons();
+    const int count = picker_lineup_fighters_button_count();
+    std::vector<button> table(buttons, buttons + count);
+    int highlighted = kLineupFightersBackIndex;
+    og::ui::install_lineup_fighters_state_for_screen(&state);
+    spec.nav.rewire(table.data(), count, highlighted);
+    EXPECT_TRUE(table[kLineupFightersDeployBase].hidden)
+        << "row 0's deploy box is gone with the capability";
+
+    og::ui::install_lineup_fighters_state_for_screen(nullptr);
+    save.scen_num = 1;
     restore_gladiator_mount();
 }
 

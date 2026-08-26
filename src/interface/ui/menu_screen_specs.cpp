@@ -7853,6 +7853,17 @@ bool lineup_fighters_frame_tick(void* screen_state, int /*frame*/)
         st->was_reset = false;
         st->last_level_id = myscreen->save_data.scen_num;
         reload_picker_level_and_sync_settings(*myscreen, st->last_level_id);
+        // The zone composition is a function of the campaign's state, which
+        // the level cursor is part of — so a level change (a host's, or this
+        // machine's own) can hand this screen a different can_deploy /
+        // can_team / lock set. base_camp_frame_tick refetches here for the
+        // same reason; without it a joiner parked on FIGHTERS kept the
+        // capabilities of a level it is no longer on.
+        if (st->zone != nullptr)
+        {
+            st->zone->refetch();
+            TRACE("zone", "refetch");
+        }
     }
     // The lobby poll can rewrite the save under the open screen; the row
     // window re-derives per tick (the Base Camp §3.3 refresh rule).
