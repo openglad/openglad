@@ -165,8 +165,9 @@ TerminalLineupModel build_terminal_lineup_model(
             // STAY on a classic campaign (marked, and refused on selection):
             // dropping them would renumber the page under the two 1-based
             // consumers, and the SDL twin keeps its faces too.
-            const std::string mark =
-                versus ? std::string() : std::string(kTerminalLineupMapRulesMark);
+            const std::string mark = versus
+                ? std::string()
+                : std::string(kTerminalLineupMapRulesMark);
             model.items.push_back(TerminalLineupItem{
                 TerminalLineupItem::Kind::BotSquad, team,
                 std::format("TEAM {}  {}{}", team + 1, bots, mark)});

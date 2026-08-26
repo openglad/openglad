@@ -28,9 +28,10 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #     re-presents without consuming further input), 10=Scenario,
 #     11=Difficulty, 12=Lineup, 6=GO!, 8=Back.
 #   Lineup page (host rows: 1..8 the four teams' bot/level knobs, 9=Fighters,
-#     10=Split even, 11=Split fair, 12=Unite, 13=Back): 1 cycles TEAM 1's
-#     bot squad to NONE, 9 opens the fighter list (blank exits), 13 backs
-#     out.
+#     10=Split even, 11=Split fair, 12=Unite, 13=Back): 1 selects TEAM 1's
+#     bot squad, which on this CLASSIC campaign refuses with MAP RULES
+#     rather than cycling (§2.3); 9 opens the fighter list (blank exits),
+#     13 backs out.
 #   Scenario submenu (8 items — the missions door retired into the camp;
 #     7=Replay Level was appended before Back, #207): 4=Matchup (set
 #     preferred-team metadata, blank exits), 3=View Scenario (blank
@@ -188,8 +189,20 @@ if not any('--- Lineup ---' in l for l in lines):
 if not any('TEAM 1 RED' in l for l in lines):
     print('FAIL: expected the TEAM 1 band header', file=sys.stderr)
     sys.exit(1)
-if not any('BOTS: NONE' in l for l in lines):
-    print('FAIL: expected the cycled bot-squad label', file=sys.stderr)
+# gladiator is a CLASSIC (non-versus) campaign, so its levels decide the
+# bots (docs/lineup-design.md §2.3): the knob rows keep their ordinals but
+# carry the MAP RULES mark, and selecting one refuses instead of cycling.
+if not any('BOTS: AUTO  (MAP RULES)' in l for l in lines):
+    print('FAIL: expected the MAP RULES mark on a classic campaign',
+          file=sys.stderr)
+    sys.exit(1)
+if not any("MAP RULES: this campaign's levels decide the bots." in l
+           for l in lines):
+    print('FAIL: expected the classic-campaign knob refusal', file=sys.stderr)
+    sys.exit(1)
+if any('BOTS: NONE' in l for l in lines):
+    print('FAIL: a classic campaign must not cycle the bot squad',
+          file=sys.stderr)
     sys.exit(1)
 if not any("'team SLOT TEAM' | 'bench SLOT'" in l for l in lines):
     print('FAIL: expected the fighter-list command grammar', file=sys.stderr)

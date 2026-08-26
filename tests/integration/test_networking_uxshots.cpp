@@ -228,6 +228,12 @@ public:
     {
         return true;
     }
+    // LINEUP §6: session mode needs an ESTABLISHED session, not merely a
+    // networked client. These shots are of a live one.
+    [[nodiscard]] bool session_established() const noexcept override
+    {
+        return true;
+    }
     [[nodiscard]] std::string session_room_code() const override
     {
         return "GLAD-7Q2F";
