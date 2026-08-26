@@ -10197,6 +10197,18 @@ TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
     auto host_client = og::ui::create_host_picker_lobby_client(host_options);
     host_client->initialize_from_save();
 
+    // LINEUP §6 session_established(): the host IS the lobby, so it is
+    // established the moment the server exists — before anyone joins. The
+    // base-class default answers false, so a true here can only come from the
+    // real host override.
+    EXPECT_TRUE(host_client->session_established())
+        << "a running host is in a session before anyone joins";
+    {
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        EXPECT_TRUE(picker_lobby_session_established())
+            << "the free function reports the installed host client";
+    }
+
     og::runtime::GameSession::Config join_cfg;
     join_cfg.create_display = false;
     join_cfg.install_legacy_globals = false;
@@ -10213,6 +10225,14 @@ TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
         auto join_scope = join_session.activate();
         join_client = og::ui::create_join_picker_lobby_client(join_options);
         join_client->initialize_from_save();
+        // A joiner that has only opened its socket knows nothing about the
+        // lobby yet: initialize_from_save polls nothing, so no lobby state has
+        // landed and the session is not established.
+        EXPECT_FALSE(join_client->session_established())
+            << "a handshaking joiner is not yet in a session";
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        EXPECT_FALSE(picker_lobby_session_established())
+            << "the free function reports the installed joiner client";
     }
 
     struct CleanupGuard
@@ -10247,6 +10267,23 @@ TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
         }
         return host_client->lobby_players().size() == 2u;
     })) << "host and join should converge on a two-player lobby";
+
+    ASSERT_TRUE(status_lines_contain_exact(host_client->status_lines(),
+                                           "Lobby: 2 players"));
+    {
+        // Once the lobby state lands on a live link, the joiner is in a
+        // session too (the host's roster converging does not by itself mean
+        // the broadcast has reached the joiner, hence the wait).
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(wait_until([&] {
+            join_client->poll_and_apply();
+            return join_client->session_established();
+        })) << "a joiner with the roster on a live link is in a session";
+        EXPECT_TRUE(status_lines_contain_exact(join_client->status_lines(),
+                                               "Lobby: 2 players"));
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        EXPECT_TRUE(picker_lobby_session_established());
+    }
 
     // The kick targets a MACHINE, so the id comes off the replicated roster.
     og::sim::LobbyMachineId joiner_machine = og::sim::kInvalidLobbyMachineId;
@@ -10317,9 +10354,16 @@ TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
         EXPECT_TRUE(join_client->was_kicked());
         EXPECT_FALSE(join_client->disconnect_session())
             << "a client with no transport left has nothing to disconnect";
+        EXPECT_FALSE(join_client->session_established())
+            << "no transport, no session";
     }
+
+    // And the host stops being established the moment its server is gone.
+    EXPECT_TRUE(host_client->session_established());
 
     // And the host can stop hosting.
     EXPECT_TRUE(host_client->disconnect_session());
     EXPECT_FALSE(host_client->disconnect_session());
+    EXPECT_FALSE(host_client->session_established())
+        << "no server, no lobby, no session";
 }
