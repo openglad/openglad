@@ -403,54 +403,54 @@ TEST(LineupCommon, bots_wheel_skips_off_on_an_occupied_band_with_a_toast)
     fighters_only.team = 1;
     fighters_only.fighter_count = 1;
 
-    bool refused = true;
-    EXPECT_EQ(og::sim::kBotSquadOff,
-              og::ui::lineup_bots_wheel_next(empty, 0, 5, 1, &refused));
-    EXPECT_FALSE(refused) << "an empty team turns off freely";
+    og::ui::LineupBotsWheelStep step =
+        og::ui::lineup_bots_wheel_next(empty, 0, 5, 1);
+    EXPECT_EQ(og::sim::kBotSquadOff, step.next);
+    EXPECT_FALSE(step.refusal_toast.has_value())
+        << "an empty team turns off freely";
 
-    EXPECT_EQ(og::sim::kBotSquadNone,
-              og::ui::lineup_bots_wheel_next(seated, 0, 5, 1, &refused))
+    step = og::ui::lineup_bots_wheel_next(seated, 0, 5, 1);
+    EXPECT_EQ(og::sim::kBotSquadNone, step.next)
         << "AUTO steps over OFF onto NONE";
-    EXPECT_TRUE(refused);
-    EXPECT_EQ("TEAM 1 HAS PLAYERS", og::ui::lineup_off_refusal_toast(seated));
+    ASSERT_TRUE(step.refusal_toast.has_value());
+    EXPECT_EQ("TEAM 1 HAS PLAYERS", *step.refusal_toast)
+        << "the seat is the reason, not the two fighters beside it";
 
-    EXPECT_EQ(og::sim::kBotSquadNone,
-              og::ui::lineup_bots_wheel_next(fighters_only, 0, 5, 1, &refused));
-    EXPECT_TRUE(refused);
-    EXPECT_EQ("TEAM 2 HAS FIGHTERS",
-              og::ui::lineup_off_refusal_toast(fighters_only));
-    EXPECT_EQ("TEAM 4 HAS FIGHTERS", og::ui::lineup_off_refusal_toast(empty))
-        << "the toast is a pure function of the band";
+    step = og::ui::lineup_bots_wheel_next(fighters_only, 0, 5, 1);
+    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
+    ASSERT_TRUE(step.refusal_toast.has_value());
+    EXPECT_EQ("TEAM 2 HAS FIGHTERS", *step.refusal_toast);
+    // Both refusals fit the toast field whole: lineup_show_toast TRUNCATES
+    // at kLineupTitleCensusChars (40, picker_sdl_defs.h), and a clipped
+    // reason is a worse sentence than none.
+    EXPECT_LE(step.refusal_toast->size(), 40u);
 
     // Backwards: NONE -> (OFF) -> AUTO on a seated band.
-    EXPECT_EQ(og::sim::kBotSquadAuto,
-              og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone,
-                                             5, -1, &refused));
-    EXPECT_TRUE(refused);
+    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone, 5,
+                                          -1);
+    EXPECT_EQ(og::sim::kBotSquadAuto, step.next);
+    EXPECT_TRUE(step.refusal_toast.has_value());
     // No presets at all: AUTO -> (OFF) -> NONE and NONE -> AUTO.
-    EXPECT_EQ(og::sim::kBotSquadNone,
-              og::ui::lineup_bots_wheel_next(seated, 0, 0, 1, &refused));
-    EXPECT_EQ(og::sim::kBotSquadAuto,
-              og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone,
-                                             0, 1, &refused));
-    EXPECT_FALSE(refused) << "a step that never touches OFF refuses nothing";
-    // Steps that never reach OFF are the plain wheel; the out-param is
-    // optional.
-    EXPECT_EQ(og::sim::kBotSquadPresetBase,
-              og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone,
-                                             5, 1));
+    step = og::ui::lineup_bots_wheel_next(seated, 0, 0, 1);
+    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
+    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone, 0,
+                                          1);
+    EXPECT_EQ(og::sim::kBotSquadAuto, step.next);
+    EXPECT_FALSE(step.refusal_toast.has_value())
+        << "a step that never touches OFF refuses nothing";
+    // Steps that never reach OFF are the plain wheel.
+    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone, 5,
+                                          1);
+    EXPECT_EQ(og::sim::kBotSquadPresetBase, step.next);
+    EXPECT_FALSE(step.refusal_toast.has_value());
     // A band already reading OFF (a fighter deployed there afterwards)
     // holds on a zero step and leaves on the next real one.
-    EXPECT_EQ(og::sim::kBotSquadOff,
-              og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadOff,
-                                             5, 0, &refused));
-    EXPECT_FALSE(refused);
-    EXPECT_EQ(og::sim::kBotSquadNone,
-              og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadOff,
-                                             5, 1, &refused));
-    EXPECT_FALSE(refused);
-    // Every wheel value fits the toast-free label budget the flows pin.
-    EXPECT_LE(og::ui::lineup_off_refusal_toast(seated).size(), 18u);
+    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadOff, 5, 0);
+    EXPECT_EQ(og::sim::kBotSquadOff, step.next);
+    EXPECT_FALSE(step.refusal_toast.has_value());
+    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadOff, 5, 1);
+    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
+    EXPECT_FALSE(step.refusal_toast.has_value());
 }
 
 TEST(LineupCommon, bot_level_cycler_climbs_then_wraps_through_the_minus_side)

@@ -3539,16 +3539,14 @@ Sint32 change_lineup_bots(Sint32 team)
        og::ui::build_lineup_bands(save, view.players, view.local_indices,
                                   picker_lobby_session_established(),
                                   og::ui::LineupPowerFn{});
-   bool refused_off = false;
-   const short next = og::ui::lineup_bots_wheel_next(
-       bands[t], save.bot_squad[t], static_cast<int>(presets.size()), 1,
-       &refused_off);
-   if (refused_off)
+   const og::ui::LineupBotsWheelStep step = og::ui::lineup_bots_wheel_next(
+       bands[t], save.bot_squad[t], static_cast<int>(presets.size()), 1);
+   if (step.refusal_toast.has_value())
    {
        TRACE("lineup", "bots_off_refused team=%d", static_cast<int>(team));
-       og::ui::lineup_show_toast(og::ui::lineup_off_refusal_toast(bands[t]));
+       og::ui::lineup_show_toast(*step.refusal_toast);
    }
-   save.bot_squad[t] = og::sim::clamp_bot_squad(next);
+   save.bot_squad[t] = og::sim::clamp_bot_squad(step.next);
    TRACE("lineup", "bots team=%d squad=%d", static_cast<int>(team),
          static_cast<int>(save.bot_squad[t]));
    refresh_lineup_button_label(

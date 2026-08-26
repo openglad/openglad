@@ -111,9 +111,10 @@ TerminalLineupModel build_terminal_lineup_model(
     if (inputs.save == nullptr)
         return model;
 
-    const std::array<LineupTeamBand, 4> bands = build_lineup_bands(
+    model.bands = build_lineup_bands(
         *inputs.save, inputs.players, inputs.local_player_indices,
         inputs.networked, lineup_power_for_guy);
+    const std::array<LineupTeamBand, 4>& bands = model.bands;
     // §2.3: the knobs are stored on every campaign but only a VERSUS
     // campaign's modes read them. The SDL screen says so by dimming the two
     // faces and censusing MAP RULES; the terminal says the same thing in the
@@ -122,17 +123,6 @@ TerminalLineupModel build_terminal_lineup_model(
 
     for (int team = 0; team < 4; ++team) {
         const LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
-        // A2: a team with a seat or a deployed fighter is ON by definition,
-        // so OFF is refused there — the refusal that was wrong for NONE is
-        // right for OFF. Seats first: a seated team is the shape the refusal
-        // exists to protect, and naming the fighters instead would send the
-        // player to bench characters that were never the reason.
-        model.off_refusal[static_cast<std::size_t>(team)] =
-            band.has_seat
-                ? std::format("TEAM {} HAS PLAYERS", team + 1)
-                : (band.fighter_count > 0
-                       ? std::format("TEAM {} HAS FIGHTERS", team + 1)
-                       : std::string());
         const std::string bots = format_lineup_bots_label(
             inputs.save->bot_squad[static_cast<std::size_t>(team)],
             inputs.preset_names);
@@ -218,24 +208,6 @@ TerminalLineupModel build_terminal_lineup_model(
     model.items.push_back(TerminalLineupItem{
         TerminalLineupItem::Kind::Back, 0, "Back"});
     return model;
-}
-
-TerminalLineupBotsStep terminal_lineup_bots_step(short current,
-                                                 int preset_count, int dir,
-                                                 std::string_view off_refusal)
-{
-    TerminalLineupBotsStep step;
-    step.value = cycle_lineup_bots(current, preset_count, dir);
-    if (off_refusal.empty() || step.value != og::sim::kBotSquadOff)
-        return step;
-    // OFF is one position wide, so ONE more step of the same sign clears it
-    // in either direction. The SDL twin refuses the same value from
-    // change_lineup_bots (src/interface/ui/picker.cpp) — one rule, three
-    // clients, and the wheel stays usable on a seated team.
-    step.value = cycle_lineup_bots(step.value, preset_count,
-                                   dir >= 0 ? 1 : -1);
-    step.refusal = std::string(off_refusal);
-    return step;
 }
 
 int terminal_apply_lineup_split(SaveData& save, LineupSplit mode,

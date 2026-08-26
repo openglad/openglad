@@ -1584,15 +1584,21 @@ short cycle_lineup_level(short current, int dir);
 // The BOTS wheel as a BAND turns it (amendment A2): cycle_lineup_bots, except
 // that OFF is refused on a team that is on by definition — one with a seat
 // or a deployed fighter — and the wheel steps past it to the next value in
-// `dir`. `refused_off` (optional) reports that a refusal happened, so the
-// caller can raise lineup_off_refusal_toast; the wheel itself never lands on
-// OFF for such a band, whatever the step. One rule for all three clients.
-short lineup_bots_wheel_next(const LineupTeamBand& band, short current,
-                             int preset_count, int dir,
-                             bool* refused_off = nullptr);
-// "TEAM n HAS PLAYERS" (a seat is on the team) / "TEAM n HAS FIGHTERS"
-// (deployed fighters only) — the toast that explains the refusal above.
-std::string lineup_off_refusal_toast(const LineupTeamBand& band);
+// `dir`, because refusing in place would strand the wheel (OFF sits between
+// AUTO and the presets, so a seated team could never reach a preset again).
+// The step carries the sentence that explains itself, so THE WHOLE RULE —
+// which values are legal, which way the step lands, and what the player is
+// told — lives here and nowhere else: the SDL screen toasts it, the text
+// picker prints it, the curses picker shows it in a box.
+struct LineupBotsWheelStep {
+    short next = 0;  // the value to store (already the wheel's own)
+    // "TEAM n HAS PLAYERS" (a seat holds the team) / "TEAM n HAS FIGHTERS"
+    // (deployed characters only). Empty unless an OFF was stepped over.
+    std::optional<std::string> refusal_toast;
+};
+LineupBotsWheelStep lineup_bots_wheel_next(const LineupTeamBand& band,
+                                           short current, int preset_count,
+                                           int dir);
 
 // --- SPLIT (§5) --------------------------------------------------------
 

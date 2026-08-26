@@ -1156,16 +1156,16 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
             // authority for these eight scalars here.
             if (item.kind == Kind::BotSquad) {
                 // A2: the wheel steps over an OFF this team may not take and
-                // says why (the shared terminal rule; the SDL twin refuses
-                // the same value in change_lineup_bots).
-                const og::ui::TerminalLineupBotsStep step =
-                    og::ui::terminal_lineup_bots_step(
-                        save.bot_squad[team],
-                        static_cast<int>(presets.size()), 1,
-                        model.off_refusal[team]);
-                if (!step.refusal.empty())
-                    menu.show_text("Lineup", {step.refusal});
-                save.bot_squad[team] = og::sim::clamp_bot_squad(step.value);
+                // says why — og::ui::lineup_bots_wheel_next is the ONE
+                // implementation, the same one the SDL screen turns from
+                // change_lineup_bots.
+                const og::ui::LineupBotsWheelStep step =
+                    og::ui::lineup_bots_wheel_next(
+                        model.bands[team], save.bot_squad[team],
+                        static_cast<int>(presets.size()), 1);
+                if (step.refusal_toast.has_value())
+                    menu.show_text("Lineup", {*step.refusal_toast});
+                save.bot_squad[team] = og::sim::clamp_bot_squad(step.next);
             } else {
                 save.bot_level[team] = og::sim::clamp_bot_level(
                     og::ui::cycle_lineup_level(save.bot_level[team], 1));

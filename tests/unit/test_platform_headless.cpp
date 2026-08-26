@@ -2573,38 +2573,50 @@ TEST(PlatformHeadless, lineup_terminal_bots_wheel_steps_over_a_refused_off)
     const og::ui::TerminalLineupModel model =
         og::ui::build_terminal_lineup_model(inputs);
 
-    EXPECT_EQ("TEAM 1 HAS PLAYERS", model.off_refusal[0])
-        << "a seat outranks the fighters as the reason";
-    EXPECT_EQ("TEAM 2 HAS FIGHTERS", model.off_refusal[1]);
-    EXPECT_EQ("", model.off_refusal[2])
-        << "an empty team may be switched OFF";
-    EXPECT_EQ("", model.off_refusal[3]);
+    // The model hands on the bands it drew, and the terminals turn the wheel
+    // with the shared og::ui::lineup_bots_wheel_next — the SDL screen's own
+    // rule, reached from here with no second spelling of it.
+    EXPECT_EQ(1, model.bands[0].seat_count) << "the seat holds team 1";
+    EXPECT_EQ(1, model.bands[1].fighter_count)
+        << "team 2 has a fighter and no seat";
+    EXPECT_EQ(0, model.bands[2].seat_count + model.bands[2].fighter_count)
+        << "team 3 is empty: it may be switched OFF";
 
     // The wheel on the empty team is the plain one: AUTO -> OFF -> NONE.
-    og::ui::TerminalLineupBotsStep step = og::ui::terminal_lineup_bots_step(
-        og::sim::kBotSquadAuto, 1, 1, model.off_refusal[2]);
-    EXPECT_EQ(og::sim::kBotSquadOff, step.value);
-    EXPECT_EQ("", step.refusal);
+    og::ui::LineupBotsWheelStep step = og::ui::lineup_bots_wheel_next(
+        model.bands[2], og::sim::kBotSquadAuto, 1, 1);
+    EXPECT_EQ(og::sim::kBotSquadOff, step.next);
+    EXPECT_FALSE(step.refusal_toast.has_value());
 
     // On the seated team the same press lands on NONE and names the reason.
-    step = og::ui::terminal_lineup_bots_step(og::sim::kBotSquadAuto, 1, 1,
-                                             model.off_refusal[0]);
-    EXPECT_EQ(og::sim::kBotSquadNone, step.value);
-    EXPECT_EQ("TEAM 1 HAS PLAYERS", step.refusal);
+    step = og::ui::lineup_bots_wheel_next(model.bands[0],
+                                          og::sim::kBotSquadAuto, 1, 1);
+    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
+    ASSERT_TRUE(step.refusal_toast.has_value());
+    EXPECT_EQ("TEAM 1 HAS PLAYERS", *step.refusal_toast)
+        << "a seat outranks the fighters as the reason";
+
+    // The fighters-only team says so instead.
+    step = og::ui::lineup_bots_wheel_next(model.bands[1],
+                                          og::sim::kBotSquadAuto, 1, 1);
+    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
+    ASSERT_TRUE(step.refusal_toast.has_value());
+    EXPECT_EQ("TEAM 2 HAS FIGHTERS", *step.refusal_toast);
 
     // Backwards over the same gap: NONE -> (OFF refused) -> AUTO. The wheel
     // stays reachable in both directions, which is the whole point of
     // stepping over rather than refusing in place.
-    step = og::ui::terminal_lineup_bots_step(og::sim::kBotSquadNone, 1, -1,
-                                             model.off_refusal[0]);
-    EXPECT_EQ(og::sim::kBotSquadAuto, step.value);
-    EXPECT_EQ("TEAM 1 HAS PLAYERS", step.refusal);
+    step = og::ui::lineup_bots_wheel_next(model.bands[0],
+                                          og::sim::kBotSquadNone, 1, -1);
+    EXPECT_EQ(og::sim::kBotSquadAuto, step.next);
+    ASSERT_TRUE(step.refusal_toast.has_value());
+    EXPECT_EQ("TEAM 1 HAS PLAYERS", *step.refusal_toast);
 
     // And the preset beyond it is still reachable in one more press.
-    step = og::ui::terminal_lineup_bots_step(og::sim::kBotSquadNone, 1, 1,
-                                             model.off_refusal[0]);
-    EXPECT_EQ(og::sim::kBotSquadPresetBase, step.value);
-    EXPECT_EQ("", step.refusal);
+    step = og::ui::lineup_bots_wheel_next(model.bands[0],
+                                          og::sim::kBotSquadNone, 1, 1);
+    EXPECT_EQ(og::sim::kBotSquadPresetBase, step.next);
+    EXPECT_FALSE(step.refusal_toast.has_value());
 }
 
 // M3: a seat picture has ONE derivation. The SDL screens and the launch both

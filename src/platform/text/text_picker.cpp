@@ -1279,18 +1279,17 @@ private:
                 // (configure_networking is the documented stub), so the
                 // save IS the whole authority for these eight scalars.
                 // A2: the wheel steps over an OFF this team may not take and
-                // says why (the shared terminal rule; the SDL twin refuses
-                // the same value in change_lineup_bots).
+                // says why — og::ui::lineup_bots_wheel_next is the ONE
+                // implementation, the same one the SDL screen turns from
+                // change_lineup_bots.
                 {
-                    const TerminalLineupBotsStep step =
-                        terminal_lineup_bots_step(
-                            save_data_.bot_squad[team],
-                            static_cast<int>(presets.size()), 1,
-                            model.off_refusal[team]);
-                    if (!step.refusal.empty())
-                        std::printf("%s\n", step.refusal.c_str());
+                    const LineupBotsWheelStep step = lineup_bots_wheel_next(
+                        model.bands[team], save_data_.bot_squad[team],
+                        static_cast<int>(presets.size()), 1);
+                    if (step.refusal_toast.has_value())
+                        std::printf("%s\n", step.refusal_toast->c_str());
                     save_data_.bot_squad[team] =
-                        og::sim::clamp_bot_squad(step.value);
+                        og::sim::clamp_bot_squad(step.next);
                 }
                 std::printf("%s\n",
                             format_lineup_bots_label(save_data_.bot_squad[team],
