@@ -2197,6 +2197,59 @@ int kicked_joiner_revert_injector(void* data)
 
 } // namespace
 
+// The owned-client slot SdlPickerClient installs, exposed for this test only
+// (tests/coverage_internal/picker_sdl_client_factory.inc).
+void picker_testing_set_lobby_client_owner(
+    std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
+
+// LINEUP §6: the kicked revert swaps the ACTIVE lobby client and opens a
+// modal. Both are safe at the top of a frame and neither is safe from inside
+// a held click: the PROGRESS spin-wait samples the click's coordinates before
+// it starts spinning, then polls the lobby and runs the Team Build
+// remote-start check on every turn of the loop — so a kick landing mid-hold
+// used to swap the client under the pending dispatch and pop a modal that
+// eats the very button-up the loop is waiting for. The revert is now deferred
+// for the life of the held-click scope and lands on the next top-of-frame
+// check.
+TEST(NetworkingMenu, kick_revert_waits_for_a_held_click_to_finish)
+{
+    trace_clear();
+    std::atomic<bool> kicked{true};
+    std::unique_ptr<og::ui::IPickerLobbyClient> owned =
+        std::make_unique<FakeKickedJoinClient>(&kicked);
+    og::ui::IPickerLobbyClient* const raw = owned.get();
+    ActiveLobbyClientGuard guard(raw);
+    picker_testing_set_lobby_client_owner(&owned);
+
+    EXPECT_FALSE(picker_kick_revert_suspended());
+    {
+        PickerHeldClickScope held_click;
+        EXPECT_TRUE(picker_kick_revert_suspended());
+        {
+            // Nesting must not re-arm the outer scope on the inner's exit.
+            PickerHeldClickScope nested;
+            EXPECT_TRUE(picker_kick_revert_suspended());
+        }
+        EXPECT_TRUE(picker_kick_revert_suspended());
+
+        EXPECT_FALSE(picker_revert_lobby_client_if_kicked())
+            << "no swap while a click is being held/dispatched";
+        EXPECT_EQ(raw, og::ui::active_picker_lobby_client())
+            << "the pending click was sampled against THIS client";
+        EXPECT_FALSE(trace_contains("popup", "KICKED BY HOST"))
+            << "and no modal opened to eat the button-up";
+    }
+
+    EXPECT_FALSE(picker_kick_revert_suspended());
+    EXPECT_TRUE(picker_revert_lobby_client_if_kicked())
+        << "the latched kick lands on the next top-of-frame check";
+    EXPECT_NE(raw, og::ui::active_picker_lobby_client());
+    EXPECT_TRUE(trace_contains("networking", "kicked by host"));
+    EXPECT_TRUE(trace_contains("popup", "KICKED BY HOST"));
+
+    picker_testing_set_lobby_client_owner(nullptr);
+}
+
 TEST(NetworkingMenu, kicked_joiner_reverts_to_local_client_in_team_build)
 {
     trace_clear();

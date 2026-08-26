@@ -374,3 +374,13 @@ int picker_testing_exercise_sdl_client_internal_paths()
 {
     return PickerSdlClientTestAccess::run();
 }
+
+// LINEUP §6 (held-click deferral): register an OWNED lobby client slot so the
+// per-frame kicked revert can be driven from a test without standing up a
+// live SdlPickerClient. Pass nullptr to unregister. The slot is the same one
+// SdlPickerClient's constructor installs.
+void picker_testing_set_lobby_client_owner(
+    std::unique_ptr<og::ui::IPickerLobbyClient>* owner)
+{
+    g_picker_lobby_client_owner = owner;
+}

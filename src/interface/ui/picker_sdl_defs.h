@@ -169,6 +169,26 @@ void picker_apply_networking_menu_mode(button* buttons, int count,
 // installed as the active client. Returns true when a swap happened.
 bool picker_revert_lobby_client_if_kicked();
 
+// LINEUP §6: the kicked-revert is DEFERRED for the lifetime of this scope.
+// A held-click spin-wait (picker_progress_menu_engine_frame_tick's
+// `while (mymouse.left)`) polls the lobby and runs the Team Build remote-start
+// check from INSIDE an input dispatch: the click's coordinates were already
+// sampled against the current client's screen, and the revert both swaps that
+// client and opens a modal — which grabs the mouse and eats the button-up the
+// spin is waiting for. The revert lands on the next top-of-frame check
+// instead, which is where it was always meant to run. Nesting is counted, so
+// an inner scope cannot re-arm an outer one.
+class PickerHeldClickScope
+{
+public:
+    PickerHeldClickScope() noexcept;
+    ~PickerHeldClickScope() noexcept;
+    PickerHeldClickScope(const PickerHeldClickScope&) = delete;
+    PickerHeldClickScope& operator=(const PickerHeldClickScope&) = delete;
+};
+// True while a PickerHeldClickScope is open (or a revert is already running).
+[[nodiscard]] bool picker_kick_revert_suspended() noexcept;
+
 // Per-session mutable button descriptors (Phase 12).
 button* picker_mainmenu_buttons();
 int picker_mainmenu_button_count();

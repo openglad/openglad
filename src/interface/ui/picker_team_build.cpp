@@ -1408,6 +1408,14 @@ bool picker_progress_menu_engine_frame_tick(void* screen_state, int /*frame*/)
     const int mx = static_cast<int>(mymouse.x);
     const int my = static_cast<int>(mymouse.y);
     if (clicked) {
+        // LINEUP §6: mx/my were sampled BEFORE this wait, against the client
+        // that is on screen now. The kicked-revert would swap that client and
+        // open a modal from inside the wait — the modal grabs the mouse and
+        // eats the button-up this loop is spinning on, and the row hit-tests
+        // below would then dispatch stale coordinates against a fresh local
+        // client. Deferred to the next top-of-frame check; the kick is
+        // latched, so nothing is lost.
+        PickerHeldClickScope held_click;
         while (mymouse.left) {
             picker_lobby_poll();
             Sint32 remote_retvalue = 0;

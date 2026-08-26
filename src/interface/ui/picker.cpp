@@ -614,10 +614,36 @@ namespace
 // owner (never through a test-installed stub).
 std::unique_ptr<og::ui::IPickerLobbyClient>* g_picker_lobby_client_owner =
     nullptr;
+// LINEUP §6: held-click suspension depth, and the re-entry latch. The revert
+// opens a modal, and a modal runs its own event loop — nothing may re-enter
+// the swap from inside it.
+int g_picker_held_click_depth = 0;
+bool g_picker_kick_revert_running = false;
 } // namespace
+
+PickerHeldClickScope::PickerHeldClickScope() noexcept
+{
+    ++g_picker_held_click_depth;
+}
+
+PickerHeldClickScope::~PickerHeldClickScope() noexcept
+{
+    if (g_picker_held_click_depth > 0)
+        --g_picker_held_click_depth;
+}
+
+bool picker_kick_revert_suspended() noexcept
+{
+    return g_picker_held_click_depth > 0 || g_picker_kick_revert_running;
+}
 
 bool picker_revert_lobby_client_if_kicked()
 {
+    // A click is being held/dispatched, or we are already inside a revert:
+    // the swap waits for the next top-of-frame check. The kick is latched on
+    // the client, so nothing is lost by deferring it one frame.
+    if (picker_kick_revert_suspended())
+        return false;
     if (g_picker_lobby_client_owner == nullptr)
         return false;
     std::unique_ptr<og::ui::IPickerLobbyClient>& owner =
@@ -628,6 +654,14 @@ bool picker_revert_lobby_client_if_kicked()
         return false;
     if (!owner->was_kicked())
         return false;
+
+    // From here on a modal may open, and a modal pumps input: latch against
+    // re-entry for the whole swap.
+    struct RevertLatch
+    {
+        RevertLatch() noexcept { g_picker_kick_revert_running = true; }
+        ~RevertLatch() noexcept { g_picker_kick_revert_running = false; }
+    } latch;
 
     TRACE("networking", "kicked by host: reverting to local lobby client");
     try
