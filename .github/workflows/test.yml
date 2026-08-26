@@ -15,7 +15,10 @@ jobs:
     # The expanded multi-seat menu/network matrix needs about 20 minutes for a
     # clean compile plus tests on an uncached runner; leave room for the final
     # curses, parity, and relay checks instead of cancelling a passing suite.
-    timeout-minutes: 30
+    # PR #262 added the LINEUP flows (og_test_lineup, RUN_SERIAL) and the
+    # RUN_SERIAL tail alone is now ~13 minutes after the parallel bulk, so a
+    # fully passing 66/66 run was cancelled at 30:15. 40 keeps the same margin.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
