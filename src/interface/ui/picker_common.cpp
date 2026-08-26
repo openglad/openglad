@@ -4044,9 +4044,17 @@ std::string format_lineup_bots_label(short squad,
 
 std::string format_lineup_level_label(short level)
 {
-    if (level <= 0 || level > 9)
+    // An OFFSET, so the sign is the whole message (A6): "LV +2" reads as
+    // two levels above whatever the map would have chosen, and AUTO is the
+    // absence of a shift, not a level. Out-of-range values render AUTO
+    // rather than a number no clamp home would honour. The widest face is
+    // "LV: AUTO" at 8 characters, which is the budget.
+    if (level == 0 || level < og::sim::kMinBotLevel ||
+        level > og::sim::kMaxBotLevel)
+    {
         return "LV: AUTO";
-    return std::format("LV {}", static_cast<int>(level));
+    }
+    return std::format("LV {:+}", static_cast<int>(level));
 }
 
 std::string format_lineup_census(const LineupTeamBand& band)
@@ -4147,7 +4155,21 @@ short cycle_lineup_bots(short current, int preset_count, int dir)
 
 short cycle_lineup_level(short current, int dir)
 {
-    return cycle_lineup_value(current, 10, dir);
+    // AUTO, then up the ladder (+1..+5) and on round to the bottom
+    // (-5..-1), so one step off AUTO in either direction is the smallest
+    // shift in that direction. The wheel index is the offset itself for
+    // AUTO and the positives; the negatives sit above them.
+    constexpr int kSteps = 1 + og::sim::kMaxBotLevel - og::sim::kMinBotLevel;
+    const int offset = (current >= og::sim::kMinBotLevel &&
+                        current <= og::sim::kMaxBotLevel)
+        ? current
+        : 0;
+    const int index = offset >= 0 ? offset : offset + kSteps;
+    const short next = cycle_lineup_value(
+        static_cast<short>(index), kSteps, dir);
+    return next > og::sim::kMaxBotLevel
+        ? static_cast<short>(next - kSteps)
+        : next;
 }
 
 // --- SPLIT ---

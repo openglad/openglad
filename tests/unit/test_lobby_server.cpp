@@ -4189,7 +4189,7 @@ TEST(LobbyServer, sanitize_clamps_bot_knobs_and_equivalent_carries_them)
     // Out of range in both directions, and one legal value per array so a
     // clamp that flattened everything would be caught.
     wild.bot_squad = {-4, 3, 99, 0};
-    wild.bot_level = {-1, 4, 400, 0};
+    wild.bot_level = {-400, 4, 400, 0};
     og::sim::LobbyMessage wild_message;
     wild_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 0u,
@@ -4199,11 +4199,13 @@ TEST(LobbyServer, sanitize_clamps_bot_knobs_and_equivalent_carries_them)
     server.poll_incoming_messages();
 
     const og::sim::LobbyState state = server.state();
-    // bot_squad clamps into [0, 1 + kMaxBotPresets]; bot_level into [0, 9].
+    // bot_squad clamps into [0, 2 + kMaxBotPresets]; bot_level is an
+    // OFFSET and clamps into [-5, +5], so it has a floor to hit as well as
+    // a ceiling.
     const std::array<std::int16_t, 4> expected_squad = {
         0, 3, og::sim::kMaxBotSquad, 0};
     const std::array<std::int16_t, 4> expected_level = {
-        0, 4, og::sim::kMaxBotLevel, 0};
+        og::sim::kMinBotLevel, 4, og::sim::kMaxBotLevel, 0};
     EXPECT_EQ(expected_squad, state.settings.bot_squad);
     EXPECT_EQ(expected_level, state.settings.bot_level);
 

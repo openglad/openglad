@@ -256,8 +256,13 @@ inline constexpr std::int16_t kTroopsMatched = 3;
 //                 amendment A1),
 //                 2 = NONE (the team is on, it just never gets bots),
 //                 3.. = the campaign's preset ordinal (index + 3).
-//   bot_level[t]: 0 = AUTO (today's source: the difficulty formula, or the
-//                 FAIR solve), 1..9 = that level exactly.
+//   bot_level[t]: an OFFSET on top of the AUTO source (amendment A6), not a
+//                 level: 0 = AUTO (that source unchanged — the difficulty
+//                 formula, or the FAIR solve), -5..+5 = that many levels
+//                 above or below it, resolved once in the mode Lua as
+//                 clamp(base + offset, 1, 9). A relative knob is the only
+//                 kind a host can set without knowing which map, mode or
+//                 difficulty will answer for `base`.
 //
 // The preset ordinal ceiling is a FIXED engine number, not the campaign's
 // actual preset count: a joiner clamps a host's request without owning the
@@ -272,7 +277,12 @@ inline constexpr std::int16_t kBotSquadNone = 2;
 inline constexpr std::int16_t kBotSquadPresetBase = 3;
 inline constexpr std::int16_t kMaxBotSquad =
     static_cast<std::int16_t>(kBotSquadPresetBase - 1 + kMaxBotPresets);
-inline constexpr std::int16_t kMaxBotLevel = 9;
+// The bot-level OFFSET bounds (A6). Symmetric, and deliberately narrower
+// than the 1..9 level range it shifts: the offset rides on top of a base
+// nobody has read yet at knob time, so +5 is already "as far above the
+// map's own answer as the answer can go".
+inline constexpr std::int16_t kMinBotLevel = -5;
+inline constexpr std::int16_t kMaxBotLevel = 5;
 
 // The ONE implementation of each bot-knob bound. Every clamp home calls
 // these — sanitize_settings (lobby authority), clamp_match_setting (the
@@ -289,7 +299,7 @@ inline constexpr std::int16_t kMaxBotLevel = 9;
 [[nodiscard]] inline std::int16_t clamp_bot_level(std::int32_t value) noexcept
 {
     return static_cast<std::int16_t>(
-        std::clamp<std::int32_t>(value, 0, kMaxBotLevel));
+        std::clamp<std::int32_t>(value, kMinBotLevel, kMaxBotLevel));
 }
 
 struct LobbySettings {

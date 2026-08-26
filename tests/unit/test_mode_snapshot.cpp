@@ -1024,8 +1024,10 @@ TEST(ModeSnapshot, applied_bot_knobs_are_clamped_into_the_sanitized_band)
     };
     const Case cases[] = {
         {0, 0, 0},                                              // AUTO
-        {-1, 0, 0},                                             // below zero
-        {-30000, 0, 0},
+        // Below zero is out of band for a squad ordinal and IN band for a
+        // level, which is an offset (A6).
+        {-1, 0, -1},
+        {-30000, 0, og::sim::kMinBotLevel},
         {1, 1, 1},                                              // in band
         {og::sim::kMaxBotSquad, og::sim::kMaxBotSquad,
          og::sim::kMaxBotLevel},

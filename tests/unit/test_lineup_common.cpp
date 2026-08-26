@@ -299,11 +299,17 @@ TEST(LineupCommon, bot_squad_label_strings)
 
 TEST(LineupCommon, bot_level_label_strings)
 {
+    // An offset (A6): the sign is always written, 0 is the absence of one,
+    // and the widest face is the 8-char budget.
     EXPECT_EQ("LV: AUTO", og::ui::format_lineup_level_label(0));
-    EXPECT_EQ("LV 1", og::ui::format_lineup_level_label(1));
-    EXPECT_EQ("LV 9", og::ui::format_lineup_level_label(9));
-    EXPECT_EQ("LV: AUTO", og::ui::format_lineup_level_label(10));
-    EXPECT_EQ("LV: AUTO", og::ui::format_lineup_level_label(-1));
+    EXPECT_EQ("LV +1", og::ui::format_lineup_level_label(1));
+    EXPECT_EQ("LV +5", og::ui::format_lineup_level_label(5));
+    EXPECT_EQ("LV -1", og::ui::format_lineup_level_label(-1));
+    EXPECT_EQ("LV -5", og::ui::format_lineup_level_label(-5));
+    EXPECT_EQ("LV: AUTO", og::ui::format_lineup_level_label(6));
+    EXPECT_EQ("LV: AUTO", og::ui::format_lineup_level_label(-6));
+    for (short level = -6; level <= 6; ++level)
+        EXPECT_LE(og::ui::format_lineup_level_label(level).size(), 8u);
 }
 
 TEST(LineupCommon, census_and_power_strings)
@@ -382,13 +388,33 @@ TEST(LineupCommon, bot_squad_cycler_wraps_over_auto_off_none_presets)
     EXPECT_EQ(1, og::ui::cycle_lineup_bots(77, 3, 1));
 }
 
-TEST(LineupCommon, bot_level_cycler_wraps_auto_through_nine)
+TEST(LineupCommon, bot_level_cycler_climbs_then_wraps_through_the_minus_side)
 {
+    // AUTO, +1..+5, -5..-1, AUTO (A6).
     EXPECT_EQ(1, og::ui::cycle_lineup_level(0, 1));
-    EXPECT_EQ(9, og::ui::cycle_lineup_level(8, 1));
-    EXPECT_EQ(0, og::ui::cycle_lineup_level(9, 1));
-    EXPECT_EQ(9, og::ui::cycle_lineup_level(0, -1));
-    EXPECT_EQ(0, og::ui::cycle_lineup_level(-5, 0));
+    EXPECT_EQ(5, og::ui::cycle_lineup_level(4, 1));
+    EXPECT_EQ(-5, og::ui::cycle_lineup_level(5, 1))
+        << "past the top the wheel comes back at the bottom";
+    EXPECT_EQ(-1, og::ui::cycle_lineup_level(-2, 1));
+    EXPECT_EQ(0, og::ui::cycle_lineup_level(-1, 1)) << "and home to AUTO";
+    EXPECT_EQ(-1, og::ui::cycle_lineup_level(0, -1))
+        << "one step down from AUTO is the smallest cut";
+    EXPECT_EQ(-5, og::ui::cycle_lineup_level(-5, 0))
+        << "no step, no move: -5 is a legal offset now";
+    // A value outside the offset range enters at AUTO.
+    EXPECT_EQ(1, og::ui::cycle_lineup_level(9, 1));
+    EXPECT_EQ(0, og::ui::cycle_lineup_level(9, 0));
+    // Every wheel position is reachable, and only the legal offsets are.
+    std::vector<short> seen;
+    short value = 0;
+    for (int step = 0; step < 11; ++step)
+    {
+        seen.push_back(value);
+        value = og::ui::cycle_lineup_level(value, 1);
+    }
+    EXPECT_EQ(0, value) << "eleven steps is one full turn";
+    EXPECT_EQ((std::vector<short>{0, 1, 2, 3, 4, 5, -5, -4, -3, -2, -1}),
+              seen);
 }
 
 // --- SPLIT -------------------------------------------------------------

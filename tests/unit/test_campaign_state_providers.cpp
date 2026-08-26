@@ -352,7 +352,7 @@ TEST(CampaignStateProviders, match_get_and_set_cover_the_per_team_bot_knobs)
     SaveData save;
     (void)og::data::consume_match_settings_dirty();
     save.bot_squad = {0, 2, 1, 9};
-    save.bot_level = {0, 5, 9, 1};
+    save.bot_level = {0, 5, -4, 1};
 
     const CampaignProviders providers = make_campaign_providers(save);
     // Each name reads its OWN team's slot: a transposed slot map would still
@@ -363,7 +363,7 @@ TEST(CampaignStateProviders, match_get_and_set_cover_the_per_team_bot_knobs)
     EXPECT_EQ(9, providers.match_get("bot_squad_4"));
     EXPECT_EQ(0, providers.match_get("bot_level_1"));
     EXPECT_EQ(5, providers.match_get("bot_level_2"));
-    EXPECT_EQ(9, providers.match_get("bot_level_3"));
+    EXPECT_EQ(-4, providers.match_get("bot_level_3"));
     EXPECT_EQ(1, providers.match_get("bot_level_4"));
 
     // Team 0 and team 5 are outside the 1..4 vocabulary.
@@ -382,12 +382,16 @@ TEST(CampaignStateProviders, match_get_and_set_cover_the_per_team_bot_knobs)
     EXPECT_TRUE(providers.match_set("bot_squad_1", 4));
     EXPECT_EQ(4, save.bot_squad[0]);
 
+    // The level is an OFFSET (A6), so a negative is a legal request and
+    // the clamp has a floor as well as a ceiling.
     EXPECT_TRUE(providers.match_set("bot_level_4", -1));
-    EXPECT_EQ(0, save.bot_level[3]);
+    EXPECT_EQ(-1, save.bot_level[3]);
+    EXPECT_TRUE(providers.match_set("bot_level_4", -400));
+    EXPECT_EQ(og::sim::kMinBotLevel, save.bot_level[3]);
     EXPECT_TRUE(providers.match_set("bot_level_4", 400));
     EXPECT_EQ(og::sim::kMaxBotLevel, save.bot_level[3]);
-    EXPECT_TRUE(providers.match_set("bot_level_4", 6));
-    EXPECT_EQ(6, save.bot_level[3]);
+    EXPECT_TRUE(providers.match_set("bot_level_4", 4));
+    EXPECT_EQ(4, save.bot_level[3]);
 
     // A write to team 3 must not disturb its neighbours.
     EXPECT_TRUE(providers.match_set("bot_squad_3", 7));

@@ -1551,12 +1551,15 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
 
 // --- LINEUP labels (exact strings; every one of them is pinned) ---
 
-// "BOTS: AUTO" / "BOTS: NONE" / "BOTS: <NAME>" (12-char face, names clipped
-// to 6). A preset ordinal the caller has no name for — a joiner clamps
-// without ever seeing the list — renders "BOTS: #n" rather than lying AUTO.
+// "BOTS: AUTO" / "BOTS: OFF" / "BOTS: NONE" / "BOTS: <NAME>" (12-char face,
+// names clipped to 6). A preset ordinal the caller has no name for — a
+// joiner clamps without ever seeing the list — renders "BOTS: #n" rather
+// than lying AUTO.
 std::string format_lineup_bots_label(short squad,
                                      std::span<const std::string> preset_names);
-// "LV: AUTO" / "LV 5". Out-of-range levels read AUTO.
+// "LV: AUTO" / "LV +2" / "LV -1" (8-char face). The knob is an OFFSET on
+// the AUTO source (A6), so the sign is always written and 0 is AUTO;
+// out-of-range offsets read AUTO.
 std::string format_lineup_level_label(short level);
 // "5 FIGHTERS" / "1 FIGHTER" / "NO FIGHTERS", or the band's diagnostic:
 // "NEEDS 2 FIGHTERS" / "NEEDS 1 FIGHTER" / "NO SEAT: AI".
@@ -1571,8 +1574,10 @@ std::string format_lineup_power_cell(std::optional<long long> power,
                                      int width = 6);
 
 // The two cyclers. `preset_count` is clamped to kMaxBotPresets, so a squad
-// cycles AUTO -> NONE -> presets -> AUTO and a level AUTO -> 1..9 -> AUTO.
-// `dir` may be any step; a current value outside the range enters at AUTO.
+// cycles AUTO -> OFF -> NONE -> presets -> AUTO and a level AUTO -> +1..+5
+// -> -5..-1 -> AUTO (up first, so one step off AUTO is the smallest shift
+// in that direction). `dir` may be any step; a current value outside the
+// range enters at AUTO.
 short cycle_lineup_bots(short current, int preset_count, int dir);
 short cycle_lineup_level(short current, int dir);
 
