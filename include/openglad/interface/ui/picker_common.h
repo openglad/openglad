@@ -1022,6 +1022,10 @@ struct ScenarioRosterReport {
     // AUTO). Facts, never requests: a knob a mode ignored banks nothing.
     std::array<std::string, 4> team_squad_name = {};
     std::array<int, 4> team_squad_level = {};
+    // The bots fielded BESIDE an occupancy fill (a preset squad on a
+    // COMPANY team — lineup §3.2 amended I3), censused like every other
+    // fact; 0 on a squad-only team, whose bots are team_fill_count.
+    std::array<int, 4> team_squad_count = {};
     // --- Seat block (#218): the caller's lobby seats, P#-sorted, with the
     // format_seat_summary match shape. Both empty when the caller passed no
     // seat context — every seatless report is byte-identical to before.
