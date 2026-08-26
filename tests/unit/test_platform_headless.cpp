@@ -1121,6 +1121,22 @@ TEST(PlatformHeadless, text_picker_drives_the_cloud_submenu)
     cfg.data.erase("cloud");
 }
 
+namespace {
+
+// Run one text-picker exerciser under the stdout silencer and hand its
+// result back AFTER the silencer has let go of fd 1. Asserting inside that
+// scope reports the failure into the very hole the exerciser's chatter goes
+// down, which leaves a red test with no message at all — these exercisers
+// answer the negated 1-based index of their first failed check, and that
+// index is the only thing that says which check died.
+int silenced(int (*exerciser)())
+{
+    StdoutSilencer stdout_silencer;
+    return exerciser();
+}
+
+} // namespace
+
 TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
 {
     // Order-independent: install the packages and mount the default one the
@@ -1129,9 +1145,8 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 
-    StdoutSilencer stdout_silencer;
-    EXPECT_EQ(0,
-              og::ui::text_picker_testing_exercise_internal_paths());
+    EXPECT_EQ(0, silenced(&og::ui::text_picker_testing_exercise_internal_paths))
+        << "negated 1-based index of the first failed check";
 
     StdinRedirect empty_input("");
     og::ui::TextPickerConfig default_config;
@@ -1148,8 +1163,8 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
 TEST(PlatformHeadless, text_picker_staged_view_scenario_census)
 {
     restore_default_campaigns();
-    StdoutSilencer stdout_silencer;
-    EXPECT_EQ(0, og::ui::text_picker_testing_staged_view_scenario());
+    EXPECT_EQ(0, silenced(&og::ui::text_picker_testing_staged_view_scenario))
+        << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
@@ -1161,8 +1176,9 @@ TEST(PlatformHeadless, text_picker_staged_view_scenario_census)
 TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
 {
     restore_default_campaigns();
-    StdoutSilencer stdout_silencer;
-    EXPECT_EQ(0, og::ui::text_picker_testing_launch_seed_matches_the_preview());
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_launch_seed_matches_the_preview))
+        << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
@@ -1176,15 +1192,9 @@ TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
 TEST(PlatformHeadless, text_picker_launch_census_matches_the_preview)
 {
     restore_default_campaigns();
-    // The silencer must not outlive the call: it owns fd 1, and a failure
-    // reported inside its scope goes down the same hole as the helper's own
-    // chatter, leaving a red test with no message at all.
-    int result = 0;
-    {
-        StdoutSilencer stdout_silencer;
-        result = og::ui::text_picker_testing_launch_census_matches_the_preview();
-    }
-    EXPECT_EQ(0, result) << "negated 1-based index of the first failed check";
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_launch_census_matches_the_preview))
+        << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }

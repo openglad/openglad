@@ -969,12 +969,16 @@ int text_picker_testing_staged_view_scenario()
     const std::string first = run_view_scenario();
     const std::string second = run_view_scenario();
     // The staged census header and the soccer census over the 820 pitch:
-    // one deployed soldier = COMPANY on the roster team, the legacy squad
-    // backfilling the other.
+    // one deployed soldier = COMPANY on the roster team, a FILL squad
+    // backfilling the other. That squad is MATCHED BOTS (1) FAIR, not the
+    // BOT SQUAD (5) this arm pinned before Amendment 2: the deployed soldier
+    // IS human power, so B3's reference exists and the default FILL: FAIR
+    // solves one bot against it. BOT SQUAD is the legacy-formula label, and
+    // W5-A left it reachable only where no human power exists at all.
     check(first.find("--- SCEN 820:") != std::string::npos);
     check(first.find("MATCH: SOCCER - 2 TEAMS ACTIVE") != std::string::npos);
     check(first.find("ACTIVE - COMPANY (1)") != std::string::npos);
-    check(first.find("ACTIVE - BOT SQUAD (5)") != std::string::npos);
+    check(first.find("ACTIVE - MATCHED BOTS (1) FAIR") != std::string::npos);
     // Seat block (#218): the text client stages locally, so the seat lines
     // are the save-derived synthesis — one all-local seat, directly after
     // the match block.

@@ -822,22 +822,27 @@ TEST_F(HeadlessServerRuntimeTest,
     EXPECT_NE(0, world.mode.vars[0]) << "the mode id var is written";
 }
 
-// The unmatched twin: the identical lobby handoff without the sentinel
-// leaves the matched census idle — the target var stays 0 and the flow is
-// byte-identical to today's behavior.
+// The unmatched twin: the lobby handoff that leaves the matched census
+// idle, so the target var stays 0.
+//
+// Intent history: this twin used to be "the identical handoff WITHOUT the
+// Teams: Match sentinel", back when ctf_team_count == 5 was what asked for
+// a matched world. A1/A3 retired that sentinel and W5-A retired the last
+// gate with it — `matched` now means only "a reference exists", which
+// activation reports for ANY deployed roster, so the rostered handoff above
+// is always matched and there is no knob left that can ask it not to be.
+// The one live way to leave the census idle is to give it no roster to
+// measure: no human power anywhere is B3's legacy-formula arm, and
+// bank_match_target returns before it writes a thing.
 TEST_F(HeadlessServerRuntimeTest,
-       auto_team_count_lobby_handoff_writes_no_matched_target)
+       rosterless_lobby_handoff_writes_no_matched_target)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
     lobby_save.current_campaign = "modes";
     lobby_save.scen_num = 302;
-    lobby_save.numplayers = 2;
+    lobby_save.numplayers = 0;
     lobby_save.allied_mode = 0;
-    lobby_save.ctf_strip_scenario_troops = 0;
-    lobby_save.team_list = {
-        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
-        make_slot(3u, 200, "Guest Guy", FAMILY_ARCHER, 1),
-    };
+    lobby_save.team_list = {};
 
     initialize_from_lobby(lobby_save);
 
@@ -849,8 +854,7 @@ TEST_F(HeadlessServerRuntimeTest,
     EXPECT_TRUE(world.mode.active);
     EXPECT_NE(0, world.mode.vars[0]);
     EXPECT_EQ(0, world.mode.vars[2])
-        << "no matched request -> the census never stores a target (E1 "
-           "posture: byte-identical to Auto)";
+        << "no roster to measure -> the census never stores a target";
 }
 
 // Match clock clamp at world entry (#241), server twin: a SaveData whose
