@@ -546,6 +546,7 @@ struct LineupKnobsFlowState
     bool viewer_opened = false;
     bool red_team_line_seen = false;
     bool yellow_team_line_seen = false;
+    std::string red_team_line;
     std::string teams_active_line;
     int captures = 0;
 };
@@ -663,6 +664,8 @@ int lineup_knobs_flow_injector(void* data)
                 "picker", "view_scenario line   YELLOW TEAM  ACTIVE");
             state->teams_active_line =
                 first_picker_trace_line_containing("TEAMS ACTIVE");
+            state->red_team_line =
+                first_picker_trace_line_containing("RED TEAM  ACTIVE");
             SDL_Delay(300);
             state->captures += capture_frame("view_level_off_team");
             SDL_Delay(300);
@@ -737,6 +740,17 @@ TEST(LineupUi, scenario_door_off_refused_on_seated_team_and_accepted_on_empty)
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
     EXPECT_TRUE(state.red_team_line_seen)
         << "the seated team is staged and censused";
+    // NONE is "never bots on this team" and nothing else (§2.3): the team
+    // stays on, and its row names the company ALONE — no "+BOTS" half, no
+    // squad count. This is the other half of the OFF/NONE distinction the
+    // wheel step above proved: OFF takes a team out, NONE only empties it
+    // of bots.
+    EXPECT_NE(std::string::npos, state.red_team_line.find("COMPANY (2)"))
+        << "the NONE team fields its two fighters and nothing else: '"
+        << state.red_team_line << "'";
+    EXPECT_EQ(std::string::npos, state.red_team_line.find('+'))
+        << "NONE means no squad beside the occupants: '"
+        << state.red_team_line << "'";
     EXPECT_FALSE(state.yellow_team_line_seen)
         << "the OFF team has no row: it left the active mask (A2)";
     EXPECT_NE(std::string::npos, state.teams_active_line.find("3 TEAMS ACTIVE"))
@@ -837,8 +851,11 @@ int lineup_preset_flow_injector(void* data)
             "picker", "view_scenario line   GREEN TEAM  ACTIVE - BOT SQUAD "
                       "BALANC",
             10000);
+        // A6: the token is the OFFSET, sign and all ("LV+3"), which is what
+        // the mixed-radix fact code carries (mode_match.lua bank_lineup_facts
+        // packs squad * 11 + offset_code; the old "LV3" read a level).
         state->level_suffix_seen =
-            trace_contains("picker", "BOT SQUAD BALANC (5) LV3");
+            trace_contains("picker", "BOT SQUAD BALANC (5) LV+3");
         state->captures += capture_frame("lineup_view_level_preset_squad");
         SDL_Delay(300);
         interact("back");
