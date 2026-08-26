@@ -196,8 +196,9 @@ struct CampaignRosterEntry {
 // twin's unknown-name rule — while match_set answers false (policy lives
 // in the provider).
 // The eight per-team bot knobs (LINEUP §3.1) join the list: "bot_squad_N"
-// is a preset ordinal (0 = AUTO, 1 = NONE, 2.. = the campaign's preset) and
-// "bot_level_N" a bot level (0 = AUTO, 1..9), N being the 1-based team.
+// is a preset ordinal (0 = AUTO, 1 = OFF, 2 = NONE, 3.. = the campaign's
+// preset) and "bot_level_N" a bot level (0 = AUTO, 1..9), N being the
+// 1-based team.
 inline constexpr const char* kCampaignMatchSettingNames[] = {
     "team_count",   "score_limit",  "respawn_ticks",
     "strip_troops", "respawn_mode", "generator_rate",
@@ -308,13 +309,13 @@ std::vector<std::string> og_function_names();
 //       power   = function(row) return <int> end,
 //     } })
 //
-// `presets` names the bot-squad cycler's entries (ordinal 2.. on the
-// LINEUP page; 0 = AUTO, 1 = NONE are engine-owned and never named by a
-// campaign). `power` prices ONE fighter from its derived stats so the
+// `presets` names the bot-squad cycler's entries (ordinal 3.. on the
+// LINEUP page; 0 = AUTO, 1 = OFF and 2 = NONE are engine-owned and never
+// named by a campaign). `power` prices ONE fighter from its derived stats so the
 // bands can show POWER n; the engine never knows what either means.
 
 // The cycler's ceiling, with ONE home: og::sim::kMaxBotPresets, the lobby's
-// own clamp bound. A joiner clamps bot_squad to [0, 1 + this] with no preset
+// own clamp bound. A joiner clamps bot_squad to [0, 2 + this] with no preset
 // list at all, so the bound lives in the engine, not the book — and the
 // registrar's cap has to be the same number by construction, not a second
 // copy of 8 that a later edit can move on its own.

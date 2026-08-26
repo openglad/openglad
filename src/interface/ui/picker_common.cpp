@@ -3114,7 +3114,10 @@ constexpr std::size_t kModeVarMatchedSize = 5;
 // digit is the matched announce latch; the digits above pack one base-100
 // code per team, team t's code at 10 * 100^t, code = applied preset
 // ordinal * 10 + explicit level (lineup §3.4, bank_lineup_facts). Zero
-// codes mean AUTO — an all-AUTO world never writes them.
+// codes mean AUTO — an all-AUTO world never writes them. The ordinal is
+// the bot_squad knob value, so a base-100 code holds ordinals up to 9:
+// a campaign registering a SEVENTH preset (ordinal 10, the engine's
+// kMaxBotSquad) would need a wider field, and the shipped five stop at 7.
 constexpr std::size_t kModeVarLineupFacts = 4;
 
 // Decode team t's applied lineup code from the shared slot.
@@ -3485,14 +3488,20 @@ ScenarioRosterReport build_scenario_roster_report(
                     }
                     const int code = lineup_fact_code(lineup_facts, t);
                     report.team_squad_level[ti] = code % 10;
+                    // The banked ordinal is the bot_squad knob itself — ONE
+                    // scale from the cycler face to the preview line — so
+                    // the preset it names sits at ordinal minus the first
+                    // preset ordinal.
                     const int ordinal = code / 10;
-                    if (ordinal >= 2 && have_presets &&
-                        static_cast<std::size_t>(ordinal - 2) <
+                    const int preset_index =
+                        ordinal - og::sim::kBotSquadPresetBase;
+                    if (preset_index >= 0 && have_presets &&
+                        static_cast<std::size_t>(preset_index) <
                             lineup_presets.size())
                     {
                         report.team_squad_name[ti] =
                             lineup_presets[static_cast<std::size_t>(
-                                ordinal - 2)];
+                                preset_index)];
                     }
                 }
             }
@@ -4014,16 +4023,19 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
 std::string format_lineup_bots_label(short squad,
                                      std::span<const std::string> preset_names)
 {
-    if (squad <= 0)
+    if (squad <= og::sim::kBotSquadAuto)
         return "BOTS: AUTO";
-    if (squad == 1)
+    if (squad == og::sim::kBotSquadOff)
+        return "BOTS: OFF";
+    if (squad == og::sim::kBotSquadNone)
         return "BOTS: NONE";
-    const std::size_t index = static_cast<std::size_t>(squad) - 2u;
+    const std::size_t index =
+        static_cast<std::size_t>(squad - og::sim::kBotSquadPresetBase);
     if (index >= preset_names.size())
     {
         // A joiner clamps bot_squad without ever holding the preset list
         // (§3.1), so the ordinal has to be able to speak for itself.
-        return std::format("BOTS: #{}", static_cast<int>(squad) - 1);
+        return std::format("BOTS: #{}", static_cast<int>(index) + 1);
     }
     return "BOTS: " +
         clip_chars(preset_names[index],
@@ -4111,7 +4123,7 @@ std::string format_lineup_power_cell(std::optional<long long> power, int width)
 
 namespace {
 
-// AUTO, NONE and the presets on one wheel; `dir` may be any step.
+// AUTO, OFF, NONE and the presets on one wheel; `dir` may be any step.
 short cycle_lineup_value(short current, int count, int dir)
 {
     if (count <= 0)
@@ -4129,7 +4141,8 @@ short cycle_lineup_bots(short current, int preset_count, int dir)
 {
     const int presets =
         std::clamp(preset_count, 0, og::script::hooks::kMaxBotPresets);
-    return cycle_lineup_value(current, 2 + presets, dir);
+    return cycle_lineup_value(
+        current, og::sim::kBotSquadPresetBase + presets, dir);
 }
 
 short cycle_lineup_level(short current, int dir)

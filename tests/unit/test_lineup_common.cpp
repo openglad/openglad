@@ -283,16 +283,18 @@ TEST(LineupCommon, bot_squad_label_strings)
 {
     const std::vector<std::string> presets{"BALANC", "CASTER", "FAIR"};
     EXPECT_EQ("BOTS: AUTO", og::ui::format_lineup_bots_label(0, presets));
-    EXPECT_EQ("BOTS: NONE", og::ui::format_lineup_bots_label(1, presets));
-    EXPECT_EQ("BOTS: BALANC", og::ui::format_lineup_bots_label(2, presets));
-    EXPECT_EQ("BOTS: FAIR", og::ui::format_lineup_bots_label(4, presets));
-    EXPECT_EQ("BOTS: #4", og::ui::format_lineup_bots_label(5, presets))
+    EXPECT_EQ("BOTS: OFF", og::ui::format_lineup_bots_label(1, presets))
+        << "amendment A1: the retired TEAMS knob's power, on the wheel";
+    EXPECT_EQ("BOTS: NONE", og::ui::format_lineup_bots_label(2, presets));
+    EXPECT_EQ("BOTS: BALANC", og::ui::format_lineup_bots_label(3, presets));
+    EXPECT_EQ("BOTS: FAIR", og::ui::format_lineup_bots_label(5, presets));
+    EXPECT_EQ("BOTS: #4", og::ui::format_lineup_bots_label(6, presets))
         << "an ordinal with no name still speaks for itself";
     EXPECT_EQ("BOTS: AUTO", og::ui::format_lineup_bots_label(-3, presets));
     // The 12-char face is the whole budget, names clipped to 6.
     const std::vector<std::string> overlong{"BALANCED"};
-    EXPECT_EQ("BOTS: BALANC", og::ui::format_lineup_bots_label(2, overlong));
-    EXPECT_EQ(12u, og::ui::format_lineup_bots_label(2, overlong).size());
+    EXPECT_EQ("BOTS: BALANC", og::ui::format_lineup_bots_label(3, overlong));
+    EXPECT_EQ(12u, og::ui::format_lineup_bots_label(3, overlong).size());
 }
 
 TEST(LineupCommon, bot_level_label_strings)
@@ -361,18 +363,21 @@ TEST(LineupCommon, power_cell_rounds_into_the_six_character_field)
 
 // --- cyclers -----------------------------------------------------------
 
-TEST(LineupCommon, bot_squad_cycler_wraps_over_auto_none_presets)
+TEST(LineupCommon, bot_squad_cycler_wraps_over_auto_off_none_presets)
 {
+    // AUTO, OFF, NONE, then the campaign's presets (amendment A1).
     EXPECT_EQ(1, og::ui::cycle_lineup_bots(0, 3, 1));
     EXPECT_EQ(2, og::ui::cycle_lineup_bots(1, 3, 1));
-    EXPECT_EQ(4, og::ui::cycle_lineup_bots(3, 3, 1));
-    EXPECT_EQ(0, og::ui::cycle_lineup_bots(4, 3, 1)) << "wrap back to AUTO";
-    EXPECT_EQ(4, og::ui::cycle_lineup_bots(0, 3, -1));
-    // No presets at all: AUTO <-> NONE.
+    EXPECT_EQ(3, og::ui::cycle_lineup_bots(2, 3, 1));
+    EXPECT_EQ(5, og::ui::cycle_lineup_bots(4, 3, 1));
+    EXPECT_EQ(0, og::ui::cycle_lineup_bots(5, 3, 1)) << "wrap back to AUTO";
+    EXPECT_EQ(5, og::ui::cycle_lineup_bots(0, 3, -1));
+    // No presets at all: AUTO -> OFF -> NONE -> AUTO.
     EXPECT_EQ(1, og::ui::cycle_lineup_bots(0, 0, 1));
-    EXPECT_EQ(0, og::ui::cycle_lineup_bots(1, 0, 1));
+    EXPECT_EQ(2, og::ui::cycle_lineup_bots(1, 0, 1));
+    EXPECT_EQ(0, og::ui::cycle_lineup_bots(2, 0, 1));
     // The engine's ceiling holds whatever the campaign claims.
-    EXPECT_EQ(9, og::ui::cycle_lineup_bots(0, 99, -1));
+    EXPECT_EQ(og::sim::kMaxBotSquad, og::ui::cycle_lineup_bots(0, 99, -1));
     // A value outside the wheel enters at AUTO.
     EXPECT_EQ(1, og::ui::cycle_lineup_bots(77, 3, 1));
 }

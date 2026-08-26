@@ -251,8 +251,11 @@ inline constexpr std::int16_t kTroopsMatched = 3;
 //
 //   bot_squad[t]: 0 = AUTO (the map's own value — the PR #245 sentinel rule,
 //                 so all-zero reproduces today's fills byte for byte),
-//                 1 = NONE (never fill this team),
-//                 2.. = the campaign's preset ordinal (index + 2).
+//                 1 = OFF (the team leaves the active mask entirely — the
+//                 retired TEAMS knob's only power, moved onto the band by
+//                 amendment A1),
+//                 2 = NONE (the team is on, it just never gets bots),
+//                 3.. = the campaign's preset ordinal (index + 3).
 //   bot_level[t]: 0 = AUTO (today's source: the difficulty formula, or the
 //                 FAIR solve), 1..9 = that level exactly.
 //
@@ -260,8 +263,15 @@ inline constexpr std::int16_t kTroopsMatched = 3;
 // actual preset count: a joiner clamps a host's request without owning the
 // campaign package, so the bound cannot depend on a list only the host has.
 inline constexpr std::int16_t kMaxBotPresets = 8;
+inline constexpr std::int16_t kBotSquadAuto = 0;
+inline constexpr std::int16_t kBotSquadOff = 1;
+inline constexpr std::int16_t kBotSquadNone = 2;
+// The first preset ordinal; the campaign's k-th preset (0-based) is
+// kBotSquadPresetBase + k on every layer — knob, wire, save and the
+// banked preview fact alike. ONE scale, so nothing has to translate.
+inline constexpr std::int16_t kBotSquadPresetBase = 3;
 inline constexpr std::int16_t kMaxBotSquad =
-    static_cast<std::int16_t>(1 + kMaxBotPresets);
+    static_cast<std::int16_t>(kBotSquadPresetBase - 1 + kMaxBotPresets);
 inline constexpr std::int16_t kMaxBotLevel = 9;
 
 // The ONE implementation of each bot-knob bound. Every clamp home calls

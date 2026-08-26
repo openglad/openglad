@@ -2742,7 +2742,8 @@ int og_team_color_name(lua_State* L)
 // "time_limit" (the match clock in SIM TICKS; 0 = the map's own value, so
 // modes resolve it against their manifest row through match.resolve_limit),
 // "bot_squad_1".."bot_squad_4" (the per-team squad preset ordinal: 0 = AUTO,
-// 1 = NONE, 2.. = the campaign's preset), "bot_level_1".."bot_level_4" (the
+// 1 = OFF — the team is not fielded at all, the retired TEAMS knob's power —
+// 2 = NONE, 3.. = the campaign's preset), "bot_level_1".."bot_level_4" (the
 // per-team bot level: 0 = AUTO, 1..9 that level exactly),
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF
 // bot-squad level formula reads it).

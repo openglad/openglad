@@ -479,7 +479,9 @@ public:
     // Lobby-requested per-team bot squad preset ordinal and bot level
     // (LINEUP §3.1). Index is the team (0..3). 0 = AUTO on both — the map's
     // own value — so an all-zero pair reproduces today's fills byte for byte.
-    // bot_squad: 1 = NONE, 2.. = the campaign's preset ordinal. bot_level:
+    // bot_squad: 1 = OFF (the team is not fielded at all), 2 = NONE (no
+    // bots on a team that is still fielded), 3.. = the campaign's preset
+    // ordinal (index + 3, og::sim::kBotSquadPresetBase). bot_level:
     // 1..9 = that level exactly. Scripted modes read them as
     // og.match_setting("bot_squad_1") .. ("bot_level_4").
     std::array<short, 4> ctf_requested_bot_squad = {};
