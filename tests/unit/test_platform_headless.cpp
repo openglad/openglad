@@ -949,8 +949,10 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // camp's MATCH SETUP page and 11=difficulty was appended in its place —
     // docs/camp-controls-design.md); the scenario-shaped commands nest
     // under the Scenario submenu (1=set_campaign, 2=set_level,
-    // 3=view_scenario, 4=matchup, 5=progress, 6=troops, 7=replay level
-    // (#207), 8=back — the missions door retired into the camp). Team
+    // 3=view_scenario, 4=matchup, 5=progress, 6=replay level (#207),
+    // 7=back — the missions door retired into the camp, and amendment B5
+    // retired TROOPS, which is the one row this branch REMOVED rather than
+    // appended: replay level and back each moved up one). Team
     // Build 11=difficulty opens the DIFFICULTY submenu, and 12=lineup the
     // LINEUP page (§8 — appended below difficulty, so nothing above moved)
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
@@ -999,9 +1001,8 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "999\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
-        "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired, so
+                    //   replay level is 6 and back is 7)
         "11\n"      // team build: difficulty -> DIFFICULTY submenu
         "1\n"       // difficulty: cycle difficulty
         "2\n"       // difficulty: cycle respawns
@@ -1012,13 +1013,14 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"       // difficulty: toggle infinite gold back off
         "7\n"       // difficulty: back -> team build
         // LINEUP (docs/lineup-design.md §8) appended at 12, so every ordinal
-        // above it is untouched. Host rows: 1..8 the four teams' bot/level
-        // knobs, 9 Fighters, 10 Split even, 11 Split fair, 12 Unite, 13 Back.
+        // above it is untouched. Host rows (amendment B1/B6): 1..8 the four
+        // teams' FILL/MAP UNITS knobs, 9 Split even, 10 Split fair,
+        // 11 Unite, 12 Back — FIGHTERS is gone.
         "12\n"      // team build: LINEUP
-        "1\n"       // lineup: TEAM 1 bots (classic: refused)
-        "2\n"       // lineup: TEAM 1 level (classic: refused)
+        "1\n"       // lineup: TEAM 1 FILL (classic: refused)
+        "2\n"       // lineup: TEAM 1 MAP UNITS (classic: refused)
         "99\n"      // lineup: out of range -> refused, page reprints
-        "13\n"      // lineup: back -> team build
+        "12\n"      // lineup: back -> team build
         "9\n"       // team build: networking (unavailable)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
@@ -1056,7 +1058,7 @@ TEST(PlatformHeadless, text_picker_set_level_prompt_rides_the_gate)
             "10\n"   // team build: Scenario submenu
             "2\n"    // scenario: set level -> 15 (unearned: refused)
             "15\n"
-            "8\n"    // scenario: back -> team build (#207: Replay Level joined at 7)
+            "7\n"    // scenario: back -> team build (B5: TROOPS retired)
             "8\n"    // team build: back -> main
             "6\n";   // main: quit
         StdinRedirect stdin_redirect(input);
@@ -1619,7 +1621,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "10\n"      // team build: Scenario submenu
         "1\n"       // scenario: set campaign
         "1\n"       //   entry 1 is always the default campaign
-        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1658,9 +1660,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
-        "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1709,7 +1709,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "2\n"       // main: continue -> team build
         "10\n"      // team build: Scenario submenu (labels print)
         "5\n"       // scenario: progress
-        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1807,16 +1807,16 @@ TEST(PlatformHeadless, text_picker_replay_level_prompt_gates_and_arms)
         "1\n"       //   list: open company...
         "1\n"       //     row 1 = REPLAY BAND -> team build
         "10\n"      // team build: Scenario submenu
-        "7\n"       // scenario: replay level (invalid value)
+        "6\n"       // scenario: replay level (invalid value)
         "abc\n"
-        "7\n"       // scenario: replay level (unearned forward id)
+        "6\n"       // scenario: replay level (unearned forward id)
         "15\n"
-        "7\n"       // scenario: replay level (in frontier but uncleared)
+        "6\n"       // scenario: replay level (in frontier but uncleared)
         "3\n"
-        "7\n"       // scenario: replay level -> 1 (cleared: ARMS)
+        "6\n"       // scenario: replay level -> 1 (cleared: ARMS)
         "1\n"
         "5\n"       // scenario: progress (prints the moved cursor)
-        "8\n"       // scenario: back -> team build
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1879,11 +1879,11 @@ TEST(PlatformHeadless, text_picker_campaign_switch_after_replay_arm)
         "1\n"       //   list: open company...
         "1\n"       //     row 1 = SWITCH BAND -> team build
         "10\n"      // team build: Scenario submenu
-        "7\n"       // scenario: replay level -> 1 (cleared: ARMS)
+        "6\n"       // scenario: replay level -> 1 (cleared: ARMS)
         "1\n"
         "1\n"       // scenario: set campaign
         "2\n"       //   entry 2 = the first NON-default campaign (SWITCH)
-        "8\n"       // scenario: back -> team build
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1941,7 +1941,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "move 1 1\n"    //   valid: back to team 1
         "gibberish\n"   //   unrecognized command
         "\n"            //   blank exits matchup
-        "8\n"           // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"           // scenario: back -> team build (B5: TROOPS retired)
         "8\n"           // base camp: back -> main
         "6\n";          // main: quit
 
@@ -2272,10 +2272,11 @@ bool seed_lineup_company(const std::string& slot)
 
 } // namespace
 
-// The host drive: the bands print through the shared formatters, a bot knob
-// cycles and LANDS IN THE SAVE (the .gtl round-trip is the proof — a label
-// that changed without a write would be a lie the next launch tells), and
-// SPLIT FAIR snake-drafts the company across the two seated teams.
+// The host drive: the bands print through the shared formatters, the FILL
+// wheel and the MAP UNITS box both LAND IN THE SAVE (the .gtl round-trip is
+// the proof — a label that changed without a write would be a lie the next
+// launch tells), and SPLIT FAIR snake-drafts the company across the seated
+// teams.
 TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
 {
     restore_default_campaigns(); // order-independent: install the packages
@@ -2289,23 +2290,14 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
         "1\n"        //   list: open company...
         "1\n"        //     #1 = lineupd -> team build
         "12\n"       // team build: LINEUP
-        // A2: TEAM 1 has this machine's seat, so the wheel's OFF is
-        // refused and the step lands on NONE.
-        "1\n"        //   lineup: TEAM 1 bots -> (OFF refused) NONE
-        "2\n"        //   lineup: TEAM 1 level -> LV +1
-        "9\n"        //   lineup: Fighters
-        "team 4 1\n" //     fighters: F4 GREEN -> RED
-        "team 9 1\n" //     fighters: slot out of range -> refused
-        "team 4 9\n" //     fighters: team out of range -> refused
-        "bench 4\n"  //     fighters: bench F4
-        "bench 9\n"  //     fighters: slot out of range -> refused
-        "wobble\n"   //     fighters: not a command -> refused
-        "bench 4\n"  //     fighters: deploy F4 again
-        "team 4 2\n" //     fighters: F4 back to GREEN (state restored)
-        "\n"         //     fighters: blank exits
-        "11\n"       //   lineup: SPLIT FAIR
+        // B8: no value on either control is refused on any team, so one
+        // press is one step of the shared wheel and nothing toasts.
+        "1\n"        //   lineup: TEAM 1 FILL -> FAIR steps to STRONG
+        "2\n"        //   lineup: TEAM 1 MAP UNITS -> ON flips to OFF
+        "10\n"       //   lineup: SPLIT FAIR (B6: FIGHTERS is gone, so the
+                     //     strip starts right after the eight knob rows)
         "99\n"       //   lineup: out of range -> refused, page reprints
-        "13\n"       //   lineup: back -> team build
+        "12\n"       //   lineup: back -> team build
         "8\n"        // team build: back -> main
         "6\n";       // main: quit
 
@@ -2326,36 +2318,29 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
         << out;
     EXPECT_NE(std::string::npos, out.find("TEAM 1 RED  POWER "))
         << "the band names the colour, the price and the seats:\n" << out;
-    EXPECT_NE(std::string::npos, out.find("[BOTS: AUTO] [LV: AUTO]  3 FIGHTERS"))
+    EXPECT_NE(std::string::npos,
+              out.find("[FILL: FAIR] [MAP UNITS: ON]  3 FIGHTERS"))
         << "the shared census formatter spells the fighter count:\n" << out;
     EXPECT_NE(std::string::npos, out.find("TEAM 3 BLUE  POWER --   NO SEAT"))
         << "an unoccupied team is honestly unpriced, and still says NO SEAT:\n"
         << out;
-    EXPECT_NE(std::string::npos, out.find("[BOTS: AUTO] [LV: AUTO]  NO FIGHTERS"))
-        << out;
-    // The two cycles answer with the SAME formatter the row label uses.
-    EXPECT_NE(std::string::npos, out.find("BOTS: NONE"))
-        << "cycling the squad knob must answer with the shared label:\n" << out;
-    EXPECT_NE(std::string::npos, out.find("LV +1"))
-        << "A6: the level knob is an OFFSET, so the sign is the label:\n" << out;
-    EXPECT_NE(std::string::npos, out.find("TEAM 1 HAS PLAYERS"))
-        << "A2: OFF is refused on a seated team, in words, and the wheel "
-           "steps over it instead of stranding:\n" << out;
-    // The fighter list: team, deploy state and price on one row.
-    EXPECT_NE(std::string::npos, out.find("--- Fighters ---")) << out;
     EXPECT_NE(std::string::npos,
-              out.find("1. F1 (SOLDIER) LV 4  RED  DEPLOYED  POWER "))
+              out.find("[FILL: FAIR] [MAP UNITS: ON]  NO FIGHTERS"))
         << out;
-    EXPECT_NE(std::string::npos, out.find("'team SLOT TEAM' | 'bench SLOT'"))
+    EXPECT_EQ(std::string::npos, out.find("NO MAP UNITS"))
+        << "B4: nothing censused the staged world here, and an absent census "
+           "is not an empty map:\n" << out;
+    // Both presses answer with the SAME formatter the row label uses.
+    EXPECT_NE(std::string::npos, out.find("FILL: STRONG"))
+        << "B2: the wheel's display order puts STRONG one step past FAIR:\n"
         << out;
-    // The command grammar, and its three refusals.
-    EXPECT_NE(std::string::npos, out.find("Moved slot 4 to RED.")) << out;
-    EXPECT_NE(std::string::npos, out.find("Moved slot 4 to GREEN.")) << out;
-    EXPECT_NE(std::string::npos, out.find("F4 benched.")) << out;
-    EXPECT_NE(std::string::npos, out.find("F4 deployed.")) << out;
-    EXPECT_NE(std::string::npos, out.find("Invalid slot or team.")) << out;
-    EXPECT_NE(std::string::npos, out.find("Invalid slot.")) << out;
-    EXPECT_NE(std::string::npos, out.find("Unrecognized command.")) << out;
+    EXPECT_NE(std::string::npos, out.find("MAP UNITS: OFF"))
+        << "B4: the box is a flip, and the label is the answer:\n" << out;
+    EXPECT_EQ(std::string::npos, out.find("HAS PLAYERS"))
+        << "B8: no wheel value is refused on any team any more:\n" << out;
+    // B6: FIGHTERS is deleted, not hidden — MATCHUP moves a colour and the
+    // DEPLOY row benches, so the page never offers a second door to them.
+    EXPECT_EQ(std::string::npos, out.find("--- Fighters ---")) << out;
     EXPECT_NE(std::string::npos, out.find("Invalid selection."))
         << "the page refuses an out-of-range row and reprints:\n" << out;
 
@@ -2367,12 +2352,12 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
 
     SaveData reloaded;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("lineupd"));
-    EXPECT_EQ(og::sim::kBotSquadNone, reloaded.fill[0])
-        << "the squad cycle must reach the company file (AUTO -> OFF "
-           "refused -> NONE)";
-    EXPECT_EQ(1, reloaded.map_units[0])
-        << "the level cycle must reach the company file (AUTO -> +1)";
-    EXPECT_EQ(0, reloaded.fill[1]) << "only the cycled team moved";
+    EXPECT_EQ(og::sim::kFillStrong, reloaded.fill[0])
+        << "the FILL cycle must reach the company file (FAIR -> STRONG)";
+    EXPECT_EQ(og::sim::kMapUnitsOff, reloaded.map_units[0])
+        << "the MAP UNITS flip must reach the company file (ON -> OFF)";
+    EXPECT_EQ(og::sim::kFillFair, reloaded.fill[1])
+        << "only the cycled team moved";
     ASSERT_TRUE(reloaded.team_list[0] && reloaded.team_list[1] &&
                 reloaded.team_list[2] && reloaded.team_list[3]);
     for (int slot = 0; slot < 4; ++slot) {
@@ -2386,7 +2371,7 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
 
 // The same two rows on a CLASSIC campaign: the map's own levels decide the
 // bots there, so the write is refused in words and never reaches the company
-// file — the terminal spelling of change_lineup_bots returning without
+// file — the terminal spelling of change_lineup_fill returning without
 // cycling. Hardcoding the knobs live let a terminal write a value the same
 // campaign's SDL screen refuses.
 TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
@@ -2415,9 +2400,9 @@ TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
         "1\n"   //   list: open company...
         "1\n"   //     #1 = classicd -> team build
         "12\n"  // team build: LINEUP
-        "1\n"   //   lineup: TEAM 1 bots -> refused
-        "2\n"   //   lineup: TEAM 1 level -> refused
-        "13\n"  //   lineup: back -> team build
+        "1\n"   //   lineup: TEAM 1 FILL -> refused
+        "2\n"   //   lineup: TEAM 1 MAP UNITS -> refused
+        "12\n"  //   lineup: back -> team build
         "8\n"   // team build: back -> main
         "6\n";  // main: quit
 
@@ -2435,10 +2420,12 @@ TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
     EXPECT_NE(std::string::npos,
               out.find(std::string(og::ui::kTerminalLineupMapRulesRefusal)))
         << "the row says who decides instead of cycling:\n" << out;
-    EXPECT_NE(std::string::npos, out.find("TEAM 1  BOTS: AUTO  (MAP RULES)"))
+    EXPECT_NE(std::string::npos, out.find("TEAM 1  FILL: FAIR  (MAP RULES)"))
         << "and the row itself carries the mark:\n" << out;
-    EXPECT_EQ(std::string::npos, out.find("BOTS: NONE"))
+    EXPECT_EQ(std::string::npos, out.find("FILL: STRONG"))
         << "nothing cycled:\n" << out;
+    EXPECT_EQ(std::string::npos, out.find("MAP UNITS: OFF"))
+        << "and nothing flipped:\n" << out;
 
     SaveData reloaded;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("classicd"));
@@ -2449,7 +2436,7 @@ TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
     og::data::set_active_company_slot("save0");
 }
 
-// The joiner projection of the same page: §2.3 hides the eight bot knobs
+// The joiner projection of the same page: §2.3 hides the eight host knobs
 // (they are the host's, and a joiner writing them would be a silent
 // divergence) while the bands and every roster action stay.
 TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
@@ -2466,12 +2453,10 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
 
     const std::vector<og::sim::LobbyPlayer> seats =
         og::ui::synthesize_local_lobby_players(save);
-    const std::vector<std::string> presets = {"BRUTES"};
 
     og::ui::TerminalLineupInputs inputs;
     inputs.save = &save;
     inputs.players = seats;
-    inputs.preset_names = presets;
 
     inputs.is_host = true;
     const og::ui::TerminalLineupModel host =
@@ -2484,22 +2469,24 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
         << "four bands of two lines each, whether or not a team is on";
     EXPECT_EQ(joiner.lines, host.lines)
         << "a joiner sees exactly the census the host sees";
-    EXPECT_EQ(13u, host.items.size())
-        << "eight knobs + Fighters + the three SPLIT rows + Back";
-    EXPECT_EQ(5u, joiner.items.size())
+    EXPECT_EQ(12u, host.items.size())
+        << "eight knobs + the three SPLIT rows + Back (B6: no FIGHTERS)";
+    EXPECT_EQ(4u, joiner.items.size())
         << "the eight host-only knob rows are gone, nothing else is";
     for (const TerminalLineupItem& item : joiner.items) {
-        EXPECT_NE(TerminalLineupItem::Kind::BotSquad, item.kind);
-        EXPECT_NE(TerminalLineupItem::Kind::BotLevel, item.kind);
+        EXPECT_NE(TerminalLineupItem::Kind::Fill, item.kind);
+        EXPECT_NE(TerminalLineupItem::Kind::MapUnits, item.kind);
     }
-    EXPECT_EQ(TerminalLineupItem::Kind::Fighters, joiner.items[0].kind);
-    EXPECT_EQ("Fighters", joiner.items[0].label);
+    // B6: the strip is BACK | SPLIT EVEN | SPLIT FAIR | UNITE and nothing
+    // else — a FIGHTERS row here would be a second door to the two writes
+    // MATCHUP and DEPLOY already own on every terminal client.
+    EXPECT_EQ(TerminalLineupItem::Kind::SplitEven, joiner.items[0].kind);
     // §5 over one seated team is UNITE by arithmetic, and a terminal client
     // is single-seat by construction — so the two SPLIT rows keep their
     // ordinals and say what they will actually do.
-    EXPECT_EQ("Split even  (one seat: same as Unite)", joiner.items[1].label);
-    EXPECT_EQ("Split fair  (one seat: same as Unite)", joiner.items[2].label);
-    EXPECT_EQ("Unite", joiner.items[3].label);
+    EXPECT_EQ("Split even  (one seat: same as Unite)", joiner.items[0].label);
+    EXPECT_EQ("Split fair  (one seat: same as Unite)", joiner.items[1].label);
+    EXPECT_EQ("Unite", joiner.items[2].label);
     EXPECT_EQ(TerminalLineupItem::Kind::Back, joiner.items.back().kind);
     EXPECT_EQ("Back", joiner.items.back().label);
     // The knob rows quote the shared label VERBATIM behind the team ordinal.
@@ -2507,23 +2494,25 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     // them would renumber the page under the two 1-based consumers) but they
     // carry the MAP RULES mark and the band censuses MAP RULES, the terminal
     // spelling of the SDL screen's dimmed faces.
-    EXPECT_EQ("TEAM 1  BOTS: AUTO  (MAP RULES)", host.items[0].label);
-    EXPECT_EQ("TEAM 1  LV: AUTO  (MAP RULES)", host.items[1].label);
+    EXPECT_EQ("TEAM 1  FILL: FAIR  (MAP RULES)", host.items[0].label);
+    EXPECT_EQ("TEAM 1  MAP UNITS: ON  (MAP RULES)", host.items[1].label);
     EXPECT_NE(std::string::npos, host.lines[1].find("MAP RULES"))
         << "the classic census names who decides: " << host.lines[1];
     EXPECT_EQ(std::string::npos, host.lines[1].find("FIGHTER"))
         << "MAP RULES replaces the census, it does not join it: "
         << host.lines[1];
-    // A preset ordinal the campaign DID register reads by name; the joiner
-    // clamp path (an ordinal with no name) reads as its number, never AUTO.
-    save.fill[0] = og::sim::kBotSquadPresetBase;      // BRUTES
-    save.fill[1] = static_cast<short>(
-        og::sim::kBotSquadPresetBase + 4);                 // no such name
+    // Every stored FILL code reads as its word, and a value no wheel can
+    // produce (a crafted joiner, a legacy .gtl) reads as the default rather
+    // than as a number — one shared formatter, one fallback.
+    save.fill[0] = og::sim::kFillBrutal;
+    save.fill[1] = 99;
+    save.map_units[1] = og::sim::kMapUnitsOff;
     inputs.is_host = true;
     const og::ui::TerminalLineupModel named =
         og::ui::build_terminal_lineup_model(inputs);
-    EXPECT_EQ("TEAM 1  BOTS: BRUTES  (MAP RULES)", named.items[0].label);
-    EXPECT_EQ("TEAM 2  BOTS: #5  (MAP RULES)", named.items[2].label);
+    EXPECT_EQ("TEAM 1  FILL: BRUTAL  (MAP RULES)", named.items[0].label);
+    EXPECT_EQ("TEAM 2  FILL: FAIR  (MAP RULES)", named.items[2].label);
+    EXPECT_EQ("TEAM 2  MAP UNITS: OFF  (MAP RULES)", named.items[3].label);
 
     // On a VERSUS campaign the knobs really are live: no mark, and the band
     // censuses the fighters again.
@@ -2531,12 +2520,13 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
     save.current_campaign = "modes";
-    save.fill[0] = 0;
-    save.fill[1] = 0;
+    save.fill[0] = og::sim::kFillFair;
+    save.fill[1] = og::sim::kFillFair;
+    save.map_units[1] = og::sim::kMapUnitsOn;
     const og::ui::TerminalLineupModel versus =
         og::ui::build_terminal_lineup_model(inputs);
-    EXPECT_EQ("TEAM 1  BOTS: AUTO", versus.items[0].label);
-    EXPECT_EQ("TEAM 1  LV: AUTO", versus.items[1].label);
+    EXPECT_EQ("TEAM 1  FILL: FAIR", versus.items[0].label);
+    EXPECT_EQ("TEAM 1  MAP UNITS: ON", versus.items[1].label);
     EXPECT_NE(std::string::npos, versus.lines[1].find("FIGHTER"))
         << versus.lines[1];
     EXPECT_EQ(std::string::npos, versus.lines[1].find("MAP RULES"))
@@ -2545,78 +2535,57 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     (void)mount_campaign_package_with_error("gladiator");
 }
 
-// Amendment A2: OFF drops an authored team out of the match, so a team that
-// has a seat or a deployed fighter may not take it — and a refusal that just
-// held the wheel in place would strand it, because OFF sits between AUTO and
-// the presets. The step goes over it and says why.
-TEST(PlatformHeadless, lineup_terminal_bots_wheel_steps_over_a_refused_off)
+// B4: the MAP UNITS hint speaks for a census that HAPPENED. An empty
+// map_unit_counts span means nobody censused the staged world, which is a
+// different fact from "the map ships no units on this team" — a terminal
+// that printed NO MAP UNITS off the default zeros would tell all four teams
+// the map is empty. Supply the census and the hint appears, per team,
+// beside the fighter count rather than instead of it.
+TEST(PlatformHeadless, lineup_terminal_map_units_hint_needs_a_real_census)
 {
     SaveData save;
     save.reset();
     save.my_team = 0;
-    // Team 1 (index 0) carries the seat; team 2 carries a deployed fighter
-    // with no seat; teams 3 and 4 are empty.
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
     save.team_list[0]->deployed = true;
-    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[1]->teamnum = 1;
-    save.team_list[1]->deployed = true;
-    save.team_size = 2;
-    save.numplayers = 1;
+    save.team_size = 1;
 
-    og::ui::TerminalLineupInputs inputs;
     const std::vector<og::sim::LobbyPlayer> seats =
         og::ui::synthesize_local_lobby_players(save);
+    og::ui::TerminalLineupInputs inputs;
     inputs.save = &save;
     inputs.players = seats;
-    const og::ui::TerminalLineupModel model =
+
+    const og::ui::TerminalLineupModel uncensused =
         og::ui::build_terminal_lineup_model(inputs);
+    for (const std::string& line : uncensused.lines) {
+        EXPECT_EQ(std::string::npos, line.find("NO MAP UNITS"))
+            << "no census, no claim: " << line;
+    }
+    for (const og::ui::LineupTeamBand& band : uncensused.bands)
+        EXPECT_EQ(0, band.map_unit_count);
 
-    // The model hands on the bands it drew, and the terminals turn the wheel
-    // with the shared og::ui::lineup_bots_wheel_next — the SDL screen's own
-    // rule, reached from here with no second spelling of it.
-    EXPECT_EQ(1, model.bands[0].seat_count) << "the seat holds team 1";
-    EXPECT_EQ(1, model.bands[1].fighter_count)
-        << "team 2 has a fighter and no seat";
-    EXPECT_EQ(0, model.bands[2].seat_count + model.bands[2].fighter_count)
-        << "team 3 is empty: it may be switched OFF";
-
-    // The wheel on the empty team is the plain one: AUTO -> OFF -> NONE.
-    og::ui::LineupBotsWheelStep step = og::ui::lineup_bots_wheel_next(
-        model.bands[2], og::sim::kBotSquadAuto, 1, 1);
-    EXPECT_EQ(og::sim::kBotSquadOff, step.next);
-    EXPECT_FALSE(step.refusal_toast.has_value());
-
-    // On the seated team the same press lands on NONE and names the reason.
-    step = og::ui::lineup_bots_wheel_next(model.bands[0],
-                                          og::sim::kBotSquadAuto, 1, 1);
-    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
-    ASSERT_TRUE(step.refusal_toast.has_value());
-    EXPECT_EQ("TEAM 1 HAS PLAYERS", *step.refusal_toast)
-        << "a seat outranks the fighters as the reason";
-
-    // The fighters-only team says so instead.
-    step = og::ui::lineup_bots_wheel_next(model.bands[1],
-                                          og::sim::kBotSquadAuto, 1, 1);
-    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
-    ASSERT_TRUE(step.refusal_toast.has_value());
-    EXPECT_EQ("TEAM 2 HAS FIGHTERS", *step.refusal_toast);
-
-    // Backwards over the same gap: NONE -> (OFF refused) -> AUTO. The wheel
-    // stays reachable in both directions, which is the whole point of
-    // stepping over rather than refusing in place.
-    step = og::ui::lineup_bots_wheel_next(model.bands[0],
-                                          og::sim::kBotSquadNone, 1, -1);
-    EXPECT_EQ(og::sim::kBotSquadAuto, step.next);
-    ASSERT_TRUE(step.refusal_toast.has_value());
-    EXPECT_EQ("TEAM 1 HAS PLAYERS", *step.refusal_toast);
-
-    // And the preset beyond it is still reachable in one more press.
-    step = og::ui::lineup_bots_wheel_next(model.bands[0],
-                                          og::sim::kBotSquadNone, 1, 1);
-    EXPECT_EQ(og::sim::kBotSquadPresetBase, step.next);
-    EXPECT_FALSE(step.refusal_toast.has_value());
+    const std::array<int, 4> counts = {7, 0, 0, 3};
+    inputs.map_unit_counts = counts;
+    const og::ui::TerminalLineupModel censused =
+        og::ui::build_terminal_lineup_model(inputs);
+    EXPECT_EQ(7, censused.bands[0].map_unit_count)
+        << "the span reaches build_lineup_bands unchanged";
+    EXPECT_EQ(3, censused.bands[3].map_unit_count);
+    EXPECT_EQ(std::string::npos, censused.lines[1].find("NO MAP UNITS"))
+        << "team 1 is shipped seven: " << censused.lines[1];
+    EXPECT_NE(std::string::npos, censused.lines[3].find("NO MAP UNITS"))
+        << "team 2 is shipped none: " << censused.lines[3];
+    // This save names no campaign, so it is CLASSIC and the census cell
+    // reads MAP RULES. Whatever is in that cell, the hint rides BESIDE it —
+    // that is why format_lineup_map_units_census is its own formatter and
+    // not a new Diag inside format_lineup_census.
+    EXPECT_NE(std::string::npos, censused.lines[3].find("MAP RULES"))
+        << "the hint rides BESIDE the census, never instead of it: "
+        << censused.lines[3];
+    EXPECT_EQ(std::string::npos, censused.lines[7].find("NO MAP UNITS"))
+        << "team 4 is shipped three: " << censused.lines[7];
 }
 
 // M3: a seat picture has ONE derivation. The SDL screens and the launch both

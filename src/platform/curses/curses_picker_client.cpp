@@ -1041,55 +1041,9 @@ void campaign_camp_flow(Menu& menu, SaveData& save,
 // the items, which is what a Menu with dynamic rows buys over a prompt —
 // the census is always on screen while the cursor moves.
 
-// §2.2 fighter list: this machine's whole company, Enter cycles the team,
-// 'b' toggles deploy. Both writes go through the ONE roster setter each
-// owns (cycle_guy_team / the deployed flag) and autosave on mutation.
-void lineup_fighter_list(Menu& menu, SaveData& save)
-{
-    for (;;) {
-        std::vector<ListEntry> entries;
-        std::vector<int> slots;  // entry index -> roster slot
-        for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
-            const auto& member = save.team_list[static_cast<std::size_t>(slot)];
-            if (member == nullptr)
-                continue;
-            entries.push_back(ListEntry{
-                og::ui::format_terminal_lineup_fighter_row(slot, *member),
-                true});
-            slots.push_back(slot);
-        }
-        if (entries.empty()) {
-            menu.show_text("Fighters", {"(no characters)"});
-            return;
-        }
-
-        char32_t pressed = 0;
-        const int index = menu.choose(
-            "Fighters", entries,
-            "Enter team | b bench | Esc back", 0, U"bB", &pressed);
-        if (index < 0)
-            return;
-        const int slot = slots[static_cast<std::size_t>(index)];
-        if (pressed == U'b' || pressed == U'B') {
-            guy& member = *save.team_list[static_cast<std::size_t>(slot)];
-            member.deployed = !member.deployed;
-            autosave_company_after_mutation(save);  // §3.8 deploy tail
-            continue;
-        }
-        if (!og::ui::lineup_fighter_team_editable(
-                save, slot, og::ui::lineup_zone_can_team(save),
-                /*assign_mode=*/false)) {
-            menu.show_text("Fighters", {"That fighter cannot be moved here."});
-            continue;
-        }
-        if (og::ui::cycle_guy_team(save, slot, 1) >= 0)
-            autosave_company_after_mutation(save);  // §3.8 team cycle
-    }
-}
-
 // §5 SPLIT: one implementation for both terminal clients
 // (terminal_apply_lineup_split) — the campaign's own can_team rule
-// included, so this key cannot do what the fighter list refuses.
+// included, so this key cannot do what a single roster row refuses.
 void lineup_apply_split(Menu& menu, SaveData& save, og::ui::LineupSplit mode)
 {
     std::vector<std::string> report;
@@ -1161,9 +1115,6 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
                     og::ui::toggle_lineup_map_units(save.map_units[team]));
             }
             autosave_company_after_mutation(save);  // §3.8 settings tail
-            break;
-        case Kind::Fighters:
-            lineup_fighter_list(menu, save);
             break;
         case Kind::SplitEven:
             lineup_apply_split(menu, save, og::ui::LineupSplit::Even);
@@ -1515,7 +1466,8 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         campaign_camp_flow(menu, save_data_, config_, options_);
         break;
     case PickerMenuCommand::Lineup:
-        // LINEUP §8: teams, seats, fighters and bots on one page.
+        // LINEUP §8: teams, seats and the two band controls on one page
+        // (B1/B6: one FILL wheel, one MAP UNITS box, no FIGHTERS).
         lineup_flow(menu, save_data_, config_, options_);
         break;
     default:

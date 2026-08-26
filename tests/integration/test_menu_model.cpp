@@ -216,14 +216,11 @@ TEST(MenuModel, scenario_menu_lookup)
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Scenario), static_cast<int>(def.id))
         << "scenario definition should report scenario id";
-    // (Mechanical W5-C port so the tree compiles: TROOPS retired with
-    // amendment B5 — PickerMenuCommand::ToggleCtfScenarioTroops is gone
-    // and the terminal SCENARIO list lost its row. The terminals' own
-    // position re-pins stay with their wave.)
     ASSERT_EQ(7u, def.items.size())
         << "scenario menu: campaign/level/viewer/matchup/progress/"
            "replay (#207) + back (the missions door retired into the Base "
-           "Camp zone; TROOPS retired with B5)";
+           "Camp zone, and amendment B5 retired the TROOPS row — the one row "
+           "this branch REMOVED, so replay and back each moved up one)";
 
     const struct
     {
@@ -259,6 +256,20 @@ TEST(MenuModel, scenario_menu_lookup)
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "ctf_teams") ==
                 nullptr)
         << "the CTF settings trio stays in team build for terminal clients";
+
+    // B5: TROOPS is retired everywhere at once. The LINEUP page's per-team
+    // MAP UNITS box asks the question it used to ask, so the row is GONE
+    // rather than parked — the terminal list is not a rect table and has no
+    // ordinal to protect.
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "troops") ==
+                nullptr)
+        << "the TROOPS row retired with the knob (amendment B5)";
+    ASSERT_TRUE(&def.items[5] ==
+                find_picker_menu_item(PickerMenuId::Scenario, "replay_level"))
+        << "replay level moved up to 1-based position 6";
+    ASSERT_TRUE(&def.items[6] ==
+                find_picker_menu_item(PickerMenuId::Scenario, "back"))
+        << "and Back keeps its 'last item' reading, at 7 now";
 }
 
 
@@ -619,9 +630,9 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
     // door is appended last. Main exposes both stable Help and Quit actions,
     // and lost its difficulty door to Team Build. TeamBuild grew the #206
     // Camp door, that difficulty door and the LINEUP door (§8), and lost the
-    // flat CTF trio to the camp's MATCH SETUP page; Scenario grew the
-    // #207 replay-level row, gave the missions door back, and lost its
-    // troops row (B5); Difficulty grew the appended infinite-gold row.
+    // flat CTF trio to the camp's MATCH SETUP page; Scenario grew the #207
+    // replay-level row, gave the missions door back, and lost the TROOPS row
+    // to amendment B5; Difficulty grew the appended infinite-gold row.
     ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Scenario).items.size());

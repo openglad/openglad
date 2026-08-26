@@ -94,8 +94,10 @@ enum class PickerMenuCommand : std::int32_t
     // the PROGRESS screen's per-row REPLAY button instead.
     ReplayLevel,
     // LINEUP (docs/lineup-design.md §8): the Team Build door onto the four
-    // team bands — seats, fighters, per-team bot squads and the SPLIT
-    // actions on one page. The SDL surface reaches the same page from the
+    // team bands — seats, fighters, the per-team FILL wheel and MAP UNITS
+    // box, and the SPLIT actions on one page (amendments B1/B6: two
+    // controls per band, and no FIGHTERS page behind them). The SDL
+    // surface reaches the same page from the
     // SCENARIO subscreen's free grid cell instead; terminals append the row
     // here so no 1-based position moves.
     Lineup,

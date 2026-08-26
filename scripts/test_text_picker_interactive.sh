@@ -27,15 +27,16 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #     (gladiator composes no camp, so the guard line prints and Team Build
 #     re-presents without consuming further input), 10=Scenario,
 #     11=Difficulty, 12=Lineup, 6=GO!, 8=Back.
-#   Lineup page (host rows: 1..8 the four teams' bot/level knobs, 9=Fighters,
-#     10=Split even, 11=Split fair, 12=Unite, 13=Back): 1 selects TEAM 1's
-#     bot squad, which on this CLASSIC campaign refuses with MAP RULES
-#     rather than cycling (§2.3); 9 opens the fighter list (blank exits),
-#     13 backs out.
-#   Scenario submenu (8 items — the missions door retired into the camp;
-#     7=Replay Level was appended before Back, #207): 4=Matchup (set
-#     preferred-team metadata, blank exits), 3=View Scenario (blank
-#     dismisses), 6=Scenario Troops, 8=Back.
+#   Lineup page (host rows: 1..8 the four teams' FILL/MAP UNITS knobs,
+#     9=Split even, 10=Split fair, 11=Unite, 12=Back — amendment B6 deleted
+#     the FIGHTERS row, so the strip moved up one): 1 selects TEAM 1's FILL
+#     wheel, which on this CLASSIC campaign refuses with MAP RULES rather
+#     than cycling (§2.3); 12 backs out.
+#   Scenario submenu (7 items — the missions door retired into the camp;
+#     6=Replay Level, #207; amendment B5 retired the TROOPS row, which is
+#     the one row this branch REMOVED, so replay and back each moved up
+#     one): 4=Matchup (set preferred-team metadata, blank exits),
+#     3=View Scenario (blank dismisses), 7=Back.
 #   Difficulty submenu (7 items): 7=Back straight out.
 #   Protocol session after GO!: state, quit.
 #   Main: 6=Quit (the difficulty door left this menu, so every row below it
@@ -62,14 +63,12 @@ play 1
 
 3
 
-8
+7
 11
 7
 12
 1
-9
-
-13
+12
 6
 state
 quit
@@ -187,8 +186,9 @@ if any('Teams:' in l for l in lines):
           file=sys.stderr)
     sys.exit(1)
 
-# LINEUP (docs/lineup-design.md §8): the four bands, the shared bot-squad
-# label after the cycle, and the fighter list's command grammar.
+# LINEUP (docs/lineup-design.md §8): the four bands and the two shared
+# band labels (amendments B1/B6 — one FILL wheel, one MAP UNITS box, and no
+# FIGHTERS page behind them).
 if not any('--- Lineup ---' in l for l in lines):
     print('FAIL: expected the Lineup page banner', file=sys.stderr)
     sys.exit(1)
@@ -198,20 +198,27 @@ if not any('TEAM 1 RED' in l for l in lines):
 # gladiator is a CLASSIC (non-versus) campaign, so its levels decide the
 # bots (docs/lineup-design.md §2.3): the knob rows keep their ordinals but
 # carry the MAP RULES mark, and selecting one refuses instead of cycling.
-if not any('BOTS: AUTO  (MAP RULES)' in l for l in lines):
+if not any('FILL: FAIR  (MAP RULES)' in l for l in lines):
     print('FAIL: expected the MAP RULES mark on a classic campaign',
+          file=sys.stderr)
+    sys.exit(1)
+if not any('MAP UNITS: ON  (MAP RULES)' in l for l in lines):
+    print('FAIL: expected the MAP UNITS row beside the FILL wheel',
           file=sys.stderr)
     sys.exit(1)
 if not any("MAP RULES: this campaign's levels decide the bots." in l
            for l in lines):
     print('FAIL: expected the classic-campaign knob refusal', file=sys.stderr)
     sys.exit(1)
-if any('BOTS: NONE' in l for l in lines):
-    print('FAIL: a classic campaign must not cycle the bot squad',
+if any('FILL: STRONG' in l for l in lines):
+    print('FAIL: a classic campaign must not cycle the FILL wheel',
           file=sys.stderr)
     sys.exit(1)
-if not any("'team SLOT TEAM' | 'bench SLOT'" in l for l in lines):
-    print('FAIL: expected the fighter-list command grammar', file=sys.stderr)
+# B6: FIGHTERS is deleted, not hidden. MATCHUP moves a colour and the DEPLOY
+# row benches, so nothing on this page offers a second door to them.
+if any('--- Fighters ---' in l for l in lines):
+    print('FAIL: the retired FIGHTERS page leaked into the Lineup strip',
+          file=sys.stderr)
     sys.exit(1)
 
 # View Scenario: the shared roster report from a scratch headless load.

@@ -28,7 +28,6 @@
 #include <vector>
 
 class SaveData;
-class guy;
 
 namespace og::ui {
 
@@ -71,7 +70,6 @@ struct TerminalLineupItem {
     enum class Kind {
         Fill,       // host-only: step this team's FILL wheel
         MapUnits,   // host-only: flip this team's MAP UNITS box
-        Fighters,   // open the fighter list (team + deploy + POWER rows)
         SplitEven,  // §5 SPLIT EVEN
         SplitFair,  // §5 SPLIT FAIR
         Unite,      // §5 ALL TO 1
@@ -105,6 +103,12 @@ struct TerminalLineupInputs {
     const SaveData* save = nullptr;
     std::span<const og::sim::LobbyPlayer> players;
     std::span<const std::uint8_t> local_player_indices;
+    // B4's staged census of authored map units per team, handed straight to
+    // build_lineup_bands. An EMPTY span means "nobody censused the staged
+    // world", which is not the same fact as "the map ships none" — so the
+    // MAP UNITS hint is written only when this is supplied. A terminal that
+    // printed NO MAP UNITS off an absent census would be inventing a rule.
+    std::span<const int> map_unit_counts;
     bool networked = false;
     bool is_host = true;
 };
@@ -121,6 +125,14 @@ inline constexpr std::string_view kTerminalLineupMapRulesMark = "  (MAP RULES)";
 inline constexpr std::string_view kTerminalLineupMapRulesRefusal =
     "MAP RULES: this campaign's levels decide the bots.";
 
+// B6: the terminal FIGHTERS page is GONE with the SDL screen. Its two
+// powers already live elsewhere on every terminal client — MATCHUP's
+// "move SLOT TEAM" moves a fighter's colour (ungated by networked, so the
+// seat/colour repair B6 moved to the Base Camp chip is there too) and the
+// DEPLOY row benches one. format_terminal_lineup_fighter_row and
+// terminal_lineup_fighter_lines went with the page; the LINEUP strip is
+// BACK | SPLIT EVEN | SPLIT FAIR | UNITE behind the knob rows.
+
 // The §5 SPLIT tail both terminal clients run: this machine's seated teams,
 // planned under the campaign's own can_team rule (lineup_zone_can_team) and
 // the per-slot editable predicate, then applied through set_guy_team.
@@ -131,14 +143,5 @@ inline constexpr std::string_view kTerminalLineupMapRulesRefusal =
 // autosave.
 int terminal_apply_lineup_split(SaveData& save, LineupSplit mode,
                                 std::vector<std::string>& report);
-
-// One fighter-list row: "  1. Arthur (Soldier) LV 3  RED  DEPLOYED
-// POWER 120". BENCHED replaces DEPLOYED; an unpriced fighter reads
-// "POWER --" through the same §4 formatter the bands use.
-std::string format_terminal_lineup_fighter_row(int slot_index,
-                                               const guy& member);
-
-// The lines of the fighter list: a header, then one row per occupied slot.
-std::vector<std::string> terminal_lineup_fighter_lines(const SaveData& save);
 
 } // namespace og::ui
