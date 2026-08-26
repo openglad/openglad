@@ -2839,7 +2839,7 @@ TEST(MenuLayout, lineup_band_and_strip_relations)
     }
     EXPECT_EQ(kLineupPanelX1, buttons[kLineupBackIndex].x)
         << "BACK anchors on the panel rail";
-    for (const auto [left, right] :
+    for (const auto& [left, right] :
          {std::pair{kLineupSplitEvenIndex, kLineupSplitFairIndex},
           std::pair{kLineupSplitFairIndex, kLineupUniteIndex}})
     {
