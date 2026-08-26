@@ -1251,6 +1251,26 @@ private:
             const std::size_t team = static_cast<std::size_t>(item.team);
             switch (item.kind) {
             case TerminalLineupItem::Kind::BotSquad:
+            case TerminalLineupItem::Kind::BotLevel:
+                // §2.3: a classic campaign's levels decide the bots, so the
+                // knob write is refused here exactly as change_lineup_bots
+                // returns without cycling on the SDL screen.
+                if (!is_versus_campaign(save_data_)) {
+                    std::printf("%s\n",
+                                std::string(kTerminalLineupMapRulesRefusal)
+                                    .c_str());
+                    break;
+                }
+                if (item.kind == TerminalLineupItem::Kind::BotLevel) {
+                    save_data_.bot_level[team] = og::sim::clamp_bot_level(
+                        cycle_lineup_level(save_data_.bot_level[team], 1));
+                    std::printf(
+                        "%s\n",
+                        format_lineup_level_label(save_data_.bot_level[team])
+                            .c_str());
+                    autosave_company_after_mutation();  // §3.8 settings tail
+                    break;
+                }
                 // The clamp is the lobby's own (§3.1): one implementation,
                 // so a terminal write can never land a value the host's
                 // sanitize_settings would refuse. There is no
@@ -1264,14 +1284,6 @@ private:
                 std::printf("%s\n",
                             format_lineup_bots_label(save_data_.bot_squad[team],
                                                      presets)
-                                .c_str());
-                autosave_company_after_mutation();  // §3.8 settings tail
-                break;
-            case TerminalLineupItem::Kind::BotLevel:
-                save_data_.bot_level[team] = og::sim::clamp_bot_level(
-                    cycle_lineup_level(save_data_.bot_level[team], 1));
-                std::printf("%s\n",
-                            format_lineup_level_label(save_data_.bot_level[team])
                                 .c_str());
                 autosave_company_after_mutation();  // §3.8 settings tail
                 break;

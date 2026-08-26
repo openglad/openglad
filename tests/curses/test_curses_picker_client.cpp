@@ -2240,6 +2240,11 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
 {
     PickerFixture f;
     seed_lineup_roster(f.save());
+    // §2.3: the eight knobs are read by VERSUS campaigns' modes only, so the
+    // cycle needs one to be live.
+    f.save().current_campaign = "modes";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
 
     pick(f.t(), 0);                      // row 1: TEAM 1 bots -> NONE
     f.t().push_special(KeyCode::Escape); // back out of the page
@@ -2247,8 +2252,8 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
 
     const std::string dump = f.t().dump();
     EXPECT_NE(dump.find("Lineup"), std::string::npos) << dump;
-    EXPECT_NE(dump.find("TEAM 1 RED  POWER --"), std::string::npos)
-        << "the band names the colour and the (unpriced) POWER:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 1 RED  POWER"), std::string::npos)
+        << "the band names the colour and the price:\n" << dump;
     EXPECT_NE(dump.find("3 FIGHTERS"), std::string::npos) << dump;
     EXPECT_NE(dump.find("NO SEAT"), std::string::npos)
         << "the two empty teams still get a band:\n" << dump;
@@ -2256,6 +2261,35 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
         << "the redraw re-reads the knob out of the save:\n" << dump;
     EXPECT_EQ(1, f.save().bot_squad[0]) << "AUTO -> NONE landed in the save";
     EXPECT_EQ(0, f.save().bot_squad[1]) << "only the cycled team moved";
+    EXPECT_TRUE(f.t().input_exhausted());
+    (void)unmount_campaign_package_with_error("modes");
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// ...and on a CLASSIC campaign the same row refuses: the knobs are stored
+// but the map's own levels decide the bots, so the SDL screen dims the two
+// faces over a MAP RULES census and its callbacks return without cycling.
+// The terminal cannot dim, so the row carries the mark and the write says
+// no — hardcoding the knobs live let a terminal write a value the same
+// campaign's SDL screen refuses.
+TEST(CursesPickerClient, lineup_knob_refuses_on_a_classic_campaign)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    pick(f.t(), 0);                      // row 1: TEAM 1 bots
+    f.t().push_special(KeyCode::Enter);  //   dismiss the refusal
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    const std::string dump = f.t().dump();
+    EXPECT_EQ(0, f.save().bot_squad[0])
+        << "a classic campaign's knob write must not land";
+    EXPECT_NE(dump.find("MAP RULES"), std::string::npos)
+        << "the refusal and the census both say who decides:\n" << dump;
     EXPECT_TRUE(f.t().input_exhausted());
 }
 

@@ -1139,19 +1139,30 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         const std::size_t team = static_cast<std::size_t>(item.team);
         switch (item.kind) {
         case Kind::BotSquad:
+        case Kind::BotLevel:
+            // §2.3: on a classic campaign the levels decide the bots, so the
+            // knob write is refused here exactly as change_lineup_bots
+            // returns without cycling on the SDL screen.
+            if (!og::ui::is_versus_campaign(save)) {
+                menu.show_text(
+                    "Lineup",
+                    {std::string(og::ui::kTerminalLineupMapRulesRefusal)});
+                break;
+            }
             // One clamp implementation (§3.1) — the lobby's own. No
             // settings-sync tail: the curses picker links no lobby client
             // (its network lobby is a separate flow that seeds its own
             // settings from this save on entry), so the save is the whole
             // authority for these eight scalars here.
-            save.bot_squad[team] = og::sim::clamp_bot_squad(
-                og::ui::cycle_lineup_bots(save.bot_squad[team],
-                                          static_cast<int>(presets.size()), 1));
-            autosave_company_after_mutation(save);  // §3.8 settings tail
-            break;
-        case Kind::BotLevel:
-            save.bot_level[team] = og::sim::clamp_bot_level(
-                og::ui::cycle_lineup_level(save.bot_level[team], 1));
+            if (item.kind == Kind::BotSquad) {
+                save.bot_squad[team] = og::sim::clamp_bot_squad(
+                    og::ui::cycle_lineup_bots(
+                        save.bot_squad[team],
+                        static_cast<int>(presets.size()), 1));
+            } else {
+                save.bot_level[team] = og::sim::clamp_bot_level(
+                    og::ui::cycle_lineup_level(save.bot_level[team], 1));
+            }
             autosave_company_after_mutation(save);  // §3.8 settings tail
             break;
         case Kind::Fighters:

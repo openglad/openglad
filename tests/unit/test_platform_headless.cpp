@@ -2252,7 +2252,9 @@ bool seed_lineup_company(const std::string& slot)
     SaveData sd;
     sd.reset();
     sd.save_name = "LINEUP BAND";
-    sd.current_campaign = "gladiator";
+    // §2.3: the eight bot knobs are read by VERSUS campaigns' modes only, so
+    // the knob half of this drive needs one.
+    sd.current_campaign = "modes";
     sd.my_team = 0;
     for (int i = 0; i < 4; ++i) {
         sd.team_list[static_cast<std::size_t>(i)] =
@@ -2318,15 +2320,15 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
 
     // The bands: header (colour + POWER + seats) over the knob/census line.
-    // gladiator registers no `lineup` hook, so POWER is honestly `--`.
     EXPECT_NE(std::string::npos, out.find("--- Lineup ---"))
         << out;
-    EXPECT_NE(std::string::npos, out.find("TEAM 1 RED  POWER --   P1 "))
+    EXPECT_NE(std::string::npos, out.find("TEAM 1 RED  POWER "))
         << "the band names the colour, the price and the seats:\n" << out;
     EXPECT_NE(std::string::npos, out.find("[BOTS: AUTO] [LV: AUTO]  3 FIGHTERS"))
         << "the shared census formatter spells the fighter count:\n" << out;
     EXPECT_NE(std::string::npos, out.find("TEAM 3 BLUE  POWER --   NO SEAT"))
-        << "an empty team still says so:\n" << out;
+        << "an unoccupied team is honestly unpriced, and still says NO SEAT:\n"
+        << out;
     EXPECT_NE(std::string::npos, out.find("[BOTS: AUTO] [LV: AUTO]  NO FIGHTERS"))
         << out;
     // The two cycles answer with the SAME formatter the row label uses.
@@ -2336,7 +2338,7 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
     // The fighter list: team, deploy state and price on one row.
     EXPECT_NE(std::string::npos, out.find("--- Fighters ---")) << out;
     EXPECT_NE(std::string::npos,
-              out.find("1. F1 (SOLDIER) LV 4  RED  DEPLOYED  POWER --"))
+              out.find("1. F1 (SOLDIER) LV 4  RED  DEPLOYED  POWER "))
         << out;
     EXPECT_NE(std::string::npos, out.find("'team SLOT TEAM' | 'bench SLOT'"))
         << out;
@@ -2371,6 +2373,71 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
     EXPECT_EQ(0, reloaded.team_list[3]->teamnum);
 
     (void)remove_user_file("save/lineupd.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// The same two rows on a CLASSIC campaign: the map's own levels decide the
+// bots there, so the write is refused in words and never reaches the company
+// file — the terminal spelling of change_lineup_bots returning without
+// cycling. Hardcoding the knobs live let a terminal write a value the same
+// campaign's SDL screen refuses.
+TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "CLASSIC BAND";
+        sd.current_campaign = "gladiator";
+        sd.my_team = 0;
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "F1";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = true;
+        sd.team_size = 1;
+        sd.scen_num = 1;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("classicd"));
+    }
+
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "1\n"   //   list: open company...
+        "1\n"   //     #1 = classicd -> team build
+        "12\n"  // team build: LINEUP
+        "1\n"   //   lineup: TEAM 1 bots -> refused
+        "2\n"   //   lineup: TEAM 1 level -> refused
+        "13\n"  //   lineup: back -> team build
+        "8\n"   // team build: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos,
+              out.find(std::string(og::ui::kTerminalLineupMapRulesRefusal)))
+        << "the row says who decides instead of cycling:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 1  BOTS: AUTO  (MAP RULES)"))
+        << "and the row itself carries the mark:\n" << out;
+    EXPECT_EQ(std::string::npos, out.find("BOTS: NONE"))
+        << "nothing cycled:\n" << out;
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("classicd"));
+    EXPECT_EQ(0, reloaded.bot_squad[0]) << "no write reached the .gtl";
+    EXPECT_EQ(0, reloaded.bot_level[0]);
+
+    (void)remove_user_file("save/classicd.gtl");
     og::data::set_active_company_slot("save0");
 }
 
@@ -2422,8 +2489,17 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     EXPECT_EQ(TerminalLineupItem::Kind::Back, joiner.items.back().kind);
     EXPECT_EQ("Back", joiner.items.back().label);
     // The knob rows quote the shared label VERBATIM behind the team ordinal.
-    EXPECT_EQ("TEAM 1  BOTS: AUTO", host.items[0].label);
-    EXPECT_EQ("TEAM 1  LV: AUTO", host.items[1].label);
+    // This save names no campaign, so it is CLASSIC: the rows stay (dropping
+    // them would renumber the page under the two 1-based consumers) but they
+    // carry the MAP RULES mark and the band censuses MAP RULES, the terminal
+    // spelling of the SDL screen's dimmed faces.
+    EXPECT_EQ("TEAM 1  BOTS: AUTO  (MAP RULES)", host.items[0].label);
+    EXPECT_EQ("TEAM 1  LV: AUTO  (MAP RULES)", host.items[1].label);
+    EXPECT_NE(std::string::npos, host.lines[1].find("MAP RULES"))
+        << "the classic census names who decides: " << host.lines[1];
+    EXPECT_EQ(std::string::npos, host.lines[1].find("FIGHTER"))
+        << "MAP RULES replaces the census, it does not join it: "
+        << host.lines[1];
     // A preset ordinal the campaign DID register reads by name; the joiner
     // clamp path (an ordinal with no name) reads as its number, never AUTO.
     save.bot_squad[0] = 2;
@@ -2431,8 +2507,27 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     inputs.is_host = true;
     const og::ui::TerminalLineupModel named =
         og::ui::build_terminal_lineup_model(inputs);
-    EXPECT_EQ("TEAM 1  BOTS: BRUTES", named.items[0].label);
-    EXPECT_EQ("TEAM 2  BOTS: #6", named.items[2].label);
+    EXPECT_EQ("TEAM 1  BOTS: BRUTES  (MAP RULES)", named.items[0].label);
+    EXPECT_EQ("TEAM 2  BOTS: #6  (MAP RULES)", named.items[2].label);
+
+    // On a VERSUS campaign the knobs really are live: no mark, and the band
+    // censuses the fighters again.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    save.current_campaign = "modes";
+    save.bot_squad[0] = 0;
+    save.bot_squad[1] = 0;
+    const og::ui::TerminalLineupModel versus =
+        og::ui::build_terminal_lineup_model(inputs);
+    EXPECT_EQ("TEAM 1  BOTS: AUTO", versus.items[0].label);
+    EXPECT_EQ("TEAM 1  LV: AUTO", versus.items[1].label);
+    EXPECT_NE(std::string::npos, versus.lines[1].find("FIGHTER"))
+        << versus.lines[1];
+    EXPECT_EQ(std::string::npos, versus.lines[1].find("MAP RULES"))
+        << versus.lines[1];
+    (void)unmount_campaign_package_with_error("modes");
+    (void)mount_campaign_package_with_error("gladiator");
 }
 
 // §5 + §2.2: a SPLIT is a bulk team assignment, so it obeys the campaign's
