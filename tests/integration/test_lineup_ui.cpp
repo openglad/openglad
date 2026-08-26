@@ -1292,6 +1292,16 @@ TEST(LineupUi, knob_callbacks_gate_branches)
     og::ui::lineup_show_toast("NOWHERE TO LAND");
     EXPECT_TRUE(trace_contains("lineup", "toast NOWHERE TO LAND"));
 
+    // With the screen state installed the toast also stamps its 2.5 s
+    // deadline (the lineup_now_ms path the draw's title-band check reads).
+    og::ui::LineupScreenState toast_state;
+    og::ui::install_lineup_state_for_screen(&toast_state);
+    og::ui::lineup_show_toast("UNITE");
+    EXPECT_EQ("UNITE", toast_state.toast);
+    EXPECT_GT(toast_state.toast_until_ms, 0)
+        << "an installed state gets a wall-clock deadline";
+    og::ui::install_lineup_state_for_screen(nullptr);
+
     // The settings sync may have re-mounted the versus campaign.
     restore_gladiator_mount();
 }
