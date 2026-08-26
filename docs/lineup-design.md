@@ -407,3 +407,27 @@ a lobby (version-gated hello) — recorded here so nobody re-derives it.
 
 Review: one fable reviewer per merged wave; adversarial verify on every
 finding before it is acted on.
+
+---
+
+# Amendment 2026-08-26: TEAMS retires into the band, LIMIT becomes SCORE, LV becomes an offset
+
+Maintainer ruling after the first read of the LINEUP page: "we don't
+need TROOPS or TEAMS if we have LINEUP, right?", "what is LIMIT?", and
+"LV should be relative". Rulings A1–A6 supersede the matching sentences
+above.
+
+| # | Ruling |
+|---|--------|
+| A1 | **TEAMS (`ctf_team_count`) is retired as a control.** Its only power LINEUP lacked — *deactivating an authored team* — moves onto the band as a wheel value **`OFF`**. The wheel is now `AUTO / OFF / NONE / <presets>`; storage `bot_squad`: `0 = AUTO`, `1 = OFF`, `2 = NONE`, `3.. = preset ordinal (index + 3)`; `kMaxBotSquad = 2 + kMaxBotPresets`. (The field only exists on this branch, so renumbering costs nothing.) |
+| A2 | **`OFF` semantics = exactly what `TEAMS: n` did to a dropped team**: the team leaves the active mask — its authored troops, generators and flags are not fielded — decided in the same activation fold. A team with a seat or a deployed fighter is *on* by definition, so `OFF` there is **refused with a toast** (`TEAM n HAS PLAYERS` / `TEAM n HAS FIGHTERS` — the refusal that was wrong for NONE is right for OFF), and the lobby seat domain (`lobby_effective_team_mask`) excludes OFF teams so a joiner cannot move a seat onto one; the existing settings-change reteam handles any residual. `AUTO` keeps meaning the map's own value (manifest default or authored count); a team the map leaves inactive turns on by putting something on it (a seat, or a preset squad). |
+| A3 | **`ctf_team_count` stays in the save/wire layout (no format bump) but is inert**: the sanitizer and both world-entry twins snap it to `0`, the campaign vocabulary drops `team_count` (`kCampaignMatchSettingNames`, provider slot map, stub regenerated), `census_inputs` stops reading it, `effective_team_mask` becomes the identity, and every TEAMS control goes: the SCENARIO cycler, the Modes camp MATCH SETUP row (digest loses "Auto sides"), the terminal items and every pin. Legacy `.gtl` values 2/3/4 heal to Auto on first sanitize — a one-time documented migration (D30 precedent). |
+| A4 | **TROOPS stays.** `ALL`/`OWN` answers a question LINEUP has no home for — whether the map's *own* authored cast fights — and `FAIR` is kept as the one-click default: *TROOPS sets what `BOTS: AUTO` resolves to on an empty team; LINEUP's per-team value overrides it.* Documented on the band (`AUTO` census hint) rather than duplicated. |
+| A5 | **`Limit: Map` is relabelled `SCORE: MAP` / `SCORE: 5`** (the score limit — captures, goals, kills; `MAP` = the level's own). The camp page keeps `TARGET SCORE`. After A3 the SCENARIO knob row re-grids to `TROOPS (30,140) | SCORE (120,140)`, cell (210,140) free; nav and the static-layout pin move with it. |
+| A6 | **`LV` is an offset, −5…+5, on top of the AUTO source**: `bot_level` clamps `[-5, 5]`; `0` renders `LV: AUTO`, others `LV +2` / `LV -1`; wheel `AUTO, +1 … +5, -5 … -1, AUTO`. Resolution (one place, `bot_level_for`): `clamp(base + offset, 1, 9)` where `base` is the FAIR solve for a FAIR squad and the difficulty formula otherwise; the *resolved* level is what the team's plan banks (respawns reproduce it), and the preview label reads `LV+2` / `LV-1` (no inner space, budget rule from §3.4). Band modes apply the same offset to team 1's pair. |
+
+Work packages: W4-B (opus) the scale/clamps/vocabulary/mask + unit
+pins; then in parallel W4-A (fable) Lua activation OFF + offset
+resolver + camp page + staged rows, W4-C (fable) SDL SCENARIO re-grid,
+SCORE relabel, LINEUP OFF refusal + LV labels + flows, W4-G (opus)
+terminals + position repins. Gate, visual read-back, media refresh.
