@@ -2905,6 +2905,83 @@ TEST(CursesNetwork, host_kick_key_removes_the_peer_and_tells_it_why)
         << "the host's own link is healthy";
 }
 
+// LINEUP §6 on the DEDICATED shape: a standalone LobbyServer with two JOIN
+// lobbies on it. The first-connected peer is the ELECTED host — the same
+// machine a host migration would promote — so 'k' has to key on "is host
+// now", not on the LobbyRole this client was built with. Keyed on the role,
+// the one machine entitled to kick was told "Host controls kicks".
+TEST(CursesNetwork, elected_host_kick_key_works_on_a_dedicated_lobby)
+{
+    SaveData elected_save;
+    SaveData guest_save;
+    init_team_save(elected_save, 0, FAMILY_SOLDIER, "Elected");
+    init_team_save(guest_save, 1, FAMILY_ELF, "Guest");
+
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    server_transport->accept_connections();
+    auto elected_client = server_transport->create_client_transport();
+    auto guest_client = server_transport->create_client_transport();
+    // Nobody's lobby owns the server here: this is server_main's shape.
+    og::sim::LobbyServer server(*server_transport);
+
+    auto elected_lobby = make_join_lobby_over_transport_for_testing(
+        elected_save, 1, elected_client, elected_client->local_peer_id());
+    HeadlessTerminal elected_term(24, 80);
+    FakeClock clock;
+
+    // The elected host must connect FIRST: election is first-connected.
+    for (int i = 0; i < 100; ++i) {
+        server.poll_incoming_messages();
+        elected_lobby->poll(elected_term, clock);
+    }
+    ASSERT_EQ(1u, server.state().players.size());
+    ASSERT_TRUE(server.state().players[0].is_host)
+        << "the first-connected peer is the elected host";
+
+    auto guest_lobby = make_join_lobby_over_transport_for_testing(
+        guest_save, 1, guest_client, guest_client->local_peer_id());
+    HeadlessTerminal guest_term(24, 80);
+
+    const auto pump = [&](int rounds) {
+        for (int i = 0; i < rounds; ++i) {
+            server.poll_incoming_messages();
+            elected_lobby->poll(elected_term, clock);
+            guest_lobby->poll(guest_term, clock);
+        }
+    };
+    bool two_players = false;
+    for (int i = 0; i < 200 && !two_players; ++i) {
+        pump(1);
+        two_players = status_contains(*elected_lobby, "Players: 2") &&
+            status_contains(*guest_lobby, "Players: 2");
+    }
+    ASSERT_TRUE(two_players) << "both peers must see the shared lobby first";
+
+    // The guest is not the host: its 'k' is refused in words.
+    guest_term.push_char(U'k');
+    pump(20);
+    EXPECT_TRUE(status_contains(*guest_lobby, "Host controls kicks"));
+    EXPECT_TRUE(status_contains(*elected_lobby, "Players: 2"));
+
+    // The elected host walks onto the foreign seat and kicks it.
+    elected_term.push_special(KeyCode::Right);
+    pump(50);
+    EXPECT_TRUE(status_contains(*elected_lobby, "Selected P2"));
+
+    elected_term.push_char(U'k');
+    bool kicked = false;
+    for (int i = 0; i < 400 && !kicked; ++i) {
+        pump(1);
+        kicked = status_contains(*elected_lobby, "Players: 1") &&
+            guest_lobby->connection_alert().has_value();
+    }
+    EXPECT_TRUE(kicked)
+        << "the elected host's kick must remove the peer and reach it";
+    ASSERT_TRUE(guest_lobby->connection_alert().has_value());
+    EXPECT_EQ("KICKED BY HOST", *guest_lobby->connection_alert());
+    EXPECT_TRUE(status_contains(*elected_lobby, "Kicked M"));
+}
+
 // DISCONNECT is a two-press key: the first press puts the question on the
 // status band, the second answers it. Any other key in between is "no".
 TEST(CursesNetwork, lobby_disconnect_key_confirms_before_leaving)

@@ -4464,6 +4464,60 @@ TEST(LobbyServer, non_host_kick_is_denied_and_echoes_state)
     EXPECT_TRUE(echoed_to_requester);
 }
 
+// LINEUP §6: the kick gate follows the host, it does not follow the peer that
+// opened the lobby. After a host disconnect the promoted survivor's kick is
+// honoured — which is exactly the authority the clients now grant an ELECTED
+// host (a join client on a dedicated server, or one promoted here).
+TEST(LobbyServer, elected_host_may_kick_after_migration)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // opening host
+    server.connect_client(12u); // the successor
+    server.connect_client(13u); // the peer the successor will remove
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Second", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    transport.queue_lobby_message(
+        13u,
+        make_join_message("Third", 2,
+                          {make_slot(0u, 300, "Thief", FAMILY_THIEF)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(3u, server.state().players.size());
+
+    const og::sim::LobbyMachineId third_machine =
+        machine_id_of(server.state(), "Third");
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, third_machine);
+
+    // Before migration the successor is an ordinary guest: refused.
+    transport.queue_lobby_message(12u, make_kick_message(third_machine));
+    server.poll_incoming_messages();
+    EXPECT_EQ(3u, server.state().players.size())
+        << "a guest's kick is refused however soon it will be host";
+
+    server.disconnect_client(11u);
+    ASSERT_EQ(2u, server.state().players.size());
+    ASSERT_EQ("Second", server.state().players[0].name);
+    ASSERT_TRUE(server.state().players[0].is_host)
+        << "the survivor is promoted";
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(12u, make_kick_message(third_machine));
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(1u, server.state().players.size())
+        << "the elected host's kick is honoured";
+    EXPECT_EQ("Second", server.state().players[0].name);
+    EXPECT_NE(std::numeric_limits<std::size_t>::max(),
+              index_of_kicked_message(transport, 13u))
+        << "and the removed peer still learns why";
+}
+
 TEST(LobbyServer, kick_of_self_or_unknown_machine_echoes_state_only)
 {
     MockLobbyTransport transport;

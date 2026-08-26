@@ -1928,12 +1928,22 @@ public:
         return echoed != nullptr && echoed->team == team;
     }
 
+    // LINEUP §6: keyed on "is host NOW", never on the role this client was
+    // built with. On a dedicated server (and after a host migration) the
+    // machine that runs the lobby joined as a JOIN client, and its kick has
+    // to travel over its own remote transport to the server peer.
     bool kick_machine(og::sim::LobbyMachineId machine_id) override
     {
-        if (role_ != LobbyRole::Host || host_client_transport_ == nullptr ||
-            !state_.has_value())
+        if (!local_player_is_host() ||
+            machine_id == og::sim::kInvalidLobbyMachineId)
+        {
             return false;
-        if (machine_id == og::sim::kInvalidLobbyMachineId)
+        }
+        const bool hosting_role = role_ == LobbyRole::Host;
+        og::sim::ITransport* const client_link = hosting_role
+            ? static_cast<og::sim::ITransport*>(host_client_transport_.get())
+            : transport_.get();
+        if (client_link == nullptr)
             return false;
         // Never this machine: the server refuses it, and asking would put a
         // "kicked" notice on the host's own screen.
@@ -1943,8 +1953,10 @@ public:
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbyKickMessage{.machine_id = machine_id};
-        send_lobby_message(*host_client_transport_,
-                           host_client_transport_->local_peer_id(),
+        send_lobby_message(*client_link,
+                           hosting_role
+                               ? host_client_transport_->local_peer_id()
+                               : server_peer_id_,
                            std::move(message));
         pump_once();
         return true;
@@ -2090,10 +2102,17 @@ private:
         // 80 columns is the floor a terminal lobby has to read on, and the
         // hint is the first line to lose its tail — so the two new keys buy
         // their room by abbreviating, not by pushing [q] off the edge.
+        // The hint advertises what THIS machine may do now (§6). An elected
+        // host that joined a dedicated lobby owns the kick, so it gets [k];
+        // [s] start and [c] ctrl stay with the hosting role, which is where
+        // this client's own server lives.
         const char* hint = role_ == LobbyRole::Host
             ? "[s] start [</>] seat [t] team [r] ready [c] ctrl "
               "[k] kick [d] leave [q] quit"
-            : "[</>] seat [t] team [r] ready [d] leave [q] quit";
+            : (local_player_is_host()
+                   ? "[</>] seat [t] team [r] ready [k] kick "
+                     "[d] leave [q] quit"
+                   : "[</>] seat [t] team [r] ready [d] leave [q] quit");
         if (term.rows() > 0)
             term.put_str(term.rows() - 1, 0, hint, Color::Cyan, Color::Default, false);
         term.present();
@@ -2175,7 +2194,10 @@ private:
     // presses a key that silently does nothing.
     void kick_selected_seat()
     {
-        if (role_ != LobbyRole::Host) {
+        // "Is host NOW" (§6): an elected host on a dedicated server, or one
+        // promoted by migration, joined as a JOIN client and still owns the
+        // key.
+        if (!local_player_is_host()) {
             team_status_ = "Host controls kicks";
             return;
         }

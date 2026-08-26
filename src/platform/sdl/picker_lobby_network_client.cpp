@@ -4164,6 +4164,41 @@ public:
             });
     }
 
+    // LINEUP §6: an ELECTED host kicks too. On a dedicated server (and after
+    // a host migration) the machine that runs the lobby is a JOIN client, and
+    // every other host control it owns is already live here — settings, the
+    // start gate, the seat authority. Refusing the kick left the one machine
+    // entitled to remove a peer as the only one that could not. The refusals
+    // mirror the host client's: they save a round trip, and the server's own
+    // host gate stays the authority (a crafted client reaches it directly).
+    bool kick_machine(og::sim::LobbyMachineId machine_id) override
+    {
+        if (!transport_ || !state_.has_value() || !local_player_is_host() ||
+            machine_id == og::sim::kInvalidLobbyMachineId)
+        {
+            return false;
+        }
+        for (const og::sim::LobbyPlayer* const seat :
+             og::ui::detail::find_local_seats(*state_))
+        {
+            if (seat->machine_id == machine_id)
+                return false; // leaving is disconnect_session(), not a kick
+        }
+        const bool known = std::any_of(
+            state_->players.begin(), state_->players.end(),
+            [machine_id](const og::sim::LobbyPlayer& player) {
+                return player.machine_id == machine_id;
+            });
+        if (!known)
+            return false;
+
+        og::ui::detail::send_lobby_message(
+            *transport_, server_peer_id_,
+            og::ui::detail::make_kick_message(machine_id));
+        poll_and_apply();
+        return true;
+    }
+
     // LINEUP §6: leave the session. shutdown() drops the transport, which is
     // what the host sees; the caller swaps in a local client afterwards.
     bool disconnect_session() override
