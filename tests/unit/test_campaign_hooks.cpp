@@ -1749,3 +1749,88 @@ TEST_F(CampaignHooksTest, lineup_power_for_guy_is_nothing_without_a_hook)
     guy fighter(FAMILY_SOLDIER);
     EXPECT_FALSE(og::ui::lineup_power_for_guy(fighter).has_value());
 }
+
+// ---------------------------------------------------------------------------
+// The lineup review rows (wp/review-lua L5/L6)
+// ---------------------------------------------------------------------------
+
+// L5: a presets table that is not a sequence — a hash of names, or an
+// array with a hole — registers NOTHING silently today (lua_rawlen reads
+// 0 or stops at the hole). The registrar must refuse the book with a
+// logged error so the stock AUTO/NONE wheel stands, never a silent empty
+// preset list.
+TEST_F(CampaignHooksTest, lineup_presets_that_are_not_a_sequence_are_refused)
+{
+    struct Case {
+        const char* source;
+        const char* needle;
+    };
+    const Case cases[] = {
+        {R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { BALANC = true, CASTER = true },
+             power = function(r) return 1 end } }))LUA",
+         "'lineup.presets' must be an array"},
+        {R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { [1] = "A", [3] = "C" },
+             power = function(r) return 1 end } }))LUA",
+         "lineup.presets"},
+        {R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { "A", B = "B" } } }))LUA",
+         "'lineup.presets' must be an array"},
+    };
+    for (const Case& c : cases) {
+        clear_pack_scripts();
+        register_script(c.source);
+        EXPECT_FALSE(hooks::campaign_lineup_registered()) << c.source;
+        std::vector<std::string> presets{"STALE"};
+        EXPECT_FALSE(hooks::campaign_lineup_presets(presets)) << c.source;
+        EXPECT_TRUE(errors_contain(c.needle)) << c.source;
+    }
+}
+
+// L6: lineup.power answers are read as int64 only when they are one — an
+// integer, or a finite float inside the int64 range (truncated). NaN,
+// either infinity, a float past the range and a string all answer false
+// (the band shows `--`), never a static_cast of a NaN.
+TEST_F(CampaignHooksTest, lineup_power_non_integer_answers)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row)
+    if row.level == 1 then return 0/0 end
+    if row.level == 2 then return 1/0 end
+    if row.level == 3 then return 1.5 end
+    if row.level == 4 then return -(1/0) end
+    if row.level == 5 then return 2^63 end
+    if row.level == 6 then return -2.5 end
+    if row.level == 7 then return 4200 end
+    return "x"
+  end },
+}))LUA");
+    struct Case {
+        int level;
+        bool ok;
+        long long value;
+    };
+    const Case cases[] = {
+        {1, false, 0},  // NaN
+        {2, false, 0},  // +inf
+        {3, true, 1},   // 1.5 truncates
+        {4, false, 0},  // -inf
+        {5, false, 0},  // 2^63 is past int64
+        {6, true, -2},  // -2.5 truncates toward zero
+        {7, true, 4200},
+        {8, false, 0},  // "x"
+    };
+    for (const Case& c : cases) {
+        hooks::LineupPowerRow row;
+        row.level = c.level;
+        long long power = 12345;
+        EXPECT_EQ(c.ok, hooks::campaign_fighter_power(row, power))
+            << "level " << c.level;
+        if (c.ok)
+            EXPECT_EQ(c.value, power) << "level " << c.level;
+        else
+            EXPECT_EQ(12345, power) << "refused: the caller's value stands";
+    }
+    EXPECT_TRUE(errors_contain("not a finite integer"));
+}

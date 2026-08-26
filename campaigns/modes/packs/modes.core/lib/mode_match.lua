@@ -165,7 +165,7 @@ end
 -- (which outranks the headcount rule and cycles past the family list),
 -- else by the matched headcount (0 = the full list), then capped by the
 -- caller's hard shape (basketball's 5v5). Exported for the rule probes.
-local function preset_squad(preset, headcount, cap)
+local function preset_squad_size(preset, headcount, cap)
   local n = #preset.families
   local size = n
   if preset.count ~= nil then
@@ -176,11 +176,29 @@ local function preset_squad(preset, headcount, cap)
   if cap ~= nil then
     size = og.min(size, cap)
   end
+  return og.max(size, 0)
+end
+
+local function preset_squad(preset, headcount, cap)
+  local n = #preset.families
   local squad = {}
-  for k = 1, size do
+  for k = 1, preset_squad_size(preset, headcount, cap) do
     squad[k] = preset.families[og.mod(k - 1, n) + 1]
   end
   return squad
+end
+
+-- The room a hard shape leaves beside a team's occupants (lineup review
+-- L2): a squad riding an occupied team is sized to cap minus that team's
+-- roster, never below zero — three humans on basketball's five-a-side
+-- court get two allies, five get none. No hard shape (nil) = no bound.
+-- One rule for fills' count (over the census roster) and the spawn seam
+-- (over the live has_guy count, the same number in the staged world).
+local function squad_room(cap, roster)
+  if cap == nil then
+    return nil
+  end
+  return og.max(cap - roster, 0)
 end
 
 -- Difficulty tuples — a COPY of pack data (D13), guarded by the model-pin
@@ -612,12 +630,14 @@ end
 --   squad_cap         the mode's hard shape (basketball's 5v5, lineup
 --                     §3.2): no squad row counts past it
 -- Returns (teams, wants_bots, mask): teams is the decision's [1..4] row
--- array ({active, fill, count, squad}); wants_bots reports any squad row
--- (squad classes are drawn at spawn — mode_anchors squad_code); mask is
--- active_mask minus the teams the NONE knob emptied outright (lineup
--- §3.2: "a team is on when anything is on it"), so every consumer of the
--- decision — TEAM_MASK, strips, win ladders, the starts recheck — sees
--- the narrowed truth.
+-- array ({active, fill, count, squad, squad_count}); wants_bots reports
+-- any squad row (squad classes are drawn at spawn — mode_anchors
+-- squad_code); mask is active_mask minus the teams the NONE knob emptied
+-- outright (lineup §3.2: "a team is on when anything is on it"), so every
+-- consumer of the decision — TEAM_MASK, strips, win ladders, the starts
+-- recheck — sees the narrowed truth. A row's count is what the team will
+-- FIELD: a company row with a preset beside it counts roster + squad
+-- (squad_count is the squad alone), sized by squad_room.
 local function fills(inputs, active_mask, opts)
   -- Every shipped squad table fields five bots (D35 soldier-first); a
   -- matched squad truncates to the headcount prefix (D39).
@@ -647,6 +667,7 @@ local function fills(inputs, active_mask, opts)
     local knob = squad_knobs[team + 1] or 0
     local preset = preset_for(knob)
     local squad = nil
+    local squad_count = 0
     if active then
       local troops_stand = row.npcs > 0
       if strip_on then
@@ -663,18 +684,39 @@ local function fills(inputs, active_mask, opts)
         -- preset squad applies to ANY active team, occupied or not —
         -- the row keeps its occupancy fill and `squad` carries the
         -- ordinal the apply spawns beside it. Onslaught's no_bots (D17)
-        -- still outranks the knob.
+        -- still outranks the knob, and a hard shape already full of
+        -- occupants leaves no room (squad_room): no squad row at all.
         if not no_bots then
-          squad = knob
-          wants_bots = true
+          local room = squad_room(squad_cap, row.roster)
+          if preset.families ~= nil then
+            local headcount = 0
+            if matched then
+              headcount = matched_size
+            end
+            squad_count = preset_squad_size(preset, headcount, room)
+          else
+            -- FAIR: the mode's own table through the headcount rule,
+            -- which the spawn seam truncates the same way.
+            squad_count = squad_size
+            if matched and matched_size > 0 then
+              squad_count = og.min(matched_size, squad_size)
+            end
+            if room ~= nil then
+              squad_count = og.min(squad_count, room)
+            end
+          end
+          if squad_count > 0 then
+            squad = knob
+            wants_bots = true
+          end
         end
       end
       if row.roster > 0 then
         fill = "company"
-        count = row.roster
+        count = row.roster + squad_count
       elseif troops_stand then
         fill = "troops"
-        count = row.npcs
+        count = row.npcs + squad_count
       elseif no_bots then
         if gens_stand then
           fill = "generators"
@@ -704,17 +746,15 @@ local function fills(inputs, active_mask, opts)
             count = og.min(matched_size, squad_size)
           end
         end
-        if preset ~= nil and preset.families ~= nil then
+        if preset ~= nil then
           -- A preset squad sizes from its own table (lineup §3.2), the
-          -- same one rule the spawn seam applies (preset_squad).
-          local headcount = 0
-          if fill == "matched" then
-            headcount = matched_size
-          end
-          count = #preset_squad(preset, headcount, squad_cap)
+          -- same one rule the spawn seam applies (preset_squad_size,
+          -- computed above with the whole cap as its room).
+          count = squad_count
         elseif squad_cap ~= nil then
           count = og.min(count, squad_cap)
         end
+        squad_count = count
       end
     end
     if active then
@@ -725,6 +765,7 @@ local function fills(inputs, active_mask, opts)
       fill = fill,
       count = count,
       squad = squad,
+      squad_count = squad_count,
     }
   end
   return teams, wants_bots, mask
@@ -982,8 +1023,13 @@ end
 -- exactly once (s_set_level BEFORE set_difficulty, both once per walker
 -- object — D14). Placement stays in member order, before the leveling
 -- pass; neither placement nor the probe reads levels.
+-- `announce` is the caller's word on whether this solve is the MATCH-WIDE
+-- one (TROOPS: FAIR's banked target) — only that solve is "the teams being
+-- matched" (D23); a FAIR preset's local allies solve passes false and
+-- never touches the shared latch (lineup review L3). Returns the number
+-- of members actually spawned.
 local function spawn_matched_bots(team, families, cursor_slot, placer,
-                                  target)
+                                  target, announce)
   local members = {}
   local bases = {}
   for k = 1, #families do
@@ -995,7 +1041,7 @@ local function spawn_matched_bots(team, families, cursor_slot, placer,
     end
   end
   if #members == 0 then
-    return
+    return 0
   end
   if target == nil then
     target = og.mode_get(MATCHED.TARGET)
@@ -1008,7 +1054,10 @@ local function spawn_matched_bots(team, families, cursor_slot, placer,
     w:s_set_level(member_level)
     w:set_difficulty(member_level)
   end
-  announce_matched(clamped)
+  if announce then
+    announce_matched(clamped)
+  end
+  return #members
 end
 
 -- Fields one bot per family for an active team that authored no livings,
@@ -1032,12 +1081,34 @@ end
 -- rotation, which falls back to the flag-home square before the teleport
 -- draw; nil keeps mode_match's rotation over cursor_slot. cap is the
 -- caller's hard shape (basketball's 5v5).
+-- The live has_guy headcount on a team — the spawn seam's half of
+-- squad_room (fills reads the census roster; in the staged world the two
+-- are the same walkers).
+local function live_roster_on(obs, team)
+  local count = 0
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        if w:has_guy() then
+          if w:team_num() == team then
+            count = count + 1
+          end
+        end
+      end
+    end
+  end
+  return count
+end
+
 local function spawn_bots(team, families, cursor_slot, placer, cap)
   local knob = squad_knob(team)
   if knob == 1 then
     return
   end
-  local squad = squad_families(knob, families, cap)
+  local obs = og.oblist()
+  local squad = squad_families(knob, families,
+                               squad_room(cap, live_roster_on(obs, team)))
   local preset = preset_for(knob)
   local wants_level = level_knob(team)
   if wants_level > 0 then
@@ -1052,8 +1123,9 @@ local function spawn_bots(team, families, cursor_slot, placer, cap)
   local fair = preset ~= nil and preset.families == nil
   if plan_code(team) == 0 then
     local target = nil
+    local global_solve = false
     if fair then
-      local mean, sums = census_power(og.oblist())
+      local mean, sums = census_power(obs)
       if mean > 0 then
         target = og.min(fair_target(mean, sums, team), TARGET_CAP)
       end
@@ -1061,11 +1133,16 @@ local function spawn_bots(team, families, cursor_slot, placer, cap)
     if target == nil then
       if og.mode_get(MATCHED.TARGET) > 0 then
         target = og.mode_get(MATCHED.TARGET)
+        global_solve = true
       end
     end
     if target ~= nil then
-      spawn_matched_bots(team, squad, cursor_slot, placer, target)
-      bank_lineup_facts(team, applied, 0)
+      -- Banked only for a squad that actually spawned (lineup review
+      -- L4): a full hard shape spawns nothing and banks nothing.
+      if spawn_matched_bots(team, squad, cursor_slot, placer, target,
+                            global_solve) > 0 then
+        bank_lineup_facts(team, applied, 0)
+      end
       return
     end
   end
@@ -1081,6 +1158,7 @@ local function spawn_bots(team, families, cursor_slot, placer, cap)
       applied = 0
     end
   end
+  local spawned = 0
   for k = 1, #squad do
     local w = add_squad_member(team, squad[k])
     if w ~= nil then
@@ -1088,9 +1166,12 @@ local function spawn_bots(team, families, cursor_slot, placer, cap)
       w:s_set_level(level)
       w:set_difficulty(level)
       place_member(w, team, cursor_slot, placer)
+      spawned = spawned + 1
     end
   end
-  bank_lineup_facts(team, applied, wants_level)
+  if spawned > 0 then
+    bank_lineup_facts(team, applied, wants_level)
+  end
 end
 
 -- "Owns its life": may this corpse come back, and do its deaths count?
@@ -1300,6 +1381,8 @@ return {
   BOT_PRESETS = BOT_PRESETS,
   preset_families = preset_families,
   preset_squad = preset_squad,
+  preset_squad_size = preset_squad_size,
+  squad_room = squad_room,
   fair_target = fair_target,
   stat_power = stat_power,
   measured_base = measured_base,

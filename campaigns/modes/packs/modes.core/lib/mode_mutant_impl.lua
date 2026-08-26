@@ -569,12 +569,44 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
+-- The decide fold (the team modes' discipline, lineup review L1): the
+-- competitor target and the count the fill will reach, pure over the
+-- census — the deployed list and the row. A band below two competitors
+-- is refused HERE, before any world write, so the kept post-refusal
+-- world (which GO adopts under classic rules) is exactly the authored one.
+local function decide(level, deployed_count)
+  local row = levels.levels[level]
+  local target = T.default_fighters
+  if row ~= nil then
+    if row.fighters ~= nil then
+      target = row.fighters
+    end
+  end
+  target = og.clamp(target, 0, C.FFA_TEAM_COUNT)
+  local planned = fighters.planned_count(deployed_count, target)
+  local starts = planned >= 2
+  local reason = nil
+  if not starts then
+    reason = "mutant: fewer than two fighters"
+  end
+  return {
+    starts = starts,
+    reason = reason,
+    target = target,
+  }
+end
+
 local function on_mode_init(level)
   local obs = og.oblist()
+  local roster = fighters.enumerate(obs)
+  local decision = decide(level, #roster)
+  if not decision.starts then
+    error(decision.reason)
+  end
   -- Competitors = every deployed character (bound first, cap 16), each on
   -- its own shuffled band byte (issue #187: two humans seated on one lobby
   -- team become separate mutually hostile competitors).
-  local deployed = fighters.deploy(obs, C.FFA_TEAM_COUNT)
+  local deployed = fighters.deploy(roster, C.FFA_TEAM_COUNT)
   fighters.assign(deployed, S.IDS, S.BAND_BITMAP)
   -- All four marker clusters are consumed (position pools here, not
   -- identities) and the whole authored score-range cast — livings and
@@ -605,19 +637,11 @@ local function on_mode_init(level)
     fighters.place_rotated(deployed[k], S.ANCHOR_CURSOR, true)
   end
 
-  -- Bot fill to the row's fighters count: one bot per free band slot.
-  local target = T.default_fighters
-  if row ~= nil then
-    if row.fighters ~= nil then
-      target = row.fighters
-    end
-  end
-  target = og.clamp(target, 0, C.FFA_TEAM_COUNT)
-  local count = fighters.fill_bots(#deployed, target, S.IDS, S.BAND_BITMAP,
-                                   S.ANCHOR_CURSOR, T.bot_roster)
-  if count < 2 then
-    error("mutant: fewer than two competitors")
-  end
+  -- Bot fill to the decision's target: one bot per free band slot (the
+  -- count it reaches was decided above; nothing below can refuse).
+  local count = fighters.fill_bots(#deployed, decision.target, S.IDS,
+                                   S.BAND_BITMAP, S.ANCHOR_CURSOR,
+                                   T.bot_roster)
   og.mode_set(S.FIGHTER_COUNT, count)
 
   og.set_mode_name("MUTANT")

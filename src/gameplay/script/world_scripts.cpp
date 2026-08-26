@@ -34,8 +34,10 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <map>
 #include <string>
 #include <utility>
@@ -1258,6 +1260,23 @@ int og_register_campaign_hooks(lua_State* L)
                                      "names");
             const lua_Integer count =
                 static_cast<lua_Integer>(lua_rawlen(L, -1));
+            // A sequence, or nothing: lua_rawlen reads 0 over a keyed
+            // table and stops at the first hole, so either shape would
+            // register fewer names than the book wrote — silently, the
+            // one failure a registrar must never allow. Every key must
+            // be one of 1..count.
+            lua_Integer entries = 0;
+            lua_pushnil(L);
+            while (lua_next(L, -2) != 0) {
+                lua_pop(L, 1);  // value; the key stays for the next step
+                ++entries;
+            }
+            if (entries != count)
+                return luaL_error(
+                    L, "og.register_campaign_hooks: 'lineup.presets' must "
+                       "be an array of names (a sequence of %d, but the "
+                       "table holds %d entries)",
+                    static_cast<int>(count), static_cast<int>(entries));
             if (count > hooks::kMaxBotPresets)
                 return luaL_error(
                     L, "og.register_campaign_hooks: 'lineup.presets' names "
@@ -3516,19 +3535,39 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
     set_int("fire_frequency", row.fire_frequency);
     bool ok = false;
     if (impl.protected_call("campaign:lineup_power", 1, 1)) {
-        // A number, or nothing: a price the engine cannot read is no price
-        // at all, and the band shows `--` rather than an invented figure.
-        // lua_isnumber would accept the STRING "42"; a price must be a
-        // number the book actually computed.
-        if (lua_type(L, -1) == LUA_TNUMBER) {
-            out = static_cast<long long>(lua_tonumber(L, -1));
+        // A number the engine can hold, or nothing: a price it cannot read
+        // is no price at all, and the band shows `--` rather than an
+        // invented figure. lua_isnumber would accept the STRING "42"; a
+        // price must be a number the book actually computed. An integer
+        // is taken as is; a float must be finite and inside the int64
+        // range (then truncated toward zero) — a static_cast of NaN or an
+        // infinity is undefined and used to render INT64_MIN on the band.
+        std::string refusal;
+        if (lua_type(L, -1) != LUA_TNUMBER) {
+            refusal = std::string("campaign lineup.power returned a ") +
+                      luaL_typename(L, -1) + ", not a number";
+        } else if (lua_isinteger(L, -1)) {
+            out = static_cast<long long>(lua_tointeger(L, -1));
             ok = true;
         } else {
-            const std::string message =
-                std::string("campaign lineup.power returned a ") +
-                luaL_typename(L, -1) + ", not a number";
-            LogError("class pack: {}\n", message);
-            impl.record_error("campaign:lineup_power", message.c_str());
+            const lua_Number value = lua_tonumber(L, -1);
+            // 2^63 as a double is exactly representable; the open bound on
+            // the right keeps the truncation inside LLONG_MAX.
+            constexpr lua_Number kInt64Span = 9223372036854775808.0;
+            if (std::isfinite(value) && value >= -kInt64Span &&
+                value < kInt64Span) {
+                out = static_cast<long long>(std::trunc(value));
+                ok = true;
+            } else {
+                refusal = std::format(
+                    "campaign lineup.power returned {}, not a finite "
+                    "integer",
+                    value);
+            }
+        }
+        if (!ok) {
+            LogError("class pack: {}\n", refusal);
+            impl.record_error("campaign:lineup_power", refusal.c_str());
         }
         lua_pop(L, 1);
     }

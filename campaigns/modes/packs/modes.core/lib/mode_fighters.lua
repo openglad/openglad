@@ -49,9 +49,10 @@ end
 
 -- Deployed-fighter enumeration (D3): live has_guy Livings, BOUND walkers
 -- first (user() >= 0 — every seat's controlled hero is guaranteed a slot),
--- then unbound, oblist order within each pass. Extras past the cap are
--- retired (mode_strip.retire: off the score range, then dead) with a toast.
-local function deploy(obs, cap)
+-- then unbound, oblist order within each pass. Pure — the band modes'
+-- decide fold counts this list BEFORE any world write, so a refusal
+-- leaves the staged world exactly as authored.
+local function enumerate(obs)
   local fighters = {}
   for k = 1, #obs do
     local w = obs[k]
@@ -77,6 +78,12 @@ local function deploy(obs, cap)
       end
     end
   end
+  return fighters
+end
+
+-- The deployed list, capped: extras past the cap are retired
+-- (mode_strip.retire: off the score range, then dead) with a toast.
+local function deploy(fighters, cap)
   if #fighters <= cap then
     return fighters
   end
@@ -152,9 +159,32 @@ end
 -- here (no families, and the solver does not fit the band's hard shape
 -- of SINGLES — one bot per free slot, whatever a preset.count says —
 -- PLAN_BASE stays untouched, the design's own carve-out).
+--
+-- The pairs of teams 2-4 are DEAD in a band mode: every fighter wears a
+-- band byte, no score team ever fields a squad, so bot_squad_2..4 and
+-- bot_level_2..4 are read by nobody here. The fact a menu needs to dim
+-- them is the mode name the staged world already carries (FFA / MUTANT
+-- via og.set_mode_name — the staged report's mode_name); no extra
+-- variable is banked for it (docs/lineup-design.md §3.2).
+local function band_knob()
+  return og.match_setting("bot_squad_1")
+end
+
+-- The fighter count the fill below will reach, decided from the census
+-- alone (the band modes' decide fold): NONE keeps the deployed count,
+-- anything else fills the free slots up to the row's target. The band
+-- modes refuse on this number BEFORE touching the world, so no knob shape
+-- can reach an error() from a half-applied init.
+local function planned_count(deployed_count, target)
+  if band_knob() == 1 then
+    return deployed_count
+  end
+  return og.max(deployed_count, target)
+end
+
 local function fill_bots(count, target, id_base, bitmap_slot, cursor_slot,
                          roster)
-  local knob = og.match_setting("bot_squad_1")
+  local knob = band_knob()
   if knob == 1 then
     return count
   end
@@ -366,9 +396,11 @@ return {
   band_count = band_count,
   band_byte = band_byte,
   slot_of = slot_of,
+  enumerate = enumerate,
   deploy = deploy,
   assign = assign,
   place_rotated = place_rotated,
+  planned_count = planned_count,
   fill_bots = fill_bots,
   adopt_new = adopt_new,
   renormalize = renormalize,
