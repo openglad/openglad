@@ -138,6 +138,20 @@ struct NetworkingMenuModeState
     std::array<bool, kNetworkingMenuRoomSlots> row_actionable{};
 };
 
+// LINEUP §6: the ONE place that decides which mode the NETWORKING subscreen
+// is in, read from the active lobby client. Session mode needs an
+// ESTABLISHED session, never a merely-networked client:
+//   hosting = networked && picker_lobby_host_controls_visible()
+//   joined  = networked && !host && the joiner holds lobby state
+//             (picker_lobby_players() non-empty)
+// A joiner that is still connecting, or whose connect failed, reads Idle —
+// HOST / JOIN / the DIRECT (LAN) fields stay exactly as they are on a fresh
+// menu, so a re-JOIN replaces the pending client the way it always did
+// instead of landing on DISCONNECT (which is drawn in JOIN's rect).
+// Only the mode-deciding fields are filled; the caller adds `list_rows` and
+// `row_actionable` from the rows it actually drew.
+NetworkingMenuModeState picker_current_networking_menu_mode();
+
 // The per-frame mode sync for the static NETWORKING table (LINEUP §6):
 // writes every mode-dependent hidden flag and action id (deterministic
 // full-write — no variant inherits a stale one), makes inert rows

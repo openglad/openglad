@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_interact.h"
 
 void picker_main(Sint32 argc, char** argv);
@@ -1981,6 +1982,86 @@ TEST(NetworkingMenu, session_joined_rows_inert_and_disconnect_goes_local)
         << "DISCONNECT must reach disconnect_session exactly once";
     EXPECT_EQ(0u, lobby.kicked_machine.load());
     EXPECT_TRUE(trace_contains("popup", "DISCONNECTED"));
+}
+
+namespace {
+
+struct ActiveLobbyClientGuard
+{
+    og::ui::IPickerLobbyClient* saved = nullptr;
+
+    explicit ActiveLobbyClientGuard(og::ui::IPickerLobbyClient* client)
+        : saved(og::ui::active_picker_lobby_client())
+    {
+        og::ui::install_active_picker_lobby_client(client);
+    }
+
+    ~ActiveLobbyClientGuard()
+    {
+        og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+} // namespace
+
+// LINEUP §6: session mode needs an ESTABLISHED session, not merely a
+// networked client. A joiner mid-handshake (or one whose connect failed) has
+// received no lobby state, so it keeps the IDLE table — JOIN clickable in its
+// own rect, DISCONNECT hidden — and a second JOIN replaces the pending client
+// the way it always did. Getting this wrong put DISCONNECT (drawn in JOIN's
+// exact rect) under the JOIN click.
+TEST(NetworkingMenu, connecting_joiner_keeps_the_idle_table_until_lobby_state)
+{
+    button* const buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    ASSERT_EQ(kNetworkingMenuButtonCount, count);
+
+    FakeSessionLobbyClient lobby;
+    lobby.host_view.store(false);  // a joiner, never the host
+    ActiveLobbyClientGuard guard(&lobby);
+
+    // is_networked_session() is true, the roster is still empty: Idle.
+    const NetworkingMenuModeState connecting =
+        picker_current_networking_menu_mode();
+    EXPECT_FALSE(connecting.networked)
+        << "a joiner without lobby state is not an established session";
+    std::vector<button> idle(buttons, buttons + count);
+    picker_apply_networking_menu_mode(idle.data(), count, connecting);
+    EXPECT_FALSE(idle[kNetworkingMenuJoinIndex].hidden)
+        << "JOIN must stay clickable so a re-JOIN replaces the client";
+    EXPECT_FALSE(idle[kNetworkingMenuHostIndex].hidden);
+    EXPECT_TRUE(idle[kNetworkingMenuDisconnectIndex].hidden)
+        << "DISCONNECT must not sit in JOIN's rect while idle";
+
+    // The first state broadcast lands: the joiner is in.
+    {
+        std::lock_guard<std::mutex> lock(lobby.mutex);
+        lobby.players = {
+            session_seat(0, 1, "net-host", "IRON KETTLE BAND", true),
+            session_seat(1, 2, "net-self", "RIVER BAND", false),
+        };
+    }
+    const NetworkingMenuModeState joined =
+        picker_current_networking_menu_mode();
+    EXPECT_TRUE(joined.networked);
+    EXPECT_FALSE(joined.host);
+    std::vector<button> session(buttons, buttons + count);
+    picker_apply_networking_menu_mode(session.data(), count, joined);
+    EXPECT_TRUE(session[kNetworkingMenuJoinIndex].hidden);
+    EXPECT_TRUE(session[kNetworkingMenuHostIndex].hidden);
+    EXPECT_FALSE(session[kNetworkingMenuDisconnectIndex].hidden);
+
+    // The hosting half never waits on a roster: this machine runs the lobby
+    // from the moment host controls are visible.
+    lobby.host_view.store(true);
+    {
+        std::lock_guard<std::mutex> lock(lobby.mutex);
+        lobby.players.clear();
+    }
+    const NetworkingMenuModeState hosting =
+        picker_current_networking_menu_mode();
+    EXPECT_TRUE(hosting.networked);
+    EXPECT_TRUE(hosting.host);
 }
 
 namespace {

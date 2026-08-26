@@ -866,7 +866,7 @@ public:
         auto visible_room_count = [&]() -> int {
             // Session modes repurpose the list rows as PLAYERS machine rows;
             // relay-room discovery never runs there (LINEUP §6).
-            if (picker_lobby_is_networked())
+            if (picker_current_networking_menu_mode().networked)
                 return 0;
             if (!networking_settings_.use_room_code ||
                 !relay_room_snapshot_is_current())
@@ -879,8 +879,10 @@ public:
         };
 
         auto sync_button_labels = [&]() {
-            const bool session = picker_lobby_is_networked();
-            const bool host_controls = picker_lobby_host_controls_visible();
+            NetworkingMenuModeState mode =
+                picker_current_networking_menu_mode();
+            const bool session = mode.networked;
+            const bool host_controls = mode.host;
             machine_rows.clear();
             if (session)
             {
@@ -926,9 +928,6 @@ public:
                 ? std::min(static_cast<int>(machine_rows.size()),
                            kNetworkingMenuRoomSlots)
                 : room_count;
-            NetworkingMenuModeState mode;
-            mode.networked = session;
-            mode.host = host_controls;
             mode.list_rows = list_rows;
             for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
             {
@@ -1098,8 +1097,9 @@ public:
                 // reaching here with a live slot IS a kickable row.
                 const int slot = pks().networking_clicked_room_slot;
                 pks().networking_clicked_room_slot = -1;
-                if (picker_lobby_is_networked() &&
-                    picker_lobby_host_controls_visible() && slot >= 0 &&
+                const NetworkingMenuModeState row_mode =
+                    picker_current_networking_menu_mode();
+                if (row_mode.networked && row_mode.host && slot >= 0 &&
                     slot < static_cast<int>(machine_rows.size()))
                 {
                     const og::ui::NetworkingMachineRow row =
@@ -1127,7 +1127,7 @@ public:
                 // re-initialized from the save — the same install/teardown
                 // order picker_host_game uses, via picker_replace_lobby_client
                 // — and return to Team Build.
-                if (picker_lobby_is_networked() &&
+                if (picker_current_networking_menu_mode().networked &&
                     yes_or_no_prompt("DISCONNECT", "Leave this session?",
                                      false))
                 {
@@ -1204,7 +1204,8 @@ public:
                     field.y + (field.sizey - mytext.sizey) / 2;
                 mytext.write_xy(label_x, label_y, label, DARK_BLUE);
             };
-            const bool session_view = picker_lobby_is_networked();
+            const bool session_view =
+                picker_current_networking_menu_mode().networked;
             draw_field_label(kNetworkingMenuRoomValueIndex, "ROOM CODE");
 #ifndef __EMSCRIPTEN__
             if (!session_view)
@@ -1716,8 +1717,10 @@ private:
     void refresh_relay_room_list(bool force)
     {
         // LINEUP §6: no relay-room discovery while a session is live — the
-        // list area belongs to the PLAYERS machine rows.
-        if (picker_lobby_is_networked())
+        // list area belongs to the PLAYERS machine rows. A joiner that has
+        // not landed yet is still Idle, so its ACTIVE GAMES list keeps
+        // refreshing.
+        if (picker_current_networking_menu_mode().networked)
             return;
         if (!networking_settings_.use_room_code || relay_rooms_.request)
             return;
@@ -2148,6 +2151,29 @@ void picker_wire_networking_menu_nav(button* buttons, int count,
     buttons[kNetworkingMenuJoinIndex].nav.left = kNetworkingMenuHostIndex;
     buttons[kNetworkingMenuJoinIndex].nav.down = kNetworkingMenuRoomValueIndex;
 #endif
+}
+
+// LINEUP §6: the one session-mode predicate, over the active lobby client.
+// Session mode means an ESTABLISHED session; a networked client on its own is
+// not enough. Hosting is established the moment this machine runs the lobby
+// (host controls visible). A joiner is established once it holds lobby state —
+// picker_lobby_players() non-empty is the observable fact, because
+// IPickerLobbyClient exposes no connection-state accessor and
+// connection_alert() is a display string ("Status: connecting") rather than a
+// predicate. So a joiner mid-handshake, or one whose connect failed, stays
+// Idle and keeps the classic HOST / JOIN / DIRECT (LAN) shape: clicking JOIN
+// again replaces the pending client, as it did before this branch.
+NetworkingMenuModeState picker_current_networking_menu_mode()
+{
+    NetworkingMenuModeState mode;
+    if (!picker_lobby_is_networked())
+        return mode;
+    const bool host = picker_lobby_host_controls_visible();
+    if (!host && picker_lobby_players().empty())
+        return mode;
+    mode.networked = true;
+    mode.host = host;
+    return mode;
 }
 
 // The per-frame mode sync for the static NETWORKING table (LINEUP §6):

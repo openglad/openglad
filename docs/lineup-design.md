@@ -288,9 +288,20 @@ Both button tables (native `picker.cpp:1729`, web `:1713`) become
 **mode-dependent** through a per-frame visibility sync + the existing
 full-graph rewire, pinned by BFS reachability over the three modes:
 
+Session mode requires an **established** session (ruling 2026-08-26,
+after the wasm JOIN-retry e2e caught the gap): hosting = networked ∧
+host controls visible; joined = networked ∧ the joiner has received the
+lobby state (`picker_lobby_players()` non-empty — `IPickerLobbyClient`
+has no connection-state accessor, and `connection_alert()` is a display
+string, not a predicate). A merely-connecting or failed joiner is
+**Idle** — HOST / JOIN stay visible so a retry replaces the pending
+client exactly as it always did. One implementation:
+`picker_current_networking_menu_mode()`, which every mode reader in
+`configure_networking_body` calls (both builds share that body).
+
 | Mode | Rows shown |
 |------|-----------|
-| Idle | as today: ROOM CODE, ACTIVE GAMES list, DIRECT (LAN) fields, HOST / JOIN |
+| Idle (incl. connecting/failed joiner) | as today: ROOM CODE, ACTIVE GAMES list, DIRECT (LAN) fields, HOST / JOIN |
 | Hosting | header `PLAYERS` over the five list rows repurposed as **machine rows**, `ROOM <code>` line, **DISCONNECT** (new ordinal appended after the room rows; drawn in JOIN's rect), HOST/JOIN/LAN hidden |
 | Joined | same, rows read-only, DISCONNECT = leave |
 
