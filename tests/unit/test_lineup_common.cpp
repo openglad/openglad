@@ -510,13 +510,15 @@ TEST(LineupCommon, machine_rows_group_seats_and_mark_host_and_you)
     EXPECT_EQ(11u, rows[0].machine_id);
     EXPECT_TRUE(rows[0].is_host);
     EXPECT_TRUE(rows[0].is_local);
-    EXPECT_EQ("M1 IRO (HOST) (YOU)  P1 P2  IRON KETTLE", rows[0].label);
+    // The full shape is "M1 IRON KETTLE (HOST) (YOU)  P1 P2  READY" at 41
+    // chars: READY is the token the 39-char budget drops.
+    EXPECT_EQ("M1 IRON KETTLE (HOST) (YOU)  P1 P2", rows[0].label);
     EXPECT_GE(39u, rows[0].label.size());
 
     EXPECT_EQ(22u, rows[1].machine_id);
     EXPECT_FALSE(rows[1].is_host);
     EXPECT_FALSE(rows[1].is_local);
-    EXPECT_EQ("M2 BLU  P3  BLUE BAND", rows[1].label);
+    EXPECT_EQ("M2 BLUE BAND  P3", rows[1].label);
 }
 
 TEST(LineupCommon, machine_rows_degrade_whole_tokens_to_the_budget)
@@ -525,23 +527,23 @@ TEST(LineupCommon, machine_rows_degrade_whole_tokens_to_the_budget)
         seat(0, 1, "THE LONG SEASON", false, true, 5)};
     players[0].name = "GLADHOUSE";
 
-    // Everything fits: READY is the last token.
-    EXPECT_EQ("M1 GLADHOUSE  P1  THE LONG SEASON  READY",
+    // Everything fits: the company leads and READY is the last token.
+    EXPECT_EQ("M1 THE LONG SEASON  P1  READY",
               og::ui::build_networking_machine_rows(
                   players, std::vector<std::uint8_t>{}, 64)[0]
                   .label);
     // READY goes first...
-    EXPECT_EQ("M1 GLADHOUSE  P1  THE LONG SEASON",
+    EXPECT_EQ("M1 THE LONG SEASON  P1",
               og::ui::build_networking_machine_rows(
-                  players, std::vector<std::uint8_t>{}, 39)[0]
+                  players, std::vector<std::uint8_t>{}, 28)[0]
                   .label);
-    // ...then the whole company...
-    EXPECT_EQ("M1 GLADHOUSE  P1",
+    // ...then the seat list...
+    EXPECT_EQ("M1 THE LONG SEASON",
               og::ui::build_networking_machine_rows(
-                  players, std::vector<std::uint8_t>{}, 20)[0]
+                  players, std::vector<std::uint8_t>{}, 21)[0]
                   .label);
-    // ...and only what is left ever gets clipped mid-word.
-    EXPECT_EQ("M1 GLADH",
+    // ...and only the identity itself ever gets clipped mid-word.
+    EXPECT_EQ("M1 THE L",
               og::ui::build_networking_machine_rows(
                   players, std::vector<std::uint8_t>{}, 8)[0]
                   .label);
@@ -560,9 +562,29 @@ TEST(LineupCommon, machine_rows_order_by_lowest_seat_and_name_from_company)
     const auto rows = og::ui::build_networking_machine_rows(
         players, std::vector<std::uint8_t>{}, 39);
     ASSERT_EQ(2u, rows.size());
-    EXPECT_EQ("M1 IRO (HOST)  P2  IRON KETTLE", rows[0].label)
-        << "a relay lobby leaves `name` empty: the company abbreviates";
-    EXPECT_EQ("M2 BLUEBOX  P3 P4  BLUE BAND", rows[1].label);
+    EXPECT_EQ("M1 IRON KETTLE (HOST)  P2", rows[0].label)
+        << "a relay lobby leaves `name` empty: the company leads anyway";
+    EXPECT_EQ("M2 BLUE BAND  P3 P4", rows[1].label)
+        << "the lowest seat's company names the machine, not P4's blank";
+}
+
+TEST(LineupCommon, machine_rows_fall_back_to_the_transport_name)
+{
+    // No company yet (a freshly connected peer): the opaque transport name
+    // is all there is, and it beats an empty identity.
+    std::vector<og::sim::LobbyPlayer> players{seat(0, 1, "", false, false, 7)};
+    players[0].name = "net-4f2a";
+    EXPECT_EQ("M1 net-4f2a  P1",
+              og::ui::build_networking_machine_rows(
+                  players, std::vector<std::uint8_t>{}, 39)[0]
+                  .label);
+
+    // Neither: the row is still identifiable by its M#.
+    std::vector<og::sim::LobbyPlayer> nameless{seat(1, 1, "", true, false, 7)};
+    EXPECT_EQ("M1 (HOST)  P2",
+              og::ui::build_networking_machine_rows(
+                  nameless, std::vector<std::uint8_t>{}, 39)[0]
+                  .label);
 }
 
 TEST(LineupCommon, machine_rows_without_a_machine_id_stay_separate)

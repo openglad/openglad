@@ -1781,10 +1781,15 @@ int session_host_kick_injector(void* data)
     SDL_Delay(300);
     state->host_join_hidden = !has_interactable("network_host") &&
         !has_interactable("network_join");
+    // §6: the COMPANY leads each row; the opaque transport name never
+    // shows while a company name exists.
     state->machine_rows_labeled =
         wait_for_interactable_label_contains("network_room_0", "(HOST)") &&
         interactable_label_contains("network_room_0", "(YOU)") &&
-        wait_for_interactable_label_contains("network_room_1", "net-far");
+        interactable_label_contains("network_room_0", "M1 IRON KETTLE BAND") &&
+        wait_for_interactable_label_contains("network_room_1",
+                                             "M2 RIVER BAND") &&
+        !interactable_label_contains("network_room_1", "net-far");
     state->room_code_shown = wait_for_interactable_label_contains(
         "network_room_value", "GLAD-7Q2F");
 

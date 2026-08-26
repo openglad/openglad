@@ -4121,12 +4121,18 @@ std::vector<NetworkingMachineRow> build_networking_machine_rows(
         }
         if (player.player_index < it->first_index)
         {
+            // The machine is named by its LOWEST seat (§6): a later-listed
+            // seat with a smaller P# renames the row.
             it->first_index = player.player_index;
+            if (!player.company.empty())
+                it->company = player.company;
             if (!player.name.empty())
                 it->name = player.name;
         }
         if (it->company.empty())
             it->company = player.company;
+        if (it->name.empty())
+            it->name = player.name;
         it->seats.push_back(static_cast<int>(player.player_index) + 1);
         it->is_host = it->is_host || player.is_host;
         it->all_ready = it->all_ready && player.ready;
@@ -4147,13 +4153,15 @@ std::vector<NetworkingMachineRow> build_networking_machine_rows(
     {
         Machine& machine = machines[index];
         std::sort(machine.seats.begin(), machine.seats.end());
-        // A machine's display NAME: its transport name is an opaque
-        // net-<hex> identity on a relay lobby, so an empty one falls back
-        // to the company abbreviation — never to nothing.
-        const std::string name = machine.name.empty()
-            ? company_abbreviation(machine.company)
-            : clip_chars(machine.name, 10);
-        std::string head = std::format("M{} {}", index + 1, name);
+        // The COMPANY leads (§6): the transport `name` is an opaque
+        // net-<hex> identity on a relay lobby, so it is only the fallback
+        // for a machine that has not named a company yet.
+        const std::string identity = machine.company.empty()
+            ? clip_chars(machine.name, 10)
+            : clip_chars(machine.company, 16);
+        std::string head = std::format("M{}", index + 1);
+        if (!identity.empty())
+            head += " " + identity;
         if (machine.is_host)
             head += " (HOST)";
         if (machine.is_local)
@@ -4166,17 +4174,15 @@ std::vector<NetworkingMachineRow> build_networking_machine_rows(
             seats += std::format("P{}", seat);
         }
         if (!seats.empty())
-            head += "  " + seats;
-        const std::string company =
-            "  " + clip_chars(machine.company, 16);
+            seats = "  " + seats;
         // Whole-token degradation, cheapest fact first: READY is derivable
-        // from the colour the row draws in, the company is a courtesy, and
-        // only the identity is worth clipping mid-word.
-        std::string label = head + company;
+        // from the colour the row draws in, the seat list is detail, and
+        // only the identity itself is ever clipped mid-word.
+        std::string label = head + seats;
         if (machine.all_ready)
             label += "  READY";
         if (label.size() > budget)
-            label = head + company;
+            label = head + seats;
         if (label.size() > budget)
             label = head;
         if (label.size() > budget)
