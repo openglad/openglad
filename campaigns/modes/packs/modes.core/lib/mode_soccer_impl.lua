@@ -840,10 +840,16 @@ local function decide(level, inputs, row)
       match.activation(inputs, authored_mask, row.teams or 0)
   local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
                                     T.score_limit)
-  local teams, seeded = match.fills(inputs, mask, {
+  local teams, seeded, lineup_mask = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
+  -- The NONE knob can empty a backfilled team outright (lineup §3.2):
+  -- the fills' narrowed mask is the decision's, and starts recounts it.
+  mask = lineup_mask
+  if starts then
+    starts = core.mask_count(mask) >= 2
+  end
   local reason = nil
   if not starts then
     reason = "soccer: fewer than two anchor teams"
@@ -947,10 +953,10 @@ local function on_mode_init(level, row)
   -- so the spawns land in the final world.
   strip.strip_authored_troops(nil)
 
-  -- Bot squads where the decision said so (the empty active teams).
+  -- Bot squads where the decision said so (the empty active teams, plus
+  -- any team a lineup preset fills beside its occupants — lineup §3.2).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = decision.teams[team + 1].fill
-    if fill == "bots" or fill == "matched" then
+    if match.wants_squad(decision.teams[team + 1]) then
       anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
     end
   end

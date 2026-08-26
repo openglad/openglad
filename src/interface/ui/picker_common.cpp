@@ -3109,6 +3109,23 @@ constexpr std::int32_t kBotMarkBit = 65536;
 // "matched with zero headcount is the plain squad" read back as a fact.
 constexpr std::size_t kModeVarMatchedSize = 5;
 
+// The shared lineup-facts mode var (lib/mode_match.lua MATCHED.ANNOUNCED,
+// slot 4, co-tenanted because the mode-private band is spent): the ones
+// digit is the matched announce latch; the digits above pack one base-100
+// code per team, team t's code at 10 * 100^t, code = applied preset
+// ordinal * 10 + explicit level (lineup §3.4, bank_lineup_facts). Zero
+// codes mean AUTO — an all-AUTO world never writes them.
+constexpr std::size_t kModeVarLineupFacts = 4;
+
+// Decode team t's applied lineup code from the shared slot.
+int lineup_fact_code(std::int32_t slot_value, int team)
+{
+    std::int64_t facts = static_cast<std::int64_t>(slot_value) / 10;
+    for (int t = 0; t < team; ++t)
+        facts /= 100;
+    return static_cast<int>(facts % 100);
+}
+
 bool is_score_team_index(int team)
 {
     return team >= 0 && team < 4;
@@ -3415,6 +3432,40 @@ ScenarioRosterReport build_scenario_roster_report(
                         report.team_fill_count[ti] = 0;
                     }
                 }
+
+                // Lineup facts (lineup §3.4): the spawn seam banked the
+                // APPLIED per-team preset ordinal + explicit level in the
+                // shared slot; the ordinal resolves to its registered
+                // preset name (the campaign lineup hook — every peer
+                // mounts the same campaign). Read only onto bot fills:
+                // the label speaks for a squad, and a team whose label is
+                // its company or troops lists the squad in the rows.
+                std::vector<std::string> lineup_presets;
+                const bool have_presets =
+                    og::script::hooks::campaign_lineup_presets(
+                        lineup_presets);
+                const std::int32_t lineup_facts =
+                    staged->mode.vars[kModeVarLineupFacts];
+                for (int t = 0; t < 4; ++t)
+                {
+                    const auto ti = static_cast<std::size_t>(t);
+                    if (report.team_fill[ti] != ScenarioFill::Bots &&
+                        report.team_fill[ti] != ScenarioFill::Matched)
+                    {
+                        continue;
+                    }
+                    const int code = lineup_fact_code(lineup_facts, t);
+                    report.team_squad_level[ti] = code % 10;
+                    const int ordinal = code / 10;
+                    if (ordinal >= 2 && have_presets &&
+                        static_cast<std::size_t>(ordinal - 2) <
+                            lineup_presets.size())
+                    {
+                        report.team_squad_name[ti] =
+                            lineup_presets[static_cast<std::size_t>(
+                                ordinal - 2)];
+                    }
+                }
             }
             else if (!report.refusing)
             {
@@ -3502,8 +3553,21 @@ std::vector<std::string> format_scenario_report_lines(
                 if (!report.team_active[ti])
                     continue;
                 std::string fill = fill_display_label(report.team_fill[ti]);
+                // A preset squad wears its registered name (lineup §3.4):
+                // "BOT SQUAD <NAME> (n)", replacing MATCHED BOTS too —
+                // the name says what the squad is, matched or not.
+                if (!report.team_squad_name[ti].empty())
+                    fill = std::format("BOT SQUAD {}",
+                                       report.team_squad_name[ti]);
                 if (report.team_fill[ti] != ScenarioFill::Empty)
                     fill += std::format(" ({})", report.team_fill_count[ti]);
+                // An explicit bot level appends "LVk" — spelled without an
+                // inner space so the worst line ("  YELLOW TEAM  ACTIVE -
+                // BOT SQUAD BALANC (5) LV9", 24 + 20 + 4) sits exactly on
+                // the 48-char budget instead of clipping the digit.
+                if (report.team_squad_level[ti] > 0)
+                    fill += std::format(" LV{}",
+                                        report.team_squad_level[ti]);
                 lines.push_back(clip_line(std::format(
                     "  {} TEAM  ACTIVE - {}",
                     og::sim::team_color_name(t), fill)));

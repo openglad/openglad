@@ -760,10 +760,16 @@ local function decide(level, inputs)
   elseif map_capture_limit > 0 then
     limit = map_capture_limit
   end
-  local teams = match.fills(inputs, mask, {
+  local teams, _, lineup_mask = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
+  -- The NONE knob can empty a backfilled flag team outright (lineup
+  -- §3.2): the narrowed mask is the decision's, and starts recounts it.
+  mask = lineup_mask
+  if starts then
+    starts = core.mask_count(mask) >= 2
+  end
   local reason = nil
   if not starts then
     reason = "ctf: fewer than two flag teams"
@@ -929,10 +935,10 @@ local function on_mode_init(level)
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
 
-  -- Bot squads where the decision said so (the empty active teams).
+  -- Bot squads where the decision said so (the empty active teams, plus
+  -- any team a lineup preset fills beside its occupants — lineup §3.2).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = decision.teams[team + 1].fill
-    if fill == "bots" or fill == "matched" then
+    if match.wants_squad(decision.teams[team + 1]) then
       -- The one shared squad spawner (matched-teams D16), with CTF's own
       -- placer so blocked anchors still fall back to the flag-home
       -- square before the teleport draw.

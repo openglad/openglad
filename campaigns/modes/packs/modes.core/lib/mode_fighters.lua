@@ -144,9 +144,28 @@ end
 -- bytes overflow — so the single-bot spawn is spelled out with the legacy
 -- session-difficulty level formula (mode_match.bot_level_for's fallback
 -- arm). Returns the new fighter count.
+--
+-- The lineup knobs (lineup §3.2) reach the band through TEAM 1's pair —
+-- the band is ONE fighter population, so the first team's knobs govern
+-- it: NONE fields nothing, a preset's families replace the caller's
+-- roster, an explicit level replaces the formula. FAIR reads as AUTO
+-- here (no families, and the solver does not fit the band's hard shape
+-- of SINGLES — one bot per free slot, whatever a preset.count says —
+-- PLAN_BASE stays untouched, the design's own carve-out).
 local function fill_bots(count, target, id_base, bitmap_slot, cursor_slot,
                          roster)
-  local level = og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
+  local knob = og.match_setting("bot_squad_1")
+  if knob == 1 then
+    return count
+  end
+  local preset_roster = match.preset_families(knob)
+  if preset_roster ~= nil then
+    roster = preset_roster
+  end
+  local level = og.match_setting("bot_level_1")
+  if level <= 0 then
+    level = og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
+  end
   local bitmap = og.mode_get(bitmap_slot)
   for c = 0, C.FFA_TEAM_COUNT - 1 do
     if count < target then

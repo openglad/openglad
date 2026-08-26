@@ -15,6 +15,7 @@
 -- reads them, harmless by design.)
 
 local levels = og.use("mode_levels")
+local match = og.use("mode_match")
 
 -- The seven games, in the campaign.yaml description's own order. Page id =
 -- the manifest's mode tag (the v1 page ids, kept: the field pages ARE those
@@ -725,8 +726,35 @@ local function picker_action(entry_id)
   return nil
 end
 
+-- The LINEUP hook (docs/lineup-design.md §3.3-§4): the preset names for
+-- the BOTS cycler in table order (ordinal = index + 2; the ids are
+-- already the 6-char upper-case cycler faces, registered verbatim), and
+-- the power function — mode_match's own stat_power over the engine's
+-- derived-stat row, so the bands price a fighter with the exact metric
+-- TROOPS: FAIR solves against. og.use reaches mode_match here because
+-- the campaign VM loads the pack's lib modules exactly like a world VM
+-- (the mode scripts already pull it in), and stat_power spends nothing
+-- but og.div, which the campaign fence leaves open (clock_ticks above
+-- already relies on that).
+local function lineup_presets()
+  local names = {}
+  for i = 1, #match.BOT_PRESETS do
+    names[i] = match.BOT_PRESETS[i].id
+  end
+  return names
+end
+
+local function lineup_power(row)
+  return match.stat_power(row.hp, row.mp, row.armor, row.damage,
+                          row.stepsize, row.fire_frequency, row.level)
+end
+
 og.register_campaign_hooks({
   base_camp = base_camp,
   picker_menu = picker_menu,
   picker_action = picker_action,
+  lineup = {
+    presets = lineup_presets(),
+    power = lineup_power,
+  },
 })

@@ -77,7 +77,10 @@ end
 -- census not run, or no human power — both mean "legacy"); PLAN carries one
 -- base-100 code per team, code = L * 10 + k (0 = unsolved, L in 1..9,
 -- k in 0..4, max packed value 94 * 1010101 = 94,949,494 < 2^31); ANNOUNCED
--- latches the one-shot init announcement (0 none, 1 normal, 2 limit);
+-- latches the one-shot init announcement in its ONES digit (0 none, 1
+-- normal, 2 limit) and packs the per-team applied lineup facts in the
+-- digits above it (bank_lineup_facts below — the band is full, so the
+-- slot is co-tenanted);
 -- SIZE latches the census headcount H (D34: one human team = its live
 -- has_guy headcount, several = the MIN of the per-team counts; 0 = census
 -- not run, or no human power) — the spawn seam truncates every generated
@@ -95,6 +98,90 @@ local MATCHED = {
 local TARGET_CAP = 1073741824
 
 local PLAN_BASE = { 1, 100, 10000, 1000000 }
+
+-- ---------------------------------------------------------------------------
+-- Per-team bot squads (docs/lineup-design.md §3.2-§3.3)
+-- ---------------------------------------------------------------------------
+
+-- The campaign's bot-squad presets. The bot_squad_N knob's ordinal is the
+-- index + 2 (0 = AUTO and 1 = NONE are engine-owned and never named
+-- here); ids are the 6-char upper-case cycler faces the lineup hook
+-- registers verbatim (scripts/campaign_picker.lua). Families name core
+-- pack ids, all present in packs/core/families. FAIR carries no
+-- families: it is the matched solver over the mode's own squad table
+-- (§3.2). An optional `count` field replaces the matched-headcount rule
+-- for that preset (cycling past the family list); the shipped five
+-- state none.
+local BOT_PRESETS = {
+  { id = "BALANC",
+    families = { "core:soldier", "core:archer", "core:elf", "core:mage",
+                 "core:thief" } },
+  { id = "CASTER",
+    families = { "core:mage", "core:mage", "core:cleric", "core:elf",
+                 "core:archer" } },
+  { id = "BRUTES",
+    families = { "core:soldier", "core:soldier", "core:barbarian",
+                 "core:orc", "core:soldier" } },
+  { id = "SKIRMS",
+    families = { "core:thief", "core:elf", "core:archer", "core:thief",
+                 "core:elf" } },
+  { id = "FAIR" },
+}
+
+-- The per-team knob reads (lineup §3.1): bot_squad_N is 0 = AUTO,
+-- 1 = NONE, 2.. = preset ordinal; bot_level_N is 0 = AUTO, 1..9. N is
+-- the 1-based team, so the suffix is team + 1.
+local function squad_knob(team)
+  return og.match_setting("bot_squad_" .. (team + 1))
+end
+
+local function level_knob(team)
+  return og.match_setting("bot_level_" .. (team + 1))
+end
+
+-- The preset a knob ordinal names, or nil — AUTO, NONE, and any ordinal
+-- past the table (a stale save's knob degrades to AUTO, never errors:
+-- the engine clamp is [0, 1 + kMaxBotPresets] regardless of this list).
+local function preset_for(knob)
+  if knob < 2 then
+    return nil
+  end
+  return BOT_PRESETS[knob - 1]
+end
+
+-- The preset's family list for a knob, or nil (AUTO/NONE/FAIR/off-table
+-- all keep the caller's own roster). The band path's seam (mode_fighters
+-- fill_bots) as well as the mask spawn below.
+local function preset_families(knob)
+  local preset = preset_for(knob)
+  if preset == nil then
+    return nil
+  end
+  return preset.families
+end
+
+-- Pure squad shaping for a preset with families (lineup §3.2, one rule
+-- for fills' count and the spawn seam's table): sized by preset.count
+-- (which outranks the headcount rule and cycles past the family list),
+-- else by the matched headcount (0 = the full list), then capped by the
+-- caller's hard shape (basketball's 5v5). Exported for the rule probes.
+local function preset_squad(preset, headcount, cap)
+  local n = #preset.families
+  local size = n
+  if preset.count ~= nil then
+    size = preset.count
+  elseif headcount > 0 then
+    size = og.min(headcount, n)
+  end
+  if cap ~= nil then
+    size = og.min(size, cap)
+  end
+  local squad = {}
+  for k = 1, size do
+    squad[k] = preset.families[og.mod(k - 1, n) + 1]
+  end
+  return squad
+end
 
 -- Difficulty tuples — a COPY of pack data (D13), guarded by the model-pin
 -- test in test_modes_tdm.cpp, which iterates EVERY row here. The table
@@ -282,6 +369,33 @@ local function store_plan(team, level, up)
   og.mode_set(MATCHED.PLAN, plan)
 end
 
+-- The applied lineup facts, banked for the preview label (lineup §3.4).
+-- The mode-private band is spent to the last slot in three of the five
+-- mask modes, so the facts CO-TENANT the shared MATCHED.ANNOUNCED slot:
+-- its ones digit stays the announce latch (0/1/2), and the digits above
+-- it pack one base-100 code per team (PLAN's packing, shifted one
+-- decimal digit up), code = applied preset ordinal * 10 + explicit
+-- level, both single digits by their clamps. APPLIED, not requested: an
+-- unregistered ordinal or a degraded FAIR banks 0, so the pane never
+-- names a squad that did not spawn. Nothing is written while every code
+-- is zero — an all-AUTO world keeps the slot byte-identical. C++ twin:
+-- picker_common.cpp kModeVarLineupFacts.
+local function lineup_code(team)
+  return og.mod(og.div(og.mode_get(MATCHED.ANNOUNCED),
+                       10 * PLAN_BASE[team + 1]), 100)
+end
+
+local function bank_lineup_facts(team, ordinal, level)
+  local code = ordinal * 10 + level
+  local held = lineup_code(team)
+  if code == held then
+    return
+  end
+  local v = og.mode_get(MATCHED.ANNOUNCED)
+  og.mode_set(MATCHED.ANNOUNCED,
+              v + (code - held) * 10 * PLAN_BASE[team + 1])
+end
+
 -- Apply-side half of the FAIR census split (D15/D24): each mode's decide
 -- fold settled matched-ness and the headcount (decision.matched_size, the
 -- D34 min-roster rule), and every mode's on_mode_init banks them here; the
@@ -344,6 +458,8 @@ local function census_inputs()
     score_limit = og.match_setting("score_limit"),
     teams = {},
     flags = {},
+    bot_squad = {},
+    bot_level = {},
   }
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     inputs.teams[team + 1] = {
@@ -352,6 +468,11 @@ local function census_inputs()
       npcs = 0,
       generators = 0,
     }
+    -- The eight lineup knobs (§3.1), one pair per team, indexed like
+    -- inputs.teams: the fill rules below consult the squad knob, the
+    -- spawn seam re-reads both from the same replicated fields.
+    inputs.bot_squad[team + 1] = squad_knob(team)
+    inputs.bot_level[team + 1] = level_knob(team)
   end
   local obs = og.oblist()
   for k = 1, #obs do
@@ -488,9 +609,15 @@ end
 --   keep_generators   (onslaught) generators survive the strip
 --   no_bots           (onslaught D17) never field a squad
 --   matched, matched_size   activation's answers (the FAIR seam)
--- Returns (teams, wants_bots): teams is the decision's [1..4] row array
--- ({active, fill, count}); wants_bots reports any "bots"/"matched" row
--- (squad classes are drawn at spawn — mode_anchors squad_code).
+--   squad_cap         the mode's hard shape (basketball's 5v5, lineup
+--                     §3.2): no squad row counts past it
+-- Returns (teams, wants_bots, mask): teams is the decision's [1..4] row
+-- array ({active, fill, count, squad}); wants_bots reports any squad row
+-- (squad classes are drawn at spawn — mode_anchors squad_code); mask is
+-- active_mask minus the teams the NONE knob emptied outright (lineup
+-- §3.2: "a team is on when anything is on it"), so every consumer of the
+-- decision — TEAM_MASK, strips, win ladders, the starts recheck — sees
+-- the narrowed truth.
 local function fills(inputs, active_mask, opts)
   -- Every shipped squad table fields five bots (D35 soldier-first); a
   -- matched squad truncates to the headcount prefix (D39).
@@ -499,20 +626,27 @@ local function fills(inputs, active_mask, opts)
   local no_bots = false
   local matched = false
   local matched_size = 0
+  local squad_cap = nil
   if opts ~= nil then
     keep_generators = opts.keep_generators == true
     no_bots = opts.no_bots == true
     matched = opts.matched == true
     matched_size = opts.matched_size or 0
+    squad_cap = opts.squad_cap
   end
+  local squad_knobs = inputs.bot_squad or {}
   local strip_on = inputs.strip_troops > strip.KEEP
   local teams = {}
   local wants_bots = false
+  local mask = 0
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     local row = inputs.teams[team + 1]
     local active = core.mask_has(active_mask, team)
     local fill = "empty"
     local count = 0
+    local knob = squad_knobs[team + 1] or 0
+    local preset = preset_for(knob)
+    local squad = nil
     if active then
       local troops_stand = row.npcs > 0
       if strip_on then
@@ -522,6 +656,17 @@ local function fills(inputs, active_mask, opts)
       if strip_on then
         if not keep_generators then
           gens_stand = false
+        end
+      end
+      if preset ~= nil then
+        -- I3 as amended by lineup §3.2 (matched-teams-design.md I3): a
+        -- preset squad applies to ANY active team, occupied or not —
+        -- the row keeps its occupancy fill and `squad` carries the
+        -- ordinal the apply spawns beside it. Onslaught's no_bots (D17)
+        -- still outranks the knob.
+        if not no_bots then
+          squad = knob
+          wants_bots = true
         end
       end
       if row.roster > 0 then
@@ -534,6 +679,16 @@ local function fills(inputs, active_mask, opts)
         if gens_stand then
           fill = "generators"
           count = row.generators
+        end
+      elseif knob == 1 then
+        -- NONE (lineup §3.2): the squad today's rule would field is
+        -- suppressed. Generators still put the team on; one left with
+        -- nothing at all drops out of the mask below.
+        if gens_stand then
+          fill = "generators"
+          count = row.generators
+        else
+          active = false
         end
       else
         -- The FAIR -> legacy degrade rides here: matched with a zero
@@ -549,11 +704,43 @@ local function fills(inputs, active_mask, opts)
             count = og.min(matched_size, squad_size)
           end
         end
+        if preset ~= nil and preset.families ~= nil then
+          -- A preset squad sizes from its own table (lineup §3.2), the
+          -- same one rule the spawn seam applies (preset_squad).
+          local headcount = 0
+          if fill == "matched" then
+            headcount = matched_size
+          end
+          count = #preset_squad(preset, headcount, squad_cap)
+        elseif squad_cap ~= nil then
+          count = og.min(count, squad_cap)
+        end
       end
     end
-    teams[team + 1] = { active = active, fill = fill, count = count }
+    if active then
+      mask = core.mask_add(mask, team)
+    end
+    teams[team + 1] = {
+      active = active,
+      fill = fill,
+      count = count,
+      squad = squad,
+    }
   end
-  return teams, wants_bots
+  return teams, wants_bots, mask
+end
+
+-- Does a decision row call for a squad spawn? The one predicate every
+-- mode's apply loop asks (lineup §3.2): the classic empty-team fills, or
+-- a preset riding an occupied team (row.squad).
+local function wants_squad(row)
+  if row.squad ~= nil then
+    return true
+  end
+  if row.fill == "bots" then
+    return true
+  end
+  return row.fill == "matched"
 end
 
 -- Consume the active teams' start markers (anchor positions are already
@@ -703,6 +890,49 @@ local function matched_families(families)
   return prefix
 end
 
+-- The families a team's squad actually fields (lineup §3.2): a preset
+-- with families replaces the caller's table; AUTO, FAIR and any
+-- off-table ordinal keep the caller's table through the headcount rule.
+-- cap is the caller's hard shape. NONE never reaches here — spawn_bots
+-- returns first.
+local function squad_families(knob, families, cap)
+  local preset = preset_for(knob)
+  if preset ~= nil and preset.families ~= nil then
+    return preset_squad(preset, og.mode_get(MATCHED.SIZE), cap)
+  end
+  local squad = matched_families(families)
+  if cap ~= nil then
+    if #squad > cap then
+      local capped = {}
+      for k = 1, cap do
+        capped[k] = squad[k]
+      end
+      squad = capped
+    end
+  end
+  return squad
+end
+
+-- The FAIR preset's solve target (lineup §3.2, maintainer ruling of
+-- 2026-08-25): an occupied team fields ALLIES, so it targets the gap —
+-- the best other team's human f-sum minus its own — which may come out
+-- at or below zero (the solver's B(1) clamp then answers the weakest
+-- squad, announced as LIMIT). An empty team keeps the D11 mean.
+local function fair_target(mean, sums, team)
+  if sums[team + 1] <= 0 then
+    return mean
+  end
+  local best = 0
+  for t = 1, C.SCORE_TEAM_COUNT do
+    if t ~= team + 1 then
+      if sums[t] > best then
+        best = sums[t]
+      end
+    end
+  end
+  return best - sums[team + 1]
+end
+
 local function add_squad_member(team, family_name)
   local fam = og.family_id("living", family_name) --[[@as integer]] -- caller tables name core families; a nil would be a load bug and add_ob erroring loudly is the right failure
   local w = og.add_ob("living", fam)
@@ -731,16 +961,19 @@ local function announce_matched(clamped)
   if og.mode_get(core.SLOT.MODE_ID) ~= 0 then
     return
   end
-  if og.mode_get(MATCHED.ANNOUNCED) ~= 0 then
+  -- The latch is the slot's ONES digit alone — the digits above it are
+  -- the co-tenant lineup facts (bank_lineup_facts), so the read and both
+  -- writes stay inside that digit.
+  if og.mod(og.mode_get(MATCHED.ANNOUNCED), 10) ~= 0 then
     return
   end
   if clamped then
     core.announce("TEAMS MATCHED (LIMIT)", C.SOUND_CHARGE)
-    og.mode_set(MATCHED.ANNOUNCED, 2)
+    og.mode_set(MATCHED.ANNOUNCED, og.mode_get(MATCHED.ANNOUNCED) + 2)
     return
   end
   core.announce("TEAMS MATCHED", C.SOUND_CHARGE)
-  og.mode_set(MATCHED.ANNOUNCED, 1)
+  og.mode_set(MATCHED.ANNOUNCED, og.mode_get(MATCHED.ANNOUNCED) + 1)
 end
 
 -- The D24 measure-and-solve arm: spawn the real squad, read the spawn-time
@@ -749,7 +982,8 @@ end
 -- exactly once (s_set_level BEFORE set_difficulty, both once per walker
 -- object — D14). Placement stays in member order, before the leveling
 -- pass; neither placement nor the probe reads levels.
-local function spawn_matched_bots(team, families, cursor_slot, placer)
+local function spawn_matched_bots(team, families, cursor_slot, placer,
+                                  target)
   local members = {}
   local bases = {}
   for k = 1, #families do
@@ -763,7 +997,9 @@ local function spawn_matched_bots(team, families, cursor_slot, placer)
   if #members == 0 then
     return
   end
-  local target = og.mode_get(MATCHED.TARGET)
+  if target == nil then
+    target = og.mode_get(MATCHED.TARGET)
+  end
   local level, up, clamped = solve_matched_levels(target, bases)
   store_plan(team, level, up)
   for k = 1, #members do
@@ -779,20 +1015,70 @@ end
 -- over the SIZE-truncated prefix of the caller's table (D34/D39 — every
 -- caller keeps its signature; the headcount rule lives inside this one
 -- seam, so init fills, the wiped-team backstops and the mutant seats all
--- honor it identically). Level source (§5.4, one rule for every scripted
--- spawn): a stored matched plan wins; else a stored match target takes
--- the D24 measure-and-solve arm; else the legacy session-difficulty
--- formula, byte-identical to the pre-matched spawner. placer is an
--- optional placement override, placer(w, team, allow_teleport)
--- (matched-teams D16): CTF passes its own anchor rotation, which falls
--- back to the flag-home square before the teleport draw; nil keeps
--- mode_match's rotation over cursor_slot.
-local function spawn_bots(team, families, cursor_slot, placer)
-  local squad = matched_families(families)
+-- honor it identically). The lineup knobs (§3.2) are consulted HERE, the
+-- one squad seam, so init fills and the wiped-team backstop obey them
+-- alike: NONE fields nothing; a preset's families replace the caller's
+-- (squad_families above); an explicit bot_level is stored as the team's
+-- plan so the leveling below and every later respawn reproduce it —
+-- s_set_level + set_difficulty exactly once per walker, the D14
+-- discipline. Level source otherwise (§5.4, one rule for every scripted
+-- spawn): a stored matched plan wins; else the FAIR preset solves
+-- against its own target (fair_target over a fresh census — LOCAL, never
+-- banked, so other teams' AUTO squads stay legacy); else a stored match
+-- target takes the D24 measure-and-solve arm; else the legacy
+-- session-difficulty formula, byte-identical to the pre-matched spawner.
+-- placer is an optional placement override, placer(w, team,
+-- allow_teleport) (matched-teams D16): CTF passes its own anchor
+-- rotation, which falls back to the flag-home square before the teleport
+-- draw; nil keeps mode_match's rotation over cursor_slot. cap is the
+-- caller's hard shape (basketball's 5v5).
+local function spawn_bots(team, families, cursor_slot, placer, cap)
+  local knob = squad_knob(team)
+  if knob == 1 then
+    return
+  end
+  local squad = squad_families(knob, families, cap)
+  local preset = preset_for(knob)
+  local wants_level = level_knob(team)
+  if wants_level > 0 then
+    if plan_code(team) ~= wants_level * 10 then
+      store_plan(team, wants_level, 0)
+    end
+  end
+  local applied = 0
+  if preset ~= nil then
+    applied = knob
+  end
+  local fair = preset ~= nil and preset.families == nil
   if plan_code(team) == 0 then
-    if og.mode_get(MATCHED.TARGET) > 0 then
-      spawn_matched_bots(team, squad, cursor_slot, placer)
+    local target = nil
+    if fair then
+      local mean, sums = census_power(og.oblist())
+      if mean > 0 then
+        target = og.min(fair_target(mean, sums, team), TARGET_CAP)
+      end
+    end
+    if target == nil then
+      if og.mode_get(MATCHED.TARGET) > 0 then
+        target = og.mode_get(MATCHED.TARGET)
+      end
+    end
+    if target ~= nil then
+      spawn_matched_bots(team, squad, cursor_slot, placer, target)
+      bank_lineup_facts(team, applied, 0)
       return
+    end
+  end
+  if fair then
+    -- FAIR stays a banked fact only where a solve governs the squad — a
+    -- refill under a stored solve plan reproduces it, so the fact
+    -- stands. An explicit level (AUTO-equivalent squad at that level)
+    -- and the no-human-power degrade both bank AUTO, so the pane never
+    -- claims a solve that did not run.
+    if wants_level > 0 then
+      applied = 0
+    elseif plan_code(team) == 0 then
+      applied = 0
     end
   end
   for k = 1, #squad do
@@ -804,6 +1090,7 @@ local function spawn_bots(team, families, cursor_slot, placer)
       place_member(w, team, cursor_slot, placer)
     end
   end
+  bank_lineup_facts(team, applied, wants_level)
 end
 
 -- "Owns its life": may this corpse come back, and do its deaths count?
@@ -878,7 +1165,7 @@ end
 -- mode_anchors module: og.use is load-time only and rejects cycles, and
 -- mode_anchors already uses THIS module, so the score-team read arrives
 -- as an argument rather than an import.
-local function revive_wiped_teams(anchors, mask, ticks, cursor_slot)
+local function revive_wiped_teams(anchors, mask, ticks, cursor_slot, cap)
   local obs = og.oblist()
   local live = { 0, 0, 0, 0 }
   for k = 1, #obs do
@@ -919,7 +1206,7 @@ local function revive_wiped_teams(anchors, mask, ticks, cursor_slot)
     if core.mask_has(mask, team) then
       if live[team + 1] == 0 then
         if og.respawn_pending_count(team) == 0 then
-          anchors.spawn_bot_squad(team, cursor_slot)
+          anchors.spawn_bot_squad(team, cursor_slot, cap)
         end
       end
     end
@@ -1010,6 +1297,11 @@ return {
   resolve_limit = resolve_limit,
   resolve_time_limit = resolve_time_limit,
   MATCHED = MATCHED,
+  BOT_PRESETS = BOT_PRESETS,
+  preset_families = preset_families,
+  preset_squad = preset_squad,
+  fair_target = fair_target,
+  stat_power = stat_power,
   measured_base = measured_base,
   walker_power = walker_power,
   predicted_power = predicted_power,
@@ -1019,6 +1311,7 @@ return {
   census_inputs = census_inputs,
   activation = activation,
   fills = fills,
+  wants_squad = wants_squad,
   bank_match_target = bank_match_target,
   consume_markers = consume_markers,
   strip_inactive_teams = strip_inactive_teams,

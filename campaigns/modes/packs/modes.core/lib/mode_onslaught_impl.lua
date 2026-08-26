@@ -671,6 +671,11 @@ local function decide(level, inputs, row)
   -- out of scope for Onslaught entirely (D17).
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, row.teams or 0)
+  -- no_bots also outranks the eight lineup knobs (lineup §3.2 defers to
+  -- D17): presets, NONE and explicit levels are stored like every match
+  -- knob but decide nothing here — no squad ever fields, so fills' NONE
+  -- narrowing and squad rows are unreachable and the mask stands as
+  -- activation answered it.
   local teams = match.fills(inputs, mask, {
     keep_generators = true,
     no_bots = true,

@@ -227,6 +227,7 @@ local T = {
   point_score = 100, -- og.award_score delta per point (200/2pt, 300/3pt)
   time_limit_ticks = 7200,
   respawn_ticks = 60,
+  squad_cap = 5, -- the court's hard shape: five on five (lineup §3.2)
 
   -- Respawning pickups (lib/mode_items): fallback interval when the
   -- manifest row carries none. mode_items refills ONE pad per interval
@@ -523,7 +524,7 @@ local function center_reset(ball)
   og.mode_set(S.BALL_PY, jy * 256)
   ball:setxy(jx - og.div(ball:sizex(), 2), jy - og.div(ball:sizey(), 2))
   og.mode_set(S.JUMP_UNTIL, og.world_tick() + T.jump_freeze)
-  match.revive_wiped_teams(anchors, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS), S.ANCHOR_CURSOR)
+  match.revive_wiped_teams(anchors, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS), S.ANCHOR_CURSOR, T.squad_cap)
 end
 
 -- Park the ball as a FREE dead ball at a pixel center: the landing-
@@ -2274,10 +2275,21 @@ local function decide(level, inputs, row)
       match.activation(inputs, authored_mask, row.teams or 0)
   local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
                                     T.score_limit)
-  local teams, seeded = match.fills(inputs, mask, {
+  local teams, seeded, lineup_mask = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
+    -- The court's hard shape (lineup §3.2): five on five, so a preset
+    -- squad never counts past five however its count field reads. The
+    -- same cap rides every spawn call below, so the preview's count IS
+    -- the spawned count.
+    squad_cap = T.squad_cap,
   })
+  -- The NONE knob can empty a backfilled team outright (lineup §3.2):
+  -- the fills' narrowed mask is the decision's, and starts recounts it.
+  mask = lineup_mask
+  if starts then
+    starts = core.mask_count(mask) >= 2
+  end
   local reason = nil
   if not starts then
     reason = "basketball: fewer than two anchor teams"
@@ -2358,11 +2370,12 @@ local function on_mode_init(level, row)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
   strip.strip_authored_troops(nil)
-  -- Bot squads where the decision said so (the empty active teams).
+  -- Bot squads where the decision said so (the empty active teams, plus
+  -- any team a lineup preset fills beside its occupants — lineup §3.2),
+  -- capped at the court's five (the decide fold's squad_cap twinned).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = decision.teams[team + 1].fill
-    if fill == "bots" or fill == "matched" then
-      anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
+    if match.wants_squad(decision.teams[team + 1]) then
+      anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR, T.squad_cap)
     end
   end
   -- og.add_ob for the ball, not og.add_fx_ob: the fx list never acts,

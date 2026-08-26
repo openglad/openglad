@@ -46,8 +46,10 @@ end
 -- the order varies match to match, so a small matched roster faces a
 -- varying subset instead of the fixed soldier-first prefix, and every
 -- wiped-team revive decodes the SAME latched code back to the same squad.
-local function spawn_bot_squad(team, cursor_slot)
-  match.spawn_bots(team, shuffled_squad(squad_code()), cursor_slot)
+-- cap is the caller's hard shape (basketball's 5v5 — lineup §3.2), handed
+-- through to the one squad seam; nil for every other caller.
+local function spawn_bot_squad(team, cursor_slot, cap)
+  match.spawn_bots(team, shuffled_squad(squad_code()), cursor_slot, nil, cap)
 end
 
 -- The walker's scoring team: the banked pre-charm team when one exists.

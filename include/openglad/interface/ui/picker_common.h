@@ -1014,6 +1014,14 @@ struct ScenarioRosterReport {
     std::string mode_name;          // ModeState::name when staged + active
     std::array<ScenarioFill, 4> team_fill = {};
     std::array<int, 4> team_fill_count = {};
+    // --- Lineup facts (lineup §3.4): the APPLIED per-team bot facts the
+    // spawn seam banked in the shared mode-var slot (mode_match.lua
+    // bank_lineup_facts / kModeVarLineupFacts below) — preset name
+    // resolved through the campaign lineup hook (empty when AUTO, the
+    // ordinal is unregistered, or no hook), explicit level 1..9 (0 =
+    // AUTO). Facts, never requests: a knob a mode ignored banks nothing.
+    std::array<std::string, 4> team_squad_name = {};
+    std::array<int, 4> team_squad_level = {};
     // --- Seat block (#218): the caller's lobby seats, P#-sorted, with the
     // format_seat_summary match shape. Both empty when the caller passed no
     // seat context — every seatless report is byte-identical to before.
