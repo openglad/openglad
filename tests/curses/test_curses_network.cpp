@@ -2297,7 +2297,11 @@ TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_versus_domain)
     // the campaign's matchup: versus yaml key — the shipped modes campaign
     // is the versus campaign.
     save.current_campaign = "modes";
-    save.ctf_team_count = 2;
+    // Teams 2 and 3 are switched OFF on the band (amendment A2 — the
+    // retired TEAMS count's job): they are not fielded, so they are not
+    // seats either.
+    save.bot_squad[2] = og::sim::kBotSquadOff;
+    save.bot_squad[3] = og::sim::kBotSquadOff;
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
@@ -2326,7 +2330,7 @@ TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_versus_domain)
     term.push_char(U't');
     lobby->poll(term, clock);
     EXPECT_EQ(0, local_team())
-        << "explicit two-team versus must skip teams 2 and 3";
+        << "a versus lobby must skip the teams the host switched off";
 }
 
 // The lobby "Level:" line reads scenario titles off the LOCAL mount, so when

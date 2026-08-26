@@ -4466,18 +4466,23 @@ TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
     EXPECT_EQ(0, lobby.settings_syncs);
 
     // A host's lobby-synced turn reaches the joiner's read-only label
-    // through the same per-frame re-derive TROOPS uses.
-    save.ctf_team_count = 3;
+    // through the same per-frame re-derive TROOPS uses. The probe rides
+    // LIMIT: TEAMS is retired (amendment A3) and its face is the constant
+    // "Teams: Auto" now, which could not tell a re-derive from a memory.
+    save.ctf_capture_limit = 5;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
-    EXPECT_EQ("Teams: 3", buttons[kScenarioMenuCtfTeamsIndex].label);
+    EXPECT_EQ("Limit: 5", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ("Teams: Auto", buttons[kScenarioMenuCtfTeamsIndex].label);
 
-    // Host clicks: cycle + sync + both-surface refresh.
+    // Host clicks: cycle + sync + both-surface refresh. The retired TEAMS
+    // click still syncs (the cell is live until the SCENARIO re-grid takes
+    // it) and still answers Auto.
     lobby.host = true;
-    save.ctf_team_count = 2;
+    save.ctf_capture_limit = 0;
     EXPECT_EQ(MENU_OK, change_ctf_teams());
-    EXPECT_EQ(3, (int)save.ctf_team_count);
+    EXPECT_EQ(0, (int)save.ctf_team_count);
     EXPECT_EQ(1, lobby.settings_syncs);
-    EXPECT_EQ("Teams: 3",
+    EXPECT_EQ("Teams: Auto",
               pks().scenariomenu_buttons[kScenarioMenuCtfTeamsIndex].label);
     EXPECT_EQ(MENU_OK, change_ctf_caps());
     EXPECT_EQ(1, (int)save.ctf_capture_limit);

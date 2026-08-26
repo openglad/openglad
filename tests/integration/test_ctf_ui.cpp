@@ -246,8 +246,10 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
     button* scenario_rows = picker_scenariomenu_buttons();
     EXPECT_EQ("troops", scenario_rows[kScenarioMenuTroopsIndex].id);
 
+    // TEAMS is retired (amendment A3): the cell still exists until the
+    // SCENARIO re-grid removes it, and it answers Auto whatever it held.
     (void)change_ctf_teams();
-    EXPECT_EQ(3, (int)save.ctf_team_count);
+    EXPECT_EQ(0, (int)save.ctf_team_count);
     (void)change_ctf_caps();
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
     (void)change_ctf_troops();
@@ -257,7 +259,7 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
         og::runtime::current_session->picker_->scenariomenu_buttons;
     ASSERT_EQ(static_cast<std::size_t>(kScenarioMenuButtonCount),
               live_scenario.size());
-    EXPECT_EQ("Teams: 3", live_scenario[kScenarioMenuCtfTeamsIndex].label);
+    EXPECT_EQ("Teams: Auto", live_scenario[kScenarioMenuCtfTeamsIndex].label);
     EXPECT_EQ("Limit: 1", live_scenario[kScenarioMenuCtfCapsIndex].label);
     EXPECT_EQ("TROOPS: OWN", live_scenario[kScenarioMenuTroopsIndex].label);
 

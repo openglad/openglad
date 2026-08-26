@@ -560,19 +560,20 @@ int lineup_knobs_flow_injector(void* data)
     if (state->page_opened) {
         SDL_Delay(750);
 
-        // LV knob on band 1: AUTO -> 1.
+        // LV knob on band 1: AUTO -> +1 (the offset wheel, A6).
         state->level_cycled =
-            click_until_label("lineup_level_1", "LV 1");
+            click_until_label("lineup_level_1", "LV +1");
         SDL_Delay(300);
         // BOTS on the unoccupied team 2 may reach NONE (no seat, no
-        // fighters there in this fixture).
+        // fighters there in this fixture) — two turns of the wheel now,
+        // OFF sits between AUTO and NONE (A1).
         state->bots_none_on_empty_team =
-            click_until_label("lineup_bots_1", "BOTS: NONE");
+            click_until_label("lineup_bots_1", "BOTS: NONE", 4);
         SDL_Delay(300);
         // BOTS on team 1 (the seat + every fighter): NONE is just as legal
         // there — one cycle off AUTO lands on it and it sticks.
         state->bots_none_on_occupied_team =
-            click_until_label("lineup_bots_0", "BOTS: NONE");
+            click_until_label("lineup_bots_0", "BOTS: NONE", 4);
         SDL_Delay(300);
 
         interact("back");  // LINEUP -> SCENARIO
@@ -608,19 +609,19 @@ TEST(LineupUi, scenario_door_knob_cycles_and_none_everywhere)
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.door_seen) << "SCENARIO should carry the LINEUP door";
     EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
-    EXPECT_TRUE(state.level_cycled) << "LV knob should cycle AUTO -> 1";
+    EXPECT_TRUE(state.level_cycled) << "LV knob should cycle AUTO -> +1";
     EXPECT_TRUE(state.bots_none_on_empty_team)
         << "BOTS on an empty team reaches NONE";
     EXPECT_TRUE(state.bots_none_on_occupied_team)
         << "BOTS on the occupied team reaches NONE too";
     EXPECT_EQ(1, static_cast<int>(save.bot_level[1]))
         << "the LV cycle lands in the save knob";
-    EXPECT_EQ(1, static_cast<int>(save.bot_squad[1]))
+    EXPECT_EQ(og::sim::kBotSquadNone, save.bot_squad[1])
         << "the empty team's NONE lands in the save knob";
     // Both knob writes survived every later per-frame picker_lobby_poll(),
     // which copies the lobby settings back over the save: the value is only
-    // still 1 because change_lineup_bots pushed it into the lobby first.
-    EXPECT_EQ(1, static_cast<int>(save.bot_squad[0]))
+    // still NONE because change_lineup_bots pushed it into the lobby first.
+    EXPECT_EQ(og::sim::kBotSquadNone, save.bot_squad[0])
         << "the occupied team's NONE lands and stays synced";
     EXPECT_FALSE(trace_contains("lineup", "bots_none_refused"))
         << "NONE is never refused";
@@ -1203,16 +1204,18 @@ TEST(LineupUi, knob_callbacks_gate_branches)
     EXPECT_EQ(0, static_cast<int>(save.bot_squad[0]));
     EXPECT_EQ(0, static_cast<int>(save.bot_level[0]));
 
-    // Host + versus: the LV wheel walks AUTO -> 1..9 -> AUTO on an empty
-    // band's knob, and the save value rides every step through the clamp.
+    // Host + versus: the LV wheel walks AUTO -> +1..+5 -> -5..-1 -> AUTO
+    // on an empty band's knob (amendment A6 — the level is an offset), and
+    // the save value rides every step through the clamp.
     save.current_campaign = "modes";
-    for (int expected = 1; expected <= 9; ++expected)
+    const int wheel[] = {1, 2, 3, 4, 5, -5, -4, -3, -2, -1};
+    for (const int expected : wheel)
     {
         EXPECT_EQ(MENU_OK, change_lineup_level(3));
         EXPECT_EQ(expected, static_cast<int>(save.bot_level[3]));
     }
     EXPECT_EQ(MENU_OK, change_lineup_level(3));
-    EXPECT_EQ(0, static_cast<int>(save.bot_level[3])) << "9 wraps to AUTO";
+    EXPECT_EQ(0, static_cast<int>(save.bot_level[3])) << "-1 wraps to AUTO";
 
     // A toast with no LINEUP state installed still traces (never crashes).
     og::ui::lineup_show_toast("NOWHERE TO LAND");

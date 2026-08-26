@@ -2246,7 +2246,11 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
 
-    pick(f.t(), 0);                      // row 1: TEAM 1 bots -> NONE
+    // Two turns of the wheel: AUTO -> OFF -> NONE (amendment A1). NONE is
+    // the value that stays legal on a team with fighters, which is what
+    // this roster is.
+    pick(f.t(), 0);
+    pick(f.t(), 0);
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
@@ -2259,7 +2263,8 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
         << "the two empty teams still get a band:\n" << dump;
     EXPECT_NE(dump.find("TEAM 1  BOTS: NONE"), std::string::npos)
         << "the redraw re-reads the knob out of the save:\n" << dump;
-    EXPECT_EQ(1, f.save().bot_squad[0]) << "AUTO -> NONE landed in the save";
+    EXPECT_EQ(og::sim::kBotSquadNone, f.save().bot_squad[0])
+        << "AUTO -> OFF -> NONE landed in the save";
     EXPECT_EQ(0, f.save().bot_squad[1]) << "only the cycled team moved";
     EXPECT_TRUE(f.t().input_exhausted());
     (void)unmount_campaign_package_with_error("modes");

@@ -427,7 +427,7 @@ constexpr const char* kZoneScript = R"LUA(og.register_campaign_hooks({
       return { message = "Kit stowed." }
     end
     if entry_id == "bread" then
-      og.campaign_match_set("team_count", 3)
+      og.campaign_match_set("respawn_ticks", 300)
       return { message = "Bread eaten." }
     end
     if entry_id == "dice" then
@@ -692,7 +692,7 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
         << "a submenu action that wrote a MATCHUP knob must sync it";
     EXPECT_EQ(15, save.ctf_capture_limit)
         << "the zone action's og.campaign_match_set landed";
-    EXPECT_EQ(3, save.ctf_team_count)
+    EXPECT_EQ(300, save.ctf_respawn_ticks)
         << "the submenu action's og.campaign_match_set landed";
 
     // The deploy lock refused the unassigned re-deploy with the toast.

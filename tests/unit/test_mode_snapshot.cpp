@@ -145,7 +145,10 @@ void populate_full_mode_state(GameWorld& world)
         mode.beacons[static_cast<std::size_t>(i)].team = static_cast<std::uint8_t>(3 - i);
     }
 
-    world.ctf_requested_team_count = 4;
+    // The retired TEAMS knob (A3) holds one value everywhere, and
+    // apply_snapshot writes it: populating a 4 here would only assert that
+    // the mirror disagrees with its host.
+    world.ctf_requested_team_count = 0;
     world.ctf_requested_capture_limit = 9;
     world.ctf_requested_respawn_ticks = 55;
     world.ctf_requested_strip_scenario_troops = 1;
@@ -940,12 +943,12 @@ TEST(ModeSnapshot, bot_knobs_round_trip_and_change_hash)
     // transposed loop in serialize/deserialize/capture/apply fails loudly
     // instead of silently swapping two equal values.
     world.ctf_requested_bot_squad = {0, 2, 1, 9};
-    world.ctf_requested_bot_level = {3, 0, 9, 1};
+    world.ctf_requested_bot_level = {3, 0, -5, 1};
 
     const og::sim::WorldSnapshot snapshot =
         og::sim::capture_keyframe_snapshot(world);
     const std::array<std::int16_t, 4> expected_squad = {0, 2, 1, 9};
-    const std::array<std::int16_t, 4> expected_level = {3, 0, 9, 1};
+    const std::array<std::int16_t, 4> expected_level = {3, 0, -5, 1};
     EXPECT_EQ(expected_squad, snapshot.ctf_requested_bot_squad);
     EXPECT_EQ(expected_level, snapshot.ctf_requested_bot_level);
 
