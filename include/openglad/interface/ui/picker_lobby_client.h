@@ -239,6 +239,19 @@ public:
     {
         return false;
     }
+    // LINEUP §6: is this machine actually IN a session? `is_networked_session`
+    // only says a network client is installed — a joiner that is still
+    // handshaking, or one whose link died, satisfies it while knowing nothing
+    // about the lobby it is supposedly in. Every surface that must keep the
+    // LOCAL picture until a session really exists (the NETWORKING mode table,
+    // the LINEUP seat view) reads THIS instead, in one place:
+    // picker_lobby_session_established(). A host is established the moment it
+    // runs the lobby; a joiner once the lobby state has landed AND the link is
+    // neither Lost nor Failed. Local/solo clients are never established.
+    [[nodiscard]] virtual bool session_established() const noexcept
+    {
+        return false;
+    }
     // --- Staged lobby (#218) ------------------------------------------------
     // The staged authoritative world this client can show: the owner's real
     // MatchStage world (host/local), or a joiner's preview mirror (C9).
@@ -348,6 +361,7 @@ std::vector<og::sim::LobbyPlayer> picker_lobby_players();
 std::optional<std::uint8_t> picker_lobby_authoritative_team_mask();
 std::vector<std::uint8_t> picker_lobby_local_player_indices();
 bool picker_lobby_is_networked();
+bool picker_lobby_session_established();
 inline bool picker_lobby_save_slot_editable(int slot_index)
 {
     if (slot_index < 0)

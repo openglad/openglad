@@ -1395,3 +1395,10 @@ bool picker_lobby_is_networked()
         return client->is_networked_session();
     return false;
 }
+
+bool picker_lobby_session_established()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->session_established();
+    return false;
+}

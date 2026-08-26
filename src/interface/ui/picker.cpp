@@ -2155,24 +2155,22 @@ void picker_wire_networking_menu_nav(button* buttons, int count,
 
 // LINEUP §6: the one session-mode predicate, over the active lobby client.
 // Session mode means an ESTABLISHED session; a networked client on its own is
-// not enough. Hosting is established the moment this machine runs the lobby
-// (host controls visible). A joiner is established once it holds lobby state —
-// picker_lobby_players() non-empty is the observable fact, because
-// IPickerLobbyClient exposes no connection-state accessor and
-// connection_alert() is a display string ("Status: connecting") rather than a
-// predicate. So a joiner mid-handshake, or one whose connect failed, stays
-// Idle and keeps the classic HOST / JOIN / DIRECT (LAN) shape: clicking JOIN
-// again replaces the pending client, as it did before this branch.
+// not enough. The question has ONE home now —
+// IPickerLobbyClient::session_established(), read through
+// picker_lobby_session_established(): a host is established the moment it runs
+// the lobby, a joiner once the lobby state has landed over a link that is
+// neither Lost nor Failed. (The roster-non-empty stand-in this replaced could
+// not see a dead link, so a joiner whose session died kept the session table
+// and lost its HOST / JOIN retry.) A joiner mid-handshake, or one whose
+// connect failed, stays Idle and keeps the classic HOST / JOIN / DIRECT (LAN)
+// shape: clicking JOIN again replaces the pending client, as it always did.
 NetworkingMenuModeState picker_current_networking_menu_mode()
 {
     NetworkingMenuModeState mode;
-    if (!picker_lobby_is_networked())
-        return mode;
-    const bool host = picker_lobby_host_controls_visible();
-    if (!host && picker_lobby_players().empty())
+    if (!picker_lobby_is_networked() || !picker_lobby_session_established())
         return mode;
     mode.networked = true;
-    mode.host = host;
+    mode.host = picker_lobby_host_controls_visible();
     return mode;
 }
 
@@ -3427,9 +3425,16 @@ Sint32 change_ctf_troops()
 LineupSeatView picker_lineup_seat_view()
 {
    LineupSeatView view;
-   const bool networked = picker_lobby_is_networked();
-   view.players = picker_lobby_players();
-   if (view.players.empty() && !networked)
+   // The lobby picture belongs to an ESTABLISHED session only (§6). A joiner
+   // that is still connecting, or whose link died, holds a roster that is
+   // empty or stale and an ownership grant that proves nothing — reading it
+   // painted NO SEAT / NO FIGHTERS over a company that is sitting right there
+   // in the save. Such a client falls back to the LOCAL picture, which is
+   // exactly what a re-JOIN or a DISCONNECT would leave it with.
+   const bool established = picker_lobby_session_established();
+   if (established || !picker_lobby_is_networked())
+       view.players = picker_lobby_players();
+   if (view.players.empty() && !established)
    {
        view.players = og::ui::synthesize_local_lobby_players(
            og::runtime::current_session->myscreen_->save_data);
@@ -3439,7 +3444,7 @@ LineupSeatView picker_lineup_seat_view()
                 const og::sim::LobbyPlayer& rhs) {
                  return lhs.player_index < rhs.player_index;
              });
-   if (networked)
+   if (established)
    {
        view.local_indices = picker_lobby_local_player_indices();
    }

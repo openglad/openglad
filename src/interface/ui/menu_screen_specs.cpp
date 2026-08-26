@@ -7392,7 +7392,11 @@ void lineup_draw_content(void* screen_state)
 
     mytext.write_xy(10, 8, "LINEUP", WHITE, 1);
 
-    const bool networked = picker_lobby_is_networked();
+    // §6: the bands census the picture picker_lineup_seat_view just built, so
+    // they must ask the SAME question it did — an unestablished joiner reads
+    // its own save, and the session status line stays off until there is a
+    // session to report.
+    const bool networked = picker_lobby_session_established();
     const LineupSeatView seat_view = picker_lineup_seat_view();
     const std::vector<og::sim::LobbyPlayer>& players = seat_view.players;
     const std::vector<std::uint8_t>& locals = seat_view.local_indices;

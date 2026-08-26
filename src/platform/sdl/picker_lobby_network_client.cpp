@@ -3151,6 +3151,16 @@ public:
         return true;
     }
 
+    // LINEUP §6: the host IS the lobby — the moment the server exists this
+    // machine is in an established session, roster broadcast or not. Same
+    // fact host_controls_visible() reports; spelled out separately so the
+    // two questions ("am I in a session" / "may I touch host knobs") stay
+    // independent for readers.
+    [[nodiscard]] bool session_established() const noexcept override
+    {
+        return server_ != nullptr;
+    }
+
     bool install_gameplay_runtime(og::runtime::GameSession& session,
                                   screen& gameplay_screen)
     {
@@ -4278,6 +4288,21 @@ public:
     [[nodiscard]] bool is_networked_session() const noexcept override
     {
         return true;
+    }
+
+    // LINEUP §6: a joiner is in a session once the lobby state has landed —
+    // and only while the link still carries it. state_ is kept across a drop
+    // on purpose (the roster stays on screen under the "connection lost"
+    // alert instead of blinking away), so the link has to be consulted
+    // separately or a dead session would keep answering "established" and
+    // hide the HOST / JOIN retry behind DISCONNECT.
+    [[nodiscard]] bool session_established() const noexcept override
+    {
+        if (!state_.has_value() || transport_ == nullptr)
+            return false;
+        const og::sim::TransportLinkState link = transport_->link_state();
+        return link != og::sim::TransportLinkState::Failed &&
+            link != og::sim::TransportLinkState::Lost;
     }
 
     // Staged lobby (#218, C9): the joiner's preview surface is its mirror —

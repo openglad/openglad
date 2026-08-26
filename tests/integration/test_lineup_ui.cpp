@@ -432,12 +432,19 @@ public:
     {
         return true;
     }
+    // §6: "am I actually in a session", carried directly so a test can pose a
+    // pending or a dead join without a transport.
+    [[nodiscard]] bool session_established() const noexcept override
+    {
+        return established;
+    }
     [[nodiscard]] std::string session_room_code() const override
     {
         return room_code;
     }
 
     bool host_view = true;
+    bool established = true;
     bool slots_editable = true;
     std::vector<og::sim::LobbyPlayer> players;
     std::vector<std::uint8_t> local_indices;
@@ -1209,6 +1216,75 @@ TEST(LineupUi, knob_callbacks_gate_branches)
 
     // The settings sync may have re-mounted the versus campaign.
     restore_gladiator_mount();
+}
+
+// §6: a joiner that is only connecting — or whose link died with the last
+// roster still cached — is not in a session, so LINEUP must show it the LOCAL
+// picture: its own deployed company under synthesized seats. Reading the
+// unestablished client instead painted NO SEAT over every band and NO FIGHTERS
+// over a company sitting right there in the save.
+TEST(LineupUi, unestablished_joiner_reads_the_local_seat_picture)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    for (auto& slot : save.team_list)
+        slot.reset();
+    const std::vector<FighterSeed> roster = {
+        {"HOME", 3, true, 0}, {"AWAY", 3, true, 1},
+    };
+    for (std::size_t i = 0; i < roster.size(); ++i)
+    {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = roster[i].name;
+        member->upgrade_to_level(roster[i].level, true);
+        member->deployed = roster[i].deployed;
+        member->teamnum = roster[i].team;
+        save.team_list[i] = std::move(member);
+    }
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+
+    FakeNetLobbyClient client;
+    client.host_view = false;      // a joiner
+    client.established = false;    // ...with no session behind it
+    // The retained roster of the session that just died: two foreign seats,
+    // and an ownership grant this machine can no longer act on.
+    client.players = {
+        make_probe_seat(0, "net-host", "IRON KETTLE BAND", true, 0, roster),
+        make_probe_seat(1, "net-self", "RIVER BAND", false, 1, roster),
+    };
+    client.local_indices = {1};
+    ActiveLobbyGuard guard(&client);
+
+    const LineupSeatView pending = picker_lineup_seat_view();
+    ASSERT_EQ(2u, pending.players.size())
+        << "the local save's two seats, synthesized";
+    EXPECT_EQ(save.save_name, pending.players[0].company)
+        << "the retained foreign roster is not this machine's picture";
+    EXPECT_EQ((std::vector<std::uint8_t>{0, 1}), pending.local_indices)
+        << "every seat in the local picture is this machine's";
+
+    const std::array<og::ui::LineupTeamBand, 4> bands =
+        og::ui::build_lineup_bands(save, pending.players,
+                                   pending.local_indices,
+                                   picker_lobby_session_established(),
+                                   og::ui::LineupPowerFn{});
+    EXPECT_TRUE(bands[0].has_seat) << "TEAM 1 must not read NO SEAT";
+    EXPECT_TRUE(bands[1].has_seat) << "TEAM 2 must not read NO SEAT";
+    EXPECT_EQ(1, bands[0].fighter_count) << "HOME fights for TEAM 1";
+    EXPECT_EQ(1, bands[1].fighter_count) << "AWAY fights for TEAM 2";
+
+    // The session lands: the lobby picture takes over, ownership included.
+    client.established = true;
+    const LineupSeatView live = picker_lineup_seat_view();
+    ASSERT_EQ(2u, live.players.size());
+    EXPECT_EQ("IRON KETTLE BAND", live.players[0].company)
+        << "an established session reads the replicated roster";
+    EXPECT_EQ((std::vector<std::uint8_t>{1}), live.local_indices)
+        << "and the server's ownership grant";
 }
 
 TEST(LineupUi, split_even_and_unite_direct)

@@ -1696,6 +1696,14 @@ public:
     {
         return true;
     }
+    // The real clients answer this from the server pointer (host) or from
+    // "lobby state landed AND the link is alive" (joiner); the stub carries
+    // the answer directly so a test can pose a pending, a dead and a live
+    // session without a transport.
+    [[nodiscard]] bool session_established() const noexcept override
+    {
+        return established.load();
+    }
     [[nodiscard]] std::string session_room_code() const override
     {
         return "GLAD-7Q2F";
@@ -1712,6 +1720,7 @@ public:
     }
 
     std::atomic<bool> host_view{true};
+    std::atomic<bool> established{true};
     std::atomic<og::sim::LobbyMachineId> kicked_machine{0};
     std::atomic<int> disconnect_calls{0};
     mutable std::mutex mutex;
@@ -2018,9 +2027,10 @@ TEST(NetworkingMenu, connecting_joiner_keeps_the_idle_table_until_lobby_state)
 
     FakeSessionLobbyClient lobby;
     lobby.host_view.store(false);  // a joiner, never the host
+    lobby.established.store(false);  // ...still handshaking
     ActiveLobbyClientGuard guard(&lobby);
 
-    // is_networked_session() is true, the roster is still empty: Idle.
+    // is_networked_session() is true, no session behind it yet: Idle.
     const NetworkingMenuModeState connecting =
         picker_current_networking_menu_mode();
     EXPECT_FALSE(connecting.networked)
@@ -2033,7 +2043,9 @@ TEST(NetworkingMenu, connecting_joiner_keeps_the_idle_table_until_lobby_state)
     EXPECT_TRUE(idle[kNetworkingMenuDisconnectIndex].hidden)
         << "DISCONNECT must not sit in JOIN's rect while idle";
 
-    // The first state broadcast lands: the joiner is in.
+    // A roster ALONE is not a session: the real join client keeps the last
+    // state after the link dies, so the stale roster must not buy back the
+    // session table (and with it JOIN's rect).
     {
         std::lock_guard<std::mutex> lock(lobby.mutex);
         lobby.players = {
@@ -2041,6 +2053,17 @@ TEST(NetworkingMenu, connecting_joiner_keeps_the_idle_table_until_lobby_state)
             session_seat(1, 2, "net-self", "RIVER BAND", false),
         };
     }
+    const NetworkingMenuModeState lost = picker_current_networking_menu_mode();
+    EXPECT_FALSE(lost.networked)
+        << "a dead link is Idle however full its retained roster is";
+    std::vector<button> after_loss(buttons, buttons + count);
+    picker_apply_networking_menu_mode(after_loss.data(), count, lost);
+    EXPECT_FALSE(after_loss[kNetworkingMenuJoinIndex].hidden)
+        << "a joiner whose session died keeps its JOIN retry";
+    EXPECT_TRUE(after_loss[kNetworkingMenuDisconnectIndex].hidden);
+
+    // The session is live: the joiner is in.
+    lobby.established.store(true);
     const NetworkingMenuModeState joined =
         picker_current_networking_menu_mode();
     EXPECT_TRUE(joined.networked);
