@@ -1117,10 +1117,12 @@ int text_picker_testing_launch_seed_matches_the_preview()
 // halves now run the one staged pipeline on the one session seed, so the
 // previewed per-team census IS the launched world's headcount.
 //
-// (a) TROOPS: FAIR on the four-team soccer pitch — matched squads in the
-// preview, matched squads in the world. (b) TROOPS: ALL on the onslaught
-// map, which authors a real cast — the launch keeps the authored troops the
-// preview lists, and turning the knob on strips them from BOTH halves.
+// The levers are Amendment 2's two band controls. (a) the FILL wheel on the
+// four-team soccer pitch — matched squads in the preview, matched squads in
+// the world, and one team's NONE drops its bot from both. (b) the MAP UNITS
+// box on the onslaught map, which authors a real cast — the launch keeps the
+// authored troops the preview lists, and unchecking one team's box strips
+// exactly that team's pair from BOTH halves.
 // Returns 0, or the negated 1-based index of the first failed check.
 int text_picker_testing_launch_census_matches_the_preview()
 {
@@ -1151,6 +1153,16 @@ int text_picker_testing_launch_census_matches_the_preview()
         while (from < text.size() && text[from] >= '0' && text[from] <= '9')
             value = value * 10 + (text[from++] - '0');
         return value;
+    };
+
+    // How many times `needle` appears in `text` (non-overlapping).
+    const auto count_occurrences = [](const std::string& text,
+                                      const std::string& needle) {
+        int count = 0;
+        for (std::size_t pos = text.find(needle); pos != std::string::npos;
+             pos = text.find(needle, pos + needle.size()))
+            ++count;
+        return count;
     };
 
     // The previewed per-team headcounts in team order: the parenthesised
@@ -1201,7 +1213,10 @@ int text_picker_testing_launch_census_matches_the_preview()
 
     // One session at one knob setting: what VIEW LEVEL promised, and what
     // GO built.
-    const auto preview_and_launch = [&](int level, short troops) -> Halves {
+    using TeamKnob = std::array<std::int16_t, SCORE_TEAM_COUNT>;
+    const auto preview_and_launch =
+        [&](int level, const TeamKnob& fill,
+            const TeamKnob& map_units) -> Halves {
         TextPickerConfig config;
         config.campaign = "modes";
         config.level = level;
@@ -1213,7 +1228,8 @@ int text_picker_testing_launch_census_matches_the_preview()
         client.testing_save_data_mutable().current_campaign = "modes";
         client.testing_save_data_mutable().scen_num =
             static_cast<short>(level);
-        client.testing_save_data_mutable().ctf_strip_scenario_troops = troops;
+        client.testing_save_data_mutable().fill = fill;
+        client.testing_save_data_mutable().map_units = map_units;
         const int difficulty = og::runtime::current_session != nullptr
             ? og::runtime::current_session->current_difficulty_
             : 1;
@@ -1250,10 +1266,12 @@ int text_picker_testing_launch_census_matches_the_preview()
         return {preview, previewed_counts(preview), launched_counts(launch)};
     };
 
-    // (a) The four-team soccer pitch under TROOPS: FAIR. Every team is one
-    // fighter — the company on RED, a matched bot on each of the other
-    // three. Before the caller split the launch fielded [1,5,5,5] here.
-    const Halves fair = preview_and_launch(822, og::sim::kTroopsMatched);
+    // (a) The four-team soccer pitch at rest. Every knob is at its default —
+    // FILL: FAIR on all four, MAP UNITS on — and B3's matched world is what
+    // that default now means: the company on RED, one solved bot on each of
+    // the other three. Before the caller split the launch fielded [1,5,5,5]
+    // here.
+    const Halves fair = preview_and_launch(822, TeamKnob{}, TeamKnob{});
     check(fair.preview.find("MATCHED BOTS (1)") != std::string::npos);
     check(fair.previewed == std::vector<int>({1, 1, 1, 1}));
     // A harness failure returns two empty censuses, and empty == empty would
@@ -1262,31 +1280,53 @@ int text_picker_testing_launch_census_matches_the_preview()
     check(fair.launched == fair.previewed);
 
     // The knob is doing the work, not a pitch that happens to field ones:
-    // the same level with the strip off keeps the legacy squads on both
-    // sides.
-    const Halves keep = preview_and_launch(822, 0);
-    check(keep.preview.find("BOT SQUAD (5)") != std::string::npos);
-    check(keep.previewed == std::vector<int>({1, 5, 5, 5}));
-    check(!keep.previewed.empty() && !keep.launched.empty());
-    check(keep.launched == keep.previewed);
+    // one team's wheel to FILL: NONE and its bot leaves BOTH halves, so the
+    // pitch previews and launches three-a-side.
+    //
+    // Intent history: this arm used to turn TROOPS off and pin the legacy
+    // five-strong squads on both sides. Amendment 2's B5 retired TROOPS and
+    // W5-A made the matched world the DEFAULT world, so there is no longer a
+    // "legacy squads" state to compare against — FILL is the live wheel, and
+    // NONE is its only value that moves a headcount (B2 sizes every other
+    // value by the same matched-headcount rule and varies only the level).
+    const Halves none_on_yellow = preview_and_launch(
+        822, TeamKnob{0, 0, 0, og::sim::kFillNone}, TeamKnob{});
+    check(none_on_yellow.preview.find("MATCHED BOTS (1)") !=
+          std::string::npos);
+    check(none_on_yellow.preview.find("YELLOW TEAM") == std::string::npos);
+    check(none_on_yellow.previewed == std::vector<int>({1, 1, 1}));
+    check(!none_on_yellow.previewed.empty() &&
+          !none_on_yellow.launched.empty());
+    check(none_on_yellow.launched == none_on_yellow.previewed);
 
-    // (b) TROOPS: ALL keeps the authored cast. The onslaught map is the one
-    // mode level that ships real map troops (the arenas are empty), so it
-    // is the only place the strip's two states are distinguishable at all:
-    // the two authored fighters the preview lists are alive in the launched
-    // world (RED carries the company plus the map's own two allies).
-    const Halves authored = preview_and_launch(801, 0);
+    // (b) The MAP UNITS box, per team. The onslaught map is the one mode
+    // level that ships real map troops (the arenas are empty), so it is the
+    // only place the box's two states are distinguishable at all. With every
+    // box on, the two authored fighters the preview lists are alive in the
+    // launched world (RED carries the company plus the map's own two
+    // allies).
+    //
+    // The headline census and the launch disagree on RED by exactly those
+    // two: RED's ACTIVE line counts the COMPANY, while the roster pane below
+    // it lists the map's pair. So the pane, not the line, is the preview's
+    // honest half here, and both are pinned.
+    const Halves authored = preview_and_launch(801, TeamKnob{}, TeamKnob{});
     check(authored.preview.find("MAP TROOPS (2)") != std::string::npos);
     check(authored.previewed == std::vector<int>({1, 2}));
     check(authored.launched == std::vector<int>({3, 2}));
-    // ...and turning the strip on removes exactly them: the enemy team's
-    // preview line falls back to its foundries and the launched world has
-    // no living on that team at all.
-    const Halves stripped =
-        preview_and_launch(801, og::sim::kTroopsMatched);
-    check(stripped.preview.find("MAP TROOPS") == std::string::npos);
-    check(stripped.preview.find("GENERATORS (6)") != std::string::npos);
-    check(stripped.launched == std::vector<int>({1}));
+    check(count_occurrences(authored.preview, "2x SOLDIER Lv 3") == 2);
+
+    // ...and unchecking RED's box removes exactly them from both halves: the
+    // roster pane loses RED's pair (one listing left, GREEN's) and the
+    // launched world fields the company alone on RED. GREEN, whose box is
+    // untouched, keeps its two — the box is per team, and the match still
+    // stands.
+    const Halves red_units_off = preview_and_launch(
+        801, TeamKnob{}, TeamKnob{og::sim::kMapUnitsOff, 0, 0, 0});
+    check(count_occurrences(red_units_off.preview, "2x SOLDIER Lv 3") == 1);
+    check(red_units_off.preview.find("GREEN TEAM  ACTIVE - MAP TROOPS (2)") !=
+          std::string::npos);
+    check(red_units_off.launched == std::vector<int>({1, 2}));
 
     check(state_restore.restore());
     return failed ? -failed_check : 0;

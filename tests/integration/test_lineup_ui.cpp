@@ -777,8 +777,13 @@ TEST(LineupUi, fill_wheel_map_units_box_and_staged_labels_end_to_end)
     EXPECT_TRUE(state.viewer_opened_after);
     EXPECT_FALSE(state.troops_line_after)
         << "MAP UNITS: OFF strips RED's authored units from the stage (B4)";
+    // MATCHED BOTS, not BOT SQUAD: the two labels are the report's honest
+    // record of which solver ran, and the company on BLUE is human power, so
+    // B3's reference exists and RED's squad is solved against it. BOT SQUAD
+    // is the legacy-formula label, reachable only with no human power
+    // anywhere — which this flow, with two seats on the board, is not.
     EXPECT_NE(std::string::npos,
-              state.red_line_after.find("BOT SQUAD"))
+              state.red_line_after.find("MATCHED BOTS"))
         << "FILL: STRONG fields a solved squad on RED: '"
         << state.red_line_after << "'";
     const std::string strong_tail = "STRONG";

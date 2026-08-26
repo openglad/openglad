@@ -1169,15 +1169,22 @@ TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
 
 // #247: the text picker's GO launches the world VIEW LEVEL promised. The
 // launch used to build its own world from a fresh default save, so the match
-// knobs — TROOPS above all — never reached it: the preview showed matched
-// squads and the launch fielded the legacy five-strong ones. Both halves now
-// stage through the one pipeline on the one session seed.
+// knobs never reached it: the preview showed matched squads and the launch
+// fielded the legacy five-strong ones. Both halves now stage through the one
+// pipeline on the one session seed. The levers are Amendment 2's FILL wheel
+// and MAP UNITS box (they were TROOPS when this test was written).
 TEST(PlatformHeadless, text_picker_launch_census_matches_the_preview)
 {
     restore_default_campaigns();
-    StdoutSilencer stdout_silencer;
-    EXPECT_EQ(0,
-              og::ui::text_picker_testing_launch_census_matches_the_preview());
+    // The silencer must not outlive the call: it owns fd 1, and a failure
+    // reported inside its scope goes down the same hole as the helper's own
+    // chatter, leaving a red test with no message at all.
+    int result = 0;
+    {
+        StdoutSilencer stdout_silencer;
+        result = og::ui::text_picker_testing_launch_census_matches_the_preview();
+    }
+    EXPECT_EQ(0, result) << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
