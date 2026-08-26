@@ -3050,7 +3050,7 @@ TEST(PickerFuncs,
     save.allied_mode = original_allied_mode;
 }
 
-TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
+TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -3064,7 +3064,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     const short original_allied_mode = save.allied_mode;
     const std::string original_campaign = save.current_campaign;
     const short original_scenario = save.scen_num;
-    const short original_ctf_team_count = save.ctf_team_count;
+    const std::array<short, 4> original_bot_squad = save.bot_squad;
     const std::string original_mount = get_mounted_campaign();
     const int original_world_id = world.id;
     const char original_world_type = world.type;
@@ -3095,7 +3095,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     save.allied_mode = 0;
     save.current_campaign = "modes";
     save.scen_num = 7;
-    save.ctf_team_count = 0;
+    save.bot_squad = {};
     // A REAL mount: the versus predicate reads the campaign's matchup: yaml
     // key through the mounted package (a faked mount id would read another
     // campaign's yaml).
@@ -3117,24 +3117,33 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(3, players[1].team);
 
-        // Explicit 2 selects authored {0,2}; the old team-3 assignment is
-        // invalidated by the settings echo and moves to the first active team.
-        save.ctf_team_count = 2;
+        // The host sets BOTS: OFF on team 4 — the very team the second seat
+        // is sitting on. OFF takes the team out of the match (A2), so
+        // lobby_effective_team_mask takes it out of the seat domain with it,
+        // leaving authored {0,2}: the settings echo invalidates the team-3
+        // assignment and the reteam sweep moves that seat to the first team
+        // still on. This is the narrowing TEAMS used to do, expressed by the
+        // rule that replaced it — ctf_team_count is inert now (A3).
+        save.bot_squad[3] = og::sim::kBotSquadOff;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(0, players[1].team);
         EXPECT_TRUE(client->request_seat_team_change(
             players[1].player_index, 2));
+        // Team 4 is authored, but OFF: the seat may not go back to it, and
+        // team 2 was never authored on this map.
+        EXPECT_FALSE(client->request_seat_team_change(
+            players[1].player_index, 3));
         EXPECT_FALSE(client->request_seat_team_change(
             players[1].player_index, 1));
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(2, players[1].team);
 
-        // A next level with sparse authored {1,3} in Auto invalidates both
-        // old assignments; the client adopts the server's deterministic team
-        // 1 normalization without recoloring the saved heroes.
+        // A next level with sparse authored {1,3}, the OFF lifted, invalidates
+        // both old assignments; the client adopts the server's deterministic
+        // team 1 normalization without recoloring the saved heroes.
         while (world.oblist.size() > original_ob_size)
             world.oblist.pop_back();
         walker* marker1 = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
@@ -3143,7 +3152,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
         ASSERT_NE(nullptr, marker3);
         marker1->set_team_num(1);
         marker3->set_team_num(3);
-        save.ctf_team_count = 0;
+        save.bot_squad[3] = og::sim::kBotSquadAuto;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
@@ -3170,7 +3179,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     save.allied_mode = original_allied_mode;
     save.current_campaign = original_campaign;
     save.scen_num = original_scenario;
-    save.ctf_team_count = original_ctf_team_count;
+    save.bot_squad = original_bot_squad;
 }
 
 namespace {
