@@ -1,15 +1,19 @@
-// LINEUP screen flows (docs/lineup-design.md §2): the SCENARIO door, the
-// four team bands with their per-team bot knobs, the SPLIT actions, and the
-// FIGHTERS list. Injector-driven through the real picker (interact by
-// button id, never coordinates), with UxShots-pattern frame captures that
-// double as visual smoke tests when UXSHOTS_DIR is unset.
+// LINEUP screen flows (docs/lineup-design.md §2, amendment B1-B9): the
+// SCENARIO door over the re-gridded SCORE row, the four team bands with
+// their FILL wheel + MAP UNITS box, the SPLIT actions, and the Base Camp
+// roster chip that inherited the FIGHTERS list's networked team cycler
+// (B6). Injector-driven through the real picker (interact by button id,
+// never coordinates), with UxShots-pattern frame captures that double as
+// visual smoke tests when UXSHOTS_DIR is unset.
 
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -394,7 +398,7 @@ public:
     void initialize_from_save() override {}
     void shutdown() override {}
     void sync_from_save() override {}
-    void sync_roster_from_save() override {}
+    void sync_roster_from_save() override { ++roster_syncs; }
     void sync_settings_from_save() override {}
     void poll_and_apply() override {}
     void set_player_mode(int) override {}
@@ -450,6 +454,7 @@ public:
     bool host_view = true;
     bool established = true;
     bool slots_editable = true;
+    int roster_syncs = 0;
     std::vector<og::sim::LobbyPlayer> players;
     std::vector<std::uint8_t> local_indices;
     std::string room_code = "GLAD-7Q2F";
@@ -524,30 +529,32 @@ void seed_session_save_for_net(const std::string& campaign, short scen_num)
 }
 
 // ---------------------------------------------------------------------------
-// Flow 1: SCENARIO carries the LINEUP door over the re-gridded TROOPS |
-// SCORE row (A5); the page opens; the host's per-team knobs cycle with
-// save-value pins. The BOTS wheel is AUTO / OFF / NONE / presets (A1):
-// OFF on the seated team is REFUSED with a toast and the wheel steps past
-// it onto NONE (A2 — the refusal that was wrong for NONE is right for
-// OFF); OFF on an empty team is accepted, and VIEW LEVEL censuses that
-// team out of the match. The LV wheel is an offset (A6): +1 ... -1.
+// Flow 1: SCENARIO carries the LINEUP door over the re-gridded knob row
+// (B5: SCORE alone at (30,140)); the page opens; the host's FILL wheel
+// walks all five labels in display order (B2: NONE, WEAK, FAIR, STRONG,
+// BRUTAL — entered from FAIR, so the clicks read STRONG, BRUTAL, NONE,
+// WEAK, FAIR) with the save value pinned at every stop; the MAP UNITS box
+// (B4) flips only where the map ships units (scen 501 ships 5 on RED,
+// nothing anywhere else). End-to-end (B7): FILL: STRONG on RED stages a
+// solved squad and VIEW LEVEL names it with its fill word, while RED's map
+// units switched OFF drop its MAP TROOPS row from the same census.
 
-struct LineupKnobsFlowState
+struct LineupFillFlowState
 {
     bool finished = false;
     bool door_seen = false;
     bool score_cell_seen = false;
     bool page_opened = false;
-    bool level_plus_one = false;
-    bool level_plus_two = false;
-    bool level_minus_one = false;
-    bool bots_off_refused_on_seated_team = false;
-    bool bots_off_on_empty_team = false;
-    bool viewer_opened = false;
-    bool red_team_line_seen = false;
-    bool yellow_team_line_seen = false;
-    std::string red_team_line;
-    std::string teams_active_line;
+    bool wheel_walked = false;
+    std::array<short, 5> wheel_values = {-1, -1, -1, -1, -1};
+    bool fill_red_strong = false;
+    bool fill_blue_weak = false;
+    bool map_units_red_off = false;
+    bool viewer_opened_before = false;
+    bool troops_line_before = false;
+    bool viewer_opened_after = false;
+    bool troops_line_after = true;
+    std::string red_line_after;
     int captures = 0;
 };
 
@@ -593,81 +600,111 @@ std::string first_picker_trace_line_containing(const char* needle)
     return std::string();
 }
 
-int lineup_knobs_flow_injector(void* data)
+int lineup_fill_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    auto* state = static_cast<LineupKnobsFlowState*>(data);
+    auto* state = static_cast<LineupFillFlowState*>(data);
     if (!injector_open_lineup()) {
         state->finished = true;
         return 0;
     }
     state->door_seen = true;
-    // The re-gridded knob row: SCORE at TROOPS' right hand, reading MAP.
+    // The re-gridded knob row (B5): SCORE alone at (30,140), reading MAP.
     state->score_cell_seen =
+        wait_for_interactable_at("ctf_caps", 30, 140, 5000) &&
         wait_for_interactable_label("ctf_caps", "SCORE: MAP", 5000);
     SDL_Delay(750);
-    state->captures += capture_frame("scenario_regrid");
+    state->captures += capture_frame("scenario_score_only");
     SDL_Delay(200);
-    interact("lineup");
 
+    // VIEW LEVEL first: with every knob at its default the staged census
+    // fields RED's five authored map units.
+    interact("view_scenario");
+    state->viewer_opened_before =
+        wait_for_interactable_at("back", 10, 170, 10000);
+    if (state->viewer_opened_before) {
+        state->troops_line_before = wait_for_trace(
+            "picker", "view_scenario line   RED TEAM  ACTIVE - MAP TROOPS (5)",
+            10000);
+        SDL_Delay(300);
+        interact("back");
+        SDL_Delay(300);
+        (void)wait_for_interactable("progress", 10000);
+        SDL_Delay(300);
+    }
+
+    interact("lineup");
     // The page: the action strip's BACK sits at its own (8,176) geometry.
-    state->page_opened =
-        wait_for_interactable_at("back", 8, 176, 10000);
+    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
     if (state->page_opened) {
         SDL_Delay(750);
-
-        // LV on band 2: AUTO -> +1 -> +2 (the offset wheel, A6).
-        state->level_plus_one =
-            click_until_label("lineup_map_units_1", "LV +1");
-        SDL_Delay(300);
-        state->level_plus_two =
-            click_until_label("lineup_map_units_1", "LV +2");
-        SDL_Delay(300);
-        // LV on band 3: the whole wheel round to -1 (up first, then the
-        // minus side, A6), one label per click.
-        state->level_minus_one = click_through_labels(
-            "lineup_map_units_2",
-            {"LV +1", "LV +2", "LV +3", "LV +4", "LV +5", "LV -5", "LV -4",
-             "LV -3", "LV -2", "LV -1"});
+        // The pristine page: three bands' boxes dimmed with the
+        // NO MAP UNITS hint (only RED ships units on scen 501).
+        state->captures += capture_frame("lineup_no_map_units_dimmed");
         SDL_Delay(300);
 
-        // BOTS on team 1 (the seat + every fighter): OFF is refused — the
-        // wheel steps over it onto NONE and the toast says why.
-        state->bots_off_refused_on_seated_team =
-            click_until_label("lineup_fill_0", "BOTS: NONE", 3);
-        // The toast is still up (2.5s): freeze it.
-        state->captures += capture_frame("lineup_off_refused");
+        // The FILL wheel on RED, all five labels with the save pinned at
+        // every stop (the wheel is a display order, not the storage order).
+        const std::array<const char*, 5> wheel_labels = {
+            "FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK",
+            "FILL: FAIR"};
+        state->wheel_walked = true;
+        for (std::size_t step = 0; step < wheel_labels.size(); ++step) {
+            if (!click_until_label("lineup_fill_0", wheel_labels[step], 3,
+                                   2000))
+            {
+                state->wheel_walked = false;
+                break;
+            }
+            SDL_Delay(300);
+            state->wheel_values[step] =
+                og::runtime::current_session->myscreen_->save_data.fill[0];
+        }
+        // Land RED on STRONG for the end-to-end staged read.
+        state->fill_red_strong =
+            click_until_label("lineup_fill_0", "FILL: STRONG");
         SDL_Delay(300);
-        // BOTS on the unoccupied team 4: OFF is one turn off AUTO and it
-        // sticks.
-        state->bots_off_on_empty_team =
-            click_until_label("lineup_fill_3", "BOTS: OFF", 3);
-        SDL_Delay(2600);  // let the refusal toast lapse before the capture
-        state->captures += capture_frame("lineup_off_and_offset");
+        // BLUE takes WEAK (the capture shows two different fill words).
+        state->fill_blue_weak = click_through_labels(
+            "lineup_fill_1",
+            {"FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK"});
         SDL_Delay(300);
 
+        // The MAP UNITS box: RED's is live (5 authored units) and flips
+        // OFF; BLUE's is dimmed-inert (the map ships none there), so its
+        // click must move nothing.
+        interact("lineup_map_units_0");
+        state->map_units_red_off =
+            wait_for_trace("lineup", "map_units team=0 value=1", 5000);
+        SDL_Delay(300);
+        interact("lineup_map_units_1");
+        SDL_Delay(500);
+
+        state->captures += capture_frame("lineup_fill_wheel");
+        SDL_Delay(300);
         interact("back");  // LINEUP -> SCENARIO
     }
 
-    // VIEW LEVEL: the staged census has no row for the OFF team (A2: it
-    // left the active mask like a TEAMS-dropped team did).
+    // VIEW LEVEL again: the restaged census drops RED's map troops (the
+    // box turned them off) and fields the STRONG squad instead. Clear the
+    // trace ledger so the assertions read THIS visit, not the first one.
     if (wait_for_interactable("view_scenario", 10000)) {
         SDL_Delay(750);
+        trace_clear();
         interact("view_scenario");
-        state->viewer_opened =
+        state->viewer_opened_after =
             wait_for_interactable_at("back", 10, 170, 10000);
-        if (state->viewer_opened) {
-            state->red_team_line_seen = wait_for_trace(
-                "picker", "view_scenario line   RED TEAM  ACTIVE", 10000);
+        if (state->viewer_opened_after) {
+            (void)wait_for_trace(
+                "picker", "view_scenario line   RED TEAM  ACTIVE - BOT SQUAD",
+                10000);
             (void)wait_for_trace("picker", "view_scenario lines=", 5000);
-            state->yellow_team_line_seen = trace_contains(
-                "picker", "view_scenario line   YELLOW TEAM  ACTIVE");
-            state->teams_active_line =
-                first_picker_trace_line_containing("TEAMS ACTIVE");
-            state->red_team_line =
+            state->troops_line_after =
+                trace_contains("picker", "MAP TROOPS (5)");
+            state->red_line_after =
                 first_picker_trace_line_containing("RED TEAM  ACTIVE");
             SDL_Delay(300);
-            state->captures += capture_frame("view_level_off_team");
+            state->captures += capture_frame("view_level_fill_labels");
             SDL_Delay(300);
             interact("back");
             SDL_Delay(300);
@@ -684,18 +721,20 @@ int lineup_knobs_flow_injector(void* data)
 
 } // namespace
 
-TEST(LineupUi, scenario_door_off_refused_on_seated_team_and_accepted_on_empty)
+TEST(LineupUi, fill_wheel_map_units_box_and_staged_labels_end_to_end)
 {
     trace_clear();
     SavedPickerSave save_guard;
-    // Level 300 (TDM) authors four teams, so an OFF on team 4 has a team to
-    // take out of the census; one seat and two fighters hold team 1.
-    write_save0_with_fighters("modes", 300, 1,
-                              {{"Alpha", 3, true, 0}, {"Beta", 2, true, 0}});
+    // CTF: A BORDER FORT (scen 501) is the one modes level that ships
+    // authored map units: five livings on RED, none anywhere else. The
+    // company holds BLUE with two seats, so RED's census is purely the
+    // map's own.
+    write_save0_with_fighters("modes", 501, 2,
+                              {{"Alpha", 3, true, 1}, {"Beta", 2, true, 1}});
 
-    LineupKnobsFlowState state;
-    SDL_Thread* thread = SDL_CreateThread(lineup_knobs_flow_injector,
-                                          "lineup_knobs", &state);
+    LineupFillFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(lineup_fill_flow_injector,
+                                          "lineup_fill", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -707,209 +746,49 @@ TEST(LineupUi, scenario_door_off_refused_on_seated_team_and_accepted_on_empty)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.door_seen) << "SCENARIO should carry the LINEUP door";
-    EXPECT_TRUE(state.score_cell_seen) << "SCORE: MAP on the knob row (A5)";
+    EXPECT_TRUE(state.score_cell_seen)
+        << "SCORE: MAP alone at (30,140) (B5)";
+    EXPECT_TRUE(state.viewer_opened_before);
+    EXPECT_TRUE(state.troops_line_before)
+        << "with MAP UNITS on, RED fields its five authored units";
     EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
-    EXPECT_TRUE(state.level_plus_one) << "LV knob should cycle AUTO -> +1";
-    EXPECT_TRUE(state.level_plus_two) << "...and on to +2";
-    EXPECT_TRUE(state.level_minus_one)
-        << "the LV wheel runs +1..+5, -5..-1 one label per click";
-    EXPECT_TRUE(state.bots_off_refused_on_seated_team)
-        << "BOTS on the seated team steps over OFF onto NONE";
-    EXPECT_TRUE(state.bots_off_on_empty_team)
-        << "BOTS on an empty team lands on OFF";
-    EXPECT_EQ(2, static_cast<int>(save.map_units[1]))
-        << "the LV cycle lands in the save knob";
-    EXPECT_EQ(-1, static_cast<int>(save.map_units[2]))
-        << "a full turn of the offset wheel ends on -1";
-    // Every knob write survived every later per-frame picker_lobby_poll(),
-    // which copies the lobby settings back over the save: the values are
-    // only still there because change_lineup_* pushed them into the lobby
-    // first.
-    EXPECT_EQ(og::sim::kBotSquadNone, save.fill[0])
-        << "the seated team's wheel skipped OFF and holds NONE";
-    EXPECT_NE(og::sim::kBotSquadOff, save.fill[0])
-        << "OFF never reached the save for a team with players";
-    EXPECT_EQ(og::sim::kBotSquadOff, save.fill[3])
-        << "the empty team's OFF lands in the save knob";
-    EXPECT_TRUE(trace_contains("lineup", "bots_off_refused team=0"))
-        << "the refusal traces";
-    EXPECT_TRUE(trace_contains("lineup", "toast TEAM 1 HAS PLAYERS"))
-        << "the toast names the seat, not the fighters";
-    EXPECT_FALSE(trace_contains("lineup", "bots_off_refused team=3"))
-        << "an empty team is never refused";
-    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
-    EXPECT_TRUE(state.red_team_line_seen)
-        << "the seated team is staged and censused";
-    // NONE is "never bots on this team" and nothing else (§2.3): the team
-    // stays on, and its row names the company ALONE — no "+BOTS" half, no
-    // squad count. This is the other half of the OFF/NONE distinction the
-    // wheel step above proved: OFF takes a team out, NONE only empties it
-    // of bots.
-    EXPECT_NE(std::string::npos, state.red_team_line.find("COMPANY (2)"))
-        << "the NONE team fields its two fighters and nothing else: '"
-        << state.red_team_line << "'";
-    EXPECT_EQ(std::string::npos, state.red_team_line.find('+'))
-        << "NONE means no squad beside the occupants: '"
-        << state.red_team_line << "'";
-    EXPECT_FALSE(state.yellow_team_line_seen)
-        << "the OFF team has no row: it left the active mask (A2)";
-    EXPECT_NE(std::string::npos, state.teams_active_line.find("3 TEAMS ACTIVE"))
-        << "three of the map's four teams remain: '"
-        << state.teams_active_line << "'";
+    EXPECT_TRUE(state.wheel_walked)
+        << "the FILL wheel walks STRONG, BRUTAL, NONE, WEAK, FAIR from "
+           "FAIR (B2 display order)";
+    // The save value at every stop of the wheel — each write survived every
+    // later per-frame picker_lobby_poll() only because change_lineup_fill
+    // pushed it into the lobby first.
+    EXPECT_EQ(og::sim::kFillStrong, state.wheel_values[0]);
+    EXPECT_EQ(og::sim::kFillBrutal, state.wheel_values[1]);
+    EXPECT_EQ(og::sim::kFillNone, state.wheel_values[2]);
+    EXPECT_EQ(og::sim::kFillWeak, state.wheel_values[3]);
+    EXPECT_EQ(og::sim::kFillFair, state.wheel_values[4]);
+    EXPECT_TRUE(state.fill_red_strong);
+    EXPECT_TRUE(state.fill_blue_weak);
+    EXPECT_EQ(og::sim::kFillStrong, save.fill[0]);
+    EXPECT_EQ(og::sim::kFillWeak, save.fill[1]);
+    EXPECT_TRUE(state.map_units_red_off)
+        << "RED's live MAP UNITS box flips OFF";
+    EXPECT_EQ(og::sim::kMapUnitsOff, save.map_units[0]);
+    EXPECT_EQ(og::sim::kMapUnitsOn, save.map_units[1])
+        << "a box on a team the map ships nothing for is inert (B4)";
+    EXPECT_FALSE(trace_contains("lineup", "map_units team=1"))
+        << "the inert box never reaches the callback's write";
+    EXPECT_TRUE(state.viewer_opened_after);
+    EXPECT_FALSE(state.troops_line_after)
+        << "MAP UNITS: OFF strips RED's authored units from the stage (B4)";
+    EXPECT_NE(std::string::npos,
+              state.red_line_after.find("BOT SQUAD"))
+        << "FILL: STRONG fields a solved squad on RED: '"
+        << state.red_line_after << "'";
+    const std::string strong_tail = "STRONG";
+    ASSERT_GE(state.red_line_after.size(), strong_tail.size());
+    EXPECT_EQ(strong_tail,
+              state.red_line_after.substr(state.red_line_after.size() -
+                                          strong_tail.size()))
+        << "the row closes with its fill word (B7): '"
+        << state.red_line_after << "'";
     EXPECT_EQ(4, state.captures) << "all four captures should land";
-
-    restore_gladiator_mount();
-}
-
-namespace {
-
-// ---------------------------------------------------------------------------
-// Flow 1b (WP-C x WP-E): the knobs reach the campaign's Lua and come back as
-// labels. On the modes campaign — the one campaign that registers the
-// `lineup` hook — a preset lands on the BOTS cycler by NAME, the TEAM 1 band
-// prices the deployed company through the hook's `power`, and VIEW LEVEL's
-// staged census reports the squad the preset+level actually spawned. Wave 2
-// built the LINEUP screen against a tree where the hook did not exist yet,
-// so this is the first end-to-end proof of the whole chain.
-
-struct LineupPresetFlowState
-{
-    bool finished = false;
-    bool page_opened = false;
-    bool preset_labelled = false;
-    bool level_labelled = false;
-    bool hook_registered = false;
-    std::optional<long long> team1_power;
-    bool viewer_opened = false;
-    bool squad_line_seen = false;
-    bool level_suffix_seen = false;
-    int captures = 0;
-};
-
-int lineup_preset_flow_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    auto* state = static_cast<LineupPresetFlowState*>(data);
-    if (!injector_open_lineup()) {
-        state->finished = true;
-        return 0;
-    }
-    SDL_Delay(300);
-    interact("lineup");
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
-    if (!state->page_opened) {
-        injector_unwind_from_scenario();
-        state->finished = true;
-        return 0;
-    }
-    SDL_Delay(750);
-
-    // TEAM 2's BOTS knob: AUTO -> OFF -> NONE -> BALANC (ordinal 3, the
-    // preset base — the first entry of the campaign's own BOT_PRESETS,
-    // named by the lineup hook, never by the engine). Team 2 is empty in
-    // this fixture, so OFF is a legal stop on the way.
-    state->preset_labelled =
-        click_until_label("lineup_fill_1", "BOTS: BALANC", 5);
-    SDL_Delay(300);
-    // ...and its level offset: AUTO -> +1 -> +2 -> +3 (A6).
-    state->level_labelled = click_until_label("lineup_map_units_1", "LV +3", 6);
-    SDL_Delay(300);
-
-    // The TEAM 1 band's POWER, priced exactly as the screen prices it: the
-    // hook is registered, so build_lineup_bands runs with the real
-    // lineup_power_for_guy (menu_screen_specs' lineup_active_power_fn).
-    (void)run_on_main_thread([state] {
-        state->hook_registered =
-            og::script::hooks::campaign_lineup_registered();
-        const SaveData& save =
-            og::runtime::current_session->myscreen_->save_data;
-        const LineupSeatView view = picker_lineup_seat_view();
-        const std::array<og::ui::LineupTeamBand, 4> bands =
-            og::ui::build_lineup_bands(save, view.players,
-                                       view.local_indices,
-                                       picker_lobby_is_networked(),
-                                       &og::ui::lineup_power_for_guy);
-        state->team1_power = bands[0].power;
-    });
-
-    state->captures += capture_frame("lineup_modes_preset_power");
-    SDL_Delay(300);
-
-    interact("back");  // LINEUP -> SCENARIO
-    if (!wait_for_interactable("view_scenario", 10000)) {
-        injector_unwind_from_scenario();
-        state->finished = true;
-        return 0;
-    }
-    SDL_Delay(750);
-    interact("view_scenario");
-    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
-    if (state->viewer_opened) {
-        // The staged census names the preset the spawn seam banked, and the
-        // explicit level rides the same line with no inner space (§3.4).
-        state->squad_line_seen = wait_for_trace(
-            "picker", "view_scenario line   GREEN TEAM  ACTIVE - BOT SQUAD "
-                      "BALANC",
-            10000);
-        // A6: the token is the OFFSET, sign and all ("LV+3"), which is what
-        // the mixed-radix fact code carries (mode_match.lua bank_lineup_facts
-        // packs squad * 11 + offset_code; the old "LV3" read a level).
-        state->level_suffix_seen =
-            trace_contains("picker", "BOT SQUAD BALANC (5) LV+3");
-        state->captures += capture_frame("lineup_view_level_preset_squad");
-        SDL_Delay(300);
-        interact("back");
-        SDL_Delay(300);
-        (void)wait_for_interactable("progress", 10000);
-        SDL_Delay(300);
-    }
-    injector_unwind_from_scenario();
-    state->finished = true;
-    return 0;
-}
-
-} // namespace
-
-TEST(LineupUi, modes_preset_knobs_reach_the_labels_and_the_staged_world)
-{
-    trace_clear();
-    SavedPickerSave save_guard;
-    write_save0_with_fighters("modes", 500, 1,
-                              {{"ROWAN", 4, true, 0}, {"MIRA", 3, true, 0}});
-
-    LineupPresetFlowState state;
-    SDL_Thread* thread = SDL_CreateThread(lineup_preset_flow_injector,
-                                          "lineup_preset", &state);
-    ASSERT_NE(nullptr, thread);
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
-
-    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    EXPECT_TRUE(state.finished);
-    EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
-    EXPECT_TRUE(state.hook_registered)
-        << "the modes campaign must register the lineup hook";
-    EXPECT_TRUE(state.preset_labelled)
-        << "the BOTS cycler must reach the campaign preset BALANC";
-    EXPECT_TRUE(state.level_labelled) << "the LV cycler must reach LV +3";
-    EXPECT_EQ(og::sim::kBotSquadPresetBase, save.fill[1])
-        << "BALANC is the preset base ordinal (3) in the save knob";
-    EXPECT_EQ(3, static_cast<int>(save.map_units[1]))
-        << "the explicit offset lands in the save knob";
-    ASSERT_TRUE(state.team1_power.has_value())
-        << "the registered hook prices the deployed company: POWER n, not --";
-    EXPECT_GT(*state.team1_power, 0)
-        << "two deployed fighters are worth something";
-    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
-    EXPECT_TRUE(state.squad_line_seen)
-        << "the staged census must name the preset squad on the green team";
-    EXPECT_TRUE(state.level_suffix_seen)
-        << "the explicit level rides the same line as ' LVk'";
-    EXPECT_EQ(2, state.captures) << "both captures should land";
 
     restore_gladiator_mount();
 }
@@ -1023,90 +902,6 @@ TEST(LineupUi, split_fair_two_seats_six_fighters_snake_draft)
 namespace {
 
 // ---------------------------------------------------------------------------
-// Flow 3: the FIGHTERS list — a row click cycles the fighter's team, the
-// deploy box benches, and both land in the save through the mutation tail.
-
-struct LineupFightersFlowState
-{
-    bool finished = false;
-    bool list_opened = false;
-    int captures = 0;
-};
-
-int lineup_fighters_flow_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    auto* state = static_cast<LineupFightersFlowState*>(data);
-    if (!injector_open_lineup()) {
-        state->finished = true;
-        return 0;
-    }
-    SDL_Delay(300);
-    interact("lineup");
-    if (wait_for_interactable("lineup_fighters", 10000)) {
-        SDL_Delay(750);
-        interact("lineup_fighters");
-        state->list_opened =
-            wait_for_interactable_at("back", 10, 169, 10000);
-        if (state->list_opened) {
-            SDL_Delay(750);
-            state->captures += capture_frame("fighters_list");
-            SDL_Delay(200);
-            interact("fighter_row_0");  // Alpha: team 0 -> 1
-            SDL_Delay(750);
-            interact("fighter_dep_1");  // Beta: bench
-            SDL_Delay(750);
-            interact("back");  // FIGHTERS -> LINEUP
-        }
-        if (wait_for_interactable_at("back", 8, 176, 5000)) {
-            SDL_Delay(300);
-            interact("back");  // LINEUP -> SCENARIO
-        }
-    }
-    injector_unwind_from_scenario();
-    state->finished = true;
-    return 0;
-}
-
-} // namespace
-
-TEST(LineupUi, fighters_row_cycles_team_and_deploy_toggles)
-{
-    trace_clear();
-    SavedPickerSave save_guard;
-    write_save0_with_fighters("modes", 500, 1,
-                              {{"Alpha", 3, true, 0}, {"Beta", 2, true, 0}});
-
-    LineupFightersFlowState state;
-    SDL_Thread* thread = SDL_CreateThread(lineup_fighters_flow_injector,
-                                          "lineup_fighters", &state);
-    ASSERT_NE(nullptr, thread);
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
-
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    EXPECT_TRUE(state.finished);
-    EXPECT_TRUE(state.list_opened) << "FIGHTERS should open from LINEUP";
-    EXPECT_EQ(1, state.captures);
-    ASSERT_NE(nullptr, save.team_list[0]);
-    ASSERT_NE(nullptr, save.team_list[1]);
-    EXPECT_EQ(1, save.team_list[0]->teamnum)
-        << "the row click cycles Alpha's team through cycle_guy_team";
-    EXPECT_FALSE(save.team_list[1]->deployed)
-        << "the deploy box benches Beta";
-    EXPECT_TRUE(trace_contains("lineup", "fighter_team slot=0 team=1"));
-    EXPECT_TRUE(trace_contains("lineup", "deploy slot=1 off"));
-
-    restore_gladiator_mount();
-}
-
-namespace {
-
-// ---------------------------------------------------------------------------
 // Flows 4a/4b: networked joiner and host over the direct create_team_menu
 // fixture (the UxShots FakeNetLobbyClient pattern — no sockets).
 
@@ -1115,6 +910,7 @@ struct LineupNetFlowState
     bool finished = false;
     bool page_opened = false;
     bool knobs_visible = false;
+    bool boxes_visible = false;
     int captures = 0;
     const char* capture_name = "lineup_net";
 };
@@ -1135,6 +931,8 @@ int lineup_net_flow_injector(void* data)
                 SDL_Delay(1000);
                 state->knobs_visible =
                     interactable_visible("lineup_fill_0");
+                state->boxes_visible =
+                    interactable_visible("lineup_map_units_0");
                 state->captures += capture_frame(state->capture_name);
                 SDL_Delay(200);
                 interact("back");  // LINEUP -> SCENARIO
@@ -1200,7 +998,9 @@ TEST(LineupUi, networked_host_sees_knobs)
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.page_opened);
     EXPECT_TRUE(state.knobs_visible)
-        << "the host keeps the per-team bot knobs";
+        << "the host keeps the per-team FILL knobs";
+    EXPECT_TRUE(state.boxes_visible)
+        << "...and the MAP UNITS boxes beside them";
     EXPECT_EQ(1, state.captures);
 }
 
@@ -1213,7 +1013,97 @@ TEST(LineupUi, networked_joiner_sees_no_knobs)
     EXPECT_TRUE(state.page_opened)
         << "the LINEUP door is not host-gated: joiners open it read-only";
     EXPECT_FALSE(state.knobs_visible)
-        << "joiners never see the bot knobs (§2.3)";
+        << "joiners never see the band knobs (§2.3)";
+    EXPECT_FALSE(state.boxes_visible)
+        << "the MAP UNITS box is a knob too: hidden for joiners";
+    EXPECT_EQ(1, state.captures);
+}
+
+namespace {
+
+// ---------------------------------------------------------------------------
+// Flow 4c (B6): the Base Camp roster chip is the networked home of the
+// per-fighter team cycler now that the FIGHTERS list retired. An OWN row's
+// chip is visible and cycles the fighting colour through the ONE shared
+// predicate, the mutation tail re-syncs the lobby roster, and foreign rows
+// never grow a chip.
+
+struct BasecampChipFlowState
+{
+    bool finished = false;
+    bool own_chip_visible = false;
+    bool foreign_chip_inert = false;
+    bool chip_cycled = false;
+    int captures = 0;
+};
+
+int basecamp_chip_flow_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BasecampChipFlowState*>(data);
+    if (wait_for_team_menu()) {
+        SDL_Delay(1000);
+        state->own_chip_visible = wait_for_interactable("roster_team_0", 10000);
+        // Display rows 4..5 are the foreign machine's replicated slots:
+        // their chip ordinals stay hidden (inert) on every frame.
+        state->foreign_chip_inert =
+            !interactable_visible("roster_team_4") &&
+            !interactable_visible("roster_team_5");
+        SDL_Delay(300);
+        state->captures += capture_frame("basecamp_networked_chip");
+        SDL_Delay(300);
+        interact("roster_team_0");
+        state->chip_cycled =
+            wait_for_trace("basecamp", "team slot=0 team=1", 5000);
+        SDL_Delay(300);
+        interact("back");
+    }
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("modes");
+    seed_session_save_for_net("modes", 500);
+    FakeNetLobbyClient client;
+    client.host_view = true;
+    client.players = {
+        make_probe_seat(0, "net-host", "IRON KETTLE BAND", true, 0, {}),
+        make_probe_seat(1, "net-join", "JOIN RIVER BAND", false, 1,
+                        {{"WREN", 2, true, 1}, {"ASHA", 3, true, 1}}),
+    };
+    client.local_indices = {0};
+    ActiveLobbyGuard guard(&client);
+
+    BasecampChipFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(basecamp_chip_flow_injector,
+                                          "basecamp_chip", &state);
+    ASSERT_NE(nullptr, thread);
+    picker_load_menu_backdrops();
+    const int syncs_before = client.roster_syncs;
+    create_team_menu(0);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    restore_gladiator_mount();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.finished);
+    EXPECT_TRUE(state.own_chip_visible)
+        << "B6: the own-row chip shows in a networked session";
+    EXPECT_TRUE(state.foreign_chip_inert)
+        << "foreign rows never grow a chip";
+    EXPECT_TRUE(state.chip_cycled) << "the chip click cycles and traces";
+    ASSERT_NE(nullptr, save.team_list[0]);
+    EXPECT_EQ(1, save.team_list[0]->teamnum)
+        << "GORT's fighting colour cycled 1 -> 2";
+    EXPECT_GT(client.roster_syncs, syncs_before)
+        << "the mutation tail re-syncs the lobby roster (B6)";
     EXPECT_EQ(1, state.captures);
 }
 
@@ -1288,17 +1178,58 @@ TEST(LineupUi, classic_campaign_dims_knobs_inert)
 }
 
 // ---------------------------------------------------------------------------
-// Direct dispatch coverage (no injector): the knob callbacks' gate branches,
-// the SPLIT actions' EVEN / UNITE arms, and the FIGHTERS spec-row pager.
+// Direct dispatch coverage (no injector): the knob callbacks' gate
+// branches and the SPLIT actions' EVEN / UNITE arms.
 
 TEST(LineupUi, knob_callbacks_gate_branches)
 {
     trace_clear();
     SavedPickerSave save_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
     save.current_campaign = "modes";
     save.fill = {};
     save.map_units = {};
+
+    // The MAP UNITS belt reads the loaded picker world's census. Whatever
+    // level a previous test left loaded, make the picture deterministic:
+    // park every existing living outside the score range (the team-marker
+    // parking pattern), give team 4 two authored livings of our own, and
+    // restore both on every exit path (add_ob APPENDS, so popping past the
+    // captured size removes exactly ours).
+    const std::size_t original_ob_size = world.oblist.size();
+    std::vector<std::pair<walker*, unsigned char>> parked_livings;
+    for (const auto& ob : world.oblist)
+    {
+        if (ob != nullptr && !ob->dead() &&
+            ob->query_order() == Order::Living)
+        {
+            parked_livings.emplace_back(ob.get(), ob->team_num());
+            ob->set_team_num(SCORE_TEAM_COUNT);
+        }
+    }
+    struct WorldUnitsGuard
+    {
+        GameWorld& world;
+        std::size_t size;
+        std::vector<std::pair<walker*, unsigned char>>& parked;
+        ~WorldUnitsGuard()
+        {
+            while (world.oblist.size() > size)
+                world.oblist.pop_back();
+            for (const auto& [living, team] : parked)
+                living->set_team_num(team);
+        }
+    } units_guard{world, original_ob_size, parked_livings};
+    for (int i = 0; i < 2; ++i)
+    {
+        walker* unit = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, unit);
+        unit->set_team_num(3);
+    }
+    EXPECT_EQ((std::array<int, 4>{0, 0, 0, 2}),
+              picker_lineup_map_unit_counts())
+        << "the census counts authored livings per team";
 
     // Out-of-range team: inert.
     EXPECT_EQ(MENU_OK, change_lineup_fill(-1));
@@ -1310,32 +1241,47 @@ TEST(LineupUi, knob_callbacks_gate_branches)
         joiner.host_view = false;
         ActiveLobbyGuard guard(&joiner);
         EXPECT_EQ(MENU_OK, change_lineup_fill(0));
-        EXPECT_EQ(MENU_OK, change_lineup_map_units(0));
-        EXPECT_TRUE(trace_contains("lineup", "bots_denied"));
-        EXPECT_TRUE(trace_contains("lineup", "level_denied"));
+        EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
+        EXPECT_TRUE(trace_contains("lineup", "fill_denied"));
+        EXPECT_TRUE(trace_contains("lineup", "map_units_denied"));
         EXPECT_EQ(0, static_cast<int>(save.fill[0]));
-        EXPECT_EQ(0, static_cast<int>(save.map_units[0]));
+        EXPECT_EQ(0, static_cast<int>(save.map_units[3]));
     }
 
     // Classic campaign: the belt behind the engine's Disabled grammar.
     save.current_campaign = "gladiator";
     EXPECT_EQ(MENU_OK, change_lineup_fill(0));
-    EXPECT_EQ(MENU_OK, change_lineup_map_units(0));
-    EXPECT_EQ(0, static_cast<int>(save.fill[0]));
-    EXPECT_EQ(0, static_cast<int>(save.map_units[0]));
-
-    // Host + versus: the LV wheel walks AUTO -> +1..+5 -> -5..-1 -> AUTO
-    // on an empty band's knob (amendment A6 — the level is an offset), and
-    // the save value rides every step through the clamp.
-    save.current_campaign = "modes";
-    const int wheel[] = {1, 2, 3, 4, 5, -5, -4, -3, -2, -1};
-    for (const int expected : wheel)
-    {
-        EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
-        EXPECT_EQ(expected, static_cast<int>(save.map_units[3]));
-    }
     EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
-    EXPECT_EQ(0, static_cast<int>(save.map_units[3])) << "-1 wraps to AUTO";
+    EXPECT_EQ(0, static_cast<int>(save.fill[0]));
+    EXPECT_EQ(0, static_cast<int>(save.map_units[3]));
+
+    // Host + versus: the FILL wheel walks the DISPLAY order from FAIR —
+    // STRONG, BRUTAL, NONE, WEAK, FAIR (B2) — and the save value rides
+    // every step through the clamp. No value is ever refused (B8).
+    save.current_campaign = "modes";
+    trace_clear();
+    const short wheel[] = {og::sim::kFillStrong, og::sim::kFillBrutal,
+                           og::sim::kFillNone, og::sim::kFillWeak,
+                           og::sim::kFillFair};
+    for (const short expected : wheel)
+    {
+        EXPECT_EQ(MENU_OK, change_lineup_fill(0));
+        EXPECT_EQ(expected, save.fill[0]);
+    }
+    EXPECT_FALSE(trace_contains("lineup", "toast"))
+        << "B8: nothing on the wheel refuses";
+
+    // The MAP UNITS box flips where the map ships units, and junk heals ON.
+    EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
+    EXPECT_EQ(og::sim::kMapUnitsOff, save.map_units[3]);
+    EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
+    EXPECT_EQ(og::sim::kMapUnitsOn, save.map_units[3]);
+    // ...and the belt keeps a stale dispatch off a unit-less team's knob.
+    save.map_units[0] = og::sim::kMapUnitsOn;
+    EXPECT_EQ(MENU_OK, change_lineup_map_units(0));
+    EXPECT_EQ(og::sim::kMapUnitsOn, save.map_units[0]);
+    EXPECT_TRUE(trace_contains("lineup", "map_units_no_units team=0"))
+        << "the belt names the refused team";
 
     // A toast with no LINEUP state installed still traces (never crashes).
     og::ui::lineup_show_toast("NOWHERE TO LAND");
@@ -1636,248 +1582,6 @@ og.register_campaign_hooks({
 
     og::ui::lineup_power_cache_clear();
     restore_gladiator_mount();
-}
-
-TEST(LineupUi, fighters_refetches_the_zone_after_a_level_change)
-{
-    trace_clear();
-    SavedPickerSave save_guard;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    for (auto& slot : save.team_list)
-        slot.reset();
-    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
-    member->name = "PARKED";
-    member->deployed = true;
-    save.team_list[0] = std::move(member);
-    save.team_size = 1;
-    save.scen_num = 1;
-    save.current_campaign = "gladiator";
-    restore_gladiator_mount();
-
-    // The composition reads the LEVEL: deploying is forbidden on level 2.
-    SyntheticZoneScriptGuard zone_script(R"LUA(
-og.register_campaign_hooks({
-  base_camp = function()
-    return { widgets = { { kind = "roster",
-                           can_deploy = og.campaign_current_level() ~= 2 } } }
-  end,
-})
-)LUA");
-
-    og::ui::CampaignZoneSession zone(save);
-    zone.fetch();
-    ASSERT_TRUE(zone.roster().can_deploy) << "level 1 deploys";
-
-    og::ui::LineupFightersScreenState state;
-    state.last_level_id = save.scen_num;
-    state.zone = &zone;
-    og::ui::lineup_fighters_refresh_rows(state);
-    og::ui::install_lineup_fighters_state_for_screen(&state);
-
-    const og::ui::MenuScreenSpec& spec =
-        *og::ui::menu_screen_host(og::ui::MenuScreenId::LineupFighters).spec;
-    ASSERT_NE(nullptr, spec.frame_tick);
-
-    // A quiet frame changes nothing.
-    EXPECT_TRUE(spec.frame_tick(&state, 0));
-    EXPECT_TRUE(zone.roster().can_deploy);
-
-    // The host moves the lobby to level 2 under the open screen.
-    save.scen_num = 2;
-    EXPECT_TRUE(spec.frame_tick(&state, 0));
-    EXPECT_FALSE(zone.roster().can_deploy)
-        << "the zone must be refetched with the new level cursor";
-    EXPECT_TRUE(trace_contains("zone", "refetch"));
-
-    // ...and the deploy boxes really do go inert on the next rewire.
-    button* const buttons = picker_lineup_fighters_buttons();
-    const int count = picker_lineup_fighters_button_count();
-    std::vector<button> table(buttons, buttons + count);
-    int highlighted = kLineupFightersBackIndex;
-    og::ui::install_lineup_fighters_state_for_screen(&state);
-    spec.nav.rewire(table.data(), count, highlighted);
-    EXPECT_TRUE(table[kLineupFightersDeployBase].hidden)
-        << "row 0's deploy box is gone with the capability";
-
-    og::ui::install_lineup_fighters_state_for_screen(nullptr);
-    save.scen_num = 1;
-    restore_gladiator_mount();
-}
-
-// The fingerprint twin (base_camp_frame_tick's "fetch trigger 4"): an
-// applied lobby-settings change rewrites the save's synced knobs under the
-// open FIGHTERS screen, and a scripted composition that reads them must be
-// refetched — a joiner parked on FIGHTERS while the host turns a knob kept
-// the rows of the old settings. The level-change trigger alone (the C5 fix)
-// did not fire: scen_num never moved.
-TEST(LineupUi, fighters_refetches_the_zone_after_a_settings_change)
-{
-    trace_clear();
-    SavedPickerSave save_guard;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    for (auto& slot : save.team_list)
-        slot.reset();
-    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
-    member->name = "PARKED";
-    member->deployed = true;
-    save.team_list[0] = std::move(member);
-    save.team_size = 1;
-    save.scen_num = 1;
-    save.current_campaign = "gladiator";
-    save.ctf_capture_limit = 0;
-    restore_gladiator_mount();
-
-    // The composition reads a lobby-synced knob: no deploying at SCORE 5.
-    SyntheticZoneScriptGuard zone_script(R"LUA(
-og.register_campaign_hooks({
-  base_camp = function()
-    return { widgets = { { kind = "roster",
-                           can_deploy = og.campaign_match_get("score_limit") ~= 5 } } }
-  end,
-})
-)LUA");
-
-    og::ui::CampaignZoneSession zone(save);
-    zone.fetch();
-    ASSERT_TRUE(zone.roster().can_deploy) << "SCORE: MAP deploys";
-
-    og::ui::LineupFightersScreenState state;
-    state.last_level_id = save.scen_num;
-    state.zone = &zone;
-    og::ui::lineup_fighters_refresh_rows(state);
-    og::ui::install_lineup_fighters_state_for_screen(&state);
-
-    const og::ui::MenuScreenSpec& spec =
-        *og::ui::menu_screen_host(og::ui::MenuScreenId::LineupFighters).spec;
-    ASSERT_NE(nullptr, spec.frame_tick);
-
-    // A quiet frame seeds the fingerprint and changes nothing.
-    EXPECT_TRUE(spec.frame_tick(&state, 0));
-    EXPECT_TRUE(zone.roster().can_deploy);
-    EXPECT_FALSE(trace_contains("zone", "refetch"))
-        << "a quiet frame must not refetch";
-
-    // The host's settings change lands in the save under the open screen
-    // (the lobby poll's apply path); the level cursor is untouched.
-    save.ctf_capture_limit = 5;
-    EXPECT_TRUE(spec.frame_tick(&state, 1));
-    EXPECT_FALSE(zone.roster().can_deploy)
-        << "the zone must be refetched with the new settings";
-    EXPECT_TRUE(trace_contains("zone", "refetch"));
-
-    // ...and the deploy boxes really do go inert on the next rewire.
-    button* const buttons = picker_lineup_fighters_buttons();
-    const int count = picker_lineup_fighters_button_count();
-    std::vector<button> table(buttons, buttons + count);
-    int highlighted = kLineupFightersBackIndex;
-    og::ui::install_lineup_fighters_state_for_screen(&state);
-    spec.nav.rewire(table.data(), count, highlighted);
-    EXPECT_TRUE(table[kLineupFightersDeployBase].hidden)
-        << "row 0's deploy box is gone with the capability";
-
-    // The same settings on the next frame: no second refetch.
-    trace_clear();
-    EXPECT_TRUE(spec.frame_tick(&state, 2));
-    EXPECT_FALSE(trace_contains("zone", "refetch"))
-        << "an unchanged fingerprint is quiet";
-
-    og::ui::install_lineup_fighters_state_for_screen(nullptr);
-    save.ctf_capture_limit = 0;
-    restore_gladiator_mount();
-}
-
-TEST(LineupUi, fighters_spec_row_pager_and_guards)
-{
-    trace_clear();
-    SavedPickerSave save_guard;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    for (auto& slot : save.team_list)
-        slot.reset();
-    for (int i = 0; i < 10; ++i)
-    {
-        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
-        member->name = "S" + std::to_string(i);
-        member->deployed = true;
-        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
-    }
-    save.team_size = 10;
-
-    const og::ui::MenuScreenSpec& spec =
-        *og::ui::menu_screen_host(og::ui::MenuScreenId::LineupFighters).spec;
-    ASSERT_NE(nullptr, spec.on_spec_row);
-
-    // Null state: every row is inert.
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kLineupFightersBodyBase, nullptr));
-
-    og::ui::LineupFightersScreenState state;
-    og::ui::lineup_fighters_refresh_rows(state);
-    ASSERT_TRUE(state.page.multi_page());
-    og::ui::install_lineup_fighters_state_for_screen(&state);
-
-    // Pager: NEXT flips to page 2 (rows 8..9), PREV flips back.
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kLineupFightersNextIndex, &state));
-    EXPECT_EQ(1, state.page.page);
-    EXPECT_TRUE(trace_contains("lineup", "fighters_page 1"));
-    // A row past the window on the second page: inert.
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kLineupFightersBodyBase + 5, &state));
-    // Row 0 of page 2 = save slot 8: the body click cycles ITS team.
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kLineupFightersBodyBase, &state));
-    EXPECT_EQ(1, save.team_list[8]->teamnum);
-    // The deploy box benches the same slot.
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kLineupFightersDeployBase, &state));
-    EXPECT_FALSE(save.team_list[8]->deployed);
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kLineupFightersPrevIndex, &state));
-    EXPECT_EQ(0, state.page.page);
-    // An unknown ordinal: inert.
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kLineupFightersButtonCount + 3, &state));
-
-    og::ui::install_lineup_fighters_state_for_screen(nullptr);
-}
-
-// A locked (foreign-owned) slot refuses BOTH row actions with a TOAST —
-// never a modal, which would strand a networked joiner mid-GO (§2.3) —
-// and mutates nothing.
-TEST(LineupUi, fighters_locked_slot_refuses_with_toast)
-{
-    trace_clear();
-    SavedPickerSave save_guard;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    for (auto& slot : save.team_list)
-        slot.reset();
-    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
-    member->name = "HELD";
-    member->deployed = true;
-    member->teamnum = 0;
-    save.team_list[0] = std::move(member);
-    save.team_size = 1;
-
-    FakeNetLobbyClient client;
-    client.slots_editable = false;
-    ActiveLobbyGuard guard(&client);
-
-    og::ui::LineupFightersScreenState state;
-    og::ui::lineup_fighters_refresh_rows(state);
-    og::ui::install_lineup_fighters_state_for_screen(&state);
-    const og::ui::MenuScreenSpec& spec =
-        *og::ui::menu_screen_host(og::ui::MenuScreenId::LineupFighters).spec;
-
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kLineupFightersBodyBase, &state));
-    EXPECT_EQ(0, save.team_list[0]->teamnum) << "a locked row never cycles";
-    EXPECT_TRUE(trace_contains("lineup", "team_slot_locked slot=0"));
-    EXPECT_TRUE(trace_contains("lineup", "toast SLOT LOCKED"));
-
-    trace_clear();
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kLineupFightersDeployBase, &state));
-    EXPECT_TRUE(save.team_list[0]->deployed)
-        << "a locked row never benches";
-    EXPECT_TRUE(trace_contains("lineup", "deploy_slot_locked slot=0"));
-    EXPECT_FALSE(state.toast.empty());
-
-    og::ui::install_lineup_fighters_state_for_screen(nullptr);
 }
 
 // The TRAIN team cycler's relabel (docs/lineup-design.md §1): "Team N", not

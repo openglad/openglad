@@ -3540,15 +3540,26 @@ Sint32 change_lineup_map_units(Sint32 team)
    }
    if (!og::ui::is_versus_campaign(save))
        return MENU_OK;
+   // B4: a team the map ships no units for has nothing to switch — the box
+   // is Disabled (engine-inert) and this belt keeps a stale dispatch from
+   // flipping a knob the page refuses to offer.
+   if (picker_lineup_map_unit_counts()[static_cast<std::size_t>(team)] == 0)
+   {
+       TRACE("lineup", "map_units_no_units team=%d",
+             static_cast<int>(team));
+       return MENU_OK;
+   }
 
    const std::size_t t = static_cast<std::size_t>(team);
    save.map_units[t] = og::sim::clamp_map_units(
        og::ui::toggle_lineup_map_units(save.map_units[t]));
    TRACE("lineup", "map_units team=%d value=%d", static_cast<int>(team),
          static_cast<int>(save.map_units[t]));
+   // The SDL surface is the deploy-box glyph (B9), not the terminals' word
+   // label: "X" = the map's units are fielded.
    refresh_lineup_button_label(
        kLineupMapUnitsBase + team,
-       og::ui::format_lineup_map_units_label(save.map_units[t]));
+       save.map_units[t] == og::sim::kMapUnitsOn ? "X" : "");
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
@@ -3593,9 +3604,9 @@ Sint32 lineup_split_action(Sint32 mode)
    if (og::script::hooks::campaign_lineup_registered())
        power = &og::ui::lineup_power_for_guy;
    // The campaign's own roster capabilities gate a SPLIT exactly as they
-   // gate the FIGHTERS rows and the Base Camp chip — same fetch as
-   // open_lineup_fighters. Passing a null zone here handed the three SPLIT
-   // buttons a way around a composition that had taken the team chip away.
+   // gate the Base Camp chip (the one team-cycler home since B6). Passing a
+   // null zone here handed the three SPLIT buttons a way around a
+   // composition that had taken the team chip away.
    og::ui::CampaignZoneSession zone(save);
    zone.fetch();
    const auto editable = [&save, &zone](int slot) {

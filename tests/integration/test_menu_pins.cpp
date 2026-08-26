@@ -441,10 +441,11 @@ TEST(MenuEnginePins, trainmenu_exact_table)
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// LINEUP (docs/lineup-design.md §2): BACK + four BOTS knobs + four LV knobs
-// + the FIGHTERS / SPLIT EVEN / SPLIT FAIR / UNITE strip. Static nav encodes
-// the all-visible (host + versus + two-seat) variant; the per-frame rewire
-// variants are pinned in test_menu_layout.
+// LINEUP (docs/lineup-design.md §2, amendments B1/B6/B9): BACK + four FILL
+// knobs + four MAP UNITS boxes (the Base Camp deploy box: 14x10, "X" when
+// the map's units are fielded) + the SPLIT EVEN / SPLIT FAIR / UNITE strip.
+// Static nav encodes the all-visible (host + versus + two-seat) variant;
+// the per-frame rewire variants are pinned in test_menu_layout.
 // ---------------------------------------------------------------------------
 
 TEST(MenuEnginePins, lineup_exact_table)
@@ -453,42 +454,39 @@ TEST(MenuEnginePins, lineup_exact_table)
         {"back", "BACK", KEYSTATE_ESCAPE, 8, 176, 44, 18,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
          MenuNav{.up = 4, .right = 9}},
-        {"lineup_fill_0", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 39, 80, 15,
+        {"lineup_fill_0", "FILL: FAIR", KEYSTATE_UNKNOWN, 12, 39, 80, 15,
          button_action_id(ButtonAction::CycleLineupFill), 0,
          MenuNav{.down = 2, .right = 5}},
-        {"lineup_fill_1", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 75, 80, 15,
+        {"lineup_fill_1", "FILL: FAIR", KEYSTATE_UNKNOWN, 12, 75, 80, 15,
          button_action_id(ButtonAction::CycleLineupFill), 1,
          MenuNav{.up = 1, .down = 3, .right = 6}},
-        {"lineup_fill_2", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 111, 80, 15,
+        {"lineup_fill_2", "FILL: FAIR", KEYSTATE_UNKNOWN, 12, 111, 80, 15,
          button_action_id(ButtonAction::CycleLineupFill), 2,
          MenuNav{.up = 2, .down = 4, .right = 7}},
-        {"lineup_fill_3", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 147, 80, 15,
+        {"lineup_fill_3", "FILL: FAIR", KEYSTATE_UNKNOWN, 12, 147, 80, 15,
          button_action_id(ButtonAction::CycleLineupFill), 3,
          MenuNav{.up = 3, .down = 0, .right = 8}},
-        {"lineup_map_units_0", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 39, 56, 15,
+        {"lineup_map_units_0", "X", KEYSTATE_UNKNOWN, 98, 41, 14, 10,
          button_action_id(ButtonAction::ToggleLineupMapUnits), 0,
          MenuNav{.down = 6, .left = 1}},
-        {"lineup_map_units_1", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 75, 56, 15,
+        {"lineup_map_units_1", "X", KEYSTATE_UNKNOWN, 98, 77, 14, 10,
          button_action_id(ButtonAction::ToggleLineupMapUnits), 1,
          MenuNav{.up = 5, .down = 7, .left = 2}},
-        {"lineup_map_units_2", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 111, 56, 15,
+        {"lineup_map_units_2", "X", KEYSTATE_UNKNOWN, 98, 113, 14, 10,
          button_action_id(ButtonAction::ToggleLineupMapUnits), 2,
          MenuNav{.up = 6, .down = 8, .left = 3}},
-        {"lineup_map_units_3", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 147, 56, 15,
+        {"lineup_map_units_3", "X", KEYSTATE_UNKNOWN, 98, 149, 14, 10,
          button_action_id(ButtonAction::ToggleLineupMapUnits), 3,
          MenuNav{.up = 7, .down = 9, .left = 4}},
-        {"lineup_fighters", "FIGHTERS", KEYSTATE_UNKNOWN, 58, 176, 62, 18,
-         button_action_id(ButtonAction::OpenLineupFighters), -1,
-         MenuNav{.up = 4, .left = 0, .right = 10}},
         {"lineup_split_even", "SPLIT EVEN", KEYSTATE_UNKNOWN, 126, 176, 68,
          18, button_action_id(ButtonAction::LineupSplitEven), -1,
-         MenuNav{.up = 8, .left = 9, .right = 11}},
+         MenuNav{.up = 8, .left = 0, .right = 10}},
         {"lineup_split_fair", "SPLIT FAIR", KEYSTATE_UNKNOWN, 200, 176, 68,
          18, button_action_id(ButtonAction::LineupSplitFair), -1,
-         MenuNav{.up = 8, .left = 10, .right = 12}},
+         MenuNav{.up = 8, .left = 9, .right = 11}},
         {"lineup_unite", "UNITE", KEYSTATE_UNKNOWN, 274, 176, 38, 18,
          button_action_id(ButtonAction::LineupUnite), -1,
-         MenuNav{.up = 8, .left = 11}},
+         MenuNav{.up = 8, .left = 10}},
     };
     button* buttons = picker_lineup_buttons();
     check_exact_table(buttons, picker_lineup_button_count(), kExpected,
@@ -497,11 +495,10 @@ TEST(MenuEnginePins, lineup_exact_table)
     EXPECT_EQ(kLineupBackIndex, 0);
     EXPECT_EQ(kLineupFillBase, 1);
     EXPECT_EQ(kLineupMapUnitsBase, 5);
-    EXPECT_EQ(kLineupFightersIndex, 9);
-    EXPECT_EQ(kLineupSplitEvenIndex, 10);
-    EXPECT_EQ(kLineupSplitFairIndex, 11);
-    EXPECT_EQ(kLineupUniteIndex, 12);
-    EXPECT_EQ(kLineupButtonCount, 13);
+    EXPECT_EQ(kLineupSplitEvenIndex, 9);
+    EXPECT_EQ(kLineupSplitFairIndex, 10);
+    EXPECT_EQ(kLineupUniteIndex, 11);
+    EXPECT_EQ(kLineupButtonCount, 12);
 }
 
 TEST(MenuEnginePins, hiremenu_exact_table)

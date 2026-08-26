@@ -243,11 +243,10 @@ int picker_help_button_count();
 // Campaign zone submenu (the scripted page chassis) — engine screen.
 button* picker_zone_submenu_buttons();
 int picker_zone_submenu_button_count();
-// LINEUP + FIGHTERS (docs/lineup-design.md §2) — engine screens.
+// LINEUP (docs/lineup-design.md §2) — engine screen. (The FIGHTERS list
+// retired with amendment B6.)
 button* picker_lineup_buttons();
 int picker_lineup_button_count();
-button* picker_lineup_fighters_buttons();
-int picker_lineup_fighters_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
@@ -561,11 +560,12 @@ inline constexpr std::size_t kZoneSubmenuRowLabelChars =
 inline constexpr int kLineupBackIndex = 0;
 inline constexpr int kLineupFillBase = 1;      // lineup_fill_t = 1 + t
 inline constexpr int kLineupMapUnitsBase = 5;  // lineup_map_units_t = 5 + t
-inline constexpr int kLineupFightersIndex = 9;
-inline constexpr int kLineupSplitEvenIndex = 10;
-inline constexpr int kLineupSplitFairIndex = 11;
-inline constexpr int kLineupUniteIndex = 12;
-inline constexpr int kLineupButtonCount = 13;
+// The FIGHTERS door (ordinal 9) retired with amendment B6 and the strip
+// re-packed: the three actions after BACK shifted down one.
+inline constexpr int kLineupSplitEvenIndex = 9;
+inline constexpr int kLineupSplitFairIndex = 10;
+inline constexpr int kLineupUniteIndex = 11;
+inline constexpr int kLineupButtonCount = 12;
 // The opaque grey ground painted PRE-buttons (a band of raw backdrop
 // between two opaque things reads as a defect — the menus skill).
 inline constexpr int kLineupPanelX1 = 8;
@@ -590,39 +590,52 @@ inline constexpr int kLineupSeatRunX = 150;
 inline constexpr int kLineupSeatRunRightX = 306;
 inline constexpr int kLineupSeatRunChars =
     (kLineupSeatRunRightX - kLineupSeatRunX) / 6;  // 26, then "+n"
-// Knob row at y+15: BOTS face | LV face | census/diagnostic text.
+// Knob line at y+15 (amendment B9): the FILL face, then the MAP UNITS box
+// — the Base Camp deploy box verbatim (14x10, label "X" when the map's
+// units are fielded) — with its caption text at x=116, then the
+// census/diagnostic text at x=190 (21-char budget: 190 + 21*6 = 316, the
+// glyph columns land inside the 320 canvas even past the panel's bevel).
 inline constexpr int kLineupKnobDy = 15;
 inline constexpr int kLineupKnobH = 15;
 inline constexpr int kLineupFillX = 12;
 inline constexpr int kLineupFillW = 80;
 inline constexpr int kLineupMapUnitsX = 98;
-inline constexpr int kLineupMapUnitsW = 56;
-inline constexpr int kLineupCensusX = 162;
+inline constexpr int kLineupMapUnitsW = 14;
+inline constexpr int kLineupMapUnitsH = 10;
+// The box centers in the 15px knob line: y+15 + (15-10)/2 = y+17.
+inline constexpr int kLineupMapUnitsDy =
+    kLineupKnobDy + (kLineupKnobH - kLineupMapUnitsH) / 2;
+inline constexpr int kLineupMapUnitsTextX = 116;
+inline constexpr int kLineupCensusX = 190;
+inline constexpr int kLineupCensusChars = 21;
 inline constexpr int kLineupCensusDy = 19;
 // The title band's right-hand slot: an active toast wins it, else the
 // networked session census (right-aligned, ending on the panel edge).
 inline constexpr int kLineupTitleCensusChars = 40;
-// Action strip: BACK | FIGHTERS | SPLIT EVEN | SPLIT FAIR | UNITE, one 6px
-// gutter, closing flush on the Base Camp panel rail (x=312).
+// Action strip (amendment B6): BACK | SPLIT EVEN | SPLIT FAIR | UNITE.
+// BACK anchors on the panel's left rail (x=8, the panel edge); the three
+// actions pack RIGHT from the panel rail at x=312 with uniform 6px gutters,
+// leaving one deliberate wide gap between BACK and SPLIT EVEN — the cancel
+// stands apart from the roster actions.
 inline constexpr int kLineupStripY = 176;
 inline constexpr int kLineupStripH = 18;
 inline constexpr int kLineupStripGap = 6;
 inline constexpr int kLineupStripRightX = 312;
-inline constexpr int kLineupBackX = 8;
+inline constexpr int kLineupBackX = kLineupPanelX1;  // 8
 inline constexpr int kLineupBackW = 44;
-inline constexpr int kLineupFightersX =
-    kLineupBackX + kLineupBackW + kLineupStripGap;              // 58
-inline constexpr int kLineupFightersW = 62;
-inline constexpr int kLineupSplitEvenX =
-    kLineupFightersX + kLineupFightersW + kLineupStripGap;      // 126
 inline constexpr int kLineupSplitW = 68;
-inline constexpr int kLineupSplitFairX =
-    kLineupSplitEvenX + kLineupSplitW + kLineupStripGap;        // 200
+inline constexpr int kLineupUniteW = 38;
 inline constexpr int kLineupUniteX =
-    kLineupSplitFairX + kLineupSplitW + kLineupStripGap;        // 274
-inline constexpr int kLineupUniteW = kLineupStripRightX - kLineupUniteX;  // 38
+    kLineupStripRightX - kLineupUniteW;                         // 274
+inline constexpr int kLineupSplitFairX =
+    kLineupUniteX - kLineupStripGap - kLineupSplitW;            // 200
+inline constexpr int kLineupSplitEvenX =
+    kLineupSplitFairX - kLineupStripGap - kLineupSplitW;        // 126
 static_assert(kLineupUniteX + kLineupUniteW == kLineupStripRightX,
               "the action strip closes flush on the panel rail");
+static_assert(kLineupBackX + kLineupBackW + kLineupStripGap <=
+                  kLineupSplitEvenX,
+              "BACK keeps clear of the right-packed actions");
 static_assert(lineup_band_y(3) + kLineupKnobDy + kLineupKnobH <
                   kLineupPanelY2,
               "the last band's knob row stays inside the panel");
@@ -639,26 +652,23 @@ struct LineupSeatView {
 };
 LineupSeatView picker_lineup_seat_view();
 
-// --- FIGHTERS list layout contract (docs/lineup-design.md §2.2) ------------
-// The Base Camp roster row grid verbatim (menu_screen_specs.cpp shares its
-// kBaseCampRow* / column constants with this screen's table — never retyped
-// literals): 8 rows/page at y=45+14r, deploy box x=23 w=14, chip x=61, name
-// x=88, class x=164, level x=236, POWER where EXP sat at x=264. Footer at
-// y=169 (BACK 10 / PREV 220 / NEXT 270 — the zone-submenu footer split, so
-// this screen's "back" shares no other screen's geometry).
-inline constexpr int kLineupFightersRowsPerPage = 8;
-inline constexpr int kLineupFightersDeployBase = 0;  // fighter_dep_r = 0..7
-inline constexpr int kLineupFightersBodyBase = 8;    // fighter_row_r = 8..15
-inline constexpr int kLineupFightersBackIndex = 16;
-inline constexpr int kLineupFightersPrevIndex = 17;
-inline constexpr int kLineupFightersNextIndex = 18;
-inline constexpr int kLineupFightersButtonCount = 19;
+// The FIGHTERS list layout contract retired with amendment B6: the Base
+// Camp roster (its chip networked-editable through
+// lineup_fighter_team_editable) is the one home of the per-fighter team
+// cycler and deploy toggle.
+
+// The per-team census of the map's own authored units on the loaded picker
+// level (amendment B4): the count the MAP UNITS box gates on — 0 dims the
+// box inert and the band reads NO MAP UNITS. Livings only (generators
+// belong to the GENERATOR RATE knob), dead skipped, teams 0..3. The
+// terminals read the same numbers through LineupTeamBand::map_unit_count.
+std::array<int, 4> picker_lineup_map_unit_counts();
 
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
 // installed BaseCampScreenState); the SCENARIO subscreen has two visibility
-// axes: SET CAMPAIGN / SET LEVEL / TROOPS gate on the host axis, and the
+// axes: SET CAMPAIGN / SET LEVEL gate on the host axis, and the
 // re-homed TEAMS / LIMIT rows (#218) gate on the versus-campaign axis
 // (match_settings_visible) — visible to joiners too, read-only there.
 void picker_wire_scenario_menu_nav(button* buttons, int count,
@@ -666,7 +676,7 @@ void picker_wire_scenario_menu_nav(button* buttons, int count,
                                    bool match_settings_visible);
 
 // The SCENARIO screen's per-frame visibility/label/nav sync (the spec's
-// Rewire program): host-gates SET CAMPAIGN / SET LEVEL / TROOPS,
+// Rewire program): host-gates SET CAMPAIGN / SET LEVEL,
 // versus-gates TEAMS / LIMIT (visible read-only for joiners), re-derives
 // the three settings labels from the save on both surfaces (LINEUP stays
 // visible for everyone), and rewires the graph through

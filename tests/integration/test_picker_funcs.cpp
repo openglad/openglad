@@ -3050,7 +3050,7 @@ TEST(PickerFuncs,
     save.allied_mode = original_allied_mode;
 }
 
-TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
+TEST(PickerFuncs, local_lobby_fill_leaves_seats_and_sparse_domains_reconcile)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -3117,32 +3117,30 @@ TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(3, players[1].team);
 
-        // The host sets BOTS: OFF on team 4 — the very team the second seat
-        // is sitting on. OFF takes the team out of the match (A2), so
-        // lobby_effective_team_mask takes it out of the seat domain with it,
-        // leaving authored {0,2}: the settings echo invalidates the team-3
-        // assignment and the reteam sweep moves that seat to the first team
-        // still on. This is the narrowing TEAMS used to do, expressed by the
-        // rule that replaced it — ctf_team_count is inert now (A3).
-        save.fill[3] = og::sim::kBotSquadOff;
+        // B8: nothing the band holds narrows the seat domain. The host sets
+        // FILL: NONE on team 4 — the very team the second seat is sitting
+        // on — and the settings echo re-resolves every seat against the
+        // UNCHANGED authored mask {0,2,3}: the seat stays where it sits.
+        // (The A2-era OFF value, which DID narrow the domain, is gone.)
+        save.fill[3] = og::sim::kFillNone;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
-        EXPECT_EQ(0, players[1].team);
+        EXPECT_EQ(3, players[1].team);
+        // Per-seat reassignment follows the authored mask exactly: 2 is
+        // authored, 1 is not, and the NONE team stays perfectly seatable.
         EXPECT_TRUE(client->request_seat_team_change(
             players[1].player_index, 2));
-        // Team 4 is authored, but OFF: the seat may not go back to it, and
-        // team 2 was never authored on this map.
-        EXPECT_FALSE(client->request_seat_team_change(
-            players[1].player_index, 3));
         EXPECT_FALSE(client->request_seat_team_change(
             players[1].player_index, 1));
+        EXPECT_TRUE(client->request_seat_team_change(
+            players[1].player_index, 3));
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
-        EXPECT_EQ(2, players[1].team);
+        EXPECT_EQ(3, players[1].team);
 
-        // A next level with sparse authored {1,3}, the OFF lifted, invalidates
-        // both old assignments; the client adopts the server's deterministic
+        // A next level with sparse authored {1,3} invalidates the host's
+        // team-0 assignment; the client adopts the server's deterministic
         // team 1 normalization without recoloring the saved heroes.
         while (world.oblist.size() > original_ob_size)
             world.oblist.pop_back();
@@ -3152,12 +3150,13 @@ TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
         ASSERT_NE(nullptr, marker3);
         marker1->set_team_num(1);
         marker3->set_team_num(3);
-        save.fill[3] = og::sim::kBotSquadAuto;
+        save.fill[3] = og::sim::kFillFair;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(1, players[0].team);
-        EXPECT_EQ(1, players[1].team);
+        EXPECT_EQ(3, players[1].team)
+            << "team 4 is still authored, so that seat never moved";
         EXPECT_EQ(0, save.team_list[0]->teamnum);
         EXPECT_EQ(3, save.team_list[1]->teamnum);
         client->shutdown();
@@ -3260,12 +3259,12 @@ struct LocalLobbySessionGuard
 
 }  // namespace
 
-// Matched teams E11 (amendment re-target): the matched request rides the
-// TROOPS field (kTroopsMatched), which feeds no mask anywhere (D29) — so
-// the settings echo re-resolves every seat against an UNCHANGED domain,
-// cycling TROOPS to/from FAIR moves no seats, and per-seat reassignment
-// obeys the same authored-mask rule as before.
-TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
+// TROOPS is inert since amendment B5: a legacy save carrying the retired
+// kTroopsMatched sentinel heals to 0 in the lobby's sanitize (the D30
+// one-time migration), the field feeds no mask anywhere, so the settings
+// echo re-resolves every seat against an UNCHANGED domain — no seat moves
+// — and per-seat reassignment obeys the same authored-mask rule as before.
+TEST(PickerFuncs, local_lobby_retired_troops_value_heals_and_moves_no_seats)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -3308,19 +3307,20 @@ TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
         EXPECT_EQ(0, players[0].team);
         EXPECT_EQ(3, players[1].team);
 
-        // ALL -> FAIR: the strip field feeds no mask, so the settings
-        // echo moves no seats, and the sentinel survives the lobby
-        // round-trip unclamped (sanitize keeps exactly 3, D27).
+        // The retired sentinel rides in: the field feeds no mask, so the
+        // settings echo moves no seats — and the sanitize heals the value
+        // to 0 (B5: TROOPS is inert on disk and on the wire).
         save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(0, players[0].team);
         EXPECT_EQ(3, players[1].team);
-        EXPECT_EQ(og::sim::kTroopsMatched, save.ctf_strip_scenario_troops);
+        EXPECT_EQ(0, save.ctf_strip_scenario_troops)
+            << "the one-time heal: every retired TROOPS value reads 0 back";
 
-        // Seat changes under FAIR follow the authored mask exactly as
-        // before: 2 is authored, 1 is not.
+        // Seat changes follow the authored mask exactly as before: 2 is
+        // authored, 1 is not.
         EXPECT_TRUE(client->request_seat_team_change(
             players[1].player_index, 2));
         EXPECT_FALSE(client->request_seat_team_change(
@@ -3329,7 +3329,8 @@ TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(2, players[1].team);
 
-        // FAIR -> ALL: same domain again, so still no seat movement.
+        // A second sync at the healed value: same domain again, so still
+        // no seat movement.
         save.ctf_strip_scenario_troops = 0;
         client->sync_settings_from_save();
         players = client->lobby_players();

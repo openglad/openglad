@@ -119,7 +119,6 @@ struct PickerState {
     // Campaign zone submenu (the scripted page chassis) — engine screen.
     std::vector<button> zone_submenu_buttons;
     std::vector<button> lineup_buttons;
-    std::vector<button> lineup_fighters_buttons;
 
     // VIEW LEVEL: page step requested by the PREV/NEXT ButtonAction handler
     // (-1/+1), consumed by the engine screen's consume_click hook

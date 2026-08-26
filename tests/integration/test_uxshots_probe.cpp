@@ -1624,9 +1624,9 @@ int view_level_staged_injector(void *data) {
     interact("scenario");
     if (wait_for_interactable("view_scenario", 5000)) {
       SDL_Delay(300);
-      // The reshaped SCENARIO screen first (#218, A5): a versus host shows
-      // the y=140 knob row TROOPS | SCORE under the VIEW LEVEL | PROGRESS |
-      // LINEUP row.
+      // The reshaped SCENARIO screen first (#218, A5/B5): a versus host
+      // shows SCORE alone on the y=140 knob row under the VIEW LEVEL |
+      // PROGRESS | LINEUP row.
       if (wait_for_interactable("ctf_caps", 5000)) {
         SDL_Delay(300);
         state->captures +=

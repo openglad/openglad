@@ -2493,9 +2493,14 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
                         << ": the §9.11 row-body zone shows on own rows "
                            "only (foreign rows train nowhere — the widened "
                            "dep zone pops OWNED BY)";
-                    EXPECT_TRUE(buttons[kBaseCampTeamChipBase + r].hidden)
+                    // B6: the chip is networked-editable on OWN rows (the
+                    // FIGHTERS list retired into it); foreign rows never
+                    // grow one.
+                    EXPECT_EQ(!owned,
+                              buttons[kBaseCampTeamChipBase + r].hidden)
                         << variant << " row " << r
-                        << ": lobby-assigned teams hide the solo cycler";
+                        << ": own rows keep the team chip networked (B6); "
+                           "foreign rows stay inert";
                 }
             }
         }
@@ -2537,13 +2542,12 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 // SCENARIO subscreen static table: the x=30 column stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
 // always-visible VIEW LEVEL | PROGRESS | LINEUP row and the y=140 knob row
-// TROOPS | SCORE with (210,140) free (#218 — ctf_caps re-homed from
-// MATCHUP; docs/lineup-design.md A5 re-gridded the row when the TEAMS
-// cycler retired into LINEUP's BOTS: OFF — its ordinal 7 is a parked
-// spare, the retired MATCHUP door's ordinal 4 is the LINEUP door — so
-// every index kept its value); BACK sits at (30,170) so no other screen's
-// "back" shares its geometry. Static nav encodes the host+versus
-// (all-visible) variant.
+// SCORE alone at (30,140) (#218 — ctf_caps re-homed from MATCHUP;
+// docs/lineup-design.md A5 relabelled it SCORE, B5 retired the TROOPS
+// cycler beside it into the LINEUP band's MAP UNITS box — its ordinal 6 is
+// a parked spare like the TEAMS cell at 7, so every index kept its value);
+// BACK sits at (30,170) so no other screen's "back" shares its geometry.
+// Static nav encodes the host+versus (all-visible) variant.
 TEST(MenuLayout, scenariomenu_static_layout)
 {
     button* buttons = picker_scenariomenu_buttons();
@@ -2559,15 +2563,15 @@ TEST(MenuLayout, scenariomenu_static_layout)
         bool hidden = false;
     };
     static const ExpectedButton kExpected[] = {
-        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 6}},
+        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 8}},
         {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
         {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
-        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 6, .right = 5}},
+        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 8, .right = 5}},
         {"lineup", "LINEUP", 210, 100, 80, 15, MenuNav{.up = 2, .down = 8, .left = 5}},
         {"progress", "PROGRESS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 8, .left = 3, .right = 4}},
-        {"troops", "TROOPS: ALL", 30, 140, 80, 15, MenuNav{.up = 3, .down = 0, .right = 8}},
+        {"scenario_troops_spare", "", 0, 0, 0, 0, MenuNav{}, true},
         {"scenario_spare", "", 0, 0, 0, 0, MenuNav{}, true},
-        {"ctf_caps", "SCORE: MAP", 120, 140, 80, 15, MenuNav{.up = 5, .down = 0, .left = 6}},
+        {"ctf_caps", "SCORE: MAP", 30, 140, 80, 15, MenuNav{.up = 3, .down = 0}},
     };
 
     for (int i = 0; i < count; ++i)
@@ -2600,8 +2604,8 @@ TEST(MenuLayout, scenariomenu_static_layout)
     EXPECT_EQ(kScenarioMenuButtonCount, 9);
 
     // The LINEUP door completes the y=100 row on the declared grid: same
-    // baseline as PROGRESS, on the x=210 column; the cell under it is free
-    // (A5), so nothing else claims x=210.
+    // baseline as PROGRESS, on the x=210 column; nothing else claims
+    // x=210 — the whole y=140 knob row below is SCORE alone at x=30 (B5).
     EXPECT_EQ(buttons[kScenarioMenuLineupIndex].y,
               buttons[kScenarioMenuProgressIndex].y)
         << "LINEUP shares the VIEW LEVEL | PROGRESS baseline";
@@ -2617,39 +2621,37 @@ TEST(MenuLayout, scenariomenu_static_layout)
     // Grid RELATIONS (the menus discipline: exact tables pin
     // self-consistency, relations pin alignment). Declared columns
     // x=30/120/210; the x=30 column stacks five faces (BACK, SET CAMPAIGN,
-    // SET LEVEL, VIEW LEVEL, TROOPS); the x=120 column PROGRESS over SCORE;
-    // the y=100 row and the y=140 knob row each share one baseline; all six
-    // grid faces are 80x15. The parked spare has no geometry at all.
+    // SET LEVEL, VIEW LEVEL, SCORE); the y=100 row shares one baseline;
+    // SCORE keeps the knob row's 40px pitch under it; all four grid faces
+    // are 80x15. Both parked spares have no geometry at all.
     for (const int left_col : {kScenarioMenuBackIndex,
                                kScenarioMenuSetCampaignIndex,
                                kScenarioMenuSetLevelIndex,
                                kScenarioMenuViewScenarioIndex,
-                               kScenarioMenuTroopsIndex})
+                               kScenarioMenuCtfCapsIndex})
         EXPECT_EQ(30, buttons[left_col].x) << buttons[left_col].id;
-    EXPECT_EQ(buttons[kScenarioMenuProgressIndex].x,
-              buttons[kScenarioMenuCtfCapsIndex].x)
-        << "PROGRESS left-packs into the x=120 column over SCORE";
-    EXPECT_EQ(120, buttons[kScenarioMenuCtfCapsIndex].x);
+    EXPECT_EQ(120, buttons[kScenarioMenuProgressIndex].x);
     EXPECT_EQ(buttons[kScenarioMenuViewScenarioIndex].y,
               buttons[kScenarioMenuProgressIndex].y);
-    EXPECT_EQ(buttons[kScenarioMenuTroopsIndex].y,
-              buttons[kScenarioMenuCtfCapsIndex].y);
-    EXPECT_EQ(buttons[kScenarioMenuTroopsIndex].y,
+    EXPECT_EQ(buttons[kScenarioMenuCtfCapsIndex].y,
               buttons[kScenarioMenuViewScenarioIndex].y +
                   buttons[kScenarioMenuViewScenarioIndex].sizey + 25)
         << "the knob row keeps its 40px pitch under the y=100 row";
     for (const int face : {kScenarioMenuViewScenarioIndex,
                            kScenarioMenuLineupIndex,
                            kScenarioMenuProgressIndex,
-                           kScenarioMenuTroopsIndex,
                            kScenarioMenuCtfCapsIndex})
     {
         EXPECT_EQ(80, buttons[face].sizex) << buttons[face].id;
         EXPECT_EQ(15, buttons[face].sizey) << buttons[face].id;
     }
-    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
-    EXPECT_EQ(0, buttons[kScenarioMenuSpareIndex].sizex);
-    EXPECT_EQ(0, buttons[kScenarioMenuSpareIndex].sizey);
+    for (const int spare :
+         {kScenarioMenuTroopsIndex, kScenarioMenuSpareIndex})
+    {
+        EXPECT_TRUE(buttons[spare].hidden) << buttons[spare].id;
+        EXPECT_EQ(0, buttons[spare].sizex) << buttons[spare].id;
+        EXPECT_EQ(0, buttons[spare].sizey) << buttons[spare].id;
+    }
 
     // The campaign-name / level-title strips draw from x=116 (32-char clip,
     // 6px/char): they must clear the x=30 button column's right edge.
@@ -2660,14 +2662,11 @@ TEST(MenuLayout, scenariomenu_static_layout)
     // ...and so must every row that reaches past x=114 (the strips are
     // drawn AFTER draw_buttons, so anything under them is overprinted; the
     // two strip bands are 8px tall at each host-gated button's y+4-1).
-    // That is why the whole match-settings band sits at y=140 and PROGRESS
-    // at y=100 rather than beside SET LEVEL.
     for (const int strip_index :
          {kScenarioMenuSetCampaignIndex, kScenarioMenuSetLevelIndex})
     {
         const int strip_top = buttons[strip_index].y + 3;
         for (const int row_index : {kScenarioMenuProgressIndex,
-                                    kScenarioMenuTroopsIndex,
                                     kScenarioMenuCtfCapsIndex})
         {
             const button& row = buttons[row_index];
@@ -2727,14 +2726,12 @@ TEST(MenuLayout, view_scenario_staged_band_geometry)
 }
 
 // Two visibility axes since the MATCHUP re-home (#218): SET CAMPAIGN /
-// SET LEVEL / TROOPS hide on the host axis, SCORE on the versus-campaign
-// axis (visible to joiners as a read-only label). Every {host} x {versus}
+// SET LEVEL hide on the host axis, SCORE on the versus-campaign axis
+// (visible to joiners as a read-only label). Every {host} x {versus}
 // combination must leave the visible graph closed and fully
-// keyboard-reachable — TROOPS lost its only static .up when the MATCHUP
-// door parked, so the rewire is what keeps the whole y=140 row reachable
-// in every variant. The parked spare (ordinal 7) is hidden in all four and
-// never linked; DOWN from the y=100 row lands on the visible knob under it
-// (A5: LINEUP's cell is free, so it drops to SCORE, else TROOPS).
+// keyboard-reachable. Both parked spares (TROOPS at 6 — B5 — and TEAMS at
+// 7) are hidden in all four and never linked; DOWN from the y=100 row
+// lands on SCORE when it shows, else BACK.
 TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
 {
     for (const bool host_visible : {true, false})
@@ -2745,7 +2742,6 @@ TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
             const int count = picker_scenariomenu_button_count();
             buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
             buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
-            buttons[kScenarioMenuTroopsIndex].hidden = !host_visible;
             buttons[kScenarioMenuCtfCapsIndex].hidden = !match_visible;
             picker_wire_scenario_menu_nav(buttons, count, host_visible,
                                           match_visible);
@@ -2757,28 +2753,34 @@ TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
                     .c_str());
             EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
                 << "the LINEUP door is never gated (§2.3)";
+            EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden)
+                << "the retired TROOPS cell stays parked (B5)";
             EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
                 << "the retired TEAMS cell stays parked";
-            const int expect_down = match_visible ? kScenarioMenuCtfCapsIndex
-                : (host_visible ? kScenarioMenuTroopsIndex
-                                : kScenarioMenuBackIndex);
+            const int expect_down = match_visible
+                ? kScenarioMenuCtfCapsIndex
+                : kScenarioMenuBackIndex;
             EXPECT_EQ(expect_down, buttons[kScenarioMenuLineupIndex].nav.down)
-                << "LINEUP drops onto SCORE, else TROOPS, else BACK";
+                << "LINEUP drops onto SCORE, else BACK";
             EXPECT_EQ(expect_down,
                       buttons[kScenarioMenuProgressIndex].nav.down);
-            const int expect_up = host_visible ? kScenarioMenuTroopsIndex
-                : (match_visible ? kScenarioMenuCtfCapsIndex
-                                 : kScenarioMenuViewScenarioIndex);
+            const int expect_up = match_visible
+                ? kScenarioMenuCtfCapsIndex
+                : kScenarioMenuViewScenarioIndex;
             EXPECT_EQ(expect_up, buttons[kScenarioMenuBackIndex].nav.up)
-                << "BACK climbs into TROOPS, else SCORE, else VIEW LEVEL";
+                << "BACK climbs into SCORE, else VIEW LEVEL";
         }
     }
 }
 
-// LINEUP grid relations (docs/lineup-design.md §2.4; the exact table is the
-// test_menu_pins oracle): four bands of EQUAL pitch, one shared column x per
-// knob across all bands, knob rows inside the panel, and the action strip
-// closing flush on x=312 with uniform 6px gutters.
+// LINEUP grid relations (docs/lineup-design.md §2.4, amendment B9; the
+// exact table is the test_menu_pins oracle): four bands of EQUAL pitch,
+// one shared column x per knob across all bands, the MAP UNITS box (the
+// Base Camp deploy box, 14x10) centered in its knob line one gutter after
+// the FILL face, the caption and census columns clearing each other, knob
+// rows inside the panel, and the action strip: BACK on the panel's left
+// rail, the three actions packed flush right on x=312 with uniform 6px
+// gutters.
 TEST(MenuLayout, lineup_band_and_strip_relations)
 {
     button* buttons = picker_lineup_buttons();
@@ -2791,46 +2793,68 @@ TEST(MenuLayout, lineup_band_and_strip_relations)
     EXPECT_EQ(kLineupBandPitch, pitch);
     for (int t = 0; t < 4; ++t)
     {
-        const button& bots = buttons[kLineupFillBase + t];
-        const button& level = buttons[kLineupMapUnitsBase + t];
+        const button& fill = buttons[kLineupFillBase + t];
+        const button& box = buttons[kLineupMapUnitsBase + t];
         // Shared columns across every band.
-        EXPECT_EQ(buttons[kLineupFillBase].x, bots.x) << "band " << t;
-        EXPECT_EQ(buttons[kLineupMapUnitsBase].x, level.x) << "band " << t;
-        // One baseline per band's knob row.
-        EXPECT_EQ(bots.y, level.y) << "band " << t;
-        EXPECT_EQ(lineup_band_y(t) + kLineupKnobDy, bots.y) << "band " << t;
+        EXPECT_EQ(buttons[kLineupFillBase].x, fill.x) << "band " << t;
+        EXPECT_EQ(buttons[kLineupMapUnitsBase].x, box.x) << "band " << t;
+        EXPECT_EQ(lineup_band_y(t) + kLineupKnobDy, fill.y) << "band " << t;
         if (t > 0)
         {
-            EXPECT_EQ(pitch, bots.y - buttons[kLineupFillBase + t - 1].y)
+            EXPECT_EQ(pitch, fill.y - buttons[kLineupFillBase + t - 1].y)
                 << "unequal band pitch at band " << t;
+            EXPECT_EQ(pitch, box.y - buttons[kLineupMapUnitsBase + t - 1].y)
+                << "unequal box pitch at band " << t;
         }
-        // LV opens right after BOTS with one gutter.
-        EXPECT_EQ(bots.x + bots.sizex + 6, level.x) << "band " << t;
-        // The knob row stays inside the opaque panel.
-        EXPECT_GT(bots.y, kLineupPanelY1);
-        EXPECT_LT(bots.y + bots.sizey, kLineupPanelY2);
+        // The box opens one gutter after the FILL face and is the Base
+        // Camp deploy box verbatim: 14x10, vertically centered in the
+        // 15px knob line.
+        EXPECT_EQ(fill.x + fill.sizex + kLineupStripGap, box.x)
+            << "band " << t;
+        EXPECT_EQ(14, box.sizex) << "band " << t;
+        EXPECT_EQ(10, box.sizey) << "band " << t;
+        EXPECT_EQ(fill.y + (fill.sizey - box.sizey) / 2, box.y)
+            << "band " << t << ": the box centers in the knob line";
+        // The knob line stays inside the opaque panel.
+        EXPECT_GT(fill.y, kLineupPanelY1);
+        EXPECT_LT(fill.y + fill.sizey, kLineupPanelY2);
+        // Caption and census columns: MAP UNITS text opens after the box,
+        // the census column after the caption's 9 characters, and the
+        // 21-char census budget stays on the canvas.
+        EXPECT_GE(kLineupMapUnitsTextX, box.x + box.sizex + 2);
+        EXPECT_GE(kLineupCensusX, kLineupMapUnitsTextX + 9 * 6 + 2);
+        EXPECT_LE(kLineupCensusX + kLineupCensusChars * 6, SCREEN_W);
     }
 
-    // Action strip: one baseline, uniform 6px gutters, flush right on 312.
-    const int strip[] = {kLineupBackIndex, kLineupFightersIndex,
-                         kLineupSplitEvenIndex, kLineupSplitFairIndex,
-                         kLineupUniteIndex};
+    // Action strip: one baseline; BACK anchors on the panel's left rail;
+    // the three actions pack right with uniform 6px gutters and close
+    // flush on x=312; the BACK..SPLIT EVEN gap is the one deliberate wide
+    // gap (the cancel stands apart).
+    const int strip[] = {kLineupBackIndex, kLineupSplitEvenIndex,
+                         kLineupSplitFairIndex, kLineupUniteIndex};
     for (const int index : strip)
     {
         EXPECT_EQ(kLineupStripY, buttons[index].y) << buttons[index].id;
         EXPECT_EQ(kLineupStripH, buttons[index].sizey) << buttons[index].id;
     }
-    for (std::size_t i = 1; i < std::size(strip); ++i)
+    EXPECT_EQ(kLineupPanelX1, buttons[kLineupBackIndex].x)
+        << "BACK anchors on the panel rail";
+    for (const auto [left, right] :
+         {std::pair{kLineupSplitEvenIndex, kLineupSplitFairIndex},
+          std::pair{kLineupSplitFairIndex, kLineupUniteIndex}})
     {
-        const button& prev = buttons[strip[i - 1]];
-        const button& next = buttons[strip[i]];
-        EXPECT_EQ(prev.x + prev.sizex + kLineupStripGap, next.x)
-            << next.id << " breaks the strip gutter";
+        EXPECT_EQ(buttons[left].x + buttons[left].sizex + kLineupStripGap,
+                  buttons[right].x)
+            << buttons[right].id << " breaks the strip gutter";
     }
     EXPECT_EQ(kLineupStripRightX,
               buttons[kLineupUniteIndex].x +
                   buttons[kLineupUniteIndex].sizex)
         << "the strip closes flush on the panel rail";
+    EXPECT_GE(buttons[kLineupSplitEvenIndex].x,
+              buttons[kLineupBackIndex].x +
+                  buttons[kLineupBackIndex].sizex + kLineupStripGap)
+        << "BACK keeps clear of the right-packed actions";
 
     // Label budgets: centered labels draw with no clipping at 6px/char.
     for (int i = 0; i < count; ++i)
@@ -2975,122 +2999,6 @@ TEST(MenuLayout, lineup_nav_variants_keyboard_reachable)
 
     save.current_campaign = saved_campaign;
     og::ui::install_active_picker_lobby_client(saved_client);
-}
-
-// FIGHTERS list (§2.2): the Base Camp roster row grid verbatim — 8 rows at
-// y=45+14r, deploy box x=23 w=14, row body opening on the chip column x=61
-// — with the zone-submenu footer split (BACK 10 / PREV 220 / NEXT 270 at
-// y=169). The literals here are the independent oracle for the shared
-// constants in menu_screen_specs.cpp.
-TEST(MenuLayout, lineup_fighters_layout_matches_base_camp_grid)
-{
-    button* buttons = picker_lineup_fighters_buttons();
-    const int count = picker_lineup_fighters_button_count();
-    ASSERT_EQ(kLineupFightersButtonCount, count);
-
-    for (int r = 0; r < kLineupFightersRowsPerPage; ++r)
-    {
-        const button& dep = buttons[kLineupFightersDeployBase + r];
-        const button& body = buttons[kLineupFightersBodyBase + r];
-        EXPECT_EQ("fighter_dep_" + std::to_string(r), dep.id);
-        EXPECT_EQ("fighter_row_" + std::to_string(r), body.id);
-        EXPECT_EQ(23, dep.x) << dep.id;
-        EXPECT_EQ(14, dep.sizex) << dep.id;
-        EXPECT_EQ(45 + 14 * r, dep.y) << dep.id;
-        EXPECT_EQ(10, dep.sizey) << dep.id;
-        EXPECT_EQ(61, body.x) << body.id;
-        EXPECT_EQ(dep.y, body.y) << body.id;
-        EXPECT_EQ(10, body.sizey) << body.id;
-        EXPECT_TRUE(body.no_draw)
-            << body.id << ": the row text IS the affordance";
-        // The body ends on the panel's inner face, like the Base Camp rows'
-        // controls.
-        EXPECT_EQ(310, body.x + body.sizex) << body.id;
-        if (r > 0)
-        {
-            EXPECT_EQ(14, dep.y - buttons[kLineupFightersDeployBase + r - 1].y)
-                << "unequal row pitch at row " << r;
-        }
-    }
-
-    const button& back = buttons[kLineupFightersBackIndex];
-    EXPECT_EQ("back", back.id);
-    EXPECT_EQ(10, back.x);
-    EXPECT_EQ(169, back.y);
-    EXPECT_EQ(44, back.sizex);
-    EXPECT_EQ(20, back.sizey);
-    const button& prev = buttons[kLineupFightersPrevIndex];
-    const button& next = buttons[kLineupFightersNextIndex];
-    EXPECT_EQ(220, prev.x);
-    EXPECT_EQ(270, next.x);
-    EXPECT_EQ(prev.y, back.y);
-    EXPECT_EQ(next.y, back.y);
-    EXPECT_TRUE(prev.hidden) << "pagers start hidden (single page)";
-    EXPECT_TRUE(next.hidden);
-
-    check_no_overlaps(buttons, count, "lineup_fighters");
-    check_bounds(buttons, count, "lineup_fighters");
-}
-
-// The FIGHTERS rewire over a real paged company: 10 occupied slots make two
-// pages (8 + 2); the pagers show, the second page hides the empty rows, and
-// both windows leave the graph closed and reachable.
-TEST(MenuLayout, lineup_fighters_rewire_pages_and_reachability)
-{
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
-    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        saved_team[static_cast<std::size_t>(i)] =
-            std::move(save.team_list[static_cast<std::size_t>(i)]);
-    const unsigned char old_team_size = save.team_size;
-    for (int i = 0; i < 10; ++i)
-    {
-        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
-        member->name = "F" + std::to_string(i);
-        member->deployed = (i % 2) == 0;
-        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
-    }
-    save.team_size = 10;
-
-    og::ui::LineupFightersScreenState state;
-    og::ui::lineup_fighters_refresh_rows(state);
-    EXPECT_EQ(10, static_cast<int>(state.slots.size()));
-    EXPECT_TRUE(state.page.multi_page());
-    og::ui::install_lineup_fighters_state_for_screen(&state);
-
-    const og::ui::MenuScreenSpec& spec =
-        *og::ui::menu_screen_host(og::ui::MenuScreenId::LineupFighters).spec;
-    ASSERT_NE(nullptr, spec.nav.rewire);
-    for (const int page : {0, 1})
-    {
-        state.page.page = page;
-        button* buttons = picker_lineup_fighters_buttons();
-        const int count = picker_lineup_fighters_button_count();
-        int highlighted = kLineupFightersBackIndex;
-        spec.nav.rewire(buttons, count, highlighted);
-        const int visible_rows = page == 0 ? 8 : 2;
-        for (int r = 0; r < kLineupFightersRowsPerPage; ++r)
-        {
-            EXPECT_EQ(r >= visible_rows,
-                      buttons[kLineupFightersBodyBase + r].hidden)
-                << "page " << page << " row " << r;
-        }
-        EXPECT_FALSE(buttons[kLineupFightersPrevIndex].hidden);
-        EXPECT_FALSE(buttons[kLineupFightersNextIndex].hidden);
-        // The deploy glyph rides the button label on the visible window.
-        EXPECT_EQ("X", buttons[kLineupFightersDeployBase].label)
-            << "page " << page << ": first visible row is deployed";
-        check_nav_closed_and_reachable(
-            buttons, count, kLineupFightersBackIndex,
-            page == 0 ? "lineup_fighters_p1" : "lineup_fighters_p2");
-    }
-
-    og::ui::install_lineup_fighters_state_for_screen(nullptr);
-    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[static_cast<std::size_t>(i)] =
-            std::move(saved_team[static_cast<std::size_t>(i)]);
-    save.team_size = old_team_size;
-    (void)picker_lineup_fighters_buttons();
 }
 
 TEST(MenuLayout, main_options_nav_indices_in_range)

@@ -188,15 +188,16 @@ Sint32 change_ctf_caps();
 Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
 Sint32 view_scenario_page_flip(Sint32 step);   // PREV/NEXT inside the viewer
 Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/viewer/progress subscreen
-// LINEUP (docs/lineup-design.md §2): the four-band team overview opened from
-// SCENARIO, its two per-team bot knob cyclers, the FIGHTERS list door and
-// the three SPLIT actions. Knob writes go through og::sim::clamp_fill /
-// clamp_map_units, refresh BOTH label surfaces, and broadcast via
-// picker_lobby_sync_settings_from_save (the y=140 cycler recipe).
+// LINEUP (docs/lineup-design.md §2, amendment B1/B6): the four-band team
+// overview opened from SCENARIO — a FILL wheel and a MAP UNITS box per band
+// — and the three SPLIT actions. The FIGHTERS list retired with B6 (the
+// Base Camp roster chip is the networked home of the team cycler now). Knob
+// writes go through og::sim::clamp_fill / clamp_map_units, refresh BOTH
+// label surfaces, and broadcast via picker_lobby_sync_settings_from_save
+// (the y=140 cycler recipe).
 Sint32 create_lineup_menu(Sint32 arg1);
 Sint32 change_lineup_fill(Sint32 team);
 Sint32 change_lineup_map_units(Sint32 team);
-Sint32 open_lineup_fighters(Sint32 arg1);
 Sint32 lineup_split_action(Sint32 mode); // 0=EVEN 1=FAIR 2=ALL TO 1
 // The base-camp READY twin (§2.6). The engine label/color pass re-derives
 // its surfaces every frame, so this writes no button label itself.
@@ -417,14 +418,14 @@ enum class ButtonAction : Sint32
     // clicked row's own page id.)
     ToggleCrossControl = 106,
     // LINEUP (docs/lineup-design.md §2): values 107..119 belong to the
-    // LINEUP/FIGHTERS screens; 120..125 to the Networking session UI.
-    // The FIGHTERS list itself dispatches through MenuSpecRow (101), so
-    // only the door, the knob cyclers' two actions, and the action strip
-    // burn ids here.
+    // LINEUP screen; 120..125 to the Networking session UI. Only the door,
+    // the two band knobs, and the action strip burn ids here.
     OpenLineup = 107,          // SCENARIO door -> the LINEUP screen
     CycleLineupFill = 108,     // arg = team 0..3 (save.fill[t])
     ToggleLineupMapUnits = 109,    // arg = team 0..3 (save.map_units[t])
-    OpenLineupFighters = 110,  // LINEUP strip -> the FIGHTERS list
+    // 110 was OpenLineupFighters: the FIGHTERS screen retired with
+    // amendment B6 (the Base Camp roster chip is the networked home of the
+    // team cycler now). Retired-do-not-reuse.
     LineupSplitEven = 111,     // deal deployed fighters round-robin
     LineupSplitFair = 112,     // snake draft by power (level fallback)
     LineupUnite = 113,         // ALL TO 1 (lowest local seated team)

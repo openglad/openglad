@@ -315,7 +315,7 @@ void ensure_highlighted_button_visible(const button* buttons,
 // the rewire lives on the spec in menu_screen_specs.cpp.
 
 // Full-graph rewire for the SCENARIO subscreen (pattern b): two visibility
-// axes — SET CAMPAIGN / SET LEVEL / TROOPS gate on the host, SCORE (#218,
+// axes — SET CAMPAIGN / SET LEVEL gate on the host, SCORE (#218,
 // re-homed from MATCHUP; A5) gates on the versus campaign and stays visible
 // to joiners as a read-only label. LINEUP (docs/lineup-design.md §2) is
 // always visible, like its row-mates; the parked spare (ordinal 7, the
@@ -339,9 +339,9 @@ void picker_wire_scenario_menu_nav(button* buttons,
         {.up = kScenarioMenuSetCampaignIndex,
          .down = kScenarioMenuViewScenarioIndex};
 
-    // y=140 knob row: SCORE (120, versus-gated) alone since TROOPS retired
-    // (amendment B5). What DOWN from the y=100 row lands on is SCORE when it
-    // is visible, else BACK.
+    // y=140 knob row: SCORE alone at (30,140) since TROOPS retired
+    // (amendment B5), versus-gated. What DOWN from the y=100 row lands on
+    // is SCORE when it is visible, else BACK.
     const int score_or = match ? kScenarioMenuCtfCapsIndex : -1;
     const int under_left = score_or >= 0 ? score_or : kScenarioMenuBackIndex;
     const int under_right = under_left;
@@ -363,8 +363,10 @@ void picker_wire_scenario_menu_nav(button* buttons,
          .down = under_right,
          .left = kScenarioMenuProgressIndex};
 
+    // SCORE sits in the x=30 column now: it climbs into VIEW LEVEL above
+    // it and drops onto BACK below it.
     buttons[kScenarioMenuCtfCapsIndex].nav =
-        {.up = kScenarioMenuProgressIndex,
+        {.up = kScenarioMenuViewScenarioIndex,
          .down = kScenarioMenuBackIndex};
     buttons[kScenarioMenuTroopsIndex].nav = {};
     buttons[kScenarioMenuSpareIndex].nav = {};
@@ -391,7 +393,7 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     sync_button_hidden_state(buttons, kScenarioMenuSetCampaignIndex);
     sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
     // SCORE (#218, re-homed from MATCHUP; A5): versus campaigns only, and —
-    // unlike TROOPS — visible to JOINERS as a read-only label (the host's
+    // unlike the host-gated pair — visible to JOINERS as a read-only label (the host's
     // turns land in the lobby-synced save and the same re-derive shows
     // them; change_ctf_caps popups for a non-host).
     const bool match_settings_visible = og::ui::is_versus_campaign(save);
@@ -408,9 +410,14 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
                 ->label = buttons[index].label;
         }
     }
-    // The retired TEAMS cell stays parked (A3) whatever the frame says.
+    // The retired TEAMS (A3) and TROOPS (B5) cells stay parked whatever
+    // the frame says — the engine's gate pass re-derives visibility per
+    // frame, so a park must be re-asserted here, not only in the static
+    // table.
     buttons[kScenarioMenuSpareIndex].hidden = true;
     sync_button_hidden_state(buttons, kScenarioMenuSpareIndex);
+    buttons[kScenarioMenuTroopsIndex].hidden = true;
+    sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
     // LINEUP (the ordinal the MATCHUP door vacated) is never gated: a
     // joiner opens the page read-only (docs/lineup-design.md §2.3).
     picker_wire_scenario_menu_nav(buttons, num_buttons,
@@ -569,7 +576,7 @@ Sint32 view_scenario_page_flip(Sint32 step)
 // the heavy world rebuild lives in MatchStage behind its 250 ms debounce
 // (roster edits and knob turns move the owner's change key, restage, and
 // bump the generation), so the frame tick's job is only the cheap
-// deserialize + apply + line rebuild. A host cycling TEAMS / TROOPS /
+// deserialize + apply + line rebuild. A host cycling SCORE /
 // SET LEVEL while a joiner sits in the viewer changes this key and the
 // frame tick rebuilds the report (the pre-#218 screen never refreshed).
 struct ViewScenarioKey
@@ -819,7 +826,7 @@ static void view_scenario_rebuild(ViewScenarioEngineState& state,
 }
 
 // Per-frame refresh guard: rebuild the cached report when the change key
-// moved (host SET LEVEL / TEAMS / TROOPS under a parked joiner — the
+// moved (host SET LEVEL / SCORE under a parked joiner — the
 // blocking-subscreen level-reload discipline; a stage-generation move —
 // the owner's debounced restage or a joiner mirror refresh — re-heals the
 // render copy first). Never exits the loop.

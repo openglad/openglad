@@ -2071,10 +2071,11 @@ bool wait_for_interactable_label_containing(const std::string& id,
 // row of named presets, so the still that documents it has to show the
 // VALUES on the faces — and the later captures have to show them actually
 // moving, since a page of labels that never change would look exactly the
-// same from a screenshot. TEAMS used to lead the page; lineup amendment
-// A1/A3 retired it onto the LINEUP band as BOTS: OFF, so TARGET SCORE
-// leads now and the clock (#241) is the third row, not the fourth. It gets
-// its own shot: MAP is the map's own limit, 5M is a host overriding it.
+// same from a screenshot. TEAMS used to lead the page (retired by lineup
+// amendment A1/A3) and TROOPS followed it out (B5: the map's own cast is
+// the LINEUP band's per-team MAP UNITS box now), so the page is TARGET
+// SCORE over the clock (#241) — two rows. The clock gets its own shot:
+// MAP is the map's own limit, 5M is a host overriding it.
 struct MatchSetupShotState
 {
     bool camp_seen = false;
@@ -2118,15 +2119,16 @@ int match_setup_injector(void* data)
     capture_zone_frame("uxr_match_setup_cycled");
     SDL_Delay(400);
 
-    // Row 2 is the clock. A fresh match wears MAP — the limit the level's
-    // own manifest authored — and one click hands the host the shortest
-    // override the cycle offers.
+    // Row 1 is the clock (B5 removed the TROOPS row between them). A
+    // fresh match wears MAP — the limit the level's own manifest authored
+    // — and one click hands the host the shortest override the cycle
+    // offers.
     state->time_row_read_map = wait_for_interactable_label_containing(
-        "zone_row_2", "TIME LIMIT: MAP", 10000);
+        "zone_row_1", "TIME LIMIT: MAP", 10000);
     SDL_Delay(400);
-    interact("zone_row_2");
+    interact("zone_row_1");
     state->time_row_stepped_to_five = wait_for_interactable_label_containing(
-        "zone_row_2", "TIME LIMIT: 5M", 10000);
+        "zone_row_1", "TIME LIMIT: 5M", 10000);
     SDL_Delay(400);
     capture_zone_frame("uxr_match_setup_time");
     SDL_Delay(400);
