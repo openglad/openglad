@@ -1580,17 +1580,27 @@ public:
                 break;
             if (key.is_release())
                 continue; // act on presses/repeats only; ignore key-up + focus
-            // LINEUP §6: DISCONNECT is a two-press key — the first press
+            // LINEUP §6: DISCONNECT is a two-PRESS key — the first press
             // puts the question on the status band, the second answers it.
             // Any other key in between is the answer "no", so the pending
             // flag dies on every key that is not another 'd'.
-            const bool disconnect_armed = pending_disconnect_;
-            pending_disconnect_ = false;
+            //
+            // Auto-repeat is not a press (the Menu::show_text held-key
+            // rule): a terminal that reports repeats would otherwise let a
+            // held 'd' arm the question and instantly answer it, tearing
+            // the lobby down on a single keystroke. Repeats take no part in
+            // this latch at all — they neither arm, confirm, nor disarm.
+            const bool press = key.is_press();
+            const bool disconnect_armed = pending_disconnect_ && press;
+            if (press)
+                pending_disconnect_ = false;
             if (key.code == KeyCode::Escape || key.is_char(U'q')) {
                 cancel();
                 return false;
             }
             if (key.is_char(U'd') || key.is_char(U'D')) {
+                if (!press)
+                    continue;
                 if (disconnect_armed) {
                     // Host: the server teardown drops every peer through the
                     // transport. Joiner: this is leaving. Same call.

@@ -3018,3 +3018,48 @@ TEST(CursesNetwork, lobby_disconnect_key_confirms_before_leaving)
         << "disconnect leaves the lobby without negotiating a start";
     EXPECT_TRUE(lobby->cancelled());
 }
+
+// ...and only PRESSES count. A terminal that reports auto-repeat (the Kitty
+// protocol does) would otherwise let a held 'd' arm the question and answer
+// it in the same breath, tearing the lobby down on one keystroke — the
+// held-key rule Menu::show_text already follows for its dismissals.
+TEST(CursesNetwork, lobby_disconnect_confirm_ignores_key_repeats)
+{
+    SaveData host_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    lobby->poll(term, clock);
+
+    term.push_char(U'd');
+    lobby->poll(term, clock);
+    ASSERT_TRUE(status_contains(*lobby, "Stop hosting? press d again"));
+
+    term.push_key(Key::character(U'd', KeyEvent::Repeat));
+    lobby->poll(term, clock);
+    EXPECT_FALSE(lobby->cancelled())
+        << "a held 'd' must not answer its own question";
+    EXPECT_TRUE(status_contains(*lobby, "Stop hosting? press d again"))
+        << "and it must not disarm the question either";
+
+    // A repeat of some OTHER key is not the answer "no" either — only a
+    // press is. (It repaints the status band, so the surviving arm is read
+    // back below rather than off the band.)
+    term.push_key(Key::special(KeyCode::Right, KeyEvent::Repeat));
+    lobby->poll(term, clock);
+    EXPECT_FALSE(lobby->cancelled());
+
+    // The genuine second press still answers — which is only possible if the
+    // arm survived both repeats.
+    term.push_char(U'd');
+    lobby->poll(term, clock);
+    EXPECT_TRUE(lobby->cancelled());
+}
