@@ -1223,7 +1223,7 @@ private:
     {
         for (;;) {
             const std::vector<og::sim::LobbyPlayer> seats =
-                terminal_local_lineup_seats(save_data_);
+                synthesize_local_lobby_players(save_data_);
             const std::vector<std::string> presets = lineup_preset_names();
             const TerminalLineupModel model =
                 build_terminal_lineup_model(lineup_inputs(seats, presets));

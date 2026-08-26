@@ -103,26 +103,6 @@ std::string_view terminal_gate_message(const PickerMenuItem& item,
 
 // --- LINEUP (docs/lineup-design.md §8) ----------------------------------
 
-std::vector<og::sim::LobbyPlayer> terminal_local_lineup_seats(
-    const SaveData& save)
-{
-    // M3: locally a seat is DERIVED from the deployed characters' teams, so
-    // the terminal bands must not invent a seat the launch would not create
-    // — derive_local_seat_teams is the one derivation gameplay itself uses.
-    const std::vector<short> teams = derive_local_seat_teams(save);
-    std::vector<og::sim::LobbyPlayer> seats;
-    seats.reserve(teams.size());
-    for (std::size_t i = 0; i < teams.size(); ++i) {
-        og::sim::LobbyPlayer seat;
-        seat.player_index = static_cast<std::uint8_t>(i);
-        seat.team = static_cast<std::int16_t>(teams[i]);
-        seat.company = save.save_name;
-        seat.is_host = i == 0;
-        seats.push_back(std::move(seat));
-    }
-    return seats;
-}
-
 TerminalLineupModel build_terminal_lineup_model(
     const TerminalLineupInputs& inputs)
 {
@@ -211,7 +191,13 @@ TerminalLineupModel build_terminal_lineup_model(
 int terminal_apply_lineup_split(SaveData& save, LineupSplit mode,
                                 std::vector<std::string>& report)
 {
-    const std::vector<short> seat_teams = derive_local_seat_teams(save);
+    // M3: ONE seat derivation. This is the picture the SDL screens and the
+    // launch read (synthesize_local_lobby_players wraps the same helper) —
+    // my_team first, the other deployed teams after, padded and truncated to
+    // numplayers. The unpadded derive_local_seat_teams that used to be here
+    // gave the terminals a different lineup from the one they were about to
+    // play.
+    const std::vector<short> seat_teams = derive_local_gameplay_seat_teams(save);
     if (seat_teams.empty()) {
         report.push_back("No seats: deploy a character first.");
         return 0;

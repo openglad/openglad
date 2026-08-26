@@ -93,7 +93,8 @@ struct TerminalLineupModel {
 };
 
 // What the page needs to know. `players` is the lobby seat census (every
-// machine); a local terminal client passes terminal_local_lineup_seats().
+// machine); a local terminal client passes synthesize_local_lobby_players(),
+// which is the SAME picture the SDL screens read (M3: one derivation).
 // `is_host` hides the eight knob rows for a joiner (§2.3) — the bands still
 // show what the host chose.
 struct TerminalLineupInputs {
@@ -118,12 +119,6 @@ TerminalLineupModel build_terminal_lineup_model(
 inline constexpr std::string_view kTerminalLineupMapRulesMark = "  (MAP RULES)";
 inline constexpr std::string_view kTerminalLineupMapRulesRefusal =
     "MAP RULES: this campaign's levels decide the bots.";
-
-// The seats a NON-networked terminal client shows on the bands: the same
-// derivation gameplay uses (derive_local_seat_teams), one LobbyPlayer per
-// seat, labelled with this company's abbreviation.
-std::vector<og::sim::LobbyPlayer> terminal_local_lineup_seats(
-    const SaveData& save);
 
 // The §5 SPLIT tail both terminal clients run: this machine's seated teams,
 // planned under the campaign's own can_team rule (lineup_zone_can_team) and

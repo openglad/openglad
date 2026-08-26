@@ -1108,7 +1108,7 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         std::vector<std::string> presets;
         (void)og::script::hooks::campaign_lineup_presets(presets);
         const std::vector<og::sim::LobbyPlayer> seats =
-            og::ui::terminal_local_lineup_seats(save);
+            og::ui::synthesize_local_lobby_players(save);
 
         og::ui::TerminalLineupInputs inputs;
         inputs.save = &save;

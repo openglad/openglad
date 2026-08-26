@@ -2314,9 +2314,12 @@ TEST(CursesPickerClient, lineup_fighter_list_cycles_a_team_and_benches)
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
-// SPLIT FAIR over the seated teams {0, 1}: no power metric, so level
-// descending — F1(4) F2(3) F3(2) F4(1) — snake-drafted 0,1,1,0.
-TEST(CursesPickerClient, lineup_split_fair_snake_drafts_the_company)
+// M3 + §5: a curses client is a ONE-SEAT machine (numplayers stays 1), and
+// the seat picture is the launch's own — so there is exactly one seated team
+// and split_company's documented single-seat rule makes every mode ALL TO 1.
+// The terminals used to derive a second seat from a second deployed COLOUR,
+// which dealt the company across a seat the launch would never create.
+TEST(CursesPickerClient, lineup_split_fair_on_one_seat_is_all_to_one)
 {
     PickerFixture f;
     seed_lineup_roster(f.save());
@@ -2326,17 +2329,17 @@ TEST(CursesPickerClient, lineup_split_fair_snake_drafts_the_company)
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
-    EXPECT_EQ(0, f.save().team_list[0]->teamnum);
-    EXPECT_EQ(1, f.save().team_list[1]->teamnum);
-    EXPECT_EQ(1, f.save().team_list[2]->teamnum);
-    EXPECT_EQ(0, f.save().team_list[3]->teamnum);
+    for (int slot = 0; slot < 4; ++slot) {
+        EXPECT_EQ(0, f.save()
+                         .team_list[static_cast<std::size_t>(slot)]
+                         ->teamnum)
+            << "slot " << slot;
+    }
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
-// SPLIT EVEN deals the company round-robin in SLOT order over the same two
-// seated teams — a different answer from FAIR on the same roster, which is
-// the whole reason both rows exist.
-TEST(CursesPickerClient, lineup_split_even_deals_round_robin)
+// ...and so does SPLIT EVEN, from the same one seat.
+TEST(CursesPickerClient, lineup_split_even_on_one_seat_is_all_to_one)
 {
     PickerFixture f;
     seed_lineup_roster(f.save());
@@ -2346,10 +2349,12 @@ TEST(CursesPickerClient, lineup_split_even_deals_round_robin)
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
-    EXPECT_EQ(0, f.save().team_list[0]->teamnum);
-    EXPECT_EQ(1, f.save().team_list[1]->teamnum);
-    EXPECT_EQ(0, f.save().team_list[2]->teamnum);
-    EXPECT_EQ(1, f.save().team_list[3]->teamnum);
+    for (int slot = 0; slot < 4; ++slot) {
+        EXPECT_EQ(0, f.save()
+                         .team_list[static_cast<std::size_t>(slot)]
+                         ->teamnum)
+            << "slot " << slot;
+    }
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
@@ -2375,12 +2380,13 @@ TEST(CursesPickerClient, lineup_unite_gathers_the_company_on_one_team)
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
-// A company with nobody deployed seats nobody (M3), so a SPLIT has no teams
-// to deal into and says so instead of silently doing nothing.
+// A SPECTATOR machine (no declared players) seats nobody, so a SPLIT has no
+// team to deal into and says so instead of silently doing nothing.
 TEST(CursesPickerClient, lineup_split_without_a_seat_refuses_in_words)
 {
     PickerFixture f;
     seed_lineup_roster(f.save());
+    f.save().numplayers = 0;
     for (auto& member : f.save().team_list)
         if (member != nullptr)
             member->deployed = false;

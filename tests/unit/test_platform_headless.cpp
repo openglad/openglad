@@ -2353,10 +2353,11 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
     EXPECT_NE(std::string::npos, out.find("Invalid selection."))
         << "the page refuses an out-of-range row and reprints:\n" << out;
 
-    // SPLIT FAIR over the seated teams {0, 1}: no power metric, so level
-    // descending — F1(4) F2(3) F3(2) F4(1) — snake-drafted 0,1,1,0. F1 was
-    // already on 0, so exactly three fighters move.
-    EXPECT_NE(std::string::npos, out.find("Moved 3 fighters.")) << out;
+    // M3 + §5: a text client is a ONE-SEAT machine (a company file always
+    // loads with numplayers 1), and its seat picture is the launch's own —
+    // so there is one seated team and split_company's single-seat rule makes
+    // SPLIT FAIR an ALL TO 1. Only F4, parked on GREEN, moves.
+    EXPECT_NE(std::string::npos, out.find("Moved 1 fighter.")) << out;
 
     SaveData reloaded;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("lineupd"));
@@ -2367,10 +2368,10 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
     EXPECT_EQ(0, reloaded.bot_squad[1]) << "only the cycled team moved";
     ASSERT_TRUE(reloaded.team_list[0] && reloaded.team_list[1] &&
                 reloaded.team_list[2] && reloaded.team_list[3]);
-    EXPECT_EQ(0, reloaded.team_list[0]->teamnum);
-    EXPECT_EQ(1, reloaded.team_list[1]->teamnum);
-    EXPECT_EQ(1, reloaded.team_list[2]->teamnum);
-    EXPECT_EQ(0, reloaded.team_list[3]->teamnum);
+    for (int slot = 0; slot < 4; ++slot) {
+        EXPECT_EQ(0, reloaded.team_list[static_cast<std::size_t>(slot)]->teamnum)
+            << "slot " << slot;
+    }
 
     (void)remove_user_file("save/lineupd.gtl");
     og::data::set_active_company_slot("save0");
@@ -2457,7 +2458,7 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     save.team_size = 1;
 
     const std::vector<og::sim::LobbyPlayer> seats =
-        og::ui::terminal_local_lineup_seats(save);
+        og::ui::synthesize_local_lobby_players(save);
     const std::vector<std::string> presets = {"BRUTES"};
 
     og::ui::TerminalLineupInputs inputs;
@@ -2528,6 +2529,60 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
         << versus.lines[1];
     (void)unmount_campaign_package_with_error("modes");
     (void)mount_campaign_package_with_error("gladiator");
+}
+
+// M3: a seat picture has ONE derivation. The SDL screens and the launch both
+// read derive_local_gameplay_seat_teams (through synthesize_local_lobby_
+// players): my_team first, then the deployed teams, PADDED and truncated to
+// numplayers. The terminal bands and their SPLIT used the unpadded
+// derive_local_seat_teams instead, so on this two-player company — every
+// character on team 0, which is what a fresh save looks like — the terminals
+// saw ONE seat where the SDL sees two, painted NO SEAT on TEAM 2, and turned
+// every SPLIT into ALL TO 1 while the SDL dealt the company across the pair.
+TEST(PlatformHeadless, terminal_seat_picture_matches_the_sdl_derivation)
+{
+    SaveData save;
+    save.reset();
+    save.save_name = "ONE SEAT";
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    for (int i = 0; i < 4; ++i) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::string("F") + static_cast<char>('1' + i);
+        member->deployed = true;
+        member->teamnum = 0;  // the fresh-save shape: everyone on one colour
+        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
+    }
+    save.team_size = 4;
+
+    // The picture the SDL screens read.
+    const std::vector<og::sim::LobbyPlayer> seats =
+        og::ui::synthesize_local_lobby_players(save);
+    ASSERT_EQ(2u, seats.size()) << "numplayers=2 means two seats";
+    EXPECT_EQ(0, seats[0].team);
+    EXPECT_EQ(1, seats[1].team) << "the second seat is padded onto a free team";
+
+    og::ui::TerminalLineupInputs inputs;
+    inputs.save = &save;
+    inputs.players = seats;
+    const og::ui::TerminalLineupModel model =
+        og::ui::build_terminal_lineup_model(inputs);
+    ASSERT_EQ(8u, model.lines.size());
+    EXPECT_EQ("TEAM 1 RED  POWER --   P1 ONE", model.lines[0]);
+    EXPECT_EQ("TEAM 2 GREEN  POWER --   P2 ONE", model.lines[2])
+        << "the padded seat must not read NO SEAT";
+
+    // ...and the SPLIT plans over the same pair, not over one team. These are
+    // the exact moves LineupUi.split_even_and_unite_direct pins on the SDL
+    // screen for the same roster: one derivation, one answer.
+    std::vector<std::string> report;
+    EXPECT_EQ(2, og::ui::terminal_apply_lineup_split(
+                     save, og::ui::LineupSplit::Even, report));
+    EXPECT_EQ(0, save.team_list[0]->teamnum);
+    EXPECT_EQ(1, save.team_list[1]->teamnum);
+    EXPECT_EQ(0, save.team_list[2]->teamnum);
+    EXPECT_EQ(1, save.team_list[3]->teamnum);
 }
 
 // §5 + §2.2: a SPLIT is a bulk team assignment, so it obeys the campaign's
