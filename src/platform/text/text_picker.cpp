@@ -915,7 +915,8 @@ private:
             campaign_camp_flow();
             break;
         case PickerMenuCommand::Lineup:
-            // LINEUP §8: teams, seats, fighters and bots on one page.
+            // LINEUP §8: teams, seats and the two band controls on one
+            // page (B1/B6: one FILL wheel, one MAP UNITS box, no FIGHTERS).
             lineup_screen();
             break;
         default:
@@ -1135,68 +1136,6 @@ private:
             autosave_company_after_mutation();  // §3.8 roster tail
     }
 
-    // The fighter list (§2.2): every slot of THIS machine's company with its
-    // team, deploy state and price, edited with the roster command grammar
-    // the Matchup screen already speaks ("move S N" becomes "team S N" here,
-    // beside the bench toggle the SDL row carries as a second column).
-    void lineup_fighter_list()
-    {
-        for (;;) {
-            std::printf("\n--- Fighters ---\n");
-            for (const std::string& line :
-                 terminal_lineup_fighter_lines(save_data_))
-                std::printf("%s\n", line.c_str());
-            std::printf("'team SLOT TEAM' | 'bench SLOT' | blank exits: ");
-            std::fflush(stdout);
-
-            std::string line;
-            if (!read_line(line) || line.empty())
-                return;
-
-            int slot = 0;
-            int value = 0;
-            if (std::sscanf(line.c_str(), "team %d %d", &slot, &value) == 2) {
-                if (slot < 1 || slot > MAX_TEAM_SIZE || value < 1 ||
-                    value > 4) {
-                    std::printf("Invalid slot or team.\n");
-                    continue;
-                }
-                if (!lineup_fighter_team_editable(
-                        save_data_, slot - 1,
-                        lineup_zone_can_team(save_data_),
-                        /*assign_mode=*/false)) {
-                    std::printf("That fighter cannot be moved here.\n");
-                    continue;
-                }
-                if (!set_guy_team(save_data_, slot - 1,
-                                  static_cast<short>(value - 1))) {
-                    std::printf("Invalid slot or team.\n");
-                    continue;
-                }
-                std::printf("Moved slot %d to %s.\n", slot,
-                            og::sim::team_color_name(value - 1));
-                autosave_company_after_mutation();  // §3.8 team cycle
-                continue;
-            }
-            char extra = '\0';
-            if (std::sscanf(line.c_str(), "bench %d %c", &slot, &extra) == 1) {
-                if (slot < 1 || slot > MAX_TEAM_SIZE ||
-                    !save_data_.team_list[static_cast<std::size_t>(slot - 1)]) {
-                    std::printf("Invalid slot.\n");
-                    continue;
-                }
-                guy& member =
-                    *save_data_.team_list[static_cast<std::size_t>(slot - 1)];
-                member.deployed = !member.deployed;
-                std::printf("%s %s.\n", member.name.c_str(),
-                            member.deployed ? "deployed" : "benched");
-                autosave_company_after_mutation();  // §3.8 deploy tail
-                continue;
-            }
-            std::printf("Unrecognized command.\n");
-        }
-    }
-
     // The LINEUP page: the four bands as context lines over a numbered item
     // list, driven by the numeric-prompt loop the campaign camp page uses.
     void lineup_screen()
@@ -1265,9 +1204,6 @@ private:
                             .c_str());
                 }
                 autosave_company_after_mutation();  // §3.8 settings tail
-                break;
-            case TerminalLineupItem::Kind::Fighters:
-                lineup_fighter_list();
                 break;
             case TerminalLineupItem::Kind::SplitEven:
                 lineup_apply_split(LineupSplit::Even);

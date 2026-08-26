@@ -539,29 +539,11 @@ TEST(CursesPickerClient, level_edit_notice_renders)
 // The flat match-rule rows (match teams, target score) left Team Build for
 // the camp's MATCH SETUP page (docs/camp-controls-design.md): one place, in
 // plain words, on every client. Nothing in the curses surface carries them
-// any more — see team_build_lists_the_difficulty_door_last below for the
-// list, and MenuSpec.terminal_gate_messages_guard_the_ctf_trio_verbatim for
-// the shared versus guard that still names them. The curses guard-rendering
-// branch itself stays covered by the READY row's networked-only guard.
-
-// Matched troops (design D28): the sentinel value 3 renders the shared
-// formatter's "TROOPS: FAIR" label in the terminal list too. The troops row
-// is the one match rule that stayed a menu item — it lives in SCENARIO,
-// because stripping authored troops is meaningful on classic campaigns.
-TEST(CursesPickerClient, ctf_menu_labels_render_matched_sentinel)
-{
-    PickerFixture f;
-    f.save().ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    const auto* troops_item = og::ui::find_picker_menu_item(
-        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
-    ASSERT_NE(troops_item, nullptr);
-
-    // Drive present_menu so the dynamic label renders in the list.
-    f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::Scenario);
-    const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("TROOPS: FAIR"), std::string::npos) << dump;
-}
+// any more — see team_build_lists_the_appended_doors_last below for the
+// list. The third of that trio, TROOPS, retired outright with amendment B5,
+// so the shared versus guard no longer names it either. The curses
+// guard-rendering branch stays covered by the READY row's networked-only
+// guard.
 
 // The Team Build list renders the two appended doors — DIFFICULTY and then
 // LINEUP (docs/lineup-design.md §8) — with their fixed labels, past the digit
@@ -2233,25 +2215,25 @@ const og::ui::PickerMenuItem& lineup_item()
 } // namespace
 
 // The page is the shared model rendered as a Menu with dynamic rows: four
-// bands as NON-selectable context above thirteen host rows. Selecting the
-// first row cycles TEAM 1's bot squad, and the redraw proves the write
-// landed — the label is re-read from the save, never remembered.
-TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
+// bands as NON-selectable context above twelve host rows (B6 took the
+// FIGHTERS row out). Selecting the first row steps TEAM 1's FILL wheel and
+// the second flips its MAP UNITS box, and the redraw proves both writes
+// landed — the labels are re-read from the save, never remembered.
+TEST(CursesPickerClient, lineup_page_lists_the_bands_and_works_both_knobs)
 {
     PickerFixture f;
     seed_lineup_roster(f.save());
     // §2.3: the eight knobs are read by VERSUS campaigns' modes only, so the
-    // cycle needs one to be live.
+    // writes need one to be live.
     f.save().current_campaign = "modes";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
 
-    // One turn of the wheel lands on NONE: TEAM 1 holds this machine's seat,
-    // so amendment A2 refuses the OFF between AUTO and NONE and the step
-    // goes over it (a refusal in place would strand the wheel short of the
-    // presets forever). The refusal is a show_text, so it wants a key.
-    pick(f.t(), 0);
-    f.t().push_special(KeyCode::Enter);  //   dismiss the OFF refusal
+    // B8: nothing on either control is refused any more, so one press is one
+    // step and no toast interrupts it. FAIR is the default, and the DISPLAY
+    // order (NONE, WEAK, FAIR, STRONG, BRUTAL) puts STRONG one step past it.
+    pick(f.t(), 0);                      // row 1: TEAM 1 FILL
+    pick(f.t(), 1);                      // row 2: TEAM 1 MAP UNITS
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
@@ -2262,11 +2244,17 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
     EXPECT_NE(dump.find("3 FIGHTERS"), std::string::npos) << dump;
     EXPECT_NE(dump.find("NO SEAT"), std::string::npos)
         << "the two empty teams still get a band:\n" << dump;
-    EXPECT_NE(dump.find("TEAM 1  BOTS: NONE"), std::string::npos)
-        << "the redraw re-reads the knob out of the save:\n" << dump;
-    EXPECT_EQ(og::sim::kBotSquadNone, f.save().fill[0])
-        << "AUTO -> (OFF refused) -> NONE landed in the save";
-    EXPECT_EQ(0, f.save().fill[1]) << "only the cycled team moved";
+    EXPECT_NE(dump.find("TEAM 1  FILL: STRONG"), std::string::npos)
+        << "the redraw re-reads the wheel out of the save:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 1  MAP UNITS: OFF"), std::string::npos)
+        << "and the box with it:\n" << dump;
+    EXPECT_EQ(og::sim::kFillStrong, f.save().fill[0])
+        << "FAIR -> STRONG landed in the save";
+    EXPECT_EQ(og::sim::kMapUnitsOff, f.save().map_units[0])
+        << "ON -> OFF landed in the save";
+    EXPECT_EQ(og::sim::kFillFair, f.save().fill[1])
+        << "only the cycled team moved";
+    EXPECT_EQ(og::sim::kMapUnitsOn, f.save().map_units[1]);
     EXPECT_TRUE(f.t().input_exhausted());
     (void)unmount_campaign_package_with_error("modes");
     (void)mount_campaign_package_with_error("gladiator");
@@ -2286,7 +2274,7 @@ TEST(CursesPickerClient, lineup_knob_refuses_on_a_classic_campaign)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 
-    pick(f.t(), 0);                      // row 1: TEAM 1 bots
+    pick(f.t(), 0);                      // row 1: TEAM 1 FILL
     f.t().push_special(KeyCode::Enter);  //   dismiss the refusal
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
@@ -2296,27 +2284,6 @@ TEST(CursesPickerClient, lineup_knob_refuses_on_a_classic_campaign)
         << "a classic campaign's knob write must not land";
     EXPECT_NE(dump.find("MAP RULES"), std::string::npos)
         << "the refusal and the census both say who decides:\n" << dump;
-    EXPECT_TRUE(f.t().input_exhausted());
-}
-
-// The fighter list: Enter cycles the row's team, 'b' toggles its deploy.
-TEST(CursesPickerClient, lineup_fighter_list_cycles_a_team_and_benches)
-{
-    PickerFixture f;
-    seed_lineup_roster(f.save());
-
-    pick(f.t(), 8);                      // row 9: Fighters
-    pick(f.t(), 0);                      //   row 1: Enter cycles F1 0 -> 1
-    f.t().push_char(U'b');               //   row 1: 'b' benches F1
-    f.t().push_special(KeyCode::Escape); //   back to the page
-    f.t().push_special(KeyCode::Escape); // back out of the page
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
-
-    ASSERT_TRUE(f.save().team_list[0] != nullptr);
-    EXPECT_EQ(1, f.save().team_list[0]->teamnum)
-        << "Enter on a fighter row cycles its fighting team";
-    EXPECT_FALSE(f.save().team_list[0]->deployed)
-        << "'b' toggles the row's deploy flag";
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
@@ -2330,7 +2297,7 @@ TEST(CursesPickerClient, lineup_split_fair_on_one_seat_is_all_to_one)
     PickerFixture f;
     seed_lineup_roster(f.save());
 
-    step_to(f.t(), 10);                  // row 11: Split fair
+    step_to(f.t(), 9);                   // row 10: Split fair
     dismiss(f.t());                      //   the "Moved n fighters." report
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
@@ -2350,7 +2317,7 @@ TEST(CursesPickerClient, lineup_split_even_on_one_seat_is_all_to_one)
     PickerFixture f;
     seed_lineup_roster(f.save());
 
-    step_to(f.t(), 9);                   // row 10: Split even
+    step_to(f.t(), 8);                   // row 9: Split even
     dismiss(f.t());                      //   the "Moved n fighters." report
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
@@ -2370,7 +2337,7 @@ TEST(CursesPickerClient, lineup_unite_gathers_the_company_on_one_team)
     PickerFixture f;
     seed_lineup_roster(f.save());
 
-    step_to(f.t(), 11);                  // row 12: Unite
+    step_to(f.t(), 10);                  // row 11: Unite
     dismiss(f.t());                      //   the "Moved n fighters." report
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
@@ -2397,7 +2364,7 @@ TEST(CursesPickerClient, lineup_split_without_a_seat_refuses_in_words)
         if (member != nullptr)
             member->deployed = false;
 
-    step_to(f.t(), 10);                  // row 11: Split fair
+    step_to(f.t(), 9);                   // row 10: Split fair
     dismiss(f.t());                      //   the refusal screen
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
@@ -2704,76 +2671,6 @@ TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
     og::ui::run_picker(f.client);
     // The team survived the round trip.
     EXPECT_GE(team_count(f.save()), 1);
-}
-
-// --- CTF scenario-troops toggle -------------------------------------------
-
-// The troops control lives in the SCENARIO submenu now and is NOT
-// versus-gated: "strip everything authored" applies to classic campaigns
-// too, and all three states cycle the same way on either campaign kind
-// (ALL -> OWN -> FAIR -> ALL, matched-teams D28).
-TEST(CursesPickerClient, ctf_troops_toggle_runs_on_every_campaign)
-{
-    PickerFixture f;
-    const auto* troops_item = og::ui::find_picker_menu_item(
-        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
-    ASSERT_NE(troops_item, nullptr);
-
-    // Classic campaign: no refusal notice, ALL -> OWN -> FAIR -> ALL.
-    f.save().current_campaign = "gladiator";
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_EQ(f.t().dump().find("versus maps only"), std::string::npos);
-    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ((int)og::sim::kTroopsMatched,
-              (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("TROOPS: FAIR"), std::string::npos);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
-
-    // Versus campaign: the same three states.
-    f.save().current_campaign = "modes";
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ((int)og::sim::kTroopsMatched,
-              (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("TROOPS: FAIR"), std::string::npos);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
-
-    // A save carrying the retired middle state cycles back to ALL.
-    f.save().ctf_strip_scenario_troops = 1;
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
-}
-
-// The scenario menu label surfaces the live troops setting.
-TEST(CursesPickerClient, ctf_troops_label_formats_from_save)
-{
-    PickerFixture f;
-    f.save().ctf_strip_scenario_troops = 0;
-    f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::Scenario);
-    EXPECT_NE(f.t().dump().find("TROOPS: ALL"), std::string::npos);
-
-    f.save().ctf_strip_scenario_troops = 2;
-    f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::Scenario);
-    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
 }
 
 // --- Matchup screen --------------------------------------------------------

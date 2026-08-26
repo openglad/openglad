@@ -113,7 +113,12 @@ TerminalLineupModel build_terminal_lineup_model(
 
     model.bands = build_lineup_bands(
         *inputs.save, inputs.players, inputs.local_player_indices,
-        inputs.networked, lineup_power_for_guy);
+        inputs.networked, lineup_power_for_guy, {}, inputs.map_unit_counts);
+    // B4: the hint speaks only for a census that actually happened. An empty
+    // span leaves every count at 0, which build_lineup_bands cannot tell from
+    // a map that ships no units — so the terminal says nothing rather than
+    // telling all four teams the map is empty.
+    const bool censused = !inputs.map_unit_counts.empty();
     const std::array<LineupTeamBand, 4>& bands = model.bands;
     // §2.3: the knobs are stored on every campaign but only a VERSUS
     // campaign's modes read them. The SDL screen says so by dimming the two
@@ -148,8 +153,15 @@ TerminalLineupModel build_terminal_lineup_model(
             (!versus && band.diag == LineupTeamBand::Diag::None)
             ? std::string("MAP RULES")
             : format_lineup_census(band);
-        model.lines.push_back(
-            std::format("  [{}] [{}]  {}", fill, map_units, census));
+        // B4's hint rides BESIDE the census, never instead of it: the SDL
+        // band dims the box and keeps the fighter count, and the shared
+        // formatter is deliberately not folded into format_lineup_census.
+        const std::string map_units_hint =
+            censused ? std::string(format_lineup_map_units_census(band))
+                     : std::string();
+        model.lines.push_back(std::format(
+            "  [{}] [{}]  {}{}{}", fill, map_units, census,
+            map_units_hint.empty() ? "" : "  ", map_units_hint));
     }
 
     // §2.3: the knobs are the HOST's. A joiner gets the bands and the
@@ -176,8 +188,10 @@ TerminalLineupModel build_terminal_lineup_model(
                 std::format("TEAM {}  {}{}", team + 1, map_units, mark)});
         }
     }
-    model.items.push_back(TerminalLineupItem{
-        TerminalLineupItem::Kind::Fighters, 0, "Fighters"});
+    // B6: FIGHTERS is deleted, not moved down — MATCHUP's "move SLOT TEAM"
+    // and the DEPLOY row already do both halves of it on every terminal
+    // client, so a second page for the same two writes was the rule twin the
+    // amendment closed. The strip is BACK | SPLIT EVEN | SPLIT FAIR | UNITE.
     // §5 operates over the teams that have a seat ON THIS MACHINE, and both
     // terminal clients are single-seat by construction (a company file loads
     // with numplayers 1), so both SPLIT rows resolve to UNITE there. The rows
@@ -241,32 +255,6 @@ int terminal_apply_lineup_split(SaveData& save, LineupSplit mode,
                                      plan.locked == 1 ? " is" : "s are"));
     }
     return moved;
-}
-
-std::string format_terminal_lineup_fighter_row(int slot_index,
-                                               const guy& member)
-{
-    return std::format("{:2}. {} ({}) LV {}  {}  {}  {}", slot_index + 1,
-                       member.name, family_display_name(member.family),
-                       static_cast<int>(member.level),
-                       og::sim::team_color_name(member.teamnum),
-                       member.deployed ? "DEPLOYED" : "BENCHED",
-                       format_lineup_power(lineup_power_for_guy(member)));
-}
-
-std::vector<std::string> terminal_lineup_fighter_lines(const SaveData& save)
-{
-    std::vector<std::string> lines;
-    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
-        const auto& member = save.team_list[static_cast<std::size_t>(slot)];
-        if (member == nullptr)
-            continue;
-        lines.push_back("  " +
-                        format_terminal_lineup_fighter_row(slot, *member));
-    }
-    if (lines.empty())
-        lines.emplace_back("  (no characters)");
-    return lines;
 }
 
 } // namespace og::ui

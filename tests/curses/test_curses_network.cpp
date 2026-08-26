@@ -2289,7 +2289,13 @@ TEST(CursesNetwork, lobby_team_key_cycles_the_selected_owned_seat)
     EXPECT_TRUE(status_contains(*lobby, "Selected P1"));
 }
 
-TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_versus_domain)
+// Amendment B8: no value the LINEUP band can hold deactivates a team, so
+// nothing on it narrows the seat domain either — the 't' key walks the
+// campaign's whole authored domain and wraps there. This test used to press
+// BOTS: OFF onto two teams and pin the two-team wrap that produced; the OFF
+// value is gone and the seat domain is the authored mask again, so the same
+// keystrokes now have to walk all four.
+TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
 {
     SaveData save;
     init_team_save(save, 0, FAMILY_SOLDIER, "CTF Keyboard");
@@ -2297,11 +2303,12 @@ TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_versus_domain)
     // the campaign's matchup: versus yaml key — the shipped modes campaign
     // is the versus campaign.
     save.current_campaign = "modes";
-    // Teams 2 and 3 are switched OFF on the band (amendment A2 — the
-    // retired TEAMS count's job): they are not fielded, so they are not
-    // seats either.
-    save.fill[2] = og::sim::kBotSquadOff;
-    save.fill[3] = og::sim::kBotSquadOff;
+    // The strongest thing the band can say about teams 3 and 4: no squad at
+    // all, and none of the map's own units either. Neither is a seat rule.
+    save.fill[2] = og::sim::kFillNone;
+    save.fill[3] = og::sim::kFillNone;
+    save.map_units[2] = og::sim::kMapUnitsOff;
+    save.map_units[3] = og::sim::kMapUnitsOff;
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
@@ -2329,8 +2336,14 @@ TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_versus_domain)
     EXPECT_EQ(1, local_team());
     term.push_char(U't');
     lobby->poll(term, clock);
-    EXPECT_EQ(0, local_team())
-        << "a versus lobby must skip the teams the host switched off";
+    EXPECT_EQ(2, local_team())
+        << "FILL: NONE is not a seat rule: team 3 is still sittable";
+    term.push_char(U't');
+    lobby->poll(term, clock);
+    EXPECT_EQ(3, local_team());
+    term.push_char(U't');
+    lobby->poll(term, clock);
+    EXPECT_EQ(0, local_team()) << "and the walk wraps at the end of it";
 }
 
 // The lobby "Level:" line reads scenario titles off the LOCAL mount, so when
