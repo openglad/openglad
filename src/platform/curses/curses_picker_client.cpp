@@ -1076,9 +1076,9 @@ void lineup_fighter_list(Menu& menu, SaveData& save)
             autosave_company_after_mutation(save);  // §3.8 deploy tail
             continue;
         }
-        if (!og::ui::lineup_fighter_team_editable(save, slot,
-                                                  /*zone_can_team=*/true,
-                                                  /*assign_mode=*/false)) {
+        if (!og::ui::lineup_fighter_team_editable(
+                save, slot, og::ui::lineup_zone_can_team(save),
+                /*assign_mode=*/false)) {
             menu.show_text("Fighters", {"That fighter cannot be moved here."});
             continue;
         }
@@ -1087,28 +1087,14 @@ void lineup_fighter_list(Menu& menu, SaveData& save)
     }
 }
 
-// §5 SPLIT: plan over this machine's seated teams, apply, report.
+// §5 SPLIT: one implementation for both terminal clients
+// (terminal_apply_lineup_split) — the campaign's own can_team rule
+// included, so this key cannot do what the fighter list refuses.
 void lineup_apply_split(Menu& menu, SaveData& save, og::ui::LineupSplit mode)
 {
-    const std::vector<short> seat_teams = og::ui::derive_local_seat_teams(save);
-    if (seat_teams.empty()) {
-        menu.show_text("Lineup", {"No seats: deploy a character first."});
-        return;
-    }
-    const og::ui::LineupSplitPlan plan = og::ui::split_company(
-        save, seat_teams, mode, og::ui::lineup_power_for_guy,
-        [&save](int slot) {
-            return og::ui::lineup_fighter_team_editable(
-                save, slot, /*zone_can_team=*/true, /*assign_mode=*/false);
-        });
-    const int moved = og::ui::apply_split(save, plan.moves);
-    std::vector<std::string> report{
-        std::format("Moved {} fighter{}.", moved, moved == 1 ? "" : "s")};
-    if (plan.locked > 0) {
-        report.push_back(std::format("{} fighter{} locked and stayed put.",
-                                     plan.locked,
-                                     plan.locked == 1 ? " is" : "s are"));
-    }
+    std::vector<std::string> report;
+    const int moved =
+        og::ui::terminal_apply_lineup_split(save, mode, report);
     if (moved > 0)
         autosave_company_after_mutation(save);  // §3.8 roster tail
     menu.show_text("Lineup", report);

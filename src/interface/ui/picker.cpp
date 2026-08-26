@@ -3574,10 +3574,15 @@ Sint32 lineup_split_action(Sint32 mode)
    og::ui::LineupPowerFn power;
    if (og::script::hooks::campaign_lineup_registered())
        power = &og::ui::lineup_power_for_guy;
-   const auto editable = [&save](int slot) {
+   // The campaign's own roster capabilities gate a SPLIT exactly as they
+   // gate the FIGHTERS rows and the Base Camp chip — same fetch as
+   // open_lineup_fighters. Passing a null zone here handed the three SPLIT
+   // buttons a way around a composition that had taken the team chip away.
+   og::ui::CampaignZoneSession zone(save);
+   zone.fetch();
+   const auto editable = [&save, &zone](int slot) {
        return og::ui::lineup_fighter_team_editable(
-           save, slot, static_cast<og::ui::CampaignZoneSession*>(nullptr),
-           /*assign_mode=*/false);
+           save, slot, &zone, /*assign_mode=*/false);
    };
    const og::ui::LineupSplitPlan plan =
        og::ui::split_company(save, seat_teams, split, power, editable);
@@ -3600,7 +3605,15 @@ Sint32 lineup_split_action(Sint32 mode)
        }
    }
    std::sort(distinct.begin(), distinct.end());
-   if (!distinct.empty() &&
+   if (moved == 0 && plan.locked > 0)
+   {
+       // Nothing marched anywhere — say THAT, not where they would have
+       // gone. A composition with can_team cleared locks every slot, so
+       // this is the whole answer on such a campaign.
+       og::ui::lineup_show_toast(
+           std::format("{} LOCKED SLOTS KEPT", plan.locked));
+   }
+   else if (!distinct.empty() &&
        (split == og::ui::LineupSplit::AllToFirst || distinct.size() == 1))
    {
        // ALL TO 1 (a single seated team makes every mode this action):

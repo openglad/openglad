@@ -2435,6 +2435,86 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     EXPECT_EQ("TEAM 2  BOTS: #6", named.items[2].label);
 }
 
+// §5 + §2.2: a SPLIT is a bulk team assignment, so it obeys the campaign's
+// own can_team rule — the same rule that gates one fighter row at a time.
+// The terminal clients used to hardcode zone_can_team=true, which made the
+// three SPLIT rows a way around a composition that had taken the team chip
+// away. Both terminals now run this one helper.
+TEST(PlatformHeadless, terminal_split_obeys_the_campaign_can_team_rule)
+{
+    const auto seed = [](SaveData& save) {
+        save.reset();
+        save.my_team = 0;
+        save.numplayers = 2;
+        save.allied_mode = 0;
+        for (int i = 0; i < 4; ++i) {
+            auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+            member->name = "S" + std::to_string(i);
+            member->deployed = true;
+            // Seats derive from the deployed teams: {0, 1}.
+            member->teamnum = static_cast<short>(i < 2 ? 0 : 1);
+            save.team_list[static_cast<std::size_t>(i)] = std::move(member);
+        }
+        save.team_size = 4;
+    };
+
+    // A composition that ALLOWS team changes: the split lands.
+    {
+        ScopedSyntheticCampaignPicker zone(R"LUA(
+og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster", can_team = true } } }
+  end,
+})
+)LUA");
+        SaveData save;
+        seed(save);
+        std::vector<std::string> report;
+        const int moved = og::ui::terminal_apply_lineup_split(
+            save, og::ui::LineupSplit::AllToFirst, report);
+        EXPECT_EQ(2, moved) << "the two team-1 fighters march to team 0";
+        EXPECT_EQ("Moved 2 fighters.", report.front());
+        for (int i = 0; i < 4; ++i) {
+            EXPECT_EQ(0, save.team_list[static_cast<std::size_t>(i)]->teamnum)
+                << "slot " << i;
+        }
+    }
+
+    // The same company under a composition that CLEARS can_team: every slot
+    // is locked, nothing moves, and the refusal is in words.
+    {
+        ScopedSyntheticCampaignPicker zone(R"LUA(
+og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster", can_team = false } } }
+  end,
+})
+)LUA");
+        SaveData save;
+        seed(save);
+        const std::array<short, 4> before = {
+            save.team_list[0]->teamnum, save.team_list[1]->teamnum,
+            save.team_list[2]->teamnum, save.team_list[3]->teamnum};
+
+        for (const og::ui::LineupSplit mode :
+             {og::ui::LineupSplit::Even, og::ui::LineupSplit::Fair,
+              og::ui::LineupSplit::AllToFirst}) {
+            std::vector<std::string> report;
+            const int moved =
+                og::ui::terminal_apply_lineup_split(save, mode, report);
+            EXPECT_EQ(0, moved) << "no bulk write past a cleared can_team";
+            ASSERT_EQ(2u, report.size());
+            EXPECT_EQ("Moved 0 fighters.", report[0]);
+            EXPECT_EQ("4 fighters are locked and stayed put.", report[1]);
+            for (int i = 0; i < 4; ++i) {
+                EXPECT_EQ(before[static_cast<std::size_t>(i)],
+                          save.team_list[static_cast<std::size_t>(i)]->teamnum)
+                    << "slot " << i;
+            }
+        }
+    }
+}
+
 // With no og.register_campaign_hooks anywhere the camp door refuses with the
 // shared guard line — pinned verbatim here, exactly once. The DEFAULT
 // composition is a full-capability roster, and both terminals already carry

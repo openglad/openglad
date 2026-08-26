@@ -8,9 +8,11 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -31,6 +33,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1338,6 +1341,111 @@ TEST(LineupUi, split_even_and_unite_direct)
 
     // Hand back a one-seat lobby and the default mount (the shared-sweep
     // restore discipline).
+    picker_lobby_set_player_mode(1);
+    restore_gladiator_mount();
+}
+
+namespace {
+
+// Save/restore the pack-script registry around a synthetic base_camp zone
+// (the test_campaign_zone_ui guard). The chunk name deliberately does NOT
+// start with `packs/` — that prefix declares bytes to the pack-Lua coverage
+// inventory, and this chunk exists nowhere in the repository.
+class SyntheticZoneScriptGuard
+{
+public:
+    explicit SyntheticZoneScriptGuard(const char* source)
+        : previous_game_(current_game), saved_(og::script::pack_scripts())
+    {
+        current_game = nullptr;  // dispatch resolves the shared UI VM
+        og::script::register_pack_script(
+            {"test.lineupzone", "lineupzonetest/scripts/c.lua", source});
+    }
+
+    ~SyntheticZoneScriptGuard()
+    {
+        og::script::clear_pack_scripts();
+        for (const og::script::PackScript& script : saved_)
+            og::script::register_pack_script(script);
+        current_game = previous_game_;
+    }
+
+private:
+    GameplayContext* previous_game_;
+    std::vector<og::script::PackScript> saved_;
+};
+
+} // namespace
+
+// §5 + §2.2: the three SPLIT actions are bulk team assignments, so they obey
+// the campaign's own can_team rule — the rule that already gates one FIGHTERS
+// row at a time and the Base Camp chip. lineup_split_action used to plan
+// against a NULL zone, which made the strip a way around a composition that
+// had taken the team chip away.
+TEST(LineupUi, split_actions_obey_the_campaign_can_team_rule)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    for (auto& slot : save.team_list)
+        slot.reset();
+    const std::vector<FighterSeed> roster = {
+        {"A", 3, true, 0}, {"B", 3, true, 0},
+        {"C", 3, true, 1}, {"D", 3, true, 1},
+    };
+    for (std::size_t i = 0; i < roster.size(); ++i)
+    {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = roster[i].name;
+        member->upgrade_to_level(roster[i].level, true);
+        member->deployed = roster[i].deployed;
+        member->teamnum = roster[i].team;
+        save.team_list[i] = std::move(member);
+    }
+    save.team_size = 4;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    picker_lobby_set_player_mode(2);
+
+    // Settle the campaign LAST: the lobby's seat declaration rewrites the
+    // save's campaign cursor, and a mount mismatch would remount mid-test —
+    // a remount clears the pack-script registry the synthetic zone lives in.
+    save.current_campaign = "gladiator";
+    restore_gladiator_mount();
+    SyntheticZoneScriptGuard zone(R"LUA(
+og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster", can_team = false } } }
+  end,
+})
+)LUA");
+
+    ASSERT_FALSE(og::ui::lineup_zone_can_team(save))
+        << "the synthetic composition must be the live one";
+    const std::array<short, 4> before = {
+        save.team_list[0]->teamnum, save.team_list[1]->teamnum,
+        save.team_list[2]->teamnum, save.team_list[3]->teamnum};
+
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        trace_clear();
+        EXPECT_EQ(MENU_OK, lineup_split_action(mode));
+        const std::string expected =
+            std::format("split mode={} moved=0 locked=4", mode);
+        EXPECT_TRUE(trace_contains("lineup", expected.c_str()))
+            << "mode " << mode << ": every slot is locked, nothing moves";
+        EXPECT_TRUE(trace_contains("lineup", "toast 4 LOCKED SLOTS KEPT"))
+            << "mode " << mode << ": the refusal is on the toast, and it "
+                                  "does not claim a march that never happened";
+        for (int i = 0; i < 4; ++i)
+        {
+            EXPECT_EQ(before[static_cast<std::size_t>(i)],
+                      save.team_list[static_cast<std::size_t>(i)]->teamnum)
+                << "mode " << mode << " slot " << i;
+        }
+    }
+
     picker_lobby_set_player_mode(1);
     restore_gladiator_mount();
 }

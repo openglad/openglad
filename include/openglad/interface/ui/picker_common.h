@@ -1479,6 +1479,14 @@ bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
 bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
                                   const CampaignZoneSession* zone,
                                   bool assign_mode);
+// The campaign's team-assignment capability RIGHT NOW: one fetch of the
+// registered base_camp zone composition, read back as roster().can_team. No
+// campaign hook (and every classic campaign) answers true. This is the one
+// place a surface with no zone session of its own — the terminal clients —
+// asks the question the SDL screens ask through their fetched session, so a
+// campaign that takes the team chip away cannot be worked around by
+// switching client.
+bool lineup_zone_can_team(SaveData& save);
 
 // One fighter's price, or nothing when the campaign registers no metric.
 using LineupPowerFn = std::function<std::optional<long long>(const guy&)>;

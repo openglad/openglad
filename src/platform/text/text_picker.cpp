@@ -1141,30 +1141,16 @@ private:
         return inputs;
     }
 
-    // The §5 SPLIT tail, shared by the three action rows: plan over this
-    // machine's seated teams, apply through set_guy_team, then report what
-    // moved and what the editable predicate refused to move.
+    // The §5 SPLIT tail: one implementation for both terminal clients
+    // (terminal_apply_lineup_split), so a campaign that clears can_team
+    // refuses here in exactly the words curses uses.
     void lineup_apply_split(LineupSplit mode)
     {
-        const std::vector<short> seat_teams =
-            derive_local_seat_teams(save_data_);
-        if (seat_teams.empty()) {
-            std::printf("No seats: deploy a character first.\n");
-            return;
-        }
-        const LineupSplitPlan plan = split_company(
-            save_data_, seat_teams, mode, lineup_power_for_guy,
-            [this](int slot) {
-                return lineup_fighter_team_editable(
-                    save_data_, slot, /*zone_can_team=*/true,
-                    /*assign_mode=*/false);
-            });
-        const int moved = apply_split(save_data_, plan.moves);
-        std::printf("Moved %d fighter%s.\n", moved, moved == 1 ? "" : "s");
-        if (plan.locked > 0) {
-            std::printf("%d fighter%s locked and stayed put.\n", plan.locked,
-                        plan.locked == 1 ? " is" : "s are");
-        }
+        std::vector<std::string> report;
+        const int moved =
+            terminal_apply_lineup_split(save_data_, mode, report);
+        for (const std::string& line : report)
+            std::printf("%s\n", line.c_str());
         if (moved > 0)
             autosave_company_after_mutation();  // §3.8 roster tail
     }
@@ -1195,9 +1181,10 @@ private:
                     std::printf("Invalid slot or team.\n");
                     continue;
                 }
-                if (!lineup_fighter_team_editable(save_data_, slot - 1,
-                                                  /*zone_can_team=*/true,
-                                                  /*assign_mode=*/false)) {
+                if (!lineup_fighter_team_editable(
+                        save_data_, slot - 1,
+                        lineup_zone_can_team(save_data_),
+                        /*assign_mode=*/false)) {
                     std::printf("That fighter cannot be moved here.\n");
                     continue;
                 }

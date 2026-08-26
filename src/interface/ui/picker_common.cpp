@@ -3727,6 +3727,13 @@ bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
                                         assign_mode);
 }
 
+bool lineup_zone_can_team(SaveData& save)
+{
+    CampaignZoneSession zone(save);
+    zone.fetch();
+    return zone.roster().can_team;
+}
+
 DerivedStats compute_derived_stats(const guy& g)
 {
     const CombatBases bases = guy_combat_bases(g);

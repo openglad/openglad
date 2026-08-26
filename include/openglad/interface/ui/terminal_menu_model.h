@@ -30,6 +30,9 @@ class guy;
 
 namespace og::ui {
 
+// Defined in picker_common.h (§5); only the tag is needed here.
+enum class LineupSplit;
+
 struct TerminalMenuEntry {
     const PickerMenuItem* item = nullptr;
     std::string label;
@@ -112,6 +115,17 @@ TerminalLineupModel build_terminal_lineup_model(
 // seat, labelled with this company's abbreviation.
 std::vector<og::sim::LobbyPlayer> terminal_local_lineup_seats(
     const SaveData& save);
+
+// The §5 SPLIT tail both terminal clients run: this machine's seated teams,
+// planned under the campaign's own can_team rule (lineup_zone_can_team) and
+// the per-slot editable predicate, then applied through set_guy_team.
+// `report` receives the lines the caller shows — "No seats: deploy a
+// character first.", "Moved N fighters.", "N fighters locked and stayed
+// put." — so text prints them and curses show_texts them from one wording.
+// Returns how many slots actually moved; 0 means there is nothing to
+// autosave.
+int terminal_apply_lineup_split(SaveData& save, LineupSplit mode,
+                                std::vector<std::string>& report);
 
 // One fighter-list row: "  1. Arthur (Soldier) LV 3  RED  DEPLOYED
 // POWER 120". BENCHED replaces DEPLOYED; an unpriced fighter reads

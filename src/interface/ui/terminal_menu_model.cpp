@@ -192,6 +192,35 @@ TerminalLineupModel build_terminal_lineup_model(
     return model;
 }
 
+int terminal_apply_lineup_split(SaveData& save, LineupSplit mode,
+                                std::vector<std::string>& report)
+{
+    const std::vector<short> seat_teams = derive_local_seat_teams(save);
+    if (seat_teams.empty()) {
+        report.push_back("No seats: deploy a character first.");
+        return 0;
+    }
+    // §2.2/§5: the campaign's own roster capability gates a SPLIT exactly as
+    // it gates a single row's team cycle. Hardcoding can_team=true here let
+    // one keystroke do what the fighter list refuses one row at a time.
+    const bool can_team = lineup_zone_can_team(save);
+    const LineupSplitPlan plan = split_company(
+        save, seat_teams, mode, lineup_power_for_guy,
+        [&save, can_team](int slot) {
+            return lineup_fighter_team_editable(save, slot, can_team,
+                                                /*assign_mode=*/false);
+        });
+    const int moved = apply_split(save, plan.moves);
+    report.push_back(
+        std::format("Moved {} fighter{}.", moved, moved == 1 ? "" : "s"));
+    if (plan.locked > 0) {
+        report.push_back(std::format("{} fighter{} locked and stayed put.",
+                                     plan.locked,
+                                     plan.locked == 1 ? " is" : "s are"));
+    }
+    return moved;
+}
+
 std::string format_terminal_lineup_fighter_row(int slot_index,
                                                const guy& member)
 {
