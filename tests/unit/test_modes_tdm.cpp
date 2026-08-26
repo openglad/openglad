@@ -317,7 +317,7 @@ TEST_F(ModesTdm, init_strips_score_range_only_and_keeps_wildlife)
     // Team 2 leaves through BOTS: OFF (lineup A1/A2, the retired TEAMS
     // count's successor); the hero sits on an on team, where nothing is
     // ever stripped.
-    fx.world().ctf_requested_bot_squad[2] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[2] = og::sim::kBotSquadOff;
     fx.tick(1);
 
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
@@ -1359,7 +1359,7 @@ void author_fresh_squad(ModesCtfWorld& fx, int team, int y)
 // floor, the measured bot base (§4.2: armor 0, mp 50 at bot base — the
 // statistics default the loader leaves in place), the predicted_power
 // tuple/default/half-armor arms, every solver arm with its tie-break, and
-// both bot_level_for arms. All pinned values are DERIVED — the probe
+// both map_units_for arms. All pinned values are DERIVED — the probe
 // computes them from the shipped tuples over the shipped loader base
 // (soldier 120/50/0/20/4/6), and the comments show the arithmetic.
 TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
@@ -1456,7 +1456,7 @@ TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
     EXPECT_EQ(0, tab_int(n1, 2));
     EXPECT_EQ(0, tab_int(n1, 3));
 
-    // bot_level_for: plan code 43 at team 2 -> first 3 members L5, rest
+    // map_units_for: plan code 43 at team 2 -> first 3 members L5, rest
     // L4; team 0 unsolved -> the legacy formula (percent 100 -> L2).
     const auto blf = matched_log(fx.world(), "blf");
     ASSERT_EQ(5u, blf.size());
@@ -1534,10 +1534,10 @@ TEST_F(ModesTdm, lineup_fair_target_preset_squad_and_knobbed_spawns)
         fx.spawn_anchor(3, 96 + 96 * i, 288);
     }
     constexpr short kFair = og::sim::kBotSquadPresetBase + 4;
-    fx.world().ctf_requested_bot_squad[0] = kFair;  // FAIR, no humans anywhere
-    fx.world().ctf_requested_bot_squad[2] = kFair;  // FAIR + offset...
-    fx.world().ctf_requested_bot_level[2] = 4;      // ...= AUTO squad, L2+4
-    fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadNone;  // team 3
+    fx.world().ctf_requested_fill[0] = kFair;  // FAIR, no humans anywhere
+    fx.world().ctf_requested_fill[2] = kFair;  // FAIR + offset...
+    fx.world().ctf_requested_map_units[2] = 4;      // ...= AUTO squad, L2+4
+    fx.world().ctf_requested_fill[3] = og::sim::kBotSquadNone;  // team 3
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);

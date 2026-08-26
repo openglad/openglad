@@ -270,7 +270,6 @@ TEST(CampaignStateProviders, match_get_reads_the_matchup_knobs)
     const CampaignProviders providers = make_campaign_providers(save);
     EXPECT_EQ(10, providers.match_get("score_limit"));
     EXPECT_EQ(120, providers.match_get("respawn_ticks"));
-    EXPECT_EQ(2, providers.match_get("strip_troops"));
     EXPECT_EQ(1, providers.match_get("respawn_mode"));
     EXPECT_EQ(200, providers.match_get("generator_rate"));
     EXPECT_EQ(7200, providers.match_get("time_limit"));
@@ -328,12 +327,6 @@ TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
 
     // The enum knobs REFUSE out-of-range values (where the sanitizer
     // reverts to its fallback, a provider write answers false unwritten).
-    EXPECT_TRUE(providers.match_set("strip_troops", 3));
-    EXPECT_EQ(3, save.ctf_strip_scenario_troops);
-    EXPECT_FALSE(providers.match_set("strip_troops", 4));
-    EXPECT_EQ(3, save.ctf_strip_scenario_troops) << "a refusal never writes";
-    EXPECT_FALSE(providers.match_set("strip_troops", -1));
-
     EXPECT_TRUE(providers.match_set("respawn_mode", 2));
     EXPECT_EQ(2, save.respawn_mode);
     EXPECT_FALSE(providers.match_set("respawn_mode", 4));
@@ -349,54 +342,51 @@ TEST(CampaignStateProviders, match_get_and_set_cover_the_per_team_bot_knobs)
 {
     SaveData save;
     (void)og::data::consume_match_settings_dirty();
-    save.bot_squad = {0, 2, 1, 9};
-    save.bot_level = {0, 5, -4, 1};
+    save.fill = {0, 2, 1, 4};
+    save.map_units = {0, 1, 1, 0};
 
     const CampaignProviders providers = make_campaign_providers(save);
     // Each name reads its OWN team's slot: a transposed slot map would still
     // pass a test that only checked one index.
-    EXPECT_EQ(0, providers.match_get("bot_squad_1"));
-    EXPECT_EQ(2, providers.match_get("bot_squad_2"));
-    EXPECT_EQ(1, providers.match_get("bot_squad_3"));
-    EXPECT_EQ(9, providers.match_get("bot_squad_4"));
-    EXPECT_EQ(0, providers.match_get("bot_level_1"));
-    EXPECT_EQ(5, providers.match_get("bot_level_2"));
-    EXPECT_EQ(-4, providers.match_get("bot_level_3"));
-    EXPECT_EQ(1, providers.match_get("bot_level_4"));
+    EXPECT_EQ(0, providers.match_get("fill_1"));
+    EXPECT_EQ(2, providers.match_get("fill_2"));
+    EXPECT_EQ(1, providers.match_get("fill_3"));
+    EXPECT_EQ(4, providers.match_get("fill_4"));
+    EXPECT_EQ(0, providers.match_get("map_units_1"));
+    EXPECT_EQ(1, providers.match_get("map_units_2"));
+    EXPECT_EQ(1, providers.match_get("map_units_3"));
+    EXPECT_EQ(0, providers.match_get("map_units_4"));
 
     // Team 0 and team 5 are outside the 1..4 vocabulary.
-    EXPECT_EQ(0, providers.match_get("bot_squad_0"));
-    EXPECT_EQ(0, providers.match_get("bot_squad_5"));
-    EXPECT_FALSE(providers.match_set("bot_squad_0", 3));
-    EXPECT_FALSE(providers.match_set("bot_level_5", 3));
-    EXPECT_FALSE(providers.match_set("bot_squad_", 3));
+    EXPECT_EQ(0, providers.match_get("fill_0"));
+    EXPECT_EQ(0, providers.match_get("fill_5"));
+    EXPECT_FALSE(providers.match_set("fill_0", 3));
+    EXPECT_FALSE(providers.match_set("map_units_5", 3));
+    EXPECT_FALSE(providers.match_set("fill_", 3));
 
-    // Both knobs CLAMP (0 = AUTO is legal, so neither refuses), with the same
-    // bounds the lobby sanitizer applies.
-    EXPECT_TRUE(providers.match_set("bot_squad_1", -3));
-    EXPECT_EQ(0, save.bot_squad[0]);
-    EXPECT_TRUE(providers.match_set("bot_squad_1", 999));
-    EXPECT_EQ(og::sim::kMaxBotSquad, save.bot_squad[0]);
-    EXPECT_TRUE(providers.match_set("bot_squad_1", 4));
-    EXPECT_EQ(4, save.bot_squad[0]);
+    // Both knobs CLAMP (0 is a legal value on both — FAIR, and MAP UNITS
+    // ON — so neither refuses), with the same bounds the lobby sanitizer
+    // applies.
+    EXPECT_TRUE(providers.match_set("fill_1", -3));
+    EXPECT_EQ(0, save.fill[0]);
+    EXPECT_TRUE(providers.match_set("fill_1", 999));
+    EXPECT_EQ(og::sim::kMaxFill, save.fill[0]);
+    EXPECT_TRUE(providers.match_set("fill_1", og::sim::kFillWeak));
+    EXPECT_EQ(og::sim::kFillWeak, save.fill[0]);
 
-    // The level is an OFFSET (A6), so a negative is a legal request and
-    // the clamp has a floor as well as a ceiling.
-    EXPECT_TRUE(providers.match_set("bot_level_4", -1));
-    EXPECT_EQ(-1, save.bot_level[3]);
-    EXPECT_TRUE(providers.match_set("bot_level_4", -400));
-    EXPECT_EQ(og::sim::kMinBotLevel, save.bot_level[3]);
-    EXPECT_TRUE(providers.match_set("bot_level_4", 400));
-    EXPECT_EQ(og::sim::kMaxBotLevel, save.bot_level[3]);
-    EXPECT_TRUE(providers.match_set("bot_level_4", 4));
-    EXPECT_EQ(4, save.bot_level[3]);
+    EXPECT_TRUE(providers.match_set("map_units_4", -1));
+    EXPECT_EQ(0, save.map_units[3]);
+    EXPECT_TRUE(providers.match_set("map_units_4", 400));
+    EXPECT_EQ(og::sim::kMaxMapUnits, save.map_units[3]);
+    EXPECT_TRUE(providers.match_set("map_units_4", og::sim::kMapUnitsOff));
+    EXPECT_EQ(og::sim::kMapUnitsOff, save.map_units[3]);
 
     // A write to team 3 must not disturb its neighbours.
-    EXPECT_TRUE(providers.match_set("bot_squad_3", 7));
-    EXPECT_EQ(4, save.bot_squad[0]);
-    EXPECT_EQ(2, save.bot_squad[1]);
-    EXPECT_EQ(7, save.bot_squad[2]);
-    EXPECT_EQ(9, save.bot_squad[3]);
+    EXPECT_TRUE(providers.match_set("fill_3", og::sim::kFillBrutal));
+    EXPECT_EQ(og::sim::kFillWeak, save.fill[0]);
+    EXPECT_EQ(2, save.fill[1]);
+    EXPECT_EQ(og::sim::kFillBrutal, save.fill[2]);
+    EXPECT_EQ(4, save.fill[3]);
     (void)og::data::consume_match_settings_dirty();
 }
 
@@ -416,31 +406,45 @@ TEST(CampaignStateProviders, bot_knob_names_are_in_the_campaign_vocabulary)
     };
     for (int team = 1; team <= 4; ++team)
     {
-        EXPECT_TRUE(listed(("bot_squad_" + std::to_string(team)).c_str()))
-            << "bot_squad_" << team;
-        EXPECT_TRUE(listed(("bot_level_" + std::to_string(team)).c_str()))
-            << "bot_level_" << team;
+        EXPECT_TRUE(listed(("fill_" + std::to_string(team)).c_str()))
+            << "fill_" << team;
+        EXPECT_TRUE(listed(("map_units_" + std::to_string(team)).c_str()))
+            << "map_units_" << team;
     }
+    // The two retired knobs are OUT of the vocabulary (A3 team_count, B5
+    // strip_troops): a campaign that wrote either would be writing a value
+    // nothing reads, so the binding raises unknown-name instead.
+    EXPECT_FALSE(listed("team_count"));
+    EXPECT_FALSE(listed("strip_troops"));
+
+    // ... and the provider refuses the write, unwritten, the way it refuses
+    // any name outside the list.
+    SaveData save;
+    save.ctf_strip_scenario_troops = 0;
+    const CampaignProviders providers = make_campaign_providers(save);
+    EXPECT_FALSE(providers.match_set("strip_troops", 2));
+    EXPECT_EQ(0, save.ctf_strip_scenario_troops);
+    (void)og::data::consume_match_settings_dirty();
 }
 
 TEST(CampaignStateProviders, bot_knob_writes_are_refused_for_non_hosts)
 {
     SaveData save;
-    save.bot_squad = {0, 0, 0, 0};
+    save.fill = {0, 0, 0, 0};
     (void)og::data::consume_match_settings_dirty();
 
     bool host = false;
     const CampaignProviders providers =
         make_campaign_providers(save, [&host] { return host; });
-    EXPECT_FALSE(providers.match_set("bot_squad_2", 3));
-    EXPECT_EQ(0, save.bot_squad[1]) << "the refusal never writes";
+    EXPECT_FALSE(providers.match_set("fill_2", 3));
+    EXPECT_EQ(0, save.fill[1]) << "the refusal never writes";
     EXPECT_FALSE(og::data::consume_match_settings_dirty());
-    EXPECT_EQ(0, providers.match_get("bot_squad_2"))
+    EXPECT_EQ(0, providers.match_get("fill_2"))
         << "reads stay open to every machine";
 
     host = true;
-    EXPECT_TRUE(providers.match_set("bot_squad_2", 3));
-    EXPECT_EQ(3, save.bot_squad[1]);
+    EXPECT_TRUE(providers.match_set("fill_2", 3));
+    EXPECT_EQ(3, save.fill[1]);
     (void)og::data::consume_match_settings_dirty();
 }
 

@@ -182,18 +182,20 @@ Sint32 change_allied();
 // change_ctf_teams retired with the TEAMS cycler (docs/lineup-design.md
 // A1/A3): deactivating an authored team is LINEUP's BOTS: OFF now.
 Sint32 change_ctf_caps();
-Sint32 change_ctf_troops();
+// change_ctf_troops retired with the TROOPS cycler (amendment B5): whether
+// the map's own authored cast fights is the LINEUP band's per-team MAP UNITS
+// box now.
 Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
 Sint32 view_scenario_page_flip(Sint32 step);   // PREV/NEXT inside the viewer
 Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/viewer/progress subscreen
 // LINEUP (docs/lineup-design.md §2): the four-band team overview opened from
 // SCENARIO, its two per-team bot knob cyclers, the FIGHTERS list door and
-// the three SPLIT actions. Knob writes go through og::sim::clamp_bot_squad /
-// clamp_bot_level, refresh BOTH label surfaces, and broadcast via
+// the three SPLIT actions. Knob writes go through og::sim::clamp_fill /
+// clamp_map_units, refresh BOTH label surfaces, and broadcast via
 // picker_lobby_sync_settings_from_save (the y=140 cycler recipe).
 Sint32 create_lineup_menu(Sint32 arg1);
-Sint32 change_lineup_bots(Sint32 team);
-Sint32 change_lineup_level(Sint32 team);
+Sint32 change_lineup_fill(Sint32 team);
+Sint32 change_lineup_map_units(Sint32 team);
 Sint32 open_lineup_fighters(Sint32 arg1);
 Sint32 lineup_split_action(Sint32 mode); // 0=EVEN 1=FAIR 2=ALL TO 1
 // The base-camp READY twin (§2.6). The engine label/color pass re-derives
@@ -318,7 +320,9 @@ enum class ButtonAction : Sint32
     // seat block; its knobs are SCENARIO's TEAMS/LIMIT rows and DIFFICULTY's
     // cross-control row). Value retired, do not reuse.
     ViewScenario = 63,
-    CycleCtfScenarioTroops = 64,
+    // 64 was CycleCtfScenarioTroops — the SCENARIO TROOPS cycler. Retired by
+    // amendment B5 (the LINEUP band's per-team MAP UNITS box asks its
+    // question now; the field is inert). Value retired, do not reuse.
     // 65/66/67 were JoinTeam / TeamsCycleGuy / TeamsCycleGuyTeam: the MATCHUP
     // screen's per-seat JOIN column and local-guy cyclers. They were already
     // permanently hidden before #218 deleted the screen — seat->team
@@ -418,8 +422,8 @@ enum class ButtonAction : Sint32
     // only the door, the knob cyclers' two actions, and the action strip
     // burn ids here.
     OpenLineup = 107,          // SCENARIO door -> the LINEUP screen
-    CycleLineupBots = 108,     // arg = team 0..3 (save.bot_squad[t])
-    CycleLineupLevel = 109,    // arg = team 0..3 (save.bot_level[t])
+    CycleLineupFill = 108,     // arg = team 0..3 (save.fill[t])
+    ToggleLineupMapUnits = 109,    // arg = team 0..3 (save.map_units[t])
     OpenLineupFighters = 110,  // LINEUP strip -> the FIGHTERS list
     LineupSplitEven = 111,     // deal deployed fighters round-robin
     LineupSplitFair = 112,     // snake draft by power (level fallback)

@@ -439,7 +439,7 @@ TEST_F(ModesFfa, lineup_none_suppresses_the_band_fill)
     {
         SCOPED_TRACE(::testing::Message() << "knob " << knob);
         FfaRig rig(850, 2);
-        rig.fx.world().ctf_requested_bot_squad[0] = knob;
+        rig.fx.world().ctf_requested_fill[0] = knob;
         rig.fx.tick(1);
         ASSERT_TRUE(rig.active());
 
@@ -481,9 +481,9 @@ int expect_band_bot_levels(GameWorld& world, int expected)
 TEST_F(ModesFfa, lineup_preset_and_level_shape_the_band_fill)
 {
     FfaRig rig(850, 2);
-    rig.fx.world().ctf_requested_bot_squad[0] =
+    rig.fx.world().ctf_requested_fill[0] =
         og::sim::kBotSquadPresetBase + 2;  // BRUTES
-    rig.fx.world().ctf_requested_bot_level[0] = 3;
+    rig.fx.world().ctf_requested_map_units[0] = 3;
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
 
@@ -516,14 +516,14 @@ TEST_F(ModesFfa, lineup_level_offset_clamps_in_the_band)
 {
     {
         FfaRig rig(850, 2);
-        rig.fx.world().ctf_requested_bot_level[0] = -5;
+        rig.fx.world().ctf_requested_map_units[0] = -5;
         rig.fx.tick(1);
         ASSERT_TRUE(rig.active());
         EXPECT_EQ(6, expect_band_bot_levels(rig.fx.world(), 1));
     }
     {
         FfaRig rig(850, 2);
-        rig.fx.world().ctf_requested_bot_level[0] = 5;
+        rig.fx.world().ctf_requested_map_units[0] = 5;
         rig.fx.tick(1);
         ASSERT_TRUE(rig.active());
         EXPECT_EQ(6, expect_band_bot_levels(rig.fx.world(), 7));
@@ -541,7 +541,7 @@ TEST_F(ModesFfa, lineup_level_offset_clamps_in_the_band)
 TEST_F(ModesFfa, lineup_fair_preset_reads_as_auto_in_the_band)
 {
     FfaRig rig(850, 2);
-    rig.fx.world().ctf_requested_bot_squad[0] =
+    rig.fx.world().ctf_requested_fill[0] =
         og::sim::kBotSquadPresetBase + 4;  // FAIR
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());

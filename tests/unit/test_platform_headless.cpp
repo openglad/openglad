@@ -2367,12 +2367,12 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
 
     SaveData reloaded;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("lineupd"));
-    EXPECT_EQ(og::sim::kBotSquadNone, reloaded.bot_squad[0])
+    EXPECT_EQ(og::sim::kBotSquadNone, reloaded.fill[0])
         << "the squad cycle must reach the company file (AUTO -> OFF "
            "refused -> NONE)";
-    EXPECT_EQ(1, reloaded.bot_level[0])
+    EXPECT_EQ(1, reloaded.map_units[0])
         << "the level cycle must reach the company file (AUTO -> +1)";
-    EXPECT_EQ(0, reloaded.bot_squad[1]) << "only the cycled team moved";
+    EXPECT_EQ(0, reloaded.fill[1]) << "only the cycled team moved";
     ASSERT_TRUE(reloaded.team_list[0] && reloaded.team_list[1] &&
                 reloaded.team_list[2] && reloaded.team_list[3]);
     for (int slot = 0; slot < 4; ++slot) {
@@ -2442,8 +2442,8 @@ TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
 
     SaveData reloaded;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("classicd"));
-    EXPECT_EQ(0, reloaded.bot_squad[0]) << "no write reached the .gtl";
-    EXPECT_EQ(0, reloaded.bot_level[0]);
+    EXPECT_EQ(0, reloaded.fill[0]) << "no write reached the .gtl";
+    EXPECT_EQ(0, reloaded.map_units[0]);
 
     (void)remove_user_file("save/classicd.gtl");
     og::data::set_active_company_slot("save0");
@@ -2516,8 +2516,8 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
         << host.lines[1];
     // A preset ordinal the campaign DID register reads by name; the joiner
     // clamp path (an ordinal with no name) reads as its number, never AUTO.
-    save.bot_squad[0] = og::sim::kBotSquadPresetBase;      // BRUTES
-    save.bot_squad[1] = static_cast<short>(
+    save.fill[0] = og::sim::kBotSquadPresetBase;      // BRUTES
+    save.fill[1] = static_cast<short>(
         og::sim::kBotSquadPresetBase + 4);                 // no such name
     inputs.is_host = true;
     const og::ui::TerminalLineupModel named =
@@ -2531,8 +2531,8 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
     save.current_campaign = "modes";
-    save.bot_squad[0] = 0;
-    save.bot_squad[1] = 0;
+    save.fill[0] = 0;
+    save.fill[1] = 0;
     const og::ui::TerminalLineupModel versus =
         og::ui::build_terminal_lineup_model(inputs);
     EXPECT_EQ("TEAM 1  BOTS: AUTO", versus.items[0].label);

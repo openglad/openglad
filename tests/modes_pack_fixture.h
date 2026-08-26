@@ -142,7 +142,7 @@ inline constexpr int kBballLevelNoRow = 9709;     // make_hooks(nil)
 
 // TROOPS: FAIR power-model probes (9095/9096, matched-teams WP-E).
 // 9095 logs the pure-function arms (census, walker_power, predicted_power,
-// solver, bot_level_for) plus the model-pin ladder over whatever world the
+// solver, map_units_for) plus the model-pin ladder over whatever world the
 // test authored. 9096 drives match.spawn_bots directly at team 1, cursor
 // slot 12, parameterized through input mode vars the C++ test sets before
 // the first tick (mode vars are NOT cleared by lazy init): target, plan,
@@ -555,9 +555,9 @@ inline constexpr const char* kTestRegistrationLua =
     "        { { family = \"core:archer\", stats = sb } })\n"
     "    og.log(\"solve_n1\", l, k, c and 1 or 0)\n"
     "    og.mode_set(3, 430000)\n"
-    "    og.log(\"blf\", match_lib.bot_level_for(2, 1),\n"
-    "           match_lib.bot_level_for(2, 3), match_lib.bot_level_for(2, 4),\n"
-    "           match_lib.bot_level_for(0, 1))\n"
+    "    og.log(\"blf\", match_lib.map_units_for(2, 1),\n"
+    "           match_lib.map_units_for(2, 3), match_lib.map_units_for(2, 4),\n"
+    "           match_lib.map_units_for(0, 1))\n"
     "    og.mode_set(3, 0)\n"
     "    og.mode_set(2, 4242)\n"
     "    match_lib.bank_match_target({ matched = true, matched_size = 3 },\n"

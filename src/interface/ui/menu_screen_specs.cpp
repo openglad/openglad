@@ -1261,7 +1261,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "view_scenario", .label = "VIEW LEVEL",
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
-     .nav = {.up = 2, .down = 6, .right = 5}},
+     .nav = {.up = 2, .down = 8, .right = 5}},
     // The ordinal the MATCHUP door vacated (#218), reclaimed by the LINEUP
     // door (docs/lineup-design.md §2): the y=100 row reads VIEW LEVEL |
     // PROGRESS | LINEUP on the declared 30/120/210 grid, above the y=140
@@ -1277,18 +1277,16 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
      .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateProgressMenu, .arg = -1,
      .nav = {.up = 2, .down = 8, .left = 3, .right = 4}},
-    // Scenario troops: keep the authored cast, or strip all of it.
-    // Host-gated like SET CAMPAIGN and SET LEVEL; joiners read the label off
-    // the lobby-synced save. It sits on the y=140 row rather than the y=70
-    // cell beside SET LEVEL because scenario_menu_draw_content paints the
-    // level title strip from x=114 across that whole row AFTER
-    // draw_buttons, so a button there would be overprinted. It leads the
-    // row at (30,140) since the TEAMS cell retired (A5): TROOPS sets what
-    // BOTS: AUTO resolves to on an empty team (A4), SCORE beside it.
-    {.id = "troops", .label = "TROOPS: ALL",
-     .x = 30, .y = 140, .w = 80, .h = 15,
-     .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
-     .nav = {.up = 3, .down = 0, .right = 8}},
+    // The retired TROOPS cycler's ordinal (amendment B5: whether the map's
+    // own authored cast fights is a per-team MAP UNITS box on the LINEUP
+    // band now). Parked like the TEAMS spare below it — zero-size rect,
+    // empty label, hidden, no nav — so kScenarioMenuCtfCapsIndex and every
+    // pin below it never shifted. The knob row's re-grid (SCORE alone at
+    // (30,140)) belongs to the SDL wave.
+    {.id = "scenario_troops_spare", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuTroopsIndex,
+     .hidden = true},
     // The retired TEAMS cycler's ordinal (docs/lineup-design.md A1/A3:
     // deactivating an authored team is LINEUP's BOTS: OFF now). Parked
     // exactly like the Base Camp's seat_rail_spare and the MATCHUP door
@@ -1308,7 +1306,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "ctf_caps", .label = "SCORE: MAP",
      .x = 120, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
-     .nav = {.up = 5, .down = 0, .left = 6}},
+     .nav = {.up = 5, .down = 0}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change
@@ -7300,24 +7298,24 @@ RowState lineup_knob_row_state(const MenuLabelContext& context)
 
 // Static nav encodes the all-visible (host + versus + two-seat) variant;
 // the per-frame rewire below rewrites every link.
-#define OG_LINEUP_BOTS(t)                                                     \
-    {.id = "lineup_bots_" #t, .label = "BOTS: AUTO",                          \
-     .x = kLineupBotsX, .y = lineup_band_y(t) + kLineupKnobDy,                \
-     .w = kLineupBotsW, .h = kLineupKnobH,                                    \
-     .action = ButtonAction::CycleLineupBots, .arg = (t),                     \
-     .nav = {.up = (t) > 0 ? kLineupBotsBase + (t) - 1 : -1,                  \
-             .down = (t) < 3 ? kLineupBotsBase + (t) + 1 : kLineupBackIndex,  \
-             .right = kLineupLevelBase + (t)},                                \
+#define OG_LINEUP_FILL(t)                                                     \
+    {.id = "lineup_fill_" #t, .label = "FILL: FAIR",                          \
+     .x = kLineupFillX, .y = lineup_band_y(t) + kLineupKnobDy,                \
+     .w = kLineupFillW, .h = kLineupKnobH,                                    \
+     .action = ButtonAction::CycleLineupFill, .arg = (t),                     \
+     .nav = {.up = (t) > 0 ? kLineupFillBase + (t) - 1 : -1,                  \
+             .down = (t) < 3 ? kLineupFillBase + (t) + 1 : kLineupBackIndex,  \
+             .right = kLineupMapUnitsBase + (t)},                                \
      .state_override = &lineup_knob_row_state}
-#define OG_LINEUP_LEVEL(t)                                                    \
-    {.id = "lineup_level_" #t, .label = "LV: AUTO",                           \
-     .x = kLineupLevelX, .y = lineup_band_y(t) + kLineupKnobDy,               \
-     .w = kLineupLevelW, .h = kLineupKnobH,                                   \
-     .action = ButtonAction::CycleLineupLevel, .arg = (t),                    \
-     .nav = {.up = (t) > 0 ? kLineupLevelBase + (t) - 1 : -1,                 \
-             .down = (t) < 3 ? kLineupLevelBase + (t) + 1                     \
+#define OG_LINEUP_MAP_UNITS(t)                                                    \
+    {.id = "lineup_map_units_" #t, .label = "MAP UNITS: ON",                           \
+     .x = kLineupMapUnitsX, .y = lineup_band_y(t) + kLineupKnobDy,               \
+     .w = kLineupMapUnitsW, .h = kLineupKnobH,                                   \
+     .action = ButtonAction::ToggleLineupMapUnits, .arg = (t),                    \
+     .nav = {.up = (t) > 0 ? kLineupMapUnitsBase + (t) - 1 : -1,                 \
+             .down = (t) < 3 ? kLineupMapUnitsBase + (t) + 1                     \
                              : kLineupFightersIndex,                          \
-             .left = kLineupBotsBase + (t)},                                  \
+             .left = kLineupFillBase + (t)},                                  \
      .state_override = &lineup_knob_row_state}
 
 constexpr MenuButtonSpec kLineupMenuRows[] = {
@@ -7325,28 +7323,28 @@ constexpr MenuButtonSpec kLineupMenuRows[] = {
      .x = kLineupBackX, .y = kLineupStripY, .w = kLineupBackW,
      .h = kLineupStripH,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = kLineupBotsBase + 3, .right = kLineupFightersIndex}},
-    OG_LINEUP_BOTS(0), OG_LINEUP_BOTS(1), OG_LINEUP_BOTS(2),
-    OG_LINEUP_BOTS(3),
-    OG_LINEUP_LEVEL(0), OG_LINEUP_LEVEL(1), OG_LINEUP_LEVEL(2),
-    OG_LINEUP_LEVEL(3),
+     .nav = {.up = kLineupFillBase + 3, .right = kLineupFightersIndex}},
+    OG_LINEUP_FILL(0), OG_LINEUP_FILL(1), OG_LINEUP_FILL(2),
+    OG_LINEUP_FILL(3),
+    OG_LINEUP_MAP_UNITS(0), OG_LINEUP_MAP_UNITS(1), OG_LINEUP_MAP_UNITS(2),
+    OG_LINEUP_MAP_UNITS(3),
     {.id = "lineup_fighters", .label = "FIGHTERS",
      .x = kLineupFightersX, .y = kLineupStripY, .w = kLineupFightersW,
      .h = kLineupStripH,
      .action = ButtonAction::OpenLineupFighters, .arg = -1,
-     .nav = {.up = kLineupBotsBase + 3, .left = kLineupBackIndex,
+     .nav = {.up = kLineupFillBase + 3, .left = kLineupBackIndex,
              .right = kLineupSplitEvenIndex}},
     {.id = "lineup_split_even", .label = "SPLIT EVEN",
      .x = kLineupSplitEvenX, .y = kLineupStripY, .w = kLineupSplitW,
      .h = kLineupStripH,
      .action = ButtonAction::LineupSplitEven, .arg = -1,
-     .nav = {.up = kLineupLevelBase + 3, .left = kLineupFightersIndex,
+     .nav = {.up = kLineupMapUnitsBase + 3, .left = kLineupFightersIndex,
              .right = kLineupSplitFairIndex}},
     {.id = "lineup_split_fair", .label = "SPLIT FAIR",
      .x = kLineupSplitFairX, .y = kLineupStripY, .w = kLineupSplitW,
      .h = kLineupStripH,
      .action = ButtonAction::LineupSplitFair, .arg = -1,
-     .nav = {.up = kLineupLevelBase + 3, .left = kLineupSplitEvenIndex,
+     .nav = {.up = kLineupMapUnitsBase + 3, .left = kLineupSplitEvenIndex,
              .right = kLineupUniteIndex}},
     // "UNITE" is ALL TO 1 (§5): every deployed fighter to the lowest team
     // with a local seat. Always offered — a single seat makes every split
@@ -7355,11 +7353,11 @@ constexpr MenuButtonSpec kLineupMenuRows[] = {
      .x = kLineupUniteX, .y = kLineupStripY, .w = kLineupUniteW,
      .h = kLineupStripH,
      .action = ButtonAction::LineupUnite, .arg = -1,
-     .nav = {.up = kLineupLevelBase + 3, .left = kLineupSplitFairIndex}},
+     .nav = {.up = kLineupMapUnitsBase + 3, .left = kLineupSplitFairIndex}},
 };
 
-#undef OG_LINEUP_BOTS
-#undef OG_LINEUP_LEVEL
+#undef OG_LINEUP_FILL
+#undef OG_LINEUP_MAP_UNITS
 
 static_assert(static_cast<int>(std::size(kLineupMenuRows))
                   == kLineupButtonCount,
@@ -7563,8 +7561,6 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
     const SaveData& save =
         og::runtime::current_session->myscreen_->save_data;
     const bool knobs = picker_lobby_host_controls_visible();
-    std::vector<std::string> presets;
-    (void)og::script::hooks::campaign_lineup_presets(presets);
 
     const auto write_label = [buttons](int index, std::string label) {
         buttons[index].label = label;
@@ -7576,19 +7572,18 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
     };
 
     for (int t = 0; t < 4; ++t) {
-        const int bots_index = kLineupBotsBase + t;
-        const int level_index = kLineupLevelBase + t;
-        buttons[bots_index].hidden = !knobs;
-        buttons[level_index].hidden = !knobs;
-        write_label(bots_index,
-                    format_lineup_bots_label(
-                        save.bot_squad[static_cast<std::size_t>(t)],
-                        presets));
-        write_label(level_index,
-                    format_lineup_level_label(
-                        save.bot_level[static_cast<std::size_t>(t)]));
-        sync_button_hidden_state(buttons, bots_index);
-        sync_button_hidden_state(buttons, level_index);
+        const int fill_index = kLineupFillBase + t;
+        const int map_units_index = kLineupMapUnitsBase + t;
+        buttons[fill_index].hidden = !knobs;
+        buttons[map_units_index].hidden = !knobs;
+        write_label(fill_index,
+                    format_lineup_fill_label(
+                        save.fill[static_cast<std::size_t>(t)]));
+        write_label(map_units_index,
+                    format_lineup_map_units_label(
+                        save.map_units[static_cast<std::size_t>(t)]));
+        sync_button_hidden_state(buttons, fill_index);
+        sync_button_hidden_state(buttons, map_units_index);
     }
 
     const bool splits = picker_lobby_local_seat_count() >= 2;
@@ -7600,22 +7595,22 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
     // Full-graph rewire (every link written every frame).
     for (int t = 0; t < 4; ++t) {
         if (!knobs) {
-            buttons[kLineupBotsBase + t].nav = {};
-            buttons[kLineupLevelBase + t].nav = {};
+            buttons[kLineupFillBase + t].nav = {};
+            buttons[kLineupMapUnitsBase + t].nav = {};
             continue;
         }
-        buttons[kLineupBotsBase + t].nav =
-            {.up = t > 0 ? kLineupBotsBase + t - 1 : -1,
-             .down = t < 3 ? kLineupBotsBase + t + 1 : kLineupBackIndex,
-             .right = kLineupLevelBase + t};
-        buttons[kLineupLevelBase + t].nav =
-            {.up = t > 0 ? kLineupLevelBase + t - 1 : -1,
-             .down = t < 3 ? kLineupLevelBase + t + 1
+        buttons[kLineupFillBase + t].nav =
+            {.up = t > 0 ? kLineupFillBase + t - 1 : -1,
+             .down = t < 3 ? kLineupFillBase + t + 1 : kLineupBackIndex,
+             .right = kLineupMapUnitsBase + t};
+        buttons[kLineupMapUnitsBase + t].nav =
+            {.up = t > 0 ? kLineupMapUnitsBase + t - 1 : -1,
+             .down = t < 3 ? kLineupMapUnitsBase + t + 1
                            : kLineupFightersIndex,
-             .left = kLineupBotsBase + t};
+             .left = kLineupFillBase + t};
     }
-    const int strip_up_left = knobs ? kLineupBotsBase + 3 : -1;
-    const int strip_up_right = knobs ? kLineupLevelBase + 3 : -1;
+    const int strip_up_left = knobs ? kLineupFillBase + 3 : -1;
+    const int strip_up_right = knobs ? kLineupMapUnitsBase + 3 : -1;
     buttons[kLineupBackIndex].nav =
         {.up = strip_up_left, .right = kLineupFightersIndex};
     buttons[kLineupFightersIndex].nav =

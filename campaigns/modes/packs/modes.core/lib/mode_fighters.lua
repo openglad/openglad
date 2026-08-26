@@ -166,13 +166,13 @@ end
 -- says — PLAN_BASE stays untouched, the design's own carve-out).
 --
 -- The pairs of teams 2-4 are DEAD in a band mode: every fighter wears a
--- band byte, no score team ever fields a squad, so bot_squad_2..4 and
--- bot_level_2..4 are read by nobody here. The fact a menu needs to dim
+-- band byte, no score team ever fields a squad, so fill_2..4 and
+-- map_units_2..4 are read by nobody here. The fact a menu needs to dim
 -- them is the mode name the staged world already carries (FFA / MUTANT
 -- via og.set_mode_name — the staged report's mode_name); no extra
 -- variable is banked for it (docs/lineup-design.md §3.2).
 local function band_knob()
-  return og.match_setting("bot_squad_1")
+  return og.match_setting("fill_1")
 end
 
 -- The fighter count the fill below will reach, decided from the census

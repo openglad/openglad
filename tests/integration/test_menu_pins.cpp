@@ -453,29 +453,29 @@ TEST(MenuEnginePins, lineup_exact_table)
         {"back", "BACK", KEYSTATE_ESCAPE, 8, 176, 44, 18,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
          MenuNav{.up = 4, .right = 9}},
-        {"lineup_bots_0", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 39, 80, 15,
-         button_action_id(ButtonAction::CycleLineupBots), 0,
+        {"lineup_fill_0", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 39, 80, 15,
+         button_action_id(ButtonAction::CycleLineupFill), 0,
          MenuNav{.down = 2, .right = 5}},
-        {"lineup_bots_1", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 75, 80, 15,
-         button_action_id(ButtonAction::CycleLineupBots), 1,
+        {"lineup_fill_1", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 75, 80, 15,
+         button_action_id(ButtonAction::CycleLineupFill), 1,
          MenuNav{.up = 1, .down = 3, .right = 6}},
-        {"lineup_bots_2", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 111, 80, 15,
-         button_action_id(ButtonAction::CycleLineupBots), 2,
+        {"lineup_fill_2", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 111, 80, 15,
+         button_action_id(ButtonAction::CycleLineupFill), 2,
          MenuNav{.up = 2, .down = 4, .right = 7}},
-        {"lineup_bots_3", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 147, 80, 15,
-         button_action_id(ButtonAction::CycleLineupBots), 3,
+        {"lineup_fill_3", "BOTS: AUTO", KEYSTATE_UNKNOWN, 12, 147, 80, 15,
+         button_action_id(ButtonAction::CycleLineupFill), 3,
          MenuNav{.up = 3, .down = 0, .right = 8}},
-        {"lineup_level_0", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 39, 56, 15,
-         button_action_id(ButtonAction::CycleLineupLevel), 0,
+        {"lineup_map_units_0", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 39, 56, 15,
+         button_action_id(ButtonAction::ToggleLineupMapUnits), 0,
          MenuNav{.down = 6, .left = 1}},
-        {"lineup_level_1", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 75, 56, 15,
-         button_action_id(ButtonAction::CycleLineupLevel), 1,
+        {"lineup_map_units_1", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 75, 56, 15,
+         button_action_id(ButtonAction::ToggleLineupMapUnits), 1,
          MenuNav{.up = 5, .down = 7, .left = 2}},
-        {"lineup_level_2", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 111, 56, 15,
-         button_action_id(ButtonAction::CycleLineupLevel), 2,
+        {"lineup_map_units_2", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 111, 56, 15,
+         button_action_id(ButtonAction::ToggleLineupMapUnits), 2,
          MenuNav{.up = 6, .down = 8, .left = 3}},
-        {"lineup_level_3", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 147, 56, 15,
-         button_action_id(ButtonAction::CycleLineupLevel), 3,
+        {"lineup_map_units_3", "LV: AUTO", KEYSTATE_UNKNOWN, 98, 147, 56, 15,
+         button_action_id(ButtonAction::ToggleLineupMapUnits), 3,
          MenuNav{.up = 7, .down = 9, .left = 4}},
         {"lineup_fighters", "FIGHTERS", KEYSTATE_UNKNOWN, 58, 176, 62, 18,
          button_action_id(ButtonAction::OpenLineupFighters), -1,
@@ -495,8 +495,8 @@ TEST(MenuEnginePins, lineup_exact_table)
                       static_cast<int>(std::size(kExpected)), "lineup");
 
     EXPECT_EQ(kLineupBackIndex, 0);
-    EXPECT_EQ(kLineupBotsBase, 1);
-    EXPECT_EQ(kLineupLevelBase, 5);
+    EXPECT_EQ(kLineupFillBase, 1);
+    EXPECT_EQ(kLineupMapUnitsBase, 5);
     EXPECT_EQ(kLineupFightersIndex, 9);
     EXPECT_EQ(kLineupSplitEvenIndex, 10);
     EXPECT_EQ(kLineupSplitFairIndex, 11);

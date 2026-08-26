@@ -753,10 +753,10 @@ private:
         settings.time_limit = save.time_limit;
         // Per-team bot knobs (protocol v16 / GTL v18, LINEUP §3.1): the same
         // dropped-field rule as every other lobby-negotiated match setting.
-        for (std::size_t team = 0; team < settings.bot_squad.size(); ++team)
+        for (std::size_t team = 0; team < settings.fill.size(); ++team)
         {
-            settings.bot_squad[team] = save.bot_squad[team];
-            settings.bot_level[team] = save.bot_level[team];
+            settings.fill[team] = save.fill[team];
+            settings.map_units[team] = save.map_units[team];
         }
         // Protocol v12: the shared-teams rule rides the wire, derived from
         // the campaign's matchup: yaml key (the joiner may lack the package).
@@ -988,10 +988,10 @@ private:
         save.cross_control = state_->settings.cross_control;
         save.infinite_gold = state_->settings.infinite_gold;
         save.time_limit = state_->settings.time_limit;
-        for (std::size_t team = 0; team < save.bot_squad.size(); ++team)
+        for (std::size_t team = 0; team < save.fill.size(); ++team)
         {
-            save.bot_squad[team] = state_->settings.bot_squad[team];
-            save.bot_level[team] = state_->settings.bot_level[team];
+            save.fill[team] = state_->settings.fill[team];
+            save.map_units[team] = state_->settings.map_units[team];
         }
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_

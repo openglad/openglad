@@ -488,8 +488,8 @@ TEST_F(ModesSoccer, four_team_pitch_strips_the_sides_switched_off)
                         static_cast<short>(96 + 64 * team), 96);
     }
     walker* stripped = fx.world().oblist.back().get();
-    fx.world().ctf_requested_bot_squad[2] = og::sim::kBotSquadOff;
-    fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[2] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
     fx.tick(1);
 
     ASSERT_TRUE(fx.world().mode.active);
@@ -762,8 +762,8 @@ TEST_F(ModesSoccer, bots_off_never_strips_a_roster_team)
         for (int team = 0; team < 4; ++team)
             fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
         fx.world().ctf_requested_strip_scenario_troops = 2;
-        fx.world().ctf_requested_bot_squad[1] = og::sim::kBotSquadOff;
-        fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[1] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
         fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
         fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
         fx.tick(1);
@@ -780,9 +780,9 @@ TEST_F(ModesSoccer, bots_off_never_strips_a_roster_team)
         for (int team = 0; team < 4; ++team)
             fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
         fx.world().ctf_requested_strip_scenario_troops = 2;
-        fx.world().ctf_requested_bot_squad[0] = og::sim::kBotSquadOff;
-        fx.world().ctf_requested_bot_squad[1] = og::sim::kBotSquadOff;
-        fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[0] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[1] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
         fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
         fx.spawn_hero(FAMILY_BARBARIAN, 1, 300, 700, 2);
         fx.spawn_hero(FAMILY_ELF, 2, 300, 860, 3);
@@ -806,7 +806,7 @@ TEST_F(ModesSoccer, bots_off_on_the_fourth_side_leaves_three)
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
     fx.world().ctf_requested_strip_scenario_troops = 2;
-    fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
     fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
     fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
     fx.tick(1);
@@ -843,8 +843,8 @@ TEST_F(ModesSoccer, ball_in_a_closed_authored_mouth_announces_and_resets)
         fx.spawn_living(FAMILY_SOLDIER, team,
                         static_cast<short>(96 + 64 * team), 96);
     }
-    fx.world().ctf_requested_bot_squad[2] = og::sim::kBotSquadOff;
-    fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[2] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     ASSERT_EQ(3, fx.var(kSocTeamMask))

@@ -765,21 +765,28 @@ TEST_F(HeadlessServerRuntimeTest, mirror_level_load_never_rolls_weather)
         << "level load must reset the kind; only snapshots set it on mirrors";
 }
 
-// Matched-teams I4 ordering (docs/matched-teams-design.md §3.2, amended
-// D25/D27): the TROOPS: FAIR sentinel rides the existing SaveData -> world
-// chain and is in `world.ctf_requested_strip_scenario_troops` strictly
-// BEFORE the first world.tick() runs on_mode_init, with the lobby roster
-// already in the oblist — so the mode census can see both. The mode var
-// written by on_mode_init (slot 2, mode_match.MATCHED.TARGET) is the proof
-// Lua saw the sentinel and censused the roster.
+// Matched-teams I4 ordering (docs/matched-teams-design.md §3.2), now
+// carrying the amendment B1-B4 band knobs: the eight scalars ride the
+// existing LobbySaveDataEquivalent -> SaveData -> world chain and are in
+// `world.ctf_requested_fill` / `ctf_requested_map_units` strictly BEFORE
+// the first world.tick() runs on_mode_init, with the lobby roster already
+// in the oblist — so the mode census can see both. This is the
+// dropped-copy-site bug class the design calls M8, pinned at the headless
+// authority.
 TEST_F(HeadlessServerRuntimeTest,
-       matched_sentinel_reaches_world_before_first_tick_and_lua_sees_it)
+       band_knobs_reach_the_world_before_the_first_tick)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
     lobby_save.current_campaign = "modes";
     lobby_save.scen_num = 302; // shipped TDM level
     lobby_save.numplayers = 2;
     lobby_save.allied_mode = 0;
+    lobby_save.fill = {og::sim::kFillFair, og::sim::kFillNone,
+                       og::sim::kFillWeak, og::sim::kFillBrutal};
+    lobby_save.map_units = {og::sim::kMapUnitsOn, og::sim::kMapUnitsOff,
+                            og::sim::kMapUnitsOff, og::sim::kMapUnitsOn};
+    // A legacy peer's TROOPS value rides along and must NOT reach the sim
+    // (amendment B5): the world-entry twin snaps it to 0.
     lobby_save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     lobby_save.team_list = {
         make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
@@ -788,16 +795,23 @@ TEST_F(HeadlessServerRuntimeTest,
 
     initialize_from_lobby(lobby_save);
 
-    EXPECT_EQ(og::sim::kTroopsMatched,
-              active_save_.ctf_strip_scenario_troops)
-        << "the start config carries the sentinel into the SaveData";
+    const std::array<short, 4> expected_fill = {
+        og::sim::kFillFair, og::sim::kFillNone, og::sim::kFillWeak,
+        og::sim::kFillBrutal};
+    const std::array<short, 4> expected_map_units = {
+        og::sim::kMapUnitsOn, og::sim::kMapUnitsOff, og::sim::kMapUnitsOff,
+        og::sim::kMapUnitsOn};
+    EXPECT_EQ(expected_fill, active_save_.fill)
+        << "the start config carries the band knobs into the SaveData";
+    EXPECT_EQ(expected_map_units, active_save_.map_units);
     GameWorld& world = level_data_->world();
-    EXPECT_EQ(og::sim::kTroopsMatched,
-              world.ctf_requested_strip_scenario_troops)
+    EXPECT_EQ(expected_fill, world.ctf_requested_fill)
         << "sync_world_from_save_data ran before the first tick (I4)";
+    EXPECT_EQ(expected_map_units, world.ctf_requested_map_units);
+    EXPECT_EQ(0, world.ctf_requested_strip_scenario_troops)
+        << "the retired TROOPS value heals at the world-entry twin (B5)";
     EXPECT_EQ(0u, world.tick_count_);
     EXPECT_FALSE(world.mode.active) << "on_mode_init has not run yet";
-    EXPECT_EQ(0, world.mode.vars[2]);
     ASSERT_NE(nullptr, find_team_member(world, 100))
         << "the roster is in the oblist before init — censusable (D15)";
     ASSERT_NE(nullptr, find_team_member(world, 200));
@@ -806,9 +820,6 @@ TEST_F(HeadlessServerRuntimeTest,
 
     EXPECT_TRUE(world.mode.active) << "the first tick ran on_mode_init";
     EXPECT_NE(0, world.mode.vars[0]) << "the mode id var is written";
-    EXPECT_GT(world.mode.vars[2], 0)
-        << "on_mode_init stored the matched census target — Lua saw the "
-           "sentinel through og.match_setting before any other tick ran";
 }
 
 // The unmatched twin: the identical lobby handoff without the sentinel

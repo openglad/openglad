@@ -452,13 +452,11 @@
 ---@field stepsize integer
 ---@field fire_frequency integer
 
--- The LINEUP table: bot-squad preset names for the page's
--- cycler (<= 8, each clipped to 6 upper-case chars; 0 =
--- AUTO and 1 = NONE are engine-owned and never named) and
--- `power`, which prices one fighter for the team bands.
--- At least one of the two is required.
+-- The LINEUP table: `power` prices one fighter for the
+-- team bands, and is the whole table -- the preset names
+-- retired with the BOTS wheel, whose five-value FILL
+-- replacement names nothing a campaign owns.
 ---@class og.CampaignLineup
----@field presets? string[]
 ---@field power? fun(row: og.LineupPowerRow): integer
 
 -- Hook table for og.register_campaign_hooks. `vars` names
@@ -698,7 +696,7 @@
 ---@field level_tick fun(): integer
 ---@field living_count fun(): integer
 ---@field log fun(...: any)
----@field match_setting fun(s: "bot_level_1"|"bot_level_2"|"bot_level_3"|"bot_level_4"|"bot_squad_1"|"bot_squad_2"|"bot_squad_3"|"bot_squad_4"|"difficulty"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings; 0 always means "mode default" (strip_troops: 0 keep, 2 own, 3 m...
+---@field match_setting fun(s: "difficulty"|"fill_1"|"fill_2"|"fill_3"|"fill_4"|"map_units_1"|"map_units_2"|"map_units_3"|"map_units_4"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings.
 ---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
 ---@field min fun(arg1: number, arg2: number): number
 ---@field mod fun(a: integer, b: integer): integer

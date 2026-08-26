@@ -339,15 +339,12 @@ void picker_wire_scenario_menu_nav(button* buttons,
         {.up = kScenarioMenuSetCampaignIndex,
          .down = kScenarioMenuViewScenarioIndex};
 
-    // y=140 knob row: TROOPS (30, host-gated) | SCORE (120, versus-gated) |
-    // (210) free. What DOWN from the y=100 row lands on is the visible
-    // member under it, else the other one, else BACK.
-    const int troops_or = host ? kScenarioMenuTroopsIndex : -1;
+    // y=140 knob row: SCORE (120, versus-gated) alone since TROOPS retired
+    // (amendment B5). What DOWN from the y=100 row lands on is SCORE when it
+    // is visible, else BACK.
     const int score_or = match ? kScenarioMenuCtfCapsIndex : -1;
-    const int under_left = troops_or >= 0 ? troops_or
-                         : (score_or >= 0 ? score_or : kScenarioMenuBackIndex);
-    const int under_right = score_or >= 0 ? score_or
-                          : (troops_or >= 0 ? troops_or : kScenarioMenuBackIndex);
+    const int under_left = score_or >= 0 ? score_or : kScenarioMenuBackIndex;
+    const int under_right = under_left;
 
     // y=100 row: VIEW LEVEL <-> PROGRESS <-> LINEUP; up-links close for
     // joiners.
@@ -366,21 +363,16 @@ void picker_wire_scenario_menu_nav(button* buttons,
          .down = under_right,
          .left = kScenarioMenuProgressIndex};
 
-    buttons[kScenarioMenuTroopsIndex].nav =
-        {.up = kScenarioMenuViewScenarioIndex,
-         .down = kScenarioMenuBackIndex,
-         .right = score_or};
     buttons[kScenarioMenuCtfCapsIndex].nav =
         {.up = kScenarioMenuProgressIndex,
-         .down = kScenarioMenuBackIndex,
-         .left = troops_or};
+         .down = kScenarioMenuBackIndex};
+    buttons[kScenarioMenuTroopsIndex].nav = {};
     buttons[kScenarioMenuSpareIndex].nav = {};
 
-    // BACK climbs into the nearest visible member above it: the x=30
-    // column's TROOPS, else SCORE, else VIEW LEVEL.
+    // BACK climbs into the nearest visible member above it: SCORE, else
+    // VIEW LEVEL.
     buttons[kScenarioMenuBackIndex].nav =
-        {.up = troops_or >= 0 ? troops_or
-             : (score_or >= 0 ? score_or : kScenarioMenuViewScenarioIndex)};
+        {.up = score_or >= 0 ? score_or : kScenarioMenuViewScenarioIndex};
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -396,21 +388,8 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
-    buttons[kScenarioMenuTroopsIndex].hidden = !host_controls_visible;
     sync_button_hidden_state(buttons, kScenarioMenuSetCampaignIndex);
     sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
-    // Re-derive the label from the save every frame: a host cycling TROOPS
-    // reaches a joiner through the lobby settings, which land in the save
-    // under the open menu (both label surfaces, per the menu skill).
-    buttons[kScenarioMenuTroopsIndex].label =
-        og::ui::format_ctf_troops_label(save);
-    sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
-    if (og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex] !=
-        nullptr)
-    {
-        og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex]
-            ->label = buttons[kScenarioMenuTroopsIndex].label;
-    }
     // SCORE (#218, re-homed from MATCHUP; A5): versus campaigns only, and —
     // unlike TROOPS — visible to JOINERS as a read-only label (the host's
     // turns land in the lobby-synced save and the same re-derive shows
@@ -606,8 +585,8 @@ struct ViewScenarioKey
     short time_limit = 0;
     // LINEUP §3.1: the staged preview bakes the resolved bot fills, so a
     // squad/level change must invalidate the cached staged world too.
-    std::array<short, 4> bot_squad = {};
-    std::array<short, 4> bot_level = {};
+    std::array<short, 4> fill = {};
+    std::array<short, 4> map_units = {};
     std::uint32_t stage_generation = 0;
     // Seat block (#218): digest of the displayed seat facts. REQUIRED as a
     // key member because ready flips deliberately never restage
@@ -712,8 +691,8 @@ static ViewScenarioKey view_scenario_current_key(const SaveData& save)
     key.capture_limit = save.ctf_capture_limit;
     key.respawn_ticks = save.ctf_respawn_ticks;
     key.time_limit = save.time_limit;
-    key.bot_squad = save.bot_squad;
-    key.bot_level = save.bot_level;
+    key.fill = save.fill;
+    key.map_units = save.map_units;
     key.save_campaign = save.current_campaign;
     key.mounted_campaign = get_mounted_campaign();
     og::ui::IPickerLobbyClient* const lobby =

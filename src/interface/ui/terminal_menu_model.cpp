@@ -123,11 +123,10 @@ TerminalLineupModel build_terminal_lineup_model(
 
     for (int team = 0; team < 4; ++team) {
         const LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
-        const std::string bots = format_lineup_bots_label(
-            inputs.save->bot_squad[static_cast<std::size_t>(team)],
-            inputs.preset_names);
-        const std::string level = format_lineup_level_label(
-            inputs.save->bot_level[static_cast<std::size_t>(team)]);
+        const std::string fill = format_lineup_fill_label(
+            inputs.save->fill[static_cast<std::size_t>(team)]);
+        const std::string map_units = format_lineup_map_units_label(
+            inputs.save->map_units[static_cast<std::size_t>(team)]);
 
         // Header line: the colour the SDL band paints as a chip, the price,
         // then every seat on the team (the SDL "+n" overflow is a pixel
@@ -150,18 +149,17 @@ TerminalLineupModel build_terminal_lineup_model(
             ? std::string("MAP RULES")
             : format_lineup_census(band);
         model.lines.push_back(
-            std::format("  [{}] [{}]  {}", bots, level, census));
+            std::format("  [{}] [{}]  {}", fill, map_units, census));
     }
 
     // §2.3: the knobs are the HOST's. A joiner gets the bands and the
     // fighter list (its own company) and nothing that would desync.
     if (inputs.is_host) {
         for (int team = 0; team < 4; ++team) {
-            const std::string bots = format_lineup_bots_label(
-                inputs.save->bot_squad[static_cast<std::size_t>(team)],
-                inputs.preset_names);
-            const std::string level = format_lineup_level_label(
-                inputs.save->bot_level[static_cast<std::size_t>(team)]);
+            const std::string fill = format_lineup_fill_label(
+                inputs.save->fill[static_cast<std::size_t>(team)]);
+            const std::string map_units = format_lineup_map_units_label(
+                inputs.save->map_units[static_cast<std::size_t>(team)]);
             // The row text is the shared label VERBATIM behind the team
             // ordinal — never a second spelling of the same value. The rows
             // STAY on a classic campaign (marked, and refused on selection):
@@ -171,11 +169,11 @@ TerminalLineupModel build_terminal_lineup_model(
                 ? std::string()
                 : std::string(kTerminalLineupMapRulesMark);
             model.items.push_back(TerminalLineupItem{
-                TerminalLineupItem::Kind::BotSquad, team,
-                std::format("TEAM {}  {}{}", team + 1, bots, mark)});
+                TerminalLineupItem::Kind::Fill, team,
+                std::format("TEAM {}  {}{}", team + 1, fill, mark)});
             model.items.push_back(TerminalLineupItem{
-                TerminalLineupItem::Kind::BotLevel, team,
-                std::format("TEAM {}  {}{}", team + 1, level, mark)});
+                TerminalLineupItem::Kind::MapUnits, team,
+                std::format("TEAM {}  {}{}", team + 1, map_units, mark)});
         }
     }
     model.items.push_back(TerminalLineupItem{

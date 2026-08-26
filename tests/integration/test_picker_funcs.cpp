@@ -3064,7 +3064,7 @@ TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
     const short original_allied_mode = save.allied_mode;
     const std::string original_campaign = save.current_campaign;
     const short original_scenario = save.scen_num;
-    const std::array<short, 4> original_bot_squad = save.bot_squad;
+    const std::array<short, 4> original_bot_squad = save.fill;
     const std::string original_mount = get_mounted_campaign();
     const int original_world_id = world.id;
     const char original_world_type = world.type;
@@ -3095,7 +3095,7 @@ TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
     save.allied_mode = 0;
     save.current_campaign = "modes";
     save.scen_num = 7;
-    save.bot_squad = {};
+    save.fill = {};
     // A REAL mount: the versus predicate reads the campaign's matchup: yaml
     // key through the mounted package (a faked mount id would read another
     // campaign's yaml).
@@ -3124,7 +3124,7 @@ TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
         // assignment and the reteam sweep moves that seat to the first team
         // still on. This is the narrowing TEAMS used to do, expressed by the
         // rule that replaced it — ctf_team_count is inert now (A3).
-        save.bot_squad[3] = og::sim::kBotSquadOff;
+        save.fill[3] = og::sim::kBotSquadOff;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
@@ -3152,7 +3152,7 @@ TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
         ASSERT_NE(nullptr, marker3);
         marker1->set_team_num(1);
         marker3->set_team_num(3);
-        save.bot_squad[3] = og::sim::kBotSquadAuto;
+        save.fill[3] = og::sim::kBotSquadAuto;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
@@ -3179,7 +3179,7 @@ TEST(PickerFuncs, local_lobby_reconciles_off_and_sparse_domain_transitions)
     save.allied_mode = original_allied_mode;
     save.current_campaign = original_campaign;
     save.scen_num = original_scenario;
-    save.bot_squad = original_bot_squad;
+    save.fill = original_bot_squad;
 }
 
 namespace {

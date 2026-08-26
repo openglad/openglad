@@ -385,23 +385,11 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     const GameWorld& world,
     std::string_view mounted_campaign);
 
-// Scenario-troops knob, three states on the existing int16 field:
-//   0 ALL  — the level's authored cast is untouched (default, classic)
-//   2 OWN  — drop every authored living + generator with no roster guy, any
-//            team, wildlife included (Onslaught keeps its generators, and
-//            protected named NPCs are exempt on classic maps)
-//   3 FAIR — strip exactly like OWN, and the scripted modes size the bot
-//            squads they generate to the human census instead of the
-//            difficulty formula (og::sim::kTroopsMatched, matched-teams
-//            design D25-D28); classic maps play it as plain OWN
-// Every state applies on every campaign, so the cycle is a plain walk:
-// ALL -> OWN -> FAIR -> ALL. The field keeps accepting the retired middle
-// state 1 off disk and off the wire; the strip rules read it as OWN, and
-// cycling from it (or any junk) lands on ALL. Pure, so the order is
-// unit-pinnable.
-short next_ctf_scenario_troops(short current);
-
-void toggle_ctf_scenario_troops(SaveData& save);
+// The scenario-troops knob is RETIRED (amendment B5). It asked once, for the
+// whole map, whether the authored cast fights; the LINEUP band's per-team
+// MAP UNITS box asks it per team, and the engine sanitizes
+// ctf_strip_scenario_troops to 0 at every authority. next_ctf_scenario_troops
+// / toggle_ctf_scenario_troops / format_ctf_troops_label are gone with it.
 
 // --- Difficulty submenu match rules ---
 // Every default (0) is bit-identical classic behavior; the cyclers walk the
@@ -1023,17 +1011,14 @@ struct ScenarioRosterReport {
     std::string mode_name;          // ModeState::name when staged + active
     std::array<ScenarioFill, 4> team_fill = {};
     std::array<int, 4> team_fill_count = {};
-    // --- Lineup facts (lineup §3.4): the APPLIED per-team bot facts the
-    // spawn seam banked in the shared mode-var slot (mode_match.lua
-    // bank_lineup_facts / kModeVarLineupFacts below) — preset name
-    // resolved through the campaign lineup hook (empty when AUTO, the
-    // ordinal is unregistered, or no hook), and the applied level OFFSET,
-    // -5..+5 with 0 = AUTO (amendment A6 — it is a shift on top of the
-    // AUTO source, not a level, and the preview renders it "LV+3" / "LV-1"
-    // sign and all). Facts, never requests: a knob a mode ignored banks
-    // nothing.
-    std::array<std::string, 4> team_squad_name = {};
-    std::array<int, 4> team_squad_level = {};
+    // --- Lineup facts (§3.4 as amended by B7): the APPLIED per-team FILL
+    // code the spawn seam banked in the shared mode-var slot
+    // (mode_match.lua bank_lineup_facts / kModeVarLineupFacts below).
+    // og::sim::kFillFair .. kFillBrutal, or -1 for a team whose squad
+    // banked nothing. Facts, never requests: a knob a mode ignored, and a
+    // squad that fielded nobody, bank nothing — so the pane never names a
+    // fill that is not on the floor.
+    std::array<int, 4> team_squad_fill = {-1, -1, -1, -1};
     // The bots fielded BESIDE an occupancy fill (a preset squad on a
     // COMPANY team — lineup §3.2 amended I3), censused like every other
     // fact; 0 on a squad-only team, whose bots are team_fill_count.
@@ -1098,11 +1083,6 @@ std::string format_allied_mode_label(const SaveData& save);
 // "SCORE: N" otherwise — captures, goals, kills; amendment A5). The old
 // "Limit:" word answered the maintainer's "what is LIMIT?" with nothing.
 std::string format_ctf_score_label(const SaveData& save);
-
-// Format the scenario-troops label ("TROOPS: ALL" when keeping the authored
-// cast, "TROOPS: OWN" when stripping it, "TROOPS: FAIR" when stripping plus
-// census-matched bot squads).
-std::string format_ctf_troops_label(const SaveData& save);
 
 // "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone" /
 // "Respawns: Team 1 Heroes".
@@ -1519,6 +1499,11 @@ struct LineupTeamBand {
     int seat_count = 0;
     std::vector<std::string> seat_labels;  // "P1 WASD", "P3 BOB"
     int fighter_count = 0;                 // deployed characters on the team
+    // Authored MAP UNITS on this team in the staged census (B4). Zero means
+    // the map ships none there, so the box is inert and the band says
+    // NO MAP UNITS instead of offering a switch that changes nothing. The
+    // caller supplies the census; the band never loads a world.
+    int map_unit_count = 0;
     std::optional<long long> power;        // nullopt = no metric
     // The two informational diagnostics (§2.1). They replace the census in
     // the disabled grey; GO keeps its own refusal.
@@ -1544,26 +1529,36 @@ std::string lineup_seat_label(const og::sim::LobbyPlayer& seat,
 // so a fighter is counted exactly once either way. `power` prices one
 // fighter (empty = no metric); `local_seat_short_name` names a local seat's
 // controller (empty = company abbreviations everywhere).
+// `map_unit_counts` is the staged census of authored map units per team
+// (B4); an empty span leaves every band's count at 0, which reads as "the
+// map ships none" and dims every box.
 std::array<LineupTeamBand, 4> build_lineup_bands(
     const SaveData& own,
     std::span<const og::sim::LobbyPlayer> players,
     std::span<const std::uint8_t> local_player_indices,
     bool networked,
     const LineupPowerFn& power,
-    const std::function<std::string(std::uint8_t)>& local_seat_short_name = {});
+    const std::function<std::string(std::uint8_t)>& local_seat_short_name = {},
+    std::span<const int> map_unit_counts = {});
 
 // --- LINEUP labels (exact strings; every one of them is pinned) ---
 
-// "BOTS: AUTO" / "BOTS: OFF" / "BOTS: NONE" / "BOTS: <NAME>" (12-char face,
-// names clipped to 6). A preset ordinal the caller has no name for — a
-// joiner clamps without ever seeing the list — renders "BOTS: #n" rather
-// than lying AUTO.
-std::string format_lineup_bots_label(short squad,
-                                     std::span<const std::string> preset_names);
-// "LV: AUTO" / "LV +2" / "LV -1" (8-char face). The knob is an OFFSET on
-// the AUTO source (A6), so the sign is always written and 0 is AUTO;
-// out-of-range offsets read AUTO.
-std::string format_lineup_level_label(short level);
+// The FILL wheel's bare value name: "FAIR" / "NONE" / "WEAK" / "STRONG" /
+// "BRUTAL". Out-of-range values read FAIR, which is what the clamp lands
+// them on anyway. Shared by the band face and the preview pane, so the two
+// can never disagree about what a stored code is called.
+std::string_view lineup_fill_name(short fill);
+// "FILL: FAIR" / "FILL: NONE" / "FILL: WEAK" / "FILL: STRONG" /
+// "FILL: BRUTAL" — the band's 12-char knob face, and exactly 12 chars at
+// its two longest values, which is the whole budget.
+std::string format_lineup_fill_label(short fill);
+// "MAP UNITS: ON" / "MAP UNITS: OFF" — the terminal clients' spelling of
+// the box the SDL band draws as a checkmark (B9).
+std::string format_lineup_map_units_label(short map_units);
+// The band's MAP UNITS hint: "NO MAP UNITS" when the map ships none on this
+// team (the box is inert), otherwise empty. B4's census hint, kept out of
+// format_lineup_census so no pinned fighter census moves for it.
+std::string format_lineup_map_units_census(const LineupTeamBand& band);
 // "5 FIGHTERS" / "1 FIGHTER" / "NO FIGHTERS", or the band's diagnostic:
 // "NEEDS 2 FIGHTERS" / "NEEDS 1 FIGHTER" / "NO SEAT: AI".
 std::string format_lineup_census(const LineupTeamBand& band);
@@ -1576,32 +1571,18 @@ std::string format_lineup_power(std::optional<long long> power);
 std::string format_lineup_power_cell(std::optional<long long> power,
                                      int width = 6);
 
-// The two cyclers. `preset_count` is clamped to kMaxBotPresets, so a squad
-// cycles AUTO -> OFF -> NONE -> presets -> AUTO and a level AUTO -> +1..+5
-// -> -5..-1 -> AUTO (up first, so one step off AUTO is the smallest shift
-// in that direction). `dir` may be any step; a current value outside the
-// range enters at AUTO.
-short cycle_lineup_bots(short current, int preset_count, int dir);
-short cycle_lineup_level(short current, int dir);
-
-// The BOTS wheel as a BAND turns it (amendment A2): cycle_lineup_bots, except
-// that OFF is refused on a team that is on by definition — one with a seat
-// or a deployed fighter — and the wheel steps past it to the next value in
-// `dir`, because refusing in place would strand the wheel (OFF sits between
-// AUTO and the presets, so a seated team could never reach a preset again).
-// The step carries the sentence that explains itself, so THE WHOLE RULE —
-// which values are legal, which way the step lands, and what the player is
-// told — lives here and nowhere else: the SDL screen toasts it, the text
-// picker prints it, the curses picker shows it in a box.
-struct LineupBotsWheelStep {
-    short next = 0;  // the value to store (already the wheel's own)
-    // "TEAM n HAS PLAYERS" (a seat holds the team) / "TEAM n HAS FIGHTERS"
-    // (deployed characters only). Empty unless an OFF was stepped over.
-    std::optional<std::string> refusal_toast;
-};
-LineupBotsWheelStep lineup_bots_wheel_next(const LineupTeamBand& band,
-                                           short current, int preset_count,
-                                           int dir);
+// The two knob steps. The FILL wheel walks its DISPLAY order — NONE, WEAK,
+// FAIR, STRONG, BRUTAL — which is weakest to strongest with the default in
+// the middle, not the storage order; `dir` may be any step, and a stored
+// value outside the wheel enters at FAIR. MAP UNITS is a box, so its step
+// is a flip, and any junk value flips to ON.
+//
+// There are no refusals on either (amendment B8): nothing the band can hold
+// deactivates a team, so every value is legal on every team, on every
+// client, and the three clients share one write rule with no toast between
+// them.
+short cycle_lineup_fill(short current, int dir);
+short toggle_lineup_map_units(short current);
 
 // --- SPLIT (§5) --------------------------------------------------------
 

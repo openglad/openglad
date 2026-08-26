@@ -286,10 +286,10 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.time_limit = save.time_limit;
     // Per-team bot knobs (protocol v16 / GTL v18, LINEUP §3.1): the same
     // dropped-field rule as every other lobby-negotiated match setting.
-    for (std::size_t team = 0; team < settings.bot_squad.size(); ++team)
+    for (std::size_t team = 0; team < settings.fill.size(); ++team)
     {
-        settings.bot_squad[team] = save.bot_squad[team];
-        settings.bot_level[team] = save.bot_level[team];
+        settings.fill[team] = save.fill[team];
+        settings.map_units[team] = save.map_units[team];
     }
     // Protocol v12: shared-teams rule rides the wire (matchup: versus).
     settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
@@ -383,8 +383,8 @@ og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     equivalent.cross_control = state.settings.cross_control;
     equivalent.infinite_gold = state.settings.infinite_gold;
     equivalent.time_limit = state.settings.time_limit;
-    equivalent.bot_squad = state.settings.bot_squad;
-    equivalent.bot_level = state.settings.bot_level;
+    equivalent.fill = state.settings.fill;
+    equivalent.map_units = state.settings.map_units;
 
     std::vector<OrderedLobbyGameplaySlot> ordered_slots;
     for (std::size_t player_order = 0; player_order < state.players.size();

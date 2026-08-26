@@ -127,8 +127,8 @@ static void write_save_file(const std::string& filename_no_ext,
                             uint32_t tower_run_seed = 0,
                             int64_t last_played_unix_s = 0,
                             short time_limit = 0,
-                            const std::array<short, 4>* bot_squad = nullptr,
-                            const std::array<short, 4>* bot_level = nullptr)
+                            const std::array<short, 4>* fill = nullptr,
+                            const std::array<short, 4>* map_units = nullptr)
 {
     std::string fname = filename_no_ext + ".gtl";
     SDL_IOStream* out = open_write_file("save/", fname.c_str());
@@ -274,11 +274,11 @@ static void write_save_file(const std::string& filename_no_ext,
     // then four levels (0 = AUTO on both).
     if (version >= 18) {
         for (std::size_t team = 0; team < 4; ++team) {
-            short value = bot_squad != nullptr ? (*bot_squad)[team] : 0;
+            short value = fill != nullptr ? (*fill)[team] : 0;
             rw_write_val(out, value);
         }
         for (std::size_t team = 0; team < 4; ++team) {
-            short value = bot_level != nullptr ? (*bot_level)[team] : 0;
+            short value = map_units != nullptr ? (*map_units)[team] : 0;
             rw_write_val(out, value);
         }
     }
@@ -573,15 +573,13 @@ TEST(SaveDataVersions, save_data_round_trips_strip_all_without_a_format_bump)
         ASSERT_EQ(state, twice.ctf_strip_scenario_troops)
             << "state " << state << " must survive the game's own writer";
 
-        // What the stored value MEANS: 0 keeps, everything above it strips,
-        // and exactly 3 additionally sizes the generated squads (FAIR).
-        const char* expected_label = "TROOPS: OWN";
-        if (state == 0)
-            expected_label = "TROOPS: ALL";
-        else if (state == og::sim::kTroopsMatched)
-            expected_label = "TROOPS: FAIR";
-        EXPECT_EQ(expected_label, og::ui::format_ctf_troops_label(twice))
-            << "state " << state;
+        // What the stored value MEANS is now: nothing. Amendment B5
+        // retired the knob, so the field still rides the .gtl byte for byte
+        // (this round trip) and every authority that hands it onward — the
+        // lobby sanitizer, both sync_world_from_save_data twins,
+        // apply_mode_state — heals it to 0. Those heals are pinned in
+        // test_lobby_server.cpp, test_headless_server_runtime.cpp and
+        // test_mode_snapshot.cpp; what this test still owns is the format.
     }
 }
 
@@ -956,20 +954,20 @@ TEST(SaveDataVersions, save_data_load_v18_reads_the_bot_knobs)
                     /*tower_run_seed=*/0u,
                     /*last_played_unix_s=*/0,
                     /*time_limit=*/7200,
-                    /*bot_squad=*/&squad,
-                    /*bot_level=*/&level);
+                    /*fill=*/&squad,
+                    /*map_units=*/&level);
 
     SaveData tmp;
-    tmp.bot_squad.fill(99); // poisoned; the load must overwrite it
-    tmp.bot_level.fill(99);
+    tmp.fill.fill(99); // poisoned; the load must overwrite it
+    tmp.map_units.fill(99);
     ASSERT_TRUE(tmp.load("ver18_bot_knobs")) << "v18 load should succeed";
     ASSERT_EQ(7200, (int)tmp.time_limit)
         << "the v17 tail still reads ahead of the v18 one";
     for (std::size_t team = 0; team < 4; ++team) {
-        ASSERT_EQ((int)squad[team], (int)tmp.bot_squad[team])
-            << "bot_squad team " << team;
-        ASSERT_EQ((int)level[team], (int)tmp.bot_level[team])
-            << "bot_level team " << team;
+        ASSERT_EQ((int)squad[team], (int)tmp.fill[team])
+            << "fill team " << team;
+        ASSERT_EQ((int)level[team], (int)tmp.map_units[team])
+            << "map_units team " << team;
     }
 }
 
@@ -1003,14 +1001,14 @@ TEST(SaveDataVersions, save_data_load_v17_payload_defaults_the_bot_knobs)
 
     SaveData tmp;
     // Poison the in-memory fields: a v17 payload must restore AUTO.
-    tmp.bot_squad.fill(4);
-    tmp.bot_level.fill(7);
+    tmp.fill.fill(4);
+    tmp.map_units.fill(7);
     ASSERT_TRUE(tmp.load("ver17_no_bot_knobs")) << "v17 load should succeed";
     for (std::size_t team = 0; team < 4; ++team) {
-        ASSERT_EQ(0, (int)tmp.bot_squad[team])
-            << "v17 saves default bot_squad to AUTO";
-        ASSERT_EQ(0, (int)tmp.bot_level[team])
-            << "v17 saves default bot_level to AUTO";
+        ASSERT_EQ(0, (int)tmp.fill[team])
+            << "v17 saves default fill to AUTO";
+        ASSERT_EQ(0, (int)tmp.map_units[team])
+            << "v17 saves default map_units to AUTO";
     }
     ASSERT_EQ(10800, (int)tmp.time_limit) << "v17 fields still read";
     ASSERT_EQ(9, (int)tmp.ctf_capture_limit) << "v16 fields still read";
@@ -1022,8 +1020,8 @@ TEST(SaveDataVersions, save_data_v18_roundtrip_preserves_the_bot_knobs)
     SaveData src;
     src.current_campaign = "gladiator";
     src.time_limit = 10800;
-    src.bot_squad = {1, 0, 9, 4};
-    src.bot_level = {0, 9, 2, 1};
+    src.fill = {1, 0, 9, 4};
+    src.map_units = {0, 9, 2, 1};
     // A campaign-state entry rides along: the knobs are written AFTER the
     // v15 state block and the v17 time limit, so a mis-ordered writer would
     // corrupt all three.
@@ -1044,16 +1042,16 @@ TEST(SaveDataVersions, save_data_v18_roundtrip_preserves_the_bot_knobs)
     ASSERT_EQ(18, (int)version_byte) << "writer should stamp version 18";
 
     SaveData loaded;
-    loaded.bot_squad.fill(99); // poisoned; the load must overwrite it
-    loaded.bot_level.fill(99);
+    loaded.fill.fill(99); // poisoned; the load must overwrite it
+    loaded.map_units.fill(99);
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
               static_cast<int>(loaded.load_with_error("typed_save_bot_knobs")))
         << "v18 reader should succeed";
     for (std::size_t team = 0; team < 4; ++team) {
-        ASSERT_EQ((int)src.bot_squad[team], (int)loaded.bot_squad[team])
-            << "bot_squad team " << team;
-        ASSERT_EQ((int)src.bot_level[team], (int)loaded.bot_level[team])
-            << "bot_level team " << team;
+        ASSERT_EQ((int)src.fill[team], (int)loaded.fill[team])
+            << "fill team " << team;
+        ASSERT_EQ((int)src.map_units[team], (int)loaded.map_units[team])
+            << "map_units team " << team;
     }
     ASSERT_EQ(10800, (int)loaded.time_limit)
         << "the v17 time limit still round-trips";

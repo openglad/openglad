@@ -2047,11 +2047,12 @@ bool known_match_setting(const char* name)
 
 // og.campaign_match_get(name) → int32 — the menu-time twin of the sim's
 // read-only og.match_setting, over the persisted match knobs
-// ("score_limit", "respawn_ticks", "strip_troops", "respawn_mode",
-// "generator_rate", "time_limit", and the per-team "bot_squad_1"..
-// "bot_squad_4" / "bot_level_1".."bot_level_4"). Unknown names error, like
-// the twin — and "team_count" is now one of them (amendment A3 retired the
-// knob; its sim-side read survives, always answering 0).
+// ("score_limit", "respawn_ticks", "respawn_mode", "generator_rate",
+// "time_limit", and the per-team "fill_1".."fill_4" /
+// "map_units_1".."map_units_4"). Unknown names error, like the twin — and
+// "team_count" (amendment A3) and "strip_troops" (amendment B5) are now two
+// of them: both knobs are retired, and both sim-side reads survive, always
+// answering 0.
 int og_campaign_match_get(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_match_get");
@@ -2732,23 +2733,21 @@ int og_team_color_name(lua_State* L)
 }
 
 // og.match_setting(name) — the lobby/save match knobs, reinterpreted as
-// generic match settings; 0 always means "mode default" (strip_troops:
-// 0 keep, 2 own, 3 match; 1 legacy = own). Names: "team_count" (RETIRED by
-// amendment A3 and always 0 — every team the map authors; kept readable so
-// scripts written against it keep running, and dropping an authored team is
-// now the band's own BOTS: OFF),
-// "score_limit", "respawn_ticks", "strip_troops" (0 keeps the authored
-// cast; 2 strips it; 3 = "TROOPS: FAIR" strips it AND sizes the generated
-// bot squads to the human census — the bot-squad power model is the only
-// reader that separates 3 from 2, and classic maps play 3 as plain own;
-// the retired middle state 1 reads as own),
+// generic match settings. Names: "team_count" (RETIRED by amendment A3 and
+// always 0 — every team the map authors; kept readable so scripts written
+// against it keep running),
+// "score_limit", "respawn_ticks",
+// "strip_troops" (RETIRED by amendment B5 — always 0; the per-team
+// "map_units_N" box answers what it used to ask, and the name stays
+// readable so an old script keeps running),
 // "respawn_mode" (the difficulty submenu's classic respawn selector),
 // "time_limit" (the match clock in SIM TICKS; 0 = the map's own value, so
 // modes resolve it against their manifest row through match.resolve_limit),
-// "bot_squad_1".."bot_squad_4" (the per-team squad preset ordinal: 0 = AUTO,
-// 1 = OFF — the team is not fielded at all, the retired TEAMS knob's power —
-// 2 = NONE, 3.. = the campaign's preset), "bot_level_1".."bot_level_4" (the
-// per-team bot level: 0 = AUTO, 1..9 that level exactly),
+// "fill_1".."fill_4" (the per-team FILL wheel: 0 = FAIR, 1 = NONE,
+// 2 = WEAK, 3 = STRONG, 4 = BRUTAL — the multiplier each code means lives
+// in the mode Lua, which is the only layer that solves a target),
+// "map_units_1".."map_units_4" (the per-team MAP UNITS box: 0 = the map's
+// own authored units are fielded, 1 = they are not),
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF
 // bot-squad level formula reads it).
 int og_match_setting(lua_State* L)
@@ -2768,22 +2767,22 @@ int og_match_setting(lua_State* L)
         value = world->respawn_mode;
     else if (std::strcmp(s, "time_limit") == 0)
         value = world->ctf_requested_time_limit;
-    else if (std::strcmp(s, "bot_squad_1") == 0)
-        value = world->ctf_requested_bot_squad[0];
-    else if (std::strcmp(s, "bot_squad_2") == 0)
-        value = world->ctf_requested_bot_squad[1];
-    else if (std::strcmp(s, "bot_squad_3") == 0)
-        value = world->ctf_requested_bot_squad[2];
-    else if (std::strcmp(s, "bot_squad_4") == 0)
-        value = world->ctf_requested_bot_squad[3];
-    else if (std::strcmp(s, "bot_level_1") == 0)
-        value = world->ctf_requested_bot_level[0];
-    else if (std::strcmp(s, "bot_level_2") == 0)
-        value = world->ctf_requested_bot_level[1];
-    else if (std::strcmp(s, "bot_level_3") == 0)
-        value = world->ctf_requested_bot_level[2];
-    else if (std::strcmp(s, "bot_level_4") == 0)
-        value = world->ctf_requested_bot_level[3];
+    else if (std::strcmp(s, "fill_1") == 0)
+        value = world->ctf_requested_fill[0];
+    else if (std::strcmp(s, "fill_2") == 0)
+        value = world->ctf_requested_fill[1];
+    else if (std::strcmp(s, "fill_3") == 0)
+        value = world->ctf_requested_fill[2];
+    else if (std::strcmp(s, "fill_4") == 0)
+        value = world->ctf_requested_fill[3];
+    else if (std::strcmp(s, "map_units_1") == 0)
+        value = world->ctf_requested_map_units[0];
+    else if (std::strcmp(s, "map_units_2") == 0)
+        value = world->ctf_requested_map_units[1];
+    else if (std::strcmp(s, "map_units_3") == 0)
+        value = world->ctf_requested_map_units[2];
+    else if (std::strcmp(s, "map_units_4") == 0)
+        value = world->ctf_requested_map_units[3];
     else if (std::strcmp(s, "difficulty") == 0)
         value = world->difficulty;
     else

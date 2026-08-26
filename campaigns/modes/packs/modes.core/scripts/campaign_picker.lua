@@ -253,16 +253,11 @@ local function games_title(signed)
 end
 
 -- The rules the table plays (#212), spelled honestly — 0 keeps its MATCHUP
--- meaning on every knob (the map's own score, all troops), and an
--- off-menu number reads as itself. TEAMS is gone from the table (lineup
--- amendment A1/A3): the sides are the LINEUP page's, band by band, and
--- so are the per-team bot squads and LV offsets — the camp keeps only
+-- meaning (the map's own score), and an off-menu number reads as itself.
+-- TEAMS is gone from the table (lineup amendment A1/A3) and TROOPS with it
+-- (amendment B5): the sides are the LINEUP page's, band by band, and so is
+-- whether each team's map-shipped units are fielded. The camp keeps only
 -- what LINEUP has no home for.
-local TROOPS_WORDS = {
-  [0] = "all",
-  [2] = "own",
-  [3] = "fair",
-}
 
 -- The score in the two spellings the table needs: the sentence's "map
 -- score" and the row note's bare "map".
@@ -275,15 +270,6 @@ local function score_words()
   return phrase, phrase
 end
 
-local function troops_word()
-  local strip = og.campaign_match_get("strip_troops")
-  local word = TROOPS_WORDS[strip]
-  if word == nil then
-    return tostring(strip)
-  end
-  return word
-end
-
 -- A sentence starts with a capital: the score phrase leads now that the
 -- sides no longer do, and "map score" / "to 7" are lower-case words.
 local function sentence(words)
@@ -291,20 +277,20 @@ local function sentence(words)
 end
 
 -- What the table plays right now, as its one sentence. Worst case is
--- "Map score, fair." at 16 of the 38-char line budget.
+-- "Map score." at 10 of the 38-char line budget.
 local function rules_line()
   local long_score = score_words()
-  return sentence(long_score .. ", " .. troops_word() .. ".")
+  return sentence(long_score .. ".")
 end
 
 -- The same rules at note length for the MATCH SETUP row — worst case
--- "to 50, fair" at 11 of the 20-char note budget.
--- Both summaries deliberately stop at the score and the troops: the TIME
--- LIMIT row already wears its own value where the host turns it, and the
--- sides are LINEUP's to state.
+-- "to 50" at 5 of the 20-char note budget.
+-- Both summaries deliberately stop at the score: the TIME LIMIT row
+-- already wears its own value where the host turns it, the sides are
+-- LINEUP's to state, and so are the map units since amendment B5.
 local function rules_digest()
   local _, short_score = score_words()
-  return short_score .. ", " .. troops_word()
+  return short_score
 end
 
 -- SEVEN GAMES — the index: what else the book holds, and how far each game
@@ -392,14 +378,6 @@ local function score_face(value)
   return tostring(value)
 end
 
-local function troops_face(value)
-  local word = TROOPS_WORDS[value]
-  if word == nil then
-    return tostring(value)
-  end
-  return string.upper(word)
-end
-
 -- The clock is stored in sim ticks (12/s, the manifest's own unit) and worn
 -- in minutes, the way the CTF camp note already spells it. og.div, never
 -- `/`: integer division is the determinism contract.
@@ -420,18 +398,6 @@ local function score_said(value)
   return "Score to " .. value .. "."
 end
 
--- The troops cycle IS this table's key set, so a click can never land off
--- it — the sentence needs no fallback the way the row's face does.
-local TROOPS_SAID = {
-  [0] = "Troops: the map's own.",
-  [2] = "Troops: your own.",
-  [3] = "Troops: fair bots.",
-}
-
-local function troops_said(value)
-  return TROOPS_SAID[value]
-end
-
 local function time_said(value)
   if value == 0 then
     return "Clock: the map's own."
@@ -439,14 +405,14 @@ local function time_said(value)
   return "Clock: " .. og.div(value, 720) .. " minutes."
 end
 
--- The three knobs MATCH SETUP turns, each written straight through
--- og.campaign_match_set: the key it writes, the cycle it steps (the MATCHUP
--- screen's own orders — cycle_ctf_capture_limit and the TROOPS toggle),
--- the face it wears and the sentence it speaks. The note is the cycle
--- itself: a row that shows only what it holds hides where the next click
--- lands. TEAMS was the fourth until lineup amendment A1 retired it (the
--- LINEUP band's OFF value is its successor); the per-team bot squads and
--- LV offsets never had a camp row — LINEUP owns them.
+-- The two knobs MATCH SETUP turns, each written straight through
+-- og.campaign_match_set: the key it writes, the cycle it steps (the
+-- MATCHUP screen's own order — cycle_ctf_capture_limit), the face it wears
+-- and the sentence it speaks. The note is the cycle itself: a row that
+-- shows only what it holds hides where the next click lands. TEAMS was the
+-- fourth until lineup amendment A1 retired it and TROOPS the third until
+-- amendment B5 did — the LINEUP band's per-team FILL wheel and MAP UNITS
+-- box are their successors, and neither ever had a camp row.
 local KNOBS = {
   {
     id = "score",
@@ -456,15 +422,6 @@ local KNOBS = {
     cycle = { 0, 1, 3, 5, 10 },
     face = score_face,
     said = score_said,
-  },
-  {
-    id = "troops",
-    key = "strip_troops",
-    title = "TROOPS",
-    note = "all, own, fair",
-    cycle = { 0, 2, 3 },
-    face = troops_face,
-    said = troops_said,
   },
   -- The clock the modes actually run on (#241). The cycle holds every
   -- shipped manifest value except basketball's one short court, so a host
@@ -704,25 +661,15 @@ local function picker_action(entry_id)
   return nil
 end
 
--- The LINEUP hook (docs/lineup-design.md §3.3-§4): the preset names for
--- the BOTS cycler in table order (ordinal = index + BOT_SQUAD_PRESET_BASE,
--- the wheel being AUTO / OFF / NONE / presets; the ids are already the
--- 6-char upper-case cycler faces, registered verbatim), and
--- the power function — mode_match's own stat_power over the engine's
--- derived-stat row, so the bands price a fighter with the exact metric
--- TROOPS: FAIR solves against. og.use reaches mode_match here because
--- the campaign VM loads the pack's lib modules exactly like a world VM
--- (the mode scripts already pull it in), and stat_power spends nothing
--- but og.div, which the campaign fence leaves open (clock_ticks above
--- already relies on that).
-local function lineup_presets()
-  local names = {}
-  for i = 1, #match.BOT_PRESETS do
-    names[i] = match.BOT_PRESETS[i].id
-  end
-  return names
-end
-
+-- The LINEUP hook (docs/lineup-design.md §4): the power function alone
+-- since amendment B1 replaced the BOTS preset wheel with the five-value
+-- FILL wheel, which names nothing a campaign owns. It is mode_match's own
+-- stat_power over the engine's derived-stat row, so the bands price a
+-- fighter with the exact metric the FILL solver measures against. og.use
+-- reaches mode_match here because the campaign VM loads the pack's lib
+-- modules exactly like a world VM (the mode scripts already pull it in),
+-- and stat_power spends nothing but og.div, which the campaign fence
+-- leaves open (clock_ticks above already relies on that).
 local function lineup_power(row)
   return match.stat_power(row.hp, row.mp, row.armor, row.damage,
                           row.stepsize, row.fire_frequency, row.level)
@@ -733,7 +680,6 @@ og.register_campaign_hooks({
   picker_menu = picker_menu,
   picker_action = picker_action,
   lineup = {
-    presets = lineup_presets(),
     power = lineup_power,
   },
 })

@@ -2264,9 +2264,9 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
         << "the two empty teams still get a band:\n" << dump;
     EXPECT_NE(dump.find("TEAM 1  BOTS: NONE"), std::string::npos)
         << "the redraw re-reads the knob out of the save:\n" << dump;
-    EXPECT_EQ(og::sim::kBotSquadNone, f.save().bot_squad[0])
+    EXPECT_EQ(og::sim::kBotSquadNone, f.save().fill[0])
         << "AUTO -> (OFF refused) -> NONE landed in the save";
-    EXPECT_EQ(0, f.save().bot_squad[1]) << "only the cycled team moved";
+    EXPECT_EQ(0, f.save().fill[1]) << "only the cycled team moved";
     EXPECT_TRUE(f.t().input_exhausted());
     (void)unmount_campaign_package_with_error("modes");
     (void)mount_campaign_package_with_error("gladiator");
@@ -2292,7 +2292,7 @@ TEST(CursesPickerClient, lineup_knob_refuses_on_a_classic_campaign)
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
     const std::string dump = f.t().dump();
-    EXPECT_EQ(0, f.save().bot_squad[0])
+    EXPECT_EQ(0, f.save().fill[0])
         << "a classic campaign's knob write must not land";
     EXPECT_NE(dump.find("MAP RULES"), std::string::npos)
         << "the refusal and the census both say who decides:\n" << dump;

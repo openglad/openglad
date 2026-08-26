@@ -279,8 +279,8 @@ struct SavedPickerSave
         snapshot_fields.ctf_respawn_ticks = save.ctf_respawn_ticks;
         snapshot_fields.ctf_strip_scenario_troops =
             save.ctf_strip_scenario_troops;
-        snapshot_fields.bot_squad = save.bot_squad;
-        snapshot_fields.bot_level = save.bot_level;
+        snapshot_fields.fill = save.fill;
+        snapshot_fields.map_units = save.map_units;
     }
 
     ~SavedPickerSave()
@@ -300,8 +300,8 @@ struct SavedPickerSave
         save.ctf_respawn_ticks = snapshot_fields.ctf_respawn_ticks;
         save.ctf_strip_scenario_troops =
             snapshot_fields.ctf_strip_scenario_troops;
-        save.bot_squad = snapshot_fields.bot_squad;
-        save.bot_level = snapshot_fields.bot_level;
+        save.fill = snapshot_fields.fill;
+        save.map_units = snapshot_fields.map_units;
     }
 };
 
@@ -341,8 +341,8 @@ void write_save0_with_fighters(const std::string& campaign, short scen_num,
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 0;
     save.ctf_strip_scenario_troops = 0;
-    save.bot_squad = {};
-    save.bot_level = {};
+    save.fill = {};
+    save.map_units = {};
     ASSERT_TRUE(save.save("save0"));
 }
 
@@ -618,15 +618,15 @@ int lineup_knobs_flow_injector(void* data)
 
         // LV on band 2: AUTO -> +1 -> +2 (the offset wheel, A6).
         state->level_plus_one =
-            click_until_label("lineup_level_1", "LV +1");
+            click_until_label("lineup_map_units_1", "LV +1");
         SDL_Delay(300);
         state->level_plus_two =
-            click_until_label("lineup_level_1", "LV +2");
+            click_until_label("lineup_map_units_1", "LV +2");
         SDL_Delay(300);
         // LV on band 3: the whole wheel round to -1 (up first, then the
         // minus side, A6), one label per click.
         state->level_minus_one = click_through_labels(
-            "lineup_level_2",
+            "lineup_map_units_2",
             {"LV +1", "LV +2", "LV +3", "LV +4", "LV +5", "LV -5", "LV -4",
              "LV -3", "LV -2", "LV -1"});
         SDL_Delay(300);
@@ -634,14 +634,14 @@ int lineup_knobs_flow_injector(void* data)
         // BOTS on team 1 (the seat + every fighter): OFF is refused — the
         // wheel steps over it onto NONE and the toast says why.
         state->bots_off_refused_on_seated_team =
-            click_until_label("lineup_bots_0", "BOTS: NONE", 3);
+            click_until_label("lineup_fill_0", "BOTS: NONE", 3);
         // The toast is still up (2.5s): freeze it.
         state->captures += capture_frame("lineup_off_refused");
         SDL_Delay(300);
         // BOTS on the unoccupied team 4: OFF is one turn off AUTO and it
         // sticks.
         state->bots_off_on_empty_team =
-            click_until_label("lineup_bots_3", "BOTS: OFF", 3);
+            click_until_label("lineup_fill_3", "BOTS: OFF", 3);
         SDL_Delay(2600);  // let the refusal toast lapse before the capture
         state->captures += capture_frame("lineup_off_and_offset");
         SDL_Delay(300);
@@ -717,19 +717,19 @@ TEST(LineupUi, scenario_door_off_refused_on_seated_team_and_accepted_on_empty)
         << "BOTS on the seated team steps over OFF onto NONE";
     EXPECT_TRUE(state.bots_off_on_empty_team)
         << "BOTS on an empty team lands on OFF";
-    EXPECT_EQ(2, static_cast<int>(save.bot_level[1]))
+    EXPECT_EQ(2, static_cast<int>(save.map_units[1]))
         << "the LV cycle lands in the save knob";
-    EXPECT_EQ(-1, static_cast<int>(save.bot_level[2]))
+    EXPECT_EQ(-1, static_cast<int>(save.map_units[2]))
         << "a full turn of the offset wheel ends on -1";
     // Every knob write survived every later per-frame picker_lobby_poll(),
     // which copies the lobby settings back over the save: the values are
     // only still there because change_lineup_* pushed them into the lobby
     // first.
-    EXPECT_EQ(og::sim::kBotSquadNone, save.bot_squad[0])
+    EXPECT_EQ(og::sim::kBotSquadNone, save.fill[0])
         << "the seated team's wheel skipped OFF and holds NONE";
-    EXPECT_NE(og::sim::kBotSquadOff, save.bot_squad[0])
+    EXPECT_NE(og::sim::kBotSquadOff, save.fill[0])
         << "OFF never reached the save for a team with players";
-    EXPECT_EQ(og::sim::kBotSquadOff, save.bot_squad[3])
+    EXPECT_EQ(og::sim::kBotSquadOff, save.fill[3])
         << "the empty team's OFF lands in the save knob";
     EXPECT_TRUE(trace_contains("lineup", "bots_off_refused team=0"))
         << "the refusal traces";
@@ -809,10 +809,10 @@ int lineup_preset_flow_injector(void* data)
     // named by the lineup hook, never by the engine). Team 2 is empty in
     // this fixture, so OFF is a legal stop on the way.
     state->preset_labelled =
-        click_until_label("lineup_bots_1", "BOTS: BALANC", 5);
+        click_until_label("lineup_fill_1", "BOTS: BALANC", 5);
     SDL_Delay(300);
     // ...and its level offset: AUTO -> +1 -> +2 -> +3 (A6).
-    state->level_labelled = click_until_label("lineup_level_1", "LV +3", 6);
+    state->level_labelled = click_until_label("lineup_map_units_1", "LV +3", 6);
     SDL_Delay(300);
 
     // The TEAM 1 band's POWER, priced exactly as the screen prices it: the
@@ -896,9 +896,9 @@ TEST(LineupUi, modes_preset_knobs_reach_the_labels_and_the_staged_world)
     EXPECT_TRUE(state.preset_labelled)
         << "the BOTS cycler must reach the campaign preset BALANC";
     EXPECT_TRUE(state.level_labelled) << "the LV cycler must reach LV +3";
-    EXPECT_EQ(og::sim::kBotSquadPresetBase, save.bot_squad[1])
+    EXPECT_EQ(og::sim::kBotSquadPresetBase, save.fill[1])
         << "BALANC is the preset base ordinal (3) in the save knob";
-    EXPECT_EQ(3, static_cast<int>(save.bot_level[1]))
+    EXPECT_EQ(3, static_cast<int>(save.map_units[1]))
         << "the explicit offset lands in the save knob";
     ASSERT_TRUE(state.team1_power.has_value())
         << "the registered hook prices the deployed company: POWER n, not --";
@@ -1134,7 +1134,7 @@ int lineup_net_flow_injector(void* data)
             if (state->page_opened) {
                 SDL_Delay(1000);
                 state->knobs_visible =
-                    interactable_visible("lineup_bots_0");
+                    interactable_visible("lineup_fill_0");
                 state->captures += capture_frame(state->capture_name);
                 SDL_Delay(200);
                 interact("back");  // LINEUP -> SCENARIO
@@ -1244,11 +1244,11 @@ int lineup_classic_flow_injector(void* data)
     state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
     if (state->page_opened) {
         SDL_Delay(750);
-        state->knobs_visible = interactable_visible("lineup_bots_0");
+        state->knobs_visible = interactable_visible("lineup_fill_0");
         state->captures += capture_frame("lineup_classic_campaign");
         SDL_Delay(200);
         // Disabled rows are engine-inert: this click must change nothing.
-        interact("lineup_bots_0");
+        interact("lineup_fill_0");
         SDL_Delay(500);
         interact("back");
     }
@@ -1282,7 +1282,7 @@ TEST(LineupUi, classic_campaign_dims_knobs_inert)
     EXPECT_TRUE(state.page_opened);
     EXPECT_TRUE(state.knobs_visible)
         << "classic campaigns keep the knobs visible (dimmed), not hidden";
-    EXPECT_EQ(0, static_cast<int>(save.bot_squad[0]))
+    EXPECT_EQ(0, static_cast<int>(save.fill[0]))
         << "a dimmed knob's click is inert";
     EXPECT_EQ(1, state.captures);
 }
@@ -1297,32 +1297,32 @@ TEST(LineupUi, knob_callbacks_gate_branches)
     SavedPickerSave save_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.current_campaign = "modes";
-    save.bot_squad = {};
-    save.bot_level = {};
+    save.fill = {};
+    save.map_units = {};
 
     // Out-of-range team: inert.
-    EXPECT_EQ(MENU_OK, change_lineup_bots(-1));
-    EXPECT_EQ(MENU_OK, change_lineup_level(4));
+    EXPECT_EQ(MENU_OK, change_lineup_fill(-1));
+    EXPECT_EQ(MENU_OK, change_lineup_map_units(4));
 
     {
         // Joiner: §2.7-style denial — popup, TRACE, no local cycle.
         FakeNetLobbyClient joiner;
         joiner.host_view = false;
         ActiveLobbyGuard guard(&joiner);
-        EXPECT_EQ(MENU_OK, change_lineup_bots(0));
-        EXPECT_EQ(MENU_OK, change_lineup_level(0));
+        EXPECT_EQ(MENU_OK, change_lineup_fill(0));
+        EXPECT_EQ(MENU_OK, change_lineup_map_units(0));
         EXPECT_TRUE(trace_contains("lineup", "bots_denied"));
         EXPECT_TRUE(trace_contains("lineup", "level_denied"));
-        EXPECT_EQ(0, static_cast<int>(save.bot_squad[0]));
-        EXPECT_EQ(0, static_cast<int>(save.bot_level[0]));
+        EXPECT_EQ(0, static_cast<int>(save.fill[0]));
+        EXPECT_EQ(0, static_cast<int>(save.map_units[0]));
     }
 
     // Classic campaign: the belt behind the engine's Disabled grammar.
     save.current_campaign = "gladiator";
-    EXPECT_EQ(MENU_OK, change_lineup_bots(0));
-    EXPECT_EQ(MENU_OK, change_lineup_level(0));
-    EXPECT_EQ(0, static_cast<int>(save.bot_squad[0]));
-    EXPECT_EQ(0, static_cast<int>(save.bot_level[0]));
+    EXPECT_EQ(MENU_OK, change_lineup_fill(0));
+    EXPECT_EQ(MENU_OK, change_lineup_map_units(0));
+    EXPECT_EQ(0, static_cast<int>(save.fill[0]));
+    EXPECT_EQ(0, static_cast<int>(save.map_units[0]));
 
     // Host + versus: the LV wheel walks AUTO -> +1..+5 -> -5..-1 -> AUTO
     // on an empty band's knob (amendment A6 — the level is an offset), and
@@ -1331,11 +1331,11 @@ TEST(LineupUi, knob_callbacks_gate_branches)
     const int wheel[] = {1, 2, 3, 4, 5, -5, -4, -3, -2, -1};
     for (const int expected : wheel)
     {
-        EXPECT_EQ(MENU_OK, change_lineup_level(3));
-        EXPECT_EQ(expected, static_cast<int>(save.bot_level[3]));
+        EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
+        EXPECT_EQ(expected, static_cast<int>(save.map_units[3]));
     }
-    EXPECT_EQ(MENU_OK, change_lineup_level(3));
-    EXPECT_EQ(0, static_cast<int>(save.bot_level[3])) << "-1 wraps to AUTO";
+    EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
+    EXPECT_EQ(0, static_cast<int>(save.map_units[3])) << "-1 wraps to AUTO";
 
     // A toast with no LINEUP state installed still traces (never crashes).
     og::ui::lineup_show_toast("NOWHERE TO LAND");

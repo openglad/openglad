@@ -507,55 +507,32 @@ TEST(LobbyServer, sanitize_admits_troops_matched_and_equivalent_carries_it)
     EXPECT_EQ(0, server.state().settings.ctf_team_count)
         << "every value of the retired knob is Auto";
 
-    // Exactly kTroopsMatched (3) passes the troops sanitize (D27) — the
-    // one new legal value; TROOPS: FAIR rides this field.
-    og::sim::LobbySettings matched = server.state().settings;
-    matched.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    og::sim::LobbyMessage matched_message;
-    matched_message.payload = og::sim::LobbySettingsChangeMessage{
-        .player_index = 0u,
-        .settings = matched,
-    };
-    transport.queue_lobby_message(11u, matched_message);
-    server.poll_incoming_messages();
-    EXPECT_EQ(og::sim::kTroopsMatched,
-              server.state().settings.ctf_strip_scenario_troops);
+    // Amendment B5: TROOPS retired exactly like TEAMS above. Every value a
+    // peer, an old .gtl or a crafted client can put in the field — the
+    // sentinel 3, plain OWN 2, the retired middle state 1, junk past the
+    // top — heals to 0 on the way through the authority, once, silently.
+    for (const std::int16_t legacy_value : {std::int16_t{1}, std::int16_t{2},
+                                            og::sim::kTroopsMatched,
+                                            std::int16_t{4}})
+    {
+        og::sim::LobbySettings troops = server.state().settings;
+        troops.ctf_strip_scenario_troops = legacy_value;
+        og::sim::LobbyMessage troops_message;
+        troops_message.payload = og::sim::LobbySettingsChangeMessage{
+            .player_index = 0u,
+            .settings = troops,
+        };
+        transport.queue_lobby_message(11u, troops_message);
+        server.poll_incoming_messages();
+        EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops)
+            << "legacy troops value " << legacy_value;
+    }
 
-    // The junk-rejection posture is unchanged: 4 (one past the sentinel)
-    // still reverts to the fallback, and the retired middle state 1 is
-    // still accepted as legacy OWN.
-    og::sim::LobbySettings junk = matched;
-    junk.ctf_strip_scenario_troops = 4;
-    og::sim::LobbyMessage junk_message;
-    junk_message.payload = og::sim::LobbySettingsChangeMessage{
-        .player_index = 0u,
-        .settings = junk,
-    };
-    transport.queue_lobby_message(11u, junk_message);
-    server.poll_incoming_messages();
-    EXPECT_EQ(og::sim::kTroopsMatched,
-              server.state().settings.ctf_strip_scenario_troops)
-        << "junk above the sentinel reverts to the fallback (the previous "
-           "value), never to a clamp";
-    og::sim::LobbySettings legacy = matched;
-    legacy.ctf_strip_scenario_troops = 1;
-    og::sim::LobbyMessage legacy_message;
-    legacy_message.payload = og::sim::LobbySettingsChangeMessage{
-        .player_index = 0u,
-        .settings = legacy,
-    };
-    transport.queue_lobby_message(11u, legacy_message);
-    server.poll_incoming_messages();
-    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops)
-        << "the retired middle state still syncs (read as OWN everywhere)";
-
-    // Restore the sentinel: the game-start save-data equivalent carries the
-    // raw 3 verbatim (D27 — the value rides the existing field end to end).
-    transport.queue_lobby_message(11u, matched_message);
-    server.poll_incoming_messages();
+    // The game-start save-data equivalent carries both healed knobs.
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
-    EXPECT_EQ(og::sim::kTroopsMatched, equivalent.ctf_strip_scenario_troops);
+    EXPECT_EQ(0, equivalent.ctf_strip_scenario_troops)
+        << "the healed troops value rides";
     EXPECT_EQ(0, equivalent.ctf_team_count) << "the healed team count rides";
 }
 
@@ -1426,13 +1403,6 @@ og::sim::LobbyMessage make_settings_change_message(
     return message;
 }
 
-// A versus lobby with one team's BOTS knob turned OFF (amendment A2): the
-// team leaves the match, and with it the seat domain. This is the narrowing
-// the retired TEAMS count used to do.
-og::sim::LobbySettings make_lobby_settings_with_team_off(
-    std::int16_t off_team,
-    std::uint8_t authored_team_mask = 0);
-
 og::sim::LobbySettings make_ctf_lobby_settings(
     std::int16_t team_count = 0,
     std::uint8_t authored_team_mask = 0)
@@ -1447,17 +1417,6 @@ og::sim::LobbySettings make_ctf_lobby_settings(
     // Protocol v12: the versus/shared-teams rule rides this flag (the host
     // derives it from the campaign's matchup: yaml key).
     settings.shared_teams = 1;
-    return settings;
-}
-
-og::sim::LobbySettings make_lobby_settings_with_team_off(
-    std::int16_t off_team,
-    std::uint8_t authored_team_mask)
-{
-    og::sim::LobbySettings settings =
-        make_ctf_lobby_settings(0, authored_team_mask);
-    settings.bot_squad[static_cast<std::size_t>(off_team)] =
-        og::sim::kBotSquadOff;
     return settings;
 }
 
@@ -1494,42 +1453,39 @@ TEST(LobbyState, ctf_team_domain_uses_authored_order_and_safe_fallback)
     EXPECT_EQ(0b1101u, og::sim::lobby_effective_team_mask(settings));
 }
 
-// Amendment A2: a team whose BOTS knob reads OFF is not fielded, so it is
-// not a seat either — the seat domain and the match domain are one answer.
-TEST(LobbyState, bots_off_leaves_the_seat_domain)
+// Amendment B8: NOTHING the band can hold deactivates a team any more, so
+// the seat domain is the authored mask and nothing else — the rule that
+// stood before A2 added the OFF clause, restored when OFF went away.
+TEST(LobbyState, band_knobs_never_narrow_the_seat_domain)
 {
     og::sim::LobbySettings settings = make_ctf_lobby_settings();
     settings.ctf_authored_team_mask = 0b1111u;
     ASSERT_EQ(0b1111u, og::sim::lobby_effective_team_mask(settings));
 
-    settings.bot_squad[2] = og::sim::kBotSquadOff;
-    EXPECT_EQ(0b1011u, og::sim::lobby_effective_team_mask(settings));
-    EXPECT_FALSE(og::sim::lobby_team_is_selectable(settings, 2));
-    EXPECT_TRUE(og::sim::lobby_team_is_selectable(settings, 3));
+    // Every FILL value, on every team, including the strongest and NONE.
+    for (std::int16_t value = og::sim::kFillFair;
+         value <= og::sim::kMaxFill; ++value)
+    {
+        settings.fill.fill(value);
+        EXPECT_EQ(0b1111u, og::sim::lobby_effective_team_mask(settings))
+            << "fill " << value;
+        for (std::int16_t team = 0; team < SCORE_TEAM_COUNT; ++team)
+            EXPECT_TRUE(og::sim::lobby_team_is_selectable(settings, team));
+    }
+    settings.fill.fill(og::sim::kFillNone);
+    EXPECT_EQ(0, og::sim::lobby_first_selectable_team(settings));
 
-    // AUTO and NONE are both "on": NONE only says no BOTS (ruling
-    // 2026-08-26), which is not the same claim as OFF.
-    settings.bot_squad[3] = og::sim::kBotSquadNone;
-    settings.bot_squad[1] = og::sim::kBotSquadAuto;
-    EXPECT_EQ(0b1011u, og::sim::lobby_effective_team_mask(settings));
-
-    settings.bot_squad[0] = og::sim::kBotSquadOff;
-    EXPECT_EQ(0b1010u, og::sim::lobby_effective_team_mask(settings));
-    EXPECT_EQ(1, og::sim::lobby_first_selectable_team(settings));
-
-    // A lobby with nowhere to sit can seat nobody, so the last OFF does not
-    // take the domain with it: the unfiltered mask stands.
-    settings.bot_squad.fill(og::sim::kBotSquadOff);
+    // MAP UNITS: OFF on every team says nothing about seats either.
+    settings.map_units.fill(og::sim::kMapUnitsOff);
     EXPECT_EQ(0b1111u, og::sim::lobby_effective_team_mask(settings));
 
-    // Classic (non-versus): the knobs are stored and the map decides, so OFF
-    // narrows nothing.
-    settings.shared_teams = 0;
-    EXPECT_EQ(og::sim::kAllLobbyTeamMask,
-              og::sim::lobby_effective_team_mask(settings));
+    // A sparse authored mask still narrows it — that is the map's own word.
+    settings.ctf_authored_team_mask = 0b1101u;
+    EXPECT_EQ(0b1101u, og::sim::lobby_effective_team_mask(settings));
+    EXPECT_FALSE(og::sim::lobby_team_is_selectable(settings, 1));
 }
 
-TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
+TEST(LobbyServer, sanitize_heals_every_retired_troops_value_to_zero)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
@@ -1540,49 +1496,26 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
                           {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
     server.poll_incoming_messages();
 
-    // Default is 0 (keep authored troops).
+    // Default is 0, and amendment B5 made 0 the ONLY value: the knob is
+    // retired, and the authority answers one value for it so an old peer,
+    // an old .gtl or a crafted client cannot reintroduce a second rule for
+    // whether the map's own cast fights.
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
-
-    // Junk falls back to the current value (0). 4 is junk; 3 is not (any
-    // more). The accepted range is {0,1,2,3}: the menus write 0, 2, or 3
-    // (kTroopsMatched, "TROOPS: FAIR" — matched-teams D27), and 1 is the
-    // retired middle state a peer on an older build can still send.
-    og::sim::LobbySettings junk = make_ctf_lobby_settings();
-    junk.ctf_strip_scenario_troops = 4;
-    transport.queue_lobby_message(11u, make_settings_change_message(junk));
-    server.poll_incoming_messages();
-    EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
-
-    // 2 (strip ALL) is accepted on the widened range.
-    og::sim::LobbySettings strip_all = make_ctf_lobby_settings();
-    strip_all.ctf_strip_scenario_troops = 2;
-    transport.queue_lobby_message(11u, make_settings_change_message(strip_all));
-    server.poll_incoming_messages();
-    EXPECT_EQ(2, server.state().settings.ctf_strip_scenario_troops);
-    EXPECT_EQ(2, server.build_save_data_equivalent().ctf_strip_scenario_troops);
-
-    // 1 is accepted and carried into the game-start equivalent verbatim;
-    // the strip rules downstream read it as OWN.
-    og::sim::LobbySettings strip_on = make_ctf_lobby_settings();
-    strip_on.ctf_strip_scenario_troops = 1;
-    transport.queue_lobby_message(11u, make_settings_change_message(strip_on));
-    server.poll_incoming_messages();
-    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops);
-    EXPECT_EQ(1, server.build_save_data_equivalent().ctf_strip_scenario_troops);
-
-    // Junk now falls back to the last accepted value (1), not 0.
-    og::sim::LobbySettings junk_again = make_ctf_lobby_settings();
-    junk_again.ctf_strip_scenario_troops = -3;
-    transport.queue_lobby_message(11u, make_settings_change_message(junk_again));
-    server.poll_incoming_messages();
-    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops);
-
-    // 0 passes through.
-    og::sim::LobbySettings strip_off = make_ctf_lobby_settings();
-    strip_off.ctf_strip_scenario_troops = 0;
-    transport.queue_lobby_message(11u, make_settings_change_message(strip_off));
-    server.poll_incoming_messages();
-    EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
+    for (const std::int16_t value : {std::int16_t{1}, std::int16_t{2},
+                                     og::sim::kTroopsMatched, std::int16_t{4},
+                                     std::int16_t{-3}, std::int16_t{30000}})
+    {
+        og::sim::LobbySettings settings = make_ctf_lobby_settings();
+        settings.ctf_strip_scenario_troops = value;
+        transport.queue_lobby_message(
+            11u, make_settings_change_message(settings));
+        server.poll_incoming_messages();
+        EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops)
+            << "troops " << value;
+        EXPECT_EQ(
+            0, server.build_save_data_equivalent().ctf_strip_scenario_troops)
+            << "troops " << value << " into the game-start equivalent";
+    }
 }
 
 TEST(LobbyServer, sanitize_difficulty_submenu_settings)
@@ -1806,48 +1739,10 @@ TEST(LobbyServer, classic_lobby_allows_shared_explicit_teams)
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
 }
 
-TEST(LobbyServer, bots_off_clamps_team_choice)
-{
-    MockLobbyTransport transport;
-    og::sim::LobbyServer server(transport);
-    server.connect_client(11u);
-    server.connect_client(22u);
-
-    transport.queue_lobby_message(
-        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
-    transport.queue_lobby_message(
-        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
-    server.poll_incoming_messages();
-
-    og::sim::LobbySettings two_teams = make_ctf_lobby_settings();
-    two_teams.bot_squad[2] = og::sim::kBotSquadOff;
-    two_teams.bot_squad[3] = og::sim::kBotSquadOff;
-    transport.queue_lobby_message(
-        11u, make_settings_change_message(two_teams));
-    server.poll_incoming_messages();
-
-    // Team 3 is switched OFF: the change resolves back to the guest's
-    // current (fielded) team.
-    transport.queue_lobby_message(
-        22u, make_team_change_message(server.state().players[1], 3));
-    server.poll_incoming_messages();
-    EXPECT_EQ(1, server.state().players[1].team);
-
-    // An in-range shared team is still accepted.
-    transport.queue_lobby_message(
-        22u, make_team_change_message(server.state().players[1], 0));
-    server.poll_incoming_messages();
-    EXPECT_EQ(0, server.state().players[1].team);
-
-    // A fresh join asking for the OFF team is resolved into the domain.
-    server.connect_client(33u);
-    transport.queue_lobby_message(
-        33u, make_join_message("Third", 3, {make_slot(2u, 300, "Third Guy", FAMILY_MAGE)}));
-    server.poll_incoming_messages();
-    ASSERT_EQ(3u, server.state().players.size());
-    EXPECT_LT(server.state().players[2].team, 2);
-    EXPECT_GE(server.state().players[2].team, 0);
-}
+// bots_off_clamps_team_choice retired with the OFF value (amendment B8):
+// no band knob narrows the seat domain, so there is no clamp left to pin.
+// What still clamps a team choice — the AUTHORED mask — is pinned by
+// sparse_ctf_authored_domain_matches_gameplay_and_reteams below.
 
 TEST(LobbyServer, sparse_ctf_authored_domain_matches_gameplay_and_reteams)
 {
@@ -1889,14 +1784,16 @@ TEST(LobbyServer, sparse_ctf_authored_domain_matches_gameplay_and_reteams)
     server.poll_incoming_messages();
     EXPECT_EQ(2, server.state().players[1].team);
 
-    // Switching authored team 2 OFF narrows the same domain the other way
-    // (A2 — the retired TEAMS count's job): the seat sitting on it is
-    // re-resolved to the first fielded team, and a request to go back is
-    // denied like any unauthored colour.
+    // The AUTHORED mask is the only thing that narrows this domain now
+    // (amendment B8 retired the band's OFF value, which was the other
+    // narrowing rule): a level that stops authoring team 2 re-resolves the
+    // seat sitting there to the first fielded team, and a request to go
+    // back is denied like any unauthored colour.
+    constexpr std::uint8_t kTeamsZeroThree = 0b1001u;
     transport.queue_lobby_message(
         11u,
         make_settings_change_message(
-            make_lobby_settings_with_team_off(2, kTeamsZeroTwoThree)));
+            make_ctf_lobby_settings(0, kTeamsZeroThree)));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().players[1].team);
     transport.queue_lobby_message(
@@ -1935,13 +1832,13 @@ TEST(LobbyServer, settings_change_reteams_out_of_range_players)
     server.poll_incoming_messages();
     ASSERT_EQ(3, server.state().players[1].team);
 
-    // The host turning team 3's BOTS knob to OFF strands the guest there:
+    // A level whose authored mask has no team 3 strands the guest there:
     // the server re-resolves the seat into the fielded domain without
-    // repainting the fighter (A2 — "the existing settings-change reteam
-    // handles any residual").
+    // repainting the fighter.
     transport.clear_sent_messages();
     transport.queue_lobby_message(
-        11u, make_settings_change_message(make_lobby_settings_with_team_off(3)));
+        11u, make_settings_change_message(
+                 make_ctf_lobby_settings(0, 0b0111u)));
     server.poll_incoming_messages();
 
     ASSERT_EQ(2u, server.state().players.size());
@@ -4252,8 +4149,8 @@ TEST(LobbyServer, sanitize_clamps_bot_knobs_and_equivalent_carries_them)
     wild.allied_mode = 1;
     // Out of range in both directions, and one legal value per array so a
     // clamp that flattened everything would be caught.
-    wild.bot_squad = {-4, 3, 99, 0};
-    wild.bot_level = {-400, 4, 400, 0};
+    wild.fill = {-4, 3, 99, 0};
+    wild.map_units = {-400, 4, 400, 0};
     og::sim::LobbyMessage wild_message;
     wild_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 0u,
@@ -4263,22 +4160,22 @@ TEST(LobbyServer, sanitize_clamps_bot_knobs_and_equivalent_carries_them)
     server.poll_incoming_messages();
 
     const og::sim::LobbyState state = server.state();
-    // bot_squad clamps into [0, 2 + kMaxBotPresets]; bot_level is an
-    // OFFSET and clamps into [-5, +5], so it has a floor to hit as well as
-    // a ceiling.
-    const std::array<std::int16_t, 4> expected_squad = {
-        0, 3, og::sim::kMaxBotSquad, 0};
-    const std::array<std::int16_t, 4> expected_level = {
-        og::sim::kMinBotLevel, 4, og::sim::kMaxBotLevel, 0};
-    EXPECT_EQ(expected_squad, state.settings.bot_squad);
-    EXPECT_EQ(expected_level, state.settings.bot_level);
+    // fill clamps into [0, kMaxFill] and map_units into [0, kMaxMapUnits]
+    // (amendment B1-B4); both floors are 0, so a negative has a floor to
+    // hit as well as a ceiling.
+    const std::array<std::int16_t, 4> expected_fill = {
+        0, 3, og::sim::kMaxFill, 0};
+    const std::array<std::int16_t, 4> expected_map_units = {
+        0, og::sim::kMaxMapUnits, og::sim::kMaxMapUnits, 0};
+    EXPECT_EQ(expected_fill, state.settings.fill);
+    EXPECT_EQ(expected_map_units, state.settings.map_units);
 
     // The launch equivalent is a hand-written field list — the documented
     // dropped-field bug class.
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
-    EXPECT_EQ(expected_squad, equivalent.bot_squad);
-    EXPECT_EQ(expected_level, equivalent.bot_level);
+    EXPECT_EQ(expected_fill, equivalent.fill);
+    EXPECT_EQ(expected_map_units, equivalent.map_units);
 }
 
 TEST(LobbyServer, bot_knobs_replicate_to_joiners_and_a_joiner_change_is_dropped)
@@ -4302,8 +4199,8 @@ TEST(LobbyServer, bot_knobs_replicate_to_joiners_and_a_joiner_change_is_dropped)
     hosted.scenario_id = 820;
     hosted.difficulty = 1;
     hosted.allied_mode = 1;
-    hosted.bot_squad = {0, 2, 1, 0};
-    hosted.bot_level = {0, 5, 0, 0};
+    hosted.fill = {0, 2, 1, 4};
+    hosted.map_units = {0, 1, 1, 0};
     og::sim::LobbyMessage hosted_message;
     hosted_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 0u,
@@ -4326,18 +4223,18 @@ TEST(LobbyServer, bot_knobs_replicate_to_joiners_and_a_joiner_change_is_dropped)
         if (!decoded.has_value())
             continue;
         guest_saw_the_knobs =
-            decoded->settings.bot_squad == hosted.bot_squad &&
-            decoded->settings.bot_level == hosted.bot_level;
+            decoded->settings.fill == hosted.fill &&
+            decoded->settings.map_units == hosted.map_units;
         if (guest_saw_the_knobs)
             break;
     }
     EXPECT_TRUE(guest_saw_the_knobs)
-        << "the host's bot knobs must reach the joiner over the wire";
+        << "the host's band knobs must reach the joiner over the wire";
 
     // A non-host SettingsChange is ignored outright (the historic rule).
     og::sim::LobbySettings guest_attempt = hosted;
-    guest_attempt.bot_squad = {9, 9, 9, 9};
-    guest_attempt.bot_level = {9, 9, 9, 9};
+    guest_attempt.fill = {1, 1, 1, 1};
+    guest_attempt.map_units = {1, 1, 1, 1};
     og::sim::LobbyMessage guest_message;
     guest_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 1u,
@@ -4345,8 +4242,8 @@ TEST(LobbyServer, bot_knobs_replicate_to_joiners_and_a_joiner_change_is_dropped)
     };
     transport.queue_lobby_message(12u, guest_message);
     server.poll_incoming_messages();
-    EXPECT_EQ(hosted.bot_squad, server.state().settings.bot_squad);
-    EXPECT_EQ(hosted.bot_level, server.state().settings.bot_level);
+    EXPECT_EQ(hosted.fill, server.state().settings.fill);
+    EXPECT_EQ(hosted.map_units, server.state().settings.map_units);
 }
 
 // --- LINEUP §6: kick by machine id ---------------------------------------

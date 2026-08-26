@@ -1613,74 +1613,10 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
     ASSERT_TRUE(save.totalcash == og::ui::kNewGameStartingGold);
 }
 
-// --- CTF scenario-troops toggle & label ---
-
-TEST(PickerCommon, next_ctf_scenario_troops_cycle_orders)
-{
-    // Three states, and every state applies on every campaign:
-    // ALL -> OWN -> FAIR -> ALL (matched-teams D28).
-    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(0));
-    EXPECT_EQ((short)og::sim::kTroopsMatched,
-              og::ui::next_ctf_scenario_troops(2))
-        << "after OWN comes TROOPS: FAIR";
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(og::sim::kTroopsMatched))
-        << "the cycle wraps back to ALL";
-
-    // The retired middle state and any junk value read as OWN everywhere
-    // else, so cycling off them lands on ALL.
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(1));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(7));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(9));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(-1));
-}
-
-TEST(PickerCommon, toggle_ctf_scenario_troops_walks_three_states)
-{
-    SaveData save;
-    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
-    og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(2, save.ctf_strip_scenario_troops)
-        << "the menus write 2 so networked peers agree on OWN";
-    og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ((short)og::sim::kTroopsMatched, save.ctf_strip_scenario_troops)
-        << "the menus write 3 (kTroopsMatched) for TROOPS: FAIR";
-    og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
-
-    // A save carrying the retired middle state cycles back to ALL.
-    save.ctf_strip_scenario_troops = 1;
-    og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
-}
-
-TEST(PickerCommon, format_ctf_troops_label_strings_fit_budget)
-{
-    SaveData save;
-    ASSERT_EQ("TROOPS: ALL", og::ui::format_ctf_troops_label(save));
-    save.ctf_strip_scenario_troops = 2;
-    ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
-    // A stored legacy 1 strips everything, so it must not read as ALL.
-    save.ctf_strip_scenario_troops = 1;
-    ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
-
-    // FAIR (D28): the label is exactly "TROOPS: FAIR" — 12 chars, filling
-    // the 80px/12-char face budget tight. The literal-equality assert is
-    // deliberate: test_menu_layout's budget sweep only walks STATIC label
-    // strings and never sees this formatted one, so this is where a future
-    // rename re-trips the budget consciously ("TROOPS: EVEN" is the
-    // recorded alternate).
-    save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    const std::string fair_label = og::ui::format_ctf_troops_label(save);
-    ASSERT_EQ("TROOPS: FAIR", fair_label);
-    ASSERT_LE(fair_label.size(), 12u);
-
-    // Every state fits the 80px (12-character) SCENARIO face.
-    for (short state = 0; state <= og::sim::kTroopsMatched; ++state)
-    {
-        save.ctf_strip_scenario_troops = state;
-        ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u) << state;
-    }
-}
+// The CTF scenario-troops toggle, its cycle and its label retired with the
+// knob (amendment B5). Their pins went with them; what replaces the rule is
+// pinned in test_lineup_common.cpp (the MAP UNITS box) and in
+// test_lobby_server.cpp (the sanitize that snaps the field to 0).
 
 TEST(PickerCommon, team_has_members_and_set_preferred_team)
 {
@@ -2445,7 +2381,8 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
         EXPECT_FALSE(report.team_active[3]);
     }
 
-    // FAIR falls back identically to OWN (both are plan-side rules).
+    // A legacy TROOPS value changes nothing here either (B5 made the field
+    // inert), so the count-only fallback answers identically.
     save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     save.ctf_team_count = 2;
     {

@@ -195,20 +195,21 @@ struct CampaignRosterEntry {
 // og.campaign_match_get errors on any name outside this list — the sim
 // twin's unknown-name rule — while match_set answers false (policy lives
 // in the provider).
-// The eight per-team bot knobs (LINEUP §3.1) join the list: "bot_squad_N"
-// is a preset ordinal (0 = AUTO, 1 = OFF, 2 = NONE, 3.. = the campaign's
-// preset) and "bot_level_N" a bot level (0 = AUTO, 1..9), N being the
-// 1-based team.
-// "team_count" is NOT in the list any more (amendment A3): the knob is
-// retired, so a campaign that wrote it would be writing a value nothing
-// reads. The sim-side og.match_setting("team_count") stays READABLE — and
-// always answers 0 — so existing scripts keep running.
+// The eight per-team band knobs (amendment B1-B4) join the list: "fill_N"
+// is the FILL wheel (0 = FAIR, 1 = NONE, 2 = WEAK, 3 = STRONG,
+// 4 = BRUTAL) and "map_units_N" the MAP UNITS box (0 = on, 1 = off), N
+// being the 1-based team.
+// "team_count" is NOT in the list any more (amendment A3) and neither is
+// "strip_troops" (amendment B5): both knobs are retired, so a campaign that
+// wrote either would be writing a value nothing reads. The sim-side
+// og.match_setting("team_count") / ("strip_troops") stay READABLE — and
+// always answer 0 — so existing scripts keep running.
 inline constexpr const char* kCampaignMatchSettingNames[] = {
     "score_limit",  "respawn_ticks",
-    "strip_troops", "respawn_mode", "generator_rate",
+    "respawn_mode", "generator_rate",
     "time_limit",
-    "bot_squad_1",  "bot_squad_2",  "bot_squad_3",  "bot_squad_4",
-    "bot_level_1",  "bot_level_2",  "bot_level_3",  "bot_level_4",
+    "fill_1",  "fill_2",  "fill_3",  "fill_4",
+    "map_units_1",  "map_units_2",  "map_units_3",  "map_units_4",
 };
 
 // The menu-time provider seam. og_gameplay cannot see SaveData or the
@@ -309,26 +310,16 @@ std::vector<std::string> og_function_names();
 //
 //   og.register_campaign_hooks({ ...,
 //     lineup = {
-//       presets = { "BALANCED", "CASTERS" },   -- bot squad names
-//       power   = function(row) return <int> end,
+//       power = function(row) return <int> end,
 //     } })
 //
-// `presets` names the bot-squad cycler's entries (ordinal 3.. on the
-// LINEUP page; 0 = AUTO, 1 = OFF and 2 = NONE are engine-owned and never
-// named by a campaign). `power` prices ONE fighter from its derived stats so the
-// bands can show POWER n; the engine never knows what either means.
-
-// The cycler's ceiling, with ONE home: og::sim::kMaxBotPresets, the lobby's
-// own clamp bound. A joiner clamps bot_squad to [0, 2 + this] with no preset
-// list at all, so the bound lives in the engine, not the book — and the
-// registrar's cap has to be the same number by construction, not a second
-// copy of 8 that a later edit can move on its own.
-inline constexpr int kMaxBotPresets = static_cast<int>(og::sim::kMaxBotPresets);
-
-// Preset names ride a 12-char face as "BOTS: <NAME>", so 6 chars is the
-// whole room. Longer names are clipped at registration (never refused —
-// a name is cosmetic and must not cost a campaign its whole book).
-inline constexpr std::size_t kLineupPresetNameMax = 6;
+// `power` prices ONE fighter from its derived stats so the bands can show
+// POWER n; the engine never knows what the number means.
+//
+// The table carried a `presets` list until amendment B1 replaced the BOTS
+// preset wheel with the five-value FILL wheel: the squad is the mode's own
+// stock BOT_SQUAD now, so there is nothing left for a campaign to name and
+// the registrar refuses no name — it simply has no `presets` key.
 
 // One fighter, priced. The values are the ENGINE's own derived stats
 // (og::ui::compute_derived_stats — the same guy-bonus + family-base
@@ -348,12 +339,6 @@ struct LineupPowerRow {
 // True when the active registration carries a `lineup` table. Same
 // conflict/scriptless rules as campaign_picker_registered.
 bool campaign_lineup_registered();
-
-// The registered preset names, in declared order (<= kMaxBotPresets, each
-// clipped to kLineupPresetNameMax upper-case chars). False — leaving `out`
-// untouched — when no lineup table is registered; true with an EMPTY list
-// for a lineup table that registers only `power`.
-bool campaign_lineup_presets(std::vector<std::string>& out);
 
 // Dispatches lineup.power(row) under the campaign fence. False — the band
 // shows `--` — when no power function is registered, the hook errors, or

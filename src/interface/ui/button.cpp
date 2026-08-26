@@ -737,17 +737,15 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_allied();
     case ButtonAction::CycleCtfCaptureLimit:
         return change_ctf_caps();
-    case ButtonAction::CycleCtfScenarioTroops:
-        return change_ctf_troops();
     // LINEUP (docs/lineup-design.md §2): door, per-team knob cyclers (the
     // button's arg carries the team 0..3), the FIGHTERS list door, and the
     // three SPLIT actions.
     case ButtonAction::OpenLineup:
         return create_lineup_menu(call_arg);
-    case ButtonAction::CycleLineupBots:
-        return change_lineup_bots(arg);
-    case ButtonAction::CycleLineupLevel:
-        return change_lineup_level(arg);
+    case ButtonAction::CycleLineupFill:
+        return change_lineup_fill(arg);
+    case ButtonAction::ToggleLineupMapUnits:
+        return change_lineup_map_units(arg);
     case ButtonAction::OpenLineupFighters:
         return open_lineup_fighters(call_arg);
     case ButtonAction::LineupSplitEven:

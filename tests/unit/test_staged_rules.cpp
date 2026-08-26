@@ -136,7 +136,7 @@ void stage_init(ModesCtfWorld& fx)
 // (a plan pair for the resolver probe) and 41..59, answers 35/36/37/60/63.
 // The resolver probe reads the LV offsets from the WORLD knobs
 // (og.match_setting, the same seam the spawn seams use), so the test sets
-// ctf_requested_bot_level on the probe world.
+// ctf_requested_map_units on the probe world.
 constexpr const char* kRuleProbeLua =
     "local match = og.use(\"mode_match\")\n"
     "og.register_level_hooks(9092, {\n"
@@ -155,8 +155,8 @@ constexpr const char* kRuleProbeLua =
     "      respawn_ticks = 0,\n"
     "      teams = {},\n"
     "      flags = {},\n"
-    "      bot_squad = {},\n"
-    "      bot_level = {},\n"
+    "      fill = {},\n"
+    "      map_units = {},\n"
     "    }\n"
     "    for t = 0, 3 do\n"
     "      inputs.teams[t + 1] = {\n"
@@ -165,7 +165,7 @@ constexpr const char* kRuleProbeLua =
     "        npcs = og.mode_get(50 + t),\n"
     "        generators = og.mode_get(54 + t),\n"
     "      }\n"
-    "      inputs.bot_squad[t + 1] = og.mode_get(30 + t)\n"
+    "      inputs.fill[t + 1] = og.mode_get(30 + t)\n"
     "    end\n"
     "    local squad_cap = og.mode_get(34)\n"
     "    if squad_cap == 0 then\n"
@@ -240,9 +240,9 @@ struct RuleAnswer
 };
 
 // One probe dispatch (its own short-lived world, destroyed before any
-// staged fixture world is built). bot_squad carries the four lineup squad
+// staged fixture world is built). fill carries the four lineup squad
 // knobs (0 AUTO / 1 OFF / 2 NONE / 3.. presets — the engine scale),
-// squad_cap the caller's hard shape (0 = none), bot_level the four LV
+// squad_cap the caller's hard shape (0 = none), map_units the four LV
 // offsets and plan the (L, k) pair the resolver probe folds through them
 // — all default off, so every pre-lineup row reads unchanged. The lobby
 // TEAMS count is gone from the inputs (lineup A1/A3): nothing here can
@@ -250,9 +250,9 @@ struct RuleAnswer
 RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
                       int strip, unsigned authored, int auto_default,
                       bool keep_generators, bool no_bots,
-                      const std::array<int, 4>& bot_squad = {},
+                      const std::array<int, 4>& fill = {},
                       int squad_cap = 0,
-                      const std::array<int, 4>& bot_level = {},
+                      const std::array<int, 4>& map_units = {},
                       int plan_level = 1, int plan_up = 0)
 {
     RuleProbeScript probe;
@@ -265,8 +265,8 @@ RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
         w.mode.vars[46 + t] = teams[t][1];
         w.mode.vars[50 + t] = teams[t][2];
         w.mode.vars[54 + t] = teams[t][3];
-        w.mode.vars[30 + t] = bot_squad[t];
-        w.ctf_requested_bot_level[t] = static_cast<short>(bot_level[t]);
+        w.mode.vars[30 + t] = fill[t];
+        w.ctf_requested_map_units[t] = static_cast<short>(map_units[t]);
     }
     w.mode.vars[34] = squad_cap;
     w.mode.vars[38] = plan_level;
@@ -307,7 +307,7 @@ RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
 // the four squad knobs (OFF is the only one activation reads besides the
 // presets) and the ALL arm's manifest default.
 int activation_mask(unsigned authored, unsigned roster, int strip,
-                    const std::array<int, 4>& bot_squad = {},
+                    const std::array<int, 4>& fill = {},
                     int auto_default = 0)
 {
     std::array<std::array<int, 4>, 4> teams{};
@@ -319,11 +319,11 @@ int activation_mask(unsigned authored, unsigned roster, int strip,
             teams[static_cast<std::size_t>(t)][1] = 1;
     }
     return eval_rules(teams, strip, authored, auto_default, false, false,
-                      bot_squad)
+                      fill)
         .mask;
 }
 
-// The engine's bot_squad scale (lobby_state.h kBotSquad*), spelled once
+// The engine's fill scale (lobby_state.h kBotSquad*), spelled once
 // for the rows below.
 constexpr int kKnobAuto = og::sim::kBotSquadAuto;
 constexpr int kKnobOff = og::sim::kBotSquadOff;
@@ -887,7 +887,7 @@ TEST_F(StagedRules, lineup_none_removes_a_fill_auto_makes)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
     fx.world().ctf_requested_strip_scenario_troops = 2;  // OWN
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[1] = kKnobNone;  // NONE on team 1
+    fx.world().ctf_requested_fill[1] = kKnobNone;  // NONE on team 1
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -912,7 +912,7 @@ TEST_F(StagedRules, lineup_none_below_two_teams_refuses)
     fx.spawn_anchor(1, 528, 96);
     fx.world().ctf_requested_strip_scenario_troops = 2;  // OWN
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[1] = kKnobNone;
+    fx.world().ctf_requested_fill[1] = kKnobNone;
 
     stage_init(fx);
     EXPECT_FALSE(fx.world().mode.active);
@@ -936,7 +936,7 @@ TEST_F(StagedRules, lineup_preset_fills_an_occupied_team)
     fx.spawn_hero(FAMILY_SOLDIER, 0, 232, 200, 2);
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[0] = kKnobCaster;  // CASTER
+    fx.world().ctf_requested_fill[0] = kKnobCaster;  // CASTER
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -970,7 +970,7 @@ TEST_F(StagedRules, lineup_level_offset_lands_once_and_persists)
     fx.spawn_anchor(1, 528, 96);
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_level[1] = 5;
+    fx.world().ctf_requested_map_units[1] = 5;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1033,7 +1033,7 @@ TEST_F(StagedRules, lineup_fair_preset_allies_on_an_occupied_team)
                               guy_id++, 3);
     fx.world().ctf_requested_strip_scenario_troops = 0;  // ALL, not FAIR
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[0] = kKnobFair;  // FAIR preset
+    fx.world().ctf_requested_fill[0] = kKnobFair;  // FAIR preset
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1075,14 +1075,14 @@ TEST_F(StagedRules, lineup_auto_and_unregistered_ordinal_are_byte_identical)
         fx.spawn_anchor(1, 528, 96);
         fx.world().ctf_requested_strip_scenario_troops = 0;
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_squad[0] =
+        fx.world().ctf_requested_fill[0] =
             og::sim::kMaxBotSquad;  // past the registered table
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
         // The knob itself rides the snapshot (it is a replicated input),
         // so it is reset before the capture: everything else — entities,
         // mode vars, the lot — must be identical to the AUTO stage.
-        fx.world().ctf_requested_bot_squad[0] = 0;
+        fx.world().ctf_requested_fill[0] = 0;
         EXPECT_EQ(auto_bytes,
                   og::sim::serialize_snapshot(
                       og::sim::peek_keyframe_snapshot(fx.world())))
@@ -1101,7 +1101,7 @@ TEST_F(StagedRules, lineup_basketball_preset_keeps_the_court_shape)
     fx.spawn_anchor(1, 192, 96);
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[0] = kKnobBrutes;  // BRUTES
+    fx.world().ctf_requested_fill[0] = kKnobBrutes;  // BRUTES
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1286,7 +1286,7 @@ void expect_band_refuses_untouched(int level_id, int knob, const char* reason)
     walker* const troop = fx.spawn_living(FAMILY_ORC, 1, 300, 300);
     ASSERT_NE(hero, nullptr);
     ASSERT_NE(troop, nullptr);
-    fx.world().ctf_requested_bot_squad[0] = static_cast<short>(knob);
+    fx.world().ctf_requested_fill[0] = static_cast<short>(knob);
 
     stage_init(fx);
     EXPECT_FALSE(fx.world().mode.active);
@@ -1316,7 +1316,7 @@ void expect_band_none_with_two_heroes_plays(int level_id, int knob)
     walker* const b = fx.spawn_hero(FAMILY_SOLDIER, 1, 232, 200, 2);
     ASSERT_NE(a, nullptr);
     ASSERT_NE(b, nullptr);
-    fx.world().ctf_requested_bot_squad[0] = static_cast<short>(knob);
+    fx.world().ctf_requested_fill[0] = static_cast<short>(knob);
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1386,7 +1386,7 @@ TEST_F(StagedRules, lineup_preset_on_an_occupied_team_fills_the_room_left)
                           700, guy_id++);
         fx.world().ctf_requested_strip_scenario_troops = 0;
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_squad[0] = kKnobBalanc;  // BALANC
+        fx.world().ctf_requested_fill[0] = kKnobBalanc;  // BALANC
 
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
@@ -1411,7 +1411,7 @@ TEST_F(StagedRules, lineup_preset_on_an_occupied_team_fills_the_room_left)
         fx.spawn_hero(FAMILY_SOLDIER, 0, 264, 200, 3);
         fx.world().ctf_requested_strip_scenario_troops = 0;
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_squad[0] = kKnobBalanc;  // BALANC
+        fx.world().ctf_requested_fill[0] = kKnobBalanc;  // BALANC
 
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
@@ -1465,8 +1465,8 @@ TEST_F(StagedRules, lineup_preset_that_spawns_nothing_banks_no_fact)
                       700, guy_id++);
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[0] = kKnobBalanc;  // BALANC
-    fx.world().ctf_requested_bot_level[0] = 4;
+    fx.world().ctf_requested_fill[0] = kKnobBalanc;  // BALANC
+    fx.world().ctf_requested_map_units[0] = 4;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1497,7 +1497,7 @@ TEST_F(StagedRules, lineup_fair_preset_alone_never_announces_teams_matched)
                                   guy_id++, 3);
         fx.world().ctf_requested_strip_scenario_troops = 0;  // ALL, not FAIR
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_squad[0] = kKnobFair;  // FAIR preset
+        fx.world().ctf_requested_fill[0] = kKnobFair;  // FAIR preset
 
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
@@ -1550,7 +1550,7 @@ TEST_F(StagedRules, lineup_off_drops_an_authored_team_and_its_troops)
         fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k), 300);
     fx.world().ctf_requested_strip_scenario_troops = 0;  // ALL: troops stand
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[1] = kKnobOff;
+    fx.world().ctf_requested_fill[1] = kKnobOff;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1578,7 +1578,7 @@ TEST_F(StagedRules, lineup_off_on_an_occupied_team_is_ignored_by_the_sim)
     fx.spawn_hero(FAMILY_SOLDIER, 1, 232, 700, 2);
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[1] = kKnobOff;
+    fx.world().ctf_requested_fill[1] = kKnobOff;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1599,7 +1599,7 @@ TEST_F(StagedRules, lineup_off_below_two_teams_refuses)
     fx.spawn_anchor(1, 528, 96);
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[1] = kKnobOff;
+    fx.world().ctf_requested_fill[1] = kKnobOff;
 
     stage_init(fx);
     EXPECT_FALSE(fx.world().mode.active);
@@ -1658,7 +1658,7 @@ TEST_F(StagedRules, lineup_something_on_an_inactive_team_turns_it_on)
             fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
         fx.world().ctf_requested_strip_scenario_troops = 0;
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_squad[2] = kKnobBalanc;
+        fx.world().ctf_requested_fill[2] = kKnobBalanc;
         stage_init(fx);
         EXPECT_FALSE(fx.world().mode.active);
         EXPECT_TRUE(fx.world().mode.init_attempted);
@@ -1681,8 +1681,8 @@ TEST_F(StagedRules, lineup_level_offset_arms_and_clamps)
             fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
         fx.world().ctf_requested_strip_scenario_troops = 0;
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_level[1] = 2;
-        fx.world().ctf_requested_bot_level[2] = -5;
+        fx.world().ctf_requested_map_units[1] = 2;
+        fx.world().ctf_requested_map_units[2] = -5;
 
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
@@ -1726,7 +1726,7 @@ TEST_F(StagedRules, lineup_level_offset_arms_and_clamps)
         fx.world().ctf_requested_strip_scenario_troops =
             static_cast<short>(og::sim::kTroopsMatched);
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_level[1] = 2;
+        fx.world().ctf_requested_map_units[1] = 2;
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(solved + 2, ((fx.var(kSlotMatchedPlan) / 100) % 100) / 10)
@@ -1793,7 +1793,7 @@ TEST_F(StagedRules, lineup_troops_sets_what_auto_resolves_to_and_bots_overrides)
         build(fx);
         fx.world().ctf_requested_strip_scenario_troops =
             static_cast<short>(og::sim::kTroopsMatched);
-        fx.world().ctf_requested_bot_squad[1] = kKnobNone;
+        fx.world().ctf_requested_fill[1] = kKnobNone;
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(0b0101, fx.var(kSoccerSlots.mask));
@@ -1808,7 +1808,7 @@ TEST_F(StagedRules, lineup_troops_sets_what_auto_resolves_to_and_bots_overrides)
         ModesCtfWorld fx(kSoccerLevelB);
         build(fx);
         fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_bot_squad[1] = kKnobFair;
+        fx.world().ctf_requested_fill[1] = kKnobFair;
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(0, fx.var(kSlotMatchedTarget)) << "no match-wide solve";
@@ -1877,7 +1877,7 @@ void author_matrix_world(const MatrixMode& mode, ModesCtfWorld& fx,
     }
 }
 
-// `off_team` is the team whose bot_squad knob reads OFF (-1 = none): the
+// `off_team` is the team whose fill knob reads OFF (-1 = none): the
 // control that succeeded the lobby TEAMS count (lineup A1/A2), so the
 // matrix's count dimension became an OFF dimension.
 void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
@@ -1904,13 +1904,13 @@ void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
     for (int t = 0; t < 4; ++t)
         teams[static_cast<std::size_t>(t)][1] =
             roster[static_cast<std::size_t>(t)];
-    std::array<int, 4> bot_squad{};
+    std::array<int, 4> fill{};
     if (off_team >= 0)
-        bot_squad[static_cast<std::size_t>(off_team)] = kKnobOff;
+        fill[static_cast<std::size_t>(off_team)] = kKnobOff;
 
     const RuleAnswer expected =
         eval_rules(teams, strip, 0b0111, mode.auto_default,
-                   mode.keep_generators, mode.no_bots, bot_squad);
+                   mode.keep_generators, mode.no_bots, fill);
     ASSERT_GE(expected.mask, 0);
     ASSERT_GE(expected.fills_packed, 0);
     const int expected_mask = expected.mask;
@@ -1924,7 +1924,7 @@ void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
         static_cast<short>(strip);
     fx.world().ctf_requested_team_count = 0;
     if (off_team >= 0)
-        fx.world().ctf_requested_bot_squad[static_cast<std::size_t>(
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(
             off_team)] = static_cast<short>(kKnobOff);
     author_matrix_world(mode, fx, flag_family, roster);
     stage_init(fx);

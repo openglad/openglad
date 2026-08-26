@@ -1593,8 +1593,8 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.cross_control = state.settings.cross_control;
     equivalent.infinite_gold = state.settings.infinite_gold;
     equivalent.time_limit = state.settings.time_limit;
-    equivalent.bot_squad = state.settings.bot_squad;
-    equivalent.bot_level = state.settings.bot_level;
+    equivalent.fill = state.settings.fill;
+    equivalent.map_units = state.settings.map_units;
 
     for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
@@ -1684,10 +1684,10 @@ LobbyStateApplyResult apply_lobby_state_to_save(
     save.cross_control = state.settings.cross_control;
     save.infinite_gold = state.settings.infinite_gold;
     save.time_limit = state.settings.time_limit;
-    for (std::size_t team = 0; team < save.bot_squad.size(); ++team)
+    for (std::size_t team = 0; team < save.fill.size(); ++team)
     {
-        save.bot_squad[team] = state.settings.bot_squad[team];
-        save.bot_level[team] = state.settings.bot_level[team];
+        save.fill[team] = state.settings.fill[team];
+        save.map_units[team] = state.settings.map_units[team];
     }
     save.numplayers = static_cast<unsigned char>(
         spectator_mode
@@ -2014,10 +2014,10 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     settings.time_limit = save.time_limit;
     // Per-team bot knobs (protocol v16 / GTL v18, LINEUP §3.1): the same
     // dropped-field rule as every other lobby-negotiated match setting.
-    for (std::size_t team = 0; team < settings.bot_squad.size(); ++team)
+    for (std::size_t team = 0; team < settings.fill.size(); ++team)
     {
-        settings.bot_squad[team] = save.bot_squad[team];
-        settings.bot_level[team] = save.bot_level[team];
+        settings.fill[team] = save.fill[team];
+        settings.map_units[team] = save.map_units[team];
     }
     // Protocol v12: shared-teams rule rides the wire (matchup: versus).
     settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;

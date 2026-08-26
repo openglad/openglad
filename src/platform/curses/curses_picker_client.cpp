@@ -1105,8 +1105,6 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
 {
     using Kind = og::ui::TerminalLineupItem::Kind;
     for (;;) {
-        std::vector<std::string> presets;
-        (void)og::script::hooks::campaign_lineup_presets(presets);
         const std::vector<og::sim::LobbyPlayer> seats =
             og::ui::synthesize_local_lobby_players(save);
 
@@ -1118,7 +1116,6 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         // comes from the shared label context like every other row here.
         inputs.networked = false;
         inputs.is_host = label_context(config, options, save).is_host;
-        inputs.preset_names = presets;
         const og::ui::TerminalLineupModel model =
             og::ui::build_terminal_lineup_model(inputs);
 
@@ -1138,37 +1135,30 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
             model.items[static_cast<std::size_t>(index - first_item)];
         const std::size_t team = static_cast<std::size_t>(item.team);
         switch (item.kind) {
-        case Kind::BotSquad:
-        case Kind::BotLevel:
+        case Kind::Fill:
+        case Kind::MapUnits:
             // §2.3: on a classic campaign the levels decide the bots, so the
-            // knob write is refused here exactly as change_lineup_bots
-            // returns without cycling on the SDL screen.
+            // knob write is refused here exactly as change_lineup_fill
+            // returns without stepping on the SDL screen.
             if (!og::ui::is_versus_campaign(save)) {
                 menu.show_text(
                     "Lineup",
                     {std::string(og::ui::kTerminalLineupMapRulesRefusal)});
                 break;
             }
-            // One clamp implementation (§3.1) — the lobby's own. No
+            // One clamp implementation (B1-B4) — the lobby's own. No
             // settings-sync tail: the curses picker links no lobby client
             // (its network lobby is a separate flow that seeds its own
             // settings from this save on entry), so the save is the whole
-            // authority for these eight scalars here.
-            if (item.kind == Kind::BotSquad) {
-                // A2: the wheel steps over an OFF this team may not take and
-                // says why — og::ui::lineup_bots_wheel_next is the ONE
-                // implementation, the same one the SDL screen turns from
-                // change_lineup_bots.
-                const og::ui::LineupBotsWheelStep step =
-                    og::ui::lineup_bots_wheel_next(
-                        model.bands[team], save.bot_squad[team],
-                        static_cast<int>(presets.size()), 1);
-                if (step.refusal_toast.has_value())
-                    menu.show_text("Lineup", {*step.refusal_toast});
-                save.bot_squad[team] = og::sim::clamp_bot_squad(step.next);
+            // authority for these eight scalars here. B8: no value on
+            // either knob is refused on any team, so the step is the whole
+            // rule and both clients share it.
+            if (item.kind == Kind::Fill) {
+                save.fill[team] = og::sim::clamp_fill(
+                    og::ui::cycle_lineup_fill(save.fill[team], 1));
             } else {
-                save.bot_level[team] = og::sim::clamp_bot_level(
-                    og::ui::cycle_lineup_level(save.bot_level[team], 1));
+                save.map_units[team] = og::sim::clamp_map_units(
+                    og::ui::toggle_lineup_map_units(save.map_units[team]));
             }
             autosave_company_after_mutation(save);  // §3.8 settings tail
             break;
@@ -1505,15 +1495,6 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         // (show_submenu in picker_state) until Back. It answers here now —
         // the door moved off the main menu to Team Build.
         show_submenu(PickerMenuId::Difficulty);
-        break;
-    // Match teams and target score left the flat team-build list for the
-    // modes camp's MATCH SETUP page; the SCENARIO submenu still routes its
-    // troops row through here.
-    case PickerMenuCommand::ToggleCtfScenarioTroops:
-        og::ui::toggle_ctf_scenario_troops(save_data_);
-        menu.show_text("Scenario Troops",
-            {og::ui::format_ctf_troops_label(save_data_)});
-        autosave_company_after_mutation(save_data_); // §3.8 settings tail
         break;
     case PickerMenuCommand::ViewScenario:
         // Solo picker: stage the level locally through the one launch

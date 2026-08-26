@@ -232,8 +232,8 @@ og::sim::LobbyState make_lobby_state_for_test()
     // v16: the eight per-team bot knobs (LINEUP §3.1). Distinct per team and
     // distinct between squad and level, so a transposed loop in either
     // serializer shows up as a value mismatch, not a silent pass.
-    state.settings.bot_squad = {0, 1, 5, 9};
-    state.settings.bot_level = {3, 0, 9, 1};
+    state.settings.fill = {0, 1, 5, 9};
+    state.settings.map_units = {3, 0, 9, 1};
     state.host_player_id = 1u;
     state.last_start_denial =
         og::sim::start_denial_reason_value(
@@ -404,8 +404,8 @@ TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
             .ctf_respawn_ticks = 180,
             .ctf_strip_scenario_troops = 1,
             .respawn_mode = 3,
-            .bot_squad = {2, 0, 9, 1},
-            .bot_level = {0, 7, 1, 9},
+            .fill = {2, 0, 9, 1},
+            .map_units = {0, 7, 1, 9},
         },
     };
     messages.push_back(settings_change);
@@ -3072,8 +3072,8 @@ TEST(NetTransport,
     // The 22 i16s: scenario_id, difficulty, allied_mode, ctf_team_count,
     // ctf_capture_limit, ctf_respawn_ticks, ctf_strip_scenario_troops,
     // respawn_mode, generator_rate, keep_fallen_heroes, cross_control,
-    // infinite_gold, shared_teams, time_limit, then the v16 bot_squad[4] and
-    // bot_level[4]. Re-derived from the field list, not bumped by +16: two
+    // infinite_gold, shared_teams, time_limit, then the v16 fill[4] and
+    // map_units[4]. Re-derived from the field list, not bumped by +16: two
     // of these offsets were silently stale for months once.
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});

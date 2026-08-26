@@ -243,63 +243,59 @@ inline bool lobby_join_seats_content_identical(
 // hand it over meaning OWN) and 2 is OWN itself. Old builds degrade it to
 // plain OWN: their strip rules read it as strip-on, their sanitize reverts
 // it at publish, and their toggle cycles it back to ALL.
+//
+// RETIRED by amendment B5: ctf_strip_scenario_troops is sanitized to 0 at
+// every authority (sanitize_settings, both sync_world_from_save_data twins,
+// apply_mode_state), so nothing writes this value any more and no strip
+// consumer ever sees it. The per-team MAP UNITS box answers the question
+// TROOPS used to ask. The constant stays because legacy saves and legacy
+// peers still hand the value over and the migration tests name it.
 inline constexpr std::int16_t kTroopsMatched = 3;
 
-// Per-team bot squad knobs (LINEUP design §3.1). Eight scalars — one squad
-// preset ordinal and one level per team — carried through the whole match-knob
-// chain beside the older ctf_* knobs.
+// The per-team LINEUP band knobs (amendment B1-B4). Eight scalars — one
+// FILL wheel and one MAP UNITS box per team — carried through the whole
+// match-knob chain beside the older ctf_* knobs.
 //
-//   bot_squad[t]: 0 = AUTO (the map's own value — the PR #245 sentinel rule,
-//                 so all-zero reproduces today's fills byte for byte),
-//                 1 = OFF (the team leaves the active mask entirely — the
-//                 retired TEAMS knob's only power, moved onto the band by
-//                 amendment A1),
-//                 2 = NONE (the team is on, it just never gets bots),
-//                 3.. = the campaign's preset ordinal (index + 3).
-//   bot_level[t]: an OFFSET on top of the AUTO source (amendment A6), not a
-//                 level: 0 = AUTO (that source unchanged — the difficulty
-//                 formula, or the FAIR solve), -5..+5 = that many levels
-//                 above or below it, resolved once in the mode Lua as
-//                 clamp(base + offset, 1, 9). A relative knob is the only
-//                 kind a host can set without knowing which map, mode or
-//                 difficulty will answer for `base`.
-//
-// The preset ordinal ceiling is a FIXED engine number, not the campaign's
-// actual preset count: a joiner clamps a host's request without owning the
-// campaign package, so the bound cannot depend on a list only the host has.
-inline constexpr std::int16_t kMaxBotPresets = 8;
-inline constexpr std::int16_t kBotSquadAuto = 0;
-inline constexpr std::int16_t kBotSquadOff = 1;
-inline constexpr std::int16_t kBotSquadNone = 2;
-// The first preset ordinal; the campaign's k-th preset (0-based) is
-// kBotSquadPresetBase + k on every layer — knob, wire, save and the
-// banked preview fact alike. ONE scale, so nothing has to translate.
-inline constexpr std::int16_t kBotSquadPresetBase = 3;
-inline constexpr std::int16_t kMaxBotSquad =
-    static_cast<std::int16_t>(kBotSquadPresetBase - 1 + kMaxBotPresets);
-// The bot-level OFFSET bounds (A6). Symmetric, and deliberately narrower
-// than the 1..9 level range it shifts: the offset rides on top of a base
-// nobody has read yet at knob time, so +5 is already "as far above the
-// map's own answer as the answer can go".
-inline constexpr std::int16_t kMinBotLevel = -5;
-inline constexpr std::int16_t kMaxBotLevel = 5;
+//   fill[t]:      the matched solver WITH A MULTIPLIER (B2). 0 = FAIR (the
+//                 default, so all-zero is the default state), 1 = NONE (no
+//                 squad on this team at all), 2 = WEAK, 3 = STRONG,
+//                 4 = BRUTAL. The engine stores and clamps the code and
+//                 nothing else: the multiplier table that turns a code into
+//                 a target lives in the mode Lua, which is the only layer
+//                 that solves anything, so there is no percent twin here.
+//                 Wheel order on the band is NONE, WEAK, FAIR, STRONG,
+//                 BRUTAL — FAIR in the middle, where the default belongs.
+//   map_units[t]: whether the map's OWN authored units on this team are
+//                 fielded (B4). 0 = on (the default and the classic
+//                 behaviour), 1 = off. The retired TROOPS knob asked this
+//                 once for the whole map; the box asks it per team.
+inline constexpr std::int16_t kFillFair = 0;
+inline constexpr std::int16_t kFillNone = 1;
+inline constexpr std::int16_t kFillWeak = 2;
+inline constexpr std::int16_t kFillStrong = 3;
+inline constexpr std::int16_t kFillBrutal = 4;
+inline constexpr std::int16_t kMaxFill = kFillBrutal;
 
-// The ONE implementation of each bot-knob bound. Every clamp home calls
+inline constexpr std::int16_t kMapUnitsOn = 0;
+inline constexpr std::int16_t kMapUnitsOff = 1;
+inline constexpr std::int16_t kMaxMapUnits = kMapUnitsOff;
+
+// The ONE implementation of each band-knob bound. Every clamp home calls
 // these — sanitize_settings (lobby authority), clamp_match_setting (the
 // menu/script provider), both sync_world_from_save_data twins (the
 // hand-edited-save route into the sim) and world_snapshot apply_mode_state
 // (the crafted-snapshot route into a mirror). A divergent copy is a
 // host/mirror hash mismatch, so there are no copies.
-[[nodiscard]] inline std::int16_t clamp_bot_squad(std::int32_t value) noexcept
+[[nodiscard]] inline std::int16_t clamp_fill(std::int32_t value) noexcept
 {
     return static_cast<std::int16_t>(
-        std::clamp<std::int32_t>(value, 0, kMaxBotSquad));
+        std::clamp<std::int32_t>(value, 0, kMaxFill));
 }
 
-[[nodiscard]] inline std::int16_t clamp_bot_level(std::int32_t value) noexcept
+[[nodiscard]] inline std::int16_t clamp_map_units(std::int32_t value) noexcept
 {
     return static_cast<std::int16_t>(
-        std::clamp<std::int32_t>(value, kMinBotLevel, kMaxBotLevel));
+        std::clamp<std::int32_t>(value, 0, kMaxMapUnits));
 }
 
 struct LobbySettings {
@@ -344,11 +340,11 @@ struct LobbySettings {
     // The fourteenth i16, appended LAST in append/read_lobby_settings.
     // sanitize_settings clamps a non-zero request into [720, 21600].
     std::int16_t time_limit = 0;
-    // Per-team bot squad / bot level (protocol v16, LINEUP §3.1). Eight i16s
+    // Per-team FILL / MAP UNITS (protocol v16, amendment B1-B4). Eight i16s
     // appended LAST in append/read_lobby_settings, after time_limit.
-    // sanitize_settings clamps through clamp_bot_squad / clamp_bot_level.
-    std::array<std::int16_t, SCORE_TEAM_COUNT> bot_squad = {};
-    std::array<std::int16_t, SCORE_TEAM_COUNT> bot_level = {};
+    // sanitize_settings clamps through clamp_fill / clamp_map_units.
+    std::array<std::int16_t, SCORE_TEAM_COUNT> fill = {};
+    std::array<std::int16_t, SCORE_TEAM_COUNT> map_units = {};
 
     bool operator==(const LobbySettings&) const = default;
 };
@@ -383,29 +379,12 @@ lobby_effective_team_mask(const LobbySettings& settings) noexcept
     const std::uint8_t authored = published_authored == 0
         ? kAllLobbyTeamMask
         : published_authored;
-    const std::uint8_t effective =
-        og::sim::effective_team_mask(authored, settings.ctf_team_count);
-    // A team the host set to BOTS: OFF leaves the match entirely (A2), so
-    // it leaves the seat domain with it — a joiner cannot pick a colour
-    // that will not be fielded, and the settings-change reteam sweeps any
-    // seat already sitting there. Versus only: on a classic campaign the
-    // knobs are stored and the map decides, so an OFF value there must not
-    // narrow anybody's choice. If OFF emptied the domain the mask stands
-    // unfiltered — a lobby with nowhere to sit can seat nobody at all, and
-    // a crafted client must not be able to arrange that.
-    std::uint8_t seated = effective;
-    for (std::int16_t team = 0; team < SCORE_TEAM_COUNT; ++team)
-    {
-        const auto index = static_cast<std::size_t>(team);
-        if (index < settings.bot_squad.size() &&
-            settings.bot_squad[index] == kBotSquadOff)
-        {
-            seated = static_cast<std::uint8_t>(
-                seated & ~static_cast<std::uint8_t>(
-                             1u << static_cast<unsigned>(team)));
-        }
-    }
-    return seated != 0 ? seated : effective;
+    // The authored mask, clamped, and nothing else. Amendment B8 deleted the
+    // one band value that could narrow this: BOTS: OFF is gone, and no value
+    // the band can hold deactivates a team any more, so a seat may go
+    // wherever the map authored a team — exactly the rule that stood before
+    // amendment A2 added the OFF clause.
+    return og::sim::effective_team_mask(authored, settings.ctf_team_count);
 }
 
 inline bool lobby_team_is_selectable(const LobbySettings& settings,

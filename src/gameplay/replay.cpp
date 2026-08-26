@@ -503,24 +503,24 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
         }
     }
 
-    // Snapshot v12 (LINEUP §3.1): the eight per-team bot knobs. Without them
+    // Snapshot v12 (amendment B1-B4): the eight per-team band knobs. Without them
     // an unknown field masquerades as a snapshot_hash divergence with no name
     // attached — the documented find_first_snapshot_difference rule.
-    for (std::size_t i = 0; i < expected.ctf_requested_bot_squad.size(); ++i)
+    for (std::size_t i = 0; i < expected.ctf_requested_fill.size(); ++i)
     {
-        if (!compare_value(std::format("ctf_requested_bot_squad[{}]", i),
-                           expected.ctf_requested_bot_squad[i],
-                           actual.ctf_requested_bot_squad[i],
+        if (!compare_value(std::format("ctf_requested_fill[{}]", i),
+                           expected.ctf_requested_fill[i],
+                           actual.ctf_requested_fill[i],
                            failure))
         {
             return false;
         }
     }
-    for (std::size_t i = 0; i < expected.ctf_requested_bot_level.size(); ++i)
+    for (std::size_t i = 0; i < expected.ctf_requested_map_units.size(); ++i)
     {
-        if (!compare_value(std::format("ctf_requested_bot_level[{}]", i),
-                           expected.ctf_requested_bot_level[i],
-                           actual.ctf_requested_bot_level[i],
+        if (!compare_value(std::format("ctf_requested_map_units[{}]", i),
+                           expected.ctf_requested_map_units[i],
+                           actual.ctf_requested_map_units[i],
                            failure))
         {
             return false;

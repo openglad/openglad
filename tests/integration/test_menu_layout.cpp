@@ -2786,22 +2786,22 @@ TEST(MenuLayout, lineup_band_and_strip_relations)
     ASSERT_EQ(kLineupButtonCount, count);
 
     // Equal band pitch, derived from the knob faces themselves.
-    const int pitch = buttons[kLineupBotsBase + 1].y -
-        buttons[kLineupBotsBase + 0].y;
+    const int pitch = buttons[kLineupFillBase + 1].y -
+        buttons[kLineupFillBase + 0].y;
     EXPECT_EQ(kLineupBandPitch, pitch);
     for (int t = 0; t < 4; ++t)
     {
-        const button& bots = buttons[kLineupBotsBase + t];
-        const button& level = buttons[kLineupLevelBase + t];
+        const button& bots = buttons[kLineupFillBase + t];
+        const button& level = buttons[kLineupMapUnitsBase + t];
         // Shared columns across every band.
-        EXPECT_EQ(buttons[kLineupBotsBase].x, bots.x) << "band " << t;
-        EXPECT_EQ(buttons[kLineupLevelBase].x, level.x) << "band " << t;
+        EXPECT_EQ(buttons[kLineupFillBase].x, bots.x) << "band " << t;
+        EXPECT_EQ(buttons[kLineupMapUnitsBase].x, level.x) << "band " << t;
         // One baseline per band's knob row.
         EXPECT_EQ(bots.y, level.y) << "band " << t;
         EXPECT_EQ(lineup_band_y(t) + kLineupKnobDy, bots.y) << "band " << t;
         if (t > 0)
         {
-            EXPECT_EQ(pitch, bots.y - buttons[kLineupBotsBase + t - 1].y)
+            EXPECT_EQ(pitch, bots.y - buttons[kLineupFillBase + t - 1].y)
                 << "unequal band pitch at band " << t;
         }
         // LV opens right after BOTS with one gutter.
@@ -2957,10 +2957,10 @@ TEST(MenuLayout, lineup_nav_variants_keyboard_reachable)
                 for (int t = 0; t < 4; ++t)
                 {
                     EXPECT_EQ(!host,
-                              buttons[kLineupBotsBase + t].hidden)
+                              buttons[kLineupFillBase + t].hidden)
                         << name << " band " << t;
                     EXPECT_EQ(!host,
-                              buttons[kLineupLevelBase + t].hidden)
+                              buttons[kLineupMapUnitsBase + t].hidden)
                         << name << " band " << t;
                 }
                 EXPECT_EQ(seats < 2,

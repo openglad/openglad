@@ -70,40 +70,47 @@ const char* family_display_name(int family)
 // after each Acted outcome (the sync-settings-from-save tail).
 bool g_match_settings_dirty = false;
 
+// "<prefix><1-based team digit>" -> the 0-based team, or -1. The ONE parse
+// behind both the slot map and the clamp below, so a name the clamp accepts
+// is exactly a name the slot map resolves.
+int match_setting_team_suffix(const std::string& name, std::string_view prefix)
+{
+    if (name.size() != prefix.size() + 1)
+        return -1;
+    if (std::string_view(name).substr(0, prefix.size()) != prefix)
+        return -1;
+    const int team = name[prefix.size()] - '1';
+    return (team >= 0 && team < SCORE_TEAM_COUNT) ? team : -1;
+}
+
 // The save knob a match-setting name maps to, or nullptr for a name
 // outside the vocabulary (kCampaignMatchSettingNames).
 short* match_setting_slot(SaveData& save, const std::string& name)
 {
-    // "team_count" is gone from the vocabulary (A3): the knob is inert, and
-    // a provider slot for it would hand a campaign a value the lobby snaps
-    // back to 0 on its way to the sim.
+    // "team_count" is gone from the vocabulary (A3) and "strip_troops" went
+    // with it (B5): both knobs are inert, and a provider slot for either
+    // would hand a campaign a value the lobby snaps back to 0 on its way to
+    // the sim. og.match_setting("strip_troops") still READS (always 0) —
+    // that is the retired-but-answering side of the same ruling.
     if (name == "score_limit")
         return &save.ctf_capture_limit;
     if (name == "respawn_ticks")
         return &save.ctf_respawn_ticks;
-    if (name == "strip_troops")
-        return &save.ctf_strip_scenario_troops;
     if (name == "respawn_mode")
         return &save.respawn_mode;
     if (name == "generator_rate")
         return &save.generator_rate;
     if (name == "time_limit")
         return &save.time_limit;
-    // The eight per-team bot knobs (LINEUP §3.1): "bot_squad_1".."bot_level_4",
-    // the trailing digit being the 1-based team.
-    if (name.size() == 11 && name.compare(0, 10, "bot_squad_") == 0)
+    // The eight per-team band knobs (B1-B4): "fill_1".."fill_4" and
+    // "map_units_1".."map_units_4", the trailing digit being the 1-based
+    // team.
+    if (const int team = match_setting_team_suffix(name, "fill_"); team >= 0)
+        return &save.fill[static_cast<std::size_t>(team)];
+    if (const int team = match_setting_team_suffix(name, "map_units_");
+        team >= 0)
     {
-        const int team = name[10] - '1';
-        if (team >= 0 && team < SCORE_TEAM_COUNT)
-            return &save.bot_squad[static_cast<std::size_t>(team)];
-        return nullptr;
-    }
-    if (name.size() == 11 && name.compare(0, 10, "bot_level_") == 0)
-    {
-        const int team = name[10] - '1';
-        if (team >= 0 && team < SCORE_TEAM_COUNT)
-            return &save.bot_level[static_cast<std::size_t>(team)];
-        return nullptr;
+        return &save.map_units[static_cast<std::size_t>(team)];
     }
     return nullptr;
 }
@@ -128,13 +135,6 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
         out = value != 0
             ? static_cast<short>(std::clamp<std::int32_t>(value, 12, 1200))
             : static_cast<short>(0);
-        return true;
-    }
-    if (name == "strip_troops")
-    {
-        if (value < 0 || value > og::sim::kTroopsMatched)
-            return false;
-        out = static_cast<short>(value);
         return true;
     }
     if (name == "respawn_mode")
@@ -166,23 +166,20 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
             : static_cast<short>(0);
         return true;
     }
-    // Per-team bot knobs (LINEUP §3.1). 0 = AUTO is legal, so both clamp
+    // Per-team band knobs (B1-B4). Every value in range is legal — 0 is
+    // FAIR / MAP UNITS ON, the default state, not a refusal — so both clamp
     // rather than refuse; the bounds come from the ONE og::sim
     // implementation the lobby sanitizer uses, so a scripted preset can
     // never publish a value the server would bounce.
-    if (name.size() == 11 && name[10] >= '1' &&
-        name[10] < static_cast<char>('1' + SCORE_TEAM_COUNT))
+    if (match_setting_team_suffix(name, "fill_") >= 0)
     {
-        if (name.compare(0, 10, "bot_squad_") == 0)
-        {
-            out = static_cast<short>(og::sim::clamp_bot_squad(value));
-            return true;
-        }
-        if (name.compare(0, 10, "bot_level_") == 0)
-        {
-            out = static_cast<short>(og::sim::clamp_bot_level(value));
-            return true;
-        }
+        out = static_cast<short>(og::sim::clamp_fill(value));
+        return true;
+    }
+    if (match_setting_team_suffix(name, "map_units_") >= 0)
+    {
+        out = static_cast<short>(og::sim::clamp_map_units(value));
+        return true;
     }
     return false; // unknown name
 }

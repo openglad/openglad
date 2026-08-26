@@ -365,11 +365,11 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
     append_i16(payload, settings.infinite_gold);
     append_i16(payload, settings.shared_teams);
     append_i16(payload, settings.time_limit);
-    // Protocol v16: the eight per-team bot knobs, appended LAST so every
+    // Protocol v16: the eight per-team band knobs, appended LAST so every
     // earlier lobby payload offset keeps its number.
-    for (const std::int16_t squad : settings.bot_squad)
+    for (const std::int16_t squad : settings.fill)
         append_i16(payload, squad);
-    for (const std::int16_t level : settings.bot_level)
+    for (const std::int16_t level : settings.map_units)
         append_i16(payload, level);
 }
 
@@ -392,9 +392,9 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     settings.infinite_gold = reader.read_i16();
     settings.shared_teams = reader.read_i16();
     settings.time_limit = reader.read_i16();
-    for (std::int16_t& squad : settings.bot_squad)
+    for (std::int16_t& squad : settings.fill)
         squad = reader.read_i16();
-    for (std::int16_t& level : settings.bot_level)
+    for (std::int16_t& level : settings.map_units)
         level = reader.read_i16();
     return settings;
 }

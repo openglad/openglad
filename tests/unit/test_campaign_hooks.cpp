@@ -1553,11 +1553,10 @@ TEST_F(CampaignHooksTest, campaign_var_reads_world_values)
 // The LINEUP hook (docs/lineup-design.md §3.3, §4)
 // ---------------------------------------------------------------------------
 
-TEST_F(CampaignHooksTest, lineup_registers_presets_and_prices_a_fighter)
+TEST_F(CampaignHooksTest, lineup_registers_and_prices_a_fighter)
 {
     register_script(R"LUA(og.register_campaign_hooks({
   lineup = {
-    presets = { "BALANCED", "casters", "FAIR" },
     power = function(row)
       return row.hp * 2 + row.level
     end,
@@ -1565,13 +1564,6 @@ TEST_F(CampaignHooksTest, lineup_registers_presets_and_prices_a_fighter)
 }))LUA");
     EXPECT_TRUE(hooks::campaign_picker_registered());
     EXPECT_TRUE(hooks::campaign_lineup_registered());
-
-    std::vector<std::string> presets;
-    ASSERT_TRUE(hooks::campaign_lineup_presets(presets));
-    ASSERT_EQ(3u, presets.size());
-    EXPECT_EQ("BALANC", presets[0]) << "clipped to the 6-char cycler face";
-    EXPECT_EQ("CASTER", presets[1]) << "and upper-cased";
-    EXPECT_EQ("FAIR", presets[2]);
 
     hooks::LineupPowerRow row;
     row.family = "SOLDIER";
@@ -1606,30 +1598,27 @@ TEST_F(CampaignHooksTest, lineup_power_reads_the_whole_row)
     EXPECT_EQ(131, power);
 }
 
-TEST_F(CampaignHooksTest, lineup_presets_alone_still_register)
+// Amendment B1 deleted `lineup.presets`: the five-value FILL wheel names
+// nothing a campaign owns, so a book that still writes the old key is
+// refused outright rather than half-registered.
+TEST_F(CampaignHooksTest, lineup_presets_key_is_gone)
 {
     register_script(R"LUA(og.register_campaign_hooks({
-  lineup = { presets = { "BRUTES" } },
+  lineup = { presets = { "BRUTES" }, power = function(row) return 1 end },
 }))LUA");
-    EXPECT_TRUE(hooks::campaign_lineup_registered());
-    std::vector<std::string> presets;
-    ASSERT_TRUE(hooks::campaign_lineup_presets(presets));
-    EXPECT_EQ(std::vector<std::string>{"BRUTES"}, presets);
-    // No power function: the bands show `--`.
-    hooks::LineupPowerRow row;
-    long long power = 0;
-    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_FALSE(hooks::campaign_lineup_registered());
+    EXPECT_TRUE(errors_contain("unknown 'lineup' key 'presets'"));
 }
 
-TEST_F(CampaignHooksTest, lineup_power_alone_registers_an_empty_preset_list)
+TEST_F(CampaignHooksTest, lineup_power_alone_is_the_whole_table)
 {
     register_script(R"LUA(og.register_campaign_hooks({
   lineup = { power = function(row) return 1 end },
 }))LUA");
     EXPECT_TRUE(hooks::campaign_lineup_registered());
-    std::vector<std::string> presets{"STALE"};
-    ASSERT_TRUE(hooks::campaign_lineup_presets(presets));
-    EXPECT_TRUE(presets.empty()) << "AUTO/NONE only, and that is an answer";
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_TRUE(hooks::campaign_fighter_power(row, power));
 }
 
 TEST_F(CampaignHooksTest, no_lineup_hook_means_no_lineup)
@@ -1639,10 +1628,6 @@ TEST_F(CampaignHooksTest, no_lineup_hook_means_no_lineup)
 }))LUA");
     EXPECT_TRUE(hooks::campaign_picker_registered());
     EXPECT_FALSE(hooks::campaign_lineup_registered());
-    std::vector<std::string> presets{"STALE"};
-    EXPECT_FALSE(hooks::campaign_lineup_presets(presets));
-    EXPECT_EQ(std::vector<std::string>{"STALE"}, presets)
-        << "a refusal leaves the caller's list alone";
     hooks::LineupPowerRow row;
     long long power = 0;
     EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
@@ -1695,20 +1680,11 @@ TEST_F(CampaignHooksTest, lineup_registration_rejections)
         {R"LUA(og.register_campaign_hooks({ lineup = { power = 7 } }))LUA",
          "'lineup.power' must be a function"},
         {R"LUA(og.register_campaign_hooks({ lineup = { presets = "X" } }))LUA",
-         "'lineup.presets' must be an array"},
-        {R"LUA(og.register_campaign_hooks({
-  lineup = { presets = { 1 }, power = function(r) return 1 end } }))LUA",
-         "lineup.presets[1] must be a string"},
-        {R"LUA(og.register_campaign_hooks({
-  lineup = { presets = { "" }, power = function(r) return 1 end } }))LUA",
-         "lineup.presets[1] is empty"},
-        {R"LUA(og.register_campaign_hooks({
-  lineup = { presets = { "A","B","C","D","E","F","G","H","I" } } }))LUA",
-         "names 9 squads (max 8)"},
-        {R"LUA(og.register_campaign_hooks({ lineup = { presests = {} } }))LUA",
-         "unknown 'lineup' key 'presests'"},
+         "unknown 'lineup' key 'presets'"},
+        {R"LUA(og.register_campaign_hooks({ lineup = { powr = 1 } }))LUA",
+         "unknown 'lineup' key 'powr'"},
         {R"LUA(og.register_campaign_hooks({ lineup = {} }))LUA",
-         "carries neither 'presets' nor 'power'"},
+         "carries no 'power'"},
     };
     for (const Case& c : cases) {
         clear_pack_scripts();
@@ -1721,7 +1697,7 @@ TEST_F(CampaignHooksTest, lineup_registration_rejections)
 TEST_F(CampaignHooksTest, lineup_alone_is_a_whole_registration)
 {
     register_script(R"LUA(og.register_campaign_hooks({
-  lineup = { presets = { "SKIRM" } },
+  lineup = { power = function(row) return 1 end },
 }))LUA");
     EXPECT_TRUE(hooks::campaign_picker_registered())
         << "a book with only a lineup table is still a book";
@@ -1754,39 +1730,10 @@ TEST_F(CampaignHooksTest, lineup_power_for_guy_is_nothing_without_a_hook)
 // The lineup review rows (wp/review-lua L5/L6)
 // ---------------------------------------------------------------------------
 
-// L5: a presets table that is not a sequence — a hash of names, or an
-// array with a hole — registers NOTHING silently today (lua_rawlen reads
-// 0 or stops at the hole). The registrar must refuse the book with a
-// logged error so the stock AUTO/NONE wheel stands, never a silent empty
-// preset list.
-TEST_F(CampaignHooksTest, lineup_presets_that_are_not_a_sequence_are_refused)
-{
-    struct Case {
-        const char* source;
-        const char* needle;
-    };
-    const Case cases[] = {
-        {R"LUA(og.register_campaign_hooks({
-  lineup = { presets = { BALANC = true, CASTER = true },
-             power = function(r) return 1 end } }))LUA",
-         "'lineup.presets' must be an array"},
-        {R"LUA(og.register_campaign_hooks({
-  lineup = { presets = { [1] = "A", [3] = "C" },
-             power = function(r) return 1 end } }))LUA",
-         "lineup.presets"},
-        {R"LUA(og.register_campaign_hooks({
-  lineup = { presets = { "A", B = "B" } } }))LUA",
-         "'lineup.presets' must be an array"},
-    };
-    for (const Case& c : cases) {
-        clear_pack_scripts();
-        register_script(c.source);
-        EXPECT_FALSE(hooks::campaign_lineup_registered()) << c.source;
-        std::vector<std::string> presets{"STALE"};
-        EXPECT_FALSE(hooks::campaign_lineup_presets(presets)) << c.source;
-        EXPECT_TRUE(errors_contain(c.needle)) << c.source;
-    }
-}
+// L5 (the presets-sequence refusal) retired with `lineup.presets` itself
+// (amendment B1): the key is unknown now, so the registrar refuses every
+// shape of it — pinned by lineup_presets_key_is_gone and the unknown-key
+// row in lineup_registration_rejections above.
 
 // L6: lineup.power answers are read as int64 only when they are one — an
 // integer, or a finite float inside the int64 range (truncated). NaN,

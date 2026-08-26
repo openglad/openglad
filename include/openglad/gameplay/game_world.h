@@ -467,7 +467,10 @@ public:
     short ctf_requested_team_count = 0;
     short ctf_requested_capture_limit = 0;
     short ctf_requested_respawn_ticks = 0;
-    short ctf_requested_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
+    // RETIRED (amendment B5): snapped to 0 by both
+    // sync_world_from_save_data twins and by apply_mode_state, so
+    // og.match_setting("strip_troops") always answers 0.
+    short ctf_requested_strip_scenario_troops = 0;
     // Lobby-requested match time limit in SIM TICKS; 0 = the map's own value
     // (#241). Scripted modes read it as og.match_setting("time_limit") and
     // resolve it against their manifest row through match.resolve_limit.
@@ -476,16 +479,14 @@ public:
     // Independent of the 36000-tick hard mission timeout below, which is a
     // runaway-loop safety net and ends the level as a LOSS.
     short ctf_requested_time_limit = 0;
-    // Lobby-requested per-team bot squad preset ordinal and bot level
-    // (LINEUP §3.1). Index is the team (0..3). 0 = AUTO on both — the map's
-    // own value — so an all-zero pair reproduces today's fills byte for byte.
-    // bot_squad: 1 = OFF (the team is not fielded at all), 2 = NONE (no
-    // bots on a team that is still fielded), 3.. = the campaign's preset
-    // ordinal (index + 3, og::sim::kBotSquadPresetBase). bot_level:
-    // 1..9 = that level exactly. Scripted modes read them as
-    // og.match_setting("bot_squad_1") .. ("bot_level_4").
-    std::array<short, 4> ctf_requested_bot_squad = {};
-    std::array<short, 4> ctf_requested_bot_level = {};
+    // Lobby-requested per-team FILL wheel and MAP UNITS box (amendment
+    // B1-B4). Index is the team (0..3); 0 is the default on both.
+    // fill: 0 = FAIR, 1 = NONE, 2 = WEAK, 3 = STRONG, 4 = BRUTAL.
+    // map_units: 0 = the map's own authored units on this team are fielded,
+    // 1 = they are not. Scripted modes read them as
+    // og.match_setting("fill_1") .. ("map_units_4").
+    std::array<short, 4> ctf_requested_fill = {};
+    std::array<short, 4> ctf_requested_map_units = {};
     // Classic (non-CTF) respawn mode: 0 = off (legacy), 1 = heroes respawn,
     // 2 = heroes + level-authored AI livings respawn ("endless battle"),
     // 3 = only Team 1 heroes respawn (player-facing Team 1 = internal team 0).

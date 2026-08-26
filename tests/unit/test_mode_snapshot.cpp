@@ -223,8 +223,10 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
               snapshot.ctf_requested_capture_limit);
     EXPECT_EQ(world.ctf_requested_respawn_ticks,
               snapshot.ctf_requested_respawn_ticks);
-    EXPECT_EQ(world.ctf_requested_strip_scenario_troops,
-              snapshot.ctf_requested_strip_scenario_troops);
+    // ctf_requested_strip_scenario_troops is RETIRED (amendment B5): the
+    // capture carries whatever the world holds, but apply_mode_state snaps
+    // the mirror's copy to 0, so the two are compared only in
+    // strip_scenario_troops_still_rides_the_wire_but_never_the_mirror below.
     EXPECT_EQ(world.ctf_requested_time_limit,
               snapshot.ctf_requested_time_limit)
         << "snapshot v11 replicates the match time limit (#241)";
@@ -808,7 +810,7 @@ TEST(ModeSnapshot, snapshot_restore_continuation_matches_uninterrupted_run)
 
 // --- Requested strip-scenario-troops replication -----------------------------
 
-TEST(ModeSnapshot, strip_scenario_troops_round_trips_and_changes_hash)
+TEST(ModeSnapshot, strip_scenario_troops_still_rides_the_wire_but_never_the_mirror)
 {
     ModeWorld fx;
     GameWorld& world = fx.world();
@@ -823,11 +825,13 @@ TEST(ModeSnapshot, strip_scenario_troops_round_trips_and_changes_hash)
         og::sim::deserialize_snapshot(bytes);
     EXPECT_EQ(1, decoded.ctf_requested_strip_scenario_troops);
 
-    // Apply writes it back into a fresh world.
+    // ...but apply REFUSES it into the mirror (amendment B5): the field is
+    // retired, the host's own world holds 0, and a mirror that kept a 1
+    // here would strip a cast the host fielded.
     ModeWorld target;
     ASSERT_EQ(0, target.world().ctf_requested_strip_scenario_troops);
     og::sim::apply_snapshot(target.world(), decoded);
-    EXPECT_EQ(1, target.world().ctf_requested_strip_scenario_troops);
+    EXPECT_EQ(0, target.world().ctf_requested_strip_scenario_troops);
 
     // Delta-merge carries it onto a baseline.
     og::sim::WorldSnapshot baseline =
@@ -942,70 +946,70 @@ TEST(ModeSnapshot, bot_knobs_round_trip_and_change_hash)
     // Distinct per team and distinct between squad and level, so a
     // transposed loop in serialize/deserialize/capture/apply fails loudly
     // instead of silently swapping two equal values.
-    world.ctf_requested_bot_squad = {0, 2, 1, 9};
-    world.ctf_requested_bot_level = {3, 0, -5, 1};
+    world.ctf_requested_fill = {0, 2, 1, 4};
+    world.ctf_requested_map_units = {1, 0, 1, 0};
 
     const og::sim::WorldSnapshot snapshot =
         og::sim::capture_keyframe_snapshot(world);
-    const std::array<std::int16_t, 4> expected_squad = {0, 2, 1, 9};
-    const std::array<std::int16_t, 4> expected_level = {3, 0, -5, 1};
-    EXPECT_EQ(expected_squad, snapshot.ctf_requested_bot_squad);
-    EXPECT_EQ(expected_level, snapshot.ctf_requested_bot_level);
+    const std::array<std::int16_t, 4> expected_squad = {0, 2, 1, 4};
+    const std::array<std::int16_t, 4> expected_level = {1, 0, 1, 0};
+    EXPECT_EQ(expected_squad, snapshot.ctf_requested_fill);
+    EXPECT_EQ(expected_level, snapshot.ctf_requested_map_units);
 
     const std::vector<std::uint8_t> bytes =
         og::sim::serialize_snapshot(snapshot);
     const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
-    EXPECT_EQ(expected_squad, decoded.ctf_requested_bot_squad);
-    EXPECT_EQ(expected_level, decoded.ctf_requested_bot_level);
+    EXPECT_EQ(expected_squad, decoded.ctf_requested_fill);
+    EXPECT_EQ(expected_level, decoded.ctf_requested_map_units);
 
     ModeWorld target;
-    ASSERT_EQ(0, target.world().ctf_requested_bot_squad[1]);
+    ASSERT_EQ(0, target.world().ctf_requested_fill[1]);
     og::sim::apply_snapshot(target.world(), decoded);
     for (std::size_t team = 0; team < 4; ++team)
     {
         EXPECT_EQ(expected_squad[team],
-                  target.world().ctf_requested_bot_squad[team])
+                  target.world().ctf_requested_fill[team])
             << "squad team " << team;
         EXPECT_EQ(expected_level[team],
-                  target.world().ctf_requested_bot_level[team])
+                  target.world().ctf_requested_map_units[team])
             << "level team " << team;
     }
 
     // Delta-merge carries them onto a baseline.
     og::sim::WorldSnapshot baseline =
         og::sim::capture_keyframe_snapshot(target.world());
-    baseline.ctf_requested_bot_squad = {};
-    baseline.ctf_requested_bot_level = {};
+    baseline.ctf_requested_fill = {};
+    baseline.ctf_requested_map_units = {};
     const og::sim::WorldSnapshot delta_source = og::sim::capture_snapshot(world);
     const std::vector<std::uint8_t> delta_bytes =
         og::sim::serialize_delta(delta_source);
     const og::sim::WorldSnapshot decoded_delta =
         og::sim::deserialize_delta(delta_bytes);
     og::sim::apply_delta(baseline, decoded_delta);
-    EXPECT_EQ(expected_squad, baseline.ctf_requested_bot_squad);
-    EXPECT_EQ(expected_level, baseline.ctf_requested_bot_level);
+    EXPECT_EQ(expected_squad, baseline.ctf_requested_fill);
+    EXPECT_EQ(expected_level, baseline.ctf_requested_map_units);
 
     // Every one of the eight must move the hash on its own, or a peer that
     // disagreed about exactly that team's squad would never be detected.
     for (std::size_t team = 0; team < 4; ++team)
     {
         og::sim::WorldSnapshot other_squad = snapshot;
-        other_squad.ctf_requested_bot_squad[team] =
+        other_squad.ctf_requested_fill[team] =
             static_cast<std::int16_t>(other_squad
-                                          .ctf_requested_bot_squad[team] +
+                                          .ctf_requested_fill[team] +
                                       1);
         EXPECT_NE(og::sim::compute_snapshot_hash(snapshot),
                   og::sim::compute_snapshot_hash(other_squad))
-            << "bot_squad team " << team;
+            << "fill team " << team;
 
         og::sim::WorldSnapshot other_level = snapshot;
-        other_level.ctf_requested_bot_level[team] =
+        other_level.ctf_requested_map_units[team] =
             static_cast<std::int16_t>(other_level
-                                          .ctf_requested_bot_level[team] +
+                                          .ctf_requested_map_units[team] +
                                       1);
         EXPECT_NE(og::sim::compute_snapshot_hash(snapshot),
                   og::sim::compute_snapshot_hash(other_level))
-            << "bot_level team " << team;
+            << "map_units team " << team;
     }
 }
 
@@ -1022,34 +1026,37 @@ TEST(ModeSnapshot, applied_bot_knobs_are_clamped_into_the_sanitized_band)
     struct Case
     {
         std::int16_t crafted;
-        std::int16_t applied_squad;
-        std::int16_t applied_level;
+        std::int16_t applied_fill;
+        std::int16_t applied_map_units;
     };
     const Case cases[] = {
-        {0, 0, 0},                                              // AUTO
-        // Below zero is out of band for a squad ordinal and IN band for a
-        // level, which is an offset (A6).
-        {-1, 0, -1},
-        {-30000, 0, og::sim::kMinBotLevel},
-        {1, 1, 1},                                              // in band
-        {og::sim::kMaxBotSquad, og::sim::kMaxBotSquad,
-         og::sim::kMaxBotLevel},
-        {32000, og::sim::kMaxBotSquad, og::sim::kMaxBotLevel},  // over
+        {0, 0, 0},  // FAIR, MAP UNITS ON — the default state
+        // Both floors are 0 (amendment B1-B4), so a negative clamps up.
+        {-1, 0, 0},
+        {-30000, 0, 0},
+        {1, 1, og::sim::kMaxMapUnits},  // in band on both
+        {og::sim::kMaxFill, og::sim::kMaxFill, og::sim::kMaxMapUnits},
+        {32000, og::sim::kMaxFill, og::sim::kMaxMapUnits},  // over
     };
     for (const Case& one : cases)
     {
         og::sim::WorldSnapshot crafted = base;
-        crafted.ctf_requested_bot_squad.fill(one.crafted);
-        crafted.ctf_requested_bot_level.fill(one.crafted);
+        crafted.ctf_requested_fill.fill(one.crafted);
+        crafted.ctf_requested_map_units.fill(one.crafted);
+        // A crafted snapshot cannot reintroduce the retired TROOPS knob
+        // either (amendment B5): the mirror snaps it to 0 or it would
+        // strip a cast the host fielded.
+        crafted.ctf_requested_strip_scenario_troops = og::sim::kTroopsMatched;
         og::sim::apply_snapshot(target.world(), crafted);
+        EXPECT_EQ(0, target.world().ctf_requested_strip_scenario_troops);
         for (std::size_t team = 0; team < 4; ++team)
         {
-            EXPECT_EQ(one.applied_squad,
-                      target.world().ctf_requested_bot_squad[team])
-                << "crafted squad " << one.crafted << " team " << team;
-            EXPECT_EQ(one.applied_level,
-                      target.world().ctf_requested_bot_level[team])
-                << "crafted level " << one.crafted << " team " << team;
+            EXPECT_EQ(one.applied_fill,
+                      target.world().ctf_requested_fill[team])
+                << "crafted fill " << one.crafted << " team " << team;
+            EXPECT_EQ(one.applied_map_units,
+                      target.world().ctf_requested_map_units[team])
+                << "crafted map_units " << one.crafted << " team " << team;
         }
     }
 }

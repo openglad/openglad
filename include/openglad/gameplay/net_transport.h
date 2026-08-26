@@ -158,10 +158,10 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // ctf_requested_strip_scenario_troops, so snapshot format moves to v11 and
 // replay format to v17. The knob also persists in the GTL save (v17), which
 // is versioned separately from the wire.
-// v16: the eight per-team bot knobs (LINEUP §3.1) and the kick pair.
-// LobbySettings gains bot_squad[4] + bot_level[4] as eight i16s appended
+// v16: the eight per-team band knobs (amendment B1-B4) and the kick pair.
+// LobbySettings gains fill[4] + map_units[4] as eight i16s appended
 // after time_limit in append/read_lobby_settings; sanitize_settings clamps
-// them through og::sim::clamp_bot_squad / clamp_bot_level. LobbyMessageKind
+// them through og::sim::clamp_fill / clamp_map_units. LobbyMessageKind
 // gains Kick = 8 (host -> server, u32 machine id) and Kicked = 9 (server ->
 // peer, empty payload, sent immediately before the disconnect). WorldSnapshot
 // carries the same eight scalars, appended after ctf_requested_time_limit, so

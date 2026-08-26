@@ -874,31 +874,13 @@ int text_picker_testing_exercise_internal_paths()
               config.team_families.front() == FAMILY_SOLDIER);
     }
 
-    // The scenario-troops toggle is still a terminal row (SCENARIO); teams
+    // The scenario-troops row retired with its knob (amendment B5); teams
     // and target score moved to the camp's MATCH SETUP page
-    // (docs/camp-controls-design.md), so they are no longer dispatched here.
+    // (docs/camp-controls-design.md). Neither is dispatched here any more.
     config.campaign = "modes";
     check(client.save_game() &&
           save.current_campaign == "modes");
     const short previous_ctf_teams = save.ctf_team_count;
-    const short previous_ctf_troops = save.ctf_strip_scenario_troops;
-    handle_team_item(PickerMenuCommand::ToggleCtfScenarioTroops, "", [&] {
-        return save.ctf_strip_scenario_troops != previous_ctf_troops;
-    });
-    // The troops toggle prints the SHARED formatter's label, so the FAIR
-    // sentinel reaches the terminal with no client-side string of its own
-    // (matched-teams D28). The toggle above landed on OWN (2); the next
-    // step is FAIR (3), and the dispatch echoes the new label.
-    {
-        ScopedTextPickerStdoutCapture output;
-        check(output.ready());
-        handle_team_item(PickerMenuCommand::ToggleCtfScenarioTroops, "", [&] {
-            return save.ctf_strip_scenario_troops == og::sim::kTroopsMatched;
-        });
-        const std::string text = output.finish();
-        check(output.finish_ok() &&
-            text.find("TROOPS: FAIR") != std::string::npos);
-    }
     // Amendment A1/A3: the Matchup dump carries NO teams label any more.
     // TEAMS is not a control, and a readout of a setting nothing writes is
     // just a lie waiting to happen — the team rows themselves are the whole

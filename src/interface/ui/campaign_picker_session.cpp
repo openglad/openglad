@@ -696,10 +696,10 @@ bool CampaignZoneSession::settings_fingerprint_changed()
         save_.infinite_gold, save_.time_limit);
     // The eight per-team bot knobs (LINEUP §3.1) are lobby-synced like the
     // rest: a host cycling a squad preset must refresh the missions surface.
-    for (std::size_t team = 0; team < save_.bot_squad.size(); ++team)
+    for (std::size_t team = 0; team < save_.fill.size(); ++team)
     {
-        composed += std::format("|{}|{}", save_.bot_squad[team],
-                                save_.bot_level[team]);
+        composed += std::format("|{}|{}", save_.fill[team],
+                                save_.map_units[team]);
     }
     const std::uint64_t fingerprint =
         static_cast<std::uint64_t>(std::hash<std::string>{}(composed));

@@ -63,14 +63,14 @@ std::string_view terminal_gate_message(const PickerMenuItem& item,
 // no grid, so the bands become CONTEXT LINES above a numbered item list — the
 // campaign-camp shape (lines + rows + a numeric prompt), which both terminal
 // clients already drive. Every string here comes from the shared §2.1/§4
-// formatters (format_lineup_bots_label / _level_label / _census / _power), so
-// the three clients cannot drift apart on a label.
+// formatters (format_lineup_fill_label / _map_units_label / _census /
+// _power), so the three clients cannot drift apart on a label.
 
 // One selectable LINEUP row. `team` is meaningful for the two knob kinds only.
 struct TerminalLineupItem {
     enum class Kind {
-        BotSquad,   // host-only: cycle this team's bot squad preset
-        BotLevel,   // host-only: cycle this team's bot level
+        Fill,       // host-only: step this team's FILL wheel
+        MapUnits,   // host-only: flip this team's MAP UNITS box
         Fighters,   // open the fighter list (team + deploy + POWER rows)
         SplitEven,  // §5 SPLIT EVEN
         SplitFair,  // §5 SPLIT FAIR
@@ -90,9 +90,9 @@ struct TerminalLineupModel {
     std::vector<std::string> lines;
     std::vector<TerminalLineupItem> items;
     // The censused bands the lines were drawn from, handed on so a terminal
-    // can turn the BOTS wheel with og::ui::lineup_bots_wheel_next — the ONE
-    // implementation of amendment A2's refusal and step-over, shared with
-    // the SDL screen. A terminal that spelled the rule itself would drift.
+    // can render the same MAP UNITS hint the SDL band dims its box with
+    // (LineupTeamBand::map_unit_count). A terminal that spelled a rule
+    // itself would drift.
     std::array<LineupTeamBand, 4> bands{};
 };
 
@@ -107,9 +107,6 @@ struct TerminalLineupInputs {
     std::span<const std::uint8_t> local_player_indices;
     bool networked = false;
     bool is_host = true;
-    // The campaign's bot-squad preset names (og::script::hooks::
-    // campaign_lineup_presets); empty offers AUTO/NONE only.
-    std::span<const std::string> preset_names;
 };
 
 TerminalLineupModel build_terminal_lineup_model(

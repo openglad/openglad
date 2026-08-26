@@ -70,7 +70,7 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.allied_mode = fallback.allied_mode;
     // RETIRED (amendment A3): TEAMS stopped being a control when its only
     // power — dropping an authored team — moved onto the band as the
-    // bot_squad value OFF. The field keeps its place in the save and on the
+    // fill value OFF. The field keeps its place in the save and on the
     // wire (no format moves), but the authority answers one value for it, so
     // an old peer, an old .gtl or a crafted client cannot reintroduce a
     // second rule for which teams are fielded. A legacy 2/3/4 heals to Auto
@@ -85,16 +85,15 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.ctf_respawn_ticks =
             std::clamp<std::int16_t>(sanitized.ctf_respawn_ticks, 12, 1200);
     }
-    // 0 keeps the authored cast, 2 strips it, 3 (kTroopsMatched, "TROOPS:
-    // FAIR") strips it and sizes the generated bot squads to the human
-    // census. The retired middle state 1 is still accepted so a peer or save
-    // from that build syncs instead of snapping back to the host's value;
-    // every strip rule reads it as 2. 4+ still reverts to the fallback.
-    if (sanitized.ctf_strip_scenario_troops < 0 ||
-        sanitized.ctf_strip_scenario_troops > og::sim::kTroopsMatched)
-    {
-        sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
-    }
+    // RETIRED (amendment B5), exactly like ctf_team_count above: TROOPS
+    // asked once, for the whole map, whether the authored cast fights; the
+    // per-team MAP UNITS box asks it per team, and two rules for one
+    // question is the twin this branch keeps deleting. The field keeps its
+    // place in the save and on the wire (no format moves), but the authority
+    // answers one value for it, so an old peer, an old .gtl or a crafted
+    // client cannot reintroduce the second rule. A legacy 1/2/3 heals to 0
+    // here, once, silently (the D30 precedent).
+    sanitized.ctf_strip_scenario_troops = 0;
     if (sanitized.respawn_mode < og::sim::kRespawnModeOff ||
         sanitized.respawn_mode > og::sim::kRespawnModeTeamOneHeroes)
     {
@@ -127,18 +126,18 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.time_limit =
             std::clamp<std::int16_t>(sanitized.time_limit, 720, 21600);
     }
-    // Per-team bot knobs (LINEUP §3.1). Both clamp rather than revert: 0
-    // (AUTO) is a legal value, and the ceilings are engine constants a
-    // joiner can enforce without owning the campaign's preset list. The ONE
-    // implementation lives in lobby_state.h and is shared with
-    // clamp_match_setting, both sync_world_from_save_data twins and
-    // world_snapshot apply_mode_state.
-    for (std::size_t team = 0; team < sanitized.bot_squad.size(); ++team)
+    // Per-team band knobs (amendment B1-B4). Both clamp rather than revert:
+    // 0 is a legal value on both (FAIR, and MAP UNITS ON), and the ceilings
+    // are engine constants a joiner can enforce without owning the
+    // campaign's package at all. The ONE implementation lives in
+    // lobby_state.h and is shared with clamp_match_setting, both
+    // sync_world_from_save_data twins and world_snapshot apply_mode_state.
+    for (std::size_t team = 0; team < sanitized.fill.size(); ++team)
     {
-        sanitized.bot_squad[team] =
-            og::sim::clamp_bot_squad(sanitized.bot_squad[team]);
-        sanitized.bot_level[team] =
-            og::sim::clamp_bot_level(sanitized.bot_level[team]);
+        sanitized.fill[team] =
+            og::sim::clamp_fill(sanitized.fill[team]);
+        sanitized.map_units[team] =
+            og::sim::clamp_map_units(sanitized.map_units[team]);
     }
     return sanitized;
 }
@@ -1480,8 +1479,8 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.cross_control = state_.settings.cross_control;
     equivalent.infinite_gold = state_.settings.infinite_gold;
     equivalent.time_limit = state_.settings.time_limit;
-    equivalent.bot_squad = state_.settings.bot_squad;
-    equivalent.bot_level = state_.settings.bot_level;
+    equivalent.fill = state_.settings.fill;
+    equivalent.map_units = state_.settings.map_units;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

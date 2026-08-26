@@ -311,8 +311,8 @@ TEST_F(ModesCtf, init_strips_teams_switched_off)
     fx.spawn_anchor(2, 128, 832);
     fx.spawn_anchor(3, 512, 832);
     walker* stripped_living = fx.spawn_living(FAMILY_ORC, 2, 200, 760);
-    fx.world().ctf_requested_bot_squad[2] = og::sim::kBotSquadOff;
-    fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[2] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
 
     fx.tick(1);
 
@@ -403,7 +403,7 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
         fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
         walker* stripped = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
-        fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
         fx.tick(1);
 
         ASSERT_TRUE(fx.ctf_active());
@@ -420,7 +420,7 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
         walker* troop = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
         walker* kept_hero = fx.spawn_hero(FAMILY_SOLDIER, 3, 520, 200, 7);
-        fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
         fx.tick(1);
 
         ASSERT_TRUE(fx.ctf_active());

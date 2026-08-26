@@ -111,16 +111,16 @@ constexpr int kArenaCount = 39;
 
 // MATCH SETUP's knobs (D4 — the presets retired): one row each, in the
 // order the page composes them, each labelled with the value it holds.
-// TIME LIMIT joined as the fourth in #241 — the summaries below (the rules
-// line and the camp's digest) deliberately stayed at the score and the
-// troops, because the row itself already wears its value where the host
-// turns it. TEAMS left in the 2026-08-26 lineup amendment (A1/A3): the
-// sides are the LINEUP page's, band by band, so the table is three rows
-// and the summaries lost their "Auto sides" head.
+// TIME LIMIT joined in #241 — the summaries below (the rules line and the
+// camp's digest) deliberately stay at the score, because the row itself
+// already wears its value where the host turns it. TEAMS left in the
+// 2026-08-26 lineup amendment (A1/A3) and TROOPS in amendment B5: the
+// sides are the LINEUP page's band by band, and so is whether each team's
+// map-shipped units are fielded, so the table is two rows and the
+// summaries lost both their heads.
 constexpr std::size_t kScoreRow = 0;
-constexpr std::size_t kTroopsRow = 1;
-constexpr std::size_t kTimeRow = 2;
-constexpr const char* kKnobIds[] = {"score", "troops", "time"};
+constexpr std::size_t kTimeRow = 1;
+constexpr const char* kKnobIds[] = {"score", "time"};
 constexpr std::size_t kKnobCount = sizeof(kKnobIds) / sizeof(kKnobIds[0]);
 
 // Display budgets (the imaginations pins).
@@ -600,7 +600,7 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_EQ(CampaignPickerSession::Kind::Page, setup.kind);
     EXPECT_EQ("setup", setup.id);
     EXPECT_EQ("MATCH SETUP", setup.label);
-    EXPECT_EQ("map, all", setup.note) << "the rules digest, at note "
+    EXPECT_EQ("map", setup.note) << "the rules digest, at note "
                                                "length";
 
     // The roster keeps every capability and no oath column: this campaign
@@ -723,7 +723,7 @@ TEST_F(ModesBookTest, terminal_camp_rolls_the_scenario_and_names_what_it_set)
               io.pages[0].find("   3. RANDOM SCENARIO - any game, any field\n"))
         << io.pages[0];
     EXPECT_NE(std::string::npos,
-              io.pages[0].find("   4. MATCH SETUP - map, all  >\n"))
+              io.pages[0].find("   4. MATCH SETUP - map  >\n"))
         << "the fourth row is on the first face of every client";
 
     // And the click was not a no-op: the refetched camp is set to the
@@ -843,7 +843,7 @@ TEST_F(ModesBookTest, joiner_camp_cuts_the_roll_and_the_sign)
     const CampaignZoneSession::Row& setup = rows[kCampJoinerSetupRow];
     EXPECT_EQ("setup", setup.id);
     EXPECT_EQ("MATCH SETUP", setup.label);
-    EXPECT_EQ("map, all", setup.note)
+    EXPECT_EQ("map", setup.note)
         << "the match rules are SYNCED: a joiner reads the same digest it "
            "cannot write, and the page behind the row says whose call it "
            "is";
@@ -1368,14 +1368,12 @@ TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
     const CampaignPickerSession::DecoratedPage& page = session.page();
     EXPECT_EQ("MATCH SETUP", page.title);
     ASSERT_EQ(1u, page.lines.size());
-    EXPECT_EQ("Map score, all.", page.lines[0])
+    EXPECT_EQ("Map score.", page.lines[0])
         << "0 spells its MATCHUP meaning, and nothing is 'posted'; the "
            "sides are LINEUP's, so the sentence opens on the score";
     ASSERT_EQ(kKnobCount, page.rows.size());
-    const char* labels[] = {"TARGET SCORE: MAP", "TROOPS: ALL",
-                            "TIME LIMIT: MAP"};
-    const char* notes[] = {"map, 1, 3, 5, 10", "all, own, fair",
-                           "map, 5, 10, 15, 20m"};
+    const char* labels[] = {"TARGET SCORE: MAP", "TIME LIMIT: MAP"};
+    const char* notes[] = {"map, 1, 3, 5, 10", "map, 5, 10, 15, 20m"};
     for (std::size_t i = 0; i < kKnobCount; i++)
     {
         EXPECT_EQ(CampaignPickerSession::Kind::Action, page.rows[i].kind);
@@ -1394,11 +1392,10 @@ TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
     save_.ctf_capture_limit = 7;
     save_.time_limit = 2160;  // 3 minutes, off the cycle
     session.refresh();
-    EXPECT_EQ("To 7, 1.", session.page().lines[0])
-        << "the line speaks the score and the troops, as the camp digest "
-           "that shares its words does; the clock stays on its own row";
+    EXPECT_EQ("To 7.", session.page().lines[0])
+        << "the line speaks the score, as the camp digest that shares its "
+           "words does; the clock stays on its own row";
     EXPECT_EQ("TARGET SCORE: 7", session.page().rows[kScoreRow].label);
-    EXPECT_EQ("TROOPS: 1", session.page().rows[kTroopsRow].label);
     EXPECT_EQ("TIME LIMIT: 3M", session.page().rows[kTimeRow].label)
         << "minutes, from the ticks the modes actually run on";
 
@@ -1431,11 +1428,6 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
         {10, "TARGET SCORE: 10", "Score to 10."},
         {0, "TARGET SCORE: MAP", "Score: the map's own."},
     };
-    const std::vector<Step> troops = {
-        {2, "TROOPS: OWN", "Troops: your own."},
-        {3, "TROOPS: FAIR", "Troops: fair bots."},
-        {0, "TROOPS: ALL", "Troops: the map's own."},
-    };
     // Ticks in the save (12/s, the manifest's own unit), minutes on the
     // face. Every value on the cycle survives the provider's [720, 21600]
     // clamp untouched, so what the row says is what the sim gets.
@@ -1452,7 +1444,6 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
         const std::vector<Step>* steps;
     } knobs[] = {
         {kScoreRow, "score_limit", &score},
-        {kTroopsRow, "strip_troops", &troops},
         {kTimeRow, "time_limit", &time},
     };
 
@@ -1476,8 +1467,8 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
                 << "the refetched row wears the new value";
         }
         // A whole lap leaves the knob exactly where it started, and the
-        // other two never moved (nor the retired TEAMS field, which no
-        // row can reach).
+        // other never moved (nor the two retired fields, which no row can
+        // reach: TEAMS since A3, TROOPS since B5).
         EXPECT_EQ(0, save_.ctf_team_count);
         EXPECT_EQ(0, save_.ctf_capture_limit);
         EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
@@ -1503,11 +1494,6 @@ TEST_F(ModesBookTest, an_off_menu_value_rejoins_the_cycle_at_its_head)
     EXPECT_EQ("Score: the map's own.", session.take_message());
     EXPECT_EQ(0, save_.ctf_capture_limit);
 
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTroopsRow).kind);
-    EXPECT_EQ("Troops: the map's own.", session.take_message());
-    EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
-
     EXPECT_EQ("TIME LIMIT: 7M", session.page().rows[kTimeRow].label)
         << "5400 ticks is 7 whole minutes, said plainly";
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
@@ -1529,32 +1515,27 @@ TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
         << "a successful write arms the session tail";
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "the flag is consumed";
-    EXPECT_EQ("To 1, all.", session.page().lines[0])
+    EXPECT_EQ("To 1.", session.page().lines[0])
         << "the refetched page re-derives the rules";
 
-    // Two more clicks put the score on 5, two put the troops on fair:
-    // the knobs are independent, and the line carries both.
+    // Two more clicks put the score on 5: the knobs are independent.
     for (int i = 0; i < 2; i++)
     {
         ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
                   session.choose(kScoreRow).kind);
     }
-    for (int i = 0; i < 2; i++)
-    {
-        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-                  session.choose(kTroopsRow).kind);
-    }
     // And one puts the clock on five minutes — which the summaries
     // deliberately do NOT speak: the line and the camp digest speak the
-    // score and the troops (#241), so the TIME LIMIT row is the only
-    // place its value shows.
+    // score (#241), so the TIME LIMIT row is the only place its value
+    // shows.
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
               session.choose(kTimeRow).kind);
     EXPECT_EQ(5, save_.ctf_capture_limit);
-    EXPECT_EQ(3, save_.ctf_strip_scenario_troops);
     EXPECT_EQ(3600, save_.time_limit);
     EXPECT_EQ(0, save_.ctf_team_count) << "no row reaches the retired knob";
-    EXPECT_EQ("To 5, fair.", session.page().lines[0]);
+    EXPECT_EQ(0, save_.ctf_strip_scenario_troops)
+        << "and none reaches the other one either (B5)";
+    EXPECT_EQ("To 5.", session.page().lines[0]);
     EXPECT_EQ("TIME LIMIT: 5M", session.page().rows[kTimeRow].label);
     EXPECT_TRUE(og::data::consume_match_settings_dirty());
 
@@ -1563,7 +1544,7 @@ TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
     CampaignZoneSession zone(save_);
     zone.fetch();
     ASSERT_TRUE(zone.scripted());
-    EXPECT_EQ("to 5, fair", camp_rows(zone)[kCampSetupRow].note);
+    EXPECT_EQ("to 5", camp_rows(zone)[kCampSetupRow].note);
     EXPECT_TRUE(zone.texts().empty());
 }
 
@@ -1579,7 +1560,7 @@ TEST_F(ModesBookTest, joiner_setup_page_reads_and_refuses_without_writing)
     const CampaignPickerSession::DecoratedPage page = open_page("setup");
     EXPECT_TRUE(page.rows.empty()) << "no row that could only refuse";
     ASSERT_EQ(2u, page.lines.size());
-    EXPECT_EQ("Map score, all.", page.lines[0]);
+    EXPECT_EQ("Map score.", page.lines[0]);
     EXPECT_EQ("The host calls the rules.", page.lines[1])
         << "who decides, stated before any click";
 
@@ -1685,21 +1666,14 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
     }
 }
 
-// The LINEUP hook through the REAL shipped campaign script (lineup §3.3):
-// mounting builtin/modes.glad registers campaign_picker.lua, whose lineup
-// table names exactly mode_match's BOT_PRESETS ids in table order — the
-// cycler ordinals 3..7 — and whose power function is mode_match's own
-// stat_power over the derived-stat row.
-TEST_F(ModesBookTest, lineup_hook_registers_presets_and_prices_with_stat_power)
+// The LINEUP hook through the REAL shipped campaign script (§4): mounting
+// builtin/modes.glad registers campaign_picker.lua, whose lineup table is
+// `power` alone since amendment B1 (the preset names retired with the BOTS
+// wheel) — mode_match's own stat_power over the derived-stat row.
+TEST_F(ModesBookTest, lineup_hook_registers_and_prices_with_stat_power)
 {
     EXPECT_TRUE(hooks::campaign_lineup_registered())
         << "campaign_picker.lua must register the lineup table";
-    std::vector<std::string> presets;
-    ASSERT_TRUE(hooks::campaign_lineup_presets(presets));
-    const std::vector<std::string> expected{"BALANC", "CASTER", "BRUTES",
-                                            "SKIRMS", "FAIR"};
-    EXPECT_EQ(expected, presets)
-        << "preset names are the BOT_PRESETS ids, verbatim and in order";
 
     // power(row) == stat_power(hp, mp, armor, damage, stepsize, ff,
     // level), hand computed for a fixed row:

@@ -609,3 +609,126 @@ Work packages: W5-B (opus) rename/scale/inert-troops/vocabulary/labels
 strip + activation + band modes + camp page + staged rows; W5-C
 (fable) the band's two controls, FIGHTERS removal, Base Camp chip
 networked, SCENARIO re-grid, flows, captures; W5-G (opus) terminals.
+
+## As built: the W5-B layer (2026-08-26)
+
+The engine half of B1-B5 and B8 is in. What the other three packages have
+to know, so nobody re-derives it:
+
+- **One scale, one name, everywhere.** `bot_squad` is `fill` and
+  `bot_level` is `map_units` at every copy site — `SaveData`,
+  `LobbySettings`, `LobbySaveDataEquivalent`, `GameWorld`
+  (`ctf_requested_fill` / `ctf_requested_map_units`), `WorldSnapshot`,
+  `ViewScenarioKey`, the `og.match_setting` names (`"fill_1".."fill_4"`,
+  `"map_units_1".."map_units_4"`) and the campaign vocabulary. `fill` is
+  `0 FAIR / 1 NONE / 2 WEAK / 3 STRONG / 4 BRUTAL`, named once in
+  `lobby_state.h` as `kFillFair`, `kFillNone`, `kFillWeak`, `kFillStrong`,
+  `kFillBrutal`, bounded by `kMaxFill`; `map_units` is
+  `kMapUnitsOn` / `kMapUnitsOff`, bounded by `kMaxMapUnits`. GTL 18,
+  protocol 16, snapshot 12 and replay 18 are all unchanged — the fields
+  kept their places and their widths, only their names and their meanings
+  moved.
+- **The multiplier table is Lua's alone.** The engine stores and clamps a
+  FILL CODE and knows nothing else about it: there is no `kFillPercent[]`
+  in C++, because the mode Lua is the only layer that solves a target and
+  a second copy of `{100, 0, 75, 125, 150}` would be exactly the rule twin
+  this branch keeps deleting. **W5-A owns that table**, keyed by the raw
+  code `og.match_setting("fill_N")` answers.
+- **Two clamp homes, five callers.** `og::sim::clamp_fill` and
+  `og::sim::clamp_map_units` (lobby_state.h) are called by
+  `sanitize_settings`, `clamp_match_setting`, both
+  `sync_world_from_save_data` twins and `apply_mode_state`.
+  `clamp_bot_squad` / `clamp_bot_level` and every `kBotSquad*` /
+  `kMaxBotPresets` / `kMinBotLevel` / `kMaxBotLevel` constant are gone.
+- **TROOPS is inert, not gone.** `ctf_strip_scenario_troops` keeps its
+  place in the save and on the wire; `sanitize_settings`, both
+  `sync_world_from_save_data` twins and `apply_mode_state` all write 0, so
+  a legacy 1/2/3 heals once, silently (the D30 precedent).
+  `og.match_setting("strip_troops")` still answers (always 0);
+  `og.campaign_match_get/set("strip_troops")` now raise unknown-name.
+  `next_ctf_scenario_troops` / `toggle_ctf_scenario_troops` /
+  `format_ctf_troops_label` / `change_ctf_troops` /
+  `ButtonAction::CycleCtfScenarioTroops` /
+  `PickerMenuCommand::ToggleCtfScenarioTroops` are all deleted; the
+  SCENARIO row at index 6 is PARKED (`scenario_troops_spare`, zero rect,
+  hidden, no nav) so `kScenarioMenuCtfCapsIndex` and the count never
+  shifted. **The knob row's re-grid — SCORE alone at (30,140) — is still
+  W5-C's**, and the terminal SCENARIO list lost a row, so **the two
+  1-based position consumers are W5-G's to re-pin**.
+- **The band's two controls.** `og::ui::format_lineup_fill_label` (12-char
+  face; "FILL: STRONG" and "FILL: BRUTAL" are exactly 12, so the budget is
+  spent, not merely respected), `og::ui::lineup_fill_name` (the bare word,
+  shared with the preview pane), `og::ui::cycle_lineup_fill` (the DISPLAY
+  order NONE, WEAK, FAIR, STRONG, BRUTAL — deliberately not the storage
+  order), `og::ui::format_lineup_map_units_label` ("MAP UNITS: ON" /
+  "MAP UNITS: OFF", the terminals' spelling of the SDL box) and
+  `og::ui::toggle_lineup_map_units`. `format_lineup_bots_label`,
+  `format_lineup_level_label`, `cycle_lineup_bots`, `cycle_lineup_level`
+  and `lineup_bots_wheel_next` (with `LineupBotsWheelStep` and both
+  refusal toasts) are deleted — B8 left no rule for them to hold.
+- **`LineupTeamBand` gains `map_unit_count`**, the staged census of
+  authored map units on the team, supplied through a new trailing
+  `std::span<const int> map_unit_counts` parameter on
+  `build_lineup_bands` (an empty span leaves every count at 0, which reads
+  as "the map ships none"). `og::ui::format_lineup_map_units_census`
+  answers `"NO MAP UNITS"` when the count is 0 and empty otherwise; it is
+  deliberately NOT folded into `format_lineup_census`, so no pinned
+  fighter census moves for it. **Feeding the census and placing the hint
+  are W5-C's**; the terminals read the same field.
+- **The seat domain is the authored mask again (B8).**
+  `lobby_effective_team_mask` lost its OFF clause and its
+  empty-domain guard with it; nothing a band can hold narrows where a seat
+  may sit.
+- **THE SHARED SLOT-4 DIGIT LAYOUT.** Written out twice on purpose — here
+  and beside `lineup_fact_code` in `picker_common.cpp` — because the two
+  halves live in different languages and can only agree on paper:
+
+  ```
+  slot value = latch                    (ones digit, MATCHED.ANNOUNCED)
+             + code(team 0) * 10
+             + code(team 1) * 10 * 100
+             + code(team 2) * 10 * 100^2
+             + code(team 3) * 10 * 100^3
+             + refusal      * 1e9       (mode_match.lua REFUSAL_BASE)
+
+  code = 0            nothing banked — no squad of this team's fielded
+                      anybody, so the pane names no fill
+       = fill + 1     the APPLIED FILL code plus one:
+                      1 = FAIR, 2 = NONE, 3 = WEAK, 4 = STRONG, 5 = BRUTAL
+  ```
+
+  The `+ 1` is the whole reason the field is not just the fill code: FAIR
+  is 0 and is also the default, so a bare code could not tell "a FAIR
+  squad walked on" from "this team banked nothing". This replaces the
+  A6-era `squad * 11 + offset_code` pair. C++ side:
+  `lineup_fact_code` / `lineup_fact_fill` / `kLineupFactFillBias`.
+  **W5-A owns `bank_lineup_facts` writing exactly this**, and R4 still
+  holds: bank only when ≥ 1 member spawned.
+- **The preview pane (B7).** `ScenarioRosterReport::team_squad_name` and
+  `team_squad_level` are replaced by `team_squad_fill` (an
+  `std::array<int, 4>` initialised to −1 = nothing banked). Rows read
+  `BOT SQUAD (5) FAIR`, `COMPANY+BOTS (3+2) WEAK`, `MAP TROOPS (7)`. The
+  worst row —
+  `"  YELLOW TEAM  ACTIVE - COMPANY+BOTS (3+2) BRUTAL"` — is 49, one over
+  the 48-char budget, so the separator space before the fill word is what
+  the budget spends (`(3+2)BRUTAL`); a clipped word would be a different
+  word. Both shapes pinned in `test_staged_report.cpp`.
+- **The `lineup` hook is `power` alone.** `presets` is an unknown key now
+  (the registrar refuses the book and says so), `campaign_lineup_presets`
+  and `VmState::campaign_lineup_presets` are gone, and so are
+  `hooks::kMaxBotPresets` and `kLineupPresetNameMax`'s reason to exist.
+  `docs/modding/og-api.d.lua` regenerated.
+- **Reds handed on, by test name.** W5-A: `og_unit_stage`
+  (`test_staged_rules.cpp` — the raw knob values and every preset/offset
+  row), `og_unit_modes` / `og_unit_ffa` / `og_unit_soccer` /
+  `og_unit_basketball` / `og_unit_onslaught` (`test_modes_*.cpp` — the
+  `kBotSquad*` constants), and `campaign_picker.lua`, which still
+  registers `lineup.presets` and so registers no book at all until it
+  drops the key. W5-C: `og_test_lineup`, `og_test_menu_ui`,
+  `og_test_menu_engine` (`test_lineup_ui.cpp`, `test_ctf_ui.cpp`,
+  `test_menu_layout.cpp`, `test_menu_pins.cpp`, `test_view_team.cpp`,
+  `test_picker_funcs.cpp`). W5-G: `test_platform_headless.cpp`,
+  `tests/curses/test_curses_picker_client.cpp`,
+  `tests/curses/test_curses_network.cpp`,
+  `tests/integration/test_menu_model.cpp`, and
+  `scripts/test_text_picker_interactive.sh`.

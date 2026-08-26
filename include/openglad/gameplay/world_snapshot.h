@@ -249,16 +249,16 @@ struct WorldSnapshot {
     std::int16_t ctf_requested_team_count = 0; // 0 = Auto
     std::int16_t ctf_requested_capture_limit = 0;
     std::int16_t ctf_requested_respawn_ticks = 0;
-    std::int16_t ctf_requested_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
+    std::int16_t ctf_requested_strip_scenario_troops = 0; // retired (B5); always 0
     // Snapshot v11: the match time limit in sim ticks (0 = the map's own
     // value), appended LAST in serialize_match_knobs so every earlier
     // payload-offset pin survives.
     std::int16_t ctf_requested_time_limit = 0;
-    // Snapshot v12: the eight per-team bot knobs (LINEUP §3.1), appended
-    // after the time limit in serialize_match_knobs so every earlier
-    // payload-offset pin survives.
-    std::array<std::int16_t, 4> ctf_requested_bot_squad = {};
-    std::array<std::int16_t, 4> ctf_requested_bot_level = {};
+    // Snapshot v12: the eight per-team band knobs (amendment B1-B4),
+    // appended after the time limit in serialize_match_knobs so every
+    // earlier payload-offset pin survives.
+    std::array<std::int16_t, 4> ctf_requested_fill = {};
+    std::array<std::int16_t, 4> ctf_requested_map_units = {};
     // Classic respawn / generator knobs (GameWorld scalars).
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;

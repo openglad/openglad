@@ -788,26 +788,6 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     return og::sim::authored_team_mask(world);
 }
 
-short next_ctf_scenario_troops(short current)
-{
-    // ALL -> OWN -> FAIR -> ALL. FAIR (kTroopsMatched = 3) strips exactly
-    // like OWN and additionally sizes the generated bot squads to the human
-    // census (matched-teams design D25-D28). Every other stored value — the
-    // retired middle state 1, or junk from a save the lobby never sanitized
-    // — reads as OWN everywhere else, so cycling off it goes to ALL.
-    if (current == 0)
-        return short{2};
-    if (current == 2)
-        return og::sim::kTroopsMatched;
-    return short{0};
-}
-
-void toggle_ctf_scenario_troops(SaveData& save)
-{
-    save.ctf_strip_scenario_troops =
-        next_ctf_scenario_troops(save.ctf_strip_scenario_troops);
-}
-
 // --- Difficulty submenu match rules ---
 
 void cycle_respawn_mode(SaveData& save)
@@ -2076,20 +2056,6 @@ std::string format_ctf_score_label(const SaveData& save)
     return std::format("SCORE: {}", save.ctf_capture_limit);
 }
 
-std::string format_ctf_troops_label(const SaveData& save)
-{
-    // SCENARIO-screen faces are 80px = 12 characters; FAIR fills the budget
-    // exactly ("Even" is the recorded alternate if headroom is ever needed).
-    // The FAIR branch must precede the > 0 branch or OWN eats it. Anything
-    // else above 0 strips (a stored 1 from the retired middle state
-    // included), so the label reads OWN for the rest of the range.
-    if (save.ctf_strip_scenario_troops == og::sim::kTroopsMatched)
-        return "TROOPS: FAIR"; // strip like OWN + census-matched bot squads
-    if (save.ctf_strip_scenario_troops > 0)
-        return "TROOPS: OWN";  // strip every authored fighter and generator
-    return "TROOPS: ALL";      // keep the level as authored
-}
-
 std::string format_respawn_mode_label(const SaveData& save)
 {
     if (save.respawn_mode <= og::sim::kRespawnModeOff)
@@ -3100,16 +3066,33 @@ constexpr std::size_t kModeVarMatchedSize = 5;
 // The shared lineup-facts mode var (lib/mode_match.lua MATCHED.ANNOUNCED,
 // slot 4, co-tenanted because the mode-private band is spent): the ones
 // digit is the matched announce latch; the digits above pack one base-100
-// code per team, team t's code at 10 * 100^t (lineup §3.4,
-// bank_lineup_facts). A code is a MIXED-RADIX pair, code = squad * 11 +
-// offset_code: squad is 0 for no applied preset, else the applied
-// bot_squad ordinal minus (kBotSquadPresetBase - 1), so all
-// kMaxBotPresets registrable presets fit (1..8); offset_code spells the
-// signed LV offset (amendment A6) in 0..10 — 0 = AUTO, 1..5 = +1..+5,
-// 6..10 = -1..-5. Worst code 8 * 11 + 10 = 98 < 100. Zero codes mean
-// AUTO at no offset — an all-AUTO world never writes them.
+// code per team, team t's code at 10 * 100^t (§3.4, bank_lineup_facts).
+//
+// THE SHARED DIGIT LAYOUT, written out here beside the decoder and beside
+// `bank_lineup_facts` in mode_match.lua, because the two halves live in
+// different languages and can only agree on paper:
+//
+//   slot value = latch                      (ones digit, MATCHED.ANNOUNCED)
+//              + code(team 0) * 10
+//              + code(team 1) * 10 * 100
+//              + code(team 2) * 10 * 100^2
+//              + code(team 3) * 10 * 100^3
+//              + refusal      * 1e9         (kLineupRefusalBase below)
+//
+//   code = 0                 nothing banked — no squad of this team's
+//                            fielded anybody, so the pane names no fill
+//        = fill + 1          the APPLIED FILL code + 1, i.e. 1 = FAIR,
+//                            2 = NONE, 3 = WEAK, 4 = STRONG, 5 = BRUTAL
+//
+// The +1 is the whole reason the field is not just the fill code: FAIR is
+// 0 and is also the default, so a bare code could not tell "a FAIR squad
+// walked on" from "this team banked nothing". Amendment B7 replaced the
+// old mixed-radix `squad * 11 + offset` pair with this single value when
+// the preset ordinals and the LV offset went away.
 constexpr std::size_t kModeVarLineupFacts = 4;
-constexpr int kLineupFactOffsetRadix = 11;
+// What a banked code adds to the fill value. Named, because the Lua half
+// has to add exactly the same thing.
+constexpr int kLineupFactFillBias = 1;
 
 // Decode team t's applied lineup code from the shared slot.
 int lineup_fact_code(std::int32_t slot_value, int team)
@@ -3120,19 +3103,15 @@ int lineup_fact_code(std::int32_t slot_value, int team)
     return static_cast<int>(facts % 100);
 }
 
-// The two halves of a code: the applied preset's index into the
-// registered list (-1 = none) and the signed LV offset.
-int lineup_fact_preset_index(int code)
+// The applied FILL value a code carries, or -1 when the team banked
+// nothing (and for any code outside the five legal fills, which is what a
+// stale bank from an older build reads as).
+int lineup_fact_fill(int code)
 {
-    return code / kLineupFactOffsetRadix - 1;
-}
-
-int lineup_fact_offset(int code)
-{
-    const int offset_code = code % kLineupFactOffsetRadix;
-    if (offset_code <= 5)
-        return offset_code;
-    return 5 - offset_code;
+    const int fill = code - kLineupFactFillBias;
+    if (fill < og::sim::kFillFair || fill > og::sim::kFillBrutal)
+        return -1;
+    return fill;
 }
 
 // The refusal REASON digit, banked ABOVE the four team codes in the same
@@ -3464,20 +3443,13 @@ ScenarioRosterReport build_scenario_roster_report(
                     }
                 }
 
-                // Lineup facts (lineup §3.4): the spawn seam banked the
-                // APPLIED per-team preset ordinal + explicit level in the
-                // shared slot; the ordinal resolves to its registered
-                // preset name (the campaign lineup hook — every peer
-                // mounts the same campaign). A team whose label is its
-                // COMPANY (or troops) can still field a squad beside the
-                // occupants (review L2, §3.2 amended): those bots are the
-                // team_squad_count column, and the same banked facts name
-                // and level them, so the preview's count is the spawned
-                // count on every shape.
-                std::vector<std::string> lineup_presets;
-                const bool have_presets =
-                    og::script::hooks::campaign_lineup_presets(
-                        lineup_presets);
+                // Lineup facts (§3.4 as amended by B7): the spawn seam
+                // banked the APPLIED per-team FILL code in the shared slot.
+                // A team whose label is its COMPANY (or its map troops) can
+                // still field a squad beside the occupants (review L2):
+                // those bots are the team_squad_count column, and the same
+                // banked fact names them, so the preview's count and its
+                // fill word are the spawned facts on every shape.
                 const std::int32_t lineup_facts =
                     staged->mode.vars[kModeVarLineupFacts];
                 for (int t = 0; t < 4; ++t)
@@ -3494,24 +3466,8 @@ ScenarioRosterReport build_scenario_roster_report(
                         if (bots[ti] == 0)
                             continue;
                     }
-                    const int code = lineup_fact_code(lineup_facts, t);
-                    // The level fact is the OFFSET the squad was resolved
-                    // through (A6), signed, 0 = AUTO — the label reads
-                    // LV+2 / LV-1, never the resolved number.
-                    report.team_squad_level[ti] = lineup_fact_offset(code);
-                    // The banked squad half is the applied bot_squad
-                    // ordinal on ONE scale from the cycler face to the
-                    // preview line, already shifted to an index into the
-                    // registered list.
-                    const int preset_index = lineup_fact_preset_index(code);
-                    if (preset_index >= 0 && have_presets &&
-                        static_cast<std::size_t>(preset_index) <
-                            lineup_presets.size())
-                    {
-                        report.team_squad_name[ti] =
-                            lineup_presets[static_cast<std::size_t>(
-                                preset_index)];
-                    }
+                    report.team_squad_fill[ti] =
+                        lineup_fact_fill(lineup_fact_code(lineup_facts, t));
                 }
             }
             else if (!report.refusing)
@@ -3607,49 +3563,42 @@ std::vector<std::string> format_scenario_report_lines(
                 {
                     // A squad fielded BESIDE the occupants (review L2): both
                     // halves are named and both are counted, because both
-                    // walk onto the floor. A squad with no banked name (a
-                    // FAIR degrade) is the plain word BOTS.
-                    fill += std::format(
-                        "+{} ({}+{})",
-                        report.team_squad_name[ti].empty()
-                            ? std::string("BOTS")
-                            : report.team_squad_name[ti],
-                        report.team_fill_count[ti],
-                        report.team_squad_count[ti]);
+                    // walk onto the floor. The squad half is the plain word
+                    // BOTS now — B7 moved what KIND of squad it is out of
+                    // the noun and into the trailing fill word, where one
+                    // spelling answers for every shape.
+                    fill += std::format("+BOTS ({}+{})",
+                                        report.team_fill_count[ti],
+                                        report.team_squad_count[ti]);
                 }
-                else
+                else if (report.team_fill[ti] != ScenarioFill::Empty)
                 {
-                    // A preset squad wears its registered name (lineup
-                    // §3.4): "BOT SQUAD <NAME> (n)", replacing MATCHED BOTS
-                    // too — the name says what the squad is, matched or not.
-                    if (!report.team_squad_name[ti].empty())
-                        fill = std::format("BOT SQUAD {}",
-                                           report.team_squad_name[ti]);
-                    if (report.team_fill[ti] != ScenarioFill::Empty)
-                        fill += std::format(" ({})",
-                                            report.team_fill_count[ti]);
+                    fill += std::format(" ({})", report.team_fill_count[ti]);
                 }
-                // An LV offset appends "LV+2" / "LV-1" (A6) — the sign is
-                // the message, spelled without an inner space (§3.4's
-                // budget clause). The token is one character wider than
-                // the old "LV9", and the worst row ("  YELLOW TEAM  ACTIVE
-                // - COMPANY+BALANC (3+2) LV+2", 24 + 20 + 5 = 49) overruns
-                // the 48-char budget by exactly that character, so the
-                // separator space before the token is the first thing the
-                // budget spends: a row that would clip the digit glues the
-                // token to the count instead ("(3+2)LV+2"). Only a YELLOW
-                // row with a 6-char preset name ever needs it.
+                // The APPLIED fill word closes the row (B7): "BOT SQUAD (5)
+                // FAIR", "COMPANY+BOTS (3+2) WEAK". A team that banked no
+                // fill — map troops alone, a mode that ignored the knob —
+                // ends at its count, so the pane never names a fill that
+                // did not decide anything.
+                //
+                // Budget: the worst row is
+                // "  YELLOW TEAM  ACTIVE - COMPANY+BOTS (3+2) BRUTAL"
+                // (24 + 12 + 6 + 7 = 49), one over. The separator space
+                // before the word is the first thing the budget spends, so
+                // such a row glues the word to the count ("(3+2)BRUTAL",
+                // 48) rather than losing a letter of it — a clipped word is
+                // a different word.
                 std::string line = std::format("  {} TEAM  ACTIVE - {}",
                                                og::sim::team_color_name(t),
                                                fill);
-                if (report.team_squad_level[ti] != 0)
+                if (report.team_squad_fill[ti] >= 0)
                 {
-                    const std::string token =
-                        std::format("LV{:+}", report.team_squad_level[ti]);
+                    const std::string_view token = lineup_fill_name(
+                        static_cast<short>(report.team_squad_fill[ti]));
                     if (line.size() + 1 + token.size() > kMaxReportLine)
                         line += token;
                     else
-                        line += " " + token;
+                        line += " " + std::string(token);
                 }
                 lines.push_back(clip_line(line));
             }
@@ -3963,12 +3912,21 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
     std::span<const std::uint8_t> local_player_indices,
     bool networked,
     const LineupPowerFn& power,
-    const std::function<std::string(std::uint8_t)>& local_seat_short_name)
+    const std::function<std::string(std::uint8_t)>& local_seat_short_name,
+    std::span<const int> map_unit_counts)
 {
     std::array<LineupTeamBand, 4> bands{};
     std::array<LineupPowerAccumulator, 4> prices{};
     for (int team = 0; team < 4; ++team)
-        bands[static_cast<std::size_t>(team)].team = team;
+    {
+        const auto ti = static_cast<std::size_t>(team);
+        bands[ti].team = team;
+        // The staged census, handed in (B4). A caller with no staged world
+        // passes nothing and every box reads NO MAP UNITS — the honest
+        // answer when nobody has censused the map yet.
+        if (ti < map_unit_counts.size())
+            bands[ti].map_unit_count = std::max(map_unit_counts[ti], 0);
+    }
 
     for (const og::sim::LobbyPlayer& seat : players)
     {
@@ -4042,41 +4000,44 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
 
 // --- LINEUP labels ---
 
-std::string format_lineup_bots_label(short squad,
-                                     std::span<const std::string> preset_names)
+std::string_view lineup_fill_name(short fill)
 {
-    if (squad <= og::sim::kBotSquadAuto)
-        return "BOTS: AUTO";
-    if (squad == og::sim::kBotSquadOff)
-        return "BOTS: OFF";
-    if (squad == og::sim::kBotSquadNone)
-        return "BOTS: NONE";
-    const std::size_t index =
-        static_cast<std::size_t>(squad - og::sim::kBotSquadPresetBase);
-    if (index >= preset_names.size())
+    switch (fill)
     {
-        // A joiner clamps bot_squad without ever holding the preset list
-        // (§3.1), so the ordinal has to be able to speak for itself.
-        return std::format("BOTS: #{}", static_cast<int>(index) + 1);
+    case og::sim::kFillNone: return "NONE";
+    case og::sim::kFillWeak: return "WEAK";
+    case og::sim::kFillStrong: return "STRONG";
+    case og::sim::kFillBrutal: return "BRUTAL";
+    default: break;
     }
-    return "BOTS: " +
-        clip_chars(preset_names[index],
-                   og::script::hooks::kLineupPresetNameMax);
+    // FAIR, and everything the clamp would land on FAIR. A stored value
+    // outside the wheel is a save the lobby never sanitized; it plays as
+    // FAIR, so it reads as FAIR.
+    return "FAIR";
 }
 
-std::string format_lineup_level_label(short level)
+std::string format_lineup_fill_label(short fill)
 {
-    // An OFFSET, so the sign is the whole message (A6): "LV +2" reads as
-    // two levels above whatever the map would have chosen, and AUTO is the
-    // absence of a shift, not a level. Out-of-range values render AUTO
-    // rather than a number no clamp home would honour. The widest face is
-    // "LV: AUTO" at 8 characters, which is the budget.
-    if (level == 0 || level < og::sim::kMinBotLevel ||
-        level > og::sim::kMaxBotLevel)
-    {
-        return "LV: AUTO";
-    }
-    return std::format("LV {:+}", static_cast<int>(level));
+    // The band's knob face is 80px = 12 characters, and "FILL: STRONG" /
+    // "FILL: BRUTAL" are exactly 12 — the budget is spent, not merely
+    // respected, so no value here may grow a letter.
+    return std::format("FILL: {}", lineup_fill_name(fill));
+}
+
+std::string format_lineup_map_units_label(short map_units)
+{
+    // The SDL band draws this as the Base Camp deploy box (B9); the two
+    // terminal clients have no box, so they read the same state as a word.
+    return map_units == og::sim::kMapUnitsOn ? "MAP UNITS: ON"
+                                            : "MAP UNITS: OFF";
+}
+
+std::string format_lineup_map_units_census(const LineupTeamBand& band)
+{
+    // B4: a team the map ships no units for has nothing to switch, so the
+    // box is inert and the band says why instead of offering it. Empty
+    // means the box is live and the fighter census owns the column.
+    return band.map_unit_count > 0 ? std::string() : std::string("NO MAP UNITS");
 }
 
 std::string format_lineup_census(const LineupTeamBand& band)
@@ -4151,72 +4112,39 @@ std::string format_lineup_power_cell(std::optional<long long> power, int width)
     return std::format("{:>{}}", text, field);
 }
 
-namespace {
+// The FILL wheel walks its DISPLAY order, not its storage order: NONE,
+// WEAK, FAIR, STRONG, BRUTAL runs weakest to strongest with the default in
+// the middle, which is the order a player reads off the face. Storage keeps
+// FAIR at 0 so an all-zero save is the default state; the two orders meet
+// only here.
+constexpr std::array<short, 5> kLineupFillWheel = {
+    og::sim::kFillNone, og::sim::kFillWeak, og::sim::kFillFair,
+    og::sim::kFillStrong, og::sim::kFillBrutal};
 
-// AUTO, OFF, NONE and the presets on one wheel; `dir` may be any step.
-short cycle_lineup_value(short current, int count, int dir)
+short cycle_lineup_fill(short current, int dir)
 {
-    if (count <= 0)
-        return 0;
-    int value = (current >= 0 && current < count) ? current : 0;
-    long long next = (static_cast<long long>(value) + dir) % count;
+    const auto steps = static_cast<int>(kLineupFillWheel.size());
+    int index = 2;  // FAIR: where a value outside the wheel enters
+    for (int i = 0; i < steps; ++i)
+    {
+        if (kLineupFillWheel[static_cast<std::size_t>(i)] == current)
+        {
+            index = i;
+            break;
+        }
+    }
+    long long next = (static_cast<long long>(index) + dir) % steps;
     if (next < 0)
-        next += count;
-    return static_cast<short>(next);
+        next += steps;
+    return kLineupFillWheel[static_cast<std::size_t>(next)];
 }
 
-}  // namespace
-
-short cycle_lineup_bots(short current, int preset_count, int dir)
+short toggle_lineup_map_units(short current)
 {
-    const int presets =
-        std::clamp(preset_count, 0, og::script::hooks::kMaxBotPresets);
-    return cycle_lineup_value(
-        current, og::sim::kBotSquadPresetBase + presets, dir);
-}
-
-LineupBotsWheelStep lineup_bots_wheel_next(const LineupTeamBand& band,
-                                           short current, int preset_count,
-                                           int dir)
-{
-    LineupBotsWheelStep step;
-    step.next = cycle_lineup_bots(current, preset_count, dir);
-    // A team with a seat or a deployed fighter is ON by definition (A2):
-    // OFF there would be a lie the activation fold cannot honour, so the
-    // wheel skips it. OFF is one position wide, so ONE more step of the
-    // same sign clears it in either direction. A zero step stays put even
-    // on OFF — a band that already reads OFF (a fighter deployed onto it
-    // later) turns off it with the next real step.
-    const bool occupied = band.seat_count > 0 || band.fighter_count > 0;
-    if (!occupied || step.next != og::sim::kBotSquadOff || dir == 0)
-        return step;
-    step.next = cycle_lineup_bots(step.next, preset_count, dir > 0 ? 1 : -1);
-    // Seats first: a seated team is the shape the refusal exists to
-    // protect, and naming the fighters instead would send the player off to
-    // bench characters that were never the reason.
-    step.refusal_toast = std::format("TEAM {} HAS {}", band.team + 1,
-                                     band.seat_count > 0 ? "PLAYERS"
-                                                         : "FIGHTERS");
-    return step;
-}
-
-short cycle_lineup_level(short current, int dir)
-{
-    // AUTO, then up the ladder (+1..+5) and on round to the bottom
-    // (-5..-1), so one step off AUTO in either direction is the smallest
-    // shift in that direction. The wheel index is the offset itself for
-    // AUTO and the positives; the negatives sit above them.
-    constexpr int kSteps = 1 + og::sim::kMaxBotLevel - og::sim::kMinBotLevel;
-    const int offset = (current >= og::sim::kMinBotLevel &&
-                        current <= og::sim::kMaxBotLevel)
-        ? current
-        : 0;
-    const int index = offset >= 0 ? offset : offset + kSteps;
-    const short next = cycle_lineup_value(
-        static_cast<short>(index), kSteps, dir);
-    return next > og::sim::kMaxBotLevel
-        ? static_cast<short>(next - kSteps)
-        : next;
+    // A box, so the step is a flip — and any junk value flips to ON, which
+    // is the default and the classic behaviour.
+    return current == og::sim::kMapUnitsOn ? og::sim::kMapUnitsOff
+                                           : og::sim::kMapUnitsOn;
 }
 
 // --- SPLIT ---

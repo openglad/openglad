@@ -279,37 +279,49 @@ TEST(LineupCommon, seat_label_prefers_a_local_controller_name)
 
 // --- labels ------------------------------------------------------------
 
-TEST(LineupCommon, bot_squad_label_strings)
+TEST(LineupCommon, fill_label_strings)
 {
-    const std::vector<std::string> presets{"BALANC", "CASTER", "FAIR"};
-    EXPECT_EQ("BOTS: AUTO", og::ui::format_lineup_bots_label(0, presets));
-    EXPECT_EQ("BOTS: OFF", og::ui::format_lineup_bots_label(1, presets))
-        << "amendment A1: the retired TEAMS knob's power, on the wheel";
-    EXPECT_EQ("BOTS: NONE", og::ui::format_lineup_bots_label(2, presets));
-    EXPECT_EQ("BOTS: BALANC", og::ui::format_lineup_bots_label(3, presets));
-    EXPECT_EQ("BOTS: FAIR", og::ui::format_lineup_bots_label(5, presets));
-    EXPECT_EQ("BOTS: #4", og::ui::format_lineup_bots_label(6, presets))
-        << "an ordinal with no name still speaks for itself";
-    EXPECT_EQ("BOTS: AUTO", og::ui::format_lineup_bots_label(-3, presets));
-    // The 12-char face is the whole budget, names clipped to 6.
-    const std::vector<std::string> overlong{"BALANCED"};
-    EXPECT_EQ("BOTS: BALANC", og::ui::format_lineup_bots_label(3, overlong));
-    EXPECT_EQ(12u, og::ui::format_lineup_bots_label(3, overlong).size());
+    // Amendment B2's five values, and no sixth: one wheel, one spelling.
+    EXPECT_EQ("FILL: FAIR", og::ui::format_lineup_fill_label(og::sim::kFillFair));
+    EXPECT_EQ("FILL: NONE", og::ui::format_lineup_fill_label(og::sim::kFillNone));
+    EXPECT_EQ("FILL: WEAK", og::ui::format_lineup_fill_label(og::sim::kFillWeak));
+    EXPECT_EQ("FILL: STRONG",
+              og::ui::format_lineup_fill_label(og::sim::kFillStrong));
+    EXPECT_EQ("FILL: BRUTAL",
+              og::ui::format_lineup_fill_label(og::sim::kFillBrutal));
+    EXPECT_EQ("FILL: FAIR", og::ui::format_lineup_fill_label(-3))
+        << "a value the clamp would land on FAIR reads as FAIR";
+    EXPECT_EQ("FILL: FAIR", og::ui::format_lineup_fill_label(99));
+    // The 80px face is 12 characters and the two longest values SPEND it.
+    for (short value = -2; value <= 6; ++value)
+        EXPECT_LE(og::ui::format_lineup_fill_label(value).size(), 12u);
+    EXPECT_EQ(12u,
+              og::ui::format_lineup_fill_label(og::sim::kFillStrong).size());
+    EXPECT_EQ(12u,
+              og::ui::format_lineup_fill_label(og::sim::kFillBrutal).size());
+    // The bare word is the same string the preview pane appends.
+    EXPECT_EQ("BRUTAL", og::ui::lineup_fill_name(og::sim::kFillBrutal));
 }
 
-TEST(LineupCommon, bot_level_label_strings)
+TEST(LineupCommon, map_units_label_strings)
 {
-    // An offset (A6): the sign is always written, 0 is the absence of one,
-    // and the widest face is the 8-char budget.
-    EXPECT_EQ("LV: AUTO", og::ui::format_lineup_level_label(0));
-    EXPECT_EQ("LV +1", og::ui::format_lineup_level_label(1));
-    EXPECT_EQ("LV +5", og::ui::format_lineup_level_label(5));
-    EXPECT_EQ("LV -1", og::ui::format_lineup_level_label(-1));
-    EXPECT_EQ("LV -5", og::ui::format_lineup_level_label(-5));
-    EXPECT_EQ("LV: AUTO", og::ui::format_lineup_level_label(6));
-    EXPECT_EQ("LV: AUTO", og::ui::format_lineup_level_label(-6));
-    for (short level = -6; level <= 6; ++level)
-        EXPECT_LE(og::ui::format_lineup_level_label(level).size(), 8u);
+    // A box (B4), so there are exactly two faces and junk reads as OFF —
+    // the clamp lands junk on ON, and toggling from junk lands on ON too.
+    EXPECT_EQ("MAP UNITS: ON",
+              og::ui::format_lineup_map_units_label(og::sim::kMapUnitsOn));
+    EXPECT_EQ("MAP UNITS: OFF",
+              og::ui::format_lineup_map_units_label(og::sim::kMapUnitsOff));
+    EXPECT_EQ("MAP UNITS: OFF", og::ui::format_lineup_map_units_label(7));
+}
+
+TEST(LineupCommon, map_units_census_hint_speaks_only_for_an_empty_team)
+{
+    og::ui::LineupTeamBand band;
+    EXPECT_EQ("NO MAP UNITS", og::ui::format_lineup_map_units_census(band))
+        << "no census, no units: the box is inert and says so";
+    band.map_unit_count = 3;
+    EXPECT_EQ("", og::ui::format_lineup_map_units_census(band))
+        << "a live box leaves the column to the fighter census";
 }
 
 TEST(LineupCommon, census_and_power_strings)
@@ -369,117 +381,54 @@ TEST(LineupCommon, power_cell_rounds_into_the_six_character_field)
 
 // --- cyclers -----------------------------------------------------------
 
-TEST(LineupCommon, bot_squad_cycler_wraps_over_auto_off_none_presets)
+TEST(LineupCommon, fill_wheel_walks_none_weak_fair_strong_brutal)
 {
-    // AUTO, OFF, NONE, then the campaign's presets (amendment A1).
-    EXPECT_EQ(1, og::ui::cycle_lineup_bots(0, 3, 1));
-    EXPECT_EQ(2, og::ui::cycle_lineup_bots(1, 3, 1));
-    EXPECT_EQ(3, og::ui::cycle_lineup_bots(2, 3, 1));
-    EXPECT_EQ(5, og::ui::cycle_lineup_bots(4, 3, 1));
-    EXPECT_EQ(0, og::ui::cycle_lineup_bots(5, 3, 1)) << "wrap back to AUTO";
-    EXPECT_EQ(5, og::ui::cycle_lineup_bots(0, 3, -1));
-    // No presets at all: AUTO -> OFF -> NONE -> AUTO.
-    EXPECT_EQ(1, og::ui::cycle_lineup_bots(0, 0, 1));
-    EXPECT_EQ(2, og::ui::cycle_lineup_bots(1, 0, 1));
-    EXPECT_EQ(0, og::ui::cycle_lineup_bots(2, 0, 1));
-    // The engine's ceiling holds whatever the campaign claims.
-    EXPECT_EQ(og::sim::kMaxBotSquad, og::ui::cycle_lineup_bots(0, 99, -1));
-    // A value outside the wheel enters at AUTO.
-    EXPECT_EQ(1, og::ui::cycle_lineup_bots(77, 3, 1));
-}
-
-// Amendment A2: OFF is refused on a band that is on by definition (a seat
-// or a deployed fighter), and the wheel steps past it — in either direction
-// — instead of landing there. An empty band takes OFF like any other value.
-TEST(LineupCommon, bots_wheel_skips_off_on_an_occupied_band_with_a_toast)
-{
-    og::ui::LineupTeamBand empty;
-    empty.team = 3;
-    og::ui::LineupTeamBand seated;
-    seated.team = 0;
-    seated.seat_count = 1;
-    seated.fighter_count = 2;
-    og::ui::LineupTeamBand fighters_only;
-    fighters_only.team = 1;
-    fighters_only.fighter_count = 1;
-
-    og::ui::LineupBotsWheelStep step =
-        og::ui::lineup_bots_wheel_next(empty, 0, 5, 1);
-    EXPECT_EQ(og::sim::kBotSquadOff, step.next);
-    EXPECT_FALSE(step.refusal_toast.has_value())
-        << "an empty team turns off freely";
-
-    step = og::ui::lineup_bots_wheel_next(seated, 0, 5, 1);
-    EXPECT_EQ(og::sim::kBotSquadNone, step.next)
-        << "AUTO steps over OFF onto NONE";
-    ASSERT_TRUE(step.refusal_toast.has_value());
-    EXPECT_EQ("TEAM 1 HAS PLAYERS", *step.refusal_toast)
-        << "the seat is the reason, not the two fighters beside it";
-
-    step = og::ui::lineup_bots_wheel_next(fighters_only, 0, 5, 1);
-    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
-    ASSERT_TRUE(step.refusal_toast.has_value());
-    EXPECT_EQ("TEAM 2 HAS FIGHTERS", *step.refusal_toast);
-    // Both refusals fit the toast field whole: lineup_show_toast TRUNCATES
-    // at kLineupTitleCensusChars (40, picker_sdl_defs.h), and a clipped
-    // reason is a worse sentence than none.
-    EXPECT_LE(step.refusal_toast->size(), 40u);
-
-    // Backwards: NONE -> (OFF) -> AUTO on a seated band.
-    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone, 5,
-                                          -1);
-    EXPECT_EQ(og::sim::kBotSquadAuto, step.next);
-    EXPECT_TRUE(step.refusal_toast.has_value());
-    // No presets at all: AUTO -> (OFF) -> NONE and NONE -> AUTO.
-    step = og::ui::lineup_bots_wheel_next(seated, 0, 0, 1);
-    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
-    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone, 0,
-                                          1);
-    EXPECT_EQ(og::sim::kBotSquadAuto, step.next);
-    EXPECT_FALSE(step.refusal_toast.has_value())
-        << "a step that never touches OFF refuses nothing";
-    // Steps that never reach OFF are the plain wheel.
-    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadNone, 5,
-                                          1);
-    EXPECT_EQ(og::sim::kBotSquadPresetBase, step.next);
-    EXPECT_FALSE(step.refusal_toast.has_value());
-    // A band already reading OFF (a fighter deployed there afterwards)
-    // holds on a zero step and leaves on the next real one.
-    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadOff, 5, 0);
-    EXPECT_EQ(og::sim::kBotSquadOff, step.next);
-    EXPECT_FALSE(step.refusal_toast.has_value());
-    step = og::ui::lineup_bots_wheel_next(seated, og::sim::kBotSquadOff, 5, 1);
-    EXPECT_EQ(og::sim::kBotSquadNone, step.next);
-    EXPECT_FALSE(step.refusal_toast.has_value());
-}
-
-TEST(LineupCommon, bot_level_cycler_climbs_then_wraps_through_the_minus_side)
-{
-    // AUTO, +1..+5, -5..-1, AUTO (A6).
-    EXPECT_EQ(1, og::ui::cycle_lineup_level(0, 1));
-    EXPECT_EQ(5, og::ui::cycle_lineup_level(4, 1));
-    EXPECT_EQ(-5, og::ui::cycle_lineup_level(5, 1))
-        << "past the top the wheel comes back at the bottom";
-    EXPECT_EQ(-1, og::ui::cycle_lineup_level(-2, 1));
-    EXPECT_EQ(0, og::ui::cycle_lineup_level(-1, 1)) << "and home to AUTO";
-    EXPECT_EQ(-1, og::ui::cycle_lineup_level(0, -1))
-        << "one step down from AUTO is the smallest cut";
-    EXPECT_EQ(-5, og::ui::cycle_lineup_level(-5, 0))
-        << "no step, no move: -5 is a legal offset now";
-    // A value outside the offset range enters at AUTO.
-    EXPECT_EQ(1, og::ui::cycle_lineup_level(9, 1));
-    EXPECT_EQ(0, og::ui::cycle_lineup_level(9, 0));
-    // Every wheel position is reachable, and only the legal offsets are.
+    // The DISPLAY order (B2), weakest to strongest with the default in the
+    // middle — deliberately not the storage order, whose 0 is FAIR.
+    EXPECT_EQ(og::sim::kFillWeak,
+              og::ui::cycle_lineup_fill(og::sim::kFillNone, 1));
+    EXPECT_EQ(og::sim::kFillFair,
+              og::ui::cycle_lineup_fill(og::sim::kFillWeak, 1));
+    EXPECT_EQ(og::sim::kFillStrong,
+              og::ui::cycle_lineup_fill(og::sim::kFillFair, 1));
+    EXPECT_EQ(og::sim::kFillBrutal,
+              og::ui::cycle_lineup_fill(og::sim::kFillStrong, 1));
+    EXPECT_EQ(og::sim::kFillNone,
+              og::ui::cycle_lineup_fill(og::sim::kFillBrutal, 1))
+        << "past the strongest the wheel comes back at NONE";
+    EXPECT_EQ(og::sim::kFillWeak,
+              og::ui::cycle_lineup_fill(og::sim::kFillFair, -1));
+    EXPECT_EQ(og::sim::kFillBrutal,
+              og::ui::cycle_lineup_fill(og::sim::kFillNone, -1));
+    // A stored value outside the wheel enters at FAIR, which is where the
+    // clamp would have put it.
+    EXPECT_EQ(og::sim::kFillStrong, og::ui::cycle_lineup_fill(77, 1));
+    EXPECT_EQ(og::sim::kFillFair, og::ui::cycle_lineup_fill(77, 0));
+    // Five steps is one full turn, and every legal value is on it exactly
+    // once — no sixth position, no unreachable code.
     std::vector<short> seen;
-    short value = 0;
-    for (int step = 0; step < 11; ++step)
+    short value = og::sim::kFillNone;
+    for (int step = 0; step < 5; ++step)
     {
         seen.push_back(value);
-        value = og::ui::cycle_lineup_level(value, 1);
+        value = og::ui::cycle_lineup_fill(value, 1);
     }
-    EXPECT_EQ(0, value) << "eleven steps is one full turn";
-    EXPECT_EQ((std::vector<short>{0, 1, 2, 3, 4, 5, -5, -4, -3, -2, -1}),
+    EXPECT_EQ(og::sim::kFillNone, value);
+    EXPECT_EQ((std::vector<short>{og::sim::kFillNone, og::sim::kFillWeak,
+                                 og::sim::kFillFair, og::sim::kFillStrong,
+                                 og::sim::kFillBrutal}),
               seen);
+}
+
+TEST(LineupCommon, map_units_box_flips_and_junk_lands_on)
+{
+    EXPECT_EQ(og::sim::kMapUnitsOff,
+              og::ui::toggle_lineup_map_units(og::sim::kMapUnitsOn));
+    EXPECT_EQ(og::sim::kMapUnitsOn,
+              og::ui::toggle_lineup_map_units(og::sim::kMapUnitsOff));
+    EXPECT_EQ(og::sim::kMapUnitsOn, og::ui::toggle_lineup_map_units(9))
+        << "junk flips to the default, never to a value nothing reads";
+    EXPECT_EQ(og::sim::kMapUnitsOn, og::ui::toggle_lineup_map_units(-4));
 }
 
 // --- SPLIT -------------------------------------------------------------

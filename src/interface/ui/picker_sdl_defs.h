@@ -487,7 +487,7 @@ std::string format_binding_panel_line(const char* label,
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
-// SET CAMPAIGN / SET LEVEL / TROOPS keep their host-only visibility here and
+// SET CAMPAIGN / SET LEVEL keep their host-only visibility here and
 // the re-homed SCORE row its versus-only visibility (per-frame
 // sync_scenario_menu_host_control_visibility); BACK / VIEW LEVEL / PROGRESS
 // / LINEUP are always visible (LINEUP is deliberately NOT host-gated:
@@ -502,9 +502,12 @@ inline constexpr int kScenarioMenuViewScenarioIndex = 3;
 // index below keeping its value.
 inline constexpr int kScenarioMenuLineupIndex = 4;
 inline constexpr int kScenarioMenuProgressIndex = 5;
-// Appended (index contract: growth is append-only). Host-gated like
-// SET CAMPAIGN / SET LEVEL. Leads the y=140 knob row at (30,140) since the
-// TEAMS cell retired (docs/lineup-design.md amendment A3/A5).
+// The retired TROOPS cycler's ordinal (amendment B5: whether the map's own
+// authored cast fights is the LINEUP band's per-team MAP UNITS box now).
+// Parked exactly like the TEAMS spare below it — zero-size rect, empty
+// label, hidden, no nav — so kScenarioMenuCtfCapsIndex and the count keep
+// their values (growth is append-only, retirement is a park). The name is
+// kept so the ordinal stays traceable to what vacated it.
 inline constexpr int kScenarioMenuTroopsIndex = 6;
 // The retired TEAMS cycler's ordinal (A1/A3: its one power — deactivating an
 // authored team — is LINEUP's BOTS: OFF now). Parked exactly like the
@@ -513,9 +516,9 @@ inline constexpr int kScenarioMenuTroopsIndex = 6;
 // count keep their values (growth is append-only, retirement is a park).
 inline constexpr int kScenarioMenuSpareIndex = 7;
 // Score limit, re-homed from MATCHUP (#218), relabelled SCORE (A5): the
-// second cell of the y=140 knob row, TROOPS (30,140) | SCORE (120,140),
-// (210,140) free. Versus campaigns only; joiners get the read-only label
-// (visible, host-actionable).
+// only occupant of the y=140 knob row since TROOPS retired (B5). Versus
+// campaigns only; joiners get the read-only label (visible,
+// host-actionable).
 inline constexpr int kScenarioMenuCtfCapsIndex = 8;
 inline constexpr int kScenarioMenuButtonCount = 9;
 
@@ -556,8 +559,8 @@ inline constexpr std::size_t kZoneSubmenuRowLabelChars =
 // column x across bands, strip flush right) as well as the exact table.
 // Positional indices into kLineupMenuRows / picker_lineup_buttons():
 inline constexpr int kLineupBackIndex = 0;
-inline constexpr int kLineupBotsBase = 1;   // lineup_bots_t = 1 + t
-inline constexpr int kLineupLevelBase = 5;  // lineup_level_t = 5 + t
+inline constexpr int kLineupFillBase = 1;      // lineup_fill_t = 1 + t
+inline constexpr int kLineupMapUnitsBase = 5;  // lineup_map_units_t = 5 + t
 inline constexpr int kLineupFightersIndex = 9;
 inline constexpr int kLineupSplitEvenIndex = 10;
 inline constexpr int kLineupSplitFairIndex = 11;
@@ -590,10 +593,10 @@ inline constexpr int kLineupSeatRunChars =
 // Knob row at y+15: BOTS face | LV face | census/diagnostic text.
 inline constexpr int kLineupKnobDy = 15;
 inline constexpr int kLineupKnobH = 15;
-inline constexpr int kLineupBotsX = 12;
-inline constexpr int kLineupBotsW = 80;
-inline constexpr int kLineupLevelX = 98;
-inline constexpr int kLineupLevelW = 56;
+inline constexpr int kLineupFillX = 12;
+inline constexpr int kLineupFillW = 80;
+inline constexpr int kLineupMapUnitsX = 98;
+inline constexpr int kLineupMapUnitsW = 56;
 inline constexpr int kLineupCensusX = 162;
 inline constexpr int kLineupCensusDy = 19;
 // The title band's right-hand slot: an active toast wins it, else the

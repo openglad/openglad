@@ -3441,21 +3441,6 @@ Sint32 change_ctf_caps()
    return MENU_OK;
 }
 
-Sint32 change_ctf_troops()
-{
-   SaveData& save = og::runtime::current_session->myscreen_->save_data;
-   og::ui::toggle_ctf_scenario_troops(save);
-
-   // The control lives on SCENARIO now.
-   refresh_scenariomenu_button_label(kScenarioMenuTroopsIndex,
-                                     og::ui::format_ctf_troops_label(save));
-
-   picker_lobby_sync_settings_from_save();
-   picker_settings_autosave();
-
-   return MENU_OK;
-}
-
 // The seat picture every LINEUP consumer reads (see picker_sdl_defs.h): the
 // replicated lobby when networked; ALL listed seats local — synthesized
 // from the save when the local lobby has not initialized — otherwise.
@@ -3503,55 +3488,37 @@ static void refresh_lineup_button_label(int button_index,
        pks().lineup_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
-// LINEUP per-team bot knobs (docs/lineup-design.md §2.2-§2.3, §3.1): pure
-// cycler, clamp helper, BOTH label surfaces, lobby broadcast + autosave —
-// the y=140 change_ctf_* recipe with the knob stored per team. The knobs
-// are hidden for joiners, so a stale dispatch carries the host gate itself
-// (popup + TRACE, no local cycle); a classic campaign's dimmed rows are
-// engine-inert, and the belt below keeps a stale dispatch a no-op.
-Sint32 change_lineup_bots(Sint32 team)
+// LINEUP per-team band knobs (docs/lineup-design.md §2.2-§2.3, amendment
+// B1-B4, B9): pure step, clamp helper, BOTH label surfaces, lobby broadcast
+// + autosave — the y=140 change_ctf_* recipe with the knob stored per team.
+// The knobs are hidden for joiners, so a stale dispatch carries the host gate
+// itself (popup + TRACE, no local step); a classic campaign's dimmed rows are
+// engine-inert, and the belt below keeps a stale dispatch a no-op. There is
+// no refusal on either knob any more (B8): nothing the band can hold
+// deactivates a team, so every value is legal on every team.
+Sint32 change_lineup_fill(Sint32 team)
 {
    if (team < 0 || team >= 4)
        return MENU_OK;
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
    if (!picker_lobby_host_controls_visible())
    {
-       TRACE("lineup", "bots_denied");
+       TRACE("lineup", "fill_denied");
        popup_dialog("HOST CONTROLS THIS SETTING",
-                    "Only the host may\nchange bot squads");
+                    "Only the host may\nchange the fill");
        return MENU_OK;
    }
    if (!og::ui::is_versus_campaign(save))
        return MENU_OK;
 
-   std::vector<std::string> presets;
-   (void)og::script::hooks::campaign_lineup_presets(presets);
    const std::size_t t = static_cast<std::size_t>(team);
-   // The wheel is AUTO / OFF / NONE / presets (A1). NONE is legal on ANY
-   // team (§2.3: "never bots here" deactivates nobody); OFF is not — a
-   // team with a seat or a deployed fighter is on by definition (A2), so
-   // the shared rule (og::ui::lineup_bots_wheel_next, one implementation
-   // for all three clients) steps past OFF there and this surface says why
-   // with a toast. The band is censused the way the page draws it (the
-   // same seat picture, no pricing).
-   const LineupSeatView view = picker_lineup_seat_view();
-   const std::array<og::ui::LineupTeamBand, 4> bands =
-       og::ui::build_lineup_bands(save, view.players, view.local_indices,
-                                  picker_lobby_session_established(),
-                                  og::ui::LineupPowerFn{});
-   const og::ui::LineupBotsWheelStep step = og::ui::lineup_bots_wheel_next(
-       bands[t], save.bot_squad[t], static_cast<int>(presets.size()), 1);
-   if (step.refusal_toast.has_value())
-   {
-       TRACE("lineup", "bots_off_refused team=%d", static_cast<int>(team));
-       og::ui::lineup_show_toast(*step.refusal_toast);
-   }
-   save.bot_squad[t] = og::sim::clamp_bot_squad(step.next);
-   TRACE("lineup", "bots team=%d squad=%d", static_cast<int>(team),
-         static_cast<int>(save.bot_squad[t]));
+   save.fill[t] = og::sim::clamp_fill(
+       og::ui::cycle_lineup_fill(save.fill[t], 1));
+   TRACE("lineup", "fill team=%d value=%d", static_cast<int>(team),
+         static_cast<int>(save.fill[t]));
    refresh_lineup_button_label(
-       kLineupBotsBase + team,
-       og::ui::format_lineup_bots_label(save.bot_squad[t], presets));
+       kLineupFillBase + team,
+       og::ui::format_lineup_fill_label(save.fill[t]));
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
@@ -3559,29 +3526,29 @@ Sint32 change_lineup_bots(Sint32 team)
    return MENU_OK;
 }
 
-Sint32 change_lineup_level(Sint32 team)
+Sint32 change_lineup_map_units(Sint32 team)
 {
    if (team < 0 || team >= 4)
        return MENU_OK;
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
    if (!picker_lobby_host_controls_visible())
    {
-       TRACE("lineup", "level_denied");
+       TRACE("lineup", "map_units_denied");
        popup_dialog("HOST CONTROLS THIS SETTING",
-                    "Only the host may\nchange bot levels");
+                    "Only the host may\nchange map units");
        return MENU_OK;
    }
    if (!og::ui::is_versus_campaign(save))
        return MENU_OK;
 
    const std::size_t t = static_cast<std::size_t>(team);
-   save.bot_level[t] = og::sim::clamp_bot_level(
-       og::ui::cycle_lineup_level(save.bot_level[t], 1));
-   TRACE("lineup", "level team=%d level=%d", static_cast<int>(team),
-         static_cast<int>(save.bot_level[t]));
+   save.map_units[t] = og::sim::clamp_map_units(
+       og::ui::toggle_lineup_map_units(save.map_units[t]));
+   TRACE("lineup", "map_units team=%d value=%d", static_cast<int>(team),
+         static_cast<int>(save.map_units[t]));
    refresh_lineup_button_label(
-       kLineupLevelBase + team,
-       og::ui::format_lineup_level_label(save.bot_level[t]));
+       kLineupMapUnitsBase + team,
+       og::ui::format_lineup_map_units_label(save.map_units[t]));
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();

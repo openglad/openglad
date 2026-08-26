@@ -50,7 +50,6 @@ enum class PickerMenuCommand : std::int32_t
     SetCampaign,
     StartGame,
     Back,
-    ToggleCtfScenarioTroops,
     ViewScenario,
     Teams,
     Scenario,

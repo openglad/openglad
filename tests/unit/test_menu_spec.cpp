@@ -106,15 +106,12 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
     SaveData save;
     // Teams and target score are the camp's MATCH SETUP page now
     // (docs/camp-controls-design.md), so no terminal menu lists them; their
-    // label formatters stay the shared word authority for the SDL MATCHUP
-    // buttons and are exercised directly. The SCENARIO troops row still
-    // carries the third one through the menu binding.
-    const PickerMenuItem* troops = item_of(
-        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
-    ASSERT_NE(nullptr, troops);
-
-    // TEAMS is gone (amendment A3): no command, no cycler, no label — the
-    // LINEUP band's BOTS: OFF is the only way to drop an authored team.
+    // label formatters stay the shared word authority and are exercised
+    // directly.
+    //
+    // TEAMS is gone (amendment A3) and TROOPS with it (amendment B5): no
+    // command, no cycler, no label. The LINEUP band answers both questions
+    // per team now.
 
     // A5: the score limit says what it is. MAP = the level's own target.
     save.ctf_capture_limit = 0;
@@ -126,20 +123,10 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
         EXPECT_EQ(label, og::ui::format_ctf_score_label(save));
     }
 
-    // Three states, same cycle on every campaign (matched-teams D28).
-    save.ctf_strip_scenario_troops = 0;
-    EXPECT_EQ("TROOPS: ALL",
-              og::ui::menu_item_label(*troops, context_for(save)));
-    const char* troops_labels[] = {"TROOPS: OWN", "TROOPS: FAIR",
-                                   "TROOPS: ALL"};
-    for (const char* label : troops_labels) {
-        og::ui::toggle_ctf_scenario_troops(save);
-        EXPECT_EQ(label, og::ui::menu_item_label(*troops, context_for(save)));
-    }
-    // The retired middle state still labels as OWN off an older save.
-    save.ctf_strip_scenario_troops = 1;
-    EXPECT_EQ("TROOPS: OWN",
-              og::ui::menu_item_label(*troops, context_for(save)));
+    // No terminal menu carries a TROOPS row any more (amendment B5): the
+    // command is gone from the enum, and the row is gone from the spec.
+    EXPECT_EQ(nullptr,
+              og::ui::find_picker_menu_item(PickerMenuId::Scenario, "troops"));
 }
 
 TEST(MenuSpec, match_rule_labels_full_cycles)
@@ -330,16 +317,8 @@ TEST(MenuSpec, terminal_gate_messages_leave_scenario_troops_free)
     save.current_campaign = "gladiator";
 
     // The match-rule knobs left the terminal menus for the camp's MATCH
-    // SETUP page, and their versus guard left with them. Scenario troops
-    // stays on the SCENARIO screen ungated: "strip everything authored" is
-    // meaningful on a classic campaign.
-    const PickerMenuItem* classic_troops =
-        item_of(PickerMenuId::Scenario,
-                PickerMenuCommand::ToggleCtfScenarioTroops);
-    ASSERT_NE(nullptr, classic_troops);
-    EXPECT_EQ("",
-              og::ui::terminal_gate_message(*classic_troops,
-                                            context_for(save)));
+    // SETUP page, and their versus guard left with them; the SCENARIO
+    // troops row went with the knob itself (amendment B5).
 
     // Ungated items never produce a message.
     const PickerMenuItem* view_team =

@@ -21,7 +21,7 @@ struct LobbySaveDataEquivalent {
     std::int16_t ctf_team_count = 0; // 0 = Auto
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
-    std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
+    std::int16_t ctf_strip_scenario_troops = 0; // retired (B5); always 0
     // Difficulty submenu settings (respawn_mode: 0 off, 1 heroes,
     // 2 everyone, 3 Team 1 heroes only).
     std::int16_t respawn_mode = 0;
@@ -34,10 +34,10 @@ struct LobbySaveDataEquivalent {
     // Match time limit in sim ticks (protocol v15; see LobbySettings).
     // 0 = the map's own value.
     std::int16_t time_limit = 0;
-    // Per-team bot squad / bot level (protocol v16; see LobbySettings).
-    // 0 = AUTO on both.
-    std::array<std::int16_t, SCORE_TEAM_COUNT> bot_squad = {};
-    std::array<std::int16_t, SCORE_TEAM_COUNT> bot_level = {};
+    // Per-team FILL / MAP UNITS (protocol v16; see LobbySettings).
+    // 0 = FAIR / MAP UNITS ON, the default on both.
+    std::array<std::int16_t, SCORE_TEAM_COUNT> fill = {};
+    std::array<std::int16_t, SCORE_TEAM_COUNT> map_units = {};
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;

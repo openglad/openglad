@@ -54,8 +54,6 @@ std::string menu_item_label(const PickerMenuItem& item,
     switch (item.command) {
     case PickerMenuCommand::ToggleAlliedMode:
         return format_allied_mode_label(save);
-    case PickerMenuCommand::ToggleCtfScenarioTroops:
-        return format_ctf_troops_label(save);
     case PickerMenuCommand::CycleRespawnMode:
         return format_respawn_mode_label(save);
     case PickerMenuCommand::CycleRespawnDelay:

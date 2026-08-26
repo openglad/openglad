@@ -763,28 +763,28 @@ bool SaveData::load(const std::string& filename)
         time_limit = 0; // the map's own value
     }
 
-    // Versions 18+ append the eight per-team bot knobs (LINEUP §3.1): four
-    // squad ordinals then four levels. Read-side default only (all AUTO);
-    // the writer is unconditional.
+    // Versions 18+ append the eight per-team band knobs (amendment B1-B4):
+    // four FILL codes then four MAP UNITS boxes. Read-side default only
+    // (the all-zero default state); the writer is unconditional.
     if (temp_version >= 18)
     {
-        for (short& squad : bot_squad)
+        for (short& value : fill)
         {
-            std::int16_t temp_bot_squad = 0;
-            READ_OR_FAIL(&temp_bot_squad, 2, 1);
-            squad = temp_bot_squad;
+            std::int16_t temp_fill = 0;
+            READ_OR_FAIL(&temp_fill, 2, 1);
+            value = temp_fill;
         }
-        for (short& level : bot_level)
+        for (short& value : map_units)
         {
-            std::int16_t temp_bot_level = 0;
-            READ_OR_FAIL(&temp_bot_level, 2, 1);
-            level = temp_bot_level;
+            std::int16_t temp_map_units = 0;
+            READ_OR_FAIL(&temp_map_units, 2, 1);
+            value = temp_map_units;
         }
     }
     else
     {
-        bot_squad.fill(0); // AUTO: the map's own value
-        bot_level.fill(0);
+        fill.fill(0);      // FAIR
+        map_units.fill(0); // the map's own units are fielded
     }
 
 	Log("Loading campaign: {}\n", current_campaign);
@@ -1451,17 +1451,17 @@ bool SaveData::save(const std::string& filename)
 	std::int16_t temp_time_limit = time_limit;
 	WRITE_OR_FAIL(&temp_time_limit, 2, 1);
 
-	// Versions 18+ append the eight per-team bot knobs, after the v17 time
-	// limit, in the reader's order: four squad ordinals then four levels.
-	for (const short squad : bot_squad)
+	// Versions 18+ append the eight per-team band knobs, after the v17 time
+	// limit, in the reader's order: four FILL codes then four MAP UNITS.
+	for (const short value : fill)
 	{
-	    std::int16_t temp_bot_squad = squad;
-	    WRITE_OR_FAIL(&temp_bot_squad, 2, 1);
+	    std::int16_t temp_fill = value;
+	    WRITE_OR_FAIL(&temp_fill, 2, 1);
 	}
-	for (const short level : bot_level)
+	for (const short value : map_units)
 	{
-	    std::int16_t temp_bot_level = level;
-	    WRITE_OR_FAIL(&temp_bot_level, 2, 1);
+	    std::int16_t temp_map_units = value;
+	    WRITE_OR_FAIL(&temp_map_units, 2, 1);
 	}
 
     // unique_ptr auto-closes outfile

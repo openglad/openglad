@@ -2300,8 +2300,8 @@ TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_versus_domain)
     // Teams 2 and 3 are switched OFF on the band (amendment A2 — the
     // retired TEAMS count's job): they are not fielded, so they are not
     // seats either.
-    save.bot_squad[2] = og::sim::kBotSquadOff;
-    save.bot_squad[3] = og::sim::kBotSquadOff;
+    save.fill[2] = og::sim::kBotSquadOff;
+    save.fill[3] = og::sim::kBotSquadOff;
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();

@@ -140,16 +140,18 @@ local BOT_PRESETS = {
   { id = "FAIR" },
 }
 
--- The per-team knob reads (lineup §3.1): bot_squad_N on the scale above;
--- bot_level_N is a signed OFFSET, -5..5, on top of the AUTO level source
--- (amendment A6; 0 = AUTO = no offset). N is the 1-based team, so the
--- suffix is team + 1.
+-- The per-team knob reads. The names are fill_N / map_units_N since
+-- amendment B5 renamed the two scalars at every copy site; the VALUES they
+-- carry are amendment B1-B4's (fill: 0 FAIR / 1 NONE / 2 WEAK / 3 STRONG /
+-- 4 BRUTAL; map_units: 0 on / 1 off), and reading them as this file's old
+-- preset ordinals and LV offsets is the W5-A work still to land. N is the
+-- 1-based team, so the suffix is team + 1.
 local function squad_knob(team)
-  return og.match_setting("bot_squad_" .. (team + 1))
+  return og.match_setting("fill_" .. (team + 1))
 end
 
 local function level_knob(team)
-  return og.match_setting("bot_level_" .. (team + 1))
+  return og.match_setting("map_units_" .. (team + 1))
 end
 
 -- The preset a knob ordinal names, or nil — AUTO, OFF, NONE, and any

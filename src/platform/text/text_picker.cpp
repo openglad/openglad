@@ -903,14 +903,6 @@ private:
             // — the door moved off the main menu to Team Build.
             show_submenu(PickerMenuId::Difficulty);
             break;
-        // Match teams and target score left the flat team-build list for the
-        // modes camp's MATCH SETUP page; the SCENARIO submenu still routes
-        // its troops row through here.
-        case PickerMenuCommand::ToggleCtfScenarioTroops:
-            toggle_ctf_scenario_troops(save_data_);
-            std::printf("%s\n", format_ctf_troops_label(save_data_).c_str());
-            autosave_company_after_mutation(); // §3.8 settings tail
-            break;
         case PickerMenuCommand::ViewScenario:
             view_scenario();
             break;
@@ -1115,19 +1107,8 @@ private:
 
     // --- LINEUP (docs/lineup-design.md §8) -------------------------------
 
-    // The campaign's bot-squad preset names. A campaign with no `lineup`
-    // hook registers none, and the cycler then offers AUTO/NONE only —
-    // which is exactly what the shared formatter renders for it.
-    static std::vector<std::string> lineup_preset_names()
-    {
-        std::vector<std::string> names;
-        (void)og::script::hooks::campaign_lineup_presets(names);
-        return names;
-    }
-
     TerminalLineupInputs lineup_inputs(
-        const std::vector<og::sim::LobbyPlayer>& seats,
-        const std::vector<std::string>& presets) const
+        const std::vector<og::sim::LobbyPlayer>& seats) const
     {
         TerminalLineupInputs inputs;
         inputs.save = &save_data_;
@@ -1137,7 +1118,6 @@ private:
         // fighter census reads THIS save.
         inputs.networked = false;
         inputs.is_host = label_context().is_host;
-        inputs.preset_names = presets;
         return inputs;
     }
 
@@ -1224,9 +1204,8 @@ private:
         for (;;) {
             const std::vector<og::sim::LobbyPlayer> seats =
                 synthesize_local_lobby_players(save_data_);
-            const std::vector<std::string> presets = lineup_preset_names();
             const TerminalLineupModel model =
-                build_terminal_lineup_model(lineup_inputs(seats, presets));
+                build_terminal_lineup_model(lineup_inputs(seats));
 
             std::printf("\n--- Lineup ---\n");
             for (const std::string& line : model.lines)
@@ -1250,51 +1229,41 @@ private:
                 model.items[static_cast<std::size_t>(*choice - 1)];
             const std::size_t team = static_cast<std::size_t>(item.team);
             switch (item.kind) {
-            case TerminalLineupItem::Kind::BotSquad:
-            case TerminalLineupItem::Kind::BotLevel:
+            case TerminalLineupItem::Kind::Fill:
+            case TerminalLineupItem::Kind::MapUnits:
                 // §2.3: a classic campaign's levels decide the bots, so the
-                // knob write is refused here exactly as change_lineup_bots
-                // returns without cycling on the SDL screen.
+                // knob write is refused here exactly as change_lineup_fill
+                // returns without stepping on the SDL screen.
                 if (!is_versus_campaign(save_data_)) {
                     std::printf("%s\n",
                                 std::string(kTerminalLineupMapRulesRefusal)
                                     .c_str());
                     break;
                 }
-                if (item.kind == TerminalLineupItem::Kind::BotLevel) {
-                    save_data_.bot_level[team] = og::sim::clamp_bot_level(
-                        cycle_lineup_level(save_data_.bot_level[team], 1));
-                    std::printf(
-                        "%s\n",
-                        format_lineup_level_label(save_data_.bot_level[team])
-                            .c_str());
-                    autosave_company_after_mutation();  // §3.8 settings tail
-                    break;
-                }
-                // The clamp is the lobby's own (§3.1): one implementation,
+                // The clamp is the lobby's own (B1-B4): one implementation,
                 // so a terminal write can never land a value the host's
                 // sanitize_settings would refuse. There is no
                 // picker_lobby_sync_settings_from_save() tail here on
                 // purpose: the text client links no lobby client at all
                 // (configure_networking is the documented stub), so the
                 // save IS the whole authority for these eight scalars.
-                // A2: the wheel steps over an OFF this team may not take and
-                // says why — og::ui::lineup_bots_wheel_next is the ONE
-                // implementation, the same one the SDL screen turns from
-                // change_lineup_bots.
-                {
-                    const LineupBotsWheelStep step = lineup_bots_wheel_next(
-                        model.bands[team], save_data_.bot_squad[team],
-                        static_cast<int>(presets.size()), 1);
-                    if (step.refusal_toast.has_value())
-                        std::printf("%s\n", step.refusal_toast->c_str());
-                    save_data_.bot_squad[team] =
-                        og::sim::clamp_bot_squad(step.next);
+                // B8: no value on either knob is refused on any team, so
+                // there is no wheel rule beyond the shared step itself.
+                if (item.kind == TerminalLineupItem::Kind::MapUnits) {
+                    save_data_.map_units[team] = og::sim::clamp_map_units(
+                        toggle_lineup_map_units(save_data_.map_units[team]));
+                    std::printf(
+                        "%s\n",
+                        format_lineup_map_units_label(save_data_.map_units[team])
+                            .c_str());
+                } else {
+                    save_data_.fill[team] = og::sim::clamp_fill(
+                        cycle_lineup_fill(save_data_.fill[team], 1));
+                    std::printf(
+                        "%s\n",
+                        format_lineup_fill_label(save_data_.fill[team])
+                            .c_str());
                 }
-                std::printf("%s\n",
-                            format_lineup_bots_label(save_data_.bot_squad[team],
-                                                     presets)
-                                .c_str());
                 autosave_company_after_mutation();  // §3.8 settings tail
                 break;
             case TerminalLineupItem::Kind::Fighters:
