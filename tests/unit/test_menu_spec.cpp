@@ -113,12 +113,8 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
         PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
     ASSERT_NE(nullptr, troops);
 
-    // TEAMS is retired (amendment A3): the pair still exists for the two
-    // surfaces that have not been rebuilt yet, and both answer Auto.
-    save.ctf_team_count = 0;
-    EXPECT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
-    og::ui::cycle_ctf_team_count(save);
-    EXPECT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
+    // TEAMS is gone (amendment A3): no command, no cycler, no label — the
+    // LINEUP band's BOTS: OFF is the only way to drop an authored team.
 
     // A5: the score limit says what it is. MAP = the level's own target.
     save.ctf_capture_limit = 0;

@@ -1275,25 +1275,9 @@ TEST(PickerCommon, toggle_allied_mode)
 
 // --- CTF match settings ---
 
-// The retired TEAMS knob (amendment A3): the wheel is gone, so the cycler
-// writes the only value the field holds and the label says so. A legacy
-// 2/3/4 in a loaded save heals the moment either one is touched, exactly
-// as the lobby sanitizer heals it.
-TEST(PickerCommon, cycle_ctf_team_count_is_retired_and_answers_auto)
-{
-    SaveData save;
-    ASSERT_EQ(0, (int)save.ctf_team_count)
-        << "default is Auto (every team the map authors)";
-
-    og::ui::cycle_ctf_team_count(save);
-    EXPECT_EQ(0, (int)save.ctf_team_count) << "no wheel left to turn";
-
-    save.ctf_team_count = 3;  // a v18 save from before the amendment
-    og::ui::cycle_ctf_team_count(save);
-    EXPECT_EQ(0, (int)save.ctf_team_count) << "the legacy value heals";
-    EXPECT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
-}
-
+// The TEAMS knob is gone (amendment A3): no cycler, no label, no pin. A
+// legacy 2/3/4 in a loaded save is healed by the lobby sanitizer and both
+// world twins, which own that migration — see the settings tests.
 TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
 {
     SaveData save;
@@ -1315,11 +1299,6 @@ TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
 TEST(PickerCommon, format_ctf_labels)
 {
     SaveData save;
-    ASSERT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
-    save.ctf_team_count = 4;
-    ASSERT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save))
-        << "retired (A3): the label never speaks for a stale save value";
-
     // A5: "SCORE: MAP" / "SCORE: n" — the score limit, named as such.
     ASSERT_EQ("SCORE: MAP", og::ui::format_ctf_score_label(save));
     save.ctf_capture_limit = 5;
@@ -1327,10 +1306,8 @@ TEST(PickerCommon, format_ctf_labels)
 
     // The SDL team-build buttons are 80px faces drawing 6px/char centered
     // text with no clipping: every label must stay inside the classic
-    // 12-char budget (longest is "Teams: Auto" / "SCORE: MAP").
-    save.ctf_team_count = 0;
+    // 12-char budget (the longest left on the row is "SCORE: MAP").
     save.ctf_capture_limit = 10;
-    ASSERT_LE(og::ui::format_ctf_teams_label(save).size(), 12u);
     ASSERT_LE(og::ui::format_ctf_score_label(save).size(), 12u);
     save.ctf_capture_limit = 0;
     ASSERT_LE(og::ui::format_ctf_score_label(save).size(), 12u);

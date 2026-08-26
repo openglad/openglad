@@ -361,10 +361,9 @@ bool is_allied_mode(const SaveData& save);
 
 // --- CTF match settings ---
 
-// RETIRED (amendment A3): the TEAMS knob is inert — its power lives on the
-// LINEUP band as BOTS: OFF — so this pair answers/writes Auto and nothing
-// else. Both go when the last SCENARIO/terminal caller does.
-void cycle_ctf_team_count(SaveData& save);
+// The TEAMS pair is GONE (amendment A3): its one power — dropping an
+// authored team — is the LINEUP band's BOTS: OFF, so there is no cycler and
+// no label. ctf_team_count survives only as an inert save/wire field.
 
 // Cycle the capture limit: 0 (map default) -> 1 -> 3 -> 5 -> 10 -> 0.
 void cycle_ctf_capture_limit(SaveData& save);
@@ -1091,10 +1090,6 @@ std::string format_difficulty_label(int difficulty);
 // ("SEATS: TOGETHER" / "SEATS: SPLIT"). It is not exposed by current menus;
 // combat allegiance always comes from character colors.
 std::string format_allied_mode_label(const SaveData& save);
-
-// Format the team count label ("Teams: N" / "Teams: Auto").
-// RETIRED (A3): always "Teams: Auto". See cycle_ctf_team_count.
-std::string format_ctf_teams_label(const SaveData& save);
 
 // Format the score-limit label ("SCORE: MAP" for the level's own target,
 // "SCORE: N" otherwise — captures, goals, kills; amendment A5). The old
