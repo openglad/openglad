@@ -1089,6 +1089,121 @@ TEST_F(StagedRules, lineup_rule_rows_none_preset_cap_and_matched)
 }
 
 // ===========================================================================
+// 2c. Review findings on the lineup rows (wp/review-lua): the band modes
+//     refuse through the decide fold before any mutation.
+// ===========================================================================
+
+namespace {
+
+// The shipped FFA row (mode_levels.lua [850], fighters = 8): the fixture
+// manifest carries mutant rows but no FFA row, so the band's FFA arm
+// stages the real one. Both band modes keep their fighter count in slot 8.
+constexpr int kFfaLevelA = 850;
+constexpr int kBandSlotFighterCount = 8;
+
+int live_markers_on(GameWorld& world, int team)
+{
+    int count = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Special &&
+            w->family() == FAMILY_RESERVED_TEAM &&
+            w->team_num() == static_cast<unsigned char>(team))
+            ++count;
+    }
+    return count;
+}
+
+// The band modes' one-fighter shape under BOTS: NONE, staged the way
+// MatchStage stages it: the refusal must be decided BEFORE the world is
+// touched — the hero keeps its seat team, the markers survive, the
+// authored cast is not stripped — because the kept post-refusal world IS
+// the world GO adopts under classic rules (the team modes' discipline; a
+// refused init never trips the LobbyServer start gate, which denies
+// StageFailed alone).
+void expect_band_none_refuses_untouched(int level_id, const char* reason)
+{
+    ModesCtfWorld fx(level_id);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    walker* const hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    walker* const troop = fx.spawn_living(FAMILY_ORC, 1, 300, 300);
+    ASSERT_NE(hero, nullptr);
+    ASSERT_NE(troop, nullptr);
+    fx.world().ctf_requested_bot_squad[0] = 1;  // NONE on team 1
+
+    stage_init(fx);
+    EXPECT_FALSE(fx.world().mode.active);
+    EXPECT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_TRUE(has_script_error(fx.world(), reason)) << reason;
+    EXPECT_EQ(0, hero->team_num())
+        << "a refused band init must not reseat the hero on a band byte";
+    EXPECT_FALSE(troop->dead()) << "the authored cast is not stripped";
+    for (int team = 0; team < 4; ++team)
+        EXPECT_EQ(1, live_markers_on(fx.world(), team))
+            << "markers are not consumed by a refused init, team " << team;
+    EXPECT_EQ(0, marked_bots_on(fx.world(), 0));
+    EXPECT_EQ(0, fx.var(kBandSlotFighterCount));
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced)) << "nothing banked";
+}
+
+// The same knob with two heroes plays: NONE fields nothing and the two
+// heroes are the whole band.
+void expect_band_none_with_two_heroes_plays(int level_id)
+{
+    ModesCtfWorld fx(level_id);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    walker* const a = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    walker* const b = fx.spawn_hero(FAMILY_SOLDIER, 1, 232, 200, 2);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    fx.world().ctf_requested_bot_squad[0] = 1;  // NONE on team 1
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(2, fx.var(kBandSlotFighterCount));
+    EXPECT_GE(a->team_num(), kFfaTeamBase);
+    EXPECT_GE(b->team_num(), kFfaTeamBase);
+    EXPECT_EQ(0, marked_bots_on(fx.world(), 0));
+    EXPECT_FALSE(has_script_error(fx.world(), "fewer than two"));
+}
+
+}  // namespace
+
+// L1: BOTS: NONE with a single deployed hero is a legal knob shape, so it
+// must come back as the staged refusal (mode inactive, the mode's own
+// reason, world untouched), never as an error thrown from a half-applied
+// init.
+TEST_F(StagedRules, lineup_band_none_with_one_fighter_refuses_untouched)
+{
+    {
+        SCOPED_TRACE("ffa");
+        expect_band_none_refuses_untouched(kFfaLevelA,
+                                           "ffa: fewer than two fighters");
+    }
+    {
+        SCOPED_TRACE("mutant");
+        expect_band_none_refuses_untouched(
+            kMutantLevelA, "mutant: fewer than two fighters");
+    }
+}
+
+TEST_F(StagedRules, lineup_band_none_with_two_fighters_plays)
+{
+    {
+        SCOPED_TRACE("ffa");
+        expect_band_none_with_two_heroes_plays(kFfaLevelA);
+    }
+    {
+        SCOPED_TRACE("mutant");
+        expect_band_none_with_two_heroes_plays(kMutantLevelA);
+    }
+}
+
+// ===========================================================================
 // 3. The apply-executes-decision matrix: the shared rules (via the harness)
 //    produce the expected values; the staged world must bank and field
 //    exactly those. 16 cases per mode, the old agreement matrix's shapes.
