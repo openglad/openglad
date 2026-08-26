@@ -899,9 +899,10 @@ int text_picker_testing_exercise_internal_paths()
         check(output.finish_ok() &&
             text.find("TROOPS: FAIR") != std::string::npos);
     }
-    // The Matchup dump prints the teams label in its plain numeric/Auto
-    // form — the retired Teams: Match rendering is gone. The dump only
-    // reads the setting; nothing on this path writes it any more.
+    // Amendment A1/A3: the Matchup dump carries NO teams label any more.
+    // TEAMS is not a control, and a readout of a setting nothing writes is
+    // just a lie waiting to happen — the team rows themselves are the whole
+    // screen now. The dump still only reads.
     {
         ScopedTextPickerStdoutCapture output;
         check(output.ready());
@@ -910,8 +911,8 @@ int text_picker_testing_exercise_internal_paths()
         });
         const std::string text = output.finish();
         check(output.finish_ok() &&
-            text.find("[Teams: ") != std::string::npos &&
-            text.find("Match]") == std::string::npos);
+            text.find("--- Matchup ---") != std::string::npos &&
+            text.find("Teams:") == std::string::npos);
     }
     {
         ScopedTextPickerStdoutCapture output;

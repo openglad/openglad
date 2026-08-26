@@ -180,6 +180,12 @@ if not any('Preferred-team metadata is now RED;' in l for l in lines):
 if any(' TEAM (P' in l or 'P1 plays' in l or 'P2 plays' in l for l in lines):
     print('FAIL: text Matchup must not claim playable P# seats', file=sys.stderr)
     sys.exit(1)
+# Amendment A1/A3: TEAMS is not a control any more, so its readout is gone
+# from this screen too. How many teams fight is the LINEUP page's answer.
+if any('Teams:' in l for l in lines):
+    print('FAIL: the retired TEAMS readout leaked into text Matchup',
+          file=sys.stderr)
+    sys.exit(1)
 
 # LINEUP (docs/lineup-design.md §8): the four bands, the shared bot-squad
 # label after the cycle, and the fighter list's command grammar.

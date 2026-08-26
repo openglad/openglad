@@ -19,6 +19,7 @@
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -90,7 +91,26 @@ struct TerminalLineupModel {
     // is off still says so.
     std::vector<std::string> lines;
     std::vector<TerminalLineupItem> items;
+    // Amendment A2: BOTS: OFF drops an authored team out of the match, which
+    // a team that has a seat or a deployed fighter is not allowed to do. Per
+    // team: the refusal line, or empty when OFF is legal there.
+    std::array<std::string, 4> off_refusal{};
 };
+
+// A2's wheel: cycle_lineup_bots, then STEP OVER an OFF the team may not
+// take. Refusing in place would strand the wheel — OFF sits between AUTO and
+// the presets, so a seated team could never reach a preset again — so the
+// step lands on the next legal value and hands back the reason, which the
+// caller shows the way it shows the MAP RULES refusal. `off_refusal` is the
+// model's line for that team (empty = OFF is legal).
+struct TerminalLineupBotsStep {
+    short value = 0;      // the value to store (already the wheel's own)
+    std::string refusal;  // "" unless an OFF was stepped over
+};
+
+TerminalLineupBotsStep terminal_lineup_bots_step(short current,
+                                                 int preset_count, int dir,
+                                                 std::string_view off_refusal);
 
 // What the page needs to know. `players` is the lobby seat census (every
 // machine); a local terminal client passes synthesize_local_lobby_players(),

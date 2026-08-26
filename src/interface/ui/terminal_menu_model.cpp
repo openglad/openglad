@@ -19,6 +19,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <string>
@@ -121,6 +122,17 @@ TerminalLineupModel build_terminal_lineup_model(
 
     for (int team = 0; team < 4; ++team) {
         const LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
+        // A2: a team with a seat or a deployed fighter is ON by definition,
+        // so OFF is refused there — the refusal that was wrong for NONE is
+        // right for OFF. Seats first: a seated team is the shape the refusal
+        // exists to protect, and naming the fighters instead would send the
+        // player to bench characters that were never the reason.
+        model.off_refusal[static_cast<std::size_t>(team)] =
+            band.has_seat
+                ? std::format("TEAM {} HAS PLAYERS", team + 1)
+                : (band.fighter_count > 0
+                       ? std::format("TEAM {} HAS FIGHTERS", team + 1)
+                       : std::string());
         const std::string bots = format_lineup_bots_label(
             inputs.save->bot_squad[static_cast<std::size_t>(team)],
             inputs.preset_names);
@@ -178,15 +190,52 @@ TerminalLineupModel build_terminal_lineup_model(
     }
     model.items.push_back(TerminalLineupItem{
         TerminalLineupItem::Kind::Fighters, 0, "Fighters"});
+    // §5 operates over the teams that have a seat ON THIS MACHINE, and both
+    // terminal clients are single-seat by construction (a company file loads
+    // with numplayers 1), so both SPLIT rows resolve to UNITE there. The rows
+    // STAY — the two 1-based consumers pin every ordinal on this page — but
+    // the label says so rather than promising a draft that cannot happen.
+    // The mark is derived, not assumed: the same seat picture the split
+    // itself plans over (M3), so a multi-seat terminal would simply lose it.
+    const std::vector<short> seat_teams =
+        derive_local_gameplay_seat_teams(*inputs.save);
+    std::vector<short> distinct_teams;
+    for (const short team : seat_teams) {
+        if (std::find(distinct_teams.begin(), distinct_teams.end(), team) ==
+            distinct_teams.end())
+        {
+            distinct_teams.push_back(team);
+        }
+    }
+    const std::string split_mark =
+        distinct_teams.size() == 1 ? "  (one seat: same as Unite)" : "";
     model.items.push_back(TerminalLineupItem{
-        TerminalLineupItem::Kind::SplitEven, 0, "Split even"});
+        TerminalLineupItem::Kind::SplitEven, 0, "Split even" + split_mark});
     model.items.push_back(TerminalLineupItem{
-        TerminalLineupItem::Kind::SplitFair, 0, "Split fair"});
+        TerminalLineupItem::Kind::SplitFair, 0, "Split fair" + split_mark});
     model.items.push_back(TerminalLineupItem{
         TerminalLineupItem::Kind::Unite, 0, "Unite"});
     model.items.push_back(TerminalLineupItem{
         TerminalLineupItem::Kind::Back, 0, "Back"});
     return model;
+}
+
+TerminalLineupBotsStep terminal_lineup_bots_step(short current,
+                                                 int preset_count, int dir,
+                                                 std::string_view off_refusal)
+{
+    TerminalLineupBotsStep step;
+    step.value = cycle_lineup_bots(current, preset_count, dir);
+    if (off_refusal.empty() || step.value != og::sim::kBotSquadOff)
+        return step;
+    // OFF is one position wide, so ONE more step of the same sign clears it
+    // in either direction. The SDL twin refuses the same value from
+    // change_lineup_bots (src/interface/ui/picker.cpp) — one rule, three
+    // clients, and the wheel stays usable on a seated team.
+    step.value = cycle_lineup_bots(step.value, preset_count,
+                                   dir >= 0 ? 1 : -1);
+    step.refusal = std::string(off_refusal);
+    return step;
 }
 
 int terminal_apply_lineup_split(SaveData& save, LineupSplit mode,

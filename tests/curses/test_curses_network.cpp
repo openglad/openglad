@@ -2986,6 +2986,94 @@ TEST(CursesNetwork, elected_host_kick_key_works_on_a_dedicated_lobby)
     EXPECT_TRUE(status_contains(*elected_lobby, "Kicked M"));
 }
 
+// The same "is host now" rule for the START key. Keyed on LobbyRole, the
+// elected host of a dedicated lobby could kick but could never press GO:
+// request_start() bailed on role_ != Host, and its message would have gone
+// out over a null in-process link even if it had not. The server's own gate
+// is the host PEER, which is exactly this machine.
+TEST(CursesNetwork, elected_host_start_key_works_on_a_dedicated_lobby)
+{
+    SaveData elected_save;
+    SaveData guest_save;
+    init_team_save(elected_save, 0, FAMILY_SOLDIER, "Elected");
+    init_team_save(guest_save, 1, FAMILY_ELF, "Guest");
+
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    server_transport->accept_connections();
+    auto elected_client = server_transport->create_client_transport();
+    auto guest_client = server_transport->create_client_transport();
+    // Nobody's lobby owns the server: server_main's shape again.
+    og::sim::LobbyServer server(*server_transport);
+
+    auto elected_lobby = make_join_lobby_over_transport_for_testing(
+        elected_save, 1, elected_client, elected_client->local_peer_id());
+    HeadlessTerminal elected_term(24, 80);
+    FakeClock clock;
+
+    // First connected is the elected host.
+    for (int i = 0; i < 100; ++i) {
+        server.poll_incoming_messages();
+        elected_lobby->poll(elected_term, clock);
+    }
+    ASSERT_EQ(1u, server.state().players.size());
+    ASSERT_TRUE(server.state().players[0].is_host);
+
+    auto guest_lobby = make_join_lobby_over_transport_for_testing(
+        guest_save, 1, guest_client, guest_client->local_peer_id());
+    HeadlessTerminal guest_term(24, 80);
+
+    bool elected_started = false;
+    bool guest_started = false;
+    const auto pump = [&](int rounds) {
+        for (int i = 0; i < rounds; ++i) {
+            server.poll_incoming_messages();
+            elected_started =
+                elected_lobby->poll(elected_term, clock) || elected_started;
+            guest_started =
+                guest_lobby->poll(guest_term, clock) || guest_started;
+        }
+    };
+    bool two_players = false;
+    for (int i = 0; i < 200 && !two_players; ++i) {
+        pump(1);
+        two_players = status_contains(*elected_lobby, "Players: 2") &&
+            status_contains(*guest_lobby, "Players: 2");
+    }
+    ASSERT_TRUE(two_players) << "both peers must see the shared lobby first";
+
+    // The elected host advertises the key it owns.
+    EXPECT_NE(elected_term.dump().find("[s] start"), std::string::npos)
+        << "the hint must offer the start to the machine that has it:\n"
+        << elected_term.dump();
+
+    // §4.3: the guest readies so the gate has nothing left to refuse.
+    (void)guest_lobby->set_ready(true);
+    for (int i = 0; i < 200; ++i) {
+        pump(1);
+        bool guest_ready = false;
+        for (const og::sim::LobbyPlayer& player : elected_lobby->players()) {
+            if (!player.is_host && player.ready)
+                guest_ready = true;
+        }
+        if (guest_ready)
+            break;
+    }
+
+    // The guest's own 's' is not a start: the server drops a non-host
+    // request, and nothing here pretends otherwise.
+    guest_term.push_char(U's');
+    pump(30);
+    EXPECT_FALSE(elected_started) << "a guest cannot start the match";
+    EXPECT_FALSE(guest_started);
+
+    elected_term.push_char(U's');
+    for (int i = 0; i < 400 && !(elected_started && guest_started); ++i)
+        pump(1);
+    EXPECT_TRUE(elected_started)
+        << "the elected host's 's' must start the match";
+    EXPECT_TRUE(guest_started) << "and the guest must observe the start";
+}
+
 // DISCONNECT is a two-press key: the first press puts the question on the
 // status band, the second answers it. Any other key in between is "no".
 TEST(CursesNetwork, lobby_disconnect_key_confirms_before_leaving)

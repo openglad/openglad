@@ -2246,11 +2246,12 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
 
-    // Two turns of the wheel: AUTO -> OFF -> NONE (amendment A1). NONE is
-    // the value that stays legal on a team with fighters, which is what
-    // this roster is.
+    // One turn of the wheel lands on NONE: TEAM 1 holds this machine's seat,
+    // so amendment A2 refuses the OFF between AUTO and NONE and the step
+    // goes over it (a refusal in place would strand the wheel short of the
+    // presets forever). The refusal is a show_text, so it wants a key.
     pick(f.t(), 0);
-    pick(f.t(), 0);
+    f.t().push_special(KeyCode::Enter);  //   dismiss the OFF refusal
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
@@ -2264,7 +2265,7 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
     EXPECT_NE(dump.find("TEAM 1  BOTS: NONE"), std::string::npos)
         << "the redraw re-reads the knob out of the save:\n" << dump;
     EXPECT_EQ(og::sim::kBotSquadNone, f.save().bot_squad[0])
-        << "AUTO -> OFF -> NONE landed in the save";
+        << "AUTO -> (OFF refused) -> NONE landed in the save";
     EXPECT_EQ(0, f.save().bot_squad[1]) << "only the cycled team moved";
     EXPECT_TRUE(f.t().input_exhausted());
     (void)unmount_campaign_package_with_error("modes");
