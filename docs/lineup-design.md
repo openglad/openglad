@@ -78,7 +78,7 @@ TEAM 2  POWER 1900   P2 ARROWS
 TEAM 3  POWER --     NO SEAT
   [BOTS: NONE  ] [LV: AUTO]  NO FIGHTERS
 TEAM 4  ...
-[BACK] [FIGHTERS] [SPLIT EVEN] [SPLIT FAIR] [ALL TO 1]
+[BACK] [FIGHTERS] [SPLIT EVEN] [SPLIT FAIR] [UNITE]
 ```
 
 ### 2.1 Bands
@@ -272,7 +272,7 @@ characters are skipped; a single seat makes every action `ALL TO 1`.
 - **SPLIT EVEN** — sort by slot index, deal round-robin.
 - **SPLIT FAIR** — sort by power descending (tie: slot index), snake
   draft (1,2,…,n,n,…,2,1). No power → level descending.
-- **ALL TO 1** — every deployed character to the lowest-numbered team
+- **UNITE** (the face label; the action is AllToFirst) — every deployed character to the lowest-numbered team
   that has a seat on this machine.
 
 Pure helper `og::ui::split_company(save, seat_teams, mode, power)` →
