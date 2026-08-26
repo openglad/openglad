@@ -97,7 +97,8 @@ public:
     // Index is the team (0..3). 0 = AUTO on both (the map's own value), so an
     // all-zero pair is today's behaviour byte for byte. bot_squad: 1 = OFF
     // (the team is not fielded), 2 = NONE (fielded, never bots), 3.. = the
-    // campaign's preset ordinal. bot_level: 1..9 = that level.
+    // campaign's preset ordinal. bot_level is an OFFSET, -5..+5 (amendment
+    // A6): the resolver adds it to the AUTO source and clamps to 1..9.
     std::array<short, 4> bot_squad = {};
     std::array<short, 4> bot_level = {};
     // Difficulty submenu settings (0 = legacy default behavior for all three).

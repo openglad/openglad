@@ -511,12 +511,18 @@ have to know, so nobody re-derives it:
   `test_staged_report.cpp` / `test_staged_rules.cpp` / `test_modes_*.cpp`
   each move up by one. Until that lands, the three staged tests that
   assert a preset NAME read the wrong entry.
-- **The fact code is two digits.** `bank_lineup_facts` packs
-  `ordinal * 10 + level` per team into a base-100 field, so ordinals
-  above 9 do not fit: a campaign registering a **seventh** preset would
-  need a wider field (the shipped book has five, top ordinal 7). Recorded
-  here rather than fixed, because widening the field costs a snapshot
-  bump.
+- **The fact code is a mixed-radix pair, and every preset fits.** (This
+  bullet as first written claimed `ordinal * 10 + level` and a seventh
+  preset that would not fit; W4-A landed the real packing.) A6's offset
+  has ELEVEN values (AUTO, ±1..±5), which no decimal digit holds, so
+  `bank_lineup_facts` packs `squad * 11 + offset_code` per team into the
+  same base-100 field: `squad` is 0 for no applied preset, else
+  `ordinal - (kBotSquadPresetBase - 1)` = 1..`kMaxBotPresets`;
+  `offset_code` is 0 for AUTO, 1..5 for +1..+5, 6..10 for -1..-5. The
+  worst code is `8 * 11 + 10 = 98 < 100`, so all eight registrable
+  presets fit with no snapshot bump. C++ twin: `lineup_fact_code` /
+  `lineup_fact_preset_index` / `lineup_fact_offset` in
+  `picker_common.cpp` (`kModeVarLineupFacts`).
 - **`bot_level` is signed now.** `[-5, +5]`, one clamp home
   (`clamp_bot_level`), zero = AUTO. `LV: AUTO` / `LV +2` / `LV -1`, and
   the wheel is AUTO, +1..+5, -5..-1. Save and wire fields were already
@@ -537,8 +543,40 @@ have to know, so nobody re-derives it:
   **`campaign_picker.lua` still reads it** (the MATCH SETUP TEAMS row and
   the rules digest), which is W4-A's camp-page work and is red until it
   lands.
-- **`cycle_ctf_team_count` / `format_ctf_teams_label` are retired stubs**
-  (write Auto / answer `"Teams: Auto"`), left compiling for the three
-  callers W4-C and W4-G still own: `picker.cpp:3431`,
-  `picker_team_build.cpp:423`, `text_picker.cpp:1331`. Delete the pair
-  with the last caller.
+- **`cycle_ctf_team_count` / `format_ctf_teams_label` are GONE.** W4-B
+  left them compiling as stubs (write Auto / answer `"Teams: Auto"`) for
+  the three callers W4-C and W4-G still owned; those callers went with
+  their waves and the pair was deleted with the last of them, along with
+  the pins that only proved the stubs still answered. `ctf_team_count`
+  itself keeps its place in the save and on the wire, inert.
+
+## As built: the W4-A layer (2026-08-26)
+
+The Lua half of A1/A2/A6 — the activation fold, the offset resolver and
+the camp page. Four rulings the build settled, recorded so nobody
+re-derives them from the code:
+
+- **A band mode's OFF is a NONE.** `match.squad_off` answers true for
+  both values, and FFA/mutant read team 1's pair through
+  `mode_fighters.band_knob`. There is no mask to leave in a band mode —
+  every fighter wears a band byte and no score team fields a squad — so
+  OFF there means the one thing the two values share: this team fields
+  no squad.
+- **Outside the authored domain, nothing activates.** Activation's step 3
+  ("plus the occupied") is gated on `core.mask_has(authored_mask, team)`:
+  a deployed roster or a preset squad on a team the map never authored
+  has no anchors and no flag — nowhere to spawn, nothing to score — so it
+  still fights under classic rules and never turns a team on. The
+  pre-amendment truth, kept deliberately.
+- **A preset can turn on a team the map leaves inactive.** The same step 3
+  puts an authored-but-inactive team into the mask when its knob names a
+  preset (FAIR included). This is what "a team is on when anything is on
+  it" means for bots, and it is the reason `BOTS: <NAME>` needs no
+  companion switch.
+- **Under `TROOPS: ALL`, a deployed roster now activates a
+  manifest-inactive team** (behaviour change). Step 1 narrows the base
+  mask to the manifest row's `teams` under ALL; step 3 then re-adds any
+  authored team carrying a roster, which it previously did not. Parity is
+  unaffected — the harness stages no lobby roster onto an inactive
+  authored team — and the shape is what the page promises: put a fighter
+  on a colour and that colour plays.

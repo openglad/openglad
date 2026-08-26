@@ -1027,8 +1027,11 @@ struct ScenarioRosterReport {
     // spawn seam banked in the shared mode-var slot (mode_match.lua
     // bank_lineup_facts / kModeVarLineupFacts below) — preset name
     // resolved through the campaign lineup hook (empty when AUTO, the
-    // ordinal is unregistered, or no hook), explicit level 1..9 (0 =
-    // AUTO). Facts, never requests: a knob a mode ignored banks nothing.
+    // ordinal is unregistered, or no hook), and the applied level OFFSET,
+    // -5..+5 with 0 = AUTO (amendment A6 — it is a shift on top of the
+    // AUTO source, not a level, and the preview renders it "LV+3" / "LV-1"
+    // sign and all). Facts, never requests: a knob a mode ignored banks
+    // nothing.
     std::array<std::string, 4> team_squad_name = {};
     std::array<int, 4> team_squad_level = {};
     // The bots fielded BESIDE an occupancy fill (a preset squad on a
