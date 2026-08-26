@@ -1234,8 +1234,8 @@ bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
 // ---------------------------------------------------------------------------
 // SCENARIO subscreen (§1.8 step 5): the column at x=30 stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | PROGRESS row and the versus-gated y=140
-// match-settings band (TEAMS | TROOPS | LIMIT, #218); BACK sits apart at
+// always-visible VIEW LEVEL | PROGRESS | LINEUP row and the versus-gated
+// y=140 match-settings band (TEAMS | TROOPS | LIMIT, #218); BACK sits apart at
 // (30,170) so no other screen's "back" shares its geometry (injector tests
 // disambiguate the per-screen "back" buttons by position). Static nav
 // encodes the host+versus (all-visible) variant; the sync (hide + rewire)
@@ -1261,21 +1261,20 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
      .nav = {.up = 2, .down = 7, .right = 5}},
-    // The ordinal the MATCHUP door vacated (#218): the screen's seat/team
-    // overview lives in VIEW LEVEL now and its knobs re-homed below (TEAMS /
-    // LIMIT) and onto DIFFICULTY (cross-control). Parked exactly like the
-    // Base Camp's seat_rail_spare — zero-size rect, empty label, hidden, no
-    // nav — so kScenarioMenuProgressIndex and every pin below never shifted.
-    {.id = "scenario_spare", .label = "",
-     .x = 0, .y = 0, .w = 0, .h = 0,
-     .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuSpareIndex,
-     .hidden = true},
-    // PROGRESS left-packs into the vacated middle cell so the y=100 row
-    // reads VIEW LEVEL | PROGRESS on the declared 30/120/210 grid.
+    // The ordinal the MATCHUP door vacated (#218), reclaimed by the LINEUP
+    // door (docs/lineup-design.md §2): the y=100 row reads VIEW LEVEL |
+    // PROGRESS | LINEUP on the declared 30/120/210 grid, above the y=140
+    // match-settings band where composition already lives. Deliberately NOT
+    // host-gated — joiners open the page read-only (§2.3).
+    {.id = "lineup", .label = "LINEUP",
+     .x = 210, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::OpenLineup, .arg = -1,
+     .nav = {.up = 2, .down = 8, .left = 5}},
+    // PROGRESS left-packs into the middle cell of that row.
     {.id = "progress", .label = "PROGRESS",
      .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateProgressMenu, .arg = -1,
-     .nav = {.up = 2, .down = 6, .left = 3}},
+     .nav = {.up = 2, .down = 6, .left = 3, .right = 4}},
     // Scenario troops: keep the authored cast, or strip all of it.
     // Host-gated like SET CAMPAIGN and SET LEVEL; joiners read the label off
     // the lobby-synced save. It sits at (120,140) rather than the y=70 cell
@@ -1301,7 +1300,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "ctf_caps", .label = "Limit: Map",
      .x = 210, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
-     .nav = {.up = 5, .down = 0, .left = 6}},
+     .nav = {.up = 4, .down = 0, .left = 6}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change
@@ -2073,7 +2072,10 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
      .x = 240, .y = 8, .w = 64, .h = 22,
      .action = ButtonAction::CreateDetailMenu, .arg = 0,
      .nav = {.down = kTrainMenuChangeTeamIndex, .left = 15}},
-    {.id = "change_team", .label = "Playing on Team X",
+    // "Team N" (docs/lineup-design.md §1: one noun per meaning — the old
+    // "Playing on Team N" phrasing implied a seat where it writes a
+    // character's fighting colour).
+    {.id = "change_team", .label = "Team X",
      .x = 174, .y = 138, .w = 133, .h = 22,
      .action = ButtonAction::ChangeTeam, .arg = 1,
      .nav = {.up = 16, .down = kTrainMenuSellIndex, .left = 13},
@@ -2978,16 +2980,16 @@ int base_camp_seat_local_slot(const BaseCampScreenState& state,
         std::distance(state.local_seat_indices.begin(), local));
 }
 
-std::string base_camp_seat_label(const BaseCampScreenState& state,
-                                 const og::sim::LobbyPlayer& seat)
+// The owner-short-name half of base_camp_seat_label, factored so the LINEUP
+// bands' seat run names a local seat's controller the same way the rail card
+// does (docs/lineup-design.md §2.1). Empty when the seat is not local (the
+// caller falls back to the company abbreviation — all a remote seat has).
+std::string local_seat_owner_short_name(int local_slot)
 {
-    const int local_slot =
-        base_camp_seat_local_slot(state, seat.player_index);
     // Design §2.3: a local card names the seat's INPUT mapping, so the roster
     // rail answers "which controller am I?" without opening the editor.
     const bool named = local_slot >= 0 && local_slot < MAX_PLAYERS &&
         picker_lobby_local_seat_count() > 0;
-    std::string owner;
     if (named)
     {
         const og::ui::InputCycleOption selection =
@@ -2995,17 +2997,23 @@ std::string base_camp_seat_label(const BaseCampScreenState& state,
         // #249: on a single-seat device the touchscreen IS the controller,
         // so the card names the screen instead of keys the device lacks. A
         // seat cycled onto a real pad still names that pad.
-        owner = og::input::seat_owner_is_screen(
-                    og::input::is_single_seat_device(), selection.is_joystick,
-                    local_slot)
+        return og::input::seat_owner_is_screen(
+                   og::input::is_single_seat_device(), selection.is_joystick,
+                   local_slot)
             ? std::string(og::input::kScreenSeatOwnerLabel)
             : og::input::mapping_short_name(selection.name);
     }
-    else
-    {
-        owner = local_slot >= 0 ? std::string("SPEC")
-                                : company_abbreviation(seat.company);
-    }
+    return local_slot >= 0 ? std::string("SPEC") : std::string();
+}
+
+std::string base_camp_seat_label(const BaseCampScreenState& state,
+                                 const og::sim::LobbyPlayer& seat)
+{
+    const int local_slot =
+        base_camp_seat_local_slot(state, seat.player_index);
+    std::string owner = local_seat_owner_short_name(local_slot);
+    if (owner.empty())
+        owner = company_abbreviation(seat.company);
     // TWO trailing visual pads shift the visible centered ink a full cell
     // left, which centers it over the chip-free zone (the face minus the last
     // ten pixels, which the chip owns) instead of over the whole face. One pad
@@ -3940,9 +3948,19 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         const bool own = on && owned_row[static_cast<std::size_t>(r)];
         // The chip cell forks on the assign spec (red-team rule): an
         // active assign shows chips on own rows even networked; otherwise
-        // the classic solo-only team cycler (gated by can_team).
+        // the classic solo-only team cycler. One rule for team-edit
+        // capability across the chip and the LINEUP fighter list
+        // (docs/lineup-design.md §2.2): og::ui::lineup_fighter_team_editable,
+        // with the chip's own !networked gate kept on top (networked, the
+        // fighter list is the single home of that control).
+        const int chip_save_slot = own
+            ? st->slots[static_cast<std::size_t>(first + r)].save_slot
+            : -1;
         const bool team_cycler = own &&
-            (assign_mode || (can_team && !networked));
+            (assign_mode ||
+             (!networked &&
+              og::ui::lineup_fighter_team_editable(save, chip_save_slot,
+                                                   can_team, assign_mode)));
         const bool move_up = on && movable_row[static_cast<std::size_t>(r)] &&
             can_reorder;
         button& dep = buttons[r];
@@ -5541,14 +5559,18 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             return MENU_OK;
         }
         // Multiplayer assigns teams through lobby seats, so this solo-only
-        // control is hidden there and stale dispatches remain inert — as
-        // are dispatches while the composition cleared can_team.
+        // control is hidden there and stale dispatches remain inert (the
+        // networked home of the control is the LINEUP fighter list). The
+        // capability itself is the ONE shared predicate
+        // (docs/lineup-design.md §2.2) behind this chip and that list.
         if (picker_lobby_is_networked())
             return MENU_OK;
-        if (zone != nullptr && !zone->roster().can_team)
-            return MENU_OK;
-        if (!picker_lobby_save_slot_editable(slot)) {
-            popup_dialog("TEAM", "LOCKED");
+        if (!og::ui::lineup_fighter_team_editable(save, slot, zone,
+                                                  /*assign_mode=*/false)) {
+            // A stale dispatch while the composition cleared can_team stays
+            // silent; an uneditable (locked) slot keeps its explicit answer.
+            if (!picker_lobby_save_slot_editable(slot))
+                popup_dialog("TEAM", "LOCKED");
             return MENU_OK;
         }
         const short team = cycle_guy_team(save, slot, 1);
@@ -7242,6 +7264,871 @@ Sint32 run_cloud_save_screen()
     return MENU_REDRAW;
 }
 
+// ---------------------------------------------------------------------------
+// LINEUP (docs/lineup-design.md §2): teams, seats, fighters and bots on one
+// page. One engine-hosted screen — four team bands (header chip / POWER /
+// seat run, BOTS+LV knob faces, census text) over an opaque panel, and the
+// BACK | FIGHTERS | SPLIT EVEN | SPLIT FAIR | UNITE action strip. The knobs
+// are host-only (hidden per frame for joiners) and dimmed-inert on classic
+// campaigns (the knobs are stored but the map ignores them — D32
+// precedent); the bands themselves are readable by everyone.
+
+namespace {
+
+LineupScreenState* g_lineup_state = nullptr;
+LineupFightersScreenState* g_lineup_fighters_state = nullptr;
+
+// §2.3 gating, expressed in the engine's own row-state grammar so the
+// generic sweeps exercise it: joiners never see the knobs; a classic
+// (non-versus) campaign shows them dimmed and inert.
+RowState lineup_knob_row_state(const MenuLabelContext& context)
+{
+    if (!context.is_host)
+        return RowState::Hidden;
+    if (context.save != nullptr && !is_versus_campaign(*context.save))
+        return RowState::Disabled;
+    return RowState::Visible;
+}
+
+// Static nav encodes the all-visible (host + versus + two-seat) variant;
+// the per-frame rewire below rewrites every link.
+#define OG_LINEUP_BOTS(t)                                                     \
+    {.id = "lineup_bots_" #t, .label = "BOTS: AUTO",                          \
+     .x = kLineupBotsX, .y = lineup_band_y(t) + kLineupKnobDy,                \
+     .w = kLineupBotsW, .h = kLineupKnobH,                                    \
+     .action = ButtonAction::CycleLineupBots, .arg = (t),                     \
+     .nav = {.up = (t) > 0 ? kLineupBotsBase + (t) - 1 : -1,                  \
+             .down = (t) < 3 ? kLineupBotsBase + (t) + 1 : kLineupBackIndex,  \
+             .right = kLineupLevelBase + (t)},                                \
+     .state_override = &lineup_knob_row_state}
+#define OG_LINEUP_LEVEL(t)                                                    \
+    {.id = "lineup_level_" #t, .label = "LV: AUTO",                           \
+     .x = kLineupLevelX, .y = lineup_band_y(t) + kLineupKnobDy,               \
+     .w = kLineupLevelW, .h = kLineupKnobH,                                   \
+     .action = ButtonAction::CycleLineupLevel, .arg = (t),                    \
+     .nav = {.up = (t) > 0 ? kLineupLevelBase + (t) - 1 : -1,                 \
+             .down = (t) < 3 ? kLineupLevelBase + (t) + 1                     \
+                             : kLineupFightersIndex,                          \
+             .left = kLineupBotsBase + (t)},                                  \
+     .state_override = &lineup_knob_row_state}
+
+constexpr MenuButtonSpec kLineupMenuRows[] = {
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = kLineupBackX, .y = kLineupStripY, .w = kLineupBackW,
+     .h = kLineupStripH,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = kLineupBotsBase + 3, .right = kLineupFightersIndex}},
+    OG_LINEUP_BOTS(0), OG_LINEUP_BOTS(1), OG_LINEUP_BOTS(2),
+    OG_LINEUP_BOTS(3),
+    OG_LINEUP_LEVEL(0), OG_LINEUP_LEVEL(1), OG_LINEUP_LEVEL(2),
+    OG_LINEUP_LEVEL(3),
+    {.id = "lineup_fighters", .label = "FIGHTERS",
+     .x = kLineupFightersX, .y = kLineupStripY, .w = kLineupFightersW,
+     .h = kLineupStripH,
+     .action = ButtonAction::OpenLineupFighters, .arg = -1,
+     .nav = {.up = kLineupBotsBase + 3, .left = kLineupBackIndex,
+             .right = kLineupSplitEvenIndex}},
+    {.id = "lineup_split_even", .label = "SPLIT EVEN",
+     .x = kLineupSplitEvenX, .y = kLineupStripY, .w = kLineupSplitW,
+     .h = kLineupStripH,
+     .action = ButtonAction::LineupSplitEven, .arg = -1,
+     .nav = {.up = kLineupLevelBase + 3, .left = kLineupFightersIndex,
+             .right = kLineupSplitFairIndex}},
+    {.id = "lineup_split_fair", .label = "SPLIT FAIR",
+     .x = kLineupSplitFairX, .y = kLineupStripY, .w = kLineupSplitW,
+     .h = kLineupStripH,
+     .action = ButtonAction::LineupSplitFair, .arg = -1,
+     .nav = {.up = kLineupLevelBase + 3, .left = kLineupSplitEvenIndex,
+             .right = kLineupUniteIndex}},
+    // "UNITE" is ALL TO 1 (§5): every deployed fighter to the lowest team
+    // with a local seat. Always offered — a single seat makes every split
+    // this action anyway.
+    {.id = "lineup_unite", .label = "UNITE",
+     .x = kLineupUniteX, .y = kLineupStripY, .w = kLineupUniteW,
+     .h = kLineupStripH,
+     .action = ButtonAction::LineupUnite, .arg = -1,
+     .nav = {.up = kLineupLevelBase + 3, .left = kLineupSplitFairIndex}},
+};
+
+#undef OG_LINEUP_BOTS
+#undef OG_LINEUP_LEVEL
+
+static_assert(static_cast<int>(std::size(kLineupMenuRows))
+                  == kLineupButtonCount,
+              "LINEUP spec ordinals are the layout contract");
+
+// The campaign power metric as a band-pricing callback (empty when the
+// campaign registers no `lineup` hook: bands read `POWER --` and SPLIT
+// FAIR falls back to level order).
+LineupPowerFn lineup_active_power_fn()
+{
+    if (!og::script::hooks::campaign_lineup_registered())
+        return {};
+    return &lineup_power_for_guy;
+}
+
+void lineup_draw_background(void* /*screen_state*/)
+{
+    picker_backdrop_draw_background(nullptr);
+    // The opaque grey ground under the bands (pre-buttons, draw-order rule).
+    og::runtime::current_session->myscreen_->draw_button(
+        kLineupPanelX1, kLineupPanelY1, kLineupPanelX2, kLineupPanelY2, 2, 1);
+}
+
+std::int64_t lineup_now_ms()
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+void lineup_draw_content(void* screen_state)
+{
+    const LineupScreenState* st =
+        static_cast<const LineupScreenState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+    text& mytext = game->text_normal;
+    const SaveData& save = game->save_data;
+
+    mytext.write_xy(10, 8, "LINEUP", WHITE, 1);
+
+    const bool networked = picker_lobby_is_networked();
+    const LineupSeatView seat_view = picker_lineup_seat_view();
+    const std::vector<og::sim::LobbyPlayer>& players = seat_view.players;
+    const std::vector<std::uint8_t>& locals = seat_view.local_indices;
+
+    // Title band, right slot: an active toast wins it; else the networked
+    // session census (the compose_base_camp_line_b healthy shape),
+    // right-aligned to end on the panel edge.
+    std::string right_line;
+    unsigned char right_color = WHITE;
+    if (st != nullptr && !st->toast.empty() &&
+        lineup_now_ms() < st->toast_until_ms)
+    {
+        right_line = st->toast;
+        right_color = YELLOW;
+    }
+    else if (networked)
+    {
+        right_line = format_base_camp_session_status(
+            picker_lobby_host_controls_visible(),
+            picker_lobby_session_room_code(), players,
+            kLineupTitleCensusChars);
+    }
+    if (!right_line.empty()) {
+        if (right_line.size() >
+            static_cast<std::size_t>(kLineupTitleCensusChars))
+        {
+            right_line.resize(
+                static_cast<std::size_t>(kLineupTitleCensusChars));
+        }
+        const int x =
+            kLineupPanelX2 - static_cast<int>(right_line.size()) * 6;
+        mytext.write_xy(x, 8, right_line.c_str(), right_color, 1);
+    }
+
+    const bool versus = is_versus_campaign(save);
+    const auto short_name = [&locals](std::uint8_t player_index) {
+        const auto it =
+            std::find(locals.begin(), locals.end(), player_index);
+        if (it == locals.end())
+            return std::string();
+        return local_seat_owner_short_name(
+            static_cast<int>(std::distance(locals.begin(), it)));
+    };
+    const std::array<LineupTeamBand, 4> bands = build_lineup_bands(
+        save, players, locals, networked, lineup_active_power_fn(),
+        short_name);
+
+    for (int t = 0; t < 4; ++t) {
+        const LineupTeamBand& band =
+            bands[static_cast<std::size_t>(t)];
+        const int y = lineup_band_y(t);
+        const int header_y = y + kLineupHeaderDy;
+
+        // The same 10x10 team chip the Base Camp roster draws.
+        game->fastbox(kLineupChipX, header_y, kLineupChipSize,
+                      kLineupChipSize, BLACK);
+        game->fastbox(kLineupChipX + 1, header_y + 1, 8, 8,
+                      static_cast<unsigned char>(t * 16 + 40));
+        const char digit[] = {static_cast<char>('1' + t), '\0'};
+        // The old font's "1" is a column narrower: bias that lone glyph one
+        // pixel right (the Base Camp chip's own rule).
+        mytext.write_xy_flat(kLineupChipX + (t == 0 ? 4 : 3), header_y + 3,
+                             digit, PURE_BLACK, 1);
+
+        mytext.write_xy_flat(kLineupTeamTextX, header_y + 2,
+                             std::format("TEAM {}", t + 1).c_str(),
+                             PURE_BLACK, 1);
+        mytext.write_xy_flat(kLineupPowerTextX, header_y + 2,
+                             format_lineup_power(band.power).c_str(), BLACK,
+                             1);
+
+        // Seat run x=150..306 (26-char budget): the seats on this team,
+        // whole labels only, then "+n" for what did not fit; NO SEAT when
+        // the team has none.
+        std::string run;
+        int shown = 0;
+        for (const std::string& label : band.seat_labels) {
+            const std::string candidate =
+                run.empty() ? label : run + "  " + label;
+            if (static_cast<int>(candidate.size()) > kLineupSeatRunChars)
+                break;
+            run = candidate;
+            ++shown;
+        }
+        if (band.seat_count == 0) {
+            run = "NO SEAT";
+        } else if (shown < band.seat_count) {
+            std::string more =
+                std::format(" +{}", band.seat_count - shown);
+            if (static_cast<int>(run.size() + more.size()) >
+                kLineupSeatRunChars)
+            {
+                run.resize(static_cast<std::size_t>(
+                    kLineupSeatRunChars - static_cast<int>(more.size())));
+            }
+            run += more;
+        }
+        mytext.write_xy_flat(kLineupSeatRunX, header_y + 2, run.c_str(),
+                             BLACK, 1);
+
+        // Census / diagnostics at (162, y+19). Diagnostics keep their slot
+        // in every mode (they mirror GO's refusal); otherwise a classic
+        // campaign says MAP RULES — the knobs are stored but ignored
+        // (§2.3) — and a versus one counts deployed fighters.
+        std::string census;
+        unsigned char census_color = BLACK;
+        if (band.diag != LineupTeamBand::Diag::None) {
+            census = format_lineup_census(band);
+            census_color = kBenchedTextShade;
+        } else if (!versus) {
+            census = "MAP RULES";
+            census_color = kBenchedTextShade;
+        } else {
+            census = format_lineup_census(band);
+        }
+        mytext.write_xy_flat(kLineupCensusX, y + kLineupCensusDy,
+                             census.c_str(), census_color, 1);
+    }
+}
+
+bool lineup_frame_tick(void* screen_state, int /*frame*/)
+{
+    if (screen_state == nullptr)
+        return true;
+    auto* const st = static_cast<LineupScreenState*>(screen_state);
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    if (st->last_level_id != myscreen->save_data.scen_num || st->was_reset)
+    {
+        st->was_reset = false;
+        st->last_level_id = myscreen->save_data.scen_num;
+        reload_picker_level_and_sync_settings(*myscreen, st->last_level_id);
+    }
+    return true;
+}
+
+void lineup_on_reset(void* screen_state)
+{
+    if (screen_state != nullptr)
+        static_cast<LineupScreenState*>(screen_state)->was_reset = true;
+}
+
+// Per-frame visibility/label/nav sync (the spec's Rewire program): knob
+// visibility re-asserted from the host axis, knob labels re-derived from
+// the save on BOTH surfaces (a host's cycle reaches a joiner through the
+// lobby settings landing in the save under the open menu), SPLIT EVEN/FAIR
+// gated on this machine holding a second seat, and the full graph rewired.
+void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
+{
+    if (buttons == nullptr || count < kLineupButtonCount)
+        return;
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    const bool knobs = picker_lobby_host_controls_visible();
+    std::vector<std::string> presets;
+    (void)og::script::hooks::campaign_lineup_presets(presets);
+
+    const auto write_label = [buttons](int index, std::string label) {
+        buttons[index].label = label;
+        vbutton* const live =
+            og::runtime::current_session
+                ->allbuttons_[static_cast<std::size_t>(index)];
+        if (live != nullptr)
+            live->label = std::move(label);
+    };
+
+    for (int t = 0; t < 4; ++t) {
+        const int bots_index = kLineupBotsBase + t;
+        const int level_index = kLineupLevelBase + t;
+        buttons[bots_index].hidden = !knobs;
+        buttons[level_index].hidden = !knobs;
+        write_label(bots_index,
+                    format_lineup_bots_label(
+                        save.bot_squad[static_cast<std::size_t>(t)],
+                        presets));
+        write_label(level_index,
+                    format_lineup_level_label(
+                        save.bot_level[static_cast<std::size_t>(t)]));
+        sync_button_hidden_state(buttons, bots_index);
+        sync_button_hidden_state(buttons, level_index);
+    }
+
+    const bool splits = picker_lobby_local_seat_count() >= 2;
+    buttons[kLineupSplitEvenIndex].hidden = !splits;
+    buttons[kLineupSplitFairIndex].hidden = !splits;
+    sync_button_hidden_state(buttons, kLineupSplitEvenIndex);
+    sync_button_hidden_state(buttons, kLineupSplitFairIndex);
+
+    // Full-graph rewire (every link written every frame).
+    for (int t = 0; t < 4; ++t) {
+        if (!knobs) {
+            buttons[kLineupBotsBase + t].nav = {};
+            buttons[kLineupLevelBase + t].nav = {};
+            continue;
+        }
+        buttons[kLineupBotsBase + t].nav =
+            {.up = t > 0 ? kLineupBotsBase + t - 1 : -1,
+             .down = t < 3 ? kLineupBotsBase + t + 1 : kLineupBackIndex,
+             .right = kLineupLevelBase + t};
+        buttons[kLineupLevelBase + t].nav =
+            {.up = t > 0 ? kLineupLevelBase + t - 1 : -1,
+             .down = t < 3 ? kLineupLevelBase + t + 1
+                           : kLineupFightersIndex,
+             .left = kLineupBotsBase + t};
+    }
+    const int strip_up_left = knobs ? kLineupBotsBase + 3 : -1;
+    const int strip_up_right = knobs ? kLineupLevelBase + 3 : -1;
+    buttons[kLineupBackIndex].nav =
+        {.up = strip_up_left, .right = kLineupFightersIndex};
+    buttons[kLineupFightersIndex].nav =
+        {.up = strip_up_left, .left = kLineupBackIndex,
+         .right = splits ? kLineupSplitEvenIndex : kLineupUniteIndex};
+    buttons[kLineupSplitEvenIndex].nav =
+        {.up = strip_up_right, .left = kLineupFightersIndex,
+         .right = kLineupSplitFairIndex};
+    buttons[kLineupSplitFairIndex].nav =
+        {.up = strip_up_right, .left = kLineupSplitEvenIndex,
+         .right = kLineupUniteIndex};
+    buttons[kLineupUniteIndex].nav =
+        {.up = strip_up_right,
+         .left = splits ? kLineupSplitFairIndex : kLineupFightersIndex};
+
+    ensure_highlighted_button_visible(buttons, count, highlighted_button);
+}
+
+// --- FIGHTERS list (§2.2): this machine's company, one row per slot -------
+
+// The chip column the Base Camp roster draws at (its macros carry the same
+// literal); the row body spans chip..panel inner face so a chip click also
+// cycles the team.
+constexpr int kLineupFighterBodyX = 61;
+constexpr int kLineupFighterBodyWidth =
+    kBaseCampPanelInnerRightX - kLineupFighterBodyX;
+
+#define OG_LINEUP_FIGHTER_DEP(i)                                              \
+    {.id = "fighter_dep_" #i, .label = "",                                    \
+     .x = kBaseCampDeployColumnX,                                             \
+     .y = kBaseCampRowY0 + kBaseCampRowPitch * (i),                           \
+     .w = kBaseCampDeployColumnWidth, .h = 10,                                \
+     .action = ButtonAction::MenuSpecRow,                                     \
+     .arg = kLineupFightersDeployBase + (i),                                  \
+     .nav = {.up = (i) > 0 ? kLineupFightersDeployBase + (i) - 1 : -1,        \
+             .down = (i) < 7 ? kLineupFightersDeployBase + (i) + 1           \
+                             : kLineupFightersBackIndex,                      \
+             .right = kLineupFightersBodyBase + (i)}}
+#define OG_LINEUP_FIGHTER_ROW(i)                                              \
+    {.id = "fighter_row_" #i, .label = "",                                    \
+     .x = kLineupFighterBodyX,                                                \
+     .y = kBaseCampRowY0 + kBaseCampRowPitch * (i),                           \
+     .w = kLineupFighterBodyWidth, .h = 10,                                   \
+     .action = ButtonAction::MenuSpecRow,                                     \
+     .arg = kLineupFightersBodyBase + (i),                                    \
+     .nav = {.up = (i) > 0 ? kLineupFightersBodyBase + (i) - 1 : -1,          \
+             .down = (i) < 7 ? kLineupFightersBodyBase + (i) + 1             \
+                             : kLineupFightersBackIndex,                      \
+             .left = kLineupFightersDeployBase + (i)},                        \
+     .no_draw = true}
+
+constexpr MenuButtonSpec kLineupFightersRows[] = {
+    OG_LINEUP_FIGHTER_DEP(0), OG_LINEUP_FIGHTER_DEP(1),
+    OG_LINEUP_FIGHTER_DEP(2), OG_LINEUP_FIGHTER_DEP(3),
+    OG_LINEUP_FIGHTER_DEP(4), OG_LINEUP_FIGHTER_DEP(5),
+    OG_LINEUP_FIGHTER_DEP(6), OG_LINEUP_FIGHTER_DEP(7),
+    OG_LINEUP_FIGHTER_ROW(0), OG_LINEUP_FIGHTER_ROW(1),
+    OG_LINEUP_FIGHTER_ROW(2), OG_LINEUP_FIGHTER_ROW(3),
+    OG_LINEUP_FIGHTER_ROW(4), OG_LINEUP_FIGHTER_ROW(5),
+    OG_LINEUP_FIGHTER_ROW(6), OG_LINEUP_FIGHTER_ROW(7),
+    // The zone-submenu footer split, so this screen's "back" shares no
+    // OTHER screen family's geometry (injector disambiguation rule).
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 169, .w = 44, .h = 20,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = kLineupFightersDeployBase + 7,
+             .right = kLineupFightersPrevIndex}},
+    {.id = "fighter_page_prev", .label = "PREV",
+     .x = 220, .y = 169, .w = 40, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kLineupFightersPrevIndex,
+     .nav = {.up = kLineupFightersBodyBase + 7,
+             .left = kLineupFightersBackIndex,
+             .right = kLineupFightersNextIndex},
+     .hidden = true},
+    {.id = "fighter_page_next", .label = "NEXT",
+     .x = 270, .y = 169, .w = 40, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kLineupFightersNextIndex,
+     .nav = {.up = kLineupFightersBodyBase + 7,
+             .left = kLineupFightersPrevIndex},
+     .hidden = true},
+};
+
+#undef OG_LINEUP_FIGHTER_DEP
+#undef OG_LINEUP_FIGHTER_ROW
+
+static_assert(static_cast<int>(std::size(kLineupFightersRows))
+                  == kLineupFightersButtonCount,
+              "FIGHTERS spec ordinals are the layout contract");
+
+void lineup_fighters_show_toast(LineupFightersScreenState& state,
+                                std::string text)
+{
+    if (text.size() > static_cast<std::size_t>(kLineupTitleCensusChars))
+        text.resize(static_cast<std::size_t>(kLineupTitleCensusChars));
+    TRACE("lineup", "toast %s", text.c_str());
+    state.toast = std::move(text);
+    state.toast_until_ms = lineup_now_ms() + 2500;
+}
+
+// Resolve a display row to this save's slot; -1 when the row is empty.
+int lineup_fighters_row_slot(const LineupFightersScreenState& state, int r)
+{
+    const int display = state.page.first_index() + r;
+    if (display < 0 ||
+        display >= static_cast<int>(state.slots.size()))
+    {
+        return -1;
+    }
+    return state.slots[static_cast<std::size_t>(display)];
+}
+
+void lineup_fighters_draw_background(void* /*screen_state*/)
+{
+    picker_backdrop_draw_background(nullptr);
+    // The Base Camp roster panel, verbatim: the rows reuse its grid.
+    og::runtime::current_session->myscreen_->draw_button(8, 28, 311, 160, 2,
+                                                         1);
+}
+
+void lineup_fighters_draw_content(void* screen_state)
+{
+    const LineupFightersScreenState* st =
+        static_cast<const LineupFightersScreenState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+    text& mytext = game->text_normal;
+    const SaveData& save = game->save_data;
+
+    mytext.write_xy(10, 8, "FIGHTERS", WHITE, 1);
+    if (st != nullptr && !st->toast.empty() &&
+        lineup_now_ms() < st->toast_until_ms)
+    {
+        std::string toast = st->toast;
+        const int x =
+            kLineupPanelX2 - static_cast<int>(toast.size()) * 6;
+        mytext.write_xy(x, 8, toast.c_str(), YELLOW, 1);
+    }
+
+    // Column headers on the Base Camp grid; POWER takes the EXP field.
+    mytext.write_xy(kBaseCampDeployHeaderX, 33, "DEPLOY", BLACK, 1);
+    mytext.write_xy(kBaseCampTeamHeaderX, 33, "TEAM", BLACK, 1);
+    mytext.write_xy(kBaseCampNameColumnX, 33, "NAME", BLACK, 1);
+    mytext.write_xy(kBaseCampSoloClassColumnX, 33, "CLASS", BLACK, 1);
+    mytext.write_xy(kBaseCampSoloLevelColumnX, 33, "LV", BLACK, 1);
+    mytext.write_xy(kBaseCampSoloExpColumnX, 33, "POWER", BLACK, 1);
+
+    const int first = st != nullptr ? st->page.first_index() : 0;
+    const int end = st != nullptr ? st->page.end_index() : 0;
+    const int visible = std::min(std::max(0, end - first),
+                                 kLineupFightersRowsPerPage);
+    if (visible <= 0) {
+        mytext.write_xy_center(160, kBaseCampRowY0 +
+                                        kLineupFightersRowsPerPage * 7 - 9,
+                               static_cast<unsigned char>(ORANGE_START),
+                               "%s", "NO FIGHTERS - HIRE AT BASE CAMP");
+    }
+    const bool can_deploy = st == nullptr || st->zone == nullptr ||
+        st->zone->roster().can_deploy;
+    const LineupPowerFn power = lineup_active_power_fn();
+    for (int r = 0; r < visible; ++r) {
+        const int slot = lineup_fighters_row_slot(*st, r);
+        const guy* member = (slot >= 0 && slot < MAX_TEAM_SIZE)
+            ? save.team_list[static_cast<std::size_t>(slot)].get()
+            : nullptr;
+        if (member == nullptr)
+            continue;
+        const int y = kBaseCampRowY0 + kBaseCampRowPitch * r;
+        const bool deployed = member->deployed;
+        const unsigned char status_color = deployed
+            ? static_cast<unsigned char>(BLACK)
+            : kBenchedTextShade;
+        const unsigned char identity_color = deployed
+            ? static_cast<unsigned char>(PURE_BLACK)
+            : kBenchedTextShade;
+
+        // With deploy toggles off (zone capability) the state still reads
+        // as the X/- glyph — drawn ink, no affordance (Base Camp parity).
+        if (!can_deploy) {
+            mytext.write_xy(kBaseCampDeployGlyphX, y + 2,
+                            deployed ? "X" : "-", status_color, 1);
+        }
+        if (base_camp_row_deploy_locked(
+                st != nullptr ? st->zone : nullptr, *member))
+        {
+            draw_base_camp_deploy_padlock(*game, y);
+        }
+
+        // The team chip (the ONE team-number widget); the row body cycles
+        // it through the shared editable predicate.
+        const int team = std::clamp(static_cast<int>(member->teamnum), 0,
+                                    static_cast<int>(SCORE_TEAM_COUNT) - 1);
+        game->fastbox(kLineupFighterBodyX, y, 10, 10, BLACK);
+        game->fastbox(kLineupFighterBodyX + 1, y + 1, 8, 8,
+                      static_cast<unsigned char>(team * 16 + 40));
+        const char team_number[] = {static_cast<char>('1' + team), '\0'};
+        mytext.write_xy_flat(kLineupFighterBodyX + (team == 0 ? 4 : 3),
+                             y + 3, team_number, PURE_BLACK, 1);
+
+        const BaseCampRowText row = format_base_camp_row(*member);
+        mytext.write_xy_flat(kBaseCampNameColumnX, y + 2, row.name.c_str(),
+                             identity_color, 1);
+        mytext.write_xy_flat(kBaseCampSoloClassColumnX, y + 2,
+                             row.cls.c_str(), identity_color, 1);
+        draw_base_camp_family_swatch(
+            *game,
+            kBaseCampSoloClassColumnX + mytext.query_width(row.cls) +
+                kBaseCampFamilySwatchGap,
+            y, member->family);
+        mytext.write_xy(kBaseCampSoloLevelColumnX, y + 2,
+                        row.level.c_str(), status_color, 1);
+
+        // POWER where EXP sat: the campaign metric, "--" without one.
+        std::string power_text = "    --";
+        if (power) {
+            const std::optional<long long> value = power(*member);
+            if (value.has_value())
+                power_text = std::format("{:>6}", *value);
+        }
+        if (power_text.size() > 7)
+            power_text.resize(7);
+        mytext.write_xy(kBaseCampSoloExpColumnX, y + 2, power_text.c_str(),
+                        status_color, 1);
+    }
+
+    // Footer: the keyboard contract (FIRE on the row cycles the team, the
+    // box benches/deploys) and the page indicator beside the pagers.
+    const auto strip_text = [game](int x, int y, const std::string& value,
+                                   unsigned char color) {
+        if (value.empty())
+            return;
+        const int width = static_cast<int>(value.size()) * 6;
+        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4),
+                               8, PURE_BLACK, 150);
+        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
+    };
+    strip_text(60, 175, "ROW: TEAM  BOX: DEPLOY", WHITE);
+    if (st != nullptr && st->page.multi_page())
+        strip_text(196, 175, st->page.indicator(), WHITE);
+}
+
+bool lineup_fighters_frame_tick(void* screen_state, int /*frame*/)
+{
+    if (screen_state == nullptr)
+        return true;
+    auto* const st = static_cast<LineupFightersScreenState*>(screen_state);
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    if (st->last_level_id != myscreen->save_data.scen_num || st->was_reset)
+    {
+        st->was_reset = false;
+        st->last_level_id = myscreen->save_data.scen_num;
+        reload_picker_level_and_sync_settings(*myscreen, st->last_level_id);
+    }
+    // The lobby poll can rewrite the save under the open screen; the row
+    // window re-derives per tick (the Base Camp §3.3 refresh rule).
+    lineup_fighters_refresh_rows(*st);
+    return true;
+}
+
+void lineup_fighters_on_reset(void* screen_state)
+{
+    if (screen_state == nullptr)
+        return;
+    auto* const st = static_cast<LineupFightersScreenState*>(screen_state);
+    st->was_reset = true;
+    lineup_fighters_refresh_rows(*st);
+}
+
+void lineup_fighters_rewire(button* buttons, int count,
+                            int& highlighted_button)
+{
+    if (buttons == nullptr || count < kLineupFightersButtonCount)
+        return;
+    LineupFightersScreenState* const st = g_lineup_fighters_state;
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    const int first = st != nullptr ? st->page.first_index() : 0;
+    const int end = st != nullptr ? st->page.end_index() : 0;
+    const int visible = std::min(std::max(0, end - first),
+                                 kLineupFightersRowsPerPage);
+    const bool can_deploy = st == nullptr || st->zone == nullptr ||
+        st->zone->roster().can_deploy;
+    const bool pagers = st != nullptr && st->page.multi_page();
+
+    for (int r = 0; r < kLineupFightersRowsPerPage; ++r) {
+        const bool on = r < visible;
+        button& dep = buttons[kLineupFightersDeployBase + r];
+        button& body = buttons[kLineupFightersBodyBase + r];
+        dep.hidden = !on || !can_deploy;
+        body.hidden = !on;
+
+        const guy* member = nullptr;
+        if (on && st != nullptr) {
+            const int slot = lineup_fighters_row_slot(*st, r);
+            member = (slot >= 0 && slot < MAX_TEAM_SIZE)
+                ? save.team_list[static_cast<std::size_t>(slot)].get()
+                : nullptr;
+        }
+        // The §2.5 deploy glyph on BOTH surfaces, so a toggle shows this
+        // frame.
+        dep.label =
+            (!dep.hidden && member != nullptr && member->deployed) ? "X"
+                                                                   : "";
+        vbutton* const live = og::runtime::current_session->allbuttons_
+            [static_cast<std::size_t>(kLineupFightersDeployBase + r)];
+        if (live != nullptr)
+            live->label = dep.label;
+        sync_button_hidden_state(buttons, kLineupFightersDeployBase + r);
+        sync_button_hidden_state(buttons, kLineupFightersBodyBase + r);
+
+        const int last = visible - 1;
+        dep.nav = {.up = r > 0 ? kLineupFightersDeployBase + r - 1 : -1,
+                   .down = r < last ? kLineupFightersDeployBase + r + 1
+                                    : kLineupFightersBackIndex,
+                   .right = kLineupFightersBodyBase + r};
+        body.nav = {.up = r > 0 ? kLineupFightersBodyBase + r - 1 : -1,
+                    .down = r < last ? kLineupFightersBodyBase + r + 1
+                                     : kLineupFightersBackIndex,
+                    .left = can_deploy ? kLineupFightersDeployBase + r
+                                       : -1};
+    }
+
+    buttons[kLineupFightersPrevIndex].hidden = !pagers;
+    buttons[kLineupFightersNextIndex].hidden = !pagers;
+    sync_button_hidden_state(buttons, kLineupFightersPrevIndex);
+    sync_button_hidden_state(buttons, kLineupFightersNextIndex);
+
+    const int last_dep = visible > 0
+        ? (can_deploy ? kLineupFightersDeployBase + visible - 1
+                      : kLineupFightersBodyBase + visible - 1)
+        : -1;
+    const int last_body =
+        visible > 0 ? kLineupFightersBodyBase + visible - 1 : -1;
+    buttons[kLineupFightersBackIndex].nav =
+        {.up = last_dep,
+         .right = pagers ? kLineupFightersPrevIndex : -1};
+    buttons[kLineupFightersPrevIndex].nav =
+        {.up = last_body, .left = kLineupFightersBackIndex,
+         .right = kLineupFightersNextIndex};
+    buttons[kLineupFightersNextIndex].nav =
+        {.up = last_body, .left = kLineupFightersPrevIndex};
+
+    ensure_highlighted_button_visible(buttons, count, highlighted_button);
+}
+
+Sint32 lineup_fighters_on_spec_row(int row, void* screen_state)
+{
+    auto* const st =
+        static_cast<LineupFightersScreenState*>(screen_state);
+    if (st == nullptr)
+        return MENU_OK;
+    screen* const game = og::runtime::current_session->myscreen_;
+    SaveData& save = game->save_data;
+
+    if (row == kLineupFightersPrevIndex ||
+        row == kLineupFightersNextIndex)
+    {
+        if (st->page.step(row == kLineupFightersNextIndex ? 1 : -1))
+            TRACE("lineup", "fighters_page %d", st->page.page);
+        return MENU_OK;
+    }
+
+    int r = -1;
+    bool is_deploy = false;
+    if (row >= kLineupFightersDeployBase &&
+        row < kLineupFightersDeployBase + kLineupFightersRowsPerPage)
+    {
+        r = row - kLineupFightersDeployBase;
+        is_deploy = true;
+    }
+    else if (row >= kLineupFightersBodyBase &&
+             row < kLineupFightersBodyBase + kLineupFightersRowsPerPage)
+    {
+        r = row - kLineupFightersBodyBase;
+    }
+    else
+    {
+        return MENU_OK;
+    }
+    const int slot = lineup_fighters_row_slot(*st, r);
+    if (slot < 0 || slot >= MAX_TEAM_SIZE ||
+        save.team_list[static_cast<std::size_t>(slot)] == nullptr)
+    {
+        return MENU_OK;
+    }
+
+    if (is_deploy) {
+        // The Base Camp deploy gates, in its order: capability, ownership,
+        // campaign lock (refuses the toggle-ON with the reason as a toast).
+        // Refusals here are TOASTS, never modals: this screen is open to
+        // networked joiners, and a modal event loop does not poll the
+        // lobby (§2.3).
+        if (st->zone != nullptr && !st->zone->roster().can_deploy)
+            return MENU_OK;
+        if (!picker_lobby_save_slot_editable(slot)) {
+            TRACE("lineup", "deploy_slot_locked slot=%d", slot);
+            lineup_fighters_show_toast(*st, "SLOT LOCKED");
+            return MENU_OK;
+        }
+        if (st->zone != nullptr &&
+            !save.team_list[static_cast<std::size_t>(slot)]->deployed)
+        {
+            const og::script::hooks::CampaignRosterLock* lock =
+                st->zone->deploy_lock_for_tag(
+                    save.team_list[static_cast<std::size_t>(slot)]
+                        ->campaign_tag);
+            if (lock != nullptr) {
+                TRACE("lineup", "deploy_locked slot=%d", slot);
+                if (!lock->reason.empty())
+                    lineup_fighters_show_toast(*st, lock->reason);
+                return MENU_OK;
+            }
+        }
+        [[maybe_unused]] const bool deployed = toggle_deploy_slot(save, slot);
+        TRACE("lineup", "deploy slot=%d %s", slot,
+              deployed ? "on" : "off");
+        picker_base_camp_after_roster_mutation();
+        lineup_fighters_refresh_rows(*st);
+        return MENU_OK;
+    }
+
+    // Row body / FIRE: cycle the fighting team through the ONE predicate
+    // this control shares with the Base Camp chip (§2.2). No networked
+    // bail — the rows come from the OWN save, and repairing a colour
+    // mismatch between a seat and its company is what this list is for.
+    if (!lineup_fighter_team_editable(save, slot, st->zone,
+                                     /*assign_mode=*/false))
+    {
+        if (!picker_lobby_save_slot_editable(slot)) {
+            TRACE("lineup", "team_slot_locked slot=%d", slot);
+            lineup_fighters_show_toast(*st, "SLOT LOCKED");
+        }
+        return MENU_OK;
+    }
+    const short team = cycle_guy_team(save, slot, 1);
+    if (team >= 0) {
+        TRACE("lineup", "fighter_team slot=%d team=%d", slot,
+              static_cast<int>(team));
+        picker_base_camp_after_roster_mutation();
+        lineup_fighters_refresh_rows(*st);
+    }
+    return MENU_OK;
+}
+
+} // namespace
+
+const MenuScreenSpec& lineup_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "lineup_menu",
+        .rows = kLineupMenuRows,
+        .row_count = static_cast<int>(std::size(kLineupMenuRows)),
+        .buttons_accessor = &picker_lineup_buttons,
+        .count_accessor = &picker_lineup_button_count,
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &lineup_menu_rewire},
+        // A joiner parked here still follows the host's GO.
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = kLineupBackIndex,
+        .polls_lobby = true,
+        .draw_background = &lineup_draw_background,
+        .draw_content = &lineup_draw_content,
+        .frame_tick = &lineup_frame_tick,
+        .on_reset = &lineup_on_reset,
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
+const MenuScreenSpec& lineup_fighters_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "lineup_fighters",
+        .rows = kLineupFightersRows,
+        .row_count = static_cast<int>(std::size(kLineupFightersRows)),
+        .buttons_accessor = &picker_lineup_fighters_buttons,
+        .count_accessor = &picker_lineup_fighters_button_count,
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &lineup_fighters_rewire},
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = kLineupFightersBackIndex,
+        .polls_lobby = true,
+        .draw_background = &lineup_fighters_draw_background,
+        .draw_content = &lineup_fighters_draw_content,
+        .frame_tick = &lineup_fighters_frame_tick,
+        .on_reset = &lineup_fighters_on_reset,
+        .on_spec_row = &lineup_fighters_on_spec_row,
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
+void install_lineup_state_for_screen(LineupScreenState* state)
+{
+    g_lineup_state = state;
+}
+
+void install_lineup_fighters_state_for_screen(
+    LineupFightersScreenState* state)
+{
+    g_lineup_fighters_state = state;
+}
+
+void lineup_fighters_refresh_rows(LineupFightersScreenState& state)
+{
+    state.slots.clear();
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (save.team_list[static_cast<std::size_t>(i)] != nullptr)
+            state.slots.push_back(i);
+    }
+    const int old_page = state.page.page;
+    state.page = PageModel::make(static_cast<int>(state.slots.size()),
+                                 kLineupFightersRowsPerPage);
+    state.page.page =
+        std::clamp(old_page, 0, state.page.page_count() - 1);
+}
+
+void lineup_show_toast(std::string text)
+{
+    if (text.size() > static_cast<std::size_t>(kLineupTitleCensusChars))
+        text.resize(static_cast<std::size_t>(kLineupTitleCensusChars));
+    TRACE("lineup", "toast %s", text.c_str());
+    if (g_lineup_state == nullptr)
+        return;
+    g_lineup_state->toast = std::move(text);
+    g_lineup_state->toast_until_ms = lineup_now_ms() + 2500;
+}
+
 // G4 registry: the one-lookup answer to "which system owns this screen"
 // while legacy loops remain. Update the row when a screen migrates (and the
 // host table in docs/menu-engine.md with it).
@@ -7308,6 +8195,14 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::CampaignZoneSubmenu,
                 {.kind = Kind::Engine,
                  .spec = &zone_submenu_menu_screen_spec()});
+            // LINEUP + its FIGHTERS list (docs/lineup-design.md §2):
+            // engine-hosted from birth, so the G5 remote-start and G13
+            // shape sweeps cover them automatically.
+            set(MenuScreenId::Lineup,
+                {.kind = Kind::Engine, .spec = &lineup_menu_screen_spec()});
+            set(MenuScreenId::LineupFighters,
+                {.kind = Kind::Engine,
+                 .spec = &lineup_fighters_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];
@@ -7581,6 +8476,78 @@ Sint32 create_scenario_menu(Sint32 arg1)
     const Sint32 retvalue =
         og::ui::run_menu_screen(og::ui::scenario_menu_screen_spec(), &guard);
     og::runtime::current_session->myscreen_->clearbuffer();
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+        return retvalue;
+    return MENU_REDRAW;
+}
+
+button* picker_lineup_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::lineup_menu_screen_spec(),
+                                     pks().lineup_buttons);
+    return pks().lineup_buttons.data();
+}
+
+int picker_lineup_button_count()
+{
+    return static_cast<int>(pks().lineup_buttons.size());
+}
+
+button* picker_lineup_fighters_buttons()
+{
+    og::ui::materialize_menu_buttons(
+        og::ui::lineup_fighters_menu_screen_spec(),
+        pks().lineup_fighters_buttons);
+    return pks().lineup_fighters_buttons.data();
+}
+
+int picker_lineup_fighters_button_count()
+{
+    return static_cast<int>(pks().lineup_fighters_buttons.size());
+}
+
+// The LINEUP screen (docs/lineup-design.md §2), engine-hosted from birth.
+// Entry/exit buffer clears and the exit fold follow create_scenario_menu:
+// a remote start propagates so the parent screens exit into GO; BACK's own
+// MENU_EXIT folds into MENU_REDRAW to keep SCENARIO running. The reload
+// cursor starts at the current level (the parent already loaded it).
+Sint32 create_lineup_menu(Sint32 arg1)
+{
+    (void)arg1;
+    og::runtime::current_session->myscreen_->clearbuffer();
+    og::ui::LineupScreenState state;
+    state.last_level_id =
+        og::runtime::current_session->myscreen_->save_data.scen_num;
+    og::ui::install_lineup_state_for_screen(&state);
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::lineup_menu_screen_spec(), &state);
+    og::ui::install_lineup_state_for_screen(nullptr);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+        return retvalue;
+    return MENU_REDRAW;
+}
+
+// The FIGHTERS list (§2.2), opened from LINEUP's action strip. The zone
+// session is fetched once per entry so the campaign's roster capabilities
+// (can_team / can_deploy / deploy locks) gate this surface exactly as they
+// gate the Base Camp.
+Sint32 open_lineup_fighters(Sint32 arg1)
+{
+    (void)arg1;
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    myscreen->clearbuffer();
+    og::ui::LineupFightersScreenState state;
+    state.last_level_id = myscreen->save_data.scen_num;
+    og::ui::CampaignZoneSession zone(myscreen->save_data);
+    zone.fetch();
+    state.zone = &zone;
+    og::ui::lineup_fighters_refresh_rows(state);
+    og::ui::install_lineup_fighters_state_for_screen(&state);
+    const Sint32 retvalue = og::ui::run_menu_screen(
+        og::ui::lineup_fighters_menu_screen_spec(), &state);
+    og::ui::install_lineup_fighters_state_for_screen(nullptr);
+    myscreen->clearbuffer();
     if ((retvalue & MENU_EXIT) && team_build_start_selected())
         return retvalue;
     return MENU_REDRAW;

@@ -15,6 +15,7 @@ legacy, or retired.
 | Main, Game Settings, Display, Effects, Seat Settings | Runtime |
 | Difficulty (opened from the Base Camp strip) | Runtime |
 | Base Camp, Hire, Train, Progress, View Level, Scenario | Runtime |
+| Lineup, Fighters list (docs/lineup-design.md §2) | Runtime |
 | Campaign zone submenu (the Base Camp book pages) | Runtime |
 | Company List, Backups, company name entry | Runtime |
 | Networking | Legacy `SdlPickerClient` loop |

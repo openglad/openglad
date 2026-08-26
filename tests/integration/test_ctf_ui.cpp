@@ -216,13 +216,14 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
         EXPECT_EQ("scenario", row[kCreateMenuScenarioIndex].id) << campaign;
         EXPECT_FALSE(row[kCreateMenuScenarioIndex].hidden) << campaign;
         // VIEW LEVEL and the match-settings band live in the SCENARIO
-        // subscreen; the retired MATCHUP door's ordinal is a parked spare.
+        // subscreen; the retired MATCHUP door's ordinal is the LINEUP door
+        // now (docs/lineup-design.md §2) — never gated, any campaign.
         button* scenario = picker_scenariomenu_buttons();
         ASSERT_EQ(kScenarioMenuButtonCount,
                   picker_scenariomenu_button_count());
-        EXPECT_EQ("scenario_spare", scenario[kScenarioMenuSpareIndex].id)
+        EXPECT_EQ("lineup", scenario[kScenarioMenuLineupIndex].id)
             << campaign;
-        EXPECT_TRUE(scenario[kScenarioMenuSpareIndex].hidden) << campaign;
+        EXPECT_FALSE(scenario[kScenarioMenuLineupIndex].hidden) << campaign;
         EXPECT_EQ("view_scenario",
                   scenario[kScenarioMenuViewScenarioIndex].id) << campaign;
         EXPECT_EQ("ctf_teams", scenario[kScenarioMenuCtfTeamsIndex].id)

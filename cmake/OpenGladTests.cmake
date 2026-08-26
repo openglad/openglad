@@ -188,6 +188,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_zone_ui.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_lineup_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_mode_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_tower_run.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_pins.cpp
@@ -626,6 +627,7 @@ og_add_test_group(og_test_matchup FILES
     test_ctf_ui.cpp
     test_mode_ui.cpp
     test_campaign_zone_ui.cpp
+    test_lineup_ui.cpp
 )
 target_include_directories(og_test_parity PRIVATE
     ${CMAKE_SOURCE_DIR}/tests/parity
@@ -1215,6 +1217,15 @@ set_tests_properties(og_test_menu_ui PROPERTIES
 # threads, so isolate the combined ~80s binary and leave ample CI
 # headroom just as we do for the older menu UI group.
 set_tests_properties(og_test_basecamp PROPERTIES
+    RUN_SERIAL TRUE
+    TIMEOUT 420
+)
+# The matchup group gained the LINEUP flows (docs/lineup-design.md §2):
+# seven more injector-driven picker_main runs whose waits are wall-clock
+# settles, pushing the standalone binary to ~174s against the 180s group
+# default. Same treatment as og_test_menu_ui / og_test_basecamp above:
+# isolate it and give it the standard heavy-flow budget in every lane.
+set_tests_properties(og_test_matchup PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
 )

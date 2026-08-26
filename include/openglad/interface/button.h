@@ -185,6 +185,16 @@ Sint32 change_ctf_troops();
 Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
 Sint32 view_scenario_page_flip(Sint32 step);   // PREV/NEXT inside the viewer
 Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/viewer/progress subscreen
+// LINEUP (docs/lineup-design.md §2): the four-band team overview opened from
+// SCENARIO, its two per-team bot knob cyclers, the FIGHTERS list door and
+// the three SPLIT actions. Knob writes go through og::sim::clamp_bot_squad /
+// clamp_bot_level, refresh BOTH label surfaces, and broadcast via
+// picker_lobby_sync_settings_from_save (the y=140 cycler recipe).
+Sint32 create_lineup_menu(Sint32 arg1);
+Sint32 change_lineup_bots(Sint32 team);
+Sint32 change_lineup_level(Sint32 team);
+Sint32 open_lineup_fighters(Sint32 arg1);
+Sint32 lineup_split_action(Sint32 mode); // 0=EVEN 1=FAIR 2=ALL TO 1
 // The base-camp READY twin (§2.6). The engine label/color pass re-derives
 // its surfaces every frame, so this writes no button label itself.
 Sint32 teams_toggle_ready();
@@ -398,6 +408,20 @@ enum class ButtonAction : Sint32
     // dispatch, which calls og::ui::run_campaign_zone_submenu with the
     // clicked row's own page id.)
     ToggleCrossControl = 106,
+    // LINEUP (docs/lineup-design.md §2): values 107..119 are reserved for
+    // the LINEUP/FIGHTERS screens (WP-E); the Networking three-mode UI
+    // (WP-F) takes 120..125 concurrently — do not hand either range to
+    // anything else. The FIGHTERS list itself dispatches through
+    // MenuSpecRow (101), so only the door, the eight knob cyclers' two
+    // actions, and the action strip burn ids here.
+    OpenLineup = 107,          // SCENARIO door -> the LINEUP screen
+    CycleLineupBots = 108,     // arg = team 0..3 (save.bot_squad[t])
+    CycleLineupLevel = 109,    // arg = team 0..3 (save.bot_level[t])
+    OpenLineupFighters = 110,  // LINEUP strip -> the FIGHTERS list
+    LineupSplitEven = 111,     // deal deployed fighters round-robin
+    LineupSplitFair = 112,     // snake draft by power (level fallback)
+    LineupUnite = 113,         // ALL TO 1 (lowest local seated team)
+    // 114..119 reserved for LINEUP follow-ups (docs/lineup-design.md).
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

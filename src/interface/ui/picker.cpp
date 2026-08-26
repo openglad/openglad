@@ -22,6 +22,8 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pal32.h>
@@ -2893,7 +2895,7 @@ Sint32 change_teamnum(Sint32 arg)
    // Change the team number of the current guy. TRAIN and Base Camp share the
    // saved roster member as their source of truth: the Base Camp TEAM chip
    // already cycles that member directly, so TRAIN must not leave its visible
-   // "Playing on Team" choice stranded in the session's temporary stat copy.
+   // "Team N" choice stranded in the session's temporary stat copy.
    Sint32 current_team;
 
    // What is our current team number?
@@ -2934,7 +2936,7 @@ Sint32 change_teamnum(Sint32 arg)
 
    // Update our button display
    if (og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = std::format("Playing on Team {}", current_team + 1);
+       og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = std::format("Team {}", current_team + 1);
    if (roster_changed)
        picker_base_camp_after_roster_mutation();
    //allbuttons[18]->do_outline = 1;
@@ -3052,6 +3054,219 @@ Sint32 change_ctf_troops()
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
+
+   return MENU_OK;
+}
+
+// The seat picture every LINEUP consumer reads (see picker_sdl_defs.h): the
+// replicated lobby when networked; ALL listed seats local — synthesized
+// from the save when the local lobby has not initialized — otherwise.
+LineupSeatView picker_lineup_seat_view()
+{
+   LineupSeatView view;
+   const bool networked = picker_lobby_is_networked();
+   view.players = picker_lobby_players();
+   if (view.players.empty() && !networked)
+   {
+       view.players = og::ui::synthesize_local_lobby_players(
+           og::runtime::current_session->myscreen_->save_data);
+   }
+   std::sort(view.players.begin(), view.players.end(),
+             [](const og::sim::LobbyPlayer& lhs,
+                const og::sim::LobbyPlayer& rhs) {
+                 return lhs.player_index < rhs.player_index;
+             });
+   if (networked)
+   {
+       view.local_indices = picker_lobby_local_player_indices();
+   }
+   else
+   {
+       for (const og::sim::LobbyPlayer& seat : view.players)
+           view.local_indices.push_back(seat.player_index);
+   }
+   return view;
+}
+
+// Refresh a LINEUP knob's label in both surfaces (the SCENARIO twin above).
+static void refresh_lineup_button_label(int button_index,
+                                        const std::string& label)
+{
+   if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] != nullptr)
+       og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->label = label;
+   if (static_cast<int>(pks().lineup_buttons.size()) > button_index)
+       pks().lineup_buttons[static_cast<std::size_t>(button_index)].label = label;
+}
+
+// LINEUP per-team bot knobs (docs/lineup-design.md §2.2-§2.3, §3.1): pure
+// cycler, clamp helper, BOTH label surfaces, lobby broadcast + autosave —
+// the y=140 change_ctf_* recipe with the knob stored per team. The knobs
+// are hidden for joiners, so a stale dispatch carries the host gate itself
+// (popup + TRACE, no local cycle); a classic campaign's dimmed rows are
+// engine-inert, and the belt below keeps a stale dispatch a no-op.
+Sint32 change_lineup_bots(Sint32 team)
+{
+   if (team < 0 || team >= 4)
+       return MENU_OK;
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   if (!picker_lobby_host_controls_visible())
+   {
+       TRACE("lineup", "bots_denied");
+       popup_dialog("HOST CONTROLS THIS SETTING",
+                    "Only the host may\nchange bot squads");
+       return MENU_OK;
+   }
+   if (!og::ui::is_versus_campaign(save))
+       return MENU_OK;
+
+   std::vector<std::string> presets;
+   (void)og::script::hooks::campaign_lineup_presets(presets);
+   const std::size_t t = static_cast<std::size_t>(team);
+   short next = og::ui::cycle_lineup_bots(
+       save.bot_squad[t], static_cast<int>(presets.size()), 1);
+   if (next == 1)
+   {
+       // §2.3: BOTS: NONE on a team that still has a seat or a deployed
+       // fighter is refused with a toast — LINEUP never reseats anyone.
+       // The wheel skips over NONE so the presets stay reachable.
+       const LineupSeatView view = picker_lineup_seat_view();
+       const std::array<og::ui::LineupTeamBand, 4> bands =
+           og::ui::build_lineup_bands(save, view.players,
+                                      view.local_indices,
+                                      picker_lobby_is_networked(), {});
+       const og::ui::LineupTeamBand& band = bands[t];
+       if (band.has_seat || band.fighter_count > 0)
+       {
+           TRACE("lineup", "bots_none_refused team=%d", static_cast<int>(team));
+           og::ui::lineup_show_toast(
+               band.has_seat
+                   ? std::format("TEAM {} HAS PLAYERS", team + 1)
+                   : std::format("TEAM {} HAS FIGHTERS", team + 1));
+           next = og::ui::cycle_lineup_bots(
+               next, static_cast<int>(presets.size()), 1);
+       }
+   }
+   save.bot_squad[t] = og::sim::clamp_bot_squad(next);
+   TRACE("lineup", "bots team=%d squad=%d", static_cast<int>(team),
+         static_cast<int>(save.bot_squad[t]));
+   refresh_lineup_button_label(
+       kLineupBotsBase + team,
+       og::ui::format_lineup_bots_label(save.bot_squad[t], presets));
+
+   picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
+
+   return MENU_OK;
+}
+
+Sint32 change_lineup_level(Sint32 team)
+{
+   if (team < 0 || team >= 4)
+       return MENU_OK;
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   if (!picker_lobby_host_controls_visible())
+   {
+       TRACE("lineup", "level_denied");
+       popup_dialog("HOST CONTROLS THIS SETTING",
+                    "Only the host may\nchange bot levels");
+       return MENU_OK;
+   }
+   if (!og::ui::is_versus_campaign(save))
+       return MENU_OK;
+
+   const std::size_t t = static_cast<std::size_t>(team);
+   save.bot_level[t] = og::sim::clamp_bot_level(
+       og::ui::cycle_lineup_level(save.bot_level[t], 1));
+   TRACE("lineup", "level team=%d level=%d", static_cast<int>(team),
+         static_cast<int>(save.bot_level[t]));
+   refresh_lineup_button_label(
+       kLineupLevelBase + team,
+       og::ui::format_lineup_level_label(save.bot_level[t]));
+
+   picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
+
+   return MENU_OK;
+}
+
+// The three SPLIT actions (docs/lineup-design.md §5): pure plan over the
+// teams that have a seat on THIS machine (seats sorted by player_index),
+// applied through set_guy_team, then the standard roster-mutation tail.
+// Locked slots stay where they are and the toast says so.
+Sint32 lineup_split_action(Sint32 mode)
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   const LineupSeatView view = picker_lineup_seat_view();
+   std::vector<std::uint8_t> locals = view.local_indices;
+   std::sort(locals.begin(), locals.end());
+   std::vector<short> seat_teams;
+   for (const std::uint8_t local : locals)
+   {
+       for (const og::sim::LobbyPlayer& seat : view.players)
+       {
+           if (seat.player_index == local)
+           {
+               seat_teams.push_back(seat.team);
+               break;
+           }
+       }
+   }
+   if (seat_teams.empty())
+   {
+       TRACE("lineup", "split_no_seat mode=%d", static_cast<int>(mode));
+       og::ui::lineup_show_toast("NO LOCAL SEAT");
+       return MENU_OK;
+   }
+
+   const og::ui::LineupSplit split = mode == 0
+       ? og::ui::LineupSplit::Even
+       : (mode == 1 ? og::ui::LineupSplit::Fair
+                    : og::ui::LineupSplit::AllToFirst);
+   og::ui::LineupPowerFn power;
+   if (og::script::hooks::campaign_lineup_registered())
+       power = &og::ui::lineup_power_for_guy;
+   const auto editable = [&save](int slot) {
+       return og::ui::lineup_fighter_team_editable(
+           save, slot, static_cast<og::ui::CampaignZoneSession*>(nullptr),
+           /*assign_mode=*/false);
+   };
+   const og::ui::LineupSplitPlan plan =
+       og::ui::split_company(save, seat_teams, split, power, editable);
+   const int moved = og::ui::apply_split(save, plan.moves);
+   TRACE("lineup", "split mode=%d moved=%d locked=%d",
+         static_cast<int>(mode), moved, plan.locked);
+   if (moved > 0)
+       picker_base_camp_after_roster_mutation();
+
+   // The distinct seated teams, ascending — split_company's own domain.
+   std::vector<short> distinct;
+   for (const short seat_team : seat_teams)
+   {
+       if (seat_team < 0 || seat_team >= 4)
+           continue;
+       if (std::find(distinct.begin(), distinct.end(), seat_team) ==
+           distinct.end())
+       {
+           distinct.push_back(seat_team);
+       }
+   }
+   std::sort(distinct.begin(), distinct.end());
+   if (!distinct.empty() &&
+       (split == og::ui::LineupSplit::AllToFirst || distinct.size() == 1))
+   {
+       // ALL TO 1 (a single seated team makes every mode this action):
+       // name the team everyone marched to.
+       std::string toast =
+           std::format("ALL FIGHTERS TO TEAM {}", distinct.front() + 1);
+       if (plan.locked > 0)
+           toast += std::format(" ({} LOCKED)", plan.locked);
+       og::ui::lineup_show_toast(std::move(toast));
+   }
+   else if (plan.locked > 0)
+   {
+       og::ui::lineup_show_toast(
+           std::format("{} LOCKED SLOTS KEPT", plan.locked));
+   }
 
    return MENU_OK;
 }

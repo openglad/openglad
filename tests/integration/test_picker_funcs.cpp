@@ -793,7 +793,7 @@ TEST(PickerFuncs, how_many_with_team)
         button_action_id(ButtonAction::ChangeTeam), 1))
         << "the button dispatcher should route team changes";
     ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum) << "team should increment";
-    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label).find("Playing on Team ") == 0) << "team label should be updated";
+    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label).find("Team ") == 0) << "team label should be updated";
 
     og::runtime::current_session->current_team_num_ = 0;
     ASSERT_EQ(4, (int)dispatcher.do_call(

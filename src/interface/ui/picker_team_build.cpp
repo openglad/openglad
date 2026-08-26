@@ -311,9 +311,9 @@ void ensure_highlighted_button_visible(const button* buttons,
 // Full-graph rewire for the SCENARIO subscreen (pattern b): two visibility
 // axes — SET CAMPAIGN / SET LEVEL / TROOPS gate on the host,
 // TEAMS / LIMIT (#218, re-homed from MATCHUP) gate on the versus campaign
-// and stay visible to joiners as read-only labels. Every link is written on
-// every call so no variant inherits a stale one; the parked spare (the
-// retired MATCHUP door's ordinal) never participates.
+// and stay visible to joiners as read-only labels. LINEUP
+// (docs/lineup-design.md §2) is always visible, like its row-mates. Every
+// link is written on every call so no variant inherits a stale one.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
                                    bool host_controls_visible,
@@ -332,7 +332,8 @@ void picker_wire_scenario_menu_nav(button* buttons,
         {.up = kScenarioMenuSetCampaignIndex,
          .down = kScenarioMenuViewScenarioIndex};
 
-    // y=100 row: VIEW LEVEL <-> PROGRESS; up-links close for joiners.
+    // y=100 row: VIEW LEVEL <-> PROGRESS <-> LINEUP; up-links close for
+    // joiners.
     const int row_up = host ? kScenarioMenuSetLevelIndex : -1;
     buttons[kScenarioMenuViewScenarioIndex].nav =
         {.up = row_up,
@@ -343,7 +344,12 @@ void picker_wire_scenario_menu_nav(button* buttons,
          .down = host ? kScenarioMenuTroopsIndex
                       : (match ? kScenarioMenuCtfCapsIndex
                                : kScenarioMenuBackIndex),
-         .left = kScenarioMenuViewScenarioIndex};
+         .left = kScenarioMenuViewScenarioIndex,
+         .right = kScenarioMenuLineupIndex};
+    buttons[kScenarioMenuLineupIndex].nav =
+        {.up = row_up,
+         .down = match ? kScenarioMenuCtfCapsIndex : kScenarioMenuBackIndex,
+         .left = kScenarioMenuProgressIndex};
 
     // y=140 match-settings band: TEAMS (30) | TROOPS (120) | LIMIT (210).
     // TROOPS is host-gated, TEAMS/LIMIT versus-gated, so the horizontal
@@ -359,7 +365,7 @@ void picker_wire_scenario_menu_nav(button* buttons,
          .left = match ? kScenarioMenuCtfTeamsIndex : -1,
          .right = match ? kScenarioMenuCtfCapsIndex : -1};
     buttons[kScenarioMenuCtfCapsIndex].nav =
-        {.up = kScenarioMenuProgressIndex,
+        {.up = kScenarioMenuLineupIndex,
          .down = kScenarioMenuBackIndex,
          .left = host ? kScenarioMenuTroopsIndex
                       : kScenarioMenuCtfTeamsIndex};
@@ -368,9 +374,6 @@ void picker_wire_scenario_menu_nav(button* buttons,
     buttons[kScenarioMenuBackIndex].nav =
         {.up = match ? kScenarioMenuCtfTeamsIndex
                      : kScenarioMenuViewScenarioIndex};
-
-    // The parked spare: no links in, no links out (#236 precedent).
-    buttons[kScenarioMenuSpareIndex].nav = {};
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -422,11 +425,8 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
                 ->label = buttons[index].label;
         }
     }
-    // The retired MATCHUP door's ordinal stays parked: hidden, zero-size,
-    // no nav (the #236 seat_rail_spare precedent) — re-asserted per frame
-    // because the engine's gate pass marks ungated rows visible.
-    buttons[kScenarioMenuSpareIndex].hidden = true;
-    sync_button_hidden_state(buttons, kScenarioMenuSpareIndex);
+    // LINEUP (the ordinal the MATCHUP door vacated) is never gated: a
+    // joiner opens the page read-only (docs/lineup-design.md §2.3).
     picker_wire_scenario_menu_nav(buttons, num_buttons,
                                   host_controls_visible,
                                   match_settings_visible);
@@ -2035,7 +2035,7 @@ void picker_train_menu_engine_on_reset(void* /*screen_state*/)
 // The legacy per-frame content pass, verbatim (runs after draw_buttons):
 // portrait, name box, stat box with change-coloring against the original,
 // the info box (kills/accuracy/exp, derived stats, cash/cost), and the live
-// allbuttons_[18] "Playing on Team N" write + vdisplay (G8: swept only at
+// allbuttons_[18] "Team N" write + vdisplay (G8: swept only at
 // Layer F). current_cost re-derives from the session each frame — it only
 // changes through clicks, which is when the legacy loop re-read it.
 void picker_train_menu_engine_draw_content(void* screen_state)
@@ -2194,7 +2194,7 @@ void picker_train_menu_engine_draw_content(void* screen_state)
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
 
         // Update our team-number display ..
-        og::runtime::current_session->message_ = std::format("Playing on Team {}", og::runtime::current_session->current_guy_->teamnum+1);
+        og::runtime::current_session->message_ = std::format("Team {}", og::runtime::current_session->current_guy_->teamnum+1);
         og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = og::runtime::current_session->message_;
         og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->vdisplay();
 }
