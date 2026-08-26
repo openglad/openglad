@@ -1687,6 +1687,88 @@ og.register_campaign_hooks({
     restore_gladiator_mount();
 }
 
+// The fingerprint twin (base_camp_frame_tick's "fetch trigger 4"): an
+// applied lobby-settings change rewrites the save's synced knobs under the
+// open FIGHTERS screen, and a scripted composition that reads them must be
+// refetched — a joiner parked on FIGHTERS while the host turns a knob kept
+// the rows of the old settings. The level-change trigger alone (the C5 fix)
+// did not fire: scen_num never moved.
+TEST(LineupUi, fighters_refetches_the_zone_after_a_settings_change)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    for (auto& slot : save.team_list)
+        slot.reset();
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = "PARKED";
+    member->deployed = true;
+    save.team_list[0] = std::move(member);
+    save.team_size = 1;
+    save.scen_num = 1;
+    save.current_campaign = "gladiator";
+    save.ctf_capture_limit = 0;
+    restore_gladiator_mount();
+
+    // The composition reads a lobby-synced knob: no deploying at SCORE 5.
+    SyntheticZoneScriptGuard zone_script(R"LUA(
+og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+                           can_deploy = og.campaign_match_get("score_limit") ~= 5 } } }
+  end,
+})
+)LUA");
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.roster().can_deploy) << "SCORE: MAP deploys";
+
+    og::ui::LineupFightersScreenState state;
+    state.last_level_id = save.scen_num;
+    state.zone = &zone;
+    og::ui::lineup_fighters_refresh_rows(state);
+    og::ui::install_lineup_fighters_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::LineupFighters).spec;
+    ASSERT_NE(nullptr, spec.frame_tick);
+
+    // A quiet frame seeds the fingerprint and changes nothing.
+    EXPECT_TRUE(spec.frame_tick(&state, 0));
+    EXPECT_TRUE(zone.roster().can_deploy);
+    EXPECT_FALSE(trace_contains("zone", "refetch"))
+        << "a quiet frame must not refetch";
+
+    // The host's settings change lands in the save under the open screen
+    // (the lobby poll's apply path); the level cursor is untouched.
+    save.ctf_capture_limit = 5;
+    EXPECT_TRUE(spec.frame_tick(&state, 1));
+    EXPECT_FALSE(zone.roster().can_deploy)
+        << "the zone must be refetched with the new settings";
+    EXPECT_TRUE(trace_contains("zone", "refetch"));
+
+    // ...and the deploy boxes really do go inert on the next rewire.
+    button* const buttons = picker_lineup_fighters_buttons();
+    const int count = picker_lineup_fighters_button_count();
+    std::vector<button> table(buttons, buttons + count);
+    int highlighted = kLineupFightersBackIndex;
+    og::ui::install_lineup_fighters_state_for_screen(&state);
+    spec.nav.rewire(table.data(), count, highlighted);
+    EXPECT_TRUE(table[kLineupFightersDeployBase].hidden)
+        << "row 0's deploy box is gone with the capability";
+
+    // The same settings on the next frame: no second refetch.
+    trace_clear();
+    EXPECT_TRUE(spec.frame_tick(&state, 2));
+    EXPECT_FALSE(trace_contains("zone", "refetch"))
+        << "an unchanged fingerprint is quiet";
+
+    og::ui::install_lineup_fighters_state_for_screen(nullptr);
+    save.ctf_capture_limit = 0;
+    restore_gladiator_mount();
+}
+
 TEST(LineupUi, fighters_spec_row_pager_and_guards)
 {
     trace_clear();

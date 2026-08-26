@@ -7876,6 +7876,17 @@ bool lineup_fighters_frame_tick(void* screen_state, int /*frame*/)
             TRACE("zone", "refetch");
         }
     }
+    // Fetch trigger 4 (base_camp_frame_tick's twin): an applied
+    // lobby-settings change rewrites the save's synced knobs under the open
+    // screen without moving the level cursor, and a composition that reads
+    // them (og.campaign_match_get) is stale until refetched — a joiner
+    // parked here while the host turned a knob kept the old rows. The
+    // fingerprint is a pure compare — no Lua per frame.
+    if (st->zone != nullptr && st->zone->settings_fingerprint_changed())
+    {
+        st->zone->refetch();
+        TRACE("zone", "refetch");
+    }
     // The lobby poll can rewrite the save under the open screen; the row
     // window re-derives per tick (the Base Camp §3.3 refresh rule).
     lineup_fighters_refresh_rows(*st);
