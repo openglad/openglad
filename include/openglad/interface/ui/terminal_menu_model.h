@@ -15,12 +15,18 @@
 // lines, and the cancel item. The clients keep their own input loops and
 // rendering; only the content is shared.
 
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 
+#include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+
+class SaveData;
+class guy;
 
 namespace og::ui {
 
@@ -48,5 +54,72 @@ TerminalMenuModel build_terminal_menu_model(PickerMenuId menu_id,
 // carries the CTF match-settings guard.
 std::string_view terminal_gate_message(const PickerMenuItem& item,
                                        const MenuLabelContext& context);
+
+// --- LINEUP, the terminal projection (docs/lineup-design.md §8) ----------
+//
+// The SDL LINEUP page is four team bands plus one action row. A terminal has
+// no grid, so the bands become CONTEXT LINES above a numbered item list — the
+// campaign-camp shape (lines + rows + a numeric prompt), which both terminal
+// clients already drive. Every string here comes from the shared §2.1/§4
+// formatters (format_lineup_bots_label / _level_label / _census / _power), so
+// the three clients cannot drift apart on a label.
+
+// One selectable LINEUP row. `team` is meaningful for the two knob kinds only.
+struct TerminalLineupItem {
+    enum class Kind {
+        BotSquad,   // host-only: cycle this team's bot squad preset
+        BotLevel,   // host-only: cycle this team's bot level
+        Fighters,   // open the fighter list (team + deploy + POWER rows)
+        SplitEven,  // §5 SPLIT EVEN
+        SplitFair,  // §5 SPLIT FAIR
+        Unite,      // §5 ALL TO 1
+        Back,
+    };
+
+    Kind kind = Kind::Back;
+    int team = 0;
+    std::string label;
+};
+
+struct TerminalLineupModel {
+    // Two lines per team: the header line (chip -> "TEAM n", POWER, seats)
+    // and the knob/census line. Four bands, always all four, so a team that
+    // is off still says so.
+    std::vector<std::string> lines;
+    std::vector<TerminalLineupItem> items;
+};
+
+// What the page needs to know. `players` is the lobby seat census (every
+// machine); a local terminal client passes terminal_local_lineup_seats().
+// `is_host` hides the eight knob rows for a joiner (§2.3) — the bands still
+// show what the host chose.
+struct TerminalLineupInputs {
+    const SaveData* save = nullptr;
+    std::span<const og::sim::LobbyPlayer> players;
+    std::span<const std::uint8_t> local_player_indices;
+    bool networked = false;
+    bool is_host = true;
+    // The campaign's bot-squad preset names (og::script::hooks::
+    // campaign_lineup_presets); empty offers AUTO/NONE only.
+    std::span<const std::string> preset_names;
+};
+
+TerminalLineupModel build_terminal_lineup_model(
+    const TerminalLineupInputs& inputs);
+
+// The seats a NON-networked terminal client shows on the bands: the same
+// derivation gameplay uses (derive_local_seat_teams), one LobbyPlayer per
+// seat, labelled with this company's abbreviation.
+std::vector<og::sim::LobbyPlayer> terminal_local_lineup_seats(
+    const SaveData& save);
+
+// One fighter-list row: "  1. Arthur (Soldier) LV 3  RED  DEPLOYED
+// POWER 120". BENCHED replaces DEPLOYED; an unpriced fighter reads
+// "POWER --" through the same §4 formatter the bands use.
+std::string format_terminal_lineup_fighter_row(int slot_index,
+                                               const guy& member);
+
+// The lines of the fighter list: a header, then one row per occupied slot.
+std::vector<std::string> terminal_lineup_fighter_lines(const SaveData& save);
 
 } // namespace og::ui

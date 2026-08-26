@@ -563,17 +563,21 @@ TEST(CursesPickerClient, ctf_menu_labels_render_matched_sentinel)
     EXPECT_NE(dump.find("TROOPS: FAIR"), std::string::npos) << dump;
 }
 
-// The Team Build list renders the appended DIFFICULTY door with its fixed
-// label, past the digit ceiling and reachable by the arrow walk.
-TEST(CursesPickerClient, team_build_lists_the_difficulty_door_last)
+// The Team Build list renders the two appended doors — DIFFICULTY and then
+// LINEUP (docs/lineup-design.md §8) — with their fixed labels, past the digit
+// ceiling and reachable by the arrow walk.
+TEST(CursesPickerClient, team_build_lists_the_appended_doors_last)
 {
     PickerFixture f;
-    const int door_idx =
+    const int items = static_cast<int>(
+        og::ui::picker_menu_definition(PickerMenuId::TeamBuild).items.size());
+    const int difficulty_idx =
         team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
-    ASSERT_EQ(static_cast<int>(og::ui::picker_menu_definition(
-                                  PickerMenuId::TeamBuild).items.size()) - 1,
-              door_idx)
-        << "the door is appended last, so nothing above it moved";
+    const int lineup_idx = team_build_item_index(PickerMenuCommand::Lineup);
+    ASSERT_EQ(items - 2, difficulty_idx)
+        << "LINEUP appended BELOW difficulty, so difficulty kept its ordinal";
+    ASSERT_EQ(items - 1, lineup_idx)
+        << "lineup is appended last, so nothing above it moved";
 
     f.t().push_special(KeyCode::Escape);
     (void)f.client.present_menu(PickerMenuId::TeamBuild);
@@ -599,8 +603,11 @@ TEST(CursesPickerClient, team_build_lists_the_difficulty_door_last)
         << "expected the key-hint footer as the last line:\n" << dump;
     rows.pop_back();
     ASSERT_FALSE(rows.empty()) << dump;
-    EXPECT_EQ("  Difficulty", rows.back())
-        << "the appended door must be the last rendered row:\n" << dump;
+    EXPECT_EQ("  Lineup", rows.back())
+        << "the last appended door must be the last rendered row:\n" << dump;
+    ASSERT_GE(rows.size(), 2u) << dump;
+    EXPECT_EQ("  Difficulty", rows[rows.size() - 2])
+        << "difficulty sits directly above the LINEUP door:\n" << dump;
     EXPECT_EQ(dump.find("Match Teams"), std::string::npos)
         << "the flat match-rule rows are gone from Team Build:\n" << dump;
     EXPECT_EQ(dump.find("Score Limit"), std::string::npos) << dump;
@@ -2188,6 +2195,170 @@ TEST(CursesPickerClient, press_any_key_ignores_release_and_repeat)
     f.client.show_help();
     EXPECT_TRUE(f.t().input_exhausted())
         << "the release and repeat must not dismiss the modal; only the press does";
+}
+
+// --- LINEUP (docs/lineup-design.md §8) -----------------------------------
+
+namespace {
+
+// Two seated teams: three fighters on team 0 (my_team, so the derivation
+// seats it) and one on team 1, levels descending by slot so the power-less
+// SPLIT FAIR order is fully determined.
+void seed_lineup_roster(SaveData& save)
+{
+    for (auto& member : save.team_list)
+        member.reset();
+    for (int i = 0; i < 4; ++i) {
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        guy& member = *save.team_list[static_cast<std::size_t>(i)];
+        member.name = std::string("F") + static_cast<char>('1' + i);
+        member.teamnum = i == 3 ? 1 : 0;
+        member.deployed = true;
+        member.level = static_cast<short>(4 - i);
+    }
+    save.team_size = 4;
+    save.my_team = 0;
+}
+
+const og::ui::PickerMenuItem& lineup_item()
+{
+    const og::ui::PickerMenuItem* const item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild,
+                                      PickerMenuCommand::Lineup);
+    EXPECT_TRUE(item != nullptr);
+    return *item;
+}
+
+} // namespace
+
+// The page is the shared model rendered as a Menu with dynamic rows: four
+// bands as NON-selectable context above thirteen host rows. Selecting the
+// first row cycles TEAM 1's bot squad, and the redraw proves the write
+// landed — the label is re-read from the save, never remembered.
+TEST(CursesPickerClient, lineup_page_lists_the_bands_and_cycles_a_bot_knob)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+
+    pick(f.t(), 0);                      // row 1: TEAM 1 bots -> NONE
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Lineup"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("TEAM 1 RED  POWER --"), std::string::npos)
+        << "the band names the colour and the (unpriced) POWER:\n" << dump;
+    EXPECT_NE(dump.find("3 FIGHTERS"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("NO SEAT"), std::string::npos)
+        << "the two empty teams still get a band:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 1  BOTS: NONE"), std::string::npos)
+        << "the redraw re-reads the knob out of the save:\n" << dump;
+    EXPECT_EQ(1, f.save().bot_squad[0]) << "AUTO -> NONE landed in the save";
+    EXPECT_EQ(0, f.save().bot_squad[1]) << "only the cycled team moved";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// The fighter list: Enter cycles the row's team, 'b' toggles its deploy.
+TEST(CursesPickerClient, lineup_fighter_list_cycles_a_team_and_benches)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+
+    pick(f.t(), 8);                      // row 9: Fighters
+    pick(f.t(), 0);                      //   row 1: Enter cycles F1 0 -> 1
+    f.t().push_char(U'b');               //   row 1: 'b' benches F1
+    f.t().push_special(KeyCode::Escape); //   back to the page
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    ASSERT_TRUE(f.save().team_list[0] != nullptr);
+    EXPECT_EQ(1, f.save().team_list[0]->teamnum)
+        << "Enter on a fighter row cycles its fighting team";
+    EXPECT_FALSE(f.save().team_list[0]->deployed)
+        << "'b' toggles the row's deploy flag";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// SPLIT FAIR over the seated teams {0, 1}: no power metric, so level
+// descending — F1(4) F2(3) F3(2) F4(1) — snake-drafted 0,1,1,0.
+TEST(CursesPickerClient, lineup_split_fair_snake_drafts_the_company)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+
+    step_to(f.t(), 10);                  // row 11: Split fair
+    dismiss(f.t());                      //   the "Moved n fighters." report
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    EXPECT_EQ(0, f.save().team_list[0]->teamnum);
+    EXPECT_EQ(1, f.save().team_list[1]->teamnum);
+    EXPECT_EQ(1, f.save().team_list[2]->teamnum);
+    EXPECT_EQ(0, f.save().team_list[3]->teamnum);
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// SPLIT EVEN deals the company round-robin in SLOT order over the same two
+// seated teams — a different answer from FAIR on the same roster, which is
+// the whole reason both rows exist.
+TEST(CursesPickerClient, lineup_split_even_deals_round_robin)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+
+    step_to(f.t(), 9);                   // row 10: Split even
+    dismiss(f.t());                      //   the "Moved n fighters." report
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    EXPECT_EQ(0, f.save().team_list[0]->teamnum);
+    EXPECT_EQ(1, f.save().team_list[1]->teamnum);
+    EXPECT_EQ(0, f.save().team_list[2]->teamnum);
+    EXPECT_EQ(1, f.save().team_list[3]->teamnum);
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// UNITE puts every deployed character on the lowest-numbered seated team.
+TEST(CursesPickerClient, lineup_unite_gathers_the_company_on_one_team)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+
+    step_to(f.t(), 11);                  // row 12: Unite
+    dismiss(f.t());                      //   the "Moved n fighters." report
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    for (int slot = 0; slot < 4; ++slot) {
+        ASSERT_TRUE(f.save().team_list[static_cast<std::size_t>(slot)] !=
+                    nullptr);
+        EXPECT_EQ(0, f.save()
+                         .team_list[static_cast<std::size_t>(slot)]
+                         ->teamnum)
+            << "slot " << slot;
+    }
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// A company with nobody deployed seats nobody (M3), so a SPLIT has no teams
+// to deal into and says so instead of silently doing nothing.
+TEST(CursesPickerClient, lineup_split_without_a_seat_refuses_in_words)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    for (auto& member : f.save().team_list)
+        if (member != nullptr)
+            member->deployed = false;
+
+    step_to(f.t(), 10);                  // row 11: Split fair
+    dismiss(f.t());                      //   the refusal screen
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    EXPECT_EQ(1, f.save().team_list[3]->teamnum)
+        << "a refused split moves nobody";
+    EXPECT_TRUE(f.t().input_exhausted());
 }
 
 // --- networking ----------------------------------------------------------

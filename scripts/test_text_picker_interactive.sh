@@ -17,14 +17,20 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
 #     name entry); blank keeps the campaign. Back, then 2=Continue returns to
 #     Base Camp. The retired 1–4 player-count rows are no longer present.
-#   Base camp / Team Build (11 items, §2.5 substitution + the #206 Camp door
+#   Base camp / Team Build (12 items, §2.5 substitution + the #206 Camp door
 #     inserted before Back; the flat CTF trio left for the camp's MATCH SETUP
 #     page and 11=Difficulty was appended in its place —
-#     docs/camp-controls-design.md): 3=Hire Troops (n/h/b — the hire
-#     AUTOSAVES the company, §3.8), 1=Roster (deploy 2 toggles + blank
-#     exits), 4=Deploy (prompt re-deploys row 2), 7=Camp (gladiator composes
-#     no camp, so the guard line prints and Team Build re-presents without
-#     consuming further input), 10=Scenario, 11=Difficulty, 6=GO!, 8=Back.
+#     docs/camp-controls-design.md — with 12=Lineup appended below it,
+#     docs/lineup-design.md §8, so no ordinal above moved): 3=Hire Troops
+#     (n/h/b — the hire AUTOSAVES the company, §3.8), 1=Roster (deploy 2
+#     toggles + blank exits), 4=Deploy (prompt re-deploys row 2), 7=Camp
+#     (gladiator composes no camp, so the guard line prints and Team Build
+#     re-presents without consuming further input), 10=Scenario,
+#     11=Difficulty, 12=Lineup, 6=GO!, 8=Back.
+#   Lineup page (host rows: 1..8 the four teams' bot/level knobs, 9=Fighters,
+#     10=Split even, 11=Split fair, 12=Unite, 13=Back): 1 cycles TEAM 1's
+#     bot squad to NONE, 9 opens the fighter list (blank exits), 13 backs
+#     out.
 #   Scenario submenu (8 items — the missions door retired into the camp;
 #     7=Replay Level was appended before Back, #207): 4=Matchup (set
 #     preferred-team metadata, blank exits), 3=View Scenario (blank
@@ -58,6 +64,11 @@ play 1
 8
 11
 7
+12
+1
+9
+
+13
 6
 state
 quit
@@ -167,6 +178,21 @@ if not any('Preferred-team metadata is now RED;' in l for l in lines):
     sys.exit(1)
 if any(' TEAM (P' in l or 'P1 plays' in l or 'P2 plays' in l for l in lines):
     print('FAIL: text Matchup must not claim playable P# seats', file=sys.stderr)
+    sys.exit(1)
+
+# LINEUP (docs/lineup-design.md §8): the four bands, the shared bot-squad
+# label after the cycle, and the fighter list's command grammar.
+if not any('--- Lineup ---' in l for l in lines):
+    print('FAIL: expected the Lineup page banner', file=sys.stderr)
+    sys.exit(1)
+if not any('TEAM 1 RED' in l for l in lines):
+    print('FAIL: expected the TEAM 1 band header', file=sys.stderr)
+    sys.exit(1)
+if not any('BOTS: NONE' in l for l in lines):
+    print('FAIL: expected the cycled bot-squad label', file=sys.stderr)
+    sys.exit(1)
+if not any("'team SLOT TEAM' | 'bench SLOT'" in l for l in lines):
+    print('FAIL: expected the fighter-list command grammar', file=sys.stderr)
     sys.exit(1)
 
 # View Scenario: the shared roster report from a scratch headless load.

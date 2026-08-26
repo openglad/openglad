@@ -88,6 +88,9 @@ namespace {
 
 constexpr int kDefaultPort = 12345;
 constexpr std::string_view kDefaultCampaignId = "gladiator";
+// LINEUP §6: the one spelling of the kicked client's connection alert,
+// matching the SDL surface's wording.
+constexpr std::string_view kCursesKickedAlert = "KICKED BY HOST";
 
 // A unique-per-instance network player name for readable diagnostics. The
 // server-issued LobbySeatId is the only ownership identity; names are
@@ -1577,9 +1580,32 @@ public:
                 break;
             if (key.is_release())
                 continue; // act on presses/repeats only; ignore key-up + focus
+            // LINEUP §6: DISCONNECT is a two-press key — the first press
+            // puts the question on the status band, the second answers it.
+            // Any other key in between is the answer "no", so the pending
+            // flag dies on every key that is not another 'd'.
+            const bool disconnect_armed = pending_disconnect_;
+            pending_disconnect_ = false;
             if (key.code == KeyCode::Escape || key.is_char(U'q')) {
                 cancel();
                 return false;
+            }
+            if (key.is_char(U'd') || key.is_char(U'D')) {
+                if (disconnect_armed) {
+                    // Host: the server teardown drops every peer through the
+                    // transport. Joiner: this is leaving. Same call.
+                    cancel();
+                    return false;
+                }
+                pending_disconnect_ = true;
+                team_status_ = role_ == LobbyRole::Host
+                    ? "Stop hosting? press d again"
+                    : "Leave this lobby? press d again";
+                continue;
+            }
+            if (key.is_char(U'k') || key.is_char(U'K')) {
+                kick_selected_seat();
+                continue;
             }
             if (role_ == LobbyRole::Host &&
                 (key.is_enter() || key.is_char(U's') || key.is_char(U'S'))) {
@@ -1638,15 +1664,24 @@ public:
             }
             if (key.code == KeyCode::Left || key.is_char(U'<') ||
                 key.is_char(U'[')) {
-                select_local_seat(-1);
+                select_seat(-1);
                 continue;
             }
             if (key.code == KeyCode::Right || key.is_char(U'>') ||
                 key.is_char(U']')) {
-                select_local_seat(1);
+                select_seat(1);
                 continue;
             }
             if (key.is_char(U't') || key.is_char(U'T')) {
+                // The cursor walks every seat in the lobby now (it is what
+                // 'k' aims at), so a team change has to refuse a foreign
+                // seat in words rather than silently retarget a local one.
+                if (const og::sim::LobbyPlayer* const pointed =
+                        selected_player();
+                    pointed != nullptr && !is_local_seat(pointed->seat_id)) {
+                    team_status_ = "That seat is not yours";
+                    continue;
+                }
                 const og::sim::LobbyPlayer* const selected =
                     selected_local_player();
                 if (selected == nullptr)
@@ -1730,6 +1765,10 @@ public:
     std::vector<std::string> status_lines() const override
     {
         std::vector<std::string> lines;
+        // LINEUP §6: the alert outranks the roster — a kicked client must
+        // say why its link died instead of showing a frozen player list.
+        if (const std::optional<std::string> alert = connection_alert())
+            lines.push_back(*alert);
         lines.push_back(role_ == LobbyRole::Host ? "Mode: HOST" : "Mode: JOIN");
         if (state_.has_value()) {
             // Display titles only; settings.campaign_id itself stays the raw
@@ -1750,24 +1789,25 @@ public:
                                  : std::to_string(state_->settings.scenario_id)));
             int lobby_deployed = 0;
             int lobby_slots = 0;
-            const bool has_multiple_local_seats =
-                state_->local_seat_ids.size() > 1;
+            // The cursor is worth drawing once there is more than one thing
+            // to point at — a second local seat to move, or a peer to kick.
+            const bool selection_matters =
+                state_->local_seat_ids.size() > 1 ||
+                state_->players.size() > state_->local_seat_ids.size();
             for (const og::sim::LobbyPlayer& player : state_->players) {
                 const bool is_me =
                     std::find(state_->local_seat_ids.begin(),
                               state_->local_seat_ids.end(),
                               player.seat_id) != state_->local_seat_ids.end();
                 const bool is_selected =
-                    is_me && player.seat_id == selected_local_seat_id_;
+                    player.seat_id == selected_local_seat_id_;
                 std::string line =
                     "  Player " + std::to_string(player.player_index + 1) +
                     " (" + og::sim::team_color_name(player.team) + ")" +
                     (player.is_host ? " [host]" : "") +
                     (player.ready ? " [ready]" : "") +
                     (is_me ? " [you]" : "") +
-                    (is_selected && has_multiple_local_seats
-                         ? " [selected]"
-                         : "");
+                    (is_selected && selection_matters ? " [selected]" : "");
                 // §2.5 curses parity: the origin/company column + per-seat
                 // deploy counts (clipped to the SDL COMPANY budget).
                 if (!player.company.empty()) {
@@ -1810,7 +1850,10 @@ public:
             lines.push_back(
                 "Control: " + og::ui::format_cross_control_label(
                                   state_->settings.cross_control != 0));
-        } else {
+        } else if (!kicked_) {
+            // A kicked client is not connecting to anything; the alert above
+            // is the whole story, and "Connecting..." under it would be the
+            // bare "connection lost" lie the notice exists to prevent.
             lines.push_back(role_ == LobbyRole::Host ? "Waiting for players..."
                                                      : "Connecting...");
         }
@@ -1883,6 +1926,35 @@ public:
         const og::sim::LobbyPlayer* const echoed =
             find_player_by_seat_id(*state_, seat_id);
         return echoed != nullptr && echoed->team == team;
+    }
+
+    bool kick_machine(og::sim::LobbyMachineId machine_id) override
+    {
+        if (role_ != LobbyRole::Host || host_client_transport_ == nullptr ||
+            !state_.has_value())
+            return false;
+        if (machine_id == og::sim::kInvalidLobbyMachineId)
+            return false;
+        // Never this machine: the server refuses it, and asking would put a
+        // "kicked" notice on the host's own screen.
+        const og::sim::LobbyPlayer* const local = find_local_player(*state_);
+        if (local != nullptr && local->machine_id == machine_id)
+            return false;
+
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyKickMessage{.machine_id = machine_id};
+        send_lobby_message(*host_client_transport_,
+                           host_client_transport_->local_peer_id(),
+                           std::move(message));
+        pump_once();
+        return true;
+    }
+
+    std::optional<std::string> connection_alert() const override
+    {
+        if (kicked_)
+            return std::string(kCursesKickedAlert);
+        return std::nullopt;
     }
 
     std::vector<std::uint8_t> local_player_indices() const override
@@ -2015,9 +2087,13 @@ private:
                 break;
             term.put_str(row++, 0, line, Color::Default, Color::Default, false);
         }
+        // 80 columns is the floor a terminal lobby has to read on, and the
+        // hint is the first line to lose its tail — so the two new keys buy
+        // their room by abbreviating, not by pushing [q] off the edge.
         const char* hint = role_ == LobbyRole::Host
-            ? "[s] start  [</>] seat  [t] team  [r] ready  [c] control  [q] cancel"
-            : "[</>] seat  [t] team  [r] ready  [q] cancel";
+            ? "[s] start [</>] seat [t] team [r] ready [c] ctrl "
+              "[k] kick [d] leave [q] quit"
+            : "[</>] seat [t] team [r] ready [d] leave [q] quit";
         if (term.rows() > 0)
             term.put_str(term.rows() - 1, 0, hint, Color::Cyan, Color::Default, false);
         term.present();
@@ -2060,6 +2136,16 @@ private:
 
     void ensure_selected_local_seat()
     {
+        // A selection that still exists SURVIVES the broadcast, foreign
+        // seats included: the cursor is what 'k' aims, and a lobby that
+        // re-broadcasts on every join would otherwise snap the host's aim
+        // back onto its own seat between the arrow and the key.
+        if (state_.has_value() &&
+            find_player_by_seat_id(*state_, selected_local_seat_id_) !=
+                nullptr)
+        {
+            return;
+        }
         const og::sim::LobbyPlayer* const selected =
             selected_local_player();
         selected_local_seat_id_ = selected != nullptr
@@ -2067,12 +2153,74 @@ private:
             : og::sim::kInvalidLobbySeatId;
     }
 
-    void select_local_seat(int direction)
+    bool is_local_seat(og::sim::LobbySeatId seat_id) const
+    {
+        return state_.has_value() &&
+            std::find(state_->local_seat_ids.begin(),
+                      state_->local_seat_ids.end(),
+                      seat_id) != state_->local_seat_ids.end();
+    }
+
+    // The seat the cursor points at, local or foreign, or null when it
+    // points at nothing (no state yet / the seat left).
+    const og::sim::LobbyPlayer* selected_player() const
+    {
+        if (!state_.has_value())
+            return nullptr;
+        return find_player_by_seat_id(*state_, selected_local_seat_id_);
+    }
+
+    // LINEUP §6: the host's kick, aimed by the seat cursor. Everything the
+    // server would refuse is refused HERE in words too, so the host never
+    // presses a key that silently does nothing.
+    void kick_selected_seat()
+    {
+        if (role_ != LobbyRole::Host) {
+            team_status_ = "Host controls kicks";
+            return;
+        }
+        const og::sim::LobbyPlayer* const target = selected_player();
+        if (target == nullptr)
+            return;
+        if (is_local_seat(target->seat_id)) {
+            team_status_ = "That is your own machine (d disconnects)";
+            return;
+        }
+        const std::string name = machine_row_label(target->machine_id);
+        if (!kick_machine(target->machine_id)) {
+            team_status_ = "Kick failed";
+            return;
+        }
+        team_status_ = "Kicked " + name;
+    }
+
+    // The MACHINE row label the Networking submenu shows for the same
+    // machine (§6) — one formatter, so the two surfaces name a peer
+    // identically.
+    std::string machine_row_label(og::sim::LobbyMachineId machine_id) const
+    {
+        if (!state_.has_value())
+            return {};
+        const std::vector<std::uint8_t> local = local_player_indices();
+        for (const og::ui::NetworkingMachineRow& row :
+             og::ui::build_networking_machine_rows(state_->players, local))
+        {
+            if (row.machine_id == machine_id)
+                return row.label;
+        }
+        return {};
+    }
+
+    void select_seat(int direction)
     {
         if (!state_.has_value())
             return;
-        const std::vector<const og::sim::LobbyPlayer*> seats =
-            find_local_seats(*state_);
+        // Every seat in the lobby, not only this machine's: the cursor is
+        // what 'k' aims, and a host has to be able to point at a peer.
+        std::vector<const og::sim::LobbyPlayer*> seats;
+        seats.reserve(state_->players.size());
+        for (const og::sim::LobbyPlayer& player : state_->players)
+            seats.push_back(&player);
         if (seats.empty())
             return;
 
@@ -2153,6 +2301,18 @@ private:
             }
             break;
         case og::sim::TypedReceivedMessageKind::LobbyMessage:
+            if (message.lobby_message &&
+                message.lobby_message->kind() ==
+                    og::sim::LobbyMessageKind::Kicked) {
+                // LINEUP §6: the courtesy notice arrives on the still-live
+                // link, just before the server drops it. Latch the reason —
+                // it is the only surviving evidence of WHY — and tear the
+                // dead transports down rather than spinning on them.
+                kicked_ = true;
+                team_status_.clear();
+                teardown();
+                break;
+            }
             if (message.lobby_message &&
                 message.lobby_message->kind() == og::sim::LobbyMessageKind::StartGame) {
                 const auto& start =
@@ -2392,6 +2552,10 @@ private:
     og::sim::LobbySeatId last_team_request_seat_id_ =
         og::sim::kInvalidLobbySeatId;
     short last_team_request_ = -1;
+    // LINEUP §6: latched once a LobbyKickedMessage arrives (the link dies
+    // immediately after), and the pending half of the two-press DISCONNECT.
+    bool kicked_ = false;
+    bool pending_disconnect_ = false;
     std::string team_status_;
     std::string player_name_;
     std::uint32_t next_start_request_id_ = 1;
