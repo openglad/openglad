@@ -2267,9 +2267,9 @@ local function decide(level, inputs, row)
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  -- The shared activation rule (lineup A1/A2): the manifest row.teams is
-  -- the map's own value under TROOPS:ALL, the whole authored domain
-  -- under OWN/FAIR, minus the OFF teams, plus every occupied team.
+  -- The shared activation rule (lineup B1-B4): the manifest row.teams is
+  -- the map's own value, plus every occupied team; the fills rows below
+  -- drop any team the knobs leave with nothing.
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, row.teams or 0)
   local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
@@ -2277,10 +2277,9 @@ local function decide(level, inputs, row)
   local teams, seeded, lineup_mask = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
-    -- The court's hard shape (lineup §3.2): five on five, so a preset
-    -- squad never counts past five however its count field reads. The
-    -- same cap rides every spawn call below, so the preview's count IS
-    -- the spawned count.
+    -- The court's hard shape (review R2): five on five, so a squad
+    -- fills only the room the roster leaves. The same cap rides every
+    -- spawn call below, so the preview's count IS the spawned count.
     squad_cap = T.squad_cap,
   })
   -- The NONE knob can empty a backfilled team outright (lineup §3.2):
@@ -2368,10 +2367,10 @@ local function on_mode_init(level, row)
   match.bank_match_target(decision, obs)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
-  strip.strip_authored_troops(nil)
-  -- Bot squads where the decision said so (the empty active teams, plus
-  -- any team a lineup preset fills beside its occupants — lineup §3.2),
-  -- capped at the court's five (the decide fold's squad_cap twinned).
+  strip.strip_authored_troops()
+  -- FILL squads where the decision said so (the empty active teams,
+  -- plus any company row with an allies gap — amendment B2/B3), capped
+  -- at the court's five (the decide fold's squad_cap twinned).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if match.wants_squad(decision.teams[team + 1]) then
       anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR, T.squad_cap)

@@ -311,8 +311,9 @@ TEST_F(ModesCtf, init_strips_teams_switched_off)
     fx.spawn_anchor(2, 128, 832);
     fx.spawn_anchor(3, 512, 832);
     walker* stripped_living = fx.spawn_living(FAMILY_ORC, 2, 200, 760);
-    fx.world().ctf_requested_fill[2] = og::sim::kBotSquadOff;
-    fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
+    fx.world().ctf_requested_fill[2] = og::sim::kFillNone;
+    fx.world().ctf_requested_map_units[2] = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
 
     fx.tick(1);
 
@@ -403,7 +404,8 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
         fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
         walker* stripped = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
-        fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
+        fx.world().ctf_requested_map_units[3] = og::sim::kMapUnitsOff;
         fx.tick(1);
 
         ASSERT_TRUE(fx.ctf_active());
@@ -420,7 +422,7 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
         walker* troop = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
         walker* kept_hero = fx.spawn_hero(FAMILY_SOLDIER, 3, 520, 200, 7);
-        fx.world().ctf_requested_fill[3] = og::sim::kBotSquadOff;
+        fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
         fx.tick(1);
 
         ASSERT_TRUE(fx.ctf_active());
@@ -498,7 +500,8 @@ TEST_F(ModesCtf, strip_scenario_troops_removes_every_authored_entity)
 {
     ModesCtfWorld fx;
     StripScenarioActors actors = build_strip_scenario(fx, flag_family_);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
+    for (auto& box : fx.world().ctf_requested_map_units)
+        box = og::sim::kMapUnitsOff;
 
     fx.tick(1);
     ASSERT_TRUE(fx.ctf_active());
@@ -507,7 +510,7 @@ TEST_F(ModesCtf, strip_scenario_troops_removes_every_authored_entity)
     EXPECT_TRUE(actors.authored_friend->dead());
     EXPECT_TRUE(actors.friendly_gen->dead());
     EXPECT_TRUE(actors.authored_enemy->dead())
-        << "TROOPS: OWN takes the opposing team's authored cast too";
+        << "the opposing team's box takes its authored cast too";
     EXPECT_TRUE(actors.enemy_gen->dead());
     EXPECT_EQ(1, alive_on_team(fx.world(), 0))
         << "only the hero should remain on team 0";
@@ -534,82 +537,84 @@ TEST_F(ModesCtf, strip_scenario_troops_removes_every_authored_entity)
     }
 }
 
-TEST_F(ModesCtf, troops_own_at_auto_activates_the_authored_flag_teams)
+TEST_F(ModesCtf, rosters_on_flag_teams_field_all_four_sides)
 {
-    // The scen-841 shape on CTF at TEAMS: Auto: Auto is the zero sentinel
-    // ("as many teams as the map actually has"), so a four-flag map under
-    // OWN with rosters on teams 0 and 2 fields all FOUR flag sides — the
-    // rosters stay untouched, the unrostered flags stay banked, and the
-    // empty active teams backfill with the legacy bot squads, exactly like
-    // an explicit TEAMS: 4 (issue #218; the 2026-08-18 directive
-    // superseding D26's Auto scope).
+    // The scen-841 shape on CTF: a four-flag map with rosters on teams 0
+    // and 2 fields all FOUR flag sides — the rosters stay untouched
+    // (equal companies, no allies gap), the unrostered flags stay banked,
+    // and the empty active teams backfill with squads matched to the
+    // roster headcount (B2).
     ModesCtfWorld fx;
-    fx.world().ctf_requested_strip_scenario_troops = 2;
     fx.spawn_flag(flag_family_, 0, 96, 96);
     fx.spawn_flag(flag_family_, 1, 544, 96);
     fx.spawn_flag(flag_family_, 2, 96, 800);
     fx.spawn_flag(flag_family_, 3, 544, 800);
     walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 160, 160, 1);
-    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 2, 160, 760, 2);
+    walker* other = fx.spawn_hero(FAMILY_SOLDIER, 2, 160, 760, 2);
     fx.tick(1);
 
     ASSERT_TRUE(fx.ctf_active());
-    EXPECT_EQ(15, fx.var(kSlotTeamMask))
-        << "Auto resolves to the authored flag-team count: all four sides";
+    EXPECT_EQ(15, fx.var(kSlotTeamMask)) << "all four flag sides play";
     EXPECT_EQ(4, fx.var(kSlotTeamCount));
     EXPECT_NE(0, fx.team_var(kSlotFlagEntity, 1))
         << "the backfilled teams keep their flags";
     EXPECT_NE(0, fx.team_var(kSlotFlagEntity, 3));
     EXPECT_FALSE(soldier->dead());
-    EXPECT_FALSE(barbarian->dead());
+    EXPECT_FALSE(other->dead());
     EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the rosters stay as-is";
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "the empty-team census fields the legacy squad";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the empty-team census fields a squad at the roster headcount";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
-    EXPECT_EQ(5, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(1, alive_on_team(fx.world(), 3));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 namespace {
 
-std::string run_strip_scenario_match(int flag_family, bool set_field,
-                                     short strip_flag, int ticks)
+std::string run_strip_scenario_match(int flag_family, bool boxes_off,
+                                     int ticks)
 {
     ModesCtfWorld fx(kCtfLevelB);
     build_strip_scenario(fx, flag_family);
-    if (set_field)
-        fx.world().ctf_requested_strip_scenario_troops = strip_flag;
+    if (boxes_off)
+    {
+        for (auto& box : fx.world().ctf_requested_map_units)
+            box = og::sim::kMapUnitsOff;
+    }
     fx.tick(ticks);
     return digest_world(fx.world());
 }
 
 }  // namespace
 
-TEST_F(ModesCtf, strip_scenario_troops_off_matches_control_run)
+TEST_F(ModesCtf, map_units_on_matches_control_run)
 {
-    const std::string off = run_strip_scenario_match(flag_family_, true, 0, 50);
+    // The default boxes (all on) are byte-identical to a world that never
+    // touched them.
+    const std::string on = run_strip_scenario_match(flag_family_, false, 50);
     const std::string control =
-        run_strip_scenario_match(flag_family_, false, 0, 50);
-    ASSERT_EQ(off, control);
+        run_strip_scenario_match(flag_family_, false, 50);
+    ASSERT_EQ(on, control);
 }
 
-TEST_F(ModesCtf, strip_scenario_troops_run_is_deterministic)
+TEST_F(ModesCtf, map_units_off_run_is_deterministic)
 {
     const std::string first =
-        run_strip_scenario_match(flag_family_, true, 2, 150);
+        run_strip_scenario_match(flag_family_, true, 150);
     const std::string second =
-        run_strip_scenario_match(flag_family_, true, 2, 150);
+        run_strip_scenario_match(flag_family_, true, 150);
     ASSERT_NE(first.find("act=1"), std::string::npos);
     ASSERT_EQ(first, second);
 }
 
-TEST_F(ModesCtf, strip_scenario_troops_inert_when_ctf_does_not_activate)
+TEST_F(ModesCtf, map_units_boxes_inert_when_ctf_does_not_activate)
 {
     ModesCtfWorld fx;
     fx.spawn_flag(flag_family_, 0, 96, 96);
     fx.spawn_hero(FAMILY_SOLDIER, 0, 160, 160, 7);
     fx.spawn_living(FAMILY_ARCHER, 0, 200, 160);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
+    for (auto& box : fx.world().ctf_requested_map_units)
+        box = og::sim::kMapUnitsOff;
 
     fx.tick(1);
 

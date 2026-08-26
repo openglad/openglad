@@ -732,3 +732,91 @@ to know, so nobody re-derives it:
   `tests/curses/test_curses_network.cpp`,
   `tests/integration/test_menu_model.cpp`, and
   `scripts/test_text_picker_interactive.sh`.
+
+## As built: the W5-A layer (2026-08-26)
+
+The Lua half of B1-B4 and B7 — the solver multiplier, the weakest-human
+reference, the per-team strip, the activation fold, the band modes and
+the staged rows. The rulings the build settled, recorded so nobody
+re-derives them from the code:
+
+- **The multiplier table lives once**, in `mode_match.lua`:
+  `FILL_PERCENT = { [0]=100, [1]=0, [2]=75, [3]=125, [4]=150 }`, keyed by
+  the raw code `og.match_setting("fill_N")` answers. `fill_percent`
+  answers a junk code as FAIR's 100, and `applied_fill` normalises the
+  BANKED code the same way, so a crafted off-wheel value stages
+  byte-identically to FAIR (the replacement for the old
+  unregistered-ordinal identity pin).
+- **The census prices teams now.** `census_inputs` reads `fill[t]` /
+  `map_units[t]` and adds `teams[t].power` — the human f-sum per team —
+  so `fills` decides the ALLIES gap from the inputs alone and the
+  decision rows' counts are the fielded counts (the
+  apply-executes-decision matrix stayed exact). `strip_troops` and
+  `team_count` are read by nobody.
+- **Fielded map units activate their team past the manifest default.**
+  B4's list is implemented literally in `activation`: an authored team
+  with a roster, or with authored npcs/generators whose box is on, is
+  active whatever `row.teams` says — the generalisation of the
+  2026-08-18 "as many teams as the map actually has" directive (an
+  Onslaught board of three foundries on a teams-2 manifest fields all
+  three now). The manifest default still governs EMPTY teams: an
+  anchors-only side past it gets no FILL squad and stays out (the old
+  OWN whole-domain refusal shapes are gone with TROOPS — a 4-anchor
+  2-mouth pitch is a clean 2-side match now, not a "no goal rect"
+  refusal). `auto_default` keeps its signature.
+- **The reference is the weakest human team's f-sum** (`census_power`
+  returns it; D11's mean is deleted). `MATCHED.TARGET` banks it at init
+  (the latch shape kept); the spawn seam re-censuses the same world for
+  the allies gap. Empty team: `target = ref × pct / 100`. Occupied team:
+  `target = (strongest other f-sum − own f-sum) × pct / 100`, and a
+  target at or below zero is NO SQUAD (`fill_target` answers nil — the
+  A-era B(1)-clamped allies are gone). No human power anywhere: the
+  legacy difficulty formula, unscaled (B3's own words), which stores no
+  plan.
+- **`matched` means "a reference exists"**: activation reports it for any
+  deployed roster (the strip-sentinel gate died with TROOPS), and
+  `matched_size` is always the D34 min-roster rule. Consequence: the
+  DEFAULT world with rosters is the matched world — the old TROOPS: FAIR
+  behaviour — and the all-zero byte-identity is gone by design (the
+  staged-rules suite pins the new default rows instead, and says so).
+- **`TEAMS MATCHED` announces for any solved squad**, allies included,
+  through the unchanged R3 one-shot latch (`announce_matched` gates on
+  init and fires once); the legacy arm and the band modes never announce.
+- **The facts bank the applied fill code** (`bank_lineup_facts(team,
+  fill)`, code = fill + 1) whenever ≥ 1 member spawned — the legacy arm
+  included, so a default no-humans world now banks FAIR on its squads
+  (B7: every squad row closes with its fill word). R4 holds: 0 spawned =
+  0 banked. The refusal digit (`REFUSAL_BASE`) is untouched.
+- **The per-team strip** (`mode_strip.strip_authored_troops()`, no
+  arguments now) retires each score team's guy-less livings AND
+  generators when its box reads off — non-zero = off, so junk cannot
+  field hidden units. Two deliberate narrowings against the old OWN
+  strip: wildlife (teams ≥ 4) has no box and always stands, and the
+  Onslaught foundry exception is gone — generators follow the box (B4),
+  so unchecking an Onslaught side removes its board and the side with it
+  (`keep_generators` deleted from the strip and from `fills` opts; the
+  no_bots empty arm now deactivates a team with nothing standing, where
+  it used to leave an E8 empty-but-active side). `mode_strip` imports
+  `mode_match` for the box read (`map_units_fielded`) — the old
+  dependency ran the other way and died with `strip.KEEP`.
+- **Band modes solve their singles** (`mode_fighters.fill_bots`): the
+  reference is the weakest DEPLOYED fighter's f (every human team in a
+  band is one fighter), each single is D24-measured on its own base and
+  argmin-solved against `ref × pct`; NONE keeps the deployed band (R1's
+  decide-fold refusal unchanged); no plan is packed (PLAN_BASE overflows
+  band bytes) and no facts are banked — the staged report renders a band
+  by its fighters. There is no zero-power fallback: the fold refused
+  below two fighters, and a live has_guy fighter always prices above
+  zero (the +60 offense floor), so the reference always exists at fill
+  time.
+- **Deleted Lua** (with their tests): `BOT_PRESETS`,
+  `BOT_SQUAD_AUTO/OFF/NONE/PRESET_BASE`, `preset_for`, `preset_families`,
+  `preset_squad`, `preset_squad_size`, `fair_target`, `level_offset`,
+  `resolve_level`, `resolve_plan`, `offset_code`, `FACT_OFFSET_RADIX`,
+  `strip.KEEP`, `strip.OWN`, `strip_everything`; `lineup_fact` is now
+  the one-argument `fill + 1`. New exports: `FILL_FAIR`, `FILL_NONE`,
+  `FILL_PERCENT`, `fill_percent`, `applied_fill`, `map_units_fielded`,
+  `fill_target`.
+- **The camp page needed nothing**: W5-B had already cut the TROOPS row
+  and the `presets` key; the digest (`map` / `to 5`) and the `lineup =
+  { power = ... }` hook stand as they left them.

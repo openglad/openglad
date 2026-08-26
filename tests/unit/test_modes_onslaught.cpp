@@ -339,26 +339,22 @@ TEST_F(ModesOnslaught, genless_active_team_starts_its_grace_clock)
         << "a genless team is on the clock from init";
 }
 
-TEST_F(ModesOnslaught, scenario_troops_strip_spares_the_foundries)
+TEST_F(ModesOnslaught, map_units_box_takes_a_side_and_its_foundries)
 {
-    // Onslaught is the one mode that passes keep_generators to the shared
-    // strip: its generators ARE the board, so "strip ALL" clears the
-    // authored infantry and leaves every post standing.
+    // Generators follow the same box as the livings (B4) — the foundry
+    // exception died with the global strip. A box turned off on a side of
+    // a two-side board removes that side's whole army, so the match drops
+    // below two teams and refuses; the retired-strip field changes
+    // nothing.
     OnsWorld fx;
-    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.world().ctf_requested_map_units[1] = og::sim::kMapUnitsOff;
     walker* wildlife = fx.spawn_living(FAMILY_ORC, 5, 320, 700);
     ASSERT_NE(nullptr, wildlife);
     fx.tick(1);
 
-    ASSERT_TRUE(fx.ons_active());
-    EXPECT_TRUE(fx.red->dead()) << "STRIP_ALL takes the authored livings";
-    EXPECT_TRUE(fx.green->dead());
-    EXPECT_TRUE(wildlife->dead()) << "\"ALL\" reaches wildlife too";
-    EXPECT_FALSE(fx.red_gen_a->dead()) << "keep_generators spares the posts";
-    EXPECT_FALSE(fx.red_gen_b->dead());
-    EXPECT_FALSE(fx.green_gen->dead());
-    EXPECT_EQ(2, fx.team_var(kOnsGenCount, 0)) << "the census still counts them";
-    EXPECT_EQ(1, fx.team_var(kOnsGenCount, 1));
+    ASSERT_FALSE(fx.world().mode.active)
+        << "a two-side board loses a side to the box: fewer than two";
+    EXPECT_TRUE(fx.world().mode.init_attempted);
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
@@ -482,8 +478,9 @@ TEST_F(ModesOnslaught, matched_request_masks_like_own_and_ignores_power)
            "generator team is active, so all three tents stand";
 
     EXPECT_GT(matched.var(kSlotMatchedTarget), 0)
-        << "the shared census still runs (matched request + a human)";
-    EXPECT_EQ(0, own.var(kSlotMatchedTarget));
+        << "the shared census still runs (a human roster stands)";
+    EXPECT_EQ(matched.var(kSlotMatchedTarget), own.var(kSlotMatchedTarget))
+        << "the retired strip field changes nothing: both twins census";
     EXPECT_EQ(0, matched.var(kSlotMatchedPlan)) << "no seat ever solves";
     EXPECT_EQ(0, matched.var(kSlotMatchedAnnounced));
     EXPECT_FALSE(has_notification(matched.events, "TEAMS MATCHED"));

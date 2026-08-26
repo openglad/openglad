@@ -314,10 +314,11 @@ TEST_F(ModesTdm, init_strips_score_range_only_and_keeps_wildlife)
     ASSERT_NE(nullptr, wild_gen);
     wild_gen->setxy(432, 432);
     wild_gen->set_team_num(5);
-    // Team 2 leaves through BOTS: OFF (lineup A1/A2, the retired TEAMS
-    // count's successor); the hero sits on an on team, where nothing is
-    // ever stripped.
-    fx.world().ctf_requested_fill[2] = og::sim::kBotSquadOff;
+    // Team 2 leaves through MAP UNITS off + FILL: NONE (amendment B4 —
+    // the retired OFF wheel value's successor); the hero sits on an on
+    // team, where nothing is ever stripped.
+    fx.world().ctf_requested_fill[2] = og::sim::kFillNone;
+    fx.world().ctf_requested_map_units[2] = og::sim::kMapUnitsOff;
     fx.tick(1);
 
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
@@ -350,7 +351,7 @@ TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
     // team the strip empties comes back as a bot squad instead of standing
     // the match up with nobody on it.
     ModesCtfWorld fx(kTdmLevelA);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.world().ctf_requested_map_units[1] = og::sim::kMapUnitsOff;
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
@@ -359,37 +360,35 @@ TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
 
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
     EXPECT_FALSE(hero->dead()) << "roster walkers are never stripped";
-    EXPECT_TRUE(troop->dead()) << "STRIP_ALL takes the authored troop";
+    EXPECT_TRUE(troop->dead()) << "the box off takes the authored troop";
     EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the hero holds team 0 alone";
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "the census behind the strip backfills the emptied team";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the census behind the strip backfills the emptied team, sized "
+           "to the roster headcount (B2)";
 }
 
-TEST_F(ModesTdm, troops_own_at_auto_activates_the_authored_team_count)
+TEST_F(ModesTdm, rosters_on_authored_teams_field_all_authored_sides)
 {
-    // The scen-841 shape on TDM at TEAMS: Auto: Auto is the zero sentinel
-    // ("as many teams as the map actually has"), so OWN with rosters on
-    // teams 0 and 2 fields all THREE authored sides — the rosters stay
-    // untouched and the unrostered team backfills with the legacy bot
-    // squad, exactly like an explicit TEAMS: 3 (issue #218; the 2026-08-18
-    // directive superseding D26's Auto scope).
+    // The scen-841 shape on TDM: rosters on teams 0 and 2 of a
+    // three-anchor map field all THREE authored sides — the rosters stay
+    // untouched (equal companies, so no allies gap) and the unrostered
+    // team backfills with a squad matched to the roster headcount (B2).
     ModesCtfWorld fx(kTdmLevelA);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 2, 216, 760, 2);
+    walker* other = fx.spawn_hero(FAMILY_SOLDIER, 2, 216, 760, 2);
     fx.tick(1);
 
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
     EXPECT_EQ(1 + 2 + 4, fx.var(kTdmSlotTeamMask))
-        << "Auto resolves to the authored team count: all three sides";
+        << "every authored side plays: rosters plus the backfilled team";
     EXPECT_FALSE(soldier->dead());
-    EXPECT_FALSE(barbarian->dead());
+    EXPECT_FALSE(other->dead());
     EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the rosters stay as-is";
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "the empty-team census fields the legacy squad";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the empty-team census fields a squad at the roster headcount";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
@@ -1210,36 +1209,30 @@ struct TeamCountProbeScript
 
 }  // namespace
 
-TEST_F(ModesTdm, matched_mask_equals_own_mask_at_every_numeric_count)
+TEST_F(ModesTdm, retired_troops_sentinel_and_activate_teams_agree)
 {
-    // The §A.4 twin promise, count-swept: FAIR is mask-invisible at 3 and
-    // 4 exactly as at Auto and 2 — the strip trigger feeds power, never
-    // activation. Twin worlds run strictly SEQUENTIALLY (two live
-    // fixtures resolve script bindings against the last-constructed
-    // world — the harness trap).
-    for (const int count : {3, 4})
+    // TROOPS is retired (amendment B5): the strip field is inert and no
+    // mode Lua reads it, but core.MATCHED_TROOPS stays as the migration
+    // prose twin of the C++ kTroopsMatched — this probe is the agreement
+    // pin. It also pins core.activate_teams over the sparse authored
+    // mask 13 = {0, 2, 3}: count 2 takes the first two authored teams,
+    // count 3 all three.
+    const struct
     {
-        std::int32_t own_mask = 0;
-        {
-            TeamCountProbeScript probe;
-            ModesCtfWorld own(kHelperProbeLevel);
-            own.world().ctf_requested_strip_scenario_troops = 2;  // OWN
-            own.world().ctf_requested_team_count =
-                static_cast<short>(count);
-            own.tick(1);
-            ASSERT_TRUE(own.world().mode.active) << "count " << count;
-            own_mask = own.var(kProbeSlotMask);
-        }
+        int count;
+        int mask;
+    } rows[] = {{2, 0b0101}, {3, 0b1101}};
+    for (const auto& row : rows)
+    {
         TeamCountProbeScript probe;
-        ModesCtfWorld fair(kHelperProbeLevel);
-        fair.arm_matched();
-        fair.world().ctf_requested_team_count = static_cast<short>(count);
-        fair.tick(1);
-        ASSERT_TRUE(fair.world().mode.active) << "count " << count;
-        EXPECT_EQ(own_mask, fair.var(kProbeSlotMask))
-            << "FAIR must clamp identically to OWN at count " << count;
-        EXPECT_EQ(1, fair.var(kProbeSlotMatched)) << "count " << count;
-        EXPECT_EQ(og::sim::kTroopsMatched, fair.var(kProbeSlotConstant))
+        ModesCtfWorld fx(kHelperProbeLevel);
+        fx.world().ctf_requested_team_count = static_cast<short>(row.count);
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active) << "count " << row.count;
+        EXPECT_EQ(row.mask, fx.var(kProbeSlotMask)) << "count " << row.count;
+        EXPECT_EQ(0, fx.var(kProbeSlotMatched))
+            << "the retired strip field reads 0: never the FAIR sentinel";
+        EXPECT_EQ(og::sim::kTroopsMatched, fx.var(kProbeSlotConstant))
             << "core.MATCHED_TROOPS must equal the C++ sentinel";
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
@@ -1365,9 +1358,6 @@ void author_fresh_squad(ModesCtfWorld& fx, int team, int y)
 TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
 {
     ModesCtfWorld fx(kMatchProbeLevel);
-    // Matched requested, so the probe's bank_match_target call reaches
-    // the census latch: a nonzero stored target is never re-censused.
-    fx.arm_matched();
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
@@ -1477,25 +1467,31 @@ constexpr const char* kLineupProbeLua =
     "local match = og.use(\"mode_match\")\n"
     "local squad = { \"core:soldier\", \"core:archer\", \"core:elf\",\n"
     "                \"core:mage\", \"core:thief\" }\n"
+    "local function opt(v)\n"
+    "  if v == nil then\n"
+    "    return -1\n"
+    "  end\n"
+    "  return v\n"
+    "end\n"
     "og.register_level_hooks(9093, {\n"
     "  on_mode_init = function(level)\n"
     "    local sums = { 100, 250, 0, 40 }\n"
-    "    og.log(\"fair\", match.fair_target(500, sums, 0),\n"
-    "           match.fair_target(500, sums, 1),\n"
-    "           match.fair_target(500, sums, 2))\n"
-    "    local cyc = match.preset_squad(\n"
-    "        { families = { \"core:soldier\", \"core:elf\" }, count = 5 },\n"
-    "        0, nil)\n"
-    "    og.log(\"psq_cycle\", #cyc, cyc[1], cyc[2], cyc[3], cyc[4], cyc[5])\n"
-    "    local capped = match.preset_squad({ families = squad }, 4, 3)\n"
-    "    og.log(\"psq_cap\", #capped, capped[1])\n"
-    "    og.log(\"psq_head\", #match.preset_squad({ families = squad }, 2, nil))\n"
-    "    og.log(\"pfam\", match.preset_families(0) == nil and 1 or 0,\n"
-    "           match.preset_families(7) == nil and 1 or 0,\n"
-    "           match.preset_families(3) ~= nil and 1 or 0)\n"
+    "    og.log(\"target\", opt(match.fill_target(100, sums, 0, 100)),\n"
+    "           opt(match.fill_target(100, sums, 1, 100)),\n"
+    "           opt(match.fill_target(100, sums, 2, 100)),\n"
+    "           opt(match.fill_target(100, sums, 2, 150)),\n"
+    "           opt(match.fill_target(100, sums, 0, 150)),\n"
+    "           opt(match.fill_target(0, sums, 2, 100)))\n"
+    "    og.log(\"room\", opt(match.squad_room(5, 3)),\n"
+    "           opt(match.squad_room(5, 9)), opt(match.squad_room(nil, 3)))\n"
+    "    og.log(\"pct\", match.fill_percent(0), match.fill_percent(1),\n"
+    "           match.fill_percent(2), match.fill_percent(3),\n"
+    "           match.fill_percent(4), match.fill_percent(9))\n"
+    "    og.log(\"off\", match.squad_off(1) and 1 or 0,\n"
+    "           match.squad_off(0) and 1 or 0,\n"
+    "           match.squad_off(4) and 1 or 0)\n"
     "    match.spawn_bots(0, squad, 15)\n"
     "    match.spawn_bots(1, squad, 12, nil, 3)\n"
-    "    match.spawn_bots(2, squad, 13)\n"
     "    match.spawn_bots(3, squad, 14)\n"
     "  end,\n"
     "})\n";
@@ -1515,14 +1511,12 @@ struct LineupProbeScript
     }
 };
 
-// The pure lineup arms: the FAIR allies target (gap / negative gap /
-// empty-team mean — the 2026-08-25 ruling), preset_squad's count cycling,
-// hard-shape cap and headcount arms, and preset_families' knob vocabulary
-// (AUTO and FAIR answer nil, a family preset answers its list). Then the
-// knob-aware spawn seam: an AUTO squad truncates to the caller's cap, an
-// LV offset lands on every member and persists as the plan (D14, once
-// per walker), and NONE fields nothing.
-TEST_F(ModesTdm, lineup_fair_target_preset_squad_and_knobbed_spawns)
+// The pure lineup arms: fill_target's three shapes (allies gap, no gap,
+// empty-team reference — each scaled by the wheel's percent), squad_room,
+// the FILL_PERCENT table (junk degrades to FAIR's 100) and squad_off's
+// NONE-only vocabulary (B8). Then the knob-aware spawn seam: the default
+// squad truncates to the caller's cap, and NONE fields nothing.
+TEST_F(ModesTdm, lineup_fill_target_percent_table_and_knobbed_spawns)
 {
     LineupProbeScript probe;
     ModesCtfWorld fx(9093);
@@ -1530,72 +1524,93 @@ TEST_F(ModesTdm, lineup_fair_target_preset_squad_and_knobbed_spawns)
     {
         fx.spawn_anchor(0, 96 + 96 * i, 384);
         fx.spawn_anchor(1, 96 + 96 * i, 96);
-        fx.spawn_anchor(2, 96 + 96 * i, 192);
         fx.spawn_anchor(3, 96 + 96 * i, 288);
     }
-    constexpr short kFair = og::sim::kBotSquadPresetBase + 4;
-    fx.world().ctf_requested_fill[0] = kFair;  // FAIR, no humans anywhere
-    fx.world().ctf_requested_fill[2] = kFair;  // FAIR + offset...
-    fx.world().ctf_requested_map_units[2] = 4;      // ...= AUTO squad, L2+4
-    fx.world().ctf_requested_fill[3] = og::sim::kBotSquadNone;  // team 3
+    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;  // team 3
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
 
-    const auto fair = matched_log(fx.world(), "fair");
-    ASSERT_EQ(4u, fair.size());
-    EXPECT_EQ(150, tab_int(fair, 1)) << "occupied: best other 250 - own 100";
-    EXPECT_EQ(-150, tab_int(fair, 2))
-        << "the strongest team's gap goes negative (solver clamps to L1)";
-    EXPECT_EQ(500, tab_int(fair, 3)) << "an empty team keeps the D11 mean";
+    const auto target = matched_log(fx.world(), "target");
+    ASSERT_EQ(7u, target.size());
+    EXPECT_EQ(150, tab_int(target, 1)) << "allies: best other 250 - own 100";
+    EXPECT_EQ(-1, tab_int(target, 2))
+        << "the strongest team has no gap: nil = no squad (B3)";
+    EXPECT_EQ(100, tab_int(target, 3))
+        << "an empty team targets the weakest reference";
+    EXPECT_EQ(150, tab_int(target, 4)) << "BRUTAL scales the reference";
+    EXPECT_EQ(225, tab_int(target, 5)) << "BRUTAL scales the allies gap";
+    EXPECT_EQ(-1, tab_int(target, 6)) << "no reference, no solve";
 
-    const auto cyc = matched_log(fx.world(), "psq_cycle");
-    ASSERT_EQ(7u, cyc.size());
-    EXPECT_EQ(5, tab_int(cyc, 1)) << "preset.count outranks the list length";
-    EXPECT_EQ("core:soldier", cyc[2]);
-    EXPECT_EQ("core:elf", cyc[3]);
-    EXPECT_EQ("core:soldier", cyc[4]) << "count cycles past the family list";
-    EXPECT_EQ("core:elf", cyc[5]);
-    EXPECT_EQ("core:soldier", cyc[6]);
+    const auto room = matched_log(fx.world(), "room");
+    EXPECT_EQ(2, tab_int(room, 1)) << "cap 5 - roster 3";
+    EXPECT_EQ(0, tab_int(room, 2)) << "never below zero";
+    EXPECT_EQ(-1, tab_int(room, 3)) << "no hard shape: no bound";
 
-    const auto cap = matched_log(fx.world(), "psq_cap");
-    EXPECT_EQ(3, tab_int(cap, 1)) << "the hard-shape cap clamps last";
-    EXPECT_EQ("core:soldier", cap[2]);
-    const auto head = matched_log(fx.world(), "psq_head");
-    EXPECT_EQ(2, tab_int(head, 1)) << "the matched headcount truncates";
+    const auto pct = matched_log(fx.world(), "pct");
+    EXPECT_EQ(100, tab_int(pct, 1)) << "FAIR";
+    EXPECT_EQ(0, tab_int(pct, 2)) << "NONE";
+    EXPECT_EQ(75, tab_int(pct, 3)) << "WEAK";
+    EXPECT_EQ(125, tab_int(pct, 4)) << "STRONG";
+    EXPECT_EQ(150, tab_int(pct, 5)) << "BRUTAL";
+    EXPECT_EQ(100, tab_int(pct, 6)) << "junk degrades to FAIR";
 
-    const auto pfam = matched_log(fx.world(), "pfam");
-    EXPECT_EQ(1, tab_int(pfam, 1)) << "AUTO names no preset";
-    EXPECT_EQ(1, tab_int(pfam, 2)) << "FAIR carries no families";
-    EXPECT_EQ(1, tab_int(pfam, 3)) << "BALANC answers its list";
+    const auto off = matched_log(fx.world(), "off");
+    EXPECT_EQ(1, tab_int(off, 1)) << "NONE forbids the squad";
+    EXPECT_EQ(0, tab_int(off, 2)) << "FAIR does not";
+    EXPECT_EQ(0, tab_int(off, 3)) << "BRUTAL does not (B8: no refusals)";
 
-    // The knob-aware spawns: FAIR with no human power anywhere degrades
-    // to the legacy squad on team 0 (fact banked AUTO — code 0), the AUTO
-    // squad truncates to the caller's cap on team 1, FAIR + offset +4 on
-    // team 2 is the AUTO squad at formula L2 + 4 = L6 (plan code 60 at
-    // base 10000 — the RESOLVED level; facts code 4 — the offset alone,
-    // squad AUTO since the solve never ran), and NONE fields nothing on
-    // team 3.
-    EXPECT_EQ(5, alive_on_team(fx.world(), 0))
-        << "FAIR without human power degrades to the legacy squad";
-    EXPECT_EQ(0, (fx.var(kSlotMatchedAnnounced) / 10) % 100)
-        << "the degraded FAIR banks AUTO, not the ordinal";
+    // The knob-aware spawns (no humans anywhere -> the legacy arm): the
+    // full squad on team 0, the cap-truncated squad on team 1, nothing on
+    // the NONE team — and the applied FAIR fact banked where a squad
+    // walked on (code fill + 1 = 1).
+    EXPECT_EQ(5, alive_on_team(fx.world(), 0));
     EXPECT_EQ(3, alive_on_team(fx.world(), 1))
-        << "an AUTO squad truncates to the caller's cap";
-    EXPECT_EQ(5, alive_on_team(fx.world(), 2));
+        << "the squad truncates to the caller's cap";
     EXPECT_EQ(0, alive_on_team(fx.world(), 3)) << "NONE fields nothing";
-    EXPECT_EQ(60, matched_plan_code(fx.var(kSlotMatchedPlan), 2))
-        << "the explicit level persists as the stored plan";
-    const SquadLevels levels = squad_levels_on_team(fx.world(), 2);
-    EXPECT_EQ(6, levels.soldier);
-    EXPECT_EQ(6, levels.archer);
-    EXPECT_EQ(6, levels.elf);
-    EXPECT_EQ(6, levels.mage);
-    EXPECT_EQ(6, levels.thief);
-    EXPECT_EQ(4, (fx.var(kSlotMatchedAnnounced) / 10 / 10000) % 100)
-        << "the offset fact alone is banked — FAIR without a solve is AUTO";
+    EXPECT_EQ(1, (fx.var(kSlotMatchedAnnounced) / 10) % 100)
+        << "team 0 banks the applied FAIR code";
+    EXPECT_EQ(1, (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
+        << "team 1 banks it too";
+    EXPECT_EQ(0, (fx.var(kSlotMatchedAnnounced) / 10 / 1000000) % 100)
+        << "the NONE team banks nothing";
+    EXPECT_EQ(0, fx.var(kSlotMatchedPlan)) << "the legacy arm stores no plan";
     EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10)
         << "no solve ran, so nothing announced";
+}
+
+// The spawn seam's allies floor (B3): driven on an OCCUPIED team through
+// the same probe — equal companies leave no gap, so spawn_bots returns
+// without fielding or banking anything, while the empty team beside them
+// still solves its capped single.
+TEST_F(ModesTdm, lineup_spawn_seam_allies_no_gap_spawns_nothing)
+{
+    LineupProbeScript probe;
+    ModesCtfWorld fx(9093);
+    for (int i = 0; i < 5; ++i)
+    {
+        fx.spawn_anchor(0, 96 + 96 * i, 384);
+        fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.spawn_anchor(3, 96 + 96 * i, 288);
+    }
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    fx.spawn_hero(FAMILY_SOLDIER, 2, 200, 300, 2);
+    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0))
+        << "equal companies: no gap, no allies";
+    EXPECT_EQ(0, (fx.var(kSlotMatchedAnnounced) / 10) % 100)
+        << "nothing spawned on team 0, nothing banked";
+    EXPECT_EQ(3, alive_on_team(fx.world(), 1))
+        << "the empty team solves its cap-truncated squad (the probe "
+           "banks no headcount, so the table rules)";
+    EXPECT_NE(0, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "the empty-team squad was SOLVED against the reference";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 3)) << "NONE fields nothing";
 }
 
 // The model-pin tripwire (D13/§8): for EVERY family with a TUPLE row (the
@@ -1631,9 +1646,10 @@ TEST_F(ModesTdm, matched_model_pin_measured_within_ten_percent_of_predicted)
     }
 }
 
-// Census arms: a single human team's T is that team's f-sum, and walkers
-// without a guy record never enter it (the has_guy guard) — the two worlds
-// differ by one big guy-less Living and must census identically.
+// Census arms: with a single human team the REFERENCE (B3 — the weakest
+// human team's f-sum) is that team's f-sum, and walkers without a guy
+// record never enter it (the has_guy guard) — the two worlds differ by
+// one big guy-less Living and must census identically.
 TEST_F(ModesTdm, matched_census_single_team_sum_ignores_guyless_livings)
 {
     long long with_bot = 0;
@@ -1663,7 +1679,8 @@ TEST_F(ModesTdm, matched_census_single_team_sum_ignores_guyless_livings)
     }
     EXPECT_EQ(without_bot, with_bot)
         << "a guy-less Living must never enter the census";
-    EXPECT_EQ(team_sum, with_bot) << "one human team -> T is its f-sum";
+    EXPECT_EQ(team_sum, with_bot)
+        << "one human team -> the reference is its f-sum";
     // Derived calibration (§4.2): the fresh five-family squad's f-sum under
     // the trunc-on-read discipline. Soldier alone is 2306 (the §4.2 worked
     // example): H 166, M 34, D 23, A 9, SP 4, FF trunc(5.87) = 5 -> RATE 24,
@@ -1672,13 +1689,14 @@ TEST_F(ModesTdm, matched_census_single_team_sum_ignores_guyless_livings)
                                  "the derived pins (spec §4.2)";
 }
 
-// The multi-team mean (D11) and the heart-value oracle (§8): three rosters
-// of strictly increasing worth — fresh squad, mixed L4 trio, an
-// archmage-anchored roster — must rank identically under f-sums and under
-// guy::query_heart_value sums. Within-roster inversions are expected;
-// TEAM-level rank agreement is the contract. The absolute sums are the
-// derived calibration table (recorded from the census itself, §4.2).
-TEST_F(ModesTdm, matched_census_mean_and_heart_value_rank_oracle)
+// The weakest-team reference (B3 — D11's mean is retired) and the
+// heart-value oracle (§8): three rosters of strictly increasing worth —
+// fresh squad, mixed L4 trio, an archmage-anchored roster — must rank
+// identically under f-sums and under guy::query_heart_value sums.
+// Within-roster inversions are expected; TEAM-level rank agreement is the
+// contract. The absolute sums are the derived calibration table
+// (recorded from the census itself, §4.2).
+TEST_F(ModesTdm, matched_census_weakest_reference_and_heart_value_rank)
 {
     ModesCtfWorld fx(kMatchProbeLevel);
     author_fresh_squad(fx, 0, 200);
@@ -1692,12 +1710,12 @@ TEST_F(ModesTdm, matched_census_mean_and_heart_value_rank_oracle)
     ASSERT_TRUE(fx.world().mode.active);
 
     const auto census = matched_log(fx.world(), "census");
-    const long long mean = tab_int(census, 1);
+    const long long reference = tab_int(census, 1);
     const long long fresh = tab_int(census, 2);
     const long long mixed = tab_int(census, 3);
     const long long archmage = tab_int(census, 4);
-    EXPECT_EQ((fresh + mixed + archmage) / 3, mean)
-        << "T is the MEAN of the human team f-sums (D11)";
+    EXPECT_EQ(fresh, reference)
+        << "the reference is the WEAKEST human team's f-sum (B3)";
     // H = MIN of the per-team headcounts (5, 3, 3 -> 3; D34) lives in
     // match.activation: matched_size, pinned by
     // StagedRules.fair_matched_size_is_the_min_roster_headcount.
@@ -1744,7 +1762,9 @@ TEST_F(ModesTdm, matched_spawn_bots_legacy_arm_is_unchanged)
     EXPECT_EQ(2, levels.thief);
     EXPECT_EQ(0, fx.var(kSlotMatchedTarget));
     EXPECT_EQ(0, fx.var(kSlotMatchedPlan));
-    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(1, (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
+        << "the applied FAIR fact banks even on the legacy arm (B7)";
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10) << "nothing announced";
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
 }
 
@@ -1769,67 +1789,54 @@ TEST_F(ModesTdm, matched_spawn_bots_planned_arm_applies_stored_plan)
     EXPECT_EQ(4, levels.mage) << "past the prefix: L4";
     EXPECT_EQ(4, levels.thief) << "past the prefix: L4";
     EXPECT_EQ(4300, fx.var(kSlotMatchedPlan)) << "the plan is durable";
-    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10) << "nothing announced";
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
 }
 
-// spawn_bots D24 arm at init: a stored target with no plan measures the
-// real squad, solves, persists the plan and announces once. T = B(2) of
-// the real loader bases lands the exact stock squad (uniform L2).
+// spawn_bots D24 arm at init: with no plan and human power on the board
+// the seam censuses, measures the real squad, solves against the
+// reference (the fresh squad's derived 6520), persists the plan and
+// announces once — the direct-seam twin of the flagship flow below.
 TEST_F(ModesTdm, matched_spawn_bots_measures_solves_and_announces)
 {
     ModesCtfWorld fx(kMatchSpawnProbeLevel);
     for (int i = 0; i < 5; ++i)
         fx.spawn_anchor(1, 96 + 96 * i, 96);
-    // Derived: B(2) over the shipped loader bases (soldier 3348 +
-    // archer 1857 + elf 2244 + mage 1282 + thief 2260).
-    fx.world().mode.vars[kMatchProbeInTarget] = 10991;
+    author_fresh_squad(fx, 0, 200);
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
 
     EXPECT_EQ(5, alive_on_team(fx.world(), 1));
-    EXPECT_EQ(20, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
-        << "T = B(2) must solve to the exact stock squad";
+    EXPECT_EQ(11, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "the reference 6520 solves to L1 + one upgrade (derived, as in "
+           "the flagship flow)";
     const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
-    EXPECT_EQ(2, levels.soldier);
-    EXPECT_EQ(2, levels.archer);
-    EXPECT_EQ(2, levels.elf);
-    EXPECT_EQ(2, levels.mage);
-    EXPECT_EQ(2, levels.thief);
-    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(2, levels.soldier) << "the k = 1 upgrade prefix";
+    EXPECT_EQ(1, levels.archer);
+    EXPECT_EQ(1, levels.elf);
+    EXPECT_EQ(1, levels.mage);
+    EXPECT_EQ(1, levels.thief);
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced) % 10);
     EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));
 }
 
-// The two clamp shapes announce the LIMIT variant (§7): a target below
-// B(1) floors the squad at uniform L1, the capped ceiling target lands
-// uniform L9 (E13 low end, D20 cap high end).
-TEST_F(ModesTdm, matched_spawn_bots_clamps_announce_the_limit)
+// The low clamp announces the LIMIT variant (§7): a lone fresh thief's
+// reference prices below B(1) of the five-family squad, so the solve
+// floors at uniform L1 and says so. (The high clamp's pure arm stays
+// pinned in matched_power_metric_and_solver_arms: solve_high.)
+TEST_F(ModesTdm, matched_spawn_bots_low_clamp_announces_the_limit)
 {
-    {
-        ModesCtfWorld fx(kMatchSpawnProbeLevel);
-        for (int i = 0; i < 5; ++i)
-            fx.spawn_anchor(1, 96 + 96 * i, 96);
-        fx.world().mode.vars[kMatchProbeInTarget] = 1;
-        fx.tick(1);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
-            << "sub-B(1) target -> uniform L1 (E13)";
-        EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced));
-        EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
-    }
-    {
-        ModesCtfWorld fx(kMatchSpawnProbeLevel);
-        for (int i = 0; i < 5; ++i)
-            fx.spawn_anchor(1, 96 + 96 * i, 96);
-        fx.world().mode.vars[kMatchProbeInTarget] = 1 << 30;  // the D20 cap
-        fx.tick(1);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(90, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
-            << "capped target -> uniform L9";
-        EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced));
-        EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
-    }
+    ModesCtfWorld fx(kMatchSpawnProbeLevel);
+    for (int i = 0; i < 5; ++i)
+        fx.spawn_anchor(1, 96 + 96 * i, 96);
+    fx.spawn_leveled_hero(FAMILY_THIEF, 0, 200, 200, 1, 1);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "a sub-B(1) reference -> uniform L1 (E13)";
+    EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced) % 10);
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
 }
 
 // The D24 backstop shape mid-match: once init is over (MODE_ID != 0) a
@@ -1840,27 +1847,26 @@ TEST_F(ModesTdm, matched_backstop_solve_stores_plan_but_stays_silent)
     ModesCtfWorld fx(kMatchSpawnProbeLevel);
     for (int i = 0; i < 5; ++i)
         fx.spawn_anchor(1, 96 + 96 * i, 96);
-    fx.world().mode.vars[kMatchProbeInTarget] = 10991;  // B(2), derived
+    author_fresh_squad(fx, 0, 200);
     fx.world().mode.vars[kMatchProbeInMidMatch] = 1;
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
 
-    EXPECT_EQ(20, matched_plan_code(fx.var(kSlotMatchedPlan), 1));
+    EXPECT_EQ(11, matched_plan_code(fx.var(kSlotMatchedPlan), 1));
     const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
     EXPECT_EQ(2, levels.soldier) << "the squad still levels to the solve";
-    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10);
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
 }
 
-// E1 through the real TDM flow: TROOPS: FAIR with no human power
-// server-side stores nothing and fields the legacy squad — no
-// announcement. Premise re-ruled under the D26 bundle: arming now ALSO
-// strips, so the authored (guy-less) soldier is retired like any authored
-// troop and BOTH emptied teams backfill at the legacy formula.
-TEST_F(ModesTdm, matched_request_without_humans_keeps_legacy_bots)
+// E1 through the real TDM flow: no human power server-side stores
+// nothing and fields the legacy squads — no announcement. The MAP UNITS
+// box (B4) strips the authored guy-less soldier, so BOTH emptied teams
+// backfill at the legacy formula.
+TEST_F(ModesTdm, no_humans_with_the_box_off_keeps_legacy_bots)
 {
     ModesCtfWorld fx(kTdmLevelA);
-    fx.arm_matched();
+    fx.world().ctf_requested_map_units[0] = og::sim::kMapUnitsOff;
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     walker* troop = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
@@ -1868,23 +1874,24 @@ TEST_F(ModesTdm, matched_request_without_humans_keeps_legacy_bots)
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
 
     EXPECT_TRUE(troop->dead())
-        << "FAIR strips the authored troop exactly as OWN does (D26)";
+        << "the box off strips the authored troop (B4)";
     EXPECT_EQ(5, alive_on_team(fx.world(), 0))
-        << "the emptied team backfills like the OWN twin";
+        << "the emptied team backfills with the legacy squad";
     EXPECT_EQ(5, alive_on_team(fx.world(), 1));
     const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
     EXPECT_EQ(2, levels.soldier) << "legacy formula at percent 100";
     EXPECT_EQ(2, levels.thief);
     EXPECT_EQ(0, fx.var(kSlotMatchedTarget));
     EXPECT_EQ(0, fx.var(kSlotMatchedPlan));
-    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10);
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
 }
 
-// The flagship WP-E flow: a fresh solo squad on team 0, TROOPS: FAIR, an
-// empty authored team 1. Init censuses the roster (T = 6520, the derived
-// §4.2 value), solves the real squad against it and fields a mixed L1/L2
-// rival — an even match, not today's flat L2 wall.
+// The flagship WP-E flow: a fresh solo squad on team 0, the DEFAULT
+// knobs (FILL: FAIR is the default solver now, B2), an empty authored
+// team 1. Init censuses the roster (reference 6520, the derived §4.2
+// value), solves the real squad against it and fields a mixed L1/L2
+// rival — an even match, not the old flat L2 wall.
 //
 // SPEC DEVIATION, recorded: §4.2/§5.3 hoped the fresh-squad target lands
 // within one k-step of B(2) = 10991 (the stock squad). The DERIVED numbers
@@ -1896,7 +1903,6 @@ TEST_F(ModesTdm, matched_request_without_humans_keeps_legacy_bots)
 TEST_F(ModesTdm, matched_solo_fresh_squad_fields_an_even_rival)
 {
     ModesCtfWorld fx(kTdmLevelA);
-    fx.arm_matched();
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     author_fresh_squad(fx, 0, 200);
@@ -1919,71 +1925,11 @@ TEST_F(ModesTdm, matched_solo_fresh_squad_fields_an_even_rival)
     EXPECT_EQ(1, levels.mage);
     EXPECT_EQ(1, levels.thief);
     EXPECT_EQ(5, alive_on_team(fx.world(), 0)) << "the roster is untouched";
-    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced) % 10);
+    EXPECT_EQ(1, (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
+        << "the solved squad banks the applied FAIR code";
     EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));
-}
-
-// The D26 one-delta twin, replacing the retired multi-team pile-on case
-// (the old TEAMS: Match filled EVERY empty authored team; under the bundle
-// a solo roster pairs with exactly ONE opponent). OWN (strip 2) and FAIR
-// (strip 3) over the identical authored world must agree on everything —
-// mask, fill sites, alive counts — except the generated squads, which
-// spawn at matched power AND matched headcount (D39's restated one-delta;
-// this twin's 5-guy roster keeps H = 5, so its counts stay verbatim), and
-// only FAIR announces (once).
-TEST_F(ModesTdm, matched_differs_from_own_only_in_generated_squad_levels)
-{
-    auto author = [](ModesCtfWorld& fx) {
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(1, 544, 800);
-        fx.spawn_anchor(2, 96, 800);
-        author_fresh_squad(fx, 0, 200);
-        fx.tick(1);
-        ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
-    };
-    ModesCtfWorld own(kTdmLevelA);
-    own.world().ctf_requested_strip_scenario_troops = 2;  // OWN
-    author(own);
-    ModesCtfWorld fair(kTdmLevelA);
-    fair.arm_matched();  // FAIR
-    author(fair);
-
-    EXPECT_EQ(own.var(kTdmSlotTeamMask), fair.var(kTdmSlotTeamMask))
-        << "FAIR's masks are OWN's masks, always (D26/D33)";
-    EXPECT_EQ(7, fair.var(kTdmSlotTeamMask))
-        << "TEAMS: Auto resolves to the authored team count (issue #218, "
-           "the 2026-08-18 directive): all three authored sides";
-    for (int team = 0; team < 3; ++team)
-    {
-        EXPECT_EQ(alive_on_team(own.world(), team),
-                  alive_on_team(fair.world(), team))
-            << "fill sites must not differ on team " << team;
-    }
-    EXPECT_EQ(5, alive_on_team(fair.world(), 2))
-        << "the third authored side backfills under both (Auto = authored "
-           "count)";
-
-    // The one delta: OWN fields the legacy formula squad (percent 100 ->
-    // uniform L2), FAIR solves T = 6520 to L1 with a k = 1 prefix.
-    EXPECT_EQ(0, own.var(kSlotMatchedTarget)) << "OWN never censuses";
-    EXPECT_EQ(0, matched_plan_code(own.var(kSlotMatchedPlan), 1));
-    const SquadLevels own_levels = squad_levels_on_team(own.world(), 1);
-    EXPECT_EQ(2, own_levels.soldier) << "OWN spawns at legacy levels";
-    EXPECT_EQ(2, own_levels.archer);
-    EXPECT_EQ(2, own_levels.thief);
-    EXPECT_EQ(6520, fair.var(kSlotMatchedTarget));
-    EXPECT_EQ(11, matched_plan_code(fair.var(kSlotMatchedPlan), 1));
-    EXPECT_EQ(11, matched_plan_code(fair.var(kSlotMatchedPlan), 2))
-        << "the backfilled third side solves to the same plan";
-    const SquadLevels fair_levels = squad_levels_on_team(fair.world(), 1);
-    EXPECT_EQ(2, fair_levels.soldier) << "the k = 1 upgrade prefix";
-    EXPECT_EQ(1, fair_levels.archer);
-    EXPECT_EQ(1, fair_levels.thief);
-
-    EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
-    EXPECT_EQ(1, count_notifications(fair.events, "TEAMS MATCHED"))
-        << "one announcement per match (D23)";
 }
 
 // ===========================================================================
@@ -2032,12 +1978,11 @@ long long team_f_sum(GameWorld& world, int team)
     return sum;
 }
 
-// The matched TDM flow the determinism/mirror/budget probes share: a fresh
-// roster squad on team 0, TROOPS: FAIR, empty authored teams 1 and 2 (the
-// solo roster pairs with team 1 only under the D26 bundle).
+// The matched TDM flow the determinism/mirror/budget probes share: a
+// fresh roster squad on team 0 under the default knobs (FILL: FAIR is
+// the default solver, B2), empty authored teams 1 and 2.
 void author_matched_tdm(ModesCtfWorld& fx)
 {
-    og::modes_test::arm_matched(fx.world());
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     fx.spawn_anchor(2, 96, 800);
@@ -2065,7 +2010,6 @@ std::string run_matched_tdm_digest(int ticks)
 TEST_F(ModesTdm, matched_solo_l5_roster_squad_lands_within_fifteen_percent)
 {
     ModesCtfWorld fx(kTdmLevelA);
-    fx.arm_matched();
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 5);
@@ -2082,7 +2026,7 @@ TEST_F(ModesTdm, matched_solo_l5_roster_squad_lands_within_fifteen_percent)
         << "solo roster: the stored target is the roster's own f-sum, and "
            "the C++ twin must agree with the Lua census byte for byte";
     ASSERT_NE(0, matched_plan_code(fx.var(kSlotMatchedPlan), 1));
-    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced))
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced) % 10)
         << "an interior target announces the plain variant";
 
     ASSERT_EQ(5, alive_on_team(fx.world(), 1));
@@ -2093,19 +2037,17 @@ TEST_F(ModesTdm, matched_solo_l5_roster_squad_lands_within_fifteen_percent)
         << " misses by more than 15%";
 }
 
-// E6, THE flagship MATCH test: TROOPS: FAIR bundles the OWN deployment
-// policy (D26), and the matched census (match.bank_match_target, banked
-// by every apply before its squad fills) is strip-invariant:
+// E6, THE flagship MATCH test: with both boxes off (B4) the authored
+// orcs are stripped, and the matched census (match.bank_match_target,
+// banked by every apply before its squad fills) is strip-invariant:
 // authored troops carry no guy record, so the has_guy filter keeps them
-// out of T in either order. The solo roster pulls in exactly the FIRST
-// authored non-roster team, and that team's fill is the MATCHED squad —
-// the flagship solo experience. (The strip-before-census ordering pinned
-// by scenario_troops_strip_runs_before_the_bot_census above concerns the
-// empty-team FILL census, a different pass.)
-TEST_F(ModesTdm, matched_troops_own_solo_roster_gets_a_matched_opponent)
+// out of the reference in either order. Both emptied teams then fill
+// with the MATCHED squad — the flagship solo experience.
+TEST_F(ModesTdm, boxes_off_solo_roster_gets_a_matched_opponent)
 {
     ModesCtfWorld fx(kTdmLevelA);
-    fx.arm_matched();  // FAIR: strips AND matches (D26 — one knob now)
+    fx.world().ctf_requested_map_units[1] = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_map_units[2] = og::sim::kMapUnitsOff;
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     fx.spawn_anchor(2, 96, 800);
@@ -2115,15 +2057,13 @@ TEST_F(ModesTdm, matched_troops_own_solo_roster_gets_a_matched_opponent)
     fx.tick(1);
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
 
-    EXPECT_EQ(7, fx.var(kTdmSlotTeamMask))
-        << "solo roster under OWN at TEAMS: Auto: the authored team count "
-           "(issue #218, the 2026-08-18 directive) — all three sides";
+    EXPECT_EQ(7, fx.var(kTdmSlotTeamMask)) << "all three authored sides";
     EXPECT_EQ(6520, fx.var(kSlotMatchedTarget))
         << "stripped authored troops never pollute the census (E6)";
     EXPECT_EQ(5, fx.var(kSlotMatchedSize))
         << "stripped authored troops never pollute the headcount either";
     EXPECT_EQ(11, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
-        << "the OWN opponent solves like the TROOPS:ALL twin";
+        << "the boxed-off opponent solves like the empty-team twin";
     EXPECT_EQ(5, alive_on_team(fx.world(), 1));
     const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
     EXPECT_EQ(2, levels.soldier) << "the k = 1 upgrade prefix";
@@ -2151,7 +2091,6 @@ TEST_F(ModesTdm, matched_troops_own_solo_roster_gets_a_matched_opponent)
 TEST_F(ModesTdm, matched_solo_fresh_soldier_faces_a_single_matched_rival)
 {
     ModesCtfWorld fx(kTdmLevelA);
-    fx.arm_matched();
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
@@ -2178,7 +2117,7 @@ TEST_F(ModesTdm, matched_solo_fresh_soldier_faces_a_single_matched_rival)
     // n = 1 ±35% band (D36), erring player-friendly (D37).
     EXPECT_EQ(1643, team_f_sum(fx.world(), 1))
         << "the fielded rival's measured f (pred soldier L1, derived)";
-    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced))
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced) % 10)
         << "no clamp fired, so the announce is the plain variant (D37)";
     EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));
@@ -2194,15 +2133,15 @@ TEST_F(ModesTdm, matched_size_one_announces_limit_only_on_genuine_clamp)
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
-        fx.world().mode.vars[kMatchProbeInTarget] = 2306;
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
         fx.world().mode.vars[kMatchProbeInSize] = 1;
         fx.tick(1);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(1, alive_on_team(fx.world(), 1));
         EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
-            << "T = 2306 is interior at n = 1 (closest single-soldier "
-               "rung is L1)";
-        EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced))
+            << "the fresh soldier's 2306 is interior at n = 1 (closest "
+               "single-soldier rung is L1)";
+        EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced) % 10)
             << "the playtest shape no longer saturates (D37)";
         EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
         EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));
@@ -2211,14 +2150,15 @@ TEST_F(ModesTdm, matched_size_one_announces_limit_only_on_genuine_clamp)
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
-        fx.world().mode.vars[kMatchProbeInTarget] = 1000;  // < B(1) = 1643
+        // A fresh mage prices 1282 < the single soldier's B(1) = 1643.
+        fx.spawn_leveled_hero(FAMILY_MAGE, 0, 200, 200, 1, 1);
         fx.world().mode.vars[kMatchProbeInSize] = 1;
         fx.tick(1);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(1, alive_on_team(fx.world(), 1));
         EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
-            << "a genuinely sub-B(1) target still floors at uniform L1";
-        EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced));
+            << "a genuinely sub-B(1) reference still floors at uniform L1";
+        EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced) % 10);
         EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
     }
 }
@@ -2243,15 +2183,17 @@ TEST_F(ModesTdm, matched_size_latch_truncates_every_spawn_arm)
         EXPECT_EQ(5, levels.soldier) << "member 1 of the k = 3 prefix";
         EXPECT_EQ(0, levels.archer) << "the squad ends at the n = 1 prefix";
     }
-    // Measure-and-solve at n = 2: the §B.1 duo target over the soldier +
-    // archer prefix. Derived rungs: P(1,1) = 3348 + 834 = 4182 misses
-    // T = 4612 by 430 where P(2,0) = 3348 + 1857 = 5205 misses by 593 ->
-    // L1/k1, a 2v2 against an L2 soldier and an L1 archer.
+    // Measure-and-solve at n = 2: two fresh soldiers census 4612 over
+    // the soldier + archer prefix. Derived rungs: P(1,1) = 3348 + 834 =
+    // 4182 misses T = 4612 by 430 where P(2,0) = 3348 + 1857 = 5205
+    // misses by 593 -> L1/k1, a 2v2 against an L2 soldier and an L1
+    // archer.
     {
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
-        fx.world().mode.vars[kMatchProbeInTarget] = 4612;
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 232, 200, 2, 1);
         fx.world().mode.vars[kMatchProbeInSize] = 2;
         fx.tick(1);
         ASSERT_TRUE(fx.world().mode.active);
@@ -2262,21 +2204,21 @@ TEST_F(ModesTdm, matched_size_latch_truncates_every_spawn_arm)
         EXPECT_EQ(2, levels.soldier) << "upgrade prefix member 1";
         EXPECT_EQ(1, levels.archer);
         EXPECT_EQ(0, levels.elf) << "the squad ends at the n = 2 prefix";
-        EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced));
+        EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced) % 10);
     }
     // The D24 backstop truncates identically and stays silent (§7).
     {
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
-        fx.world().mode.vars[kMatchProbeInTarget] = 2306;
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
         fx.world().mode.vars[kMatchProbeInMidMatch] = 1;
         fx.world().mode.vars[kMatchProbeInSize] = 1;
         fx.tick(1);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(1, alive_on_team(fx.world(), 1));
         EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1));
-        EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+        EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10);
         EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
     }
 }
