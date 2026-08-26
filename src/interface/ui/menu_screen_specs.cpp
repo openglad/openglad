@@ -7528,14 +7528,19 @@ bool lineup_frame_tick(void* screen_state, int /*frame*/)
         st->was_reset = false;
         st->last_level_id = myscreen->save_data.scen_num;
         reload_picker_level_and_sync_settings(*myscreen, st->last_level_id);
+        // A reload can bring a different campaign registration with it, and
+        // the memoized prices key on the FIGHTER, not the hook (§4).
+        lineup_power_cache_clear();
     }
     return true;
 }
 
 void lineup_on_reset(void* screen_state)
 {
-    if (screen_state != nullptr)
-        static_cast<LineupScreenState*>(screen_state)->was_reset = true;
+    if (screen_state == nullptr)
+        return;
+    static_cast<LineupScreenState*>(screen_state)->was_reset = true;
+    lineup_power_cache_clear();
 }
 
 // Per-frame visibility/label/nav sync (the spec's Rewire program): knob
@@ -7849,6 +7854,8 @@ bool lineup_fighters_frame_tick(void* screen_state, int /*frame*/)
         st->was_reset = false;
         st->last_level_id = myscreen->save_data.scen_num;
         reload_picker_level_and_sync_settings(*myscreen, st->last_level_id);
+        // A reload can bring a different campaign registration with it (§4).
+        lineup_power_cache_clear();
         // The zone composition is a function of the campaign's state, which
         // the level cursor is part of — so a level change (a host's, or this
         // machine's own) can hand this screen a different can_deploy /
@@ -7873,6 +7880,7 @@ void lineup_fighters_on_reset(void* screen_state)
         return;
     auto* const st = static_cast<LineupFightersScreenState*>(screen_state);
     st->was_reset = true;
+    lineup_power_cache_clear();
     lineup_fighters_refresh_rows(*st);
 }
 
@@ -8104,12 +8112,17 @@ const MenuScreenSpec& lineup_fighters_menu_screen_spec()
 
 void install_lineup_state_for_screen(LineupScreenState* state)
 {
+    // Opening or closing the page is the outer bound on how long a memoized
+    // campaign price may live (§4): between these two calls the registration
+    // can only move through a level reload, which clears it too.
+    lineup_power_cache_clear();
     g_lineup_state = state;
 }
 
 void install_lineup_fighters_state_for_screen(
     LineupFightersScreenState* state)
 {
+    lineup_power_cache_clear();  // the LINEUP page's own bound (§4)
     g_lineup_fighters_state = state;
 }
 

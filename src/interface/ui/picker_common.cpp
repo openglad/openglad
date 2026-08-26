@@ -3748,6 +3748,47 @@ float derived_fire_delay(const guy& g)
     return delay < 1.0f ? 1.0f : delay;
 }
 
+namespace {
+
+// The campaign `lineup.power` hook is a Lua pcall, and the LINEUP page prices
+// every deployed fighter on EVERY frame of an otherwise idle menu (the band
+// draw and the FIGHTERS row draw both go through it). The hook is a pure
+// function of the ROW the engine hands it — nothing else crosses the fence —
+// so the answer is memoized on that row: a changed fighter is a different
+// key, which makes a stale price impossible. The one thing the row cannot
+// see is the HOOK itself changing, so the screens that hold the page clear
+// the memo whenever the registration could have moved under them
+// (lineup_power_cache_clear).
+struct LineupPowerMemoEntry {
+    og::script::hooks::LineupPowerRow row;
+    std::optional<long long> price;
+};
+
+// Two well-stocked machines' worth of distinct rows; past that the memo
+// starts over rather than growing without a bound.
+constexpr std::size_t kLineupPowerMemoMax = 64;
+std::vector<LineupPowerMemoEntry>& lineup_power_memo()
+{
+    static std::vector<LineupPowerMemoEntry> memo;
+    return memo;
+}
+
+bool same_power_row(const og::script::hooks::LineupPowerRow& lhs,
+                    const og::script::hooks::LineupPowerRow& rhs)
+{
+    return lhs.level == rhs.level && lhs.hp == rhs.hp && lhs.mp == rhs.mp &&
+        lhs.armor == rhs.armor && lhs.damage == rhs.damage &&
+        lhs.stepsize == rhs.stepsize &&
+        lhs.fire_frequency == rhs.fire_frequency && lhs.family == rhs.family;
+}
+
+}  // namespace
+
+void lineup_power_cache_clear() noexcept
+{
+    lineup_power_memo().clear();
+}
+
 std::optional<long long> lineup_power_for_guy(const guy& g)
 {
     if (!og::script::hooks::campaign_lineup_registered())
@@ -3767,10 +3808,23 @@ std::optional<long long> lineup_power_for_guy(const guy& g)
     row.damage = static_cast<int>(ds.atk);
     row.stepsize = static_cast<int>(ds.spd);
     row.fire_frequency = static_cast<int>(derived_fire_delay(g));
+
+    std::vector<LineupPowerMemoEntry>& memo = lineup_power_memo();
+    for (const LineupPowerMemoEntry& entry : memo)
+    {
+        if (same_power_row(entry.row, row))
+            return entry.price;
+    }
+
     long long power = 0;
-    if (!og::script::hooks::campaign_fighter_power(row, power))
-        return std::nullopt;
-    return power;
+    const std::optional<long long> price =
+        og::script::hooks::campaign_fighter_power(row, power)
+        ? std::optional<long long>(power)
+        : std::nullopt;
+    if (memo.size() >= kLineupPowerMemoMax)
+        memo.clear();
+    memo.push_back(LineupPowerMemoEntry{std::move(row), price});
+    return price;
 }
 
 std::string lineup_seat_label(const og::sim::LobbyPlayer& seat,

@@ -1457,6 +1457,64 @@ og.register_campaign_hooks({
 // screen's capabilities with it — base_camp_frame_tick refetches on exactly
 // this guard. Without the refetch the screen kept the previous level's
 // composition: deploy boxes still live on a level that forbids deploying.
+// §4: the campaign price is memoized on the ROW handed to the hook, which is
+// the hook's whole input — so a fighter that changed is a different key and
+// gets a fresh answer, while an idle menu frame costs no Lua at all. The
+// memo cannot see the HOOK change, so the page clears it wherever the
+// registration could have moved: this pins both halves.
+TEST(LineupUi, power_memo_is_keyed_on_the_fighter_and_cleared_with_the_page)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.current_campaign = "gladiator";
+    restore_gladiator_mount();
+
+    guy fighter(FAMILY_SOLDIER);
+    fighter.upgrade_to_level(3, true);
+
+    {
+        SyntheticZoneScriptGuard hook(R"LUA(
+og.register_campaign_hooks({
+  lineup = { power = function(row) return row.level * 10 end },
+})
+)LUA");
+        og::ui::lineup_power_cache_clear();
+        ASSERT_TRUE(og::script::hooks::campaign_lineup_registered());
+        const std::optional<long long> first =
+            og::ui::lineup_power_for_guy(fighter);
+        ASSERT_TRUE(first.has_value());
+        EXPECT_EQ(30, *first);
+        // The memoized answer for the SAME row.
+        EXPECT_EQ(first, og::ui::lineup_power_for_guy(fighter));
+        // A changed fighter is a different key, so it is priced afresh — a
+        // memo that keyed on anything coarser would hand back 30 here.
+        fighter.upgrade_to_level(5, true);
+        const std::optional<long long> second =
+            og::ui::lineup_power_for_guy(fighter);
+        ASSERT_TRUE(second.has_value());
+        EXPECT_EQ(50, *second);
+    }
+
+    // A different registration with the same row: the page's clear is what
+    // keeps the old campaign's price from surviving into the new one.
+    {
+        SyntheticZoneScriptGuard hook(R"LUA(
+og.register_campaign_hooks({
+  lineup = { power = function(row) return row.level * 100 end },
+})
+)LUA");
+        og::ui::lineup_power_cache_clear();
+        const std::optional<long long> repriced =
+            og::ui::lineup_power_for_guy(fighter);
+        ASSERT_TRUE(repriced.has_value());
+        EXPECT_EQ(500, *repriced);
+    }
+
+    og::ui::lineup_power_cache_clear();
+    restore_gladiator_mount();
+}
+
 TEST(LineupUi, fighters_refetches_the_zone_after_a_level_change)
 {
     trace_clear();

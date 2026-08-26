@@ -1457,15 +1457,6 @@ private:
 
 class CampaignZoneSession;
 
-// The eight per-team bot knobs as the LINEUP surfaces hold them. WP-B owns
-// the persistence chain (SaveData -> LobbySettings -> world); the helpers
-// here take the values as plain data so they stay headlessly testable.
-// squad: 0 = AUTO, 1 = NONE, 2.. = preset ordinal. level: 0 = AUTO, 1..9.
-struct LineupBotKnobs {
-    std::array<short, 4> squad{};
-    std::array<short, 4> level{};
-};
-
 // May this slot's fighting team be edited here? The single predicate behind
 // BOTH the Base Camp roster chip (local) and the LINEUP fighter list (all
 // modes): the save slot is editable, the campaign's zone composition allows
@@ -1495,6 +1486,15 @@ using LineupPowerFn = std::function<std::optional<long long>(const guy&)>;
 // Nothing when no campaign hook is registered or the hook refuses — the
 // band then shows `POWER --` and SPLIT FAIR falls back to level order.
 std::optional<long long> lineup_power_for_guy(const guy& g);
+// Drop every memoized price. lineup_power_for_guy memoizes the campaign
+// hook's answer on the ROW it hands over (a Lua pcall per fighter per frame
+// otherwise, on a menu that is idle most of the time); the row is the hook's
+// whole input, so a changed fighter is a different key and a stale price is
+// impossible. What the row cannot see is the HOOK changing, so the LINEUP
+// screens call this at every point where the campaign registration could
+// have moved under an open page: screen open/close, the level-reload guard,
+// and a nested screen's reset.
+void lineup_power_cache_clear() noexcept;
 
 // One LINEUP team band: who sits on the team, who fights for it, and what
 // the page says about the mismatch between the two.

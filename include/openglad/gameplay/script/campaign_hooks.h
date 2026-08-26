@@ -21,6 +21,8 @@
 // duplicate registration — answers "no scripted picker", so the stock UI
 // stays reachable.
 
+#include <openglad/gameplay/lobby_state.h>
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -311,9 +313,13 @@ std::vector<std::string> og_function_names();
 // campaign). `power` prices ONE fighter from its derived stats so the
 // bands can show POWER n; the engine never knows what either means.
 
-// The cycler's ceiling. A joiner clamps bot_squad to [0, 1 + this] with
-// no preset list at all, so the bound lives in the engine, not the book.
-inline constexpr int kMaxBotPresets = 8;
+// The cycler's ceiling, with ONE home: og::sim::kMaxBotPresets, the lobby's
+// own clamp bound. A joiner clamps bot_squad to [0, 1 + this] with no preset
+// list at all, so the bound lives in the engine, not the book — and the
+// registrar's cap has to be the same number by construction, not a second
+// copy of 8 that a later edit can move on its own.
+inline constexpr int kMaxBotPresets = static_cast<int>(og::sim::kMaxBotPresets);
+
 // Preset names ride a 12-char face as "BOTS: <NAME>", so 6 chars is the
 // whole room. Longer names are clipped at registration (never refused —
 // a name is cosmetic and must not cost a campaign its whole book).

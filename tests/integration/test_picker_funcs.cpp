@@ -68,7 +68,10 @@ bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
     const char* popup_title,
-    bool show_success_popup = true);
+    bool show_success_popup = true,
+    // LINEUP §6: false for callers that already tore the previous session
+    // down (DISCONNECT, the kicked revert) — restoring it would reconnect.
+    bool restore_previous_on_failure = true);
 bool picker_try_intercept_button_action(
     Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue);
 bool picker_join_game(
