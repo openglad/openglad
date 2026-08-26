@@ -31,6 +31,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_player_hud_zoom.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_options_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_networking_menu.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_networking_uxshots.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_layout.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_help.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_load_levels.cpp
@@ -530,6 +531,7 @@ og_add_test_group(og_test_menu_engine FILES
 og_add_test_group(og_test_basecamp FILES
     test_company_list.cpp
     test_uxshots_probe.cpp
+    test_networking_uxshots.cpp
     test_seat_chip.cpp
     test_fade_ownership.cpp
 )

@@ -250,6 +250,12 @@ void picker_prepare_async_team_build_start_request()
 // (run_menu_screen) calls this too; declared in picker_sdl_defs.h.
 bool team_build_remote_start_requested(Sint32& retvalue)
 {
+    // LINEUP §6: the Team Build family's per-frame poll is also where a
+    // kicked joiner notices the latched LobbyKickedMessage and swaps back
+    // to a local client (one call site — this check runs every frame in
+    // every TeamBuildScope screen and in the held-click spin waits).
+    (void)picker_revert_lobby_client_if_kicked();
+
     if (!g_start_game_requested || !picker_lobby_has_game_start_config())
         return false;
 

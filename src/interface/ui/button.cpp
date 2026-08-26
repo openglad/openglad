@@ -792,6 +792,15 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         // menu loop consumes it (retvalue only carries the action id).
         pks().networking_clicked_room_slot = arg;
         return whatfunc;
+    case ButtonAction::NetworkingMachineRow:
+        // Session modes reuse the same stash for the clicked PLAYERS row
+        // (LINEUP §6) — the two list shapes are mutually exclusive per frame.
+        pks().networking_clicked_room_slot = arg;
+        return whatfunc;
+    case ButtonAction::NetworkingDisconnect:
+        // Confirm + teardown live in configure_networking's menu loop (they
+        // need the owned lobby client); retvalue carries the action id.
+        return whatfunc;
     case ButtonAction::MenuSpecRow:
         // Stash which engine spec row was activated; run_menu_screen's loop
         // consumes it (retvalue only carries the action id).

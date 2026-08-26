@@ -398,6 +398,20 @@ enum class ButtonAction : Sint32
     // dispatch, which calls og::ui::run_campaign_zone_submenu with the
     // clicked row's own page id.)
     ToggleCrossControl = 106,
+    // --- Values 107..119 are reserved for the LINEUP screen work package
+    // (WP-E), landing concurrently; 120..125 are reserved for the
+    // Networking session UI (WP-F). Both use explicit values so the two
+    // branches merge without renumbering. ---
+    // NETWORKING subscreen PLAYERS list (LINEUP §6, session modes): the five
+    // list rows repurposed as one row per lobby MACHINE (arg = list slot
+    // 0..4, stashed like JoinRelayRoomListEntry); a host clicking a foreign
+    // row starts the KICK confirm. Own/host rows and every joiner row are
+    // inert (myfun = 0) and never dispatch this.
+    NetworkingMachineRow = 120,
+    // NETWORKING subscreen DISCONNECT (LINEUP §6, both roles): confirm,
+    // tear the network client down, swap in a fresh local client and return
+    // to Team Build. Values 122..125 remain reserved for WP-F.
+    NetworkingDisconnect = 121,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

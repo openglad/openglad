@@ -91,20 +91,69 @@ inline constexpr int32_t PICKER_NETWORKING_PORT_WIDTH = 60;
 inline constexpr int32_t PICKER_NETWORKING_TOGGLE_X = 196;
 inline constexpr int32_t PICKER_NETWORKING_TOGGLE_WIDTH = 86;
 #endif
-inline constexpr int kNetworkingMenuButtonCount =
+// LINEUP §6: the session-mode DISCONNECT row, appended after the room rows
+// (index contract: growth is append-only). It is drawn in JOIN's exact rect —
+// the two are never visible in the same mode, so the shared cell reads as one
+// stable action slot.
+inline constexpr int kNetworkingMenuDisconnectIndex =
     kNetworkingMenuRoomFirstIndex + kNetworkingMenuRoomSlots;
+inline constexpr int kNetworkingMenuButtonCount =
+    kNetworkingMenuDisconnectIndex + 1;
 // Room-row label budget (6px/char, centered with no clipping).
 inline constexpr std::size_t kNetworkingMenuRoomLabelChars = 39;
+// Machine-row (PLAYERS list) label budget: the centered no-clip rule over the
+// room-row face — (w-8)/6 = 38 on the web's 240px face; native's 252px face
+// keeps the established 39-char room budget.
+#ifdef __EMSCRIPTEN__
+inline constexpr std::size_t kNetworkingMenuMachineRowLabelChars = 38;
+#else
+inline constexpr std::size_t kNetworkingMenuMachineRowLabelChars = 39;
+#endif
 
 // Forward declare button for menu descriptor arrays.
 struct button;
 
 // Deterministically rewires the NETWORKING subscreen nav graph for the
-// current number of visible ACTIVE GAMES rows (0..kNetworkingMenuRoomSlots):
-// every visible button stays keyboard-reachable and no link ever points at a
-// hidden room row.
+// current number of visible list rows (0..kNetworkingMenuRoomSlots): every
+// visible button stays keyboard-reachable and no link ever points at a
+// hidden row. Idle (`networked_session` false): the classic ACTIVE GAMES
+// graph. Session (`networked_session` true, LINEUP §6): the PLAYERS graph —
+// room-code value, the machine rows, BACK | DISCONNECT; HOST/JOIN and the
+// native DIRECT (LAN) fields are hidden and never linked.
 void picker_wire_networking_menu_nav(button* buttons, int count,
-                                     int visible_rooms);
+                                     int visible_rooms,
+                                     bool networked_session = false);
+
+// LINEUP §6: one frame's NETWORKING subscreen mode, derived from the lobby
+// client ({Idle, Hosting, Joined} — Hosting/Joined = `networked` with `host`
+// telling them apart). `list_rows` counts the visible list rows (relay rooms
+// when idle, lobby machines in a session); `row_actionable[slot]` marks the
+// session rows the host may kick (a foreign, non-host machine). Kept as a
+// plain value so layout tests can drive every variant without a lobby.
+struct NetworkingMenuModeState
+{
+    bool networked = false;
+    bool host = false;
+    int list_rows = 0;
+    std::array<bool, kNetworkingMenuRoomSlots> row_actionable{};
+};
+
+// The per-frame mode sync for the static NETWORKING table (LINEUP §6):
+// writes every mode-dependent hidden flag and action id (deterministic
+// full-write — no variant inherits a stale one), makes inert rows
+// keyboard-dead (myfun = 0), and rewires the graph through
+// picker_wire_networking_menu_nav. The label pass and the live-vbutton
+// mirror stay in configure_networking's sync (they read the live session).
+void picker_apply_networking_menu_mode(button* buttons, int count,
+                                       const NetworkingMenuModeState& mode);
+
+// LINEUP §6: the per-frame kicked-joiner revert. When the OWNED lobby client
+// (the one SdlPickerClient registered) is the active client and has latched
+// was_kicked(), swap in a fresh local client re-initialized from the save
+// (the picker_replace_lobby_client teardown/install order) and say why
+// (popup "KICKED BY HOST"; trace "networking"). Inert when a test stub is
+// installed as the active client. Returns true when a swap happened.
+bool picker_revert_lobby_client_if_kicked();
 
 // Per-session mutable button descriptors (Phase 12).
 button* picker_mainmenu_buttons();
