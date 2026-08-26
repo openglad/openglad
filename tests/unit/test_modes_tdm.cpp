@@ -308,17 +308,20 @@ TEST_F(ModesTdm, init_strips_score_range_only_and_keeps_wildlife)
     fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
     fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
     walker* stripped = fx.spawn_living(FAMILY_ORC, 2, 200, 760);
-    walker* kept_hero = fx.spawn_hero(FAMILY_SOLDIER, 2, 240, 760, 7);
+    walker* kept_hero = fx.spawn_hero(FAMILY_SOLDIER, 1, 240, 760, 7);
     walker* wildlife = fx.spawn_living(FAMILY_ORC, 5, 400, 400);
     walker* wild_gen = fx.world().add_ob(Order::Generator, FAMILY_TENT);
     ASSERT_NE(nullptr, wild_gen);
     wild_gen->setxy(432, 432);
     wild_gen->set_team_num(5);
-    fx.world().ctf_requested_team_count = 2;
+    // Team 2 leaves through BOTS: OFF (lineup A1/A2, the retired TEAMS
+    // count's successor); the hero sits on an on team, where nothing is
+    // ever stripped.
+    fx.world().ctf_requested_bot_squad[2] = og::sim::kBotSquadOff;
     fx.tick(1);
 
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
-    EXPECT_EQ(3, fx.var(kTdmSlotTeamMask)) << "first two authored teams";
+    EXPECT_EQ(3, fx.var(kTdmSlotTeamMask)) << "the two teams left on";
     EXPECT_TRUE(stripped->dead()) << "inactive score team is stripped";
     EXPECT_FALSE(kept_hero->dead()) << "roster walkers are never stripped";
     EXPECT_FALSE(wildlife->dead()) << "wildlife is arena identity (D16)";
@@ -621,7 +624,6 @@ TEST_F(ModesTdm, orphaned_summons_stay_out_of_the_frag_ledger)
 TEST_F(ModesTdm, killer_outside_the_active_mask_scores_nothing)
 {
     TdmRig rig;
-    rig.fx.world().ctf_requested_team_count = 2;
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
     ASSERT_EQ(3, rig.fx.var(kTdmSlotTeamMask));
@@ -1489,8 +1491,8 @@ constexpr const char* kLineupProbeLua =
     "    og.log(\"psq_cap\", #capped, capped[1])\n"
     "    og.log(\"psq_head\", #match.preset_squad({ families = squad }, 2, nil))\n"
     "    og.log(\"pfam\", match.preset_families(0) == nil and 1 or 0,\n"
-    "           match.preset_families(6) == nil and 1 or 0,\n"
-    "           match.preset_families(2) ~= nil and 1 or 0)\n"
+    "           match.preset_families(7) == nil and 1 or 0,\n"
+    "           match.preset_families(3) ~= nil and 1 or 0)\n"
     "    match.spawn_bots(0, squad, 15)\n"
     "    match.spawn_bots(1, squad, 12, nil, 3)\n"
     "    match.spawn_bots(2, squad, 13)\n"
@@ -1518,8 +1520,8 @@ struct LineupProbeScript
 // hard-shape cap and headcount arms, and preset_families' knob vocabulary
 // (AUTO and FAIR answer nil, a family preset answers its list). Then the
 // knob-aware spawn seam: an AUTO squad truncates to the caller's cap, an
-// explicit bot_level lands on every member and persists as the plan (D14,
-// once per walker), and NONE fields nothing.
+// LV offset lands on every member and persists as the plan (D14, once
+// per walker), and NONE fields nothing.
 TEST_F(ModesTdm, lineup_fair_target_preset_squad_and_knobbed_spawns)
 {
     LineupProbeScript probe;
@@ -1531,10 +1533,11 @@ TEST_F(ModesTdm, lineup_fair_target_preset_squad_and_knobbed_spawns)
         fx.spawn_anchor(2, 96 + 96 * i, 192);
         fx.spawn_anchor(3, 96 + 96 * i, 288);
     }
-    fx.world().ctf_requested_bot_squad[0] = 6;  // FAIR, no humans anywhere
-    fx.world().ctf_requested_bot_squad[2] = 6;  // FAIR + explicit level...
-    fx.world().ctf_requested_bot_level[2] = 6;  // ...= AUTO squad at L6
-    fx.world().ctf_requested_bot_squad[3] = 1;  // NONE, team 3
+    constexpr short kFair = og::sim::kBotSquadPresetBase + 4;
+    fx.world().ctf_requested_bot_squad[0] = kFair;  // FAIR, no humans anywhere
+    fx.world().ctf_requested_bot_squad[2] = kFair;  // FAIR + offset...
+    fx.world().ctf_requested_bot_level[2] = 4;      // ...= AUTO squad, L2+4
+    fx.world().ctf_requested_bot_squad[3] = og::sim::kBotSquadNone;  // team 3
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
@@ -1568,10 +1571,11 @@ TEST_F(ModesTdm, lineup_fair_target_preset_squad_and_knobbed_spawns)
 
     // The knob-aware spawns: FAIR with no human power anywhere degrades
     // to the legacy squad on team 0 (fact banked AUTO — code 0), the AUTO
-    // squad truncates to the caller's cap on team 1, FAIR + explicit L6
-    // on team 2 is the AUTO squad at that level (plan code 60 at base
-    // 10000; facts code 6 — level only, the solve never ran), and NONE
-    // fields nothing on team 3.
+    // squad truncates to the caller's cap on team 1, FAIR + offset +4 on
+    // team 2 is the AUTO squad at formula L2 + 4 = L6 (plan code 60 at
+    // base 10000 — the RESOLVED level; facts code 4 — the offset alone,
+    // squad AUTO since the solve never ran), and NONE fields nothing on
+    // team 3.
     EXPECT_EQ(5, alive_on_team(fx.world(), 0))
         << "FAIR without human power degrades to the legacy squad";
     EXPECT_EQ(0, (fx.var(kSlotMatchedAnnounced) / 10) % 100)
@@ -1588,8 +1592,8 @@ TEST_F(ModesTdm, lineup_fair_target_preset_squad_and_knobbed_spawns)
     EXPECT_EQ(6, levels.elf);
     EXPECT_EQ(6, levels.mage);
     EXPECT_EQ(6, levels.thief);
-    EXPECT_EQ(6, (fx.var(kSlotMatchedAnnounced) / 10 / 10000) % 100)
-        << "the level fact alone is banked — FAIR without a solve is AUTO";
+    EXPECT_EQ(4, (fx.var(kSlotMatchedAnnounced) / 10 / 10000) % 100)
+        << "the offset fact alone is banked — FAIR without a solve is AUTO";
     EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10)
         << "no solve ran, so nothing announced";
 }

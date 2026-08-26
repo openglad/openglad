@@ -103,12 +103,24 @@ local PLAN_BASE = { 1, 100, 10000, 1000000 }
 -- Per-team bot squads (docs/lineup-design.md §3.2-§3.3)
 -- ---------------------------------------------------------------------------
 
+-- The bot_squad_N knob's scale, ONE scale on every layer (lobby_state.h
+-- kBotSquadAuto / kBotSquadOff / kBotSquadNone / kBotSquadPresetBase —
+-- amendment A1): 0 = AUTO (the map's own value, as TROOPS resolves it),
+-- 1 = OFF (the team leaves the active mask — what TEAMS: n did to a
+-- dropped team, amendment A2), 2 = NONE (never a squad on this team, and
+-- nothing more), 3.. = a preset ordinal. The engine clamps the knob to
+-- [0, kMaxBotSquad = 2 + kMaxBotPresets]; nothing here translates.
+local BOT_SQUAD_AUTO = 0
+local BOT_SQUAD_OFF = 1
+local BOT_SQUAD_NONE = 2
+local BOT_SQUAD_PRESET_BASE = 3
+
 -- The campaign's bot-squad presets. The bot_squad_N knob's ordinal is the
--- index + 2 (0 = AUTO and 1 = NONE are engine-owned and never named
--- here); ids are the 6-char upper-case cycler faces the lineup hook
--- registers verbatim (scripts/campaign_picker.lua). Families name core
--- pack ids, all present in packs/core/families. FAIR carries no
--- families: it is the matched solver over the mode's own squad table
+-- index + BOT_SQUAD_PRESET_BASE (AUTO, OFF and NONE are engine-owned and
+-- never named here); ids are the 6-char upper-case cycler faces the
+-- lineup hook registers verbatim (scripts/campaign_picker.lua). Families
+-- name core pack ids, all present in packs/core/families. FAIR carries
+-- no families: it is the matched solver over the mode's own squad table
 -- (§3.2). An optional `count` field replaces the matched-headcount rule
 -- for that preset (cycling past the family list); the shipped five
 -- state none.
@@ -128,9 +140,10 @@ local BOT_PRESETS = {
   { id = "FAIR" },
 }
 
--- The per-team knob reads (lineup §3.1): bot_squad_N is 0 = AUTO,
--- 1 = NONE, 2.. = preset ordinal; bot_level_N is 0 = AUTO, 1..9. N is
--- the 1-based team, so the suffix is team + 1.
+-- The per-team knob reads (lineup §3.1): bot_squad_N on the scale above;
+-- bot_level_N is a signed OFFSET, -5..5, on top of the AUTO level source
+-- (amendment A6; 0 = AUTO = no offset). N is the 1-based team, so the
+-- suffix is team + 1.
 local function squad_knob(team)
   return og.match_setting("bot_squad_" .. (team + 1))
 end
@@ -139,14 +152,26 @@ local function level_knob(team)
   return og.match_setting("bot_level_" .. (team + 1))
 end
 
--- The preset a knob ordinal names, or nil — AUTO, NONE, and any ordinal
--- past the table (a stale save's knob degrades to AUTO, never errors:
--- the engine clamp is [0, 1 + kMaxBotPresets] regardless of this list).
+-- The preset a knob ordinal names, or nil — AUTO, OFF, NONE, and any
+-- ordinal past the table (a stale save's knob degrades to AUTO, never
+-- errors: the engine clamp is [0, kMaxBotSquad] regardless of this list).
 local function preset_for(knob)
-  if knob < 2 then
+  if knob < BOT_SQUAD_PRESET_BASE then
     return nil
   end
-  return BOT_PRESETS[knob - 1]
+  return BOT_PRESETS[knob - BOT_SQUAD_PRESET_BASE + 1]
+end
+
+-- Does a knob forbid a squad outright? OFF and NONE both do: NONE is
+-- exactly that ("never bots here"); OFF additionally takes the team out
+-- of the active mask (activation below), and where a seat or a deployed
+-- fighter keeps an OFF team on regardless, the team still fields no
+-- squad — the one thing the two values share.
+local function squad_off(knob)
+  if knob == BOT_SQUAD_OFF then
+    return true
+  end
+  return knob == BOT_SQUAD_NONE
 end
 
 -- The preset's family list for a knob, or nil (AUTO/NONE/FAIR/off-table
@@ -392,19 +417,42 @@ end
 -- mask modes, so the facts CO-TENANT the shared MATCHED.ANNOUNCED slot:
 -- its ones digit stays the announce latch (0/1/2), and the digits above
 -- it pack one base-100 code per team (PLAN's packing, shifted one
--- decimal digit up), code = applied preset ordinal * 10 + explicit
--- level, both single digits by their clamps. APPLIED, not requested: an
--- unregistered ordinal or a degraded FAIR banks 0, so the pane never
--- names a squad that did not spawn. Nothing is written while every code
--- is zero — an all-AUTO world keeps the slot byte-identical. C++ twin:
--- picker_common.cpp kModeVarLineupFacts.
+-- decimal digit up). A code is a MIXED RADIX pair, code = squad * 11 +
+-- offset_code: squad is 0 for no applied preset, else the applied
+-- ordinal minus (BOT_SQUAD_PRESET_BASE - 1) — 1..kMaxBotPresets, so every
+-- registrable preset fits; offset_code spells the signed level offset
+-- (amendment A6) in 0..10: 0 = AUTO, 1..5 = +1..+5, 6..10 = -1..-5. The
+-- worst code is 8 * 11 + 10 = 98 < 100. Two decimal digits cannot hold
+-- ordinal * 10 + offset any more (eleven offsets), which is why the pair
+-- is not decimal. APPLIED, not requested: an unregistered ordinal or a
+-- degraded FAIR banks squad 0, so the pane never names a squad that did
+-- not spawn. Nothing is written while every code is zero — an all-AUTO
+-- world keeps the slot byte-identical. C++ twin: picker_common.cpp
+-- kModeVarLineupFacts (lineup_fact_code / lineup_fact_offset).
+local FACT_OFFSET_RADIX = 11
+
+local function offset_code(offset)
+  if offset < 0 then
+    return 5 - offset
+  end
+  return offset
+end
+
+local function lineup_fact(ordinal, offset)
+  local squad = 0
+  if ordinal >= BOT_SQUAD_PRESET_BASE then
+    squad = ordinal - BOT_SQUAD_PRESET_BASE + 1
+  end
+  return squad * FACT_OFFSET_RADIX + offset_code(offset)
+end
+
 local function lineup_code(team)
   return og.mod(og.div(og.mode_get(MATCHED.ANNOUNCED),
                        10 * PLAN_BASE[team + 1]), 100)
 end
 
-local function bank_lineup_facts(team, ordinal, level)
-  local code = ordinal * 10 + level
+local function bank_lineup_facts(team, ordinal, offset)
+  local code = lineup_fact(ordinal, offset)
   local held = lineup_code(team)
   if code == held then
     return
@@ -412,6 +460,26 @@ local function bank_lineup_facts(team, ordinal, level)
   local v = og.mode_get(MATCHED.ANNOUNCED)
   og.mode_set(MATCHED.ANNOUNCED,
               v + (code - held) * 10 * PLAN_BASE[team + 1])
+end
+
+-- The refusal REASON digit, banked ABOVE the four team codes in the same
+-- shared slot: 10^9 is the last decimal digit an int32 slot holds beside
+-- the latch and the four base-100 codes (1 + 4 * 2 = 9 digits below it).
+-- 1 = a band mode (FFA/mutant) refused for want of fighters, which the
+-- staged report renders as FEWER THAN 2 FIGHTERS; 0 = the team modes'
+-- sentence, and what every world that banks nothing reads as. The band
+-- decide fold writes it BEFORE it raises — the one world write a refusal
+-- makes, so host and joiner mirrors render the identical line instead of
+-- parsing the free-text script error. C++ twin: picker_common.cpp
+-- kLineupRefusalBase / lineup_refusal_code.
+local REFUSAL_BASE = 1000000000
+
+local function bank_refusal_fighters()
+  local v = og.mode_get(MATCHED.ANNOUNCED)
+  if og.mod(og.div(v, REFUSAL_BASE), 10) == 1 then
+    return
+  end
+  og.mode_set(MATCHED.ANNOUNCED, v + REFUSAL_BASE)
 end
 
 -- Apply-side half of the FAIR census split (D15/D24): each mode's decide
@@ -434,14 +502,50 @@ local function bank_match_target(decision, obs)
   og.mode_set(MATCHED.SIZE, decision.matched_size)
 end
 
+-- The legacy session-difficulty level formula (50/100/200 percent ->
+-- L1/L2/L3), the AUTO level source of every unsolved squad.
+local function difficulty_level()
+  return og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
+end
+
+-- The LV knob as an offset (amendment A6), the one place it is read: the
+-- engine clamps bot_level_N to [-5, 5], and the clamp is repeated here
+-- so a crafted value can never push a level past the formula's domain.
+local function level_offset(team)
+  return og.clamp(level_knob(team), -5, 5)
+end
+
+-- The level resolution rule (A6, ONE place): the team's offset on top of
+-- its AUTO source, clamped into the level domain. `base` is the FAIR
+-- solve for a solved squad and the difficulty formula otherwise; the
+-- RESOLVED level is what a plan banks, so every respawn reproduces it
+-- without re-reading the knob. At offset 0 this is the identity over
+-- 1..9 — the byte-identity of every AUTO world.
+local function resolve_level(team, base)
+  return og.clamp(base + level_offset(team), 1, 9)
+end
+
+-- A solved plan (L, k: the first k members one level up) resolved through
+-- the offset: the upgrade survives only while the resolved L + 1 is still
+-- a distinct legal level — a squad clamped at L9 (or one whose upgraded
+-- members clamp down onto the base) stores k = 0, exactly what the
+-- per-member clamp would have answered.
+local function resolve_plan(team, level, up)
+  local resolved = resolve_level(team, level)
+  if resolve_level(team, level + 1) ~= resolved + 1 then
+    up = 0
+  end
+  return resolved, up
+end
+
 -- Per-member spawn level (§5.4): a stored plan answers L (or L + 1 for the
--- first k members); an unsolved team takes the legacy session-difficulty
--- formula (50/100/200 percent -> L1/L2/L3), byte-identical to the
--- pre-matched spawner.
+-- first k members) — the plan already holds the resolved level; an
+-- unsolved team takes the legacy session-difficulty formula through the
+-- same resolver, byte-identical to the pre-matched spawner at offset 0.
 local function bot_level_for(team, index)
   local code = plan_code(team)
   if code == 0 then
-    return og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
+    return resolve_level(team, difficulty_level())
   end
   local level = og.div(code, 10)
   if index <= og.mod(code, 10) then
@@ -461,17 +565,20 @@ end
 -- survives. Live NON-DORMANT livings split by has_guy, live non-dormant
 -- generators, raw flag rows in fx order (out-of-range and surplus included
 -- — the fold decides), the engine anchor counts (banked by mode_stage_init
--- before this hook, dead markers included) and the three request knobs the
--- staging rules consult. The other knobs (respawn_ticks, time_limit) are
--- read straight from og.match_setting where they are used -- a request
--- collected here and consumed nowhere is a field that rots.
+-- before this hook, dead markers included) and the request knobs the
+-- staging rules consult: TROOPS, the score limit and the eight lineup
+-- knobs. TEAMS (team_count) is retired (amendment A1/A3): the field is
+-- inert engine-side and is read by nobody here — the OFF wheel value is
+-- the only way a team leaves the mask now. The other knobs
+-- (respawn_ticks, time_limit) are read straight from og.match_setting
+-- where they are used -- a request collected here and consumed nowhere
+-- is a field that rots.
 -- The dormancy carve-out matches the C++ staged report census
 -- (picker_common.cpp): delayed-spawn walkers are outside snapshot capture,
 -- so a team the census counted but the pane could not see would activate
 -- with a fill nobody rendered.
 local function census_inputs()
   local inputs = {
-    team_count = og.match_setting("team_count"),
     strip_troops = og.match_setting("strip_troops"),
     score_limit = og.match_setting("score_limit"),
     teams = {},
@@ -535,35 +642,44 @@ local function census_inputs()
 end
 
 -- Team activation over the census inputs, the shared ruling all five mask
--- modes apply (issue #218): the ONE copy of the rule, consumed by each
--- mode's decide fold at the top of on_mode_init (only the inputs decide).
--- Precedence, in evaluation order:
+-- modes apply (issue #218, amended 2026-08-26 by lineup A1/A2/A4): the
+-- ONE copy of the rule, consumed by each mode's decide fold at the top
+-- of on_mode_init (only the inputs decide). "A team is on when anything
+-- is on it" — the mask is built in three steps, in evaluation order:
 --
---   TROOPS: ALL               the call site's requested activation stands:
---                             the lobby count, at TEAMS: Auto the caller's
---                             auto_default (the manifest row.teams for
---                             soccer/basketball/onslaught; 0 — "every
---                             authored team" — for CTF/TDM, the verified
---                             per-mode Auto asymmetry), clamped over the
---                             authored domain.
---   OWN/FAIR, any roster      ONE rule for every TEAMS value AND every
---   shape (empty included)    roster shape: the request is the explicit
---                             lobby count N, or at TEAMS: Auto the
---                             AUTHORED team count — the zero sentinel
---                             means "as many teams as the map actually
---                             has" (2026-08-18 maintainer directive,
---                             matched-teams-design.md). Roster teams all
---                             stay; authored non-roster teams backfill in
---                             index order until the mask holds
---                             clamp(request, 2, 4) teams; a roster already
---                             at or past the count stays exactly the
---                             roster (max semantics — a deployed side is
---                             never stripped to satisfy a count). An
---                             all-bot match (zero rosters anywhere)
---                             backfills from empty, so its mask equals the
---                             plain activation clamp of the same request.
---                             A solo roster on a map authoring nobody else
---                             comes back alone and reads starts = false.
+--   1. The map's own value    TROOPS: ALL — the caller's auto_default
+--      (BOTS: AUTO)           over the authored domain (the manifest
+--                             row.teams for soccer/basketball/onslaught;
+--                             0 — "every authored team" — for CTF/TDM,
+--                             the verified per-mode Auto asymmetry).
+--                             TROOPS: OWN/FAIR — the whole authored
+--                             domain (the retired TEAMS knob's Auto
+--                             already meant "as many teams as the map
+--                             actually has", 2026-08-18 directive). TEAMS
+--                             itself is gone: no lobby count clamps
+--                             anything any more.
+--   2. minus OFF              a team whose bot_squad knob reads OFF
+--                             leaves the mask (what TEAMS: n did to a
+--                             dropped team: its authored troops,
+--                             generators and flags are not fielded) —
+--                             unless step 3 keeps it.
+--   3. plus the occupied      every AUTHORED team with a deployed roster
+--                             is on (a seat's team always carries one:
+--                             GO refuses a seat without a fighter, M4 —
+--                             so OFF on a seated team is ignored by the
+--                             sim, the seat keeps it on, and the LINEUP
+--                             page refuses the value up front), and so
+--                             is every authored team with a preset squad
+--                             (FAIR included): a squad put on a team the
+--                             map left inactive turns it on. A roster
+--                             outside the authored domain (no anchors,
+--                             no flag — nowhere to spawn or score) still
+--                             fights under classic rules but never
+--                             activates, the pre-amendment truth.
+--
+-- A solo roster on a map authoring nobody else comes back alone and reads
+-- starts = false; a map narrowed below two teams by OFF likewise (the
+-- mode's own refusal sentence).
 --
 -- Returns (active_mask, starts, matched, matched_size): matched reports a
 -- TROOPS: FAIR request with a deployed roster anywhere (the predicted
@@ -587,33 +703,27 @@ local function activation(inputs, authored_mask, auto_default)
       end
     end
   end
+  local base = authored_mask
   if inputs.strip_troops <= strip.KEEP then
-    local requested = inputs.team_count
-    if requested <= 0 then
-      requested = auto_default
-    end
-    local mask = core.activate_teams(authored_mask, requested)
-    return mask, core.mask_count(mask) >= 2, matched, matched_size
+    base = core.activate_teams(authored_mask, auto_default)
   end
-  local roster_mask = 0
+  local squad_knobs = inputs.bot_squad or {}
+  local mask = 0
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if inputs.teams[team + 1].roster > 0 then
-      if core.mask_has(authored_mask, team) then
-        roster_mask = core.mask_add(roster_mask, team)
+    local knob = squad_knobs[team + 1] or BOT_SQUAD_AUTO
+    local on = core.mask_has(base, team)
+    if knob == BOT_SQUAD_OFF then
+      on = false
+    end
+    if core.mask_has(authored_mask, team) then
+      if inputs.teams[team + 1].roster > 0 then
+        on = true
+      elseif preset_for(knob) ~= nil then
+        on = true
       end
     end
-  end
-  local requested = inputs.team_count
-  if requested <= 0 then
-    requested = core.mask_count(authored_mask)
-  end
-  local target = og.clamp(requested, 2, C.SCORE_TEAM_COUNT)
-  local mask = roster_mask
-  for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if core.mask_count(mask) < target then
-      if core.mask_has(authored_mask, team) then
-        mask = core.mask_add(mask, team)
-      end
+    if on then
+      mask = core.mask_add(mask, team)
     end
   end
   return mask, core.mask_count(mask) >= 2, matched, matched_size
@@ -722,10 +832,12 @@ local function fills(inputs, active_mask, opts)
           fill = "generators"
           count = row.generators
         end
-      elseif knob == 1 then
+      elseif squad_off(knob) then
         -- NONE (lineup §3.2): the squad today's rule would field is
         -- suppressed. Generators still put the team on; one left with
-        -- nothing at all drops out of the mask below.
+        -- nothing at all drops out of the mask below. OFF reads the same
+        -- here — activation already dropped an OFF team that nothing
+        -- keeps on, so this arm only ever sees OFF beside a roster.
         if gens_stand then
           fill = "generators"
           count = row.generators
@@ -733,6 +845,13 @@ local function fills(inputs, active_mask, opts)
           active = false
         end
       else
+        -- BOTS: AUTO on an empty team (amendment A4): TROOPS sets what
+        -- AUTO resolves to — FAIR is the matched squad (when a roster
+        -- exists anywhere to measure against), ALL/OWN the legacy
+        -- difficulty squad — and the team's own knob overrides it: NONE
+        -- above fields nothing whatever TROOPS says, and a preset (FAIR
+        -- among them) fields that preset on this team alone, the
+        -- `preset ~= nil` arm below. One rule, spelled once.
         -- The FAIR -> legacy degrade rides here: matched with a zero
         -- headcount (no roster anywhere -> predicted TARGET 0) is the
         -- plain difficulty squad, exactly what spawn_bots does at
@@ -1047,7 +1166,9 @@ local function spawn_matched_bots(team, families, cursor_slot, placer,
     target = og.mode_get(MATCHED.TARGET)
   end
   local level, up, clamped = solve_matched_levels(target, bases)
-  store_plan(team, level, up)
+  -- The plan banks the RESOLVED level (A6): the solve is the AUTO source
+  -- and the team's LV offset rides on top of it, once, here.
+  store_plan(team, resolve_plan(team, level, up))
   for k = 1, #members do
     local w = members[k]
     local member_level = bot_level_for(team, k)
@@ -1066,16 +1187,20 @@ end
 -- seam, so init fills, the wiped-team backstops and the mutant seats all
 -- honor it identically). The lineup knobs (§3.2) are consulted HERE, the
 -- one squad seam, so init fills and the wiped-team backstop obey them
--- alike: NONE fields nothing; a preset's families replace the caller's
--- (squad_families above); an explicit bot_level is stored as the team's
--- plan so the leveling below and every later respawn reproduce it —
--- s_set_level + set_difficulty exactly once per walker, the D14
--- discipline. Level source otherwise (§5.4, one rule for every scripted
--- spawn): a stored matched plan wins; else the FAIR preset solves
+-- alike: OFF and NONE field nothing; a preset's families replace the
+-- caller's (squad_families above). Level source (§5.4, one rule for
+-- every scripted spawn): a stored plan wins; else the FAIR preset solves
 -- against its own target (fair_target over a fresh census — LOCAL, never
 -- banked, so other teams' AUTO squads stay legacy); else a stored match
 -- target takes the D24 measure-and-solve arm; else the legacy
 -- session-difficulty formula, byte-identical to the pre-matched spawner.
+-- The LV offset (A6) rides on top of whichever source answered, through
+-- resolve_level / resolve_plan, and the RESOLVED level is what the plan
+-- stores — so the leveling below and every later respawn reproduce it —
+-- s_set_level + set_difficulty exactly once per walker, the D14
+-- discipline. A legacy squad at offset 0 stores no plan at all (the
+-- byte-identical AUTO arm); at any other offset it stores the resolved
+-- formula level as its plan, the way an explicit level once did.
 -- placer is an optional placement override, placer(w, team,
 -- allow_teleport) (matched-teams D16): CTF passes its own anchor
 -- rotation, which falls back to the flag-home square before the teleport
@@ -1103,19 +1228,14 @@ end
 
 local function spawn_bots(team, families, cursor_slot, placer, cap)
   local knob = squad_knob(team)
-  if knob == 1 then
+  if squad_off(knob) then
     return
   end
   local obs = og.oblist()
   local squad = squad_families(knob, families,
                                squad_room(cap, live_roster_on(obs, team)))
   local preset = preset_for(knob)
-  local wants_level = level_knob(team)
-  if wants_level > 0 then
-    if plan_code(team) ~= wants_level * 10 then
-      store_plan(team, wants_level, 0)
-    end
-  end
+  local offset = level_offset(team)
   local applied = 0
   if preset ~= nil then
     applied = knob
@@ -1141,20 +1261,29 @@ local function spawn_bots(team, families, cursor_slot, placer, cap)
       -- L4): a full hard shape spawns nothing and banks nothing.
       if spawn_matched_bots(team, squad, cursor_slot, placer, target,
                             global_solve) > 0 then
-        bank_lineup_facts(team, applied, 0)
+        bank_lineup_facts(team, applied, offset)
       end
       return
     end
+    if offset ~= 0 then
+      -- The legacy arm at an offset: the resolved formula level becomes
+      -- the plan, so the leveling below and every respawn read one
+      -- number. Offset 0 stores nothing — the AUTO world stays
+      -- byte-identical.
+      store_plan(team, resolve_level(team, difficulty_level()), 0)
+    end
   end
   if fair then
-    -- FAIR stays a banked fact only where a solve governs the squad — a
-    -- refill under a stored solve plan reproduces it, so the fact
-    -- stands. An explicit level (AUTO-equivalent squad at that level)
-    -- and the no-human-power degrade both bank AUTO, so the pane never
-    -- claims a solve that did not run.
-    if wants_level > 0 then
+    -- FAIR stays a banked fact only where a solve governs the squad. A
+    -- solve that ran banked it above and returned, so reaching here
+    -- with FAIR means either the no-human-power degrade (no plan, or
+    -- the plan the offset arm just stored) — banked AUTO, so the pane
+    -- never claims a solve that did not run — or a REFILL under a plan
+    -- an earlier call stored, which reproduces whatever that call
+    -- banked: the held fact's squad half says whether it was a solve.
+    if plan_code(team) == 0 then
       applied = 0
-    elseif plan_code(team) == 0 then
+    elseif og.div(lineup_code(team), FACT_OFFSET_RADIX) == 0 then
       applied = 0
     end
   end
@@ -1170,7 +1299,7 @@ local function spawn_bots(team, families, cursor_slot, placer, cap)
     end
   end
   if spawned > 0 then
-    bank_lineup_facts(team, applied, wants_level)
+    bank_lineup_facts(team, applied, offset)
   end
 end
 
@@ -1378,7 +1507,17 @@ return {
   resolve_limit = resolve_limit,
   resolve_time_limit = resolve_time_limit,
   MATCHED = MATCHED,
+  BOT_SQUAD_AUTO = BOT_SQUAD_AUTO,
+  BOT_SQUAD_OFF = BOT_SQUAD_OFF,
+  BOT_SQUAD_NONE = BOT_SQUAD_NONE,
+  BOT_SQUAD_PRESET_BASE = BOT_SQUAD_PRESET_BASE,
   BOT_PRESETS = BOT_PRESETS,
+  squad_off = squad_off,
+  difficulty_level = difficulty_level,
+  resolve_level = resolve_level,
+  resolve_plan = resolve_plan,
+  lineup_fact = lineup_fact,
+  bank_refusal_fighters = bank_refusal_fighters,
   preset_families = preset_families,
   preset_squad = preset_squad,
   preset_squad_size = preset_squad_size,

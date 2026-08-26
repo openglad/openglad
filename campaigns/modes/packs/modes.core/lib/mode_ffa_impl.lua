@@ -141,6 +141,10 @@ local function on_mode_init(level)
   local roster = fighters.enumerate(obs)
   local decision = decide(level, #roster)
   if not decision.starts then
+    -- The reason rides the shared facts slot (the one world write a
+    -- refusal makes): the staged report reads FEWER THAN 2 FIGHTERS off
+    -- it, identically on host and joiner mirrors.
+    match.bank_refusal_fighters()
     error(decision.reason)
   end
   local deployed = fighters.deploy(roster, C.FFA_TEAM_COUNT)

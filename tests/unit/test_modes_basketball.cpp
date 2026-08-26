@@ -680,7 +680,7 @@ TEST_F(ModesBasketball, all_bot_own_auto_matches_the_explicit_count_shape)
 
     EXPECT_TRUE(fx.world().mode.init_attempted);
     EXPECT_FALSE(fx.world().mode.active)
-        << "Auto rides the explicit-count arm, not the manifest default";
+        << "Auto under OWN is the authored domain, not the manifest default";
     EXPECT_TRUE(has_script_error(fx.world(), "no hoop for team 2"));
 }
 
@@ -764,14 +764,14 @@ TEST_F(ModesBasketball, fair_teams_four_with_a_solo_roster_fields_four_hoops)
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(128 + 64 * team), 700);
     arm_matched(fx.world());
-    fx.world().ctf_requested_team_count = 4;
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 640, 1);
     ASSERT_NE(nullptr, hero);
     fx.tick(1);
 
     ASSERT_TRUE(fx.world().mode.active);
     EXPECT_EQ(15, fx.var(kBbTeamMask))
-        << "the explicit TEAMS: 4 request fields all four sides";
+        << "AUTO is every authored side: all four field (the TEAMS count "
+           "is retired, lineup A1)";
     EXPECT_EQ(4, fx.var(kBbTeamCount));
     const int hoop_x[4] = {320, 576, 320, 64};
     const int hoop_y[4] = {64, 480, 896, 480};

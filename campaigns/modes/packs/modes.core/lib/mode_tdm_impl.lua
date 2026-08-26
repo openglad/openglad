@@ -85,11 +85,10 @@ local function decide(level, inputs)
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  -- TROOPS:OWN/FAIR (rosters or all-bot alike): the lobby request wins
-  -- the COUNT — roster teams plus authored backfill (issue #218), with
-  -- TEAMS: Auto resolving to the authored census count (2026-08-18
-  -- directive); under TROOPS:ALL the raw lobby request over the authored
-  -- teams (no manifest default — the verified per-mode Auto asymmetry).
+  -- The shared activation rule (lineup A1/A2): every authored team is
+  -- the map's own value under TROOPS:ALL too (no manifest default — the
+  -- verified per-mode Auto asymmetry, auto_default 0), minus the OFF
+  -- teams, plus every occupied team.
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, 0)
   local row = levels.levels[level]

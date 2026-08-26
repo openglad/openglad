@@ -548,8 +548,10 @@ TEST_F(ScenarioStagedReport, preset_fill_label_names_the_squad)
     fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
     fx.world().ctf_requested_strip_scenario_troops = 0;  // ALL
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_squad[1] = 3;  // CASTER on empty team 1
-    fx.world().ctf_requested_bot_squad[0] = 4;  // BRUTES beside the roster
+    fx.world().ctf_requested_bot_squad[1] =
+        og::sim::kBotSquadPresetBase + 1;  // CASTER on empty team 1
+    fx.world().ctf_requested_bot_squad[0] =
+        og::sim::kBotSquadPresetBase + 2;  // BRUTES beside the roster
 
     stage_fixture_world(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -581,40 +583,48 @@ TEST_F(ScenarioStagedReport, preset_fill_label_names_the_squad)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-// An explicit bot level appends LVk to the bot fill's label — the plain
-// squad's and a preset's alike — and never to an occupancy fill.
-TEST_F(ScenarioStagedReport, explicit_level_appends_lv_to_bot_labels)
+// An LV offset (amendment A6) appends LV+k / LV-k to the bot fill's label
+// — the plain squad's and a preset's alike, the sign being the message —
+// and never to an occupancy fill. The report carries the OFFSET the
+// squad was resolved through, not the resolved level.
+TEST_F(ScenarioStagedReport, level_offset_appends_signed_lv_to_bot_labels)
 {
     ModesCtfWorld fx(kSoccerLevelB);
     for (int team = 0; team < 3; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_bot_level[0] = 9;
-    fx.world().ctf_requested_bot_squad[1] = 2;  // BALANC
+    fx.world().ctf_requested_bot_level[0] = 5;
+    fx.world().ctf_requested_bot_squad[1] =
+        og::sim::kBotSquadPresetBase;  // BALANC
     fx.world().ctf_requested_bot_level[1] = 3;
+    fx.world().ctf_requested_bot_level[2] = -1;
 
     stage_fixture_world(fx);
     ASSERT_TRUE(fx.world().mode.active);
 
     SaveData save;
     const og::ui::ScenarioRosterReport report = staged_report(fx, save);
-    EXPECT_EQ(9, report.team_squad_level[0]);
+    EXPECT_EQ(5, report.team_squad_level[0]);
     EXPECT_EQ(3, report.team_squad_level[1]);
+    EXPECT_EQ(-1, report.team_squad_level[2]);
     EXPECT_EQ("BALANC", report.team_squad_name[1]);
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
-    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - BOT SQUAD (5) LV9"));
+    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - BOT SQUAD (5) LV+5"));
     EXPECT_TRUE(any_line_is(
-        lines, "  GREEN TEAM  ACTIVE - BOT SQUAD BALANC (5) LV3"));
+        lines, "  GREEN TEAM  ACTIVE - BOT SQUAD BALANC (5) LV+3"));
+    EXPECT_TRUE(any_line_is(lines, "  BLUE TEAM  ACTIVE - BOT SQUAD (5) LV-1"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-// The worst-case label sits exactly on the 48-char budget — the reason
-// the level is spelled LVk with no inner space (lineup §3.4's budget
-// clause): "  YELLOW TEAM  ACTIVE - BOT SQUAD BALANC (5) LV9" is 48.
+// The budget rule (lineup §3.4, A6): the signed token is one character
+// wider than the old LVk, so the one row that would overrun the 48-char
+// budget — YELLOW with a 6-char preset name — spends the separator space
+// before the token instead of clipping the digit; every other row keeps
+// the space. Both shapes pinned.
 TEST_F(ScenarioStagedReport, preset_label_worst_case_fits_the_budget)
 {
     og::ui::ScenarioRosterReport report;
@@ -627,12 +637,21 @@ TEST_F(ScenarioStagedReport, preset_label_worst_case_fits_the_budget)
     report.team_fill[3] = ScenarioFill::Bots;
     report.team_fill_count[3] = 5;
     report.team_squad_name[3] = "BALANC";
-    report.team_squad_level[3] = 9;
+    report.team_squad_level[3] = 2;
+    report.team_active[0] = true;
+    report.team_fill[0] = ScenarioFill::Bots;
+    report.team_fill_count[0] = 5;
+    report.team_squad_name[0] = "BALANC";
+    report.team_squad_level[0] = -5;
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
     EXPECT_TRUE(any_line_is(
-        lines, "  YELLOW TEAM  ACTIVE - BOT SQUAD BALANC (5) LV9"));
+        lines, "  YELLOW TEAM  ACTIVE - BOT SQUAD BALANC (5)LV+2"))
+        << "exactly 48: the separator space is what the budget spends";
+    EXPECT_TRUE(any_line_is(
+        lines, "  RED TEAM  ACTIVE - BOT SQUAD BALANC (5) LV-5"))
+        << "a row with room keeps the space";
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
 }
@@ -653,16 +672,21 @@ TEST_F(ScenarioStagedReport, band_refusal_prints_the_fighters_sentence)
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-    fx.world().ctf_requested_bot_squad[0] = 1;  // NONE on the band's pair
+    fx.world().ctf_requested_bot_squad[0] =
+        og::sim::kBotSquadNone;  // NONE on the band's pair
 
     stage_fixture_world(fx);
     ASSERT_FALSE(fx.world().mode.active);
     ASSERT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_EQ(1000000000, fx.world().mode.vars[4])
+        << "the band fold banked the reason digit (mode_match.lua "
+           "REFUSAL_BASE) before it raised";
 
     SaveData save;
     const og::ui::ScenarioRosterReport report = staged_report(fx, save);
     EXPECT_TRUE(report.staged);
     EXPECT_TRUE(report.refusing);
+    EXPECT_TRUE(report.refusal_fighters);
     EXPECT_FALSE(report.will_activate);
 
     const std::vector<std::string> lines =
@@ -712,7 +736,8 @@ TEST_F(ScenarioStagedReport, occupied_team_label_counts_company_plus_squad)
                           700, k + 1);
         fx.world().ctf_requested_strip_scenario_troops = 0;
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_squad[0] = 2;  // BALANC
+        fx.world().ctf_requested_bot_squad[0] =
+            og::sim::kBotSquadPresetBase;  // BALANC
         fx.world().ctf_requested_bot_level[0] = 4;
 
         stage_fixture_world(fx);
@@ -730,7 +755,7 @@ TEST_F(ScenarioStagedReport, occupied_team_label_counts_company_plus_squad)
         const std::vector<std::string> lines =
             og::ui::format_scenario_report_lines(report);
         EXPECT_TRUE(any_line_is(
-            lines, "  RED TEAM  ACTIVE - COMPANY+BALANC (3+2) LV4"));
+            lines, "  RED TEAM  ACTIVE - COMPANY+BALANC (3+2) LV+4"));
         EXPECT_TRUE(any_line_is(lines, "  GREEN TEAM  ACTIVE - BOT SQUAD (5)"));
         for (const auto& line : lines)
             EXPECT_LE(line.size(), 48u) << line;
@@ -744,7 +769,8 @@ TEST_F(ScenarioStagedReport, occupied_team_label_counts_company_plus_squad)
                           700, k + 1);
         fx.world().ctf_requested_strip_scenario_troops = 0;
         fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_bot_squad[0] = 2;  // BALANC, no room
+        fx.world().ctf_requested_bot_squad[0] =
+            og::sim::kBotSquadPresetBase;  // BALANC, no room
 
         stage_fixture_world(fx);
         ASSERT_TRUE(fx.world().mode.active);
@@ -760,10 +786,11 @@ TEST_F(ScenarioStagedReport, occupied_team_label_counts_company_plus_squad)
     }
 }
 
-// The occupied-team worst case sits exactly on the 48-char budget:
-// "  YELLOW TEAM  ACTIVE - COMPANY+BALANC (3+2) LV9" (24 + 24). A squad
-// without a banked name (a FAIR degrade with bots on the roster team)
-// reads COMPANY+BOTS.
+// The occupied-team worst case sits exactly on the 48-char budget once
+// the separator space is spent: "  YELLOW TEAM  ACTIVE - COMPANY+BALANC
+// (3+2)LV+2" (24 + 24); a BLUE row with the same fill keeps its space.
+// A squad without a banked name (a FAIR degrade with bots on the roster
+// team) reads COMPANY+BOTS.
 TEST_F(ScenarioStagedReport, company_plus_squad_worst_case_fits_the_budget)
 {
     og::ui::ScenarioRosterReport report;
@@ -777,7 +804,13 @@ TEST_F(ScenarioStagedReport, company_plus_squad_worst_case_fits_the_budget)
     report.team_fill_count[3] = 3;
     report.team_squad_count[3] = 2;
     report.team_squad_name[3] = "BALANC";
-    report.team_squad_level[3] = 9;
+    report.team_squad_level[3] = 2;
+    report.team_active[2] = true;
+    report.team_fill[2] = ScenarioFill::Company;
+    report.team_fill_count[2] = 3;
+    report.team_squad_count[2] = 2;
+    report.team_squad_name[2] = "BALANC";
+    report.team_squad_level[2] = -1;
     report.team_active[0] = true;
     report.team_fill[0] = ScenarioFill::Company;
     report.team_fill_count[0] = 2;
@@ -786,7 +819,9 @@ TEST_F(ScenarioStagedReport, company_plus_squad_worst_case_fits_the_budget)
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
     EXPECT_TRUE(any_line_is(
-        lines, "  YELLOW TEAM  ACTIVE - COMPANY+BALANC (3+2) LV9"));
+        lines, "  YELLOW TEAM  ACTIVE - COMPANY+BALANC (3+2)LV+2"));
+    EXPECT_TRUE(any_line_is(
+        lines, "  BLUE TEAM  ACTIVE - COMPANY+BALANC (3+2) LV-1"));
     EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - COMPANY+BOTS (2+5)"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;

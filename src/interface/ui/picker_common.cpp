@@ -3111,13 +3111,16 @@ constexpr std::size_t kModeVarMatchedSize = 5;
 // The shared lineup-facts mode var (lib/mode_match.lua MATCHED.ANNOUNCED,
 // slot 4, co-tenanted because the mode-private band is spent): the ones
 // digit is the matched announce latch; the digits above pack one base-100
-// code per team, team t's code at 10 * 100^t, code = applied preset
-// ordinal * 10 + explicit level (lineup §3.4, bank_lineup_facts). Zero
-// codes mean AUTO — an all-AUTO world never writes them. The ordinal is
-// the bot_squad knob value, so a base-100 code holds ordinals up to 9:
-// a campaign registering a SEVENTH preset (ordinal 10, the engine's
-// kMaxBotSquad) would need a wider field, and the shipped five stop at 7.
+// code per team, team t's code at 10 * 100^t (lineup §3.4,
+// bank_lineup_facts). A code is a MIXED-RADIX pair, code = squad * 11 +
+// offset_code: squad is 0 for no applied preset, else the applied
+// bot_squad ordinal minus (kBotSquadPresetBase - 1), so all
+// kMaxBotPresets registrable presets fit (1..8); offset_code spells the
+// signed LV offset (amendment A6) in 0..10 — 0 = AUTO, 1..5 = +1..+5,
+// 6..10 = -1..-5. Worst code 8 * 11 + 10 = 98 < 100. Zero codes mean
+// AUTO at no offset — an all-AUTO world never writes them.
 constexpr std::size_t kModeVarLineupFacts = 4;
+constexpr int kLineupFactOffsetRadix = 11;
 
 // Decode team t's applied lineup code from the shared slot.
 int lineup_fact_code(std::int32_t slot_value, int team)
@@ -3126,6 +3129,21 @@ int lineup_fact_code(std::int32_t slot_value, int team)
     for (int t = 0; t < team; ++t)
         facts /= 100;
     return static_cast<int>(facts % 100);
+}
+
+// The two halves of a code: the applied preset's index into the
+// registered list (-1 = none) and the signed LV offset.
+int lineup_fact_preset_index(int code)
+{
+    return code / kLineupFactOffsetRadix - 1;
+}
+
+int lineup_fact_offset(int code)
+{
+    const int offset_code = code % kLineupFactOffsetRadix;
+    if (offset_code <= 5)
+        return offset_code;
+    return 5 - offset_code;
 }
 
 // The refusal REASON digit, banked ABOVE the four team codes in the same
@@ -3147,11 +3165,13 @@ bool is_score_team_index(int team)
     return team >= 0 && team < 4;
 }
 
+// The pane's row budget (the zone-submenu chassis: 48-char rows).
+constexpr std::size_t kMaxReportLine = 48;
+
 std::string clip_line(std::string line)
 {
-    constexpr std::size_t kMaxLineLength = 48;
-    if (line.size() > kMaxLineLength)
-        line.resize(kMaxLineLength);
+    if (line.size() > kMaxReportLine)
+        line.resize(kMaxReportLine);
     return line;
 }
 
@@ -3486,14 +3506,15 @@ ScenarioRosterReport build_scenario_roster_report(
                             continue;
                     }
                     const int code = lineup_fact_code(lineup_facts, t);
-                    report.team_squad_level[ti] = code % 10;
-                    // The banked ordinal is the bot_squad knob itself — ONE
-                    // scale from the cycler face to the preview line — so
-                    // the preset it names sits at ordinal minus the first
-                    // preset ordinal.
-                    const int ordinal = code / 10;
-                    const int preset_index =
-                        ordinal - og::sim::kBotSquadPresetBase;
+                    // The level fact is the OFFSET the squad was resolved
+                    // through (A6), signed, 0 = AUTO — the label reads
+                    // LV+2 / LV-1, never the resolved number.
+                    report.team_squad_level[ti] = lineup_fact_offset(code);
+                    // The banked squad half is the applied bot_squad
+                    // ordinal on ONE scale from the cycler face to the
+                    // preview line, already shifted to an index into the
+                    // registered list.
+                    const int preset_index = lineup_fact_preset_index(code);
                     if (preset_index >= 0 && have_presets &&
                         static_cast<std::size_t>(preset_index) <
                             lineup_presets.size())
@@ -3619,16 +3640,29 @@ std::vector<std::string> format_scenario_report_lines(
                         fill += std::format(" ({})",
                                             report.team_fill_count[ti]);
                 }
-                // An explicit bot level appends "LVk" — spelled without an
-                // inner space so the worst line ("  YELLOW TEAM  ACTIVE -
-                // BOT SQUAD BALANC (5) LV9", 24 + 20 + 4) sits exactly on
-                // the 48-char budget instead of clipping the digit.
-                if (report.team_squad_level[ti] > 0)
-                    fill += std::format(" LV{}",
-                                        report.team_squad_level[ti]);
-                lines.push_back(clip_line(std::format(
-                    "  {} TEAM  ACTIVE - {}",
-                    og::sim::team_color_name(t), fill)));
+                // An LV offset appends "LV+2" / "LV-1" (A6) — the sign is
+                // the message, spelled without an inner space (§3.4's
+                // budget clause). The token is one character wider than
+                // the old "LV9", and the worst row ("  YELLOW TEAM  ACTIVE
+                // - COMPANY+BALANC (3+2) LV+2", 24 + 20 + 5 = 49) overruns
+                // the 48-char budget by exactly that character, so the
+                // separator space before the token is the first thing the
+                // budget spends: a row that would clip the digit glues the
+                // token to the count instead ("(3+2)LV+2"). Only a YELLOW
+                // row with a 6-char preset name ever needs it.
+                std::string line = std::format("  {} TEAM  ACTIVE - {}",
+                                               og::sim::team_color_name(t),
+                                               fill);
+                if (report.team_squad_level[ti] != 0)
+                {
+                    const std::string token =
+                        std::format("LV{:+}", report.team_squad_level[ti]);
+                    if (line.size() + 1 + token.size() > kMaxReportLine)
+                        line += token;
+                    else
+                        line += " " + token;
+                }
+                lines.push_back(clip_line(line));
             }
         }
         else if (report.staged && report.refusing)
