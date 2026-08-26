@@ -407,3 +407,66 @@ a lobby (version-gated hello) — recorded here so nobody re-derives it.
 
 Review: one fable reviewer per merged wave; adversarial verify on every
 finding before it is acted on.
+
+## 12. Review rulings (wp/review-lua, 2026-08-26)
+
+Findings from the post-build review of the Lua/sim half, each fixed
+red-then-green in `tests/unit/test_staged_rules.cpp` /
+`tests/unit/test_campaign_hooks.cpp`.
+
+- **R1 — no `error()` is reachable from a legal knob (L1).** FFA and
+  mutant gain the team modes' *decide fold*: `fighters.enumerate(obs)`
+  (pure) counts the deployed roster, `fighters.planned_count(n, target)`
+  answers what the fill will reach (NONE keeps `n`, anything else
+  `max(n, target)`), and a band below two fighters raises
+  `"<mode>: fewer than two fighters"` **before** `deploy`/`assign`/
+  `consume_markers`/`strip` touch the world. The kept post-refusal world is
+  therefore the authored one: hero on its seat team, markers standing,
+  cast unstripped. The post-fill `count < 2` errors are gone. A mode
+  refusal does **not** trip the LobbyServer start gate (that denies
+  `StageFailed` alone): GO adopts the kept world under classic rules —
+  the documented refused-match shape — so "untouched" is the whole
+  guarantee.
+- **R2 — a squad beside occupants is sized to the room the hard shape
+  leaves (L2).** One helper, `match.squad_room(cap, roster)` =
+  `max(cap − roster, 0)` (nil cap = unbounded), applied by `fills()` over
+  the census roster and by `spawn_bots` over the live has_guy count
+  (identical in the staged world). Basketball: 3 humans + BALANC = 2
+  allies, five on court; a full court leaves no room and **no squad row**
+  (`row.squad` nil, nothing spawns). A decision row's `count` is now what
+  the team will *field*: a company/troops row with a squad beside it
+  counts roster + squad, and `row.squad_count` carries the squad alone
+  (amends §3.2's "whether or not the team is occupied": the preset still
+  applies, sized to the room). The staged report label for that shape
+  lives in `picker_common.cpp` (owned by the C++ wave).
+- **R3 — `TEAMS MATCHED` is the match-wide solver's signal (L3).**
+  `spawn_matched_bots` announces only when its target is the banked
+  `MATCHED.TARGET` (TROOPS: FAIR); a FAIR preset's local allies solve
+  passes `announce = false` and never latches the shared ones digit. The
+  applied-FAIR fact (`60` for team 1) still banks above the latch.
+- **R4 — facts are banked for what spawned (L4).** `bank_lineup_facts`
+  runs only when ≥ 1 member spawned (both the solved and the plain arms);
+  a preset/level pair that fields nothing banks nothing, so the pane
+  never names a squad that is not on the floor. An explicit level's plan
+  is still stored (respawns reproduce it).
+- **R5 — `lineup.presets` must be a sequence (L5).** The registrar walks
+  the table and refuses (`luaL_error`, book not registered, stock
+  AUTO/NONE wheel) when the entry count differs from `lua_rawlen` — a
+  keyed table or a holed array used to register zero or fewer names
+  silently.
+- **R6 — `lineup.power` answers are int64 or nothing (L6).** Integer
+  subtype as is; a float only when finite and inside `[-2^63, 2^63)`,
+  truncated toward zero; NaN, ±inf, out-of-range and non-numbers answer
+  false with a logged `not a finite integer` / `not a number` error (the
+  band shows `--`). The old `static_cast` of NaN rendered `INT64_MIN`.
+- **R7 — band modes read team 1's pair only (L7, §3.2).** In FFA/mutant
+  every fighter wears a band byte and no score team fields a squad, so
+  `bot_squad_2..4` / `bot_level_2..4` are dead there. The fact a menu
+  needs to dim them is the mode name the staged world already carries
+  (`ModeState::name` = `FFA` / `MUTANT`, the staged report's
+  `mode_name`); no extra mode var is banked. Documented at
+  `mode_fighters.lua` `band_knob`.
+- **Cleanup.** `fills()` sizes a preset squad through
+  `match.preset_squad_size` (exported) instead of building the family
+  table to take its length; `preset_squad` is the same rule plus the
+  table.
