@@ -629,6 +629,16 @@ og_add_test_group(og_test_matchup FILES
     test_ctf_ui.cpp
     test_mode_ui.cpp
     test_campaign_zone_ui.cpp
+)
+
+# The LINEUP flows live in their own binary. They are injector-driven
+# picker_main runs whose waits are wall-clock settles, so their cost adds
+# to the matchup group's rather than overlapping it: together the two
+# suites ran ~213s standalone against a 420s budget, close enough that a
+# loaded CI runner tipped a lane over. Split at the natural seam — the
+# LineupUi suite alone is ~111s of that — so each binary keeps its own
+# generous budget. Both carry the same lane properties below.
+og_add_test_group(og_test_lineup FILES
     test_lineup_ui.cpp
 )
 target_include_directories(og_test_parity PRIVATE
@@ -1222,12 +1232,19 @@ set_tests_properties(og_test_basecamp PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
 )
-# The matchup group gained the LINEUP flows (docs/lineup-design.md §2):
-# seven more injector-driven picker_main runs whose waits are wall-clock
-# settles, pushing the standalone binary to ~174s against the 180s group
-# default. Same treatment as og_test_menu_ui / og_test_basecamp above:
-# isolate it and give it the standard heavy-flow budget in every lane.
+# The matchup group's CTF and campaign-zone flows are injector-driven
+# picker_main runs whose waits are wall-clock settles, putting the
+# standalone binary well past the 180s group default. Same treatment as
+# og_test_menu_ui / og_test_basecamp above: isolate it and give it the
+# standard heavy-flow budget in every lane. The LINEUP flows
+# (docs/lineup-design.md §2) used to sit in this group and pushed the
+# pair to ~213s; they now live in og_test_lineup, which gets the
+# identical treatment.
 set_tests_properties(og_test_matchup PROPERTIES
+    RUN_SERIAL TRUE
+    TIMEOUT 420
+)
+set_tests_properties(og_test_lineup PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
 )

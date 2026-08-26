@@ -370,7 +370,8 @@ the same commit.
 - **SDL layout/nav** (`og_test_menu_engine` for fast pins): LINEUP band
   relations, Networking three-mode BFS, fighter list ≡ zone-submenu
   geometry, SCENARIO table re-pin (ordinal 4 now `lineup` at 210,100).
-- **SDL flows** (`og_test_basecamp` / `og_test_matchup`, never
+- **SDL flows** (`og_test_lineup`, split out of `og_test_matchup` once
+  the LINEUP suite passed ~111s of wall-clock settles; never
   `og_test_menu_ui`): open LINEUP from SCENARIO, cycle a preset and a
   level (label pins), SPLIT FAIR on a 6-character two-seat company and
   the seat rail follows, FIGHTERS row cycles a team networked; hosting
