@@ -7813,15 +7813,11 @@ void lineup_fighters_draw_content(void* screen_state)
         mytext.write_xy(kBaseCampSoloLevelColumnX, y + 2,
                         row.level.c_str(), status_color, 1);
 
-        // POWER where EXP sat: the campaign metric, "--" without one.
-        std::string power_text = "    --";
-        if (power) {
-            const std::optional<long long> value = power(*member);
-            if (value.has_value())
-                power_text = std::format("{:>6}", *value);
-        }
-        if (power_text.size() > 7)
-            power_text.resize(7);
+        // POWER where EXP sat: the campaign metric, "--" without one. The
+        // shared cell formatter owns the six-character field, so a big
+        // number is rounded into a k/M suffix instead of clipped.
+        const std::string power_text = format_lineup_power_cell(
+            power ? power(*member) : std::optional<long long>{});
         mytext.write_xy(kBaseCampSoloExpColumnX, y + 2, power_text.c_str(),
                         status_color, 1);
     }

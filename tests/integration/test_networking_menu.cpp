@@ -2202,6 +2202,125 @@ int kicked_joiner_revert_injector(void* data)
 void picker_testing_set_lobby_client_owner(
     std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
 
+// picker.cpp's swap seam (external linkage; declared here with every
+// parameter spelled out because the defaults live at its own declaration).
+bool picker_replace_lobby_client(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
+    const char* popup_title,
+    bool show_success_popup,
+    bool restore_previous_on_failure);
+
+namespace {
+
+// A client that records whether anyone re-ran its initialize_from_save —
+// which, for a real join client, is a RECONNECT.
+class ReinitCountingLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    // The counters live OUTSIDE the object: a swap that does not roll back
+    // destroys the previous client, which is the whole point.
+    ReinitCountingLobbyClient(int* init, int* shutdown)
+        : init_calls(init), shutdown_calls(shutdown)
+    {
+    }
+    void initialize_from_save() override { ++*init_calls; }
+    void shutdown() override { ++*shutdown_calls; }
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+
+    int* init_calls;
+    int* shutdown_calls;
+};
+
+// The fresh client whose initialize_from_save fails.
+class ThrowingLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override
+    {
+        throw std::runtime_error("could not load the local save");
+    }
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+};
+
+} // namespace
+
+// LINEUP §6: DISCONNECT (and the kicked revert) tear the network session down
+// FIRST and then swap in a fresh local client. If that fresh client's
+// initialize_from_save fails, the generic rollback would restore the previous
+// client and re-run ITS initialize_from_save — and a join client's
+// initialize_from_save reconnects, so the rollback would dial straight back
+// into the lobby this machine just left, or into the host that just kicked
+// it. Those callers ask for no rollback: they stay local and report.
+TEST(NetworkingMenu, disconnect_rollback_never_redials_the_dead_session)
+{
+    int previous_init = 0;
+    int previous_shutdown = 0;
+    std::unique_ptr<og::ui::IPickerLobbyClient> owner =
+        std::make_unique<ReinitCountingLobbyClient>(&previous_init,
+                                                    &previous_shutdown);
+    ActiveLobbyClientGuard guard(owner.get());
+
+    auto next = std::make_unique<ThrowingLobbyClient>();
+    og::ui::IPickerLobbyClient* const next_raw = next.get();
+    EXPECT_THROW(
+        (void)picker_replace_lobby_client(owner, std::move(next), "NETWORKING",
+                                          /*show_success_popup=*/false,
+                                          /*restore_previous_on_failure=*/false),
+        std::exception);
+    EXPECT_EQ(1, previous_shutdown)
+        << "the dead session is still torn down";
+    EXPECT_EQ(0, previous_init)
+        << "and NOT re-initialized: that is the reconnect";
+    EXPECT_EQ(next_raw, owner.get())
+        << "the machine stays on the fresh local client";
+    EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
+
+    // The HOST/JOIN direction keeps its rollback: there the previous client
+    // is a live session nobody asked to leave.
+    int live_init = 0;
+    int live_shutdown = 0;
+    std::unique_ptr<og::ui::IPickerLobbyClient> live =
+        std::make_unique<ReinitCountingLobbyClient>(&live_init, &live_shutdown);
+    og::ui::IPickerLobbyClient* const kept = live.get();
+    og::ui::install_active_picker_lobby_client(live.get());
+    EXPECT_THROW(
+        (void)picker_replace_lobby_client(
+            live, std::make_unique<ThrowingLobbyClient>(), "NETWORKING",
+            /*show_success_popup=*/false,
+            /*restore_previous_on_failure=*/true),
+        std::exception);
+    EXPECT_EQ(kept, live.get()) << "the live session comes back";
+    EXPECT_EQ(1, live_init) << "...re-initialized, which is the point";
+}
+
 // LINEUP §6: the kicked revert swaps the ACTIVE lobby client and opens a
 // modal. Both are safe at the top of a frame and neither is safe from inside
 // a held click: the PROGRESS spin-wait samples the click's coordinates before

@@ -3954,6 +3954,52 @@ std::string format_lineup_power(std::optional<long long> power)
                              : std::string("POWER --");
 }
 
+std::string format_lineup_power_cell(std::optional<long long> power, int width)
+{
+    const int field = std::max(width, 2);
+    std::string text = "--";
+    if (power.has_value())
+    {
+        // Widest first; the first tier that FITS wins. Every step rounds
+        // half away from zero, so the cell is a rounded number and never a
+        // clipped one — a clipped number is a different number, and this
+        // column exists to be compared.
+        static constexpr struct { long long div; char suffix; } kTiers[] = {
+            {1, '\0'},
+            {1000LL, 'k'},
+            {1000000LL, 'M'},
+            {1000000000LL, 'G'},
+            {1000000000000LL, 'T'},
+            {1000000000000000LL, 'P'},
+        };
+        const long long value = *power;
+        for (const auto& tier : kTiers)
+        {
+            long long scaled = value;
+            if (tier.div > 1)
+            {
+                // Divide first: value + div/2 overflows near LLONG_MAX, and
+                // the widest tier exists precisely for values that large.
+                scaled = value / tier.div;
+                const long long rest = value % tier.div;
+                if ((rest < 0 ? -rest : rest) * 2 >= tier.div)
+                    scaled += value >= 0 ? 1 : -1;
+            }
+            std::string candidate = std::to_string(scaled);
+            if (tier.suffix != '\0')
+                candidate.push_back(tier.suffix);
+            if (static_cast<int>(candidate.size()) <= field)
+            {
+                text = std::move(candidate);
+                break;
+            }
+        }
+    }
+    if (static_cast<int>(text.size()) > field)
+        text.resize(static_cast<std::size_t>(field));
+    return std::format("{:>{}}", text, field);
+}
+
 namespace {
 
 // AUTO, NONE and the presets on one wheel; `dir` may be any step.

@@ -1551,6 +1551,12 @@ std::string format_lineup_level_label(short level);
 std::string format_lineup_census(const LineupTeamBand& band);
 // "POWER 4200" / "POWER --".
 std::string format_lineup_power(std::optional<long long> power);
+// The FIGHTERS row's POWER cell: EXACTLY `width` characters, right-aligned,
+// "--" without a metric. A value too wide for the field is ROUNDED into a
+// k/M/G/T/P suffix rather than clipped — a clipped number is a different
+// number, and this column is read as a comparison. Every long long fits.
+std::string format_lineup_power_cell(std::optional<long long> power,
+                                     int width = 6);
 
 // The two cyclers. `preset_count` is clamped to kMaxBotPresets, so a squad
 // cycles AUTO -> NONE -> presets -> AUTO and a level AUTO -> 1..9 -> AUTO.

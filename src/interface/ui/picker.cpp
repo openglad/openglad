@@ -116,11 +116,19 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 // Flag to signal that game should start (for state machine)
 bool g_start_game_requested = false;
 
+// LINEUP §6: `restore_previous_on_failure` is FALSE when the caller has
+// already torn the previous session down (DISCONNECT, the kicked revert).
+// The rollback re-runs the previous client's initialize_from_save, and a
+// join client's initialize_from_save RECONNECTS — so restoring it would
+// re-join the very lobby this machine just left, or the host that just
+// kicked it. Those callers keep the fresh local client and report the
+// failure instead.
 bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
     const char* popup_title,
-    bool show_success_popup = true);
+    bool show_success_popup = true,
+    bool restore_previous_on_failure = true);
 
 namespace {
 void destroy_picker_pixie(pixieN* pixie)
@@ -540,7 +548,8 @@ bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
     const char* popup_title,
-    bool show_success_popup)
+    bool show_success_popup,
+    bool restore_previous_on_failure)
 {
     if (!next_client)
         return false;
@@ -591,6 +600,17 @@ bool picker_replace_lobby_client(
     }
     catch (...)
     {
+        if (!restore_previous_on_failure)
+        {
+            // The previous session is already gone: its initialize_from_save
+            // would DIAL BACK OUT. Install the fresh client anyway (a local
+            // client with a failed init is still local) and let the caller
+            // report the failure.
+            current_client = std::move(next_client);
+            og::ui::install_active_picker_lobby_client(current_client.get());
+            previous_client.reset();
+            throw;
+        }
         current_client = std::move(previous_client);
         if (previous_was_active)
             og::ui::install_active_picker_lobby_client(current_client.get());
@@ -668,7 +688,8 @@ bool picker_revert_lobby_client_if_kicked()
     {
         if (!picker_replace_lobby_client(
                 owner, og::ui::create_local_picker_lobby_client(),
-                "NETWORKING", /*show_success_popup=*/false))
+                "NETWORKING", /*show_success_popup=*/false,
+                /*restore_previous_on_failure=*/false))
         {
             return false;
         }
@@ -1172,7 +1193,8 @@ public:
                         swapped = picker_replace_lobby_client(
                             lobby_client_,
                             og::ui::create_local_picker_lobby_client(),
-                            "NETWORKING", /*show_success_popup=*/false);
+                            "NETWORKING", /*show_success_popup=*/false,
+                            /*restore_previous_on_failure=*/false);
                     }
                     catch (const std::exception& error)
                     {

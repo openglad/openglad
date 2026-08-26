@@ -325,6 +325,40 @@ TEST(LineupCommon, census_and_power_strings)
     EXPECT_EQ("POWER 0", og::ui::format_lineup_power(0));
 }
 
+// The FIGHTERS row's POWER cell has a SIX-character field. A number wider
+// than that used to be clipped, which is worse than no number at all: the
+// column is read as a comparison, and 1234567 clipped reads as 1234567 ->
+// "1234567" spilling into the next column (or, one digit further out, as a
+// smaller number than a weaker fighter's). It is rounded into a suffix
+// instead, and every tier still fits the field.
+TEST(LineupCommon, power_cell_rounds_into_the_six_character_field)
+{
+    const auto cell = [](long long value) {
+        return og::ui::format_lineup_power_cell(value);
+    };
+
+    EXPECT_EQ("    --", og::ui::format_lineup_power_cell(std::nullopt));
+    EXPECT_EQ("     0", cell(0));
+    EXPECT_EQ("   120", cell(120));
+    EXPECT_EQ("999999", cell(999999)) << "the widest plain value";
+    EXPECT_EQ(" 1000k", cell(1000000)) << "the first value that needs a tier";
+    EXPECT_EQ(" 1235k", cell(1234567)) << "rounded, never truncated";
+    EXPECT_EQ(" 1234k", cell(1234499));
+    EXPECT_EQ("99999k", cell(99999000));
+    EXPECT_EQ("  100M", cell(99999999999LL / 1000));
+    EXPECT_EQ("  123M", cell(123000000));
+    EXPECT_EQ(" 9223P", cell(9223372036854775807LL))
+        << "even LLONG_MAX fits the field";
+    EXPECT_EQ("-1235k", cell(-1234567)) << "a negative price keeps its sign";
+
+    for (const long long probe : {0LL, 7LL, 999999LL, 1000000LL, 1234567LL,
+                                  123456789LL, 987654321098LL,
+                                  9223372036854775807LL, -9LL, -1234567LL}) {
+        EXPECT_EQ(6u, og::ui::format_lineup_power_cell(probe).size())
+            << "value " << probe << " must fill exactly the field";
+    }
+}
+
 // --- cyclers -----------------------------------------------------------
 
 TEST(LineupCommon, bot_squad_cycler_wraps_over_auto_none_presets)
