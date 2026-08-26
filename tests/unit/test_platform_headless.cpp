@@ -1015,8 +1015,8 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         // above it is untouched. Host rows: 1..8 the four teams' bot/level
         // knobs, 9 Fighters, 10 Split even, 11 Split fair, 12 Unite, 13 Back.
         "12\n"      // team build: LINEUP
-        "1\n"       // lineup: TEAM 1 bots -> NONE
-        "2\n"       // lineup: TEAM 1 level -> LV 1
+        "1\n"       // lineup: TEAM 1 bots (classic: refused)
+        "2\n"       // lineup: TEAM 1 level (classic: refused)
         "99\n"      // lineup: out of range -> refused, page reprints
         "13\n"      // lineup: back -> team build
         "9\n"       // team build: networking (unavailable)
@@ -2289,8 +2289,10 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
         "1\n"        //   list: open company...
         "1\n"        //     #1 = lineupd -> team build
         "12\n"       // team build: LINEUP
-        "1\n"        //   lineup: TEAM 1 bots -> NONE
-        "2\n"        //   lineup: TEAM 1 level -> LV 1
+        // A2: TEAM 1 has this machine's seat, so the wheel's OFF is
+        // refused and the step lands on NONE.
+        "1\n"        //   lineup: TEAM 1 bots -> (OFF refused) NONE
+        "2\n"        //   lineup: TEAM 1 level -> LV +1
         "9\n"        //   lineup: Fighters
         "team 4 1\n" //     fighters: F4 GREEN -> RED
         "team 9 1\n" //     fighters: slot out of range -> refused
@@ -2334,7 +2336,11 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
     // The two cycles answer with the SAME formatter the row label uses.
     EXPECT_NE(std::string::npos, out.find("BOTS: NONE"))
         << "cycling the squad knob must answer with the shared label:\n" << out;
-    EXPECT_NE(std::string::npos, out.find("LV 1")) << out;
+    EXPECT_NE(std::string::npos, out.find("LV +1"))
+        << "A6: the level knob is an OFFSET, so the sign is the label:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 1 HAS PLAYERS"))
+        << "A2: OFF is refused on a seated team, in words, and the wheel "
+           "steps over it instead of stranding:\n" << out;
     // The fighter list: team, deploy state and price on one row.
     EXPECT_NE(std::string::npos, out.find("--- Fighters ---")) << out;
     EXPECT_NE(std::string::npos,
@@ -2361,10 +2367,11 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
 
     SaveData reloaded;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("lineupd"));
-    EXPECT_EQ(1, reloaded.bot_squad[0])
-        << "the squad cycle must reach the company file (AUTO -> NONE)";
+    EXPECT_EQ(og::sim::kBotSquadNone, reloaded.bot_squad[0])
+        << "the squad cycle must reach the company file (AUTO -> OFF "
+           "refused -> NONE)";
     EXPECT_EQ(1, reloaded.bot_level[0])
-        << "the level cycle must reach the company file (AUTO -> 1)";
+        << "the level cycle must reach the company file (AUTO -> +1)";
     EXPECT_EQ(0, reloaded.bot_squad[1]) << "only the cycled team moved";
     ASSERT_TRUE(reloaded.team_list[0] && reloaded.team_list[1] &&
                 reloaded.team_list[2] && reloaded.team_list[3]);
@@ -2487,6 +2494,12 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     }
     EXPECT_EQ(TerminalLineupItem::Kind::Fighters, joiner.items[0].kind);
     EXPECT_EQ("Fighters", joiner.items[0].label);
+    // §5 over one seated team is UNITE by arithmetic, and a terminal client
+    // is single-seat by construction — so the two SPLIT rows keep their
+    // ordinals and say what they will actually do.
+    EXPECT_EQ("Split even  (one seat: same as Unite)", joiner.items[1].label);
+    EXPECT_EQ("Split fair  (one seat: same as Unite)", joiner.items[2].label);
+    EXPECT_EQ("Unite", joiner.items[3].label);
     EXPECT_EQ(TerminalLineupItem::Kind::Back, joiner.items.back().kind);
     EXPECT_EQ("Back", joiner.items.back().label);
     // The knob rows quote the shared label VERBATIM behind the team ordinal.
@@ -2503,13 +2516,14 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
         << host.lines[1];
     // A preset ordinal the campaign DID register reads by name; the joiner
     // clamp path (an ordinal with no name) reads as its number, never AUTO.
-    save.bot_squad[0] = 2;
-    save.bot_squad[1] = 7;
+    save.bot_squad[0] = og::sim::kBotSquadPresetBase;      // BRUTES
+    save.bot_squad[1] = static_cast<short>(
+        og::sim::kBotSquadPresetBase + 4);                 // no such name
     inputs.is_host = true;
     const og::ui::TerminalLineupModel named =
         og::ui::build_terminal_lineup_model(inputs);
     EXPECT_EQ("TEAM 1  BOTS: BRUTES  (MAP RULES)", named.items[0].label);
-    EXPECT_EQ("TEAM 2  BOTS: #6  (MAP RULES)", named.items[2].label);
+    EXPECT_EQ("TEAM 2  BOTS: #5  (MAP RULES)", named.items[2].label);
 
     // On a VERSUS campaign the knobs really are live: no mark, and the band
     // censuses the fighters again.
@@ -2529,6 +2543,68 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
         << versus.lines[1];
     (void)unmount_campaign_package_with_error("modes");
     (void)mount_campaign_package_with_error("gladiator");
+}
+
+// Amendment A2: OFF drops an authored team out of the match, so a team that
+// has a seat or a deployed fighter may not take it — and a refusal that just
+// held the wheel in place would strand it, because OFF sits between AUTO and
+// the presets. The step goes over it and says why.
+TEST(PlatformHeadless, lineup_terminal_bots_wheel_steps_over_a_refused_off)
+{
+    SaveData save;
+    save.reset();
+    save.my_team = 0;
+    // Team 1 (index 0) carries the seat; team 2 carries a deployed fighter
+    // with no seat; teams 3 and 4 are empty.
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->teamnum = 1;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+    save.numplayers = 1;
+
+    og::ui::TerminalLineupInputs inputs;
+    const std::vector<og::sim::LobbyPlayer> seats =
+        og::ui::synthesize_local_lobby_players(save);
+    inputs.save = &save;
+    inputs.players = seats;
+    const og::ui::TerminalLineupModel model =
+        og::ui::build_terminal_lineup_model(inputs);
+
+    EXPECT_EQ("TEAM 1 HAS PLAYERS", model.off_refusal[0])
+        << "a seat outranks the fighters as the reason";
+    EXPECT_EQ("TEAM 2 HAS FIGHTERS", model.off_refusal[1]);
+    EXPECT_EQ("", model.off_refusal[2])
+        << "an empty team may be switched OFF";
+    EXPECT_EQ("", model.off_refusal[3]);
+
+    // The wheel on the empty team is the plain one: AUTO -> OFF -> NONE.
+    og::ui::TerminalLineupBotsStep step = og::ui::terminal_lineup_bots_step(
+        og::sim::kBotSquadAuto, 1, 1, model.off_refusal[2]);
+    EXPECT_EQ(og::sim::kBotSquadOff, step.value);
+    EXPECT_EQ("", step.refusal);
+
+    // On the seated team the same press lands on NONE and names the reason.
+    step = og::ui::terminal_lineup_bots_step(og::sim::kBotSquadAuto, 1, 1,
+                                             model.off_refusal[0]);
+    EXPECT_EQ(og::sim::kBotSquadNone, step.value);
+    EXPECT_EQ("TEAM 1 HAS PLAYERS", step.refusal);
+
+    // Backwards over the same gap: NONE -> (OFF refused) -> AUTO. The wheel
+    // stays reachable in both directions, which is the whole point of
+    // stepping over rather than refusing in place.
+    step = og::ui::terminal_lineup_bots_step(og::sim::kBotSquadNone, 1, -1,
+                                             model.off_refusal[0]);
+    EXPECT_EQ(og::sim::kBotSquadAuto, step.value);
+    EXPECT_EQ("TEAM 1 HAS PLAYERS", step.refusal);
+
+    // And the preset beyond it is still reachable in one more press.
+    step = og::ui::terminal_lineup_bots_step(og::sim::kBotSquadNone, 1, 1,
+                                             model.off_refusal[0]);
+    EXPECT_EQ(og::sim::kBotSquadPresetBase, step.value);
+    EXPECT_EQ("", step.refusal);
 }
 
 // M3: a seat picture has ONE derivation. The SDL screens and the launch both

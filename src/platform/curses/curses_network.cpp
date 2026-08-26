@@ -1617,7 +1617,10 @@ public:
                 kick_selected_seat();
                 continue;
             }
-            if (role_ == LobbyRole::Host &&
+            // "Is host NOW" (§6), the kick's rule: on a dedicated lobby the
+            // elected host is a JOIN client, and it is the only machine the
+            // server's start gate obeys. request_start() re-checks.
+            if (local_player_is_host() &&
                 (key.is_enter() || key.is_char(U's') || key.is_char(U'S'))) {
                 request_start();
             }
@@ -1659,13 +1662,15 @@ public:
                 // the server clears every non-host machine's ready (§4.5)
                 // and the echoed settings drive the status line below.
                 // Sanitize on toggle ({0,1}; junk counts as ON, lands 0).
-                if (role_ == LobbyRole::Host &&
-                    host_client_transport_ != nullptr) {
+                // Host-only means "is host NOW" here too: the server accepts
+                // a SettingsChange from the host PEER, which on a dedicated
+                // lobby is the elected host's JOIN client.
+                og::sim::ITransport* const ctrl_link = server_link();
+                if (local_player_is_host() && ctrl_link != nullptr) {
                     save_.cross_control = static_cast<std::int16_t>(
                         save_.cross_control != 0 ? 0 : 1);
                     send_lobby_message(
-                        *host_client_transport_,
-                        host_client_transport_->local_peer_id(),
+                        *ctrl_link, server_link_peer(),
                         make_settings_message(save_, difficulty_));
                     pump_once();
                 } else {
@@ -1741,10 +1746,14 @@ public:
 
     void request_start() override
     {
-        if (role_ != LobbyRole::Host || server_ == nullptr ||
-            host_client_transport_ == nullptr || !state_.has_value())
+        // "Is host NOW", exactly like the kick (§6): the machine that runs a
+        // dedicated lobby JOINED it, so keying the start on LobbyRole left
+        // the one machine the server would obey unable to press GO. The
+        // server gates on the host PEER, and that peer is this one.
+        if (!local_player_is_host() || !state_.has_value())
             return;
-        if (!local_player_is_host())
+        og::sim::ITransport* const client_link = server_link();
+        if (client_link == nullptr)
             return;
 
         const og::sim::LobbyPlayer* const local = find_local_player(*state_);
@@ -1759,8 +1768,7 @@ public:
             .player_index = local->player_index,
             .request_id = pending_start_request_id_,
         };
-        send_lobby_message(*host_client_transport_,
-                           host_client_transport_->local_peer_id(),
+        send_lobby_message(*client_link, server_link_peer(),
                            std::move(message));
         pump_once();
     }
@@ -1903,9 +1911,7 @@ public:
                                   og::sim::LobbySeatId seat_id,
                                   short team) override
     {
-        og::sim::ITransport* const client_link = role_ == LobbyRole::Host
-            ? host_client_transport_.get()
-            : transport_.get();
+        og::sim::ITransport* const client_link = server_link();
         if (client_link == nullptr || !state_.has_value())
             return false;
 
@@ -1926,10 +1932,7 @@ public:
             .team = team,
         };
         send_lobby_message(*client_link,
-                           role_ == LobbyRole::Host
-                               ? host_client_transport_->local_peer_id()
-                               : server_peer_id_,
-                           std::move(message));
+                           server_link_peer(), std::move(message));
         pump_once();
         if (!state_.has_value())
             return false;
@@ -1949,10 +1952,7 @@ public:
         {
             return false;
         }
-        const bool hosting_role = role_ == LobbyRole::Host;
-        og::sim::ITransport* const client_link = hosting_role
-            ? static_cast<og::sim::ITransport*>(host_client_transport_.get())
-            : transport_.get();
+        og::sim::ITransport* const client_link = server_link();
         if (client_link == nullptr)
             return false;
         // Never this machine: the server refuses it, and asking would put a
@@ -1963,10 +1963,7 @@ public:
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbyKickMessage{.machine_id = machine_id};
-        send_lobby_message(*client_link,
-                           hosting_role
-                               ? host_client_transport_->local_peer_id()
-                               : server_peer_id_,
+        send_lobby_message(*client_link, server_link_peer(),
                            std::move(message));
         pump_once();
         return true;
@@ -1994,9 +1991,7 @@ public:
 
     bool set_ready(bool ready) override
     {
-        og::sim::ITransport* const client_link = role_ == LobbyRole::Host
-            ? host_client_transport_.get()
-            : transport_.get();
+        og::sim::ITransport* const client_link = server_link();
         if (client_link == nullptr)
             return false;
 
@@ -2019,10 +2014,7 @@ public:
             .ready = ready,
         };
         send_lobby_message(*client_link,
-                           role_ == LobbyRole::Host
-                               ? host_client_transport_->local_peer_id()
-                               : server_peer_id_,
-                           std::move(message));
+                           server_link_peer(), std::move(message));
         pump_once();
         return local_ready() == ready;
     }
@@ -2113,19 +2105,38 @@ private:
         // hint is the first line to lose its tail — so the two new keys buy
         // their room by abbreviating, not by pushing [q] off the edge.
         // The hint advertises what THIS machine may do now (§6). An elected
-        // host that joined a dedicated lobby owns the kick, so it gets [k];
-        // [s] start and [c] ctrl stay with the hosting role, which is where
-        // this client's own server lives.
-        const char* hint = role_ == LobbyRole::Host
+        // host that joined a dedicated lobby owns start, cross-control and
+        // the kick — all three key on "is host now" — so it reads the same
+        // line a hosting role does. A hosting role keeps the full line even
+        // before the first state broadcast: its server is right here, and
+        // the keys go live the moment the roster arrives.
+        const char* hint = role_ == LobbyRole::Host || local_player_is_host()
             ? "[s] start [</>] seat [t] team [r] ready [c] ctrl "
               "[k] kick [d] leave [q] quit"
-            : (local_player_is_host()
-                   ? "[</>] seat [t] team [r] ready [k] kick "
-                     "[d] leave [q] quit"
-                   : "[</>] seat [t] team [r] ready [d] leave [q] quit");
+            : "[</>] seat [t] team [r] ready [d] leave [q] quit";
         if (term.rows() > 0)
             term.put_str(term.rows() - 1, 0, hint, Color::Cyan, Color::Default, false);
         term.present();
+    }
+
+    // The link this machine speaks to the LobbyServer over, and the peer to
+    // address on it. A HOST role owns the server in this process and talks to
+    // it through its own in-process client transport; every other shape — a
+    // plain joiner AND the elected host of a dedicated lobby — has only the
+    // remote transport to the server peer. One pair of accessors, so a new
+    // message can never pick the wrong link for the shape it is sent in.
+    og::sim::ITransport* server_link() const
+    {
+        return role_ == LobbyRole::Host
+            ? static_cast<og::sim::ITransport*>(host_client_transport_.get())
+            : transport_.get();
+    }
+
+    og::sim::PeerId server_link_peer() const
+    {
+        return role_ == LobbyRole::Host
+            ? host_client_transport_->local_peer_id()
+            : server_peer_id_;
     }
 
     bool local_player_is_host() const

@@ -1278,9 +1278,20 @@ private:
                 // purpose: the text client links no lobby client at all
                 // (configure_networking is the documented stub), so the
                 // save IS the whole authority for these eight scalars.
-                save_data_.bot_squad[team] = og::sim::clamp_bot_squad(
-                    cycle_lineup_bots(save_data_.bot_squad[team],
-                                      static_cast<int>(presets.size()), 1));
+                // A2: the wheel steps over an OFF this team may not take and
+                // says why (the shared terminal rule; the SDL twin refuses
+                // the same value in change_lineup_bots).
+                {
+                    const TerminalLineupBotsStep step =
+                        terminal_lineup_bots_step(
+                            save_data_.bot_squad[team],
+                            static_cast<int>(presets.size()), 1,
+                            model.off_refusal[team]);
+                    if (!step.refusal.empty())
+                        std::printf("%s\n", step.refusal.c_str());
+                    save_data_.bot_squad[team] =
+                        og::sim::clamp_bot_squad(step.value);
+                }
                 std::printf("%s\n",
                             format_lineup_bots_label(save_data_.bot_squad[team],
                                                      presets)
@@ -1327,8 +1338,10 @@ private:
                     t, hero_count, false, false, false, "").c_str());
             std::printf("%s", members.c_str());
         }
-        if (is_versus_campaign(save_data_))
-            std::printf("[%s]\n", format_ctf_teams_label(save_data_).c_str());
+        // Amendment A1/A3: the TEAMS readout is gone with the control. How
+        // many teams fight is the LINEUP page's answer now — a team is on
+        // when something is on it — so a line reading "Teams: Auto" under
+        // every roster could only ever be noise.
     }
 
     void ensure_team_initialized()
