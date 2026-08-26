@@ -429,6 +429,69 @@ TEST_F(ModesFfa, bot_fill_reaches_the_row_fighter_count)
     EXPECT_EQ(6, bots) << "exactly the deficit to the row's fighters count";
 }
 
+// The band path honours the lineup knobs through TEAM 1's pair (lineup
+// §3.2 — the band is ONE population): NONE suppresses the fill entirely,
+// leaving only the deployed fighters.
+TEST_F(ModesFfa, lineup_none_suppresses_the_band_fill)
+{
+    FfaRig rig(850, 2);
+    rig.fx.world().ctf_requested_bot_squad[0] = 1;  // NONE
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+
+    EXPECT_EQ(2, rig.fx.var(kFfaSlotFighterCount))
+        << "NONE fields nothing; the two heroes are the whole band";
+    EXPECT_EQ(2, alive_band_livings(rig.fx.world()));
+}
+
+// A preset replaces the band's fill roster and an explicit level replaces
+// the session-difficulty formula — singles per free slot stay the band's
+// hard shape (the mutant/FFA "one bot per slot" rule, preset.count
+// notwithstanding).
+TEST_F(ModesFfa, lineup_preset_and_level_shape_the_band_fill)
+{
+    FfaRig rig(850, 2);
+    rig.fx.world().ctf_requested_bot_squad[0] = 4;  // BRUTES
+    rig.fx.world().ctf_requested_bot_level[0] = 5;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+
+    EXPECT_EQ(8, rig.fx.var(kFfaSlotFighterCount))
+        << "the fill still reaches the row's fighter count — singles per "
+           "free slot, whatever the preset says";
+    int bots = 0;
+    for (const auto& uptr : rig.fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->myguy != nullptr)
+            continue;
+        ++bots;
+        const int family = w->family();
+        EXPECT_TRUE(family == FAMILY_SOLDIER || family == FAMILY_BARBARIAN ||
+                    family == FAMILY_ORC)
+            << "band bots draw from the preset's families, got " << family;
+        ASSERT_NE(nullptr, w->stats());
+        EXPECT_EQ(5, w->stats()->level())
+            << "the explicit level replaces the formula";
+    }
+    EXPECT_EQ(6, bots);
+}
+
+// FAIR carries no families and no band solver exists (PLAN_BASE indexes
+// score teams only): the band reads it as AUTO — the documented carve-out.
+TEST_F(ModesFfa, lineup_fair_preset_reads_as_auto_in_the_band)
+{
+    FfaRig rig(850, 2);
+    rig.fx.world().ctf_requested_bot_squad[0] = 6;  // FAIR
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+
+    EXPECT_EQ(8, rig.fx.var(kFfaSlotFighterCount));
+    EXPECT_EQ(8, alive_band_livings(rig.fx.world()));
+}
+
 TEST_F(ModesFfa, init_strips_authored_troops_and_generators_keeps_wildlife)
 {
     FfaRig rig(850, 2);

@@ -1693,3 +1693,38 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
         }
     }
 }
+
+// The LINEUP hook through the REAL shipped campaign script (lineup §3.3):
+// mounting builtin/modes.glad registers campaign_picker.lua, whose lineup
+// table names exactly mode_match's BOT_PRESETS ids in table order — the
+// cycler ordinals 2..6 — and whose power function is mode_match's own
+// stat_power over the derived-stat row.
+TEST_F(ModesBookTest, lineup_hook_registers_presets_and_prices_with_stat_power)
+{
+    EXPECT_TRUE(hooks::campaign_lineup_registered())
+        << "campaign_picker.lua must register the lineup table";
+    std::vector<std::string> presets;
+    ASSERT_TRUE(hooks::campaign_lineup_presets(presets));
+    const std::vector<std::string> expected{"BALANC", "CASTER", "BRUTES",
+                                            "SKIRMS", "FAIR"};
+    EXPECT_EQ(expected, presets)
+        << "preset names are the BOT_PRESETS ids, verbatim and in order";
+
+    // power(row) == stat_power(hp, mp, armor, damage, stepsize, ff,
+    // level), hand computed for a fixed row:
+    //   ED = (10 * (2 + 3)) / 4 = 12; RATE = 120 / 6 = 20;
+    //   OFF = 12 * 20 + 5 * 3 = 255; EHP = 100 + 4 * 4 + 20 / 2 = 126;
+    //   f = (126 * (255 + 60)) / 60 = 39690 / 60 = 661.
+    hooks::LineupPowerRow row;
+    row.family = "SOLDIER";
+    row.level = 2;
+    row.hp = 100;
+    row.mp = 20;
+    row.armor = 4;
+    row.damage = 10;
+    row.stepsize = 3;
+    row.fire_frequency = 6;
+    long long power = 0;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(661, power) << "the campaign's power IS mode_match.stat_power";
+}

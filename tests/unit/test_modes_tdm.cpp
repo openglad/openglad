@@ -1464,6 +1464,136 @@ TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
     EXPECT_EQ(2, tab_int(blf, 4)) << "unsolved team takes the legacy level";
 }
 
+// --- Lineup arms (docs/lineup-design.md §3.2) ------------------------------
+//
+// A runtime-registered probe (the test_staged_rules RuleProbeScript
+// discipline — registered pack scripts need no coverage-ledger entry)
+// drives the pure lineup functions and the knob-aware spawn seam on probe
+// level 9093. The world knobs are set by the C++ test BEFORE the first
+// tick; mode vars 12/13/14 are the probe's cursor slots.
+constexpr const char* kLineupProbeLua =
+    "local match = og.use(\"mode_match\")\n"
+    "local squad = { \"core:soldier\", \"core:archer\", \"core:elf\",\n"
+    "                \"core:mage\", \"core:thief\" }\n"
+    "og.register_level_hooks(9093, {\n"
+    "  on_mode_init = function(level)\n"
+    "    local sums = { 100, 250, 0, 40 }\n"
+    "    og.log(\"fair\", match.fair_target(500, sums, 0),\n"
+    "           match.fair_target(500, sums, 1),\n"
+    "           match.fair_target(500, sums, 2))\n"
+    "    local cyc = match.preset_squad(\n"
+    "        { families = { \"core:soldier\", \"core:elf\" }, count = 5 },\n"
+    "        0, nil)\n"
+    "    og.log(\"psq_cycle\", #cyc, cyc[1], cyc[2], cyc[3], cyc[4], cyc[5])\n"
+    "    local capped = match.preset_squad({ families = squad }, 4, 3)\n"
+    "    og.log(\"psq_cap\", #capped, capped[1])\n"
+    "    og.log(\"psq_head\", #match.preset_squad({ families = squad }, 2, nil))\n"
+    "    og.log(\"pfam\", match.preset_families(0) == nil and 1 or 0,\n"
+    "           match.preset_families(6) == nil and 1 or 0,\n"
+    "           match.preset_families(2) ~= nil and 1 or 0)\n"
+    "    match.spawn_bots(0, squad, 15)\n"
+    "    match.spawn_bots(1, squad, 12, nil, 3)\n"
+    "    match.spawn_bots(2, squad, 13)\n"
+    "    match.spawn_bots(3, squad, 14)\n"
+    "  end,\n"
+    "})\n";
+
+struct LineupProbeScript
+{
+    LineupProbeScript()
+    {
+        og::script::register_pack_script(
+            {og::modes_test::kRulesPackId, "zz_lineup_probe.lua",
+             kLineupProbeLua});
+    }
+    ~LineupProbeScript()
+    {
+        og::script::register_pack_script(
+            {og::modes_test::kRulesPackId, "zz_lineup_probe.lua", ""});
+    }
+};
+
+// The pure lineup arms: the FAIR allies target (gap / negative gap /
+// empty-team mean — the 2026-08-25 ruling), preset_squad's count cycling,
+// hard-shape cap and headcount arms, and preset_families' knob vocabulary
+// (AUTO and FAIR answer nil, a family preset answers its list). Then the
+// knob-aware spawn seam: an AUTO squad truncates to the caller's cap, an
+// explicit bot_level lands on every member and persists as the plan (D14,
+// once per walker), and NONE fields nothing.
+TEST_F(ModesTdm, lineup_fair_target_preset_squad_and_knobbed_spawns)
+{
+    LineupProbeScript probe;
+    ModesCtfWorld fx(9093);
+    for (int i = 0; i < 5; ++i)
+    {
+        fx.spawn_anchor(0, 96 + 96 * i, 384);
+        fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.spawn_anchor(2, 96 + 96 * i, 192);
+        fx.spawn_anchor(3, 96 + 96 * i, 288);
+    }
+    fx.world().ctf_requested_bot_squad[0] = 6;  // FAIR, no humans anywhere
+    fx.world().ctf_requested_bot_squad[2] = 6;  // FAIR + explicit level...
+    fx.world().ctf_requested_bot_level[2] = 6;  // ...= AUTO squad at L6
+    fx.world().ctf_requested_bot_squad[3] = 1;  // NONE, team 3
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+
+    const auto fair = matched_log(fx.world(), "fair");
+    ASSERT_EQ(4u, fair.size());
+    EXPECT_EQ(150, tab_int(fair, 1)) << "occupied: best other 250 - own 100";
+    EXPECT_EQ(-150, tab_int(fair, 2))
+        << "the strongest team's gap goes negative (solver clamps to L1)";
+    EXPECT_EQ(500, tab_int(fair, 3)) << "an empty team keeps the D11 mean";
+
+    const auto cyc = matched_log(fx.world(), "psq_cycle");
+    ASSERT_EQ(7u, cyc.size());
+    EXPECT_EQ(5, tab_int(cyc, 1)) << "preset.count outranks the list length";
+    EXPECT_EQ("core:soldier", cyc[2]);
+    EXPECT_EQ("core:elf", cyc[3]);
+    EXPECT_EQ("core:soldier", cyc[4]) << "count cycles past the family list";
+    EXPECT_EQ("core:elf", cyc[5]);
+    EXPECT_EQ("core:soldier", cyc[6]);
+
+    const auto cap = matched_log(fx.world(), "psq_cap");
+    EXPECT_EQ(3, tab_int(cap, 1)) << "the hard-shape cap clamps last";
+    EXPECT_EQ("core:soldier", cap[2]);
+    const auto head = matched_log(fx.world(), "psq_head");
+    EXPECT_EQ(2, tab_int(head, 1)) << "the matched headcount truncates";
+
+    const auto pfam = matched_log(fx.world(), "pfam");
+    EXPECT_EQ(1, tab_int(pfam, 1)) << "AUTO names no preset";
+    EXPECT_EQ(1, tab_int(pfam, 2)) << "FAIR carries no families";
+    EXPECT_EQ(1, tab_int(pfam, 3)) << "BALANC answers its list";
+
+    // The knob-aware spawns: FAIR with no human power anywhere degrades
+    // to the legacy squad on team 0 (fact banked AUTO — code 0), the AUTO
+    // squad truncates to the caller's cap on team 1, FAIR + explicit L6
+    // on team 2 is the AUTO squad at that level (plan code 60 at base
+    // 10000; facts code 6 — level only, the solve never ran), and NONE
+    // fields nothing on team 3.
+    EXPECT_EQ(5, alive_on_team(fx.world(), 0))
+        << "FAIR without human power degrades to the legacy squad";
+    EXPECT_EQ(0, (fx.var(kSlotMatchedAnnounced) / 10) % 100)
+        << "the degraded FAIR banks AUTO, not the ordinal";
+    EXPECT_EQ(3, alive_on_team(fx.world(), 1))
+        << "an AUTO squad truncates to the caller's cap";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 3)) << "NONE fields nothing";
+    EXPECT_EQ(60, matched_plan_code(fx.var(kSlotMatchedPlan), 2))
+        << "the explicit level persists as the stored plan";
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 2);
+    EXPECT_EQ(6, levels.soldier);
+    EXPECT_EQ(6, levels.archer);
+    EXPECT_EQ(6, levels.elf);
+    EXPECT_EQ(6, levels.mage);
+    EXPECT_EQ(6, levels.thief);
+    EXPECT_EQ(6, (fx.var(kSlotMatchedAnnounced) / 10 / 10000) % 100)
+        << "the level fact alone is banked — FAIR without a solve is AUTO";
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10)
+        << "no solve ran, so nothing announced";
+}
+
 // The model-pin tripwire (D13/§8): for EVERY family with a TUPLE row (the
 // 5 squad families plus the orc/beast/cleric/druid rows carried for future
 // rosters) the probe spawns a real bot, applies s_set_level +

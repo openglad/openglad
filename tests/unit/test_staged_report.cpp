@@ -532,3 +532,100 @@ TEST_F(ScenarioStagedReport, empty_fill_renders_the_no_forces_row)
     EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - NO FORCES"))
         << "Empty must label NO FORCES, count suffix omitted";
 }
+
+// The lineup preset labels (lineup §3.4): a preset squad's fill label
+// wears the registered preset name — "BOT SQUAD <NAME> (n)" — read from
+// the shared facts slot the spawn seam banked (kModeVarLineupFacts,
+// mode_match.lua bank_lineup_facts), with the name resolved through the
+// campaign lineup hook. The occupied team keeps its COMPANY label (the
+// preset allies appear in the rows below), so the name rides only bot
+// fills.
+TEST_F(ScenarioStagedReport, preset_fill_label_names_the_squad)
+{
+    ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
+    for (int team = 0; team < 3; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
+    fx.world().ctf_requested_strip_scenario_troops = 0;  // ALL
+    fx.world().ctf_requested_team_count = 0;
+    fx.world().ctf_requested_bot_squad[1] = 3;  // CASTER on empty team 1
+    fx.world().ctf_requested_bot_squad[0] = 4;  // BRUTES beside the roster
+
+    stage_fixture_world(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    SaveData save;
+    const og::ui::ScenarioRosterReport report = staged_report(fx, save);
+    EXPECT_EQ(ScenarioFill::Company, report.team_fill[0]);
+    EXPECT_TRUE(report.team_squad_name[0].empty())
+        << "an occupied team's label stays COMPANY; no preset name rides it";
+    EXPECT_EQ(ScenarioFill::Bots, report.team_fill[1]);
+    EXPECT_EQ("CASTER", report.team_squad_name[1]);
+    EXPECT_EQ(0, report.team_squad_level[1]);
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - COMPANY (1)"));
+    EXPECT_TRUE(any_line_is(lines,
+                            "  GREEN TEAM  ACTIVE - BOT SQUAD CASTER (5)"));
+    EXPECT_TRUE(any_line_is(lines, "  BLUE TEAM  ACTIVE - BOT SQUAD (5)"))
+        << "the AUTO squad keeps its plain label";
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+// An explicit bot level appends LVk to the bot fill's label — the plain
+// squad's and a preset's alike — and never to an occupancy fill.
+TEST_F(ScenarioStagedReport, explicit_level_appends_lv_to_bot_labels)
+{
+    ModesCtfWorld fx(kSoccerLevelB);
+    for (int team = 0; team < 3; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+    fx.world().ctf_requested_bot_level[0] = 9;
+    fx.world().ctf_requested_bot_squad[1] = 2;  // BALANC
+    fx.world().ctf_requested_bot_level[1] = 3;
+
+    stage_fixture_world(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    SaveData save;
+    const og::ui::ScenarioRosterReport report = staged_report(fx, save);
+    EXPECT_EQ(9, report.team_squad_level[0]);
+    EXPECT_EQ(3, report.team_squad_level[1]);
+    EXPECT_EQ("BALANC", report.team_squad_name[1]);
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - BOT SQUAD (5) LV9"));
+    EXPECT_TRUE(any_line_is(
+        lines, "  GREEN TEAM  ACTIVE - BOT SQUAD BALANC (5) LV3"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+// The worst-case label sits exactly on the 48-char budget — the reason
+// the level is spelled LVk with no inner space (lineup §3.4's budget
+// clause): "  YELLOW TEAM  ACTIVE - BOT SQUAD BALANC (5) LV9" is 48.
+TEST_F(ScenarioStagedReport, preset_label_worst_case_fits_the_budget)
+{
+    og::ui::ScenarioRosterReport report;
+    report.staged = true;
+    report.is_versus = true;
+    report.will_activate = true;
+    report.mode_census = true;
+    report.mode_name = "SOCCER";
+    report.team_active[3] = true;
+    report.team_fill[3] = ScenarioFill::Bots;
+    report.team_fill_count[3] = 5;
+    report.team_squad_name[3] = "BALANC";
+    report.team_squad_level[3] = 9;
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_is(
+        lines, "  YELLOW TEAM  ACTIVE - BOT SQUAD BALANC (5) LV9"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
