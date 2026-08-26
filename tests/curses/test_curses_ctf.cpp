@@ -36,7 +36,8 @@ namespace og::curses {
 std::unique_ptr<CursesLobby> make_host_lobby_over_transport_for_testing(
     SaveData& save, int difficulty,
     std::shared_ptr<og::sim::ITransport> combined_transport,
-    std::shared_ptr<og::sim::InProcessTransport> host_client_transport);
+    std::shared_ptr<og::sim::InProcessTransport> host_client_transport,
+    std::uint32_t pinned_match_seed = 0);
 std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     SaveData& save, int difficulty,
     std::shared_ptr<og::sim::ITransport> transport,

@@ -51,6 +51,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -79,7 +80,8 @@ namespace og::curses {
 std::unique_ptr<CursesLobby> make_host_lobby_over_transport_for_testing(
     SaveData& save, int difficulty,
     std::shared_ptr<og::sim::ITransport> combined_transport,
-    std::shared_ptr<og::sim::InProcessTransport> host_client_transport);
+    std::shared_ptr<og::sim::InProcessTransport> host_client_transport,
+    std::uint32_t pinned_match_seed = 0);
 std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     SaveData& save, int difficulty,
     std::shared_ptr<og::sim::ITransport> transport,
@@ -394,6 +396,18 @@ struct StartedGame {
     std::unique_ptr<CursesGameSession> join_session;
 };
 
+// Every started game this harness hands back is staged from ONE pinned match
+// seed. Production draws that seed from std::random_device per round
+// (og::server::draw_match_seed), which is right for a real match and wrong
+// for a test: the seed drives the sim RNG the staged load spends (weather,
+// walker construction) and — the sharp edge — walker::teleport, the scatter
+// fallback spawn_team_from_save uses for any team the level ships no start
+// marker for. A joiner on team 1 in gladiator/1 therefore landed on a fresh
+// random cell every run, occasionally inside the map's team-0 guard pack,
+// where it was dead well before the 30th frame any of these tests advance to.
+// Pinned, the staged world is the same world on every run and on every runner.
+inline constexpr std::uint32_t kPinnedCursesMatchSeed = 0x0C0FFEEDu;
+
 StartedGame negotiate_and_start(SaveData& host_save, SaveData& join_save)
 {
     // One in-process server hosts the LobbyServer; the host's own player and the
@@ -405,7 +419,8 @@ StartedGame negotiate_and_start(SaveData& host_save, SaveData& join_save)
 
     StartedGame game;
     game.host_lobby = make_host_lobby_over_transport_for_testing(
-        host_save, /*difficulty=*/1, server, host_client);
+        host_save, /*difficulty=*/1, server, host_client,
+        kPinnedCursesMatchSeed);
     // The joiner addresses the in-process server via its own local peer id (the
     // InProcessTransport routes a client's local_peer_id back to the server).
     game.join_lobby = make_join_lobby_over_transport_for_testing(
@@ -1351,35 +1366,42 @@ TEST(CursesNetwork, benched_member_never_enters_the_level)
     ASSERT_NE(game.host_session, nullptr);
     ASSERT_NE(game.join_session, nullptr);
 
-    advance_all(*game.host_session, *game.join_session, 30);
-
-    const auto count_heroes = [](const GameWorld& world,
-                                 int& reserve_count) {
-        int heroes = 0;
-        reserve_count = 0;
+    // The claim under test is who ENTERS the level, so gather the roster the
+    // mirrors replicate across the WHOLE window instead of sampling the
+    // survivors at the last frame. The level ships no team-1 start marker, so
+    // the joiner arrives through the scatter fallback (walker::teleport) and
+    // can land somewhere lethal; "died at frame 20" is a different fact from
+    // "never entered", and only the second one is this test's subject.
+    std::set<std::string> host_entrants;
+    std::set<std::string> join_entrants;
+    int host_peak = 0;
+    int join_peak = 0;
+    const auto collect = [](const GameWorld& world,
+                            std::set<std::string>& entrants,
+                            int& peak) {
+        int present = 0;
         for (const auto& up : world.oblist) {
             const walker* e = up.get();
-            if (e == nullptr || e->dead() || e->myguy == nullptr)
+            if (e == nullptr || e->myguy == nullptr)
                 continue;
-            ++heroes;
-            if (e->myguy->name == "Reserve")
-                ++reserve_count;
+            ++present;
+            entrants.insert(e->myguy->name);
         }
-        return heroes;
+        peak = std::max(peak, present);
     };
+    for (int frame = 0; frame < 30; ++frame) {
+        advance_all(*game.host_session, *game.join_session, 1);
+        collect(game.host_session->mirror_world(), host_entrants, host_peak);
+        collect(game.join_session->mirror_world(), join_entrants, join_peak);
+    }
 
-    int host_reserve = 0;
-    int join_reserve = 0;
-    const int host_heroes =
-        count_heroes(game.host_session->mirror_world(), host_reserve);
-    const int join_heroes =
-        count_heroes(game.join_session->mirror_world(), join_reserve);
-    EXPECT_EQ(2, host_heroes)
-        << "only the two deployed heroes spawn (host mirror)";
-    EXPECT_EQ(2, join_heroes)
-        << "only the two deployed heroes spawn (join mirror)";
-    EXPECT_EQ(0, host_reserve) << "the benched member must not spawn";
-    EXPECT_EQ(0, join_reserve) << "the benched member must not spawn";
+    const std::set<std::string> deployed_only{"Host", "Joiner"};
+    EXPECT_EQ(deployed_only, host_entrants)
+        << "only the two deployed heroes enter the level (host mirror)";
+    EXPECT_EQ(deployed_only, join_entrants)
+        << "only the two deployed heroes enter the level (join mirror)";
+    EXPECT_EQ(2, host_peak) << "no third hero body is ever replicated (host)";
+    EXPECT_EQ(2, join_peak) << "no third hero body is ever replicated (join)";
 
     // The benched member is still in the host's save, flag intact.
     ASSERT_NE(nullptr, host_save.team_list[1]);

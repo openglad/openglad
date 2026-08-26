@@ -1433,6 +1433,11 @@ public:
 
     ~CursesLobbyImpl() override { teardown(); }
 
+    // Test-only: replace the constructor's random_device draw with a fixed
+    // seed, before any poll() has staged a world. See
+    // make_host_lobby_over_transport_for_testing.
+    void pin_match_seed_for_testing(std::uint32_t seed) { match_seed_ = seed; }
+
     // --- HOST setup: in-process loopback + WebSocket server (+ relay) ---------
     bool init_host(const HostOptions& opt, std::string* error)
     {
@@ -2683,9 +2688,17 @@ GameRunResult run_curses_lobby(CursesLobby& lobby, ITerminal& term, IClock& cloc
 std::unique_ptr<CursesLobby> make_host_lobby_over_transport_for_testing(
     SaveData& save, int difficulty,
     std::shared_ptr<og::sim::ITransport> combined_transport,
-    std::shared_ptr<og::sim::InProcessTransport> host_client_transport)
+    std::shared_ptr<og::sim::InProcessTransport> host_client_transport,
+    std::uint32_t pinned_match_seed)
 {
     auto lobby = std::make_unique<CursesLobbyImpl>(LobbyRole::Host, save, difficulty);
+    // A real match draws its seed from std::random_device (draw_match_seed);
+    // an in-process test that then asserts on the staged world would be
+    // asserting across a different level layout every run. A non-zero pin
+    // makes the host's stage — and with it the joiner, which rebuilds the
+    // seed from the host's lobby echo — reproducible.
+    if (pinned_match_seed != 0)
+        lobby->pin_match_seed_for_testing(pinned_match_seed);
     lobby->init_host_over_transport(std::move(combined_transport),
                                     std::move(host_client_transport));
     return lobby;
