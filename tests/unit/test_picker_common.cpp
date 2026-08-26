@@ -1275,29 +1275,23 @@ TEST(PickerCommon, toggle_allied_mode)
 
 // --- CTF match settings ---
 
-TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4)
+// The retired TEAMS knob (amendment A3): the wheel is gone, so the cycler
+// writes the only value the field holds and the label says so. A legacy
+// 2/3/4 in a loaded save heals the moment either one is touched, exactly
+// as the lobby sanitizer heals it.
+TEST(PickerCommon, cycle_ctf_team_count_is_retired_and_answers_auto)
 {
     SaveData save;
     ASSERT_EQ(0, (int)save.ctf_team_count)
         << "default is Auto (every team the map authors)";
 
     og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(2, (int)save.ctf_team_count);
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(3, (int)save.ctf_team_count);
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(4, (int)save.ctf_team_count);
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(0, (int)save.ctf_team_count) << "cycle wraps back to Auto";
+    EXPECT_EQ(0, (int)save.ctf_team_count) << "no wheel left to turn";
 
-    // Out-of-range values normalize back into the cycle: junk above 4
-    // wraps straight to Auto, junk below the cycle floor steps to 2.
-    save.ctf_team_count = 9;
+    save.ctf_team_count = 3;  // a v18 save from before the amendment
     og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(0, (int)save.ctf_team_count);
-    save.ctf_team_count = 1;
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(2, (int)save.ctf_team_count);
+    EXPECT_EQ(0, (int)save.ctf_team_count) << "the legacy value heals";
+    EXPECT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
 }
 
 TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
@@ -1323,7 +1317,8 @@ TEST(PickerCommon, format_ctf_labels)
     SaveData save;
     ASSERT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
     save.ctf_team_count = 4;
-    ASSERT_EQ("Teams: 4", og::ui::format_ctf_teams_label(save));
+    ASSERT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save))
+        << "retired (A3): the label never speaks for a stale save value";
 
     ASSERT_EQ("Limit: Map", og::ui::format_ctf_caps_label(save));
     save.ctf_capture_limit = 5;

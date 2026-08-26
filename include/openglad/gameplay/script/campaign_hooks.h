@@ -199,8 +199,12 @@ struct CampaignRosterEntry {
 // is a preset ordinal (0 = AUTO, 1 = OFF, 2 = NONE, 3.. = the campaign's
 // preset) and "bot_level_N" a bot level (0 = AUTO, 1..9), N being the
 // 1-based team.
+// "team_count" is NOT in the list any more (amendment A3): the knob is
+// retired, so a campaign that wrote it would be writing a value nothing
+// reads. The sim-side og.match_setting("team_count") stays READABLE — and
+// always answers 0 — so existing scripts keep running.
 inline constexpr const char* kCampaignMatchSettingNames[] = {
-    "team_count",   "score_limit",  "respawn_ticks",
+    "score_limit",  "respawn_ticks",
     "strip_troops", "respawn_mode", "generator_rate",
     "time_limit",
     "bot_squad_1",  "bot_squad_2",  "bot_squad_3",  "bot_squad_4",

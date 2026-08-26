@@ -1350,7 +1350,11 @@ void screen::sync_world_from_save_data()
 {
     world_.my_team = save_data.my_team;
     world_.allied_mode = save_data.allied_mode;
-    world_.ctf_requested_team_count = save_data.ctf_team_count;
+    // The retired TEAMS knob (A3): inert on the way into the sim, in BOTH
+    // sync_world_from_save_data twins, so a hand-edited save cannot field a
+    // different team set than its mirrors. og.match_setting("team_count")
+    // therefore always answers 0 = "every team the map authors".
+    world_.ctf_requested_team_count = 0;
     world_.ctf_requested_capture_limit = save_data.ctf_capture_limit;
     world_.ctf_requested_respawn_ticks = save_data.ctf_respawn_ticks;
     world_.ctf_requested_strip_scenario_troops = save_data.ctf_strip_scenario_troops;

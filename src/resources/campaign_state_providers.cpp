@@ -74,8 +74,9 @@ bool g_match_settings_dirty = false;
 // outside the vocabulary (kCampaignMatchSettingNames).
 short* match_setting_slot(SaveData& save, const std::string& name)
 {
-    if (name == "team_count")
-        return &save.ctf_team_count;
+    // "team_count" is gone from the vocabulary (A3): the knob is inert, and
+    // a provider slot for it would hand a campaign a value the lobby snaps
+    // back to 0 on its way to the sim.
     if (name == "score_limit")
         return &save.ctf_capture_limit;
     if (name == "respawn_ticks")
@@ -117,13 +118,6 @@ short* match_setting_slot(SaveData& save, const std::string& name)
 bool clamp_match_setting(const std::string& name, std::int32_t value,
                          short& out)
 {
-    if (name == "team_count")
-    {
-        out = value > 0
-            ? static_cast<short>(std::clamp<std::int32_t>(value, 2, 4))
-            : static_cast<short>(0); // Auto: every team the map authors
-        return true;
-    }
     if (name == "score_limit")
     {
         out = static_cast<short>(std::clamp<std::int32_t>(value, 0, 50));

@@ -751,15 +751,16 @@ bool is_allied_mode(const SaveData& save)
 
 // --- CTF match settings ---
 
+// RETIRED (amendment A3). TEAMS is not a control any more: dropping an
+// authored team is the band's own BOTS: OFF, and every authority home
+// snaps ctf_team_count to 0. The cycler therefore writes the one value the
+// field can hold — leaving a stale 2/3/4 in the save would only mean a
+// label disagreeing with the match. Both halves of the pair die with the
+// two surfaces that still call them (the SCENARIO cell and the text
+// picker's stub line).
 void cycle_ctf_team_count(SaveData& save)
 {
-    // Auto (0 = every team the map authors) -> 2 -> 3 -> 4 -> Auto.
-    if (save.ctf_team_count <= 0)
-        save.ctf_team_count = 2;
-    else if (save.ctf_team_count >= 4)
-        save.ctf_team_count = 0;
-    else
-        save.ctf_team_count = static_cast<short>(save.ctf_team_count + 1);
+    save.ctf_team_count = 0;
 }
 
 void cycle_ctf_capture_limit(SaveData& save)
@@ -2074,11 +2075,9 @@ std::string format_allied_mode_label(const SaveData& save)
     return is_allied_mode(save) ? "SEATS: TOGETHER" : "SEATS: SPLIT";
 }
 
-std::string format_ctf_teams_label(const SaveData& save)
+std::string format_ctf_teams_label(const SaveData&)
 {
-    if (save.ctf_team_count <= 0)
-        return "Teams: Auto";
-    return std::format("Teams: {}", save.ctf_team_count);
+    return "Teams: Auto";  // retired: A3, see cycle_ctf_team_count
 }
 
 std::string format_ctf_caps_label(const SaveData& save)

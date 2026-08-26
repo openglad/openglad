@@ -113,14 +113,12 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
         PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
     ASSERT_NE(nullptr, troops);
 
+    // TEAMS is retired (amendment A3): the pair still exists for the two
+    // surfaces that have not been rebuilt yet, and both answer Auto.
     save.ctf_team_count = 0;
     EXPECT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
-    const char* team_labels[] = {"Teams: 2", "Teams: 3", "Teams: 4",
-                                 "Teams: Auto"};
-    for (const char* label : team_labels) {
-        og::ui::cycle_ctf_team_count(save);
-        EXPECT_EQ(label, og::ui::format_ctf_teams_label(save));
-    }
+    og::ui::cycle_ctf_team_count(save);
+    EXPECT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
 
     save.ctf_capture_limit = 0;
     EXPECT_EQ("Limit: Map", og::ui::format_ctf_caps_label(save));

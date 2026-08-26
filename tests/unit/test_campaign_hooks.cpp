@@ -519,8 +519,8 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_with_no_provider)
       { "campaign_level_completed", 1 },
       { "campaign_current_level" },
       { "campaign_scenario_title", 1 },
-      { "campaign_match_get", "team_count" },
-      { "campaign_match_set", "team_count", 2 },
+      { "campaign_match_get", "score_limit" },
+      { "campaign_match_set", "score_limit", 2 },
       { "campaign_is_host" },
       { "campaign_random", 1 },
     }
@@ -680,7 +680,7 @@ TEST_F(CampaignHooksTest, state_set_bounds_rejection_raises_before_mutation)
 // sim twin's, and the provider sees exactly the names the script sent.
 TEST_F(CampaignHooksTest, match_bindings_round_trip)
 {
-    std::map<std::string, std::int32_t> knobs = {{"team_count", 0},
+    std::map<std::string, std::int32_t> knobs = {{"respawn_ticks", 0},
                                                  {"score_limit", 5}};
     bool host = true;
     hooks::CampaignProviders providers;

@@ -68,15 +68,14 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.scenario_id = fallback.scenario_id;
     if (sanitized.allied_mode != 0 && sanitized.allied_mode != 1)
         sanitized.allied_mode = fallback.allied_mode;
-    if (sanitized.ctf_team_count > 0)
-    {
-        sanitized.ctf_team_count =
-            std::clamp<std::int16_t>(sanitized.ctf_team_count, 2, 4);
-    }
-    else
-    {
-        sanitized.ctf_team_count = 0; // Auto: every team the map authors
-    }
+    // RETIRED (amendment A3): TEAMS stopped being a control when its only
+    // power — dropping an authored team — moved onto the band as the
+    // bot_squad value OFF. The field keeps its place in the save and on the
+    // wire (no format moves), but the authority answers one value for it, so
+    // an old peer, an old .gtl or a crafted client cannot reintroduce a
+    // second rule for which teams are fielded. A legacy 2/3/4 heals to Auto
+    // here, once, silently (the D30 precedent).
+    sanitized.ctf_team_count = 0;
     sanitized.ctf_authored_team_mask = static_cast<std::uint8_t>(
         sanitized.ctf_authored_team_mask & og::sim::kAllLobbyTeamMask);
     sanitized.ctf_capture_limit =
@@ -1221,9 +1220,12 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                 sanitize_settings(settings_change.settings, state_.settings,
                                   local_session_);
 
-            // A level or CTF-count change can strand joined players outside
-            // the selected map's authored domain; re-resolve them so nobody
-            // starts on a team the next match will not activate.
+            // A level change — or the host turning a team's BOTS knob to
+            // OFF (A2) — can strand joined players outside the domain the
+            // next match will field; re-resolve them so nobody starts on a
+            // team that will not be there. The rule itself is one function
+            // (lobby_effective_team_mask), so OFF needed no second copy
+            // here: it narrows the mask this loop already sweeps against.
             const std::uint8_t team_mask = effective_team_mask();
             const std::int16_t first_team =
                 lobby_first_selectable_team(state_.settings);

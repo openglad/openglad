@@ -638,7 +638,7 @@
 ---@field campaign_grant_gold fun(amount: integer)
 ---@field campaign_is_host fun(): boolean # og.campaign_is_host() → true/false — so a script can shape host-only pages (level rows and match presets) without tripping the refusal.
 ---@field campaign_level_completed fun(id: integer): boolean # og.campaign_level_completed(id) — the menu-time twin of the sim's og.level_completed.
----@field campaign_match_get fun(name: string): integer # og.campaign_match_get(name) → int32 — the menu-time twin of the sim's read-only og.match_setting, over the persisted match knobs ("team_count", "score_limit"...
+---@field campaign_match_get fun(name: string): integer # og.campaign_match_get(name) → int32 — the menu-time twin of the sim's read-only og.match_setting, over the persisted match knobs ("score_limit", "respawn_tic...
 ---@field campaign_match_set fun(name: string, value: integer): boolean # og.campaign_match_set(name, value) → true/false — write-through to the match knobs.
 ---@field campaign_random fun(n: integer): integer # og.campaign_random(n) → integer in 1..n — the menu-time roll.
 ---@field campaign_scenario_title fun(id: integer): string # og.campaign_scenario_title(id) → title string, "" when absent.

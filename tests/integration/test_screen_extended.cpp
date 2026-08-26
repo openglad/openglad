@@ -326,6 +326,25 @@ TEST(ScreenExtended, sync_world_from_save_data_clamps_time_limit)
     scr->sync_world_from_save_data();
 }
 
+// The retired TEAMS knob (amendment A3): a .gtl written before the
+// amendment still carries 2/3/4 in its ctf_team_count field — the save
+// layout did not move — but the world-entry twin refuses to field a
+// different team set for it. Dropping a team is the LINEUP band's BOTS:
+// OFF now, and there is exactly one rule for which teams play.
+TEST(ScreenExtended, sync_world_from_save_data_retires_the_team_count)
+{
+    auto* scr = og::runtime::current_session->myscreen_;
+    const short saved_count = scr->save_data.ctf_team_count;
+
+    scr->save_data.ctf_team_count = 3;  // a legacy v18 value
+    scr->sync_world_from_save_data();
+    EXPECT_EQ(0, scr->world().ctf_requested_team_count)
+        << "inert: every team the map authors, whatever the save says";
+
+    scr->save_data.ctf_team_count = saved_count;
+    scr->sync_world_from_save_data();
+}
+
 
 // ---------------------------------------------------------------------------
 // §3.7 level-win backup producer (screen::endgame local-win autosave tail)

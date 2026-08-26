@@ -89,7 +89,9 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
 {
     world.my_team = save.my_team;
     world.allied_mode = save.allied_mode;
-    world.ctf_requested_team_count = save.ctf_team_count;
+    // The retired TEAMS knob (A3): inert on the way into the sim, in BOTH
+    // sync_world_from_save_data twins (see screen.cpp).
+    world.ctf_requested_team_count = 0;
     world.ctf_requested_capture_limit = save.ctf_capture_limit;
     world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
     world.ctf_requested_strip_scenario_troops = save.ctf_strip_scenario_troops;

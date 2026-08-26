@@ -2651,7 +2651,10 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
     for (og::sim::ModeHudLine& line : world.mode.hud)
         line.text.back() = '\0';
 
-    world.ctf_requested_team_count = snapshot.ctf_requested_team_count;
+    // The retired TEAMS knob (A3): a crafted snapshot reaches this field
+    // unchecked, and the host's own world holds 0, so the mirror snaps it
+    // too — a mirror that kept 3 here would hash-mismatch every keyframe.
+    world.ctf_requested_team_count = 0;
     world.ctf_requested_capture_limit = snapshot.ctf_requested_capture_limit;
     world.ctf_requested_respawn_ticks = snapshot.ctf_requested_respawn_ticks;
     world.ctf_requested_strip_scenario_troops =

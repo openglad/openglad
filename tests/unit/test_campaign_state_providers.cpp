@@ -260,7 +260,6 @@ TEST(CampaignStateProviders, level_and_title_readers)
 TEST(CampaignStateProviders, match_get_reads_the_matchup_knobs)
 {
     SaveData save;
-    save.ctf_team_count = 3;
     save.ctf_capture_limit = 10;
     save.ctf_respawn_ticks = 120;
     save.ctf_strip_scenario_troops = 2;
@@ -269,7 +268,6 @@ TEST(CampaignStateProviders, match_get_reads_the_matchup_knobs)
     save.time_limit = 7200;
 
     const CampaignProviders providers = make_campaign_providers(save);
-    EXPECT_EQ(3, providers.match_get("team_count"));
     EXPECT_EQ(10, providers.match_get("score_limit"));
     EXPECT_EQ(120, providers.match_get("respawn_ticks"));
     EXPECT_EQ(2, providers.match_get("strip_troops"));
@@ -278,6 +276,9 @@ TEST(CampaignStateProviders, match_get_reads_the_matchup_knobs)
     EXPECT_EQ(7200, providers.match_get("time_limit"));
     EXPECT_EQ(0, providers.match_get("no_such_knob"))
         << "an unknown name reads 0 (the binding errors before this)";
+    // "team_count" is retired from the vocabulary (amendment A3): it is an
+    // unknown name here now, and the knob it named is inert.
+    EXPECT_EQ(0, providers.match_get("team_count"));
 }
 
 TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
@@ -286,13 +287,10 @@ TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
     (void)og::data::consume_match_settings_dirty();
     const CampaignProviders providers = make_campaign_providers(save);
 
-    // team_count: <= 0 is Auto (0); anything else clamps into [2, 4].
-    EXPECT_TRUE(providers.match_set("team_count", 1));
-    EXPECT_EQ(2, save.ctf_team_count);
-    EXPECT_TRUE(providers.match_set("team_count", 9));
-    EXPECT_EQ(4, save.ctf_team_count);
-    EXPECT_TRUE(providers.match_set("team_count", -5));
-    EXPECT_EQ(0, save.ctf_team_count) << "non-positive collapses to Auto";
+    // The retired TEAMS knob answers false like any name outside the
+    // vocabulary, and never writes (A3).
+    EXPECT_FALSE(providers.match_set("team_count", 3));
+    EXPECT_EQ(0, save.ctf_team_count);
 
     // score_limit clamps into [0, 50].
     EXPECT_TRUE(providers.match_set("score_limit", 99));
