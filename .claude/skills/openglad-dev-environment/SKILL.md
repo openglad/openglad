@@ -89,6 +89,22 @@ text-client sessions must mount a campaign up front
   concurrent on a shared machine); run waves of ~3 with a barrier.
   Agents killed mid-edit leave partial trees — `git restore` and rerun
   rather than debugging half-applied edits.
+- **Never reply to a running workflow agent with SendMessage.** The
+  address in its `<agent-message from=...>` resumes a SECOND copy of
+  its transcript alongside the original; both then edit the same
+  worktree and clobber each other (PR #262: duplicate L1-L6 tests and
+  reverted Lua). Answer ownership questions by amending the next
+  agent's prompt or by letting the agent take its stated default.
+- **Long builds/test runs must be detached.** The harness kills a
+  foreground or background Bash command at its 10-minute cap, and a
+  loaded shared box (load 100+) pushes a full ci-test build past it.
+  Run `setsid nohup <script> &` writing to a log and watch the log's
+  terminal markers with Monitor (or an `until`-loop) instead of
+  re-launching the build every ten minutes.
+- **Never fan out N concurrent full builds.** Wave-2 of PR #262 ran four
+  worktree builds in parallel while `/tmp` was tmpfs and OOMed the
+  server; even on disk, cap each agent's `CMAKE_BUILD_PARALLEL_LEVEL`
+  so the sum stays near the core count.
 - Delegation split (maintainer budget rule, also in AGENTS.md): the
   expensive tier only for design, review, and irreducibly complex
   implementation; the cheaper tier for recon, mechanical work, gates,
