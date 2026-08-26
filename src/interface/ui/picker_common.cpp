@@ -3126,6 +3126,20 @@ int lineup_fact_code(std::int32_t slot_value, int team)
     return static_cast<int>(facts % 100);
 }
 
+// The refusal REASON digit, banked ABOVE the four team codes in the same
+// shared slot (mode_match.lua REFUSAL_BASE): 10^9, the last decimal digit
+// an i32 slot can hold beside the latch and the four base-100 codes
+// (1 + 4*2 = 9 digits below it). 1 = a band mode refused for want of
+// fighters; 0 = the team modes' sentence, which is also what every world
+// that banks nothing reads as.
+constexpr std::int32_t kLineupRefusalBase = 1000000000;
+
+int lineup_refusal_code(std::int32_t slot_value)
+{
+    return static_cast<int>(
+        (static_cast<std::int64_t>(slot_value) / kLineupRefusalBase) % 10);
+}
+
 bool is_score_team_index(int team)
 {
     return team >= 0 && team < 4;
@@ -3349,6 +3363,12 @@ ScenarioRosterReport build_scenario_roster_report(
                 const std::uint32_t kinds =
                     og::script::hooks::level_hook_kinds_for(staged->id);
                 report.refusing = (kinds & (1u << 4)) != 0;  // LevelHook::ModeInit
+                // The reason rides the shared facts slot, which the refusing
+                // fold banked before it raised (a refusal keeps the staged
+                // world, mode vars included).
+                report.refusal_fighters =
+                    lineup_refusal_code(
+                        staged->mode.vars[kModeVarLineupFacts]) == 1;
             }
 
             // Anchor counts were banked by the REAL mode_stage_init scan at
@@ -3437,9 +3457,12 @@ ScenarioRosterReport build_scenario_roster_report(
                 // APPLIED per-team preset ordinal + explicit level in the
                 // shared slot; the ordinal resolves to its registered
                 // preset name (the campaign lineup hook — every peer
-                // mounts the same campaign). Read only onto bot fills:
-                // the label speaks for a squad, and a team whose label is
-                // its company or troops lists the squad in the rows.
+                // mounts the same campaign). A team whose label is its
+                // COMPANY (or troops) can still field a squad beside the
+                // occupants (review L2, §3.2 amended): those bots are the
+                // team_squad_count column, and the same banked facts name
+                // and level them, so the preview's count is the spawned
+                // count on every shape.
                 std::vector<std::string> lineup_presets;
                 const bool have_presets =
                     og::script::hooks::campaign_lineup_presets(
@@ -3452,7 +3475,13 @@ ScenarioRosterReport build_scenario_roster_report(
                     if (report.team_fill[ti] != ScenarioFill::Bots &&
                         report.team_fill[ti] != ScenarioFill::Matched)
                     {
-                        continue;
+                        // Bots beside an occupancy fill — 0 when the hard
+                        // shape left no room, and then no fact either (the
+                        // fold banks nothing for a squad that never
+                        // spawned), so the row stays the plain occupancy.
+                        report.team_squad_count[ti] = bots[ti];
+                        if (bots[ti] == 0)
+                            continue;
                     }
                     const int code = lineup_fact_code(lineup_facts, t);
                     report.team_squad_level[ti] = code % 10;
@@ -3553,14 +3582,35 @@ std::vector<std::string> format_scenario_report_lines(
                 if (!report.team_active[ti])
                     continue;
                 std::string fill = fill_display_label(report.team_fill[ti]);
-                // A preset squad wears its registered name (lineup §3.4):
-                // "BOT SQUAD <NAME> (n)", replacing MATCHED BOTS too —
-                // the name says what the squad is, matched or not.
-                if (!report.team_squad_name[ti].empty())
-                    fill = std::format("BOT SQUAD {}",
-                                       report.team_squad_name[ti]);
-                if (report.team_fill[ti] != ScenarioFill::Empty)
-                    fill += std::format(" ({})", report.team_fill_count[ti]);
+                if (report.team_squad_count[ti] > 0 &&
+                    report.team_fill[ti] != ScenarioFill::Empty &&
+                    report.team_fill[ti] != ScenarioFill::Bots &&
+                    report.team_fill[ti] != ScenarioFill::Matched)
+                {
+                    // A squad fielded BESIDE the occupants (review L2): both
+                    // halves are named and both are counted, because both
+                    // walk onto the floor. A squad with no banked name (a
+                    // FAIR degrade) is the plain word BOTS.
+                    fill += std::format(
+                        "+{} ({}+{})",
+                        report.team_squad_name[ti].empty()
+                            ? std::string("BOTS")
+                            : report.team_squad_name[ti],
+                        report.team_fill_count[ti],
+                        report.team_squad_count[ti]);
+                }
+                else
+                {
+                    // A preset squad wears its registered name (lineup
+                    // §3.4): "BOT SQUAD <NAME> (n)", replacing MATCHED BOTS
+                    // too — the name says what the squad is, matched or not.
+                    if (!report.team_squad_name[ti].empty())
+                        fill = std::format("BOT SQUAD {}",
+                                           report.team_squad_name[ti]);
+                    if (report.team_fill[ti] != ScenarioFill::Empty)
+                        fill += std::format(" ({})",
+                                            report.team_fill_count[ti]);
+                }
                 // An explicit bot level appends "LVk" — spelled without an
                 // inner space so the worst line ("  YELLOW TEAM  ACTIVE -
                 // BOT SQUAD BALANC (5) LV9", 24 + 20 + 4) sits exactly on
@@ -3580,9 +3630,14 @@ std::vector<std::string> format_scenario_report_lines(
             // below — it IS the world GO would adopt (classic rules over
             // the post-refusal state). A broken-pack init error reads the
             // same way: both leave classic rules, so the sentence is true
-            // either way.
+            // either way. WHICH sentence comes from the banked reason digit
+            // (review L1): a band mode (FFA/mutant) has no teams to be short
+            // of — it counts FIGHTERS — so the teams sentence would be a
+            // false statement about the very refusal it is explaining.
             lines.push_back(clip_line(
-                "MATCH WILL NOT START: FEWER THAN 2 TEAMS"));
+                report.refusal_fighters
+                    ? "MATCH WILL NOT START: FEWER THAN 2 FIGHTERS"
+                    : "MATCH WILL NOT START: FEWER THAN 2 TEAMS"));
         }
         else
         {

@@ -2484,6 +2484,42 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
     }
 }
 
+// The refusal sentence is chosen by the banked REASON, not by the mode's
+// free-text error (lineup review L1): the team modes are short of TEAMS,
+// a band mode (FFA/mutant) is short of FIGHTERS. The digit rides the
+// shared facts slot, so a joiner's mirror — which holds the same mode
+// vars — prints the same sentence as the host. Pinned over the report
+// struct here; the staged suite pins the same strings end to end.
+TEST(PickerCommon, scenario_report_refusal_sentence_follows_the_reason)
+{
+    og::ui::ScenarioRosterReport report;
+    report.staged = true;
+    report.is_versus = true;
+    report.refusing = true;
+
+    {
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(any_line_contains(
+            lines, "MATCH WILL NOT START: FEWER THAN 2 TEAMS"))
+            << "reason 0 (and every world that banks nothing) is the teams "
+               "sentence";
+        EXPECT_FALSE(any_line_contains(lines, "FIGHTERS"));
+    }
+
+    report.refusal_fighters = true;
+    {
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(any_line_contains(
+            lines, "MATCH WILL NOT START: FEWER THAN 2 FIGHTERS"));
+        EXPECT_FALSE(any_line_contains(lines, "FEWER THAN 2 TEAMS"))
+            << "a band has no teams to be short of";
+        for (const auto& line : lines)
+            EXPECT_LE(line.size(), 48u) << line;
+    }
+}
+
 TEST(PickerCommon, scenario_report_degradation_lines_are_honest)
 {
     // The staged preview's degradation shapes (#218): a failed owner stage

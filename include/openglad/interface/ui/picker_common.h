@@ -1009,6 +1009,14 @@ struct ScenarioRosterReport {
     // scripted level with NO on_mode_init hook is not refusing — it has no
     // mode, and the count-only fallback answers instead.
     bool refusing = false;
+    // WHY the staged mode refused, decoded from the shared facts slot's
+    // 10^9 digit (mode_match.lua REFUSAL_BASE, banked by the band decide
+    // fold BEFORE it errors): true = a BAND mode (FFA/mutant) refused for
+    // want of fighters, false (digit 0, and every legacy/absent bank) = the
+    // team modes' fewer-than-two-teams sentence. A banked digit, never the
+    // free-text script error, so a host and every joiner mirror — which all
+    // hold the same mode vars — render the identical sentence.
+    bool refusal_fighters = false;
     // Neither a staged world nor a fallback world: refusal lines only.
     bool unavailable = false;
     std::string mode_name;          // ModeState::name when staged + active
