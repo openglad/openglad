@@ -94,7 +94,10 @@ TEAM 4  ...
 - **Diagnostics** replace the census, in the disabled grey, when they
   apply: `NEEDS k FIGHTERS` when the team has k seats and fewer deployed
   fighters than seats (M4 — the condition GO refuses), `NO SEAT: AI`
-  when fighters have no seat (M3). Informational; GO keeps its refusal.
+  when fighters have no seat (M3), `MAP RULES` on classic (non-versus)
+  campaigns when no other diagnostic applies. Informational; GO keeps
+  its refusal. A band without a power metric shows `POWER --` (the
+  column keeps its edge), not an omitted field.
 - Band pitch, chip column, knob column and census column are named
   constants; the layout test asserts equal pitch and shared x across all
   four bands, not only the table.
@@ -129,9 +132,11 @@ TEAM 4  ...
   {versus, classic}). Classic (non-versus) campaigns show the knobs
   dimmed with `MAP RULES` as the census — the knobs are stored but the
   map ignores them (D32 precedent).
-- `BOTS: NONE` on a team that still has a seat or a deployed fighter is
-  refused with a toast (`TEAM n HAS PLAYERS` / `TEAM n HAS FIGHTERS`);
-  LINEUP never reseats anyone.
+- `BOTS: NONE` is legal on **any** team (ruling 2026-08-26, replacing
+  the earlier refusal): it means "never bots on this team" and nothing
+  more — it cannot deactivate a team that has seats or fighters, so
+  there is nothing to protect with a refusal, and the three clients
+  share one write rule. LINEUP never reseats anyone.
 - Blocking-subscreen contract (openglad-menus skill): per-frame
   `picker_lobby_poll`, host-visibility sync + rewire, `MENU_EXIT` only
   for a propagated remote start, level-reload guard (`last_level_id` vs
@@ -191,10 +196,13 @@ regenerated (api_stub_check).
   solve when the preset is FAIR). `1..9` — that level, replacing the
   formula exactly as matched does (D14: `set_difficulty` once per
   walker; the Easy/Hard percent still applies).
-- **FAIR on an occupied team** (allies): target =
-  `max(f-sum of every other team) − f-sum of this team's humans`; the
-  empty-team case keeps the D11 mean. Ruling from the maintainer
-  conversation of 2026-08-25.
+- **FAIR on an occupied team** (allies): a per-team LOCAL target =
+  `max(f-sum of every other team) − f-sum of this team's humans` (may
+  clamp at B(1)/LIMIT when ≤ 0); the empty-team case keeps the D11
+  mean, and the local target is never banked, so other teams' AUTO
+  squads stay legacy. Explicit levels are stored as the team's MATCHED
+  plan (`store_plan`), so respawns and refills reproduce them. Ruling
+  from the maintainer conversation of 2026-08-25.
 
 FFA/mutant (band path) honour `NONE`/preset/level through
 `mode_fighters.fill_bots` with the same table; PLAN_BASE is untouched.
@@ -225,7 +233,15 @@ knows what a preset means.
 
 VIEW LEVEL's roster report already censuses the staged world; the fill
 label for a preset squad reads `BOT SQUAD <NAME> (n)` and an explicit
-level appends `LV k`, within the 48-char budget. The staged-rules matrix
+level appends ` LVk` (no inner space — the worst line is exactly the
+48-char budget; pinned). The applied per-team facts the label needs
+(preset ordinal + explicit level) are banked by the spawn seam in the
+shared mode-var **slot 4**, co-tenant with MATCHED.ANNOUNCED (ones
+digit = the announce latch; codes pack at `10·100^t`) — the private
+slot bands are provably full in CTF/basketball/onslaught, and growing
+`kModeVarCount` costs a snapshot bump. Documented side by side as
+`bank_lineup_facts` (mode_match.lua) and `kModeVarLineupFacts`
+(picker_common.cpp); all-AUTO never writes the slot. The staged-rules matrix
 (`tests/unit/test_staged_rules.cpp`) gains rows: NONE removes a fill
 AUTO makes; preset fills an occupied team; explicit level lands once;
 FAIR-allies target; basketball/mutant clamp; all-zero knobs produce a
@@ -278,9 +294,14 @@ full-graph rewire, pinned by BFS reachability over the three modes:
 | Hosting | header `PLAYERS` over the five list rows repurposed as **machine rows**, `ROOM <code>` line, **DISCONNECT** (new ordinal appended after the room rows; drawn in JOIN's rect), HOST/JOIN/LAN hidden |
 | Joined | same, rows read-only, DISCONNECT = leave |
 
-**Machine rows** (`format_networking_machine_row`, 39-char budget, one
-per `machine_id` from `picker_lobby_players()`): `M1 HOSTNAME  P1 P2
-COMPANY  READY` shape, `(HOST)` marker, `(YOU)` marker. Host clicking a
+**Machine rows** (`build_networking_machine_rows`, 39-char budget
+native / 38 web, one per `machine_id` from `picker_lobby_players()`):
+`M1 <COMPANY> (HOST) (YOU)  P1 P2  READY` — the COMPANY leads (the
+transport `name` is an opaque `net-<hex>` identity on relay lobbies and
+is only a fallback when no company name exists). The list shows the
+first five machines in the five repurposed row rects (documented cap;
+a >5-machine lobby — possible at 16 one-seat machines — lists five,
+no pager in v1). Host clicking a
 foreign row → `yes_or_no_prompt("KICK <NAME>?")` → `LobbyKickMessage{
 machine_id }` (kind 8); own row and host row are inert. Server: host
 gate, then the existing `disconnect_client` path after sending a
