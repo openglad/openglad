@@ -664,24 +664,23 @@ TEST_F(ModesBasketball, incomplete_manifest_rows_refuse_the_match)
     }
 }
 
-TEST_F(ModesBasketball, all_bot_own_auto_matches_the_explicit_count_shape)
+TEST_F(ModesBasketball, all_bot_anchor_only_court_takes_the_manifest_default)
 {
-    // Soccer's twin (see test_modes_soccer.cpp, same name): all-bot
-    // TROOPS: OWN on a FOUR-anchor court whose manifest row declares
-    // teams = 2 with two hoops (kBballLevelA). TEAMS: Auto = the authored
-    // count (the 2026-08-18 directive, #218 review), so init refuses like
-    // explicit TEAMS: 4 would (no hoop for team 2) instead of silently
-    // fielding two teams off the manifest default.
+    // Soccer's twin (see test_modes_soccer.cpp): anchors-only teams carry
+    // no fielded units, so on a FOUR-anchor court whose manifest row
+    // declares teams = 2 with two hoops (kBballLevelA) exactly the first
+    // two sides play — the retired OWN arm's whole-domain refusal shape
+    // is gone with TROOPS (B5).
     ModesCtfWorld fx(kBballLevelA);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(128 + 64 * team), 700);
     fx.tick(1);
 
-    EXPECT_TRUE(fx.world().mode.init_attempted);
-    EXPECT_FALSE(fx.world().mode.active)
-        << "Auto under OWN is the authored domain, not the manifest default";
-    EXPECT_TRUE(has_script_error(fx.world(), "no hoop for team 2"));
+    ASSERT_TRUE(fx.world().mode.active)
+        << "the manifest default is a clean two-side court";
+    EXPECT_EQ(0b0011, fx.var(kBbTeamMask));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 2))
+        << "an anchors-only team past the default fields nothing";
 }
 
 TEST_F(ModesBasketball, four_hoop_court_and_the_limit_rows_bank)
@@ -4379,39 +4378,22 @@ struct BballSoloRosterCourt : ModesCtfWorld
 // — and the ONLY delta is the generated squad, which spawns at matched
 // power AND matched headcount: the solo hero's court is a 1v1, not the
 // 5v5 the pre-amendment game shape pinned (D34 supersedes D12 here).
-TEST_F(ModesBasketball, matched_mask_equals_own_mask_with_a_solo_roster)
+TEST_F(ModesBasketball, default_fill_matches_a_solo_roster_court)
 {
+    // The default (FILL: FAIR, B2) solves the solo roster's opponent at
+    // matched power AND matched headcount: a 1v1 court, not the old
+    // legacy five (D34).
     BballSoloRosterCourt matched(4);
-    arm_matched(matched.world());
     matched.tick(1);
     ASSERT_TRUE(matched.basketball_active());
 
-    BballSoloRosterCourt own(4);
-    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
-    own.tick(1);
-    ASSERT_TRUE(own.basketball_active());
-
-    EXPECT_EQ(own.var(kBbTeamMask), matched.var(kBbTeamMask))
-        << "FAIR-mask == OWN-mask (D26/D33)";
-    EXPECT_EQ(alive_on_team(own.world(), 0),
-              alive_on_team(matched.world(), 0))
-        << "the roster team is untouched under both";
-    EXPECT_EQ(5, alive_on_team(own.world(), 1))
-        << "OWN keeps the full legacy squad";
     EXPECT_EQ(1, alive_on_team(matched.world(), 1))
-        << "FAIR's generated squad matches the solo headcount (D34/D39)";
+        << "the generated squad matches the solo headcount (D34/D39)";
     EXPECT_EQ(1, matched.var(kSlotMatchedSize));
-
-    const std::vector<int> own_levels =
-        team_levels_sorted(own.world(), 1);
-    ASSERT_EQ(5u, own_levels.size());
-    EXPECT_EQ(2, own_levels.front()) << "OWN keeps the legacy L2 squad";
-    EXPECT_EQ(2, own_levels.back());
-    EXPECT_EQ(0, own.var(kSlotMatchedTarget));
 
     ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
     const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
-    ASSERT_NE(0, code) << "the matched twin solved team 1";
+    ASSERT_NE(0, code) << "the default solved team 1";
     EXPECT_EQ(0, code % 10) << "n = 1 admits no upgrades (D36)";
     const std::vector<int> matched_levels =
         team_levels_sorted(matched.world(), 1);
@@ -4419,7 +4401,6 @@ TEST_F(ModesBasketball, matched_mask_equals_own_mask_with_a_solo_roster)
     EXPECT_EQ(code / 10, matched_levels.front())
         << "the lone bot's level follows the stored plan";
     EXPECT_EQ(1, count_notifications(matched.events, "TEAMS MATCHED"));
-    EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

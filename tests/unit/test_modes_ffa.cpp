@@ -429,125 +429,63 @@ TEST_F(ModesFfa, bot_fill_reaches_the_row_fighter_count)
     EXPECT_EQ(6, bots) << "exactly the deficit to the row's fighters count";
 }
 
-// The band path honours the lineup knobs through TEAM 1's pair (lineup
-// §3.2 — the band is ONE population): NONE suppresses the fill entirely,
-// leaving only the deployed fighters — and so does OFF, which has no mask
-// to take a team out of in a band (mode_fighters.lua band_knob).
+// The band path honours the FILL wheel through TEAM 1's knob (B2 — the
+// band is ONE population): NONE suppresses the fill entirely, leaving
+// only the deployed fighters (mode_fighters.lua band_knob).
 TEST_F(ModesFfa, lineup_none_suppresses_the_band_fill)
 {
-    for (const short knob : {og::sim::kBotSquadNone, og::sim::kBotSquadOff})
-    {
-        SCOPED_TRACE(::testing::Message() << "knob " << knob);
-        FfaRig rig(850, 2);
-        rig.fx.world().ctf_requested_fill[0] = knob;
-        rig.fx.tick(1);
-        ASSERT_TRUE(rig.active());
+    FfaRig rig(850, 2);
+    rig.fx.world().ctf_requested_fill[0] = og::sim::kFillNone;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
 
-        EXPECT_EQ(2, rig.fx.var(kFfaSlotFighterCount))
-            << "the knob fields nothing; the two heroes are the whole band";
-        EXPECT_EQ(2, alive_band_livings(rig.fx.world()));
-    }
+    EXPECT_EQ(2, rig.fx.var(kFfaSlotFighterCount))
+        << "NONE fields nothing; the two heroes are the whole band";
+    EXPECT_EQ(2, alive_band_livings(rig.fx.world()));
 }
 
-namespace {
-
-// Every band bot's level, asserted equal to `expected`; answers the count.
-int expect_band_bot_levels(GameWorld& world, int expected)
+// The band's fill singles are SOLVED (B3's band spelling): each free
+// slot's bot is priced against the weakest deployed fighter times the
+// wheel, on its own measured base — so BRUTAL fields strictly stronger
+// singles than WEAK on the identical rig, and every wheel value still
+// reaches the row's fighter count (the band's hard shape of singles).
+TEST_F(ModesFfa, wheel_scales_the_band_fill_levels)
 {
-    int bots = 0;
-    for (const auto& uptr : world.oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
-            continue;
-        if (w->myguy != nullptr)
-            continue;
-        ++bots;
-        if (w->stats() != nullptr)
+    auto bot_level_sum = [](GameWorld& world) {
+        int bots = 0;
+        int sum = 0;
+        for (const auto& uptr : world.oblist)
         {
-            EXPECT_EQ(expected, w->stats()->level());
+            const walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living)
+                continue;
+            if (w->myguy != nullptr || w->stats() == nullptr)
+                continue;
+            ++bots;
+            sum += w->stats()->level();
         }
-    }
-    return bots;
-}
-
-}  // namespace
-
-// A preset replaces the band's fill roster and the LV offset (amendment
-// A6) rides on top of the session-difficulty formula — L2 at the rig's
-// 100 percent, so +3 is L5 — singles per free slot staying the band's
-// hard shape (the mutant/FFA "one bot per slot" rule, preset.count
-// notwithstanding).
-TEST_F(ModesFfa, lineup_preset_and_level_shape_the_band_fill)
-{
-    FfaRig rig(850, 2);
-    rig.fx.world().ctf_requested_fill[0] =
-        og::sim::kBotSquadPresetBase + 2;  // BRUTES
-    rig.fx.world().ctf_requested_map_units[0] = 3;
-    rig.fx.tick(1);
-    ASSERT_TRUE(rig.active());
-
-    EXPECT_EQ(8, rig.fx.var(kFfaSlotFighterCount))
-        << "the fill still reaches the row's fighter count — singles per "
-           "free slot, whatever the preset says";
-    int bots = 0;
-    for (const auto& uptr : rig.fx.world().oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
-            continue;
-        if (w->myguy != nullptr)
-            continue;
-        ++bots;
-        const int family = w->family();
-        EXPECT_TRUE(family == FAMILY_SOLDIER || family == FAMILY_BARBARIAN ||
-                    family == FAMILY_ORC)
-            << "band bots draw from the preset's families, got " << family;
-        ASSERT_NE(nullptr, w->stats());
-        EXPECT_EQ(5, w->stats()->level())
-            << "the offset rides on top of the formula: L2 + 3";
-    }
-    EXPECT_EQ(6, bots);
-}
-
-// The offset's clamps in the band: -5 on the formula's L2 lands L1, +5
-// lands L7 (no clamp needed), and AUTO is the formula itself.
-TEST_F(ModesFfa, lineup_level_offset_clamps_in_the_band)
-{
+        EXPECT_EQ(6, bots) << "singles per free slot, whatever the wheel";
+        return sum;
+    };
+    int weak_sum = 0;
     {
         FfaRig rig(850, 2);
-        rig.fx.world().ctf_requested_map_units[0] = -5;
+        rig.fx.world().ctf_requested_fill[0] = og::sim::kFillWeak;
         rig.fx.tick(1);
         ASSERT_TRUE(rig.active());
-        EXPECT_EQ(6, expect_band_bot_levels(rig.fx.world(), 1));
+        EXPECT_EQ(8, rig.fx.var(kFfaSlotFighterCount));
+        weak_sum = bot_level_sum(rig.fx.world());
     }
     {
         FfaRig rig(850, 2);
-        rig.fx.world().ctf_requested_map_units[0] = 5;
+        rig.fx.world().ctf_requested_fill[0] = og::sim::kFillBrutal;
         rig.fx.tick(1);
         ASSERT_TRUE(rig.active());
-        EXPECT_EQ(6, expect_band_bot_levels(rig.fx.world(), 7));
+        EXPECT_EQ(8, rig.fx.var(kFfaSlotFighterCount));
+        EXPECT_LT(weak_sum, bot_level_sum(rig.fx.world()))
+            << "the multiplier separates the wheel's ends";
     }
-    {
-        FfaRig rig(850, 2);
-        rig.fx.tick(1);
-        ASSERT_TRUE(rig.active());
-        EXPECT_EQ(6, expect_band_bot_levels(rig.fx.world(), 2));
-    }
-}
-
-// FAIR carries no families and no band solver exists (PLAN_BASE indexes
-// score teams only): the band reads it as AUTO — the documented carve-out.
-TEST_F(ModesFfa, lineup_fair_preset_reads_as_auto_in_the_band)
-{
-    FfaRig rig(850, 2);
-    rig.fx.world().ctf_requested_fill[0] =
-        og::sim::kBotSquadPresetBase + 4;  // FAIR
-    rig.fx.tick(1);
-    ASSERT_TRUE(rig.active());
-
-    EXPECT_EQ(8, rig.fx.var(kFfaSlotFighterCount));
-    EXPECT_EQ(8, alive_band_livings(rig.fx.world()));
 }
 
 TEST_F(ModesFfa, init_strips_authored_troops_and_generators_keeps_wildlife)

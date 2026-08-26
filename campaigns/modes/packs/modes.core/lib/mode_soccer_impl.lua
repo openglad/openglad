@@ -831,9 +831,9 @@ local function decide(level, inputs, row)
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  -- The shared activation rule (lineup A1/A2): the manifest row.teams is
-  -- the map's own value under TROOPS:ALL, the whole authored domain
-  -- under OWN/FAIR, minus the OFF teams, plus every occupied team.
+  -- The shared activation rule (lineup B1-B4): the manifest row.teams is
+  -- the map's own value, plus every occupied team; the fills rows below
+  -- drop any team the knobs leave with nothing.
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, row.teams or 0)
   local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
@@ -947,12 +947,12 @@ local function on_mode_init(level, row)
       end
     end
   end
-  -- Roster-only armies on request, before the plan's squad fills below,
-  -- so the spawns land in the final world.
-  strip.strip_authored_troops(nil)
+  -- The per-team MAP UNITS strip (amendment B4), before the squad fills
+  -- below, so the spawns land in the final world.
+  strip.strip_authored_troops()
 
-  -- Bot squads where the decision said so (the empty active teams, plus
-  -- any team a lineup preset fills beside its occupants — lineup §3.2).
+  -- FILL squads where the decision said so (the empty active teams,
+  -- plus any company row with an allies gap — amendment B2/B3).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if match.wants_squad(decision.teams[team + 1]) then
       anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)

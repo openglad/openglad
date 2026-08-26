@@ -642,8 +642,8 @@ end
 -- verbatim, now a local consumed by on_mode_init directly): authored
 -- domain (a score team is in the match when it fields a live generator or
 -- a living), activation and fills — generators-only fills here (D17: no
--- bots ever; keep_generators keeps the foundries through the strip, so a
--- count-backfilled gen-authored team self-populates). Pure over the
+-- bots ever; a standing foundry keeps its team on, and the MAP UNITS box
+-- is the one control that can take it off the board). Pure over the
 -- census inputs; only the inputs decide.
 local function decide(level, inputs, row)
   if row == nil then
@@ -663,24 +663,25 @@ local function decide(level, inputs, row)
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  -- The shared activation rule (lineup A1/A2): the manifest row.teams is
-  -- the map's own value under TROOPS:ALL, the whole authored
-  -- generator/living domain under OWN/FAIR, minus the OFF teams, plus
-  -- every occupied team; matched POWER is out of scope for Onslaught
-  -- entirely (D17).
+  -- The shared activation rule (lineup B1-B4): the manifest row.teams is
+  -- the map's own value, plus every occupied team; matched POWER is out
+  -- of scope for Onslaught entirely (D17).
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, row.teams or 0)
-  -- no_bots also outranks the eight lineup knobs (lineup §3.2 defers to
-  -- D17): presets, NONE and explicit levels are stored like every match
-  -- knob but decide nothing here — no squad ever fields, so fills' NONE
-  -- narrowing and squad rows are unreachable and the mask stands as
-  -- activation answered it.
-  local teams = match.fills(inputs, mask, {
-    keep_generators = true,
+  -- no_bots outranks the FILL wheel (lineup B2 defers to D17): no squad
+  -- ever fields here, so the wheel decides nothing — but the MAP UNITS
+  -- box still can: a side whose box is off loses its foundries and
+  -- troops, and a team left with nothing standing drops out of the
+  -- fills' narrowed mask, which starts recounts.
+  local teams, _, lineup_mask = match.fills(inputs, mask, {
     no_bots = true,
     matched = matched,
     matched_size = matched_size,
   })
+  mask = lineup_mask
+  if starts then
+    starts = core.mask_count(mask) >= 2
+  end
   local reason = nil
   if not starts then
     reason = "onslaught: fewer than two teams"
@@ -783,9 +784,11 @@ local function on_mode_init(level, row)
       end
     end
   end
-  -- Roster-only armies on request; keep_generators because the foundries ARE
-  -- the board here -- neutral bytes included, they are all capturable.
-  strip.strip_authored_troops({ keep_generators = true })
+  -- The per-team MAP UNITS strip (amendment B4). The foundries follow the
+  -- same box as the livings now: a team whose box is off loses its board
+  -- and the fills rows drop the side with it. Neutral bytes have no box
+  -- and stand, capturable as ever.
+  strip.strip_authored_troops()
 
   caps.bank_caps(row, S.SPAWN_CAP)
   local respawn_ticks = og.match_setting("respawn_ticks")

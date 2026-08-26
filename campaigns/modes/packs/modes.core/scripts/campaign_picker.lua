@@ -1,7 +1,7 @@
 -- THE GAMESMASTER'S TABLE — the Multiplayer Modes campaign's Base Camp: the stamp tally overhead, the current pairing as two doors, the RANDOM SCENARIO roll, MATCH SETUP; the seven-game index, the field pages and the signature behind them (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
--- Issues #206 (the book itself) and #212 (the MATCH SETUP presets),
+-- Issues #206 (the book itself) and #212 (the MATCH SETUP knobs),
 -- recomposed onto the Base Camp zone contract
 -- (docs/basecamp-zones-design.md, "The four camps"). Pure by contract
 -- (docs/campaign-scripting-design.md, "The picker contract"): page id in,

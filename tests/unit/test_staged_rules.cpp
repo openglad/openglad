@@ -4,20 +4,31 @@
 // on_mode_init — which now runs ONCE, at staging, in a REAL world. These
 // suites pin the rules three ways:
 //
-//  1. The 16-row activation precedence sweep keeps its EXACT coverage
-//     through a direct-Lua harness calling match.activation on synthetic
-//     inputs tables (the inventory-sanctioned shape — the reborn
-//     roster_effective_team_mask sweep, unchanged rows).
-//  2. The per-mode domain/fill/limit oracles become STAGED-WORLD
-//     assertions: build the fixture shape, run the real mode_stage_init
-//     (the exact function MatchStage runs), assert the banked mode vars
-//     and the fielded entities exactly.
-//  3. The old agreement matrix becomes the apply-executes-decision matrix:
-//     the shared Lua rules (via the harness) produce the expected values
-//     and the staged world must bank and field exactly those — plus the
-//     per-mode staged-vs-adopted BYTE-identity oracles over the real
-//     shipped levels (preview == launch as an assertable identity; the
-//     soccer arm lives in test_match_stage.cpp since C4/C7).
+//  1. The activation precedence sweep keeps its coverage through a
+//     direct-Lua harness calling match.activation on synthetic inputs
+//     tables (the inventory-sanctioned shape — the reborn
+//     roster_effective_team_mask sweep).
+//  2. The per-mode domain/fill/limit oracles are STAGED-WORLD assertions:
+//     build the fixture shape, run the real mode_stage_init (the exact
+//     function MatchStage runs), assert the banked mode vars and the
+//     fielded entities exactly.
+//  3. The apply-executes-decision matrix: the shared Lua rules (via the
+//     harness) produce the expected values and the staged world must bank
+//     and field exactly those — plus the per-mode staged-vs-adopted
+//     BYTE-identity oracles over the real shipped levels (preview ==
+//     launch as an assertable identity; the soccer arm lives in
+//     test_match_stage.cpp since C4/C7).
+//
+// Amendment 2 (docs/lineup-design.md B1-B9) reshaped the knob rows: the
+// per-team controls are a FILL wheel (FAIR/NONE/WEAK/STRONG/BRUTAL — the
+// matched solver with a multiplier over the weakest human team's f-sum)
+// and a MAP UNITS box (the old TROOPS strip, per team). TROOPS and TEAMS
+// are inert engine-side and read by nothing here. THE OLD ALL-ZERO
+// BYTE-IDENTITY PINS ARE GONE BY DESIGN: the default is FILL: FAIR, which
+// SOLVES every backfilled squad against the human reference where one
+// exists (the old default left them on the legacy difficulty formula) and
+// banks the applied fill fact — the new default rows below are the
+// replacement pins.
 
 #include <gtest/gtest.h>
 
@@ -25,6 +36,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -42,7 +54,9 @@
 
 #include "../modes_pack_fixture.h"
 
+#include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -132,27 +146,20 @@ void stage_init(ModesCtfWorld& fx)
 // resolve script bindings against the last-constructed world — the
 // standing harness trap).
 
-// Parameter slots 30..34 (lineup squad knobs + hard-shape cap), 38/39
-// (a plan pair for the resolver probe) and 41..59, answers 35/36/37/60/63.
-// The resolver probe reads the LV offsets from the WORLD knobs
-// (og.match_setting, the same seam the spawn seams use), so the test sets
-// ctf_requested_map_units on the probe world.
+// Parameter slots: 25..28 the four MAP UNITS boxes, 30..33 the four FILL
+// knobs, 34 the hard-shape cap (0 = none), 38..41 the per-team human
+// f-sums (fills decides the allies gap and the weakest reference from the
+// inputs alone — the magnitudes only matter through comparisons, so the
+// matrix hands in placeholder sums shaped like the fixture rosters),
+// 42..57 the four census columns, 58/59 authored mask + auto_default,
+// 62 no_bots; answers 60 (mask/starts/matched/matched_size), 63 (fill
+// rows), 36 (squad codes), 37 (the narrowed lineup mask).
 constexpr const char* kRuleProbeLua =
     "local match = og.use(\"mode_match\")\n"
     "og.register_level_hooks(9092, {\n"
     "  on_load = function(level)\n"
-    "    local plans = 0\n"
-    "    local pbase = 1\n"
-    "    for t = 0, 3 do\n"
-    "      local l, u = match.resolve_plan(t, og.mode_get(38), og.mode_get(39))\n"
-    "      plans = plans + (l * 10 + u) * pbase\n"
-    "      pbase = pbase * 100\n"
-    "    end\n"
-    "    og.mode_set(35, plans)\n"
     "    local inputs = {\n"
-    "      strip_troops = og.mode_get(41),\n"
     "      score_limit = 0,\n"
-    "      respawn_ticks = 0,\n"
     "      teams = {},\n"
     "      flags = {},\n"
     "      fill = {},\n"
@@ -164,8 +171,10 @@ constexpr const char* kRuleProbeLua =
     "        roster = og.mode_get(46 + t),\n"
     "        npcs = og.mode_get(50 + t),\n"
     "        generators = og.mode_get(54 + t),\n"
+    "        power = og.mode_get(38 + t),\n"
     "      }\n"
     "      inputs.fill[t + 1] = og.mode_get(30 + t)\n"
+    "      inputs.map_units[t + 1] = og.mode_get(25 + t)\n"
     "    end\n"
     "    local squad_cap = og.mode_get(34)\n"
     "    if squad_cap == 0 then\n"
@@ -182,7 +191,6 @@ constexpr const char* kRuleProbeLua =
     "    end\n"
     "    og.mode_set(60, packed + matched_size * 64)\n"
     "    local rows, _, lineup_mask = match.fills(inputs, mask, {\n"
-    "      keep_generators = og.mode_get(61) == 1,\n"
     "      no_bots = og.mode_get(62) == 1,\n"
     "      matched = matched,\n"
     "      matched_size = matched_size,\n"
@@ -235,30 +243,25 @@ struct RuleAnswer
     int matched_size = 0;
     std::int64_t fills_packed = -1;
     int squads_packed = 0;  // row.squad per team, one decimal digit each
-    int lineup_mask = -1;   // fills' NONE-narrowed mask
-    std::int64_t plans_packed = 0;  // resolve_plan per team, L*10+k base 100
+    int lineup_mask = -1;   // fills' narrowed mask
 };
 
 // One probe dispatch (its own short-lived world, destroyed before any
-// staged fixture world is built). fill carries the four lineup squad
-// knobs (0 AUTO / 1 OFF / 2 NONE / 3.. presets — the engine scale),
-// squad_cap the caller's hard shape (0 = none), map_units the four LV
-// offsets and plan the (L, k) pair the resolver probe folds through them
-// — all default off, so every pre-lineup row reads unchanged. The lobby
-// TEAMS count is gone from the inputs (lineup A1/A3): nothing here can
-// request a team count any more.
+// staged fixture world is built). fill carries the four FILL knobs
+// (0 FAIR / 1 NONE / 2 WEAK / 3 STRONG / 4 BRUTAL — the engine scale),
+// map_units the four boxes (0 on / 1 off), power the per-team human
+// f-sums, squad_cap the caller's hard shape (0 = none) — all default
+// zero, the all-FAIR-boxes-on default state.
 RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
-                      int strip, unsigned authored, int auto_default,
-                      bool keep_generators, bool no_bots,
+                      unsigned authored, int auto_default, bool no_bots,
                       const std::array<int, 4>& fill = {},
                       int squad_cap = 0,
                       const std::array<int, 4>& map_units = {},
-                      int plan_level = 1, int plan_up = 0)
+                      const std::array<int, 4>& power = {})
 {
     RuleProbeScript probe;
     ModesCtfWorld fx(9092);
     GameWorld& w = fx.world();
-    w.mode.vars[41] = strip;
     for (std::size_t t = 0; t < 4; ++t)
     {
         w.mode.vars[42 + t] = teams[t][0];
@@ -266,18 +269,15 @@ RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
         w.mode.vars[50 + t] = teams[t][2];
         w.mode.vars[54 + t] = teams[t][3];
         w.mode.vars[30 + t] = fill[t];
-        w.ctf_requested_map_units[t] = static_cast<short>(map_units[t]);
+        w.mode.vars[25 + t] = map_units[t];
+        w.mode.vars[38 + t] = power[t];
     }
     w.mode.vars[34] = squad_cap;
-    w.mode.vars[38] = plan_level;
-    w.mode.vars[39] = plan_up;
     w.mode.vars[58] = static_cast<std::int32_t>(authored);
     w.mode.vars[59] = auto_default;
-    w.mode.vars[61] = keep_generators ? 1 : 0;
     w.mode.vars[62] = no_bots ? 1 : 0;
     w.mode.vars[60] = -1;
     w.mode.vars[63] = -1;
-    w.mode.vars[35] = -1;
     w.mode.vars[36] = -1;
     w.mode.vars[37] = -1;
     w.run_pending_level_on_load();
@@ -298,40 +298,44 @@ RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
     answer.fills_packed = w.mode.vars[63];
     answer.squads_packed = w.mode.vars[36];
     answer.lineup_mask = w.mode.vars[37];
-    answer.plans_packed = w.mode.vars[35];
     return answer;
 }
 
 // The convenience mask-only read the sweep uses: one anchor per authored
-// team, one roster fighter per roster team (the old sweep_inputs shape),
-// the four squad knobs (OFF is the only one activation reads besides the
-// presets) and the ALL arm's manifest default.
-int activation_mask(unsigned authored, unsigned roster, int strip,
-                    const std::array<int, 4>& fill = {},
+// team, one roster fighter per roster team (the old sweep_inputs shape;
+// roster teams carry a placeholder f-sum so the census shape is honest)
+// and the caller's manifest default.
+int activation_mask(unsigned authored, unsigned roster,
                     int auto_default = 0)
 {
     std::array<std::array<int, 4>, 4> teams{};
+    std::array<int, 4> power{};
     for (int t = 0; t < 4; ++t)
     {
         if ((authored & (1u << t)) != 0)
             teams[static_cast<std::size_t>(t)][0] = 1;
         if ((roster & (1u << t)) != 0)
+        {
             teams[static_cast<std::size_t>(t)][1] = 1;
+            power[static_cast<std::size_t>(t)] = 100;
+        }
     }
-    return eval_rules(teams, strip, authored, auto_default, false, false,
-                      fill)
+    return eval_rules(teams, authored, auto_default, false, {}, 0, {},
+                      power)
         .mask;
 }
 
-// The engine's fill scale (lobby_state.h kBotSquad*), spelled once
-// for the rows below.
-constexpr int kKnobAuto = og::sim::kBotSquadAuto;
-constexpr int kKnobOff = og::sim::kBotSquadOff;
-constexpr int kKnobNone = og::sim::kBotSquadNone;
-constexpr int kKnobBalanc = og::sim::kBotSquadPresetBase;      // 3
-constexpr int kKnobCaster = og::sim::kBotSquadPresetBase + 1;  // 4
-constexpr int kKnobBrutes = og::sim::kBotSquadPresetBase + 2;  // 5
-constexpr int kKnobFair = og::sim::kBotSquadPresetBase + 4;    // 7
+// The engine's fill scale (lobby_state.h kFill*), spelled once for the
+// rows below.
+constexpr int kKnobFair = og::sim::kFillFair;      // 0
+constexpr int kKnobNone = og::sim::kFillNone;      // 1
+constexpr int kKnobWeak = og::sim::kFillWeak;      // 2
+constexpr int kKnobStrong = og::sim::kFillStrong;  // 3
+constexpr int kKnobBrutal = og::sim::kFillBrutal;  // 4
+
+// The MAP UNITS box scale (lobby_state.h kMapUnits*).
+constexpr int kBoxOn = og::sim::kMapUnitsOn;    // 0
+constexpr int kBoxOff = og::sim::kMapUnitsOff;  // 1
 
 }  // namespace
 
@@ -340,84 +344,101 @@ using StagedRules = ModesPackTest;
 // ===========================================================================
 // 1. Activation precedence — the rows through the direct-Lua harness (the
 //    rule's unit-level oracle; auto_default 0 = CTF/TDM's arm, the
-//    manifest-default arm is pinned on staged worlds below). The lobby
-//    TEAMS count is retired (lineup A1/A3): what it did to a dropped team,
-//    the OFF wheel value does per team, and "a team is on when anything
-//    is on it" is the whole rule.
+//    manifest-default arm is pinned on staged worlds below). "A team is on
+//    when anything is on it": the map's own value plus the occupied
+//    authored teams; the knobs narrow later, in the fills rows.
 // ===========================================================================
 
 TEST_F(StagedRules, activation_precedence_sweep)
 {
-    // OWN/FAIR, empty roster: the whole authored domain — the retired
-    // Auto already meant "as many teams as the map actually has" (issue
-    // #218, the 2026-08-18 directive), and no count clamps it any more.
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0, 2));
-    EXPECT_EQ(0b1101, activation_mask(0b1101, 0, 2));
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0, 3));
+    // The map's own value: auto_default 0 = every authored team (the
+    // CTF/TDM raw arm)...
+    EXPECT_EQ(0b1111, activation_mask(0b1111, 0));
+    EXPECT_EQ(0b1101, activation_mask(0b1101, 0));
+    // ...and a manifest default clamps to the first N authored teams
+    // (soccer's row.teams arm).
+    EXPECT_EQ(0b0011, activation_mask(0b1111, 0, 2));
+    EXPECT_EQ(0b0101, activation_mask(0b1101, 0, 2));
 
-    // With a roster it is still the authored domain (rosters were always
-    // inside it)...
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b0001, 2));
-    EXPECT_EQ(0b0101, activation_mask(0b0101, 0b0100, 2));
+    // A roster keeps its authored team on wherever the default left it...
+    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b0001));
+    EXPECT_EQ(0b0101, activation_mask(0b0101, 0b0100));
+    EXPECT_EQ(0b0111, activation_mask(0b1111, 0b0100, 2))
+        << "a deployed roster turns on a team the manifest leaves inactive";
     // ...unless nothing else is authored (the lone bit stands, and the
     // rule reports the not-starting shape).
-    EXPECT_EQ(0b0100, activation_mask(0b0100, 0b0100, 2));
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b0101, 2));
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b1110, 2));
+    EXPECT_EQ(0b0100, activation_mask(0b0100, 0b0100));
 
-    // OFF takes a team out of the authored domain — its troops, flags
-    // and generators are not fielded (what TEAMS: n did to a dropped
-    // team) — in any position, on either TROOPS arm.
-    EXPECT_EQ(0b1101, activation_mask(0b1111, 0, 2, {0, kKnobOff, 0, 0}));
-    EXPECT_EQ(0b0101, activation_mask(0b1111, 0, 2,
-                                      {0, kKnobOff, 0, kKnobOff}));
-    EXPECT_EQ(0b1101, activation_mask(0b1111, 0, 0, {0, kKnobOff, 0, 0}));
-    EXPECT_EQ(0b0110, activation_mask(0b1111, 0, 3,
-                                      {kKnobOff, 0, 0, kKnobOff}));
-    // OFF below two teams reads the not-starting shape, never a clamp.
-    EXPECT_EQ(0b0001, activation_mask(0b0011, 0, 2, {0, kKnobOff, 0, 0}));
-    // OFF on an occupied team is ignored by the sim: the roster keeps
-    // the team on (a seat's team always carries a deployed fighter, M4,
-    // so the LINEUP page refuses the value up front and nothing here has
-    // to).
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b0010, 2,
-                                      {0, kKnobOff, 0, 0}));
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b0010, 0,
-                                      {0, kKnobOff, 0, 0}));
-    // NONE never touches activation (fills narrows an emptied team).
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0, 2, {0, kKnobNone, 0, 0}));
+    // Roster bits outside the authored domain are masked off: nowhere to
+    // spawn or score, so nothing activates there.
+    EXPECT_EQ(0b0011, activation_mask(0b0011, 0b1100));
+    EXPECT_EQ(0b0011, activation_mask(0b0011, 0b0110));
 
-    // TROOPS: ALL takes the map's own value — the caller's manifest
-    // default over the authored domain (auto_default 0 = every authored
-    // team, the CTF/TDM arm; 2 = the first two, soccer's row.teams)...
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0, 0));
-    EXPECT_EQ(0b0011, activation_mask(0b1111, 0, 0, {}, 2));
-    EXPECT_EQ(0b0101, activation_mask(0b1101, 0, 0, {}, 2));
-    // ...minus OFF (a dropped team leaves; the default is not a count
-    // to be re-filled from the next authored team)...
-    EXPECT_EQ(0b0001, activation_mask(0b1111, 0, 0, {0, kKnobOff, 0, 0},
-                                      2));
-    // ...plus every occupied authored team: a roster on a team the
-    // manifest leaves inactive turns it on, and so does a preset squad
-    // put there (FAIR included) — "a team is on when anything is on it".
-    EXPECT_EQ(0b0111, activation_mask(0b1111, 0b0100, 0, {}, 2));
-    EXPECT_EQ(0b1011, activation_mask(0b1111, 0, 0,
-                                      {0, 0, 0, kKnobBalanc}, 2));
-    EXPECT_EQ(0b1011, activation_mask(0b1111, 0, 0,
-                                      {0, 0, 0, kKnobFair}, 2));
-    EXPECT_EQ(0b1111, activation_mask(0b1111, 0, 2,
-                                      {0, 0, 0, kKnobBalanc}));
-    // An ordinal past the registered table degrades to AUTO and turns
-    // nothing on.
-    EXPECT_EQ(0b0011, activation_mask(0b1111, 0, 0,
-                                      {0, 0, 0, og::sim::kMaxBotSquad}, 2));
+    // Fielded map units activate their authored team past the manifest
+    // default (B4: checked units play); the box off takes that back, and
+    // units outside the authored domain activate nothing.
+    {
+        std::array<std::array<int, 4>, 4> teams{};
+        for (int t = 0; t < 3; ++t)
+            teams[static_cast<std::size_t>(t)][0] = 1;
+        teams[2][2] = 2;  // npcs on team 2, beyond the default of 2
+        EXPECT_EQ(0b0111, eval_rules(teams, 0b0111, 2, false).mask);
+        EXPECT_EQ(0b0011, eval_rules(teams, 0b0111, 2, false, {}, 0,
+                                     {0, 0, kBoxOff, 0})
+                              .mask)
+            << "the box off takes the units-activation back";
+        std::array<std::array<int, 4>, 4> outside{};
+        outside[0][0] = 1;
+        outside[1][0] = 1;
+        outside[3][2] = 2;  // npcs on an unauthored team
+        EXPECT_EQ(0b0011, eval_rules(outside, 0b0011, 0, false).mask);
+    }
 
-    // Roster and preset bits outside the authored domain are masked off:
-    // nowhere to spawn or score, so nothing activates there.
-    EXPECT_EQ(0b0011, activation_mask(0b0011, 0b1100, 2));
-    EXPECT_EQ(0b0011, activation_mask(0b0011, 0b0110, 0));
-    EXPECT_EQ(0b0011, activation_mask(0b0011, 0, 2,
-                                      {0, 0, kKnobBalanc, 0}));
+    // The wheel is activation-blind (B8: nothing on the band refuses or
+    // deactivates at this step — fills narrows a team the knobs leave
+    // empty, one step later).
+    {
+        std::array<std::array<int, 4>, 4> teams{};
+        for (int t = 0; t < 4; ++t)
+            teams[static_cast<std::size_t>(t)][0] = 1;
+        const RuleAnswer a = eval_rules(teams, 0b1111, 0, false,
+                                        {0, kKnobNone, 0, kKnobBrutal});
+        EXPECT_EQ(0b1111, a.mask) << "activation ignores every wheel value";
+        EXPECT_EQ(0b1101, a.lineup_mask)
+            << "the NONE-emptied team drops in the fills rows";
+    }
+}
+
+// The matched census facts: matched = any deployed roster anywhere (the
+// solver's reference will exist), matched_size = the D34 min-roster rule.
+TEST_F(StagedRules, activation_matched_size_is_the_min_roster_headcount)
+{
+    std::array<std::array<int, 4>, 4> teams{};
+    teams[0][0] = 1;
+    teams[1][0] = 1;
+    teams[2][0] = 1;
+    {
+        const RuleAnswer a = eval_rules(teams, 0b0111, 0, false);
+        EXPECT_FALSE(a.matched) << "no roster, no reference";
+        EXPECT_EQ(0, a.matched_size);
+    }
+    {
+        std::array<std::array<int, 4>, 4> solo = teams;
+        solo[0][1] = 3;
+        const RuleAnswer a = eval_rules(solo, 0b0111, 0, false, {}, 0, {},
+                                        {300, 0, 0, 0});
+        EXPECT_TRUE(a.matched);
+        EXPECT_EQ(3, a.matched_size) << "one roster team = its count";
+    }
+    {
+        std::array<std::array<int, 4>, 4> two = teams;
+        two[0][1] = 3;
+        two[2][1] = 5;
+        const RuleAnswer a = eval_rules(two, 0b0111, 0, false, {}, 0, {},
+                                        {300, 0, 500, 0});
+        EXPECT_TRUE(a.matched);
+        EXPECT_EQ(3, a.matched_size) << "several roster teams = the MIN";
+    }
 }
 
 // ===========================================================================
@@ -425,22 +446,19 @@ TEST_F(StagedRules, activation_precedence_sweep)
 //    staged init; banked vars and fielded entities pinned exactly.
 // ===========================================================================
 
-TEST_F(StagedRules, troops_all_auto_asymmetry_is_per_mode)
+TEST_F(StagedRules, auto_default_asymmetry_is_per_mode)
 {
-    // Soccer/basketball/onslaught: TROOPS:ALL at TEAMS: Auto takes the
-    // manifest default. 9301 declares teams = 2 — with four anchor teams
+    // Soccer/basketball/onslaught: the manifest row.teams is the map's
+    // own value. 9301 declares teams = 2 — with four anchor teams
     // authored, the staged init fields exactly two.
     {
         ModesCtfWorld fx(kSoccerLevelA);
         for (int team = 0; team < 4; ++team)
             fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(0b0011, fx.var(kSoccerSlots.mask))
-            << "ALL + Auto = the manifest row.teams default (2), not the "
-               "authored count";
+            << "the manifest row.teams default (2), not the authored count";
         EXPECT_EQ(2, fx.var(kSoccerSlots.count));
     }
     // 9302 declares teams = 4: three authored anchors clamp to all three.
@@ -448,37 +466,32 @@ TEST_F(StagedRules, troops_all_auto_asymmetry_is_per_mode)
         ModesCtfWorld fx(kSoccerLevelB);
         for (int team = 0; team < 3; ++team)
             fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(0b0111, fx.var(kSoccerSlots.mask));
     }
-    // CTF/TDM pass the RAW request on the ALL arm — Auto = every authored
-    // team, no manifest default.
+    // CTF/TDM: no manifest default — every authored team.
     {
         ModesCtfWorld fx(kTdmLevelA);
         for (int team = 0; team < 3; ++team)
             fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
         EXPECT_EQ(0b0111, fx.var(kTdmSlots.mask))
-            << "TDM ALL + Auto = every authored team (raw request)";
+            << "TDM: every authored team (no manifest default)";
     }
-    // Onslaught 9401 declares teams = 2: generator domain, Auto -> 2.
+    // Onslaught 9401 declares teams = 2, but standing foundries are
+    // FIELDED MAP UNITS and fielded units activate their team (B4 —
+    // checked units play, whatever the manifest count says).
     {
         ModesCtfWorld fx(kOnsLevelA);
         fx.spawn_generator(FAMILY_TENT, 0, 128, 320);
         fx.spawn_generator(FAMILY_TENT, 1, 480, 320);
         fx.spawn_generator(FAMILY_TENT, 2, 640, 320);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(0b0011, fx.var(kOnsSlots.mask))
-            << "Onslaught ALL + Auto = the manifest row.teams default (2)";
+        EXPECT_EQ(0b0111, fx.var(kOnsSlots.mask))
+            << "fielded map units activate every foundry team";
     }
 }
 
@@ -495,8 +508,6 @@ TEST_F(StagedRules, ctf_domain_is_the_first_flag_per_team_fold)
     fx.spawn_flag(flag_family_, 2, 228, 100, 1);
     for (int team = 0; team < 3; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 200);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -518,8 +529,6 @@ TEST_F(StagedRules, ctf_domain_is_the_first_flag_per_team_fold)
         leveled.spawn_flag(flag_family_, 0, 196, 100, 1);
         leveled.spawn_anchor(0, 96, 200);
         leveled.spawn_anchor(1, 192, 200);
-        leveled.world().ctf_requested_strip_scenario_troops = 0;
-        leveled.world().ctf_requested_team_count = 0;
         stage_init(leveled);
         ASSERT_TRUE(leveled.world().mode.active);
         EXPECT_EQ(4, leveled.var(kCtfSlots.score));
@@ -531,7 +540,6 @@ TEST_F(StagedRules, ctf_domain_is_the_first_flag_per_team_fold)
         requested.spawn_flag(flag_family_, 0, 196, 100, 1);
         requested.spawn_anchor(0, 96, 200);
         requested.spawn_anchor(1, 192, 200);
-        requested.world().ctf_requested_strip_scenario_troops = 0;
         requested.world().ctf_requested_capture_limit = 9;
         stage_init(requested);
         ASSERT_TRUE(requested.world().mode.active);
@@ -560,8 +568,6 @@ TEST_F(StagedRules, tdm_domain_is_anchors_union_livings)
     fx.spawn_hero(FAMILY_SOLDIER, 1, 200, 200, 1);    // a roster authors
     fx.spawn_hero(FAMILY_SOLDIER, 1, 232, 200, 2);
     fx.spawn_living(FAMILY_ORC, 2, 300, 300);         // troops author
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -592,8 +598,6 @@ TEST_F(StagedRules, dormant_troops_are_uncensused_like_the_staged_report)
     ASSERT_NE(delayed, nullptr);
     delayed->set_spawn_delay(120);
     delayed->set_dormant(true);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -607,8 +611,6 @@ TEST_F(StagedRules, dormant_troops_are_uncensused_like_the_staged_report)
     awake.spawn_anchor(0, 96, 96);
     awake.spawn_living(FAMILY_ORC, 1, 300, 300);
     awake.spawn_living(FAMILY_ORC, 2, 400, 300);
-    awake.world().ctf_requested_strip_scenario_troops = 0;
-    awake.world().ctf_requested_team_count = 0;
 
     stage_init(awake);
     ASSERT_TRUE(awake.world().mode.active);
@@ -619,8 +621,10 @@ TEST_F(StagedRules, dormant_troops_are_uncensused_like_the_staged_report)
 TEST_F(StagedRules, onslaught_domain_and_generator_fills)
 {
     ModesCtfWorld fx(kOnsLevelB);
-    fx.world().ctf_requested_strip_scenario_troops = 2;  // OWN
-    fx.world().ctf_requested_team_count = 0;
+    // The per-team strip: team 1's box is off, so its authored npc is not
+    // fielded — and with no generators of its own and no bots ever (D17),
+    // the team leaves the match outright.
+    fx.world().ctf_requested_map_units[1] = kBoxOff;
     fx.spawn_generator(FAMILY_TENT, 0, 128, 320);
     fx.spawn_generator(FAMILY_TENT, 0, 192, 320);
     fx.spawn_living(FAMILY_ORC, 1, 300, 640);
@@ -628,15 +632,12 @@ TEST_F(StagedRules, onslaught_domain_and_generator_fills)
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(0b0111, fx.var(kOnsSlots.mask))
-        << "livings and generators author alike; OWN Auto = the authored "
-           "count";
-    EXPECT_EQ(3, fx.var(kOnsSlots.count));
-    // The fills, fielded: foundries survive OWN, the stripped npc team is
-    // honestly empty (E8), no bots ever (D17), the roster stands.
+    EXPECT_EQ(0b0101, fx.var(kOnsSlots.mask))
+        << "a box-off team with nothing else standing leaves the match";
+    EXPECT_EQ(2, fx.var(kOnsSlots.count));
     EXPECT_EQ(0, live_livings_on(fx.world(), 0));
     EXPECT_EQ(0, live_livings_on(fx.world(), 1))
-        << "OWN strips the guy-less npc";
+        << "the box strips the guy-less npc";
     EXPECT_EQ(1, live_livings_on(fx.world(), 2));
     for (int team = 0; team < 4; ++team)
         EXPECT_EQ(0, marked_bots_on(fx.world(), team))
@@ -648,8 +649,6 @@ TEST_F(StagedRules, basketball_domain_and_reason)
     ModesCtfWorld fx(kBballLevelB);
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 192, 96);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -664,10 +663,13 @@ TEST_F(StagedRules, basketball_domain_and_reason)
         lone.world(), "basketball: fewer than two anchor teams"));
 }
 
-TEST_F(StagedRules, fair_matched_size_is_the_min_roster_headcount)
+// The default (FILL: FAIR everywhere) solves every backfilled squad
+// against the weakest human team's f-sum, sized to the min roster
+// headcount (B2/B3) — the successor of the old TROOPS: FAIR rows.
+TEST_F(StagedRules, default_fill_matches_squads_to_the_min_roster_headcount)
 {
-    // Rosters of 3 and 5 under FAIR: matched, size = min = 3, and the
-    // backfilled teams field MATCHED squads truncated to that headcount.
+    // Rosters of 3 and 5: the backfilled teams field squads truncated to
+    // the MIN headcount, and MATCHED.TARGET banks the weakest reference.
     ModesCtfWorld fx(kSoccerLevelB);
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
@@ -678,9 +680,6 @@ TEST_F(StagedRules, fair_matched_size_is_the_min_roster_headcount)
     for (int k = 0; k < 5; ++k)
         fx.spawn_hero(FAMILY_SOLDIER, 2, static_cast<short>(96 + 32 * k),
                       760, guy_id++);
-    fx.world().ctf_requested_strip_scenario_troops =
-        static_cast<short>(og::sim::kTroopsMatched);
-    fx.world().ctf_requested_team_count = 0;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -688,8 +687,12 @@ TEST_F(StagedRules, fair_matched_size_is_the_min_roster_headcount)
         << "several roster teams -> the MIN headcount (D34)";
     EXPECT_GT(fx.var(kSlotMatchedTarget), 0)
         << "a live has_guy walker always prices above zero";
-    EXPECT_EQ(3, live_livings_on(fx.world(), 0));
+    EXPECT_EQ(3 + 3, live_livings_on(fx.world(), 0))
+        << "the weaker company gets allies too (B3), headcount-sized";
+    EXPECT_EQ(3, marked_bots_on(fx.world(), 0));
     EXPECT_EQ(5, live_livings_on(fx.world(), 2));
+    EXPECT_EQ(0, marked_bots_on(fx.world(), 2))
+        << "the stronger company has no gap";
     EXPECT_EQ(3, marked_bots_on(fx.world(), 1))
         << "a matched squad truncates to min(headcount, 5)";
     EXPECT_EQ(3, marked_bots_on(fx.world(), 3));
@@ -705,9 +708,6 @@ TEST_F(StagedRules, fair_matched_size_is_the_min_roster_headcount)
                            static_cast<short>(96 + 32 * k), 700, guy_id++);
     outside.spawn_hero(FAMILY_SOLDIER, 3, 96, 760, guy_id++);
     outside.spawn_hero(FAMILY_SOLDIER, 3, 128, 760, guy_id++);
-    outside.world().ctf_requested_strip_scenario_troops =
-        static_cast<short>(og::sim::kTroopsMatched);
-    outside.world().ctf_requested_team_count = 0;
     stage_init(outside);
     ASSERT_TRUE(outside.world().mode.active);
     EXPECT_EQ(0b0011, outside.var(kSoccerSlots.mask))
@@ -717,24 +717,21 @@ TEST_F(StagedRules, fair_matched_size_is_the_min_roster_headcount)
     EXPECT_EQ(2, marked_bots_on(outside.world(), 1));
 }
 
-TEST_F(StagedRules, fair_with_no_roster_degrades_to_legacy_bots)
+TEST_F(StagedRules, no_human_power_degrades_to_the_legacy_squads)
 {
     ModesCtfWorld fx(kSoccerLevelB);
     for (int team = 0; team < 3; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-    fx.world().ctf_requested_strip_scenario_troops =
-        static_cast<short>(og::sim::kTroopsMatched);
-    fx.world().ctf_requested_team_count = 0;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
     EXPECT_EQ(0, fx.var(kSlotMatchedSize))
-        << "FAIR with zero rosters anywhere predicts TARGET 0";
+        << "zero rosters anywhere predicts no reference";
     EXPECT_EQ(0, fx.var(kSlotMatchedTarget));
     for (int team = 0; team < 3; ++team)
     {
         EXPECT_EQ(5, marked_bots_on(fx.world(), team))
-            << "the legacy difficulty squad, NOT matched (the degrade), "
+            << "the legacy difficulty squad, NOT matched (B3's fallback), "
                "team " << team;
     }
 }
@@ -747,14 +744,13 @@ TEST_F(StagedRules, soccer_score_limit_resolution_and_troops_fill)
     fx.spawn_anchor(1, 528, 96);
     for (int k = 0; k < 4; ++k)
         fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k), 300);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
     EXPECT_EQ(3, fx.var(kSoccerSlots.score)) << "no request -> the row limit";
     EXPECT_EQ(4, live_livings_on(fx.world(), 1))
-        << "under ALL the authored troops stand";
-    EXPECT_EQ(0, marked_bots_on(fx.world(), 1));
+        << "with the box on the authored troops stand";
+    EXPECT_EQ(0, marked_bots_on(fx.world(), 1))
+        << "fielded map units are the team's fill: no squad beside them";
     EXPECT_EQ(5, marked_bots_on(fx.world(), 0))
         << "an active team with nothing at all gets the squad";
 
@@ -778,16 +774,14 @@ TEST_F(StagedRules, soccer_score_limit_resolution_and_troops_fill)
 
 TEST_F(StagedRules, tdm_matched_fill_truncates_to_the_headcount)
 {
-    // TDM's fixed squad table makes the matched truncation exactly
-    // knowable: min headcount 1 -> the backfilled team fields precisely
-    // one marked soldier (the D35 soldier-first prefix).
+    // TDM's fixed squad table makes the truncation exactly knowable: min
+    // headcount 1 -> the backfilled team fields precisely one marked
+    // soldier (the D35 soldier-first prefix) — under the DEFAULT knobs
+    // now (FILL: FAIR is the default solver).
     ModesCtfWorld fx(kTdmLevelA);
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 528, 96);
     fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-    fx.world().ctf_requested_strip_scenario_troops =
-        static_cast<short>(og::sim::kTroopsMatched);
-    fx.world().ctf_requested_team_count = 0;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -798,11 +792,10 @@ TEST_F(StagedRules, tdm_matched_fill_truncates_to_the_headcount)
 }
 
 // ===========================================================================
-// 2b. The lineup knob rows (docs/lineup-design.md §3.2/§3.4): NONE removes
-//     a fill AUTO makes (and narrows the mask), a preset fills an occupied
-//     team, an explicit level lands once and persists as the plan, FAIR on
-//     an occupied team solves the allies gap, the hard-shape cap clamps,
-//     and all-zero knobs stay byte-identical.
+// 2b. The FILL x MAP UNITS rows (docs/lineup-design.md B1-B9): NONE
+//     removes the fill FAIR makes, the wheel scales the solve target
+//     monotonically, allies ride an occupied team's gap, the box strips a
+//     team's authored units, and the banked facts carry the fill code.
 // ===========================================================================
 
 namespace {
@@ -817,44 +810,18 @@ int lineup_fact_code(std::int32_t slot_value, int team)
     return static_cast<int>(facts % 100);
 }
 
-// The expected code for an applied (knob ordinal, LV offset) pair — the
-// mixed-radix packing mode_match.lua lineup_fact documents (squad index
-// * 11 + offset code, offset code 0 = AUTO, 1..5 = +1..+5, 6..10 =
-// -1..-5), spelled here independently so the test is an oracle of the
-// packing, not a mirror of it.
-int expected_fact(int knob, int offset)
+// The expected code for an applied fill: the fill code plus one
+// (mode_match.lua lineup_fact, picker_common.cpp kLineupFactFillBias) —
+// spelled here independently so the test is an oracle of the packing,
+// not a mirror of it. 0 = nothing banked.
+int expected_fact(int fill)
 {
-    const int squad =
-        knob >= og::sim::kBotSquadPresetBase
-            ? knob - og::sim::kBotSquadPresetBase + 1
-            : 0;
-    const int offset_code = offset < 0 ? 5 - offset : offset;
-    return squad * 11 + offset_code;
+    return fill + 1;
 }
 
 // The refusal reason digit (mode_match.lua REFUSAL_BASE, picker_common.cpp
 // kLineupRefusalBase): 10^9, alone in the slot when a band fold refuses.
 constexpr std::int32_t kRefusalFighters = 1000000000;
-
-int marked_bots_of_family_on(GameWorld& world, int team, int family)
-{
-    int count = 0;
-    for (const auto& uptr : world.oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
-            continue;
-        if (w->team_num() != static_cast<unsigned char>(team) ||
-            w->myguy != nullptr)
-            continue;
-        if (w->family() != family)
-            continue;
-        if (w->stats() != nullptr &&
-            (w->stats()->bit_flags() & kBotMarkBit) != 0)
-            ++count;
-    }
-    return count;
-}
 
 std::vector<int> bot_levels_on(GameWorld& world, int team)
 {
@@ -874,20 +841,62 @@ std::vector<int> bot_levels_on(GameWorld& world, int team)
     return levels;
 }
 
+// The wheel fixture: one L5 soldier hero on team 0, TDM two-anchor map,
+// team 1 backfilled with a single solved soldier (headcount 1). Answers
+// the solved plan level for one wheel value.
+int solved_level_for_fill(int fill)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 528, 96);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 5);
+    fx.world().ctf_requested_fill[1] = static_cast<short>(fill);
+    og::sim::mode_stage_init(fx.world());
+    EXPECT_TRUE(fx.world().mode.active);
+    if (!fx.world().mode.active)
+        return -1;
+    const std::vector<int> levels = bot_levels_on(fx.world(), 1);
+    EXPECT_EQ(1u, levels.size());
+    const int plan_code = (fx.var(kSlotMatchedPlan) / 100) % 100;
+    EXPECT_EQ(plan_code / 10, levels.empty() ? -1 : levels[0])
+        << "the spawned level IS the stored plan";
+    return plan_code / 10;
+}
+
 }  // namespace
 
-// NONE suppresses exactly the squad AUTO fields: the identical OWN/Auto
-// world backfills three squads; NONE on team 1 fields two and drops the
-// team from the banked mask (lineup §3.2 — "a team is on when anything is
-// on it").
-TEST_F(StagedRules, lineup_none_removes_a_fill_auto_makes)
+// The wheel is the solver's multiplier (B2): on a fixed one-hero L5
+// roster the solved level of the single backfilled bot tracks the target
+// monotonically, and the exact levels are pinned for this roster.
+TEST_F(StagedRules, fill_wheel_scales_the_solved_level_monotonically)
+{
+    const int weak = solved_level_for_fill(kKnobWeak);
+    const int fair = solved_level_for_fill(kKnobFair);
+    const int strong = solved_level_for_fill(kKnobStrong);
+    const int brutal = solved_level_for_fill(kKnobBrutal);
+    EXPECT_LE(weak, fair) << "WEAK solves at or below FAIR";
+    EXPECT_LE(fair, strong) << "STRONG solves at or above FAIR";
+    EXPECT_LE(strong, brutal) << "BRUTAL solves at or above STRONG";
+    EXPECT_LT(weak, brutal) << "the multipliers must separate the ends";
+    // The exact pins for this fixed roster (one L5 soldier vs one solved
+    // soldier; the D22 argmin against reference x {75, 100, 125, 150}%).
+    // WEAK and FAIR land the same argmin on this coarse one-bot grid —
+    // the separation shows from FAIR to STRONG.
+    EXPECT_EQ(3, weak);
+    EXPECT_EQ(3, fair);
+    EXPECT_EQ(4, strong);
+    EXPECT_EQ(4, brutal);
+}
+
+// NONE suppresses exactly the squad FAIR fields: the identical world
+// backfills squads on every empty team; NONE on team 1 fields none there
+// and drops the team from the banked mask (B4/B8).
+TEST_F(StagedRules, fill_none_removes_the_squad_fair_fields)
 {
     ModesCtfWorld fx(kSoccerLevelB);
     for (int team = 0; team < 3; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-    fx.world().ctf_requested_strip_scenario_troops = 2;  // OWN
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_fill[1] = kKnobNone;  // NONE on team 1
+    fx.world().ctf_requested_fill[1] = kKnobNone;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -896,22 +905,23 @@ TEST_F(StagedRules, lineup_none_removes_a_fill_auto_makes)
     EXPECT_EQ(2, fx.var(kSoccerSlots.count));
     EXPECT_EQ(5, marked_bots_on(fx.world(), 0));
     EXPECT_EQ(0, marked_bots_on(fx.world(), 1))
-        << "NONE suppresses the squad AUTO would field";
+        << "NONE suppresses the squad FAIR would field";
     EXPECT_EQ(5, marked_bots_on(fx.world(), 2));
     EXPECT_EQ(0, live_livings_on(fx.world(), 1));
     EXPECT_EQ(0, lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1))
         << "nothing spawned, nothing banked";
+    EXPECT_EQ(expected_fact(kKnobFair),
+              lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
+        << "the FAIR squads bank the applied fill code";
 }
 
 // NONE narrowing below two teams refuses the match with the mode's own
 // sentence — an empty team stays inactive, and one team is no match.
-TEST_F(StagedRules, lineup_none_below_two_teams_refuses)
+TEST_F(StagedRules, fill_none_below_two_teams_refuses)
 {
     ModesCtfWorld fx(kSoccerLevelA);
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 528, 96);
-    fx.world().ctf_requested_strip_scenario_troops = 2;  // OWN
-    fx.world().ctf_requested_team_count = 0;
     fx.world().ctf_requested_fill[1] = kKnobNone;
 
     stage_init(fx);
@@ -923,202 +933,293 @@ TEST_F(StagedRules, lineup_none_below_two_teams_refuses)
         << "a team-mode refusal banks no reason digit: the teams sentence";
 }
 
-// A preset fills the team whether or not it is occupied (I3 as amended —
-// lineup §3.2, matched-teams-design.md I3): CASTER beside a two-hero
-// roster fields the preset's exact families, and the applied ordinal is
-// banked in the shared facts slot.
-TEST_F(StagedRules, lineup_preset_fills_an_occupied_team)
+// The weakest human team is the reference (B3): adding a STRONGER second
+// human team must not move an empty team's solved level — the twin
+// fixture with the weak roster alone is the oracle.
+TEST_F(StagedRules, reference_is_the_weakest_human_team)
 {
-    ModesCtfWorld fx(kTdmLevelA);
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 528, 96);
-    fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-    fx.spawn_hero(FAMILY_SOLDIER, 0, 232, 200, 2);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_fill[0] = kKnobCaster;  // CASTER
-
-    stage_init(fx);
-    ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(7, live_livings_on(fx.world(), 0))
-        << "the roster stands and the preset squad joins it";
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 0));
-    EXPECT_EQ(2, marked_bots_of_family_on(fx.world(), 0, FAMILY_MAGE))
-        << "CASTER's families, not the mode's soldier-first table";
-    EXPECT_EQ(1, marked_bots_of_family_on(fx.world(), 0, FAMILY_CLERIC));
-    EXPECT_EQ(1, marked_bots_of_family_on(fx.world(), 0, FAMILY_ELF));
-    EXPECT_EQ(1, marked_bots_of_family_on(fx.world(), 0, FAMILY_ARCHER));
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
-        << "the AUTO team keeps its plain squad";
-    EXPECT_EQ(1, marked_bots_of_family_on(fx.world(), 1, FAMILY_SOLDIER));
-    EXPECT_EQ(expected_fact(kKnobCaster, 0),
-              lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
-        << "applied ordinal CASTER, no offset";
-    EXPECT_EQ(0, lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1));
-}
-
-// An LV offset (amendment A6) resolves on top of the AUTO source — here
-// the legacy formula, L2 at the fixture's 100 percent — exactly once per
-// walker and persists as the team's stored plan (lineup §3.2, the D14
-// discipline): +5 lands L7 on every member, the staged bots carry the
-// level AND the hp of a single s_set_level + set_difficulty application,
-// and the plan banks the RESOLVED level.
-TEST_F(StagedRules, lineup_level_offset_lands_once_and_persists)
-{
-    ModesCtfWorld fx(kTdmLevelA);
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 528, 96);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_map_units[1] = 5;
-
-    stage_init(fx);
-    ASSERT_TRUE(fx.world().mode.active);
-    const std::vector<int> levels = bot_levels_on(fx.world(), 1);
-    ASSERT_EQ(5u, levels.size());
-    for (const int level : levels)
-        EXPECT_EQ(7, level) << "every member takes formula L2 + 5";
-    const std::vector<int> auto_levels = bot_levels_on(fx.world(), 0);
-    ASSERT_EQ(5u, auto_levels.size());
-    for (const int level : auto_levels)
-        EXPECT_EQ(2, level) << "the AUTO team keeps the formula";
-    // The stored plan (MATCHED.PLAN slot 3, base-100 per team, code =
-    // L * 10 + k): team 1's code is 70 — the RESOLVED level, so a
-    // respawn never re-adds the offset — and team 0 has no plan.
-    EXPECT_EQ(70, (fx.var(kSlotMatchedPlan) / 100) % 100)
-        << "the resolved level is stored so respawns reproduce it";
-    EXPECT_EQ(0, fx.var(kSlotMatchedPlan) % 100);
-    EXPECT_EQ(expected_fact(0, 5),
-              lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1))
-        << "the OFFSET is the banked fact (the pane reads LV+5), squad AUTO";
-    // Lands ONCE: the team-1 soldier bot's max hp equals a reference
-    // walker leveled through the identical single application.
-    walker* reference = fx.spawn_living(FAMILY_SOLDIER, 3, 96, 700);
-    ASSERT_NE(reference, nullptr);
-    reference->stats()->set_level(7);
-    reference->set_difficulty(7);
-    const walker* bot = nullptr;
-    for (const auto& uptr : fx.world().oblist)
+    int solo_level = 0;
     {
-        const walker* w = uptr.get();
-        if (w != nullptr && !w->dead() &&
-            w->query_order() == Order::Living && w->team_num() == 1 &&
-            w->family() == FAMILY_SOLDIER && w->myguy == nullptr)
-        {
-            bot = w;
-            break;
-        }
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        const std::vector<int> levels = bot_levels_on(fx.world(), 1);
+        ASSERT_EQ(1u, levels.size());
+        solo_level = levels[0];
     }
-    ASSERT_NE(bot, nullptr);
-    EXPECT_EQ(reference->stats()->max_hitpoints(),
-              bot->stats()->max_hitpoints())
-        << "a double application would inflate the pool";
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 2, 96, 760, 2, 9);
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        const std::vector<int> levels = bot_levels_on(fx.world(), 1);
+        ASSERT_EQ(1u, levels.size());
+        EXPECT_EQ(solo_level, levels[0])
+            << "the reference is the WEAKEST team's f-sum: a stronger "
+               "second team must not raise the empty team's squad";
+    }
 }
 
-// FAIR on an occupied team fields allies solved against the gap (the
-// 2026-08-25 ruling): the plan is stored for the occupied team, the AUTO
-// team stays legacy, and MATCHED.TARGET is never banked on this path.
-TEST_F(StagedRules, lineup_fair_preset_allies_on_an_occupied_team)
+// Allies (B3): FILL on an occupied team targets the gap to the strongest
+// other team. The weaker company gets solved allies sized by the
+// headcount rule; equal companies get none; the applied fill banks only
+// where a squad spawned (R4).
+TEST_F(StagedRules, allies_ride_the_gap_on_an_occupied_team)
 {
-    ModesCtfWorld fx(kSoccerLevelB);
-    for (int team = 0; team < 3; ++team)
-        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-    int guy_id = 1;
-    for (int k = 0; k < 2; ++k)
-        fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
-                      700, guy_id++);
-    for (int k = 0; k < 5; ++k)
-        fx.spawn_leveled_hero(FAMILY_SOLDIER, 2,
-                              static_cast<short>(96 + 32 * k), 760,
-                              guy_id++, 3);
-    fx.world().ctf_requested_strip_scenario_troops = 0;  // ALL, not FAIR
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_fill[0] = kKnobFair;  // FAIR preset
+    // Two L1 heroes vs five L3 heroes: team 0 is behind, so its default
+    // FAIR fill fields allies (headcount min = 2).
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        int guy_id = 1;
+        for (int k = 0; k < 2; ++k)
+            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
+                          700, guy_id++);
+        for (int k = 0; k < 5; ++k)
+            fx.spawn_leveled_hero(FAMILY_SOLDIER, 2,
+                                  static_cast<short>(96 + 32 * k), 760,
+                                  guy_id++, 3);
 
-    stage_init(fx);
-    ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(2 + 5, live_livings_on(fx.world(), 0))
-        << "FAIR fields allies beside the occupied roster";
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 0));
-    EXPECT_NE(0, fx.var(kSlotMatchedPlan) % 100)
-        << "the allies solve stores team 0's plan";
-    EXPECT_EQ(0, (fx.var(kSlotMatchedPlan) / 100) % 100)
-        << "the AUTO team stays legacy (no plan)";
-    EXPECT_EQ(0, fx.var(kSlotMatchedTarget))
-        << "the FAIR-preset target is local, never banked (other teams' "
-           "AUTO squads must stay legacy)";
-    EXPECT_EQ(expected_fact(kKnobFair, 0),
-              lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
-        << "the applied FAIR ordinal is banked for the pane";
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(2, marked_bots_on(fx.world(), 0))
+            << "the weaker company gets allies, sized by the headcount";
+        EXPECT_EQ(2 + 2, live_livings_on(fx.world(), 0));
+        EXPECT_EQ(0, marked_bots_on(fx.world(), 2))
+            << "the stronger company has no gap to close";
+        EXPECT_NE(0, fx.var(kSlotMatchedPlan) % 100)
+            << "the allies solve stores team 0's plan";
+        EXPECT_EQ(expected_fact(kKnobFair),
+                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
+            << "the applied fill code is banked for the pane";
+        EXPECT_EQ(0, lineup_fact_code(fx.var(kSlotMatchedAnnounced), 2))
+            << "no squad on the stronger company, nothing banked";
+    }
+    // Equal companies: no gap anywhere, no allies anywhere.
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
+        fx.spawn_hero(FAMILY_SOLDIER, 2, 96, 760, 2);
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0, marked_bots_on(fx.world(), 0));
+        EXPECT_EQ(0, marked_bots_on(fx.world(), 2));
+        EXPECT_EQ(1, live_livings_on(fx.world(), 0));
+        EXPECT_EQ(1, live_livings_on(fx.world(), 2));
+    }
 }
 
-// All-zero knobs are byte-identical — and so is an ordinal past the
-// preset table (applied AUTO by the degrade rule), which exercises the
-// knob-read paths while pinning the identity.
-TEST_F(StagedRules, lineup_auto_and_unregistered_ordinal_are_byte_identical)
+// The MAP UNITS box (B4): off strips the team's authored troops — the
+// team then plays with its FILL squad instead; off with FILL: NONE and
+// nothing else leaves the team inactive; on with NONE and no seat keeps
+// the team active with its troops alone.
+TEST_F(StagedRules, map_units_box_strips_and_deactivates)
 {
-    std::vector<std::uint8_t> auto_bytes;
+    // Box off + FILL default: the orcs go, a solved/legacy squad walks on.
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        for (int k = 0; k < 4; ++k)
+            fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k),
+                            300);
+        fx.world().ctf_requested_map_units[1] = kBoxOff;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0b0111, fx.var(kSoccerSlots.mask))
+            << "the FILL squad keeps the box-off team in the match";
+        EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
+            << "the squad replaces the stripped troops";
+        EXPECT_EQ(5, live_livings_on(fx.world(), 1))
+            << "no orc survives the box";
+    }
+    // Box off + FILL NONE + nothing else: inactive.
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        for (int k = 0; k < 4; ++k)
+            fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k),
+                            300);
+        fx.world().ctf_requested_map_units[1] = kBoxOff;
+        fx.world().ctf_requested_fill[1] = kKnobNone;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0b0101, fx.var(kSoccerSlots.mask))
+            << "box off + NONE + no seat = nothing on the team";
+        EXPECT_EQ(0, live_livings_on(fx.world(), 1));
+    }
+    // Box on + FILL NONE + no seat: active with the troops alone.
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        for (int k = 0; k < 4; ++k)
+            fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k),
+                            300);
+        fx.world().ctf_requested_fill[1] = kKnobNone;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0b0111, fx.var(kSoccerSlots.mask))
+            << "fielded map units keep the NONE team active";
+        EXPECT_EQ(4, live_livings_on(fx.world(), 1));
+        EXPECT_EQ(0, marked_bots_on(fx.world(), 1));
+    }
+}
+
+// The default state is FAIR, not the old byte-identical AUTO — the old
+// all-zero identity pins are replaced by these default pins (a no-human
+// world still fields the legacy squads, now with the FAIR fact banked),
+// and a fill code past the table degrades to FAIR byte for byte.
+TEST_F(StagedRules, default_fill_pins_and_junk_degrades_to_fair)
+{
+    std::vector<std::uint8_t> default_bytes;
     {
         ModesCtfWorld fx(kTdmLevelA);
         fx.spawn_anchor(0, 96, 96);
         fx.spawn_anchor(1, 528, 96);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
-        auto_bytes = og::sim::serialize_snapshot(
+        for (int team = 0; team < 2; ++team)
+        {
+            EXPECT_EQ(5, marked_bots_on(fx.world(), team));
+            for (const int level : bot_levels_on(fx.world(), team))
+                EXPECT_EQ(2, level)
+                    << "no humans: the legacy formula level, team " << team;
+            EXPECT_EQ(expected_fact(kKnobFair),
+                      lineup_fact_code(fx.var(kSlotMatchedAnnounced), team))
+                << "the applied FAIR fact is banked (the pane reads FAIR), "
+                   "team " << team;
+        }
+        EXPECT_EQ(0, fx.var(kSlotMatchedPlan))
+            << "the legacy arm stores no plan";
+        default_bytes = og::sim::serialize_snapshot(
             og::sim::peek_keyframe_snapshot(fx.world()));
     }
     {
         ModesCtfWorld fx(kTdmLevelA);
         fx.spawn_anchor(0, 96, 96);
         fx.spawn_anchor(1, 528, 96);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_fill[0] =
-            og::sim::kMaxBotSquad;  // past the registered table
+        fx.world().ctf_requested_fill[0] = 9;  // past the wheel
         stage_init(fx);
         ASSERT_TRUE(fx.world().mode.active);
         // The knob itself rides the snapshot (it is a replicated input),
         // so it is reset before the capture: everything else — entities,
-        // mode vars, the lot — must be identical to the AUTO stage.
+        // mode vars, the lot — must be identical to the default stage.
         fx.world().ctf_requested_fill[0] = 0;
-        EXPECT_EQ(auto_bytes,
+        EXPECT_EQ(default_bytes,
                   og::sim::serialize_snapshot(
                       og::sim::peek_keyframe_snapshot(fx.world())))
-            << "an unregistered ordinal must degrade to AUTO byte for byte";
+            << "a fill code past the table must degrade to FAIR byte for "
+               "byte";
     }
 }
 
-// Basketball's hard shape (5v5) rides its decide fold's squad_cap into
-// the staged world: a preset squad on the court fields at most five —
-// with the shipped five-family presets, exactly five — and the banked
-// count agrees with the census.
-TEST_F(StagedRules, lineup_basketball_preset_keeps_the_court_shape)
+// Basketball's hard shape (R2): allies fill only the room the court
+// leaves, and a full court fields no squad and banks no fact.
+TEST_F(StagedRules, basketball_allies_fill_the_room_left)
 {
-    ModesCtfWorld fx(kBballLevelB);
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 192, 96);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_fill[0] = kKnobBrutes;  // BRUTES
+    // Three weak humans vs a stronger company: two allies complete the
+    // five-on-court shape.
+    {
+        ModesCtfWorld fx(kBballLevelB);
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 192, 96);
+        int guy_id = 1;
+        for (int k = 0; k < 3; ++k)
+            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
+                          700, guy_id++);
+        for (int k = 0; k < 3; ++k)
+            fx.spawn_leveled_hero(FAMILY_SOLDIER, 1,
+                                  static_cast<short>(96 + 32 * k), 760,
+                                  guy_id++, 5);
 
-    stage_init(fx);
-    ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 0));
-    EXPECT_EQ(3, marked_bots_of_family_on(fx.world(), 0, FAMILY_SOLDIER));
-    EXPECT_EQ(1, marked_bots_of_family_on(fx.world(), 0, FAMILY_BARBARIAN));
-    EXPECT_EQ(1, marked_bots_of_family_on(fx.world(), 0, FAMILY_ORC));
-    EXPECT_EQ(expected_fact(kKnobBrutes, 0),
-              lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0));
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(5, live_livings_on(fx.world(), 0))
+            << "three humans + the room left = five on court";
+        EXPECT_EQ(2, marked_bots_on(fx.world(), 0));
+        EXPECT_EQ(3, live_livings_on(fx.world(), 1))
+            << "the stronger company has no gap and no allies";
+        EXPECT_EQ(expected_fact(kKnobFair),
+                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
+            << "two allies spawned: the fill is an applied fact";
+    }
+    // A full court: no room, no squad, no fact (R4).
+    {
+        ModesCtfWorld fx(kBballLevelB);
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 192, 96);
+        int guy_id = 1;
+        for (int k = 0; k < 5; ++k)
+            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
+                          700, guy_id++);
+        for (int k = 0; k < 5; ++k)
+            fx.spawn_leveled_hero(FAMILY_SOLDIER, 1,
+                                  static_cast<short>(96 + 32 * k), 760,
+                                  guy_id++, 5);
+
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(5, live_livings_on(fx.world(), 0)) << "the court is full";
+        EXPECT_EQ(0, marked_bots_on(fx.world(), 0));
+        EXPECT_EQ(0, lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
+            << "0 spawned = no fact banked";
+    }
 }
 
-// The rule-level lineup rows through the direct-Lua harness: NONE narrows
-// the mask and empties the row; a preset sizes an empty team's row from
-// its own table (capped by the hard shape); a preset on a roster team
-// keeps the occupancy fill and carries row.squad; the matched headcount
-// truncates a preset like any squad.
-TEST_F(StagedRules, lineup_rule_rows_none_preset_cap_and_matched)
+// TEAMS MATCHED announces when a squad was solved (the R3 one-shot
+// shape): a solved backfill announces exactly once, and a no-human world
+// (legacy squads, nothing solved) stays silent.
+TEST_F(StagedRules, teams_matched_announces_only_for_a_solved_squad)
+{
+    auto count_notifications = [](const og::sim::SimEventLog& log,
+                                  const std::string& needle) {
+        int count = 0;
+        for (const auto& ev : log.events())
+        {
+            if (ev.kind == og::sim::EventKind::Notification &&
+                ev.text.find(needle) != std::string::npos)
+                ++count;
+        }
+        return count;
+    };
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"))
+            << "two solved backfills announce once (the latch)";
+        EXPECT_NE(0, fx.var(kSlotMatchedAnnounced) % 10);
+    }
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"))
+            << "legacy squads are not a solve";
+        EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10);
+    }
+}
+
+// The rule-level rows through the direct-Lua harness: NONE narrows, the
+// box redirects a troops team to a squad row, allies ride the power gap,
+// and the hard-shape cap clamps.
+TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
 {
     std::array<std::array<int, 4>, 4> teams{};
     for (int t = 0; t < 3; ++t)
@@ -1126,109 +1227,95 @@ TEST_F(StagedRules, lineup_rule_rows_none_preset_cap_and_matched)
 
     // NONE on backfilled team 1: row empties, mask narrows.
     {
-        const RuleAnswer a = eval_rules(teams, 2, 0b0111, 0, false, false,
+        const RuleAnswer a = eval_rules(teams, 0b0111, 0, false,
                                         {0, kKnobNone, 0, 0});
         EXPECT_EQ(0b0111, a.mask) << "activation is NONE-blind";
         EXPECT_EQ(0b0101, a.lineup_mask) << "fills narrows the NONE team";
         EXPECT_EQ(0, (a.fills_packed / 100) % 100) << "empty row, count 0";
-        EXPECT_EQ(0, a.squads_packed);
+        EXPECT_EQ(101, a.squads_packed)
+            << "teams 0 and 2 keep their FAIR squad rows; the NONE team "
+               "has none";
     }
-    // OFF on team 1: activation drops it, so fills never sees it — the
-    // same empty row and narrowed mask, reached one step earlier.
+    // The default: every backfilled row is the legacy bots squad (no
+    // humans), squad code FAIR + 1.
     {
-        const RuleAnswer a = eval_rules(teams, 2, 0b0111, 0, false, false,
-                                        {0, kKnobOff, 0, 0});
-        EXPECT_EQ(0b0101, a.mask) << "activation drops the OFF team";
-        EXPECT_EQ(0b0101, a.lineup_mask);
-        EXPECT_EQ(0, (a.fills_packed / 100) % 100) << "empty row, count 0";
+        const RuleAnswer a = eval_rules(teams, 0b0111, 0, false);
+        EXPECT_EQ(3 + 5 * 8, static_cast<int>(a.fills_packed % 100))
+            << "bots fill, count 5";
+        EXPECT_EQ(expected_fact(kKnobFair), a.squads_packed % 10)
+            << "row.squad carries the banked-fact code";
     }
-    // OFF beside a roster: the roster keeps the team on and fields the
-    // company alone — OFF still forbids a squad, like NONE.
+    // With a human roster the backfill solves: matched fill, headcount 2.
     {
-        std::array<std::array<int, 4>, 4> roster_teams = teams;
-        roster_teams[1][1] = 2;
-        const RuleAnswer a = eval_rules(roster_teams, 2, 0b0111, 0, false,
-                                        false, {0, kKnobOff, 0, 0});
-        EXPECT_EQ(0b0111, a.mask) << "a roster keeps an OFF team on";
-        EXPECT_EQ(1 + 2 * 8, static_cast<int>((a.fills_packed / 100) % 100))
-            << "company fill, the roster alone";
-        EXPECT_EQ(0, a.squads_packed);
-    }
-    // CASTER on empty team 0: fill bots, count = the preset's 5.
-    {
-        const RuleAnswer a = eval_rules(teams, 2, 0b0111, 0, false, false,
-                                        {kKnobCaster, 0, 0, 0});
-        EXPECT_EQ(0b0111, a.lineup_mask);
-        EXPECT_EQ(3 + 5 * 8, static_cast<int>(a.fills_packed % 100));
-        EXPECT_EQ(kKnobCaster, a.squads_packed % 10)
-            << "row.squad carries the ordinal";
-    }
-    // The hard-shape cap clamps the preset row's count (basketball's
-    // mechanism, cap 3 so the clamp is visible against 5 families).
-    {
-        const RuleAnswer a = eval_rules(teams, 2, 0b0111, 0, false, false,
-                                        {kKnobCaster, 0, 0, 0}, 3);
-        EXPECT_EQ(3 + 3 * 8, static_cast<int>(a.fills_packed % 100))
-            << "count clamps to the cap";
-    }
-    // BRUTES on a two-hero roster team: the occupancy fill stands, the
-    // count is what the team fields (roster + the squad beside it — no
-    // hard shape, so the full five) and row.squad still calls for the
-    // spawn.
-    {
-        std::array<std::array<int, 4>, 4> roster_teams = teams;
-        roster_teams[0][1] = 2;
-        const RuleAnswer a = eval_rules(roster_teams, 2, 0b0111, 0, false,
-                                        false, {kKnobBrutes, 0, 0, 0});
-        EXPECT_EQ(1 + 7 * 8, static_cast<int>(a.fills_packed % 100))
-            << "company fill, roster + squad count";
-        EXPECT_EQ(kKnobBrutes, a.squads_packed % 10);
-    }
-    // Under FAIR troops the matched headcount truncates the preset row.
-    {
-        std::array<std::array<int, 4>, 4> fair_teams = teams;
-        fair_teams[0][1] = 2;
-        const RuleAnswer a = eval_rules(fair_teams, 3, 0b0111, 0, false,
-                                        false, {0, kKnobBalanc, 0, 0});
+        std::array<std::array<int, 4>, 4> manned = teams;
+        manned[0][1] = 2;
+        const RuleAnswer a = eval_rules(manned, 0b0111, 0, false, {}, 0, {},
+                                        {200, 0, 0, 0});
         ASSERT_TRUE(a.matched);
         EXPECT_EQ(2, a.matched_size);
         EXPECT_EQ(4 + 2 * 8, static_cast<int>((a.fills_packed / 100) % 100))
-            << "matched fill, preset truncated to the headcount";
+            << "matched fill, truncated to the headcount";
     }
-    // NONE on a team whose only content is generators (KEEP arm): the
-    // squad is suppressed but the foundries keep the team on — the row
-    // reads generators and the mask stands. OFF on the same team takes
-    // the foundries with it: the team leaves the mask outright.
+    // Troops beside the box: on = a troops row and NO squad; off = the
+    // troops leave and the squad row takes over.
+    {
+        std::array<std::array<int, 4>, 4> npc_teams = teams;
+        npc_teams[1][2] = 4;
+        const RuleAnswer on = eval_rules(npc_teams, 0b0111, 0, false);
+        EXPECT_EQ(2 + 4 * 8, static_cast<int>((on.fills_packed / 100) % 100))
+            << "fielded map units are the fill";
+        EXPECT_EQ(0, (on.squads_packed / 10) % 10) << "no squad beside them";
+        const RuleAnswer off = eval_rules(npc_teams, 0b0111, 0, false, {}, 0,
+                                          {0, kBoxOff, 0, 0});
+        EXPECT_EQ(3 + 5 * 8,
+                  static_cast<int>((off.fills_packed / 100) % 100))
+            << "the box off trades the troops for the squad";
+    }
+    // Allies: the weaker company's row counts roster + the solved squad;
+    // the stronger one counts the roster alone.
+    {
+        std::array<std::array<int, 4>, 4> two = teams;
+        two[0][1] = 2;
+        two[2][1] = 3;
+        const RuleAnswer a = eval_rules(two, 0b0111, 0, false, {}, 0, {},
+                                        {200, 0, 900, 0});
+        EXPECT_EQ(2, a.matched_size);
+        EXPECT_EQ(1 + 4 * 8, static_cast<int>(a.fills_packed % 100))
+            << "company 2 + 2 allies (headcount rule)";
+        EXPECT_EQ(expected_fact(kKnobFair), a.squads_packed % 10);
+        EXPECT_EQ(1 + 3 * 8,
+                  static_cast<int>((a.fills_packed / 10000) % 100))
+            << "the stronger company rides alone";
+        EXPECT_EQ(0, (a.squads_packed / 100) % 10);
+    }
+    // The hard-shape cap clamps the squad rows (basketball's mechanism,
+    // cap 3 so the clamp is visible against the squad of 5).
+    {
+        const RuleAnswer a = eval_rules(teams, 0b0111, 0, false, {}, 3);
+        EXPECT_EQ(3 + 3 * 8, static_cast<int>(a.fills_packed % 100))
+            << "count clamps to the cap";
+    }
+    // Onslaught's no_bots outranks every knob (D17): no squad row forms,
+    // and a troops team whose box is off leaves the mask outright.
     {
         std::array<std::array<int, 4>, 4> gen_teams = teams;
-        gen_teams[1][3] = 2;
-        const RuleAnswer a = eval_rules(gen_teams, 0, 0b0111, 3, false,
-                                        false, {0, kKnobNone, 0, 0});
-        EXPECT_EQ(a.mask, a.lineup_mask)
-            << "generators keep the NONE team on";
-        EXPECT_EQ(5 + 2 * 8, static_cast<int>((a.fills_packed / 100) % 100))
-            << "the row degrades to its generators, not to empty";
-        const RuleAnswer off = eval_rules(gen_teams, 0, 0b0111, 3, false,
-                                          false, {0, kKnobOff, 0, 0});
-        EXPECT_EQ(0b0101, off.mask) << "OFF drops a generators-only team";
-        EXPECT_EQ(0, (off.fills_packed / 100) % 100);
-    }
-    // Onslaught's no_bots outranks every knob (D17): a preset row never
-    // forms and NONE has nothing to remove.
-    {
-        const RuleAnswer a = eval_rules(teams, 2, 0b0111, 0, true, true,
-                                        {kKnobBalanc, kKnobNone, 0, 0});
-        EXPECT_EQ(a.mask, a.lineup_mask) << "no narrowing under no_bots";
+        for (int t = 0; t < 3; ++t)
+            gen_teams[static_cast<std::size_t>(t)][3] = 1;
+        gen_teams[1][2] = 1;
+        const RuleAnswer a = eval_rules(gen_teams, 0b0111, 3, true, {}, 0,
+                                        {0, kBoxOff, 0, 0});
+        EXPECT_EQ(0b0101, a.lineup_mask)
+            << "box off under no_bots drops the team";
         EXPECT_EQ(0, a.squads_packed);
+        EXPECT_EQ(5 + 1 * 8, static_cast<int>(a.fills_packed % 100))
+            << "the surviving teams keep their generators rows";
     }
 }
 
 // ===========================================================================
-// 2c. Review findings on the lineup rows (wp/review-lua): the band modes
-//     refuse through the decide fold before any mutation, a preset on an
-//     occupied team fills only the room the hard shape leaves, a lone FAIR
-//     preset never announces TEAMS MATCHED, and nothing is banked for a
-//     squad that spawned nothing.
+// 2c. The band modes (FFA/mutant): the decide fold refuses before any
+//     world write (R1), NONE keeps the deployed band, and the fill
+//     singles solve against the weakest fighter (B3's band spelling).
 // ===========================================================================
 
 namespace {
@@ -1238,19 +1325,6 @@ namespace {
 // stages the real one. Both band modes keep their fighter count in slot 8.
 constexpr int kFfaLevelA = 850;
 constexpr int kBandSlotFighterCount = 8;
-
-int count_notifications(const og::sim::SimEventLog& log,
-                        const std::string& needle)
-{
-    int count = 0;
-    for (const auto& ev : log.events())
-    {
-        if (ev.kind == og::sim::EventKind::Notification &&
-            ev.text.find(needle) != std::string::npos)
-            ++count;
-    }
-    return count;
-}
 
 int live_markers_on(GameWorld& world, int team)
 {
@@ -1267,8 +1341,7 @@ int live_markers_on(GameWorld& world, int team)
     return count;
 }
 
-// The band modes' one-fighter shape under BOTS: NONE (or OFF, which the
-// band reads the same way — mode_fighters.lua band_knob), staged the way
+// The band modes' one-fighter shape under FILL: NONE, staged the way
 // MatchStage stages it: the refusal must be decided BEFORE the world is
 // touched — the hero keeps its seat team, the markers survive, the
 // authored cast is not stripped — because the kept post-refusal world IS
@@ -1277,7 +1350,7 @@ int live_markers_on(GameWorld& world, int team)
 // StageFailed alone). The one write a refusal makes is the reason digit
 // in the shared facts slot (REFUSAL_BASE), which the staged report
 // renders as FEWER THAN 2 FIGHTERS.
-void expect_band_refuses_untouched(int level_id, int knob, const char* reason)
+void expect_band_refuses_untouched(int level_id, const char* reason)
 {
     ModesCtfWorld fx(level_id);
     for (int team = 0; team < 4; ++team)
@@ -1286,7 +1359,7 @@ void expect_band_refuses_untouched(int level_id, int knob, const char* reason)
     walker* const troop = fx.spawn_living(FAMILY_ORC, 1, 300, 300);
     ASSERT_NE(hero, nullptr);
     ASSERT_NE(troop, nullptr);
-    fx.world().ctf_requested_fill[0] = static_cast<short>(knob);
+    fx.world().ctf_requested_fill[0] = kKnobNone;
 
     stage_init(fx);
     EXPECT_FALSE(fx.world().mode.active);
@@ -1307,7 +1380,7 @@ void expect_band_refuses_untouched(int level_id, int knob, const char* reason)
 
 // The same knob with two heroes plays: NONE fields nothing and the two
 // heroes are the whole band.
-void expect_band_none_with_two_heroes_plays(int level_id, int knob)
+void expect_band_none_with_two_heroes_plays(int level_id)
 {
     ModesCtfWorld fx(level_id);
     for (int team = 0; team < 4; ++team)
@@ -1316,7 +1389,7 @@ void expect_band_none_with_two_heroes_plays(int level_id, int knob)
     walker* const b = fx.spawn_hero(FAMILY_SOLDIER, 1, 232, 200, 2);
     ASSERT_NE(a, nullptr);
     ASSERT_NE(b, nullptr);
-    fx.world().ctf_requested_fill[0] = static_cast<short>(knob);
+    fx.world().ctf_requested_fill[0] = kKnobNone;
 
     stage_init(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1329,506 +1402,108 @@ void expect_band_none_with_two_heroes_plays(int level_id, int knob)
         << "a band that plays banks no reason digit";
 }
 
+// The band fill for one wheel value: FFA 850 (target 8) with two deployed
+// heroes at the given levels; answers the filled bots' levels (they are
+// the livings without a guy record).
+std::vector<int> band_bot_levels(int fill, int hero_level_a,
+                                 int hero_level_b)
+{
+    ModesCtfWorld fx(kFfaLevelA);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1,
+                          static_cast<short>(hero_level_a));
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 1, 232, 200, 2,
+                          static_cast<short>(hero_level_b));
+    fx.world().ctf_requested_fill[0] = static_cast<short>(fill);
+    og::sim::mode_stage_init(fx.world());
+    EXPECT_TRUE(fx.world().mode.active);
+    std::vector<int> levels;
+    if (!fx.world().mode.active)
+        return levels;
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->myguy != nullptr)
+            continue;
+        if (w->stats() != nullptr)
+            levels.push_back(w->stats()->level());
+    }
+    return levels;
+}
+
 }  // namespace
 
-// L1: BOTS: NONE with a single deployed hero is a legal knob shape, so it
+// R1: FILL: NONE with a single deployed hero is a legal knob shape, so it
 // must come back as the staged refusal (mode inactive, the mode's own
 // reason, world untouched, the reason digit banked), never as an error
-// thrown from a half-applied init. OFF is the same shape in a band: it
-// cannot take the band out of a mask it does not have.
-TEST_F(StagedRules, lineup_band_none_with_one_fighter_refuses_untouched)
+// thrown from a half-applied init.
+TEST_F(StagedRules, band_none_with_one_fighter_refuses_untouched)
 {
-    for (const int knob : {kKnobNone, kKnobOff})
     {
-        SCOPED_TRACE(::testing::Message() << "knob " << knob);
-        {
-            SCOPED_TRACE("ffa");
-            expect_band_refuses_untouched(kFfaLevelA, knob,
-                                          "ffa: fewer than two fighters");
-        }
-        {
-            SCOPED_TRACE("mutant");
-            expect_band_refuses_untouched(
-                kMutantLevelA, knob, "mutant: fewer than two fighters");
-        }
+        SCOPED_TRACE("ffa");
+        expect_band_refuses_untouched(kFfaLevelA,
+                                      "ffa: fewer than two fighters");
+    }
+    {
+        SCOPED_TRACE("mutant");
+        expect_band_refuses_untouched(kMutantLevelA,
+                                      "mutant: fewer than two fighters");
     }
 }
 
-TEST_F(StagedRules, lineup_band_none_with_two_fighters_plays)
+TEST_F(StagedRules, band_none_with_two_fighters_plays)
 {
-    for (const int knob : {kKnobNone, kKnobOff})
     {
-        SCOPED_TRACE(::testing::Message() << "knob " << knob);
-        {
-            SCOPED_TRACE("ffa");
-            expect_band_none_with_two_heroes_plays(kFfaLevelA, knob);
-        }
-        {
-            SCOPED_TRACE("mutant");
-            expect_band_none_with_two_heroes_plays(kMutantLevelA, knob);
-        }
+        SCOPED_TRACE("ffa");
+        expect_band_none_with_two_heroes_plays(kFfaLevelA);
+    }
+    {
+        SCOPED_TRACE("mutant");
+        expect_band_none_with_two_heroes_plays(kMutantLevelA);
     }
 }
 
-// L2: a preset on an OCCUPIED team fills only the room the hard shape
-// leaves — basketball's five on five means three deployed humans get two
-// BALANC allies, exactly five on court, and the decision row's count is
-// the spawned count. Without a hard shape (TDM) the whole squad joins.
-TEST_F(StagedRules, lineup_preset_on_an_occupied_team_fills_the_room_left)
+// The band fill solves its singles against the weakest fighter times the
+// wheel (B3's band spelling): every filled single lands the same solved
+// level, the wheel moves it monotonically, and the reference is the
+// WEAKER of two unequal fighters.
+TEST_F(StagedRules, band_fill_singles_solve_against_the_weakest_fighter)
 {
+    std::vector<int> weak = band_bot_levels(kKnobWeak, 5, 5);
+    std::vector<int> fair = band_bot_levels(kKnobFair, 5, 5);
+    std::vector<int> brutal = band_bot_levels(kKnobBrutal, 5, 5);
+    ASSERT_EQ(6u, fair.size()) << "target 8 - 2 deployed = 6 singles";
+    ASSERT_EQ(6u, weak.size());
+    ASSERT_EQ(6u, brutal.size());
+    // Every single solves the SAME target on its own measured base, so
+    // levels differ per family but never per slot: sorted, the wheel
+    // moves each family's solve monotonically.
+    std::sort(weak.begin(), weak.end());
+    std::sort(fair.begin(), fair.end());
+    std::sort(brutal.begin(), brutal.end());
+    for (std::size_t i = 0; i < 6u; ++i)
     {
-        ModesCtfWorld fx(kBballLevelB);
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(1, 192, 96);
-        int guy_id = 1;
-        for (int k = 0; k < 3; ++k)
-            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
-                          700, guy_id++);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_fill[0] = kKnobBalanc;  // BALANC
-
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(5, live_livings_on(fx.world(), 0))
-            << "three humans + the room left = five on court";
-        EXPECT_EQ(2, marked_bots_on(fx.world(), 0));
-        EXPECT_EQ(1, marked_bots_of_family_on(fx.world(), 0, FAMILY_SOLDIER))
-            << "the preset's first two families";
-        EXPECT_EQ(1, marked_bots_of_family_on(fx.world(), 0, FAMILY_ARCHER));
-        EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
-            << "the empty team keeps its full squad";
-        EXPECT_EQ(expected_fact(kKnobBalanc, 0),
-                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
-            << "two allies spawned: the preset is an applied fact";
+        EXPECT_LE(weak[i], fair[i]) << "slot " << i;
+        EXPECT_LE(fair[i], brutal[i]) << "slot " << i;
     }
-    {
-        ModesCtfWorld fx(kTdmLevelA);
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(1, 528, 96);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 232, 200, 2);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 264, 200, 3);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_fill[0] = kKnobBalanc;  // BALANC
-
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(8, live_livings_on(fx.world(), 0))
-            << "no hard shape: roster + the full squad";
-        EXPECT_EQ(5, marked_bots_on(fx.world(), 0));
-    }
-    // The rule rows: the decision's count IS the spawned count (roster +
-    // the room left), and row.squad carries the ordinal only while a
-    // squad will actually spawn.
-    std::array<std::array<int, 4>, 4> teams{};
-    teams[0][0] = 1;
-    teams[1][0] = 1;
-    teams[0][1] = 3;
-    {
-        const RuleAnswer a = eval_rules(teams, 0, 0b0011, 0, false, false,
-                                        {kKnobBalanc, 0, 0, 0}, 5);
-        EXPECT_EQ(1 + 5 * 8, static_cast<int>(a.fills_packed % 100))
-            << "company fill, count = 3 humans + 2 allies";
-        EXPECT_EQ(kKnobBalanc, a.squads_packed % 10);
-    }
-    {
-        const RuleAnswer a = eval_rules(teams, 0, 0b0011, 0, false, false,
-                                        {kKnobBalanc, 0, 0, 0});
-        EXPECT_EQ(1 + 8 * 8, static_cast<int>(a.fills_packed % 100))
-            << "no cap: count = 3 humans + the full squad of 5";
-    }
-    {
-        std::array<std::array<int, 4>, 4> full = teams;
-        full[0][1] = 5;
-        const RuleAnswer a = eval_rules(full, 0, 0b0011, 0, false, false,
-                                        {kKnobBalanc, 0, 0, 0}, 5);
-        EXPECT_EQ(1 + 5 * 8, static_cast<int>(a.fills_packed % 100))
-            << "a full court leaves no room: count = the roster alone";
-        EXPECT_EQ(0, a.squads_packed % 10)
-            << "no room, no squad row — nothing will spawn";
-    }
-}
-
-// L4: a preset that spawned nothing (a full court under basketball's
-// hard shape) banks no fact — the pane must never name a squad that is
-// not on the floor.
-TEST_F(StagedRules, lineup_preset_that_spawns_nothing_banks_no_fact)
-{
-    ModesCtfWorld fx(kBballLevelB);
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 192, 96);
-    int guy_id = 1;
-    for (int k = 0; k < 5; ++k)
-        fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
-                      700, guy_id++);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_fill[0] = kKnobBalanc;  // BALANC
-    fx.world().ctf_requested_map_units[0] = 4;
-
-    stage_init(fx);
-    ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(5, live_livings_on(fx.world(), 0)) << "the court is full";
-    EXPECT_EQ(0, marked_bots_on(fx.world(), 0));
-    EXPECT_EQ(0, lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
-        << "0 spawned = no fact, neither the ordinal nor the level";
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 1));
-}
-
-// L3: the TEAMS MATCHED announce belongs to the match-wide solver
-// (TROOPS: FAIR). A FAIR preset on one team solves a LOCAL allies target
-// and must neither announce nor latch the shared digit; with the global
-// solver running the announce fires exactly once as before.
-TEST_F(StagedRules, lineup_fair_preset_alone_never_announces_teams_matched)
-{
-    {
-        ModesCtfWorld fx(kSoccerLevelB);
-        for (int team = 0; team < 3; ++team)
-            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-        int guy_id = 1;
-        for (int k = 0; k < 2; ++k)
-            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
-                          700, guy_id++);
-        for (int k = 0; k < 5; ++k)
-            fx.spawn_leveled_hero(FAMILY_SOLDIER, 2,
-                                  static_cast<short>(96 + 32 * k), 760,
-                                  guy_id++, 3);
-        fx.world().ctf_requested_strip_scenario_troops = 0;  // ALL, not FAIR
-        fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_fill[0] = kKnobFair;  // FAIR preset
-
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(5, marked_bots_on(fx.world(), 0)) << "the allies spawn";
-        EXPECT_NE(0, fx.var(kSlotMatchedPlan) % 100) << "and are solved";
-        EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"))
-            << "a local allies solve is not the teams being matched";
-        EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10)
-            << "the announce latch stays clear";
-        EXPECT_EQ(expected_fact(kKnobFair, 0),
-                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 0))
-            << "the applied FAIR fact still banks above the latch";
-    }
-    {
-        ModesCtfWorld fx(kSoccerLevelB);
-        for (int team = 0; team < 3; ++team)
-            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 700, 2);
-        fx.world().ctf_requested_strip_scenario_troops =
-            static_cast<short>(og::sim::kTroopsMatched);
-        fx.world().ctf_requested_team_count = 0;
-
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"))
-            << "the global solver ran for two teams: one announce";
-        // Two level-1 soldiers price below B(1) of a two-member squad, so
-        // the solve clamps: the LIMIT variant latches 2, the plain one 1 —
-        // either way the digit is latched exactly once.
-        EXPECT_NE(0, fx.var(kSlotMatchedAnnounced) % 10);
-    }
-}
-
-// ===========================================================================
-// 2d. The 2026-08-26 amendment rows (docs/lineup-design.md A1-A6): OFF in
-//     the staged world, the LV offset on every level source with its
-//     clamps, and the TROOPS x BOTS matrix (A4).
-// ===========================================================================
-
-// A2: OFF on an authored troops team drops the team exactly as TEAMS: n
-// did — its troops are not fielded (stripped with the inactive teams),
-// the banked mask and count exclude it, and nothing is banked for it.
-TEST_F(StagedRules, lineup_off_drops_an_authored_team_and_its_troops)
-{
-    ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
-    for (int team = 0; team < 3; ++team)
-        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-    for (int k = 0; k < 4; ++k)
-        fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k), 300);
-    fx.world().ctf_requested_strip_scenario_troops = 0;  // ALL: troops stand
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_fill[1] = kKnobOff;
-
-    stage_init(fx);
-    ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(0b0101, fx.var(kSoccerSlots.mask))
-        << "the OFF team leaves the banked mask";
-    EXPECT_EQ(2, fx.var(kSoccerSlots.count));
-    EXPECT_EQ(0, live_livings_on(fx.world(), 1))
-        << "the authored troops of a dropped team are not fielded";
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 0));
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 2));
-    EXPECT_EQ(0, lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1));
-}
-
-// A2: OFF on an occupied team is ignored by the sim — the roster keeps
-// the team on (a seat's team always carries a deployed fighter, M4, so
-// the LINEUP page refuses the value before it gets here; a lobby that
-// still sends it changes nothing but the squad, which OFF forbids like
-// NONE).
-TEST_F(StagedRules, lineup_off_on_an_occupied_team_is_ignored_by_the_sim)
-{
-    ModesCtfWorld fx(kSoccerLevelB);
-    for (int team = 0; team < 3; ++team)
-        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-    fx.spawn_hero(FAMILY_SOLDIER, 1, 200, 700, 1);
-    fx.spawn_hero(FAMILY_SOLDIER, 1, 232, 700, 2);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_fill[1] = kKnobOff;
-
-    stage_init(fx);
-    ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(0b0111, fx.var(kSoccerSlots.mask))
-        << "a roster keeps an OFF team on";
-    EXPECT_EQ(2, live_livings_on(fx.world(), 1));
-    EXPECT_EQ(0, marked_bots_on(fx.world(), 1)) << "and OFF fields no squad";
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 0));
-    EXPECT_EQ(5, marked_bots_on(fx.world(), 2));
-}
-
-// A2: OFF narrowing a two-team map below two refuses with the mode's own
-// sentence (reason digit 0 — the teams sentence), the world kept.
-TEST_F(StagedRules, lineup_off_below_two_teams_refuses)
-{
-    ModesCtfWorld fx(kSoccerLevelA);
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 528, 96);
-    fx.world().ctf_requested_strip_scenario_troops = 0;
-    fx.world().ctf_requested_team_count = 0;
-    fx.world().ctf_requested_fill[1] = kKnobOff;
-
-    stage_init(fx);
-    EXPECT_FALSE(fx.world().mode.active);
-    EXPECT_TRUE(fx.world().mode.init_attempted);
-    EXPECT_TRUE(has_script_error(fx.world(),
-                                 "soccer: fewer than two anchor teams"));
-    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
-}
-
-// A2: a team the map leaves inactive (the manifest's teams = 3 over four
-// authored generator teams, under TROOPS: ALL) turns on by putting
-// something on it — here a deployed fighter on onslaught 9402 (the
-// preset arm is the harness row in the sweep: onslaught fields no
-// squads, D17). And the honest limit of the rule: a preset squad on the
-// third team of soccer 9301's two-goal pitch turns the team on, and the
-// map itself then refuses it — "no goal rect for team 2" — because
-// LINEUP can put a team on the pitch but cannot build it a goal.
-TEST_F(StagedRules, lineup_something_on_an_inactive_team_turns_it_on)
-{
-    {
-        ModesCtfWorld fx(kOnsLevelB);  // teams = 3
-        for (int team = 0; team < 4; ++team)
-        {
-            fx.spawn_generator(FAMILY_TENT, team,
-                               static_cast<short>(96 + 96 * team), 320);
-            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 512);
-        }
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(0b0111, fx.var(kOnsSlots.mask))
-            << "the manifest's own value: three of the four foundries";
-    }
-    {
-        ModesCtfWorld fx(kOnsLevelB);
-        for (int team = 0; team < 4; ++team)
-        {
-            fx.spawn_generator(FAMILY_TENT, team,
-                               static_cast<short>(96 + 96 * team), 320);
-            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 512);
-        }
-        fx.spawn_hero(FAMILY_SOLDIER, 3, 200, 700, 1);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(0b1111, fx.var(kOnsSlots.mask))
-            << "a deployed fighter turns the fourth team on";
-        EXPECT_EQ(4, fx.var(kOnsSlots.count));
-        EXPECT_EQ(1, live_livings_on(fx.world(), 3));
-    }
-    {
-        ModesCtfWorld fx(kSoccerLevelA);  // teams = 2, two goal rects
-        for (int team = 0; team < 3; ++team)
-            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_fill[2] = kKnobBalanc;
-        stage_init(fx);
-        EXPECT_FALSE(fx.world().mode.active);
-        EXPECT_TRUE(fx.world().mode.init_attempted);
-        EXPECT_TRUE(has_script_error(fx.world(),
-                                     "soccer: no goal rect for team 2"))
-            << "the preset turned the team on; the two-goal pitch refuses";
-    }
-}
-
-// A6: the offset on every level source. +2 on the legacy formula (L2 at
-// the fixture's 100 percent) is L4; -5 clamps at L1; +2 on a FAIR solve
-// is the solved level plus two, banked as the plan; the resolver probe
-// pins the clamp at L9 and the upgrade rule directly.
-TEST_F(StagedRules, lineup_level_offset_arms_and_clamps)
-{
-    // +2 on the legacy base, -5 clamped at 1, both on one map.
-    {
-        ModesCtfWorld fx(kSoccerLevelB);
-        for (int team = 0; team < 3; ++team)
-            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_map_units[1] = 2;
-        fx.world().ctf_requested_map_units[2] = -5;
-
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        for (const int level : bot_levels_on(fx.world(), 0))
-            EXPECT_EQ(2, level) << "AUTO: the formula";
-        for (const int level : bot_levels_on(fx.world(), 1))
-            EXPECT_EQ(4, level) << "+2 on the formula";
-        for (const int level : bot_levels_on(fx.world(), 2))
-            EXPECT_EQ(1, level) << "-5 clamps at L1";
-        EXPECT_EQ(0, fx.var(kSlotMatchedPlan) % 100) << "AUTO stores no plan";
-        EXPECT_EQ(40, (fx.var(kSlotMatchedPlan) / 100) % 100);
-        EXPECT_EQ(10, (fx.var(kSlotMatchedPlan) / 10000) % 100);
-        EXPECT_EQ(expected_fact(0, 2),
-                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1));
-        EXPECT_EQ(expected_fact(0, -5),
-                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 2));
-    }
-    // +2 on a FAIR solve (TROOPS: FAIR, one hero -> a one-soldier matched
-    // squad): the plan level is the solved level plus two, so the twin
-    // fixture at offset 0 is the oracle.
-    int solved = 0;
-    {
-        ModesCtfWorld fx(kTdmLevelA);
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(1, 528, 96);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-        fx.world().ctf_requested_strip_scenario_troops =
-            static_cast<short>(og::sim::kTroopsMatched);
-        fx.world().ctf_requested_team_count = 0;
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        solved = ((fx.var(kSlotMatchedPlan) / 100) % 100) / 10;
-        ASSERT_GT(solved, 0) << "the global solve stores team 1's plan";
-        ASSERT_LT(solved, 8) << "the fixture must leave room for +2";
-    }
-    {
-        ModesCtfWorld fx(kTdmLevelA);
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(1, 528, 96);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-        fx.world().ctf_requested_strip_scenario_troops =
-            static_cast<short>(og::sim::kTroopsMatched);
-        fx.world().ctf_requested_team_count = 0;
-        fx.world().ctf_requested_map_units[1] = 2;
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(solved + 2, ((fx.var(kSlotMatchedPlan) / 100) % 100) / 10)
-            << "the plan banks the RESOLVED level: solve + 2";
-        const std::vector<int> levels = bot_levels_on(fx.world(), 1);
-        ASSERT_EQ(1u, levels.size());
-        EXPECT_EQ(solved + 2, levels[0]);
-        EXPECT_EQ(expected_fact(0, 2),
-                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1))
-            << "the offset is the banked fact of a matched squad too";
-    }
-    // The resolver itself, over the harness: (L, k) through each team's
-    // offset, packed L * 10 + k per team at base 100.
-    {
-        std::array<std::array<int, 4>, 4> teams{};
-        const RuleAnswer a = eval_rules(teams, 2, 0b0011, 0, false, false,
-                                        {}, 0, {0, 3, -3, -5}, 8, 2);
-        EXPECT_EQ(82, a.plans_packed % 100) << "offset 0: identity";
-        EXPECT_EQ(90, (a.plans_packed / 100) % 100)
-            << "+3 clamps at L9, and L9 admits no upgrades";
-        EXPECT_EQ(52, (a.plans_packed / 10000) % 100)
-            << "-3: L5 with the upgrades intact";
-        EXPECT_EQ(32, (a.plans_packed / 1000000) % 100)
-            << "-5: L3, upgrades intact (L4 is still a distinct level)";
-        const RuleAnswer low = eval_rules(teams, 2, 0b0011, 0, false, false,
-                                          {}, 0, {-3, 0, 0, 0}, 1, 2);
-        EXPECT_EQ(10, low.plans_packed % 100)
-            << "-3 on L1 clamps at L1 and the upgrades clamp down onto it: "
-               "k = 0";
-    }
-}
-
-// A4: TROOPS sets what BOTS: AUTO resolves to on an empty team, and the
-// team's own knob overrides it — three staged rows on one three-team
-// map with a two-hero roster on team 0.
-TEST_F(StagedRules, lineup_troops_sets_what_auto_resolves_to_and_bots_overrides)
-{
-    auto build = [](ModesCtfWorld& fx) {
-        for (int team = 0; team < 3; ++team)
-            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
-        fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 700, 2);
-        fx.world().ctf_requested_team_count = 0;
-    };
-    // TROOPS: FAIR + BOTS: AUTO everywhere = matched squads, sized to the
-    // roster headcount, solved against the banked target.
-    {
-        ModesCtfWorld fx(kSoccerLevelB);
-        build(fx);
-        fx.world().ctf_requested_strip_scenario_troops =
-            static_cast<short>(og::sim::kTroopsMatched);
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_GT(fx.var(kSlotMatchedTarget), 0);
-        EXPECT_EQ(2, marked_bots_on(fx.world(), 1)) << "matched: headcount 2";
-        EXPECT_EQ(2, marked_bots_on(fx.world(), 2));
-        EXPECT_NE(0, (fx.var(kSlotMatchedPlan) / 100) % 100);
-        EXPECT_NE(0, (fx.var(kSlotMatchedPlan) / 10000) % 100);
-    }
-    // TROOPS: FAIR + BOTS: NONE on team 1 = none there; team 2 still
-    // matched.
-    {
-        ModesCtfWorld fx(kSoccerLevelB);
-        build(fx);
-        fx.world().ctf_requested_strip_scenario_troops =
-            static_cast<short>(og::sim::kTroopsMatched);
-        fx.world().ctf_requested_fill[1] = kKnobNone;
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(0b0101, fx.var(kSoccerSlots.mask));
-        EXPECT_EQ(0, live_livings_on(fx.world(), 1)) << "NONE overrides FAIR";
-        EXPECT_EQ(2, marked_bots_on(fx.world(), 2));
-        EXPECT_NE(0, (fx.var(kSlotMatchedPlan) / 10000) % 100);
-    }
-    // TROOPS: ALL + BOTS: FAIR on team 1 = matched on that team only:
-    // team 1 solves locally (a plan, five allies), team 2 keeps the
-    // legacy formula squad (no plan, L2), and no global target is banked.
-    {
-        ModesCtfWorld fx(kSoccerLevelB);
-        build(fx);
-        fx.world().ctf_requested_strip_scenario_troops = 0;
-        fx.world().ctf_requested_fill[1] = kKnobFair;
-        stage_init(fx);
-        ASSERT_TRUE(fx.world().mode.active);
-        EXPECT_EQ(0, fx.var(kSlotMatchedTarget)) << "no match-wide solve";
-        EXPECT_EQ(5, marked_bots_on(fx.world(), 1));
-        EXPECT_NE(0, (fx.var(kSlotMatchedPlan) / 100) % 100)
-            << "FAIR on team 1 solves team 1";
-        EXPECT_EQ(0, (fx.var(kSlotMatchedPlan) / 10000) % 100)
-            << "team 2 is the legacy squad";
-        EXPECT_EQ(5, marked_bots_on(fx.world(), 2));
-        for (const int level : bot_levels_on(fx.world(), 2))
-            EXPECT_EQ(2, level) << "ALL + AUTO = the formula";
-        EXPECT_EQ(expected_fact(kKnobFair, 0),
-                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1));
-    }
+    EXPECT_LT(weak[0] + weak[5], brutal[0] + brutal[5])
+        << "the multipliers must separate the ends";
+    // Unequal fighters: the weaker one is the reference — the L5/L9 band
+    // solves exactly like the L5/L5 band.
+    std::vector<int> uneven = band_bot_levels(kKnobFair, 5, 9);
+    ASSERT_EQ(6u, uneven.size());
+    std::sort(uneven.begin(), uneven.end());
+    EXPECT_EQ(fair, uneven)
+        << "the reference is the weakest fighter, not the mean";
 }
 
 // ===========================================================================
 // 3. The apply-executes-decision matrix: the shared rules (via the harness)
 //    produce the expected values; the staged world must bank and field
-//    exactly those. 16 cases per mode, the old agreement matrix's shapes.
+//    exactly those.
 // ===========================================================================
 
 namespace {
@@ -1839,14 +1514,14 @@ struct MatrixMode
     int level_id;
     ModeSlots slots;
     int auto_default;   // manifest row.teams (0 = the CTF/TDM raw arm)
-    bool keep_generators;
     bool no_bots;
 };
 
 // The shared matrix world: the mode's authored domain on teams 0-2, one
-// guy-less npc on team 1, and `roster` heroes per team (roster teams are a
-// subset of {0, 2}, so the authored domain is 0b0111 for every mode — the
-// construction knowledge the old matrix pinned via the plan's fold).
+// guy-less npc on team 1, and `roster` L1 heroes per team (roster teams
+// are a subset of {0, 2}, so the authored domain is 0b0111 for every mode
+// — the construction knowledge the old matrix pinned via the plan's
+// fold).
 void author_matrix_world(const MatrixMode& mode, ModesCtfWorld& fx,
                          int flag_family, const std::array<int, 4>& roster)
 {
@@ -1877,23 +1552,21 @@ void author_matrix_world(const MatrixMode& mode, ModesCtfWorld& fx,
     }
 }
 
-// `off_team` is the team whose fill knob reads OFF (-1 = none): the
-// control that succeeded the lobby TEAMS count (lineup A1/A2), so the
-// matrix's count dimension became an OFF dimension.
-void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
-                     int off_team, const std::array<int, 4>& roster)
+// The matrix dimensions are the two per-team knobs: `none_team` wears
+// FILL: NONE, `box_team` has its MAP UNITS box off (-1 = neither). The
+// harness powers are placeholders shaped like the roster (100 per L1
+// soldier): the decision reads power only through comparisons, so the
+// shape is what matters, and the staged world's real f-sums compare
+// identically.
+void run_staged_case(const MatrixMode& mode, int flag_family, int none_team,
+                     int box_team, const std::array<int, 4>& roster)
 {
     SCOPED_TRACE(::testing::Message()
-                 << mode.name << " strip=" << strip << " off="
-                 << off_team << " roster=" << roster[0] << roster[1]
+                 << mode.name << " none=" << none_team << " box="
+                 << box_team << " roster=" << roster[0] << roster[1]
                  << roster[2] << roster[3]);
-    // The expected decision FIRST, from the ONE shared rule (the harness
-    // probe world lives and dies before the staged fixture world exists —
-    // the strictly-sequential twin-world discipline): the matrix world
-    // authors domain 0b0111 with the census rows below. (activation reads
-    // roster/knobs; fills reads roster/npcs/generators — the anchors
-    // column is inert to both and kept for the inputs shape.)
     std::array<std::array<int, 4>, 4> teams{};
+    std::array<int, 4> power{};
     for (int t = 0; t < 3; ++t)
     {
         teams[static_cast<std::size_t>(t)][0] = 1;
@@ -1902,30 +1575,40 @@ void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
     }
     teams[1][2] = 1;  // the guy-less npc on team 1
     for (int t = 0; t < 4; ++t)
+    {
         teams[static_cast<std::size_t>(t)][1] =
             roster[static_cast<std::size_t>(t)];
+        power[static_cast<std::size_t>(t)] =
+            roster[static_cast<std::size_t>(t)] * 100;
+    }
     std::array<int, 4> fill{};
-    if (off_team >= 0)
-        fill[static_cast<std::size_t>(off_team)] = kKnobOff;
+    if (none_team >= 0)
+        fill[static_cast<std::size_t>(none_team)] = kKnobNone;
+    std::array<int, 4> map_units{};
+    if (box_team >= 0)
+        map_units[static_cast<std::size_t>(box_team)] = kBoxOff;
 
     const RuleAnswer expected =
-        eval_rules(teams, strip, 0b0111, mode.auto_default,
-                   mode.keep_generators, mode.no_bots, fill);
+        eval_rules(teams, 0b0111, mode.auto_default, mode.no_bots, fill, 0,
+                   map_units, power);
     ASSERT_GE(expected.mask, 0);
     ASSERT_GE(expected.fills_packed, 0);
-    const int expected_mask = expected.mask;
-    const bool expected_starts = expected.starts;
+    const int expected_mask = expected.lineup_mask;
+    const bool expected_starts =
+        expected.starts &&
+        std::popcount(static_cast<unsigned>(expected.lineup_mask)) >= 2;
     const bool expected_matched = expected.matched;
     const int expected_size = expected.matched_size;
     const std::int64_t fills_packed = expected.fills_packed;
 
     ModesCtfWorld fx(mode.level_id);
-    fx.world().ctf_requested_strip_scenario_troops =
-        static_cast<short>(strip);
-    fx.world().ctf_requested_team_count = 0;
-    if (off_team >= 0)
-        fx.world().ctf_requested_fill[static_cast<std::size_t>(
-            off_team)] = static_cast<short>(kKnobOff);
+    if (none_team >= 0)
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(none_team)] =
+            static_cast<short>(kKnobNone);
+    if (box_team >= 0)
+        fx.world()
+            .ctf_requested_map_units[static_cast<std::size_t>(box_team)] =
+            static_cast<short>(kBoxOff);
     author_matrix_world(mode, fx, flag_family, roster);
     stage_init(fx);
     if (!expected_starts)
@@ -1936,7 +1619,7 @@ void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
     }
     ASSERT_TRUE(fx.world().mode.active);
     EXPECT_EQ(expected_mask, fx.var(mode.slots.mask))
-        << "the apply must bank the rule's mask";
+        << "the apply must bank the rule's narrowed mask";
     if (mode.slots.count >= 0)
     {
         int bits = 0;
@@ -1970,9 +1653,10 @@ void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
         int expected_livings = 0;
         switch (fill_code)
         {
-        case 1:  // company: the roster stands; under ALL team 1's npc too
+        case 1:  // company (roster + allies); team 1's npc stands too
+                 // while its box is on
             expected_livings = fill_count;
-            if (strip == 0 && team == 1)
+            if (team == 1 && box_team != 1)
                 expected_livings += 1;
             break;
         case 2:  // troops
@@ -1987,7 +1671,12 @@ void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
         EXPECT_EQ(expected_livings, live_livings_on(fx.world(), team))
             << "team " << team << " fill code " << fill_code;
         const int expected_marks =
-            (fill_code == 3 || fill_code == 4) ? fill_count : 0;
+            (fill_code == 3 || fill_code == 4)
+                ? fill_count
+                : (fill_code == 1 ? fill_count -
+                                        roster[static_cast<std::size_t>(
+                                            team)]
+                                  : 0);
         EXPECT_EQ(expected_marks, marked_bots_on(fx.world(), team))
             << "BOT_MARK provenance, team " << team;
     }
@@ -2005,56 +1694,54 @@ void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
     }
 }
 
-// The OFF dimension in every position: none, on the roster team (ignored
-// — the roster keeps it on), on the npc team (its troops leave with it)
-// and on the empty backfill team; the last row puts OFF on the second
-// roster team of the two-roster shape.
+// The knob dimensions in every load-bearing position: no knob, NONE on
+// the npc team and on the backfill team, the box off on the npc team and
+// the backfill team, and the two-roster shape (unequal companies — the
+// allies arm) with and without the knobs.
 void run_staged_matrix(const MatrixMode& mode, int flag_family)
 {
     const std::array<int, 4> none{0, 0, 0, 0};
     const std::array<int, 4> solo{2, 0, 0, 0};
     const std::array<int, 4> two{2, 0, 1, 0};
-    for (int strip : {0, 2, 3})
-    {
-        for (int off : {-1, 0, 1, 2})
-            run_staged_case(mode, flag_family, strip, off, solo);
-    }
-    run_staged_case(mode, flag_family, 2, -1, none);
-    run_staged_case(mode, flag_family, 3, -1, none);
-    run_staged_case(mode, flag_family, 3, -1, two);
-    run_staged_case(mode, flag_family, 3, 2, two);
+    for (int none_team : {-1, 1, 2})
+        run_staged_case(mode, flag_family, none_team, -1, solo);
+    for (int box_team : {1, 2})
+        run_staged_case(mode, flag_family, -1, box_team, solo);
+    run_staged_case(mode, flag_family, -1, -1, none);
+    run_staged_case(mode, flag_family, -1, -1, two);
+    run_staged_case(mode, flag_family, 1, 1, two);
+    run_staged_case(mode, flag_family, 2, -1, two);
 }
 
 }  // namespace
 
 TEST_F(StagedRules, staged_world_matrix_soccer)
 {
-    run_staged_matrix({"soccer", kSoccerLevelB, kSoccerSlots, 4, false, false},
+    run_staged_matrix({"soccer", kSoccerLevelB, kSoccerSlots, 4, false},
                       flag_family_);
 }
 
 TEST_F(StagedRules, staged_world_matrix_basketball)
 {
-    run_staged_matrix({"basketball", kBballLevelB, kBballSlots, 4, false,
-                       false},
+    run_staged_matrix({"basketball", kBballLevelB, kBballSlots, 4, false},
                       flag_family_);
 }
 
 TEST_F(StagedRules, staged_world_matrix_ctf)
 {
-    run_staged_matrix({"ctf", kCtfLevelA, kCtfSlots, 0, false, false},
+    run_staged_matrix({"ctf", kCtfLevelA, kCtfSlots, 0, false},
                       flag_family_);
 }
 
 TEST_F(StagedRules, staged_world_matrix_tdm)
 {
-    run_staged_matrix({"tdm", kTdmLevelA, kTdmSlots, 0, false, false},
+    run_staged_matrix({"tdm", kTdmLevelA, kTdmSlots, 0, false},
                       flag_family_);
 }
 
 TEST_F(StagedRules, staged_world_matrix_onslaught)
 {
-    run_staged_matrix({"onslaught", kOnsLevelB, kOnsSlots, 3, true, true},
+    run_staged_matrix({"onslaught", kOnsLevelB, kOnsSlots, 3, true},
                       flag_family_);
 }
 
