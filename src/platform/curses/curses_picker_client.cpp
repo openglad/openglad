@@ -1033,6 +1033,159 @@ void campaign_camp_flow(Menu& menu, SaveData& save,
     og::ui::run_terminal_campaign_camp(save, io);
 }
 
+// --- LINEUP, curses projection (docs/lineup-design.md §8) ----------------
+//
+// Same content as the text client, byte for byte: the shared model composes
+// the four bands and the item labels, and this file only decides that a
+// curses list is the surface. The bands ride as NON-selectable rows above
+// the items, which is what a Menu with dynamic rows buys over a prompt —
+// the census is always on screen while the cursor moves.
+
+// §2.2 fighter list: this machine's whole company, Enter cycles the team,
+// 'b' toggles deploy. Both writes go through the ONE roster setter each
+// owns (cycle_guy_team / the deployed flag) and autosave on mutation.
+void lineup_fighter_list(Menu& menu, SaveData& save)
+{
+    for (;;) {
+        std::vector<ListEntry> entries;
+        std::vector<int> slots;  // entry index -> roster slot
+        for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
+            const auto& member = save.team_list[static_cast<std::size_t>(slot)];
+            if (member == nullptr)
+                continue;
+            entries.push_back(ListEntry{
+                og::ui::format_terminal_lineup_fighter_row(slot, *member),
+                true});
+            slots.push_back(slot);
+        }
+        if (entries.empty()) {
+            menu.show_text("Fighters", {"(no characters)"});
+            return;
+        }
+
+        char32_t pressed = 0;
+        const int index = menu.choose(
+            "Fighters", entries,
+            "Enter team | b bench | Esc back", 0, U"bB", &pressed);
+        if (index < 0)
+            return;
+        const int slot = slots[static_cast<std::size_t>(index)];
+        if (pressed == U'b' || pressed == U'B') {
+            guy& member = *save.team_list[static_cast<std::size_t>(slot)];
+            member.deployed = !member.deployed;
+            autosave_company_after_mutation(save);  // §3.8 deploy tail
+            continue;
+        }
+        if (!og::ui::lineup_fighter_team_editable(save, slot,
+                                                  /*zone_can_team=*/true,
+                                                  /*assign_mode=*/false)) {
+            menu.show_text("Fighters", {"That fighter cannot be moved here."});
+            continue;
+        }
+        if (og::ui::cycle_guy_team(save, slot, 1) >= 0)
+            autosave_company_after_mutation(save);  // §3.8 team cycle
+    }
+}
+
+// §5 SPLIT: plan over this machine's seated teams, apply, report.
+void lineup_apply_split(Menu& menu, SaveData& save, og::ui::LineupSplit mode)
+{
+    const std::vector<short> seat_teams = og::ui::derive_local_seat_teams(save);
+    if (seat_teams.empty()) {
+        menu.show_text("Lineup", {"No seats: deploy a character first."});
+        return;
+    }
+    const og::ui::LineupSplitPlan plan = og::ui::split_company(
+        save, seat_teams, mode, og::ui::lineup_power_for_guy,
+        [&save](int slot) {
+            return og::ui::lineup_fighter_team_editable(
+                save, slot, /*zone_can_team=*/true, /*assign_mode=*/false);
+        });
+    const int moved = og::ui::apply_split(save, plan.moves);
+    std::vector<std::string> report{
+        std::format("Moved {} fighter{}.", moved, moved == 1 ? "" : "s")};
+    if (plan.locked > 0) {
+        report.push_back(std::format("{} fighter{} locked and stayed put.",
+                                     plan.locked,
+                                     plan.locked == 1 ? " is" : "s are"));
+    }
+    if (moved > 0)
+        autosave_company_after_mutation(save);  // §3.8 roster tail
+    menu.show_text("Lineup", report);
+}
+
+void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
+                 const CursesPickerOptions& options)
+{
+    using Kind = og::ui::TerminalLineupItem::Kind;
+    for (;;) {
+        std::vector<std::string> presets;
+        (void)og::script::hooks::campaign_lineup_presets(presets);
+        const std::vector<og::sim::LobbyPlayer> seats =
+            og::ui::terminal_local_lineup_seats(save);
+
+        og::ui::TerminalLineupInputs inputs;
+        inputs.save = &save;
+        inputs.players = seats;
+        // The curses picker screen is local-only (its network lobby is a
+        // separate flow), so the bands census THIS save and the host gate
+        // comes from the shared label context like every other row here.
+        inputs.networked = false;
+        inputs.is_host = label_context(config, options, save).is_host;
+        inputs.preset_names = presets;
+        const og::ui::TerminalLineupModel model =
+            og::ui::build_terminal_lineup_model(inputs);
+
+        std::vector<ListEntry> entries;
+        for (const std::string& line : model.lines)
+            entries.push_back(ListEntry{line, false});
+        entries.push_back(ListEntry{"", false});
+        const int first_item = static_cast<int>(entries.size());
+        for (const og::ui::TerminalLineupItem& item : model.items)
+            entries.push_back(ListEntry{"  " + item.label, true});
+
+        const int index = menu.choose("Lineup", entries,
+                                      "Enter select | Esc back", first_item);
+        if (index < first_item)
+            return;
+        const og::ui::TerminalLineupItem& item =
+            model.items[static_cast<std::size_t>(index - first_item)];
+        const std::size_t team = static_cast<std::size_t>(item.team);
+        switch (item.kind) {
+        case Kind::BotSquad:
+            // One clamp implementation (§3.1) — the lobby's own. No
+            // settings-sync tail: the curses picker links no lobby client
+            // (its network lobby is a separate flow that seeds its own
+            // settings from this save on entry), so the save is the whole
+            // authority for these eight scalars here.
+            save.bot_squad[team] = og::sim::clamp_bot_squad(
+                og::ui::cycle_lineup_bots(save.bot_squad[team],
+                                          static_cast<int>(presets.size()), 1));
+            autosave_company_after_mutation(save);  // §3.8 settings tail
+            break;
+        case Kind::BotLevel:
+            save.bot_level[team] = og::sim::clamp_bot_level(
+                og::ui::cycle_lineup_level(save.bot_level[team], 1));
+            autosave_company_after_mutation(save);  // §3.8 settings tail
+            break;
+        case Kind::Fighters:
+            lineup_fighter_list(menu, save);
+            break;
+        case Kind::SplitEven:
+            lineup_apply_split(menu, save, og::ui::LineupSplit::Even);
+            break;
+        case Kind::SplitFair:
+            lineup_apply_split(menu, save, og::ui::LineupSplit::Fair);
+            break;
+        case Kind::Unite:
+            lineup_apply_split(menu, save, og::ui::LineupSplit::AllToFirst);
+            break;
+        case Kind::Back:
+            return;
+        }
+    }
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -1375,6 +1528,10 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         // #206: the Base Camp gameplay zone (guard + flow live in the shared
         // terminal driver).
         campaign_camp_flow(menu, save_data_, config_, options_);
+        break;
+    case PickerMenuCommand::Lineup:
+        // LINEUP §8: teams, seats, fighters and bots on one page.
+        lineup_flow(menu, save_data_, config_, options_);
         break;
     default:
         break;

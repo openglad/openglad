@@ -103,9 +103,9 @@ TEST(MenuModel, team_build_lookup)
             << retired_id << " never lived in the main menu";
     }
 
-    ASSERT_EQ(11u, def.items.size())
+    ASSERT_EQ(12u, def.items.size())
         << "team build is the core team items + the zone's Camp door + "
-           "networking + scenario + the DIFFICULTY door";
+           "networking + scenario + the DIFFICULTY door + the LINEUP door";
 
     const PickerMenuItem* difficulty =
         find_picker_menu_item(PickerMenuId::TeamBuild, "difficulty");
@@ -115,7 +115,25 @@ TEST(MenuModel, team_build_lookup)
               static_cast<int>(difficulty->command))
         << "difficulty should map to the OpenDifficultyMenu door";
     ASSERT_TRUE(&def.items[10] == difficulty)
-        << "difficulty is appended last, at 1-based position 11";
+        << "difficulty keeps 1-based position 11: LINEUP appended BELOW it";
+
+    // LINEUP (docs/lineup-design.md §8): appended after difficulty, so every
+    // ordinal above it — and both 1-based position consumers — are untouched.
+    const PickerMenuItem* lineup =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "lineup");
+    ASSERT_TRUE(lineup != nullptr) << "lineup id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::Lineup),
+              static_cast<int>(lineup->command))
+        << "lineup should map to the Lineup door command";
+    ASSERT_EQ("Lineup", std::string(lineup->label));
+    ASSERT_TRUE(&def.items[11] == lineup)
+        << "lineup is appended last, at 1-based position 12";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "lineup") == nullptr)
+        << "the lineup door belongs to team build only";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "lineup") ==
+                nullptr)
+        << "the SDL surface reaches LINEUP from SCENARIO by BUTTON, never by "
+           "a terminal menu row";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "difficulty") ==
                 nullptr)
         << "the difficulty door left the main menu";
@@ -597,12 +615,12 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
     // §2.1: load_company remains after the classic items; the #155 cloud
     // door is appended last. Main exposes both stable Help and Quit actions,
     // and lost its difficulty door to Team Build. TeamBuild grew the #206
-    // Camp door and that difficulty door, and lost the flat CTF trio to the
-    // camp's MATCH SETUP page; Scenario grew the appended troops row, the
+    // Camp door, that difficulty door and the LINEUP door (§8), and lost the
+    // flat CTF trio to the camp's MATCH SETUP page; Scenario grew the appended troops row, the
     // #207 replay-level row, and gave the missions door back; Difficulty
     // grew the appended infinite-gold row.
     ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
-    ASSERT_EQ(11u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
+    ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 

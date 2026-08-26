@@ -54,7 +54,12 @@ constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
 // place, appended so nothing above it moved. It is past the digit-jump
 // budget, like Scenario before it — the arrow keys reach it, and unlike a
 // match rule it is not something a player retunes every round.
-constexpr std::array<PickerMenuItem, 11> kTeamBuildItems = {{
+// LINEUP (docs/lineup-design.md §8) then appended after difficulty, by the
+// same rule difficulty itself followed: nothing above it moves, so the two
+// 1-based position consumers keep every ordinal they already pin and only
+// gain one. It sits past the digit-jump budget for the same reason
+// difficulty does — a match-composition page is not a per-round retune.
+constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
     {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
@@ -73,6 +78,8 @@ constexpr std::array<PickerMenuItem, 11> kTeamBuildItems = {{
     {"scenario", "Scenario", PickerMenuCommand::Scenario},
     // The door into the DIFFICULTY submenu (kDifficultyMenuItems below).
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
+    // The LINEUP door (kTeamBuildItems' growth rule above).
+    {"lineup", "Lineup", PickerMenuCommand::Lineup},
 }};
 
 // The SCENARIO submenu: everything that chooses or inspects the scenario.

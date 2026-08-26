@@ -13,10 +13,13 @@
 
 #include <openglad/interface/ui/terminal_menu_model.h>
 
+#include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <array>
 #include <format>
 #include <string>
 #include <vector>
@@ -96,6 +99,123 @@ std::string_view terminal_gate_message(const PickerMenuItem& item,
     if (gate_state(binding, context) == RowState::Visible)
         return {};
     return binding.guard_message;
+}
+
+// --- LINEUP (docs/lineup-design.md §8) ----------------------------------
+
+std::vector<og::sim::LobbyPlayer> terminal_local_lineup_seats(
+    const SaveData& save)
+{
+    // M3: locally a seat is DERIVED from the deployed characters' teams, so
+    // the terminal bands must not invent a seat the launch would not create
+    // — derive_local_seat_teams is the one derivation gameplay itself uses.
+    const std::vector<short> teams = derive_local_seat_teams(save);
+    std::vector<og::sim::LobbyPlayer> seats;
+    seats.reserve(teams.size());
+    for (std::size_t i = 0; i < teams.size(); ++i) {
+        og::sim::LobbyPlayer seat;
+        seat.player_index = static_cast<std::uint8_t>(i);
+        seat.team = static_cast<std::int16_t>(teams[i]);
+        seat.company = save.save_name;
+        seat.is_host = i == 0;
+        seats.push_back(std::move(seat));
+    }
+    return seats;
+}
+
+TerminalLineupModel build_terminal_lineup_model(
+    const TerminalLineupInputs& inputs)
+{
+    TerminalLineupModel model;
+    if (inputs.save == nullptr)
+        return model;
+
+    const std::array<LineupTeamBand, 4> bands = build_lineup_bands(
+        *inputs.save, inputs.players, inputs.local_player_indices,
+        inputs.networked, lineup_power_for_guy);
+
+    for (int team = 0; team < 4; ++team) {
+        const LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
+        const std::string bots = format_lineup_bots_label(
+            inputs.save->bot_squad[static_cast<std::size_t>(team)],
+            inputs.preset_names);
+        const std::string level = format_lineup_level_label(
+            inputs.save->bot_level[static_cast<std::size_t>(team)]);
+
+        // Header line: the colour the SDL band paints as a chip, the price,
+        // then every seat on the team (the SDL "+n" overflow is a pixel
+        // budget; a terminal line has the room to name them all).
+        std::string seats;
+        for (const std::string& seat_label : band.seat_labels) {
+            if (!seats.empty())
+                seats += "  ";
+            seats += seat_label;
+        }
+        if (seats.empty())
+            seats = "NO SEAT";
+        model.lines.push_back(std::format(
+            "TEAM {} {}  {}   {}", team + 1, og::sim::team_color_name(team),
+            format_lineup_power(band.power), seats));
+        model.lines.push_back(std::format("  [{}] [{}]  {}", bots, level,
+                                          format_lineup_census(band)));
+    }
+
+    // §2.3: the knobs are the HOST's. A joiner gets the bands and the
+    // fighter list (its own company) and nothing that would desync.
+    if (inputs.is_host) {
+        for (int team = 0; team < 4; ++team) {
+            const std::string bots = format_lineup_bots_label(
+                inputs.save->bot_squad[static_cast<std::size_t>(team)],
+                inputs.preset_names);
+            const std::string level = format_lineup_level_label(
+                inputs.save->bot_level[static_cast<std::size_t>(team)]);
+            // The row text is the shared label VERBATIM behind the team
+            // ordinal — never a second spelling of the same value.
+            model.items.push_back(TerminalLineupItem{
+                TerminalLineupItem::Kind::BotSquad, team,
+                std::format("TEAM {}  {}", team + 1, bots)});
+            model.items.push_back(TerminalLineupItem{
+                TerminalLineupItem::Kind::BotLevel, team,
+                std::format("TEAM {}  {}", team + 1, level)});
+        }
+    }
+    model.items.push_back(TerminalLineupItem{
+        TerminalLineupItem::Kind::Fighters, 0, "Fighters"});
+    model.items.push_back(TerminalLineupItem{
+        TerminalLineupItem::Kind::SplitEven, 0, "Split even"});
+    model.items.push_back(TerminalLineupItem{
+        TerminalLineupItem::Kind::SplitFair, 0, "Split fair"});
+    model.items.push_back(TerminalLineupItem{
+        TerminalLineupItem::Kind::Unite, 0, "Unite"});
+    model.items.push_back(TerminalLineupItem{
+        TerminalLineupItem::Kind::Back, 0, "Back"});
+    return model;
+}
+
+std::string format_terminal_lineup_fighter_row(int slot_index,
+                                               const guy& member)
+{
+    return std::format("{:2}. {} ({}) LV {}  {}  {}  {}", slot_index + 1,
+                       member.name, family_display_name(member.family),
+                       static_cast<int>(member.level),
+                       og::sim::team_color_name(member.teamnum),
+                       member.deployed ? "DEPLOYED" : "BENCHED",
+                       format_lineup_power(lineup_power_for_guy(member)));
+}
+
+std::vector<std::string> terminal_lineup_fighter_lines(const SaveData& save)
+{
+    std::vector<std::string> lines;
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
+        const auto& member = save.team_list[static_cast<std::size_t>(slot)];
+        if (member == nullptr)
+            continue;
+        lines.push_back("  " +
+                        format_terminal_lineup_fighter_row(slot, *member));
+    }
+    if (lines.empty())
+        lines.emplace_back("  (no characters)");
+    return lines;
 }
 
 } // namespace og::ui

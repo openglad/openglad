@@ -94,6 +94,12 @@ enum class PickerMenuCommand : std::int32_t
     // win returns the cursor home. The SDL surface offers the same arm as
     // the PROGRESS screen's per-row REPLAY button instead.
     ReplayLevel,
+    // LINEUP (docs/lineup-design.md §8): the Team Build door onto the four
+    // team bands — seats, fighters, per-team bot squads and the SPLIT
+    // actions on one page. The SDL surface reaches the same page from the
+    // SCENARIO subscreen's free grid cell instead; terminals append the row
+    // here so no 1-based position moves.
+    Lineup,
 };
 
 struct PickerMenuItem

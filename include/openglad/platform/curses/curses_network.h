@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,18 @@ public:
     virtual bool local_ready() const = 0;
     // The replicated lobby roster (empty before any state broadcast).
     virtual std::vector<og::sim::LobbyPlayer> players() const = 0;
+    // LINEUP §6: the host removes one foreign MACHINE from the lobby (every
+    // seat that machine owns goes with it). False for a joiner, for a lobby
+    // with no live link, and for this machine's own id — leaving is
+    // disconnect(), not a kick.
+    virtual bool kick_machine(og::sim::LobbyMachineId machine_id)
+    {
+        (void)machine_id;
+        return false;
+    }
+    // LINEUP §6: why the link died, when the reason is known. "KICKED BY
+    // HOST" outranks the ordinary status lines; empty on a healthy lobby.
+    virtual std::optional<std::string> connection_alert() const { return {}; }
     // --- Staged lobby (#218, C9) --------------------------------------------
     // The staged world this client's preview reads: the host's own MatchStage
     // world, or the joiner's preview mirror healed from the broadcast pair.

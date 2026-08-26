@@ -2810,3 +2810,134 @@ TEST(CursesNetworkProcess, dedicated_server_transitions_from_lobby_to_gameplay)
     EXPECT_NE(std::string::npos,
               server.output().find("headless_server_tick_interval_ms"));
 }
+
+// --- LINEUP §6: kick and disconnect from the curses lobby ---------------
+
+// The host walks the seat cursor onto the joiner's seat and presses 'k'.
+// The peer leaves the roster, and — this is the whole point of the courtesy
+// notice — the kicked client can say WHY its link died instead of showing a
+// frozen player list.
+TEST(CursesNetwork, host_kick_key_removes_the_peer_and_tells_it_why)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    bool two_players = false;
+    for (int i = 0; i < 200 && !two_players; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        two_players = status_contains(*host_lobby, "Players: 2") &&
+            status_contains(*join_lobby, "Players: 2");
+    }
+    ASSERT_TRUE(two_players) << "both peers must see the shared lobby first";
+
+    // The joiner's own 'k' is refused in words — kicks are the host's.
+    join_term.push_char(U'k');
+    for (int i = 0; i < 20; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*join_lobby, "Host controls kicks"));
+    EXPECT_TRUE(status_contains(*host_lobby, "Players: 2"))
+        << "a joiner's kick key must not remove anyone";
+
+    // The host's cursor starts on its own seat; pressing 'k' there refuses
+    // rather than asking the server to kick this very machine.
+    host_term.push_char(U'k');
+    for (int i = 0; i < 20; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "That is your own machine"));
+    EXPECT_TRUE(status_contains(*host_lobby, "Players: 2"));
+
+    // Right walks the cursor onto the foreign seat. The aim must SURVIVE
+    // the state broadcasts that keep arriving in between — otherwise the
+    // host's arrow and its key would point at two different machines.
+    host_term.push_special(KeyCode::Right);
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "Selected P2"));
+    EXPECT_TRUE(status_contains(*host_lobby, "[selected]"))
+        << "the foreign seat the cursor points at is marked";
+
+    host_term.push_char(U'k'); // 'k' kicks the pointed seat's MACHINE
+    bool kicked = false;
+    for (int i = 0; i < 400 && !kicked; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        kicked = status_contains(*host_lobby, "Players: 1") &&
+            join_lobby->connection_alert().has_value();
+    }
+    EXPECT_TRUE(kicked) << "the kick must remove the peer and reach it";
+    ASSERT_TRUE(join_lobby->connection_alert().has_value());
+    EXPECT_EQ("KICKED BY HOST", *join_lobby->connection_alert());
+    EXPECT_TRUE(status_contains(*join_lobby, "KICKED BY HOST"))
+        << "the alert outranks the roster on the status band";
+    EXPECT_FALSE(status_contains(*join_lobby, "Connecting..."))
+        << "a kicked client is not connecting to anything";
+    // 80 columns is the floor: the hint must not lose its tail now that it
+    // carries two more keys.
+    EXPECT_LE(std::string("[s] start [</>] seat [t] team [r] ready [c] ctrl "
+                          "[k] kick [d] leave [q] quit").size(),
+              80u);
+    EXPECT_TRUE(status_contains(*host_lobby, "Kicked M"))
+        << "the host names the machine it removed, in the shared row label";
+    EXPECT_FALSE(host_lobby->connection_alert().has_value())
+        << "the host's own link is healthy";
+}
+
+// DISCONNECT is a two-press key: the first press puts the question on the
+// status band, the second answers it. Any other key in between is "no".
+TEST(CursesNetwork, lobby_disconnect_key_confirms_before_leaving)
+{
+    SaveData host_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    lobby->poll(term, clock);
+
+    term.push_char(U'd');
+    lobby->poll(term, clock);
+    EXPECT_TRUE(status_contains(*lobby, "Stop hosting? press d again"));
+    EXPECT_FALSE(lobby->cancelled()) << "one press only asks";
+
+    // A different key answers "no": the arm dies and 'd' has to ask again.
+    term.push_char(U'r');
+    term.push_char(U'd');
+    lobby->poll(term, clock);
+    EXPECT_FALSE(lobby->cancelled())
+        << "a key between the two presses must disarm the confirm";
+    EXPECT_TRUE(status_contains(*lobby, "Stop hosting? press d again"));
+
+    term.push_char(U'd');
+    EXPECT_FALSE(lobby->poll(term, clock))
+        << "disconnect leaves the lobby without negotiating a start";
+    EXPECT_TRUE(lobby->cancelled());
+}

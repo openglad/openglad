@@ -922,6 +922,10 @@ private:
             // shared terminal driver).
             campaign_camp_flow();
             break;
+        case PickerMenuCommand::Lineup:
+            // LINEUP §8: teams, seats, fighters and bots on one page.
+            lineup_screen();
+            break;
         default:
             break;
         }
@@ -1106,6 +1110,199 @@ private:
                 continue;
             }
             std::printf("Unrecognized command.\n");
+        }
+    }
+
+    // --- LINEUP (docs/lineup-design.md §8) -------------------------------
+
+    // The campaign's bot-squad preset names. A campaign with no `lineup`
+    // hook registers none, and the cycler then offers AUTO/NONE only —
+    // which is exactly what the shared formatter renders for it.
+    static std::vector<std::string> lineup_preset_names()
+    {
+        std::vector<std::string> names;
+        (void)og::script::hooks::campaign_lineup_presets(names);
+        return names;
+    }
+
+    TerminalLineupInputs lineup_inputs(
+        const std::vector<og::sim::LobbyPlayer>& seats,
+        const std::vector<std::string>& presets) const
+    {
+        TerminalLineupInputs inputs;
+        inputs.save = &save_data_;
+        inputs.players = seats;
+        // The text client holds no networked lobby (configure_networking is
+        // the documented stub), so every seat on the bands is local and the
+        // fighter census reads THIS save.
+        inputs.networked = false;
+        inputs.is_host = label_context().is_host;
+        inputs.preset_names = presets;
+        return inputs;
+    }
+
+    // The §5 SPLIT tail, shared by the three action rows: plan over this
+    // machine's seated teams, apply through set_guy_team, then report what
+    // moved and what the editable predicate refused to move.
+    void lineup_apply_split(LineupSplit mode)
+    {
+        const std::vector<short> seat_teams =
+            derive_local_seat_teams(save_data_);
+        if (seat_teams.empty()) {
+            std::printf("No seats: deploy a character first.\n");
+            return;
+        }
+        const LineupSplitPlan plan = split_company(
+            save_data_, seat_teams, mode, lineup_power_for_guy,
+            [this](int slot) {
+                return lineup_fighter_team_editable(
+                    save_data_, slot, /*zone_can_team=*/true,
+                    /*assign_mode=*/false);
+            });
+        const int moved = apply_split(save_data_, plan.moves);
+        std::printf("Moved %d fighter%s.\n", moved, moved == 1 ? "" : "s");
+        if (plan.locked > 0) {
+            std::printf("%d fighter%s locked and stayed put.\n", plan.locked,
+                        plan.locked == 1 ? " is" : "s are");
+        }
+        if (moved > 0)
+            autosave_company_after_mutation();  // §3.8 roster tail
+    }
+
+    // The fighter list (§2.2): every slot of THIS machine's company with its
+    // team, deploy state and price, edited with the roster command grammar
+    // the Matchup screen already speaks ("move S N" becomes "team S N" here,
+    // beside the bench toggle the SDL row carries as a second column).
+    void lineup_fighter_list()
+    {
+        for (;;) {
+            std::printf("\n--- Fighters ---\n");
+            for (const std::string& line :
+                 terminal_lineup_fighter_lines(save_data_))
+                std::printf("%s\n", line.c_str());
+            std::printf("'team SLOT TEAM' | 'bench SLOT' | blank exits: ");
+            std::fflush(stdout);
+
+            std::string line;
+            if (!read_line(line) || line.empty())
+                return;
+
+            int slot = 0;
+            int value = 0;
+            if (std::sscanf(line.c_str(), "team %d %d", &slot, &value) == 2) {
+                if (slot < 1 || slot > MAX_TEAM_SIZE || value < 1 ||
+                    value > 4) {
+                    std::printf("Invalid slot or team.\n");
+                    continue;
+                }
+                if (!lineup_fighter_team_editable(save_data_, slot - 1,
+                                                  /*zone_can_team=*/true,
+                                                  /*assign_mode=*/false)) {
+                    std::printf("That fighter cannot be moved here.\n");
+                    continue;
+                }
+                if (!set_guy_team(save_data_, slot - 1,
+                                  static_cast<short>(value - 1))) {
+                    std::printf("Invalid slot or team.\n");
+                    continue;
+                }
+                std::printf("Moved slot %d to %s.\n", slot,
+                            og::sim::team_color_name(value - 1));
+                autosave_company_after_mutation();  // §3.8 team cycle
+                continue;
+            }
+            char extra = '\0';
+            if (std::sscanf(line.c_str(), "bench %d %c", &slot, &extra) == 1) {
+                if (slot < 1 || slot > MAX_TEAM_SIZE ||
+                    !save_data_.team_list[static_cast<std::size_t>(slot - 1)]) {
+                    std::printf("Invalid slot.\n");
+                    continue;
+                }
+                guy& member =
+                    *save_data_.team_list[static_cast<std::size_t>(slot - 1)];
+                member.deployed = !member.deployed;
+                std::printf("%s %s.\n", member.name.c_str(),
+                            member.deployed ? "deployed" : "benched");
+                autosave_company_after_mutation();  // §3.8 deploy tail
+                continue;
+            }
+            std::printf("Unrecognized command.\n");
+        }
+    }
+
+    // The LINEUP page: the four bands as context lines over a numbered item
+    // list, driven by the numeric-prompt loop the campaign camp page uses.
+    void lineup_screen()
+    {
+        for (;;) {
+            const std::vector<og::sim::LobbyPlayer> seats =
+                terminal_local_lineup_seats(save_data_);
+            const std::vector<std::string> presets = lineup_preset_names();
+            const TerminalLineupModel model =
+                build_terminal_lineup_model(lineup_inputs(seats, presets));
+
+            std::printf("\n--- Lineup ---\n");
+            for (const std::string& line : model.lines)
+                std::printf("%s\n", line.c_str());
+            std::printf("\n");
+            for (std::size_t i = 0; i < model.items.size(); ++i)
+                std::printf("  %2zu. %s\n", i + 1, model.items[i].label.c_str());
+            std::printf("Lineup [1-%zu] (blank exits): ", model.items.size());
+            std::fflush(stdout);
+
+            std::string line;
+            if (!read_line(line) || line.empty())
+                return;
+            const auto choice = parse_int_strict(line);
+            if (!choice || *choice < 1 ||
+                static_cast<std::size_t>(*choice) > model.items.size()) {
+                std::printf("Invalid selection.\n");
+                continue;
+            }
+            const TerminalLineupItem& item =
+                model.items[static_cast<std::size_t>(*choice - 1)];
+            const std::size_t team = static_cast<std::size_t>(item.team);
+            switch (item.kind) {
+            case TerminalLineupItem::Kind::BotSquad:
+                // The clamp is the lobby's own (§3.1): one implementation,
+                // so a terminal write can never land a value the host's
+                // sanitize_settings would refuse. There is no
+                // picker_lobby_sync_settings_from_save() tail here on
+                // purpose: the text client links no lobby client at all
+                // (configure_networking is the documented stub), so the
+                // save IS the whole authority for these eight scalars.
+                save_data_.bot_squad[team] = og::sim::clamp_bot_squad(
+                    cycle_lineup_bots(save_data_.bot_squad[team],
+                                      static_cast<int>(presets.size()), 1));
+                std::printf("%s\n",
+                            format_lineup_bots_label(save_data_.bot_squad[team],
+                                                     presets)
+                                .c_str());
+                autosave_company_after_mutation();  // §3.8 settings tail
+                break;
+            case TerminalLineupItem::Kind::BotLevel:
+                save_data_.bot_level[team] = og::sim::clamp_bot_level(
+                    cycle_lineup_level(save_data_.bot_level[team], 1));
+                std::printf("%s\n",
+                            format_lineup_level_label(save_data_.bot_level[team])
+                                .c_str());
+                autosave_company_after_mutation();  // §3.8 settings tail
+                break;
+            case TerminalLineupItem::Kind::Fighters:
+                lineup_fighter_list();
+                break;
+            case TerminalLineupItem::Kind::SplitEven:
+                lineup_apply_split(LineupSplit::Even);
+                break;
+            case TerminalLineupItem::Kind::SplitFair:
+                lineup_apply_split(LineupSplit::Fair);
+                break;
+            case TerminalLineupItem::Kind::Unite:
+                lineup_apply_split(LineupSplit::AllToFirst);
+                break;
+            case TerminalLineupItem::Kind::Back:
+                return;
+            }
         }
     }
 
