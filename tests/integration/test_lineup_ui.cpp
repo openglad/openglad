@@ -10,6 +10,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -31,6 +32,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -614,6 +616,168 @@ TEST(LineupUi, scenario_door_knob_cycles_and_none_everywhere)
     EXPECT_FALSE(trace_contains("lineup", "toast TEAM "))
         << "NONE raises no toast";
     EXPECT_EQ(1, state.captures) << "the SCENARIO capture should land";
+
+    restore_gladiator_mount();
+}
+
+namespace {
+
+// ---------------------------------------------------------------------------
+// Flow 1b (WP-C x WP-E): the knobs reach the campaign's Lua and come back as
+// labels. On the modes campaign — the one campaign that registers the
+// `lineup` hook — a preset lands on the BOTS cycler by NAME, the TEAM 1 band
+// prices the deployed company through the hook's `power`, and VIEW LEVEL's
+// staged census reports the squad the preset+level actually spawned. Wave 2
+// built the LINEUP screen against a tree where the hook did not exist yet,
+// so this is the first end-to-end proof of the whole chain.
+
+struct LineupPresetFlowState
+{
+    bool finished = false;
+    bool page_opened = false;
+    bool preset_labelled = false;
+    bool level_labelled = false;
+    bool hook_registered = false;
+    std::optional<long long> team1_power;
+    bool viewer_opened = false;
+    bool squad_line_seen = false;
+    bool level_suffix_seen = false;
+    int captures = 0;
+};
+
+// Poll a trace category for a substring (the wait_for_picker_trace idiom).
+bool wait_for_trace(const char* category, const char* substring,
+                    int timeout_ms)
+{
+    for (int elapsed = 0; elapsed < timeout_ms; elapsed += 50) {
+        if (trace_contains(category, substring))
+            return true;
+        SDL_Delay(50);
+    }
+    fprintf(stderr, "  [lineup] TIMEOUT waiting for trace '%s'\n", substring);
+    return false;
+}
+
+int lineup_preset_flow_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<LineupPresetFlowState*>(data);
+    if (!injector_open_lineup()) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("lineup");
+    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    if (!state->page_opened) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(750);
+
+    // TEAM 2's BOTS knob: AUTO -> NONE -> BALANC (ordinal 2 — the first
+    // entry of the campaign's own BOT_PRESETS, named by the lineup hook,
+    // never by the engine).
+    state->preset_labelled =
+        click_until_label("lineup_bots_1", "BOTS: BALANC", 5);
+    SDL_Delay(300);
+    // ...and its level: AUTO -> LV 1 -> LV 2 -> LV 3.
+    state->level_labelled = click_until_label("lineup_level_1", "LV 3", 6);
+    SDL_Delay(300);
+
+    // The TEAM 1 band's POWER, priced exactly as the screen prices it: the
+    // hook is registered, so build_lineup_bands runs with the real
+    // lineup_power_for_guy (menu_screen_specs' lineup_active_power_fn).
+    (void)run_on_main_thread([state] {
+        state->hook_registered =
+            og::script::hooks::campaign_lineup_registered();
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        const LineupSeatView view = picker_lineup_seat_view();
+        const std::array<og::ui::LineupTeamBand, 4> bands =
+            og::ui::build_lineup_bands(save, view.players,
+                                       view.local_indices,
+                                       picker_lobby_is_networked(),
+                                       &og::ui::lineup_power_for_guy);
+        state->team1_power = bands[0].power;
+    });
+
+    state->captures += capture_frame("lineup_modes_preset_power");
+    SDL_Delay(300);
+
+    interact("back");  // LINEUP -> SCENARIO
+    if (!wait_for_interactable("view_scenario", 10000)) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(750);
+    interact("view_scenario");
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    if (state->viewer_opened) {
+        // The staged census names the preset the spawn seam banked, and the
+        // explicit level rides the same line with no inner space (§3.4).
+        state->squad_line_seen = wait_for_trace(
+            "picker", "view_scenario line   GREEN TEAM  ACTIVE - BOT SQUAD "
+                      "BALANC",
+            10000);
+        state->level_suffix_seen =
+            trace_contains("picker", "BOT SQUAD BALANC (5) LV3");
+        state->captures += capture_frame("lineup_view_level_preset_squad");
+        SDL_Delay(300);
+        interact("back");
+        SDL_Delay(300);
+        (void)wait_for_interactable("progress", 10000);
+        SDL_Delay(300);
+    }
+    injector_unwind_from_scenario();
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, modes_preset_knobs_reach_the_labels_and_the_staged_world)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_fighters("modes", 500, 1,
+                              {{"ROWAN", 4, true, 0}, {"MIRA", 3, true, 0}});
+
+    LineupPresetFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(lineup_preset_flow_injector,
+                                          "lineup_preset", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.finished);
+    EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
+    EXPECT_TRUE(state.hook_registered)
+        << "the modes campaign must register the lineup hook";
+    EXPECT_TRUE(state.preset_labelled)
+        << "the BOTS cycler must reach the campaign preset BALANC";
+    EXPECT_TRUE(state.level_labelled) << "the LV cycler must reach LV 3";
+    EXPECT_EQ(2, static_cast<int>(save.bot_squad[1]))
+        << "BALANC is ordinal 2 in the save knob";
+    EXPECT_EQ(3, static_cast<int>(save.bot_level[1]))
+        << "the explicit level lands in the save knob";
+    ASSERT_TRUE(state.team1_power.has_value())
+        << "the registered hook prices the deployed company: POWER n, not --";
+    EXPECT_GT(*state.team1_power, 0)
+        << "two deployed fighters are worth something";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.squad_line_seen)
+        << "the staged census must name the preset squad on the green team";
+    EXPECT_TRUE(state.level_suffix_seen)
+        << "the explicit level rides the same line as ' LVk'";
+    EXPECT_EQ(2, state.captures) << "both captures should land";
 
     restore_gladiator_mount();
 }
