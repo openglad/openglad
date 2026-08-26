@@ -581,3 +581,31 @@ re-derives them from the code:
   unaffected — the harness stages no lobby roster onto an inactive
   authored team — and the shape is what the page promises: put a fighter
   on a colour and that colour plays.
+
+---
+
+# Amendment 2 (2026-08-26): one FILL wheel, a MAP UNITS box, no TROOPS, no FIGHTERS
+
+Maintainer ruling on the second read: "way too many options for BOTS
+… a FILL: NONE/WEAK/FAIR/STRONG/BRUTAL relative to the weakest team
+and get rid of LV; a checkmark per team for the map-shipped units; get
+rid of TROOPS; no FIGHTERS button — Base Camp already does that."
+Rulings B1–B9 supersede A1–A6 and the matching sentences above.
+
+| # | Ruling |
+|---|--------|
+| B1 | **The band has exactly two controls: `FILL:` and a `MAP UNITS` box.** `BOTS` presets, `LV`, `OFF` and the preset registration in the `lineup` hook are gone (the hook keeps `power`). |
+| B2 | **`FILL` = the matched solver with a multiplier.** Values and storage `fill[4]`: `0 = FAIR` (the default — all-zero stays the default state), `1 = NONE`, `2 = WEAK ×0.75`, `3 = STRONG ×1.25`, `4 = BRUTAL ×1.5`; wheel order NONE, WEAK, FAIR, STRONG, BRUTAL. The squad is the mode's stock `BOT_SQUAD`, sized by the matched-headcount rule; level solved by the existing D22 argmin against `target = reference × m`. |
+| B3 | **Reference = the weakest human team's f-sum** (all human teams in the lobby; D11's mean is retired). Allies (FILL on an occupied team): `target = (strongest other team's f-sum − this team's human f-sum) × m`, floor 0 (→ no squad). No human power anywhere → the legacy difficulty formula, as today. Hard-shape modes cap the squad at `cap − roster` (R2). Band modes (FFA/mutant) fill singles at the solved level; NONE with <2 fighters refuses (R1). |
+| B4 | **`MAP UNITS` box per team, `map_units[4]`: `0 = on` (default), `1 = off`** — whether the map-shipped units on that team are fielded (the old strip, now per team). Dimmed/inert when the map ships no units on that team (census hint `NO MAP UNITS`). A team is active when anything is on it: a seat, a deployed fighter, fielded map units, or a FILL squad. |
+| B5 | **TROOPS is retired everywhere at once** (the SCENARIO cycler, the camp MATCH SETUP row, the terminal item, `og.campaign_match_*("strip_troops")`); `ctf_strip_scenario_troops` stays on disk/wire but is sanitized to 0 like `ctf_team_count`. `bot_squad`/`bot_level` are renamed `fill`/`map_units` at every copy site (all on this branch; no format bump — protocol 16 / GTL 18 / snapshot 12 / replay 18 unchanged). The SCENARIO knob row is `SCORE` alone at (30,140). |
+| B6 | **FIGHTERS is deleted** (screen, door, terminal items). Its one unique power — repairing a seat/colour mismatch networked — moves to the Base Camp roster chip: editable for **your own company** in networked sessions through the existing `lineup_fighter_team_editable` predicate (the `!networked` gate on the chip goes; foreign rows stay inert). SPLIT EVEN / SPLIT FAIR / UNITE stay on LINEUP; strip = `BACK | SPLIT EVEN | SPLIT FAIR | UNITE`, flush right, 6px gaps. |
+| B7 | **Preview** (VIEW LEVEL) renders what the staged world holds: `MAP TROOPS (n)`, `BOT SQUAD (5) FAIR` / `STRONG`, `COMPANY+BOTS (3+2) WEAK`; the banked facts carry the fill code (no ordinal, no offset). Refusal sentences unchanged. |
+| B8 | **No refusals on the wheel.** NONE is legal anywhere; nothing on the band can deactivate a team that has people, so the toasts go. |
+| B9 | **Knob line geometry**: `FILL` face (12,y+15,80,15); `MAP UNITS` box = the Base Camp deploy box (14×10, `X` when on) at x=98 with the text `MAP UNITS` at x=116 in the knob line; census/diag text moves to x=190 (21-char budget). Layout relations and BFS pins re-declared. |
+
+Work packages: W5-B (opus) rename/scale/inert-troops/vocabulary/labels
++ pins; then W5-A (fable) solver multiplier + reference + per-team
+strip + activation + band modes + camp page + staged rows; W5-C
+(fable) the band's two controls, FIGHTERS removal, Base Camp chip
+networked, SCENARIO re-grid, flows, captures; W5-G (opus) terminals.
