@@ -2355,6 +2355,14 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
     EXPECT_EQ(std::string::npos, out.find("NO MAP UNITS"))
         << "B4: nothing censused the staged world here, and an absent census "
            "is not an empty map:\n" << out;
+    // W7-G's fallback arm, on purpose: this company names "modes" while
+    // gladiator is what is mounted, so census_staged_lineup_presence refuses
+    // to stage and every cell renders the STORED code. That is why all four
+    // bands read FAIR here while the classic twin below reads NONE on the
+    // two teams gladiator authors nothing onto.
+    EXPECT_EQ(std::string::npos, out.find("FILL: NONE"))
+        << "with no world to census the stored default cannot resolve:\n"
+        << out;
     // Both presses answer with the SAME formatter the row label uses.
     EXPECT_NE(std::string::npos, out.find("FILL: STRONG"))
         << "B2: the wheel's display order puts STRONG one step past FAIR:\n"
@@ -2381,7 +2389,7 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
         << "the FILL cycle must reach the company file (FAIR -> STRONG)";
     EXPECT_EQ(og::sim::kMapUnitsOff, reloaded.map_units[0])
         << "the MAP UNITS flip must reach the company file (ON -> OFF)";
-    EXPECT_EQ(og::sim::kFillFair, reloaded.fill[1])
+    EXPECT_EQ(og::sim::kFillDefault, reloaded.fill[1])
         << "only the cycled team moved";
     ASSERT_TRUE(reloaded.team_list[0] && reloaded.team_list[1] &&
                 reloaded.team_list[2] && reloaded.team_list[3]);
@@ -2446,6 +2454,17 @@ TEST(PlatformHeadless, text_picker_lineup_knob_cycles_on_a_classic_campaign)
         << "C5: nothing on this page speaks for a classic exception:\n" << out;
     EXPECT_NE(std::string::npos, out.find("TEAM 1  FILL: FAIR"))
         << "the row is the bare shared label now:\n" << out;
+    // W7-G: the page censuses the world its own VIEW LEVEL stages, so the
+    // stored default resolves here exactly as it does on the SDL band —
+    // gladiator scen 1 authors nothing onto teams 3 and 4, and all three
+    // clients now say so in the same word. Before this the terminals read
+    // every stored 0 as FAIR and disagreed with the SDL screen at rest.
+    EXPECT_NE(std::string::npos, out.find("TEAM 3  FILL: NONE"))
+        << "an unauthored team resolves NONE on a censused page:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 4  FILL: NONE"))
+        << "...and so does its twin:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 2  FILL: FAIR"))
+        << "the elf team is authored, so its default stays FAIR:\n" << out;
     EXPECT_NE(std::string::npos, out.find("FILL: STRONG"))
         << "the wheel steps on gladiator:\n" << out;
     EXPECT_NE(std::string::npos, out.find("MAP UNITS: OFF"))
@@ -2456,10 +2475,113 @@ TEST(PlatformHeadless, text_picker_lineup_knob_cycles_on_a_classic_campaign)
     EXPECT_EQ(og::sim::kFillStrong, reloaded.fill[0])
         << "the classic write reaches the .gtl like any other";
     EXPECT_EQ(og::sim::kMapUnitsOff, reloaded.map_units[0]);
-    EXPECT_EQ(og::sim::kFillFair, reloaded.fill[1])
+    EXPECT_EQ(og::sim::kFillDefault, reloaded.fill[1])
         << "only the cycled team moved";
 
     (void)remove_user_file("save/classicd.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// D1/D4: the wheel gets a FULL-CYCLE label pin on an AUTHORED band and on an
+// UNAUTHORED one, through the real text picker, on the campaign the maintainer
+// played. The two sequences are the same five words in the same order and
+// differ only in where they START — which is the whole of D1: a band showing
+// the DEFAULT enters the wheel at the slot of the word it is showing, so the
+// first click moves the face by exactly one step. Gladiator scen 1 authors
+// twelve elves onto team 2 (resolved FAIR) and nothing onto team 3 (resolved
+// NONE), so one drive covers both bands.
+//
+// Six presses per band: five to walk the whole wheel back to where it started
+// and a sixth to prove the wrap is a step and not a stop.
+TEST(PlatformHeadless, text_picker_lineup_wheel_cycles_both_bands_fully)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "WHEEL BAND";
+        sd.current_campaign = "gladiator";
+        sd.my_team = 0;
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "F1";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = true;
+        sd.team_size = 1;
+        sd.scen_num = 1;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("wheeld"));
+    }
+
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "1\n"   //   list: open company...
+        "1\n"   //     #1 = wheeld -> team build
+        "12\n"  // team build: LINEUP
+        // Row 1 = TEAM 1 FILL. Team 0 carries the deployed fighter and the
+        // map's own units, so its default resolves FAIR and the wheel leaves
+        // from FAIR's slot.
+        "1\n" "1\n" "1\n" "1\n" "1\n" "1\n"
+        // Row 5 = TEAM 3 FILL. Gladiator authors nothing onto that team, so
+        // its default resolves NONE and the wheel leaves from NONE's slot.
+        "5\n" "5\n" "5\n" "5\n" "5\n" "5\n"
+        "12\n"  //   lineup: back -> team build
+        "8\n"   // team build: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+
+    // The client echoes the label it just wrote directly after the page
+    // prompt (which carries no newline of its own), so the press-by-press
+    // sequence is readable off the transcript exactly where the prompt ends.
+    // The band lines ("  [FILL: ...]") and the row labels
+    // ("  1. TEAM 1  FILL: ...") never follow that prompt text.
+    static constexpr std::string_view kEcho = "(blank exits): FILL: ";
+    std::vector<std::string> echoed;
+    for (std::size_t at = out.find(kEcho); at != std::string::npos;
+         at = out.find(kEcho, at + 1)) {
+        const std::size_t start = at + kEcho.size() - std::strlen("FILL: ");
+        const std::size_t end = out.find('\n', start);
+        echoed.push_back(out.substr(
+            start, end == std::string::npos ? std::string::npos : end - start));
+    }
+
+    const std::vector<std::string> expected = {
+        // TEAM 1, entering at FAIR (the word its band was showing).
+        "FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK",
+        "FILL: FAIR", "FILL: STRONG",
+        // TEAM 3, entering at NONE (the word ITS band was showing) — the
+        // same order, one different starting slot.
+        "FILL: WEAK", "FILL: FAIR", "FILL: STRONG", "FILL: BRUTAL",
+        "FILL: NONE", "FILL: WEAK",
+    };
+    EXPECT_EQ(expected, echoed)
+        << "the wheel must walk NONE -> WEAK -> FAIR -> STRONG -> BRUTAL and "
+           "wrap, from the slot the face reads:\n" << out;
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("wheeld"));
+    EXPECT_EQ(og::sim::kFillStrong, reloaded.fill[0])
+        << "six steps from FAIR's slot land on STRONG, and it is EXPLICIT";
+    EXPECT_EQ(og::sim::kFillWeak, reloaded.fill[2])
+        << "six steps from NONE's slot land on WEAK";
+    EXPECT_EQ(og::sim::kFillDefault, reloaded.fill[1])
+        << "the untouched bands keep the stored default";
+    EXPECT_EQ(og::sim::kFillDefault, reloaded.fill[3])
+        << "the untouched bands keep the stored default";
+
+    (void)remove_user_file("save/wheeld.gtl");
     og::data::set_active_company_slot("save0");
 }
 
@@ -2553,8 +2675,8 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
     save.current_campaign = "modes";
-    save.fill[0] = og::sim::kFillFair;
-    save.fill[1] = og::sim::kFillFair;
+    save.fill[0] = og::sim::kFillDefault;
+    save.fill[1] = og::sim::kFillDefault;
     save.map_units[1] = og::sim::kMapUnitsOn;
     const og::ui::TerminalLineupModel versus =
         og::ui::build_terminal_lineup_model(inputs);
@@ -2580,9 +2702,10 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
 // C8: with a presence census supplied, every FILL cell renders the
 // RESOLVED default through the one shared formatter — FAIR where the team
 // has anything to stand on, NONE where it has nothing — and explicit
-// wheel values stay themselves. Without a census (both live terminal
-// clients today: neither loads a level in its picker) the cells honestly
-// render the STORED code, which the pins above already cover.
+// wheel values stay themselves. W7-G made that span the live shape: both
+// terminal clients now census the world their own VIEW LEVEL stages. The
+// EMPTY span survives for the callers with no world at all, and the cells
+// then honestly render the STORED code — the pins above cover that arm.
 TEST(PlatformHeadless, lineup_terminal_rows_render_the_resolved_default)
 {
     restore_default_campaigns();

@@ -2298,6 +2298,97 @@ TEST(CursesPickerClient, lineup_knob_cycles_on_a_classic_campaign)
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
+// W7-G: the curses page censuses the world its own VIEW LEVEL stages, so a
+// stored default resolves here exactly as it does on the SDL band and in the
+// text client. Gladiator scen 1 authors twelve elves onto team 2 and nothing
+// onto teams 3 and 4 — before this the terminals read every stored 0 as FAIR
+// and disagreed with the SDL screen at rest on the maintainer's own save.
+TEST(CursesPickerClient, lineup_bands_read_the_staged_census_at_rest)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 1;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    f.t().push_special(KeyCode::Escape); // look, touch nothing, back out
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("TEAM 1  FILL: FAIR"), std::string::npos)
+        << "the seated team has presence:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 2  FILL: FAIR"), std::string::npos)
+        << "the elf team is authored:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 3  FILL: NONE"), std::string::npos)
+        << "an unauthored team resolves NONE (C8), and the terminal now says "
+           "so in the SDL screen's own word:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 4  FILL: NONE"), std::string::npos)
+        << "...and so does its twin:\n" << dump;
+    EXPECT_EQ(og::sim::kFillDefault, f.save().fill[2])
+        << "a resolution is not a write — nothing was touched";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// D1/D4: the full-cycle label pin, curses half. Six entries per band, one
+// press each, so the redraw after every step is its own frame: the two
+// sequences are the same five words in the same order and differ only in the
+// slot they START from — the word the band was showing.
+TEST(CursesPickerClient, lineup_wheel_cycles_both_bands_fully)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 1;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    // One press on `row`, then read that row's label back off the redraw.
+    const auto step = [&f](int row, std::string_view team) {
+        pick(f.t(), row);
+        f.t().push_special(KeyCode::Escape);
+        f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+        const std::string dump = f.t().dump();
+        const std::string needle = std::string(team) + "  FILL: ";
+        const std::size_t at = dump.find(needle);
+        if (at == std::string::npos)
+            return std::string("<no ") + needle + " row>\n" + dump;
+        const std::size_t start = at + needle.size();
+        const std::size_t end = dump.find_first_not_of(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ", start);
+        return dump.substr(start, end - start);
+    };
+
+    // Team 0: seated and standing on the map's own units, so its default
+    // resolves FAIR and the wheel leaves from FAIR's slot.
+    std::vector<std::string> authored;
+    for (int i = 0; i < 6; ++i)
+        authored.push_back(step(0, "TEAM 1"));
+    const std::vector<std::string> expect_authored = {
+        "STRONG", "BRUTAL", "NONE", "WEAK", "FAIR", "STRONG"};
+    EXPECT_EQ(expect_authored, authored)
+        << "an authored band enters the wheel at FAIR:\n" << f.t().dump();
+
+    // Team 2: gladiator authors nothing onto it, so its default resolves
+    // NONE and the wheel leaves from NONE's slot — one step, one word.
+    std::vector<std::string> unauthored;
+    for (int i = 0; i < 6; ++i)
+        unauthored.push_back(step(4, "TEAM 3"));
+    const std::vector<std::string> expect_unauthored = {
+        "WEAK", "FAIR", "STRONG", "BRUTAL", "NONE", "WEAK"};
+    EXPECT_EQ(expect_unauthored, unauthored)
+        << "an unauthored band enters the wheel at NONE — the C8 swallow is "
+           "gone and FAIR has a stop of its own:\n" << f.t().dump();
+
+    EXPECT_EQ(og::sim::kFillStrong, f.save().fill[0]);
+    EXPECT_EQ(og::sim::kFillWeak, f.save().fill[2]);
+    EXPECT_EQ(og::sim::kFillDefault, f.save().fill[1])
+        << "the untouched bands keep the stored default";
+    EXPECT_EQ(og::sim::kFillDefault, f.save().fill[3])
+        << "the untouched bands keep the stored default";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
 // M3 + §5: a curses client is a ONE-SEAT machine (numplayers stays 1), and
 // the seat picture is the launch's own — so there is exactly one seated team
 // and split_company's documented single-seat rule makes every mode ALL TO 1.

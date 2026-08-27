@@ -1058,13 +1058,31 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
                  const CursesPickerOptions& options)
 {
     using Kind = og::ui::TerminalLineupItem::Kind;
+    // W7-G: ONE stage for the whole page, built exactly the way
+    // view_scenario_locally_staged() builds its own — same save, same
+    // difficulty, same session-latched seed — so the LINEUP bands and the
+    // VIEW LEVEL report always describe one world. The change key carries
+    // the knobs, so a turn restages once and an untouched page is free.
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save,
+    });
+    std::array<og::ui::LineupTeamPresence, 4> presence{};
+
     for (;;) {
+        const bool censused = og::ui::census_staged_lineup_presence(
+            stage, save, options.difficulty, config.seed, presence);
         const std::vector<og::sim::LobbyPlayer> seats =
             og::ui::synthesize_local_lobby_players(save);
 
         og::ui::TerminalLineupInputs inputs;
         inputs.save = &save;
         inputs.players = seats;
+        // The FILL cells read the staged world; an empty span where nothing
+        // could be staged keeps the documented stored-code fallback.
+        if (censused)
+            inputs.presence = presence;
         // The curses picker screen is local-only (its network lobby is a
         // separate flow), so the bands census THIS save and the host gate
         // comes from the shared label context like every other row here.
@@ -1105,12 +1123,13 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
             // rule and both clients share it.
             if (item.kind == Kind::Fill) {
                 // D1: the wheel enters at the slot of the value the row
-                // shows. With no level censused here that IS the stored
-                // code (the no-census fallback), so it is its own
-                // resolution.
+                // shows — the band's own resolution (W7-G: the staged
+                // census, or the stored code where nothing staged), never a
+                // second derivation of it here.
                 save.fill[team] = og::sim::clamp_fill(
                     og::ui::cycle_lineup_fill(save.fill[team],
-                                              save.fill[team], 1));
+                                              model.bands[team].resolved_fill,
+                                              1));
             } else {
                 save.map_units[team] = og::sim::clamp_map_units(
                     og::ui::toggle_lineup_map_units(save.map_units[team]));
