@@ -922,3 +922,97 @@ inert until a pack uses them.
   and `level_hook_kinds_for` reads a level's OWN registrations only, so the
   `-1` wildcard does NOT move the shipped-registration matrix in
   `test_modes_levels.cpp`.
+
+## As built: the W6-A layer — the lib move and the classic semantics (2026-08-27)
+
+C1/C3/C4/C6 whole, C5's Lua half. The rulings the build settled, recorded
+so nobody re-derives them:
+
+- **One lib file, `packs/core/lib/lineup.lua`.** The moved family — the f
+  power metric (`stat_power`, `measured_base`, `walker_power`,
+  `predicted_power`, the difficulty-tuple table), the censuses
+  (`census_power`, the core half of `census_inputs`), the D22 solver and
+  the packed plan, the FILL/MAP UNITS knob reads, `squad_room` /
+  `fill_target`, squad sizing (`matched_families` — MATCHED.SIZE — and the
+  hard-shape cap), the anchor-rotation placer + `ring_offset`, the one
+  squad seam (`spawn_bots` / `spawn_matched_bots` / `add_squad_member`),
+  the bot mark (`BOT_MARK_BIT` / `mark_bot`), the stock `BOT_SQUAD`, the
+  per-team strip (`strip_authored_troops`) and the fact banking
+  (`bank_lineup_facts`, `bank_match_target`) — is one module, bound as
+  `og.use("core:lineup")`.
+- **`mode_match` is the modes' FACADE over it, not a copy.** The
+  mode-specific rules stay there in full (activation, `fills`, the mask
+  helpers' consumers, `consume_markers`, `strip_inactive_teams`, the
+  refusal digit, `announce_matched`, the flag census, scheduling/revive/foe
+  helpers), and every moved name is a re-export of the core function
+  object. Chosen over re-pointing every consumer because the shipped
+  impls, `campaign_picker`'s knob rows, the staged-rules probes AND
+  `tests/modes_pack_fixture.h`'s registration literal (owned by no wave
+  this round, digest-pinned in the coverage manifest) all bind
+  `match.<name>` — the facade keeps every one of them byte-identical, which
+  is exactly C6's guarantee, proven by the untouched staged matrices going
+  green unchanged. The qualified `og.use("core:lineup")` lives in six
+  modes.core files: mode_match, mode_strip (whole-module re-export),
+  mode_caps (the bot mark pair), mode_core (`iabs` — the solver took the
+  one shared abs with it), mode_anchors (`BOT_SQUAD`) and campaign_picker
+  (`lineup.power` now prices straight off the core lib, C5's Lua half).
+- **Announces are a callback now.** `spawn_matched_bots`/`spawn_bots` take
+  a trailing `announce(clamped)`; the mode facade's `spawn_bots` wrapper
+  threads `announce_matched` in (same call point, same latch, byte-same),
+  and the classic stage passes nothing — TEAMS MATCHED is match-mode
+  vocabulary and never plays on a campaign level.
+- **The classic stage** (`packs/core/scripts/lineup_stage.lua`, the `-1`
+  wildcard on W6-B's `on_lineup_stage`; a campaign overrides per level id):
+  - *Activation*: the teams the map authors — pre-strip units or a start
+    marker — plus seats/roster. A FILL squad can NOT turn on an unauthored
+    team (no anchors, nowhere to stand).
+  - *Fill rule*: a squad walks on only where an authored team ends up
+    EMPTY. Two ways there: the box stripped its units (any wheel value but
+    NONE — FAIR included, the B4 "trade them for a solved squad" reading),
+    or a ships-empty authored team (marker, no units) whose wheel names an
+    explicit non-FAIR value. **FAIR on a ships-empty team is the map's own
+    value — nothing spawns.** This is the ruling that keeps C3: classic
+    maps ship player-start markers on teams they field nobody on, and a
+    default that grew squads there would rewrite every campaign. A team
+    with a deployed roster gets no squad — the allies gap is a match-mode
+    rule and classic keeps out of it (C4's "the campaign's own win logic
+    governs").
+  - *Solver*: the one spawn seam, so B3 exactly — weakest human team's
+    f-sum × the wheel's percent; no human power = the legacy difficulty
+    formula, which stores no plan. Non-default classic stages therefore
+    write MATCHED.PLAN and the slot-4 fact digits (preview == launch reads
+    them); the all-default stage writes nothing, draws nothing, spawns
+    nothing — pinned byte-identical on a staged REAL gladiator level with
+    the dispatch proven live, and og_test_parity stays 257/257 with the
+    wildcard armed on every scenario.
+  - *Placement rule (documented per C1's ask)*: the squad anchors at the
+    retired units' centroid, grid-snapped, when the team authored units,
+    else at its start marker; each member takes the anchor tile, then the
+    mode placer's blocked-cell discipline — the deterministic clockwise
+    ring walk, radius 1..3 — then the blessed teleport draw. Same seed,
+    same cells (pinned).
+  - The strip retires by `set_dead(1)`, never by erasing — the lazy arm's
+    oblist-growth completion guard depends on it, and the comment now
+    stands on `retire` itself (W6-B's open note, closed).
+- **C5's engine half is BLOCKED on a missing seam, recorded honestly.**
+  The campaign-book registrar is one-book-first-wins and a second
+  `og.register_campaign_hooks` poisons the whole book ("no scripted picker
+  will be served"), so packs/core cannot register the default
+  `lineup.power` without killing every campaign that ships a book (modes,
+  westlands, longseason, imaginations). The default IMPLEMENTATION ships
+  (core `stat_power`), the modes campaign now registers it from the core
+  lib, but gladiator's band still shows `--` until an engine wave adds the
+  seam: a default-lineup slot in `world_scripts.cpp` that
+  `campaign_fighter_power` / `campaign_lineup_registered` consult when the
+  active book carries no `lineup` — registered by a shipped-pack-only path
+  (the `on_lineup_stage` default/override shape, applied to the power
+  hook). One function and two query fallbacks; no format change.
+- **Mode-var co-tenancy on classic levels.** A non-default classic stage
+  is the first CLASSIC writer of MATCHED.PLAN (slot 3) and the slot-4 fact
+  digits. No shipped campaign level script touches mode vars today; a
+  future classic level script claiming slots 3/4 would co-tenant with the
+  stage's plan exactly as the modes co-tenant slot 4 — the header-band
+  convention (slots 0-7 shared) now binds classic levels too.
+- **C7 holds**: protocol 16 / GTL 18 / snapshot 12 / replay 18 unchanged —
+  nothing new rides the wire; the stage writes only replicated mode vars
+  that already existed.
