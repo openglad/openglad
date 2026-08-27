@@ -54,16 +54,25 @@ local PLAN_BASE = { 1, 100, 10000, 1000000 }
 -- ---------------------------------------------------------------------------
 
 -- The fill_N knob's scale, ONE scale on every layer (lobby_state.h
--- kFillFair / kFillNone / kFillWeak / kFillStrong / kFillBrutal —
--- amendment B2): FILL is the matched solver with a multiplier, and the
--- engine stores and clamps the CODE alone — this table is the only copy
--- of what each code is worth, keyed by the raw value
--- og.match_setting("fill_N") answers. 0 = FAIR (the default; ×1),
--- 1 = NONE (no squad on this team, ever), 2 = WEAK (×0.75),
--- 3 = STRONG (×1.25), 4 = BRUTAL (×1.5).
-local FILL_FAIR = 0
+-- kFillDefault / kFillNone / kFillWeak / kFillFair / kFillStrong /
+-- kFillBrutal — amendment B2 as renumbered by D1): FILL is the matched
+-- solver with a multiplier, and the engine stores and clamps the CODE
+-- alone — this table is the only copy of what each code is worth, keyed
+-- by the raw value og.match_setting("fill_N") answers. 0 = the stored
+-- DEFAULT (never a multiplier of its own: it resolves per team through
+-- resolved_fill below, so it deliberately has no FILL_PERCENT row), then
+-- the five explicit wheel codes in wheel order: 1 = NONE (no squad on
+-- this team, ever), 2 = WEAK (×0.75), 3 = FAIR (×1), 4 = STRONG (×1.25),
+-- 5 = BRUTAL (×1.5). D1 gave FAIR its own code: while it shared 0 with
+-- the default, no player could choose FAIR on a team whose default
+-- resolved NONE.
+local FILL_DEFAULT = 0
 local FILL_NONE = 1
-local FILL_PERCENT = { [0] = 100, [1] = 0, [2] = 75, [3] = 125, [4] = 150 }
+local FILL_WEAK = 2
+local FILL_FAIR = 3
+local FILL_STRONG = 4
+local FILL_BRUTAL = 5
+local FILL_PERCENT = { [1] = 0, [2] = 75, [3] = 100, [4] = 125, [5] = 150 }
 
 -- The map_units_N box (amendment B4): 0 = the map's own authored units on
 -- that team are fielded (the default), 1 = they are not (the old TROOPS
@@ -96,7 +105,9 @@ end
 
 -- The fill a knob APPLIES: a code off the wheel degrades to FAIR, so the
 -- banked fact (and the byte image of the staged world with it) is
--- identical to the FAIR stage a junk value behaves as.
+-- identical to the FAIR stage a junk value behaves as. Since D1 the
+-- stored DEFAULT (0) is off the wheel too: a 0 that reaches an apply
+-- seam unresolved is a crafted value, and it degrades like any other.
 local function applied_fill(knob)
   if FILL_PERCENT[knob] == nil then
     return FILL_FAIR
@@ -138,16 +149,18 @@ local function team_present(row)
   return (row.seats or 0) > 0
 end
 
--- THE resolver (docs/lineup-design.md C8), the one home of the rule every
--- surface renders: the stored DEFAULT (FILL_FAIR, 0) resolves per team —
--- FAIR where the team has any presence, NONE where it has none — so the
--- page never advertises a fill the placement rule would refuse anyway.
+-- THE resolver (docs/lineup-design.md C8, renumbered by D1), the one home
+-- of the rule every surface renders: the stored DEFAULT (FILL_DEFAULT, 0)
+-- resolves per team — the EXPLICIT FAIR (3) where the team has any
+-- presence, the explicit NONE (1) where it has none — so the page never
+-- advertises a fill the placement rule would refuse anyway, and the
+-- answer is always a wheel code (the default itself is not an answer).
 -- An explicit wheel value is stored as itself and returned unchanged; a
 -- junk code included: the degrade-to-FAIR rule (applied_fill) predates
 -- the resolution and stays an EXPLICIT fair, because a crafted value is
 -- a value, not the default.
 local function resolved_fill(knob, row)
-  if knob ~= FILL_FAIR then
+  if knob ~= FILL_DEFAULT then
     return knob
   end
   if team_present(row) then
@@ -367,27 +380,23 @@ end
 -- its ones digit stays the announce latch (0/1/2), and the digits above
 -- it pack one base-100 code per team (PLAN's packing, shifted one
 -- decimal digit up). code = 0 when no squad of this team's fielded
--- anybody (the pane names no fill word), else THE APPLIED FILL CODE PLUS
--- ONE — 1 = FAIR, 2 = NONE (never banked: NONE fields nothing), 3 = WEAK,
--- 4 = STRONG, 5 = BRUTAL. The + 1 is the whole reason the field is not
--- just the fill code: FAIR is 0 and is also the default, so a bare code
--- could not tell "a FAIR squad walked on" from "this team banked
--- nothing". APPLIED, not requested: a squad that spawned nothing banks
--- nothing (review R4). C++ twin: picker_common.cpp kModeVarLineupFacts
--- (lineup_fact_code / lineup_fact_fill / kLineupFactFillBias).
-local FACT_FILL_BIAS = 1
-
-local function lineup_fact(fill)
-  return fill + FACT_FILL_BIAS
-end
-
+-- anybody (the pane names no fill word), else THE APPLIED FILL CODE
+-- ITSELF — 1 = NONE (banked only where a stored default RESOLVED to it:
+-- the explicit NONE fields nothing and stays unbanked), 2 = WEAK,
+-- 3 = FAIR, 4 = STRONG, 5 = BRUTAL. The old +1 bias is retired with D1:
+-- no explicit code is 0 any more, so 0 is unambiguously "this team
+-- banked nothing" without a shift. A team whose stored default resolved
+-- banks the code it resolved TO, never the stored 0. APPLIED, not
+-- requested: a squad that spawned nothing banks nothing (review R4).
+-- C++ twin: picker_common.cpp kModeVarLineupFacts (lineup_fact_code /
+-- lineup_fact_fill — the bias constant is deleted on that side too).
 local function lineup_code(team)
   return og.mod(og.div(og.mode_get(MATCHED.ANNOUNCED),
                        10 * PLAN_BASE[team + 1]), 100)
 end
 
 local function bank_lineup_facts(team, fill)
-  local code = lineup_fact(fill)
+  local code = fill
   local held = lineup_code(team)
   if code == held then
     return
@@ -771,8 +780,24 @@ end
 -- draw; nil keeps the rotation over cursor_slot. cap is the
 -- caller's hard shape (basketball's 5v5). announce is the modes' solved-
 -- squad signal, handed through to spawn_matched_bots (nil = silent).
-local function spawn_bots(team, families, cursor_slot, placer, cap, announce)
-  local knob = fill_knob(team)
+-- resolved is the caller's ALREADY-RESOLVED wheel code where the caller
+-- ran the C8 resolution itself (the classic stage — the one caller with
+-- site-less, presence-less teams); nil makes this seam resolve the raw
+-- knob itself, so a stored default can never reach the multiplier table
+-- unresolved (D1: the seam reads the resolved value, never the raw 0).
+-- The fallback's presence row is the caller's own decision: this seam
+-- is only ever invoked for a team its deciding fold (the mode fills
+-- rows, the wiped-team backstops — every one gated on the mode's active
+-- mask) already ruled fields a squad, and an active mode team is
+-- authored by the mode's own domain, so the implied row is an authored
+-- one and the default resolves the explicit FAIR — the pre-D1 reading
+-- of a stored 0 at this seam, now spelled through the ONE resolver.
+local function spawn_bots(team, families, cursor_slot, placer, cap, announce,
+                          resolved)
+  local knob = resolved
+  if knob == nil then
+    knob = resolved_fill(fill_knob(team), { units = 1 })
+  end
   if squad_off(knob) then
     return
   end
@@ -892,8 +917,12 @@ end
 return {
   iabs = iabs,
   MATCHED = MATCHED,
-  FILL_FAIR = FILL_FAIR,
+  FILL_DEFAULT = FILL_DEFAULT,
   FILL_NONE = FILL_NONE,
+  FILL_WEAK = FILL_WEAK,
+  FILL_FAIR = FILL_FAIR,
+  FILL_STRONG = FILL_STRONG,
+  FILL_BRUTAL = FILL_BRUTAL,
   FILL_PERCENT = FILL_PERCENT,
   MAP_UNITS_ON = MAP_UNITS_ON,
   BOT_SQUAD = BOT_SQUAD,
@@ -916,7 +945,6 @@ return {
   solve_matched_levels = solve_matched_levels,
   difficulty_level = difficulty_level,
   bot_level_for = bot_level_for,
-  lineup_fact = lineup_fact,
   bank_lineup_facts = bank_lineup_facts,
   bank_match_target = bank_match_target,
   census_inputs = census_inputs,

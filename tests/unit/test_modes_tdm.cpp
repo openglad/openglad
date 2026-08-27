@@ -1484,12 +1484,12 @@ constexpr const char* kLineupProbeLua =
     "           opt(match.fill_target(0, sums, 2, 100)))\n"
     "    og.log(\"room\", opt(match.squad_room(5, 3)),\n"
     "           opt(match.squad_room(5, 9)), opt(match.squad_room(nil, 3)))\n"
-    "    og.log(\"pct\", match.fill_percent(0), match.fill_percent(1),\n"
-    "           match.fill_percent(2), match.fill_percent(3),\n"
-    "           match.fill_percent(4), match.fill_percent(9))\n"
+    "    og.log(\"pct\", match.fill_percent(3), match.fill_percent(1),\n"
+    "           match.fill_percent(2), match.fill_percent(4),\n"
+    "           match.fill_percent(5), match.fill_percent(9))\n"
     "    og.log(\"off\", match.squad_off(1) and 1 or 0,\n"
-    "           match.squad_off(0) and 1 or 0,\n"
-    "           match.squad_off(4) and 1 or 0)\n"
+    "           match.squad_off(3) and 1 or 0,\n"
+    "           match.squad_off(5) and 1 or 0)\n"
     "    match.spawn_bots(0, squad, 15)\n"
     "    match.spawn_bots(1, squad, 12, nil, 3)\n"
     "    match.spawn_bots(3, squad, 14)\n"
@@ -1563,14 +1563,15 @@ TEST_F(ModesTdm, lineup_fill_target_percent_table_and_knobbed_spawns)
     // The knob-aware spawns (no humans anywhere -> the legacy arm): the
     // full squad on team 0, the cap-truncated squad on team 1, nothing on
     // the NONE team — and the applied FAIR fact banked where a squad
-    // walked on (code fill + 1 = 1).
+    // walked on (since D1 the banked code IS the applied fill, 3).
     EXPECT_EQ(5, alive_on_team(fx.world(), 0));
     EXPECT_EQ(3, alive_on_team(fx.world(), 1))
         << "the squad truncates to the caller's cap";
     EXPECT_EQ(0, alive_on_team(fx.world(), 3)) << "NONE fields nothing";
-    EXPECT_EQ(1, (fx.var(kSlotMatchedAnnounced) / 10) % 100)
+    EXPECT_EQ(og::sim::kFillFair, (fx.var(kSlotMatchedAnnounced) / 10) % 100)
         << "team 0 banks the applied FAIR code";
-    EXPECT_EQ(1, (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
+    EXPECT_EQ(og::sim::kFillFair,
+              (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
         << "team 1 banks it too";
     EXPECT_EQ(0, (fx.var(kSlotMatchedAnnounced) / 10 / 1000000) % 100)
         << "the NONE team banks nothing";
@@ -1762,7 +1763,8 @@ TEST_F(ModesTdm, matched_spawn_bots_legacy_arm_is_unchanged)
     EXPECT_EQ(2, levels.thief);
     EXPECT_EQ(0, fx.var(kSlotMatchedTarget));
     EXPECT_EQ(0, fx.var(kSlotMatchedPlan));
-    EXPECT_EQ(1, (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
+    EXPECT_EQ(og::sim::kFillFair,
+              (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
         << "the applied FAIR fact banks even on the legacy arm (B7)";
     EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced) % 10) << "nothing announced";
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
@@ -1926,7 +1928,8 @@ TEST_F(ModesTdm, matched_solo_fresh_squad_fields_an_even_rival)
     EXPECT_EQ(1, levels.thief);
     EXPECT_EQ(5, alive_on_team(fx.world(), 0)) << "the roster is untouched";
     EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced) % 10);
-    EXPECT_EQ(1, (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
+    EXPECT_EQ(og::sim::kFillFair,
+              (fx.var(kSlotMatchedAnnounced) / 1000) % 100)
         << "the solved squad banks the applied FAIR code";
     EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));

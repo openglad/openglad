@@ -35,7 +35,8 @@ struct LobbySaveDataEquivalent {
     // 0 = the map's own value.
     std::int16_t time_limit = 0;
     // Per-team FILL / MAP UNITS (protocol v16; see LobbySettings).
-    // 0 = FAIR / MAP UNITS ON, the default on both.
+    // 0 = the stored DEFAULT (D1; resolves per C8) / MAP UNITS ON, the
+    // default on both.
     std::array<std::int16_t, SCORE_TEAM_COUNT> fill = {};
     std::array<std::int16_t, SCORE_TEAM_COUNT> map_units = {};
     std::vector<LobbyCharacterSlot> team_list;

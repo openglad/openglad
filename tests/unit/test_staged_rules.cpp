@@ -328,13 +328,15 @@ int activation_mask(unsigned authored, unsigned roster,
         .mask;
 }
 
-// The engine's fill scale (lobby_state.h kFill*), spelled once for the
-// rows below.
-constexpr int kKnobFair = og::sim::kFillFair;      // 0
-constexpr int kKnobNone = og::sim::kFillNone;      // 1
-constexpr int kKnobWeak = og::sim::kFillWeak;      // 2
-constexpr int kKnobStrong = og::sim::kFillStrong;  // 3
-constexpr int kKnobBrutal = og::sim::kFillBrutal;  // 4
+// The engine's fill scale (lobby_state.h kFill*, D1: 0 is the stored
+// DEFAULT and the five explicit codes follow in wheel order), spelled
+// once for the rows below.
+constexpr int kKnobDefault = og::sim::kFillDefault;  // 0
+constexpr int kKnobNone = og::sim::kFillNone;        // 1
+constexpr int kKnobWeak = og::sim::kFillWeak;        // 2
+constexpr int kKnobFair = og::sim::kFillFair;        // 3
+constexpr int kKnobStrong = og::sim::kFillStrong;    // 4
+constexpr int kKnobBrutal = og::sim::kFillBrutal;    // 5
 
 // The MAP UNITS box scale (lobby_state.h kMapUnits*).
 constexpr int kBoxOn = og::sim::kMapUnitsOn;    // 0
@@ -813,13 +815,14 @@ int lineup_fact_code(std::int32_t slot_value, int team)
     return static_cast<int>(facts % 100);
 }
 
-// The expected code for an applied fill: the fill code plus one
-// (mode_match.lua lineup_fact, picker_common.cpp kLineupFactFillBias) —
-// spelled here independently so the test is an oracle of the packing,
-// not a mirror of it. 0 = nothing banked.
+// The expected code for an applied fill: since D1 the code IS the
+// applied wheel code (the +1 bias is retired on both sides — no
+// explicit code is 0 any more, so 0 is unambiguously "nothing banked")
+// — spelled here independently so the test is an oracle of the packing,
+// not a mirror of it.
 int expected_fact(int fill)
 {
-    return fill + 1;
+    return fill;
 }
 
 // The refusal reason digit (mode_match.lua REFUSAL_BASE, picker_common.cpp
@@ -882,9 +885,11 @@ TEST_F(StagedRules, default_resolution_keeps_fair_on_authored_mode_teams)
     ASSERT_TRUE(fx.world().mode.active);
     EXPECT_EQ(1u, bot_levels_on(fx.world(), 1).size())
         << "the empty authored team fields its FAIR squad under the default";
-    EXPECT_EQ(expected_fact(0),
+    EXPECT_EQ(expected_fact(kKnobFair),
               lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1))
-        << "and banks FAIR — an authored empty team never resolves NONE";
+        << "and banks the resolved FAIR — an authored empty team never "
+           "resolves NONE, and the banked code is the explicit FAIR it "
+           "resolved to (D1), never the stored 0";
 }
 
 // The wheel is the solver's multiplier (B2): on a fixed one-hero L5
@@ -1254,12 +1259,12 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
         EXPECT_EQ(0b0111, a.mask) << "activation is NONE-blind";
         EXPECT_EQ(0b0101, a.lineup_mask) << "fills narrows the NONE team";
         EXPECT_EQ(0, (a.fills_packed / 100) % 100) << "empty row, count 0";
-        EXPECT_EQ(101, a.squads_packed)
-            << "teams 0 and 2 keep their FAIR squad rows; the NONE team "
-               "has none";
+        EXPECT_EQ(303, a.squads_packed)
+            << "teams 0 and 2 keep their FAIR squad rows (code 3, the "
+               "applied FAIR itself since D1); the NONE team has none";
     }
     // The default: every backfilled row is the legacy bots squad (no
-    // humans), squad code FAIR + 1.
+    // humans), squad code = the applied FAIR.
     {
         const RuleAnswer a = eval_rules(teams, 0b0111, 0, false);
         EXPECT_EQ(3 + 5 * 8, static_cast<int>(a.fills_packed % 100))
@@ -2138,10 +2143,10 @@ TEST_F(ClassicLineupTest, traded_units_become_a_fair_squad_at_their_centroid)
         << "a FAIR squad replaces the traded units";
     EXPECT_EQ(5, authored_units_on(fx.world(), 1))
         << "and nothing else stands on the team";
-    // Team 1 banks the applied FAIR fact (code 1, digit pair *1000); teams
+    // Team 1 banks the applied FAIR fact (code 3, digit pair *1000); teams
     // 2 and 3 stand on nothing, so their stored default resolves NONE and
-    // banks it (C8, code 2 at *100000 and *10000000).
-    EXPECT_EQ(1000 + 200000 + 20000000, fx.world().mode.vars[4])
+    // banks it (C8, code 1 at *100000 and *10000000).
+    EXPECT_EQ(3000 + 100000 + 10000000, fx.world().mode.vars[4])
         << "applied FAIR on team 1, resolved NONE on the unauthored teams";
     EXPECT_NE(0, fx.world().mode.vars[3]) << "the solved plan is stored";
     // Placement: the centroid of the three retired npcs grid-snaps to
@@ -2177,10 +2182,10 @@ TEST_F(ClassicLineupTest, fill_strong_spawns_a_solved_squad_on_a_marker_team)
     fx.world().tick();
 
     EXPECT_EQ(5, marked_bots_on(fx.world(), 1)) << "the squad walked on";
-    // STRONG banks on team 1; the unauthored teams 2/3 bank their resolved
-    // NONE (C8). Team 0 holds the hero, so its default resolves FAIR and
-    // banks nothing (nothing spawned there).
-    EXPECT_EQ(4000 + 200000 + 20000000, fx.world().mode.vars[4])
+    // STRONG (code 4) banks on team 1; the unauthored teams 2/3 bank
+    // their resolved NONE (C8, code 1). Team 0 holds the hero, so its
+    // default resolves FAIR and banks nothing (nothing spawned there).
+    EXPECT_EQ(4000 + 100000 + 10000000, fx.world().mode.vars[4])
         << "the applied STRONG fact banks in team 1's digit pair";
     EXPECT_NE(0, fx.world().mode.vars[3]) << "the solve stored a plan";
     for (const auto& entry : fx.world().oblist)
@@ -2203,12 +2208,13 @@ TEST_F(ClassicLineupTest, fill_strong_spawns_a_solved_squad_on_a_marker_team)
     EXPECT_TRUE(fx.world().scripts().host().errors().empty());
 }
 
-// FAIR on a ships-empty authored team is the map's own value: nothing
-// spawns, nothing banks. The explicit wheel is what turns a marker-only
-// team on — the classic reading of "a team is on when anything is on it".
-// Team 2 wheels STRONG so the stage genuinely runs its per-team pass (an
-// all-default world returns on the fast path before the rule is even
-// consulted): team 1's guard is evaluated and holds, team 2 fills.
+// The stored DEFAULT on a ships-empty authored team is the map's own
+// value: it resolves FAIR (the marker is presence) but fields nothing and
+// banks nothing — since D1 only an EXPLICIT wheel value turns a
+// marker-only team on. Team 2 wheels STRONG so the stage genuinely runs
+// its per-team pass (an all-default world returns on the fast path before
+// the rule is even consulted): team 1's guard is evaluated and holds,
+// team 2 fills.
 TEST_F(ClassicLineupTest, fair_keeps_a_ships_empty_team_empty)
 {
     ClassicWorld fx;
@@ -2275,7 +2281,7 @@ TEST_F(ClassicLineupTest, none_fields_fewer_enemies_and_the_level_completes)
         << "no refusal, ever, on a classic level";
     // The EXPLICIT NONE on team 1 banks nothing (explicit wheel values are
     // untouched by C8); only the unauthored teams' RESOLVED default banks.
-    EXPECT_EQ(200000 + 20000000, fx.world().mode.vars[4])
+    EXPECT_EQ(100000 + 10000000, fx.world().mode.vars[4])
         << "explicit NONE unbanked; resolved NONE banked on teams 2/3";
     fx.world().tick();
     fx.world().tick();
@@ -2295,10 +2301,11 @@ TEST_F(ClassicLineupTest, no_humans_takes_the_legacy_formula_and_no_plan)
 
     EXPECT_EQ(5, marked_bots_on(fx.world(), 1));
     EXPECT_EQ(0, fx.world().mode.vars[3]) << "the legacy arm stores no plan";
-    // STRONG banks on team 1 (R4); this fixture fields NO hero, so team 0
-    // is as bare as 2/3 and all three bank the resolved NONE (C8): +20 for
-    // team 0's digit pair beside the unauthored sides'.
-    EXPECT_EQ(20 + 4000 + 200000 + 20000000, fx.world().mode.vars[4])
+    // STRONG (code 4) banks on team 1 (R4); this fixture fields NO hero,
+    // so team 0 is as bare as 2/3 and all three bank the resolved NONE
+    // (C8, code 1): +10 for team 0's digit pair beside the unauthored
+    // sides'.
+    EXPECT_EQ(10 + 4000 + 100000 + 10000000, fx.world().mode.vars[4])
         << "the applied fact still banks for what spawned (R4)";
     std::int32_t first_level = -1;
     for (const auto& entry : fx.world().oblist)
@@ -2407,4 +2414,348 @@ TEST_F(ClassicLineupTest, placement_is_deterministic_for_a_seed)
     const auto second = run_world();
     ASSERT_EQ(5u, first.size());
     EXPECT_EQ(first, second) << "same seed, same cells";
+}
+
+// ===========================================================================
+// 4b. The D-series outcomes (D2/D3/D4): an explicit wheel value always
+//     fields — on unauthored ground and beside standing troops — while
+//     the stored default never adds a squad beside anything. Pinned on
+//     REAL staged gladiator worlds through the same MatchStage the
+//     launch adopts.
+// ===========================================================================
+
+namespace
+{
+
+// C++ twin of the lib's walker_power under the §4.1 trunc-on-read
+// discipline (static_cast truncates the positive float stats exactly
+// like og.trunc) — the independent oracle test_modes_tdm.cpp carries,
+// re-spelled so the D3 target check does not mirror the Lua it measures.
+long long classic_walker_f(const walker* w)
+{
+    const statistics* s = w->stats();
+    if (s == nullptr)
+        return 0;
+    const long long hp = static_cast<long long>(s->max_hitpoints());
+    const long long mp = static_cast<long long>(s->max_magicpoints());
+    const long long armor = static_cast<long long>(s->armor());
+    const long long dmg = static_cast<long long>(w->damage());
+    const long long sp = static_cast<long long>(w->stepsize());
+    long long ff = static_cast<long long>(w->fire_frequency());
+    if (ff < 1)
+        ff = 1;
+    const long long level = s->level();
+    const long long ed = dmg * (level + 3) / 4;
+    const long long rate = 120 / ff;
+    const long long off = ed * rate + 5 * sp;
+    const long long ehp = hp + 4 * armor + mp / 2;
+    return ehp * (off + 60) / 60;
+}
+
+long long bot_f_sum_on(GameWorld& world, int team)
+{
+    long long sum = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team) ||
+            w->myguy != nullptr)
+            continue;
+        if (w->stats() != nullptr &&
+            (w->stats()->bit_flags() & kBotMarkBit) != 0)
+            sum += classic_walker_f(w);
+    }
+    return sum;
+}
+
+// The weakest-human reference, measured off the staged world itself: the
+// f of the deployed hero (gladiator seats one).
+long long deployed_hero_f(GameWorld& world)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->myguy != nullptr)
+            return classic_walker_f(w);
+    }
+    return 0;
+}
+
+std::vector<std::pair<int, int>> bot_cells_on(GameWorld& world, int team)
+{
+    std::vector<std::pair<int, int>> cells;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team) ||
+            w->myguy != nullptr)
+            continue;
+        cells.emplace_back(static_cast<int>(w->xpos()),
+                           static_cast<int>(w->ypos()));
+    }
+    return cells;
+}
+
+// D2's spawn-safety oracle: is this walker's tile the tile of, or one of
+// the eight neighbours of, any live hostile (another team's living or
+// generator, wildlife included)?
+bool adjacent_to_hostile(GameWorld& world, const walker* bot)
+{
+    const int bx = (static_cast<int>(bot->xpos()) / 16) * 16;
+    const int by = (static_cast<int>(bot->ypos()) / 16) * 16;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w == bot)
+            continue;
+        if (w->query_order() != Order::Living &&
+            w->query_order() != Order::Generator)
+            continue;
+        if (w->team_num() == bot->team_num())
+            continue;
+        const int hx = (static_cast<int>(w->xpos()) / 16) * 16;
+        const int hy = (static_cast<int>(w->ypos()) / 16) * 16;
+        if (std::abs(bx - hx) <= 16 && std::abs(by - hy) <= 16)
+            return true;
+    }
+    return false;
+}
+
+// gladiator scen 1 with the probe fixture's hero: a level-50 thief slot,
+// every trained stat 60, armor 40 — the high-level roster D4's ladder
+// demands (a level-3 soldier floors the solver and hides the wheel).
+og::server::MatchStageInputs classic_gladiator_hero50_inputs(
+    std::uint32_t seed)
+{
+    og::server::MatchStageInputs inputs = classic_gladiator_inputs(seed);
+    og::sim::LobbyCharacterData character;
+    character.guy_id = 100;
+    character.name = "Host";
+    character.family = FAMILY_THIEF;
+    character.strength = 60;
+    character.dexterity = 60;
+    character.constitution = 60;
+    character.intelligence = 60;
+    character.armor = 40;
+    character.level = 50;
+    character.teamnum = 0;
+    inputs.equivalent.team_list = {og::sim::LobbyCharacterSlot{
+        .slot_index = 0u,
+        .character = character,
+    }};
+    return inputs;
+}
+
+}  // namespace
+
+// D2: an explicit FAIR on a team gladiator does not author fields a full
+// five-bot squad and turns the team on — ordinary hostile walkers on a
+// map with no site for them. Placement is the site-less rule: chosen
+// deterministically from the match seed (two identical stagings land the
+// identical cells) and never adjacent to a hostile at spawn.
+TEST_F(ClassicLineupTest, explicit_fair_fields_a_safe_squad_on_unauthored_ground)
+{
+    auto stage_and_check = [](std::vector<std::pair<int, int>>& cells) {
+        og::server::MatchStageInputs inputs =
+            classic_gladiator_hero50_inputs(11u);
+        inputs.equivalent.fill[2] = og::sim::kFillFair;
+        og::server::MatchStage stage({.networked = false});
+        stage.observe_inputs(inputs, 0);
+        ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+        GameWorld* const w = stage.world();
+        ASSERT_NE(nullptr, w);
+        EXPECT_EQ(5, marked_bots_on(*w, 2))
+            << "explicit FAIR fields on unauthored ground (D2)";
+        for (const auto& uptr : w->oblist)
+        {
+            const walker* bot = uptr.get();
+            if (bot == nullptr || bot->dead() ||
+                bot->query_order() != Order::Living ||
+                bot->team_num() != 2 || bot->myguy != nullptr)
+                continue;
+            EXPECT_EQ(nullptr, bot->owner())
+                << "ordinary walkers: nobody owns them";
+            EXPECT_FALSE(adjacent_to_hostile(*w, bot))
+                << "no member lands adjacent to a hostile (D2) at ("
+                << bot->xpos() << "," << bot->ypos() << ")";
+        }
+        // The explicit FAIR banks its own code; the still-unauthored
+        // team 3 banks its resolved NONE; the authored sides bank
+        // nothing (nothing spawned there).
+        EXPECT_EQ(expected_fact(og::sim::kFillFair),
+                  lineup_fact_code(w->mode.vars[4], 2));
+        EXPECT_EQ(expected_fact(og::sim::kFillNone),
+                  lineup_fact_code(w->mode.vars[4], 3));
+        EXPECT_EQ(0, lineup_fact_code(w->mode.vars[4], 0));
+        EXPECT_EQ(0, lineup_fact_code(w->mode.vars[4], 1));
+        EXPECT_TRUE(w->scripts().host().errors().empty());
+        cells = bot_cells_on(*w, 2);
+    };
+    std::vector<std::pair<int, int>> first;
+    std::vector<std::pair<int, int>> second;
+    stage_and_check(first);
+    stage_and_check(second);
+    ASSERT_EQ(5u, first.size());
+    EXPECT_EQ(first, second)
+        << "site-less placement is deterministic from the match seed";
+}
+
+// D3: BRUTAL on the elves' team fields a solved squad BESIDE the standing
+// twelve — the troops are untouched, the squad is sized five, and its
+// measured f-sum tracks the D3 target (the weakest human's f × 1.5)
+// within solver tolerance, so it actually threatens a level-50 hero.
+TEST_F(ClassicLineupTest, brutal_fields_a_threatening_squad_beside_the_elves)
+{
+    og::server::MatchStageInputs inputs = classic_gladiator_hero50_inputs(11u);
+    inputs.equivalent.fill[1] = og::sim::kFillBrutal;
+    og::server::MatchStage stage({.networked = false});
+    stage.observe_inputs(inputs, 0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    GameWorld* const w = stage.world();
+    ASSERT_NE(nullptr, w);
+
+    EXPECT_EQ(5, marked_bots_on(*w, 1))
+        << "the squad walks on BESIDE the troops (D3)";
+    EXPECT_EQ(13 + 5, authored_units_on(*w, 1))
+        << "the twelve elves and their generator still stand";
+    const long long hero = deployed_hero_f(*w);
+    ASSERT_GT(hero, 0) << "the level-50 hero deployed";
+    const long long target = hero * 150 / 100;
+    const long long fsum = bot_f_sum_on(*w, 1);
+    EXPECT_GE(fsum, target * 94 / 100)
+        << "hero f " << hero << ", target " << target;
+    EXPECT_LE(fsum, target * 106 / 100)
+        << "hero f " << hero << ", target " << target;
+    EXPECT_NE(0, (w->mode.vars[3] / 100) % 100)
+        << "the solve stored team 1's plan";
+    EXPECT_EQ(expected_fact(og::sim::kFillBrutal),
+              lineup_fact_code(w->mode.vars[4], 1));
+    EXPECT_TRUE(w->scripts().host().errors().empty());
+}
+
+// D4: the monotone ladder WEAK < FAIR < STRONG < BRUTAL, measured as the
+// spawned squad's f-sum against the fixed level-50 roster, on BOTH team
+// shapes — the troops-fielded elf team (D3's arm) and the unauthored
+// team (D2's arm).
+TEST_F(ClassicLineupTest, fill_ladder_is_monotone_on_both_team_shapes)
+{
+    auto fsum_for = [](int team, std::int16_t fill) {
+        og::server::MatchStageInputs inputs =
+            classic_gladiator_hero50_inputs(11u);
+        inputs.equivalent.fill[static_cast<std::size_t>(team)] = fill;
+        og::server::MatchStage stage({.networked = false});
+        stage.observe_inputs(inputs, 0);
+        EXPECT_EQ(og::server::StageStatus::Staged, stage.status());
+        GameWorld* const w = stage.world();
+        if (w == nullptr)
+            return static_cast<long long>(-1);
+        EXPECT_EQ(5, marked_bots_on(*w, team))
+            << "team " << team << " fill " << fill;
+        return bot_f_sum_on(*w, team);
+    };
+    for (const int team : {1, 2})
+    {
+        SCOPED_TRACE(::testing::Message() << "team " << team);
+        const long long weak = fsum_for(team, og::sim::kFillWeak);
+        const long long fair = fsum_for(team, og::sim::kFillFair);
+        const long long strong = fsum_for(team, og::sim::kFillStrong);
+        const long long brutal = fsum_for(team, og::sim::kFillBrutal);
+        EXPECT_LT(weak, fair) << "WEAK under FAIR";
+        EXPECT_LT(fair, strong) << "FAIR under STRONG";
+        EXPECT_LT(strong, brutal) << "STRONG under BRUTAL";
+    }
+}
+
+// D2's spawn-safety on the tick-1 lazy arm (the un-staged worlds'
+// path): a wildlife crowd blankets the ground around the only existing
+// team, and the site-less squad an explicit STRONG fields on the
+// unauthored team walks on OUTSIDE it — five members, none adjacent to
+// any hostile, and nothing refuses (C4).
+TEST_F(ClassicLineupTest, hostile_crowd_pushes_the_siteless_squad_clear)
+{
+    ClassicWorld fx;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);
+    // A marker-only team beside the roster one: the farthest-region
+    // rule measures a marker-only team AT its marker (the D2 centroid
+    // rule's honest tail).
+    fx.spawn_marker(2, 480, 480);
+    // Wildlife (team 4) on a 32px lattice around the hero: every cell
+    // in the crowd is hostile-adjacent, so the farthest-region rule has
+    // to land the squad beyond it.
+    for (int ty = 0; ty <= 6; ++ty)
+    {
+        for (int tx = 0; tx <= 6; ++tx)
+            fx.spawn_npc(FAMILY_SOLDIER, 4, tx * 32, ty * 32);
+    }
+    fx.world().ctf_requested_fill[1] = og::sim::kFillStrong;
+    fx.world().tick();
+
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
+        << "the explicit wheel fields on unauthored ground (D2)";
+    for (const auto& entry : fx.world().oblist)
+    {
+        const walker* const w = entry.get();
+        if (w == nullptr || w->dead() ||
+            w->query_order() != Order::Living || w->myguy != nullptr)
+            continue;
+        if (w->team_num() != 1)
+            continue;
+        EXPECT_FALSE(adjacent_to_hostile(fx.world(), w))
+            << "no member lands adjacent to the crowd, member at ("
+            << w->xpos() << "," << w->ypos() << ")";
+    }
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// D2 on a map with NO teams at all: nothing exists, so the
+// farthest-region rule has no centroid to measure from and the squad an
+// explicit STRONG fields takes the bounded safe-teleport scatter — it
+// still walks on, because a classic level never refuses (C4).
+TEST_F(ClassicLineupTest, explicit_fill_on_a_wholly_empty_map_still_fields)
+{
+    ClassicWorld fx;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillStrong;
+    fx.world().tick();
+
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
+        << "no centroids: the safe-teleport scatter still fields (C4)";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// The default arms beside the D-series: a stored default NEVER adds a
+// squad beside anything — squadless beside standing troops (D3's
+// default arm), empty on unauthored ground (D2's default arm) — while
+// an explicit WEAK on the other unauthored team fields, proving the
+// stage genuinely ran its per-team pass.
+TEST_F(ClassicLineupTest, the_default_never_adds_a_squad_beside_anything)
+{
+    og::server::MatchStageInputs inputs = classic_gladiator_hero50_inputs(11u);
+    inputs.equivalent.fill[3] = og::sim::kFillWeak;
+    og::server::MatchStage stage({.networked = false});
+    stage.observe_inputs(inputs, 0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    GameWorld* const w = stage.world();
+    ASSERT_NE(nullptr, w);
+
+    EXPECT_EQ(0, marked_bots_on(*w, 1))
+        << "the default stays squadless beside the elves";
+    EXPECT_EQ(13, authored_units_on(*w, 1)) << "the elves stand untouched";
+    EXPECT_EQ(0, live_livings_on(*w, 2))
+        << "the default keeps unauthored ground empty (resolved NONE)";
+    EXPECT_EQ(5, marked_bots_on(*w, 3))
+        << "the explicit WEAK beside it fields (D2)";
+    EXPECT_EQ(0, lineup_fact_code(w->mode.vars[4], 1))
+        << "no squad on the elves, nothing banked";
+    EXPECT_EQ(expected_fact(og::sim::kFillNone),
+              lineup_fact_code(w->mode.vars[4], 2))
+        << "the unauthored default banks its resolved NONE";
+    EXPECT_EQ(expected_fact(og::sim::kFillWeak),
+              lineup_fact_code(w->mode.vars[4], 3));
+    EXPECT_TRUE(w->scripts().host().errors().empty());
 }

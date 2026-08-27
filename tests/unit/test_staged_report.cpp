@@ -614,12 +614,13 @@ TEST_F(ScenarioStagedReport, fill_word_worst_case_fits_the_budget)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-// The C++ half of the SHARED slot-4 digit layout (§3.4 as amended by B7),
-// pinned against a hand-packed slot value so the decoder is provable
-// without entering Lua: team t's code sits at 10 * 100^t and is
-// `fill + 1`, with 0 meaning "this team banked nothing". The Lua half
-// (bank_lineup_facts) writes the identical arithmetic; the two only ever
-// agree on paper, so both sides are pinned.
+// The C++ half of the SHARED slot-4 digit layout (§3.4 as amended by B7
+// and renumbered by D1), pinned against a hand-packed slot value so the
+// decoder is provable without entering Lua: team t's code sits at
+// 10 * 100^t and IS the applied fill code (the +1 bias is retired — no
+// explicit code is 0 since D1), with 0 meaning "this team banked
+// nothing". The Lua half (bank_lineup_facts) writes the identical
+// arithmetic; the two only ever agree on paper, so both sides are pinned.
 TEST_F(ScenarioStagedReport, banked_fill_codes_decode_per_team)
 {
     ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
@@ -631,22 +632,22 @@ TEST_F(ScenarioStagedReport, banked_fill_codes_decode_per_team)
     ASSERT_TRUE(fx.world().mode.active);
 
     // latch 1 (the MATCHED announce co-tenant), then per-team codes:
-    // team 0 = FAIR (code 1), team 1 = nothing (code 0),
-    // team 2 = BRUTAL (code 5), team 3 = NONE (code 2).
+    // team 0 = FAIR (code 3), team 1 = nothing (code 0),
+    // team 2 = BRUTAL (code 5), team 3 = NONE (code 1).
     const std::int32_t latch = 1;
     const std::int32_t packed = latch
-        + 10 * (og::sim::kFillFair + 1)
+        + 10 * og::sim::kFillFair
         + 10 * 100 * 0
-        + 10 * 100 * 100 * (og::sim::kFillBrutal + 1)
-        + 10 * 100 * 100 * 100 * (og::sim::kFillNone + 1);
+        + 10 * 100 * 100 * og::sim::kFillBrutal
+        + 10 * 100 * 100 * 100 * og::sim::kFillNone;
     fx.world().mode.vars[4] = packed;
 
     SaveData save;
     const og::ui::ScenarioRosterReport report = staged_report(fx, save);
     EXPECT_EQ(og::sim::kFillFair, report.team_squad_fill[0]);
     EXPECT_EQ(-1, report.team_squad_fill[1])
-        << "code 0 is 'banked nothing', not FAIR — that is why the code is "
-           "the fill PLUS ONE";
+        << "code 0 is 'banked nothing', not a fill — since D1 no explicit "
+           "code is 0, so the code needs no bias to keep 0 free";
     EXPECT_EQ(og::sim::kFillBrutal, report.team_squad_fill[2]);
 }
 
