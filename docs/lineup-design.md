@@ -1053,9 +1053,14 @@ arm now renders the fills census. The rulings the build settled:
   has no gladiator stage; the classic path to a squad there is the
   box-trade (MAP UNITS off + a non-NONE wheel). The flows pin exactly
   that: scen 1's all-default `COMPANY (2)` / `MAP TROOPS (12)` block, the
-  traded `MATCHED BOTS … STRONG` row replacing the troops, and the
+  traded `BOT SQUAD (5) STRONG` row replacing the troops, and the
   FILL: NONE + box-off shape where GREEN's line (and its roster rows)
-  drop entirely.
+  drop entirely. **A classic solved squad reads `BOT SQUAD`, never
+  `MATCHED BOTS`**: the row's noun tracks the MATCHED.SIZE latch, which
+  only the match-mode activation fold banks — MATCHED is match-mode
+  vocabulary (the W6-A ruling), so the classic solve stores its plan and
+  banks its fill fact but the pane's noun stays the plain squad, sized by
+  the full stock table (SIZE unlatched = no headcount truncation).
 - **Left deliberately for W6-G**: the terminal MAP RULES twins —
   `kTerminalLineupMapRulesMark` / `kTerminalLineupMapRulesLine`
   (terminal_menu_model.h), the census precedence in

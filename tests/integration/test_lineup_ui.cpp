@@ -1377,18 +1377,16 @@ TEST(LineupUi, classic_view_level_censuses_the_staged_world)
     EXPECT_TRUE(state.viewer_fill_opened);
     EXPECT_FALSE(state.troops_line_after_trade)
         << "the box OFF retires GREEN's authored troops from the stage";
-    EXPECT_NE(std::string::npos,
-              state.green_line_after_trade.find("MATCHED BOTS"))
-        << "the trade fields a solved squad (the company on RED is human "
-           "power, so B3's reference exists): '"
-        << state.green_line_after_trade << "'";
-    const std::string strong_tail = "STRONG";
-    ASSERT_GE(state.green_line_after_trade.size(), strong_tail.size());
-    EXPECT_EQ(strong_tail,
-              state.green_line_after_trade.substr(
-                  state.green_line_after_trade.size() - strong_tail.size()))
-        << "the squad row closes with its fill word (B7): '"
-        << state.green_line_after_trade << "'";
+    // BOT SQUAD, not MATCHED BOTS: the row's noun tracks the MATCHED.SIZE
+    // latch, which only the match-mode activation fold banks — MATCHED is
+    // match-mode vocabulary (W6-A: announces and the matched latch stay
+    // out of classic), so a classic solved squad is the full stock table
+    // wearing its fill word, and the plan/facts still bank underneath.
+    EXPECT_EQ("view_scenario line   GREEN TEAM  ACTIVE - BOT SQUAD (5) "
+              "STRONG",
+              state.green_line_after_trade)
+        << "the trade fields a solved squad closing with its fill word "
+           "(B7)";
     EXPECT_TRUE(state.fill_green_none);
     EXPECT_EQ(og::sim::kFillNone, save.fill[1]);
     EXPECT_TRUE(state.viewer_stripped_opened);
