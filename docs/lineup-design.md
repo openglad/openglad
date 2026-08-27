@@ -1016,6 +1016,7 @@ so nobody re-derives them:
 - **C7 holds**: protocol 16 / GTL 18 / snapshot 12 / replay 18 unchanged —
   nothing new rides the wire; the stage writes only replicated mode vars
   that already existed.
+
 ## As built: the W6-C layer — the SDL half of C5 (2026-08-27)
 
 The classic dim retired from the SDL surfaces, and VIEW LEVEL's classic
