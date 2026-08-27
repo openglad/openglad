@@ -1298,6 +1298,30 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
                   static_cast<int>((off.fills_packed / 100) % 100))
             << "the box off trades the troops for the squad";
     }
+    // D3's mode twin (review F1): an EXPLICIT non-NONE wheel value fields
+    // a solved squad BESIDE the npcs — the troops row's count becomes
+    // npcs + squad and its squad digit the applied code — while the
+    // stored default (the row above) keeps them alone. A hard shape
+    // prices only the room the standing units leave.
+    {
+        std::array<std::array<int, 4>, 4> npc_teams = teams;
+        npc_teams[0][1] = 3;  // three humans: the reference and headcount
+        npc_teams[1][2] = 4;
+        const RuleAnswer a = eval_rules(npc_teams, 0b0111, 0, false,
+                                        {0, kKnobBrutal, 0, 0}, 0, {},
+                                        {200, 0, 0, 0});
+        EXPECT_EQ(3, a.matched_size);
+        EXPECT_EQ(2 + 7 * 8, static_cast<int>((a.fills_packed / 100) % 100))
+            << "troops row: four npcs + the three-bot squad beside them";
+        EXPECT_EQ(kKnobBrutal, (a.squads_packed / 10) % 10)
+            << "the squad digit is the applied wheel code";
+        const RuleAnswer capped = eval_rules(npc_teams, 0b0111, 0, false,
+                                             {0, kKnobBrutal, 0, 0}, 5, {},
+                                             {200, 0, 0, 0});
+        EXPECT_EQ(2 + 5 * 8,
+                  static_cast<int>((capped.fills_packed / 100) % 100))
+            << "cap 5 beside four npcs leaves room for one";
+    }
     // Allies: the weaker company's row counts roster + the solved squad;
     // the stronger one counts the roster alone.
     {
@@ -2758,4 +2782,147 @@ TEST_F(ClassicLineupTest, the_default_never_adds_a_squad_beside_anything)
     EXPECT_EQ(expected_fact(og::sim::kFillWeak),
               lineup_fact_code(w->mode.vars[4], 3));
     EXPECT_TRUE(w->scripts().host().errors().empty());
+}
+
+// ===========================================================================
+// 4c. D3's MODE twin (review F1): the mode maps' troops arm obeys the
+//     classic gate — the stored DEFAULT stays squadless beside fielded
+//     map units, an EXPLICIT non-NONE wheel value fields a solved squad
+//     BESIDE them (target = the empty-team arm's, troops carry no guy),
+//     and a hard shape prices only the room the standing units leave.
+// ===========================================================================
+
+namespace
+{
+
+// The deployed humans' f-sum on one team — the reference the D3 solve
+// prices against — the myguy half of bot_f_sum_on's walk, through the
+// same independent C++ oracle.
+long long human_f_sum_on(GameWorld& world, int team)
+{
+    long long sum = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team) ||
+            w->myguy == nullptr)
+            continue;
+        sum += classic_walker_f(w);
+    }
+    return sum;
+}
+
+}  // namespace
+
+// The CTF-501 shape: a flag team fielding authored npcs and no roster.
+// DEFAULT keeps the map's own cast alone (B4's sentence held); explicit
+// BRUTAL walks a solved squad on beside it, priced like an empty team
+// (weakest human f-sum x 1.5 — D3: occupancy means HUMAN occupancy).
+TEST_F(StagedRules, explicit_fill_fields_a_squad_beside_mode_troops)
+{
+    auto build = [this](ModesCtfWorld& fx) {
+        fx.spawn_flag(flag_family_, 0, 100, 100, 1);
+        fx.spawn_flag(flag_family_, 1, 500, 100, 1);
+        fx.spawn_anchor(0, 96, 200);
+        fx.spawn_anchor(1, 480, 200);
+        int guy_id = 1;
+        for (int k = 0; k < 5; ++k)
+            fx.spawn_leveled_hero(FAMILY_SOLDIER, 0,
+                                  static_cast<short>(96 + 32 * k), 700,
+                                  guy_id++, 5);
+        for (int k = 0; k < 4; ++k)
+            fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k),
+                            300);
+    };
+    // The stored DEFAULT: the fielded npcs are the team's fill, nothing
+    // walks on beside them and nothing is banked.
+    {
+        ModesCtfWorld fx(kCtfLevelA);
+        build(fx);
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(4, live_livings_on(fx.world(), 1));
+        EXPECT_EQ(0, marked_bots_on(fx.world(), 1))
+            << "the stored DEFAULT stays squadless beside the troops";
+        EXPECT_EQ(0, lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1))
+            << "no squad, nothing banked (R4)";
+    }
+    // Explicit BRUTAL: the squad fields BESIDE the npcs, f-sum pinned
+    // against the D3 target within solver tolerance, plan and fact banked.
+    {
+        ModesCtfWorld fx(kCtfLevelA);
+        build(fx);
+        fx.world().ctf_requested_fill[1] = kKnobBrutal;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
+            << "the explicit wheel value fields the solved squad";
+        EXPECT_EQ(4 + 5, live_livings_on(fx.world(), 1))
+            << "the npcs still stand beside it (D3)";
+        const long long reference = human_f_sum_on(fx.world(), 0);
+        ASSERT_GT(reference, 0) << "the five heroes deployed";
+        const long long target = reference * 150 / 100;
+        const long long fsum = bot_f_sum_on(fx.world(), 1);
+        EXPECT_GE(fsum, target * 94 / 100)
+            << "reference " << reference << ", target " << target;
+        EXPECT_LE(fsum, target * 106 / 100)
+            << "reference " << reference << ", target " << target;
+        EXPECT_NE(0, (fx.var(kSlotMatchedPlan) / 100) % 100)
+            << "the solve stored team 1's plan";
+        EXPECT_EQ(expected_fact(kKnobBrutal),
+                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1))
+            << "the applied fill code is banked for the pane";
+        EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+    }
+}
+
+// The hard shape beside standing troops (R2's room rule on the D3 arm):
+// basketball's court prices cap - fielded npcs, and a full court of
+// troops fields no squad and banks no fact.
+TEST_F(StagedRules, basketball_caps_the_squad_beside_the_troops)
+{
+    {
+        ModesCtfWorld fx(kBballLevelB);
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 192, 96);
+        int guy_id = 1;
+        for (int k = 0; k < 3; ++k)
+            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
+                          700, guy_id++);
+        for (int k = 0; k < 3; ++k)
+            fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k),
+                            300);
+        fx.world().ctf_requested_fill[1] = kKnobBrutal;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(2, marked_bots_on(fx.world(), 1))
+            << "the squad beside the troops is sized to the court room";
+        EXPECT_EQ(5, live_livings_on(fx.world(), 1))
+            << "three npcs + two bots = five on court";
+        EXPECT_EQ(expected_fact(kKnobBrutal),
+                  lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1));
+    }
+    // A full court of troops: no room, no squad, no fact (R4).
+    {
+        ModesCtfWorld fx(kBballLevelB);
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 192, 96);
+        int guy_id = 1;
+        for (int k = 0; k < 3; ++k)
+            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
+                          700, guy_id++);
+        for (int k = 0; k < 5; ++k)
+            fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k),
+                            300);
+        fx.world().ctf_requested_fill[1] = kKnobBrutal;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0, marked_bots_on(fx.world(), 1))
+            << "a full court leaves no room beside the troops";
+        EXPECT_EQ(5, live_livings_on(fx.world(), 1));
+        EXPECT_EQ(0, lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1))
+            << "0 spawned = no fact banked";
+    }
 }

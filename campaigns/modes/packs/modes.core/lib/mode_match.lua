@@ -218,9 +218,11 @@ end
 -- every consumer of the decision — TEAM_MASK, strips, win ladders, the
 -- starts recheck — sees the narrowed truth. A row's count is what the
 -- team will FIELD: a company row with an allies squad beside it counts
--- roster + squad (squad_count is the squad alone), sized by squad_room;
--- row.squad carries the banked-fact code (fill + 1) of the squad the
--- apply will spawn, nil where none will.
+-- roster + squad (squad_count is the squad alone), sized by squad_room,
+-- and a troops row with a squad beside it counts npcs + squad the same
+-- way; row.squad carries the banked-fact code — since D1 the applied
+-- fill code itself — of the squad the apply will spawn, nil where none
+-- will.
 --
 -- The FILL squad rows (amendment B2/B3), decided from the inputs alone:
 --   empty team, humans anywhere   "matched" — solved against
@@ -232,9 +234,14 @@ end
 --                                 × multiplier > 0, sized by the
 --                                 headcount rule in the room the hard
 --                                 shape leaves
---   troops/generators standing    no squad — the map's own units are the
+--   troops standing, DEFAULT      no squad — the map's own units are the
 --                                 team's fill (turn the box off to trade
 --                                 them for a solved squad)
+--   troops standing, explicit     a solved squad walks on BESIDE the
+--   non-NONE                      npcs (D3's classic gate, mirrored):
+--                                 troops carry no guy, so the target is
+--                                 the empty-team arm's, and a hard shape
+--                                 prices only the room beside the units
 --   NONE                          no squad, whatever else stands
 local function fills(inputs, active_mask, opts)
   -- Every shipped squad table fields five bots (D35 soldier-first); a
@@ -274,7 +281,11 @@ local function fills(inputs, active_mask, opts)
     local active = core.mask_has(active_mask, team)
     local fill = "empty"
     local count = 0
-    local knob = fill_knobs[team + 1] or FILL_DEFAULT
+    -- The RAW stored code survives beside the resolution: the troops arm
+    -- below is the one place a mode row distinguishes "the player turned
+    -- the wheel" from "the default resolved" (D3's classic gate).
+    local raw = fill_knobs[team + 1] or FILL_DEFAULT
+    local knob = raw
     if active then
       -- C8/D1: a stored default resolves HERE, through the lib's ONE
       -- rule, before any squad decision reads it. A team in the active
@@ -338,10 +349,33 @@ local function fills(inputs, active_mask, opts)
         fill = "company"
         count = row.roster + squad_count
       elseif troops_stand then
-        -- Fielded map units are the team's fill (B4): no squad walks on
-        -- beside the map's own cast.
+        -- Fielded map units are the team's fill (B4) and the stored
+        -- DEFAULT stays squadless beside them — but an EXPLICIT non-NONE
+        -- wheel value fields a solved squad beside the npcs (D3's classic
+        -- gate, mirrored here for the mode maps). Troops carry no guy, so
+        -- the seam's solve prices the empty-team arm (weakest human x m),
+        -- and the hard shape leaves only the room beside the standing
+        -- units (R2 — the spawn seam's fielded count is the same walk).
         fill = "troops"
         count = row.npcs
+        local explicit = raw ~= FILL_DEFAULT
+        if no_bots then
+          explicit = false
+        end
+        if explicit and not lineup.squad_off(knob) then
+          local troop_size = solved_size
+          local troop_room = lineup.squad_room(squad_cap, row.npcs)
+          if troop_room ~= nil then
+            troop_size = og.min(troop_size, troop_room)
+          end
+          if troop_size > 0 then
+            squad_count = troop_size
+            -- D1: the banked fact IS the applied wheel code.
+            squad = lineup.applied_fill(knob)
+            wants_bots = true
+            count = row.npcs + squad_count
+          end
+        end
       elseif no_bots then
         if gens_stand then
           fill = "generators"

@@ -737,24 +737,35 @@ local function spawn_matched_bots(team, families, cursor_slot, placer,
   return #members
 end
 
--- The live has_guy headcount on a team — the spawn seam's half of
--- squad_room (fills reads the census roster; in the staged world the two
--- are the same walkers).
-local function live_roster_on(obs, team)
-  local count = 0
+-- The live fielded headcount on a team — the spawn seam's half of
+-- squad_room, mirroring the fills rows' two occupied arms exactly (in
+-- the staged world the two walks count the same walkers): the has_guy
+-- roster where one stands (the company/allies arm), else the standing
+-- guy-less livings (the troops arm, D3's mode twin — a hard shape
+-- prices only the room the fielded map units leave). The strips run
+-- before every squad spawn, so a retired unit is dead here and counts
+-- for nothing.
+local function live_fielded_on(obs, team)
+  local roster = 0
+  local units = 0
   for k = 1, #obs do
     local w = obs[k]
     if w:dead() == 0 then
       if w:order() == C.ORDER_LIVING then
-        if w:has_guy() then
-          if w:team_num() == team then
-            count = count + 1
+        if w:team_num() == team then
+          if w:has_guy() then
+            roster = roster + 1
+          else
+            units = units + 1
           end
         end
       end
     end
   end
-  return count
+  if roster > 0 then
+    return roster
+  end
+  return units
 end
 
 -- Fields one bot per family for a team's FILL squad, over the
@@ -803,7 +814,7 @@ local function spawn_bots(team, families, cursor_slot, placer, cap, announce,
   end
   local obs = og.oblist()
   local squad = squad_families(families,
-                               squad_room(cap, live_roster_on(obs, team)))
+                               squad_room(cap, live_fielded_on(obs, team)))
   if plan_code(team) == 0 then
     local reference, sums = census_power(obs)
     if reference > 0 then
