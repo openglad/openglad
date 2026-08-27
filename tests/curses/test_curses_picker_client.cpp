@@ -945,11 +945,20 @@ TEST(CursesPickerClient, view_scenario_renders_the_staged_glyph_band)
         << f.t().dump();
     // The census lines start right below the band.
     EXPECT_EQ(0u, f.t().text_row(14).find("SCEN 1:")) << f.t().dump();
+    // Amendment 3 C5 (W6-C): a staged CLASSIC world gets the per-team
+    // census fold too — headerless (no mode to name, no match to count
+    // teams for) and unclamped (C4: classic levels never refuse), so the
+    // block starts at its first team line directly under the title.
+    EXPECT_EQ(0u, f.t().text_row(15).find("  RED TEAM  ACTIVE - COMPANY (1)"))
+        << f.t().dump();
+    EXPECT_EQ(0u,
+              f.t().text_row(16).find("  GREEN TEAM  ACTIVE - MAP TROOPS (12)"))
+        << f.t().dump();
     // Seat block (#218): the curses viewer stages locally, so the seat
-    // lines are the save-derived synthesis — one all-local seat leading the
-    // non-versus census, directly under the title line.
-    EXPECT_EQ(0u, f.t().text_row(15).find("SEATS: CO-OP")) << f.t().dump();
-    EXPECT_EQ(0u, f.t().text_row(16).find("  P1 YOU - RED TEAM"))
+    // lines are the save-derived synthesis — one all-local seat, now below
+    // the classic census block.
+    EXPECT_EQ(0u, f.t().text_row(17).find("SEATS: CO-OP")) << f.t().dump();
+    EXPECT_EQ(0u, f.t().text_row(18).find("  P1 YOU - RED TEAM"))
         << f.t().dump();
 }
 
