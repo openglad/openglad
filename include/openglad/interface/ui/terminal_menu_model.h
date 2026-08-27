@@ -116,14 +116,12 @@ struct TerminalLineupInputs {
 TerminalLineupModel build_terminal_lineup_model(
     const TerminalLineupInputs& inputs);
 
-// §2.3: on a CLASSIC (non-versus) campaign the eight bot knobs are stored
-// but the map ignores them, so the SDL screen draws them dimmed over a
-// MAP RULES census and its callbacks return without cycling. A terminal
-// cannot dim, so the knob rows carry this marker and the write refuses in
-// words — one spelling for both clients.
-inline constexpr std::string_view kTerminalLineupMapRulesMark = "  (MAP RULES)";
-inline constexpr std::string_view kTerminalLineupMapRulesRefusal =
-    "MAP RULES: this campaign's levels decide the bots.";
+// Amendment 3 C5: the classic gating is GONE. The match machinery moved to
+// packs/core and runs on every campaign through the mode-less stage step, so
+// FILL and MAP UNITS are live wherever they are offered and there is nothing
+// left to mark or refuse. kTerminalLineupMapRulesMark and
+// kTerminalLineupMapRulesRefusal went with the rule they spelled; the only
+// gate on the knob rows is the host gate (§2.3), which is unchanged.
 
 // B6: the terminal FIGHTERS page is GONE with the SDL screen. Its two
 // powers already live elsewhere on every terminal client — MATCHUP's

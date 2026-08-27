@@ -2269,8 +2269,9 @@ bool seed_lineup_company(const std::string& slot)
     SaveData sd;
     sd.reset();
     sd.save_name = "LINEUP BAND";
-    // §2.3: the eight bot knobs are read by VERSUS campaigns' modes only, so
-    // the knob half of this drive needs one.
+    // A versus campaign, kept deliberately after C5 made the knobs live
+    // everywhere: this drive is the modes half of the pair, and its classic
+    // twin below now asserts the SAME answers on gladiator.
     sd.current_campaign = "modes";
     sd.my_team = 0;
     for (int i = 0; i < 4; ++i) {
@@ -2386,12 +2387,12 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
     og::data::set_active_company_slot("save0");
 }
 
-// The same two rows on a CLASSIC campaign: the map's own levels decide the
-// bots there, so the write is refused in words and never reaches the company
-// file — the terminal spelling of change_lineup_fill returning without
-// cycling. Hardcoding the knobs live let a terminal write a value the same
-// campaign's SDL screen refuses.
-TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
+// The same two rows on a CLASSIC campaign. Amendment 3 C5 moved the match
+// machinery into packs/core and gave a mode-less level its own stage step, so
+// gladiator's levels no longer "decide the bots" on their own: the write
+// lands in the company file here exactly as it does on modes, the row carries
+// no mark, and nothing refuses. This test asserted the opposite until C5.
+TEST(PlatformHeadless, text_picker_lineup_knob_cycles_on_a_classic_campaign)
 {
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -2417,8 +2418,8 @@ TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
         "1\n"   //   list: open company...
         "1\n"   //     #1 = classicd -> team build
         "12\n"  // team build: LINEUP
-        "1\n"   //   lineup: TEAM 1 FILL -> refused
-        "2\n"   //   lineup: TEAM 1 MAP UNITS -> refused
+        "1\n"   //   lineup: TEAM 1 FILL -> FAIR steps to STRONG
+        "2\n"   //   lineup: TEAM 1 MAP UNITS -> ON flips to OFF
         "12\n"  //   lineup: back -> team build
         "8\n"   // team build: back -> main
         "6\n";  // main: quit
@@ -2434,20 +2435,22 @@ TEST(PlatformHeadless, text_picker_lineup_knob_refuses_on_a_classic_campaign)
 
     const std::string out = stdout_capture.restore();
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
-    EXPECT_NE(std::string::npos,
-              out.find(std::string(og::ui::kTerminalLineupMapRulesRefusal)))
-        << "the row says who decides instead of cycling:\n" << out;
-    EXPECT_NE(std::string::npos, out.find("TEAM 1  FILL: FAIR  (MAP RULES)"))
-        << "and the row itself carries the mark:\n" << out;
-    EXPECT_EQ(std::string::npos, out.find("FILL: STRONG"))
-        << "nothing cycled:\n" << out;
-    EXPECT_EQ(std::string::npos, out.find("MAP UNITS: OFF"))
-        << "and nothing flipped:\n" << out;
+    EXPECT_EQ(std::string::npos, out.find("MAP RULES"))
+        << "C5: nothing on this page speaks for a classic exception:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 1  FILL: FAIR"))
+        << "the row is the bare shared label now:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("FILL: STRONG"))
+        << "the wheel steps on gladiator:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("MAP UNITS: OFF"))
+        << "and so does the box:\n" << out;
 
     SaveData reloaded;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("classicd"));
-    EXPECT_EQ(0, reloaded.fill[0]) << "no write reached the .gtl";
-    EXPECT_EQ(0, reloaded.map_units[0]);
+    EXPECT_EQ(og::sim::kFillStrong, reloaded.fill[0])
+        << "the classic write reaches the .gtl like any other";
+    EXPECT_EQ(og::sim::kMapUnitsOff, reloaded.map_units[0]);
+    EXPECT_EQ(og::sim::kFillFair, reloaded.fill[1])
+        << "only the cycled team moved";
 
     (void)remove_user_file("save/classicd.gtl");
     og::data::set_active_company_slot("save0");
@@ -2507,16 +2510,16 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     EXPECT_EQ(TerminalLineupItem::Kind::Back, joiner.items.back().kind);
     EXPECT_EQ("Back", joiner.items.back().label);
     // The knob rows quote the shared label VERBATIM behind the team ordinal.
-    // This save names no campaign, so it is CLASSIC: the rows stay (dropping
-    // them would renumber the page under the two 1-based consumers) but they
-    // carry the MAP RULES mark and the band censuses MAP RULES, the terminal
-    // spelling of the SDL screen's dimmed faces.
-    EXPECT_EQ("TEAM 1  FILL: FAIR  (MAP RULES)", host.items[0].label);
-    EXPECT_EQ("TEAM 1  MAP UNITS: ON  (MAP RULES)", host.items[1].label);
-    EXPECT_NE(std::string::npos, host.lines[1].find("MAP RULES"))
-        << "the classic census names who decides: " << host.lines[1];
-    EXPECT_EQ(std::string::npos, host.lines[1].find("FIGHTER"))
-        << "MAP RULES replaces the census, it does not join it: "
+    // This save names no campaign, so it is CLASSIC — and since amendment 3
+    // C5 that changes NOTHING about the row: the match machinery is the core
+    // pack's now and runs on a mode-less level, so the label carries no mark
+    // and the band censuses the fighters exactly as a versus campaign does.
+    EXPECT_EQ("TEAM 1  FILL: FAIR", host.items[0].label);
+    EXPECT_EQ("TEAM 1  MAP UNITS: ON", host.items[1].label);
+    EXPECT_EQ(std::string::npos, host.lines[1].find("MAP RULES"))
+        << "C5 retired the classic census: " << host.lines[1];
+    EXPECT_NE(std::string::npos, host.lines[1].find("FIGHTER"))
+        << "a classic band counts its fighters like any other: "
         << host.lines[1];
     // Every stored FILL code reads as its word, and a value no wheel can
     // produce (a crafted joiner, a legacy .gtl) reads as the default rather
@@ -2527,12 +2530,12 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     inputs.is_host = true;
     const og::ui::TerminalLineupModel named =
         og::ui::build_terminal_lineup_model(inputs);
-    EXPECT_EQ("TEAM 1  FILL: BRUTAL  (MAP RULES)", named.items[0].label);
-    EXPECT_EQ("TEAM 2  FILL: FAIR  (MAP RULES)", named.items[2].label);
-    EXPECT_EQ("TEAM 2  MAP UNITS: OFF  (MAP RULES)", named.items[3].label);
+    EXPECT_EQ("TEAM 1  FILL: BRUTAL", named.items[0].label);
+    EXPECT_EQ("TEAM 2  FILL: FAIR", named.items[2].label);
+    EXPECT_EQ("TEAM 2  MAP UNITS: OFF", named.items[3].label);
 
-    // On a VERSUS campaign the knobs really are live: no mark, and the band
-    // censuses the fighters again.
+    // ...and a VERSUS campaign reads the same, which is the whole point of
+    // C5: one page, one meaning, whatever the campaign.
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
@@ -2542,14 +2545,79 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     save.map_units[1] = og::sim::kMapUnitsOn;
     const og::ui::TerminalLineupModel versus =
         og::ui::build_terminal_lineup_model(inputs);
-    EXPECT_EQ("TEAM 1  FILL: FAIR", versus.items[0].label);
-    EXPECT_EQ("TEAM 1  MAP UNITS: ON", versus.items[1].label);
-    EXPECT_NE(std::string::npos, versus.lines[1].find("FIGHTER"))
-        << versus.lines[1];
-    EXPECT_EQ(std::string::npos, versus.lines[1].find("MAP RULES"))
-        << versus.lines[1];
+    EXPECT_EQ(host.items[0].label, versus.items[0].label);
+    EXPECT_EQ(host.items[1].label, versus.items[1].label);
+    // The knob/census line is identical word for word. The HEADER line is not,
+    // and honestly so: `modes` registers a `lineup.power` book, gladiator does
+    // not yet, and POWER is priced by whoever registered one — the one
+    // remaining campaign-shaped difference on this page, and the one C5's
+    // packs/core registration closes.
+    for (std::size_t i = 1; i < host.lines.size(); i += 2)
+        EXPECT_EQ(host.lines[i], versus.lines[i]) << "band " << (i / 2);
+    EXPECT_TRUE(versus.bands[0].power.has_value())
+        << "a registered pricing book puts a number on the band: "
+        << versus.lines[0];
     (void)unmount_campaign_package_with_error("modes");
     (void)mount_campaign_package_with_error("gladiator");
+}
+
+// C5: POWER is priced by a registered `lineup.power` hook, and the terminal
+// band asks for it on EVERY campaign — there was never a versus gate in the
+// pricing path, and after C5 there is none anywhere on the page. With a hook
+// present a classic save's band carries a number; without one it honestly
+// carries `--`. (Amendment 3 registers the default pricing from packs/core so
+// gladiator itself answers; that registration is the Lua wave's, and this is
+// the terminal half of the contract it satisfies.)
+TEST(PlatformHeadless, lineup_terminal_band_prices_a_classic_campaign)
+{
+    SaveData save;
+    save.reset();
+    save.my_team = 0;
+    save.current_campaign = "gladiator";  // classic, and priced all the same
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "F1";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_list[0]->level = 3;
+    save.team_size = 1;
+
+    const std::vector<og::sim::LobbyPlayer> seats =
+        og::ui::synthesize_local_lobby_players(save);
+    og::ui::TerminalLineupInputs inputs;
+    inputs.save = &save;
+    inputs.players = seats;
+
+    // No hook: the band says so rather than inventing a price.
+    {
+        ScopedSyntheticCampaignPicker zone(
+            R"LUA(og.log("a campaign with no lineup"))LUA");
+        og::ui::lineup_power_cache_clear();
+        const og::ui::TerminalLineupModel unpriced =
+            og::ui::build_terminal_lineup_model(inputs);
+        EXPECT_NE(std::string::npos, unpriced.lines[0].find("POWER --"))
+            << unpriced.lines[0];
+    }
+
+    // A hook: the same classic band carries the number, summed over the
+    // team's deployed fighters.
+    {
+        ScopedSyntheticCampaignPicker zone(R"LUA(
+og.register_campaign_hooks({
+  lineup = { power = function(row) return row.level * 100 end },
+})
+)LUA");
+        og::ui::lineup_power_cache_clear();
+        const og::ui::TerminalLineupModel priced =
+            og::ui::build_terminal_lineup_model(inputs);
+        ASSERT_TRUE(priced.bands[0].power.has_value())
+            << "a classic campaign's roster is priced like any other";
+        EXPECT_EQ(300, *priced.bands[0].power);
+        EXPECT_NE(std::string::npos, priced.lines[0].find("POWER 300"))
+            << priced.lines[0];
+        EXPECT_FALSE(priced.bands[1].power.has_value())
+            << "an empty team has nothing to sum";
+    }
+    og::ui::lineup_power_cache_clear();
 }
 
 // B4: the MAP UNITS hint speaks for a census that HAPPENED. An empty
@@ -2594,11 +2662,11 @@ TEST(PlatformHeadless, lineup_terminal_map_units_hint_needs_a_real_census)
         << "team 1 is shipped seven: " << censused.lines[1];
     EXPECT_NE(std::string::npos, censused.lines[3].find("NO MAP UNITS"))
         << "team 2 is shipped none: " << censused.lines[3];
-    // This save names no campaign, so it is CLASSIC and the census cell
-    // reads MAP RULES. Whatever is in that cell, the hint rides BESIDE it —
-    // that is why format_lineup_map_units_census is its own formatter and
-    // not a new Diag inside format_lineup_census.
-    EXPECT_NE(std::string::npos, censused.lines[3].find("MAP RULES"))
+    // Whatever is in the census cell, the hint rides BESIDE it — that is why
+    // format_lineup_map_units_census is its own formatter and not a new Diag
+    // inside format_lineup_census. Team 2 has no fighters and no map units,
+    // so both halves are spoken.
+    EXPECT_NE(std::string::npos, censused.lines[3].find("NO FIGHTERS"))
         << "the hint rides BESIDE the census, never instead of it: "
         << censused.lines[3];
     EXPECT_EQ(std::string::npos, censused.lines[7].find("NO MAP UNITS"))

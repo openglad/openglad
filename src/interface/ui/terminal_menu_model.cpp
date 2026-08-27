@@ -120,11 +120,6 @@ TerminalLineupModel build_terminal_lineup_model(
     // telling all four teams the map is empty.
     const bool censused = !inputs.map_unit_counts.empty();
     const std::array<LineupTeamBand, 4>& bands = model.bands;
-    // §2.3: the knobs are stored on every campaign but only a VERSUS
-    // campaign's modes read them. The SDL screen says so by dimming the two
-    // faces and censusing MAP RULES; the terminal says the same thing in the
-    // only ink it has.
-    const bool versus = is_versus_campaign(*inputs.save);
 
     for (int team = 0; team < 4; ++team) {
         const LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
@@ -147,12 +142,10 @@ TerminalLineupModel build_terminal_lineup_model(
         model.lines.push_back(std::format(
             "TEAM {} {}  {}   {}", team + 1, og::sim::team_color_name(team),
             format_lineup_power(band.power), seats));
-        // The SDL band's own precedence: a diagnostic outranks MAP RULES,
-        // which outranks the plain census.
-        const std::string census =
-            (!versus && band.diag == LineupTeamBand::Diag::None)
-            ? std::string("MAP RULES")
-            : format_lineup_census(band);
+        // C5: MAP RULES is gone from the middle of this precedence — the
+        // knobs are live on every campaign now, so a diagnostic or the plain
+        // census is the whole cell, exactly as on a versus campaign.
+        const std::string census = format_lineup_census(band);
         // B4's hint rides BESIDE the census, never instead of it: the SDL
         // band dims the box and keeps the fighter count, and the shared
         // formatter is deliberately not folded into format_lineup_census.
@@ -173,19 +166,16 @@ TerminalLineupModel build_terminal_lineup_model(
             const std::string map_units = format_lineup_map_units_label(
                 inputs.save->map_units[static_cast<std::size_t>(team)]);
             // The row text is the shared label VERBATIM behind the team
-            // ordinal — never a second spelling of the same value. The rows
-            // STAY on a classic campaign (marked, and refused on selection):
-            // dropping them would renumber the page under the two 1-based
-            // consumers, and the SDL twin keeps its faces too.
-            const std::string mark = versus
-                ? std::string()
-                : std::string(kTerminalLineupMapRulesMark);
+            // ordinal — never a second spelling of the same value. C5 retired
+            // the classic mark: packs/core's stage step applies FILL and the
+            // MAP UNITS strip on a mode-less level too, so the row means the
+            // same thing on gladiator as it does on modes.
             model.items.push_back(TerminalLineupItem{
                 TerminalLineupItem::Kind::Fill, team,
-                std::format("TEAM {}  {}{}", team + 1, fill, mark)});
+                std::format("TEAM {}  {}", team + 1, fill)});
             model.items.push_back(TerminalLineupItem{
                 TerminalLineupItem::Kind::MapUnits, team,
-                std::format("TEAM {}  {}{}", team + 1, map_units, mark)});
+                std::format("TEAM {}  {}", team + 1, map_units)});
         }
     }
     // B6: FIGHTERS is deleted, not moved down — MATCHUP's "move SLOT TEAM"

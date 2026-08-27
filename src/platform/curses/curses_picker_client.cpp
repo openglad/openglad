@@ -1091,15 +1091,11 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         switch (item.kind) {
         case Kind::Fill:
         case Kind::MapUnits:
-            // §2.3: on a classic campaign the levels decide the bots, so the
-            // knob write is refused here exactly as change_lineup_fill
-            // returns without stepping on the SDL screen.
-            if (!og::ui::is_versus_campaign(save)) {
-                menu.show_text(
-                    "Lineup",
-                    {std::string(og::ui::kTerminalLineupMapRulesRefusal)});
-                break;
-            }
+            // C5: the versus-only refusal is gone. packs/core's mode-less
+            // stage step applies these two knobs on a classic level, so a
+            // gladiator write is as real as a modes write and the row cycles
+            // for every campaign.
+            //
             // One clamp implementation (B1-B4) — the lobby's own. No
             // settings-sync tail: the curses picker links no lobby client
             // (its network lobby is a separate flow that seeds its own
