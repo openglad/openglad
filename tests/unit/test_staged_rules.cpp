@@ -2160,16 +2160,53 @@ TEST_F(ClassicLineupTest, fill_strong_spawns_a_solved_squad_on_a_marker_team)
 // FAIR on a ships-empty authored team is the map's own value: nothing
 // spawns, nothing banks. The explicit wheel is what turns a marker-only
 // team on — the classic reading of "a team is on when anything is on it".
+// Team 2 wheels STRONG so the stage genuinely runs its per-team pass (an
+// all-default world returns on the fast path before the rule is even
+// consulted): team 1's guard is evaluated and holds, team 2 fills.
 TEST_F(ClassicLineupTest, fair_keeps_a_ships_empty_team_empty)
 {
     ClassicWorld fx;
     fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);
     fx.spawn_marker(1, 320, 480);
+    fx.spawn_marker(2, 480, 160);
+    fx.world().ctf_requested_fill[2] = og::sim::kFillStrong;
     fx.world().tick();
 
-    EXPECT_EQ(0, marked_bots_on(fx.world(), 1));
-    EXPECT_EQ(0, fx.world().mode.vars[3]);
-    EXPECT_EQ(0, fx.world().mode.vars[4]);
+    EXPECT_EQ(0, marked_bots_on(fx.world(), 1))
+        << "FAIR on a ships-empty team spawns nothing";
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 2))
+        << "the explicit wheel beside it does";
+    EXPECT_EQ(0, fx.world().mode.vars[4] / 1000 % 100)
+        << "team 1 banks nothing";
+    EXPECT_EQ(4, fx.world().mode.vars[4] / 100000 % 100)
+        << "team 2 banks the applied STRONG fact";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// Every anchor cell blocked — the marker tile and the whole 3-tile ring
+// ball around it — falls through to the blessed teleport draw, and the
+// squad still walks on somewhere legal.
+TEST_F(ClassicLineupTest, blocked_anchor_falls_back_to_the_teleport_draw)
+{
+    ClassicWorld fx;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);
+    fx.spawn_marker(1, 320, 480);
+    for (int dx = -3; dx <= 3; ++dx)
+    {
+        for (int dy = -3; dy <= 3; ++dy)
+        {
+            if (std::abs(dx) + std::abs(dy) > 3)
+                continue;
+            // Wildlife (team 4): blocks the cells without joining any
+            // score team's census.
+            fx.spawn_npc(FAMILY_SOLDIER, 4, 320 + dx * 16, 480 + dy * 16);
+        }
+    }
+    fx.world().ctf_requested_fill[1] = og::sim::kFillStrong;
+    fx.world().tick();
+
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
+        << "the teleport fallback still fields the squad";
     EXPECT_TRUE(fx.world().scripts().host().errors().empty());
 }
 

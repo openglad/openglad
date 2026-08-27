@@ -74,18 +74,16 @@ local function classic_census(obs)
 end
 
 -- The team's squad anchor: authored units' centroid (grid-snapped so the
--- ring walk stays on tile corners), else the start marker. nil = the map
--- authors nothing here, so nothing may spawn (the activation rule above).
+-- ring walk stays on tile corners), else the start marker. Total over the
+-- rows classic_wants_squad admits: an authored team has units or a marker,
+-- so the marker arm is the honest tail, never a fallback past it.
 local function classic_anchor(row)
   if row.units > 0 then
     local ax = og.div(og.div(row.sx, row.units), 16) * 16
     local ay = og.div(og.div(row.sy, row.units), 16) * 16
     return ax, ay
   end
-  if row.mx >= 0 then
-    return row.mx, row.my
-  end
-  return nil
+  return row.mx, row.my
 end
 
 -- One member onto the board: the anchor tile, then the mode placer's ring
