@@ -1611,3 +1611,85 @@ TEST(LineupUi, train_team_cycler_relabelled)
                   buttons[kTrainMenuChangeTeamIndex].label.size()) * 6,
               buttons[kTrainMenuChangeTeamIndex].sizex);
 }
+
+// ---------------------------------------------------------------------------
+// A FILL cycle repaints the knob it changed and nothing else. The page's
+// live vbuttons carry the dim the gate pass published (three of the four
+// MAP UNITS boxes are Disabled on scen 501 — only RED ships map units), and
+// re-creating the whole live array on the dispatch dropped it for the frame
+// that click composed: every dimmed knob on the page flashed bright for one
+// presented frame. init_buttons is the teardown, so its own TRACE is the
+// pin.
+namespace {
+
+struct LineupBlinkState
+{
+    bool page_opened = false;
+    bool cycled = false;
+    bool rebuilt_buttons = true;
+};
+
+int lineup_no_rebuild_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<LineupBlinkState*>(data);
+    if (!injector_open_lineup())
+        return 0;
+    interact("lineup");
+    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    if (state->page_opened) {
+        SDL_Delay(750);
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        // One cycle of RED's wheel, retried on a swallowed click (the
+        // ledger is cleared for each attempt so a retry cannot smuggle a
+        // rebuild past the assertion).
+        for (int attempt = 0; attempt < 3 && !state->cycled; ++attempt) {
+            const short before = save.fill[0];
+            trace_clear();
+            interact("lineup_fill_0");
+            for (int waited = 0; waited < 2500; waited += 50) {
+                if (save.fill[0] != before) {
+                    state->cycled = true;
+                    break;
+                }
+                SDL_Delay(50);
+            }
+        }
+        SDL_Delay(300);
+        state->rebuilt_buttons = trace_contains("menu", "init_buttons");
+        interact("back");
+        SDL_Delay(300);
+    }
+    injector_unwind_from_scenario();
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, fill_cycle_never_rebuilds_the_live_buttons)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_fighters("modes", 501, 2,
+                              {{"Alpha", 3, true, 1}, {"Beta", 2, true, 1}});
+
+    LineupBlinkState state;
+    SDL_Thread* thread = SDL_CreateThread(lineup_no_rebuild_injector,
+                                          "lineup_blink", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    restore_gladiator_mount();
+
+    EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
+    EXPECT_TRUE(state.cycled) << "the FILL knob should have stepped";
+    EXPECT_FALSE(state.rebuilt_buttons)
+        << "cycling FILL re-created every live vbutton: the other bands' "
+           "knobs lose the dim the gate pass published and flash bright "
+           "for the frame the click composes";
+}
+

@@ -140,6 +140,11 @@ inline constexpr int MAX_BUTTONS = 73;
 void clear_allbuttons();
 
 vbutton * init_buttons(button * buttons, Sint32 numbuttons);
+// The live vbutton array's identity, bumped by every init_buttons(). A loop
+// that built the live buttons itself can tell whether they are still ITS
+// buttons — a blocking child (a popup, a nested screen) builds its own over
+// them — and so whether it must rebuild them or may refresh them in place.
+unsigned int allbuttons_generation();
 void draw_backdrop();
 void draw_buttons(button * buttons, Sint32 numbuttons);
 

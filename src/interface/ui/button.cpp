@@ -453,9 +453,21 @@ private:
 } // namespace
 #endif
 
+namespace
+{
+// See allbuttons_generation() in button.h.
+unsigned int g_allbuttons_generation = 0;
+} // namespace
+
+unsigned int allbuttons_generation()
+{
+    return g_allbuttons_generation;
+}
+
 vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 {
     TRACE("menu", "init_buttons count=%d", numbuttons);
+    ++g_allbuttons_generation;
 
 #ifdef TESTING
     AllButtonsLock lock(get_allbuttons_mutex());
