@@ -1170,15 +1170,11 @@ private:
             switch (item.kind) {
             case TerminalLineupItem::Kind::Fill:
             case TerminalLineupItem::Kind::MapUnits:
-                // §2.3: a classic campaign's levels decide the bots, so the
-                // knob write is refused here exactly as change_lineup_fill
-                // returns without stepping on the SDL screen.
-                if (!is_versus_campaign(save_data_)) {
-                    std::printf("%s\n",
-                                std::string(kTerminalLineupMapRulesRefusal)
-                                    .c_str());
-                    break;
-                }
+                // C5: the versus-only refusal is gone. packs/core's mode-less
+                // stage step applies these two knobs on a classic level, so a
+                // gladiator write is as real as a modes write and the row
+                // cycles for every campaign.
+                //
                 // The clamp is the lobby's own (B1-B4): one implementation,
                 // so a terminal write can never land a value the host's
                 // sanitize_settings would refuse. There is no

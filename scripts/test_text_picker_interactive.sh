@@ -29,9 +29,9 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #     11=Difficulty, 12=Lineup, 6=GO!, 8=Back.
 #   Lineup page (host rows: 1..8 the four teams' FILL/MAP UNITS knobs,
 #     9=Split even, 10=Split fair, 11=Unite, 12=Back — amendment B6 deleted
-#     the FIGHTERS row, so the strip moved up one): 1 selects TEAM 1's FILL
-#     wheel, which on this CLASSIC campaign refuses with MAP RULES rather
-#     than cycling (§2.3); 12 backs out.
+#     the FIGHTERS row, so the strip moved up one): 1 steps TEAM 1's FILL
+#     wheel one place (amendment 3 C5 retired the classic gating, so the
+#     knob is live on gladiator too); 12 backs out.
 #   Scenario submenu (7 items — the missions door retired into the camp;
 #     6=Replay Level, #207; amendment B5 retired the TROOPS row, which is
 #     the one row this branch REMOVED, so replay and back each moved up
@@ -195,24 +195,24 @@ if not any('--- Lineup ---' in l for l in lines):
 if not any('TEAM 1 RED' in l for l in lines):
     print('FAIL: expected the TEAM 1 band header', file=sys.stderr)
     sys.exit(1)
-# gladiator is a CLASSIC (non-versus) campaign, so its levels decide the
-# bots (docs/lineup-design.md §2.3): the knob rows keep their ordinals but
-# carry the MAP RULES mark, and selecting one refuses instead of cycling.
-if not any('FILL: FAIR  (MAP RULES)' in l for l in lines):
-    print('FAIL: expected the MAP RULES mark on a classic campaign',
+# gladiator is a CLASSIC (non-versus) campaign, and since amendment 3 C5 the
+# match machinery lives in packs/core and runs on a mode-less level, so the
+# knob rows are LIVE here: no MAP RULES mark, no refusal, and one press steps
+# the wheel. This drive asserted the opposite until C5.
+if not any('TEAM 1  FILL: FAIR' in l for l in lines):
+    print('FAIL: expected the bare FILL row on a classic campaign',
           file=sys.stderr)
     sys.exit(1)
-if not any('MAP UNITS: ON  (MAP RULES)' in l for l in lines):
+if not any('TEAM 1  MAP UNITS: ON' in l for l in lines):
     print('FAIL: expected the MAP UNITS row beside the FILL wheel',
           file=sys.stderr)
     sys.exit(1)
-if not any("MAP RULES: this campaign's levels decide the bots." in l
-           for l in lines):
-    print('FAIL: expected the classic-campaign knob refusal', file=sys.stderr)
-    sys.exit(1)
-if any('FILL: STRONG' in l for l in lines):
-    print('FAIL: a classic campaign must not cycle the FILL wheel',
+if any('MAP RULES' in l for l in lines):
+    print('FAIL: the retired MAP RULES gating leaked into the Lineup page',
           file=sys.stderr)
+    sys.exit(1)
+if not any('FILL: STRONG' in l for l in lines):
+    print('FAIL: a classic campaign must cycle the FILL wheel', file=sys.stderr)
     sys.exit(1)
 # B6: FIGHTERS is deleted, not hidden. MATCHUP moves a colour and the DEPLOY
 # row benches, so nothing on this page offers a second door to them.

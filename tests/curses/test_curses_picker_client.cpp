@@ -2223,8 +2223,9 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_works_both_knobs)
 {
     PickerFixture f;
     seed_lineup_roster(f.save());
-    // §2.3: the eight knobs are read by VERSUS campaigns' modes only, so the
-    // writes need one to be live.
+    // A versus campaign, kept deliberately after C5 made the knobs live
+    // everywhere: this is the modes half of the pair, and the classic twin
+    // below now asserts the same answers on gladiator.
     f.save().current_campaign = "modes";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
@@ -2260,13 +2261,11 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_works_both_knobs)
     (void)mount_campaign_package_with_error("gladiator");
 }
 
-// ...and on a CLASSIC campaign the same row refuses: the knobs are stored
-// but the map's own levels decide the bots, so the SDL screen dims the two
-// faces over a MAP RULES census and its callbacks return without cycling.
-// The terminal cannot dim, so the row carries the mark and the write says
-// no — hardcoding the knobs live let a terminal write a value the same
-// campaign's SDL screen refuses.
-TEST(CursesPickerClient, lineup_knob_refuses_on_a_classic_campaign)
+// ...and on a CLASSIC campaign the same row does the same thing. Amendment 3
+// C5 moved the match machinery into packs/core and gave a mode-less level its
+// own stage step, so gladiator reads FILL and MAP UNITS too: no mark, no
+// refusal, and the write lands. This test asserted the opposite until C5.
+TEST(CursesPickerClient, lineup_knob_cycles_on_a_classic_campaign)
 {
     PickerFixture f;
     seed_lineup_roster(f.save());
@@ -2274,16 +2273,17 @@ TEST(CursesPickerClient, lineup_knob_refuses_on_a_classic_campaign)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 
-    pick(f.t(), 0);                      // row 1: TEAM 1 FILL
-    f.t().push_special(KeyCode::Enter);  //   dismiss the refusal
+    pick(f.t(), 0);                      // row 1: TEAM 1 FILL -> STRONG
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
     const std::string dump = f.t().dump();
-    EXPECT_EQ(0, f.save().fill[0])
-        << "a classic campaign's knob write must not land";
-    EXPECT_NE(dump.find("MAP RULES"), std::string::npos)
-        << "the refusal and the census both say who decides:\n" << dump;
+    EXPECT_EQ(og::sim::kFillStrong, f.save().fill[0])
+        << "a classic campaign's knob write lands like any other:\n" << dump;
+    EXPECT_EQ(dump.find("MAP RULES"), std::string::npos)
+        << "C5 retired the classic mark and its census:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 1  FILL: STRONG"), std::string::npos)
+        << "the redraw re-reads the wheel out of the save:\n" << dump;
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
