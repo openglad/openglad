@@ -3489,13 +3489,14 @@ static void refresh_lineup_button_label(int button_index,
 }
 
 // LINEUP per-team band knobs (docs/lineup-design.md §2.2-§2.3, amendment
-// B1-B4, B9): pure step, clamp helper, BOTH label surfaces, lobby broadcast
-// + autosave — the y=140 change_ctf_* recipe with the knob stored per team.
-// The knobs are hidden for joiners, so a stale dispatch carries the host gate
-// itself (popup + TRACE, no local step); a classic campaign's dimmed rows are
-// engine-inert, and the belt below keeps a stale dispatch a no-op. There is
-// no refusal on either knob any more (B8): nothing the band can hold
-// deactivates a team, so every value is legal on every team.
+// B1-B4, B9, C5): pure step, clamp helper, BOTH label surfaces, lobby
+// broadcast + autosave — the y=140 change_ctf_* recipe with the knob stored
+// per team. The knobs are hidden for joiners, so a stale dispatch carries
+// the host gate itself (popup + TRACE, no local step). There is no refusal
+// on either knob any more (B8): nothing the band can hold deactivates a
+// team, so every value is legal on every team — and no classic-campaign
+// belt either (C5): the packs/core lineup stage applies the knobs on every
+// campaign, so the wheel turns everywhere.
 Sint32 change_lineup_fill(Sint32 team)
 {
    if (team < 0 || team >= 4)
@@ -3508,8 +3509,6 @@ Sint32 change_lineup_fill(Sint32 team)
                     "Only the host may\nchange the fill");
        return MENU_OK;
    }
-   if (!og::ui::is_versus_campaign(save))
-       return MENU_OK;
 
    const std::size_t t = static_cast<std::size_t>(team);
    save.fill[t] = og::sim::clamp_fill(
@@ -3538,8 +3537,6 @@ Sint32 change_lineup_map_units(Sint32 team)
                     "Only the host may\nchange map units");
        return MENU_OK;
    }
-   if (!og::ui::is_versus_campaign(save))
-       return MENU_OK;
    // B4: a team the map ships no units for has nothing to switch — the box
    // is Disabled (engine-inert) and this belt keeps a stale dispatch from
    // flipping a knob the page refuses to offer.

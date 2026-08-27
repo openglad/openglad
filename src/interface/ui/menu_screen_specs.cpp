@@ -7282,23 +7282,21 @@ Sint32 run_cloud_save_screen()
 // (header chip / POWER / seat run; the FILL face + MAP UNITS box knob line
 // with census text at x=190) over an opaque panel, and the BACK |
 // SPLIT EVEN | SPLIT FAIR | UNITE action strip. The knobs are host-only
-// (hidden per frame for joiners) and dimmed-inert on classic campaigns (the
-// knobs are stored but the map ignores them — D32 precedent); the bands
-// themselves are readable by everyone.
+// (hidden per frame for joiners) and live on EVERY campaign (amendment C5:
+// the classic dim retired when the lineup stage moved to packs/core — the
+// map applies the knobs now); the bands themselves are readable by everyone.
 
 namespace {
 
 LineupScreenState* g_lineup_state = nullptr;
 
 // §2.3 gating, expressed in the engine's own row-state grammar so the
-// generic sweeps exercise it: joiners never see the knobs; a classic
-// (non-versus) campaign shows them dimmed and inert.
+// generic sweeps exercise it: joiners never see the knobs. That is the
+// whole gate — C5 retired the classic (non-versus) dim.
 RowState lineup_knob_row_state(const MenuLabelContext& context)
 {
     if (!context.is_host)
         return RowState::Hidden;
-    if (context.save != nullptr && !is_versus_campaign(*context.save))
-        return RowState::Disabled;
     return RowState::Visible;
 }
 
@@ -7454,7 +7452,6 @@ void lineup_draw_content(void* screen_state)
         mytext.write_xy(x, 8, right_line.c_str(), right_color, 1);
     }
 
-    const bool versus = is_versus_campaign(save);
     const auto short_name = [&locals](std::uint8_t player_index) {
         const auto it =
             std::find(locals.begin(), locals.end(), player_index);
@@ -7528,11 +7525,10 @@ void lineup_draw_content(void* screen_state)
 
         // The MAP UNITS caption beside the box (B9): drawn ink, not a
         // button face, so it follows the box's visibility (host-only) and
-        // dims with it when the box is inert (classic campaign, or a team
-        // the map ships no units for).
+        // dims with it when the box is inert (a team the map ships no
+        // units for — the one dim C5 kept).
         if (knobs) {
-            const bool box_live = versus &&
-                band.map_unit_count > 0;
+            const bool box_live = band.map_unit_count > 0;
             mytext.write_xy_flat(kLineupMapUnitsTextX,
                                  y + kLineupCensusDy, "MAP UNITS",
                                  box_live
@@ -7542,18 +7538,14 @@ void lineup_draw_content(void* screen_state)
         }
 
         // Census / diagnostics at (190, y+19), 21-char budget. Diagnostics
-        // keep their slot in every mode (they mirror GO's refusal);
-        // otherwise a classic campaign says MAP RULES — the knobs are
-        // stored but ignored (§2.3) — a team the map ships no units for
-        // says NO MAP UNITS (B4: why its box is inert), and a versus band
-        // counts deployed fighters.
+        // keep their slot in every mode (they mirror GO's refusal); a team
+        // the map ships no units for says NO MAP UNITS (B4: why its box is
+        // inert), and every other band counts deployed fighters. The old
+        // classic-campaign MAP RULES census retired with the dim (C5).
         std::string census;
         unsigned char census_color = BLACK;
         if (band.diag != LineupTeamBand::Diag::None) {
             census = format_lineup_census(band);
-            census_color = kBenchedTextShade;
-        } else if (!versus) {
-            census = "MAP RULES";
             census_color = kBenchedTextShade;
         } else if (!format_lineup_map_units_census(band).empty()) {
             census = format_lineup_map_units_census(band);

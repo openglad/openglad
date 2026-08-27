@@ -1115,14 +1115,17 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
 namespace {
 
 // ---------------------------------------------------------------------------
-// Flow 5: a classic campaign shows the knobs dimmed and inert — the click
-// is engine-dead and the save knob never moves.
+// Flow 5 (amendment C5): a classic campaign's knobs are LIVE — the classic
+// dim retired when the lineup stage moved to packs/core, so the FILL wheel
+// turns on gladiator exactly as it does on a versus campaign, and no band
+// censuses MAP RULES any more.
 
 struct LineupClassicFlowState
 {
     bool finished = false;
     bool page_opened = false;
     bool knobs_visible = false;
+    bool fill_cycled = false;
     int captures = 0;
 };
 
@@ -1140,11 +1143,13 @@ int lineup_classic_flow_injector(void* data)
     if (state->page_opened) {
         SDL_Delay(750);
         state->knobs_visible = interactable_visible("lineup_fill_0");
-        state->captures += capture_frame("lineup_classic_campaign");
-        SDL_Delay(200);
-        // Disabled rows are engine-inert: this click must change nothing.
-        interact("lineup_fill_0");
+        // C5: the click cycles the wheel — FAIR steps to STRONG (B2
+        // display order) on a classic campaign too.
+        state->fill_cycled =
+            click_until_label("lineup_fill_0", "FILL: STRONG");
         SDL_Delay(500);
+        state->captures += capture_frame("lineup_gladiator_live_knobs");
+        SDL_Delay(200);
         interact("back");
     }
     injector_unwind_from_scenario();
@@ -1154,7 +1159,7 @@ int lineup_classic_flow_injector(void* data)
 
 } // namespace
 
-TEST(LineupUi, classic_campaign_dims_knobs_inert)
+TEST(LineupUi, classic_campaign_knobs_are_live)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -1176,10 +1181,88 @@ TEST(LineupUi, classic_campaign_dims_knobs_inert)
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.page_opened);
     EXPECT_TRUE(state.knobs_visible)
-        << "classic campaigns keep the knobs visible (dimmed), not hidden";
-    EXPECT_EQ(0, static_cast<int>(save.fill[0]))
-        << "a dimmed knob's click is inert";
+        << "classic campaigns keep the knobs visible AND live (C5)";
+    EXPECT_TRUE(state.fill_cycled)
+        << "the FILL wheel turns on a classic campaign (C5)";
+    EXPECT_EQ(og::sim::kFillStrong, save.fill[0])
+        << "the classic click writes the save knob";
     EXPECT_EQ(1, state.captures);
+}
+
+// ---------------------------------------------------------------------------
+// Flow 6 (amendment C5): VIEW LEVEL's classic arm renders the same per-team
+// fills census the staged (mode) arm does — the classic staged world is the
+// world the launch adopts, so the pane reads its observable facts: the
+// company on RED and gladiator scen 1's twelve authored map troops on
+// GREEN, each closing with its count.
+
+namespace {
+
+struct LineupClassicViewerState
+{
+    bool finished = false;
+    bool viewer_opened = false;
+    bool company_line_seen = false;
+    bool troops_line_seen = false;
+    int captures = 0;
+};
+
+int lineup_classic_viewer_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<LineupClassicViewerState*>(data);
+    if (!injector_open_lineup()) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("view_scenario");
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    if (state->viewer_opened) {
+        state->company_line_seen = wait_for_trace(
+            "picker", "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)",
+            10000);
+        state->troops_line_seen = wait_for_trace(
+            "picker",
+            "view_scenario line   GREEN TEAM  ACTIVE - MAP TROOPS (12)",
+            10000);
+        SDL_Delay(300);
+        interact("back");
+        SDL_Delay(300);
+        (void)wait_for_interactable("progress", 10000);
+        SDL_Delay(300);
+    }
+    injector_unwind_from_scenario();
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, classic_view_level_censuses_the_staged_world)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_fighters("gladiator", 1, 1,
+                              {{"Alpha", 3, true, 0}, {"Beta", 2, true, 0}});
+
+    LineupClassicViewerState state;
+    SDL_Thread* thread = SDL_CreateThread(lineup_classic_viewer_injector,
+                                          "lineup_classic_view", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.finished);
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open";
+    EXPECT_TRUE(state.company_line_seen)
+        << "the classic census labels the company COMPANY with its count";
+    EXPECT_TRUE(state.troops_line_seen)
+        << "the classic census labels the authored enemies MAP TROOPS";
 }
 
 // ---------------------------------------------------------------------------
@@ -1253,12 +1336,20 @@ TEST(LineupUi, knob_callbacks_gate_branches)
         EXPECT_EQ(0, static_cast<int>(save.map_units[3]));
     }
 
-    // Classic campaign: the belt behind the engine's Disabled grammar.
+    // Classic campaign (C5): there is no classic belt any more — the
+    // packs/core lineup stage applies the knobs on every campaign, so the
+    // host's write goes through on gladiator exactly as on modes.
     save.current_campaign = "gladiator";
     EXPECT_EQ(MENU_OK, change_lineup_fill(0));
+    EXPECT_EQ(og::sim::kFillStrong, save.fill[0])
+        << "a classic campaign's FILL wheel turns (C5)";
     EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
-    EXPECT_EQ(0, static_cast<int>(save.fill[0]));
-    EXPECT_EQ(0, static_cast<int>(save.map_units[3]));
+    EXPECT_EQ(og::sim::kMapUnitsOff, save.map_units[3])
+        << "a classic campaign's MAP UNITS box flips (C5)";
+    // Park both knobs back at their defaults so the versus wheel walk below
+    // starts from FAIR / ON.
+    save.fill[0] = og::sim::kFillFair;
+    save.map_units[3] = og::sim::kMapUnitsOn;
 
     // Host + versus: the FILL wheel walks the DISPLAY order from FAIR —
     // STRONG, BRUTAL, NONE, WEAK, FAIR (B2) — and the save value rides

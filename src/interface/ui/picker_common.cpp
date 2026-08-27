@@ -3196,6 +3196,110 @@ void fill_fallback_activation(ScenarioRosterReport& report,
     }
 }
 
+// The per-team staged census, shared by the mode arm and the classic arm
+// (amendment C5: the packs/core lineup stage applies FILL and MAP UNITS on
+// every campaign, so a classic staged world carries the same observable
+// facts a mode's does). Live counts over the staged oblist (dead and
+// dormant excluded): activity and fills from observable facts, never a
+// rule twin; the banked lineup facts name the applied fill (B7/R4).
+void census_staged_teams(ScenarioRosterReport& report,
+                         const GameWorld& staged)
+{
+    std::array<int, 4> company{};
+    std::array<int, 4> troops{};
+    std::array<int, 4> bots{};
+    std::array<int, 4> generators{};
+    for (const auto& uptr : staged.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->dormant())
+            continue;
+        const int team = w->team_num();
+        if (!is_score_team_index(team))
+            continue;
+        const auto ti = static_cast<std::size_t>(team);
+        const Order order = w->query_order();
+        if (order == Order::Living)
+        {
+            if (w->myguy != nullptr)
+                company[ti]++;
+            else if (w->stats() != nullptr &&
+                     (w->stats()->bit_flags() & kBotMarkBit) != 0)
+                bots[ti]++;
+            else
+                troops[ti]++;
+        }
+        else if (order == Order::Generator)
+        {
+            generators[ti]++;
+        }
+    }
+    const bool matched = staged.mode.vars[kModeVarMatchedSize] > 0;
+    for (int t = 0; t < 4; ++t)
+    {
+        const auto ti = static_cast<std::size_t>(t);
+        const bool any = company[ti] > 0 || troops[ti] > 0 ||
+            bots[ti] > 0 || generators[ti] > 0;
+        report.team_active[ti] = any;
+        // The match.fills display priority, read as facts: a
+        // mixed company+troops team labels COMPANY exactly as
+        // the plan did.
+        if (company[ti] > 0)
+        {
+            report.team_fill[ti] = ScenarioFill::Company;
+            report.team_fill_count[ti] = company[ti];
+        }
+        else if (troops[ti] > 0)
+        {
+            report.team_fill[ti] = ScenarioFill::Troops;
+            report.team_fill_count[ti] = troops[ti];
+        }
+        else if (bots[ti] > 0)
+        {
+            report.team_fill[ti] = matched ? ScenarioFill::Matched
+                                           : ScenarioFill::Bots;
+            report.team_fill_count[ti] = bots[ti];
+        }
+        else if (generators[ti] > 0)
+        {
+            report.team_fill[ti] = ScenarioFill::Generators;
+            report.team_fill_count[ti] = generators[ti];
+        }
+        else
+        {
+            report.team_fill[ti] = ScenarioFill::Empty;
+            report.team_fill_count[ti] = 0;
+        }
+    }
+
+    // Lineup facts (§3.4 as amended by B7): the spawn seam
+    // banked the APPLIED per-team FILL code in the shared slot.
+    // A team whose label is its COMPANY (or its map troops) can
+    // still field a squad beside the occupants (review L2):
+    // those bots are the team_squad_count column, and the same
+    // banked fact names them, so the preview's count and its
+    // fill word are the spawned facts on every shape.
+    const std::int32_t lineup_facts =
+        staged.mode.vars[kModeVarLineupFacts];
+    for (int t = 0; t < 4; ++t)
+    {
+        const auto ti = static_cast<std::size_t>(t);
+        if (report.team_fill[ti] != ScenarioFill::Bots &&
+            report.team_fill[ti] != ScenarioFill::Matched)
+        {
+            // Bots beside an occupancy fill — 0 when the hard
+            // shape left no room, and then no fact either (the
+            // fold banks nothing for a squad that never
+            // spawned), so the row stays the plain occupancy.
+            report.team_squad_count[ti] = bots[ti];
+            if (bots[ti] == 0)
+                continue;
+        }
+        report.team_squad_fill[ti] =
+            lineup_fact_fill(lineup_fact_code(lineup_facts, t));
+    }
+}
+
 // Row scan shared by the staged and fallback arms: named entities (company
 // fighters and authored NPCs alike) individually, nameless livings grouped
 // by (team, family, level), generators aggregated per team, list order,
@@ -3372,103 +3476,7 @@ ScenarioRosterReport build_scenario_roster_report(
             if (staged->mode.active)
             {
                 report.mode_census = true;
-                // Live per-team census over the staged oblist (dead and
-                // dormant excluded): activity and fills from observable
-                // facts, never a rule twin.
-                std::array<int, 4> company{};
-                std::array<int, 4> troops{};
-                std::array<int, 4> bots{};
-                std::array<int, 4> generators{};
-                for (const auto& uptr : staged->oblist)
-                {
-                    const walker* w = uptr.get();
-                    if (w == nullptr || w->dead() || w->dormant())
-                        continue;
-                    const int team = w->team_num();
-                    if (!is_score_team_index(team))
-                        continue;
-                    const auto ti = static_cast<std::size_t>(team);
-                    const Order order = w->query_order();
-                    if (order == Order::Living)
-                    {
-                        if (w->myguy != nullptr)
-                            company[ti]++;
-                        else if (w->stats() != nullptr &&
-                                 (w->stats()->bit_flags() & kBotMarkBit) != 0)
-                            bots[ti]++;
-                        else
-                            troops[ti]++;
-                    }
-                    else if (order == Order::Generator)
-                    {
-                        generators[ti]++;
-                    }
-                }
-                const bool matched =
-                    staged->mode.vars[kModeVarMatchedSize] > 0;
-                for (int t = 0; t < 4; ++t)
-                {
-                    const auto ti = static_cast<std::size_t>(t);
-                    const bool any = company[ti] > 0 || troops[ti] > 0 ||
-                        bots[ti] > 0 || generators[ti] > 0;
-                    report.team_active[ti] = any;
-                    // The match.fills display priority, read as facts: a
-                    // mixed company+troops team labels COMPANY exactly as
-                    // the plan did.
-                    if (company[ti] > 0)
-                    {
-                        report.team_fill[ti] = ScenarioFill::Company;
-                        report.team_fill_count[ti] = company[ti];
-                    }
-                    else if (troops[ti] > 0)
-                    {
-                        report.team_fill[ti] = ScenarioFill::Troops;
-                        report.team_fill_count[ti] = troops[ti];
-                    }
-                    else if (bots[ti] > 0)
-                    {
-                        report.team_fill[ti] = matched ? ScenarioFill::Matched
-                                                       : ScenarioFill::Bots;
-                        report.team_fill_count[ti] = bots[ti];
-                    }
-                    else if (generators[ti] > 0)
-                    {
-                        report.team_fill[ti] = ScenarioFill::Generators;
-                        report.team_fill_count[ti] = generators[ti];
-                    }
-                    else
-                    {
-                        report.team_fill[ti] = ScenarioFill::Empty;
-                        report.team_fill_count[ti] = 0;
-                    }
-                }
-
-                // Lineup facts (§3.4 as amended by B7): the spawn seam
-                // banked the APPLIED per-team FILL code in the shared slot.
-                // A team whose label is its COMPANY (or its map troops) can
-                // still field a squad beside the occupants (review L2):
-                // those bots are the team_squad_count column, and the same
-                // banked fact names them, so the preview's count and its
-                // fill word are the spawned facts on every shape.
-                const std::int32_t lineup_facts =
-                    staged->mode.vars[kModeVarLineupFacts];
-                for (int t = 0; t < 4; ++t)
-                {
-                    const auto ti = static_cast<std::size_t>(t);
-                    if (report.team_fill[ti] != ScenarioFill::Bots &&
-                        report.team_fill[ti] != ScenarioFill::Matched)
-                    {
-                        // Bots beside an occupancy fill — 0 when the hard
-                        // shape left no room, and then no fact either (the
-                        // fold banks nothing for a squad that never
-                        // spawned), so the row stays the plain occupancy.
-                        report.team_squad_count[ti] = bots[ti];
-                        if (bots[ti] == 0)
-                            continue;
-                    }
-                    report.team_squad_fill[ti] =
-                        lineup_fact_fill(lineup_fact_code(lineup_facts, t));
-                }
+                census_staged_teams(report, *staged);
             }
             else if (!report.refusing)
             {
@@ -3496,6 +3504,17 @@ ScenarioRosterReport build_scenario_roster_report(
                         active = false;
                 }
             }
+        }
+        else
+        {
+            // The classic arm (amendment C5): the same census fold over the
+            // same staged world — the packs/core lineup stage applied the
+            // per-team strip and FILL squads at stage time, so the fills and
+            // strips are observable facts here exactly as under a mode.
+            // Classic levels never refuse (C4), so there is no activation
+            // clamp: every team with anything standing gets its line.
+            report.mode_census = true;
+            census_staged_teams(report, *staged);
         }
         scan_roster_rows(report, *staged);
         return report;
@@ -3533,7 +3552,7 @@ std::vector<std::string> format_scenario_report_lines(
         return lines;
     }
 
-    if (report.is_versus)
+    if (report.is_versus || (report.staged && report.mode_census))
     {
         if (report.staged && report.mode_census)
         {
@@ -3542,14 +3561,20 @@ std::vector<std::string> format_scenario_report_lines(
             // teams have no entities and no row (the rendered pane shows
             // absence honestly); the old "BOT CLASSES DRAWN AT START"
             // legend is gone because the rows below list the ACTUAL staged
-            // squad (#235 delivered by deletion).
-            int active_count = 0;
-            for (int t = 0; t < 4; ++t)
-                active_count +=
-                    report.team_active[static_cast<std::size_t>(t)] ? 1 : 0;
-            lines.push_back(clip_line(std::format(
-                "MATCH: {} - {} TEAMS ACTIVE", report.mode_name,
-                active_count)));
+            // squad (#235 delivered by deletion). A staged CLASSIC world
+            // (amendment C5) renders the same team lines with no header —
+            // there is no mode to name and no match to count teams for.
+            if (report.is_versus)
+            {
+                int active_count = 0;
+                for (int t = 0; t < 4; ++t)
+                    active_count +=
+                        report.team_active[static_cast<std::size_t>(t)] ? 1
+                                                                        : 0;
+                lines.push_back(clip_line(std::format(
+                    "MATCH: {} - {} TEAMS ACTIVE", report.mode_name,
+                    active_count)));
+            }
             for (int t = 0; t < 4; ++t)
             {
                 const auto ti = static_cast<std::size_t>(t);
