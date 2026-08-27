@@ -3113,8 +3113,8 @@ int lineup_fact_code(std::int32_t slot_value, int team)
 // digit pair every unbanked team leaves behind — is the one value that
 // cannot collide with a fill. A team whose stored DEFAULT resolved banks
 // the code it RESOLVED to, never the 0, because "no squad, by resolution"
-// is a thing that was applied. The Lua half (mode_match.lua lineup_fact)
-// banks exactly this, unbiased.
+// is a thing that was applied. The Lua half (packs/core/lib/lineup.lua
+// bank_lineup_facts) banks exactly this, unbiased.
 int lineup_fact_fill(int code)
 {
     if (code < og::sim::kFillNone || code > og::sim::kFillBrutal)

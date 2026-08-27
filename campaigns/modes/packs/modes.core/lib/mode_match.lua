@@ -10,7 +10,7 @@ local lineup = og.use("core:lineup")
 -- The core-lib names this module leans on locally (the shared MATCHED
 -- header slots and the wheel vocabulary — one scale, one home).
 local MATCHED = lineup.MATCHED
-local FILL_FAIR = lineup.FILL_FAIR
+local FILL_DEFAULT = lineup.FILL_DEFAULT
 local MAP_UNITS_ON = lineup.MAP_UNITS_ON
 
 -- The D9 level-id band the manifest may populate. rows_for scans it by
@@ -274,7 +274,17 @@ local function fills(inputs, active_mask, opts)
     local active = core.mask_has(active_mask, team)
     local fill = "empty"
     local count = 0
-    local knob = fill_knobs[team + 1] or FILL_FAIR
+    local knob = fill_knobs[team + 1] or FILL_DEFAULT
+    if active then
+      -- C8/D1: a stored default resolves HERE, through the lib's ONE
+      -- rule, before any squad decision reads it. A team in the active
+      -- mask is authored by the mode's own domain — the mask already
+      -- folded flags, anchors and foundries — so the activation IS the
+      -- presence row and the default resolves the explicit FAIR, the
+      -- pre-D1 behaviour; an explicit code is itself. Inactive teams
+      -- never reach a squad decision, so their default never resolves.
+      knob = lineup.resolved_fill(knob, { units = 1, roster = row.roster })
+    end
     local units_on = (unit_boxes[team + 1] or MAP_UNITS_ON) == MAP_UNITS_ON
     local squad = nil
     local squad_count = 0
@@ -319,7 +329,9 @@ local function fills(inputs, active_mask, opts)
             squad_count = solved_size
           end
           if squad_count > 0 then
-            squad = lineup.lineup_fact(lineup.applied_fill(knob))
+            -- D1: the banked fact IS the applied wheel code (the +1
+            -- bias retired with the default's own storage code).
+            squad = lineup.applied_fill(knob)
             wants_bots = true
           end
         end
@@ -364,8 +376,9 @@ local function fills(inputs, active_mask, opts)
         end
         -- count is never zero here: the legacy squad is five, a solved
         -- size is at least min(1, headcount) and every shipped hard shape
-        -- leaves an empty team its whole cap.
-        squad = lineup.lineup_fact(lineup.applied_fill(knob))
+        -- leaves an empty team its whole cap. The banked fact IS the
+        -- applied wheel code (D1: the +1 bias is retired).
+        squad = lineup.applied_fill(knob)
         wants_bots = true
         squad_count = count
       end
@@ -686,15 +699,16 @@ return {
   resolve_limit = resolve_limit,
   resolve_time_limit = resolve_time_limit,
   MATCHED = MATCHED,
-  FILL_FAIR = FILL_FAIR,
+  FILL_DEFAULT = FILL_DEFAULT,
+  FILL_FAIR = lineup.FILL_FAIR,
   FILL_NONE = lineup.FILL_NONE,
   FILL_PERCENT = lineup.FILL_PERCENT,
   squad_off = lineup.squad_off,
   fill_percent = lineup.fill_percent,
   applied_fill = lineup.applied_fill,
+  resolved_fill = lineup.resolved_fill,
   map_units_fielded = lineup.map_units_fielded,
   difficulty_level = lineup.difficulty_level,
-  lineup_fact = lineup.lineup_fact,
   bank_refusal_fighters = bank_refusal_fighters,
   squad_room = lineup.squad_room,
   fill_target = lineup.fill_target,

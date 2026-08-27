@@ -1259,3 +1259,77 @@ own arithmetic and the banked fact) renumbers to meet it.
 - **No version bump.** The knobs, the GTL v18 save field and the wire
   slots that carry them are all branch-local — nothing outside this branch
   has ever written a fill code, so there is no old byte to reinterpret.
+
+## As built: W7-A — the Lua half of the D-series (2026-08-27)
+
+The pack side of D1 and the whole of D2/D3, meeting the C++ scale above.
+
+- **One scale, renumbered** (`packs/core/lib/lineup.lua`): `FILL_DEFAULT
+  = 0`, then the five explicit wheel codes `FILL_NONE 1, FILL_WEAK 2,
+  FILL_FAIR 3, FILL_STRONG 4, FILL_BRUTAL 5`. `FILL_PERCENT` is keyed by
+  the explicit codes alone (`{[1]=0, [2]=75, [3]=100, [4]=125,
+  [5]=150}`) — the DEFAULT deliberately has no multiplier row, so
+  `applied_fill(0)` degrades like any crafted value and a stored 0 can
+  never *quietly* act as a fill. `resolved_fill` answers the explicit
+  FAIR / explicit NONE, never the default.
+- **The banked fact IS the applied code** (D1's Lua half):
+  `FACT_FILL_BIAS` and `lineup_fact` are deleted; `bank_lineup_facts`
+  banks the code raw, `mode_match`'s preview rows carry
+  `lineup.applied_fill(knob)` directly, and a team whose stored default
+  resolved banks the code it resolved TO (C8's resolved-NONE banks 1).
+- **Every seam reads a RESOLVED code, and the resolution's presence row
+  is the deciding fold's own domain** — three spellings of one rule,
+  each documented where it lives:
+  * the classic stage resolves over its census `presence_row` and hands
+    the result INTO `lineup.spawn_bots` (new optional 7th arg
+    `resolved`);
+  * `mode_match.fills` resolves inside the active arm with the
+    activation itself as the presence row (`{units = 1, roster}`): a
+    team in the active mask is authored by the mode's own domain (flags,
+    anchors, foundries — the mask already folded it), which is why CTF's
+    flag-only sides keep their default-FAIR backfill;
+  * `mode_fighters.band_knob(target, fighters)` resolves over the
+    manifest row's fighter target as the band's authored units (a
+    bot-only band still resolves FAIR) plus the deployed roster;
+  * `spawn_bots`' own nil fallback resolves over `{units = 1}` — the
+    seam is only ever invoked for a team its caller's fold already ruled
+    fields a squad, so the implied row is authored. The W7-B note about
+    the seam re-reading the raw knob is closed by this.
+- **D3, the classic gate** (`packs/core/scripts/lineup_stage.lua`,
+  `classic_wants_squad(row, raw, knob, fielded)`): an EXPLICIT wheel
+  value always fields unless it is NONE or a roster fighter stands
+  (allies stay a match-mode rule); the stored DEFAULT fields only the
+  box-trade (units authored, box off) — **the default never adds a
+  squad beside anything**; only an explicit choice puts bots beside
+  troops, and a default on a ships-empty or unauthored team is the
+  map's own value. The troops-fielded anchor is the standing troops'
+  centroid, so the D3 squad walks on beside them; the solve target is
+  unchanged (troops carry no guy, so the empty-team arm prices
+  weakest-human × m, exactly the probe's prediction).
+- **D2, site-less placement** (`classic_anchor` answers (-1,-1);
+  `classic_centroids` / `classic_hostiles` / `classic_reach` /
+  `farthest_open_spot` / the extended `classic_place`): deterministic
+  from the match seed — a row-major two-tile-lattice scan keeps the
+  first walkable, non-hostile-adjacent cell maximising the minimum
+  squared distance to every existing team's centroid (existing = any
+  units/roster/markers, centroids measured where those troops stand on
+  the STAGED world, grid-snapped). Members ring-walk that anchor under
+  the same spawn-safety rule (never adjacent to a hostile's tile or its
+  eight neighbours); on exhaustion the tail is the blessed teleport
+  scatter with a BOUNDED safety re-probe (eight seeded draws, first
+  safe landing wins, the last landing stands — a placed squad beats a
+  refusal, C4). The scan's reach is the authored extent plus a six-tile
+  margin: the engine exposes no map dimensions to scripts, and
+  `spawn_spot_clear` refuses every off-map cell, so the estimate costs
+  probes, not correctness.
+- **D4, the Lua half of the outcome tests**
+  (`tests/unit/test_staged_rules.cpp`, real staged gladiator worlds
+  through MatchStage, level-50 thief fixture): explicit FAIR on
+  unauthored ground fields a safe five-squad with seed-deterministic
+  cells; BRUTAL beside the twelve elves lands f-sum within ±6% of
+  weakest-human × 1.5; the ladder WEAK < FAIR < STRONG < BRUTAL is
+  strictly monotone on BOTH team shapes; the default stays squadless
+  beside troops and empty on unauthored ground; the all-default stage
+  remains a proven byte no-op (C3) and og_test_parity stays 257/257.
+  All four new tests were run red against the pre-W7-A staged pack
+  (0/4 pass) before going green.
