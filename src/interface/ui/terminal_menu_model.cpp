@@ -14,10 +14,13 @@
 #include <openglad/interface/ui/terminal_menu_model.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 
 #include <algorithm>
 #include <array>
@@ -103,6 +106,36 @@ std::string_view terminal_gate_message(const PickerMenuItem& item,
 }
 
 // --- LINEUP (docs/lineup-design.md §8) ----------------------------------
+
+bool census_staged_lineup_presence(og::server::MatchStage& stage,
+                                   const SaveData& save, int difficulty,
+                                   std::uint32_t match_seed,
+                                   std::array<LineupTeamPresence, 4>& out)
+{
+    if (get_mounted_campaign() != save.current_campaign)
+        return false;
+
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent = og::server::build_local_save_equivalent(save);
+    inputs.difficulty = difficulty;
+    inputs.match_seed = match_seed;
+    inputs.replay_level = save.replay_level;
+    inputs.replay_origin = save.replay_origin;
+    const std::uint64_t now = og::server::stage_clock_now_ms();
+    stage.observe_inputs(inputs, now);
+    // A page redraw cannot wait out kStageDebounceMs, and a band that
+    // rendered last turn's world would be exactly the disagreement this
+    // census exists to end — so force the restage the way GO does.
+    stage.ensure_current(now);
+    if (stage.status() != og::server::StageStatus::Staged)
+        return false;
+    const GameWorld* world = stage.world();
+    if (world == nullptr || world->id != save.scen_num)
+        return false;
+
+    out = census_lineup_presence(*world);
+    return true;
+}
 
 TerminalLineupModel build_terminal_lineup_model(
     const TerminalLineupInputs& inputs)

@@ -29,6 +29,13 @@
 
 class SaveData;
 
+// The census seam only borrows the owner's stage; match_stage.h stays out of
+// this header (it is included by the implementation and by the two clients
+// that already own a MatchStage for VIEW LEVEL).
+namespace og::server {
+class MatchStage;
+}
+
 namespace og::ui {
 
 struct TerminalMenuEntry {
@@ -112,10 +119,14 @@ struct TerminalLineupInputs {
     // C8's presence census, handed straight to build_lineup_bands: with a
     // 4-team span every FILL cell renders the RESOLVED default (the pack
     // resolver's answer); an EMPTY span means no level was censused, and
-    // the cells honestly render the STORED code — the documented fallback
-    // both live terminal clients ride, since neither loads a level in its
-    // picker (the text client stages nothing; the curses picker's lineup
-    // page is local-only).
+    // the cells honestly render the STORED code — the documented fallback.
+    //
+    // D1/W7-G: both live terminal clients now FILL this span from the world
+    // their own VIEW LEVEL stages (census_staged_lineup_presence below), so
+    // all three clients read the same word off the same save. The empty-span
+    // fallback survives for the shapes where there is genuinely no world to
+    // census — an unmounted campaign, a stage that failed or fell back to
+    // another level, and every caller that hands the model a bare save.
     std::span<const LineupTeamPresence> presence;
     bool networked = false;
     bool is_host = true;
@@ -123,6 +134,30 @@ struct TerminalLineupInputs {
 
 TerminalLineupModel build_terminal_lineup_model(
     const TerminalLineupInputs& inputs);
+
+// W7-G: the terminals' presence census, taken over the world the launch
+// would adopt — the SAME MatchStage both clients' VIEW LEVEL already stages
+// with, on the same three inputs (save, difficulty, session seed). One
+// source, so the LINEUP page and the VIEW LEVEL report can never describe
+// two different worlds, and the terminals stop reading a stored 0 as FAIR
+// on a team the SDL band calls NONE.
+//
+// The caller owns the stage across its page loop: observe_inputs keys on
+// the knobs themselves (MatchStageInputs::equivalent carries fill/map_units),
+// so an unchanged page is free and a turned knob restages exactly once. The
+// restage is forced synchronously (ensure_current) because a page redraw
+// cannot wait out the trailing-edge debounce.
+//
+// Returns false — and leaves `out` untouched — for every shape with no world
+// to census: an unmounted campaign, a failed stage, or a stage that fell back
+// to a level other than the requested one (a fallback world must not
+// masquerade as this level's census, exactly as VIEW LEVEL refuses it).
+// The caller then passes an EMPTY presence span and the cells fall back to
+// the stored code.
+bool census_staged_lineup_presence(og::server::MatchStage& stage,
+                                   const SaveData& save, int difficulty,
+                                   std::uint32_t match_seed,
+                                   std::array<LineupTeamPresence, 4>& out);
 
 // Amendment 3 C5: the classic gating is GONE. The match machinery moved to
 // packs/core and runs on every campaign through the mode-less stage step, so
