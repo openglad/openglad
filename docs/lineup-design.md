@@ -1333,3 +1333,79 @@ The pack side of D1 and the whole of D2/D3, meeting the C++ scale above.
   remains a proven byte no-op (C3) and og_test_parity stays 257/257.
   All four new tests were run red against the pre-W7-A staged pack
   (0/4 pass) before going green.
+
+## As built: W7-C — the face reads the choice, and D4's outcome gate (2026-08-27)
+
+The SDL half of D1's label rule, and the end-to-end half of D4.
+
+- **The per-frame face resolves only a stored DEFAULT.** `lineup_menu_rewire`
+  renders `format_lineup_fill_label(resolved_fills[t])` for a band still
+  holding `kFillDefault` and the STORED code's own word everywhere else —
+  the same rule the click callback already obeyed. Between the two there is
+  no third site: nothing else in the SDL page calls `cycle_lineup_fill` or
+  `format_lineup_fill_label`, so an explicit stop can no longer be run back
+  through the many-to-one resolver on any path.
+- **A test can census the world a launch actually adopted.** Under
+  `TESTING` the game loop compiles its `redraw()` out, so the presenter
+  handshake the menu captures use has nothing to freeze during a level, and
+  the main-thread task queue only pumps inside `run_menu_screen`. The seam
+  is a one-shot, TESTING-only observer (`picker_testing_observe_next_game_frame`,
+  fired from `picker_testing_mark_frame_advance()`) — the one point where
+  the sim is provably between ticks.
+- **D4's measured anchors, gladiator scen 1, one level-50 hero at
+  60/60/60/60 with armour 40.** The reference (weakest human f-sum) is
+  **131597**. `FILL: BRUTAL` on the elves' band fields 12 + 5 livings whose
+  squad f-sum is **191085** against a target of 197395 (−3.2%, inside the
+  ±12% solver band); `FILL: FAIR` on the unauthored band fields **5**
+  livings, **0** guys, f-sum **129358**, and every one of them counts in the
+  hero's own `remaining_foes`. Re-entering the page and walking the elves
+  down to WEAK restages (trace `stage: restaged gen=`) and the second launch
+  fields **104232** against 98697 (+5.6%) — strictly under BRUTAL's 191085,
+  which is D4's ladder where a player can feel it. The stat block is SET,
+  not levelled: the level-up ladder prices a level-50 slot at f = 6,989,687,
+  an order of magnitude past the solver's L9 ceiling, where every wheel stop
+  clamps to the same squad and the multiplier stops being observable at all.
+- **Known overflow, left for the report formatter's owner.** D3's row
+  `"  GREEN TEAM  ACTIVE - MAP TROOPS+BOTS (12+5) BRUTAL"` is 51 characters
+  against `kMaxReportLine = 48`. The formatter spends the separator space
+  first, as B7 designed, and then the clip takes the word's tail: the pane
+  reads `(12+5)BRU`. B7's budget note reasoned about
+  `"COMPANY+BOTS (3+2) BRUTAL"` (49, one over, glue enough) and the longer
+  `MAP TROOPS+BOTS` noun is past what gluing can save. B7 says a clipped
+  word is a different word, so this is a real violation of the rule the code
+  was written to keep; the choice between widening the budget and shortening
+  the noun is the maintainer's, and the test pins only what is true today
+  (the surviving letters must be BRUTAL's own prefix).
+
+## As built: W7-G — the terminals census the world they would launch (2026-08-27)
+
+- **`TerminalLineupInputs::presence` is fed at last**, from the world the
+  clients' own VIEW LEVEL stages. The shared seam is
+  `og::ui::census_staged_lineup_presence(MatchStage&, const SaveData&,
+  difficulty, match_seed, out)`: it builds `MatchStageInputs` exactly as
+  `view_scenario()` does, runs `observe_inputs` + `ensure_current`
+  synchronously — a page redraw cannot wait out `kStageDebounceMs` — and
+  answers `census_lineup_presence(*stage.world())`.
+- **The three no-world shapes keep the documented stored-code fallback**:
+  an unmounted campaign, a stage that is not `Staged`, and a stage that
+  fell back to a level other than `save.scen_num`. The seam returns false
+  and leaves `out` untouched, and the callers pass an EMPTY span.
+- **One stage per page loop** (`lineup_screen()` in text, `lineup_flow()` in
+  curses), so an untouched page is free and a turned knob restages exactly
+  once. Both clients now pass `model.bands[team].resolved_fill` as
+  `cycle_lineup_fill`'s middle argument, so a band on the DEFAULT enters
+  the wheel where the face reads on the terminals as on SDL.
+- **Agreement at rest is pinned** on gladiator scen 1 in all three clients:
+  `TEAM 1  FILL: FAIR`, `TEAM 2  FILL: FAIR`, `TEAM 3  FILL: NONE`,
+  `TEAM 4  FILL: NONE` — in text, in curses, and in the interactive shell
+  drive, which now refuses unless both NONE rows appear.
+- **Two censuses, by design, from different worlds.** SDL censuses the
+  loaded PICKER world; the terminals census the STAGED one. They agree on
+  gladiator scen 1 and on any team whose authored population the stage does
+  not move — but a stage step that spawns ONTO a team would make the
+  terminal band see presence the SDL band does not. Worth revisiting if a
+  mode ever does that before the page paints.
+- **Cost note.** Entering LINEUP on a mounted campaign now stages a real
+  world (one level load plus a per-world Lua VM), and each knob turn
+  restages once. Twelve presses cost 215 ms on gladiator scen 1; a heavy
+  level will make the page's first paint cost what VIEW LEVEL costs.

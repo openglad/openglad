@@ -649,6 +649,14 @@ TEST_F(ScenarioStagedReport, banked_fill_codes_decode_per_team)
         << "code 0 is 'banked nothing', not a fill — since D1 no explicit "
            "code is 0, so the code needs no bias to keep 0 free";
     EXPECT_EQ(og::sim::kFillBrutal, report.team_squad_fill[2]);
+    // Team 3's digit pair is the TOP one in the slot (10 * 100^3), and it
+    // carries a legal code — but no squad of team 3's stands in this world,
+    // so the row is not a bots row and the pane names no fill for it. A
+    // banked code is necessary for the word, never sufficient: what the
+    // report says is what SPAWNED, and the top pair being populated is
+    // exactly what proves the reader got that far and still declined.
+    EXPECT_EQ(-1, report.team_squad_fill[3])
+        << "a code banked for a team that fielded nobody names no fill";
 }
 
 // ---------------------------------------------------------------------------
