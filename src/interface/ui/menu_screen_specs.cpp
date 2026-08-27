@@ -8102,32 +8102,20 @@ int picker_lineup_button_count()
 // The MAP UNITS census (amendment B4): the map's own authored units per
 // team, read off the loaded picker level — the level-reload guard keeps it
 // synced to save.scen_num for every screen in the team-build family. The
-// picker world holds only what the level authored (company fighters spawn
-// at launch), so every living here IS a map unit; generators are the
-// GENERATOR RATE knob's business and stay out of the count. The box state,
-// the band hint, and the terminals all read these numbers.
+// walk itself is the shared og::ui::census_lineup_map_units (F3): on the
+// raw picker world it counts exactly what the inline loop here used to,
+// and the terminals run the same walk over their staged world, so the box
+// state, the band hint and the toggle refusal read one set of numbers on
+// every client.
 std::array<int, 4> picker_lineup_map_unit_counts()
 {
-    std::array<int, 4> counts{};
     if (og::runtime::current_session == nullptr ||
         og::runtime::current_session->myscreen_ == nullptr)
     {
-        return counts;
+        return {};
     }
-    const GameWorld& world =
-        og::runtime::current_session->myscreen_->world();
-    for (const auto& uptr : world.oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead())
-            continue;
-        if (w->query_order() != Order::Living)
-            continue;
-        const int team = w->team_num();
-        if (team >= 0 && team < 4)
-            ++counts[static_cast<std::size_t>(team)];
-    }
-    return counts;
+    return og::ui::census_lineup_map_units(
+        og::runtime::current_session->myscreen_->world());
 }
 
 // The C8 presence census: same loaded picker level, same reload-guard

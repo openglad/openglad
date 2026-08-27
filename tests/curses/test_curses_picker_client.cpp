@@ -2330,6 +2330,39 @@ TEST(CursesPickerClient, lineup_bands_read_the_staged_census_at_rest)
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
+// B4/F3: the curses page censuses the map's own units off the world it
+// stages (the SDL box state's own walk), so the unauthored band says
+// NO MAP UNITS and the toggle on it is REFUSED with that hint (a show_text
+// screen), while the elves' box still flips. Before this the terminals fed
+// no count: the hint was dead and the toggle wrote where SDL refuses.
+TEST(CursesPickerClient, lineup_map_units_refuses_where_the_map_ships_none)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 1;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    pick(f.t(), 7);                      // row 8: TEAM 4 MAP UNITS -> refused
+    dismiss(f.t());                      // the refusal is a show_text screen
+    pick(f.t(), 3);                      // row 4: TEAM 2 MAP UNITS -> OFF
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("NO MAP UNITS"), std::string::npos)
+        << "B4: a censused page says NO MAP UNITS where the map ships "
+           "none:\n" << dump;
+    EXPECT_EQ(og::sim::kMapUnitsOn, f.save().map_units[3])
+        << "the refused toggle must not touch the save:\n" << dump;
+    EXPECT_EQ(og::sim::kMapUnitsOff, f.save().map_units[1])
+        << "the authored team's toggle lands like any other:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 2  MAP UNITS: OFF"), std::string::npos)
+        << "the redraw re-reads the box out of the save:\n" << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
 // D1/D4: the full-cycle label pin, curses half. Six entries per band, one
 // press each, so the redraw after every step is its own frame: the two
 // sequences are the same five words in the same order and differ only in the

@@ -1069,10 +1069,12 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         .host_company_save = &save,
     });
     std::array<og::ui::LineupTeamPresence, 4> presence{};
+    std::array<int, 4> map_unit_counts{};
 
     for (;;) {
         const bool censused = og::ui::census_staged_lineup_presence(
-            stage, save, options.difficulty, config.seed, presence);
+            stage, save, options.difficulty, config.seed, presence,
+            &map_unit_counts);
         const std::vector<og::sim::LobbyPlayer> seats =
             og::ui::synthesize_local_lobby_players(save);
 
@@ -1080,9 +1082,13 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         inputs.save = &save;
         inputs.players = seats;
         // The FILL cells read the staged world; an empty span where nothing
-        // could be staged keeps the documented stored-code fallback.
-        if (censused)
+        // could be staged keeps the documented stored-code fallback. F3: the
+        // MAP UNITS census rides beside it off the same world, so the B4
+        // hint and the toggle refusal are live here as on the SDL band.
+        if (censused) {
             inputs.presence = presence;
+            inputs.map_unit_counts = map_unit_counts;
+        }
         // The curses picker screen is local-only (its network lobby is a
         // separate flow), so the bands census THIS save and the host gate
         // comes from the shared label context like every other row here.
@@ -1118,9 +1124,23 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
             // settings-sync tail: the curses picker links no lobby client
             // (its network lobby is a separate flow that seeds its own
             // settings from this save on entry), so the save is the whole
-            // authority for these eight scalars here. B8: no value on
-            // either knob is refused on any team, so the step is the whole
+            // authority for these eight scalars here. B8: no value on the
+            // FILL wheel is refused on any team, so the step is the whole
             // rule and both clients share it.
+            //
+            // B4/F3: a team the map ships no units for has nothing to
+            // switch — the SDL box is dimmed and its click belt refuses;
+            // this is the same refusal in the band's own words, gated on a
+            // census that actually happened (an absent census is not an
+            // empty map).
+            if (item.kind == Kind::MapUnits && censused &&
+                model.bands[team].map_unit_count == 0)
+            {
+                menu.show_text(
+                    "Lineup",
+                    {og::ui::format_lineup_map_units_census(model.bands[team])});
+                break;
+            }
             if (item.kind == Kind::Fill) {
                 // D1: the wheel enters at the slot of the value the row
                 // shows — the band's own resolution (W7-G: the staged

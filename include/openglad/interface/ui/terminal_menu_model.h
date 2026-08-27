@@ -115,6 +115,12 @@ struct TerminalLineupInputs {
     // world", which is not the same fact as "the map ships none" — so the
     // MAP UNITS hint is written only when this is supplied. A terminal that
     // printed NO MAP UNITS off an absent census would be inventing a rule.
+    //
+    // F3: both live terminal clients FILL this span from the same staged
+    // world their presence census reads (census_staged_lineup_presence's
+    // map_units_out), and refuse the MAP UNITS toggle with the hint where
+    // the count is 0 — the SDL box's dim and click belt, in the band's own
+    // words. The empty-span fallback survives for the no-world shapes.
     std::span<const int> map_unit_counts;
     // C8's presence census, handed straight to build_lineup_bands: with a
     // 4-team span every FILL cell renders the RESOLVED default (the pack
@@ -154,10 +160,16 @@ TerminalLineupModel build_terminal_lineup_model(
 // masquerade as this level's census, exactly as VIEW LEVEL refuses it).
 // The caller then passes an EMPTY presence span and the cells fall back to
 // the stored code.
+// F3: `map_units_out`, when supplied, receives the B4 MAP UNITS census of
+// the same staged world (og::ui::census_lineup_map_units — the SDL box
+// walk over the world the terminals actually have), so the NO MAP UNITS
+// hint and the toggle refusal live on the text/curses pages too. Left
+// untouched on every false return, exactly like `out`.
 bool census_staged_lineup_presence(og::server::MatchStage& stage,
                                    const SaveData& save, int difficulty,
                                    std::uint32_t match_seed,
-                                   std::array<LineupTeamPresence, 4>& out);
+                                   std::array<LineupTeamPresence, 4>& out,
+                                   std::array<int, 4>* map_units_out = nullptr);
 
 // Amendment 3 C5: the classic gating is GONE. The match machinery moved to
 // packs/core and runs on every campaign through the mode-less stage step, so

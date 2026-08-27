@@ -3955,6 +3955,35 @@ std::array<LineupTeamPresence, 4> census_lineup_presence(
     return counts;
 }
 
+std::array<int, 4> census_lineup_map_units(const GameWorld& world)
+{
+    // The B4 census the MAP UNITS box state gates on: the map's own
+    // authored units per team. One walk for both worlds the surfaces
+    // read — the SDL picker's RAW loaded level (nothing there is dead,
+    // bot-marked or guy-owned, so every living counts, the pre-F3
+    // arithmetic exactly) and the terminals' STAGED world, where the
+    // fighters carry guys, a FILL squad carries the bot mark, and a
+    // box-off team's units are retired dead — authored still, which is
+    // what keeps the box alive to turn them back on. Generators are the
+    // GENERATOR RATE knob's business and stay out of the count.
+    std::array<int, 4> counts{};
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->query_order() != Order::Living)
+            continue;
+        if (w->myguy != nullptr)
+            continue;
+        if (w->stats() != nullptr &&
+            (w->stats()->bit_flags() & kBotMarkBit) != 0)
+            continue;
+        const int team = w->team_num();
+        if (is_score_team_index(team))
+            ++counts[static_cast<std::size_t>(team)];
+    }
+    return counts;
+}
+
 short lineup_resolved_fill(short stored, const LineupTeamPresence& presence,
                            int seat_count, int fighter_count)
 {

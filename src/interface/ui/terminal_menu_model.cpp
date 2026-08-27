@@ -110,7 +110,8 @@ std::string_view terminal_gate_message(const PickerMenuItem& item,
 bool census_staged_lineup_presence(og::server::MatchStage& stage,
                                    const SaveData& save, int difficulty,
                                    std::uint32_t match_seed,
-                                   std::array<LineupTeamPresence, 4>& out)
+                                   std::array<LineupTeamPresence, 4>& out,
+                                   std::array<int, 4>* map_units_out)
 {
     if (get_mounted_campaign() != save.current_campaign)
         return false;
@@ -134,6 +135,8 @@ bool census_staged_lineup_presence(og::server::MatchStage& stage,
         return false;
 
     out = census_lineup_presence(*world);
+    if (map_units_out != nullptr)
+        *map_units_out = census_lineup_map_units(*world);
     return true;
 }
 

@@ -2482,6 +2482,82 @@ TEST(PlatformHeadless, text_picker_lineup_knob_cycles_on_a_classic_campaign)
     og::data::set_active_company_slot("save0");
 }
 
+// B4/F3: the text page censuses the map's own units off the world it stages
+// (the same walk the SDL box state gates on), so a team the map ships no
+// units for says NO MAP UNITS beside its census and REFUSES the toggle with
+// that hint — the SDL box's dim and click belt, in the band's words. Before
+// this the terminals fed no count at all: the hint was dead and the toggle
+// wrote freely where the SDL screen refuses. Gladiator scen 1 ships elves
+// onto team 2 and nothing onto team 4, so one drive covers both arms.
+TEST(PlatformHeadless, text_picker_lineup_map_units_refuses_where_the_map_ships_none)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "CLASSIC BOX";
+        sd.current_campaign = "gladiator";
+        sd.my_team = 0;
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "F1";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = true;
+        sd.team_size = 1;
+        sd.scen_num = 1;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("classicb"));
+    }
+
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "1\n"   //   list: open company...
+        "1\n"   //     #1 = classicb -> team build
+        "12\n"  // team build: LINEUP
+        "8\n"   //   lineup: TEAM 4 MAP UNITS -> refused, NO MAP UNITS
+        "4\n"   //   lineup: TEAM 2 MAP UNITS -> ON flips to OFF (the elves)
+        "12\n"  //   lineup: back -> team build
+        "8\n"   // team build: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    // The hint rides beside the census on the unauthored band...
+    EXPECT_NE(std::string::npos,
+              out.find("TEAM 4 YELLOW  POWER --   NO SEAT\n"
+                       "  [FILL: NONE] [MAP UNITS: ON]  NO FIGHTERS  "
+                       "NO MAP UNITS"))
+        << "B4: a censused page says NO MAP UNITS where the map ships "
+           "none:\n" << out;
+    // ...and never on the elves' band.
+    EXPECT_EQ(std::string::npos,
+              out.find("[FILL: FAIR] [MAP UNITS: ON]  NO FIGHTERS  "
+                       "NO MAP UNITS"))
+        << "the authored team keeps a live box:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("MAP UNITS: OFF"))
+        << "the elves' box flips:\n" << out;
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("classicb"));
+    EXPECT_EQ(og::sim::kMapUnitsOn, reloaded.map_units[3])
+        << "the refused toggle must not reach the company file";
+    EXPECT_EQ(og::sim::kMapUnitsOff, reloaded.map_units[1])
+        << "the authored team's toggle lands like any other";
+
+    (void)remove_user_file("save/classicb.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
 // D1/D4: the wheel gets a FULL-CYCLE label pin on an AUTHORED band and on an
 // UNAUTHORED one, through the real text picker, on the campaign the maintainer
 // played. The two sequences are the same five words in the same order and

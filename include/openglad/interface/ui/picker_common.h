@@ -1547,6 +1547,13 @@ struct LineupTeamPresence {
 std::array<LineupTeamPresence, 4> census_lineup_presence(
     const GameWorld& world);
 
+// The B4 MAP UNITS census over the same two worlds: authored (guy-less,
+// un-bot-marked) livings per team, retired-dead ones included — the
+// numbers the box state, its NO MAP UNITS hint and the toggle refusal
+// gate on, identical whether the walk reads the SDL picker's raw loaded
+// level or the terminals' staged world (F3).
+std::array<int, 4> census_lineup_map_units(const GameWorld& world);
+
 // The resolved wheel value for one team (C8): dispatches the pack's ONE
 // resolver (og.register_default_lineup's `default_fill`; a campaign book's
 // own overrides it) over the stored code and the censused presence plus

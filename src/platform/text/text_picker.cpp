@@ -1110,7 +1110,8 @@ private:
 
     TerminalLineupInputs lineup_inputs(
         const std::vector<og::sim::LobbyPlayer>& seats,
-        std::span<const LineupTeamPresence> presence) const
+        std::span<const LineupTeamPresence> presence,
+        std::span<const int> map_unit_counts) const
     {
         TerminalLineupInputs inputs;
         inputs.save = &save_data_;
@@ -1122,8 +1123,11 @@ private:
         inputs.is_host = label_context().is_host;
         // W7-G: the FILL cells read the world VIEW LEVEL would show. Empty
         // when nothing could be staged — the documented stored-code
-        // fallback, not an invented census.
+        // fallback, not an invented census. F3: the MAP UNITS census rides
+        // beside it off the same world, so the B4 hint and the toggle
+        // refusal are live here exactly as on the SDL band.
         inputs.presence = presence;
+        inputs.map_unit_counts = map_unit_counts;
         return inputs;
     }
 
@@ -1156,19 +1160,22 @@ private:
             .host_company_save = &save_data_,
         });
         std::array<LineupTeamPresence, 4> presence{};
+        std::array<int, 4> map_unit_counts{};
 
         for (;;) {
             const bool censused = census_staged_lineup_presence(
                 stage, save_data_,
                 og::runtime::current_session->current_difficulty_,
-                config_.seed, presence);
+                config_.seed, presence, &map_unit_counts);
             const std::vector<og::sim::LobbyPlayer> seats =
                 synthesize_local_lobby_players(save_data_);
             const TerminalLineupModel model = build_terminal_lineup_model(
                 lineup_inputs(seats,
                               censused
                                   ? std::span<const LineupTeamPresence>(presence)
-                                  : std::span<const LineupTeamPresence>()));
+                                  : std::span<const LineupTeamPresence>(),
+                              censused ? std::span<const int>(map_unit_counts)
+                                       : std::span<const int>()));
 
             std::printf("\n--- Lineup ---\n");
             for (const std::string& line : model.lines)
@@ -1206,9 +1213,21 @@ private:
                 // purpose: the text client links no lobby client at all
                 // (configure_networking is the documented stub), so the
                 // save IS the whole authority for these eight scalars.
-                // B8: no value on either knob is refused on any team, so
+                // B8: no value on the FILL wheel is refused on any team, so
                 // there is no wheel rule beyond the shared step itself.
                 if (item.kind == TerminalLineupItem::Kind::MapUnits) {
+                    // B4/F3: a team the map ships no units for has nothing
+                    // to switch — the SDL box is dimmed and its click belt
+                    // refuses; this is the same refusal in the band's own
+                    // words, gated on a census that actually happened (an
+                    // absent census is not an empty map).
+                    if (censused && model.bands[team].map_unit_count == 0) {
+                        std::printf(
+                            "%s\n",
+                            format_lineup_map_units_census(model.bands[team])
+                                .c_str());
+                        break;
+                    }
                     save_data_.map_units[team] = og::sim::clamp_map_units(
                         toggle_lineup_map_units(save_data_.map_units[team]));
                     std::printf(
