@@ -15,7 +15,7 @@
 -- reads them, harmless by design.)
 
 local levels = og.use("mode_levels")
-local match = og.use("mode_match")
+local lineup = og.use("core:lineup")
 
 -- The seven games, in the campaign.yaml description's own order. Page id =
 -- the manifest's mode tag (the v1 page ids, kept: the field pages ARE those
@@ -663,16 +663,17 @@ end
 
 -- The LINEUP hook (docs/lineup-design.md §4): the power function alone
 -- since amendment B1 replaced the BOTS preset wheel with the five-value
--- FILL wheel, which names nothing a campaign owns. It is mode_match's own
--- stat_power over the engine's derived-stat row, so the bands price a
--- fighter with the exact metric the FILL solver measures against. og.use
--- reaches mode_match here because the campaign VM loads the pack's lib
--- modules exactly like a world VM (the mode scripts already pull it in),
+-- FILL wheel, which names nothing a campaign owns. It is the core pack's
+-- own stat_power over the engine's derived-stat row (C1 moved the match
+-- machinery there; this registration points straight at the shared lib),
+-- so the bands price a fighter with the exact metric the FILL solver
+-- measures against. The qualified og.use works here because the campaign
+-- VM loads every installed pack's lib modules exactly like a world VM,
 -- and stat_power spends nothing but og.div, which the campaign fence
 -- leaves open (clock_ticks above already relies on that).
 local function lineup_power(row)
-  return match.stat_power(row.hp, row.mp, row.armor, row.damage,
-                          row.stepsize, row.fire_frequency, row.level)
+  return lineup.stat_power(row.hp, row.mp, row.armor, row.damage,
+                           row.stepsize, row.fire_frequency, row.level)
 end
 
 og.register_campaign_hooks({

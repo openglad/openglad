@@ -3,6 +3,11 @@
 
 local C = og.C
 
+-- Absolute value lives in the shared core pack now (the D22 solver's argmin
+-- moved there with the match machinery, docs/lineup-design.md C1); the
+-- modes' geometry keeps its name through this re-export.
+local lineup = og.use("core:lineup")
+
 -- Well-known mode-var header (slots 0-7; 8+ are mode-private — each mode's
 -- map lives with its impl module). MODE_ID doubles as the activation latch:
 -- every impl writes it LAST in on_mode_init, so family hooks (flag on_eat)
@@ -35,16 +40,6 @@ end
 
 local function pos_y(v)
   return og.mod(v, 4096)
-end
-
--- Absolute value. The sandbox has no math library, so every mode's L1
--- geometry, every sign-free compare and every magnitude clamp spells it
--- here rather than once per impl.
-local function iabs(v)
-  if v < 0 then
-    return -v
-  end
-  return v
 end
 
 -- A walker's CENTER pixel. Mode geometry reads centers — contact radii,
@@ -188,7 +183,7 @@ return {
   pos_pack = pos_pack,
   pos_x = pos_x,
   pos_y = pos_y,
-  iabs = iabs,
+  iabs = lineup.iabs,
   walker_center = walker_center,
   mask_has = mask_has,
   mask_add = mask_add,
