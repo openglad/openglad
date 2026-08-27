@@ -922,3 +922,50 @@ inert until a pack uses them.
   and `level_hook_kinds_for` reads a level's OWN registrations only, so the
   `-1` wildcard does NOT move the shipped-registration matrix in
   `test_modes_levels.cpp`.
+
+## As built: the W6-C layer — the SDL half of C5 (2026-08-27)
+
+The classic dim retired from the SDL surfaces, and VIEW LEVEL's classic
+arm now renders the fills census. The rulings the build settled:
+
+- **`lineup_knob_row_state` is host-only now.** The `!is_versus_campaign
+  ⟹ Disabled` clause and the `MAP RULES` band census are gone from
+  `menu_screen_specs.cpp`; the B4 dim (a team the map ships no units for)
+  is the ONE dim left, and the MAP UNITS caption follows only that axis.
+  The `change_lineup_fill` / `change_lineup_map_units` classic belts in
+  `picker.cpp` went with them — the host's wheel turns on every campaign,
+  every client. Joiner gating (Hidden + the host-denial popup) unchanged.
+- **The staged census fold has one home.** The per-team
+  company/troops/bots/generators fold that lived inline in
+  `build_scenario_roster_report`'s mode arm is hoisted to
+  `census_staged_teams` (picker_common.cpp, anonymous namespace) and now
+  ALSO runs for a staged CLASSIC world: same team lines
+  (`  GREEN TEAM  ACTIVE - MAP TROOPS (12)`, squad rows closing with
+  their banked fill word), **headerless** — there is no mode to name and
+  no match to count teams for, so the classic block starts at its first
+  team line — and with **no activation clamp** (C4: classic levels never
+  refuse; any team with anything standing gets its line). The formatter's
+  census condition is `report.staged && report.mode_census`, with the
+  `MATCH:` header emitted only under `is_versus`. Non-staged classic
+  reports are unchanged (seats + roster rows only), and every versus
+  branch (mode census, refusal sentence, count-only fallback) is
+  byte-identical.
+- **`ViewScenarioKey` needed nothing**: it has carried `fill` and
+  `map_units` since §3.1 (picker_team_build.cpp:595-596, read at
+  :701-702) — verified, no change.
+- **Gladiator authors no marker-only side teams.** Every start marker on
+  every gladiator level is team 0 (scanned across `scen/*.fss`), so the
+  "empty authored team gets an explicit squad" arm of the classic rules
+  has no gladiator stage; the classic path to a squad there is the
+  box-trade (MAP UNITS off + a non-NONE wheel). The flows pin exactly
+  that: scen 1's all-default `COMPANY (2)` / `MAP TROOPS (12)` block, the
+  traded `MATCHED BOTS … STRONG` row replacing the troops, and the
+  FILL: NONE + box-off shape where GREEN's line (and its roster rows)
+  drop entirely.
+- **Left deliberately for W6-G**: the terminal MAP RULES twins —
+  `kTerminalLineupMapRulesMark` / `kTerminalLineupMapRulesLine`
+  (terminal_menu_model.h), the census precedence in
+  `terminal_menu_model.cpp`, their pins in `test_platform_headless.cpp`,
+  `tests/curses/test_curses_picker_client.cpp` and
+  `scripts/test_text_picker_interactive.sh` — one wave owns the terminal
+  surfaces, so the SDL wave did not half-edit them.

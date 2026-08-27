@@ -1187,14 +1187,26 @@ TEST(LineupUi, classic_campaign_knobs_are_live)
     EXPECT_EQ(og::sim::kFillStrong, save.fill[0])
         << "the classic click writes the save knob";
     EXPECT_EQ(1, state.captures);
+
+    // C5's POWER half — a number on gladiator's bands — is BLOCKED on the
+    // engine's default-lineup seam (the campaign-book registrar is
+    // one-book-first-wins, so packs/core cannot register the default
+    // lineup.power; docs/lineup-design.md, "As built: W6-A", C5 bullet).
+    // When that seam lands, assert here: campaign_lineup_registered() on
+    // gladiator, and lineup_power_for_guy(soldier Lv 3) > 0.
 }
 
 // ---------------------------------------------------------------------------
 // Flow 6 (amendment C5): VIEW LEVEL's classic arm renders the same per-team
-// fills census the staged (mode) arm does — the classic staged world is the
-// world the launch adopts, so the pane reads its observable facts: the
-// company on RED and gladiator scen 1's twelve authored map troops on
-// GREEN, each closing with its count.
+// fills census the staged (mode) arm does, end to end on gladiator scen 1.
+// Three viewer visits: (a) all-default — the company on RED, the twelve
+// authored map troops on GREEN; (b) GREEN's MAP UNITS box OFF with FILL:
+// STRONG — the classic trade rule retires the troops and fields a solved
+// squad wearing its fill word; (c) FILL: NONE with the box still OFF —
+// nothing stands on GREEN and its line drops entirely (C4: fewer enemies,
+// never a refusal). Gladiator authors no marker-only side teams (every
+// start marker is RED's), so the box-trade is the one classic path to a
+// squad — recorded in the design doc's W6-C section.
 
 namespace {
 
@@ -1204,6 +1216,16 @@ struct LineupClassicViewerState
     bool viewer_opened = false;
     bool company_line_seen = false;
     bool troops_line_seen = false;
+    bool page_opened = false;
+    bool fill_green_strong = false;
+    bool map_units_green_off = false;
+    bool viewer_fill_opened = false;
+    bool troops_line_after_trade = true;
+    std::string green_line_after_trade;
+    bool fill_green_none = false;
+    bool viewer_stripped_opened = false;
+    bool green_line_when_none = true;
+    bool company_line_still_there = false;
     int captures = 0;
 };
 
@@ -1216,6 +1238,8 @@ int lineup_classic_viewer_injector(void* data)
         return 0;
     }
     SDL_Delay(300);
+
+    // Visit (a): the all-default census block.
     interact("view_scenario");
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     if (state->viewer_opened) {
@@ -1232,6 +1256,88 @@ int lineup_classic_viewer_injector(void* data)
         (void)wait_for_interactable("progress", 10000);
         SDL_Delay(300);
     }
+
+    // LINEUP: FILL: STRONG on GREEN and its MAP UNITS box OFF (the trade).
+    interact("lineup");
+    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    if (!state->page_opened) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(750);
+    state->fill_green_strong =
+        click_until_label("lineup_fill_1", "FILL: STRONG");
+    SDL_Delay(300);
+    interact("lineup_map_units_1");
+    state->map_units_green_off =
+        wait_for_trace("lineup", "map_units team=1 value=1", 5000);
+    SDL_Delay(300);
+    interact("back");  // LINEUP -> SCENARIO
+    SDL_Delay(300);
+
+    // Visit (b): the traded squad wears its fill word; the troops are gone.
+    if (wait_for_interactable("view_scenario", 10000)) {
+        SDL_Delay(750);
+        trace_clear();
+        interact("view_scenario");
+        state->viewer_fill_opened =
+            wait_for_interactable_at("back", 10, 170, 10000);
+        if (state->viewer_fill_opened) {
+            (void)wait_for_trace(
+                "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
+            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+            state->troops_line_after_trade =
+                trace_contains("picker", "MAP TROOPS (12)");
+            state->green_line_after_trade =
+                first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
+            SDL_Delay(300);
+            state->captures += capture_frame("view_level_gladiator_fill");
+            SDL_Delay(300);
+            interact("back");
+            SDL_Delay(300);
+            (void)wait_for_interactable("progress", 10000);
+            SDL_Delay(300);
+        }
+    }
+
+    // LINEUP again: GREEN's wheel to NONE (STRONG -> BRUTAL -> NONE).
+    interact("lineup");
+    if (wait_for_interactable_at("back", 8, 176, 10000)) {
+        SDL_Delay(750);
+        state->fill_green_none = click_through_labels(
+            "lineup_fill_1", {"FILL: BRUTAL", "FILL: NONE"});
+        SDL_Delay(300);
+        interact("back");
+        SDL_Delay(300);
+    }
+
+    // Visit (c): nothing stands on GREEN — its line drops entirely.
+    if (wait_for_interactable("view_scenario", 10000)) {
+        SDL_Delay(750);
+        trace_clear();
+        interact("view_scenario");
+        state->viewer_stripped_opened =
+            wait_for_interactable_at("back", 10, 170, 10000);
+        if (state->viewer_stripped_opened) {
+            state->company_line_still_there = wait_for_trace(
+                "picker",
+                "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)",
+                10000);
+            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+            state->green_line_when_none =
+                trace_contains("picker", "GREEN TEAM");
+            SDL_Delay(300);
+            state->captures +=
+                capture_frame("view_level_gladiator_stripped");
+            SDL_Delay(300);
+            interact("back");
+            SDL_Delay(300);
+            (void)wait_for_interactable("progress", 10000);
+            SDL_Delay(300);
+        }
+    }
+
     injector_unwind_from_scenario();
     state->finished = true;
     return 0;
@@ -1257,12 +1363,41 @@ TEST(LineupUi, classic_view_level_censuses_the_staged_world)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open";
     EXPECT_TRUE(state.company_line_seen)
         << "the classic census labels the company COMPANY with its count";
     EXPECT_TRUE(state.troops_line_seen)
         << "the classic census labels the authored enemies MAP TROOPS";
+    EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
+    EXPECT_TRUE(state.fill_green_strong);
+    EXPECT_TRUE(state.map_units_green_off)
+        << "GREEN's box is live on gladiator (12 authored units)";
+    EXPECT_TRUE(state.viewer_fill_opened);
+    EXPECT_FALSE(state.troops_line_after_trade)
+        << "the box OFF retires GREEN's authored troops from the stage";
+    EXPECT_NE(std::string::npos,
+              state.green_line_after_trade.find("MATCHED BOTS"))
+        << "the trade fields a solved squad (the company on RED is human "
+           "power, so B3's reference exists): '"
+        << state.green_line_after_trade << "'";
+    const std::string strong_tail = "STRONG";
+    ASSERT_GE(state.green_line_after_trade.size(), strong_tail.size());
+    EXPECT_EQ(strong_tail,
+              state.green_line_after_trade.substr(
+                  state.green_line_after_trade.size() - strong_tail.size()))
+        << "the squad row closes with its fill word (B7): '"
+        << state.green_line_after_trade << "'";
+    EXPECT_TRUE(state.fill_green_none);
+    EXPECT_EQ(og::sim::kFillNone, save.fill[1]);
+    EXPECT_TRUE(state.viewer_stripped_opened);
+    EXPECT_TRUE(state.company_line_still_there)
+        << "RED's company census is untouched by GREEN's knobs";
+    EXPECT_FALSE(state.green_line_when_none)
+        << "NONE with the box off leaves nothing on GREEN: no census line, "
+           "no roster rows (C4: fewer enemies, never a refusal)";
+    EXPECT_EQ(2, state.captures) << "both viewer captures should land";
 }
 
 // ---------------------------------------------------------------------------
