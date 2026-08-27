@@ -1535,6 +1535,12 @@ struct LineupTeamPresence {
     int generators = 0;  // live authored generators
     int markers = 0;     // start markers, dead ones included
     int roster = 0;      // live has_guy livings (a staged world's fighters)
+    // Live mode-authored flags (fxlist treasures of the CTF flag family):
+    // the mode domain's own authorship, which the oblist walk cannot see.
+    // The resolver row folds these into `units` — the launch's spelling
+    // (mode_match.fills resolves {units = 1} over the active mask), so a
+    // flag-only team's band resolves exactly as its launch does (F2).
+    int flags = 0;
 };
 
 // The presence census over a loaded (or staged) world, one walk.

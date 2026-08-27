@@ -2136,6 +2136,32 @@ TEST_F(CampaignHooksTest, ui_resolved_fill_bridges_and_falls_back)
     og::ui::lineup_power_cache_clear();
 }
 
+// F2: a mode-authored flag reaches the resolver in the row's units
+// column — the launch's own spelling (mode_match.fills resolves
+// {units = 1} for a team the mode's domain authored), so a flag-only
+// team's band and its launch read the same word off the same save.
+TEST_F(CampaignHooksTest, mode_flags_reach_the_resolver_as_units)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return 1 end,
+  default_fill = function(stored, row)
+    if row.units > 0 then
+      return 3
+    end
+    return 1
+  end,
+}))LUA", kDefaultChunk);
+    og::ui::lineup_power_cache_clear();
+    og::ui::LineupTeamPresence flagged;
+    flagged.flags = 1;
+    EXPECT_EQ(3, og::ui::lineup_resolved_fill(0, flagged, 0, 0))
+        << "a censused flag is units to the resolver (band == launch)";
+    og::ui::LineupTeamPresence bare;
+    EXPECT_EQ(1, og::ui::lineup_resolved_fill(0, bare, 0, 0))
+        << "a bare team still resolves NONE";
+    og::ui::lineup_power_cache_clear();
+}
+
 // ---------------------------------------------------------------------------
 // The lineup review rows (wp/review-lua L5/L6)
 // ---------------------------------------------------------------------------

@@ -2878,6 +2878,30 @@ TEST_F(StagedRules, explicit_fill_fields_a_squad_beside_mode_troops)
     }
 }
 
+// F2: the presence census sees MODE-domain authorship. CTF flags are
+// ORDER_TREASURE entities on the fxlist, so a flag-only team used to
+// census as bare — its band resolved the stored DEFAULT to NONE while
+// the launch (mode_match.fills resolves the activation itself as the
+// presence row, {units = 1}) resolved FAIR. The census walks the fxlist
+// for the flag family; a dead (surplus-killed) flag authors nothing and
+// a waypoint is not a flag.
+TEST_F(StagedRules, presence_census_counts_mode_flags)
+{
+    ModesCtfWorld fx(kCtfLevelA);
+    fx.spawn_flag(flag_family_, 2, 100, 100, 1);
+    walker* const surplus = fx.spawn_flag(flag_family_, 3, 132, 100, 1);
+    ASSERT_NE(nullptr, surplus);
+    surplus->set_dead(1);
+    fx.spawn_point(point_family_, 164, 100);
+
+    const std::array<og::ui::LineupTeamPresence, 4> counts =
+        og::ui::census_lineup_presence(fx.world());
+    EXPECT_EQ(1, counts[2].flags) << "the flag is the mode's authored fact";
+    EXPECT_EQ(0, counts[2].units) << "a flag is not a map unit";
+    EXPECT_EQ(0, counts[3].flags) << "a dead flag authors nothing";
+    EXPECT_EQ(0, counts[0].flags) << "a waypoint is not a flag";
+}
+
 // The hard shape beside standing troops (R2's room rule on the D3 arm):
 // basketball's court prices cap - fielded npcs, and a full court of
 // troops fields no squad and banks no fact.

@@ -3058,6 +3058,15 @@ constexpr std::size_t kMaxScenarioReportRows = 200;
 // a wire-visible contract with the pack, pinned by the staged report tests.
 constexpr std::int32_t kBotMarkBit = 65536;
 
+// The CTF flag treasure family, pinned the way kBotMarkBit is: the modes
+// pack declares modes:flag at wire id 13
+// (campaigns/modes/packs/modes.core/families/treasure-flag.lua), and the
+// two halves live in different languages, so they can only agree on
+// paper. The presence census (F2) reads it off the fxlist — a flag is
+// the CTF domain's whole authorship of a team, invisible to any oblist
+// walk.
+constexpr int kLineupFlagFamily = 13;
+
 // The shared MATCHED header-band mode var (lib/mode_match.lua MATCHED.SIZE,
 // slot 5, mode-neutral by convention): non-zero exactly when the FAIR
 // census ran with a roster, banked at staged init — the match.fills rule
@@ -3925,6 +3934,24 @@ std::array<LineupTeamPresence, 4> census_lineup_presence(
             counts[ti].generators++;
         }
     }
+    // The mode-authored facts (F2): a CTF team can be authored by its
+    // FLAG alone, and flags are ORDER_TREASURE entities on the fxlist —
+    // the walk above never sees them, so a flag-only team's band used to
+    // resolve NONE while its launch resolved FAIR. Live flags only: a
+    // surplus-killed flag authors nothing (the CTF fold's own rule).
+    for (const auto& uptr : world.fxlist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead())
+            continue;
+        if (w->query_order() != Order::Treasure ||
+            w->family() != kLineupFlagFamily)
+            continue;
+        const int team = w->team_num();
+        if (!is_score_team_index(team))
+            continue;
+        counts[static_cast<std::size_t>(team)].flags++;
+    }
     return counts;
 }
 
@@ -3932,7 +3959,12 @@ short lineup_resolved_fill(short stored, const LineupTeamPresence& presence,
                            int seat_count, int fighter_count)
 {
     og::script::hooks::LineupResolveRow row;
-    row.units = presence.units;
+    // Mode-authored flags fold into the units column — the launch's own
+    // spelling of the fact (mode_match.fills resolves {units = 1} for a
+    // team the mode's domain authored), so band == launch on a flag-only
+    // team (F2). The resolver row grows no flags column of its own: the
+    // Lua presence fold (lineup.team_present) has no such key either.
+    row.units = presence.units + presence.flags;
     row.generators = presence.generators;
     row.markers = presence.markers;
     // The census marker count includes dead markers, which is exactly what
