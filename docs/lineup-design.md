@@ -1196,3 +1196,17 @@ The rulings the build settled:
   memo and cleared by the same `lineup_power_cache_clear`, keyed on
   the full counts row (a book's resolver may weigh counts, so no
   boolean folding in the key).
+
+## D-series (2026-08-27): the playtest corrections — explicit FAIR exists, explicit FILL always fields
+
+Maintainer playtest on gladiator scen 1 found three failures; rulings
+D1–D4 supersede the matching earlier sentences (notably W6-A's
+"a FILL squad may not turn on an unauthored team" and W5-A's
+"troops-only teams get no squad").
+
+| # | Ruling |
+|---|--------|
+| D1 | **Explicit FAIR gets its own code.** Scale: `0 = DEFAULT` (resolves per C8), explicit `1 = NONE, 2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL`; sanitize `[0,5]`. The wheel is always the five explicit values in order `NONE → WEAK → FAIR → STRONG → BRUTAL` (wrap); a band on the DEFAULT enters the wheel at its resolved value's position. C8's swallowed-FAIR wheel (`NONE, WEAK, NONE, STRONG, BRUTAL`) was the direct consequence of FAIR sharing code 0 with the default. |
+| D2 | **An explicit FILL on an unauthored team FIELDS a squad** and turns the team on (hostile to all, ordinary walkers). Site-less placement: deterministic from the match seed — prefer the walkable region farthest from every existing team's centroid, and never land adjacent to a hostile (the spawn-safety rule). The C8 default still resolves to NONE there; only an explicit choice fields. |
+| D3 | **FILL on a troops-occupied team fields a squad beside the troops.** Occupancy for the allies rule means HUMAN occupancy only; a troops-only team solves like an empty one (weakest human × m). With a level-50 hero on team 1, `FILL: BRUTAL` on the elves' team must produce a squad that actually threatens: target = weakest-human f-sum × 1.5, pinned within solver tolerance. Hard-shape caps still apply on modes maps. |
+| D4 | **The testing bar rises to outcomes.** Every FILL behavior gets a test through the REAL UI path (injector sets the knob → launch → count the team's spawned walkers and assert the solved squad's f-sum tracks the multiplier monotonically WEAK < FAIR < STRONG < BRUTAL against a fixed roster including a high-level hero); the wheel gets full-cycle label-sequence pins on authored AND unauthored teams; a restage-after-knob-change test proves a knob set in LINEUP reaches the world the launch adopts. Label-only pins no longer count as covering a FILL behavior. |
