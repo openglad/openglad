@@ -23,4 +23,15 @@ local function default_power(row)
                            row.stepsize, row.fire_frequency, row.level)
 end
 
-og.register_default_lineup({ power = default_power })
+-- The C8 resolver, registered beside the pricing so the LINEUP band's
+-- knob face renders the RESOLVED default through the same lib function
+-- the stage executes (lineup.resolved_fill — the ONE home of the rule;
+-- the menus never re-derive it). The engine hands over the stored wheel
+-- code and the team's censused presence row; explicit values come back
+-- as themselves, the default resolves FAIR-with-presence / NONE-without.
+local function default_fill(stored, row)
+  return lineup.resolved_fill(stored, row)
+end
+
+og.register_default_lineup({ power = default_power,
+                             default_fill = default_fill })

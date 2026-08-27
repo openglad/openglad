@@ -1514,7 +1514,40 @@ struct LineupTeamBand {
     };
     Diag diag = Diag::None;
     int needs = 0;  // NeedsFighters: how many more the team wants
+    // The RESOLVED wheel value the knob face renders (C8): an explicit
+    // stored code is itself; the stored default (0) resolves through the
+    // pack's ONE resolver — FAIR where the team has any presence, NONE
+    // where it has none. Equal to the stored code whenever the caller
+    // supplied no presence census (the documented honest fallback: with
+    // nothing censused there is nothing to resolve against).
+    short resolved_fill = 0;
 };
+
+// One team's authored presence in a loaded/staged level, the census the
+// C8 resolved-default query is fed (the band adds the seat/fighter axis).
+// `markers` counts team start markers with dead/consumed ones INCLUDED —
+// exactly the engine anchor scan's population, so this column speaks for
+// the anchors too and the two facts can never disagree.
+struct LineupTeamPresence {
+    int units = 0;       // live authored (guy-less) livings
+    int generators = 0;  // live authored generators
+    int markers = 0;     // start markers, dead ones included
+    int roster = 0;      // live has_guy livings (a staged world's fighters)
+};
+
+// The presence census over a loaded (or staged) world, one walk.
+std::array<LineupTeamPresence, 4> census_lineup_presence(
+    const GameWorld& world);
+
+// The resolved wheel value for one team (C8): dispatches the pack's ONE
+// resolver (og.register_default_lineup's `default_fill`; a campaign book's
+// own overrides it) over the stored code and the censused presence plus
+// the caller's seat/fighter counts. Memoized like the pricing hook and
+// cleared by lineup_power_cache_clear. No registered resolver, or one
+// that refuses: the STORED value comes back — the honest fallback, which
+// renders exactly as it did before the ruling.
+short lineup_resolved_fill(short stored, const LineupTeamPresence& presence,
+                           int seat_count, int fighter_count);
 
 // The seat chip's owner label: "P{n} {short}". `short_name` is the local
 // seat's input-mapping short name where the caller can resolve one (the
@@ -1532,6 +1565,11 @@ std::string lineup_seat_label(const og::sim::LobbyPlayer& seat,
 // `map_unit_counts` is the staged census of authored map units per team
 // (B4); an empty span leaves every band's count at 0, which reads as "the
 // map ships none" and dims every box.
+// `presence` feeds the C8 resolved-default: with a 4-team span each band's
+// `resolved_fill` is the pack resolver's answer over that census plus the
+// band's own seats/fighters; an EMPTY span means nobody censused a level,
+// and the band's resolved_fill honestly stays the stored code (documented
+// fallback — the terminal clients with no loaded level ride it).
 std::array<LineupTeamBand, 4> build_lineup_bands(
     const SaveData& own,
     std::span<const og::sim::LobbyPlayer> players,
@@ -1539,7 +1577,8 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
     bool networked,
     const LineupPowerFn& power,
     const std::function<std::string(std::uint8_t)>& local_seat_short_name = {},
-    std::span<const int> map_unit_counts = {});
+    std::span<const int> map_unit_counts = {},
+    std::span<const LineupTeamPresence> presence = {});
 
 // --- LINEUP labels (exact strings; every one of them is pinned) ---
 
@@ -1550,7 +1589,9 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
 std::string_view lineup_fill_name(short fill);
 // "FILL: FAIR" / "FILL: NONE" / "FILL: WEAK" / "FILL: STRONG" /
 // "FILL: BRUTAL" — the band's 12-char knob face, and exactly 12 chars at
-// its two longest values, which is the whole budget.
+// its two longest values, which is the whole budget. Since C8 the band
+// surfaces hand it the RESOLVED value (LineupTeamBand::resolved_fill), so
+// a stored default reads "FILL: NONE" on a team with nothing to stand on.
 std::string format_lineup_fill_label(short fill);
 // "MAP UNITS: ON" / "MAP UNITS: OFF" — the terminal clients' spelling of
 // the box the SDL band draws as a checkmark (B9).

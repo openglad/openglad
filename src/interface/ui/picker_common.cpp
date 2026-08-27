@@ -10,6 +10,7 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/campaign_ids.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/core/scale_mode.h>
@@ -3842,11 +3843,124 @@ bool same_power_row(const og::script::hooks::LineupPowerRow& lhs,
         lhs.fire_frequency == rhs.fire_frequency && lhs.family == rhs.family;
 }
 
+// The C8 resolved-default query is a Lua pcall too, and the band labels
+// re-derive on every frame — same memo discipline as the pricing above,
+// keyed on the WHOLE query (stored code + the full presence row, never a
+// folded boolean: a campaign's own resolver may weigh the counts), and
+// cleared by the same lineup_power_cache_clear whenever the registration
+// could have moved.
+struct LineupResolveMemoEntry {
+    short stored = 0;
+    og::script::hooks::LineupResolveRow row;
+    short resolved = 0;
+};
+
+constexpr std::size_t kLineupResolveMemoMax = 64;
+std::vector<LineupResolveMemoEntry>& lineup_resolve_memo()
+{
+    static std::vector<LineupResolveMemoEntry> memo;
+    return memo;
+}
+
+bool same_resolve_row(const og::script::hooks::LineupResolveRow& lhs,
+                      const og::script::hooks::LineupResolveRow& rhs)
+{
+    return lhs.units == rhs.units && lhs.generators == rhs.generators &&
+        lhs.markers == rhs.markers && lhs.anchors == rhs.anchors &&
+        lhs.roster == rhs.roster && lhs.seats == rhs.seats;
+}
+
 }  // namespace
 
 void lineup_power_cache_clear() noexcept
 {
     lineup_power_memo().clear();
+    lineup_resolve_memo().clear();
+}
+
+std::array<LineupTeamPresence, 4> census_lineup_presence(
+    const GameWorld& world)
+{
+    // The C8 presence census, the counts the resolved-default query is fed:
+    // authored livings and generators (live — a retired unit stands on
+    // nothing), deployed fighters, and team start markers with DEAD ones
+    // included — the engine anchor scan (respawn_scan_anchors) counts
+    // consumed markers too, so the marker column speaks for the anchors as
+    // well and the two can never disagree.
+    std::array<LineupTeamPresence, 4> counts{};
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr)
+            continue;
+        const int team = w->team_num();
+        if (!is_score_team_index(team))
+            continue;
+        const auto ti = static_cast<std::size_t>(team);
+        const Order order = w->query_order();
+        if (order == Order::Special)
+        {
+            if (w->family() == FAMILY_RESERVED_TEAM)
+                counts[ti].markers++;
+            continue;
+        }
+        if (w->dead() || w->dormant())
+            continue;
+        if (order == Order::Living)
+        {
+            if (w->myguy != nullptr)
+                counts[ti].roster++;
+            else
+                counts[ti].units++;
+        }
+        else if (order == Order::Generator)
+        {
+            counts[ti].generators++;
+        }
+    }
+    return counts;
+}
+
+short lineup_resolved_fill(short stored, const LineupTeamPresence& presence,
+                           int seat_count, int fighter_count)
+{
+    og::script::hooks::LineupResolveRow row;
+    row.units = presence.units;
+    row.generators = presence.generators;
+    row.markers = presence.markers;
+    // The census marker count includes dead markers, which is exactly what
+    // the engine anchor scan counts — the anchors column stays 0 here so
+    // the one fact is never double-spoken.
+    row.anchors = 0;
+    // Deployed fighters: the census's own (a staged world's has_guy
+    // livings) plus the caller's band census (the save/lobby roster the
+    // picker world has not spawned) — in a staged world the two are the
+    // same walkers, and only one of the two sources is ever non-zero.
+    row.roster = presence.roster + fighter_count;
+    row.seats = seat_count;
+
+    std::vector<LineupResolveMemoEntry>& memo = lineup_resolve_memo();
+    for (const LineupResolveMemoEntry& entry : memo)
+    {
+        if (entry.stored == stored && same_resolve_row(entry.row, row))
+            return entry.resolved;
+    }
+
+    // The ONE resolver is the pack's (docs/lineup-design.md C8) — this
+    // surface never re-derives the rule. No registered resolver (no packs
+    // mounted), or one that refuses: the honest fallback is the STORED
+    // value, which renders exactly as it did before the ruling.
+    int resolved = stored;
+    if (!og::script::hooks::campaign_lineup_resolved_fill(
+            static_cast<int>(stored), row, resolved))
+    {
+        resolved = stored;
+    }
+    if (memo.size() >= kLineupResolveMemoMax)
+        memo.clear();
+    memo.push_back(LineupResolveMemoEntry{stored, row,
+                                          static_cast<short>(resolved)});
+    return static_cast<short>(resolved);
 }
 
 std::optional<long long> lineup_power_for_guy(const guy& g)
@@ -3938,7 +4052,8 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
     bool networked,
     const LineupPowerFn& power,
     const std::function<std::string(std::uint8_t)>& local_seat_short_name,
-    std::span<const int> map_unit_counts)
+    std::span<const int> map_unit_counts,
+    std::span<const LineupTeamPresence> presence)
 {
     std::array<LineupTeamBand, 4> bands{};
     std::array<LineupPowerAccumulator, 4> prices{};
@@ -4019,6 +4134,15 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
         {
             band.diag = LineupTeamBand::Diag::NoSeatAi;
         }
+        // C8: the knob face's value. With a presence census the pack's ONE
+        // resolver answers (seats and fighters ride the same query); with
+        // none — no loaded level to census — the stored code stands, the
+        // documented honest fallback.
+        const short stored = own.fill[team];
+        band.resolved_fill = team < presence.size()
+            ? lineup_resolved_fill(stored, presence[team], band.seat_count,
+                                   band.fighter_count)
+            : stored;
     }
     return bands;
 }

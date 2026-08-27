@@ -111,6 +111,51 @@ local function map_units_fielded(team)
   return map_units_knob(team) == MAP_UNITS_ON
 end
 
+-- The C8 presence fold: does this team have anything the resolved default
+-- may stand on? `row` carries the team's censused counts — authored units
+-- (livings and generators alike), start markers, engine respawn anchors,
+-- deployed roster fighters and lobby seats. A key the caller's census does
+-- not gather is simply absent and reads 0, so the classic stage (which has
+-- no seat visibility — at any launch GO can pass, a seat implies a
+-- deployed fighter on its team, the M4 refusal) and the C++ band query
+-- (which adds the seat axis) ask the ONE question through one spelling.
+local function team_present(row)
+  if (row.units or 0) > 0 then
+    return true
+  end
+  if (row.generators or 0) > 0 then
+    return true
+  end
+  if (row.markers or 0) > 0 then
+    return true
+  end
+  if (row.anchors or 0) > 0 then
+    return true
+  end
+  if (row.roster or 0) > 0 then
+    return true
+  end
+  return (row.seats or 0) > 0
+end
+
+-- THE resolver (docs/lineup-design.md C8), the one home of the rule every
+-- surface renders: the stored DEFAULT (FILL_FAIR, 0) resolves per team —
+-- FAIR where the team has any presence, NONE where it has none — so the
+-- page never advertises a fill the placement rule would refuse anyway.
+-- An explicit wheel value is stored as itself and returned unchanged; a
+-- junk code included: the degrade-to-FAIR rule (applied_fill) predates
+-- the resolution and stays an EXPLICIT fair, because a crafted value is
+-- a value, not the default.
+local function resolved_fill(knob, row)
+  if knob ~= FILL_FAIR then
+    return knob
+  end
+  if team_present(row) then
+    return FILL_FAIR
+  end
+  return FILL_NONE
+end
+
 -- The room a hard shape leaves beside a team's occupants (lineup review
 -- L2): a squad riding an occupied team is sized to cap minus that team's
 -- roster, never below zero — three humans on basketball's five-a-side
@@ -859,6 +904,8 @@ return {
   fill_percent = fill_percent,
   applied_fill = applied_fill,
   map_units_fielded = map_units_fielded,
+  team_present = team_present,
+  resolved_fill = resolved_fill,
   squad_room = squad_room,
   fill_target = fill_target,
   stat_power = stat_power,

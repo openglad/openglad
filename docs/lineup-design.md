@@ -1137,3 +1137,62 @@ is stored as itself, exactly as before; cycling writes explicit values
 and cannot return to the resolved default (knob precedent). Modes
 maps' empty *authored* teams keep the FAIR default — only teams the
 map does not author flip.
+
+## As built: C8 — one resolver, one home (2026-08-27)
+
+The rulings the build settled:
+
+- **The ONE rule is `lineup.resolved_fill(knob, row)`** in
+  `packs/core/lib/lineup.lua`, over the `team_present` fold (any of
+  units / generators / markers / anchors / roster / seats > 0). An
+  explicit wheel value returns unchanged — junk codes included: the
+  degrade-to-FAIR clamp predates C8 and stays an *explicit* fair, so
+  only a stored 0 ever resolves. The classic stage executes the
+  resolved value (`lineup_stage.lua`), and every band surface renders
+  it through a QUERY of the same function — no menu re-derives it.
+- **The C3 byte no-op is upheld, and it bounds the banking.** The
+  resolution maps the default onto FAIR or NONE only, neither of which
+  is a "touch", so the all-default stage still returns on the fast path
+  having written nothing, drawn nothing, spawned nothing
+  (`all_default_stage_is_a_byte_noop_on_gladiator`; parity 257/257
+  untouched). Consequently the resolved-NONE **fact** banks only on a
+  stage something else already made run: on any TOUCHED classic stage,
+  every team whose stored default resolved NONE banks fact code 2 —
+  the one deliberate exception to R4's spawned-only rule, because "no
+  squad, by resolution" *is* what was applied. Explicit NONE stays
+  unbanked. VIEW LEVEL is unaffected either way: a team that banks a
+  resolved NONE has nothing standing, so the census renders no row for
+  it (verified by the staged-report flows).
+- **The band query rides the W6-D registrar.** The lineup table grew
+  its second member: `og.register_default_lineup({ power, default_fill })`
+  and the campaign book's `lineup.default_fill` — same table, spelled
+  identically, book wins, refusals name `campaign:`/`default:
+  lineup_default_fill`. Registration is whole-table last-wins: a later
+  default that omits `default_fill` clears the resolver. The engine
+  query is `og::script::hooks::campaign_lineup_resolved_fill(stored,
+  LineupResolveRow, out)`; any refusal (no packs, error, non-integer,
+  off-wheel code) makes the surface fall back to the STORED value —
+  the honest fallback, rendering exactly as pre-C8.
+- **Presence is censused, never twinned.** The C++ side only *gathers*
+  counts (`census_lineup_presence` over the loaded picker level:
+  units, generators, markers with dead ones included — the anchor
+  scan's own population, so the anchors column stays 0 — plus the
+  band's seats/fighters) and hands them to the resolver. SDL reads the
+  loaded picker world (level-reload-guard currency); the terminal
+  model takes a `presence` span. The two live terminal clients load no
+  level in their pickers and pass none, so their cells honestly render
+  the stored code — the documented no-census fallback.
+- **Seat vs stage asymmetry, accepted.** The Lua stage cannot see
+  seats, so its presence row ends at the roster; a seat parked on an
+  otherwise bare team flips the BAND to FAIR while a stage taken at
+  that instant would bank NONE for the team. GO cannot launch that
+  shape (M4: one deployed fighter per seat), so the launched world
+  never disagrees with its band.
+- **Both label surfaces resolve.** The SDL faces re-derive per frame
+  through `picker_lineup_resolved_fills()` (bands with an empty power
+  fn — no pricing pcall in the rewire), and the click callback writes
+  the resolved label too, so a wheel that lands back on 0 immediately
+  reads its resolved value. The query is memoized beside the pricing
+  memo and cleared by the same `lineup_power_cache_clear`, keyed on
+  the full counts row (a book's resolver may weigh counts, so no
+  boolean folding in the key).

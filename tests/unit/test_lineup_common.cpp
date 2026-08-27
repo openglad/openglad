@@ -258,6 +258,27 @@ TEST(LineupCommon, bands_power_needs_every_fighter_priced)
     EXPECT_FALSE(none[1].power.has_value());
 }
 
+// C8, the pure half: with NO presence span the band's resolved_fill is the
+// STORED code, whatever it is — the documented honest fallback ("with
+// nothing censused there is nothing to resolve against"). The resolved
+// path itself needs a registered pack resolver and is pinned in
+// test_campaign_hooks (the query) and test_platform_headless (the rows).
+TEST(LineupCommon, bands_without_a_census_keep_the_stored_fill)
+{
+    SaveData save;
+    save.fill[0] = og::sim::kFillFair;
+    save.fill[1] = og::sim::kFillStrong;
+    save.fill[2] = og::sim::kFillNone;
+    std::vector<og::sim::LobbyPlayer> players{seat(0, 1)};
+    const auto bands = og::ui::build_lineup_bands(
+        save, players, std::vector<std::uint8_t>{0}, false, {});
+    EXPECT_EQ(og::sim::kFillFair, bands[0].resolved_fill);
+    EXPECT_EQ(og::sim::kFillStrong, bands[1].resolved_fill);
+    EXPECT_EQ(og::sim::kFillNone, bands[2].resolved_fill);
+    EXPECT_EQ("FILL: STRONG",
+              og::ui::format_lineup_fill_label(bands[1].resolved_fill));
+}
+
 TEST(LineupCommon, seat_label_prefers_a_local_controller_name)
 {
     SaveData save;

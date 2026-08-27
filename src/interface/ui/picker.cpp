@@ -3515,9 +3515,12 @@ Sint32 change_lineup_fill(Sint32 team)
        og::ui::cycle_lineup_fill(save.fill[t], 1));
    TRACE("lineup", "fill team=%d value=%d", static_cast<int>(team),
          static_cast<int>(save.fill[t]));
+   // C8: the face renders the RESOLVED value — a wheel that lands back on
+   // the stored default (0) reads FILL: NONE on a team with nothing to
+   // stand on, exactly what the stage would execute.
    refresh_lineup_button_label(
        kLineupFillBase + team,
-       og::ui::format_lineup_fill_label(save.fill[t]));
+       og::ui::format_lineup_fill_label(picker_lineup_resolved_fills()[t]));
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();

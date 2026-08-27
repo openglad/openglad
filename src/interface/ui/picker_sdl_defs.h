@@ -664,6 +664,18 @@ LineupSeatView picker_lineup_seat_view();
 // terminals read the same numbers through LineupTeamBand::map_unit_count.
 std::array<int, 4> picker_lineup_map_unit_counts();
 
+// The C8 presence census over the same loaded picker level (kept in step
+// with save.scen_num by the level-reload guard): what the resolved-default
+// query is fed, beside the seat/fighter counts the bands already carry.
+// One walk of og::ui::census_lineup_presence over the picker world.
+std::array<og::ui::LineupTeamPresence, 4> picker_lineup_team_presence();
+
+// The four RESOLVED knob-face values (C8): the pack resolver's answer per
+// team over the presence census and the lobby seat picture — the values
+// the FILL faces render and the rewire writes. Falls back to the stored
+// codes when no session/world is loaded (the documented honest fallback).
+std::array<short, 4> picker_lineup_resolved_fills();
+
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the

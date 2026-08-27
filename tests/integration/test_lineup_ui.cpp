@@ -1126,6 +1126,9 @@ struct LineupClassicFlowState
     bool page_opened = false;
     bool knobs_visible = false;
     bool fill_cycled = false;
+    std::string fill_0_label;
+    std::string fill_2_label;
+    std::string fill_3_label;
     int captures = 0;
 };
 
@@ -1143,6 +1146,13 @@ int lineup_classic_flow_injector(void* data)
     if (state->page_opened) {
         SDL_Delay(750);
         state->knobs_visible = interactable_visible("lineup_fill_0");
+        // C8: before anything cycles, the faces render the RESOLVED
+        // default — gladiator scen 1 authors nothing on teams 3/4, so
+        // their stored default reads NONE while the fielded team reads
+        // FAIR (asserted on the main thread).
+        state->fill_0_label = interactable_label("lineup_fill_0");
+        state->fill_2_label = interactable_label("lineup_fill_2");
+        state->fill_3_label = interactable_label("lineup_fill_3");
         // C5: the click cycles the wheel — FAIR steps to STRONG (B2
         // display order) on a classic campaign too.
         state->fill_cycled =
@@ -1182,6 +1192,16 @@ TEST(LineupUi, classic_campaign_knobs_are_live)
     EXPECT_TRUE(state.page_opened);
     EXPECT_TRUE(state.knobs_visible)
         << "classic campaigns keep the knobs visible AND live (C5)";
+    // C8: the two labels. Gladiator scen 1 fields team 1 (the company and
+    // the map's troops), so its default resolves FAIR; teams 3/4 have
+    // nothing — no units, no markers (W6-C: gladiator authors none off
+    // team 0), no seat — so their stored default renders NONE.
+    EXPECT_EQ("FILL: FAIR", state.fill_0_label)
+        << "a fielded team's default resolves FAIR (C8)";
+    EXPECT_EQ("FILL: NONE", state.fill_2_label)
+        << "an unauthored team's default resolves NONE (C8)";
+    EXPECT_EQ("FILL: NONE", state.fill_3_label)
+        << "an unauthored team's default resolves NONE (C8)";
     EXPECT_TRUE(state.fill_cycled)
         << "the FILL wheel turns on a classic campaign (C5)";
     EXPECT_EQ(og::sim::kFillStrong, save.fill[0])

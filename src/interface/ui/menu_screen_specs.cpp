@@ -7465,9 +7465,13 @@ void lineup_draw_content(void* screen_state)
     // NO MAP UNITS hint can never disagree.
     const std::array<int, 4> map_unit_counts =
         picker_lineup_map_unit_counts();
+    // The C8 presence census rides beside it, so the bands' resolved_fill
+    // is the same answer the rewire's knob faces render.
+    const std::array<LineupTeamPresence, 4> presence =
+        picker_lineup_team_presence();
     const std::array<LineupTeamBand, 4> bands = build_lineup_bands(
         save, players, locals, networked, lineup_active_power_fn(),
-        short_name, map_unit_counts);
+        short_name, map_unit_counts, presence);
 
     const bool knobs = picker_lobby_host_controls_visible();
     for (int t = 0; t < 4; ++t) {
@@ -7608,6 +7612,12 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
             live->label = std::move(label);
     };
 
+    // C8: the FILL face renders the RESOLVED value — the pack resolver's
+    // answer over the loaded level's presence census and the seat picture
+    // (an explicit stored code comes back as itself; the stored default
+    // resolves FAIR-with-presence / NONE-without).
+    const std::array<short, 4> resolved_fills =
+        picker_lineup_resolved_fills();
     for (int t = 0; t < 4; ++t) {
         const int fill_index = kLineupFillBase + t;
         const int map_units_index = kLineupMapUnitsBase + t;
@@ -7615,7 +7625,7 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
         buttons[map_units_index].hidden = !knobs;
         write_label(fill_index,
                     format_lineup_fill_label(
-                        save.fill[static_cast<std::size_t>(t)]));
+                        resolved_fills[static_cast<std::size_t>(t)]));
         // The box is the Base Camp deploy-box grammar (B9): "X" = the
         // map's units are fielded, empty = stripped. The word form
         // (format_lineup_map_units_label) belongs to the terminals.
@@ -8107,6 +8117,48 @@ std::array<int, 4> picker_lineup_map_unit_counts()
             ++counts[static_cast<std::size_t>(team)];
     }
     return counts;
+}
+
+// The C8 presence census: same loaded picker level, same reload-guard
+// currency, one shared walk (og::ui::census_lineup_presence) — the query
+// inputs of the resolved default the FILL faces render.
+std::array<og::ui::LineupTeamPresence, 4> picker_lineup_team_presence()
+{
+    if (og::runtime::current_session == nullptr ||
+        og::runtime::current_session->myscreen_ == nullptr)
+    {
+        return {};
+    }
+    return og::ui::census_lineup_presence(
+        og::runtime::current_session->myscreen_->world());
+}
+
+std::array<short, 4> picker_lineup_resolved_fills()
+{
+    std::array<short, 4> resolved{};
+    if (og::runtime::current_session == nullptr ||
+        og::runtime::current_session->myscreen_ == nullptr)
+    {
+        return resolved;
+    }
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    // The bands' own fold answers (build_lineup_bands computes
+    // resolved_fill from the presence census + the seat picture), with an
+    // EMPTY power fn — the faces need no prices, so the rewire never pays
+    // a pricing pcall per frame.
+    const LineupSeatView seat_view = picker_lineup_seat_view();
+    const std::array<og::ui::LineupTeamPresence, 4> presence =
+        picker_lineup_team_presence();
+    const std::array<og::ui::LineupTeamBand, 4> bands =
+        og::ui::build_lineup_bands(save, seat_view.players,
+                                   seat_view.local_indices,
+                                   picker_lobby_session_established(), {},
+                                   {}, {}, presence);
+    for (int t = 0; t < 4; ++t)
+        resolved[static_cast<std::size_t>(t)] =
+            bands[static_cast<std::size_t>(t)].resolved_fill;
+    return resolved;
 }
 
 // The LINEUP screen (docs/lineup-design.md §2), engine-hosted from birth.

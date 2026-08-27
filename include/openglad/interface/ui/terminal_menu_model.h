@@ -109,6 +109,14 @@ struct TerminalLineupInputs {
     // MAP UNITS hint is written only when this is supplied. A terminal that
     // printed NO MAP UNITS off an absent census would be inventing a rule.
     std::span<const int> map_unit_counts;
+    // C8's presence census, handed straight to build_lineup_bands: with a
+    // 4-team span every FILL cell renders the RESOLVED default (the pack
+    // resolver's answer); an EMPTY span means no level was censused, and
+    // the cells honestly render the STORED code — the documented fallback
+    // both live terminal clients ride, since neither loads a level in its
+    // picker (the text client stages nothing; the curses picker's lineup
+    // page is local-only).
+    std::span<const LineupTeamPresence> presence;
     bool networked = false;
     bool is_host = true;
 };

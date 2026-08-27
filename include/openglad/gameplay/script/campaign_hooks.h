@@ -324,7 +324,8 @@ std::vector<std::string> og_function_names();
 // A SHIPPED PACK registers the DEFAULT pricing through a registrar of its
 // own (amendment C5), spelling the same table:
 //
-//   og.register_default_lineup({ power = function(row) ... end })
+//   og.register_default_lineup({ power = function(row) ... end,
+//                                default_fill = function(stored, row) ... end })
 //
 // packs/core does exactly that, so the bands price rosters on every
 // campaign — gladiator included — instead of showing `POWER --` wherever
@@ -361,5 +362,34 @@ bool campaign_lineup_registered();
 // False — the band shows `--` — when neither is registered, the hook
 // errors, or it answers anything but a number.
 bool campaign_fighter_power(const LineupPowerRow& row, long long& out);
+
+// One team's censused presence, the input of the C8 resolved-default query
+// below. Counts, not booleans, so a registered resolver reads the same
+// row shape the pack's own stage census builds; a surface that cannot
+// gather one of these leaves it 0 (the classic stage has no seat
+// visibility, the band census has no anchors beside its markers — the
+// marker count includes consumed/dead markers exactly as the engine
+// anchor scan does, so the two spell one fact).
+struct LineupResolveRow {
+    int units = 0;       // authored (guy-less) livings standing on the team
+    int generators = 0;  // authored generators
+    int markers = 0;     // team start markers, dead/consumed ones included
+    int anchors = 0;     // engine respawn anchors (already covered by
+                         // markers wherever the caller counted dead ones)
+    int roster = 0;      // deployed fighters (has_guy livings / save slots)
+    int seats = 0;       // lobby seats pointed at the team
+};
+
+// Dispatches lineup.default_fill(stored, row) under the campaign fence —
+// the campaign book's when it registered one, otherwise the shipped
+// default's (docs/lineup-design.md C8: packs/core registers the ONE
+// resolver, lineup.resolved_fill, so no menu re-derives the rule). On
+// success `out` is the RESOLVED wheel code (an explicit stored value comes
+// back as itself; the stored default resolves FAIR-with-presence /
+// NONE-without). False — and the caller's honest fallback is the STORED
+// value — when neither resolver is registered, the hook errors, or it
+// answers anything but a wheel code.
+bool campaign_lineup_resolved_fill(int stored, const LineupResolveRow& row,
+                                   int& out);
 
 }  // namespace og::script::hooks

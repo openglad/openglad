@@ -20,6 +20,7 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/weap.h>
@@ -1181,6 +1182,10 @@ constexpr lua_Integer kCampaignZoneSlot = 3;
 // to the VmState at registration, so the menus can read them without
 // entering Lua at all (docs/lineup-design.md §3.3).
 constexpr lua_Integer kCampaignLineupPowerSlot = 4;
+// The C8 resolver: `lineup.default_fill`, the second (optional) member of
+// the same table — a book that carries one overrides the shipped default
+// resolver exactly as `power` overrides the shipped pricing.
+constexpr lua_Integer kCampaignLineupFillSlot = 5;
 
 // "chunkname:line" of the caller, for the duplicate-registration record.
 std::string campaign_caller_source(lua_State* L)
@@ -1259,19 +1264,20 @@ int og_register_campaign_hooks(lua_State* L)
     const bool has_lineup = !lua_isnil(L, 5);
     if (has_lineup && !lua_istable(L, 5))
         return luaL_error(L, "og.register_campaign_hooks: 'lineup' must "
-                             "be a table of { presets, power }");
+                             "be a table of { power, default_fill }");
     bool has_lineup_power = false;
+    bool has_lineup_fill = false;
     if (has_lineup) {
         // Same "the typo is caught by the pass that can still reject the
         // pack" discipline as the outer key walk.
-        static const char* const kLineupKeys[] = {"power"};
+        static const char* const kLineupKeys[] = {"power", "default_fill"};
         lua_pushnil(L);
         while (lua_next(L, 5) != 0) {
             lua_pop(L, 1);  // value; the key stays for the next iteration
             if (lua_type(L, -1) != LUA_TSTRING)
                 return luaL_error(
                     L, "og.register_campaign_hooks: 'lineup' keys are "
-                       "'presets' and 'power' (got a %s key)",
+                       "'power' and 'default_fill' (got a %s key)",
                     luaL_typename(L, -1));
             const std::string key = lua_tostring(L, -1);
             bool known = false;
@@ -1296,6 +1302,14 @@ int og_register_campaign_hooks(lua_State* L)
         if (!has_lineup_power)
             return luaL_error(L, "og.register_campaign_hooks: 'lineup' "
                                  "carries no 'power'");
+        // C8: the resolver member is optional — a book that names none
+        // keeps the shipped default resolver.
+        lua_getfield(L, 5, "default_fill");
+        has_lineup_fill = !lua_isnil(L, -1);
+        if (has_lineup_fill && !lua_isfunction(L, -1))
+            return luaL_error(L, "og.register_campaign_hooks: "
+                                 "'lineup.default_fill' must be a function");
+        lua_pop(L, 1);
     }
     if (!has_menu && !has_action && !has_zone && !has_lineup)
         return luaL_error(L, "og.register_campaign_hooks: register at least "
@@ -1391,6 +1405,12 @@ int og_register_campaign_hooks(lua_State* L)
             coverage_declare_hook(L, "campaign/lineup_power");
         lua_rawseti(L, -2, kCampaignLineupPowerSlot);
     }
+    if (has_lineup_fill) {
+        lua_getfield(L, 5, "default_fill");
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/lineup_default_fill");
+        lua_rawseti(L, -2, kCampaignLineupFillSlot);
+    }
     lua_pop(L, 1);
     st->campaign_lineup_registered = has_lineup;
     st->campaign_vars = std::move(vars);
@@ -1432,14 +1452,14 @@ int og_register_default_lineup(lua_State* L)
     // og.register_campaign_hooks discipline: the pass that can still
     // reject the pack is the one that should catch the misspelling.
     {
-        static const char* const kLineupKeys[] = {"power"};
+        static const char* const kLineupKeys[] = {"power", "default_fill"};
         lua_pushnil(L);
         while (lua_next(L, 1) != 0) {
             lua_pop(L, 1);  // value; the key stays for the next iteration
             if (lua_type(L, -1) != LUA_TSTRING)
                 return luaL_error(
-                    L, "og.register_default_lineup: the one key is 'power' "
-                       "(got a %s key)",
+                    L, "og.register_default_lineup: the keys are 'power' "
+                       "and 'default_fill' (got a %s key)",
                     luaL_typename(L, -1));
             const std::string key = lua_tostring(L, -1);
             bool known = false;
@@ -1462,6 +1482,12 @@ int og_register_default_lineup(lua_State* L)
     if (!lua_isfunction(L, -1))
         return luaL_error(L, "og.register_default_lineup: 'power' must be "
                              "a function");
+    // C8: the resolver member is optional, the campaign book's spelling.
+    lua_getfield(L, 1, "default_fill");
+    const bool has_fill = !lua_isnil(L, -1);
+    if (has_fill && !lua_isfunction(L, -1))
+        return luaL_error(L, "og.register_default_lineup: 'default_fill' "
+                             "must be a function");
 
     // Declaration pass: silent no-op, the og.register_hooks precedent.
     if (st != nullptr && st->mode == VmMode::Declare)
@@ -1469,6 +1495,19 @@ int og_register_default_lineup(lua_State* L)
     if (st == nullptr || st->owner == nullptr)
         return luaL_error(L, "og.register_default_lineup: no world scripts");
 
+    // Whole-table last-wins (the W6-D ruling): BOTH slots are rewritten
+    // from this call, so a later registration that omits `default_fill`
+    // clears the shipped resolver rather than silently keeping half of a
+    // replaced table. Stack: power at -2, default_fill (or nil) at -1.
+    luaL_unref(L, LUA_REGISTRYINDEX, st->default_lineup_fill_ref);
+    if (has_fill) {
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/default_lineup_fill");
+        st->default_lineup_fill_ref = luaL_ref(L, LUA_REGISTRYINDEX);  // pops
+    } else {
+        st->default_lineup_fill_ref = -1;
+        lua_pop(L, 1);  // the nil
+    }
     if (coverage::enabled())
         coverage_declare_hook(L, "campaign/default_lineup_power");
     luaL_unref(L, LUA_REGISTRYINDEX, st->default_lineup_power_ref);
@@ -3678,6 +3717,94 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
                 refusal = std::format(
                     "{} lineup.power returned {}, not a finite integer",
                     who, value);
+            }
+        }
+        if (!ok) {
+            LogError("class pack: {}\n", refusal);
+            impl.record_error(label.c_str(), refusal.c_str());
+        }
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return ok;
+}
+
+bool campaign_lineup_resolved_fill(int stored, const LineupResolveRow& row,
+                                   int& out)
+{
+    // The book first, the shipped default second — campaign_fighter_power's
+    // exact precedence, applied to the C8 resolver: a book's own
+    // `lineup.default_fill` overrides the shipped rule, and a conflicted or
+    // absent book falls through to packs/core's registration.
+    VmState* st = campaign_vm_state();
+    const char* who = "campaign";
+    bool pushed = false;
+    if (st != nullptr) {
+        lua_State* book_L = st->owner->host().impl().L;
+        pushed = push_campaign_hook_fn(book_L, st, kCampaignLineupFillSlot);
+    }
+    if (!pushed) {
+        // Deliberately not default_lineup_vm_state(): that gate keys on the
+        // POWER ref, and the two halves of the registration may be present
+        // independently (whole-table last-wins can clear either).
+        if (pack_scripts().empty())
+            return false;
+        WorldScripts& ws = active_world_scripts();
+        st = get_vm_state(ws.host().impl().L);
+        if (st == nullptr || st->owner == nullptr ||
+            st->default_lineup_fill_ref < 0)
+            return false;
+        lua_State* default_L = st->owner->host().impl().L;
+        lua_rawgeti(default_L, LUA_REGISTRYINDEX,
+                    st->default_lineup_fill_ref);
+        if (!lua_isfunction(default_L, -1)) {
+            lua_pop(default_L, 1);
+            return false;
+        }
+        who = "default";
+    }
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    CampaignDispatchScope scope(*st, impl);
+    if (!scope.armed()) {
+        lua_pop(L, 1);
+        return false;
+    }
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_pushinteger(L, stored);
+    lua_createtable(L, 0, 6);
+    const auto set_int = [L](const char* key, int value) {
+        lua_pushstring(L, key);
+        lua_pushinteger(L, value);
+        lua_rawset(L, -3);
+    };
+    set_int("units", row.units);
+    set_int("generators", row.generators);
+    set_int("markers", row.markers);
+    set_int("anchors", row.anchors);
+    set_int("roster", row.roster);
+    set_int("seats", row.seats);
+    bool ok = false;
+    // "campaign:lineup_default_fill" / "default:lineup_default_fill" — the
+    // pricing seam's discipline: the log names WHICH resolver refused.
+    const std::string label = std::string(who) + ":lineup_default_fill";
+    if (impl.protected_call(label.c_str(), 2, 1)) {
+        // A wheel code the engine can hold, or nothing: a resolution the
+        // engine cannot read is no resolution, and the caller's honest
+        // fallback is the STORED value rather than an invented one.
+        std::string refusal;
+        if (!lua_isinteger(L, -1)) {
+            refusal = std::string(who) +
+                      " lineup.default_fill returned a non-integer";
+        } else {
+            const lua_Integer value = lua_tointeger(L, -1);
+            if (value >= og::sim::kFillFair && value <= og::sim::kFillBrutal) {
+                out = static_cast<int>(value);
+                ok = true;
+            } else {
+                refusal = std::format(
+                    "{} lineup.default_fill returned {}, not a wheel code",
+                    who, static_cast<long long>(value));
             }
         }
         if (!ok) {

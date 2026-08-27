@@ -2577,6 +2577,59 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
     (void)mount_campaign_package_with_error("gladiator");
 }
 
+// C8: with a presence census supplied, every FILL cell renders the
+// RESOLVED default through the one shared formatter — FAIR where the team
+// has anything to stand on, NONE where it has nothing — and explicit
+// wheel values stay themselves. Without a census (both live terminal
+// clients today: neither loads a level in its picker) the cells honestly
+// render the STORED code, which the pins above already cover.
+TEST(PlatformHeadless, lineup_terminal_rows_render_the_resolved_default)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    og::ui::lineup_power_cache_clear();
+    SaveData save;
+    save.reset();
+    save.my_team = 0;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_size = 1;
+    save.fill[2] = og::sim::kFillStrong;  // explicit, on a bare team
+
+    const std::vector<og::sim::LobbyPlayer> seats =
+        og::ui::synthesize_local_lobby_players(save);
+
+    // The census: team 0 fielded by the roster alone, team 1 authored
+    // (map units), teams 2 and 3 with nothing at all.
+    std::array<og::ui::LineupTeamPresence, 4> presence{};
+    presence[1].units = 12;
+
+    og::ui::TerminalLineupInputs inputs;
+    inputs.save = &save;
+    inputs.players = seats;
+    inputs.presence = presence;
+    inputs.is_host = true;
+    const og::ui::TerminalLineupModel model =
+        og::ui::build_terminal_lineup_model(inputs);
+
+    EXPECT_EQ("TEAM 1  FILL: FAIR", model.items[0].label)
+        << "a deployed fighter is presence — the default keeps FAIR";
+    EXPECT_EQ("TEAM 2  FILL: FAIR", model.items[2].label)
+        << "authored map units are presence";
+    EXPECT_EQ("TEAM 3  FILL: STRONG", model.items[4].label)
+        << "an explicit wheel value is untouched by the resolution";
+    EXPECT_EQ("TEAM 4  FILL: NONE", model.items[6].label)
+        << "a team with nothing resolves NONE (C8)";
+    // The band lines carry the same resolved cells (one formatter).
+    EXPECT_NE(std::string::npos, model.lines[7].find("[FILL: NONE]"))
+        << model.lines[7];
+    EXPECT_NE(std::string::npos, model.lines[1].find("[FILL: FAIR]"))
+        << model.lines[1];
+    og::ui::lineup_power_cache_clear();
+}
+
 // C5: POWER is priced by a registered `lineup.power`, and the terminal band
 // asks for it on EVERY campaign — there was never a versus gate in the
 // pricing path, and after C5 there is none anywhere on the page. Three arms,

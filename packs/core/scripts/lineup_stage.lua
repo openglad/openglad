@@ -30,6 +30,12 @@
 --     marker; members take the anchor tile, then the mode placer's
 --     blocked-cell discipline — the deterministic clockwise ring walk,
 --     radius 1..3 — then the blessed teleport draw.
+--   * THE RESOLVED DEFAULT (C8): a stored FILL of 0 is the default, not
+--     an explicit FAIR — it resolves per team through the lib's ONE rule
+--     (lineup.resolved_fill): FAIR where the team has any presence
+--     (units, generators, markers, anchors or a deployed fighter), NONE
+--     where it has none. The resolved value is what the pass executes
+--     and what the facts bank; explicit wheel values are untouched.
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -113,6 +119,25 @@ local function classic_place(w, ax, ay, allow_teleport)
   return w:teleport()
 end
 
+-- The C8 presence row over a classic census row: the census gathers the
+-- authored units (generators folded in by is_troop), the deployed roster
+-- and the first live start marker; the engine anchor count covers markers
+-- the level bootstrap consumed (its scan counts dead ones too). Seats are
+-- invisible here by design — at any launch GO can pass, a seat implies a
+-- deployed fighter on its team (the M4 refusal), so the roster stands in.
+local function presence_row(row, team)
+  local markers = 0
+  if row.mx >= 0 then
+    markers = 1
+  end
+  return {
+    units = row.units,
+    markers = markers,
+    anchors = og.respawn_anchor_count(team),
+    roster = row.roster,
+  }
+end
+
 -- Should team's row field a FILL squad? The classic fill rule from the
 -- header comment, one decision per team, pure over the census row.
 local function classic_wants_squad(row, knob, fielded)
@@ -141,7 +166,11 @@ end
 -- The stage step. The C3 fast path returns before any world read: with
 -- every box on and no wheel past FAIR/NONE nothing below could strip or
 -- spawn, so the all-default stage costs eight knob reads and is a proven
--- byte no-op (every parity scenario rides this arm).
+-- byte no-op (every parity scenario rides this arm). C8 keeps that proof
+-- intact: the resolution maps the default onto FAIR or NONE only, and
+-- neither value is a touch — so an all-default world resolves without a
+-- single write or draw, and the resolved-NONE fact below banks only on a
+-- stage something ELSE already made run.
 local function stage_level(level)
   local touched = false
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
@@ -162,7 +191,19 @@ local function stage_level(level)
   lineup.strip_authored_troops()
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     local row = teams[team + 1]
-    local knob = lineup.fill_knob(team)
+    local raw = lineup.fill_knob(team)
+    -- C8: the stored default resolves per team — FAIR with any presence,
+    -- NONE with none — and the RESOLVED value is what this pass executes.
+    local knob = lineup.resolved_fill(raw, presence_row(row, team))
+    if raw == lineup.FILL_FAIR and knob == lineup.FILL_NONE then
+      -- A resolved NONE is a decision this stage made, so it banks like
+      -- an applied fill (C8: the facts render the resolved value) — the
+      -- one exception to R4's spawned-only rule, because "no squad, by
+      -- resolution" IS what was applied. An explicit NONE stays unbanked
+      -- (explicit wheel values are unchanged), and the all-default stage
+      -- never reaches this line: the fast path above already returned.
+      lineup.bank_lineup_facts(team, lineup.FILL_NONE)
+    end
     if classic_wants_squad(row, knob, lineup.map_units_fielded(team)) then
       local ax, ay = classic_anchor(row)
       local placer = function(w, t, allow_teleport)

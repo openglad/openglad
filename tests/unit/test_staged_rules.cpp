@@ -46,6 +46,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -866,6 +867,25 @@ int solved_level_for_fill(int fill)
 }
 
 }  // namespace
+
+// C8 in a mode: the stored default keeps FAIR on every AUTHORED team —
+// anchors are presence — and the banked fact says FAIR (never a resolved
+// NONE) wherever a default squad walked on. The resolution flips only
+// teams the map does not author, which a mode's fills never touch anyway.
+TEST_F(StagedRules, default_resolution_keeps_fair_on_authored_mode_teams)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 528, 96);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 5);
+    og::sim::mode_stage_init(fx.world());
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(1u, bot_levels_on(fx.world(), 1).size())
+        << "the empty authored team fields its FAIR squad under the default";
+    EXPECT_EQ(expected_fact(0),
+              lineup_fact_code(fx.var(kSlotMatchedAnnounced), 1))
+        << "and banks FAIR — an authored empty team never resolves NONE";
+}
 
 // The wheel is the solver's multiplier (B2): on a fixed one-hero L5
 // roster the solved level of the single backfilled bot tracks the target
@@ -2078,6 +2098,26 @@ TEST_F(ClassicLineupTest, gladiator_map_units_off_strips_one_team)
         << "classic levels never refuse (C4)";
     EXPECT_EQ(0, w->mode.vars[4] / 1000000000)
         << "no refusal digit is ever banked on a classic level";
+    // C8 on the real map: this stage is TOUCHED (the box), so every team
+    // the level does not author — no units, and gladiator authors no
+    // markers off team 0 (W6-C) — banks its resolved NONE, while the
+    // authored teams' defaults keep resolving FAIR and bank nothing
+    // (nothing spawned on them). The explicit NONE on the stripped team
+    // stays unbanked: explicit wheel values are untouched.
+    for (int team = 0; team < 4; ++team)
+    {
+        const int code = lineup_fact_code(w->mode.vars[4], team);
+        if (team == target_team ||
+            authored[static_cast<std::size_t>(team)] > 0 || team == 0)
+        {
+            EXPECT_EQ(0, code) << "team " << team << " banks nothing";
+        }
+        else
+        {
+            EXPECT_EQ(expected_fact(og::sim::kFillNone), code)
+                << "team " << team << " banks its resolved NONE";
+        }
+    }
 }
 
 // Trading authored units for a squad: MAP UNITS off with the wheel left at
@@ -2098,8 +2138,11 @@ TEST_F(ClassicLineupTest, traded_units_become_a_fair_squad_at_their_centroid)
         << "a FAIR squad replaces the traded units";
     EXPECT_EQ(5, authored_units_on(fx.world(), 1))
         << "and nothing else stands on the team";
-    EXPECT_EQ(1000, fx.world().mode.vars[4])
-        << "the applied FAIR fact banks in team 1's digit pair";
+    // Team 1 banks the applied FAIR fact (code 1, digit pair *1000); teams
+    // 2 and 3 stand on nothing, so their stored default resolves NONE and
+    // banks it (C8, code 2 at *100000 and *10000000).
+    EXPECT_EQ(1000 + 200000 + 20000000, fx.world().mode.vars[4])
+        << "applied FAIR on team 1, resolved NONE on the unauthored teams";
     EXPECT_NE(0, fx.world().mode.vars[3]) << "the solved plan is stored";
     // Placement: the centroid of the three retired npcs grid-snaps to
     // (400, 576) -> (400, 576); every member sits on the anchor tile or
@@ -2134,7 +2177,10 @@ TEST_F(ClassicLineupTest, fill_strong_spawns_a_solved_squad_on_a_marker_team)
     fx.world().tick();
 
     EXPECT_EQ(5, marked_bots_on(fx.world(), 1)) << "the squad walked on";
-    EXPECT_EQ(4000, fx.world().mode.vars[4])
+    // STRONG banks on team 1; the unauthored teams 2/3 bank their resolved
+    // NONE (C8). Team 0 holds the hero, so its default resolves FAIR and
+    // banks nothing (nothing spawned there).
+    EXPECT_EQ(4000 + 200000 + 20000000, fx.world().mode.vars[4])
         << "the applied STRONG fact banks in team 1's digit pair";
     EXPECT_NE(0, fx.world().mode.vars[3]) << "the solve stored a plan";
     for (const auto& entry : fx.world().oblist)
@@ -2227,7 +2273,10 @@ TEST_F(ClassicLineupTest, none_fields_fewer_enemies_and_the_level_completes)
     EXPECT_EQ(0, marked_bots_on(fx.world(), 1)) << "and no squad";
     EXPECT_TRUE(fx.world().scripts().host().errors().empty())
         << "no refusal, ever, on a classic level";
-    EXPECT_EQ(0, fx.world().mode.vars[4]);
+    // The EXPLICIT NONE on team 1 banks nothing (explicit wheel values are
+    // untouched by C8); only the unauthored teams' RESOLVED default banks.
+    EXPECT_EQ(200000 + 20000000, fx.world().mode.vars[4])
+        << "explicit NONE unbanked; resolved NONE banked on teams 2/3";
     fx.world().tick();
     fx.world().tick();
     EXPECT_TRUE(fx.world().game_ended)
@@ -2246,7 +2295,10 @@ TEST_F(ClassicLineupTest, no_humans_takes_the_legacy_formula_and_no_plan)
 
     EXPECT_EQ(5, marked_bots_on(fx.world(), 1));
     EXPECT_EQ(0, fx.world().mode.vars[3]) << "the legacy arm stores no plan";
-    EXPECT_EQ(4000, fx.world().mode.vars[4])
+    // STRONG banks on team 1 (R4); this fixture fields NO hero, so team 0
+    // is as bare as 2/3 and all three bank the resolved NONE (C8): +20 for
+    // team 0's digit pair beside the unauthored sides'.
+    EXPECT_EQ(20 + 4000 + 200000 + 20000000, fx.world().mode.vars[4])
         << "the applied fact still banks for what spawned (R4)";
     std::int32_t first_level = -1;
     for (const auto& entry : fx.world().oblist)
@@ -2264,6 +2316,66 @@ TEST_F(ClassicLineupTest, no_humans_takes_the_legacy_formula_and_no_plan)
     }
     EXPECT_GE(first_level, 1);
     EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// C8, the per-team resolution on one touched classic stage: a deployed
+// fighter flips an otherwise unauthored team's default back to FAIR (it
+// banks nothing — nothing spawned there), an authored ships-empty team's
+// explicit wheel banks what it applied, and ONLY the teams with nothing at
+// all bank the resolved NONE. The all-default arm never reaches any of
+// this (all_default_stage_is_a_byte_noop_on_gladiator pins the fast path).
+TEST_F(ClassicLineupTest, default_resolution_follows_presence_per_team)
+{
+    ClassicWorld fx;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);   // roster presence
+    fx.spawn_marker(1, 320, 480);                    // authored presence
+    fx.spawn_hero(FAMILY_SOLDIER, 2, 128, 96, 101);  // fighter on a team
+                                                     // the map ships nothing
+    // The touch that wakes the stage without touching any default: an
+    // explicit wheel value on the authored ships-empty team.
+    fx.world().ctf_requested_fill[1] = og::sim::kFillWeak;
+    fx.world().tick();
+
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
+        << "the explicit WEAK squad walks onto the marker team";
+    EXPECT_EQ(0, lineup_fact_code(fx.world().mode.vars[4], 0))
+        << "team 0's default resolves FAIR (roster) and banks nothing";
+    EXPECT_EQ(expected_fact(og::sim::kFillWeak),
+              lineup_fact_code(fx.world().mode.vars[4], 1))
+        << "the explicit wheel banks what it applied";
+    EXPECT_EQ(0, lineup_fact_code(fx.world().mode.vars[4], 2))
+        << "a deployed fighter flips the unauthored team back to FAIR";
+    EXPECT_EQ(expected_fact(og::sim::kFillNone),
+              lineup_fact_code(fx.world().mode.vars[4], 3))
+        << "the team with nothing banks its resolved NONE";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// C8, the C++ census half: census_lineup_presence gathers exactly the
+// columns the resolver reads — live authored units, live generators, the
+// roster, and markers with DEAD ones included (the anchor scan's own
+// population, which is why the query's anchors column stays 0).
+TEST_F(ClassicLineupTest, presence_census_counts_every_column)
+{
+    ClassicWorld fx;
+    fx.spawn_npc(FAMILY_SOLDIER, 0, 96, 96);
+    fx.spawn_hero(FAMILY_SOLDIER, 1, 128, 96, 100);
+    walker* const marker = fx.spawn_marker(2, 320, 480);
+    ASSERT_NE(nullptr, marker);
+    marker->set_dead(1);  // a consumed marker still counts
+    walker* const gen = fx.world().add_ob(Order::Generator, 0);
+    ASSERT_NE(nullptr, gen);
+    gen->set_team_num(3);
+
+    const std::array<og::ui::LineupTeamPresence, 4> counts =
+        og::ui::census_lineup_presence(fx.world());
+    EXPECT_EQ(1, counts[0].units);
+    EXPECT_EQ(0, counts[0].roster);
+    EXPECT_EQ(1, counts[1].roster);
+    EXPECT_EQ(0, counts[1].units) << "a has_guy living is roster, not unit";
+    EXPECT_EQ(1, counts[2].markers) << "dead markers are presence (C8)";
+    EXPECT_EQ(0, counts[2].units);
+    EXPECT_EQ(1, counts[3].generators);
 }
 
 // Same seed, same cells: the classic placement rule (anchor tile, ring

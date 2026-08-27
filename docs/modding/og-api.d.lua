@@ -453,12 +453,32 @@
 ---@field stepsize integer
 ---@field fire_frequency integer
 
+-- One team's censused presence, handed to
+-- lineup.default_fill (docs/lineup-design.md C8): counts,
+-- not booleans, so a resolver may weigh them. A surface
+-- that cannot gather one column leaves it 0 (the classic
+-- stage has no seat visibility; the band census counts
+-- dead markers in `markers`, which is the anchor scan's
+-- population, and leaves `anchors` 0).
+---@class og.LineupResolveRow
+---@field units integer
+---@field generators integer
+---@field markers integer
+---@field anchors integer
+---@field roster integer
+---@field seats integer
+
 -- The LINEUP table: `power` prices one fighter for the
--- team bands, and is the whole table -- the preset names
--- retired with the BOTS wheel, whose five-value FILL
--- replacement names nothing a campaign owns.
+-- team bands (the preset names retired with the BOTS
+-- wheel), and `default_fill` (optional, C8) resolves a
+-- team's STORED default fill (0) against its censused
+-- presence -- it must return a wheel code 0-4, explicit
+-- stored values coming back unchanged. packs/core
+-- registers the shipped resolver (lineup.resolved_fill);
+-- a campaign book's own overrides it.
 ---@class og.CampaignLineup
 ---@field power? fun(row: og.LineupPowerRow): integer
+---@field default_fill? fun(stored: integer, row: og.LineupResolveRow): integer
 
 -- Hook table for og.register_campaign_hooks. `vars` names
 -- the campaign state keys (max 64, each 1-32 chars of

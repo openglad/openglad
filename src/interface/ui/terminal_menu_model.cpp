@@ -113,7 +113,8 @@ TerminalLineupModel build_terminal_lineup_model(
 
     model.bands = build_lineup_bands(
         *inputs.save, inputs.players, inputs.local_player_indices,
-        inputs.networked, lineup_power_for_guy, {}, inputs.map_unit_counts);
+        inputs.networked, lineup_power_for_guy, {}, inputs.map_unit_counts,
+        inputs.presence);
     // B4: the hint speaks only for a census that actually happened. An empty
     // span leaves every count at 0, which build_lineup_bands cannot tell from
     // a map that ships no units — so the terminal says nothing rather than
@@ -123,8 +124,11 @@ TerminalLineupModel build_terminal_lineup_model(
 
     for (int team = 0; team < 4; ++team) {
         const LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
-        const std::string fill = format_lineup_fill_label(
-            inputs.save->fill[static_cast<std::size_t>(team)]);
+        // C8: the cell renders the band's RESOLVED value through the one
+        // shared formatter — the stored code whenever no presence census
+        // was supplied (see TerminalLineupInputs::presence).
+        const std::string fill =
+            format_lineup_fill_label(band.resolved_fill);
         const std::string map_units = format_lineup_map_units_label(
             inputs.save->map_units[static_cast<std::size_t>(team)]);
 
@@ -161,8 +165,10 @@ TerminalLineupModel build_terminal_lineup_model(
     // fighter list (its own company) and nothing that would desync.
     if (inputs.is_host) {
         for (int team = 0; team < 4; ++team) {
+            // The row is the band cell's spelling verbatim (one label rule),
+            // so the knob row renders the same RESOLVED value (C8).
             const std::string fill = format_lineup_fill_label(
-                inputs.save->fill[static_cast<std::size_t>(team)]);
+                bands[static_cast<std::size_t>(team)].resolved_fill);
             const std::string map_units = format_lineup_map_units_label(
                 inputs.save->map_units[static_cast<std::size_t>(team)]);
             // The row text is the shared label VERBATIM behind the team
