@@ -58,8 +58,10 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace og::modes_test;
@@ -1844,4 +1846,416 @@ TEST_F(StagedAdoption, staged_adoption_identity_basketball)
 TEST_F(StagedAdoption, staged_adoption_identity_onslaught)
 {
     run_adoption_identity(800);
+}
+
+// ---------------------------------------------------------------------------
+// The classic lineup stage (docs/lineup-design.md Amendment 3, C2-C4): the
+// packs/core wildcard on_lineup_stage — the REAL shipped hook, not a probe —
+// applying the per-team MAP UNITS strip and FILL squads on mode-less levels.
+// The C3 pin runs it against a staged REAL gladiator level; the classic
+// rules (traded units, ships-empty teams, NONE, the no-humans legacy arm,
+// placement determinism) run on synthetic classic worlds through the tick-1
+// lazy arm — the exact dispatch solo play uses.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+loader& classic_lineup_loader()
+{
+    static loader instance{EntityFactory{}};
+    return instance;
+}
+
+void wire_classic_world(GameWorld& w)
+{
+    loader* game_loader = &classic_lineup_loader();
+    w.entity_factory = [game_loader](Order order, std::int32_t family) {
+        return game_loader->create_walker_owned(order, family);
+    };
+    w.entity_configurator =
+        [game_loader](walker& entity, Order order,
+                      std::int32_t family) -> const PixieData* {
+        game_loader->set_walker(&entity, order, family);
+        return game_loader->graphics_for(entity.query_order(),
+                                         entity.family());
+    };
+    w.entity_derived_stats =
+        [game_loader](walker* entity, Order order, std::int32_t family) {
+            if (entity != nullptr)
+                game_loader->set_derived_stats(entity, order, family);
+        };
+}
+
+// A mode-less world: the default TestGameWorld type (no TYPE_SCRIPTED), so
+// GameWorld::tick's classic branch runs the lazy lineup-stage arm at tick 1.
+struct ClassicWorld : TestGameWorld
+{
+    explicit ClassicWorld(int level_id = 9800) : TestGameWorld(level_id)
+    {
+        wire_classic_world(world());
+    }
+
+    walker* spawn_npc(int family, int team, int x, int y)
+    {
+        walker* w = world().add_ob(Order::Living, family);
+        if (w == nullptr)
+            return nullptr;
+        w->setxy(static_cast<short>(x), static_cast<short>(y));
+        w->set_team_num(static_cast<unsigned char>(team));
+        w->set_real_team_num(255);
+        w->set_act_type(ACT_SIT);
+        return w;
+    }
+
+    walker* spawn_hero(int family, int team, int x, int y, int guy_id)
+    {
+        walker* w = spawn_npc(family, team, x, y);
+        if (w == nullptr)
+            return nullptr;
+        w->set_owned_myguy(std::make_unique<guy>(family));
+        w->myguy->id = guy_id;
+        return w;
+    }
+
+    walker* spawn_marker(int team, int x, int y)
+    {
+        walker* w = world().add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        if (w == nullptr)
+            return nullptr;
+        w->setxy(static_cast<short>(x), static_cast<short>(y));
+        w->set_team_num(static_cast<unsigned char>(team));
+        return w;
+    }
+};
+
+// Live authored (guy-less) units on a team: livings + generators, the
+// population the MAP UNITS box governs.
+int authored_units_on(const GameWorld& world, int team)
+{
+    int count = 0;
+    for (const auto& entry : world.oblist)
+    {
+        const walker* const w = entry.get();
+        if (w == nullptr || w->dead() || w->myguy != nullptr)
+            continue;
+        if (w->query_order() != Order::Living &&
+            w->query_order() != Order::Generator)
+            continue;
+        if (w->team_num() == static_cast<unsigned char>(team))
+            ++count;
+    }
+    return count;
+}
+
+og::sim::LobbyCharacterSlot classic_slot(std::uint8_t slot_index,
+                                         std::int32_t guy_id,
+                                         const char* name,
+                                         std::int16_t team)
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = guy_id;
+    character.name = name;
+    character.family = FAMILY_SOLDIER;
+    character.strength = 10;
+    character.dexterity = 11;
+    character.constitution = 12;
+    character.intelligence = 13;
+    character.armor = 14;
+    character.level = 3;
+    character.teamnum = team;
+    return {
+        .slot_index = slot_index,
+        .character = character,
+    };
+}
+
+og::server::MatchStageInputs classic_gladiator_inputs(std::uint32_t seed)
+{
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "gladiator";
+    inputs.equivalent.scen_num = 1;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.allied_mode = 0;
+    inputs.equivalent.team_list = {classic_slot(0u, 100, "Host", 0)};
+    inputs.difficulty = 1;
+    inputs.match_seed = seed;
+    return inputs;
+}
+
+class ClassicLineupTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        restore_default_campaigns();
+        restore_default_settings();
+        // The mount registers every shipped pack chunk — packs/core's
+        // scripts/lineup_stage.lua included, which is the hook under test.
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("gladiator"));
+    }
+};
+
+}  // namespace
+
+// C3, pinned on a REAL staged gladiator level with the REAL shipped hook:
+// all-default (FILL: FAIR, MAP UNITS on, everywhere) the stage step
+// dispatches — run_lineup_stage_step answers true, so this is not a
+// vacuous pass — and writes nothing: no mode var, no RNG draw, not one
+// replicated byte.
+TEST_F(ClassicLineupTest, all_default_stage_is_a_byte_noop_on_gladiator)
+{
+    og::server::MatchStage stage({.networked = false});
+    stage.observe_inputs(classic_gladiator_inputs(11u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    GameWorld* const w = stage.world();
+    ASSERT_NE(nullptr, w);
+    ASSERT_FALSE(w->mode.active);
+
+    const std::vector<std::uint8_t> before =
+        og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(*w));
+    const auto rng_before = w->rng_.state_;
+    ASSERT_TRUE(w->run_lineup_stage_step())
+        << "the shipped packs/core wildcard hook must dispatch";
+    EXPECT_EQ(rng_before, w->rng_.state_) << "all-default draws no RNG";
+    EXPECT_EQ(before, og::sim::serialize_snapshot(
+                          og::sim::peek_keyframe_snapshot(*w)))
+        << "all-default writes nothing, spawns nothing (C3)";
+    for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
+        ASSERT_EQ(0, w->mode.vars[static_cast<std::size_t>(slot)])
+            << "mode var " << slot;
+    EXPECT_TRUE(w->scripts().host().errors().empty());
+}
+
+// The per-team strip on the real gladiator opener: turn one authored
+// team's MAP UNITS box off with FILL: NONE beside it and the staged world
+// fields none of that team's troops — the census of the staged world shows
+// the emptied side, every other team keeps its authored cast, and nothing
+// refuses (C4).
+TEST_F(ClassicLineupTest, gladiator_map_units_off_strips_one_team)
+{
+    // First read the authored shape from an all-default stage.
+    std::array<int, 4> authored = {};
+    int target_team = -1;
+    {
+        og::server::MatchStage stage({.networked = false});
+        stage.observe_inputs(classic_gladiator_inputs(11u), 0);
+        ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+        GameWorld* const w = stage.world();
+        ASSERT_NE(nullptr, w);
+        for (int team = 0; team < 4; ++team)
+        {
+            authored[static_cast<std::size_t>(team)] =
+                authored_units_on(*w, team);
+            if (target_team < 0 &&
+                authored[static_cast<std::size_t>(team)] > 0)
+                target_team = team;
+        }
+    }
+    ASSERT_GE(target_team, 0) << "gladiator/1 must author troops somewhere";
+
+    og::server::MatchStageInputs inputs = classic_gladiator_inputs(11u);
+    inputs.equivalent.map_units[static_cast<std::size_t>(target_team)] =
+        og::sim::kMapUnitsOff;
+    inputs.equivalent.fill[static_cast<std::size_t>(target_team)] =
+        og::sim::kFillNone;
+    og::server::MatchStage stage({.networked = false});
+    stage.observe_inputs(inputs, 0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    GameWorld* const w = stage.world();
+    ASSERT_NE(nullptr, w);
+    EXPECT_EQ(0, authored_units_on(*w, target_team))
+        << "the stripped team fields no map units";
+    for (int team = 0; team < 4; ++team)
+    {
+        if (team == target_team)
+            continue;
+        EXPECT_EQ(authored[static_cast<std::size_t>(team)],
+                  authored_units_on(*w, team))
+            << "team " << team << " keeps its authored cast";
+    }
+    EXPECT_TRUE(w->scripts().host().errors().empty())
+        << "classic levels never refuse (C4)";
+    EXPECT_EQ(0, w->mode.vars[4] / 1000000000)
+        << "no refusal digit is ever banked on a classic level";
+}
+
+// Trading authored units for a squad: MAP UNITS off with the wheel left at
+// FAIR replaces the team's authored cast with a solved five-bot squad near
+// the retired units' centroid, banks the applied FAIR fact and stores the
+// plan — through the tick-1 lazy arm, the un-staged worlds' path.
+TEST_F(ClassicLineupTest, traded_units_become_a_fair_squad_at_their_centroid)
+{
+    ClassicWorld fx;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);
+    fx.spawn_npc(FAMILY_SOLDIER, 1, 384, 576);
+    fx.spawn_npc(FAMILY_SOLDIER, 1, 416, 576);
+    fx.spawn_npc(FAMILY_SOLDIER, 1, 400, 608);
+    fx.world().ctf_requested_map_units[1] = og::sim::kMapUnitsOff;
+    fx.world().tick();
+
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
+        << "a FAIR squad replaces the traded units";
+    EXPECT_EQ(5, authored_units_on(fx.world(), 1))
+        << "and nothing else stands on the team";
+    EXPECT_EQ(1000, fx.world().mode.vars[4])
+        << "the applied FAIR fact banks in team 1's digit pair";
+    EXPECT_NE(0, fx.world().mode.vars[3]) << "the solved plan is stored";
+    // Placement: the centroid of the three retired npcs grid-snaps to
+    // (400, 576) -> (400, 576); every member sits on the anchor tile or
+    // inside the 3-tile ring walk around it.
+    int near = 0;
+    for (const auto& entry : fx.world().oblist)
+    {
+        const walker* const w = entry.get();
+        if (w == nullptr || w->dead() ||
+            w->query_order() != Order::Living || w->myguy != nullptr)
+            continue;
+        if (w->team_num() != 1)
+            continue;
+        if (std::abs(w->xpos() - 400) <= 48 &&
+            std::abs(w->ypos() - 576) <= 48)
+            ++near;
+    }
+    EXPECT_EQ(5, near) << "members place at the centroid + ring discipline";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// FILL: STRONG on a ships-empty authored team (a start marker, no units) of
+// a classic multi-team level spawns a solved squad there — ordinary
+// walkers: no owner, no guy, counted by the completion scan like any
+// authored enemy, so the level stays open while they stand (C4).
+TEST_F(ClassicLineupTest, fill_strong_spawns_a_solved_squad_on_a_marker_team)
+{
+    ClassicWorld fx;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);
+    fx.spawn_marker(1, 320, 480);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillStrong;
+    fx.world().tick();
+
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 1)) << "the squad walked on";
+    EXPECT_EQ(4000, fx.world().mode.vars[4])
+        << "the applied STRONG fact banks in team 1's digit pair";
+    EXPECT_NE(0, fx.world().mode.vars[3]) << "the solve stored a plan";
+    for (const auto& entry : fx.world().oblist)
+    {
+        const walker* const w = entry.get();
+        if (w == nullptr || w->dead() ||
+            w->query_order() != Order::Living || w->myguy != nullptr)
+            continue;
+        if (w->team_num() != 1)
+            continue;
+        EXPECT_EQ(nullptr, w->owner()) << "ordinary walkers: nobody owns them";
+        EXPECT_LE(std::abs(w->xpos() - 320), 48) << "placed at the marker";
+        EXPECT_LE(std::abs(w->ypos() - 480), 48) << "placed at the marker";
+    }
+    EXPECT_FALSE(fx.world().game_ended)
+        << "the squad holds the level open on its own tick";
+    fx.world().tick();
+    EXPECT_FALSE(fx.world().game_ended)
+        << "remaining-foes counting sees the squad (C4)";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// FAIR on a ships-empty authored team is the map's own value: nothing
+// spawns, nothing banks. The explicit wheel is what turns a marker-only
+// team on — the classic reading of "a team is on when anything is on it".
+TEST_F(ClassicLineupTest, fair_keeps_a_ships_empty_team_empty)
+{
+    ClassicWorld fx;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);
+    fx.spawn_marker(1, 320, 480);
+    fx.world().tick();
+
+    EXPECT_EQ(0, marked_bots_on(fx.world(), 1));
+    EXPECT_EQ(0, fx.world().mode.vars[3]);
+    EXPECT_EQ(0, fx.world().mode.vars[4]);
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// NONE plus an emptied side = fewer enemies and the campaign's own win
+// logic governs (C4): the kill-all completion fires once the stripped world
+// is re-scanned, and no refusal of any shape is raised or banked.
+TEST_F(ClassicLineupTest, none_fields_fewer_enemies_and_the_level_completes)
+{
+    ClassicWorld fx;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);
+    fx.spawn_npc(FAMILY_SOLDIER, 1, 384, 576);
+    fx.spawn_npc(FAMILY_SOLDIER, 1, 416, 576);
+    fx.world().ctf_requested_map_units[1] = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillNone;
+    fx.world().tick();
+
+    EXPECT_EQ(0, authored_units_on(fx.world(), 1)) << "fewer enemies";
+    EXPECT_EQ(0, marked_bots_on(fx.world(), 1)) << "and no squad";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty())
+        << "no refusal, ever, on a classic level";
+    EXPECT_EQ(0, fx.world().mode.vars[4]);
+    fx.world().tick();
+    fx.world().tick();
+    EXPECT_TRUE(fx.world().game_ended)
+        << "the campaign's own win logic governs the emptied board";
+}
+
+// No humans anywhere: the legacy difficulty formula levels the squad and
+// stores no plan (B3's own words) — the discriminator between the solved
+// and legacy arms.
+TEST_F(ClassicLineupTest, no_humans_takes_the_legacy_formula_and_no_plan)
+{
+    ClassicWorld fx;
+    fx.spawn_marker(1, 320, 480);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillStrong;
+    fx.world().tick();
+
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 1));
+    EXPECT_EQ(0, fx.world().mode.vars[3]) << "the legacy arm stores no plan";
+    EXPECT_EQ(4000, fx.world().mode.vars[4])
+        << "the applied fact still banks for what spawned (R4)";
+    std::int32_t first_level = -1;
+    for (const auto& entry : fx.world().oblist)
+    {
+        const walker* const w = entry.get();
+        if (w == nullptr || w->dead() ||
+            w->query_order() != Order::Living || w->myguy != nullptr)
+            continue;
+        if (w->team_num() != 1 || w->stats() == nullptr)
+            continue;
+        if (first_level < 0)
+            first_level = w->stats()->level();
+        EXPECT_EQ(first_level, w->stats()->level())
+            << "one legacy level for the whole squad";
+    }
+    EXPECT_GE(first_level, 1);
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// Same seed, same cells: the classic placement rule (anchor tile, ring
+// walk, teleport fallback) is deterministic — two identical worlds field
+// their squads on identical coordinates.
+TEST_F(ClassicLineupTest, placement_is_deterministic_for_a_seed)
+{
+    auto run_world = [] {
+        ClassicWorld fx;
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 100);
+        fx.spawn_marker(1, 320, 480);
+        fx.world().ctf_requested_fill[1] = og::sim::kFillStrong;
+        fx.world().rng_.state_ = 12345u;
+        fx.world().tick();
+        std::vector<std::pair<int, int>> cells;
+        for (const auto& entry : fx.world().oblist)
+        {
+            const walker* const w = entry.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->myguy != nullptr)
+                continue;
+            if (w->team_num() != 1)
+                continue;
+            cells.emplace_back(w->xpos(), w->ypos());
+        }
+        return cells;
+    };
+    const auto first = run_world();
+    const auto second = run_world();
+    ASSERT_EQ(5u, first.size());
+    EXPECT_EQ(first, second) << "same seed, same cells";
 }
