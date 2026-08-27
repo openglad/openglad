@@ -3,7 +3,10 @@
 
 local match = og.use("mode_match")
 
-local BOT_SQUAD = { "core:soldier", "core:archer", "core:elf", "core:mage", "core:thief" }
+-- The stock five-bot squad (D35, soldier-first) lives in the shared core
+-- pack with the rest of the match machinery (docs/lineup-design.md C1);
+-- the seeded shuffle below is the modes' own spelling of fielding it.
+local BOT_SQUAD = og.use("core:lineup").BOT_SQUAD
 
 -- Shared header-band slot (mode_match's MATCHED precedent: slots 0-7 are
 -- mode-neutral by convention; MATCHED owns 2-5, this claims 6): the
