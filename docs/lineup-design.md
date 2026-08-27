@@ -1210,3 +1210,52 @@ D1–D4 supersede the matching earlier sentences (notably W6-A's
 | D2 | **An explicit FILL on an unauthored team FIELDS a squad** and turns the team on (hostile to all, ordinary walkers). Site-less placement: deterministic from the match seed — prefer the walkable region farthest from every existing team's centroid, and never land adjacent to a hostile (the spawn-safety rule). The C8 default still resolves to NONE there; only an explicit choice fields. |
 | D3 | **FILL on a troops-occupied team fields a squad beside the troops.** Occupancy for the allies rule means HUMAN occupancy only; a troops-only team solves like an empty one (weakest human × m). With a level-50 hero on team 1, `FILL: BRUTAL` on the elves' team must produce a squad that actually threatens: target = weakest-human f-sum × 1.5, pinned within solver tolerance. Hard-shape caps still apply on modes maps. |
 | D4 | **The testing bar rises to outcomes.** Every FILL behavior gets a test through the REAL UI path (injector sets the knob → launch → count the team's spawned walkers and assert the solved squad's f-sum tracks the multiplier monotonically WEAK < FAIR < STRONG < BRUTAL against a fixed roster including a high-level hero); the wheel gets full-cycle label-sequence pins on authored AND unauthored teams; a restage-after-knob-change test proves a knob set in LINEUP reaches the world the launch adopts. Label-only pins no longer count as covering a FILL behavior. |
+
+## As built: D1's scale and wheel, the C++ half (2026-08-27)
+
+The engine side of D1. The Lua half (the pack constants, the resolver's
+own arithmetic and the banked fact) renumbers to meet it.
+
+- **The scale is `0 = DEFAULT` and five EXPLICIT codes**, in wheel order:
+  `og::sim::kFillDefault = 0`, `kFillNone = 1`, `kFillWeak = 2`,
+  `kFillFair = 3`, `kFillStrong = 4`, `kFillBrutal = 5`, `kMaxFill = 5`,
+  `clamp_fill` over `[0, 5]`. `kFillFair` kept its NAME and lost its old
+  double duty; the DEFAULT that used to hide behind it now has a spelling
+  of its own, which is the whole of D1. Display order and storage order
+  are finally the same order, so the wheel table and the scale can no
+  longer drift apart.
+- **The wheel holds the five explicit codes and nothing else.**
+  `cycle_lineup_fill(current, resolved, dir)` — the new middle argument is
+  the value the band is SHOWING. An explicit `current` enters at its own
+  slot and ignores it; a stored DEFAULT enters at `resolved`'s slot,
+  because a wheel that steps from a position the player cannot see is what
+  made gladiator's empty sides skip WEAK on the first click. Junk on both
+  counts enters at FAIR, where the clamp would have put it. Every step
+  returns an explicit code: a turned knob is a choice and stays one.
+- **The click callback reads the resolution BEFORE the write and renders
+  the STORED code after it** (`change_lineup_fill`). Re-resolving the
+  result is what painted the wheel's FAIR stop with the word NONE; an
+  explicit stop is never run back through a many-to-one map. A stored
+  default still renders its resolution per C8 — but a click can no longer
+  leave one behind. The two terminal clients census no level, so they pass
+  the stored code as its own resolution, which is the documented
+  no-census fallback and leaves their observed wheel unmoved.
+- **`format_lineup_fill_label` is unchanged in spelling**, and the rule it
+  obeys is now pinned: `label(explicit)` is that value's own word — the
+  five are distinct, which is what lets a player read the wheel's position
+  off the face — and `label(stored DEFAULT)` is the word of whatever it
+  resolved to. `lineup_fill_name(0)` still reads FAIR, for the callers
+  with nothing to resolve against.
+- **The banked fact code lost its +1 bias.** A code in the shared slot IS
+  the explicit fill it applied, `1..5`, and `0` — the digit pair an
+  unbanked team leaves — is the one value no fill can collide with, which
+  is exactly why the bias existed and exactly why it no longer needs to.
+  A team whose stored DEFAULT resolved banks the code it resolved TO.
+- **A resolver may only answer an explicit code.** The
+  `lineup.default_fill` seam accepts `1..5` and refuses the DEFAULT along
+  with everything off the wheel: a resolver that hands back the code it
+  was asked to resolve has resolved nothing, and the caller's fallback
+  (the stored value) says so more honestly.
+- **No version bump.** The knobs, the GTL v18 save field and the wire
+  slots that carry them are all branch-local — nothing outside this branch
+  has ever written a fill code, so there is no old byte to reinterpret.

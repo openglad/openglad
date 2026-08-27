@@ -1104,8 +1104,13 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
             // either knob is refused on any team, so the step is the whole
             // rule and both clients share it.
             if (item.kind == Kind::Fill) {
+                // D1: the wheel enters at the slot of the value the row
+                // shows. With no level censused here that IS the stored
+                // code (the no-census fallback), so it is its own
+                // resolution.
                 save.fill[team] = og::sim::clamp_fill(
-                    og::ui::cycle_lineup_fill(save.fill[team], 1));
+                    og::ui::cycle_lineup_fill(save.fill[team],
+                                              save.fill[team], 1));
             } else {
                 save.map_units[team] = og::sim::clamp_map_units(
                     og::ui::toggle_lineup_map_units(save.map_units[team]));

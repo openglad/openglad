@@ -3798,7 +3798,12 @@ bool campaign_lineup_resolved_fill(int stored, const LineupResolveRow& row,
                       " lineup.default_fill returned a non-integer";
         } else {
             const lua_Integer value = lua_tointeger(L, -1);
-            if (value >= og::sim::kFillFair && value <= og::sim::kFillBrutal) {
+            // D1: the legal answers are the five EXPLICIT codes. The
+            // DEFAULT is not one of them — a resolver that hands back the
+            // code it was asked to resolve has resolved nothing, and the
+            // caller's fallback (the stored value) says the same thing more
+            // honestly.
+            if (value >= og::sim::kFillNone && value <= og::sim::kFillBrutal) {
                 out = static_cast<int>(value);
                 ok = true;
             } else {

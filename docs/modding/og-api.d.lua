@@ -472,8 +472,10 @@
 -- team bands (the preset names retired with the BOTS
 -- wheel), and `default_fill` (optional, C8) resolves a
 -- team's STORED default fill (0) against its censused
--- presence -- it must return a wheel code 0-4, explicit
--- stored values coming back unchanged. packs/core
+-- presence -- it must return an EXPLICIT wheel code, 1-5
+-- (D1: 1 NONE, 2 WEAK, 3 FAIR, 4 STRONG, 5 BRUTAL), with
+-- explicit stored values coming back unchanged; the
+-- default itself is not an answer. packs/core
 -- registers the shipped resolver (lineup.resolved_fill);
 -- a campaign book's own overrides it.
 ---@class og.CampaignLineup

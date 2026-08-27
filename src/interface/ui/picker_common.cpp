@@ -3082,18 +3082,18 @@ constexpr std::size_t kModeVarMatchedSize = 5;
 //
 //   code = 0                 nothing banked — no squad of this team's
 //                            fielded anybody, so the pane names no fill
-//        = fill + 1          the APPLIED FILL code + 1, i.e. 1 = FAIR,
-//                            2 = NONE, 3 = WEAK, 4 = STRONG, 5 = BRUTAL
+//        = fill              the APPLIED FILL code itself, 1 = NONE,
+//                            2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL
 //
-// The +1 is the whole reason the field is not just the fill code: FAIR is
-// 0 and is also the default, so a bare code could not tell "a FAIR squad
-// walked on" from "this team banked nothing". Amendment B7 replaced the
-// old mixed-radix `squad * 11 + offset` pair with this single value when
-// the preset ordinals and the LV offset went away.
+// The code carried a +1 bias for as long as FAIR shared 0 with the default
+// and a bare code could not tell "a FAIR squad walked on" from "this team
+// banked nothing". D1 moved FAIR to 3 and left 0 to the default alone, so
+// no explicit fill is 0 any more and the bias has nothing left to do: what
+// is banked is the fill, and a team whose stored DEFAULT resolved banks
+// what it RESOLVED to. Amendment B7 replaced the older mixed-radix
+// `squad * 11 + offset` pair with this single value when the preset
+// ordinals and the LV offset went away.
 constexpr std::size_t kModeVarLineupFacts = 4;
-// What a banked code adds to the fill value. Named, because the Lua half
-// has to add exactly the same thing.
-constexpr int kLineupFactFillBias = 1;
 
 // Decode team t's applied lineup code from the shared slot.
 int lineup_fact_code(std::int32_t slot_value, int team)
@@ -3107,12 +3107,19 @@ int lineup_fact_code(std::int32_t slot_value, int team)
 // The applied FILL value a code carries, or -1 when the team banked
 // nothing (and for any code outside the five legal fills, which is what a
 // stale bank from an older build reads as).
+//
+// D1 retired the old +1 bias along with the shared FAIR/DEFAULT code: a
+// banked code IS the explicit fill it applied, 1..5, and 0 — the empty
+// digit pair every unbanked team leaves behind — is the one value that
+// cannot collide with a fill. A team whose stored DEFAULT resolved banks
+// the code it RESOLVED to, never the 0, because "no squad, by resolution"
+// is a thing that was applied. The Lua half (mode_match.lua lineup_fact)
+// banks exactly this, unbiased.
 int lineup_fact_fill(int code)
 {
-    const int fill = code - kLineupFactFillBias;
-    if (fill < og::sim::kFillFair || fill > og::sim::kFillBrutal)
+    if (code < og::sim::kFillNone || code > og::sim::kFillBrutal)
         return -1;
-    return fill;
+    return code;
 }
 
 // The refusal REASON digit, banked ABOVE the four team codes in the same
@@ -4155,13 +4162,17 @@ std::string_view lineup_fill_name(short fill)
     {
     case og::sim::kFillNone: return "NONE";
     case og::sim::kFillWeak: return "WEAK";
+    case og::sim::kFillFair: return "FAIR";
     case og::sim::kFillStrong: return "STRONG";
     case og::sim::kFillBrutal: return "BRUTAL";
     default: break;
     }
-    // FAIR, and everything the clamp would land on FAIR. A stored value
-    // outside the wheel is a save the lobby never sanitized; it plays as
-    // FAIR, so it reads as FAIR.
+    // The DEFAULT (0), and everything the clamp would land beside it. Since
+    // D1 the default is a code of its own, and every band surface hands
+    // this function the RESOLVED value instead — so the only callers left
+    // here are the ones with no census to resolve against (the two terminal
+    // clients), where the honest reading of "whatever the level decides" is
+    // the resolver's own presence arm: FAIR.
     return "FAIR";
 }
 
@@ -4261,27 +4272,45 @@ std::string format_lineup_power_cell(std::optional<long long> power, int width)
     return std::format("{:>{}}", text, field);
 }
 
-// The FILL wheel walks its DISPLAY order, not its storage order: NONE,
-// WEAK, FAIR, STRONG, BRUTAL runs weakest to strongest with the default in
-// the middle, which is the order a player reads off the face. Storage keeps
-// FAIR at 0 so an all-zero save is the default state; the two orders meet
-// only here.
+// The FILL wheel holds the five EXPLICIT codes and nothing else, weakest
+// to strongest: NONE, WEAK, FAIR, STRONG, BRUTAL. Since D1 gave FAIR its
+// own code (3) the display order IS the storage order, and the DEFAULT (0)
+// is off the wheel entirely — a band sitting on it enters at the slot of
+// the value it RESOLVES to, and no step ever returns it. That is the knob
+// precedent: an explicit choice is a choice, and there is no way back to
+// "whatever the level decides" except a fresh save.
 constexpr std::array<short, 5> kLineupFillWheel = {
     og::sim::kFillNone, og::sim::kFillWeak, og::sim::kFillFair,
     og::sim::kFillStrong, og::sim::kFillBrutal};
 
-short cycle_lineup_fill(short current, int dir)
+// The wheel slot a code sits in, or -1 for anything not on the wheel (the
+// DEFAULT, and any junk a hand-edited save carries).
+int lineup_fill_slot(short value)
 {
     const auto steps = static_cast<int>(kLineupFillWheel.size());
-    int index = 2;  // FAIR: where a value outside the wheel enters
     for (int i = 0; i < steps; ++i)
     {
-        if (kLineupFillWheel[static_cast<std::size_t>(i)] == current)
-        {
-            index = i;
-            break;
-        }
+        if (kLineupFillWheel[static_cast<std::size_t>(i)] == value)
+            return i;
     }
+    return -1;
+}
+
+short cycle_lineup_fill(short current, short resolved, int dir)
+{
+    const auto steps = static_cast<int>(kLineupFillWheel.size());
+    // The step leaves from the slot of the word the band is SHOWING. An
+    // explicit code shows itself, so it enters at its own slot and the
+    // resolution is ignored; a stored DEFAULT shows its resolution, so it
+    // enters there — otherwise the wheel turns from a position the player
+    // cannot see, which is how the first click on gladiator's empty sides
+    // used to skip WEAK. Junk on both counts falls back to FAIR's slot,
+    // where the clamp would have put it anyway.
+    int index = lineup_fill_slot(current);
+    if (index < 0)
+        index = lineup_fill_slot(resolved);
+    if (index < 0)
+        index = lineup_fill_slot(og::sim::kFillFair);
     long long next = (static_cast<long long>(index) + dir) % steps;
     if (next < 0)
         next += steps;

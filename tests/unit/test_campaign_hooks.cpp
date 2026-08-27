@@ -1962,7 +1962,7 @@ TEST_F(CampaignHooksTest, default_fill_resolves_default_by_presence)
     if stored ~= 0 then return stored end
     if row.units + row.generators + row.markers + row.anchors
        + row.roster + row.seats > 0 then
-      return 0
+      return 3
     end
     return 1
   end,
@@ -1970,13 +1970,17 @@ TEST_F(CampaignHooksTest, default_fill_resolves_default_by_presence)
     hooks::LineupResolveRow bare;
     int out = -1;
     ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(0, bare, out));
-    EXPECT_EQ(1, out) << "a bare team's default resolves NONE";
+    EXPECT_EQ(og::sim::kFillNone, out)
+        << "a bare team's default resolves NONE";
     hooks::LineupResolveRow seated;
     seated.seats = 1;
     ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(0, seated, out));
-    EXPECT_EQ(0, out) << "a seat flips it back to FAIR";
-    ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(3, bare, out));
-    EXPECT_EQ(3, out) << "an explicit value is itself";
+    EXPECT_EQ(og::sim::kFillFair, out)
+        << "a seat flips it back to FAIR — which since D1 is a code of its "
+           "own (3), not the stored default it resolved from";
+    ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(og::sim::kFillStrong,
+                                                     bare, out));
+    EXPECT_EQ(og::sim::kFillStrong, out) << "an explicit value is itself";
     EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
 }
 
@@ -2056,6 +2060,19 @@ TEST_F(CampaignHooksTest, default_fill_refusals_answer_false_and_name_who)
 }))LUA", kDefaultChunk);
     EXPECT_FALSE(hooks::campaign_lineup_resolved_fill(0, row, out));
     EXPECT_TRUE(errors_contain("returned 99, not a wheel code"));
+
+    // And since D1 the DEFAULT is not an answer either: a resolver that
+    // hands back the code it was asked to resolve has resolved nothing,
+    // and the caller says so more honestly by keeping the stored value.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return 1 end,
+  default_fill = function(stored, row) return 0 end,
+}))LUA", kDefaultChunk);
+    out = 3;
+    EXPECT_FALSE(hooks::campaign_lineup_resolved_fill(0, row, out));
+    EXPECT_EQ(3, out);
+    EXPECT_TRUE(errors_contain("returned 0, not a wheel code"));
 
     clear_pack_scripts();
     register_script(R"LUA(og.register_default_lineup({

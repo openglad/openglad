@@ -2259,10 +2259,12 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_works_both_knobs)
     EXPECT_NE(dump.find("TEAM 1  MAP UNITS: OFF"), std::string::npos)
         << "and the box with it:\n" << dump;
     EXPECT_EQ(og::sim::kFillStrong, f.save().fill[0])
-        << "FAIR -> STRONG landed in the save";
+        << "the default -> STRONG landed in the save: with no level "
+           "censused here the row shows FAIR, so the wheel leaves from "
+           "FAIR's slot";
     EXPECT_EQ(og::sim::kMapUnitsOff, f.save().map_units[0])
         << "ON -> OFF landed in the save";
-    EXPECT_EQ(og::sim::kFillFair, f.save().fill[1])
+    EXPECT_EQ(og::sim::kFillDefault, f.save().fill[1])
         << "only the cycled team moved";
     EXPECT_EQ(og::sim::kMapUnitsOn, f.save().map_units[1]);
     EXPECT_TRUE(f.t().input_exhausted());

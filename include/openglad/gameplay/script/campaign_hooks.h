@@ -196,9 +196,10 @@ struct CampaignRosterEntry {
 // twin's unknown-name rule — while match_set answers false (policy lives
 // in the provider).
 // The eight per-team band knobs (amendment B1-B4) join the list: "fill_N"
-// is the FILL wheel (0 = FAIR, 1 = NONE, 2 = WEAK, 3 = STRONG,
-// 4 = BRUTAL) and "map_units_N" the MAP UNITS box (0 = on, 1 = off), N
-// being the 1-based team.
+// is the FILL wheel (0 = DEFAULT, which resolves per team, then the five
+// explicit codes 1 = NONE, 2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL)
+// and "map_units_N" the MAP UNITS box (0 = on, 1 = off), N being the
+// 1-based team.
 // "team_count" is NOT in the list any more (amendment A3) and neither is
 // "strip_troops" (amendment B5): both knobs are retired, so a campaign that
 // wrote either would be writing a value nothing reads. The sim-side

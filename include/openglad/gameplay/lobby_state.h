@@ -256,24 +256,33 @@ inline constexpr std::int16_t kTroopsMatched = 3;
 // FILL wheel and one MAP UNITS box per team — carried through the whole
 // match-knob chain beside the older ctf_* knobs.
 //
-//   fill[t]:      the matched solver WITH A MULTIPLIER (B2). 0 = FAIR (the
-//                 default, so all-zero is the default state), 1 = NONE (no
-//                 squad on this team at all), 2 = WEAK, 3 = STRONG,
-//                 4 = BRUTAL. The engine stores and clamps the code and
-//                 nothing else: the multiplier table that turns a code into
-//                 a target lives in the mode Lua, which is the only layer
-//                 that solves anything, so there is no percent twin here.
-//                 Wheel order on the band is NONE, WEAK, FAIR, STRONG,
-//                 BRUTAL — FAIR in the middle, where the default belongs.
+//   fill[t]:      the matched solver WITH A MULTIPLIER (B2). 0 = DEFAULT,
+//                 so an all-zero save is still the default state, and it
+//                 RESOLVES per team at stage time (C8: FAIR where the team
+//                 has authored presence, NONE where it has none). The five
+//                 EXPLICIT codes are 1 = NONE (no squad on this team at
+//                 all), 2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL.
+//                 Amendment D1 gave FAIR its own code: while it shared 0
+//                 with the default, the band's wheel swallowed it whole on
+//                 every team whose default resolved NONE, and no player
+//                 could tell an explicit NONE from a resolved one. The
+//                 engine stores and clamps the code and nothing else: the
+//                 multiplier table that turns a code into a target lives in
+//                 the mode Lua, which is the only layer that solves
+//                 anything, so there is no percent twin here. Wheel order
+//                 on the band is the five explicit codes in storage order —
+//                 NONE, WEAK, FAIR, STRONG, BRUTAL, weakest to strongest —
+//                 and the wheel never lands back on the DEFAULT.
 //   map_units[t]: whether the map's OWN authored units on this team are
 //                 fielded (B4). 0 = on (the default and the classic
 //                 behaviour), 1 = off. The retired TROOPS knob asked this
 //                 once for the whole map; the box asks it per team.
-inline constexpr std::int16_t kFillFair = 0;
+inline constexpr std::int16_t kFillDefault = 0;
 inline constexpr std::int16_t kFillNone = 1;
 inline constexpr std::int16_t kFillWeak = 2;
-inline constexpr std::int16_t kFillStrong = 3;
-inline constexpr std::int16_t kFillBrutal = 4;
+inline constexpr std::int16_t kFillFair = 3;
+inline constexpr std::int16_t kFillStrong = 4;
+inline constexpr std::int16_t kFillBrutal = 5;
 inline constexpr std::int16_t kMaxFill = kFillBrutal;
 
 inline constexpr std::int16_t kMapUnitsOn = 0;

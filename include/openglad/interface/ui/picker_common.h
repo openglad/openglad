@@ -1014,8 +1014,10 @@ struct ScenarioRosterReport {
     // --- Lineup facts (§3.4 as amended by B7): the APPLIED per-team FILL
     // code the spawn seam banked in the shared mode-var slot
     // (mode_match.lua bank_lineup_facts / kModeVarLineupFacts below).
-    // og::sim::kFillFair .. kFillBrutal, or -1 for a team whose squad
-    // banked nothing. Facts, never requests: a knob a mode ignored, and a
+    // og::sim::kFillNone .. kFillBrutal — an EXPLICIT code always, since a
+    // resolved default banks what it resolved TO (D1) — or -1 for a team
+    // whose squad banked nothing. Facts, never requests: a knob a mode
+    // ignored, and a
     // squad that fielded nobody, bank nothing — so the pane never names a
     // fill that is not on the floor.
     std::array<int, 4> team_squad_fill = {-1, -1, -1, -1};
@@ -1583,9 +1585,12 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
 // --- LINEUP labels (exact strings; every one of them is pinned) ---
 
 // The FILL wheel's bare value name: "FAIR" / "NONE" / "WEAK" / "STRONG" /
-// "BRUTAL". Out-of-range values read FAIR, which is what the clamp lands
-// them on anyway. Shared by the band face and the preview pane, so the two
-// can never disagree about what a stored code is called.
+// "BRUTAL". The DEFAULT and every out-of-range value read FAIR — the
+// resolver's presence arm, and where the clamp lands junk; the band
+// surfaces hand this the RESOLVED code, so the word "FAIR" here is only
+// ever seen by a caller with nothing to resolve against. Shared by the band
+// face and the preview pane, so the two can never disagree about what a
+// stored code is called.
 std::string_view lineup_fill_name(short fill);
 // "FILL: FAIR" / "FILL: NONE" / "FILL: WEAK" / "FILL: STRONG" /
 // "FILL: BRUTAL" — the band's 12-char knob face, and exactly 12 chars at
@@ -1612,17 +1617,21 @@ std::string format_lineup_power(std::optional<long long> power);
 std::string format_lineup_power_cell(std::optional<long long> power,
                                      int width = 6);
 
-// The two knob steps. The FILL wheel walks its DISPLAY order — NONE, WEAK,
-// FAIR, STRONG, BRUTAL — which is weakest to strongest with the default in
-// the middle, not the storage order; `dir` may be any step, and a stored
-// value outside the wheel enters at FAIR. MAP UNITS is a box, so its step
-// is a flip, and any junk value flips to ON.
+// The two knob steps. The FILL wheel holds the five EXPLICIT codes in
+// storage order — NONE, WEAK, FAIR, STRONG, BRUTAL, weakest to strongest —
+// and `dir` may be any step. The DEFAULT is NOT on the wheel (D1): a band
+// storing it enters at the slot of `resolved`, the value the band is
+// currently SHOWING (LineupTeamBand::resolved_fill), so the wheel steps
+// from the word the player is reading; junk enters at FAIR, which is where
+// the clamp would have put it. Every step returns an explicit code, so a
+// turned wheel can never come back to the default — the knob precedent.
+// MAP UNITS is a box, so its step is a flip, and any junk value flips to ON.
 //
 // There are no refusals on either (amendment B8): nothing the band can hold
 // deactivates a team, so every value is legal on every team, on every
 // client, and the three clients share one write rule with no toast between
 // them.
-short cycle_lineup_fill(short current, int dir);
+short cycle_lineup_fill(short current, short resolved, int dir);
 short toggle_lineup_map_units(short current);
 
 // --- SPLIT (§5) --------------------------------------------------------

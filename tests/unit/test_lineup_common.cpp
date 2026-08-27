@@ -22,6 +22,7 @@
 #include <array>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -300,9 +301,38 @@ TEST(LineupCommon, seat_label_prefers_a_local_controller_name)
 
 // --- labels ------------------------------------------------------------
 
+// D1's scale, pinned numerically: the DEFAULT keeps 0 and the five
+// EXPLICIT codes run 1..5 in wheel order. The numbers matter twice over —
+// they are the wire's stored codes AND the facts slot's banked codes, and
+// the fact encoding is unbiased ONLY because no explicit fill is 0 (the
+// digit pair a team that banked nothing leaves behind).
+TEST(LineupCommon, fill_codes_leave_zero_free_for_the_facts_slot)
+{
+    EXPECT_EQ(0, og::sim::kFillDefault);
+    EXPECT_EQ(1, og::sim::kFillNone);
+    EXPECT_EQ(2, og::sim::kFillWeak);
+    EXPECT_EQ(3, og::sim::kFillFair);
+    EXPECT_EQ(4, og::sim::kFillStrong);
+    EXPECT_EQ(5, og::sim::kFillBrutal);
+    EXPECT_EQ(5, og::sim::kMaxFill);
+    for (const short explicit_code :
+         {og::sim::kFillNone, og::sim::kFillWeak, og::sim::kFillFair,
+          og::sim::kFillStrong, og::sim::kFillBrutal})
+        EXPECT_NE(og::sim::kFillDefault, explicit_code)
+            << "a banked fact code IS the fill, so 0 must stay unclaimed";
+    // The clamp is the whole bound: [0, 5], junk lands on an end.
+    EXPECT_EQ(og::sim::kFillDefault, og::sim::clamp_fill(-1));
+    EXPECT_EQ(og::sim::kFillDefault, og::sim::clamp_fill(-32768));
+    EXPECT_EQ(og::sim::kFillDefault, og::sim::clamp_fill(0));
+    EXPECT_EQ(og::sim::kFillBrutal, og::sim::clamp_fill(5));
+    EXPECT_EQ(og::sim::kFillBrutal, og::sim::clamp_fill(6));
+    EXPECT_EQ(og::sim::kFillBrutal, og::sim::clamp_fill(32767));
+}
+
 TEST(LineupCommon, fill_label_strings)
 {
-    // Amendment B2's five values, and no sixth: one wheel, one spelling.
+    // Amendment B2's five values as amended by D1, and no sixth: one
+    // wheel, one spelling.
     EXPECT_EQ("FILL: FAIR", og::ui::format_lineup_fill_label(og::sim::kFillFair));
     EXPECT_EQ("FILL: NONE", og::ui::format_lineup_fill_label(og::sim::kFillNone));
     EXPECT_EQ("FILL: WEAK", og::ui::format_lineup_fill_label(og::sim::kFillWeak));
@@ -310,11 +340,15 @@ TEST(LineupCommon, fill_label_strings)
               og::ui::format_lineup_fill_label(og::sim::kFillStrong));
     EXPECT_EQ("FILL: BRUTAL",
               og::ui::format_lineup_fill_label(og::sim::kFillBrutal));
+    EXPECT_EQ("FILL: FAIR",
+              og::ui::format_lineup_fill_label(og::sim::kFillDefault))
+        << "no census to resolve against: the default reads as the "
+           "resolver's presence arm";
     EXPECT_EQ("FILL: FAIR", og::ui::format_lineup_fill_label(-3))
-        << "a value the clamp would land on FAIR reads as FAIR";
+        << "a value the clamp would land beside the default reads as FAIR";
     EXPECT_EQ("FILL: FAIR", og::ui::format_lineup_fill_label(99));
     // The 80px face is 12 characters and the two longest values SPEND it.
-    for (short value = -2; value <= 6; ++value)
+    for (short value = -2; value <= 8; ++value)
         EXPECT_LE(og::ui::format_lineup_fill_label(value).size(), 12u);
     EXPECT_EQ(12u,
               og::ui::format_lineup_fill_label(og::sim::kFillStrong).size());
@@ -322,6 +356,38 @@ TEST(LineupCommon, fill_label_strings)
               og::ui::format_lineup_fill_label(og::sim::kFillBrutal).size());
     // The bare word is the same string the preview pane appends.
     EXPECT_EQ("BRUTAL", og::ui::lineup_fill_name(og::sim::kFillBrutal));
+}
+
+// The label rule D1 pins: label(explicit) is that value's OWN word, and
+// label(stored DEFAULT) is the word of whatever it RESOLVED to. The
+// formatter's half of the rule is being one-to-one across the five
+// explicit codes — the moment two of them share a word, a player cannot
+// read the wheel's position off the face, which is exactly how FAIR went
+// missing while it shared its code with the default.
+TEST(LineupCommon, fill_label_never_re_resolves_an_explicit_stop)
+{
+    std::set<std::string> words;
+    for (const short code :
+         {og::sim::kFillNone, og::sim::kFillWeak, og::sim::kFillFair,
+          og::sim::kFillStrong, og::sim::kFillBrutal})
+        words.insert(og::ui::format_lineup_fill_label(code));
+    EXPECT_EQ(5u, words.size())
+        << "five explicit codes, five distinct faces";
+
+    // And a band carrying an explicit code renders that code, not a
+    // resolution of it. (The resolved arm — a stored DEFAULT taking its
+    // resolution's word — needs a registered pack resolver and is pinned
+    // in test_campaign_hooks and test_platform_headless.)
+    SaveData save;
+    save.fill[0] = og::sim::kFillFair;
+    save.fill[1] = og::sim::kFillNone;
+    std::vector<og::sim::LobbyPlayer> players{seat(0, 1)};
+    const auto bands = og::ui::build_lineup_bands(
+        save, players, std::vector<std::uint8_t>{0}, false, {});
+    EXPECT_EQ("FILL: FAIR",
+              og::ui::format_lineup_fill_label(bands[0].resolved_fill));
+    EXPECT_EQ("FILL: NONE",
+              og::ui::format_lineup_fill_label(bands[1].resolved_fill));
 }
 
 TEST(LineupCommon, map_units_label_strings)
@@ -402,43 +468,158 @@ TEST(LineupCommon, power_cell_rounds_into_the_six_character_field)
 
 // --- cyclers -----------------------------------------------------------
 
+namespace {
+
+// The word a band shows after `clicks` presses, starting from `stored`
+// with the band resolving to `resolved` — the click callback's own
+// arithmetic (cycle from the resolved slot, render the stored result), so
+// the sequence a player reads off the face is what this returns.
+std::vector<std::string> fill_face_sequence(short stored, short resolved,
+                                            int clicks)
+{
+    std::vector<std::string> faces;
+    // Before the first click the face is the RESOLVED value; afterwards
+    // every value is explicit and is its own resolution.
+    faces.push_back(og::ui::format_lineup_fill_label(
+        stored == og::sim::kFillDefault ? resolved : stored));
+    short value = stored;
+    for (int i = 0; i < clicks; ++i)
+    {
+        value = og::sim::clamp_fill(
+            og::ui::cycle_lineup_fill(value, resolved, 1));
+        faces.push_back(og::ui::format_lineup_fill_label(value));
+        resolved = value;
+    }
+    return faces;
+}
+
+}  // namespace
+
 TEST(LineupCommon, fill_wheel_walks_none_weak_fair_strong_brutal)
 {
-    // The DISPLAY order (B2), weakest to strongest with the default in the
-    // middle — deliberately not the storage order, whose 0 is FAIR.
+    // Wheel order, which since D1 is also the storage order: weakest to
+    // strongest, the default nowhere on it. An explicit value enters at
+    // its OWN slot no matter what the band resolved to, so the second
+    // argument cannot move an explicit stop.
+    for (const short contradiction :
+         {og::sim::kFillDefault, og::sim::kFillNone, og::sim::kFillBrutal})
+    {
+        EXPECT_EQ(og::sim::kFillWeak,
+                  og::ui::cycle_lineup_fill(og::sim::kFillNone,
+                                            contradiction, 1));
+        EXPECT_EQ(og::sim::kFillFair,
+                  og::ui::cycle_lineup_fill(og::sim::kFillWeak,
+                                            contradiction, 1));
+        EXPECT_EQ(og::sim::kFillStrong,
+                  og::ui::cycle_lineup_fill(og::sim::kFillFair,
+                                            contradiction, 1));
+        EXPECT_EQ(og::sim::kFillBrutal,
+                  og::ui::cycle_lineup_fill(og::sim::kFillStrong,
+                                            contradiction, 1));
+        EXPECT_EQ(og::sim::kFillNone,
+                  og::ui::cycle_lineup_fill(og::sim::kFillBrutal,
+                                            contradiction, 1))
+            << "past the strongest the wheel comes back at NONE";
+        EXPECT_EQ(og::sim::kFillWeak,
+                  og::ui::cycle_lineup_fill(og::sim::kFillFair,
+                                            contradiction, -1));
+        EXPECT_EQ(og::sim::kFillBrutal,
+                  og::ui::cycle_lineup_fill(og::sim::kFillNone,
+                                            contradiction, -1));
+    }
+    // A stored value on neither the wheel nor the resolution enters at
+    // FAIR, which is where the clamp would have put it.
+    EXPECT_EQ(og::sim::kFillStrong, og::ui::cycle_lineup_fill(77, 88, 1));
+    EXPECT_EQ(og::sim::kFillFair, og::ui::cycle_lineup_fill(77, 88, 0));
+    // ...but junk with a legible resolution enters where the face reads.
     EXPECT_EQ(og::sim::kFillWeak,
-              og::ui::cycle_lineup_fill(og::sim::kFillNone, 1));
-    EXPECT_EQ(og::sim::kFillFair,
-              og::ui::cycle_lineup_fill(og::sim::kFillWeak, 1));
-    EXPECT_EQ(og::sim::kFillStrong,
-              og::ui::cycle_lineup_fill(og::sim::kFillFair, 1));
-    EXPECT_EQ(og::sim::kFillBrutal,
-              og::ui::cycle_lineup_fill(og::sim::kFillStrong, 1));
-    EXPECT_EQ(og::sim::kFillNone,
-              og::ui::cycle_lineup_fill(og::sim::kFillBrutal, 1))
-        << "past the strongest the wheel comes back at NONE";
-    EXPECT_EQ(og::sim::kFillWeak,
-              og::ui::cycle_lineup_fill(og::sim::kFillFair, -1));
-    EXPECT_EQ(og::sim::kFillBrutal,
-              og::ui::cycle_lineup_fill(og::sim::kFillNone, -1));
-    // A stored value outside the wheel enters at FAIR, which is where the
-    // clamp would have put it.
-    EXPECT_EQ(og::sim::kFillStrong, og::ui::cycle_lineup_fill(77, 1));
-    EXPECT_EQ(og::sim::kFillFair, og::ui::cycle_lineup_fill(77, 0));
-    // Five steps is one full turn, and every legal value is on it exactly
-    // once — no sixth position, no unreachable code.
+              og::ui::cycle_lineup_fill(77, og::sim::kFillNone, 1));
+    // Five steps is one full turn, and every explicit value is on it
+    // exactly once — no sixth position, no unreachable code.
     std::vector<short> seen;
     short value = og::sim::kFillNone;
     for (int step = 0; step < 5; ++step)
     {
         seen.push_back(value);
-        value = og::ui::cycle_lineup_fill(value, 1);
+        value = og::ui::cycle_lineup_fill(value, value, 1);
     }
     EXPECT_EQ(og::sim::kFillNone, value);
     EXPECT_EQ((std::vector<short>{og::sim::kFillNone, og::sim::kFillWeak,
                                  og::sim::kFillFair, og::sim::kFillStrong,
                                  og::sim::kFillBrutal}),
               seen);
+}
+
+// D1's first half: the DEFAULT is off the wheel, and a step from it can
+// never return it. Whatever the band resolved to, a turned knob is an
+// explicit choice and stays one — the knob precedent, and the reason the
+// wheel is five stops rather than six.
+TEST(LineupCommon, fill_wheel_never_returns_the_default)
+{
+    for (const short resolved :
+         {og::sim::kFillDefault, og::sim::kFillNone, og::sim::kFillWeak,
+          og::sim::kFillFair, og::sim::kFillStrong, og::sim::kFillBrutal,
+          static_cast<short>(77)})
+    {
+        for (short stored = -1; stored <= 6; ++stored)
+        {
+            for (const int dir : {-1, 0, 1, 4, -7})
+            {
+                const short next =
+                    og::ui::cycle_lineup_fill(stored, resolved, dir);
+                EXPECT_NE(og::sim::kFillDefault, next)
+                    << "stored " << stored << " resolved " << resolved
+                    << " dir " << dir;
+                EXPECT_GE(next, og::sim::kFillNone);
+                EXPECT_LE(next, og::sim::kFillBrutal);
+                EXPECT_EQ(next, og::sim::clamp_fill(next))
+                    << "every stop the wheel returns is already in range";
+            }
+        }
+    }
+}
+
+// D1's second half, and the bug it was written against: on a band with no
+// authored presence the stored default RESOLVES to NONE, so the wheel must
+// enter at NONE's slot and the face must read
+// NONE -> WEAK -> FAIR -> STRONG -> BRUTAL -> NONE.
+//
+// The old wheel entered at FAIR's slot while the face said NONE — the
+// player's first click skipped WEAK — and its FAIR stop (stored 0) was
+// re-resolved back to the word NONE on the way to the face, so the five
+// stops read NONE, WEAK, NONE, STRONG, BRUTAL: four words, no FAIR, and
+// two of them the same. Both halves are pinned here.
+TEST(LineupCommon, fill_wheel_from_the_default_enters_where_the_face_reads)
+{
+    EXPECT_EQ((std::vector<std::string>{"FILL: NONE", "FILL: WEAK",
+                                        "FILL: FAIR", "FILL: STRONG",
+                                        "FILL: BRUTAL", "FILL: NONE",
+                                        "FILL: WEAK"}),
+              fill_face_sequence(og::sim::kFillDefault, og::sim::kFillNone,
+                                 6))
+        << "a presence-less band walks all five words, FAIR among them";
+
+    // On an authored band the same stored default resolves to FAIR, so the
+    // wheel enters at FAIR's slot and the first click steps to STRONG.
+    EXPECT_EQ((std::vector<std::string>{"FILL: FAIR", "FILL: STRONG",
+                                        "FILL: BRUTAL", "FILL: NONE",
+                                        "FILL: WEAK", "FILL: FAIR",
+                                        "FILL: STRONG"}),
+              fill_face_sequence(og::sim::kFillDefault, og::sim::kFillFair,
+                                 6));
+
+    // And the stored codes behind that presence-less walk are the explicit
+    // ones, in order — the face is not painting a fiction.
+    EXPECT_EQ(og::sim::kFillWeak,
+              og::ui::cycle_lineup_fill(og::sim::kFillDefault,
+                                        og::sim::kFillNone, 1));
+    EXPECT_EQ(og::sim::kFillStrong,
+              og::ui::cycle_lineup_fill(og::sim::kFillDefault,
+                                        og::sim::kFillFair, 1));
+    EXPECT_EQ(og::sim::kFillBrutal,
+              og::ui::cycle_lineup_fill(og::sim::kFillDefault,
+                                        og::sim::kFillNone, -1))
+        << "backwards from a resolved NONE is the strongest stop";
 }
 
 TEST(LineupCommon, map_units_box_flips_and_junk_lands_on)

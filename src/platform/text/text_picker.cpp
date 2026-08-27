@@ -1192,8 +1192,13 @@ private:
                         format_lineup_map_units_label(save_data_.map_units[team])
                             .c_str());
                 } else {
+                    // D1's entry rule needs the value the row is SHOWING.
+                    // This client censuses no level, so its band already
+                    // renders the stored code (the documented no-census
+                    // fallback) and the stored code is its own resolution.
                     save_data_.fill[team] = og::sim::clamp_fill(
-                        cycle_lineup_fill(save_data_.fill[team], 1));
+                        cycle_lineup_fill(save_data_.fill[team],
+                                          save_data_.fill[team], 1));
                     std::printf(
                         "%s\n",
                         format_lineup_fill_label(save_data_.fill[team])
