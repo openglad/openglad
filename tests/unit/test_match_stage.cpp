@@ -1949,6 +1949,85 @@ TEST(LineupStageLazyArm, a_step_that_fields_fighters_holds_the_level_open)
     og::script::clear_pack_scripts();
 }
 
+// A TYPE_SCRIPTED level whose mode init REFUSES (or registers no
+// on_mode_init at all): the stager's step 8b covers it — mode_stage_init
+// then the lineup step on the same world — but on an UN-STAGED world tick
+// 1 is spent in the mode branch (a failed init owns its tick), and the
+// classic else is only reached from tick 2 on, past the tick-1 gate. The
+// probe registers the pair on the level itself: an init that raises, and
+// the lineup step that logs.
+constexpr const char* kRefusedModeLineupProbeLua =
+    "og.register_level_hooks(7, {\n"
+    "  on_mode_init = function(level)\n"
+    "    error('probe: this mode refuses')\n"
+    "  end,\n"
+    "  on_lineup_stage = function(level)\n"
+    "    og.log('lineup_stage', level)\n"
+    "  end,\n"
+    "})\n";
+
+// The tick-path mirror of step 8b (review F4): an un-staged scripted world
+// whose init refused runs the lineup step exactly once — on the refusal
+// tick itself, the way the stager runs 8b right after step 8 — and never
+// again.
+TEST(LineupStageLazyArm, refused_mode_world_runs_the_step_once)
+{
+    init_all_registries();
+    og::script::clear_pack_scripts();
+    TestGameWorld fx(7);
+    fx.world().type |= GameWorld::TYPE_SCRIPTED;
+    LineupStageProbeScript probe(kRefusedModeLineupProbeLua);
+
+    fx.world().tick();
+    EXPECT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_FALSE(fx.world().mode.active) << "the probe's init must refuse";
+    EXPECT_EQ(1, count_log_lines(fx.world(), "lineup_stage\t7"))
+        << "the refused level gets its one stage step, on the refusal tick";
+    fx.world().tick();
+    fx.world().tick();
+    EXPECT_EQ(1, count_log_lines(fx.world(), "lineup_stage\t7"))
+        << "and never a second one";
+    og::script::clear_pack_scripts();
+}
+
+// A world seeded from a snapshot of that refused world — the step already
+// ran on the source — must not run it again: the snapshot carries the
+// init latch and the level tick count, and neither the mode-branch arm
+// nor the classic tick-1 arm may fire on a tick past the first.
+TEST(LineupStageLazyArm, snapshot_seeded_twin_of_a_refused_world_does_not_rerun)
+{
+    init_all_registries();
+    og::script::clear_pack_scripts();
+    LineupStageProbeScript probe(kRefusedModeLineupProbeLua);
+    std::vector<std::uint8_t> bytes;
+    {
+        // Strictly sequential: the twin is built only after this world is
+        // gone (two live script-bound worlds resolve bindings against the
+        // last-constructed one).
+        TestGameWorld source(7);
+        source.world().type |= GameWorld::TYPE_SCRIPTED;
+        source.world().tick();
+        ASSERT_EQ(1, count_log_lines(source.world(), "lineup_stage\t7"));
+        bytes = og::sim::serialize_snapshot(
+            og::sim::peek_keyframe_snapshot(source.world()));
+    }
+    ASSERT_FALSE(bytes.empty());
+
+    TestGameWorld twin(7);
+    twin.world().type |= GameWorld::TYPE_SCRIPTED;
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::deserialize_snapshot(bytes);
+    ASSERT_TRUE(og::sim::apply_snapshot(twin.world(), snapshot));
+    EXPECT_TRUE(twin.world().mode.init_attempted)
+        << "the refusal latch rides the snapshot";
+    EXPECT_FALSE(twin.world().mode.active);
+    twin.world().tick();
+    twin.world().tick();
+    EXPECT_EQ(0, count_log_lines(twin.world(), "lineup_stage"))
+        << "the seeded twin must not field a second set of squads";
+    og::script::clear_pack_scripts();
+}
+
 // And with no hook registered the lazy arm is the empty statement it has to
 // be: no VM is even built for a script-less world.
 TEST(LineupStageLazyArm, un_registered_world_dispatches_nothing)

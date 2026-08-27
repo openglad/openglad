@@ -1880,6 +1880,25 @@ void GameWorld::tick()
         og::sim::mode_run_tick(*this);
         if (game_ended)
             return;
+        // The mode-less stage step for a scripted level whose init REFUSED
+        // (docs/lineup-design.md C2), the tick-path mirror of match_stage
+        // step 8b: the stager runs mode_stage_init and then the lineup step
+        // on the same world, and an un-staged world has to do the same on
+        // the tick its lazy init fails — a failed init owns this tick, and
+        // from the next one on this world takes the classic arm below past
+        // its tick-1 gate, so without this the refused level would never
+        // get its one stage step. The claim discipline is the classic arm's:
+        // an adopted world never reaches here (its init latch is already
+        // set, so tick 1 takes the classic arm and consumes the claim), and
+        // a snapshot-seeded twin arrives latched too. No completion decision
+        // follows on this tick — the classic arm's is next tick's, against
+        // the world the step built — so the fielded squads are counted
+        // before a kill-all map can declare anything.
+        if (mode.init_attempted && !mode.active &&
+            !consume_staged_lineup_stage_claim())
+        {
+            run_lineup_stage_step();
+        }
     }
     else
     {

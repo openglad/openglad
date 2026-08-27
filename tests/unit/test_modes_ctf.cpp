@@ -619,13 +619,18 @@ TEST_F(ModesCtf, map_units_boxes_inert_when_ctf_does_not_activate)
     fx.tick(1);
 
     ASSERT_FALSE(fx.world().mode.active);
-    // The mode script never reached on_mode_init, and the engine's own sweep
-    // is latched to the first tick — which this map spent inside the mode
-    // branch. The authored archer therefore survives. Counted rather than
-    // dereferenced: the engine sweep REMOVES walkers, so a regression here
-    // would be a dangling pointer, not a dead flag.
-    EXPECT_EQ(2, alive_on_team(fx.world(), 0))
-        << "non-activating CTF maps keep classic rules";
+    // A refused init leaves the level to classic rules — and since C2 the
+    // MAP UNITS box IS a classic rule: the mode-less stage step
+    // (packs/core on_lineup_stage) applies the per-team strip, and the
+    // tick path runs it on the refusal tick itself (review F4, the mirror
+    // of the stager's step 8b), where this map used to spend its only
+    // stage tick inside the mode branch and keep the archer by accident.
+    // The box is honoured on the un-staged world exactly as it is on the
+    // staged one: the authored archer retires, the hero stays. Counted
+    // rather than dereferenced: the strip marks dead, never erases.
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0))
+        << "a refused CTF map keeps classic rules, the MAP UNITS box "
+           "included";
 }
 TEST_F(ModesCtf, enemy_touch_picks_up_and_carry_visual_follows)
 {
