@@ -76,6 +76,8 @@
 #endif
 #ifdef TESTING
 #include <atomic>
+#include <functional>
+#include <mutex>
 #endif
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
@@ -158,6 +160,15 @@ std::atomic<bool> g_test_in_game{false};
 std::atomic<int> g_test_game_epoch{0};
 // Number of game frames executed during the current go_menu run.
 std::atomic<int> g_test_game_frame_ticks{0};
+// A one-shot main-thread window INSIDE gameplay. An injector thread has two
+// safe seams while a menu is up — the presenter handshake and the main-thread
+// task queue — and neither one exists during a level: the game loop's redraw
+// is compiled out under TESTING, and only run_menu_screen pumps the queue. An
+// outcome-level test that has to walk the launched world needs one place
+// where the sim is provably between ticks, so this observer runs on the game
+// thread right after a completed frame and clears itself as it fires.
+std::mutex g_test_frame_observer_mutex;
+std::function<void()> g_test_frame_observer;
 #endif
 
 void picker_request_start_game()
@@ -176,6 +187,19 @@ void picker_testing_mark_game_start()
 void picker_testing_mark_frame_advance()
 {
     g_test_game_frame_ticks.fetch_add(1, std::memory_order_release);
+    std::function<void()> observer;
+    {
+        std::lock_guard<std::mutex> lock(g_test_frame_observer_mutex);
+        observer.swap(g_test_frame_observer);
+    }
+    if (observer)
+        observer();
+}
+
+void picker_testing_observe_next_game_frame(std::function<void()> observer)
+{
+    std::lock_guard<std::mutex> lock(g_test_frame_observer_mutex);
+    g_test_frame_observer = std::move(observer);
 }
 
 void picker_testing_mark_game_end()

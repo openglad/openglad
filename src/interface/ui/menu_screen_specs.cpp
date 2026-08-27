@@ -7612,10 +7612,18 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
             live->label = std::move(label);
     };
 
-    // C8: the FILL face renders the RESOLVED value — the pack resolver's
-    // answer over the loaded level's presence census and the seat picture
-    // (an explicit stored code comes back as itself; the stored default
-    // resolves FAIR-with-presence / NONE-without).
+    // C8 + D1: the FILL face renders the RESOLVED value for a band still
+    // sitting on the stored DEFAULT — the pack resolver's answer over the
+    // loaded level's presence census and the seat picture — and an EXPLICIT
+    // code's OWN word everywhere else. The click callback obeys the same
+    // rule (change_lineup_fill), and it is the whole of D1's label half: an
+    // explicit stop is a choice, and a choice is never run back through the
+    // resolver's many-to-one map. Re-resolving it is what painted the
+    // wheel's FAIR stop with the word NONE on gladiator's empty sides,
+    // leaving the player two indistinguishable NONEs and no way to reach
+    // FAIR. A junk code the clamp has not reached yet is not the default
+    // either, so it reads as lineup_fill_name's own FAIR — the word the
+    // clamp would land it on anyway.
     const std::array<short, 4> resolved_fills =
         picker_lineup_resolved_fills();
     for (int t = 0; t < 4; ++t) {
@@ -7623,9 +7631,12 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
         const int map_units_index = kLineupMapUnitsBase + t;
         buttons[fill_index].hidden = !knobs;
         buttons[map_units_index].hidden = !knobs;
+        const short stored_fill = save.fill[static_cast<std::size_t>(t)];
         write_label(fill_index,
                     format_lineup_fill_label(
-                        resolved_fills[static_cast<std::size_t>(t)]));
+                        stored_fill == og::sim::kFillDefault
+                            ? resolved_fills[static_cast<std::size_t>(t)]
+                            : stored_fill));
         // The box is the Base Camp deploy-box grammar (B9): "X" = the
         // map's units are fielded, empty = stripped. The word form
         // (format_lineup_map_units_label) belongs to the terminals.

@@ -22,8 +22,10 @@
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
@@ -33,15 +35,19 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Picker entry points for the injector-driven flows.
@@ -51,6 +57,14 @@ extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 extern std::atomic_bool g_test_present_pause_requested;
 extern std::atomic_bool g_test_present_paused;
+// The launch observables (picker.cpp): the D4 outcome flows ride these to
+// tell the world GO adopted from the page that composed it.
+extern std::atomic<bool> g_test_in_game;
+extern std::atomic<int> g_test_game_epoch;
+extern std::atomic<int> g_test_game_frame_ticks;
+// One-shot main-thread window inside gameplay (picker.cpp): the only seam
+// where an injector can read the launched world with the sim between ticks.
+void picker_testing_observe_next_game_frame(std::function<void()> observer);
 
 namespace {
 
@@ -1471,6 +1485,168 @@ TEST(LineupUi, classic_view_level_censuses_the_staged_world)
 }
 
 // ---------------------------------------------------------------------------
+// D1 flow pin: the FILL wheel's full five-label cycle, on an UNAUTHORED band
+// and on an authored one. gladiator scen 1 carries both shapes at once —
+// TEAM 2 is the elves' twelve authored units, TEAM 3 ships nothing at all —
+// so one page proves both halves of the ruling.
+//
+// The pristine page reads each band's RESOLUTION (C8): FAIR where the map
+// authored something, NONE where it did not. The wheel then steps from the
+// slot of the word the player can SEE, which is why the first click on the
+// empty side is WEAK and not STRONG. Every stop after that renders its own
+// explicit word, so all five appear and none repeats. Before D1 the empty
+// band showed only four: its FAIR stop was stored code 0, re-resolved on the
+// way to the face, and painted a second, indistinguishable NONE — the
+// maintainer's report, and the reason label-only pins stopped counting.
+
+namespace {
+
+struct LineupWheelCycleState
+{
+    bool finished = false;
+    bool page_opened = false;
+    std::string unauthored_rest_label;
+    std::string authored_rest_label;
+    bool unauthored_walked = false;
+    bool authored_walked = false;
+    std::array<short, 5> unauthored_values = {-1, -1, -1, -1, -1};
+    std::array<short, 5> authored_values = {-1, -1, -1, -1, -1};
+    int captures = 0;
+};
+
+// The live label of a visible button, or "" when the page does not carry it.
+std::string interactable_label(const std::string& id)
+{
+    for (const Interactable& item : get_interactables()) {
+        if (item.id == id && !item.hidden)
+            return item.label;
+    }
+    return std::string();
+}
+
+int lineup_wheel_cycle_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<LineupWheelCycleState*>(data);
+    if (!injector_open_lineup()) {
+        state->finished = true;
+        return 0;
+    }
+    interact("lineup");
+    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    if (!state->page_opened) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(750);
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // The pristine faces: both bands still hold the stored DEFAULT, and each
+    // reads the word its own presence resolved to.
+    state->unauthored_rest_label = interactable_label("lineup_fill_2");
+    state->authored_rest_label = interactable_label("lineup_fill_1");
+    state->captures +=
+        capture_frame("lineup_wheel_unauthored_full_cycle_0_rest_none");
+    SDL_Delay(200);
+
+    // TEAM 3 (index 2), the band with nothing on it: five clicks, five
+    // words, filmed one frame per stop.
+    const std::array<const char*, 5> unauthored_faces = {
+        "FILL: WEAK", "FILL: FAIR", "FILL: STRONG", "FILL: BRUTAL",
+        "FILL: NONE"};
+    const std::array<const char*, 5> unauthored_shots = {
+        "lineup_wheel_unauthored_full_cycle_1_weak",
+        "lineup_wheel_unauthored_full_cycle_2_fair",
+        "lineup_wheel_unauthored_full_cycle_3_strong",
+        "lineup_wheel_unauthored_full_cycle_4_brutal",
+        "lineup_wheel_unauthored_full_cycle_5_none"};
+    state->unauthored_walked = true;
+    for (std::size_t step = 0; step < unauthored_faces.size(); ++step) {
+        if (!click_until_label("lineup_fill_2", unauthored_faces[step], 3,
+                               2000))
+        {
+            state->unauthored_walked = false;
+            break;
+        }
+        SDL_Delay(300);
+        state->unauthored_values[step] = save.fill[2];
+        state->captures += capture_frame(unauthored_shots[step]);
+        SDL_Delay(200);
+    }
+
+    // TEAM 2 (index 1), the elves' band: the same wheel entered two slots
+    // further along, because that is where its face reads.
+    const std::array<const char*, 5> authored_faces = {
+        "FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK",
+        "FILL: FAIR"};
+    state->authored_walked = true;
+    for (std::size_t step = 0; step < authored_faces.size(); ++step) {
+        if (!click_until_label("lineup_fill_1", authored_faces[step], 3,
+                               2000))
+        {
+            state->authored_walked = false;
+            break;
+        }
+        SDL_Delay(300);
+        state->authored_values[step] = save.fill[1];
+    }
+
+    interact("back");
+    SDL_Delay(300);
+    injector_unwind_from_scenario();
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, fill_wheel_full_cycle_on_authored_and_unauthored_bands)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_fighters("gladiator", 1, 1,
+                              {{"Alpha", 3, true, 0}, {"Beta", 2, true, 0}});
+
+    LineupWheelCycleState state;
+    SDL_Thread* thread = SDL_CreateThread(lineup_wheel_cycle_injector,
+                                          "lineup_wheel_cycle", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.finished);
+    EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
+    EXPECT_EQ("FILL: NONE", state.unauthored_rest_label)
+        << "a band with no presence resolves its stored default to NONE (C8)";
+    EXPECT_EQ("FILL: FAIR", state.authored_rest_label)
+        << "a band the map authored resolves its stored default to FAIR (C8)";
+    EXPECT_TRUE(state.unauthored_walked)
+        << "the empty band's wheel must read WEAK, FAIR, STRONG, BRUTAL, "
+           "NONE: five distinct words, and the FIRST click WEAK, not STRONG "
+           "(D1 -- the wheel steps from the slot of the word on the face)";
+    EXPECT_EQ(og::sim::kFillWeak, state.unauthored_values[0]);
+    EXPECT_EQ(og::sim::kFillFair, state.unauthored_values[1]);
+    EXPECT_EQ(og::sim::kFillStrong, state.unauthored_values[2]);
+    EXPECT_EQ(og::sim::kFillBrutal, state.unauthored_values[3]);
+    EXPECT_EQ(og::sim::kFillNone, state.unauthored_values[4]);
+    EXPECT_TRUE(state.authored_walked)
+        << "the authored band enters at FAIR: STRONG, BRUTAL, NONE, WEAK, "
+           "FAIR";
+    EXPECT_EQ(og::sim::kFillStrong, state.authored_values[0]);
+    EXPECT_EQ(og::sim::kFillBrutal, state.authored_values[1]);
+    EXPECT_EQ(og::sim::kFillNone, state.authored_values[2]);
+    EXPECT_EQ(og::sim::kFillWeak, state.authored_values[3]);
+    EXPECT_EQ(og::sim::kFillFair, state.authored_values[4]);
+    EXPECT_EQ(6, state.captures)
+        << "the pristine face and all five wheel stops should film";
+}
+
+// ---------------------------------------------------------------------------
 // Direct dispatch coverage (no injector): the knob callbacks' gate
 // branches and the SPLIT actions' EVEN / UNITE arms.
 
@@ -1989,3 +2165,527 @@ TEST(LineupUi, fill_cycle_never_rebuilds_the_live_buttons)
            "for the frame the click composes";
 }
 
+
+// ---------------------------------------------------------------------------
+// D4: the FILL knobs pinned at the OUTCOME, through the real UI path.
+//
+// Label-only pins no longer cover a FILL behaviour, so these flows drive the
+// page the maintainer drove — Base Camp, SCENARIO, LINEUP, BACK, GO — and
+// then count the walkers in the world the launch ADOPTED. gladiator scen 1 is
+// the reported failure's own level: TEAM 2 is twelve authored elves (D3's
+// troops-occupied team), TEAM 3 is bare ground (D2's unauthored team), and
+// the company is one level-50 hero, so the solver has a reference big enough
+// for the multiplier ladder to separate.
+//
+// Two launches inside one picker_main. The first carries FILL: BRUTAL beside
+// the elves and FILL: FAIR on the empty side. The second changes only the
+// elves' knob to WEAK and presses GO without reopening anything else, which
+// is the restage pin: a knob turned after a stage has already run must reach
+// the world the launch adopts, or the page is lying about the match.
+
+namespace {
+
+constexpr int kOutcomeStartTimeoutMs = 30000;
+constexpr int kOutcomeAbortTimeoutMs = 20000;
+
+// The solved squad is separable from the map's own elves by LEVEL alone:
+// gladiator scen 1 ships its twelve at L1/L2, and the D22 solver's answer
+// against a level-50 hero never lands under L5 (WEAK solves L5, BRUTAL
+// L6+2). Every assertion that uses the split also pins the member count at
+// five, so a mis-split fails loudly as a count rather than quietly as an
+// f-sum.
+constexpr int kSolvedSquadLevelFloor = 3;
+constexpr int kSolvedSquadSize = 5;
+constexpr int kGladiatorElfCount = 12;
+
+// The percentage band the solved f-sum may sit inside around its target. The
+// solver argmins over a DISCRETE set (level 1..9 x upgrades), so it cannot
+// hit an arbitrary target exactly; the measured ladder against a level-50
+// hero lands within ~6% at every stop, and this leaves that room doubled
+// rather than pinning a number the tuple tables own.
+constexpr long long kSolverTolerancePercent = 12;
+
+// f(w): the §4.1 power metric, the test's own oracle. Deliberately a
+// re-derivation of packs/core/lib/lineup.lua stat_power over measured_base
+// and NOT a call into the pack seam — a squad solved against a broken metric
+// must not be able to agree with itself. og.div truncates toward zero
+// (og_div, script_host.cpp) and every stat getter is a float the model
+// truncates at the boundary.
+long long walker_f(const walker& w)
+{
+    const statistics* const st = w.stats();
+    if (st == nullptr)
+        return 0;
+    const long long hp =
+        static_cast<long long>(std::trunc(st->max_hitpoints()));
+    const long long mp =
+        static_cast<long long>(std::trunc(st->max_magicpoints()));
+    const long long armor = static_cast<long long>(std::trunc(st->armor()));
+    const long long dmg = static_cast<long long>(std::trunc(w.damage()));
+    const long long sp = static_cast<long long>(std::trunc(w.stepsize()));
+    const long long ff = std::max<long long>(
+        1, static_cast<long long>(std::trunc(w.fire_frequency())));
+    const long long level = static_cast<long long>(st->level());
+    const long long ed = dmg * (level + 3) / 4;
+    const long long rate = 120 / ff;
+    const long long off = ed * rate + 5 * sp;
+    const long long ehp = hp + 4 * armor + mp / 2;
+    return ehp * (off + 60) / 60;
+}
+
+struct LaunchedTeamCensus
+{
+    int livings = 0;   // live Livings wearing this team's colour
+    int guys = 0;      // ... carrying a roster character (the company)
+    int bots = 0;      // ... carrying none (map troops and solved squads)
+    int squad = 0;     // ... bots the solver levelled (see the floor above)
+    long long guy_f = 0;
+    long long squad_f = 0;
+};
+
+struct LaunchedCensus
+{
+    bool captured = false;
+    std::array<LaunchedTeamCensus, 4> teams{};
+    long long reference = 0;  // the weakest human team's f-sum (B3)
+    int foes_of_hero = 0;
+    int frame_ticks = 0;
+};
+
+// Shared-owned so the armed observer and the injector's disarm can never
+// race over a dead stack frame (see go_and_census).
+struct CensusHandoff
+{
+    LaunchedCensus census;
+    std::atomic<bool> done{false};
+};
+
+// Walk the launched world on the GAME thread, between two ticks. The
+// presenter handshake the menu captures use has nothing to freeze here (the
+// game loop's redraw is compiled out under TESTING) and the main-thread task
+// queue only pumps under a menu, so the read rides
+// picker_testing_observe_next_game_frame instead: the sim is not mutating
+// oblist while this runs, which a poll from the injector thread could never
+// promise.
+void census_launched_world_here(LaunchedCensus& out)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    if (scr == nullptr)
+        return;
+    walker* hero = nullptr;
+    {
+        for (const auto& uptr : scr->world().oblist) {
+            walker* const w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living)
+            {
+                continue;
+            }
+            const int team = static_cast<int>(w->team_num());
+            if (team < 0 || team >= 4)
+                continue;
+            LaunchedTeamCensus& tc =
+                out.teams[static_cast<std::size_t>(team)];
+            ++tc.livings;
+            if (w->myguy != nullptr) {
+                ++tc.guys;
+                tc.guy_f += walker_f(*w);
+                if (hero == nullptr && team == 0)
+                    hero = w;
+            } else {
+                ++tc.bots;
+                if (w->stats() != nullptr &&
+                    w->stats()->level() >= kSolvedSquadLevelFloor)
+                {
+                    ++tc.squad;
+                    tc.squad_f += walker_f(*w);
+                }
+            }
+        }
+        for (const LaunchedTeamCensus& tc : out.teams) {
+            if (tc.guy_f > 0 && (out.reference == 0 ||
+                                 tc.guy_f < out.reference))
+            {
+                out.reference = tc.guy_f;
+            }
+        }
+        if (hero != nullptr)
+            out.foes_of_hero = scr->world().remaining_foes(hero);
+    }
+    out.captured = hero != nullptr;
+}
+
+// One Esc opens the PAUSED menu; the queued Quit outcome stands in for
+// clicking QUIT MISSION and confirming it (the fairy-death idiom).
+void quit_the_mission()
+{
+    if (!g_test_in_game.load(std::memory_order_acquire))
+        return;
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(og::ui::PauseMenuResult::Quit,
+                                             /*release_pause=*/false);
+    inject_key_press(SDLK_ESCAPE);
+    for (int waited = 0; waited < kOutcomeAbortTimeoutMs &&
+                         g_test_in_game.load(std::memory_order_acquire);
+         waited += 50)
+    {
+        SDL_Delay(50);
+    }
+    og::ui::pause_menu_testing_clear_queue();
+}
+
+// GO from the team menu, census the world it adopted at its opening tick,
+// then abort back out. The census rides the FIRST frame so the count is the
+// staged shape and not whatever the first exchange of blows left behind.
+bool go_and_census(LaunchedCensus& out)
+{
+    const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
+    interact("go");
+    for (int waited = 0; waited < kOutcomeStartTimeoutMs; waited += 25) {
+        if (g_test_game_epoch.load(std::memory_order_acquire) != epoch_before)
+            break;
+        SDL_Delay(25);
+    }
+    if (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before) {
+        fprintf(stderr, "  [lineup] GO never launched a level\n");
+        return false;
+    }
+    // The census must land on the world the launch ADOPTED, before the first
+    // blows: the observer fires on the very next completed frame, so the
+    // shape it counts is the staged one. The handoff is shared-owned, not a
+    // reference to this stack frame — a level that ends before its first
+    // frame leaves the lambda armed until the disarm below, and the two can
+    // race for the same instant.
+    auto handoff = std::make_shared<CensusHandoff>();
+    picker_testing_observe_next_game_frame([handoff] {
+        census_launched_world_here(handoff->census);
+        handoff->census.frame_ticks =
+            g_test_game_frame_ticks.load(std::memory_order_acquire);
+        handoff->done.store(true, std::memory_order_release);
+    });
+    for (int waited = 0; waited < kOutcomeStartTimeoutMs; waited += 5) {
+        if (handoff->done.load(std::memory_order_acquire))
+            break;
+        if (!g_test_in_game.load(std::memory_order_acquire))
+            break;
+        SDL_Delay(5);
+    }
+    picker_testing_observe_next_game_frame(nullptr);
+    if (handoff->done.load(std::memory_order_acquire))
+        out = handoff->census;
+    const bool ok = handoff->done.load(std::memory_order_acquire) &&
+                    out.captured;
+    fprintf(stderr,
+            "  [lineup] launched census at tick %d: t0 %d/%d t1 %d(+%d squad)"
+            " t2 %d(+%d squad) ref=%lld t1_squad_f=%lld t2_squad_f=%lld\n",
+            out.frame_ticks, out.teams[0].guys, out.teams[0].bots,
+            out.teams[1].livings, out.teams[1].squad, out.teams[2].livings,
+            out.teams[2].squad, out.reference, out.teams[1].squad_f,
+            out.teams[2].squad_f);
+    quit_the_mission();
+    return ok;
+}
+
+struct LineupOutcomeState
+{
+    bool finished = false;
+    bool page_opened = false;
+    bool elves_brutal = false;
+    bool empty_side_fair = false;
+    bool second_page_opened = false;
+    bool elves_weak = false;
+    bool restaged_after_knob = false;
+    bool brutal_launched = false;
+    bool weak_launched = false;
+    std::string green_line;
+    std::string blue_line;
+    int captures = 0;
+    LaunchedCensus brutal;
+    LaunchedCensus weak;
+};
+
+int lineup_outcome_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<LineupOutcomeState*>(data);
+    if (!injector_open_lineup()) {
+        state->finished = true;
+        return 0;
+    }
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // (a) FILL: BRUTAL beside the elves, MAP UNITS left ON — D3's shape.
+    interact("lineup");
+    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    if (!state->page_opened) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(750);
+    state->elves_brutal = click_through_labels(
+        "lineup_fill_1", {"FILL: STRONG", "FILL: BRUTAL"});
+    SDL_Delay(300);
+    interact("back");  // LINEUP -> SCENARIO
+    SDL_Delay(300);
+
+    if (wait_for_interactable("view_scenario", 10000)) {
+        SDL_Delay(750);
+        trace_clear();
+        interact("view_scenario");
+        if (wait_for_interactable_at("back", 10, 170, 10000)) {
+            (void)wait_for_trace("picker",
+                                 "view_scenario line   GREEN TEAM  ACTIVE",
+                                 10000);
+            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+            state->green_line =
+                first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
+            SDL_Delay(300);
+            state->captures +=
+                capture_frame("view_level_gladiator_brutal_beside_elves");
+            SDL_Delay(300);
+            interact("back");
+            SDL_Delay(300);
+            (void)wait_for_interactable("progress", 10000);
+            SDL_Delay(300);
+        }
+    }
+
+    // (b) FILL: FAIR on TEAM 3, the side the map authored nothing for. The
+    // band reads NONE at rest, so two clicks reach FAIR.
+    interact("lineup");
+    if (wait_for_interactable_at("back", 8, 176, 10000)) {
+        SDL_Delay(750);
+        state->empty_side_fair = click_through_labels(
+            "lineup_fill_2", {"FILL: WEAK", "FILL: FAIR"});
+        SDL_Delay(300);
+        interact("back");
+        SDL_Delay(300);
+    }
+    if (wait_for_interactable("view_scenario", 10000)) {
+        SDL_Delay(750);
+        trace_clear();
+        interact("view_scenario");
+        if (wait_for_interactable_at("back", 10, 170, 10000)) {
+            (void)wait_for_trace("picker",
+                                 "view_scenario line   BLUE TEAM  ACTIVE",
+                                 10000);
+            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+            state->blue_line =
+                first_picker_trace_line_containing("BLUE TEAM  ACTIVE");
+            SDL_Delay(300);
+            state->captures +=
+                capture_frame("view_level_unauthored_fair_squad");
+            SDL_Delay(300);
+            interact("back");
+            SDL_Delay(300);
+            (void)wait_for_interactable("progress", 10000);
+            SDL_Delay(300);
+        }
+    }
+
+    // SCENARIO -> team menu -> GO. The first launch.
+    interact("back");
+    SDL_Delay(300);
+    if (!wait_for_team_menu(15000)) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(500);
+    state->brutal_launched = go_and_census(state->brutal);
+    if (!wait_for_team_menu(20000)) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(500);
+
+    // (c) + (d) The restage pin: turn the elves' knob down to WEAK and press
+    // GO without reopening the viewer or anything else.
+    interact("scenario");
+    if (!wait_for_interactable("lineup", 15000)) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("lineup");
+    state->second_page_opened =
+        wait_for_interactable_at("back", 8, 176, 10000);
+    if (state->second_page_opened) {
+        SDL_Delay(750);
+        trace_clear();
+        state->elves_weak = click_through_labels(
+            "lineup_fill_1", {"FILL: NONE", "FILL: WEAK"});
+        SDL_Delay(300);
+        state->restaged_after_knob =
+            wait_for_trace("stage", "restaged gen=", 10000);
+        interact("back");  // LINEUP -> SCENARIO
+        SDL_Delay(300);
+    }
+    interact("back");      // SCENARIO -> team menu
+    SDL_Delay(300);
+    if (wait_for_team_menu(15000)) {
+        SDL_Delay(500);
+        state->weak_launched = go_and_census(state->weak);
+        (void)wait_for_team_menu(20000);
+        SDL_Delay(500);
+    }
+    fprintf(stderr, "  [lineup] final save.fill = {%d,%d,%d,%d}\n",
+            static_cast<int>(save.fill[0]), static_cast<int>(save.fill[1]),
+            static_cast<int>(save.fill[2]), static_cast<int>(save.fill[3]));
+
+    interact("back");  // team menu -> main menu
+    if (wait_for_interactable("begin_new_game", 10000)) {
+        SDL_Delay(750);
+        interact("quit");
+    }
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, explicit_fill_fields_a_solved_squad_in_the_launched_world)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // ONE deployed hero, level 50: the weakest (and only) human f-sum is his
+    // alone, so the multiplier's reference is unambiguous and every solved
+    // target is a plain fraction of one number.
+    write_save0_with_fighters("gladiator", 1, 1, {{"Hero", 50, true, 0}});
+    {
+        // The stat block is set, not inherited from the level-up ladder. The
+        // ladder scales every stat WITH the level, so a plain level-50
+        // upgrade puts f near seven million -- an order of magnitude past
+        // the solver's own L9 ceiling, where every multiplier clamps to the
+        // same answer and the ladder stops being observable at all. These
+        // are the measured numbers behind D3's anchor: a level-50 slot at
+        // 60/60/60/60 with armour 40 prices in the low hundred thousands,
+        // which is inside the reachable set at every wheel stop.
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        guy* const hero = save.team_list[0].get();
+        ASSERT_NE(nullptr, hero);
+        hero->strength = 60;
+        hero->dexterity = 60;
+        hero->constitution = 60;
+        hero->intelligence = 60;
+        hero->armor = 40;
+        ASSERT_TRUE(save.save("save0"));
+    }
+
+    LineupOutcomeState state;
+    SDL_Thread* thread = SDL_CreateThread(lineup_outcome_injector,
+                                          "lineup_outcome", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.page_opened) << "the LINEUP page should open";
+    EXPECT_TRUE(state.elves_brutal) << "FILL: BRUTAL on the elves' band";
+    EXPECT_TRUE(state.empty_side_fair)
+        << "FILL: FAIR on the band the map authored nothing for";
+    ASSERT_TRUE(state.brutal_launched)
+        << "GO should launch a world with the hero standing in it";
+
+    // (a) D3: a troops-occupied team solves like an empty one, so the squad
+    // stands BESIDE the twelve elves rather than trading places with them.
+    const LaunchedTeamCensus& elves = state.brutal.teams[1];
+    EXPECT_EQ(kGladiatorElfCount, elves.bots - elves.squad)
+        << "the map's own twelve are still fielded (MAP UNITS never moved)";
+    EXPECT_EQ(kSolvedSquadSize, elves.squad)
+        << "FILL: BRUTAL beside the troops fields a five-member squad (D3)";
+    EXPECT_EQ(kGladiatorElfCount + kSolvedSquadSize, elves.livings);
+    ASSERT_GT(state.brutal.reference, 0)
+        << "the level-50 hero is the human power reference (B3)";
+    {
+        // BRUTAL is x1.5 of the weakest human f-sum (D3's numeric anchor).
+        const long long target = state.brutal.reference * 3 / 2;
+        const long long slack = target * kSolverTolerancePercent / 100;
+        EXPECT_GE(elves.squad_f, target - slack)
+            << "solved f-sum " << elves.squad_f << " vs target " << target;
+        EXPECT_LE(elves.squad_f, target + slack)
+            << "solved f-sum " << elves.squad_f << " vs target " << target;
+    }
+
+    // (b) D2: an explicit fill on an unauthored team turns it ON, and the
+    // squad it fields is hostile — the hero's own foe count says so.
+    const LaunchedTeamCensus& empty_side = state.brutal.teams[2];
+    EXPECT_EQ(kSolvedSquadSize, empty_side.livings)
+        << "FILL: FAIR on bare ground fields a five-member squad (D2)";
+    EXPECT_EQ(kSolvedSquadSize, empty_side.squad);
+    EXPECT_EQ(0, empty_side.guys) << "nobody's company stands there";
+    EXPECT_EQ(state.brutal.teams[1].livings + state.brutal.teams[2].livings +
+                  state.brutal.teams[3].livings,
+              state.brutal.foes_of_hero)
+        << "every walker the two fills fielded counts against the hero: a "
+           "squad the remaining-foes count cannot see is not an opponent";
+
+    // The staged pane said the same thing before GO did — and the D3 row is
+    // the one that overruns the report's line budget. "  GREEN TEAM
+    // ACTIVE - MAP TROOPS+BOTS (12+5) BRUTAL" is past it, so the formatter
+    // spends the separator space first (B7's own rule) and then clips the
+    // word's tail, which B7 says must not happen. What survives is still
+    // BRUTAL's own letters and no other word's, and that is what this pins;
+    // the overflow belongs to the report formatter's budget, not to the
+    // knob, and is called out as a finding rather than silently widened
+    // here.
+    const std::size_t both_counts = state.green_line.find("(12+5)");
+    EXPECT_NE(std::string::npos, both_counts)
+        << "the census pane names both populations: '" << state.green_line
+        << "'";
+    if (both_counts != std::string::npos) {
+        const std::string word_tail =
+            state.green_line.substr(both_counts + 6);
+        EXPECT_FALSE(word_tail.empty())
+            << "the row must still carry its applied fill word (B7): '"
+            << state.green_line << "'";
+        EXPECT_TRUE(std::string_view("BRUTAL").starts_with(word_tail))
+            << "what the budget left of the fill word must be BRUTAL's own "
+               "letters: '"
+            << state.green_line << "'";
+    }
+    EXPECT_NE(std::string::npos, state.blue_line.find("(5)"))
+        << "the unauthored side's squad is censused too: '" << state.blue_line
+        << "'";
+    EXPECT_TRUE(state.blue_line.ends_with("FAIR"))
+        << "'" << state.blue_line << "'";
+
+    // (c) The restage pin: the knob turned after the first stage reaches the
+    // world the second GO adopts, with nothing else reopened in between.
+    EXPECT_TRUE(state.second_page_opened);
+    EXPECT_TRUE(state.elves_weak) << "the elves' band walks down to WEAK";
+    EXPECT_TRUE(state.restaged_after_knob)
+        << "turning a knob must dirty the stage key and restage";
+    ASSERT_TRUE(state.weak_launched)
+        << "the second GO should launch a world of its own";
+    const LaunchedTeamCensus& weak_elves = state.weak.teams[1];
+    EXPECT_EQ(kGladiatorElfCount, weak_elves.bots - weak_elves.squad);
+    EXPECT_EQ(kSolvedSquadSize, weak_elves.squad)
+        << "the WEAK knob still fields a squad -- and it is the knob the "
+           "page held at GO, not the BRUTAL one the first launch used";
+    {
+        const long long target = state.weak.reference * 3 / 4;
+        const long long slack = target * kSolverTolerancePercent / 100;
+        EXPECT_GE(weak_elves.squad_f, target - slack)
+            << "solved f-sum " << weak_elves.squad_f << " vs target "
+            << target;
+        EXPECT_LE(weak_elves.squad_f, target + slack)
+            << "solved f-sum " << weak_elves.squad_f << " vs target "
+            << target;
+    }
+
+    // (d) The ladder is ordered where the player can feel it: the same band,
+    // the same roster, two wheel stops apart.
+    EXPECT_LT(weak_elves.squad_f, elves.squad_f)
+        << "WEAK must field strictly less power than BRUTAL: " 
+        << weak_elves.squad_f << " vs " << elves.squad_f;
+    EXPECT_EQ(2, state.captures) << "both VIEW LEVEL captures should land";
+
+    restore_gladiator_mount();
+}
