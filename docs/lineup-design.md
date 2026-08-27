@@ -1121,3 +1121,19 @@ campaign, gladiator included, and the rulings the build settled:
   `POWER --` survives on TEAM 2-4 there for the right reason: those bands
   field nobody, so there is nothing to price — that is the empty-band
   reading, never the missing-metric one.
+
+## C8 (2026-08-27): the default FILL resolves to NONE on unauthored teams
+
+Maintainer ruling: "default to FILL: NONE for teams that lack any
+units (e.g. the two unauthored teams of gladiator scen 1)." The stored
+scale is unchanged (`0` = default); the DEFAULT now resolves per team
+at stage time: **FAIR where the team has any authored presence on the
+level (map units, generators, start markers or anchors) or any
+seat/fighter; NONE where it has none.** The band label, the terminal
+rows and the banked facts all render the resolved value (`FILL: NONE`
+on gladiator scen 1's empty sides), so the page never advertises a
+fill the placement rule would refuse anyway. An explicit wheel value
+is stored as itself, exactly as before; cycling writes explicit values
+and cannot return to the resolved default (knob precedent). Modes
+maps' empty *authored* teams keep the FAIR default — only teams the
+map does not author flip.
