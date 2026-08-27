@@ -326,6 +326,7 @@
 ---@field on_damage? fun(target: og.Walker, attacker: og.Walker?, amount: integer)
 ---@field on_entity_death? fun(ent: og.Walker, killer: og.Walker?, killer_team: integer)
 ---@field on_entity_spawn? fun(entity: og.Walker)
+---@field on_lineup_stage? fun(level: integer)
 ---@field on_load? fun(level: integer)
 ---@field on_mode_init? fun(level: integer)
 ---@field on_mode_tick? fun(level: integer, tick: integer)
@@ -742,7 +743,7 @@
 ---@field trunc fun(x: number): integer
 ---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning` map self's family declared, as a frozen read-only table — key access only; writes raise; no iteration is provided (and none is...
 ---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
----@field use fun(name: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
+---@field use fun(spec: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua, or og.use("<pack-id>:name") → the same module out of ANOTHER installed pack's lib/...
 ---@field weaplist fun(): og.Walker[] # og.weaplist() — the weapon entity list in list order.
 ---@field world_can_exit_whenever fun(): boolean
 ---@field world_tick fun(): integer # og.world_tick() — the absolute world tick counter (snapshotted, safe across a mid-level restore; og.level_tick is the per-level counter).

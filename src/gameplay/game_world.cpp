@@ -1899,6 +1899,28 @@ void GameWorld::tick()
         // the setting, not something this block decides for itself.
         if (level_tick_count_ == 1 && ctf_requested_strip_scenario_troops >= 1)
             og::sim::classic_strip_authored_troops(*this);
+        // The mode-less stage step (docs/lineup-design.md C2) — the LAZY arm,
+        // exactly mirroring mode_stage_init's: a world the stager assembled
+        // arrives with the claim latched and skips this, an un-staged world
+        // (solo play, a level entered without a MatchStage) runs the step
+        // here on its first tick, where the classic strip runs.
+        if (level_tick_count_ == 1 && !consume_staged_lineup_stage_claim())
+        {
+            const std::size_t entities_before = oblist.size();
+            if (run_lineup_stage_step() && oblist.size() > entities_before)
+            {
+                // The step FIELDED fighters, and this tick's foe scan (fused
+                // into the act loops above) has already run — so a level
+                // that looked finished must not complete before the squads
+                // it just gained are counted. Re-decide on the next tick,
+                // against the world the step built. The strip half needs no
+                // such note: it retires by marking dead, never by erasing,
+                // so it can only ever shrink oblist's live population and a
+                // stale scan may stand for one more tick exactly as it does
+                // for the classic strip above.
+                level_done = 0;
+            }
+        }
         // A foe merely awaiting a classic respawn (queued, or a corpse the
         // death scan below will queue) still counts as alive: "endless
         // battle" (respawn_mode 2) cannot be won by killing every live foe
@@ -2015,6 +2037,17 @@ void GameWorld::run_pending_level_on_load()
     // lobby world runs this before its first tick instead; the latch above
     // keeps the dispatch once-only either way.
     og::script::hooks::level_load(this);
+}
+
+bool GameWorld::run_lineup_stage_step()
+{
+    // C2: only when NO mode owns the level. A level has exactly one stage
+    // step — mode_stage_init's on_mode_init when a mode claimed it, this one
+    // when none did (a classic map, or a scripted map whose init refused and
+    // fell back to classic rules).
+    if (mode.active)
+        return false;
+    return og::script::hooks::level_lineup_stage(this);
 }
 
 // --- Floor-transition landing probe (Z-axis / multi-floor) ------------------

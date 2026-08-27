@@ -142,10 +142,10 @@ void reset_hook_failures();
 
 // Which level-hook kinds a level id has registered, as a bitmask over the
 // LevelHook enum's bit positions (Load 0, Tick 1, EntityDeath 2,
-// EntitySpawn 3, ModeInit 4, ModeTick 5, Damage 6, Respawn 7). Reads the
-// level's OWN registrations; the -1 "every level" wildcard is not folded
-// in. Diagnostic/test seam — no sim path reads it, so it cannot change
-// behavior. Answers 0 when no packs are loaded.
+// EntitySpawn 3, ModeInit 4, ModeTick 5, Damage 6, Respawn 7,
+// LineupStage 8). Reads the level's OWN registrations; the -1 "every level"
+// wildcard is not folded in. Diagnostic/test seam — no sim path reads it, so
+// it cannot change behavior. Answers 0 when no packs are loaded.
 std::uint32_t level_hook_kinds_for(int level_id);
 
 // Living-family hooks (FamilyDescriptor). Each returns the hook's result,
@@ -223,6 +223,26 @@ void level_mode_tick(GameWorld* world);
 // on_respawn(ent) — dispatched by the respawn engine after an in-place
 // scripted-mode revive; the hook repositions via anchors + probes.
 void level_respawn(GameWorld* world, walker* revived);
+
+// on_lineup_stage(level) — the MODE-LESS stage step (docs/lineup-design.md
+// C2). Peer of on_mode_init, and deliberately registered through the SAME
+// registrar (og.register_level_hooks, normally with the -1 "every level"
+// wildcard, which is how packs/core arms it for whole campaigns at once):
+// same per-VM table, same campaign-dispatch fence, same coverage labels,
+// same per-level override seam. A level has at most ONE stage step — the
+// mode's when a mode owns it, this one when none does — so the two belong
+// in one vocabulary rather than behind a second registrar of its own.
+//
+// Dispatched by GameWorld::run_lineup_stage_step from exactly the two
+// mode_stage_init sites: the stager (MatchStage) for a staged world, and
+// the classic arm of GameWorld::tick on the first tick of an un-staged one.
+// Returns true iff a hook was registered for this level (exact or wildcard)
+// and was CALLED — an error inside it is recorded by the host, and the
+// caller must still assume the world changed. Registers nothing, writes
+// nothing and draws no RNG when no pack registered the hook, so an
+// unmodded classic world is byte-identical with the seam in place (C3).
+bool level_lineup_stage(GameWorld* world);
+
 // Pre-damage gate: on_damage(target, attacker, amount) -> nil keep /
 // number replace / false cancel / true keep. Only the hook's first return
 // value is read; a number is clamped to [0, 32767] with the fraction

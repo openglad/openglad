@@ -356,6 +356,16 @@ void MatchStage::stage_now(std::uint64_t now_ms)
         if ((staged_world.type & GameWorld::TYPE_SCRIPTED) != 0)
             og::sim::mode_stage_init(staged_world);
 
+        // 8b. The MODE-LESS stage step (docs/lineup-design.md C2), for real,
+        //     on the same world: when nothing claimed the level in step 8 —
+        //     a classic map, or a scripted one whose init refused — the
+        //     lineup hook packs/core registers applies the per-team map-unit
+        //     strip and the FILL squads here, so a classic campaign's
+        //     preview IS its launch. No hook registered means no write and
+        //     no RNG draw, so an unmodded classic world stages exactly the
+        //     bytes it staged before this seam existed.
+        staged_world.run_lineup_stage_step();
+
         // 9. Serialize the broadcast pair (v13). An oversize keyframe fails
         //    the stage with a legible error — GO is denied through the start
         //    gate instead of a throw escaping the owner's poll loop.
@@ -489,6 +499,14 @@ bool adopt_staged_world(LevelRuntimeData& dst_level,
     // and dst IS that world's state — the first tick must not re-run it.
     // (Must run after the caller's reset_level_progress, which re-arms it.)
     dst.claim_level_load_latch();
+    // Same transfer for the mode-less stage step (C2): the stager ran it in
+    // step 8b on every world no mode owned, so dst's first tick must not run
+    // it a second time and spawn a second set of FILL squads. Claimed on
+    // exactly the worlds step 8b covered — a mode-owned world never reaches
+    // the classic arm that would consume the claim, and leaving one latched
+    // there would suppress the NEXT level's step.
+    if (!staged.mode.active)
+        dst.claim_staged_lineup_stage();
 
     // The staged save becomes the session save (team_list, cross_control,
     // replay arm, campaign_state — the launch inputs the wire equivalent

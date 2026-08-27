@@ -441,6 +441,34 @@ public:
         return last_level_id_ != id;
     }
 
+    // The MODE-LESS stage step (docs/lineup-design.md C2), the twin of
+    // og::sim::mode_stage_init for the levels no mode owns: dispatches the
+    // on_lineup_stage hook a pack registered (packs/core, wildcard level
+    // -1), which applies the per-team map-unit strip and the FILL squads.
+    // Returns true iff a hook actually ran. A mode-owned world already had
+    // its stage step and is skipped; with no hook registered the call
+    // writes nothing and draws no RNG, so a classic world is byte-identical
+    // either way.
+    bool run_lineup_stage_step();
+
+    // The stage->adoption handoff for that step, keyed on the level id: the
+    // stager ran the step on the staged world, and the adopted world IS
+    // that world's state, so its first tick must not run it again. Level-
+    // keyed rather than a bare flag so an unconsumed claim (an adopted
+    // level abandoned before its first tick) cannot suppress the NEXT
+    // level's step. Never serialized — mirrors do not tick, which is the
+    // same reason the on_load latch stays armed on them.
+    void claim_staged_lineup_stage() noexcept
+    {
+        staged_lineup_stage_level_ = id;
+    }
+    [[nodiscard]] bool consume_staged_lineup_stage_claim() noexcept
+    {
+        const bool claimed = (staged_lineup_stage_level_ == id);
+        staged_lineup_stage_level_ = -1;
+        return claimed;
+    }
+
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
 
@@ -563,6 +591,8 @@ private:
 
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
+    // The level id whose lineup stage step the stager already ran (-1 = none).
+    int staged_lineup_stage_level_ = -1;
     WeatherKind weather_ = WeatherKind::None;
     std::function<void()> detach_callback_;
     std::uint32_t next_entity_id_ = 1;

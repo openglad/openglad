@@ -840,3 +840,85 @@ keeps the one-implementation doctrine. Rulings C1–C7.
 | C5 | **POWER everywhere**: the `lineup.power` pricing registers from the core pack itself (default = `stat_power` over the engine-derived stats), so the band prices rosters on every campaign; a campaign hook may still override. `MAP RULES` and the classic dim retire — the knobs are live on every campaign, every client. |
 | C6 | **Gates**: new `packs/core` Lua enters the parity-canary pin discipline (append-only; run the pin check) and the Lua coverage denominator (every function exercised); the modes campaign's behaviour is byte-identical through the move (its staged matrices must not change). |
 | C7 | **No format changes**: the knobs already ride the save/wire; protocol 16 / GTL 18 / snapshot 12 / replay 18 unchanged. |
+
+## As built: the W6-B layer — the two engine seams (2026-08-27)
+
+C1's cross-pack `og.use` and C2's mode-less stage dispatch. The library
+itself still lives in `campaigns/modes/packs/modes.core/lib/` until W6-A
+moves it; this layer is the pair of holes it moves through, and both are
+inert until a pack uses them.
+
+- **Qualified `og.use("<pack-id>:<module>")`.** The pack-relative form was
+  the only one there was, so C1's escape hatch had to be built. Only the
+  RESOLUTION ROOT moves: the memo key is `"<pack>/<name>"` whichever form
+  asked for it, so `packs/core`'s own `og.use("mode_match")` and a campaign
+  pack's `og.use("core:mode_match")` compile the chunk once between them and
+  share one frozen export; the loader still swaps `current_pack` for the
+  duration of a module's load, so a module pulled in across the boundary
+  resolves ITS dependencies against ITS own pack, never the caller's. The
+  load-time-only gate is checked BEFORE the name is parsed, so a
+  dispatch-time qualified call gets the same bind-at-load-time instruction
+  as the bare form; cycles and the failure latch are the same status table.
+  A module name is a file stem, so the first `:` splits unambiguously and
+  `":m"` / `"p:"` / `"p:a:b"` are refused by name. Two distinct errors, on
+  purpose: `no installed pack 'x' with lib modules` (nothing answers to that
+  id) vs. the pack-relative `no module 'y' in pack 'x'` — sending an author
+  to a directory that does not exist is worse than not answering.
+  Unqualified resolution, and every unqualified error string, are unchanged.
+- **The stage step is a LEVEL HOOK, not a new registrar.**
+  `on_lineup_stage(level)` joins `kLevelHookNames` (`LevelHook::LineupStage`,
+  bit 8) and is registered through `og.register_level_hooks`, normally with
+  the `-1` wildcard — `packs/core` arms every level of every campaign in one
+  call. That shape was chosen over an `og.register_lineup_stage(fn)` binding
+  because a level has exactly ONE stage step: `on_mode_init` when a mode
+  claims the level, `on_lineup_stage` when none does. They are peers, so
+  they belong in one vocabulary — same per-VM table (`level_hooks_ref`, held
+  exactly like the mode hooks), same campaign-dispatch fence, same coverage
+  labels, same per-level override seam, same generated stub row, and no
+  second registrar to keep in step. `hooks::level_lineup_stage` reports "a
+  hook RAN", not "it succeeded": a hook that errored half way through still
+  fielded whatever it fielded, and the caller must assume the world changed.
+- **Exactly two call sites, mirroring `mode_stage_init`'s two.**
+  `GameWorld::run_lineup_stage_step()` is the one home for the rule (skip
+  when `mode.active` — a mode-owned level already had its step). The stager
+  calls it in `match_stage.cpp` step **8b**, immediately after step 8's
+  `mode_stage_init`, so it covers a classic map AND a scripted map whose
+  init refused and fell back to classic rules (R1's kept world is the
+  authored one, so the step is coherent on it). The lazy arm is in
+  `GameWorld::tick`'s classic `else` branch at `level_tick_count_ == 1`,
+  beside `classic_strip_authored_troops` — the un-staged worlds' path.
+- **The latch is the on_load latch's discipline, without a format change.**
+  `claim_staged_lineup_stage()` / `consume_staged_lineup_stage_claim()`,
+  keyed on the level id and never serialized: `adopt_staged_world` claims it
+  beside `claim_level_load_latch()` (only when `!staged.mode.active`, i.e.
+  only on the worlds step 8b covered — a claim left latched on a mode world
+  would never be consumed and would suppress the NEXT level's step), and the
+  adopted world's first tick consumes it instead of dispatching. Mirrors
+  never tick, so the flag stays inert on them exactly as the on_load latch
+  does (PR #195). Nothing new rides the wire: **protocol 16 / GTL 18 /
+  snapshot 12 / replay 18 unchanged** (C7).
+- **One behaviour ruling the tick arm forced.** The lazy arm runs AFTER this
+  tick's foe scan, which is fused into the act loops, so a step that FIELDS
+  fighters would let a kill-all map declare victory on the same tick the
+  enemy squad walked on. When the step ran *and `oblist` grew*, tick 1 sets
+  `level_done = 0` and the completion decision re-runs next tick against the
+  world the step built. Scoped to "grew" on purpose: the strip half retires
+  by marking dead, never by erasing, so it can only shrink the live
+  population and a stale scan may stand for one more tick there exactly as
+  it does for the classic strip. **A step that spawns nothing does not move
+  the completion tick**, which is what keeps every all-default classic level
+  (and every parity scenario) on its existing schedule once W6-A arms the
+  hook.
+- **C3, pinned.** With no hook registered the dispatch writes nothing and
+  draws no RNG — `level_vm_state` early-outs before any state is touched —
+  and `MatchStageTest.lineup_stage_no_op_hook_keeps_the_keyframe_identical`
+  byte-compares a staged classic keyframe with and without an empty
+  registered hook. `og_test_parity` is 257/257 untouched.
+- **What W6-A needs from this layer.** Register with
+  `og.register_level_hooks(-1, { on_lineup_stage = function(level) ... end })`
+  from a `packs/core` script; reach the shared lib from the modes campaign
+  with `og.use("core:<module>")`. Two things the hook must respect: it runs
+  on a world that may already be mid-stage (the strip/fill order is its own),
+  and `level_hook_kinds_for` reads a level's OWN registrations only, so the
+  `-1` wildcard does NOT move the shipped-registration matrix in
+  `test_modes_levels.cpp`.

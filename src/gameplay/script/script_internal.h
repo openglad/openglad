@@ -154,6 +154,8 @@ enum class LevelHook : int {
     ModeTick = 5,     // on_mode_tick(level, tick) — post-act, every tick
     Damage = 6,       // on_damage(target, attacker, amount) -> number|false|nil
     Respawn = 7,      // on_respawn(ent) — engine revive -> Lua placement
+    // The MODE-LESS stage step (docs/lineup-design.md C2), peer of ModeInit:
+    LineupStage = 8,  // on_lineup_stage(level) — once, when no mode owns it
 };
 
 VmState* get_vm_state(lua_State* L);

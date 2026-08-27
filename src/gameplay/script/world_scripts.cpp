@@ -398,13 +398,27 @@ void push_frozen_view_of_top(lua_State* L)
 namespace {
 
 const PackLibModule* find_lib_module(const std::string& pack_id,
-                                     const char* name)
+                                     const std::string& name)
 {
     for (const PackLibModule& m : pack_lib_modules()) {
         if (m.pack_id == pack_id && m.name == name)
             return &m;
     }
     return nullptr;
+}
+
+// Does any INSTALLED pack answer to this id with a lib/ directory? The
+// qualified og.use form needs to tell "that pack ships no such module" from
+// "there is no such pack", and a pack with no lib modules is indexed here
+// exactly like one that was never installed — so the two answers this can
+// give are the two the error messages distinguish.
+bool pack_ships_lib_modules(const std::string& pack_id)
+{
+    for (const PackLibModule& m : pack_lib_modules()) {
+        if (m.pack_id == pack_id)
+            return true;
+    }
+    return false;
 }
 
 // status_tbl[key] as a small enum. "loading" marks an in-flight load (a
@@ -509,13 +523,22 @@ bool load_pack_lib_module(ScriptHost::Impl& impl, VmState* st,
     return ok;
 }
 
-// og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
-// Pack-relative and load-time-only: outside pack load there is no pack to
+// og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua,
+// or og.use("<pack-id>:name") → the same module out of ANOTHER installed
+// pack's lib/, for the shared libraries a campaign pack consumes rather than
+// copies (docs/lineup-design.md C1: the match rules live in packs/core and
+// the modes campaign uses that one implementation).
+//
+// Both forms are load-time-only: outside pack load there is no pack to
 // resolve against (and a dispatch-time og.use would be hidden coupling the
-// reader cannot see — bind modules to locals at chunk load).
+// reader cannot see — bind modules to locals at chunk load). The qualified
+// form changes only WHERE the name resolves; the memo key is the same
+// "<pack>/<name>" either way, so a module two packs both use compiles once
+// and both see the same frozen export, and a cross-pack cycle is caught by
+// the same in-flight status the pack-relative form uses.
 int og_use(lua_State* L)
 {
-    const char* name = luaL_checkstring(L, 1);
+    const char* spec = luaL_checkstring(L, 1);
     VmState* st = get_vm_state(L);
     // host_impl, not owner: a lib module is pure by contract, so og.use is
     // one of the few entry points the declaration VM — which has a host but
@@ -525,13 +548,31 @@ int og_use(lua_State* L)
     if (st->current_pack.empty())
         return luaL_error(L, "og.use: only callable while a pack chunk "
                              "loads (bind modules to locals at load time)");
-    const std::string key = st->current_pack + "/" + name;
+    // A module name is a file stem, which never contains ':', so the first
+    // colon splits the two halves unambiguously and a second one is a typo,
+    // not a nested qualification.
+    std::string pack = st->current_pack;
+    std::string name = spec;
+    if (const char* colon = std::strchr(spec, ':'); colon != nullptr) {
+        pack.assign(spec, static_cast<std::size_t>(colon - spec));
+        name.assign(colon + 1);
+        if (pack.empty() || name.empty() ||
+            name.find(':') != std::string::npos)
+            return luaL_error(L, "og.use: malformed qualified name '%s' "
+                                 "(expected \"<pack-id>:<module>\")", spec);
+        if (!pack_ships_lib_modules(pack))
+            return luaL_error(L,
+                              "og.use: no installed pack '%s' with lib "
+                              "modules (expected packs/%s/lib/%s.lua)",
+                              pack.c_str(), pack.c_str(), name.c_str());
+    }
+    const std::string key = pack + "/" + name;
     switch (lib_status(L, st, key)) {
         case LibStatus::Loading:
             return luaL_error(L, "og.use: circular dependency on module "
-                                 "'%s'", name);
+                                 "'%s'", spec);
         case LibStatus::Failed:
-            return luaL_error(L, "og.use: module '%s' failed to load", name);
+            return luaL_error(L, "og.use: module '%s' failed to load", spec);
         case LibStatus::None:
             break;
     }
@@ -539,15 +580,15 @@ int og_use(lua_State* L)
         return 1;
     // Not loaded yet: a module (or script) may use a module the eager pass
     // has not reached — load it on demand, in the same deterministic way.
-    const PackLibModule* m = find_lib_module(st->current_pack, name);
+    const PackLibModule* m = find_lib_module(pack, name);
     if (m == nullptr)
         return luaL_error(L,
                           "og.use: no module '%s' in pack '%s' (expected "
                           "packs/%s/lib/%s.lua)",
-                          name, st->current_pack.c_str(),
-                          st->current_pack.c_str(), name);
+                          name.c_str(), pack.c_str(), pack.c_str(),
+                          name.c_str());
     if (!load_pack_lib_module(*st->host_impl, st, *m))
-        return luaL_error(L, "og.use: module '%s' failed to load", name);
+        return luaL_error(L, "og.use: module '%s' failed to load", spec);
     push_lib_export(L, st, key);
     return 1;
 }
@@ -1048,6 +1089,7 @@ constexpr LevelHookName kLevelHookNames[] = {
     {"on_mode_tick", LevelHook::ModeTick},
     {"on_damage", LevelHook::Damage},
     {"on_respawn", LevelHook::Respawn},
+    {"on_lineup_stage", LevelHook::LineupStage},
 };
 
 // og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=,
@@ -2531,6 +2573,27 @@ void level_respawn(GameWorld* world, walker* revived)
     push_walker_handle(impl.L, revived, gen);
     impl.protected_call("level:on_respawn", 1, 0);
     pop_dispatch_gen(impl.L, gen);
+}
+
+bool level_lineup_stage(GameWorld* world)
+{
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::LineupStage));
+    if (st == nullptr || world == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_level_hook_fn(L, st, LevelHook::LineupStage, world->id))
+        return false;
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_pushinteger(L, world->id);
+    // Reports "a hook RAN", not "it succeeded": the caller uses the answer to
+    // decide whether this world may still have gained fighters after the
+    // tick's foe scan, and a hook that errored half way through fielded
+    // whatever it fielded. The error itself is recorded by protected_call.
+    impl.protected_call("level:on_lineup_stage", 1, 0);
+    pop_dispatch_gen(L, gen);
+    return true;
 }
 
 short level_damage_gate(walker* target, walker* attacker, short amount)
