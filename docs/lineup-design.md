@@ -820,3 +820,23 @@ re-derives them from the code:
 - **The camp page needed nothing**: W5-B had already cut the TROOPS row
   and the `presets` key; the digest (`map` / `to 5`) and the `lineup =
   { power = ... }` hook stand as they left them.
+
+---
+
+# Amendment 3 (2026-08-27): the match machinery moves to the core pack; the knobs work everywhere
+
+Maintainer ruling: "move all this logic to either a core pack or to
+C++, wherever it'll be a cleaner fit." Placement ruling: **the shared
+`packs/core`** — C++ would re-home the rules in parity-pinned sim code
+and invite a twin; the core pack is installed for every campaign and
+keeps the one-implementation doctrine. Rulings C1–C7.
+
+| # | Ruling |
+|---|--------|
+| C1 | **The match lib moves** — `stat_power`, the census, the D22 solver, squad sizing/spawn, the per-team `map_units` strip and the `FILL` execution leave `campaigns/modes/packs/modes.core/lib/` for `packs/core/lib/` (layout per implementer, one lib family). `modes.core`'s decide folds consume the SAME lib via pack-qualified `og.use` — if `og.use` cannot yet resolve across installed packs, it learns a qualified form (`og.use("core:…")`); no copy of any rule stays behind. |
+| C2 | **A stage step for mode-less levels**: `MatchStage` (and the tick-side twin that serves un-staged worlds, the `mode_stage_init` precedent exactly) dispatches a `lineup` stage hook that `packs/core` registers, run only when NO mode owns the level. It applies the per-team strip and FILL squads on the staged world — preview == launch on classic campaigns for free. |
+| C3 | **All-default is a proven no-op on classic worlds**: with `fill = FAIR` and `map_units = on` everywhere, a level whose active teams all carry authored troops strips nothing, solves nothing, spawns nothing, **writes no mode var and draws no RNG**. Pinned by a staged-world byte-identity test; `og_test_parity` must stay 257/257 untouched (parity scenarios are all-default). |
+| C4 | **Classic levels never refuse.** The fewer-than-2-teams / fewer-than-2-fighters refusals are match-mode rules; a classic level with `FILL: NONE` on its enemy side simply fields fewer enemies, and the campaign's own win logic governs. Squads spawned on a classic level's team are ordinary walkers — remaining-foes counting, XP and drops unchanged. |
+| C5 | **POWER everywhere**: the `lineup.power` pricing registers from the core pack itself (default = `stat_power` over the engine-derived stats), so the band prices rosters on every campaign; a campaign hook may still override. `MAP RULES` and the classic dim retire — the knobs are live on every campaign, every client. |
+| C6 | **Gates**: new `packs/core` Lua enters the parity-canary pin discipline (append-only; run the pin check) and the Lua coverage denominator (every function exercised); the modes campaign's behaviour is byte-identical through the move (its staged matrices must not change). |
+| C7 | **No format changes**: the knobs already ride the save/wire; protocol 16 / GTL 18 / snapshot 12 / replay 18 unchanged. |
