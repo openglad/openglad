@@ -131,6 +131,13 @@ struct VmState {
     // carries `power` alone, which lives in the registry table (slot 4), so
     // this flag is the whole plain-data half of the registration.
     bool campaign_lineup_registered = false;
+    // og.register_default_lineup storage (docs/lineup-design.md C5): the
+    // DEFAULT `lineup.power`, held HERE and not in campaign_hooks_ref, so
+    // the shipped pack's pricing can neither poison the one-book-per-VM
+    // campaign registrar nor be poisoned by a campaign that registers
+    // twice. Last registration wins, the og.register_level_hooks wildcard
+    // precedent; -1 = nothing registered.
+    int default_lineup_power_ref = -1;   // registry ref to the power fn
     bool campaign_registered = false;
     std::string campaign_source;            // registering chunk (diagnostics)
     std::string campaign_conflict_source;   // second registrant; ""=no conflict

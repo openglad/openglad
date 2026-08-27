@@ -1399,6 +1399,83 @@ int og_register_campaign_hooks(lua_State* L)
     return 0;
 }
 
+// og.register_default_lineup({ power = fn }) — the DEFAULT lineup pricing
+// a shipped pack registers for every campaign that names none of its own
+// (docs/lineup-design.md C5), load-time only.
+//
+// Why a registrar of its own rather than a fifth key on the campaign book:
+// the book is one-campaign-one-book and a SECOND og.register_campaign_hooks
+// poisons the whole registration ("no scripted picker will be served"), so
+// a pack that registered its default through the book would kill the picker
+// of every campaign that ships one. The default lives in its own per-VM
+// slot instead, and the two can never reach each other.
+//
+// The TABLE it takes is the campaign book's `lineup` table, spelled
+// identically — a pack's default and a campaign's override differ only in
+// which registrar they hand it to. Duplicate registrations overwrite (the
+// og.register_level_hooks wildcard precedent, and the reason this can
+// never poison anything); a campaign's own `lineup.power` still wins over
+// whatever the default slot holds.
+int og_register_default_lineup(lua_State* L)
+{
+    VmState* st = get_vm_state(L);
+    // The campaign fence first, before any argument check: a campaign hook
+    // may not rewrite hook tables, this one included.
+    if (st != nullptr && st->campaign_dispatch)
+        return luaL_error(L, "og.register_default_lineup: hook registration "
+                             "is not available during campaign hooks");
+    luaL_checktype(L, 1, LUA_TTABLE);
+    // Absolute index 1 below — a stray second argument cannot shadow it.
+    lua_settop(L, 1);
+
+    // The typo pass runs BEFORE the declaration bow-out, the
+    // og.register_campaign_hooks discipline: the pass that can still
+    // reject the pack is the one that should catch the misspelling.
+    {
+        static const char* const kLineupKeys[] = {"power"};
+        lua_pushnil(L);
+        while (lua_next(L, 1) != 0) {
+            lua_pop(L, 1);  // value; the key stays for the next iteration
+            if (lua_type(L, -1) != LUA_TSTRING)
+                return luaL_error(
+                    L, "og.register_default_lineup: the one key is 'power' "
+                       "(got a %s key)",
+                    luaL_typename(L, -1));
+            const std::string key = lua_tostring(L, -1);
+            bool known = false;
+            for (const char* n : kLineupKeys)
+                known = known || key == n;
+            if (!known) {
+                const std::vector<const char*> names(std::begin(kLineupKeys),
+                                                     std::end(kLineupKeys));
+                const std::string hint = did_you_mean(key, names);
+                return luaL_error(
+                    L, "og.register_default_lineup: unknown key '%s'%s",
+                    key.c_str(), hint.c_str());
+            }
+        }
+    }
+    lua_getfield(L, 1, "power");
+    if (lua_isnil(L, -1))
+        return luaL_error(L, "og.register_default_lineup: carries no "
+                             "'power'");
+    if (!lua_isfunction(L, -1))
+        return luaL_error(L, "og.register_default_lineup: 'power' must be "
+                             "a function");
+
+    // Declaration pass: silent no-op, the og.register_hooks precedent.
+    if (st != nullptr && st->mode == VmMode::Declare)
+        return 0;
+    if (st == nullptr || st->owner == nullptr)
+        return luaL_error(L, "og.register_default_lineup: no world scripts");
+
+    if (coverage::enabled())
+        coverage_declare_hook(L, "campaign/default_lineup_power");
+    luaL_unref(L, LUA_REGISTRYINDEX, st->default_lineup_power_ref);
+    st->default_lineup_power_ref = luaL_ref(L, LUA_REGISTRYINDEX);  // pops
+    return 0;
+}
+
 // og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets
 // scripts compare walker:family() against named families).
 int og_family_id(lua_State* L)
@@ -1562,6 +1639,8 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
     lua_setfield(L, -2, "register_level_hooks");
     lua_pushcfunction(L, og_register_campaign_hooks);
     lua_setfield(L, -2, "register_campaign_hooks");
+    lua_pushcfunction(L, og_register_default_lineup);
+    lua_setfield(L, -2, "register_default_lineup");
     lua_pushcfunction(L, og_set_entity_hooks);
     lua_setfield(L, -2, "set_entity_hooks");
     lua_pushcfunction(L, og_rand);
@@ -2714,6 +2793,24 @@ VmState* campaign_vm_state()
     return st;
 }
 
+// The VM whose DEFAULT lineup slot answers when the active book carries no
+// `lineup.power` (docs/lineup-design.md C5). Deliberately NOT
+// campaign_vm_state: the default belongs to a shipped pack, not to a
+// campaign, so it answers with no book registered at all — and with a
+// CONFLICTED one, which is the half that makes the default un-poisonable.
+// Null when no packs are installed or nothing registered a default.
+VmState* default_lineup_vm_state()
+{
+    if (pack_scripts().empty())
+        return nullptr;
+    WorldScripts& ws = active_world_scripts();
+    VmState* st = get_vm_state(ws.host().impl().L);
+    if (st == nullptr || st->owner == nullptr ||
+        st->default_lineup_power_ref < 0)
+        return nullptr;
+    return st;
+}
+
 // Pushes the registered hook fn for `slot`, or returns false, stack clean.
 bool push_campaign_hook_fn(lua_State* L, VmState* st, lua_Integer slot)
 {
@@ -3490,18 +3587,40 @@ bool campaign_picker_action(const std::string& entry_id,
 bool campaign_lineup_registered()
 {
     const VmState* st = campaign_vm_state();
-    return st != nullptr && st->campaign_lineup_registered;
+    if (st != nullptr && st->campaign_lineup_registered)
+        return true;
+    // C5: no book lineup — the shipped pack's default prices the bands.
+    return default_lineup_vm_state() != nullptr;
 }
 
 bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
 {
+    // The book first, the shipped default second (C5). A campaign that
+    // registers `lineup.power` overrides the default; a campaign with no
+    // lineup table — and a campaign whose book is conflicted, which is no
+    // book at all — falls through to it.
     VmState* st = campaign_vm_state();
-    if (st == nullptr)
-        return false;
+    const char* who = "campaign";
+    bool pushed = false;
+    if (st != nullptr) {
+        lua_State* book_L = st->owner->host().impl().L;
+        pushed = push_campaign_hook_fn(book_L, st, kCampaignLineupPowerSlot);
+    }
+    if (!pushed) {
+        st = default_lineup_vm_state();
+        if (st == nullptr)
+            return false;
+        lua_State* default_L = st->owner->host().impl().L;
+        lua_rawgeti(default_L, LUA_REGISTRYINDEX,
+                    st->default_lineup_power_ref);
+        if (!lua_isfunction(default_L, -1)) {
+            lua_pop(default_L, 1);
+            return false;
+        }
+        who = "default";
+    }
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    if (!push_campaign_hook_fn(L, st, kCampaignLineupPowerSlot))
-        return false;
     CampaignDispatchScope scope(*st, impl);
     if (!scope.armed()) {
         lua_pop(L, 1);
@@ -3528,7 +3647,10 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
     set_int("stepsize", row.stepsize);
     set_int("fire_frequency", row.fire_frequency);
     bool ok = false;
-    if (impl.protected_call("campaign:lineup_power", 1, 1)) {
+    // "campaign:lineup_power" / "default:lineup_power" — an author reading
+    // the error log has to be told WHICH pricer refused.
+    const std::string label = std::string(who) + ":lineup_power";
+    if (impl.protected_call(label.c_str(), 1, 1)) {
         // A number the engine can hold, or nothing: a price it cannot read
         // is no price at all, and the band shows `--` rather than an
         // invented figure. lua_isnumber would accept the STRING "42"; a
@@ -3538,7 +3660,7 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
         // infinity is undefined and used to render INT64_MIN on the band.
         std::string refusal;
         if (lua_type(L, -1) != LUA_TNUMBER) {
-            refusal = std::string("campaign lineup.power returned a ") +
+            refusal = std::string(who) + " lineup.power returned a " +
                       luaL_typename(L, -1) + ", not a number";
         } else if (lua_isinteger(L, -1)) {
             out = static_cast<long long>(lua_tointeger(L, -1));
@@ -3554,14 +3676,13 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
                 ok = true;
             } else {
                 refusal = std::format(
-                    "campaign lineup.power returned {}, not a finite "
-                    "integer",
-                    value);
+                    "{} lineup.power returned {}, not a finite integer",
+                    who, value);
             }
         }
         if (!ok) {
             LogError("class pack: {}\n", refusal);
-            impl.record_error("campaign:lineup_power", refusal.c_str());
+            impl.record_error(label.c_str(), refusal.c_str());
         }
         lua_pop(L, 1);
     }

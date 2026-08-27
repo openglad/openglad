@@ -2021,11 +2021,18 @@ namespace {
 class ScopedSyntheticCampaignPicker
 {
 public:
-    explicit ScopedSyntheticCampaignPicker(const std::string& source)
+    // `replace_all` drops the installed packs for the lifetime of the guard
+    // instead of registering on top of them — the only way to reach a VM
+    // where NOTHING is registered now that packs/core ships a default
+    // lineup pricing (docs/lineup-design.md C5).
+    explicit ScopedSyntheticCampaignPicker(const std::string& source,
+                                           bool replace_all = false)
         : previous_game_(current_game)
         , scripts_(og::script::pack_scripts())
     {
         current_game = nullptr;  // dispatch resolves the shared UI VM
+        if (replace_all)
+            og::script::clear_pack_scripts();
         og::script::register_pack_script(
             {"test.textcamp", "textcamp/scripts/c.lua", source});
     }
@@ -2463,6 +2470,12 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
 {
     using og::ui::TerminalLineupItem;
 
+    // The classic half needs a real mount: since C5 the POWER cell is priced
+    // by packs/core's default, so what is installed decides what the header
+    // line says.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
     SaveData save;
     save.reset();
     save.my_team = 0;
@@ -2547,29 +2560,37 @@ TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
         og::ui::build_terminal_lineup_model(inputs);
     EXPECT_EQ(host.items[0].label, versus.items[0].label);
     EXPECT_EQ(host.items[1].label, versus.items[1].label);
-    // The knob/census line is identical word for word. The HEADER line is not,
-    // and honestly so: `modes` registers a `lineup.power` book, gladiator does
-    // not yet, and POWER is priced by whoever registered one — the one
-    // remaining campaign-shaped difference on this page, and the one C5's
-    // packs/core registration closes.
-    for (std::size_t i = 1; i < host.lines.size(); i += 2)
-        EXPECT_EQ(host.lines[i], versus.lines[i]) << "band " << (i / 2);
+    // EVERY line is identical word for word now, header included: the modes
+    // book prices with the core lib's stat_power and gladiator prices with
+    // packs/core's default, which IS that same function — so the last
+    // campaign-shaped difference on this page closed with C5's engine half.
+    EXPECT_EQ(host.lines, versus.lines);
     EXPECT_TRUE(versus.bands[0].power.has_value())
         << "a registered pricing book puts a number on the band: "
         << versus.lines[0];
+    EXPECT_TRUE(host.bands[0].power.has_value())
+        << "...and so does the shipped default, on a classic campaign: "
+        << host.lines[0];
+    EXPECT_EQ(host.bands[0].power, versus.bands[0].power)
+        << "one metric, one currency (C5)";
     (void)unmount_campaign_package_with_error("modes");
     (void)mount_campaign_package_with_error("gladiator");
 }
 
-// C5: POWER is priced by a registered `lineup.power` hook, and the terminal
-// band asks for it on EVERY campaign — there was never a versus gate in the
-// pricing path, and after C5 there is none anywhere on the page. With a hook
-// present a classic save's band carries a number; without one it honestly
-// carries `--`. (Amendment 3 registers the default pricing from packs/core so
-// gladiator itself answers; that registration is the Lua wave's, and this is
-// the terminal half of the contract it satisfies.)
+// C5: POWER is priced by a registered `lineup.power`, and the terminal band
+// asks for it on EVERY campaign — there was never a versus gate in the
+// pricing path, and after C5 there is none anywhere on the page. Three arms,
+// which are the three answers the seam can give a classic save: the SHIPPED
+// DEFAULT (packs/core's own registration, so gladiator prices itself now), a
+// campaign book that OVERRIDES it, and — reachable only with the packs
+// dropped — nothing at all, which honestly carries `--`.
 TEST(PlatformHeadless, lineup_terminal_band_prices_a_classic_campaign)
 {
+    // The default lives in packs/core, so this test needs a real mount
+    // rather than whatever the previous test left installed.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
     SaveData save;
     save.reset();
     save.my_team = 0;
@@ -2587,19 +2608,40 @@ TEST(PlatformHeadless, lineup_terminal_band_prices_a_classic_campaign)
     inputs.save = &save;
     inputs.players = seats;
 
-    // No hook: the band says so rather than inventing a price.
+    // The shipped default alone — no campaign book anywhere: gladiator's
+    // band carries a number, which is the whole of C5. The PRICE is the core
+    // lib's stat_power over this fighter's derived stats and moves with the
+    // family's balance, so what is pinned is that a number is there at all.
     {
         ScopedSyntheticCampaignPicker zone(
             R"LUA(og.log("a campaign with no lineup"))LUA");
         og::ui::lineup_power_cache_clear();
+        const og::ui::TerminalLineupModel defaulted =
+            og::ui::build_terminal_lineup_model(inputs);
+        ASSERT_TRUE(defaulted.bands[0].power.has_value())
+            << "packs/core prices a classic campaign: " << defaulted.lines[0];
+        EXPECT_GT(*defaulted.bands[0].power, 0);
+        EXPECT_EQ(std::string::npos, defaulted.lines[0].find("POWER --"))
+            << defaulted.lines[0];
+    }
+
+    // Nothing registered anywhere — the packs dropped, not merely book-less.
+    // This is the only shape that still reads `--`, and it is the shape a
+    // pack-less install has.
+    {
+        ScopedSyntheticCampaignPicker zone(
+            R"LUA(og.log("a campaign with no lineup"))LUA", true);
+        og::ui::lineup_power_cache_clear();
         const og::ui::TerminalLineupModel unpriced =
             og::ui::build_terminal_lineup_model(inputs);
+        EXPECT_FALSE(unpriced.bands[0].power.has_value())
+            << "no pricing anywhere invents none: " << unpriced.lines[0];
         EXPECT_NE(std::string::npos, unpriced.lines[0].find("POWER --"))
             << unpriced.lines[0];
     }
 
-    // A hook: the same classic band carries the number, summed over the
-    // team's deployed fighters.
+    // A book: it OVERRIDES the shipped default, and the same classic band
+    // carries the book's number, summed over the team's deployed fighters.
     {
         ScopedSyntheticCampaignPicker zone(R"LUA(
 og.register_campaign_hooks({
@@ -2711,9 +2753,18 @@ TEST(PlatformHeadless, terminal_seat_picture_matches_the_sdl_derivation)
     const og::ui::TerminalLineupModel model =
         og::ui::build_terminal_lineup_model(inputs);
     ASSERT_EQ(8u, model.lines.size());
-    EXPECT_EQ("TEAM 1 RED  POWER --   P1 ONE", model.lines[0]);
-    EXPECT_EQ("TEAM 2 GREEN  POWER --   P2 ONE", model.lines[2])
-        << "the padded seat must not read NO SEAT";
+    // The POWER cell is whatever pricing is installed — since C5 packs/core
+    // ships a default, so a classic company is priced and the figure moves
+    // with the mounted campaign. This test is about the SEAT picture, so it
+    // pins the halves that FRAME the cell: the colour ahead of it and the
+    // seat run behind it (NO SEAT would replace the latter).
+    EXPECT_TRUE(model.lines[0].starts_with("TEAM 1 RED  POWER "))
+        << model.lines[0];
+    EXPECT_TRUE(model.lines[0].ends_with("   P1 ONE")) << model.lines[0];
+    EXPECT_TRUE(model.lines[2].starts_with("TEAM 2 GREEN  POWER "))
+        << model.lines[2];
+    EXPECT_TRUE(model.lines[2].ends_with("   P2 ONE"))
+        << "the padded seat must not read NO SEAT: " << model.lines[2];
 
     // ...and the SPLIT plans over the same pair, not over one team. These are
     // the exact moves LineupUi.split_even_and_unite_direct pins on the SDL

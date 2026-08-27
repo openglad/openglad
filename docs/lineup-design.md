@@ -994,7 +994,8 @@ so nobody re-derives them:
   - The strip retires by `set_dead(1)`, never by erasing — the lazy arm's
     oblist-growth completion guard depends on it, and the comment now
     stands on `retire` itself (W6-B's open note, closed).
-- **C5's engine half is BLOCKED on a missing seam, recorded honestly.**
+- **C5's engine half was BLOCKED on a missing seam, recorded honestly**
+  (closed by W6-D below).
   The campaign-book registrar is one-book-first-wins and a second
   `og.register_campaign_hooks` poisons the whole book ("no scripted picker
   will be served"), so packs/core cannot register the default
@@ -1068,3 +1069,55 @@ arm now renders the fills census. The rulings the build settled:
   `tests/curses/test_curses_picker_client.cpp` and
   `scripts/test_text_picker_interactive.sh` — one wave owns the terminal
   surfaces, so the SDL wave did not half-edit them.
+
+## As built: the W6-D layer — the default-lineup seam closes C5 (2026-08-27)
+
+The gap W6-A named. `packs/core` now prices the LINEUP bands on every
+campaign, gladiator included, and the rulings the build settled:
+
+- **A registrar of its own, not a fifth campaign-book key.**
+  `og.register_default_lineup({ power = fn })`, load-time only, held in a
+  per-VM slot (`VmState::default_lineup_power_ref`) that is NOT the
+  campaign book's registry table. The shape was forced by the blocker
+  itself: `og.register_campaign_hooks` is one-campaign-one-book and a
+  second call poisons the whole registration, so a default riding that
+  registrar would have killed the picker of every campaign that ships a
+  book. The two halves cannot reach each other in either direction — a
+  campaign that registers twice keeps its bands priced (the conflict
+  nulls `campaign_vm_state`, and the default slot is read through
+  `default_lineup_vm_state`, which asks for no book at all), and a pack
+  that registers a default twice raises nothing and conflicts nothing
+  (last registration wins, the `og.register_level_hooks` wildcard
+  precedent).
+- **The TABLE is the campaign book's `lineup` table, spelled identically.**
+  A pack's default and a campaign's override differ only in which
+  registrar they are handed to — same `{ power = fn }`, same
+  `og.CampaignLineup` stub class, same `LineupPowerRow` input, same
+  fence, same "a price the engine cannot read is no price" refusals. The
+  one-key typo pass runs before the declaration bow-out, the
+  `og.register_campaign_hooks` discipline.
+- **Two query fallbacks, and the book still wins.**
+  `campaign_lineup_registered` answers true for a book `lineup` OR a
+  registered default; `campaign_fighter_power` pushes the book's
+  `lineup.power` first and falls through to the default slot when the
+  book registered none (or is conflicted, or is absent). Errors on either
+  side answer false — the band shows `--` — and the recorded refusal now
+  names which pricer refused (`campaign:lineup_power` vs
+  `default:lineup_power`), because an author reading the log has to be
+  told.
+- **`packs/core/scripts/lineup_power.lua`** is the whole pack half: one
+  `og.use("lineup")` and `stat_power` over the engine-derived row. A NEW
+  file, which is what keeps the parity canary's line+text pins intact
+  (`og_test_parity` 257/257 untouched; the registration draws no RNG and
+  writes no state).
+- **The modes campaign's numbers did not move.** Its book registers the
+  same core `stat_power`, so the pinned row (SOLDIER Lv 2, 100/20/4/10/3/6)
+  still prices 661 — `ModesBookTest.lineup_hook_registers_and_prices_with_stat_power`
+  unchanged, and `LineupUi.modes_power_pin_survives_the_shipped_default`
+  asserts that number on BOTH mounts: one metric, one currency.
+- **What the band shows now.** `LineupUi.classic_campaign_knobs_are_live`
+  asserts a NUMERIC `POWER` on gladiator's deployed company (was `--`),
+  and the regenerated `lineup_gladiator_live_knobs` capture shows it.
+  `POWER --` survives on TEAM 2-4 there for the right reason: those bands
+  field nobody, so there is nothing to price — that is the empty-band
+  reading, never the missing-metric one.

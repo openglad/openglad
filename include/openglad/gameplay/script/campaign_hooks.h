@@ -320,6 +320,19 @@ std::vector<std::string> og_function_names();
 // preset wheel with the five-value FILL wheel: the squad is the mode's own
 // stock BOT_SQUAD now, so there is nothing left for a campaign to name and
 // the registrar refuses no name — it simply has no `presets` key.
+//
+// A SHIPPED PACK registers the DEFAULT pricing through a registrar of its
+// own (amendment C5), spelling the same table:
+//
+//   og.register_default_lineup({ power = function(row) ... end })
+//
+// packs/core does exactly that, so the bands price rosters on every
+// campaign — gladiator included — instead of showing `POWER --` wherever
+// no book registered a lineup. It could not ride og.register_campaign_hooks
+// because that registrar is one-campaign-one-book and a second call poisons
+// the whole book, so the default is held in a slot of its own: a campaign
+// can neither poison it nor be poisoned by it. A campaign's own
+// `lineup.power` still WINS — the default only fills the gap.
 
 // One fighter, priced. The values are the ENGINE's own derived stats
 // (og::ui::compute_derived_stats — the same guy-bonus + family-base
@@ -336,13 +349,17 @@ struct LineupPowerRow {
     int fire_frequency = 0;  // busy ticks after an attack; lower is faster
 };
 
-// True when the active registration carries a `lineup` table. Same
-// conflict/scriptless rules as campaign_picker_registered.
+// True when the active registration carries a `lineup` table, OR when a
+// shipped pack registered a DEFAULT lineup (C5) — either way the bands can
+// price a fighter. Same conflict/scriptless rules as
+// campaign_picker_registered for the book half; the default half survives a
+// conflicted book, since it is no campaign's.
 bool campaign_lineup_registered();
 
-// Dispatches lineup.power(row) under the campaign fence. False — the band
-// shows `--` — when no power function is registered, the hook errors, or
-// it answers anything but a number.
+// Dispatches lineup.power(row) under the campaign fence — the campaign
+// book's when it registered one, otherwise the shipped default's (C5).
+// False — the band shows `--` — when neither is registered, the hook
+// errors, or it answers anything but a number.
 bool campaign_fighter_power(const LineupPowerRow& row, long long& out);
 
 }  // namespace og::script::hooks

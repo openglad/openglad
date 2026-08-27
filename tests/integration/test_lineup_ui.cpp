@@ -1188,12 +1188,64 @@ TEST(LineupUi, classic_campaign_knobs_are_live)
         << "the classic click writes the save knob";
     EXPECT_EQ(1, state.captures);
 
-    // C5's POWER half — a number on gladiator's bands — is BLOCKED on the
-    // engine's default-lineup seam (the campaign-book registrar is
-    // one-book-first-wins, so packs/core cannot register the default
-    // lineup.power; docs/lineup-design.md, "As built: W6-A", C5 bullet).
-    // When that seam lands, assert here: campaign_lineup_registered() on
-    // gladiator, and lineup_power_for_guy(soldier Lv 3) > 0.
+    // C5's POWER half, CLOSED (docs/lineup-design.md, "As built: W6-D"):
+    // packs/core registers the default `lineup.power` through
+    // og.register_default_lineup — its own per-VM slot, because the
+    // campaign-book registrar is one-book-first-wins and a second call
+    // poisons the book — so gladiator's bands price the deployed company
+    // with the core lib's stat_power instead of reading `POWER --`.
+    EXPECT_TRUE(og::script::hooks::campaign_lineup_registered())
+        << "the shipped default prices a classic campaign's bands (C5)";
+    og::ui::lineup_power_cache_clear();
+    const LineupSeatView seats = picker_lineup_seat_view();
+    const std::array<og::ui::LineupTeamBand, 4> bands =
+        og::ui::build_lineup_bands(save, seats.players, seats.local_indices,
+                                   picker_lobby_session_established(),
+                                   &og::ui::lineup_power_for_guy);
+    ASSERT_TRUE(bands[0].power.has_value())
+        << "the deployed company's band reads a NUMBER, not POWER --";
+    EXPECT_GT(*bands[0].power, 0);
+    EXPECT_NE("POWER --", og::ui::format_lineup_power(bands[0].power));
+    og::ui::lineup_power_cache_clear();
+}
+
+// C5, the other half of the same ruling: the default is the core lib's own
+// stat_power, which is exactly what the modes book already registers — so
+// the modes campaign's POWER numbers do NOT move when the default lands.
+// The row and its answer are the pin test_modes_book carries
+// (ED = (10 * (2 + 3)) / 4 = 12; RATE = 120 / 6 = 20; OFF = 12 * 20 + 15 =
+// 255; EHP = 100 + 16 + 10 = 126; f = 126 * 315 / 60 = 661), asserted here
+// on BOTH mounts: the book's answer and the default's are one number.
+TEST(LineupUi, modes_power_pin_survives_the_shipped_default)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+
+    og::script::hooks::LineupPowerRow row;
+    row.family = "SOLDIER";
+    row.level = 2;
+    row.hp = 100;
+    row.mp = 20;
+    row.armor = 4;
+    row.damage = 10;
+    row.stepsize = 3;
+    row.fire_frequency = 6;
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("modes");
+    ASSERT_TRUE(og::script::hooks::campaign_lineup_registered());
+    long long modes_power = 0;
+    ASSERT_TRUE(og::script::hooks::campaign_fighter_power(row, modes_power));
+    EXPECT_EQ(661, modes_power)
+        << "the modes book still prices with core stat_power";
+
+    restore_gladiator_mount();
+    ASSERT_TRUE(og::script::hooks::campaign_lineup_registered())
+        << "gladiator prices through the shipped default (C5)";
+    long long classic_power = 0;
+    ASSERT_TRUE(og::script::hooks::campaign_fighter_power(row, classic_power));
+    EXPECT_EQ(661, classic_power)
+        << "one metric, one currency: the default IS the modes' pricing";
 }
 
 // ---------------------------------------------------------------------------
