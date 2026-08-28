@@ -4,10 +4,18 @@
 # (docs/ffa-design.md §12 integration paragraph). Verifies:
 #   1. The client reaches the playing state (status: ready) on scen850
 #   2. All 300 ticks complete with the match still undecided
-#   3. The mode block reports the FFA match live: MODE_ID var 7, the
-#      8-slot assignment bitmap, and at least two live fighters wearing
-#      distinct band bytes 16-31
+#   3. The mode block reports the FFA match live: MODE_ID var 7, one band
+#      slot per deployed crew member, and at least two live fighters
+#      wearing distinct band bytes 16-31
 #   4. The client exits cleanly on "quit"
+#
+# Amendment 4 (E3) sets the headcount this expects. --protocol carries no
+# match knobs — there is no picker save behind it — so every FILL band sits
+# at its stored NONE and the arena fields NO init bots. The band is the
+# two-member crew alone, which is still a live FFA match (two fighters is
+# the floor), so everything this harness measures about the band survives;
+# only the population moved. Filling the arena's other six seats is a host
+# decision now, and the CLI has no way to make it.
 #
 # Exit code: 0 on success, 1 on any failure.
 
@@ -27,9 +35,10 @@ TMPOUT=$(mktemp)
 TMPHOME=$(mktemp -d)
 trap 'rm -f "$TMPOUT"; rm -rf "$TMPHOME"' EXIT
 
-# Two deployed heroes (soldier + archer crew) join six init bots on the
-# 8-fighter arena. Keep the script-level timeout below CTest's test timeout
-# so sanitizer runs still have headroom without masking real hangs.
+# Two deployed heroes (soldier + archer crew) hold the 8-fighter arena on
+# their own — under E3 no wheel is turned, so no init bots join them. Keep
+# the script-level timeout below CTest's test timeout so sanitizer runs
+# still have headroom without masking real hangs.
 printf 'tick 300\nstate\nquit\n' | HOME="$TMPHOME" OPENGLAD_CONFIG_DIR="$TMPHOME/config/" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --campaign modes --level 850 --team 0,1 --seed 42 > "$TMPOUT" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 ]; then
@@ -82,10 +91,15 @@ mode_vars = mode.get('vars', [])
 if len(mode_vars) != 64 or mode_vars[0] != 7:
     print('FAIL: MODE_ID var should be 7 (FFA):', mode_vars[:16], file=sys.stderr)
     sys.exit(1)
+# One slot per deployed crew member and not one more: E3 says the arena
+# backfills nobody unless a host turns a wheel, and --protocol has no wheel
+# to turn. The count is the `--team 0,1` list above.
+CREW = 2
 bitmap = mode_vars[14]
 taken = [c for c in range(16) if (bitmap >> c) & 1]
-if len(taken) != 8:
-    print(f'FAIL: scen850 should fill 8 band slots, bitmap {bitmap} has {len(taken)}',
+if len(taken) != CREW:
+    print(f'FAIL: scen850 should fill {CREW} band slots (the crew, and no '
+          f'backfill under E3), bitmap {bitmap} has {len(taken)}',
           file=sys.stderr)
     sys.exit(1)
 for c in taken:
@@ -109,6 +123,6 @@ if quit_msg.get('status') != 'ok':
     print('FAIL: Quit message not ok:', lines[3], file=sys.stderr)
     sys.exit(1)
 
-print(f'PASS: 300 FFA ticks on scen850, {len(taken)} band slots, '
-      f'{len(alive_band)} live fighters, clean quit')
+print(f'PASS: 300 FFA ticks on scen850, {len(taken)} band slots (crew only, '
+      f'no E3 backfill), {len(alive_band)} live fighters, clean quit')
 PY

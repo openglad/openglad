@@ -842,6 +842,14 @@ TEST_F(HeadlessServerRuntimeTest,
     lobby_save.scen_num = 302;
     lobby_save.numplayers = 0;
     lobby_save.allied_mode = 0;
+    // E5: the two sides come from turned wheels now. Amendment 4's E1 makes
+    // the stored knob NONE, so a handoff with no roster AND no wheel leaves
+    // the arena empty and TDM refuses before the census this test is about
+    // ever runs. FILL on both halves gives the mode its two teams while
+    // keeping the thing under test intact — the squads are B3's
+    // no-human-power arm, so there is still no reference to measure.
+    lobby_save.fill = {og::sim::kFillFair, og::sim::kFillFair,
+                       og::sim::kFillNone, og::sim::kFillNone};
     lobby_save.team_list = {};
 
     initialize_from_lobby(lobby_save);

@@ -1524,3 +1524,9 @@ itself turned up:
   from that entry point. `PlatformHeadless.text_protocol_serializes_shipped_mode_state`
   pins both halves: the active mode block on onslaught 801, and the honest
   inactive block on the CTF map it used to drive.
+  The same gap decides `scripts/test_text_client_ffa.sh`: the FFA arena's
+  other six seats are a host decision now, so the headless FFA harness
+  measures the two-member crew's band instead of a filled arena. If the
+  maintainers want the CLI to be able to ask, the shape is a per-team fill
+  on `TextProtocolArgs` (a `--fill` flag beside `--team`), not a carve-out
+  in the sim.
