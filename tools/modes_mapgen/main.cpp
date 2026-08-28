@@ -960,12 +960,6 @@ void self_check_mode_dispatch(ModeKind mode, int level_id)
 
     LevelRuntimeData level(level_id, true, &headless_level_data_hooks());
     SaveData save;
-    // Amendment 4 (E3): FILL defaults to NONE on every map, so a bare save
-    // stages an honestly refusing match ("fewer than two teams"). The
-    // dispatch proof turns every wheel to explicit FAIR — the one-knob
-    // shape a real host uses — so the check still proves the level loads
-    // and its mode initializes, without blessing a squad nobody asked for.
-    save.fill.fill(og::sim::kFillFair);
     og::sim::SimEventLog events;
     FixedRandom script_rng{0};
     level.set_sim_context(&save, &level.world().enemy_freeze, &events,
@@ -985,6 +979,14 @@ void self_check_mode_dispatch(ModeKind mode, int level_id)
         current_game = prev;
         return;
     }
+    // Amendment 4 (E3): FILL defaults to NONE on every map, so an
+    // untouched world stages an honestly refusing match ("fewer than two
+    // teams"). The dispatch proof turns every wheel to explicit FAIR —
+    // the one-knob shape a real host uses — directly on the world's own
+    // fields (no launch sync runs in this harness), so the check still
+    // proves the level loads and its mode initializes without blessing a
+    // squad nobody asked for.
+    level.world().ctf_requested_fill.fill(og::sim::kFillFair);
     for (int i = 0; i < 30; ++i)
         level.world().tick();
 
