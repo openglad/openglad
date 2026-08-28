@@ -2240,8 +2240,9 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_works_both_knobs)
               mount_campaign_package_with_error("modes"));
 
     // B8: nothing on either control is refused any more, so one press is one
-    // step and no toast interrupts it. FAIR is the default, and the DISPLAY
-    // order (NONE, WEAK, FAIR, STRONG, BRUTAL) puts STRONG one step past it.
+    // step and no toast interrupts it. Since E1 the stored default IS NONE,
+    // and the DISPLAY order (NONE, WEAK, FAIR, STRONG, BRUTAL) puts WEAK one
+    // step past it.
     pick(f.t(), 0);                      // row 1: TEAM 1 FILL
     pick(f.t(), 1);                      // row 2: TEAM 1 MAP UNITS
     f.t().push_special(KeyCode::Escape); // back out of the page
@@ -2254,17 +2255,16 @@ TEST(CursesPickerClient, lineup_page_lists_the_bands_and_works_both_knobs)
     EXPECT_NE(dump.find("3 FIGHTERS"), std::string::npos) << dump;
     EXPECT_NE(dump.find("NO SEAT"), std::string::npos)
         << "the two empty teams still get a band:\n" << dump;
-    EXPECT_NE(dump.find("TEAM 1  FILL: STRONG"), std::string::npos)
+    EXPECT_NE(dump.find("TEAM 1  FILL: WEAK"), std::string::npos)
         << "the redraw re-reads the wheel out of the save:\n" << dump;
     EXPECT_NE(dump.find("TEAM 1  MAP UNITS: OFF"), std::string::npos)
         << "and the box with it:\n" << dump;
-    EXPECT_EQ(og::sim::kFillStrong, f.save().fill[0])
-        << "the default -> STRONG landed in the save: with no level "
-           "censused here the row shows FAIR, so the wheel leaves from "
-           "FAIR's slot";
+    EXPECT_EQ(og::sim::kFillWeak, f.save().fill[0])
+        << "NONE -> WEAK landed in the save: the row shows the stored code, "
+           "so the wheel leaves from NONE's slot";
     EXPECT_EQ(og::sim::kMapUnitsOff, f.save().map_units[0])
         << "ON -> OFF landed in the save";
-    EXPECT_EQ(og::sim::kFillDefault, f.save().fill[1])
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[1])
         << "only the cycled team moved";
     EXPECT_EQ(og::sim::kMapUnitsOn, f.save().map_units[1]);
     EXPECT_TRUE(f.t().input_exhausted());
@@ -2284,26 +2284,28 @@ TEST(CursesPickerClient, lineup_knob_cycles_on_a_classic_campaign)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 
-    pick(f.t(), 0);                      // row 1: TEAM 1 FILL -> STRONG
+    pick(f.t(), 0);                      // row 1: TEAM 1 FILL -> WEAK
     f.t().push_special(KeyCode::Escape); // back out of the page
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
     const std::string dump = f.t().dump();
-    EXPECT_EQ(og::sim::kFillStrong, f.save().fill[0])
+    EXPECT_EQ(og::sim::kFillWeak, f.save().fill[0])
         << "a classic campaign's knob write lands like any other:\n" << dump;
     EXPECT_EQ(dump.find("MAP RULES"), std::string::npos)
         << "C5 retired the classic mark and its census:\n" << dump;
-    EXPECT_NE(dump.find("TEAM 1  FILL: STRONG"), std::string::npos)
+    EXPECT_NE(dump.find("TEAM 1  FILL: WEAK"), std::string::npos)
         << "the redraw re-reads the wheel out of the save:\n" << dump;
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
-// W7-G: the curses page censuses the world its own VIEW LEVEL stages, so a
-// stored default resolves here exactly as it does on the SDL band and in the
-// text client. Gladiator scen 1 authors twelve elves onto team 2 and nothing
-// onto teams 3 and 4 — before this the terminals read every stored 0 as FAIR
-// and disagreed with the SDL screen at rest on the maintainer's own save.
-TEST(CursesPickerClient, lineup_bands_read_the_staged_census_at_rest)
+// E1/E2: at rest every band reads its STORED code, and a fresh company
+// stores 0 on all four — so the page opens on four NONEs whatever the map
+// authors. Gladiator scen 1 ships twelve elves onto team 2 and nothing onto
+// teams 3 and 4, and since the per-team resolver retired that difference no
+// longer shows up in the word. (W7-G had the terminals census the staged
+// world to resolve a default here; amendment 4 removed the thing being
+// resolved, and the staged walk survives only for MAP UNITS, below.)
+TEST(CursesPickerClient, lineup_bands_read_the_stored_code_at_rest)
 {
     PickerFixture f;
     seed_lineup_roster(f.save());
@@ -2316,17 +2318,17 @@ TEST(CursesPickerClient, lineup_bands_read_the_staged_census_at_rest)
     f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
 
     const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("TEAM 1  FILL: FAIR"), std::string::npos)
-        << "the seated team has presence:\n" << dump;
-    EXPECT_NE(dump.find("TEAM 2  FILL: FAIR"), std::string::npos)
-        << "the elf team is authored:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 1  FILL: NONE"), std::string::npos)
+        << "the seated team is no better off than any other at rest:\n"
+        << dump;
+    EXPECT_NE(dump.find("TEAM 2  FILL: NONE"), std::string::npos)
+        << "the elf team is authored, and that fields nothing now:\n" << dump;
     EXPECT_NE(dump.find("TEAM 3  FILL: NONE"), std::string::npos)
-        << "an unauthored team resolves NONE (C8), and the terminal now says "
-           "so in the SDL screen's own word:\n" << dump;
+        << "an unauthored team reads the same word:\n" << dump;
     EXPECT_NE(dump.find("TEAM 4  FILL: NONE"), std::string::npos)
         << "...and so does its twin:\n" << dump;
-    EXPECT_EQ(og::sim::kFillDefault, f.save().fill[2])
-        << "a resolution is not a write — nothing was touched";
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[2])
+        << "looking is not a write — nothing was touched";
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
@@ -2363,10 +2365,10 @@ TEST(CursesPickerClient, lineup_map_units_refuses_where_the_map_ships_none)
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
-// D1/D4: the full-cycle label pin, curses half. Six entries per band, one
-// press each, so the redraw after every step is its own frame: the two
-// sequences are the same five words in the same order and differ only in the
-// slot they START from — the word the band was showing.
+// D1/D4 as amended by E1: the full-cycle label pin, curses half. Six entries
+// per band, one press each, so the redraw after every step is its own frame.
+// The two sequences are now IDENTICAL — one wheel, one entry point, because
+// the word a band shows at rest is its stored 0 whatever the map authors.
 TEST(CursesPickerClient, lineup_wheel_cycles_both_bands_fully)
 {
     PickerFixture f;
@@ -2392,32 +2394,30 @@ TEST(CursesPickerClient, lineup_wheel_cycles_both_bands_fully)
         return dump.substr(start, end - start);
     };
 
-    // Team 0: seated and standing on the map's own units, so its default
-    // resolves FAIR and the wheel leaves from FAIR's slot.
+    // Team 0: seated and standing on the map's own units. Since E1 that buys
+    // it no head start — it shows the stored 0 and the wheel leaves NONE.
+    const std::vector<std::string> expect_wheel = {
+        "WEAK", "FAIR", "STRONG", "BRUTAL", "NONE", "WEAK"};
     std::vector<std::string> authored;
     for (int i = 0; i < 6; ++i)
         authored.push_back(step(0, "TEAM 1"));
-    const std::vector<std::string> expect_authored = {
-        "STRONG", "BRUTAL", "NONE", "WEAK", "FAIR", "STRONG"};
-    EXPECT_EQ(expect_authored, authored)
-        << "an authored band enters the wheel at FAIR:\n" << f.t().dump();
+    EXPECT_EQ(expect_wheel, authored)
+        << "an authored band enters the wheel at NONE:\n" << f.t().dump();
 
-    // Team 2: gladiator authors nothing onto it, so its default resolves
-    // NONE and the wheel leaves from NONE's slot — one step, one word.
+    // Team 2: gladiator authors nothing onto it — the same entry point and
+    // therefore the same six words. There is one wheel now, not two.
     std::vector<std::string> unauthored;
     for (int i = 0; i < 6; ++i)
         unauthored.push_back(step(4, "TEAM 3"));
-    const std::vector<std::string> expect_unauthored = {
-        "WEAK", "FAIR", "STRONG", "BRUTAL", "NONE", "WEAK"};
-    EXPECT_EQ(expect_unauthored, unauthored)
-        << "an unauthored band enters the wheel at NONE — the C8 swallow is "
-           "gone and FAIR has a stop of its own:\n" << f.t().dump();
+    EXPECT_EQ(expect_wheel, unauthored)
+        << "an unauthored band walks the identical wheel — E1 left a single "
+           "entry point and every word its own stop:\n" << f.t().dump();
 
-    EXPECT_EQ(og::sim::kFillStrong, f.save().fill[0]);
+    EXPECT_EQ(og::sim::kFillWeak, f.save().fill[0]);
     EXPECT_EQ(og::sim::kFillWeak, f.save().fill[2]);
-    EXPECT_EQ(og::sim::kFillDefault, f.save().fill[1])
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[1])
         << "the untouched bands keep the stored default";
-    EXPECT_EQ(og::sim::kFillDefault, f.save().fill[3])
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[3])
         << "the untouched bands keep the stored default";
     EXPECT_TRUE(f.t().input_exhausted());
 }
