@@ -336,6 +336,10 @@ TEST_F(ModesTdm, empty_active_teams_field_five_bot_squads)
     fx.spawn_anchor(0, 160, 96);
     fx.spawn_anchor(1, 544, 800);
     fx.spawn_anchor(1, 480, 800);
+    // E5: the empty-team backfill needs a turned wheel — the stored 0 is
+    // NONE (E1) and stages nothing.
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.tick(1);
 
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
@@ -352,6 +356,7 @@ TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
     // the match up with nobody on it.
     ModesCtfWorld fx(kTdmLevelA);
     fx.world().ctf_requested_map_units[1] = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: the trade
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
@@ -377,6 +382,7 @@ TEST_F(ModesTdm, rosters_on_authored_teams_field_all_authored_sides)
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfill
     walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
     walker* other = fx.spawn_hero(FAMILY_SOLDIER, 2, 216, 760, 2);
     fx.tick(1);
@@ -1086,6 +1092,8 @@ std::string run_tdm_bot_match_digest(int ticks)
     EXPECT_NE(nullptr, gen);
     gen->setxy(432, 432);
     gen->set_team_num(4);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot sides
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.world().ctf_requested_respawn_ticks = 30;
     fx.tick(ticks);
     EXPECT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
@@ -1118,6 +1126,8 @@ TEST_F(ModesTdm, full_tdm_tick_fits_a_tenth_of_the_instruction_budget)
         gen->set_team_num(4);
         for (int i = 0; i < 6; ++i)
             fx.spawn_living(FAMILY_SKELETON, 4, 500 + 20 * i, 500, ACT_RANDOM);
+        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
         fx.world().ctf_requested_respawn_ticks = 30;
         fx.tick(1);  // init (bot squads, the priciest dispatch)
         ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
@@ -1484,12 +1494,13 @@ constexpr const char* kLineupProbeLua =
     "           opt(match.fill_target(0, sums, 2, 100)))\n"
     "    og.log(\"room\", opt(match.squad_room(5, 3)),\n"
     "           opt(match.squad_room(5, 9)), opt(match.squad_room(nil, 3)))\n"
-    "    og.log(\"pct\", match.fill_percent(3), match.fill_percent(1),\n"
-    "           match.fill_percent(2), match.fill_percent(4),\n"
-    "           match.fill_percent(5), match.fill_percent(9))\n"
-    "    og.log(\"off\", match.squad_off(1) and 1 or 0,\n"
-    "           match.squad_off(3) and 1 or 0,\n"
-    "           match.squad_off(5) and 1 or 0)\n"
+    "    og.log(\"pct\", match.fill_percent(2), match.fill_percent(1),\n"
+    "           match.fill_percent(3), match.fill_percent(4))\n"
+    "    og.log(\"off\", match.squad_off(0) and 1 or 0,\n"
+    "           match.squad_off(2) and 1 or 0,\n"
+    "           match.squad_off(4) and 1 or 0,\n"
+    "           match.squad_off(5) and 1 or 0,\n"
+    "           match.squad_off(9) and 1 or 0)\n"
     "    match.spawn_bots(0, squad, 15)\n"
     "    match.spawn_bots(1, squad, 12, nil, 3)\n"
     "    match.spawn_bots(3, squad, 14)\n"
@@ -1513,9 +1524,11 @@ struct LineupProbeScript
 
 // The pure lineup arms: fill_target's three shapes (allies gap, no gap,
 // empty-team reference — each scaled by the wheel's percent), squad_room,
-// the FILL_PERCENT table (junk degrades to FAIR's 100) and squad_off's
-// NONE-only vocabulary (B8). Then the knob-aware spawn seam: the default
-// squad truncates to the caller's cap, and NONE fields nothing.
+// the FILL_PERCENT table (1..4 only — NONE has no row) and squad_off's
+// vocabulary (B8/E2: NONE forbids, and so does any code off the wheel —
+// junk reads NONE). Then the knob-aware spawn seam: the explicit-FAIR
+// squad truncates to the caller's cap, and the stored NONE (0, the E1
+// default) fields nothing.
 TEST_F(ModesTdm, lineup_fill_target_percent_table_and_knobbed_spawns)
 {
     LineupProbeScript probe;
@@ -1526,7 +1539,9 @@ TEST_F(ModesTdm, lineup_fill_target_percent_table_and_knobbed_spawns)
         fx.spawn_anchor(1, 96 + 96 * i, 96);
         fx.spawn_anchor(3, 96 + 96 * i, 288);
     }
-    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;  // team 3
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;  // the default
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
@@ -1549,21 +1564,21 @@ TEST_F(ModesTdm, lineup_fill_target_percent_table_and_knobbed_spawns)
 
     const auto pct = matched_log(fx.world(), "pct");
     EXPECT_EQ(100, tab_int(pct, 1)) << "FAIR";
-    EXPECT_EQ(0, tab_int(pct, 2)) << "NONE";
-    EXPECT_EQ(75, tab_int(pct, 3)) << "WEAK";
-    EXPECT_EQ(125, tab_int(pct, 4)) << "STRONG";
-    EXPECT_EQ(150, tab_int(pct, 5)) << "BRUTAL";
-    EXPECT_EQ(100, tab_int(pct, 6)) << "junk degrades to FAIR";
+    EXPECT_EQ(75, tab_int(pct, 2)) << "WEAK";
+    EXPECT_EQ(125, tab_int(pct, 3)) << "STRONG";
+    EXPECT_EQ(150, tab_int(pct, 4)) << "BRUTAL";
 
     const auto off = matched_log(fx.world(), "off");
-    EXPECT_EQ(1, tab_int(off, 1)) << "NONE forbids the squad";
+    EXPECT_EQ(1, tab_int(off, 1)) << "NONE (0, the default) forbids";
     EXPECT_EQ(0, tab_int(off, 2)) << "FAIR does not";
     EXPECT_EQ(0, tab_int(off, 3)) << "BRUTAL does not (B8: no refusals)";
+    EXPECT_EQ(1, tab_int(off, 4)) << "a code past the wheel reads NONE (E2)";
+    EXPECT_EQ(1, tab_int(off, 5)) << "junk reads NONE, never FAIR";
 
     // The knob-aware spawns (no humans anywhere -> the legacy arm): the
     // full squad on team 0, the cap-truncated squad on team 1, nothing on
     // the NONE team — and the applied FAIR fact banked where a squad
-    // walked on (since D1 the banked code IS the applied fill, 3).
+    // walked on (the banked code IS the stored fill, 2 — E4).
     EXPECT_EQ(5, alive_on_team(fx.world(), 0));
     EXPECT_EQ(3, alive_on_team(fx.world(), 1))
         << "the squad truncates to the caller's cap";
@@ -1596,7 +1611,9 @@ TEST_F(ModesTdm, lineup_spawn_seam_allies_no_gap_spawns_nothing)
     }
     fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
     fx.spawn_hero(FAMILY_SOLDIER, 2, 200, 300, 2);
-    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;  // the default
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
@@ -1669,7 +1686,7 @@ TEST_F(ModesTdm, matched_census_single_team_sum_ignores_guyless_livings)
         EXPECT_EQ(0, tab_int(census, 5));
         // The one-human-team headcount rule (H = 5, guy-less Livings
         // excluded, D34) lives in match.activation: matched_size, pinned
-        // by StagedRules.fair_matched_size_is_the_min_roster_headcount.
+        // by StagedRules.activation_matched_size_is_the_min_roster_headcount.
     }
     {
         ModesCtfWorld fx(kMatchProbeLevel);
@@ -1719,7 +1736,7 @@ TEST_F(ModesTdm, matched_census_weakest_reference_and_heart_value_rank)
         << "the reference is the WEAKEST human team's f-sum (B3)";
     // H = MIN of the per-team headcounts (5, 3, 3 -> 3; D34) lives in
     // match.activation: matched_size, pinned by
-    // StagedRules.fair_matched_size_is_the_min_roster_headcount.
+    // StagedRules.activation_matched_size_is_the_min_roster_headcount.
 
     // f-sum rank must agree with the engine's own price of the rosters.
     long long hearts[3] = {0, 0, 0};
@@ -1751,6 +1768,7 @@ TEST_F(ModesTdm, matched_spawn_bots_legacy_arm_is_unchanged)
     ModesCtfWorld fx(kMatchSpawnProbeLevel);
     for (int i = 0; i < 5; ++i)
         fx.spawn_anchor(1, 96 + 96 * i, 96);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
 
@@ -1778,6 +1796,7 @@ TEST_F(ModesTdm, matched_spawn_bots_planned_arm_applies_stored_plan)
     ModesCtfWorld fx(kMatchSpawnProbeLevel);
     for (int i = 0; i < 5; ++i)
         fx.spawn_anchor(1, 96 + 96 * i, 96);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
     // Team 1 code 43: L4, first 3 members upgraded.
     fx.world().mode.vars[kMatchProbeInPlan] = 4300;
     fx.tick(1);
@@ -1804,6 +1823,7 @@ TEST_F(ModesTdm, matched_spawn_bots_measures_solves_and_announces)
     ModesCtfWorld fx(kMatchSpawnProbeLevel);
     for (int i = 0; i < 5; ++i)
         fx.spawn_anchor(1, 96 + 96 * i, 96);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
     author_fresh_squad(fx, 0, 200);
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1832,6 +1852,7 @@ TEST_F(ModesTdm, matched_spawn_bots_low_clamp_announces_the_limit)
     ModesCtfWorld fx(kMatchSpawnProbeLevel);
     for (int i = 0; i < 5; ++i)
         fx.spawn_anchor(1, 96 + 96 * i, 96);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
     fx.spawn_leveled_hero(FAMILY_THIEF, 0, 200, 200, 1, 1);
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
@@ -1849,6 +1870,7 @@ TEST_F(ModesTdm, matched_backstop_solve_stores_plan_but_stays_silent)
     ModesCtfWorld fx(kMatchSpawnProbeLevel);
     for (int i = 0; i < 5; ++i)
         fx.spawn_anchor(1, 96 + 96 * i, 96);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
     author_fresh_squad(fx, 0, 200);
     fx.world().mode.vars[kMatchProbeInMidMatch] = 1;
     fx.tick(1);
@@ -1869,6 +1891,8 @@ TEST_F(ModesTdm, no_humans_with_the_box_off_keeps_legacy_bots)
 {
     ModesCtfWorld fx(kTdmLevelA);
     fx.world().ctf_requested_map_units[0] = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     walker* troop = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
@@ -1889,9 +1913,9 @@ TEST_F(ModesTdm, no_humans_with_the_box_off_keeps_legacy_bots)
     EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
 }
 
-// The flagship WP-E flow: a fresh solo squad on team 0, the DEFAULT
-// knobs (FILL: FAIR is the default solver now, B2), an empty authored
-// team 1. Init censuses the roster (reference 6520, the derived §4.2
+// The flagship WP-E flow: a fresh solo squad on team 0, explicit FILL:
+// FAIR on the empty authored team 1 (E5: the stored 0 is NONE and
+// backfills nothing). Init censuses the roster (reference 6520, the derived §4.2
 // value), solves the real squad against it and fields a mixed L1/L2
 // rival — an even match, not the old flat L2 wall.
 //
@@ -1907,6 +1931,7 @@ TEST_F(ModesTdm, matched_solo_fresh_squad_fields_an_even_rival)
     ModesCtfWorld fx(kTdmLevelA);
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
     author_fresh_squad(fx, 0, 200);
     fx.tick(1);
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
@@ -1982,13 +2007,16 @@ long long team_f_sum(GameWorld& world, int team)
 }
 
 // The matched TDM flow the determinism/mirror/budget probes share: a
-// fresh roster squad on team 0 under the default knobs (FILL: FAIR is
-// the default solver, B2), empty authored teams 1 and 2.
+// fresh roster squad on team 0, explicit FILL: FAIR on the empty
+// authored teams 1 and 2 (E5: the stored 0 is NONE and backfills
+// nothing).
 void author_matched_tdm(ModesCtfWorld& fx)
 {
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     fx.spawn_anchor(2, 96, 800);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[2] = og::sim::kFillFair;
     author_fresh_squad(fx, 0, 200);
 }
 
@@ -2015,6 +2043,7 @@ TEST_F(ModesTdm, matched_solo_l5_roster_squad_lands_within_fifteen_percent)
     ModesCtfWorld fx(kTdmLevelA);
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
     fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 5);
     fx.spawn_leveled_hero(FAMILY_ARCHER, 0, 232, 200, 2, 5);
     fx.spawn_leveled_hero(FAMILY_ELF, 0, 264, 200, 3, 5);
@@ -2051,6 +2080,8 @@ TEST_F(ModesTdm, boxes_off_solo_roster_gets_a_matched_opponent)
     ModesCtfWorld fx(kTdmLevelA);
     fx.world().ctf_requested_map_units[1] = og::sim::kMapUnitsOff;
     fx.world().ctf_requested_map_units[2] = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
+    fx.world().ctf_requested_fill[2] = og::sim::kFillFair;
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
     fx.spawn_anchor(2, 96, 800);
@@ -2096,6 +2127,7 @@ TEST_F(ModesTdm, matched_solo_fresh_soldier_faces_a_single_matched_rival)
     ModesCtfWorld fx(kTdmLevelA);
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 800);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
     fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
     fx.tick(1);
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
@@ -2136,6 +2168,7 @@ TEST_F(ModesTdm, matched_size_one_announces_limit_only_on_genuine_clamp)
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
         fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
         fx.world().mode.vars[kMatchProbeInSize] = 1;
         fx.tick(1);
@@ -2153,6 +2186,7 @@ TEST_F(ModesTdm, matched_size_one_announces_limit_only_on_genuine_clamp)
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
         // A fresh mage prices 1282 < the single soldier's B(1) = 1643.
         fx.spawn_leveled_hero(FAMILY_MAGE, 0, 200, 200, 1, 1);
         fx.world().mode.vars[kMatchProbeInSize] = 1;
@@ -2177,6 +2211,7 @@ TEST_F(ModesTdm, matched_size_latch_truncates_every_spawn_arm)
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
         fx.world().mode.vars[kMatchProbeInPlan] = 4300;
         fx.world().mode.vars[kMatchProbeInSize] = 1;
         fx.tick(1);
@@ -2195,6 +2230,7 @@ TEST_F(ModesTdm, matched_size_latch_truncates_every_spawn_arm)
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
         fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
         fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 232, 200, 2, 1);
         fx.world().mode.vars[kMatchProbeInSize] = 2;
@@ -2214,6 +2250,7 @@ TEST_F(ModesTdm, matched_size_latch_truncates_every_spawn_arm)
         ModesCtfWorld fx(kMatchSpawnProbeLevel);
         for (int i = 0; i < 5; ++i)
             fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5
         fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
         fx.world().mode.vars[kMatchProbeInMidMatch] = 1;
         fx.world().mode.vars[kMatchProbeInSize] = 1;

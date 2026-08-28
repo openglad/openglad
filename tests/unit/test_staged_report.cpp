@@ -24,6 +24,7 @@
 #include "../modes_pack_fixture.h"
 
 #include <array>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,16 @@ og::ui::ScenarioRosterReport staged_report(ModesCtfWorld& fx,
         &fx.world(), og::ui::StagePreviewStatus::Staged, save, nullptr);
 }
 
+// The E5 conversion knob: the stored 0 is NONE since amendment 4 and
+// stages nothing, so fixtures that relied on the old FAIR-by-default
+// backfill turn the wheel explicitly and keep their numbers.
+void set_fair_fill(ModesCtfWorld& fx, std::initializer_list<int> teams)
+{
+    for (const int team : teams)
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            static_cast<short>(og::sim::kFillFair);
+}
+
 int marked_bots_on(const GameWorld& world, int team)
 {
     int count = 0;
@@ -107,6 +118,7 @@ TEST_F(ScenarioStagedReport, ctf_domain_is_flag_teams_not_markers)
     fx.spawn_anchor(2, 96, 528);  // markers on THREE teams...
     fx.spawn_flag(flag_family_, 0, 100, 100);
     fx.spawn_flag(flag_family_, 1, 132, 100);  // ...flags on TWO
+    set_fair_fill(fx, {0, 1, 2});  // E5: the backfill needs a turned wheel
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
 
@@ -152,6 +164,7 @@ TEST_F(ScenarioStagedReport, troops_all_auto_takes_the_manifest_default)
     ModesCtfWorld fx(kSoccerLevelA);  // row.teams = 2
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    set_fair_fill(fx, {0, 1, 2, 3});  // E5: the wheel, not the default
     fx.world().ctf_requested_strip_scenario_troops = 0;  // TROOPS: ALL
     fx.world().ctf_requested_team_count = 0;             // TEAMS: Auto
 
@@ -176,19 +189,22 @@ TEST_F(ScenarioStagedReport, troops_all_auto_takes_the_manifest_default)
     EXPECT_FALSE(any_line_contains(lines, "YELLOW TEAM  ACTIVE"));
 }
 
-// The staged fill lines, pinned exactly (48-char budget throughout): the
-// DEFAULT knobs (FILL: FAIR everywhere, B2) with one deployed company =
-// COMPANY for the roster team, MATCHED BOTS at the min headcount
-// everywhere else, each squad row closing with its applied fill word. The old "BOT CLASSES DRAWN AT START"
-// legend is GONE by design: the squads below ARE the staged squads (#235
-// delivered by deletion). This is also the kModeVarMatchedSize pin (the
-// shared MATCHED.SIZE mode var, slot 5) and the BOT_MARK_BIT provenance pin
-// (every squad member add_squad_member spawns carries stats bit 65536).
+// The staged fill lines, pinned exactly (48-char budget throughout):
+// explicit FILL: FAIR everywhere (E5 — the stored 0 is NONE and stages
+// nothing) with one deployed company = COMPANY for the roster team,
+// MATCHED BOTS at the min headcount everywhere else, each squad row
+// closing with its applied fill word. The old "BOT CLASSES DRAWN AT
+// START" legend is GONE by design: the squads below ARE the staged
+// squads (#235 delivered by deletion). This is also the
+// kModeVarMatchedSize pin (the shared MATCHED.SIZE mode var, slot 5)
+// and the BOT_MARK_BIT provenance pin (every squad member
+// add_squad_member spawns carries stats bit 65536).
 TEST_F(ScenarioStagedReport, fair_fill_lines_pin)
 {
     ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    set_fair_fill(fx, {0, 1, 2, 3});
     fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
     fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 700, 2);
 
@@ -245,6 +261,7 @@ TEST_F(ScenarioStagedReport, troops_all_fill_lines_pin)
     fx.spawn_living(FAMILY_ORC, 1, 300, 300);
     fx.spawn_living(FAMILY_ORC, 1, 332, 300);
     fx.spawn_living(FAMILY_ORC, 1, 364, 300);
+    set_fair_fill(fx, {0});  // E5: team 1 keeps its troops-only default
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
 
@@ -396,6 +413,7 @@ TEST_F(ScenarioStagedReport, dormant_walkers_are_excluded_from_the_census)
     walker* const sleeper = fx.spawn_living(FAMILY_ORC, 1, 332, 300);
     ASSERT_NE(nullptr, sleeper);
     sleeper->set_dormant(true);
+    set_fair_fill(fx, {0});  // E5: the empty team needs a turned wheel
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
 
@@ -465,6 +483,7 @@ TEST_F(ScenarioStagedReport, seat_block_follows_the_match_block_directly)
     ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    set_fair_fill(fx, {0, 1, 2, 3});
     fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
     fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 700, 2);
 
@@ -615,39 +634,41 @@ TEST_F(ScenarioStagedReport, fill_word_worst_case_fits_the_budget)
 }
 
 // The C++ half of the SHARED slot-4 digit layout (§3.4 as amended by B7
-// and renumbered by D1), pinned against a hand-packed slot value so the
+// and renumbered by E4), pinned against a hand-packed slot value so the
 // decoder is provable without entering Lua: team t's code sits at
-// 10 * 100^t and IS the applied fill code (the +1 bias is retired — no
-// explicit code is 0 since D1), with 0 meaning "this team banked
-// nothing". The Lua half (bank_lineup_facts) writes the identical
-// arithmetic; the two only ever agree on paper, so both sides are pinned.
+// 10 * 100^t and IS the stored code of a squad that spawned (1..4 —
+// NONE, the stored 0, never spawns and never banks), with 0 meaning
+// "this team banked nothing". The Lua half (bank_lineup_facts) writes
+// the identical arithmetic; the two only ever agree on paper, so both
+// sides are pinned.
 TEST_F(ScenarioStagedReport, banked_fill_codes_decode_per_team)
 {
     ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
     for (int team = 0; team < 3; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    set_fair_fill(fx, {0, 1, 2});
     fx.world().ctf_requested_team_count = 0;
 
     stage_fixture_world(fx);
     ASSERT_TRUE(fx.world().mode.active);
 
     // latch 1 (the MATCHED announce co-tenant), then per-team codes:
-    // team 0 = FAIR (code 3), team 1 = nothing (code 0),
-    // team 2 = BRUTAL (code 5), team 3 = NONE (code 1).
+    // team 0 = FAIR (code 2), team 1 = nothing (code 0),
+    // team 2 = BRUTAL (code 4), team 3 = WEAK (code 1).
     const std::int32_t latch = 1;
     const std::int32_t packed = latch
         + 10 * og::sim::kFillFair
         + 10 * 100 * 0
         + 10 * 100 * 100 * og::sim::kFillBrutal
-        + 10 * 100 * 100 * 100 * og::sim::kFillNone;
+        + 10 * 100 * 100 * 100 * og::sim::kFillWeak;
     fx.world().mode.vars[4] = packed;
 
     SaveData save;
     const og::ui::ScenarioRosterReport report = staged_report(fx, save);
     EXPECT_EQ(og::sim::kFillFair, report.team_squad_fill[0]);
     EXPECT_EQ(-1, report.team_squad_fill[1])
-        << "code 0 is 'banked nothing', not a fill — since D1 no explicit "
-           "code is 0, so the code needs no bias to keep 0 free";
+        << "code 0 is 'banked nothing', not a fill — NONE is the stored 0 "
+           "and never banks (E4), so 0 stays free without a bias";
     EXPECT_EQ(og::sim::kFillBrutal, report.team_squad_fill[2]);
     // Team 3's digit pair is the TOP one in the slot (10 * 100^3), and it
     // carries a legal code — but no squad of team 3's stands in this world,
@@ -733,6 +754,7 @@ TEST_F(ScenarioStagedReport, occupied_team_label_counts_company_plus_squad)
         ModesCtfWorld fx(kBballLevelB);
         fx.spawn_anchor(0, 96, 96);
         fx.spawn_anchor(1, 192, 96);
+        set_fair_fill(fx, {0});  // E5: allies need a turned wheel
         for (int k = 0; k < 3; ++k)
             fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
                           700, k + 1);
@@ -763,6 +785,7 @@ TEST_F(ScenarioStagedReport, occupied_team_label_counts_company_plus_squad)
         ModesCtfWorld fx(kBballLevelB);
         fx.spawn_anchor(0, 96, 96);
         fx.spawn_anchor(1, 192, 96);
+        set_fair_fill(fx, {0});
         for (int k = 0; k < 5; ++k)
             fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
                           700, k + 1);

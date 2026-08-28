@@ -508,6 +508,8 @@ TEST_F(ModesSoccer, empty_active_teams_get_bot_squads)
     ModesCtfWorld fx(kSoccerLevelA);
     fx.spawn_anchor(0, 96, 448);
     fx.spawn_anchor(1, 528, 448);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: the fill
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     // Team 1's only anchor is blocked by a parked generator: its bots
     // fall back to the RNG teleport. Init-time draws: the #235 squad-order
     // seed (one og.rand inside the first squad spawn, before placement),
@@ -555,6 +557,8 @@ TEST_F(ModesSoccer, map_units_off_takes_the_pitch_generators_too)
     SoccerWorld fx;
     for (auto& box : fx.world().ctf_requested_map_units)
         box = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: the trade
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     walker* tent = fx.spawn_generator(FAMILY_TENT, 0, 200, 700);
     ASSERT_NE(nullptr, tent);
     fx.tick(1);
@@ -575,6 +579,8 @@ TEST_F(ModesSoccer, rosters_on_the_foursquare_pitch_field_all_four_sides)
     SoccerPitch fx(kSoccerLevelB);
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfills
+    fx.world().ctf_requested_fill[3] = og::sim::kFillFair;
     walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
     walker* other = fx.spawn_hero(FAMILY_SOLDIER, 2, 300, 860, 2);
     fx.tick(1);
@@ -602,7 +608,11 @@ TEST_F(ModesSoccer, all_bot_anchor_only_pitch_takes_the_manifest_default)
     // whole-domain refusal shape is gone with TROOPS.
     ModesCtfWorld fx(kSoccerLevelA);
     for (int team = 0; team < 4; ++team)
+    {
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 448);
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            og::sim::kFillFair;  // E5: every wheel turned
+    }
     fx.tick(1);
 
     ASSERT_TRUE(fx.world().mode.active)
@@ -627,6 +637,9 @@ TEST_F(ModesSoccer, fair_teams_four_with_a_solo_roster_fields_four_teams)
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
     arm_matched(fx.world());
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfills
+    fx.world().ctf_requested_fill[2] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillFair;
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
     ASSERT_NE(nullptr, hero);
     fx.tick(1);
@@ -666,6 +679,9 @@ TEST_F(ModesSoccer, fair_teams_auto_with_a_solo_roster_fields_four_teams)
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
     arm_matched(fx.world());
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfills
+    fx.world().ctf_requested_fill[2] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillFair;
     ASSERT_EQ(0, fx.world().ctf_requested_team_count) << "TEAMS: Auto";
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
     ASSERT_NE(nullptr, hero);
@@ -799,6 +815,7 @@ TEST_F(ModesSoccer, bots_off_on_the_fourth_side_leaves_three)
     SoccerPitch fx(kSoccerLevelB);
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfill
     fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
     fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
     fx.spawn_hero(FAMILY_SOLDIER, 2, 300, 860, 2);
@@ -1699,6 +1716,11 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
     fx.world().respawn_mode = 0;  // the submenu no longer gates a ball game
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
+    // E5: turn the wheel AFTER init — at init an explicit FAIR would walk
+    // a squad on beside the authored green troop (D3); the reprovision
+    // backstop reads the knob at spawn time, so the mid-match turn is what
+    // lets the wiped side come back.
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.thaw_kickoff();
     // Team 1 is wiped; team 0 loses a member but keeps red alive. Every
     // corpse schedules the tick it falls — submenu Off included.
@@ -1755,6 +1777,7 @@ TEST_F(ModesSoccer, wiped_bot_team_revives_with_the_same_match_squad)
     SoccerPitch fx(kSoccerLevelA);
     fx.spawn_anchor(0, 96, 448);
     fx.spawn_anchor(1, 528, 448);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: the fill
     walker* red = fx.spawn_living(FAMILY_SOLDIER, 0, 96, 96);
     fx.world().respawn_mode = 0;
     fx.tick(1);
@@ -2494,6 +2517,8 @@ std::string run_soccer_bot_match_digest(int ticks)
     fx.spawn_anchor(0, 96, 496);
     fx.spawn_anchor(1, 528, 432);
     fx.spawn_anchor(1, 528, 496);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot sides
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.tick(ticks);  // bot squads for both teams play the ball
     EXPECT_TRUE(fx.world().mode.active);
     return digest_world(fx.world());
@@ -2518,6 +2543,8 @@ TEST_F(ModesSoccer, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
         fx.spawn_anchor(0, 96, 496);
         fx.spawn_anchor(1, 528, 432);
         fx.spawn_anchor(1, 528, 496);
+        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
         fx.tick(1);  // init (bot squads + ball) under the budget
         ASSERT_TRUE(fx.world().mode.active);
         fx.tick(45);  // 3 director cadences + kicks + flight + HUD
@@ -2551,6 +2578,8 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
     fx.spawn_anchor(0, 96, 496);
     fx.spawn_anchor(1, 528, 432);
     fx.spawn_anchor(1, 528, 496);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot sides
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     ModeMirror mirror(kSoccerLevelA);
 
     // kMaxConsecutiveSnapshotHashMismatches ticks: the exact run the server
@@ -2640,16 +2669,19 @@ struct SoccerSoloRosterWorld : SoccerPitch
         spawn_anchor(0, 96, 480);
         spawn_anchor(1, 528, 448);
         spawn_anchor(1, 528, 480);
+        // E5: the opponent's fill is a turned wheel now (the stored 0 is
+        // NONE and would leave the solo roster unopposed).
+        world().ctf_requested_fill[1] = og::sim::kFillFair;
         hero = spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, guy_level);
     }
 };
 
 }  // namespace
 
-// The default (FILL: FAIR, B2) solves the solo roster's opponent at
-// matched power AND matched headcount: one bot, not the old legacy five
-// (D34).
-TEST_F(ModesSoccer, default_fill_matches_a_solo_roster_opponent)
+// Explicit FILL: FAIR (E5 — the stored default is NONE now and fields
+// nothing) solves the solo roster's opponent at matched power AND matched
+// headcount: one bot, not the old legacy five (D34).
+TEST_F(ModesSoccer, explicit_fair_matches_a_solo_roster_opponent)
 {
     SoccerSoloRosterWorld matched(4);
     matched.tick(1);
@@ -2738,6 +2770,7 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     fx.spawn_anchor(0, 96, 480);
     fx.spawn_anchor(1, 528, 448);
     fx.spawn_anchor(1, 528, 480);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: refield
     walker* red_hero = fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, 1);
     walker* green_hero =
         fx.spawn_leveled_hero(FAMILY_SOLDIER, 1, 560, 96, 2, 1);

@@ -1446,3 +1446,45 @@ reader will otherwise go looking for the seams:
   default, it is where `clamp_fill` lands a negative, and it promises no
   squad the level will not field. The wheel enters there for the same
   reason.
+
+## As built: W8-A — the Lua half of Amendment 4 (E1/E3/E4/E5)
+
+- **The scale is renumbered in `packs/core/lib/lineup.lua`**: `FILL_NONE =
+  0` (the stored default), `FILL_WEAK = 1`, `FILL_FAIR = 2`, `FILL_STRONG
+  = 3`, `FILL_BRUTAL = 4`; `FILL_DEFAULT` is deleted and `FILL_PERCENT`
+  carries rows for 1..4 only. `squad_off(knob)` answers true for any code
+  without a multiplier row — NONE and junk alike (E2's "junk reads NONE",
+  applied on the spawn side: a code off the wheel fields nothing).
+  `fill_percent` dropped its degrade-to-FAIR arm: every apply seam gates
+  on `squad_off` first, so the row exists by construction.
+- **The resolver seams are gone with their tests**: `resolved_fill`,
+  `team_present` and `applied_fill` (an identity once the degrade arm
+  died) left `lineup.lua` and both export tables; `presence_row` and the
+  resolved-NONE fact banking left `lineup_stage.lua`; the raw/resolved
+  knob split and `FILL_DEFAULT` left `mode_match.lua`'s fills rows (the
+  troops arm's explicit gate is now simply "not squad_off"); mode_fighters'
+  `band_knob` reads `og.match_setting("fill_1")` bare. `spawn_bots` lost
+  its seventh (`resolved`) parameter and reads the stored knob itself —
+  the classic stage no longer pre-resolves anything.
+- **E4 as built**: `bank_lineup_facts` receives the stored code of a squad
+  that spawned (1..4), NONE never reaches it, and the classic stage's
+  resolved-NONE banking exception is deleted — an untouched world banks
+  nothing, so slot 4 stays 0 wherever no wheel was turned.
+- **E3/E5 pins moved, not weakened**: the FAIR-by-default fixture rows
+  across test_staged_rules / test_staged_report / test_modes_{ctf,tdm,
+  soccer,basketball,ffa,mutant,items} became explicit-FAIR rows carrying
+  the old matched-solver numbers, plus NONE-by-default rows (nothing
+  spawned, nothing banked, empty teams narrowed out). The E3 honesty pin
+  is StagedRules.solo_human_all_none_refuses_and_explicit_fair_plays (TDM:
+  all-NONE refuses with the mode's own fewer-than-two-teams sentence, FILL:
+  FAIR on the other team plays); the staged matrix now runs every shape on
+  both wheel bases (base_fill NONE and FAIR) and gained the mode hard-shape
+  cap so the harness prices the troops-arm squads the court actually
+  fields. The all-default classic byte-noop pin (C3) stands, now meaning
+  "all-NONE".
+- **Band rules follow E1**: FfaRig turns the band's one wheel to FAIR in
+  its constructor (the suites were written against the FAIR default); the
+  NONE tests set the knob back to 0 and now pin the DEFAULT band shape —
+  an untouched band keeps only its deployed fighters, and one fighter
+  under all-NONE refuses with FEWER THAN 2 FIGHTERS before any world
+  write.

@@ -10,7 +10,7 @@ local lineup = og.use("core:lineup")
 -- The core-lib names this module leans on locally (the shared MATCHED
 -- header slots and the wheel vocabulary — one scale, one home).
 local MATCHED = lineup.MATCHED
-local FILL_DEFAULT = lineup.FILL_DEFAULT
+local FILL_NONE = lineup.FILL_NONE
 local MAP_UNITS_ON = lineup.MAP_UNITS_ON
 
 -- The D9 level-id band the manifest may populate. rows_for scans it by
@@ -281,21 +281,10 @@ local function fills(inputs, active_mask, opts)
     local active = core.mask_has(active_mask, team)
     local fill = "empty"
     local count = 0
-    -- The RAW stored code survives beside the resolution: the troops arm
-    -- below is the one place a mode row distinguishes "the player turned
-    -- the wheel" from "the default resolved" (D3's classic gate).
-    local raw = fill_knobs[team + 1] or FILL_DEFAULT
-    local knob = raw
-    if active then
-      -- C8/D1: a stored default resolves HERE, through the lib's ONE
-      -- rule, before any squad decision reads it. A team in the active
-      -- mask is authored by the mode's own domain — the mask already
-      -- folded flags, anchors and foundries — so the activation IS the
-      -- presence row and the default resolves the explicit FAIR, the
-      -- pre-D1 behaviour; an explicit code is itself. Inactive teams
-      -- never reach a squad decision, so their default never resolves.
-      knob = lineup.resolved_fill(knob, { units = 1, roster = row.roster })
-    end
+    -- The stored code IS the fill (E1): 0 = NONE = no squad, on mode
+    -- maps exactly as on classic ones — the C8 per-team resolution and
+    -- the raw/resolved split retired with the DEFAULT code.
+    local knob = fill_knobs[team + 1] or FILL_NONE
     local units_on = (unit_boxes[team + 1] or MAP_UNITS_ON) == MAP_UNITS_ON
     local squad = nil
     local squad_count = 0
@@ -340,29 +329,24 @@ local function fills(inputs, active_mask, opts)
             squad_count = solved_size
           end
           if squad_count > 0 then
-            -- D1: the banked fact IS the applied wheel code (the +1
-            -- bias retired with the default's own storage code).
-            squad = lineup.applied_fill(knob)
+            -- E4: the banked fact IS the stored wheel code.
+            squad = knob
             wants_bots = true
           end
         end
         fill = "company"
         count = row.roster + squad_count
       elseif troops_stand then
-        -- Fielded map units are the team's fill (B4) and the stored
-        -- DEFAULT stays squadless beside them — but an EXPLICIT non-NONE
-        -- wheel value fields a solved squad beside the npcs (D3's classic
+        -- Fielded map units are the team's fill (B4) and NONE — the
+        -- stored 0, the default — stays squadless beside them; a turned
+        -- wheel fields a solved squad beside the npcs (D3's classic
         -- gate, mirrored here for the mode maps). Troops carry no guy, so
         -- the seam's solve prices the empty-team arm (weakest human x m),
         -- and the hard shape leaves only the room beside the standing
         -- units (R2 — the spawn seam's fielded count is the same walk).
         fill = "troops"
         count = row.npcs
-        local explicit = raw ~= FILL_DEFAULT
-        if no_bots then
-          explicit = false
-        end
-        if explicit and not lineup.squad_off(knob) then
+        if not no_bots and not lineup.squad_off(knob) then
           local troop_size = solved_size
           local troop_room = lineup.squad_room(squad_cap, row.npcs)
           if troop_room ~= nil then
@@ -370,8 +354,8 @@ local function fills(inputs, active_mask, opts)
           end
           if troop_size > 0 then
             squad_count = troop_size
-            -- D1: the banked fact IS the applied wheel code.
-            squad = lineup.applied_fill(knob)
+            -- E4: the banked fact IS the stored wheel code.
+            squad = knob
             wants_bots = true
             count = row.npcs + squad_count
           end
@@ -411,8 +395,8 @@ local function fills(inputs, active_mask, opts)
         -- count is never zero here: the legacy squad is five, a solved
         -- size is at least min(1, headcount) and every shipped hard shape
         -- leaves an empty team its whole cap. The banked fact IS the
-        -- applied wheel code (D1: the +1 bias is retired).
-        squad = lineup.applied_fill(knob)
+        -- stored wheel code (E4).
+        squad = knob
         wants_bots = true
         squad_count = count
       end
@@ -733,14 +717,11 @@ return {
   resolve_limit = resolve_limit,
   resolve_time_limit = resolve_time_limit,
   MATCHED = MATCHED,
-  FILL_DEFAULT = FILL_DEFAULT,
   FILL_FAIR = lineup.FILL_FAIR,
-  FILL_NONE = lineup.FILL_NONE,
+  FILL_NONE = FILL_NONE,
   FILL_PERCENT = lineup.FILL_PERCENT,
   squad_off = lineup.squad_off,
   fill_percent = lineup.fill_percent,
-  applied_fill = lineup.applied_fill,
-  resolved_fill = lineup.resolved_fill,
   map_units_fielded = lineup.map_units_fielded,
   difficulty_level = lineup.difficulty_level,
   bank_refusal_fighters = bank_refusal_fighters,
