@@ -1033,6 +1033,137 @@ void campaign_camp_flow(Menu& menu, SaveData& save,
     og::ui::run_terminal_campaign_camp(save, io);
 }
 
+// --- LINEUP, curses projection (docs/lineup-design.md §8) ----------------
+//
+// Same content as the text client, byte for byte: the shared model composes
+// the four bands and the item labels, and this file only decides that a
+// curses list is the surface. The bands ride as NON-selectable rows above
+// the items, which is what a Menu with dynamic rows buys over a prompt —
+// the census is always on screen while the cursor moves.
+
+// §5 SPLIT: one implementation for both terminal clients
+// (terminal_apply_lineup_split) — the campaign's own can_team rule
+// included, so this key cannot do what a single roster row refuses.
+void lineup_apply_split(Menu& menu, SaveData& save, og::ui::LineupSplit mode)
+{
+    std::vector<std::string> report;
+    const int moved =
+        og::ui::terminal_apply_lineup_split(save, mode, report);
+    if (moved > 0)
+        autosave_company_after_mutation(save);  // §3.8 roster tail
+    menu.show_text("Lineup", report);
+}
+
+void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
+                 const CursesPickerOptions& options)
+{
+    using Kind = og::ui::TerminalLineupItem::Kind;
+    // W7-G: ONE stage for the whole page, built exactly the way
+    // view_scenario_locally_staged() builds its own — same save, same
+    // difficulty, same session-latched seed — so the LINEUP bands and the
+    // VIEW LEVEL report always describe one world. The change key carries
+    // the knobs, so a turn restages once and an untouched page is free.
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save,
+    });
+    std::array<int, 4> map_unit_counts{};
+
+    for (;;) {
+        const bool censused = og::ui::census_staged_lineup_map_units(
+            stage, save, options.difficulty, config.seed, map_unit_counts);
+        const std::vector<og::sim::LobbyPlayer> seats =
+            og::ui::synthesize_local_lobby_players(save);
+
+        og::ui::TerminalLineupInputs inputs;
+        inputs.save = &save;
+        inputs.players = seats;
+        // F3: the MAP UNITS census comes off the staged world, so the B4
+        // hint and the toggle refusal are live here as on the SDL band. An
+        // empty span where nothing could be staged keeps the page silent
+        // about the map's units rather than inventing a fact.
+        if (censused) {
+            inputs.map_unit_counts = map_unit_counts;
+        }
+        // The curses picker screen is local-only (its network lobby is a
+        // separate flow), so the bands census THIS save and the host gate
+        // comes from the shared label context like every other row here.
+        inputs.networked = false;
+        inputs.is_host = label_context(config, options, save).is_host;
+        const og::ui::TerminalLineupModel model =
+            og::ui::build_terminal_lineup_model(inputs);
+
+        std::vector<ListEntry> entries;
+        for (const std::string& line : model.lines)
+            entries.push_back(ListEntry{line, false});
+        entries.push_back(ListEntry{"", false});
+        const int first_item = static_cast<int>(entries.size());
+        for (const og::ui::TerminalLineupItem& item : model.items)
+            entries.push_back(ListEntry{"  " + item.label, true});
+
+        const int index = menu.choose("Lineup", entries,
+                                      "Enter select | Esc back", first_item);
+        if (index < first_item)
+            return;
+        const og::ui::TerminalLineupItem& item =
+            model.items[static_cast<std::size_t>(index - first_item)];
+        const std::size_t team = static_cast<std::size_t>(item.team);
+        switch (item.kind) {
+        case Kind::Fill:
+        case Kind::MapUnits:
+            // C5: the versus-only refusal is gone. packs/core's mode-less
+            // stage step applies these two knobs on a classic level, so a
+            // gladiator write is as real as a modes write and the row cycles
+            // for every campaign.
+            //
+            // One clamp implementation (B1-B4) — the lobby's own. No
+            // settings-sync tail: the curses picker links no lobby client
+            // (its network lobby is a separate flow that seeds its own
+            // settings from this save on entry), so the save is the whole
+            // authority for these eight scalars here. B8: no value on the
+            // FILL wheel is refused on any team, so the step is the whole
+            // rule and both clients share it.
+            //
+            // B4/F3: a team the map ships no units for has nothing to
+            // switch — the SDL box is dimmed and its click belt refuses;
+            // this is the same refusal in the band's own words, gated on a
+            // census that actually happened (an absent census is not an
+            // empty map).
+            if (item.kind == Kind::MapUnits && censused &&
+                model.bands[team].map_unit_count == 0)
+            {
+                menu.show_text(
+                    "Lineup",
+                    {og::ui::format_lineup_map_units_census(model.bands[team])});
+                break;
+            }
+            if (item.kind == Kind::Fill) {
+                // E1: the row shows the STORED code, so the wheel enters at
+                // its slot — never a second derivation of it here.
+                save.fill[team] = og::sim::clamp_fill(
+                    og::ui::cycle_lineup_fill(save.fill[team], 1));
+            } else {
+                save.map_units[team] = og::sim::clamp_map_units(
+                    og::ui::toggle_lineup_map_units(save.map_units[team]));
+            }
+            autosave_company_after_mutation(save);  // §3.8 settings tail
+            break;
+        case Kind::SplitEven:
+            lineup_apply_split(menu, save, og::ui::LineupSplit::Even);
+            break;
+        case Kind::SplitFair:
+            lineup_apply_split(menu, save, og::ui::LineupSplit::Fair);
+            break;
+        case Kind::Unite:
+            lineup_apply_split(menu, save, og::ui::LineupSplit::AllToFirst);
+            break;
+        case Kind::Back:
+            return;
+        }
+    }
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -1055,8 +1186,15 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
     // mutates — so campaign hooks always read/write the live save (the
     // design doc's install-site list: the curses picker's session, beside
     // the [SAVE-R2] slot repoint).
+    // G4 (docs/lineup-design.md Amendment 5): og.campaign_my_team answers
+    // from THIS client's seat source — the same synthesized seats the
+    // LINEUP page and the launch read, so "mine" means the same team on
+    // the page and in the world. Host predicate stays the default: the
+    // curses picker screen is local-only.
     og::script::hooks::install_campaign_providers(
-        og::data::make_campaign_providers(save_data_));
+        og::data::make_campaign_providers(save_data_, {}, [this] {
+            return og::ui::first_local_seat_team(save_data_);
+        }));
 }
 
 CursesPickerClient::~CursesPickerClient()
@@ -1349,15 +1487,6 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         // the door moved off the main menu to Team Build.
         show_submenu(PickerMenuId::Difficulty);
         break;
-    // Match teams and target score left the flat team-build list for the
-    // modes camp's MATCH SETUP page; the SCENARIO submenu still routes its
-    // troops row through here.
-    case PickerMenuCommand::ToggleCtfScenarioTroops:
-        og::ui::toggle_ctf_scenario_troops(save_data_);
-        menu.show_text("Scenario Troops",
-            {og::ui::format_ctf_troops_label(save_data_)});
-        autosave_company_after_mutation(save_data_); // §3.8 settings tail
-        break;
     case PickerMenuCommand::ViewScenario:
         // Solo picker: stage the level locally through the one launch
         // pipeline (#218) with the session seed (config_.seed — the same
@@ -1375,6 +1504,11 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         // #206: the Base Camp gameplay zone (guard + flow live in the shared
         // terminal driver).
         campaign_camp_flow(menu, save_data_, config_, options_);
+        break;
+    case PickerMenuCommand::Lineup:
+        // LINEUP §8: teams, seats and the two band controls on one page
+        // (B1/B6: one FILL wheel, one MAP UNITS box, no FIGHTERS).
+        lineup_flow(menu, save_data_, config_, options_);
         break;
     default:
         break;

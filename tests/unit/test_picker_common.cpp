@@ -16,6 +16,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include "test_game_world_fixture.h"
@@ -1275,31 +1276,9 @@ TEST(PickerCommon, toggle_allied_mode)
 
 // --- CTF match settings ---
 
-TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4)
-{
-    SaveData save;
-    ASSERT_EQ(0, (int)save.ctf_team_count)
-        << "default is Auto (every team the map authors)";
-
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(2, (int)save.ctf_team_count);
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(3, (int)save.ctf_team_count);
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(4, (int)save.ctf_team_count);
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(0, (int)save.ctf_team_count) << "cycle wraps back to Auto";
-
-    // Out-of-range values normalize back into the cycle: junk above 4
-    // wraps straight to Auto, junk below the cycle floor steps to 2.
-    save.ctf_team_count = 9;
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(0, (int)save.ctf_team_count);
-    save.ctf_team_count = 1;
-    og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(2, (int)save.ctf_team_count);
-}
-
+// The TEAMS knob is gone (amendment A3): no cycler, no label, no pin. A
+// legacy 2/3/4 in a loaded save is healed by the lobby sanitizer and both
+// world twins, which own that migration — see the settings tests.
 TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
 {
     SaveData save;
@@ -1321,21 +1300,18 @@ TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
 TEST(PickerCommon, format_ctf_labels)
 {
     SaveData save;
-    ASSERT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
-    save.ctf_team_count = 4;
-    ASSERT_EQ("Teams: 4", og::ui::format_ctf_teams_label(save));
-
-    ASSERT_EQ("Limit: Map", og::ui::format_ctf_caps_label(save));
+    // A5: "SCORE: MAP" / "SCORE: n" — the score limit, named as such.
+    ASSERT_EQ("SCORE: MAP", og::ui::format_ctf_score_label(save));
     save.ctf_capture_limit = 5;
-    ASSERT_EQ("Limit: 5", og::ui::format_ctf_caps_label(save));
+    ASSERT_EQ("SCORE: 5", og::ui::format_ctf_score_label(save));
 
     // The SDL team-build buttons are 80px faces drawing 6px/char centered
     // text with no clipping: every label must stay inside the classic
-    // 12-char budget (longest is "Teams: Auto" / "Limit: 10").
-    save.ctf_team_count = 0;
+    // 12-char budget (the longest left on the row is "SCORE: MAP").
     save.ctf_capture_limit = 10;
-    ASSERT_LE(og::ui::format_ctf_teams_label(save).size(), 12u);
-    ASSERT_LE(og::ui::format_ctf_caps_label(save).size(), 12u);
+    ASSERT_LE(og::ui::format_ctf_score_label(save).size(), 12u);
+    save.ctf_capture_limit = 0;
+    ASSERT_LE(og::ui::format_ctf_score_label(save).size(), 12u);
 }
 
 TEST(PickerCommon, is_versus_campaign_reads_matchup_key)
@@ -1638,74 +1614,10 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
     ASSERT_TRUE(save.totalcash == og::ui::kNewGameStartingGold);
 }
 
-// --- CTF scenario-troops toggle & label ---
-
-TEST(PickerCommon, next_ctf_scenario_troops_cycle_orders)
-{
-    // Three states, and every state applies on every campaign:
-    // ALL -> OWN -> FAIR -> ALL (matched-teams D28).
-    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(0));
-    EXPECT_EQ((short)og::sim::kTroopsMatched,
-              og::ui::next_ctf_scenario_troops(2))
-        << "after OWN comes TROOPS: FAIR";
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(og::sim::kTroopsMatched))
-        << "the cycle wraps back to ALL";
-
-    // The retired middle state and any junk value read as OWN everywhere
-    // else, so cycling off them lands on ALL.
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(1));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(7));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(9));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(-1));
-}
-
-TEST(PickerCommon, toggle_ctf_scenario_troops_walks_three_states)
-{
-    SaveData save;
-    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
-    og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(2, save.ctf_strip_scenario_troops)
-        << "the menus write 2 so networked peers agree on OWN";
-    og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ((short)og::sim::kTroopsMatched, save.ctf_strip_scenario_troops)
-        << "the menus write 3 (kTroopsMatched) for TROOPS: FAIR";
-    og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
-
-    // A save carrying the retired middle state cycles back to ALL.
-    save.ctf_strip_scenario_troops = 1;
-    og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
-}
-
-TEST(PickerCommon, format_ctf_troops_label_strings_fit_budget)
-{
-    SaveData save;
-    ASSERT_EQ("TROOPS: ALL", og::ui::format_ctf_troops_label(save));
-    save.ctf_strip_scenario_troops = 2;
-    ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
-    // A stored legacy 1 strips everything, so it must not read as ALL.
-    save.ctf_strip_scenario_troops = 1;
-    ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
-
-    // FAIR (D28): the label is exactly "TROOPS: FAIR" — 12 chars, filling
-    // the 80px/12-char face budget tight. The literal-equality assert is
-    // deliberate: test_menu_layout's budget sweep only walks STATIC label
-    // strings and never sees this formatted one, so this is where a future
-    // rename re-trips the budget consciously ("TROOPS: EVEN" is the
-    // recorded alternate).
-    save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    const std::string fair_label = og::ui::format_ctf_troops_label(save);
-    ASSERT_EQ("TROOPS: FAIR", fair_label);
-    ASSERT_LE(fair_label.size(), 12u);
-
-    // Every state fits the 80px (12-character) SCENARIO face.
-    for (short state = 0; state <= og::sim::kTroopsMatched; ++state)
-    {
-        save.ctf_strip_scenario_troops = state;
-        ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u) << state;
-    }
-}
+// The CTF scenario-troops toggle, its cycle and its label retired with the
+// knob (amendment B5). Their pins went with them; what replaces the rule is
+// pinned in test_lineup_common.cpp (the MAP UNITS box) and in
+// test_lobby_server.cpp (the sanitize that snaps the field to 0).
 
 TEST(PickerCommon, team_has_members_and_set_preferred_team)
 {
@@ -2470,7 +2382,8 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
         EXPECT_FALSE(report.team_active[3]);
     }
 
-    // FAIR falls back identically to OWN (both are plan-side rules).
+    // A legacy TROOPS value changes nothing here either (B5 made the field
+    // inert), so the count-only fallback answers identically.
     save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     save.ctf_team_count = 2;
     {
@@ -2481,6 +2394,42 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
         EXPECT_TRUE(report.team_active[1]);
         EXPECT_FALSE(report.team_active[2]);
         EXPECT_FALSE(report.team_active[3]);
+    }
+}
+
+// The refusal sentence is chosen by the banked REASON, not by the mode's
+// free-text error (lineup review L1): the team modes are short of TEAMS,
+// a band mode (FFA/mutant) is short of FIGHTERS. The digit rides the
+// shared facts slot, so a joiner's mirror — which holds the same mode
+// vars — prints the same sentence as the host. Pinned over the report
+// struct here; the staged suite pins the same strings end to end.
+TEST(PickerCommon, scenario_report_refusal_sentence_follows_the_reason)
+{
+    og::ui::ScenarioRosterReport report;
+    report.staged = true;
+    report.is_versus = true;
+    report.refusing = true;
+
+    {
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(any_line_contains(
+            lines, "MATCH WILL NOT START: FEWER THAN 2 TEAMS"))
+            << "reason 0 (and every world that banks nothing) is the teams "
+               "sentence";
+        EXPECT_FALSE(any_line_contains(lines, "FIGHTERS"));
+    }
+
+    report.refusal_fighters = true;
+    {
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(any_line_contains(
+            lines, "MATCH WILL NOT START: FEWER THAN 2 FIGHTERS"));
+        EXPECT_FALSE(any_line_contains(lines, "FEWER THAN 2 TEAMS"))
+            << "a band has no teams to be short of";
+        for (const auto& line : lines)
+            EXPECT_LE(line.size(), 48u) << line;
     }
 }
 
@@ -2655,6 +2604,44 @@ TEST(PickerCommon, synthesize_local_lobby_players_pins)
     save.numplayers = 0;
     EXPECT_TRUE(og::ui::synthesize_local_lobby_players(save).empty())
         << "spectator/autoplay saves synthesize no seats";
+}
+
+// G4 (docs/lineup-design.md Amendment 5): the team og.campaign_my_team
+// answers where the save IS the seat source — both terminals, and the SDL
+// session before a lobby is open. The first derived seat, and the shared
+// save fallback when a company has no seats at all.
+TEST(PickerCommon, first_local_seat_team_is_the_first_derived_seat)
+{
+    SaveData save;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.my_team = 2;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+
+    const std::vector<short> seats =
+        og::ui::derive_local_gameplay_seat_teams(save);
+    ASSERT_FALSE(seats.empty());
+    EXPECT_EQ(2, seats.front()) << "my_team hoists to the front when it fields";
+    EXPECT_EQ(seats.front(), og::ui::first_local_seat_team(save));
+
+    // A seat 1 that is NOT my_team still answers: the page follows the
+    // seat this machine actually plays, not the saved preference.
+    save.my_team = 1;
+    EXPECT_EQ(1, og::ui::first_local_seat_team(save));
+
+    // No seats at all (a spectator/autoplay save): the one shared fallback,
+    // never a silent 0 of this function's own invention.
+    save.numplayers = 0;
+    save.my_team = 3;
+    EXPECT_EQ(og::data::campaign_my_team_fallback(save),
+              og::ui::first_local_seat_team(save));
+    EXPECT_EQ(3, og::ui::first_local_seat_team(save));
 }
 
 // The builder resolves a seat context into the report and the formatter

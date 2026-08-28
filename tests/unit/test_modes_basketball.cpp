@@ -664,24 +664,27 @@ TEST_F(ModesBasketball, incomplete_manifest_rows_refuse_the_match)
     }
 }
 
-TEST_F(ModesBasketball, all_bot_own_auto_matches_the_explicit_count_shape)
+TEST_F(ModesBasketball, all_bot_anchor_only_court_takes_the_manifest_default)
 {
-    // Soccer's twin (see test_modes_soccer.cpp, same name): all-bot
-    // TROOPS: OWN on a FOUR-anchor court whose manifest row declares
-    // teams = 2 with two hoops (kBballLevelA). TEAMS: Auto = the authored
-    // count (the 2026-08-18 directive, #218 review), so init refuses like
-    // explicit TEAMS: 4 would (no hoop for team 2) instead of silently
-    // fielding two teams off the manifest default.
+    // Soccer's twin (see test_modes_soccer.cpp): anchors-only teams carry
+    // no fielded units, so on a FOUR-anchor court whose manifest row
+    // declares teams = 2 with two hoops (kBballLevelA) exactly the first
+    // two sides play — the retired OWN arm's whole-domain refusal shape
+    // is gone with TROOPS (B5).
     ModesCtfWorld fx(kBballLevelA);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
     for (int team = 0; team < 4; ++team)
+    {
         fx.spawn_anchor(team, static_cast<short>(128 + 64 * team), 700);
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            og::sim::kFillFair;  // E5: every wheel turned
+    }
     fx.tick(1);
 
-    EXPECT_TRUE(fx.world().mode.init_attempted);
-    EXPECT_FALSE(fx.world().mode.active)
-        << "Auto rides the explicit-count arm, not the manifest default";
-    EXPECT_TRUE(has_script_error(fx.world(), "no hoop for team 2"));
+    ASSERT_TRUE(fx.world().mode.active)
+        << "the manifest default is a clean two-side court";
+    EXPECT_EQ(0b0011, fx.var(kBbTeamMask));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 2))
+        << "an anchors-only team past the default fields nothing";
 }
 
 TEST_F(ModesBasketball, four_hoop_court_and_the_limit_rows_bank)
@@ -764,14 +767,17 @@ TEST_F(ModesBasketball, fair_teams_four_with_a_solo_roster_fields_four_hoops)
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(128 + 64 * team), 700);
     arm_matched(fx.world());
-    fx.world().ctf_requested_team_count = 4;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfills
+    fx.world().ctf_requested_fill[2] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillFair;
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 640, 1);
     ASSERT_NE(nullptr, hero);
     fx.tick(1);
 
     ASSERT_TRUE(fx.world().mode.active);
     EXPECT_EQ(15, fx.var(kBbTeamMask))
-        << "the explicit TEAMS: 4 request fields all four sides";
+        << "AUTO is every authored side: all four field (the TEAMS count "
+           "is retired, lineup A1)";
     EXPECT_EQ(4, fx.var(kBbTeamCount));
     const int hoop_x[4] = {320, 576, 320, 64};
     const int hoop_y[4] = {64, 480, 896, 480};
@@ -1803,6 +1809,10 @@ TEST_F(ModesBasketball, dead_ball_resets_and_revives_wiped_team)
         BballCourt fx;
         fx.tick(1);
         ASSERT_TRUE(fx.basketball_active());
+        // E5: turned AFTER init — at init an explicit FAIR would put a
+        // squad beside the authored green troop (D3); the revive backstop
+        // reads the knob at spawn time.
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
         fx.thaw();
         fx.red->setxy(292, 452);  // center (300,460): 40 px from the ball —
                                   // attending, but NOT on it (no pickup)
@@ -2404,6 +2414,7 @@ TEST_F(ModesBasketball, mirror_replication_120_ticks)
     fx.spawn_anchor(0, 128, 512);
     fx.spawn_anchor(1, 512, 448);
     fx.spawn_anchor(1, 512, 512);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: the squad
     walker* shooter = fx.spawn_living(FAMILY_SOLDIER, 0, 442, 472);
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
@@ -2525,6 +2536,8 @@ std::string run_bball_bot_match_digest(int ticks)
         const short x = static_cast<short>(128 + 64 * team);
         fx.spawn_anchor(team, x, 680);
         fx.spawn_anchor(team, x, 720);
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            og::sim::kFillFair;  // E5: bot sides
     }
     fx.tick(ticks);  // bot squads for all four teams play the ball
     EXPECT_TRUE(fx.world().mode.active);
@@ -2554,6 +2567,8 @@ TEST_F(ModesBasketball, slot_budget_is_exactly_full_item_clock_owns_63)
         const short x = static_cast<short>(128 + 64 * team);
         fx.spawn_anchor(team, x, 680);
         fx.spawn_anchor(team, x, 720);
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            og::sim::kFillFair;  // E5: bot sides
     }
     fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
@@ -2581,6 +2596,8 @@ TEST_F(ModesBasketball, instruction_budget_headroom)
     fx.spawn_anchor(0, 128, 512);
     fx.spawn_anchor(1, 512, 448);
     fx.spawn_anchor(1, 512, 512);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.tick(1);  // init (bot squads + ball + shadow) under the budget
     ASSERT_TRUE(fx.world().mode.active);
     fx.tick(45);  // 3 director cadences + the toss + flight + HUD
@@ -3328,6 +3345,9 @@ TEST_F(ModesBasketball, wipe_watchdog_resets_and_revives)
     BballCourt fx;
     fx.tick(1);
     ASSERT_TRUE(fx.basketball_active());
+    // E5: turned AFTER init (a FAIR at init would field a D3 squad beside
+    // the authored green troop); the watchdog refield reads it at spawn.
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.give_ball(fx.red, 350, 480);
     // Keep the shot clock out of the way: the winner CARRIES the ball the
     // whole time — the babysit shape the watchdog exists for.
@@ -4267,6 +4287,10 @@ TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
         {
             LoadedRealCourt fx(id);
             ASSERT_TRUE(fx.loaded) << "scen" << id << " must load";
+            // E5: the shipped courts' empty sides field bots only under
+            // a turned wheel — all-NONE would refuse the match.
+            for (auto& knob : fx.world().ctf_requested_fill)
+                knob = og::sim::kFillFair;
             if (seed != 0u)
                 fx.world().rng_.state_ = seed;
             fx.world().tick();
@@ -4363,6 +4387,9 @@ struct BballSoloRosterCourt : ModesCtfWorld
         spawn_anchor(0, 128, 512);
         spawn_anchor(1, 512, 448);
         spawn_anchor(1, 512, 512);
+        // E5: the opponent's fill is a turned wheel now (the stored 0 is
+        // NONE and would leave the solo roster unopposed).
+        world().ctf_requested_fill[1] = og::sim::kFillFair;
         hero = spawn_leveled_hero(FAMILY_SOLDIER, 0, 128, 96, 1, guy_level);
     }
 
@@ -4379,39 +4406,23 @@ struct BballSoloRosterCourt : ModesCtfWorld
 // — and the ONLY delta is the generated squad, which spawns at matched
 // power AND matched headcount: the solo hero's court is a 1v1, not the
 // 5v5 the pre-amendment game shape pinned (D34 supersedes D12 here).
-TEST_F(ModesBasketball, matched_mask_equals_own_mask_with_a_solo_roster)
+TEST_F(ModesBasketball, explicit_fair_matches_a_solo_roster_court)
 {
+    // FILL: FAIR (B2) solves the solo roster's opponent at matched power
+    // AND matched headcount: a 1v1 court, not the old legacy five (D34).
+    // E5: the fixture turns that wheel itself — the stored default is NONE
+    // and would leave the roster unopposed.
     BballSoloRosterCourt matched(4);
-    arm_matched(matched.world());
     matched.tick(1);
     ASSERT_TRUE(matched.basketball_active());
 
-    BballSoloRosterCourt own(4);
-    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
-    own.tick(1);
-    ASSERT_TRUE(own.basketball_active());
-
-    EXPECT_EQ(own.var(kBbTeamMask), matched.var(kBbTeamMask))
-        << "FAIR-mask == OWN-mask (D26/D33)";
-    EXPECT_EQ(alive_on_team(own.world(), 0),
-              alive_on_team(matched.world(), 0))
-        << "the roster team is untouched under both";
-    EXPECT_EQ(5, alive_on_team(own.world(), 1))
-        << "OWN keeps the full legacy squad";
     EXPECT_EQ(1, alive_on_team(matched.world(), 1))
-        << "FAIR's generated squad matches the solo headcount (D34/D39)";
+        << "the generated squad matches the solo headcount (D34/D39)";
     EXPECT_EQ(1, matched.var(kSlotMatchedSize));
-
-    const std::vector<int> own_levels =
-        team_levels_sorted(own.world(), 1);
-    ASSERT_EQ(5u, own_levels.size());
-    EXPECT_EQ(2, own_levels.front()) << "OWN keeps the legacy L2 squad";
-    EXPECT_EQ(2, own_levels.back());
-    EXPECT_EQ(0, own.var(kSlotMatchedTarget));
 
     ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
     const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
-    ASSERT_NE(0, code) << "the matched twin solved team 1";
+    ASSERT_NE(0, code) << "the default solved team 1";
     EXPECT_EQ(0, code % 10) << "n = 1 admits no upgrades (D36)";
     const std::vector<int> matched_levels =
         team_levels_sorted(matched.world(), 1);
@@ -4419,7 +4430,6 @@ TEST_F(ModesBasketball, matched_mask_equals_own_mask_with_a_solo_roster)
     EXPECT_EQ(code / 10, matched_levels.front())
         << "the lone bot's level follows the stored plan";
     EXPECT_EQ(1, count_notifications(matched.events, "TEAMS MATCHED"));
-    EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
@@ -4547,6 +4557,7 @@ SeededTrio run_seeded_trio(std::uint32_t rng_state)
     fx.spawn_leveled_hero(FAMILY_ARCHER, 0, 160, 96, 2, 4);
     fx.spawn_leveled_hero(FAMILY_ELF, 0, 192, 96, 3, 4);
     arm_matched(fx.world());
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: the fill
     fx.world().rng_.state_ = rng_state;  // pin the match seed
     fx.tick(1);
     EXPECT_TRUE(fx.world().mode.active);

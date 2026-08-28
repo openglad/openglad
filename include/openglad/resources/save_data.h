@@ -84,7 +84,10 @@ public:
     short ctf_team_count = 0; // 0 = Auto: every team the map authors
     short ctf_capture_limit = 0;
     short ctf_respawn_ticks = 0;
-    short ctf_strip_scenario_troops = 0; // 0 = keep authored troops (classic); 2 = own; 3 = Fair (og::sim::kTroopsMatched)
+    // RETIRED (amendment B5): sanitized to 0 at every authority, so the
+    // field only carries legacy values off old disks. Per-team MAP UNITS
+    // replaced it.
+    short ctf_strip_scenario_troops = 0;
     // Match time limit in SIM TICKS (12/s); 0 = the map's own value (#241).
     // NOT the .glad level field of the same name: that one is the par/time
     // BONUS clock and lands in GameWorld::time_bonus_limit
@@ -93,6 +96,15 @@ public:
     // manifest row. Persisted since GTL v17; sanitize/clamp twins bound a
     // non-zero request to [720, 21600] ticks (1 min .. 30 min).
     short time_limit = 0;
+    // Per-team FILL wheel and MAP UNITS box (amendment B1-B4, GTL v18).
+    // Index is the team (0..3); 0 is the default on both, so an all-zero
+    // pair is the default state. fill: 0 = NONE (amendment 4 E1 — no
+    // squad on this team at all), 1 = WEAK, 2 = FAIR, 3 = STRONG,
+    // 4 = BRUTAL — the matched solver with a multiplier the mode Lua owns.
+    // map_units: 0 = the map's own authored units on this team are
+    // fielded, 1 = they are not.
+    std::array<short, 4> fill = {};
+    std::array<short, 4> map_units = {};
     // Difficulty submenu settings (0 = legacy default behavior for all three).
     // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.
     short respawn_mode = 0;

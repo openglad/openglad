@@ -1624,10 +1624,10 @@ int view_level_staged_injector(void *data) {
     interact("scenario");
     if (wait_for_interactable("view_scenario", 5000)) {
       SDL_Delay(300);
-      // The reshaped SCENARIO screen first (#218): a versus host shows the
-      // full y=140 match-settings band TEAMS | TROOPS | LIMIT under the
-      // left-packed VIEW LEVEL | PROGRESS row.
-      if (wait_for_interactable("ctf_teams", 5000)) {
+      // The reshaped SCENARIO screen first (#218, A5/B5): a versus host
+      // shows SCORE alone on the y=140 knob row under the VIEW LEVEL |
+      // PROGRESS | LINEUP row.
+      if (wait_for_interactable("ctf_caps", 5000)) {
         SDL_Delay(300);
         state->captures +=
             capture_frame("scenario_match_band", &stash_menu_before_viewer);

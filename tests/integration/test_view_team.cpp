@@ -2485,8 +2485,9 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_FALSE(buttons[0].no_draw);
     EXPECT_EQ(14, buttons[0].sizex);
     EXPECT_FALSE(buttons[kBaseCampRowBodyBase + 0].hidden);
-    EXPECT_TRUE(buttons[kBaseCampTeamChipBase + 0].hidden)
-        << "network team assignment makes the color chip read-only";
+    EXPECT_FALSE(buttons[kBaseCampTeamChipBase + 0].hidden)
+        << "B6: the own-row chip is networked-editable (the FIGHTERS list "
+           "retired into it)";
     EXPECT_TRUE(buttons[kBaseCampMoveUpBase + 0].hidden)
         << "the first owned roster member has no move-up action";
     EXPECT_FALSE(buttons[kBaseCampMoveUpBase + 1].hidden)
@@ -2503,11 +2504,19 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden)
         << "joiner machine: GO hidden by the production rewire";
 
+    // B6: the own-row chip is LIVE networked — the cycle lands through the
+    // ONE shared predicate and the mutation tail re-syncs the lobby roster
+    // (server clears ready on the content change) + drops local ready.
     const short assigned_team = save.team_list[0]->teamnum;
     EXPECT_EQ(MENU_OK,
               spec.on_spec_row(kBaseCampTeamChipBase + 0, &state));
-    EXPECT_EQ(assigned_team, save.team_list[0]->teamnum)
-        << "even a stale network chip dispatch must not change team";
+    EXPECT_EQ(static_cast<short>(assigned_team + 1),
+              save.team_list[0]->teamnum)
+        << "the networked own-row chip cycles the fighting colour (B6)";
+    EXPECT_EQ(1, lobby.roster_syncs)
+        << "the chip's mutation tail re-syncs the lobby roster";
+    ASSERT_EQ(1u, lobby.ready_calls.size());
+    EXPECT_FALSE(lobby.ready_calls[0]);
 
     // Foreign clicks are read-only: OWNED BY <full company name> (U9).
     trace_clear();
@@ -2519,9 +2528,10 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
         << "a foreign row-body ordinal must not seed a session";
     EXPECT_TRUE(save.team_list[0]->deployed);
     EXPECT_FALSE(save.team_list[1]->deployed);
-    EXPECT_TRUE(lobby.ready_calls.empty())
+    EXPECT_EQ(1u, lobby.ready_calls.size())
         << "a denied foreign click must not touch ready";
-    EXPECT_EQ(0, lobby.roster_syncs);
+    EXPECT_EQ(1, lobby.roster_syncs)
+        << "...nor re-sync the roster";
 
     // Client-side 24-cap guard: 23 foreign deploys + 1 own deployed = 24 —
     // toggling the own benched row ON is denied with the popup.
@@ -2538,7 +2548,7 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_TRUE(trace_contains("popup", "DEPLOY LIMIT 24"));
     EXPECT_FALSE(save.team_list[1]->deployed)
         << "a denied toggle must not flip the flag";
-    EXPECT_TRUE(lobby.ready_calls.empty());
+    EXPECT_EQ(1u, lobby.ready_calls.size());
 
     // Under the cap the toggle lands and runs the §4.3 mutation tail:
     // roster re-sync (server clears ready on the content change) + the
@@ -2550,10 +2560,10 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"));
     EXPECT_TRUE(save.team_list[1]->deployed);
-    ASSERT_EQ(1u, lobby.ready_calls.size())
+    ASSERT_EQ(2u, lobby.ready_calls.size())
         << "an own-row mutation clears this machine's ready";
-    EXPECT_FALSE(lobby.ready_calls[0]);
-    EXPECT_EQ(1, lobby.roster_syncs);
+    EXPECT_FALSE(lobby.ready_calls[1]);
+    EXPECT_EQ(2, lobby.roster_syncs);
 
     // Networked draw pass: §9.12 session-status header, COMPANY column,
     // foreign X/- glyphs (smoke + coverage; the strings are unit-pinned in
@@ -4411,10 +4421,11 @@ TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
 }
 
 // ---------------------------------------------------------------------------
-// Match Teams / Score Limit at their re-homed SCENARIO rows (#218): visible
-// to a networked joiner as read-only labels on versus campaigns (the TROOPS
-// treatment plus joiner visibility), with the §2.7 denial in the callbacks
-// — a joiner click popups and cycles nothing, a host click cycles and syncs.
+// The score limit at its re-homed SCENARIO row (#218): visible to a
+// networked joiner as a read-only label on versus campaigns, with the §2.7
+// denial in the callback — a joiner click popups and cycles nothing, a
+// host click cycles and syncs. (TROOPS retired with amendment B5; its
+// ordinal is a parked spare like the TEAMS cell before it.)
 // ---------------------------------------------------------------------------
 TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
 {
@@ -4439,24 +4450,20 @@ TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
     int highlighted = kScenarioMenuBackIndex;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
 
-    // Joiner + versus: TEAMS / LIMIT visible read-only; the host-gated
-    // SET CAMPAIGN / SET LEVEL / TROOPS hide; labels are the formatters'.
-    EXPECT_FALSE(buttons[kScenarioMenuCtfTeamsIndex].hidden);
+    // Joiner + versus: SCORE visible read-only; the host-gated SET CAMPAIGN
+    // / SET LEVEL hide; the label is the formatter's (A5: SCORE, MAP = the
+    // level's own target). Both retired cyclers' cells (TEAMS A3, TROOPS
+    // B5) are parked spares on every frame.
+    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
     EXPECT_FALSE(buttons[kScenarioMenuCtfCapsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetCampaignIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetLevelIndex].hidden);
-    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
-    EXPECT_EQ("Teams: Auto", buttons[kScenarioMenuCtfTeamsIndex].label);
-    EXPECT_EQ("Limit: Map", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
+        << "the LINEUP door is never gated (docs/lineup-design.md §2.3)";
+    EXPECT_EQ("SCORE: MAP", buttons[kScenarioMenuCtfCapsIndex].label);
 
-    // Joiner clicks: §2.7 denial — popup, TRACE, no cycle, no sync.
-    trace_clear();
-    EXPECT_EQ(MENU_OK, change_ctf_teams());
-    EXPECT_TRUE(trace_contains("teams", "ctf_teams_denied"));
-    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
-    EXPECT_EQ(0, (int)save.ctf_team_count);
-    EXPECT_EQ(0, lobby.settings_syncs);
+    // Joiner click: §2.7 denial — popup, TRACE, no cycle, no sync.
     trace_clear();
     EXPECT_EQ(MENU_OK, change_ctf_caps());
     EXPECT_TRUE(trace_contains("teams", "ctf_caps_denied"));
@@ -4466,31 +4473,30 @@ TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
 
     // A host's lobby-synced turn reaches the joiner's read-only label
     // through the same per-frame re-derive TROOPS uses.
-    save.ctf_team_count = 3;
+    save.ctf_capture_limit = 5;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
-    EXPECT_EQ("Teams: 3", buttons[kScenarioMenuCtfTeamsIndex].label);
+    EXPECT_EQ("SCORE: 5", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
+        << "the spare never wakes, whatever the save holds";
 
-    // Host clicks: cycle + sync + both-surface refresh.
+    // Host click: cycle + sync + both-surface refresh.
     lobby.host = true;
-    save.ctf_team_count = 2;
-    EXPECT_EQ(MENU_OK, change_ctf_teams());
-    EXPECT_EQ(3, (int)save.ctf_team_count);
-    EXPECT_EQ(1, lobby.settings_syncs);
-    EXPECT_EQ("Teams: 3",
-              pks().scenariomenu_buttons[kScenarioMenuCtfTeamsIndex].label);
+    save.ctf_capture_limit = 0;
     EXPECT_EQ(MENU_OK, change_ctf_caps());
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
-    EXPECT_EQ(2, lobby.settings_syncs);
-    EXPECT_EQ("Limit: 1",
+    EXPECT_EQ(1, lobby.settings_syncs);
+    EXPECT_EQ("SCORE: 1",
               pks().scenariomenu_buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ(0, (int)save.ctf_team_count) << "inert since A3";
 
-    // Non-versus campaign: the pair hides for host and joiner alike.
+    // Non-versus campaign: SCORE hides for host and joiner alike, and the
+    // parked TROOPS spare stays parked (B5) whatever the frame says.
     save.current_campaign = "gladiator";
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
-    EXPECT_TRUE(buttons[kScenarioMenuCtfTeamsIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden);
-    EXPECT_FALSE(buttons[kScenarioMenuTroopsIndex].hidden)
-        << "TROOPS keeps its host-axis gate on classic campaigns";
+    EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden)
+        << "the retired TROOPS cell never wakes (B5)";
 
     save.reset();
 }

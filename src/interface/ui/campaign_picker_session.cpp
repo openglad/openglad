@@ -687,13 +687,20 @@ bool CampaignZoneSession::settings_fingerprint_changed()
     // scen_num is deliberately EXCLUDED: level changes already refetch
     // through the frame-tick reload guard, and double-triggering would hide
     // a broken guard from the tests.
-    const std::string composed = std::format(
+    std::string composed = std::format(
         "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         save_.current_campaign, save_.allied_mode, save_.ctf_team_count,
         save_.ctf_capture_limit, save_.ctf_respawn_ticks,
         save_.ctf_strip_scenario_troops, save_.respawn_mode,
         save_.generator_rate, save_.keep_fallen_heroes, save_.cross_control,
         save_.infinite_gold, save_.time_limit);
+    // The eight per-team bot knobs (LINEUP §3.1) are lobby-synced like the
+    // rest: a host cycling a squad preset must refresh the missions surface.
+    for (std::size_t team = 0; team < save_.fill.size(); ++team)
+    {
+        composed += std::format("|{}|{}", save_.fill[team],
+                                save_.map_units[team]);
+    }
     const std::uint64_t fingerprint =
         static_cast<std::uint64_t>(std::hash<std::string>{}(composed));
     if (!fingerprint_seeded_)

@@ -8,6 +8,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/save_data.h>
@@ -259,7 +260,6 @@ TEST(CampaignStateProviders, level_and_title_readers)
 TEST(CampaignStateProviders, match_get_reads_the_matchup_knobs)
 {
     SaveData save;
-    save.ctf_team_count = 3;
     save.ctf_capture_limit = 10;
     save.ctf_respawn_ticks = 120;
     save.ctf_strip_scenario_troops = 2;
@@ -268,15 +268,16 @@ TEST(CampaignStateProviders, match_get_reads_the_matchup_knobs)
     save.time_limit = 7200;
 
     const CampaignProviders providers = make_campaign_providers(save);
-    EXPECT_EQ(3, providers.match_get("team_count"));
     EXPECT_EQ(10, providers.match_get("score_limit"));
     EXPECT_EQ(120, providers.match_get("respawn_ticks"));
-    EXPECT_EQ(2, providers.match_get("strip_troops"));
     EXPECT_EQ(1, providers.match_get("respawn_mode"));
     EXPECT_EQ(200, providers.match_get("generator_rate"));
     EXPECT_EQ(7200, providers.match_get("time_limit"));
     EXPECT_EQ(0, providers.match_get("no_such_knob"))
         << "an unknown name reads 0 (the binding errors before this)";
+    // "team_count" is retired from the vocabulary (amendment A3): it is an
+    // unknown name here now, and the knob it named is inert.
+    EXPECT_EQ(0, providers.match_get("team_count"));
 }
 
 TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
@@ -285,13 +286,10 @@ TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
     (void)og::data::consume_match_settings_dirty();
     const CampaignProviders providers = make_campaign_providers(save);
 
-    // team_count: <= 0 is Auto (0); anything else clamps into [2, 4].
-    EXPECT_TRUE(providers.match_set("team_count", 1));
-    EXPECT_EQ(2, save.ctf_team_count);
-    EXPECT_TRUE(providers.match_set("team_count", 9));
-    EXPECT_EQ(4, save.ctf_team_count);
-    EXPECT_TRUE(providers.match_set("team_count", -5));
-    EXPECT_EQ(0, save.ctf_team_count) << "non-positive collapses to Auto";
+    // The retired TEAMS knob answers false like any name outside the
+    // vocabulary, and never writes (A3).
+    EXPECT_FALSE(providers.match_set("team_count", 3));
+    EXPECT_EQ(0, save.ctf_team_count);
 
     // score_limit clamps into [0, 50].
     EXPECT_TRUE(providers.match_set("score_limit", 99));
@@ -329,12 +327,6 @@ TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
 
     // The enum knobs REFUSE out-of-range values (where the sanitizer
     // reverts to its fallback, a provider write answers false unwritten).
-    EXPECT_TRUE(providers.match_set("strip_troops", 3));
-    EXPECT_EQ(3, save.ctf_strip_scenario_troops);
-    EXPECT_FALSE(providers.match_set("strip_troops", 4));
-    EXPECT_EQ(3, save.ctf_strip_scenario_troops) << "a refusal never writes";
-    EXPECT_FALSE(providers.match_set("strip_troops", -1));
-
     EXPECT_TRUE(providers.match_set("respawn_mode", 2));
     EXPECT_EQ(2, save.respawn_mode);
     EXPECT_FALSE(providers.match_set("respawn_mode", 4));
@@ -343,6 +335,116 @@ TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
 
     EXPECT_FALSE(providers.match_set("no_such_knob", 1))
         << "unknown names answer false";
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, match_get_and_set_cover_the_per_team_bot_knobs)
+{
+    SaveData save;
+    (void)og::data::consume_match_settings_dirty();
+    save.fill = {0, 2, 1, 4};
+    save.map_units = {0, 1, 1, 0};
+
+    const CampaignProviders providers = make_campaign_providers(save);
+    // Each name reads its OWN team's slot: a transposed slot map would still
+    // pass a test that only checked one index.
+    EXPECT_EQ(0, providers.match_get("fill_1"));
+    EXPECT_EQ(2, providers.match_get("fill_2"));
+    EXPECT_EQ(1, providers.match_get("fill_3"));
+    EXPECT_EQ(4, providers.match_get("fill_4"));
+    EXPECT_EQ(0, providers.match_get("map_units_1"));
+    EXPECT_EQ(1, providers.match_get("map_units_2"));
+    EXPECT_EQ(1, providers.match_get("map_units_3"));
+    EXPECT_EQ(0, providers.match_get("map_units_4"));
+
+    // Team 0 and team 5 are outside the 1..4 vocabulary.
+    EXPECT_EQ(0, providers.match_get("fill_0"));
+    EXPECT_EQ(0, providers.match_get("fill_5"));
+    EXPECT_FALSE(providers.match_set("fill_0", 3));
+    EXPECT_FALSE(providers.match_set("map_units_5", 3));
+    EXPECT_FALSE(providers.match_set("fill_", 3));
+
+    // Both knobs CLAMP (0 is a legal value on both — FAIR, and MAP UNITS
+    // ON — so neither refuses), with the same bounds the lobby sanitizer
+    // applies.
+    EXPECT_TRUE(providers.match_set("fill_1", -3));
+    EXPECT_EQ(0, save.fill[0]);
+    EXPECT_TRUE(providers.match_set("fill_1", 999));
+    EXPECT_EQ(og::sim::kMaxFill, save.fill[0]);
+    EXPECT_TRUE(providers.match_set("fill_1", og::sim::kFillWeak));
+    EXPECT_EQ(og::sim::kFillWeak, save.fill[0]);
+
+    EXPECT_TRUE(providers.match_set("map_units_4", -1));
+    EXPECT_EQ(0, save.map_units[3]);
+    EXPECT_TRUE(providers.match_set("map_units_4", 400));
+    EXPECT_EQ(og::sim::kMaxMapUnits, save.map_units[3]);
+    EXPECT_TRUE(providers.match_set("map_units_4", og::sim::kMapUnitsOff));
+    EXPECT_EQ(og::sim::kMapUnitsOff, save.map_units[3]);
+
+    // A write to team 3 must not disturb its neighbours.
+    EXPECT_TRUE(providers.match_set("fill_3", og::sim::kFillBrutal));
+    EXPECT_EQ(og::sim::kFillWeak, save.fill[0]);
+    EXPECT_EQ(2, save.fill[1]);
+    EXPECT_EQ(og::sim::kFillBrutal, save.fill[2]);
+    EXPECT_EQ(4, save.fill[3]);
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, bot_knob_names_are_in_the_campaign_vocabulary)
+{
+    // og.campaign_match_get errors on any name outside this list, so a knob
+    // that reached the provider but not the vocabulary would be unreachable
+    // from Lua.
+    const auto listed = [](const char* wanted) {
+        for (const char* name :
+             og::script::hooks::kCampaignMatchSettingNames)
+        {
+            if (std::string(name) == wanted)
+                return true;
+        }
+        return false;
+    };
+    for (int team = 1; team <= 4; ++team)
+    {
+        EXPECT_TRUE(listed(("fill_" + std::to_string(team)).c_str()))
+            << "fill_" << team;
+        EXPECT_TRUE(listed(("map_units_" + std::to_string(team)).c_str()))
+            << "map_units_" << team;
+    }
+    // The two retired knobs are OUT of the vocabulary (A3 team_count, B5
+    // strip_troops): a campaign that wrote either would be writing a value
+    // nothing reads, so the binding raises unknown-name instead.
+    EXPECT_FALSE(listed("team_count"));
+    EXPECT_FALSE(listed("strip_troops"));
+
+    // ... and the provider refuses the write, unwritten, the way it refuses
+    // any name outside the list.
+    SaveData save;
+    save.ctf_strip_scenario_troops = 0;
+    const CampaignProviders providers = make_campaign_providers(save);
+    EXPECT_FALSE(providers.match_set("strip_troops", 2));
+    EXPECT_EQ(0, save.ctf_strip_scenario_troops);
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, bot_knob_writes_are_refused_for_non_hosts)
+{
+    SaveData save;
+    save.fill = {0, 0, 0, 0};
+    (void)og::data::consume_match_settings_dirty();
+
+    bool host = false;
+    const CampaignProviders providers =
+        make_campaign_providers(save, [&host] { return host; });
+    EXPECT_FALSE(providers.match_set("fill_2", 3));
+    EXPECT_EQ(0, save.fill[1]) << "the refusal never writes";
+    EXPECT_FALSE(og::data::consume_match_settings_dirty());
+    EXPECT_EQ(0, providers.match_get("fill_2"))
+        << "reads stay open to every machine";
+
+    host = true;
+    EXPECT_TRUE(providers.match_set("fill_2", 3));
+    EXPECT_EQ(3, save.fill[1]);
     (void)og::data::consume_match_settings_dirty();
 }
 
@@ -377,6 +479,56 @@ TEST(CampaignStateProviders, default_is_host_is_always_true)
     SaveData save;
     const CampaignProviders providers = make_campaign_providers(save);
     EXPECT_TRUE(providers.is_host()) << "local play is always host";
+    (void)og::data::consume_match_settings_dirty();
+}
+
+// G4 (docs/lineup-design.md Amendment 5): og.campaign_my_team's provider.
+// The surface that owns a seat view supplies it; the shipped default —
+// every terminal fixture, every scriptless install — answers the save's
+// own team, which is the ONE fallback rule
+// (og::data::campaign_my_team_fallback) all three installers end on.
+TEST(CampaignStateProviders, default_my_team_answers_the_saves_own_team)
+{
+    SaveData save;
+    save.my_team = 2;
+    const CampaignProviders providers = make_campaign_providers(save);
+    ASSERT_TRUE(static_cast<bool>(providers.my_team));
+    EXPECT_EQ(2, providers.my_team());
+
+    // Read live, never latched: Base Camp moves my_team while the book is
+    // installed.
+    save.my_team = 1;
+    EXPECT_EQ(1, providers.my_team());
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, my_team_fallback_clamps_unvalidated_save_data)
+{
+    SaveData save;
+    save.my_team = 9; // save data is not validated on load
+    EXPECT_EQ(SCORE_TEAM_COUNT - 1, og::data::campaign_my_team_fallback(save));
+    EXPECT_EQ(9, save.my_team) << "the fallback reads, it never repairs";
+    save.my_team = -4;
+    EXPECT_EQ(0, og::data::campaign_my_team_fallback(save));
+
+    const CampaignProviders providers = make_campaign_providers(save);
+    EXPECT_EQ(0, providers.my_team()) << "the default is that same rule";
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, my_team_provider_overrides_the_fallback)
+{
+    SaveData save;
+    save.my_team = 0;
+    int seat_team = 3;
+    const CampaignProviders providers =
+        make_campaign_providers(save, {}, [&seat_team] { return seat_team; });
+    EXPECT_EQ(3, providers.my_team())
+        << "a surface with a seat view outranks the save";
+    seat_team = 2;
+    EXPECT_EQ(2, providers.my_team()) << "the seat view is read live";
+    EXPECT_TRUE(providers.is_host())
+        << "the my_team argument must not disturb the host default";
     (void)og::data::consume_match_settings_dirty();
 }
 

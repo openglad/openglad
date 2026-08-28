@@ -21,6 +21,8 @@
 // duplicate registration — answers "no scripted picker", so the stock UI
 // stays reachable.
 
+#include <openglad/gameplay/lobby_state.h>
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -193,10 +195,21 @@ struct CampaignRosterEntry {
 // og.campaign_match_get errors on any name outside this list — the sim
 // twin's unknown-name rule — while match_set answers false (policy lives
 // in the provider).
+// The eight per-team band knobs (amendment B1-B4) join the list: "fill_N"
+// is the FILL wheel (0 = NONE, 1 = WEAK, 2 = FAIR, 3 = STRONG,
+// 4 = BRUTAL) and "map_units_N" the MAP UNITS box (0 = on, 1 = off), N
+// being the 1-based team.
+// "team_count" is NOT in the list any more (amendment A3) and neither is
+// "strip_troops" (amendment B5): both knobs are retired, so a campaign that
+// wrote either would be writing a value nothing reads. The sim-side
+// og.match_setting("team_count") / ("strip_troops") stay READABLE — and
+// always answer 0 — so existing scripts keep running.
 inline constexpr const char* kCampaignMatchSettingNames[] = {
-    "team_count",   "score_limit",  "respawn_ticks",
-    "strip_troops", "respawn_mode", "generator_rate",
+    "score_limit",  "respawn_ticks",
+    "respawn_mode", "generator_rate",
     "time_limit",
+    "fill_1",  "fill_2",  "fill_3",  "fill_4",
+    "map_units_1",  "map_units_2",  "map_units_3",  "map_units_4",
 };
 
 // The menu-time provider seam. og_gameplay cannot see SaveData or the
@@ -223,6 +236,16 @@ struct CampaignProviders {
     std::function<std::int32_t(const std::string&)> match_get;
     std::function<bool(const std::string&, std::int32_t)> match_set;
     std::function<bool()> is_host;
+    // og.campaign_my_team() → the FIRST LOCAL SEAT's fighting team, from
+    // the surface's OWN seat view (the SDL lobby's seat list, a terminal's
+    // synthesized seats) — the team a page means when it says "mine", and
+    // on a joiner that is the joiner's team, never the host's. Answering
+    // the raw seat value is fine: the binding is the 0..SCORE_TEAM_COUNT-1
+    // choke, so no surface has to restate the domain. A surface with no
+    // seat view of its own leaves this to the shipped default, which
+    // answers the save's own my_team (og::data::campaign_my_team_fallback)
+    // — the fallback every installer ends on, never a silent 0.
+    std::function<int()> my_team;
     // og.campaign_random(n) → 1..n. Menu-time randomness ONLY: the default
     // (og::data::make_campaign_providers) is a process-lifetime generator
     // seeded from the wall clock at first use, and the sim RNG stays
@@ -290,5 +313,70 @@ std::vector<std::string> campaign_registered_vars();
 // is a function, sorted. The sandbox has no pairs(), so the fence-walk
 // test enumerates the surface here. No sim path reads it.
 std::vector<std::string> og_function_names();
+
+// --- LINEUP (docs/lineup-design.md §3.3, §4) ---------------------------
+//
+// The fourth campaign hook is a TABLE, not a function:
+//
+//   og.register_campaign_hooks({ ...,
+//     lineup = {
+//       power = function(row) return <int> end,
+//     } })
+//
+// `power` prices ONE fighter from its derived stats so the bands can show
+// POWER n; the engine never knows what the number means.
+//
+// The table carried a `presets` list until amendment B1 replaced the BOTS
+// preset wheel with the five-value FILL wheel: the squad is the mode's own
+// stock BOT_SQUAD now, so there is nothing left for a campaign to name and
+// the registrar refuses no name — it simply has no `presets` key.
+//
+// A SHIPPED PACK registers the DEFAULT pricing through a registrar of its
+// own (amendment C5), spelling the same table:
+//
+//   og.register_default_lineup({ power = function(row) ... end })
+//
+// packs/core does exactly that, so the bands price rosters on every
+// campaign — gladiator included — instead of showing `POWER --` wherever
+// no book registered a lineup. It could not ride og.register_campaign_hooks
+// because that registrar is one-campaign-one-book and a second call poisons
+// the whole book, so the default is held in a slot of its own: a campaign
+// can neither poison it nor be poisoned by it. A campaign's own
+// `lineup.power` still WINS — the default only fills the gap.
+
+// One fighter, priced. The values are the ENGINE's own derived stats
+// (og::ui::compute_derived_stats — the same guy-bonus + family-base
+// derivation spawn applies), already truncated to integers, so a
+// campaign's power function reads exactly what the sim would field.
+struct LineupPowerRow {
+    std::string family;
+    int level = 0;
+    int hp = 0;
+    int mp = 0;
+    int armor = 0;
+    int damage = 0;
+    int stepsize = 0;
+    int fire_frequency = 0;  // busy ticks after an attack; lower is faster
+};
+
+// True when the active registration carries a `lineup` table, OR when a
+// shipped pack registered a DEFAULT lineup (C5) — either way the bands can
+// price a fighter. Same conflict/scriptless rules as
+// campaign_picker_registered for the book half; the default half survives a
+// conflicted book, since it is no campaign's.
+bool campaign_lineup_registered();
+
+// Dispatches lineup.power(row) under the campaign fence — the campaign
+// book's when it registered one, otherwise the shipped default's (C5).
+// False — the band shows `--` — when neither is registered, the hook
+// errors, or it answers anything but a number.
+bool campaign_fighter_power(const LineupPowerRow& row, long long& out);
+
+// The `lineup` table carried a second member, `default_fill`, for as long
+// as the FILL wheel had a sixth DEFAULT code to resolve per team (C8).
+// Amendment 4 (E1/E2) made NONE the stored 0 on every map, so there is
+// nothing left to resolve and the whole seam — the registrar member, the
+// LineupResolveRow query row and this dispatcher — is gone rather than
+// kept as a hook nobody calls.
 
 }  // namespace og::script::hooks

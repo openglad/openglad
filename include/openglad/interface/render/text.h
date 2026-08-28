@@ -71,7 +71,17 @@ class text
 		~text();
 
 	    const PixieData* letters;
+	    // Cached glyph geometry. The font pixie these mirror is a shared
+	    // lazily-loaded static, so a text built before the pixie could be
+	    // read keeps zeros here forever while every later text sees the real
+	    // 9x12 -- and a zero-sized glyph blit paints nothing at all (issue
+	    // #259: blank dialog headers over an intact body). Every drawing and
+	    // measuring entry point re-reads the pixie through sync_geometry()
+	    // first, so these can never go stale against the font in hand.
 	    short sizex, sizey;
+
+	private:
+	    void sync_geometry();
 };
 
 // Free shared font pixie data loaded by text constructors.

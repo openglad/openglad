@@ -177,6 +177,11 @@ struct FfaRig
                     bool anchors = true, int act = ACT_CONTROL)
         : fx(level_id)
     {
+        // E5: the band suites were written when the default knob filled
+        // the band; the stored 0 is NONE now (E1), so the rig turns the
+        // band's one wheel to the explicit FAIR the old default meant.
+        // The default/NONE tests set the knob back to 0 themselves.
+        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;
         if (anchors)
         {
             fx.spawn_anchor(0, 96, 96);
@@ -427,6 +432,66 @@ TEST_F(ModesFfa, bot_fill_reaches_the_row_fighter_count)
         EXPECT_GE(w->team_num(), kBandBase);
     }
     EXPECT_EQ(6, bots) << "exactly the deficit to the row's fighters count";
+}
+
+// The band path honours the FILL wheel through TEAM 1's knob (B2 — the
+// band is ONE population): NONE — the stored 0, the default on every map
+// since E1 — suppresses the fill entirely, leaving only the deployed
+// fighters (mode_fighters.lua band_knob).
+TEST_F(ModesFfa, lineup_none_suppresses_the_band_fill)
+{
+    FfaRig rig(850, 2);
+    rig.fx.world().ctf_requested_fill[0] = og::sim::kFillNone;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+
+    EXPECT_EQ(2, rig.fx.var(kFfaSlotFighterCount))
+        << "NONE fields nothing; the two heroes are the whole band";
+    EXPECT_EQ(2, alive_band_livings(rig.fx.world()));
+}
+
+// The band's fill singles are SOLVED (B3's band spelling): each free
+// slot's bot is priced against the weakest deployed fighter times the
+// wheel, on its own measured base — so BRUTAL fields strictly stronger
+// singles than WEAK on the identical rig, and every wheel value still
+// reaches the row's fighter count (the band's hard shape of singles).
+TEST_F(ModesFfa, wheel_scales_the_band_fill_levels)
+{
+    auto bot_level_sum = [](GameWorld& world) {
+        int bots = 0;
+        int sum = 0;
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living)
+                continue;
+            if (w->myguy != nullptr || w->stats() == nullptr)
+                continue;
+            ++bots;
+            sum += w->stats()->level();
+        }
+        EXPECT_EQ(6, bots) << "singles per free slot, whatever the wheel";
+        return sum;
+    };
+    int weak_sum = 0;
+    {
+        FfaRig rig(850, 2);
+        rig.fx.world().ctf_requested_fill[0] = og::sim::kFillWeak;
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        EXPECT_EQ(8, rig.fx.var(kFfaSlotFighterCount));
+        weak_sum = bot_level_sum(rig.fx.world());
+    }
+    {
+        FfaRig rig(850, 2);
+        rig.fx.world().ctf_requested_fill[0] = og::sim::kFillBrutal;
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        EXPECT_EQ(8, rig.fx.var(kFfaSlotFighterCount));
+        EXPECT_LT(weak_sum, bot_level_sum(rig.fx.world()))
+            << "the multiplier separates the wheel's ends";
+    }
 }
 
 TEST_F(ModesFfa, init_strips_authored_troops_and_generators_keeps_wildlife)

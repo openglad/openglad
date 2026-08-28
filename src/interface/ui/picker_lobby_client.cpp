@@ -751,6 +751,13 @@ private:
         settings.cross_control = save.cross_control;
         settings.infinite_gold = save.infinite_gold;
         settings.time_limit = save.time_limit;
+        // Per-team bot knobs (protocol v16 / GTL v18, LINEUP §3.1): the same
+        // dropped-field rule as every other lobby-negotiated match setting.
+        for (std::size_t team = 0; team < settings.fill.size(); ++team)
+        {
+            settings.fill[team] = save.fill[team];
+            settings.map_units[team] = save.map_units[team];
+        }
         // Protocol v12: the shared-teams rule rides the wire, derived from
         // the campaign's matchup: yaml key (the joiner may lack the package).
         settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
@@ -981,6 +988,11 @@ private:
         save.cross_control = state_->settings.cross_control;
         save.infinite_gold = state_->settings.infinite_gold;
         save.time_limit = state_->settings.time_limit;
+        for (std::size_t team = 0; team < save.fill.size(); ++team)
+        {
+            save.fill[team] = state_->settings.fill[team];
+            save.map_units[team] = state_->settings.map_units[team];
+        }
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0
@@ -1314,6 +1326,27 @@ bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
         player_index, seat_id, team);
 }
 
+bool picker_lobby_kick_machine(og::sim::LobbyMachineId machine_id)
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->kick_machine(machine_id);
+    return false;
+}
+
+bool picker_lobby_disconnect_session()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->disconnect_session();
+    return false;
+}
+
+bool picker_lobby_was_kicked()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->was_kicked();
+    return false;
+}
+
 bool picker_lobby_set_ready(bool ready)
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
@@ -1360,5 +1393,12 @@ bool picker_lobby_is_networked()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->is_networked_session();
+    return false;
+}
+
+bool picker_lobby_session_established()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->session_established();
     return false;
 }

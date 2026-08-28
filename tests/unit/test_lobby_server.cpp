@@ -6,8 +6,10 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -56,6 +58,11 @@ public:
 
     void disconnect(og::sim::PeerId peer_id) override
     {
+        // Record HOW MANY messages had already been handed to the transport
+        // when this peer was dropped. A kick notice is only useful if it was
+        // queued before the disconnect, and the two live in different logs,
+        // so the send count is the ordering witness.
+        disconnect_marks_.emplace_back(peer_id, sent_messages_.size());
         disconnected_peers_.push_back(peer_id);
     }
 
@@ -118,6 +125,19 @@ public:
         return disconnected_peers_;
     }
 
+    // Messages already queued when peer_id was disconnected, or nullopt when
+    // it never was.
+    [[nodiscard]] std::optional<std::size_t> sent_count_at_disconnect(
+        og::sim::PeerId peer_id) const noexcept
+    {
+        for (const auto& [dropped, count] : disconnect_marks_)
+        {
+            if (dropped == peer_id)
+                return count;
+        }
+        return std::nullopt;
+    }
+
 private:
     bool typed_messages_ = false;
     std::vector<og::sim::ReceivedMessage> sent_messages_;
@@ -125,6 +145,7 @@ private:
     std::vector<og::sim::TypedReceivedMessage> received_typed_;
     std::vector<og::sim::PeerId> connected_peers_;
     std::vector<og::sim::PeerId> disconnected_peers_;
+    std::vector<std::pair<og::sim::PeerId, std::size_t>> disconnect_marks_;
 };
 
 og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
@@ -384,7 +405,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     wild.scenario_id = 500;
     wild.difficulty = 1;
     wild.allied_mode = 1;
-    wild.ctf_team_count = 9;       // -> 4
+    wild.ctf_team_count = 9;       // retired (A3) -> 0, always
     wild.ctf_capture_limit = 99;   // -> 50
     wild.ctf_respawn_ticks = 5;    // nonzero -> raised to 12
     wild.time_limit = 30;          // nonzero -> raised to 720 (#241)
@@ -397,7 +418,8 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     server.poll_incoming_messages();
 
     og::sim::LobbyState state = server.state();
-    EXPECT_EQ(4, state.settings.ctf_team_count);
+    EXPECT_EQ(0, state.settings.ctf_team_count)
+        << "the retired TEAMS knob heals to Auto whatever it is sent (A3)";
     EXPECT_EQ(50, state.settings.ctf_capture_limit);
     EXPECT_EQ(12, state.settings.ctf_respawn_ticks);
     EXPECT_EQ(720, state.settings.time_limit);
@@ -416,7 +438,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
 
     // In-range values (and the 0 = map/default sentinels) pass through.
     og::sim::LobbySettings sane = wild;
-    sane.ctf_team_count = 3;
+    sane.ctf_team_count = 3;  // a v18 save's legacy value
     sane.ctf_capture_limit = 0;
     sane.ctf_respawn_ticks = 0;
     sane.time_limit = 0; // the map's own value survives the sanitizer
@@ -429,14 +451,17 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     server.poll_incoming_messages();
 
     state = server.state();
-    EXPECT_EQ(3, state.settings.ctf_team_count);
+    EXPECT_EQ(0, state.settings.ctf_team_count)
+        << "a legacy 2/3/4 heals to Auto on first sanitize — the one-time "
+           "documented migration";
     EXPECT_EQ(0, state.settings.ctf_capture_limit);
     EXPECT_EQ(0, state.settings.ctf_respawn_ticks);
     EXPECT_EQ(0, state.settings.time_limit);
 
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
-    EXPECT_EQ(3, equivalent.ctf_team_count);
+    EXPECT_EQ(0, equivalent.ctf_team_count)
+        << "and the healed value is what the launch equivalent carries";
     EXPECT_EQ(0, equivalent.ctf_capture_limit);
     EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
     EXPECT_EQ(0, equivalent.time_limit);
@@ -467,9 +492,9 @@ TEST(LobbyServer, sanitize_admits_troops_matched_and_equivalent_carries_it)
                           {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
     server.poll_incoming_messages();
 
-    // The retired TEAMS sentinel 5 no longer passes: it clamps to 4 like
-    // any junk above the numeric range — the D30 migration heal for the
-    // playtest-era saves that stored it.
+    // The whole TEAMS field is retired (A3): the old Teams: Match sentinel
+    // 5, a legacy 2/3/4 and junk all heal to Auto, and the band's BOTS: OFF
+    // is where dropping a team lives now.
     og::sim::LobbySettings retired = server.state().settings;
     retired.ctf_team_count = 5;
     og::sim::LobbyMessage retired_message;
@@ -479,59 +504,36 @@ TEST(LobbyServer, sanitize_admits_troops_matched_and_equivalent_carries_it)
     };
     transport.queue_lobby_message(11u, retired_message);
     server.poll_incoming_messages();
-    EXPECT_EQ(4, server.state().settings.ctf_team_count)
-        << "the old Teams: Match sentinel heals to 4 (D30)";
+    EXPECT_EQ(0, server.state().settings.ctf_team_count)
+        << "every value of the retired knob is Auto";
 
-    // Exactly kTroopsMatched (3) passes the troops sanitize (D27) — the
-    // one new legal value; TROOPS: FAIR rides this field.
-    og::sim::LobbySettings matched = server.state().settings;
-    matched.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    og::sim::LobbyMessage matched_message;
-    matched_message.payload = og::sim::LobbySettingsChangeMessage{
-        .player_index = 0u,
-        .settings = matched,
-    };
-    transport.queue_lobby_message(11u, matched_message);
-    server.poll_incoming_messages();
-    EXPECT_EQ(og::sim::kTroopsMatched,
-              server.state().settings.ctf_strip_scenario_troops);
+    // Amendment B5: TROOPS retired exactly like TEAMS above. Every value a
+    // peer, an old .gtl or a crafted client can put in the field — the
+    // sentinel 3, plain OWN 2, the retired middle state 1, junk past the
+    // top — heals to 0 on the way through the authority, once, silently.
+    for (const std::int16_t legacy_value : {std::int16_t{1}, std::int16_t{2},
+                                            og::sim::kTroopsMatched,
+                                            std::int16_t{4}})
+    {
+        og::sim::LobbySettings troops = server.state().settings;
+        troops.ctf_strip_scenario_troops = legacy_value;
+        og::sim::LobbyMessage troops_message;
+        troops_message.payload = og::sim::LobbySettingsChangeMessage{
+            .player_index = 0u,
+            .settings = troops,
+        };
+        transport.queue_lobby_message(11u, troops_message);
+        server.poll_incoming_messages();
+        EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops)
+            << "legacy troops value " << legacy_value;
+    }
 
-    // The junk-rejection posture is unchanged: 4 (one past the sentinel)
-    // still reverts to the fallback, and the retired middle state 1 is
-    // still accepted as legacy OWN.
-    og::sim::LobbySettings junk = matched;
-    junk.ctf_strip_scenario_troops = 4;
-    og::sim::LobbyMessage junk_message;
-    junk_message.payload = og::sim::LobbySettingsChangeMessage{
-        .player_index = 0u,
-        .settings = junk,
-    };
-    transport.queue_lobby_message(11u, junk_message);
-    server.poll_incoming_messages();
-    EXPECT_EQ(og::sim::kTroopsMatched,
-              server.state().settings.ctf_strip_scenario_troops)
-        << "junk above the sentinel reverts to the fallback (the previous "
-           "value), never to a clamp";
-    og::sim::LobbySettings legacy = matched;
-    legacy.ctf_strip_scenario_troops = 1;
-    og::sim::LobbyMessage legacy_message;
-    legacy_message.payload = og::sim::LobbySettingsChangeMessage{
-        .player_index = 0u,
-        .settings = legacy,
-    };
-    transport.queue_lobby_message(11u, legacy_message);
-    server.poll_incoming_messages();
-    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops)
-        << "the retired middle state still syncs (read as OWN everywhere)";
-
-    // Restore the sentinel: the game-start save-data equivalent carries the
-    // raw 3 verbatim (D27 — the value rides the existing field end to end).
-    transport.queue_lobby_message(11u, matched_message);
-    server.poll_incoming_messages();
+    // The game-start save-data equivalent carries both healed knobs.
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
-    EXPECT_EQ(og::sim::kTroopsMatched, equivalent.ctf_strip_scenario_troops);
-    EXPECT_EQ(4, equivalent.ctf_team_count) << "the healed team count rides";
+    EXPECT_EQ(0, equivalent.ctf_strip_scenario_troops)
+        << "the healed troops value rides";
+    EXPECT_EQ(0, equivalent.ctf_team_count) << "the healed team count rides";
 }
 
 TEST(LobbyServer, non_host_matched_settings_change_is_dropped)
@@ -1451,7 +1453,39 @@ TEST(LobbyState, ctf_team_domain_uses_authored_order_and_safe_fallback)
     EXPECT_EQ(0b1101u, og::sim::lobby_effective_team_mask(settings));
 }
 
-TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
+// Amendment B8: NOTHING the band can hold deactivates a team any more, so
+// the seat domain is the authored mask and nothing else — the rule that
+// stood before A2 added the OFF clause, restored when OFF went away.
+TEST(LobbyState, band_knobs_never_narrow_the_seat_domain)
+{
+    og::sim::LobbySettings settings = make_ctf_lobby_settings();
+    settings.ctf_authored_team_mask = 0b1111u;
+    ASSERT_EQ(0b1111u, og::sim::lobby_effective_team_mask(settings));
+
+    // Every FILL value, on every team, including the strongest and NONE.
+    for (std::int16_t value = og::sim::kFillFair;
+         value <= og::sim::kMaxFill; ++value)
+    {
+        settings.fill.fill(value);
+        EXPECT_EQ(0b1111u, og::sim::lobby_effective_team_mask(settings))
+            << "fill " << value;
+        for (std::int16_t team = 0; team < SCORE_TEAM_COUNT; ++team)
+            EXPECT_TRUE(og::sim::lobby_team_is_selectable(settings, team));
+    }
+    settings.fill.fill(og::sim::kFillNone);
+    EXPECT_EQ(0, og::sim::lobby_first_selectable_team(settings));
+
+    // MAP UNITS: OFF on every team says nothing about seats either.
+    settings.map_units.fill(og::sim::kMapUnitsOff);
+    EXPECT_EQ(0b1111u, og::sim::lobby_effective_team_mask(settings));
+
+    // A sparse authored mask still narrows it — that is the map's own word.
+    settings.ctf_authored_team_mask = 0b1101u;
+    EXPECT_EQ(0b1101u, og::sim::lobby_effective_team_mask(settings));
+    EXPECT_FALSE(og::sim::lobby_team_is_selectable(settings, 1));
+}
+
+TEST(LobbyServer, sanitize_heals_every_retired_troops_value_to_zero)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
@@ -1462,49 +1496,26 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
                           {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
     server.poll_incoming_messages();
 
-    // Default is 0 (keep authored troops).
+    // Default is 0, and amendment B5 made 0 the ONLY value: the knob is
+    // retired, and the authority answers one value for it so an old peer,
+    // an old .gtl or a crafted client cannot reintroduce a second rule for
+    // whether the map's own cast fights.
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
-
-    // Junk falls back to the current value (0). 4 is junk; 3 is not (any
-    // more). The accepted range is {0,1,2,3}: the menus write 0, 2, or 3
-    // (kTroopsMatched, "TROOPS: FAIR" — matched-teams D27), and 1 is the
-    // retired middle state a peer on an older build can still send.
-    og::sim::LobbySettings junk = make_ctf_lobby_settings();
-    junk.ctf_strip_scenario_troops = 4;
-    transport.queue_lobby_message(11u, make_settings_change_message(junk));
-    server.poll_incoming_messages();
-    EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
-
-    // 2 (strip ALL) is accepted on the widened range.
-    og::sim::LobbySettings strip_all = make_ctf_lobby_settings();
-    strip_all.ctf_strip_scenario_troops = 2;
-    transport.queue_lobby_message(11u, make_settings_change_message(strip_all));
-    server.poll_incoming_messages();
-    EXPECT_EQ(2, server.state().settings.ctf_strip_scenario_troops);
-    EXPECT_EQ(2, server.build_save_data_equivalent().ctf_strip_scenario_troops);
-
-    // 1 is accepted and carried into the game-start equivalent verbatim;
-    // the strip rules downstream read it as OWN.
-    og::sim::LobbySettings strip_on = make_ctf_lobby_settings();
-    strip_on.ctf_strip_scenario_troops = 1;
-    transport.queue_lobby_message(11u, make_settings_change_message(strip_on));
-    server.poll_incoming_messages();
-    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops);
-    EXPECT_EQ(1, server.build_save_data_equivalent().ctf_strip_scenario_troops);
-
-    // Junk now falls back to the last accepted value (1), not 0.
-    og::sim::LobbySettings junk_again = make_ctf_lobby_settings();
-    junk_again.ctf_strip_scenario_troops = -3;
-    transport.queue_lobby_message(11u, make_settings_change_message(junk_again));
-    server.poll_incoming_messages();
-    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops);
-
-    // 0 passes through.
-    og::sim::LobbySettings strip_off = make_ctf_lobby_settings();
-    strip_off.ctf_strip_scenario_troops = 0;
-    transport.queue_lobby_message(11u, make_settings_change_message(strip_off));
-    server.poll_incoming_messages();
-    EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
+    for (const std::int16_t value : {std::int16_t{1}, std::int16_t{2},
+                                     og::sim::kTroopsMatched, std::int16_t{4},
+                                     std::int16_t{-3}, std::int16_t{30000}})
+    {
+        og::sim::LobbySettings settings = make_ctf_lobby_settings();
+        settings.ctf_strip_scenario_troops = value;
+        transport.queue_lobby_message(
+            11u, make_settings_change_message(settings));
+        server.poll_incoming_messages();
+        EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops)
+            << "troops " << value;
+        EXPECT_EQ(
+            0, server.build_save_data_equivalent().ctf_strip_scenario_troops)
+            << "troops " << value << " into the game-start equivalent";
+    }
 }
 
 TEST(LobbyServer, sanitize_difficulty_submenu_settings)
@@ -1728,45 +1739,10 @@ TEST(LobbyServer, classic_lobby_allows_shared_explicit_teams)
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
 }
 
-TEST(LobbyServer, ctf_team_count_clamps_team_choice)
-{
-    MockLobbyTransport transport;
-    og::sim::LobbyServer server(transport);
-    server.connect_client(11u);
-    server.connect_client(22u);
-
-    transport.queue_lobby_message(
-        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
-    transport.queue_lobby_message(
-        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
-    server.poll_incoming_messages();
-
-    transport.queue_lobby_message(
-        11u, make_settings_change_message(make_ctf_lobby_settings(2)));
-    server.poll_incoming_messages();
-
-    // Team 3 is outside the explicit 2-team range: the change resolves back
-    // to the guest's current (in-range) team.
-    transport.queue_lobby_message(
-        22u, make_team_change_message(server.state().players[1], 3));
-    server.poll_incoming_messages();
-    EXPECT_EQ(1, server.state().players[1].team);
-
-    // An in-range shared team is still accepted.
-    transport.queue_lobby_message(
-        22u, make_team_change_message(server.state().players[1], 0));
-    server.poll_incoming_messages();
-    EXPECT_EQ(0, server.state().players[1].team);
-
-    // A fresh join asking for team 3 is resolved into the valid range.
-    server.connect_client(33u);
-    transport.queue_lobby_message(
-        33u, make_join_message("Third", 3, {make_slot(2u, 300, "Third Guy", FAMILY_MAGE)}));
-    server.poll_incoming_messages();
-    ASSERT_EQ(3u, server.state().players.size());
-    EXPECT_LT(server.state().players[2].team, 2);
-    EXPECT_GE(server.state().players[2].team, 0);
-}
+// bots_off_clamps_team_choice retired with the OFF value (amendment B8):
+// no band knob narrows the seat domain, so there is no clamp left to pin.
+// What still clamps a team choice — the AUTHORED mask — is pinned by
+// sparse_ctf_authored_domain_matches_gameplay_and_reteams below.
 
 TEST(LobbyServer, sparse_ctf_authored_domain_matches_gameplay_and_reteams)
 {
@@ -1808,18 +1784,22 @@ TEST(LobbyServer, sparse_ctf_authored_domain_matches_gameplay_and_reteams)
     server.poll_incoming_messages();
     EXPECT_EQ(2, server.state().players[1].team);
 
-    // Explicit 2 means gameplay's first two AUTHORED teams {0,2}, not the
-    // numeric range {0,1}. Team 2 remains valid and team 1 remains rejected.
+    // The AUTHORED mask is the only thing that narrows this domain now
+    // (amendment B8 retired the band's OFF value, which was the other
+    // narrowing rule): a level that stops authoring team 2 re-resolves the
+    // seat sitting there to the first fielded team, and a request to go
+    // back is denied like any unauthored colour.
+    constexpr std::uint8_t kTeamsZeroThree = 0b1001u;
     transport.queue_lobby_message(
         11u,
         make_settings_change_message(
-            make_ctf_lobby_settings(2, kTeamsZeroTwoThree)));
+            make_ctf_lobby_settings(0, kTeamsZeroThree)));
     server.poll_incoming_messages();
-    EXPECT_EQ(2, server.state().players[1].team);
+    EXPECT_EQ(0, server.state().players[1].team);
     transport.queue_lobby_message(
-        22u, make_team_change_message(server.state().players[1], 1));
+        22u, make_team_change_message(server.state().players[1], 2));
     server.poll_incoming_messages();
-    EXPECT_EQ(2, server.state().players[1].team);
+    EXPECT_EQ(0, server.state().players[1].team);
 
     // A new level's authored domain invalidates the old assignment. The
     // settings transition deterministically moves it to the first active
@@ -1852,16 +1832,18 @@ TEST(LobbyServer, settings_change_reteams_out_of_range_players)
     server.poll_incoming_messages();
     ASSERT_EQ(3, server.state().players[1].team);
 
-    // Lowering the CTF team count to 2 strands the guest on team 3: the
-    // server re-resolves the seat into range without repainting the fighter.
+    // A level whose authored mask has no team 3 strands the guest there:
+    // the server re-resolves the seat into the fielded domain without
+    // repainting the fighter.
     transport.clear_sent_messages();
     transport.queue_lobby_message(
-        11u, make_settings_change_message(make_ctf_lobby_settings(2)));
+        11u, make_settings_change_message(
+                 make_ctf_lobby_settings(0, 0b0111u)));
     server.poll_incoming_messages();
 
     ASSERT_EQ(2u, server.state().players.size());
     EXPECT_GE(server.state().players[1].team, 0);
-    EXPECT_LT(server.state().players[1].team, 2);
+    EXPECT_NE(3, server.state().players[1].team);
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
     ASSERT_EQ(2u, transport.sent_messages().size());
@@ -4145,4 +4127,430 @@ TEST(LobbyState, canonicalize_guy_ids_is_deterministic_and_exact)
     std::vector<og::sim::LobbyCharacterSlot> again = slots;
     og::sim::canonicalize_lobby_gameplay_guy_ids(again);
     EXPECT_EQ(slots, again);
+}
+
+// --- LINEUP §3.1: the eight per-team bot knobs ---------------------------
+
+TEST(LobbyServer, sanitize_clamps_bot_knobs_and_equivalent_carries_them)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings wild;
+    wild.campaign_id = "modes";
+    wild.scenario_id = 820;
+    wild.difficulty = 1;
+    wild.allied_mode = 1;
+    // Out of range in both directions, and one legal value per array so a
+    // clamp that flattened everything would be caught.
+    wild.fill = {-4, 3, 99, 0};
+    wild.map_units = {-400, 4, 400, 0};
+    og::sim::LobbyMessage wild_message;
+    wild_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = wild,
+    };
+    transport.queue_lobby_message(11u, wild_message);
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState state = server.state();
+    // fill clamps into [0, kMaxFill] and map_units into [0, kMaxMapUnits]
+    // (amendment B1-B4); both floors are 0, so a negative has a floor to
+    // hit as well as a ceiling.
+    const std::array<std::int16_t, 4> expected_fill = {
+        0, 3, og::sim::kMaxFill, 0};
+    const std::array<std::int16_t, 4> expected_map_units = {
+        0, og::sim::kMaxMapUnits, og::sim::kMaxMapUnits, 0};
+    EXPECT_EQ(expected_fill, state.settings.fill);
+    EXPECT_EQ(expected_map_units, state.settings.map_units);
+
+    // The launch equivalent is a hand-written field list — the documented
+    // dropped-field bug class.
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    EXPECT_EQ(expected_fill, equivalent.fill);
+    EXPECT_EQ(expected_map_units, equivalent.map_units);
+}
+
+TEST(LobbyServer, bot_knobs_replicate_to_joiners_and_a_joiner_change_is_dropped)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // first connection is elected host
+    server.connect_client(12u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings hosted;
+    hosted.campaign_id = "modes";
+    hosted.scenario_id = 820;
+    hosted.difficulty = 1;
+    hosted.allied_mode = 1;
+    hosted.fill = {0, 2, 1, 4};
+    hosted.map_units = {0, 1, 1, 0};
+    og::sim::LobbyMessage hosted_message;
+    hosted_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = hosted,
+    };
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, hosted_message);
+    server.poll_incoming_messages();
+
+    // The joiner's replicated copy comes off the wire, not the server's
+    // in-memory struct: this is the round trip a missing serializer field
+    // would break.
+    bool guest_saw_the_knobs = false;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id != 12u)
+            continue;
+        const auto decoded =
+            og::sim::deserialize_lobby_state_message(sent.data);
+        if (!decoded.has_value())
+            continue;
+        guest_saw_the_knobs =
+            decoded->settings.fill == hosted.fill &&
+            decoded->settings.map_units == hosted.map_units;
+        if (guest_saw_the_knobs)
+            break;
+    }
+    EXPECT_TRUE(guest_saw_the_knobs)
+        << "the host's band knobs must reach the joiner over the wire";
+
+    // A non-host SettingsChange is ignored outright (the historic rule).
+    og::sim::LobbySettings guest_attempt = hosted;
+    guest_attempt.fill = {1, 1, 1, 1};
+    guest_attempt.map_units = {1, 1, 1, 1};
+    og::sim::LobbyMessage guest_message;
+    guest_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 1u,
+        .settings = guest_attempt,
+    };
+    transport.queue_lobby_message(12u, guest_message);
+    server.poll_incoming_messages();
+    EXPECT_EQ(hosted.fill, server.state().settings.fill);
+    EXPECT_EQ(hosted.map_units, server.state().settings.map_units);
+}
+
+// --- LINEUP §6: kick by machine id ---------------------------------------
+
+namespace {
+
+og::sim::LobbyMessage make_kick_message(og::sim::LobbyMachineId machine_id)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyKickMessage{.machine_id = machine_id};
+    return message;
+}
+
+// The machine id the server issued to the peer whose seats carry `name`.
+og::sim::LobbyMachineId machine_id_of(const og::sim::LobbyState& state,
+                                      const std::string& name)
+{
+    for (const og::sim::LobbyPlayer& player : state.players)
+    {
+        if (player.name == name)
+            return player.machine_id;
+    }
+    return og::sim::kInvalidLobbyMachineId;
+}
+
+std::size_t index_of_kicked_message(const MockLobbyTransport& transport,
+                                    og::sim::PeerId peer_id)
+{
+    const std::vector<og::sim::ReceivedMessage>& sent =
+        transport.sent_messages();
+    for (std::size_t i = 0; i < sent.size(); ++i)
+    {
+        if (sent[i].peer_id != peer_id)
+            continue;
+        const auto decoded = og::sim::deserialize_lobby_message(sent[i].data);
+        if (decoded.has_value() &&
+            decoded->kind() == og::sim::LobbyMessageKind::Kicked)
+        {
+            return i;
+        }
+    }
+    return std::numeric_limits<std::size_t>::max();
+}
+
+} // namespace
+
+TEST(LobbyServer, host_kick_removes_every_seat_of_the_machine_and_reindexes)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // host
+    server.connect_client(12u); // guest with TWO seats
+    server.connect_client(13u); // bystander
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    og::sim::LobbyMessage guest_join =
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)});
+    {
+        og::sim::LobbyPlayer second_seat;
+        second_seat.name = "Guest";
+        second_seat.team = 1;
+        second_seat.character_slots = {
+            make_slot(1u, 201, "Mage", FAMILY_MAGE)};
+        std::get<og::sim::LobbyJoinMessage>(guest_join.payload)
+            .extra_players.push_back(std::move(second_seat));
+    }
+    transport.queue_lobby_message(12u, guest_join);
+    transport.queue_lobby_message(
+        13u,
+        make_join_message("Third", 2,
+                          {make_slot(0u, 300, "Thief", FAMILY_THIEF)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(4u, server.state().players.size())
+        << "host + two guest seats + bystander";
+    const og::sim::LobbyMachineId guest_machine =
+        machine_id_of(server.state(), "Guest");
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, guest_machine);
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_kick_message(guest_machine));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState after = server.state();
+    EXPECT_EQ(2u, after.players.size()) << "both guest seats leave together";
+    for (const og::sim::LobbyPlayer& player : after.players)
+        EXPECT_NE("Guest", player.name);
+    // The survivors re-index densely: the bystander inherits P2.
+    ASSERT_EQ(2u, after.players.size());
+    EXPECT_EQ(0u, after.players[0].player_index);
+    EXPECT_EQ(1u, after.players[1].player_index);
+    EXPECT_EQ("Third", after.players[1].name);
+
+    EXPECT_NE(transport.disconnected_peers().end(),
+              std::find(transport.disconnected_peers().begin(),
+                        transport.disconnected_peers().end(),
+                        og::sim::PeerId{12u}))
+        << "the kicked machine's transport connection is dropped";
+}
+
+TEST(LobbyServer, kicked_notice_precedes_the_disconnect)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(12u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyMachineId guest_machine =
+        machine_id_of(server.state(), "Guest");
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, guest_machine);
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_kick_message(guest_machine));
+    server.poll_incoming_messages();
+
+    const std::size_t kicked_index = index_of_kicked_message(transport, 12u);
+    ASSERT_NE(std::numeric_limits<std::size_t>::max(), kicked_index)
+        << "the kicked peer must receive a Kicked notice";
+    const std::optional<std::size_t> sent_at_disconnect =
+        transport.sent_count_at_disconnect(12u);
+    ASSERT_TRUE(sent_at_disconnect.has_value());
+    EXPECT_LT(kicked_index, *sent_at_disconnect)
+        << "the notice must be queued BEFORE the disconnect, or the peer "
+           "never receives it and can only render a bare link failure";
+}
+
+TEST(LobbyServer, non_host_kick_is_denied_and_echoes_state)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // host
+    server.connect_client(12u); // guest
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyMachineId host_machine =
+        machine_id_of(server.state(), "Host");
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, host_machine);
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(12u, make_kick_message(host_machine));
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(2u, server.state().players.size())
+        << "a guest cannot kick the host";
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+    EXPECT_EQ(std::numeric_limits<std::size_t>::max(),
+              index_of_kicked_message(transport, 11u));
+
+    // The refusal answers with a state echo to the requester, so a client
+    // detects the bounce without waiting on a timeout.
+    bool echoed_to_requester = false;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id == 12u &&
+            og::sim::deserialize_lobby_state_message(sent.data).has_value())
+        {
+            echoed_to_requester = true;
+        }
+    }
+    EXPECT_TRUE(echoed_to_requester);
+}
+
+// LINEUP §6: the kick gate follows the host, it does not follow the peer that
+// opened the lobby. After a host disconnect the promoted survivor's kick is
+// honoured — which is exactly the authority the clients now grant an ELECTED
+// host (a join client on a dedicated server, or one promoted here).
+TEST(LobbyServer, elected_host_may_kick_after_migration)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // opening host
+    server.connect_client(12u); // the successor
+    server.connect_client(13u); // the peer the successor will remove
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Second", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    transport.queue_lobby_message(
+        13u,
+        make_join_message("Third", 2,
+                          {make_slot(0u, 300, "Thief", FAMILY_THIEF)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(3u, server.state().players.size());
+
+    const og::sim::LobbyMachineId third_machine =
+        machine_id_of(server.state(), "Third");
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, third_machine);
+
+    // Before migration the successor is an ordinary guest: refused.
+    transport.queue_lobby_message(12u, make_kick_message(third_machine));
+    server.poll_incoming_messages();
+    EXPECT_EQ(3u, server.state().players.size())
+        << "a guest's kick is refused however soon it will be host";
+
+    server.disconnect_client(11u);
+    ASSERT_EQ(2u, server.state().players.size());
+    ASSERT_EQ("Second", server.state().players[0].name);
+    ASSERT_TRUE(server.state().players[0].is_host)
+        << "the survivor is promoted";
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(12u, make_kick_message(third_machine));
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(1u, server.state().players.size())
+        << "the elected host's kick is honoured";
+    EXPECT_EQ("Second", server.state().players[0].name);
+    EXPECT_NE(std::numeric_limits<std::size_t>::max(),
+              index_of_kicked_message(transport, 13u))
+        << "and the removed peer still learns why";
+}
+
+TEST(LobbyServer, kick_of_self_or_unknown_machine_echoes_state_only)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(12u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyMachineId host_machine =
+        machine_id_of(server.state(), "Host");
+
+    // Kicking yourself is not a kick — leaving is DISCONNECT.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_kick_message(host_machine));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2u, server.state().players.size());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+
+    // An id nobody holds (including the invalid sentinel) is a no-op echo.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_kick_message(0x7fffffffu));
+    transport.queue_lobby_message(
+        11u, make_kick_message(og::sim::kInvalidLobbyMachineId));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2u, server.state().players.size());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+    bool echoed = false;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id == 11u &&
+            og::sim::deserialize_lobby_state_message(sent.data).has_value())
+        {
+            echoed = true;
+        }
+    }
+    EXPECT_TRUE(echoed);
+}
+
+TEST(LobbyServer, a_kicked_message_reaching_the_server_is_ignored)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(12u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    // Kicked is a server->peer notice. A peer echoing it back must not
+    // disturb the lobby (a crafted client is the only sender).
+    og::sim::LobbyMessage kicked;
+    kicked.payload = og::sim::LobbyKickedMessage{};
+    transport.queue_lobby_message(12u, kicked);
+    transport.queue_lobby_message(11u, kicked);
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(2u, server.state().players.size());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
 }

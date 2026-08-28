@@ -24,6 +24,7 @@
 #include "../modes_pack_fixture.h"
 
 #include <array>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,16 @@ og::ui::ScenarioRosterReport staged_report(ModesCtfWorld& fx,
         &fx.world(), og::ui::StagePreviewStatus::Staged, save, nullptr);
 }
 
+// The E5 conversion knob: the stored 0 is NONE since amendment 4 and
+// stages nothing, so fixtures that relied on the old FAIR-by-default
+// backfill turn the wheel explicitly and keep their numbers.
+void set_fair_fill(ModesCtfWorld& fx, std::initializer_list<int> teams)
+{
+    for (const int team : teams)
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            static_cast<short>(og::sim::kFillFair);
+}
+
 int marked_bots_on(const GameWorld& world, int team)
 {
     int count = 0;
@@ -107,6 +118,7 @@ TEST_F(ScenarioStagedReport, ctf_domain_is_flag_teams_not_markers)
     fx.spawn_anchor(2, 96, 528);  // markers on THREE teams...
     fx.spawn_flag(flag_family_, 0, 100, 100);
     fx.spawn_flag(flag_family_, 1, 132, 100);  // ...flags on TWO
+    set_fair_fill(fx, {0, 1, 2});  // E5: the backfill needs a turned wheel
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
 
@@ -135,8 +147,9 @@ TEST_F(ScenarioStagedReport, ctf_domain_is_flag_teams_not_markers)
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
     EXPECT_TRUE(any_line_is(lines, "MATCH: CTF - 2 TEAMS ACTIVE"));
-    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - BOT SQUAD (5)"));
-    EXPECT_TRUE(any_line_is(lines, "  GREEN TEAM  ACTIVE - BOT SQUAD (5)"));
+    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - BOT SQUAD (5) FAIR"));
+    EXPECT_TRUE(
+        any_line_is(lines, "  GREEN TEAM  ACTIVE - BOT SQUAD (5) FAIR"));
     EXPECT_FALSE(any_line_contains(lines, "BLUE TEAM  ACTIVE"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
@@ -151,6 +164,7 @@ TEST_F(ScenarioStagedReport, troops_all_auto_takes_the_manifest_default)
     ModesCtfWorld fx(kSoccerLevelA);  // row.teams = 2
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    set_fair_fill(fx, {0, 1, 2, 3});  // E5: the wheel, not the default
     fx.world().ctf_requested_strip_scenario_troops = 0;  // TROOPS: ALL
     fx.world().ctf_requested_team_count = 0;             // TEAMS: Auto
 
@@ -175,23 +189,24 @@ TEST_F(ScenarioStagedReport, troops_all_auto_takes_the_manifest_default)
     EXPECT_FALSE(any_line_contains(lines, "YELLOW TEAM  ACTIVE"));
 }
 
-// The staged fill lines, pinned exactly (48-char budget throughout): FAIR
-// with one deployed company = COMPANY for the roster team, MATCHED BOTS at
-// the min headcount everywhere else. The old "BOT CLASSES DRAWN AT START"
-// legend is GONE by design: the squads below ARE the staged squads (#235
-// delivered by deletion). This is also the kModeVarMatchedSize pin (the
-// shared MATCHED.SIZE mode var, slot 5) and the BOT_MARK_BIT provenance pin
-// (every squad member add_squad_member spawns carries stats bit 65536).
+// The staged fill lines, pinned exactly (48-char budget throughout):
+// explicit FILL: FAIR everywhere (E5 — the stored 0 is NONE and stages
+// nothing) with one deployed company = COMPANY for the roster team,
+// MATCHED BOTS at the min headcount everywhere else, each squad row
+// closing with its applied fill word. The old "BOT CLASSES DRAWN AT
+// START" legend is GONE by design: the squads below ARE the staged
+// squads (#235 delivered by deletion). This is also the
+// kModeVarMatchedSize pin (the shared MATCHED.SIZE mode var, slot 5)
+// and the BOT_MARK_BIT provenance pin (every squad member
+// add_squad_member spawns carries stats bit 65536).
 TEST_F(ScenarioStagedReport, fair_fill_lines_pin)
 {
     ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    set_fair_fill(fx, {0, 1, 2, 3});
     fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
     fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 700, 2);
-    fx.world().ctf_requested_strip_scenario_troops =
-        static_cast<short>(og::sim::kTroopsMatched);  // FAIR
-    fx.world().ctf_requested_team_count = 0;
 
     stage_fixture_world(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -223,9 +238,12 @@ TEST_F(ScenarioStagedReport, fair_fill_lines_pin)
         og::ui::format_scenario_report_lines(report);
     EXPECT_TRUE(any_line_is(lines, "MATCH: SOCCER - 4 TEAMS ACTIVE"));
     EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - COMPANY (2)"));
-    EXPECT_TRUE(any_line_is(lines, "  GREEN TEAM  ACTIVE - MATCHED BOTS (2)"));
-    EXPECT_TRUE(any_line_is(lines, "  BLUE TEAM  ACTIVE - MATCHED BOTS (2)"));
-    EXPECT_TRUE(any_line_is(lines, "  YELLOW TEAM  ACTIVE - MATCHED BOTS (2)"));
+    EXPECT_TRUE(any_line_is(lines,
+                            "  GREEN TEAM  ACTIVE - MATCHED BOTS (2) FAIR"));
+    EXPECT_TRUE(any_line_is(lines,
+                            "  BLUE TEAM  ACTIVE - MATCHED BOTS (2) FAIR"));
+    EXPECT_TRUE(any_line_is(lines,
+                            "  YELLOW TEAM  ACTIVE - MATCHED BOTS (2) FAIR"));
     EXPECT_FALSE(any_line_contains(lines, "BOT CLASSES DRAWN AT START"))
         << "the rows below list the ACTUAL staged squad — no legend";
     for (const auto& line : lines)
@@ -243,6 +261,7 @@ TEST_F(ScenarioStagedReport, troops_all_fill_lines_pin)
     fx.spawn_living(FAMILY_ORC, 1, 300, 300);
     fx.spawn_living(FAMILY_ORC, 1, 332, 300);
     fx.spawn_living(FAMILY_ORC, 1, 364, 300);
+    set_fair_fill(fx, {0});  // E5: team 1 keeps its troops-only default
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
 
@@ -263,18 +282,19 @@ TEST_F(ScenarioStagedReport, troops_all_fill_lines_pin)
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
-    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - BOT SQUAD (5)"));
+    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - BOT SQUAD (5) FAIR"));
     EXPECT_TRUE(any_line_is(lines, "  GREEN TEAM  ACTIVE - MAP TROOPS (3)"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-// Onslaught's staged fills: foundries survive OWN (GENERATORS); a stripped
-// team with no foundry has NOTHING in the staged world (E8, D17 no-bots),
-// so the census counts two active teams and the pane shows the third
-// team's emptiness as honest absence — no INACTIVE row, no NO FORCES row
-// (the per-mode active-mask bank is mode-private; any C++ read of it would
-// be a rule twin).
+// Onslaught's staged fills: standing foundries are GENERATORS rows; a
+// team whose MAP UNITS box is off loses its troops and — with no foundry
+// and no bots ever (D17) — has NOTHING in the staged world, so the census
+// counts two active teams and the pane shows the third team's emptiness
+// as honest absence — no INACTIVE row, no NO FORCES row (the per-mode
+// active-mask bank is mode-private; any C++ read of it would be a rule
+// twin).
 TEST_F(ScenarioStagedReport, onslaught_generator_lines_and_empty_team_absence)
 {
     ModesCtfWorld fx(kOnsLevelB);  // teams = 3
@@ -282,8 +302,7 @@ TEST_F(ScenarioStagedReport, onslaught_generator_lines_and_empty_team_absence)
     fx.spawn_generator(FAMILY_TENT, 0, 192, 320);
     fx.spawn_generator(FAMILY_TENT, 1, 480, 320);
     fx.spawn_living(FAMILY_ORC, 2, 300, 640);
-    fx.world().ctf_requested_strip_scenario_troops = 2;  // OWN
-    fx.world().ctf_requested_team_count = 0;
+    fx.world().ctf_requested_map_units[2] = og::sim::kMapUnitsOff;
 
     stage_fixture_world(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -297,7 +316,7 @@ TEST_F(ScenarioStagedReport, onslaught_generator_lines_and_empty_team_absence)
     EXPECT_EQ(ScenarioFill::Generators, report.team_fill[1]);
     EXPECT_EQ(1, report.team_fill_count[1]);
     EXPECT_FALSE(report.team_active[2])
-        << "stripped troops + no foundry = nothing to census (E8)";
+        << "box-off troops + no foundry = nothing to census (E8)";
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
@@ -394,6 +413,7 @@ TEST_F(ScenarioStagedReport, dormant_walkers_are_excluded_from_the_census)
     walker* const sleeper = fx.spawn_living(FAMILY_ORC, 1, 332, 300);
     ASSERT_NE(nullptr, sleeper);
     sleeper->set_dormant(true);
+    set_fair_fill(fx, {0});  // E5: the empty team needs a turned wheel
     fx.world().ctf_requested_strip_scenario_troops = 0;
     fx.world().ctf_requested_team_count = 0;
 
@@ -463,11 +483,9 @@ TEST_F(ScenarioStagedReport, seat_block_follows_the_match_block_directly)
     ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    set_fair_fill(fx, {0, 1, 2, 3});
     fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
     fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 700, 2);
-    fx.world().ctf_requested_strip_scenario_troops =
-        static_cast<short>(og::sim::kTroopsMatched);  // FAIR
-    fx.world().ctf_requested_team_count = 0;
 
     stage_fixture_world(fx);
     ASSERT_TRUE(fx.world().mode.active);
@@ -496,9 +514,9 @@ TEST_F(ScenarioStagedReport, seat_block_follows_the_match_block_directly)
     ASSERT_GE(lines.size(), 10u);
     EXPECT_EQ("MATCH: SOCCER - 4 TEAMS ACTIVE", lines[0]);
     EXPECT_EQ("  RED TEAM  ACTIVE - COMPANY (2)", lines[1]);
-    EXPECT_EQ("  GREEN TEAM  ACTIVE - MATCHED BOTS (2)", lines[2]);
-    EXPECT_EQ("  BLUE TEAM  ACTIVE - MATCHED BOTS (2)", lines[3]);
-    EXPECT_EQ("  YELLOW TEAM  ACTIVE - MATCHED BOTS (2)", lines[4]);
+    EXPECT_EQ("  GREEN TEAM  ACTIVE - MATCHED BOTS (2) FAIR", lines[2]);
+    EXPECT_EQ("  BLUE TEAM  ACTIVE - MATCHED BOTS (2) FAIR", lines[3]);
+    EXPECT_EQ("  YELLOW TEAM  ACTIVE - MATCHED BOTS (2) FAIR", lines[4]);
     EXPECT_EQ("SEATS: CO-OP", lines[5])
         << "no blank between the match block and the seat block — the "
            "first-block trace seam must carry the seats";
@@ -532,3 +550,263 @@ TEST_F(ScenarioStagedReport, empty_fill_renders_the_no_forces_row)
     EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - NO FORCES"))
         << "Empty must label NO FORCES, count suffix omitted";
 }
+
+// The lineup fill labels (§3.4 as amended by B7): a squad's row closes
+// with the APPLIED FILL word — "BOT SQUAD (5) FAIR", "COMPANY+BOTS (3+2)
+// WEAK" — read from the shared facts slot the spawn seam banked
+// (kModeVarLineupFacts, mode_match.lua bank_lineup_facts). A team that
+// banked nothing ends at its count, because the pane never names a fill
+// that did not decide anything.
+TEST_F(ScenarioStagedReport, fill_word_closes_every_squad_row)
+{
+    og::ui::ScenarioRosterReport report;
+    report.staged = true;
+    report.is_versus = true;
+    report.will_activate = true;
+    report.mode_census = true;
+    report.mode_name = "SOCCER";
+    // A squad-only team.
+    report.team_active[0] = true;
+    report.team_fill[0] = ScenarioFill::Bots;
+    report.team_fill_count[0] = 5;
+    report.team_squad_fill[0] = og::sim::kFillFair;
+    // A company with a squad beside it.
+    report.team_active[1] = true;
+    report.team_fill[1] = ScenarioFill::Company;
+    report.team_fill_count[1] = 3;
+    report.team_squad_count[1] = 2;
+    report.team_squad_fill[1] = og::sim::kFillWeak;
+    // Map troops, which no fill decided.
+    report.team_active[2] = true;
+    report.team_fill[2] = ScenarioFill::Troops;
+    report.team_fill_count[2] = 7;
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - BOT SQUAD (5) FAIR"));
+    EXPECT_TRUE(any_line_is(lines,
+                            "  GREEN TEAM  ACTIVE - COMPANY+BOTS (3+2) WEAK"));
+    EXPECT_TRUE(any_line_is(lines, "  BLUE TEAM  ACTIVE - MAP TROOPS (7)"))
+        << "no banked fill, no fill word";
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+// The budget rule (B7): the worst row —
+// "  YELLOW TEAM  ACTIVE - COMPANY+BOTS (3+2) BRUTAL" — is 49, one over,
+// so the separator space before the word is what the budget spends. A
+// clipped word would be a different word. Every other row keeps its space.
+TEST_F(ScenarioStagedReport, fill_word_worst_case_fits_the_budget)
+{
+    og::ui::ScenarioRosterReport report;
+    report.staged = true;
+    report.is_versus = true;
+    report.will_activate = true;
+    report.mode_census = true;
+    report.mode_name = "SOCCER";
+    report.team_active[3] = true;
+    report.team_fill[3] = ScenarioFill::Company;
+    report.team_fill_count[3] = 3;
+    report.team_squad_count[3] = 2;
+    report.team_squad_fill[3] = og::sim::kFillBrutal;
+    report.team_active[2] = true;
+    report.team_fill[2] = ScenarioFill::Company;
+    report.team_fill_count[2] = 3;
+    report.team_squad_count[2] = 2;
+    report.team_squad_fill[2] = og::sim::kFillBrutal;
+    report.team_active[0] = true;
+    report.team_fill[0] = ScenarioFill::Matched;
+    report.team_fill_count[0] = 5;
+    report.team_squad_fill[0] = og::sim::kFillStrong;
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_is(
+        lines, "  YELLOW TEAM  ACTIVE - COMPANY+BOTS (3+2)BRUTAL"))
+        << "exactly 48: the separator space is what the budget spends";
+    EXPECT_TRUE(any_line_is(
+        lines, "  BLUE TEAM  ACTIVE - COMPANY+BOTS (3+2) BRUTAL"))
+        << "a row with room keeps the space";
+    EXPECT_TRUE(any_line_is(
+        lines, "  RED TEAM  ACTIVE - MATCHED BOTS (5) STRONG"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+// The C++ half of the SHARED slot-4 digit layout (§3.4 as amended by B7
+// and renumbered by E4), pinned against a hand-packed slot value so the
+// decoder is provable without entering Lua: team t's code sits at
+// 10 * 100^t and IS the stored code of a squad that spawned (1..4 —
+// NONE, the stored 0, never spawns and never banks), with 0 meaning
+// "this team banked nothing". The Lua half (bank_lineup_facts) writes
+// the identical arithmetic; the two only ever agree on paper, so both
+// sides are pinned.
+TEST_F(ScenarioStagedReport, banked_fill_codes_decode_per_team)
+{
+    ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
+    for (int team = 0; team < 3; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    set_fair_fill(fx, {0, 1, 2});
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_fixture_world(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    // latch 1 (the MATCHED announce co-tenant), then per-team codes:
+    // team 0 = FAIR (code 2), team 1 = nothing (code 0),
+    // team 2 = BRUTAL (code 4), team 3 = WEAK (code 1).
+    const std::int32_t latch = 1;
+    const std::int32_t packed = latch
+        + 10 * og::sim::kFillFair
+        + 10 * 100 * 0
+        + 10 * 100 * 100 * og::sim::kFillBrutal
+        + 10 * 100 * 100 * 100 * og::sim::kFillWeak;
+    fx.world().mode.vars[4] = packed;
+
+    SaveData save;
+    const og::ui::ScenarioRosterReport report = staged_report(fx, save);
+    EXPECT_EQ(og::sim::kFillFair, report.team_squad_fill[0]);
+    EXPECT_EQ(-1, report.team_squad_fill[1])
+        << "code 0 is 'banked nothing', not a fill — NONE is the stored 0 "
+           "and never banks (E4), so 0 stays free without a bias";
+    EXPECT_EQ(og::sim::kFillBrutal, report.team_squad_fill[2]);
+    // Team 3's digit pair is the TOP one in the slot (10 * 100^3), and it
+    // carries a legal code — but no squad of team 3's stands in this world,
+    // so the row is not a bots row and the pane names no fill for it. A
+    // banked code is necessary for the word, never sufficient: what the
+    // report says is what SPAWNED, and the top pair being populated is
+    // exactly what proves the reader got that far and still declined.
+    EXPECT_EQ(-1, report.team_squad_fill[3])
+        << "a code banked for a team that fielded nobody names no fill";
+}
+
+// ---------------------------------------------------------------------------
+// The lineup review rows (wp/review-lua L1/L2): the band refusal sentence
+// and the occupied-team squad label.
+// ---------------------------------------------------------------------------
+
+// L1: a band mode (FFA/mutant) that refuses — BOTS: NONE on team 1 with a
+// single hero — reports its OWN honest sentence. The reason rides the
+// shared facts slot's 10^9 digit (mode_match.lua REFUSAL_BASE, written by
+// the band decide fold before error()), never the free-text script error,
+// so host and joiner mirrors render the identical line.
+TEST_F(ScenarioStagedReport, band_refusal_prints_the_fighters_sentence)
+{
+    ModesCtfWorld fx(850);  // the shipped FFA level
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    fx.world().ctf_requested_fill[0] =
+        og::sim::kFillNone;  // NONE on the band's pair
+
+    stage_fixture_world(fx);
+    ASSERT_FALSE(fx.world().mode.active);
+    ASSERT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_EQ(1000000000, fx.world().mode.vars[4])
+        << "the band fold banked the reason digit (mode_match.lua "
+           "REFUSAL_BASE) before it raised";
+
+    SaveData save;
+    const og::ui::ScenarioRosterReport report = staged_report(fx, save);
+    EXPECT_TRUE(report.staged);
+    EXPECT_TRUE(report.refusing);
+    EXPECT_TRUE(report.refusal_fighters);
+    EXPECT_FALSE(report.will_activate);
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_is(lines,
+                            "MATCH WILL NOT START: FEWER THAN 2 FIGHTERS"));
+    EXPECT_FALSE(any_line_contains(lines, "FEWER THAN 2 TEAMS"))
+        << "the team sentence would be false for a band";
+    EXPECT_TRUE(any_line_contains(lines, "SOLDIER"))
+        << "the kept, untouched world still lists its rows";
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+// The team modes keep their sentence: reason code 0 is the teams sentence.
+TEST_F(ScenarioStagedReport, team_refusal_keeps_the_teams_sentence)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.spawn_living(FAMILY_ORC, 3, 300, 300);
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_fixture_world(fx);
+    ASSERT_FALSE(fx.world().mode.active);
+
+    SaveData save;
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(staged_report(fx, save));
+    EXPECT_TRUE(any_line_is(lines,
+                            "MATCH WILL NOT START: FEWER THAN 2 TEAMS"));
+    EXPECT_FALSE(any_line_contains(lines, "FIGHTERS"));
+}
+
+// L2: a squad beside a roster on a hard-shape court is sized to the gap
+// and the label counts both halves — "COMPANY+BOTS (roster+squad)" — so
+// the preview's count IS the spawned count. A full court leaves no squad:
+// the row is the plain COMPANY (n).
+TEST_F(ScenarioStagedReport, occupied_team_label_counts_company_plus_squad)
+{
+    {
+        ModesCtfWorld fx(kBballLevelB);
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 192, 96);
+        set_fair_fill(fx, {0});  // E5: allies need a turned wheel
+        for (int k = 0; k < 3; ++k)
+            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
+                          700, k + 1);
+        // A stronger company opposite: the allies solve needs a gap (B3).
+        for (int k = 0; k < 3; ++k)
+            fx.spawn_leveled_hero(FAMILY_SOLDIER, 1,
+                                  static_cast<short>(96 + 32 * k), 760,
+                                  k + 4, 5);
+
+        stage_fixture_world(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(2, marked_bots_on(fx.world(), 0));
+
+        SaveData save;
+        const og::ui::ScenarioRosterReport report = staged_report(fx, save);
+        EXPECT_EQ(ScenarioFill::Company, report.team_fill[0]);
+        EXPECT_EQ(3, report.team_fill_count[0]);
+        EXPECT_EQ(2, report.team_squad_count[0]);
+
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(
+            any_line_contains(lines, "RED TEAM  ACTIVE - COMPANY+BOTS (3+2)"));
+        for (const auto& line : lines)
+            EXPECT_LE(line.size(), 48u) << line;
+    }
+    {
+        ModesCtfWorld fx(kBballLevelB);
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 192, 96);
+        set_fair_fill(fx, {0});
+        for (int k = 0; k < 5; ++k)
+            fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
+                          700, k + 1);
+        // The stronger company opposite (the gap exists) — but the court
+        // is already full, so no squad fits (R2).
+        for (int k = 0; k < 5; ++k)
+            fx.spawn_leveled_hero(FAMILY_SOLDIER, 1,
+                                  static_cast<short>(96 + 32 * k), 760,
+                                  k + 6, 5);
+
+        stage_fixture_world(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+
+        SaveData save;
+        const og::ui::ScenarioRosterReport report = staged_report(fx, save);
+        EXPECT_EQ(0, report.team_squad_count[0]);
+        EXPECT_EQ(-1, report.team_squad_fill[0])
+            << "0 spawned = no applied fact, no fill word";
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - COMPANY (5)"));
+    }
+}
+

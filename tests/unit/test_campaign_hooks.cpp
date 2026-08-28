@@ -22,8 +22,11 @@
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/ui/picker_common.h>
 
 #include <algorithm>
+#include <optional>
 #include <cstdint>
 #include <map>
 #include <set>
@@ -417,6 +420,7 @@ TEST_F(CampaignHooksTest, fence_walk_everything_outside_the_allowlist_errors)
         "campaign_level_completed", "campaign_current_level",
         "campaign_scenario_title",
         "campaign_match_get", "campaign_match_set", "campaign_is_host",
+        "campaign_my_team",
         "campaign_random",
         "div", "mod", "fadd", "fsub", "fmul", "fdiv", "i8", "i16", "i32",
         "u8", "trunc", "log",
@@ -477,6 +481,7 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_outside_campaign_dispatch)
   "campaign_match_get",
   "campaign_match_set",
   "campaign_is_host",
+  "campaign_my_team",
   "campaign_random",
 }
 for i = 1, #names do
@@ -516,9 +521,10 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_with_no_provider)
       { "campaign_level_completed", 1 },
       { "campaign_current_level" },
       { "campaign_scenario_title", 1 },
-      { "campaign_match_get", "team_count" },
-      { "campaign_match_set", "team_count", 2 },
+      { "campaign_match_get", "score_limit" },
+      { "campaign_match_set", "score_limit", 2 },
       { "campaign_is_host" },
+      { "campaign_my_team" },
       { "campaign_random", 1 },
     }
     for i = 1, #calls do
@@ -677,7 +683,7 @@ TEST_F(CampaignHooksTest, state_set_bounds_rejection_raises_before_mutation)
 // sim twin's, and the provider sees exactly the names the script sent.
 TEST_F(CampaignHooksTest, match_bindings_round_trip)
 {
-    std::map<std::string, std::int32_t> knobs = {{"team_count", 0},
+    std::map<std::string, std::int32_t> knobs = {{"respawn_ticks", 0},
                                                  {"score_limit", 5}};
     bool host = true;
     hooks::CampaignProviders providers;
@@ -746,6 +752,48 @@ TEST_F(CampaignHooksTest, match_bindings_round_trip)
     EXPECT_EQ("host2 false", log2[log2.size() - 2]);
     EXPECT_EQ("set2 false", log2.back());
     EXPECT_EQ(20, knobs.at("score_limit")) << "a joiner's write never lands";
+}
+
+// G4 og.campaign_my_team (docs/lineup-design.md Amendment 5): the page's
+// "which team am I" read. The provider's answer rides through, and the
+// binding is the 0..3 choke — a surface that answers a team outside the
+// domain still hands the script an index that addresses a real team.
+TEST_F(CampaignHooksTest, campaign_my_team_provider_answer_and_clamp)
+{
+    int seat_team = 2;
+    int calls = 0;
+    hooks::CampaignProviders providers;
+    providers.my_team = [&] {
+        calls++;
+        return seat_team;
+    };
+    hooks::install_campaign_providers(std::move(providers));
+
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    og.log("mine " .. og.campaign_my_team())
+    return nil
+  end,
+}))LUA");
+
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_TRUE(result.ok);
+    ASSERT_EQ(1u, vm_log().size());
+    EXPECT_EQ("mine 2", vm_log().back()) << "the provider's own answer";
+
+    // Read LIVE, never latched: the seat can change between dispatches.
+    seat_team = 1;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_EQ("mine 1", vm_log().back());
+
+    seat_team = 9;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_EQ("mine 3", vm_log().back()) << "clamped to the top team";
+    seat_team = -4;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_EQ("mine 0", vm_log().back()) << "clamped to team 0";
+    EXPECT_EQ(4, calls);
 }
 
 // D3 og.campaign_random: the provider's answer rides through untouched (a
@@ -1544,4 +1592,471 @@ TEST_F(CampaignHooksTest, campaign_var_reads_world_values)
     EXPECT_EQ("neg -2", log[1]);
     EXPECT_EQ("missing 0", log[2]);
     current_game = nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// The LINEUP hook (docs/lineup-design.md §3.3, §4)
+// ---------------------------------------------------------------------------
+
+TEST_F(CampaignHooksTest, lineup_registers_and_prices_a_fighter)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = {
+    power = function(row)
+      return row.hp * 2 + row.level
+    end,
+  },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+
+    hooks::LineupPowerRow row;
+    row.family = "SOLDIER";
+    row.level = 7;
+    row.hp = 30;
+    long long power = -1;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(67, power);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, lineup_power_reads_the_whole_row)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row)
+    return row.hp + row.mp + row.armor + row.damage + row.stepsize +
+           row.fire_frequency + row.level +
+           (row.family == "MAGE" and 4 or 0)
+  end },
+}))LUA");
+    hooks::LineupPowerRow row;
+    row.family = "MAGE";  // 4
+    row.level = 1;
+    row.hp = 2;
+    row.mp = 4;
+    row.armor = 8;
+    row.damage = 16;
+    row.stepsize = 32;
+    row.fire_frequency = 64;
+    long long power = 0;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(131, power);
+}
+
+// Amendment B1 deleted `lineup.presets`: the five-value FILL wheel names
+// nothing a campaign owns, so a book that still writes the old key is
+// refused outright rather than half-registered.
+TEST_F(CampaignHooksTest, lineup_presets_key_is_gone)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { presets = { "BRUTES" }, power = function(row) return 1 end },
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_lineup_registered());
+    EXPECT_TRUE(errors_contain("unknown 'lineup' key 'presets'"));
+}
+
+TEST_F(CampaignHooksTest, lineup_power_alone_is_the_whole_table)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return 1 end },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_TRUE(hooks::campaign_fighter_power(row, power));
+}
+
+TEST_F(CampaignHooksTest, no_lineup_hook_means_no_lineup)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id) return { title = "BOOK" } end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_FALSE(hooks::campaign_lineup_registered());
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+}
+
+TEST_F(CampaignHooksTest, lineup_power_that_errors_answers_false)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return nil + 1 end },
+}))LUA");
+    hooks::LineupPowerRow row;
+    long long power = 12345;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(12345, power) << "the caller's value is untouched";
+    EXPECT_FALSE(vm_errors().empty());
+}
+
+TEST_F(CampaignHooksTest, lineup_power_that_returns_a_non_number_answers_false)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return "4200" end },
+}))LUA");
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_TRUE(errors_contain("not a number"));
+}
+
+TEST_F(CampaignHooksTest, lineup_is_fenced_like_every_other_campaign_hook)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return og.rand(10) end },
+}))LUA");
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_FALSE(vm_errors().empty())
+        << "the sim RNG stays fenced under campaign dispatch";
+}
+
+TEST_F(CampaignHooksTest, lineup_registration_rejections)
+{
+    struct Case {
+        const char* source;
+        const char* needle;
+    };
+    const Case cases[] = {
+        {R"LUA(og.register_campaign_hooks({ lineup = 7 }))LUA",
+         "'lineup' must be a table"},
+        {R"LUA(og.register_campaign_hooks({ lineup = { power = 7 } }))LUA",
+         "'lineup.power' must be a function"},
+        {R"LUA(og.register_campaign_hooks({ lineup = { presets = "X" } }))LUA",
+         "unknown 'lineup' key 'presets'"},
+        {R"LUA(og.register_campaign_hooks({ lineup = { powr = 1 } }))LUA",
+         "unknown 'lineup' key 'powr'"},
+        // E2: the per-team default resolver retired, so a book that still
+        // names it is refused like any other misspelling — never
+        // half-registered with a hook nothing calls.
+        {R"LUA(og.register_campaign_hooks({
+             lineup = { power = function(row) return 1 end,
+                        default_fill = function(s, r) return 1 end } }))LUA",
+         "unknown 'lineup' key 'default_fill'"},
+        {R"LUA(og.register_campaign_hooks({ lineup = {} }))LUA",
+         "carries no 'power'"},
+    };
+    for (const Case& c : cases) {
+        clear_pack_scripts();
+        register_script(c.source);
+        EXPECT_FALSE(hooks::campaign_lineup_registered()) << c.needle;
+        EXPECT_TRUE(errors_contain(c.needle)) << c.needle;
+    }
+}
+
+TEST_F(CampaignHooksTest, lineup_alone_is_a_whole_registration)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return 1 end },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered())
+        << "a book with only a lineup table is still a book";
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, lineup_power_for_guy_bridges_the_engine_stats)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return row.hp * 2 + row.level end },
+}))LUA");
+    guy fighter(FAMILY_SOLDIER);
+    fighter.level = 5;
+    const og::ui::DerivedStats stats = og::ui::compute_derived_stats(fighter);
+    const std::optional<long long> power =
+        og::ui::lineup_power_for_guy(fighter);
+    ASSERT_TRUE(power.has_value());
+    EXPECT_EQ(static_cast<long long>(stats.hp) * 2 + 5, *power)
+        << "the row carries the engine's own derived stats";
+}
+
+TEST_F(CampaignHooksTest, lineup_power_for_guy_is_nothing_without_a_hook)
+{
+    register_script(R"LUA(og.log("a campaign with no lineup"))LUA");
+    guy fighter(FAMILY_SOLDIER);
+    EXPECT_FALSE(og::ui::lineup_power_for_guy(fighter).has_value());
+}
+
+// ---------------------------------------------------------------------------
+// The DEFAULT lineup (amendment C5): og.register_default_lineup
+// ---------------------------------------------------------------------------
+//
+// The seam that lets a SHIPPED PACK price every campaign's bands. It could
+// not be a fifth key on the campaign book — that registrar is
+// one-campaign-one-book, and a second call poisons the whole book — so the
+// default lives in a per-VM slot of its own. A campaign's own lineup.power
+// overrides it; nothing either side does can poison the other.
+
+// The pack script that registers a default, kept apart from the book's own
+// chunk so the two really are separate registrations.
+constexpr const char* kDefaultChunk = "campaigntest/scripts/z_default.lua";
+
+TEST_F(CampaignHooksTest, default_lineup_prices_with_no_campaign_book)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return row.hp * 3 + row.level end,
+}))LUA", kDefaultChunk);
+    EXPECT_FALSE(hooks::campaign_picker_registered())
+        << "a default is not a book: the stock picker still serves";
+    EXPECT_TRUE(hooks::campaign_lineup_registered())
+        << "C5: the bands price even where no campaign registered a lineup";
+
+    hooks::LineupPowerRow row;
+    row.family = "SOLDIER";
+    row.level = 4;
+    row.hp = 10;
+    long long power = -1;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(34, power);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, a_campaign_lineup_overrides_the_default)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return 111 end,
+}))LUA", kDefaultChunk);
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return 222 end },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(222, power) << "the book's own pricing wins outright";
+}
+
+TEST_F(CampaignHooksTest, a_book_with_no_lineup_falls_back_to_the_default)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return 111 end,
+}))LUA", kDefaultChunk);
+    // A whole book — vars and a scripted picker — that simply names no
+    // pricing. Westlands' fire book is exactly this shape.
+    register_script(R"LUA(og.register_campaign_hooks({
+  vars = { "watch_paid" },
+  picker_menu = function(page_id) return { title = "FIRE" } end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(hooks::campaign_lineup_registered())
+        << "the default fills the book's gap";
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(111, power);
+}
+
+// The half that makes the default un-poisonABLE: a campaign that registers
+// twice kills its own book, and the bands keep their numbers anyway.
+TEST_F(CampaignHooksTest, a_conflicted_book_cannot_poison_the_default)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return 111 end,
+}))LUA", kDefaultChunk);
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return 222 end },
+}))LUA", "campaigntest/scripts/a.lua");
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row) return 333 end },
+}))LUA", "campaigntest/scripts/b.lua");
+    EXPECT_FALSE(hooks::campaign_picker_registered())
+        << "one campaign, one book: the duplicate serves no picker";
+    EXPECT_TRUE(hooks::campaign_lineup_registered())
+        << "the default is no campaign's, so the conflict cannot reach it";
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(111, power);
+    EXPECT_TRUE(errors_contain("duplicate og.register_campaign_hooks"));
+}
+
+// ...and the other direction: a default registered twice never raises and
+// never touches the book (the og.register_level_hooks wildcard precedent —
+// last registration wins).
+TEST_F(CampaignHooksTest, a_second_default_replaces_the_first)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return 111 end,
+}))LUA", "campaigntest/scripts/a.lua");
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return 999 end,
+}))LUA", "campaigntest/scripts/b.lua");
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id) return { title = "BOOK" } end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered())
+        << "two defaults do not conflict the book";
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(999, power);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, default_lineup_power_that_errors_answers_false)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return nil + 1 end,
+}))LUA", kDefaultChunk);
+    EXPECT_TRUE(hooks::campaign_lineup_registered())
+        << "registered is registered; the refusal happens at dispatch";
+    hooks::LineupPowerRow row;
+    long long power = 12345;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(12345, power) << "the caller's value is untouched";
+    EXPECT_FALSE(vm_errors().empty());
+}
+
+// The refusal names WHICH pricer refused — "default", not "campaign".
+TEST_F(CampaignHooksTest, default_lineup_power_non_number_names_the_default)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return "4200" end,
+}))LUA", kDefaultChunk);
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_TRUE(errors_contain("default lineup.power returned a string"));
+}
+
+TEST_F(CampaignHooksTest, no_book_and_no_default_is_no_metric)
+{
+    register_script(R"LUA(og.log("a pack that prices nothing"))LUA");
+    og::ui::lineup_power_cache_clear();
+    EXPECT_FALSE(hooks::campaign_lineup_registered());
+    hooks::LineupPowerRow row;
+    long long power = 4242;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(4242, power);
+    guy fighter(FAMILY_SOLDIER);
+    EXPECT_FALSE(og::ui::lineup_power_for_guy(fighter).has_value())
+        << "the band shows POWER --";
+}
+
+// The default runs under the SAME fence as a campaign hook: it is menu-time
+// Lua, and menu-time Lua may never pull the sim's RNG stream.
+TEST_F(CampaignHooksTest, the_default_is_fenced_like_a_campaign_hook)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return og.rand(10) end,
+}))LUA", kDefaultChunk);
+    hooks::LineupPowerRow row;
+    long long power = 0;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_FALSE(vm_errors().empty())
+        << "the sim RNG stays fenced under the default's dispatch too";
+}
+
+TEST_F(CampaignHooksTest, default_lineup_registration_rejections)
+{
+    struct Case {
+        const char* source;
+        const char* needle;
+    };
+    const Case cases[] = {
+        {R"LUA(og.register_default_lineup(7))LUA",
+         "table expected"},
+        {R"LUA(og.register_default_lineup({ power = 7 }))LUA",
+         "'power' must be a function"},
+        {R"LUA(og.register_default_lineup({}))LUA",
+         "carries no 'power'"},
+        {R"LUA(og.register_default_lineup({ powr = function(r) return 1 end }))LUA",
+         "unknown key 'powr'"},
+        {R"LUA(og.register_default_lineup({ presets = { "X" },
+                                            power = function(r) return 1 end }))LUA",
+         "unknown key 'presets'"},
+        {R"LUA(og.register_default_lineup({ [1] = "x" }))LUA",
+         "the only key is 'power'"},
+        // E2: the shipped resolver retired with the book's, so packs/core's
+        // own registrar refuses the key too.
+        {R"LUA(og.register_default_lineup({ power = function(r) return 1 end,
+                                            default_fill = function(s, r) return 1 end }))LUA",
+         "unknown key 'default_fill'"},
+    };
+    for (const Case& c : cases) {
+        clear_pack_scripts();
+        register_script(c.source, kDefaultChunk);
+        EXPECT_FALSE(hooks::campaign_lineup_registered()) << c.needle;
+        EXPECT_TRUE(errors_contain(c.needle)) << c.needle;
+    }
+}
+
+TEST_F(CampaignHooksTest, default_lineup_power_for_guy_bridges_engine_stats)
+{
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return row.hp * 2 + row.level end,
+}))LUA", kDefaultChunk);
+    og::ui::lineup_power_cache_clear();
+    guy fighter(FAMILY_SOLDIER);
+    fighter.level = 5;
+    const og::ui::DerivedStats stats = og::ui::compute_derived_stats(fighter);
+    const std::optional<long long> power =
+        og::ui::lineup_power_for_guy(fighter);
+    ASSERT_TRUE(power.has_value());
+    EXPECT_EQ(static_cast<long long>(stats.hp) * 2 + 5, *power)
+        << "the default reads the same engine-derived row a book does";
+}
+
+// The C8 resolved-default query (lineup.default_fill, LineupResolveRow,
+// campaign_lineup_resolved_fill and the og::ui::lineup_resolved_fill
+// bridge) retired with amendment 4 (E2): FILL: NONE is the stored 0 on
+// every map, so there is no default left to resolve and no seam to test.
+// The registrars' refusal of the retired key is pinned in the two
+// rejection tables above.
+
+// ---------------------------------------------------------------------------
+// The lineup review rows (wp/review-lua L5/L6)
+// ---------------------------------------------------------------------------
+
+// L5 (the presets-sequence refusal) retired with `lineup.presets` itself
+// (amendment B1): the key is unknown now, so the registrar refuses every
+// shape of it — pinned by lineup_presets_key_is_gone and the unknown-key
+// row in lineup_registration_rejections above.
+
+// L6: lineup.power answers are read as int64 only when they are one — an
+// integer, or a finite float inside the int64 range (truncated). NaN,
+// either infinity, a float past the range and a string all answer false
+// (the band shows `--`), never a static_cast of a NaN.
+TEST_F(CampaignHooksTest, lineup_power_non_integer_answers)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  lineup = { power = function(row)
+    if row.level == 1 then return 0/0 end
+    if row.level == 2 then return 1/0 end
+    if row.level == 3 then return 1.5 end
+    if row.level == 4 then return -(1/0) end
+    if row.level == 5 then return 2^63 end
+    if row.level == 6 then return -2.5 end
+    if row.level == 7 then return 4200 end
+    return "x"
+  end },
+}))LUA");
+    struct Case {
+        int level;
+        bool ok;
+        long long value;
+    };
+    const Case cases[] = {
+        {1, false, 0},  // NaN
+        {2, false, 0},  // +inf
+        {3, true, 1},   // 1.5 truncates
+        {4, false, 0},  // -inf
+        {5, false, 0},  // 2^63 is past int64
+        {6, true, -2},  // -2.5 truncates toward zero
+        {7, true, 4200},
+        {8, false, 0},  // "x"
+    };
+    for (const Case& c : cases) {
+        hooks::LineupPowerRow row;
+        row.level = c.level;
+        long long power = 12345;
+        EXPECT_EQ(c.ok, hooks::campaign_fighter_power(row, power))
+            << "level " << c.level;
+        if (c.ok)
+            EXPECT_EQ(c.value, power) << "level " << c.level;
+        else
+            EXPECT_EQ(12345, power) << "refused: the caller's value stands";
+    }
+    EXPECT_TRUE(errors_contain("not a finite integer"));
 }

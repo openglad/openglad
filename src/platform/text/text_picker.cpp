@@ -131,8 +131,14 @@ public:
         // mutates — so campaign hooks always read/write the live save (the
         // design doc's install-site list: the text picker's init, beside
         // the [SAVE-R2] slot repoint).
+        // G4 (docs/lineup-design.md Amendment 5): og.campaign_my_team
+        // answers from THIS client's seat source — the same synthesized
+        // seats the LINEUP page and the launch read, so "mine" means the
+        // same team on the page and in the world.
         og::script::hooks::install_campaign_providers(
-            og::data::make_campaign_providers(save_data_));
+            og::data::make_campaign_providers(save_data_, {}, [this] {
+                return og::ui::first_local_seat_team(save_data_);
+            }));
     }
 
     ~TextPickerClient() override
@@ -903,14 +909,6 @@ private:
             // — the door moved off the main menu to Team Build.
             show_submenu(PickerMenuId::Difficulty);
             break;
-        // Match teams and target score left the flat team-build list for the
-        // modes camp's MATCH SETUP page; the SCENARIO submenu still routes
-        // its troops row through here.
-        case PickerMenuCommand::ToggleCtfScenarioTroops:
-            toggle_ctf_scenario_troops(save_data_);
-            std::printf("%s\n", format_ctf_troops_label(save_data_).c_str());
-            autosave_company_after_mutation(); // §3.8 settings tail
-            break;
         case PickerMenuCommand::ViewScenario:
             view_scenario();
             break;
@@ -921,6 +919,11 @@ private:
             // #206: the Base Camp gameplay zone (guard + flow live in the
             // shared terminal driver).
             campaign_camp_flow();
+            break;
+        case PickerMenuCommand::Lineup:
+            // LINEUP §8: teams, seats and the two band controls on one
+            // page (B1/B6: one FILL wheel, one MAP UNITS box, no FIGHTERS).
+            lineup_screen();
             break;
         default:
             break;
@@ -1109,6 +1112,154 @@ private:
         }
     }
 
+    // --- LINEUP (docs/lineup-design.md §8) -------------------------------
+
+    TerminalLineupInputs lineup_inputs(
+        const std::vector<og::sim::LobbyPlayer>& seats,
+        std::span<const int> map_unit_counts) const
+    {
+        TerminalLineupInputs inputs;
+        inputs.save = &save_data_;
+        inputs.players = seats;
+        // The text client holds no networked lobby (configure_networking is
+        // the documented stub), so every seat on the bands is local and the
+        // fighter census reads THIS save.
+        inputs.networked = false;
+        inputs.is_host = label_context().is_host;
+        // F3: the MAP UNITS census comes off the world VIEW LEVEL would
+        // show, so the B4 hint and the toggle refusal are live here exactly
+        // as on the SDL band. Empty when nothing could be staged — the
+        // documented silence, not an invented census.
+        inputs.map_unit_counts = map_unit_counts;
+        return inputs;
+    }
+
+    // The §5 SPLIT tail: one implementation for both terminal clients
+    // (terminal_apply_lineup_split), so a campaign that clears can_team
+    // refuses here in exactly the words curses uses.
+    void lineup_apply_split(LineupSplit mode)
+    {
+        std::vector<std::string> report;
+        const int moved =
+            terminal_apply_lineup_split(save_data_, mode, report);
+        for (const std::string& line : report)
+            std::printf("%s\n", line.c_str());
+        if (moved > 0)
+            autosave_company_after_mutation();  // §3.8 roster tail
+    }
+
+    // The LINEUP page: the four bands as context lines over a numbered item
+    // list, driven by the numeric-prompt loop the campaign camp page uses.
+    void lineup_screen()
+    {
+        // W7-G: ONE stage for the whole page, on the same three inputs
+        // view_scenario() stages with (this save, this session's difficulty,
+        // config_.seed — the session latch, so the page and VIEW LEVEL can
+        // never split). The change key carries the knobs, so a turn restages
+        // once and an untouched page costs nothing.
+        og::server::MatchStage stage({
+            .networked = false,
+            .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+            .host_company_save = &save_data_,
+        });
+        std::array<int, 4> map_unit_counts{};
+
+        for (;;) {
+            const bool censused = census_staged_lineup_map_units(
+                stage, save_data_,
+                og::runtime::current_session->current_difficulty_,
+                config_.seed, map_unit_counts);
+            const std::vector<og::sim::LobbyPlayer> seats =
+                synthesize_local_lobby_players(save_data_);
+            const TerminalLineupModel model = build_terminal_lineup_model(
+                lineup_inputs(seats,
+                              censused ? std::span<const int>(map_unit_counts)
+                                       : std::span<const int>()));
+
+            std::printf("\n--- Lineup ---\n");
+            for (const std::string& line : model.lines)
+                std::printf("%s\n", line.c_str());
+            std::printf("\n");
+            for (std::size_t i = 0; i < model.items.size(); ++i)
+                std::printf("  %2zu. %s\n", i + 1, model.items[i].label.c_str());
+            std::printf("Lineup [1-%zu] (blank exits): ", model.items.size());
+            std::fflush(stdout);
+
+            std::string line;
+            if (!read_line(line) || line.empty())
+                return;
+            const auto choice = parse_int_strict(line);
+            if (!choice || *choice < 1 ||
+                static_cast<std::size_t>(*choice) > model.items.size()) {
+                std::printf("Invalid selection.\n");
+                continue;
+            }
+            const TerminalLineupItem& item =
+                model.items[static_cast<std::size_t>(*choice - 1)];
+            const std::size_t team = static_cast<std::size_t>(item.team);
+            switch (item.kind) {
+            case TerminalLineupItem::Kind::Fill:
+            case TerminalLineupItem::Kind::MapUnits:
+                // C5: the versus-only refusal is gone. packs/core's mode-less
+                // stage step applies these two knobs on a classic level, so a
+                // gladiator write is as real as a modes write and the row
+                // cycles for every campaign.
+                //
+                // The clamp is the lobby's own (B1-B4): one implementation,
+                // so a terminal write can never land a value the host's
+                // sanitize_settings would refuse. There is no
+                // picker_lobby_sync_settings_from_save() tail here on
+                // purpose: the text client links no lobby client at all
+                // (configure_networking is the documented stub), so the
+                // save IS the whole authority for these eight scalars.
+                // B8: no value on the FILL wheel is refused on any team, so
+                // there is no wheel rule beyond the shared step itself.
+                if (item.kind == TerminalLineupItem::Kind::MapUnits) {
+                    // B4/F3: a team the map ships no units for has nothing
+                    // to switch — the SDL box is dimmed and its click belt
+                    // refuses; this is the same refusal in the band's own
+                    // words, gated on a census that actually happened (an
+                    // absent census is not an empty map).
+                    if (censused && model.bands[team].map_unit_count == 0) {
+                        std::printf(
+                            "%s\n",
+                            format_lineup_map_units_census(model.bands[team])
+                                .c_str());
+                        break;
+                    }
+                    save_data_.map_units[team] = og::sim::clamp_map_units(
+                        toggle_lineup_map_units(save_data_.map_units[team]));
+                    std::printf(
+                        "%s\n",
+                        format_lineup_map_units_label(save_data_.map_units[team])
+                            .c_str());
+                } else {
+                    // E1: the row shows the STORED code, so the wheel steps
+                    // from it directly — no second derivation here.
+                    save_data_.fill[team] = og::sim::clamp_fill(
+                        cycle_lineup_fill(save_data_.fill[team], 1));
+                    std::printf(
+                        "%s\n",
+                        format_lineup_fill_label(save_data_.fill[team])
+                            .c_str());
+                }
+                autosave_company_after_mutation();  // §3.8 settings tail
+                break;
+            case TerminalLineupItem::Kind::SplitEven:
+                lineup_apply_split(LineupSplit::Even);
+                break;
+            case TerminalLineupItem::Kind::SplitFair:
+                lineup_apply_split(LineupSplit::Fair);
+                break;
+            case TerminalLineupItem::Kind::Unite:
+                lineup_apply_split(LineupSplit::AllToFirst);
+                break;
+            case TerminalLineupItem::Kind::Back:
+                return;
+            }
+        }
+    }
+
     void print_team_rows()
     {
         std::printf("\n--- Matchup ---\n");
@@ -1131,8 +1282,10 @@ private:
                     t, hero_count, false, false, false, "").c_str());
             std::printf("%s", members.c_str());
         }
-        if (is_versus_campaign(save_data_))
-            std::printf("[%s]\n", format_ctf_teams_label(save_data_).c_str());
+        // Amendment A1/A3: the TEAMS readout is gone with the control. How
+        // many teams fight is the LINEUP page's answer now — a team is on
+        // when something is on it — so a line reading "Teams: Auto" under
+        // every roster could only ever be noise.
     }
 
     void ensure_team_initialized()

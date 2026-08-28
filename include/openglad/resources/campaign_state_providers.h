@@ -30,8 +30,20 @@ namespace og::data {
 // `is_host` gates match_set and answers og.campaign_is_host (#212). An
 // empty function means "always host" — local play has no lobby to defer
 // to; the SDL install site passes the live lobby host predicate.
+// `my_team` answers og.campaign_my_team with the FIRST LOCAL SEAT's team
+// (Amendment 5 G4); an empty function falls back to
+// campaign_my_team_fallback below. Only a surface that owns a seat view —
+// the SDL lobby, a terminal's synthesized seats — passes one.
 og::script::hooks::CampaignProviders make_campaign_providers(
-    SaveData& save, std::function<bool()> is_host = {});
+    SaveData& save, std::function<bool()> is_host = {},
+    std::function<int()> my_team = {});
+
+// The my_team fallback: this save's own seat team, clamped into the four
+// teams because save data is not validated on load. Exported so an
+// installer that answers from its own seat view ENDS on this same rule
+// (an empty lobby, a company with no seats) instead of restating it — one
+// fallback, three install sites, no drift.
+int campaign_my_team_fallback(const SaveData& save);
 
 // The lobby sanitizer's per-knob rules (lobby_server.cpp
 // sanitize_settings) as one callable: writes the sanitized value to `out`

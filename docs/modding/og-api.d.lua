@@ -326,6 +326,7 @@
 ---@field on_damage? fun(target: og.Walker, attacker: og.Walker?, amount: integer)
 ---@field on_entity_death? fun(ent: og.Walker, killer: og.Walker?, killer_team: integer)
 ---@field on_entity_spawn? fun(entity: og.Walker)
+---@field on_lineup_stage? fun(level: integer)
 ---@field on_load? fun(level: integer)
 ---@field on_mode_init? fun(level: integer)
 ---@field on_mode_tick? fun(level: integer, tick: integer)
@@ -437,6 +438,30 @@
 ---@field save_slot integer
 ---@field deployed boolean
 
+-- One fighter handed to lineup.power: the ENGINE's own
+-- derived stats (guy bonuses + family bases, already
+-- truncated to integers), so a book prices exactly what
+-- the sim would field. fire_frequency is busy ticks after
+-- an attack -- lower is faster.
+---@class og.LineupPowerRow
+---@field family string
+---@field level integer
+---@field hp integer
+---@field mp integer
+---@field armor integer
+---@field damage integer
+---@field stepsize integer
+---@field fire_frequency integer
+
+-- The LINEUP table: `power` prices one fighter for the
+-- team bands, and it is the whole table (the preset names
+-- retired with the BOTS wheel; `default_fill` and its
+-- og.LineupResolveRow retired with the per-team default
+-- resolver in amendment 4 -- FILL: NONE is the stored 0
+-- on every map now, so nothing resolves).
+---@class og.CampaignLineup
+---@field power? fun(row: og.LineupPowerRow): integer
+
 -- Hook table for og.register_campaign_hooks. `vars` names
 -- the campaign state keys (max 64, each 1-32 chars of
 -- [a-z0-9_]) that level scripts may read via
@@ -445,6 +470,7 @@
 ---@class og.CampaignHooks
 ---@field vars? string[]
 ---@field base_camp? fun(): og.CampaignZone?
+---@field lineup? og.CampaignLineup
 ---@field picker_action? fun(entry_id: string): og.CampaignActionResult?
 ---@field picker_menu? fun(page_id: string): og.CampaignPage?
 
@@ -613,8 +639,9 @@
 ---@field campaign_grant_gold fun(amount: integer)
 ---@field campaign_is_host fun(): boolean # og.campaign_is_host() → true/false — so a script can shape host-only pages (level rows and match presets) without tripping the refusal.
 ---@field campaign_level_completed fun(id: integer): boolean # og.campaign_level_completed(id) — the menu-time twin of the sim's og.level_completed.
----@field campaign_match_get fun(name: string): integer # og.campaign_match_get(name) → int32 — the menu-time twin of the sim's read-only og.match_setting, over the persisted match knobs ("team_count", "score_limit"...
+---@field campaign_match_get fun(name: string): integer # og.campaign_match_get(name) → int32 — the menu-time twin of the sim's read-only og.match_setting, over the persisted match knobs ("score_limit", "respawn_tic...
 ---@field campaign_match_set fun(name: string, value: integer): boolean # og.campaign_match_set(name, value) → true/false — write-through to the match knobs.
+---@field campaign_my_team fun(): integer # og.campaign_my_team() → integer 0..3 — the local seat's fighting team (docs/lineup-design.md Amendment 5 G4), so a page can say "mine" and mean the machine r...
 ---@field campaign_random fun(n: integer): integer # og.campaign_random(n) → integer in 1..n — the menu-time roll.
 ---@field campaign_scenario_title fun(id: integer): string # og.campaign_scenario_title(id) → title string, "" when absent.
 ---@field campaign_spend_gold fun(amount: integer): boolean # og.campaign_spend_gold(amount) → true/false — the affordability-checked debit for variable-priced flows inside actions (fixed `cost` debits are owned by C++...
@@ -673,7 +700,7 @@
 ---@field level_tick fun(): integer
 ---@field living_count fun(): integer
 ---@field log fun(...: any)
----@field match_setting fun(s: "difficulty"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings; 0 always means "mode default" (strip_troops: 0 keep, 2 own, 3 m...
+---@field match_setting fun(s: "difficulty"|"fill_1"|"fill_2"|"fill_3"|"fill_4"|"map_units_1"|"map_units_2"|"map_units_3"|"map_units_4"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings.
 ---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
 ---@field min fun(arg1: number, arg2: number): number
 ---@field mod fun(a: integer, b: integer): integer
@@ -690,6 +717,7 @@
 ---@field rand fun(n: integer): integer # og.rand(n) → deterministic sim RNG (world-owned).
 ---@field rand0 fun(n: integer): integer # og.rand0(n) — the world RNG's `next(n)` with IRandom's real n <= 0 contract instead of og.rand's error: next(0) answers 0 WITHOUT advancing the generator (Si...
 ---@field register_campaign_hooks fun(hooks: og.CampaignHooks) # og.register_campaign_hooks({ vars = {...}, picker_menu = fn, picker_action = fn, base_camp = fn }) — load-time only, one campaign book per VM (docs/campaign-...
+---@field register_default_lineup fun(hooks: og.CampaignLineup) # og.register_default_lineup({ power = fn }) — the DEFAULT lineup pricing a shipped pack registers for every campaign that names none of its own (docs/lineup-d...
 ---@field register_hooks fun(order_str: og.OrderName, family_str: string, hooks: og.FxHooks|og.GeneratorHooks|og.LivingHooks|og.TreasureHooks|og.WeaponHooks)
 ---@field register_level_hooks fun(level_id: integer, hooks: og.LevelHooks) # og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=, on_entity_spawn= }).
 ---@field remaining_foes fun(entity: og.Walker): integer
@@ -719,7 +747,7 @@
 ---@field trunc fun(x: number): integer
 ---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning` map self's family declared, as a frozen read-only table — key access only; writes raise; no iteration is provided (and none is...
 ---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
----@field use fun(name: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
+---@field use fun(spec: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua, or og.use("<pack-id>:name") → the same module out of ANOTHER installed pack's lib/...
 ---@field weaplist fun(): og.Walker[] # og.weaplist() — the weapon entity list in list order.
 ---@field world_can_exit_whenever fun(): boolean
 ---@field world_tick fun(): integer # og.world_tick() — the absolute world tick counter (snapshotted, safe across a mid-level restore; og.level_tick is the per-level counter).

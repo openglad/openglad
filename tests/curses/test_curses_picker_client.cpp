@@ -539,41 +539,27 @@ TEST(CursesPickerClient, level_edit_notice_renders)
 // The flat match-rule rows (match teams, target score) left Team Build for
 // the camp's MATCH SETUP page (docs/camp-controls-design.md): one place, in
 // plain words, on every client. Nothing in the curses surface carries them
-// any more — see team_build_lists_the_difficulty_door_last below for the
-// list, and MenuSpec.terminal_gate_messages_guard_the_ctf_trio_verbatim for
-// the shared versus guard that still names them. The curses guard-rendering
-// branch itself stays covered by the READY row's networked-only guard.
+// any more — see team_build_lists_the_appended_doors_last below for the
+// list. The third of that trio, TROOPS, retired outright with amendment B5,
+// so the shared versus guard no longer names it either. The curses
+// guard-rendering branch stays covered by the READY row's networked-only
+// guard.
 
-// Matched troops (design D28): the sentinel value 3 renders the shared
-// formatter's "TROOPS: FAIR" label in the terminal list too. The troops row
-// is the one match rule that stayed a menu item — it lives in SCENARIO,
-// because stripping authored troops is meaningful on classic campaigns.
-TEST(CursesPickerClient, ctf_menu_labels_render_matched_sentinel)
+// The Team Build list renders the two appended doors — DIFFICULTY and then
+// LINEUP (docs/lineup-design.md §8) — with their fixed labels, past the digit
+// ceiling and reachable by the arrow walk.
+TEST(CursesPickerClient, team_build_lists_the_appended_doors_last)
 {
     PickerFixture f;
-    f.save().ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    const auto* troops_item = og::ui::find_picker_menu_item(
-        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
-    ASSERT_NE(troops_item, nullptr);
-
-    // Drive present_menu so the dynamic label renders in the list.
-    f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::Scenario);
-    const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("TROOPS: FAIR"), std::string::npos) << dump;
-}
-
-// The Team Build list renders the appended DIFFICULTY door with its fixed
-// label, past the digit ceiling and reachable by the arrow walk.
-TEST(CursesPickerClient, team_build_lists_the_difficulty_door_last)
-{
-    PickerFixture f;
-    const int door_idx =
+    const int items = static_cast<int>(
+        og::ui::picker_menu_definition(PickerMenuId::TeamBuild).items.size());
+    const int difficulty_idx =
         team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
-    ASSERT_EQ(static_cast<int>(og::ui::picker_menu_definition(
-                                  PickerMenuId::TeamBuild).items.size()) - 1,
-              door_idx)
-        << "the door is appended last, so nothing above it moved";
+    const int lineup_idx = team_build_item_index(PickerMenuCommand::Lineup);
+    ASSERT_EQ(items - 2, difficulty_idx)
+        << "LINEUP appended BELOW difficulty, so difficulty kept its ordinal";
+    ASSERT_EQ(items - 1, lineup_idx)
+        << "lineup is appended last, so nothing above it moved";
 
     f.t().push_special(KeyCode::Escape);
     (void)f.client.present_menu(PickerMenuId::TeamBuild);
@@ -599,8 +585,11 @@ TEST(CursesPickerClient, team_build_lists_the_difficulty_door_last)
         << "expected the key-hint footer as the last line:\n" << dump;
     rows.pop_back();
     ASSERT_FALSE(rows.empty()) << dump;
-    EXPECT_EQ("  Difficulty", rows.back())
-        << "the appended door must be the last rendered row:\n" << dump;
+    EXPECT_EQ("  Lineup", rows.back())
+        << "the last appended door must be the last rendered row:\n" << dump;
+    ASSERT_GE(rows.size(), 2u) << dump;
+    EXPECT_EQ("  Difficulty", rows[rows.size() - 2])
+        << "difficulty sits directly above the LINEUP door:\n" << dump;
     EXPECT_EQ(dump.find("Match Teams"), std::string::npos)
         << "the flat match-rule rows are gone from Team Build:\n" << dump;
     EXPECT_EQ(dump.find("Score Limit"), std::string::npos) << dump;
@@ -956,11 +945,20 @@ TEST(CursesPickerClient, view_scenario_renders_the_staged_glyph_band)
         << f.t().dump();
     // The census lines start right below the band.
     EXPECT_EQ(0u, f.t().text_row(14).find("SCEN 1:")) << f.t().dump();
+    // Amendment 3 C5 (W6-C): a staged CLASSIC world gets the per-team
+    // census fold too — headerless (no mode to name, no match to count
+    // teams for) and unclamped (C4: classic levels never refuse), so the
+    // block starts at its first team line directly under the title.
+    EXPECT_EQ(0u, f.t().text_row(15).find("  RED TEAM  ACTIVE - COMPANY (1)"))
+        << f.t().dump();
+    EXPECT_EQ(0u,
+              f.t().text_row(16).find("  GREEN TEAM  ACTIVE - MAP TROOPS (12)"))
+        << f.t().dump();
     // Seat block (#218): the curses viewer stages locally, so the seat
-    // lines are the save-derived synthesis — one all-local seat leading the
-    // non-versus census, directly under the title line.
-    EXPECT_EQ(0u, f.t().text_row(15).find("SEATS: CO-OP")) << f.t().dump();
-    EXPECT_EQ(0u, f.t().text_row(16).find("  P1 YOU - RED TEAM"))
+    // lines are the save-derived synthesis — one all-local seat, now below
+    // the classic census block.
+    EXPECT_EQ(0u, f.t().text_row(17).find("SEATS: CO-OP")) << f.t().dump();
+    EXPECT_EQ(0u, f.t().text_row(18).find("  P1 YOU - RED TEAM"))
         << f.t().dump();
 }
 
@@ -2190,6 +2188,327 @@ TEST(CursesPickerClient, press_any_key_ignores_release_and_repeat)
         << "the release and repeat must not dismiss the modal; only the press does";
 }
 
+// --- LINEUP (docs/lineup-design.md §8) -----------------------------------
+
+namespace {
+
+// Two seated teams: three fighters on team 0 (my_team, so the derivation
+// seats it) and one on team 1, levels descending by slot so the power-less
+// SPLIT FAIR order is fully determined.
+void seed_lineup_roster(SaveData& save)
+{
+    for (auto& member : save.team_list)
+        member.reset();
+    for (int i = 0; i < 4; ++i) {
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        guy& member = *save.team_list[static_cast<std::size_t>(i)];
+        member.name = std::string("F") + static_cast<char>('1' + i);
+        member.teamnum = i == 3 ? 1 : 0;
+        member.deployed = true;
+        member.level = static_cast<short>(4 - i);
+    }
+    save.team_size = 4;
+    save.my_team = 0;
+}
+
+const og::ui::PickerMenuItem& lineup_item()
+{
+    const og::ui::PickerMenuItem* const item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild,
+                                      PickerMenuCommand::Lineup);
+    EXPECT_TRUE(item != nullptr);
+    return *item;
+}
+
+} // namespace
+
+// The page is the shared model rendered as a Menu with dynamic rows: four
+// bands as NON-selectable context above twelve host rows (B6 took the
+// FIGHTERS row out). Selecting the first row steps TEAM 1's FILL wheel and
+// the second flips its MAP UNITS box, and the redraw proves both writes
+// landed — the labels are re-read from the save, never remembered.
+TEST(CursesPickerClient, lineup_page_lists_the_bands_and_works_both_knobs)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    // A versus campaign, kept deliberately after C5 made the knobs live
+    // everywhere: this is the modes half of the pair, and the classic twin
+    // below now asserts the same answers on gladiator.
+    f.save().current_campaign = "modes";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    // B8: nothing on either control is refused any more, so one press is one
+    // step and no toast interrupts it. Since E1 the stored default IS NONE,
+    // and the DISPLAY order (NONE, WEAK, FAIR, STRONG, BRUTAL) puts WEAK one
+    // step past it.
+    pick(f.t(), 0);                      // row 1: TEAM 1 FILL
+    pick(f.t(), 1);                      // row 2: TEAM 1 MAP UNITS
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Lineup"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("TEAM 1 RED  POWER"), std::string::npos)
+        << "the band names the colour and the price:\n" << dump;
+    EXPECT_NE(dump.find("3 FIGHTERS"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("NO SEAT"), std::string::npos)
+        << "the two empty teams still get a band:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 1  FILL: WEAK"), std::string::npos)
+        << "the redraw re-reads the wheel out of the save:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 1  MAP UNITS: OFF"), std::string::npos)
+        << "and the box with it:\n" << dump;
+    EXPECT_EQ(og::sim::kFillWeak, f.save().fill[0])
+        << "NONE -> WEAK landed in the save: the row shows the stored code, "
+           "so the wheel leaves from NONE's slot";
+    EXPECT_EQ(og::sim::kMapUnitsOff, f.save().map_units[0])
+        << "ON -> OFF landed in the save";
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[1])
+        << "only the cycled team moved";
+    EXPECT_EQ(og::sim::kMapUnitsOn, f.save().map_units[1]);
+    EXPECT_TRUE(f.t().input_exhausted());
+    (void)unmount_campaign_package_with_error("modes");
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// ...and on a CLASSIC campaign the same row does the same thing. Amendment 3
+// C5 moved the match machinery into packs/core and gave a mode-less level its
+// own stage step, so gladiator reads FILL and MAP UNITS too: no mark, no
+// refusal, and the write lands. This test asserted the opposite until C5.
+TEST(CursesPickerClient, lineup_knob_cycles_on_a_classic_campaign)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    pick(f.t(), 0);                      // row 1: TEAM 1 FILL -> WEAK
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    const std::string dump = f.t().dump();
+    EXPECT_EQ(og::sim::kFillWeak, f.save().fill[0])
+        << "a classic campaign's knob write lands like any other:\n" << dump;
+    EXPECT_EQ(dump.find("MAP RULES"), std::string::npos)
+        << "C5 retired the classic mark and its census:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 1  FILL: WEAK"), std::string::npos)
+        << "the redraw re-reads the wheel out of the save:\n" << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// E1/E2: at rest every band reads its STORED code, and a fresh company
+// stores 0 on all four — so the page opens on four NONEs whatever the map
+// authors. Gladiator scen 1 ships twelve elves onto team 2 and nothing onto
+// teams 3 and 4, and since the per-team resolver retired that difference no
+// longer shows up in the word. (W7-G had the terminals census the staged
+// world to resolve a default here; amendment 4 removed the thing being
+// resolved, and the staged walk survives only for MAP UNITS, below.)
+TEST(CursesPickerClient, lineup_bands_read_the_stored_code_at_rest)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 1;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    f.t().push_special(KeyCode::Escape); // look, touch nothing, back out
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("TEAM 1  FILL: NONE"), std::string::npos)
+        << "the seated team is no better off than any other at rest:\n"
+        << dump;
+    EXPECT_NE(dump.find("TEAM 2  FILL: NONE"), std::string::npos)
+        << "the elf team is authored, and that fields nothing now:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 3  FILL: NONE"), std::string::npos)
+        << "an unauthored team reads the same word:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 4  FILL: NONE"), std::string::npos)
+        << "...and so does its twin:\n" << dump;
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[2])
+        << "looking is not a write — nothing was touched";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// B4/F3: the curses page censuses the map's own units off the world it
+// stages (the SDL box state's own walk), so the unauthored band says
+// NO MAP UNITS and the toggle on it is REFUSED with that hint (a show_text
+// screen), while the elves' box still flips. Before this the terminals fed
+// no count: the hint was dead and the toggle wrote where SDL refuses.
+TEST(CursesPickerClient, lineup_map_units_refuses_where_the_map_ships_none)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 1;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    pick(f.t(), 7);                      // row 8: TEAM 4 MAP UNITS -> refused
+    dismiss(f.t());                      // the refusal is a show_text screen
+    pick(f.t(), 3);                      // row 4: TEAM 2 MAP UNITS -> OFF
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("NO MAP UNITS"), std::string::npos)
+        << "B4: a censused page says NO MAP UNITS where the map ships "
+           "none:\n" << dump;
+    EXPECT_EQ(og::sim::kMapUnitsOn, f.save().map_units[3])
+        << "the refused toggle must not touch the save:\n" << dump;
+    EXPECT_EQ(og::sim::kMapUnitsOff, f.save().map_units[1])
+        << "the authored team's toggle lands like any other:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 2  MAP UNITS: OFF"), std::string::npos)
+        << "the redraw re-reads the box out of the save:\n" << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// D1/D4 as amended by E1: the full-cycle label pin, curses half. Six entries
+// per band, one press each, so the redraw after every step is its own frame.
+// The two sequences are now IDENTICAL — one wheel, one entry point, because
+// the word a band shows at rest is its stored 0 whatever the map authors.
+TEST(CursesPickerClient, lineup_wheel_cycles_both_bands_fully)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 1;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    // One press on `row`, then read that row's label back off the redraw.
+    const auto step = [&f](int row, std::string_view team) {
+        pick(f.t(), row);
+        f.t().push_special(KeyCode::Escape);
+        f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+        const std::string dump = f.t().dump();
+        const std::string needle = std::string(team) + "  FILL: ";
+        const std::size_t at = dump.find(needle);
+        if (at == std::string::npos)
+            return std::string("<no ") + needle + " row>\n" + dump;
+        const std::size_t start = at + needle.size();
+        const std::size_t end = dump.find_first_not_of(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ", start);
+        return dump.substr(start, end - start);
+    };
+
+    // Team 0: seated and standing on the map's own units. Since E1 that buys
+    // it no head start — it shows the stored 0 and the wheel leaves NONE.
+    const std::vector<std::string> expect_wheel = {
+        "WEAK", "FAIR", "STRONG", "BRUTAL", "NONE", "WEAK"};
+    std::vector<std::string> authored;
+    for (int i = 0; i < 6; ++i)
+        authored.push_back(step(0, "TEAM 1"));
+    EXPECT_EQ(expect_wheel, authored)
+        << "an authored band enters the wheel at NONE:\n" << f.t().dump();
+
+    // Team 2: gladiator authors nothing onto it — the same entry point and
+    // therefore the same six words. There is one wheel now, not two.
+    std::vector<std::string> unauthored;
+    for (int i = 0; i < 6; ++i)
+        unauthored.push_back(step(4, "TEAM 3"));
+    EXPECT_EQ(expect_wheel, unauthored)
+        << "an unauthored band walks the identical wheel — E1 left a single "
+           "entry point and every word its own stop:\n" << f.t().dump();
+
+    EXPECT_EQ(og::sim::kFillWeak, f.save().fill[0]);
+    EXPECT_EQ(og::sim::kFillWeak, f.save().fill[2]);
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[1])
+        << "the untouched bands keep the stored default";
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[3])
+        << "the untouched bands keep the stored default";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// M3 + §5: a curses client is a ONE-SEAT machine (numplayers stays 1), and
+// the seat picture is the launch's own — so there is exactly one seated team
+// and split_company's documented single-seat rule makes every mode ALL TO 1.
+// The terminals used to derive a second seat from a second deployed COLOUR,
+// which dealt the company across a seat the launch would never create.
+TEST(CursesPickerClient, lineup_split_fair_on_one_seat_is_all_to_one)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+
+    step_to(f.t(), 9);                   // row 10: Split fair
+    dismiss(f.t());                      //   the "Moved n fighters." report
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    for (int slot = 0; slot < 4; ++slot) {
+        EXPECT_EQ(0, f.save()
+                         .team_list[static_cast<std::size_t>(slot)]
+                         ->teamnum)
+            << "slot " << slot;
+    }
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// ...and so does SPLIT EVEN, from the same one seat.
+TEST(CursesPickerClient, lineup_split_even_on_one_seat_is_all_to_one)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+
+    step_to(f.t(), 8);                   // row 9: Split even
+    dismiss(f.t());                      //   the "Moved n fighters." report
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    for (int slot = 0; slot < 4; ++slot) {
+        EXPECT_EQ(0, f.save()
+                         .team_list[static_cast<std::size_t>(slot)]
+                         ->teamnum)
+            << "slot " << slot;
+    }
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// UNITE puts every deployed character on the lowest-numbered seated team.
+TEST(CursesPickerClient, lineup_unite_gathers_the_company_on_one_team)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+
+    step_to(f.t(), 10);                  // row 11: Unite
+    dismiss(f.t());                      //   the "Moved n fighters." report
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    for (int slot = 0; slot < 4; ++slot) {
+        ASSERT_TRUE(f.save().team_list[static_cast<std::size_t>(slot)] !=
+                    nullptr);
+        EXPECT_EQ(0, f.save()
+                         .team_list[static_cast<std::size_t>(slot)]
+                         ->teamnum)
+            << "slot " << slot;
+    }
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// A SPECTATOR machine (no declared players) seats nobody, so a SPLIT has no
+// team to deal into and says so instead of silently doing nothing.
+TEST(CursesPickerClient, lineup_split_without_a_seat_refuses_in_words)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().numplayers = 0;
+    for (auto& member : f.save().team_list)
+        if (member != nullptr)
+            member->deployed = false;
+
+    step_to(f.t(), 9);                   // row 10: Split fair
+    dismiss(f.t());                      //   the refusal screen
+    f.t().push_special(KeyCode::Escape); // back out of the page
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    EXPECT_EQ(1, f.save().team_list[3]->teamnum)
+        << "a refused split moves nobody";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
 // --- networking ----------------------------------------------------------
 
 TEST(CursesPickerClient, host_game_builds_real_lobby_and_can_cancel)
@@ -2487,76 +2806,6 @@ TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
     og::ui::run_picker(f.client);
     // The team survived the round trip.
     EXPECT_GE(team_count(f.save()), 1);
-}
-
-// --- CTF scenario-troops toggle -------------------------------------------
-
-// The troops control lives in the SCENARIO submenu now and is NOT
-// versus-gated: "strip everything authored" applies to classic campaigns
-// too, and all three states cycle the same way on either campaign kind
-// (ALL -> OWN -> FAIR -> ALL, matched-teams D28).
-TEST(CursesPickerClient, ctf_troops_toggle_runs_on_every_campaign)
-{
-    PickerFixture f;
-    const auto* troops_item = og::ui::find_picker_menu_item(
-        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
-    ASSERT_NE(troops_item, nullptr);
-
-    // Classic campaign: no refusal notice, ALL -> OWN -> FAIR -> ALL.
-    f.save().current_campaign = "gladiator";
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_EQ(f.t().dump().find("versus maps only"), std::string::npos);
-    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ((int)og::sim::kTroopsMatched,
-              (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("TROOPS: FAIR"), std::string::npos);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
-
-    // Versus campaign: the same three states.
-    f.save().current_campaign = "modes";
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ((int)og::sim::kTroopsMatched,
-              (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("TROOPS: FAIR"), std::string::npos);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
-
-    // A save carrying the retired middle state cycles back to ALL.
-    f.save().ctf_strip_scenario_troops = 1;
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
-}
-
-// The scenario menu label surfaces the live troops setting.
-TEST(CursesPickerClient, ctf_troops_label_formats_from_save)
-{
-    PickerFixture f;
-    f.save().ctf_strip_scenario_troops = 0;
-    f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::Scenario);
-    EXPECT_NE(f.t().dump().find("TROOPS: ALL"), std::string::npos);
-
-    f.save().ctf_strip_scenario_troops = 2;
-    f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::Scenario);
-    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
 }
 
 // --- Matchup screen --------------------------------------------------------
@@ -2973,6 +3222,46 @@ TEST(CursesPickerClient, camp_prompt_scrolls_a_composition_past_the_screen)
         << "an overflowing block must say so on screen:\n" << dump;
     // The prompt line survives the scroll: 14 docket rows + the oath door.
     EXPECT_NE(dump.find("Camp # [1-15]"), std::string::npos) << dump;
+}
+
+// G4 (docs/lineup-design.md Amendment 5): the install-site table promises the
+// curses picker answers og.campaign_my_team from its OWN derived seats
+// (og::ui::first_local_seat_team over the client's live save). This drives
+// that promise end-to-end: a camp composition asks for "mine" and must be
+// told the FIRST FIELDED seat. The save's my_team deliberately names a team
+// with no fighters, so the shared fallback (campaign_my_team_fallback, which
+// answers my_team verbatim) would say 3 — only the client's own seat lambda
+// says 1.
+TEST(CursesPickerClient, camp_page_reads_my_team_from_the_clients_own_seats)
+{
+    PickerFixture f;
+    for (auto& member : f.save().team_list)
+        member.reset();
+    f.save().team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    f.save().team_list[0]->teamnum = 1;
+    f.save().team_list[0]->deployed = true;
+    f.save().team_size = 1;
+    f.save().my_team = 3;
+    f.save().numplayers = 1;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "text", lines = { "MY SEAT TEAM " .. og.campaign_my_team() } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+    f.t().push_special(KeyCode::Escape);  // close the camp
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_NE(f.t().dump().find("MY SEAT TEAM 1"), std::string::npos)
+        << "the camp's og.campaign_my_team must answer THIS client's first "
+           "derived seat, not a fallback:\n"
+        << f.t().dump();
 }
 
 // #207: a camp docket row marked `replay = true` on a CLEARED level arms

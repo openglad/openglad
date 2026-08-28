@@ -166,6 +166,32 @@ public:
         }
         return request_seat_team_change(player_index, team);
     }
+    // LINEUP §6: the host asks the lobby to remove one foreign MACHINE (a
+    // kick takes every seat that machine owns). Returns true when the request
+    // was sent to a live lobby; the authoritative removal arrives as the next
+    // state broadcast. Refused by joiners, by clients with no lobby behind
+    // them, and for this machine's own id (leaving is disconnect_session).
+    virtual bool kick_machine(og::sim::LobbyMachineId machine_id)
+    {
+        (void)machine_id;
+        return false;
+    }
+    // LINEUP §6: tear this machine's network client down — a host stops
+    // hosting (its peers see the transport drop), a joiner leaves. Returns
+    // true when a networked client actually shut down. The UI swaps in a
+    // fresh create_local_picker_lobby_client() afterwards; that swap is the
+    // caller's job (picker_replace_lobby_client), not this seam's.
+    virtual bool disconnect_session()
+    {
+        return false;
+    }
+    // True once this client received a LobbyKickedMessage. Latched: the
+    // connection dies immediately afterwards, so the flag is the only
+    // surviving evidence of WHY.
+    [[nodiscard]] virtual bool was_kicked() const noexcept
+    {
+        return false;
+    }
     // Networked-only informational ready flag (LobbyReadyMessage).
     virtual bool set_ready(bool ready)
     {
@@ -210,6 +236,19 @@ public:
     }
     // True only for genuine networked sessions (network host or join client).
     [[nodiscard]] virtual bool is_networked_session() const noexcept
+    {
+        return false;
+    }
+    // LINEUP §6: is this machine actually IN a session? `is_networked_session`
+    // only says a network client is installed — a joiner that is still
+    // handshaking, or one whose link died, satisfies it while knowing nothing
+    // about the lobby it is supposedly in. Every surface that must keep the
+    // LOCAL picture until a session really exists (the NETWORKING mode table,
+    // the LINEUP seat view) reads THIS instead, in one place:
+    // picker_lobby_session_established(). A host is established the moment it
+    // runs the lobby; a joiner once the lobby state has landed AND the link is
+    // neither Lost nor Failed. Local/solo clients are never established.
+    [[nodiscard]] virtual bool session_established() const noexcept
     {
         return false;
     }
@@ -312,6 +351,9 @@ bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
 bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
                                            og::sim::LobbySeatId seat_id,
                                            short team);
+bool picker_lobby_kick_machine(og::sim::LobbyMachineId machine_id);
+bool picker_lobby_disconnect_session();
+bool picker_lobby_was_kicked();
 bool picker_lobby_set_ready(bool ready);
 bool picker_lobby_local_ready();
 og::sim::StartDenialReason picker_lobby_last_start_denial();
@@ -319,6 +361,7 @@ std::vector<og::sim::LobbyPlayer> picker_lobby_players();
 std::optional<std::uint8_t> picker_lobby_authoritative_team_mask();
 std::vector<std::uint8_t> picker_lobby_local_player_indices();
 bool picker_lobby_is_networked();
+bool picker_lobby_session_established();
 inline bool picker_lobby_save_slot_editable(int slot_index)
 {
     if (slot_index < 0)

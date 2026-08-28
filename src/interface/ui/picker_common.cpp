@@ -7,9 +7,11 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h> // G4 my_team fallback
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/campaign_ids.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/core/scale_mode.h>
@@ -21,7 +23,9 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -749,17 +753,11 @@ bool is_allied_mode(const SaveData& save)
 
 // --- CTF match settings ---
 
-void cycle_ctf_team_count(SaveData& save)
-{
-    // Auto (0 = every team the map authors) -> 2 -> 3 -> 4 -> Auto.
-    if (save.ctf_team_count <= 0)
-        save.ctf_team_count = 2;
-    else if (save.ctf_team_count >= 4)
-        save.ctf_team_count = 0;
-    else
-        save.ctf_team_count = static_cast<short>(save.ctf_team_count + 1);
-}
-
+// The TEAMS pair (cycle_ctf_team_count / format_ctf_teams_label) is GONE
+// (amendment A3): dropping an authored team is the LINEUP band's own
+// BOTS: OFF, and nothing reads ctf_team_count as a control any more. The
+// save/wire field keeps its place — every authority home snaps it to 0 —
+// but no menu offers it and no label speaks for it.
 void cycle_ctf_capture_limit(SaveData& save)
 {
     switch (save.ctf_capture_limit)
@@ -790,26 +788,6 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
         return 0;
     }
     return og::sim::authored_team_mask(world);
-}
-
-short next_ctf_scenario_troops(short current)
-{
-    // ALL -> OWN -> FAIR -> ALL. FAIR (kTroopsMatched = 3) strips exactly
-    // like OWN and additionally sizes the generated bot squads to the human
-    // census (matched-teams design D25-D28). Every other stored value — the
-    // retired middle state 1, or junk from a save the lobby never sanitized
-    // — reads as OWN everywhere else, so cycling off it goes to ALL.
-    if (current == 0)
-        return short{2};
-    if (current == 2)
-        return og::sim::kTroopsMatched;
-    return short{0};
-}
-
-void toggle_ctf_scenario_troops(SaveData& save)
-{
-    save.ctf_strip_scenario_troops =
-        next_ctf_scenario_troops(save.ctf_strip_scenario_troops);
 }
 
 // --- Difficulty submenu match rules ---
@@ -1290,15 +1268,31 @@ bool set_preferred_team(SaveData& save, short team)
     return true;
 }
 
+bool set_guy_team(SaveData& save, int slot_index, short team)
+{
+    if (team < 0 || team >= 4)
+        return false;
+    if (slot_index < 0 || slot_index >= MAX_TEAM_SIZE)
+        return false;
+    guy* member = save.team_list[static_cast<std::size_t>(slot_index)].get();
+    if (member == nullptr)
+        return false;
+    member->teamnum = team;
+    return true;
+}
+
 short cycle_guy_team(SaveData& save, int slot_index, int dir)
 {
     if (slot_index < 0 || slot_index >= MAX_TEAM_SIZE)
         return -1;
-    guy* member = save.team_list[static_cast<std::size_t>(slot_index)].get();
+    const guy* member = save.team_list[static_cast<std::size_t>(slot_index)].get();
     if (member == nullptr)
         return -1;
+    // The wrap is this helper's own rule; the WRITE is the one setter every
+    // team-assignment surface shares (docs/lineup-design.md §5).
     const int next = ((member->teamnum + dir) % 4 + 4) % 4;
-    member->teamnum = static_cast<short>(next);
+    if (!set_guy_team(save, slot_index, static_cast<short>(next)))
+        return -1;
     return static_cast<short>(next);
 }
 
@@ -1357,6 +1351,14 @@ std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save)
     if (save.allied_mode != 0)
         teams.assign(static_cast<std::size_t>(required_players), teams.front());
     return teams;
+}
+
+int first_local_seat_team(const SaveData& save)
+{
+    const std::vector<short> teams = derive_local_gameplay_seat_teams(save);
+    if (teams.empty())
+        return og::data::campaign_my_team_fallback(save);
+    return teams.front();
 }
 
 bool local_seat_teams_have_controls(const SaveData& save,
@@ -2056,32 +2058,12 @@ std::string format_allied_mode_label(const SaveData& save)
     return is_allied_mode(save) ? "SEATS: TOGETHER" : "SEATS: SPLIT";
 }
 
-std::string format_ctf_teams_label(const SaveData& save)
+std::string format_ctf_score_label(const SaveData& save)
 {
-    if (save.ctf_team_count <= 0)
-        return "Teams: Auto";
-    return std::format("Teams: {}", save.ctf_team_count);
-}
-
-std::string format_ctf_caps_label(const SaveData& save)
-{
+    // 80px face = 12 chars; "SCORE: MAP" is 10, "SCORE: 10" 9.
     if (save.ctf_capture_limit <= 0)
-        return "Limit: Map";
-    return std::format("Limit: {}", save.ctf_capture_limit);
-}
-
-std::string format_ctf_troops_label(const SaveData& save)
-{
-    // SCENARIO-screen faces are 80px = 12 characters; FAIR fills the budget
-    // exactly ("Even" is the recorded alternate if headroom is ever needed).
-    // The FAIR branch must precede the > 0 branch or OWN eats it. Anything
-    // else above 0 strips (a stored 1 from the retired middle state
-    // included), so the label reads OWN for the rest of the range.
-    if (save.ctf_strip_scenario_troops == og::sim::kTroopsMatched)
-        return "TROOPS: FAIR"; // strip like OWN + census-matched bot squads
-    if (save.ctf_strip_scenario_troops > 0)
-        return "TROOPS: OWN";  // strip every authored fighter and generator
-    return "TROOPS: ALL";      // keep the level as authored
+        return "SCORE: MAP";
+    return std::format("SCORE: {}", save.ctf_capture_limit);
 }
 
 std::string format_respawn_mode_label(const SaveData& save)
@@ -3091,16 +3073,89 @@ constexpr std::int32_t kBotMarkBit = 65536;
 // "matched with zero headcount is the plain squad" read back as a fact.
 constexpr std::size_t kModeVarMatchedSize = 5;
 
+// The shared lineup-facts mode var (lib/mode_match.lua MATCHED.ANNOUNCED,
+// slot 4, co-tenanted because the mode-private band is spent): the ones
+// digit is the matched announce latch; the digits above pack one base-100
+// code per team, team t's code at 10 * 100^t (§3.4, bank_lineup_facts).
+//
+// THE SHARED DIGIT LAYOUT, written out here beside the decoder and beside
+// `bank_lineup_facts` in mode_match.lua, because the two halves live in
+// different languages and can only agree on paper:
+//
+//   slot value = latch                      (ones digit, MATCHED.ANNOUNCED)
+//              + code(team 0) * 10
+//              + code(team 1) * 10 * 100
+//              + code(team 2) * 10 * 100^2
+//              + code(team 3) * 10 * 100^3
+//              + refusal      * 1e9         (kLineupRefusalBase below)
+//
+//   code = 0                 nothing banked — no squad of this team's
+//                            fielded anybody, so the pane names no fill
+//        = fill              the APPLIED FILL code itself, 1 = WEAK,
+//                            2 = FAIR, 3 = STRONG, 4 = BRUTAL
+//
+// The code carried a +1 bias for as long as FAIR shared 0 with the DEFAULT
+// and a bare code could not tell "a FAIR squad walked on" from "this team
+// banked nothing". Amendment 4 (E4) makes 0 unambiguous a second way and
+// for good: NONE is the stored 0 now, a NONE team spawns no squad, and a
+// squad that never spawned banks nothing — so the four codes a bank can
+// carry are exactly WEAK..BRUTAL and 0 is always "nothing". Amendment B7
+// replaced the older mixed-radix `squad * 11 + offset` pair with this
+// single value when the preset ordinals and the LV offset went away.
+constexpr std::size_t kModeVarLineupFacts = 4;
+
+// Decode team t's applied lineup code from the shared slot.
+int lineup_fact_code(std::int32_t slot_value, int team)
+{
+    std::int64_t facts = static_cast<std::int64_t>(slot_value) / 10;
+    for (int t = 0; t < team; ++t)
+        facts /= 100;
+    return static_cast<int>(facts % 100);
+}
+
+// The applied FILL value a code carries, or -1 when the team banked
+// nothing (and for any code outside the four spawnable fills, which is
+// what a stale bank from an older build reads as).
+//
+// E4: a banked code IS the stored fill of a squad that SPAWNED, so it runs
+// WEAK..BRUTAL and never NONE — a NONE team fields no squad, and a squad
+// that never walked on banks nothing. 0 is therefore the empty digit pair
+// every unbanked team leaves behind and nothing else. The Lua half
+// (packs/core/lib/lineup.lua bank_lineup_facts) banks exactly this,
+// unbiased.
+int lineup_fact_fill(int code)
+{
+    if (code < og::sim::kFillWeak || code > og::sim::kFillBrutal)
+        return -1;
+    return code;
+}
+
+// The refusal REASON digit, banked ABOVE the four team codes in the same
+// shared slot (mode_match.lua REFUSAL_BASE): 10^9, the last decimal digit
+// an i32 slot can hold beside the latch and the four base-100 codes
+// (1 + 4*2 = 9 digits below it). 1 = a band mode refused for want of
+// fighters; 0 = the team modes' sentence, which is also what every world
+// that banks nothing reads as.
+constexpr std::int32_t kLineupRefusalBase = 1000000000;
+
+int lineup_refusal_code(std::int32_t slot_value)
+{
+    return static_cast<int>(
+        (static_cast<std::int64_t>(slot_value) / kLineupRefusalBase) % 10);
+}
+
 bool is_score_team_index(int team)
 {
     return team >= 0 && team < 4;
 }
 
+// The pane's row budget (the zone-submenu chassis: 48-char rows).
+constexpr std::size_t kMaxReportLine = 48;
+
 std::string clip_line(std::string line)
 {
-    constexpr std::size_t kMaxLineLength = 48;
-    if (line.size() > kMaxLineLength)
-        line.resize(kMaxLineLength);
+    if (line.size() > kMaxReportLine)
+        line.resize(kMaxReportLine);
     return line;
 }
 
@@ -3154,6 +3209,110 @@ void fill_fallback_activation(ScenarioRosterReport& report,
     {
         for (bool& active : report.team_active)
             active = false;
+    }
+}
+
+// The per-team staged census, shared by the mode arm and the classic arm
+// (amendment C5: the packs/core lineup stage applies FILL and MAP UNITS on
+// every campaign, so a classic staged world carries the same observable
+// facts a mode's does). Live counts over the staged oblist (dead and
+// dormant excluded): activity and fills from observable facts, never a
+// rule twin; the banked lineup facts name the applied fill (B7/R4).
+void census_staged_teams(ScenarioRosterReport& report,
+                         const GameWorld& staged)
+{
+    std::array<int, 4> company{};
+    std::array<int, 4> troops{};
+    std::array<int, 4> bots{};
+    std::array<int, 4> generators{};
+    for (const auto& uptr : staged.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->dormant())
+            continue;
+        const int team = w->team_num();
+        if (!is_score_team_index(team))
+            continue;
+        const auto ti = static_cast<std::size_t>(team);
+        const Order order = w->query_order();
+        if (order == Order::Living)
+        {
+            if (w->myguy != nullptr)
+                company[ti]++;
+            else if (w->stats() != nullptr &&
+                     (w->stats()->bit_flags() & kBotMarkBit) != 0)
+                bots[ti]++;
+            else
+                troops[ti]++;
+        }
+        else if (order == Order::Generator)
+        {
+            generators[ti]++;
+        }
+    }
+    const bool matched = staged.mode.vars[kModeVarMatchedSize] > 0;
+    for (int t = 0; t < 4; ++t)
+    {
+        const auto ti = static_cast<std::size_t>(t);
+        const bool any = company[ti] > 0 || troops[ti] > 0 ||
+            bots[ti] > 0 || generators[ti] > 0;
+        report.team_active[ti] = any;
+        // The match.fills display priority, read as facts: a
+        // mixed company+troops team labels COMPANY exactly as
+        // the plan did.
+        if (company[ti] > 0)
+        {
+            report.team_fill[ti] = ScenarioFill::Company;
+            report.team_fill_count[ti] = company[ti];
+        }
+        else if (troops[ti] > 0)
+        {
+            report.team_fill[ti] = ScenarioFill::Troops;
+            report.team_fill_count[ti] = troops[ti];
+        }
+        else if (bots[ti] > 0)
+        {
+            report.team_fill[ti] = matched ? ScenarioFill::Matched
+                                           : ScenarioFill::Bots;
+            report.team_fill_count[ti] = bots[ti];
+        }
+        else if (generators[ti] > 0)
+        {
+            report.team_fill[ti] = ScenarioFill::Generators;
+            report.team_fill_count[ti] = generators[ti];
+        }
+        else
+        {
+            report.team_fill[ti] = ScenarioFill::Empty;
+            report.team_fill_count[ti] = 0;
+        }
+    }
+
+    // Lineup facts (§3.4 as amended by B7): the spawn seam
+    // banked the APPLIED per-team FILL code in the shared slot.
+    // A team whose label is its COMPANY (or its map troops) can
+    // still field a squad beside the occupants (review L2):
+    // those bots are the team_squad_count column, and the same
+    // banked fact names them, so the preview's count and its
+    // fill word are the spawned facts on every shape.
+    const std::int32_t lineup_facts =
+        staged.mode.vars[kModeVarLineupFacts];
+    for (int t = 0; t < 4; ++t)
+    {
+        const auto ti = static_cast<std::size_t>(t);
+        if (report.team_fill[ti] != ScenarioFill::Bots &&
+            report.team_fill[ti] != ScenarioFill::Matched)
+        {
+            // Bots beside an occupancy fill — 0 when the hard
+            // shape left no room, and then no fact either (the
+            // fold banks nothing for a squad that never
+            // spawned), so the row stays the plain occupancy.
+            report.team_squad_count[ti] = bots[ti];
+            if (bots[ti] == 0)
+                continue;
+        }
+        report.team_squad_fill[ti] =
+            lineup_fact_fill(lineup_fact_code(lineup_facts, t));
     }
 }
 
@@ -3314,6 +3473,12 @@ ScenarioRosterReport build_scenario_roster_report(
                 const std::uint32_t kinds =
                     og::script::hooks::level_hook_kinds_for(staged->id);
                 report.refusing = (kinds & (1u << 4)) != 0;  // LevelHook::ModeInit
+                // The reason rides the shared facts slot, which the refusing
+                // fold banked before it raised (a refusal keeps the staged
+                // world, mode vars included).
+                report.refusal_fighters =
+                    lineup_refusal_code(
+                        staged->mode.vars[kModeVarLineupFacts]) == 1;
             }
 
             // Anchor counts were banked by the REAL mode_stage_init scan at
@@ -3327,76 +3492,7 @@ ScenarioRosterReport build_scenario_roster_report(
             if (staged->mode.active)
             {
                 report.mode_census = true;
-                // Live per-team census over the staged oblist (dead and
-                // dormant excluded): activity and fills from observable
-                // facts, never a rule twin.
-                std::array<int, 4> company{};
-                std::array<int, 4> troops{};
-                std::array<int, 4> bots{};
-                std::array<int, 4> generators{};
-                for (const auto& uptr : staged->oblist)
-                {
-                    const walker* w = uptr.get();
-                    if (w == nullptr || w->dead() || w->dormant())
-                        continue;
-                    const int team = w->team_num();
-                    if (!is_score_team_index(team))
-                        continue;
-                    const auto ti = static_cast<std::size_t>(team);
-                    const Order order = w->query_order();
-                    if (order == Order::Living)
-                    {
-                        if (w->myguy != nullptr)
-                            company[ti]++;
-                        else if (w->stats() != nullptr &&
-                                 (w->stats()->bit_flags() & kBotMarkBit) != 0)
-                            bots[ti]++;
-                        else
-                            troops[ti]++;
-                    }
-                    else if (order == Order::Generator)
-                    {
-                        generators[ti]++;
-                    }
-                }
-                const bool matched =
-                    staged->mode.vars[kModeVarMatchedSize] > 0;
-                for (int t = 0; t < 4; ++t)
-                {
-                    const auto ti = static_cast<std::size_t>(t);
-                    const bool any = company[ti] > 0 || troops[ti] > 0 ||
-                        bots[ti] > 0 || generators[ti] > 0;
-                    report.team_active[ti] = any;
-                    // The match.fills display priority, read as facts: a
-                    // mixed company+troops team labels COMPANY exactly as
-                    // the plan did.
-                    if (company[ti] > 0)
-                    {
-                        report.team_fill[ti] = ScenarioFill::Company;
-                        report.team_fill_count[ti] = company[ti];
-                    }
-                    else if (troops[ti] > 0)
-                    {
-                        report.team_fill[ti] = ScenarioFill::Troops;
-                        report.team_fill_count[ti] = troops[ti];
-                    }
-                    else if (bots[ti] > 0)
-                    {
-                        report.team_fill[ti] = matched ? ScenarioFill::Matched
-                                                       : ScenarioFill::Bots;
-                        report.team_fill_count[ti] = bots[ti];
-                    }
-                    else if (generators[ti] > 0)
-                    {
-                        report.team_fill[ti] = ScenarioFill::Generators;
-                        report.team_fill_count[ti] = generators[ti];
-                    }
-                    else
-                    {
-                        report.team_fill[ti] = ScenarioFill::Empty;
-                        report.team_fill_count[ti] = 0;
-                    }
-                }
+                census_staged_teams(report, *staged);
             }
             else if (!report.refusing)
             {
@@ -3424,6 +3520,17 @@ ScenarioRosterReport build_scenario_roster_report(
                         active = false;
                 }
             }
+        }
+        else
+        {
+            // The classic arm (amendment C5): the same census fold over the
+            // same staged world — the packs/core lineup stage applied the
+            // per-team strip and FILL squads at stage time, so the fills and
+            // strips are observable facts here exactly as under a mode.
+            // Classic levels never refuse (C4), so there is no activation
+            // clamp: every team with anything standing gets its line.
+            report.mode_census = true;
+            census_staged_teams(report, *staged);
         }
         scan_roster_rows(report, *staged);
         return report;
@@ -3461,7 +3568,7 @@ std::vector<std::string> format_scenario_report_lines(
         return lines;
     }
 
-    if (report.is_versus)
+    if (report.is_versus || (report.staged && report.mode_census))
     {
         if (report.staged && report.mode_census)
         {
@@ -3470,25 +3577,71 @@ std::vector<std::string> format_scenario_report_lines(
             // teams have no entities and no row (the rendered pane shows
             // absence honestly); the old "BOT CLASSES DRAWN AT START"
             // legend is gone because the rows below list the ACTUAL staged
-            // squad (#235 delivered by deletion).
-            int active_count = 0;
-            for (int t = 0; t < 4; ++t)
-                active_count +=
-                    report.team_active[static_cast<std::size_t>(t)] ? 1 : 0;
-            lines.push_back(clip_line(std::format(
-                "MATCH: {} - {} TEAMS ACTIVE", report.mode_name,
-                active_count)));
+            // squad (#235 delivered by deletion). A staged CLASSIC world
+            // (amendment C5) renders the same team lines with no header —
+            // there is no mode to name and no match to count teams for.
+            if (report.is_versus)
+            {
+                int active_count = 0;
+                for (int t = 0; t < 4; ++t)
+                    active_count +=
+                        report.team_active[static_cast<std::size_t>(t)] ? 1
+                                                                        : 0;
+                lines.push_back(clip_line(std::format(
+                    "MATCH: {} - {} TEAMS ACTIVE", report.mode_name,
+                    active_count)));
+            }
             for (int t = 0; t < 4; ++t)
             {
                 const auto ti = static_cast<std::size_t>(t);
                 if (!report.team_active[ti])
                     continue;
                 std::string fill = fill_display_label(report.team_fill[ti]);
-                if (report.team_fill[ti] != ScenarioFill::Empty)
+                if (report.team_squad_count[ti] > 0 &&
+                    report.team_fill[ti] != ScenarioFill::Empty &&
+                    report.team_fill[ti] != ScenarioFill::Bots &&
+                    report.team_fill[ti] != ScenarioFill::Matched)
+                {
+                    // A squad fielded BESIDE the occupants (review L2): both
+                    // halves are named and both are counted, because both
+                    // walk onto the floor. The squad half is the plain word
+                    // BOTS now — B7 moved what KIND of squad it is out of
+                    // the noun and into the trailing fill word, where one
+                    // spelling answers for every shape.
+                    fill += std::format("+BOTS ({}+{})",
+                                        report.team_fill_count[ti],
+                                        report.team_squad_count[ti]);
+                }
+                else if (report.team_fill[ti] != ScenarioFill::Empty)
+                {
                     fill += std::format(" ({})", report.team_fill_count[ti]);
-                lines.push_back(clip_line(std::format(
-                    "  {} TEAM  ACTIVE - {}",
-                    og::sim::team_color_name(t), fill)));
+                }
+                // The APPLIED fill word closes the row (B7): "BOT SQUAD (5)
+                // FAIR", "COMPANY+BOTS (3+2) WEAK". A team that banked no
+                // fill — map troops alone, a mode that ignored the knob —
+                // ends at its count, so the pane never names a fill that
+                // did not decide anything.
+                //
+                // Budget: the worst row is
+                // "  YELLOW TEAM  ACTIVE - COMPANY+BOTS (3+2) BRUTAL"
+                // (24 + 12 + 6 + 7 = 49), one over. The separator space
+                // before the word is the first thing the budget spends, so
+                // such a row glues the word to the count ("(3+2)BRUTAL",
+                // 48) rather than losing a letter of it — a clipped word is
+                // a different word.
+                std::string line = std::format("  {} TEAM  ACTIVE - {}",
+                                               og::sim::team_color_name(t),
+                                               fill);
+                if (report.team_squad_fill[ti] >= 0)
+                {
+                    const std::string_view token = lineup_fill_name(
+                        static_cast<short>(report.team_squad_fill[ti]));
+                    if (line.size() + 1 + token.size() > kMaxReportLine)
+                        line += token;
+                    else
+                        line += " " + std::string(token);
+                }
+                lines.push_back(clip_line(line));
             }
         }
         else if (report.staged && report.refusing)
@@ -3498,9 +3651,14 @@ std::vector<std::string> format_scenario_report_lines(
             // below — it IS the world GO would adopt (classic rules over
             // the post-refusal state). A broken-pack init error reads the
             // same way: both leave classic rules, so the sentence is true
-            // either way.
+            // either way. WHICH sentence comes from the banked reason digit
+            // (review L1): a band mode (FFA/mutant) has no teams to be short
+            // of — it counts FIGHTERS — so the teams sentence would be a
+            // false statement about the very refusal it is explaining.
             lines.push_back(clip_line(
-                "MATCH WILL NOT START: FEWER THAN 2 TEAMS"));
+                report.refusal_fighters
+                    ? "MATCH WILL NOT START: FEWER THAN 2 FIGHTERS"
+                    : "MATCH WILL NOT START: FEWER THAN 2 TEAMS"));
         }
         else
         {
@@ -3593,6 +3751,709 @@ std::vector<std::string> format_scenario_report_lines(
         lines.push_back(clip_line(std::move(text)));
     }
     return lines;
+}
+
+// --- LINEUP support ---
+
+namespace {
+
+// The family combat bases a fighter would actually spawn with. A family the
+// registry does not carry (an unmounted pack class, or a .gtl family byte
+// the save carries with no range check) prices as a soldier — the picker's
+// own rule at picker_compute_guy_derived_stats.
+const FamilyDescriptor* guy_family_descriptor(const guy& g)
+{
+    const FamilyDescriptor* descriptor =
+        get_family_descriptor(static_cast<int>(g.family));
+    if (descriptor == nullptr)
+        descriptor = get_family_descriptor(FAMILY_SOLDIER);
+    return descriptor;
+}
+
+CombatBases guy_combat_bases(const guy& g)
+{
+    const FamilyDescriptor* descriptor = guy_family_descriptor(g);
+    return descriptor != nullptr ? descriptor->combat : CombatBases{};
+}
+
+}  // namespace
+
+// --- LINEUP (docs/lineup-design.md) ------------------------------------
+
+bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
+                                  bool zone_can_team, bool assign_mode)
+{
+    if (slot_index < 0 || slot_index >= MAX_TEAM_SIZE)
+        return false;
+    if (save.team_list[static_cast<std::size_t>(slot_index)] == nullptr)
+        return false;
+    if (!picker_lobby_save_slot_editable(slot_index))
+        return false;
+    if (!zone_can_team)
+        return false;
+    return !assign_mode;
+}
+
+bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
+                                  const CampaignZoneSession* zone,
+                                  bool assign_mode)
+{
+    const bool can_team = zone == nullptr || zone->roster().can_team;
+    return lineup_fighter_team_editable(save, slot_index, can_team,
+                                        assign_mode);
+}
+
+bool lineup_zone_can_team(SaveData& save)
+{
+    CampaignZoneSession zone(save);
+    zone.fetch();
+    return zone.roster().can_team;
+}
+
+DerivedStats compute_derived_stats(const guy& g)
+{
+    const CombatBases bases = guy_combat_bases(g);
+    return compute_derived_stats(g, bases.hp, bases.melee_damage,
+                                 bases.stepsize, bases.fire_delay);
+}
+
+float derived_fire_delay(const guy& g)
+{
+    const float delay =
+        guy_combat_bases(g).fire_delay - g.get_fire_frequency_bonus();
+    return delay < 1.0f ? 1.0f : delay;
+}
+
+namespace {
+
+// The campaign `lineup.power` hook is a Lua pcall, and the LINEUP page prices
+// every deployed fighter on EVERY frame of an otherwise idle menu (the band
+// draw and the FIGHTERS row draw both go through it). The hook is a pure
+// function of the ROW the engine hands it — nothing else crosses the fence —
+// so the answer is memoized on that row: a changed fighter is a different
+// key, which makes a stale price impossible. The one thing the row cannot
+// see is the HOOK itself changing, so the screens that hold the page clear
+// the memo whenever the registration could have moved under them
+// (lineup_power_cache_clear).
+struct LineupPowerMemoEntry {
+    og::script::hooks::LineupPowerRow row;
+    std::optional<long long> price;
+};
+
+// Two well-stocked machines' worth of distinct rows; past that the memo
+// starts over rather than growing without a bound.
+constexpr std::size_t kLineupPowerMemoMax = 64;
+std::vector<LineupPowerMemoEntry>& lineup_power_memo()
+{
+    static std::vector<LineupPowerMemoEntry> memo;
+    return memo;
+}
+
+bool same_power_row(const og::script::hooks::LineupPowerRow& lhs,
+                    const og::script::hooks::LineupPowerRow& rhs)
+{
+    return lhs.level == rhs.level && lhs.hp == rhs.hp && lhs.mp == rhs.mp &&
+        lhs.armor == rhs.armor && lhs.damage == rhs.damage &&
+        lhs.stepsize == rhs.stepsize &&
+        lhs.fire_frequency == rhs.fire_frequency && lhs.family == rhs.family;
+}
+
+}  // namespace
+
+void lineup_power_cache_clear() noexcept
+{
+    lineup_power_memo().clear();
+}
+
+std::array<int, 4> census_lineup_map_units(const GameWorld& world)
+{
+    // The B4 census the MAP UNITS box state gates on: the map's own
+    // authored units per team. One walk for both worlds the surfaces
+    // read — the SDL picker's RAW loaded level (nothing there is dead,
+    // bot-marked or guy-owned, so every living counts, the pre-F3
+    // arithmetic exactly) and the terminals' STAGED world, where the
+    // fighters carry guys, a FILL squad carries the bot mark, and a
+    // box-off team's units are retired dead — authored still, which is
+    // what keeps the box alive to turn them back on. Generators are the
+    // GENERATOR RATE knob's business and stay out of the count.
+    std::array<int, 4> counts{};
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->query_order() != Order::Living)
+            continue;
+        if (w->myguy != nullptr)
+            continue;
+        if (w->stats() != nullptr &&
+            (w->stats()->bit_flags() & kBotMarkBit) != 0)
+            continue;
+        const int team = w->team_num();
+        if (is_score_team_index(team))
+            ++counts[static_cast<std::size_t>(team)];
+    }
+    return counts;
+}
+
+std::optional<long long> lineup_power_for_guy(const guy& g)
+{
+    if (!og::script::hooks::campaign_lineup_registered())
+        return std::nullopt;
+    const DerivedStats ds = compute_derived_stats(g);
+    og::script::hooks::LineupPowerRow row;
+    // The name is the picker's own display helper (an unknown family reads
+    // "BEAST"); only the NUMBERS fall back to a soldier's.
+    row.family = family_display_name(static_cast<int>(g.family));
+    row.level = static_cast<int>(g.level);
+    // Truncation at the boundary, the §4.1 discipline: the campaign's
+    // arithmetic is integer (og.div raises on a float), so the engine
+    // hands over integers rather than making every book truncate.
+    row.hp = static_cast<int>(ds.hp);
+    row.mp = static_cast<int>(ds.mp);
+    row.armor = static_cast<int>(ds.def);
+    row.damage = static_cast<int>(ds.atk);
+    row.stepsize = static_cast<int>(ds.spd);
+    row.fire_frequency = static_cast<int>(derived_fire_delay(g));
+
+    std::vector<LineupPowerMemoEntry>& memo = lineup_power_memo();
+    for (const LineupPowerMemoEntry& entry : memo)
+    {
+        if (same_power_row(entry.row, row))
+            return entry.price;
+    }
+
+    long long power = 0;
+    const std::optional<long long> price =
+        og::script::hooks::campaign_fighter_power(row, power)
+        ? std::optional<long long>(power)
+        : std::nullopt;
+    if (memo.size() >= kLineupPowerMemoMax)
+        memo.clear();
+    memo.push_back(LineupPowerMemoEntry{std::move(row), price});
+    return price;
+}
+
+std::string lineup_seat_label(const og::sim::LobbyPlayer& seat,
+                              std::string_view short_name)
+{
+    const std::string owner = short_name.empty()
+        ? company_abbreviation(seat.company)
+        : std::string(short_name);
+    return std::format("P{} {}", static_cast<int>(seat.player_index) + 1,
+                       owner);
+}
+
+namespace {
+
+// Sum a band's prices. ONE unpriced fighter voids the whole band: a total
+// that silently omits a member is worse than no number at all.
+struct LineupPowerAccumulator {
+    long long total = 0;
+    bool valid = true;
+
+    void add(const LineupPowerFn& power, const guy& member)
+    {
+        if (!valid)
+            return;
+        if (!power) {
+            valid = false;
+            return;
+        }
+        const std::optional<long long> priced = power(member);
+        if (!priced.has_value()) {
+            valid = false;
+            return;
+        }
+        total += *priced;
+    }
+
+    [[nodiscard]] std::optional<long long> result(int fighter_count) const
+    {
+        if (!valid || fighter_count <= 0)
+            return std::nullopt;
+        return total;
+    }
+};
+
+}  // namespace
+
+std::array<LineupTeamBand, 4> build_lineup_bands(
+    const SaveData& own,
+    std::span<const og::sim::LobbyPlayer> players,
+    std::span<const std::uint8_t> local_player_indices,
+    bool networked,
+    const LineupPowerFn& power,
+    const std::function<std::string(std::uint8_t)>& local_seat_short_name,
+    std::span<const int> map_unit_counts)
+{
+    std::array<LineupTeamBand, 4> bands{};
+    std::array<LineupPowerAccumulator, 4> prices{};
+    for (int team = 0; team < 4; ++team)
+    {
+        const auto ti = static_cast<std::size_t>(team);
+        bands[ti].team = team;
+        // The staged census, handed in (B4). A caller with no staged world
+        // passes nothing and every box reads NO MAP UNITS — the honest
+        // answer when nobody has censused the map yet.
+        if (ti < map_unit_counts.size())
+            bands[ti].map_unit_count = std::max(map_unit_counts[ti], 0);
+    }
+
+    for (const og::sim::LobbyPlayer& seat : players)
+    {
+        if (seat.team < 0 || seat.team >= 4)
+            continue;
+        LineupTeamBand& band = bands[static_cast<std::size_t>(seat.team)];
+        ++band.seat_count;
+        const bool is_local =
+            std::find(local_player_indices.begin(), local_player_indices.end(),
+                      seat.player_index) != local_player_indices.end();
+        std::string short_name;
+        if (is_local && local_seat_short_name)
+            short_name = local_seat_short_name(seat.player_index);
+        band.seat_labels.push_back(lineup_seat_label(seat, short_name));
+    }
+
+    if (networked)
+    {
+        // Networked, the lobby is the whole census: every machine's own
+        // company reaches this one as replicated slots, so counting the
+        // local save again would count this machine's fighters twice.
+        for (const og::sim::LobbyPlayer& seat : players)
+        {
+            for (const og::sim::LobbyCharacterSlot& slot : seat.character_slots)
+            {
+                if (!slot.deployed)
+                    continue;
+                const short team = slot.character.teamnum;
+                if (team < 0 || team >= 4)
+                    continue;
+                LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
+                ++band.fighter_count;
+                const std::unique_ptr<guy> member =
+                    make_base_camp_display_guy(slot.character);
+                prices[static_cast<std::size_t>(team)].add(power, *member);
+            }
+        }
+    }
+    else
+    {
+        for (const auto& member : own.team_list)
+        {
+            if (member == nullptr || !member->deployed)
+                continue;
+            const short team = member->teamnum;
+            if (team < 0 || team >= 4)
+                continue;
+            LineupTeamBand& band = bands[static_cast<std::size_t>(team)];
+            ++band.fighter_count;
+            prices[static_cast<std::size_t>(team)].add(power, *member);
+        }
+    }
+
+    for (std::size_t team = 0; team < bands.size(); ++team)
+    {
+        LineupTeamBand& band = bands[team];
+        band.has_seat = band.seat_count > 0;
+        band.power = prices[team].result(band.fighter_count);
+        if (band.seat_count > 0 && band.fighter_count < band.seat_count)
+        {
+            band.diag = LineupTeamBand::Diag::NeedsFighters;
+            band.needs = band.seat_count - band.fighter_count;
+        }
+        else if (band.seat_count == 0 && band.fighter_count > 0)
+        {
+            band.diag = LineupTeamBand::Diag::NoSeatAi;
+        }
+    }
+    return bands;
+}
+
+// --- LINEUP labels ---
+
+std::string_view lineup_fill_name(short fill)
+{
+    switch (fill)
+    {
+    case og::sim::kFillNone: return "NONE";
+    case og::sim::kFillWeak: return "WEAK";
+    case og::sim::kFillFair: return "FAIR";
+    case og::sim::kFillStrong: return "STRONG";
+    case og::sim::kFillBrutal: return "BRUTAL";
+    default: break;
+    }
+    // Junk from a hand-edited save or an older build's sixth code. NONE is
+    // the storage default and where clamp_fill lands a negative, so it is
+    // the honest word for a value the engine does not recognise — and,
+    // unlike the FAIR this used to answer, it promises no squad the level
+    // will not field.
+    return "NONE";
+}
+
+std::string format_lineup_fill_label(short fill)
+{
+    // The band's knob face is 80px = 12 characters, and "FILL: STRONG" /
+    // "FILL: BRUTAL" are exactly 12 — the budget is spent, not merely
+    // respected, so no value here may grow a letter.
+    return std::format("FILL: {}", lineup_fill_name(fill));
+}
+
+std::string format_lineup_map_units_label(short map_units)
+{
+    // The SDL band draws this as the Base Camp deploy box (B9); the two
+    // terminal clients have no box, so they read the same state as a word.
+    return map_units == og::sim::kMapUnitsOn ? "MAP UNITS: ON"
+                                            : "MAP UNITS: OFF";
+}
+
+std::string format_lineup_map_units_census(const LineupTeamBand& band)
+{
+    // B4: a team the map ships no units for has nothing to switch, so the
+    // box is inert and the band says why instead of offering it. Empty
+    // means the box is live and the fighter census owns the column.
+    return band.map_unit_count > 0 ? std::string() : std::string("NO MAP UNITS");
+}
+
+std::string format_lineup_census(const LineupTeamBand& band)
+{
+    switch (band.diag)
+    {
+    case LineupTeamBand::Diag::NeedsFighters:
+        return band.needs == 1
+            ? std::string("NEEDS 1 FIGHTER")
+            : std::format("NEEDS {} FIGHTERS", band.needs);
+    case LineupTeamBand::Diag::NoSeatAi:
+        return "NO SEAT: AI";
+    case LineupTeamBand::Diag::None:
+        break;
+    }
+    if (band.fighter_count <= 0)
+        return "NO FIGHTERS";
+    if (band.fighter_count == 1)
+        return "1 FIGHTER";
+    return std::format("{} FIGHTERS", band.fighter_count);
+}
+
+std::string format_lineup_power(std::optional<long long> power)
+{
+    return power.has_value() ? std::format("POWER {}", *power)
+                             : std::string("POWER --");
+}
+
+std::string format_lineup_power_cell(std::optional<long long> power, int width)
+{
+    const int field = std::max(width, 2);
+    std::string text = "--";
+    if (power.has_value())
+    {
+        // Widest first; the first tier that FITS wins. Every step rounds
+        // half away from zero, so the cell is a rounded number and never a
+        // clipped one — a clipped number is a different number, and this
+        // column exists to be compared.
+        static constexpr struct { long long div; char suffix; } kTiers[] = {
+            {1, '\0'},
+            {1000LL, 'k'},
+            {1000000LL, 'M'},
+            {1000000000LL, 'G'},
+            {1000000000000LL, 'T'},
+            {1000000000000000LL, 'P'},
+        };
+        const long long value = *power;
+        for (const auto& tier : kTiers)
+        {
+            long long scaled = value;
+            if (tier.div > 1)
+            {
+                // Divide first: value + div/2 overflows near LLONG_MAX, and
+                // the widest tier exists precisely for values that large.
+                scaled = value / tier.div;
+                const long long rest = value % tier.div;
+                if ((rest < 0 ? -rest : rest) * 2 >= tier.div)
+                    scaled += value >= 0 ? 1 : -1;
+            }
+            std::string candidate = std::to_string(scaled);
+            if (tier.suffix != '\0')
+                candidate.push_back(tier.suffix);
+            if (static_cast<int>(candidate.size()) <= field)
+            {
+                text = std::move(candidate);
+                break;
+            }
+        }
+    }
+    if (static_cast<int>(text.size()) > field)
+        text.resize(static_cast<std::size_t>(field));
+    return std::format("{:>{}}", text, field);
+}
+
+// The FILL wheel holds the five codes and nothing else, weakest to
+// strongest: NONE, WEAK, FAIR, STRONG, BRUTAL. Since amendment 4 (E1) the
+// display order IS the storage order AND the whole value space — NONE is
+// the stored 0, so a fresh band sits on the wheel's first slot instead of
+// somewhere off it, one click reaches WEAK and the wheel wraps both ways.
+constexpr std::array<short, 5> kLineupFillWheel = {
+    og::sim::kFillNone, og::sim::kFillWeak, og::sim::kFillFair,
+    og::sim::kFillStrong, og::sim::kFillBrutal};
+
+// The wheel slot a code sits in, or -1 for any junk a hand-edited save
+// carries.
+int lineup_fill_slot(short value)
+{
+    const auto steps = static_cast<int>(kLineupFillWheel.size());
+    for (int i = 0; i < steps; ++i)
+    {
+        if (kLineupFillWheel[static_cast<std::size_t>(i)] == value)
+            return i;
+    }
+    return -1;
+}
+
+short cycle_lineup_fill(short current, int dir)
+{
+    const auto steps = static_cast<int>(kLineupFillWheel.size());
+    // The step leaves from the slot of the word the band is SHOWING, which
+    // is now always the stored code's own slot — there is no resolution to
+    // step from and no off-wheel value to enter at, so the first click on
+    // gladiator's empty sides reaches WEAK the way the band reads. Junk
+    // enters at NONE, the word lineup_fill_name gives it and the value
+    // clamp_fill would land a negative on.
+    int index = lineup_fill_slot(current);
+    if (index < 0)
+        index = lineup_fill_slot(og::sim::kFillNone);
+    long long next = (static_cast<long long>(index) + dir) % steps;
+    if (next < 0)
+        next += steps;
+    return kLineupFillWheel[static_cast<std::size_t>(next)];
+}
+
+short toggle_lineup_map_units(short current)
+{
+    // A box, so the step is a flip — and any junk value flips to ON, which
+    // is the default and the classic behaviour.
+    return current == og::sim::kMapUnitsOn ? og::sim::kMapUnitsOff
+                                           : og::sim::kMapUnitsOn;
+}
+
+// --- SPLIT ---
+
+LineupSplitPlan split_company(const SaveData& save,
+                              std::span<const short> local_seat_teams,
+                              LineupSplit mode,
+                              const LineupPowerFn& power,
+                              const std::function<bool(int)>& editable)
+{
+    LineupSplitPlan plan;
+
+    std::vector<short> teams;
+    for (const short team : local_seat_teams)
+    {
+        if (team < 0 || team >= 4)
+            continue;
+        if (std::find(teams.begin(), teams.end(), team) == teams.end())
+            teams.push_back(team);
+    }
+    std::sort(teams.begin(), teams.end());
+    if (teams.empty())
+        return plan;
+
+    struct Candidate {
+        int slot = 0;
+        long long power = 0;
+        int level = 0;
+    };
+    std::vector<Candidate> candidates;
+    bool priced = static_cast<bool>(power);
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+    {
+        const guy* member = save.team_list[static_cast<std::size_t>(slot)].get();
+        if (member == nullptr || !member->deployed)
+            continue;  // the bench is not in tonight's draft
+        if (editable && !editable(slot))
+        {
+            ++plan.locked;
+            continue;
+        }
+        Candidate candidate;
+        candidate.slot = slot;
+        candidate.level = static_cast<int>(member->level);
+        if (priced)
+        {
+            const std::optional<long long> value = power(*member);
+            if (value.has_value())
+                candidate.power = *value;
+            else
+                priced = false;  // no metric: the whole draft falls to level
+        }
+        candidates.push_back(candidate);
+    }
+    if (candidates.empty())
+        return plan;
+
+    // A single seated team leaves nothing to divide: every mode is ALL TO 1.
+    if (mode == LineupSplit::AllToFirst || teams.size() == 1)
+    {
+        for (const Candidate& candidate : candidates)
+            plan.moves.emplace_back(candidate.slot, teams.front());
+        return plan;
+    }
+
+    if (mode == LineupSplit::Fair)
+    {
+        std::stable_sort(candidates.begin(), candidates.end(),
+                         [priced](const Candidate& a, const Candidate& b) {
+                             const long long lhs = priced ? a.power : a.level;
+                             const long long rhs = priced ? b.power : b.level;
+                             if (lhs != rhs)
+                                 return lhs > rhs;  // strongest first
+                             return a.slot < b.slot;
+                         });
+    }
+
+    const int count = static_cast<int>(teams.size());
+    for (std::size_t pick = 0; pick < candidates.size(); ++pick)
+    {
+        const int round = static_cast<int>(pick) / count;
+        const int within = static_cast<int>(pick) % count;
+        // EVEN deals round-robin; FAIR snakes, so the last pick of a round
+        // is also the first pick of the next one.
+        const int index = (mode == LineupSplit::Fair && (round % 2) == 1)
+            ? count - 1 - within
+            : within;
+        plan.moves.emplace_back(candidates[pick].slot,
+                                teams[static_cast<std::size_t>(index)]);
+    }
+    return plan;
+}
+
+int apply_split(SaveData& save,
+                std::span<const std::pair<int, short>> moves)
+{
+    int moved = 0;
+    for (const auto& [slot, team] : moves)
+    {
+        const guy* member = (slot >= 0 && slot < MAX_TEAM_SIZE)
+            ? save.team_list[static_cast<std::size_t>(slot)].get()
+            : nullptr;
+        if (member == nullptr || member->teamnum == team)
+            continue;
+        if (set_guy_team(save, slot, team))
+            ++moved;
+    }
+    return moved;
+}
+
+// --- Networking machine rows ---
+
+std::vector<NetworkingMachineRow> build_networking_machine_rows(
+    std::span<const og::sim::LobbyPlayer> players,
+    std::span<const std::uint8_t> local_player_indices,
+    int label_chars)
+{
+    struct Machine {
+        std::uint64_t key = 0;
+        og::sim::LobbyMachineId machine_id = og::sim::kInvalidLobbyMachineId;
+        std::uint8_t first_index = 0xff;
+        std::string name;
+        std::string company;
+        std::vector<int> seats;
+        bool is_host = false;
+        bool is_local = false;
+        bool all_ready = true;
+    };
+    std::vector<Machine> machines;
+    for (std::size_t index = 0; index < players.size(); ++index)
+    {
+        const og::sim::LobbyPlayer& player = players[index];
+        const std::uint64_t key = lobby_machine_group_key(player, index);
+        auto it = std::find_if(machines.begin(), machines.end(),
+                               [key](const Machine& m) { return m.key == key; });
+        if (it == machines.end())
+        {
+            Machine machine;
+            machine.key = key;
+            machine.machine_id = player.machine_id;
+            machine.first_index = player.player_index;
+            machine.name = player.name;
+            machine.company = player.company;
+            machines.push_back(std::move(machine));
+            it = std::prev(machines.end());
+        }
+        if (player.player_index < it->first_index)
+        {
+            // The machine is named by its LOWEST seat (§6): a later-listed
+            // seat with a smaller P# renames the row.
+            it->first_index = player.player_index;
+            if (!player.company.empty())
+                it->company = player.company;
+            if (!player.name.empty())
+                it->name = player.name;
+        }
+        if (it->company.empty())
+            it->company = player.company;
+        if (it->name.empty())
+            it->name = player.name;
+        it->seats.push_back(static_cast<int>(player.player_index) + 1);
+        it->is_host = it->is_host || player.is_host;
+        it->all_ready = it->all_ready && player.ready;
+        it->is_local = it->is_local ||
+            std::find(local_player_indices.begin(), local_player_indices.end(),
+                      player.player_index) != local_player_indices.end();
+    }
+    std::stable_sort(machines.begin(), machines.end(),
+                     [](const Machine& a, const Machine& b) {
+                         return a.first_index < b.first_index;
+                     });
+
+    const std::size_t budget =
+        label_chars > 0 ? static_cast<std::size_t>(label_chars) : 0u;
+    std::vector<NetworkingMachineRow> rows;
+    rows.reserve(machines.size());
+    for (std::size_t index = 0; index < machines.size(); ++index)
+    {
+        Machine& machine = machines[index];
+        std::sort(machine.seats.begin(), machine.seats.end());
+        // The COMPANY leads (§6): the transport `name` is an opaque
+        // net-<hex> identity on a relay lobby, so it is only the fallback
+        // for a machine that has not named a company yet.
+        const std::string identity = machine.company.empty()
+            ? clip_chars(machine.name, 10)
+            : clip_chars(machine.company, 16);
+        std::string head = std::format("M{}", index + 1);
+        if (!identity.empty())
+            head += " " + identity;
+        if (machine.is_host)
+            head += " (HOST)";
+        if (machine.is_local)
+            head += " (YOU)";
+        std::string seats;
+        for (const int seat : machine.seats)
+        {
+            if (!seats.empty())
+                seats += ' ';
+            seats += std::format("P{}", seat);
+        }
+        if (!seats.empty())
+            seats = "  " + seats;
+        // Whole-token degradation, cheapest fact first: READY is derivable
+        // from the colour the row draws in, the seat list is detail, and
+        // only the identity itself is ever clipped mid-word.
+        std::string label = head + seats;
+        if (machine.all_ready)
+            label += "  READY";
+        if (label.size() > budget)
+            label = head + seats;
+        if (label.size() > budget)
+            label = head;
+        if (label.size() > budget)
+            label = clip_chars(std::move(label), budget);
+
+        NetworkingMachineRow row;
+        row.machine_id = machine.machine_id;
+        row.label = std::move(label);
+        row.is_host = machine.is_host;
+        row.is_local = machine.is_local;
+        rows.push_back(std::move(row));
+    }
+    return rows;
 }
 
 } // namespace og::ui

@@ -743,11 +743,10 @@ local function decide(level, inputs)
       end
     end
   end
-  -- Under TROOPS:OWN/FAIR the lobby request wins the COUNT — roster flag
-  -- teams plus authored backfill (issue #218), TEAMS: Auto = the authored
-  -- flag-team count (2026-08-18 directive); under TROOPS:ALL the raw
-  -- requested count over the authored flag teams (no manifest default —
-  -- the verified per-mode Auto asymmetry).
+  -- The shared activation rule (lineup B1-B4): every authored flag team
+  -- is the map's own value (no manifest default — the verified per-mode
+  -- Auto asymmetry, auto_default 0), plus every occupied team; the
+  -- fills rows below drop any team the knobs leave with nothing.
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, 0)
   -- Deliberately NOT match.resolve_limit: the middle term here is the
@@ -760,10 +759,16 @@ local function decide(level, inputs)
   elseif map_capture_limit > 0 then
     limit = map_capture_limit
   end
-  local teams = match.fills(inputs, mask, {
+  local teams, _, lineup_mask = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
+  -- The NONE knob can empty a backfilled flag team outright (lineup
+  -- §3.2): the narrowed mask is the decision's, and starts recounts it.
+  mask = lineup_mask
+  if starts then
+    starts = core.mask_count(mask) >= 2
+  end
   local reason = nil
   if not starts then
     reason = "ctf: fewer than two flag teams"
@@ -915,10 +920,10 @@ local function on_mode_init(level)
     end
   end
 
-  -- Roster-only armies on request (the shared rule set — lib/mode_strip).
-  -- Runs before the bot-squad census below so backfill sees the post-strip
-  -- world; CTF fields no generators, so it keeps none.
-  strip.strip_authored_troops(nil)
+  -- The per-team MAP UNITS strip (amendment B4, the shared rule set —
+  -- lib/mode_strip). Runs before the bot-squad census below so backfill
+  -- sees the post-strip world.
+  strip.strip_authored_troops()
 
   -- The capture limit is the decision's (explicit request > per-map flag
   -- level > default, clamped); the respawn delay resolves here.
@@ -929,10 +934,10 @@ local function on_mode_init(level)
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
 
-  -- Bot squads where the decision said so (the empty active teams).
+  -- FILL squads where the decision said so (the empty active teams,
+  -- plus any company row with an allies gap — amendment B2/B3).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = decision.teams[team + 1].fill
-    if fill == "bots" or fill == "matched" then
+    if match.wants_squad(decision.teams[team + 1]) then
       -- The one shared squad spawner (matched-teams D16), with CTF's own
       -- placer so blocked anchors still fall back to the flag-home
       -- square before the teleport draw.

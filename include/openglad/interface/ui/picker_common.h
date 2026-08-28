@@ -337,6 +337,17 @@ struct DerivedStats {
 DerivedStats compute_derived_stats(const guy& g,
     float base_hp, float base_damage, float base_stepsize, float base_fire_freq);
 
+// The same derivation with the family's own combat bases resolved from the
+// family registry (a family the registry does not carry prices as a
+// soldier, the picker's rule). Headless: no loader, no session.
+DerivedStats compute_derived_stats(const guy& g);
+
+// The fire delay the derivation used: base fire_delay minus the guy's
+// bonus, floored at 1 (lower is faster). DerivedStats keeps only the
+// 10/delay display rate, and the campaign power hook is handed the raw
+// stat the sim fields.
+float derived_fire_delay(const guy& g);
+
 // --- Difficulty ---
 
 // Cycle to the next difficulty setting. Returns (current + 1) % DIFFICULTY_SETTINGS.
@@ -350,8 +361,9 @@ bool is_allied_mode(const SaveData& save);
 
 // --- CTF match settings ---
 
-// Cycle the requested team count: Auto -> 2 -> 3 -> 4 -> Auto.
-void cycle_ctf_team_count(SaveData& save);
+// The TEAMS pair is GONE (amendment A3): its one power — dropping an
+// authored team — is the LINEUP band's BOTS: OFF, so there is no cycler and
+// no label. ctf_team_count survives only as an inert save/wire field.
 
 // Cycle the capture limit: 0 (map default) -> 1 -> 3 -> 5 -> 10 -> 0.
 void cycle_ctf_capture_limit(SaveData& save);
@@ -373,23 +385,11 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     const GameWorld& world,
     std::string_view mounted_campaign);
 
-// Scenario-troops knob, three states on the existing int16 field:
-//   0 ALL  — the level's authored cast is untouched (default, classic)
-//   2 OWN  — drop every authored living + generator with no roster guy, any
-//            team, wildlife included (Onslaught keeps its generators, and
-//            protected named NPCs are exempt on classic maps)
-//   3 FAIR — strip exactly like OWN, and the scripted modes size the bot
-//            squads they generate to the human census instead of the
-//            difficulty formula (og::sim::kTroopsMatched, matched-teams
-//            design D25-D28); classic maps play it as plain OWN
-// Every state applies on every campaign, so the cycle is a plain walk:
-// ALL -> OWN -> FAIR -> ALL. The field keeps accepting the retired middle
-// state 1 off disk and off the wire; the strip rules read it as OWN, and
-// cycling from it (or any junk) lands on ALL. Pure, so the order is
-// unit-pinnable.
-short next_ctf_scenario_troops(short current);
-
-void toggle_ctf_scenario_troops(SaveData& save);
+// The scenario-troops knob is RETIRED (amendment B5). It asked once, for the
+// whole map, whether the authored cast fights; the LINEUP band's per-team
+// MAP UNITS box asks it per team, and the engine sanitizes
+// ctf_strip_scenario_troops to 0 at every authority. next_ctf_scenario_troops
+// / toggle_ctf_scenario_troops / format_ctf_troops_label are gone with it.
 
 // --- Difficulty submenu match rules ---
 // Every default (0) is bit-identical classic behavior; the cyclers walk the
@@ -454,6 +454,12 @@ bool set_preferred_team(SaveData& save, short team);
 // the slot is empty/out of range.
 short cycle_guy_team(SaveData& save, int slot_index, int dir);
 
+// Write a roster slot's fighting team outright (docs/lineup-design.md §5):
+// the ONE writer every team-assignment surface goes through, cycle_guy_team
+// included. False — with no mutation — for a team outside [0,4) or a slot
+// that is out of range or empty.
+bool set_guy_team(SaveData& save, int slot_index, short team);
+
 // The local seat order gameplay derives (game.cpp view_teams): distinct
 // NONZERO DEPLOYED roster teams in slot order, with my_team hoisted to the
 // front when it has a deployed member. Benched-only colors never create an
@@ -464,6 +470,13 @@ std::vector<short> derive_local_seat_teams(const SaveData& save);
 // 1's team; saved Split uses distinct deployed colors and pads missing seats
 // with otherwise-unused colors. Base Camp then owns the live assignments.
 std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save);
+
+// The team og.campaign_my_team answers where the save IS the seat source
+// (docs/lineup-design.md Amendment 5 G4): the first local seat's team, or
+// og::data::campaign_my_team_fallback when there are no seats at all. The
+// terminals' whole answer — their View Level and launch stage from these
+// same derived seats — and the SDL answer before a lobby exists.
+int first_local_seat_team(const SaveData& save);
 
 // True iff each requested seat can claim a distinct deployed character on its
 // gameplay team. Repeated Together seats consume one character each.
@@ -992,11 +1005,33 @@ struct ScenarioRosterReport {
     // scripted level with NO on_mode_init hook is not refusing — it has no
     // mode, and the count-only fallback answers instead.
     bool refusing = false;
+    // WHY the staged mode refused, decoded from the shared facts slot's
+    // 10^9 digit (mode_match.lua REFUSAL_BASE, banked by the band decide
+    // fold BEFORE it errors): true = a BAND mode (FFA/mutant) refused for
+    // want of fighters, false (digit 0, and every legacy/absent bank) = the
+    // team modes' fewer-than-two-teams sentence. A banked digit, never the
+    // free-text script error, so a host and every joiner mirror — which all
+    // hold the same mode vars — render the identical sentence.
+    bool refusal_fighters = false;
     // Neither a staged world nor a fallback world: refusal lines only.
     bool unavailable = false;
     std::string mode_name;          // ModeState::name when staged + active
     std::array<ScenarioFill, 4> team_fill = {};
     std::array<int, 4> team_fill_count = {};
+    // --- Lineup facts (§3.4 as amended by B7): the APPLIED per-team FILL
+    // code the spawn seam banked in the shared mode-var slot
+    // (mode_match.lua bank_lineup_facts / kModeVarLineupFacts below).
+    // og::sim::kFillNone .. kFillBrutal — an EXPLICIT code always, since a
+    // resolved default banks what it resolved TO (D1) — or -1 for a team
+    // whose squad banked nothing. Facts, never requests: a knob a mode
+    // ignored, and a
+    // squad that fielded nobody, bank nothing — so the pane never names a
+    // fill that is not on the floor.
+    std::array<int, 4> team_squad_fill = {-1, -1, -1, -1};
+    // The bots fielded BESIDE an occupancy fill (a preset squad on a
+    // COMPANY team — lineup §3.2 amended I3), censused like every other
+    // fact; 0 on a squad-only team, whose bots are team_fill_count.
+    std::array<int, 4> team_squad_count = {};
     // --- Seat block (#218): the caller's lobby seats, P#-sorted, with the
     // format_seat_summary match shape. Both empty when the caller passed no
     // seat context — every seatless report is byte-identical to before.
@@ -1053,16 +1088,10 @@ std::string format_difficulty_label(int difficulty);
 // combat allegiance always comes from character colors.
 std::string format_allied_mode_label(const SaveData& save);
 
-// Format the team count label ("Teams: N" / "Teams: Auto").
-std::string format_ctf_teams_label(const SaveData& save);
-
-// Format the capture limit label ("Capture Limit: Map default" or ": N").
-std::string format_ctf_caps_label(const SaveData& save);
-
-// Format the scenario-troops label ("TROOPS: ALL" when keeping the authored
-// cast, "TROOPS: OWN" when stripping it, "TROOPS: FAIR" when stripping plus
-// census-matched bot squads).
-std::string format_ctf_troops_label(const SaveData& save);
+// Format the score-limit label ("SCORE: MAP" for the level's own target,
+// "SCORE: N" otherwise — captures, goals, kills; amendment A5). The old
+// "Limit:" word answered the maintainer's "what is LIMIT?" with nothing.
+std::string format_ctf_score_label(const SaveData& save);
 
 // "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone" /
 // "Respawns: Team 1 Heroes".
@@ -1427,6 +1456,213 @@ private:
     void select_current_slot();
     void clamp_working_stats();
 };
+
+// --- LINEUP (docs/lineup-design.md) ------------------------------------
+
+class CampaignZoneSession;
+
+// May this slot's fighting team be edited here? The single predicate behind
+// BOTH the Base Camp roster chip (local) and the LINEUP fighter list (all
+// modes): the save slot is editable, the campaign's zone composition allows
+// team changes, and the roster is not in assign mode (the chip column is
+// spoken for). Deliberately NOT gated on `networked`: repairing a colour
+// mismatch between a seat and its own company is exactly what the fighter
+// list exists for (§2.2).
+bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
+                                  bool zone_can_team, bool assign_mode);
+// Same predicate against a live zone session; a null zone = full capability.
+bool lineup_fighter_team_editable(const SaveData& save, int slot_index,
+                                  const CampaignZoneSession* zone,
+                                  bool assign_mode);
+// The campaign's team-assignment capability RIGHT NOW: one fetch of the
+// registered base_camp zone composition, read back as roster().can_team. No
+// campaign hook (and every classic campaign) answers true. This is the one
+// place a surface with no zone session of its own — the terminal clients —
+// asks the question the SDL screens ask through their fetched session, so a
+// campaign that takes the team chip away cannot be worked around by
+// switching client.
+bool lineup_zone_can_team(SaveData& save);
+
+// One fighter's price, or nothing when the campaign registers no metric.
+using LineupPowerFn = std::function<std::optional<long long>(const guy&)>;
+
+// og::ui::compute_derived_stats + the campaign `lineup.power` hook (§4).
+// Nothing when no campaign hook is registered or the hook refuses — the
+// band then shows `POWER --` and SPLIT FAIR falls back to level order.
+std::optional<long long> lineup_power_for_guy(const guy& g);
+// Drop every memoized price. lineup_power_for_guy memoizes the campaign
+// hook's answer on the ROW it hands over (a Lua pcall per fighter per frame
+// otherwise, on a menu that is idle most of the time); the row is the hook's
+// whole input, so a changed fighter is a different key and a stale price is
+// impossible. What the row cannot see is the HOOK changing, so the LINEUP
+// screens call this at every point where the campaign registration could
+// have moved under an open page: screen open/close, the level-reload guard,
+// and a nested screen's reset.
+void lineup_power_cache_clear() noexcept;
+
+// One LINEUP team band: who sits on the team, who fights for it, and what
+// the page says about the mismatch between the two.
+struct LineupTeamBand {
+    int team = 0;
+    bool has_seat = false;
+    int seat_count = 0;
+    std::vector<std::string> seat_labels;  // "P1 WASD", "P3 BOB"
+    int fighter_count = 0;                 // deployed characters on the team
+    // Authored MAP UNITS on this team in the staged census (B4). Zero means
+    // the map ships none there, so the box is inert and the band says
+    // NO MAP UNITS instead of offering a switch that changes nothing. The
+    // caller supplies the census; the band never loads a world.
+    int map_unit_count = 0;
+    std::optional<long long> power;        // nullopt = no metric
+    // The two informational diagnostics (§2.1). They replace the census in
+    // the disabled grey; GO keeps its own refusal.
+    enum class Diag {
+        None,
+        NeedsFighters,  // seats outnumber deployed fighters (the M4 refusal)
+        NoSeatAi,       // fighters with no seat: they fight under AI
+    };
+    Diag diag = Diag::None;
+    int needs = 0;  // NeedsFighters: how many more the team wants
+};
+
+// The band carried a `resolved_fill` — the pack resolver's answer for a
+// team still sitting on the old DEFAULT code — and the presence census
+// (LineupTeamPresence / census_lineup_presence) that fed it. Amendment 4
+// (E1/E2) made NONE the stored 0, so every surface renders the STORED code
+// and there is nothing to resolve or to census for it. The B4 MAP UNITS
+// census below is a separate walk and stays.
+
+// The B4 MAP UNITS census over the two worlds the surfaces read: authored
+// (guy-less, un-bot-marked) livings per team, retired-dead ones included —
+// the numbers the box state, its NO MAP UNITS hint and the toggle refusal
+// gate on, identical whether the walk reads the SDL picker's raw loaded
+// level or the terminals' staged world (F3).
+std::array<int, 4> census_lineup_map_units(const GameWorld& world);
+
+// The seat chip's owner label: "P{n} {short}". `short_name` is the local
+// seat's input-mapping short name where the caller can resolve one (the
+// base_camp_seat_label convention); an empty one falls back to the owning
+// company's three-letter abbreviation, which is all a remote seat has.
+std::string lineup_seat_label(const og::sim::LobbyPlayer& seat,
+                              std::string_view short_name);
+
+// The four bands. Seats come from `players` (every machine in the lobby);
+// fighters are the deployed characters on each team — replicated across
+// every player's slots when `networked`, this machine's own save when not,
+// so a fighter is counted exactly once either way. `power` prices one
+// fighter (empty = no metric); `local_seat_short_name` names a local seat's
+// controller (empty = company abbreviations everywhere).
+// `map_unit_counts` is the staged census of authored map units per team
+// (B4); an empty span leaves every band's count at 0, which reads as "the
+// map ships none" and dims every box.
+std::array<LineupTeamBand, 4> build_lineup_bands(
+    const SaveData& own,
+    std::span<const og::sim::LobbyPlayer> players,
+    std::span<const std::uint8_t> local_player_indices,
+    bool networked,
+    const LineupPowerFn& power,
+    const std::function<std::string(std::uint8_t)>& local_seat_short_name = {},
+    std::span<const int> map_unit_counts = {});
+
+// --- LINEUP labels (exact strings; every one of them is pinned) ---
+
+// The FILL wheel's bare value name: "NONE" / "WEAK" / "FAIR" / "STRONG" /
+// "BRUTAL". Every out-of-range value reads NONE — the stored 0 the clamp
+// lands a negative on, and the value a band that nobody has turned holds.
+// Shared by the band face and the preview pane, so the two can never
+// disagree about what a stored code is called.
+std::string_view lineup_fill_name(short fill);
+// "FILL: NONE" / "FILL: WEAK" / "FILL: FAIR" / "FILL: STRONG" /
+// "FILL: BRUTAL" — the band's 12-char knob face, and exactly 12 chars at
+// its two longest values, which is the whole budget. Every surface hands
+// it the STORED code (E1: there is no resolved value any more), so a fresh
+// band reads "FILL: NONE" on every map.
+std::string format_lineup_fill_label(short fill);
+// "MAP UNITS: ON" / "MAP UNITS: OFF" — the terminal clients' spelling of
+// the box the SDL band draws as a checkmark (B9).
+std::string format_lineup_map_units_label(short map_units);
+// The band's MAP UNITS hint: "NO MAP UNITS" when the map ships none on this
+// team (the box is inert), otherwise empty. B4's census hint, kept out of
+// format_lineup_census so no pinned fighter census moves for it.
+std::string format_lineup_map_units_census(const LineupTeamBand& band);
+// "5 FIGHTERS" / "1 FIGHTER" / "NO FIGHTERS", or the band's diagnostic:
+// "NEEDS 2 FIGHTERS" / "NEEDS 1 FIGHTER" / "NO SEAT: AI".
+std::string format_lineup_census(const LineupTeamBand& band);
+// "POWER 4200" / "POWER --".
+std::string format_lineup_power(std::optional<long long> power);
+// The FIGHTERS row's POWER cell: EXACTLY `width` characters, right-aligned,
+// "--" without a metric. A value too wide for the field is ROUNDED into a
+// k/M/G/T/P suffix rather than clipped — a clipped number is a different
+// number, and this column is read as a comparison. Every long long fits.
+std::string format_lineup_power_cell(std::optional<long long> power,
+                                     int width = 6);
+
+// The two knob steps. The FILL wheel holds the five codes in storage order
+// — NONE, WEAK, FAIR, STRONG, BRUTAL, weakest to strongest — and `dir` may
+// be any step. Since amendment 4 (E1) NONE is the stored 0, so the wheel
+// covers the whole value space and the band always steps from the word the
+// player is reading; junk enters at NONE, which is both the storage default
+// and where the clamp lands a negative. The wheel wraps, so BRUTAL steps
+// back to NONE — nothing is one-way any more.
+// MAP UNITS is a box, so its step is a flip, and any junk value flips to ON.
+//
+// There are no refusals on either (amendment B8): nothing the band can hold
+// deactivates a team, so every value is legal on every team, on every
+// client, and the three clients share one write rule with no toast between
+// them.
+short cycle_lineup_fill(short current, int dir);
+short toggle_lineup_map_units(short current);
+
+// --- SPLIT (§5) --------------------------------------------------------
+
+enum class LineupSplit {
+    Even,        // slot order, dealt round-robin
+    Fair,        // power desc (tie: slot), snake draft
+    AllToFirst,  // everyone onto the lowest-numbered seated team
+};
+
+// What a SPLIT would do: the full assignment (slot -> team, slot order for
+// Even/AllToFirst, draft order for Fair) plus how many deployed characters
+// the editable predicate refused to move.
+struct LineupSplitPlan {
+    std::vector<std::pair<int, short>> moves;
+    int locked = 0;
+};
+
+// Deterministic, pure, and never applied on its own. `local_seat_teams` is
+// this machine's seat->team derivation (duplicates and out-of-range values
+// dropped, the rest ascending); benched characters are skipped; `editable`
+// (empty = everything editable) keeps a locked slot where it is and counts
+// it. A single seated team makes every mode ALL TO 1. Without a `power`
+// metric, Fair sorts by level descending.
+LineupSplitPlan split_company(const SaveData& save,
+                              std::span<const short> local_seat_teams,
+                              LineupSplit mode,
+                              const LineupPowerFn& power,
+                              const std::function<bool(int)>& editable);
+
+// Write a plan through set_guy_team. Returns how many slots actually moved.
+int apply_split(SaveData& save,
+                std::span<const std::pair<int, short>> moves);
+
+// --- Networking machine rows (§6) --------------------------------------
+
+// One row of the Networking submenu's PLAYERS list: a MACHINE, not a seat.
+struct NetworkingMachineRow {
+    og::sim::LobbyMachineId machine_id = og::sim::kInvalidLobbyMachineId;
+    std::string label;
+    bool is_host = false;
+    bool is_local = false;
+};
+
+// One row per machine, ordered by its lowest player_index. The label is
+// "M1 <NAME> (HOST) (YOU)  P1 P2  <COMPANY>  READY", degraded WHOLE TOKEN
+// to `label_chars` — READY goes first, then the company, and only then does
+// what is left get clipped.
+std::vector<NetworkingMachineRow> build_networking_machine_rows(
+    std::span<const og::sim::LobbyPlayer> players,
+    std::span<const std::uint8_t> local_player_indices,
+    int label_chars = 39);
 
 // --- Template implementations ---
 

@@ -410,6 +410,10 @@ enum class MenuScreenId : std::uint8_t {
     // The Base Camp zone submenu (the scripted page chassis) — registered
     // so the G5 remote-start sweep proves its preemption.
     CampaignZoneSubmenu,
+    // LINEUP (docs/lineup-design.md §2, amendment B1): the four-band team
+    // overview opened from SCENARIO. Its FIGHTERS list retired with B6 —
+    // the Base Camp roster chip is the networked home of the team cycler.
+    Lineup,
     Count,
 };
 
@@ -682,5 +686,34 @@ void install_zone_submenu_state_for_screen(ZoneSubmenuScreenState* state);
 // zone dispatch toasts the refusal instead of popping a modal.
 Sint32 run_campaign_zone_submenu(const std::string& page_id,
                                  bool* opened = nullptr);
+
+// --- LINEUP (docs/lineup-design.md §2) -------------------------------------
+
+// LINEUP screen state: the team-build family's level-reload cursor plus the
+// message-line toast (SPLIT outcomes — never a modal: a modal strands a
+// networked joiner mid-GO). Public so tests can drive the per-frame
+// rewire's visibility variants; production state is owned by
+// create_lineup_menu. The null installed state renders the read-only shape
+// (knobs hidden, splits hidden, bands from the live save/lobby).
+struct LineupScreenState {
+    short last_level_id = -1;
+    bool was_reset = false;
+    std::string toast;
+    std::int64_t toast_until_ms = 0;
+};
+
+// LINEUP: title band, four team bands of equal pitch (header chip/POWER/
+// seats, the FILL face + MAP UNITS box knob line, census text), and the
+// BACK | SPLIT EVEN | SPLIT FAIR | UNITE action strip. (The FIGHTERS list
+// retired with amendment B6.)
+const MenuScreenSpec& lineup_menu_screen_spec();
+
+// Install the state the per-frame rewires/draw hooks read (the company-list
+// seam pattern; null renders the empty/read-only shape).
+void install_lineup_state_for_screen(LineupScreenState* state);
+
+// Show a toast on the installed LINEUP state (no-op when none installed).
+// TRACEd ("lineup") so tests assert deterministically.
+void lineup_show_toast(std::string text);
 
 } // namespace og::ui

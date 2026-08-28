@@ -125,7 +125,8 @@ void drain_pty_output(int master_fd, std::string& output)
 
 CursesProcessResult run_curses_process(
     const std::vector<std::string>& arguments,
-    std::string_view input_after_enable)
+    std::string_view input_after_enable,
+    bool report_flags_from_loop = true)
 {
     CursesProcessResult result;
     TemporaryDirectory config_directory;
@@ -203,16 +204,25 @@ CursesProcessResult run_curses_process(
 
     while (std::chrono::steady_clock::now() < deadline) {
         drain_pty_output(master_fd, result.output);
-        result.saw_query =
+        // The in-loop scan drives the handshake: the child only emits the
+        // enable once we answer its query, and only accepts typing once it
+        // has enabled. Reporting those flags out of the loop is a separate
+        // step, and the one the regression test suppresses — that leaves the
+        // loop in the state a loaded runner reaches by accident, with the
+        // tail of the transcript arriving after the waitpid that ends it.
+        const bool query_seen =
             result.output.find(kitty_query) != std::string::npos;
-        if (result.saw_query && !sent_reply) {
+        if (query_seen && !sent_reply) {
             sent_reply = write_all_fd(master_fd, kitty_reply);
         }
-        result.saw_enable =
+        const bool enable_seen =
             result.output.find(kitty_enable) != std::string::npos;
-        if (result.saw_enable && !result.sent_input &&
-            !input_after_enable.empty()) {
+        if (enable_seen && !result.sent_input && !input_after_enable.empty()) {
             result.sent_input = write_all_fd(master_fd, input_after_enable);
+        }
+        if (report_flags_from_loop) {
+            result.saw_query = query_seen;
+            result.saw_enable = enable_seen;
         }
 
         const pid_t waited = ::waitpid(child, &result.wait_status, WNOHANG);
@@ -232,6 +242,16 @@ CursesProcessResult run_curses_process(
         }
     }
     drain_pty_output(master_fd, result.output);
+    // The flags the loop published are a snapshot of whatever had reached us
+    // by its last poll. The child writes the enable and the whole ncurses
+    // teardown in one buffered flush, and a short child (an invalid --join
+    // fails before it ever waits on a key) can flush and exit between our
+    // last drain and the waitpid that breaks the loop — that tail then
+    // arrives only in the drain above. Re-derive the flags from the COMPLETE
+    // transcript, so an assertion about what the terminal saw never depends
+    // on how the pty reads happened to be chopped up.
+    result.saw_query = result.output.find(kitty_query) != std::string::npos;
+    result.saw_enable = result.output.find(kitty_enable) != std::string::npos;
     (void)::close(master_fd);
     return result;
 }
@@ -438,4 +458,28 @@ TEST(CursesAppProcess, invalid_relay_join_reports_failure_and_restores_terminal)
     EXPECT_NE(std::string::npos,
               result.output.find("RelayWebSocketTransport URL must not be empty"));
     EXPECT_NE(std::string::npos, result.output.find("\x1b[<u"));
+}
+
+// Regression for a harness flake, not a product one: this same short-lived
+// child (an invalid --join fails before it ever waits on a key) used to be
+// reported as "never enabled the kitty protocol" whenever the poll loop
+// happened to reap the child before draining its final ncurses flush. The
+// transcript held the enable either way; only the flags — published from
+// inside the loop and never re-derived — disagreed with it. Suppressing that
+// publication reproduces the same end state on purpose, every run.
+TEST(CursesAppProcess, terminal_flags_survive_a_drain_that_lags_the_child)
+{
+    const CursesProcessResult result = run_curses_process(
+        {"--join", "   ", "--relay", "relay-enabled",
+         "--no-unicode", "--no-color"},
+        {}, /*report_flags_from_loop=*/false);
+
+    ASSERT_TRUE(result.launched);
+    ASSERT_FALSE(result.timed_out) << result.output;
+    ASSERT_NE(std::string::npos, result.output.find("\x1b[>11u"))
+        << "the child did enable the kitty protocol";
+    EXPECT_TRUE(result.saw_query)
+        << "the reported flags must match the transcript, not the read sizes";
+    EXPECT_TRUE(result.saw_enable)
+        << "the reported flags must match the transcript, not the read sizes";
 }

@@ -70,24 +70,48 @@ const char* family_display_name(int family)
 // after each Acted outcome (the sync-settings-from-save tail).
 bool g_match_settings_dirty = false;
 
+// "<prefix><1-based team digit>" -> the 0-based team, or -1. The ONE parse
+// behind both the slot map and the clamp below, so a name the clamp accepts
+// is exactly a name the slot map resolves.
+int match_setting_team_suffix(const std::string& name, std::string_view prefix)
+{
+    if (name.size() != prefix.size() + 1)
+        return -1;
+    if (std::string_view(name).substr(0, prefix.size()) != prefix)
+        return -1;
+    const int team = name[prefix.size()] - '1';
+    return (team >= 0 && team < SCORE_TEAM_COUNT) ? team : -1;
+}
+
 // The save knob a match-setting name maps to, or nullptr for a name
 // outside the vocabulary (kCampaignMatchSettingNames).
 short* match_setting_slot(SaveData& save, const std::string& name)
 {
-    if (name == "team_count")
-        return &save.ctf_team_count;
+    // "team_count" is gone from the vocabulary (A3) and "strip_troops" went
+    // with it (B5): both knobs are inert, and a provider slot for either
+    // would hand a campaign a value the lobby snaps back to 0 on its way to
+    // the sim. og.match_setting("strip_troops") still READS (always 0) —
+    // that is the retired-but-answering side of the same ruling.
     if (name == "score_limit")
         return &save.ctf_capture_limit;
     if (name == "respawn_ticks")
         return &save.ctf_respawn_ticks;
-    if (name == "strip_troops")
-        return &save.ctf_strip_scenario_troops;
     if (name == "respawn_mode")
         return &save.respawn_mode;
     if (name == "generator_rate")
         return &save.generator_rate;
     if (name == "time_limit")
         return &save.time_limit;
+    // The eight per-team band knobs (B1-B4): "fill_1".."fill_4" and
+    // "map_units_1".."map_units_4", the trailing digit being the 1-based
+    // team.
+    if (const int team = match_setting_team_suffix(name, "fill_"); team >= 0)
+        return &save.fill[static_cast<std::size_t>(team)];
+    if (const int team = match_setting_team_suffix(name, "map_units_");
+        team >= 0)
+    {
+        return &save.map_units[static_cast<std::size_t>(team)];
+    }
     return nullptr;
 }
 
@@ -101,13 +125,6 @@ short* match_setting_slot(SaveData& save, const std::string& name)
 bool clamp_match_setting(const std::string& name, std::int32_t value,
                          short& out)
 {
-    if (name == "team_count")
-    {
-        out = value > 0
-            ? static_cast<short>(std::clamp<std::int32_t>(value, 2, 4))
-            : static_cast<short>(0); // Auto: every team the map authors
-        return true;
-    }
     if (name == "score_limit")
     {
         out = static_cast<short>(std::clamp<std::int32_t>(value, 0, 50));
@@ -118,13 +135,6 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
         out = value != 0
             ? static_cast<short>(std::clamp<std::int32_t>(value, 12, 1200))
             : static_cast<short>(0);
-        return true;
-    }
-    if (name == "strip_troops")
-    {
-        if (value < 0 || value > og::sim::kTroopsMatched)
-            return false;
-        out = static_cast<short>(value);
         return true;
     }
     if (name == "respawn_mode")
@@ -156,7 +166,28 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
             : static_cast<short>(0);
         return true;
     }
+    // Per-team band knobs (B1-B4). Every value in range is legal — 0 is
+    // FILL: NONE / MAP UNITS ON, the default state (E1), not a refusal —
+    // so both clamp rather than refuse; the bounds come from the ONE
+    // og::sim implementation the lobby sanitizer uses, so a scripted preset
+    // can never publish a value the server would bounce.
+    if (match_setting_team_suffix(name, "fill_") >= 0)
+    {
+        out = static_cast<short>(og::sim::clamp_fill(value));
+        return true;
+    }
+    if (match_setting_team_suffix(name, "map_units_") >= 0)
+    {
+        out = static_cast<short>(og::sim::clamp_map_units(value));
+        return true;
+    }
     return false; // unknown name
+}
+
+int campaign_my_team_fallback(const SaveData& save)
+{
+    return std::clamp(static_cast<int>(save.my_team), 0,
+                      SCORE_TEAM_COUNT - 1);
 }
 
 bool consume_match_settings_dirty()
@@ -167,12 +198,19 @@ bool consume_match_settings_dirty()
 }
 
 og::script::hooks::CampaignProviders make_campaign_providers(
-    SaveData& save, std::function<bool()> is_host)
+    SaveData& save, std::function<bool()> is_host,
+    std::function<int()> my_team)
 {
     og::script::hooks::CampaignProviders providers;
     SaveData* const save_ptr = &save;
     if (!is_host)
         is_host = [] { return true; }; // local play is always host
+    // G4: no seat view here — og_resources cannot see the lobby or the
+    // picker. A surface that has one passes it in; everyone else answers
+    // the save's own team, read live (Base Camp moves my_team while the
+    // book is installed).
+    if (!my_team)
+        my_team = [save_ptr] { return campaign_my_team_fallback(*save_ptr); };
 
     providers.state_get = [save_ptr](const std::string& key) -> std::int32_t {
         return save_ptr->campaign_state_get(save_ptr->current_campaign, key);
@@ -296,6 +334,7 @@ og::script::hooks::CampaignProviders make_campaign_providers(
         return true;
     };
     providers.is_host = std::move(is_host);
+    providers.my_team = std::move(my_team);
 
     // og.campaign_random's default: a process-lifetime menu-side generator,
     // seeded from the wall clock the first time any camp action rolls.

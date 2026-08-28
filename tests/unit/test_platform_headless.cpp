@@ -14,6 +14,7 @@
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/terminal_menu_model.h>
 #include <openglad/interface/ui/text_protocol.h>
 #include <openglad/interface/walker_render.h>
 #include <openglad/legacy/base.h>
@@ -764,37 +765,74 @@ TEST(PlatformHeadless, text_protocol_serializes_shipped_mode_state)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
 
-    StdinRedirect input("tick 2\nstate\nquit\n");
-    CoutRedirect output;
+    // The --protocol CLI shape carries no match knobs on purpose: there is
+    // no picker save behind it, so every FILL band sits at its stored NONE
+    // (E1). Amendment 4's E3 then decides which shipped map this oracle can
+    // use: a mode level whose SECOND team exists only when a host turns a
+    // wheel can no longer activate from here at all. Onslaught is the one
+    // that still can — it ships its own troops on both sides, so the mode
+    // owns the level with no wheel in the picture. The arm below pins the
+    // other half on the CTF map this test used to drive.
+    {
+        StdinRedirect input("tick 2\nstate\nquit\n");
+        CoutRedirect output;
 
-    og::ui::TextProtocolArgs args;
-    args.campaign = "modes";
-    args.level = 500;
-    args.team_families = {FAMILY_SOLDIER};
-    args.seed = 7;
-    EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+        og::ui::TextProtocolArgs args;
+        args.campaign = "modes";
+        args.level = 801;
+        args.team_families = {FAMILY_SOLDIER};
+        args.seed = 7;
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
 
-    const std::string text = output.str();
-    EXPECT_NE(std::string::npos,
-              text.find("\"status\":\"ready\",\"level\":500,"
-                        "\"title\":\"CTF: FIRST BLOOD\""));
-    EXPECT_NE(std::string::npos,
-              text.find("\"cmd\":\"tick\",\"count\":2"));
-    EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
+        const std::string text = output.str();
+        EXPECT_NE(std::string::npos,
+                  text.find("\"status\":\"ready\",\"level\":801,"
+                            "\"title\":\"Onslaught: TWIN SPIRES\""));
+        EXPECT_NE(std::string::npos,
+                  text.find("\"cmd\":\"tick\",\"count\":2"));
+        EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
 
-    // The shipped CTF Lua activates on the first scripted tick and names
-    // itself through og.set_mode_name; its scoreboard HUD line carries the
-    // 0:0 caps readout. The mode block is the ONLY match-state channel.
-    EXPECT_NE(std::string::npos,
-              text.find("\"mode\":{\"active\":true,\"name\":\"CTF\","
-                        "\"winner_team\":-1"))
-        << "the shipped scen500 must activate the Lua CTF mode";
-    EXPECT_NE(std::string::npos, text.find("\"hud\":["))
-        << "the mode block carries the HUD channel";
-    EXPECT_EQ(std::string::npos, text.find("\"ctf\":"))
-        << "the retired CTF JSON block must not be emitted";
-    EXPECT_NE(std::string::npos,
-              text.find("\"cmd\":\"quit\",\"status\":\"ok\""));
+        // The shipped mode Lua activates on the first scripted tick and
+        // names itself through og.set_mode_name; the mode block is the ONLY
+        // match-state channel.
+        EXPECT_NE(std::string::npos,
+                  text.find("\"mode\":{\"active\":true,\"name\":\"ONSLAUGHT\","
+                            "\"winner_team\":-1"))
+            << "the shipped scen801 must activate its Lua mode";
+        EXPECT_NE(std::string::npos, text.find("\"hud\":["))
+            << "the mode block carries the HUD channel";
+        EXPECT_EQ(std::string::npos, text.find("\"ctf\":"))
+            << "the retired CTF JSON block must not be emitted";
+        EXPECT_NE(std::string::npos,
+                  text.find("\"cmd\":\"quit\",\"status\":\"ok\""));
+    }
+
+    // E3, on the knob-less surface: scen 500 authors no units of its own, so
+    // a CLI crew (one family, all of it on team 0) is the only team standing
+    // and no FAIR opponent is matched in on its behalf. The mode block is
+    // still emitted — it just honestly reads inactive.
+    {
+        StdinRedirect input("tick 2\nstate\nquit\n");
+        CoutRedirect output;
+
+        og::ui::TextProtocolArgs args;
+        args.campaign = "modes";
+        args.level = 500;
+        args.team_families = {FAMILY_SOLDIER};
+        args.seed = 7;
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+
+        const std::string text = output.str();
+        EXPECT_NE(std::string::npos,
+                  text.find("\"status\":\"ready\",\"level\":500,"
+                            "\"title\":\"CTF: FIRST BLOOD\""));
+        EXPECT_NE(std::string::npos,
+                  text.find("\"mode\":{\"active\":false,\"name\":\"\","
+                            "\"winner_team\":-1"))
+            << "with every wheel at NONE the CTF map has one team (E3)";
+        EXPECT_EQ(std::string::npos, text.find("\"ctf\":"))
+            << "the retired CTF JSON block must not be emitted";
+    }
 
     EXPECT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
@@ -948,10 +986,12 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // camp's MATCH SETUP page and 11=difficulty was appended in its place —
     // docs/camp-controls-design.md); the scenario-shaped commands nest
     // under the Scenario submenu (1=set_campaign, 2=set_level,
-    // 3=view_scenario, 4=matchup, 5=progress, 6=troops, 7=replay level
-    // (#207), 8=back — the missions door retired into the camp). Team
-    // Build 11=difficulty opens
-    // the DIFFICULTY submenu
+    // 3=view_scenario, 4=matchup, 5=progress, 6=replay level (#207),
+    // 7=back — the missions door retired into the camp, and amendment B5
+    // retired TROOPS, which is the one row this branch REMOVED rather than
+    // appended: replay level and back each moved up one). Team
+    // Build 11=difficulty opens the DIFFICULTY submenu, and 12=lineup the
+    // LINEUP page (§8 — appended below difficulty, so nothing above moved)
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
     // 5=generators, 6=infinite gold, 7=back). Main is 8 items now:
     // 1=begin, 2=continue, 3=level edit, 4=options, 5=help, 6=quit,
@@ -998,9 +1038,8 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "999\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
-        "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired, so
+                    //   replay level is 6 and back is 7)
         "11\n"      // team build: difficulty -> DIFFICULTY submenu
         "1\n"       // difficulty: cycle difficulty
         "2\n"       // difficulty: cycle respawns
@@ -1010,6 +1049,15 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"       // difficulty: toggle infinite gold
         "6\n"       // difficulty: toggle infinite gold back off
         "7\n"       // difficulty: back -> team build
+        // LINEUP (docs/lineup-design.md §8) appended at 12, so every ordinal
+        // above it is untouched. Host rows (amendment B1/B6): 1..8 the four
+        // teams' FILL/MAP UNITS knobs, 9 Split even, 10 Split fair,
+        // 11 Unite, 12 Back — FIGHTERS is gone.
+        "12\n"      // team build: LINEUP
+        "1\n"       // lineup: TEAM 1 FILL (classic: refused)
+        "2\n"       // lineup: TEAM 1 MAP UNITS (classic: refused)
+        "99\n"      // lineup: out of range -> refused, page reprints
+        "12\n"      // lineup: back -> team build
         "9\n"       // team build: networking (unavailable)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
@@ -1047,7 +1095,7 @@ TEST(PlatformHeadless, text_picker_set_level_prompt_rides_the_gate)
             "10\n"   // team build: Scenario submenu
             "2\n"    // scenario: set level -> 15 (unearned: refused)
             "15\n"
-            "8\n"    // scenario: back -> team build (#207: Replay Level joined at 7)
+            "7\n"    // scenario: back -> team build (B5: TROOPS retired)
             "8\n"    // team build: back -> main
             "6\n";   // main: quit
         StdinRedirect stdin_redirect(input);
@@ -1110,6 +1158,22 @@ TEST(PlatformHeadless, text_picker_drives_the_cloud_submenu)
     cfg.data.erase("cloud");
 }
 
+namespace {
+
+// Run one text-picker exerciser under the stdout silencer and hand its
+// result back AFTER the silencer has let go of fd 1. Asserting inside that
+// scope reports the failure into the very hole the exerciser's chatter goes
+// down, which leaves a red test with no message at all — these exercisers
+// answer the negated 1-based index of their first failed check, and that
+// index is the only thing that says which check died.
+int silenced(int (*exerciser)())
+{
+    StdoutSilencer stdout_silencer;
+    return exerciser();
+}
+
+} // namespace
+
 TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
 {
     // Order-independent: install the packages and mount the default one the
@@ -1118,9 +1182,8 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 
-    StdoutSilencer stdout_silencer;
-    EXPECT_EQ(0,
-              og::ui::text_picker_testing_exercise_internal_paths());
+    EXPECT_EQ(0, silenced(&og::ui::text_picker_testing_exercise_internal_paths))
+        << "negated 1-based index of the first failed check";
 
     StdinRedirect empty_input("");
     og::ui::TextPickerConfig default_config;
@@ -1137,8 +1200,8 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
 TEST(PlatformHeadless, text_picker_staged_view_scenario_census)
 {
     restore_default_campaigns();
-    StdoutSilencer stdout_silencer;
-    EXPECT_EQ(0, og::ui::text_picker_testing_staged_view_scenario());
+    EXPECT_EQ(0, silenced(&og::ui::text_picker_testing_staged_view_scenario))
+        << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
@@ -1150,23 +1213,25 @@ TEST(PlatformHeadless, text_picker_staged_view_scenario_census)
 TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
 {
     restore_default_campaigns();
-    StdoutSilencer stdout_silencer;
-    EXPECT_EQ(0, og::ui::text_picker_testing_launch_seed_matches_the_preview());
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_launch_seed_matches_the_preview))
+        << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
 
 // #247: the text picker's GO launches the world VIEW LEVEL promised. The
 // launch used to build its own world from a fresh default save, so the match
-// knobs — TROOPS above all — never reached it: the preview showed matched
-// squads and the launch fielded the legacy five-strong ones. Both halves now
-// stage through the one pipeline on the one session seed.
+// knobs never reached it: the preview showed matched squads and the launch
+// fielded the legacy five-strong ones. Both halves now stage through the one
+// pipeline on the one session seed. The levers are Amendment 2's FILL wheel
+// and MAP UNITS box (they were TROOPS when this test was written).
 TEST(PlatformHeadless, text_picker_launch_census_matches_the_preview)
 {
     restore_default_campaigns();
-    StdoutSilencer stdout_silencer;
     EXPECT_EQ(0,
-              og::ui::text_picker_testing_launch_census_matches_the_preview());
+              silenced(&og::ui::text_picker_testing_launch_census_matches_the_preview))
+        << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
@@ -1610,7 +1675,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "10\n"      // team build: Scenario submenu
         "1\n"       // scenario: set campaign
         "1\n"       //   entry 1 is always the default campaign
-        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1649,9 +1714,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
-        "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1700,7 +1763,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "2\n"       // main: continue -> team build
         "10\n"      // team build: Scenario submenu (labels print)
         "5\n"       // scenario: progress
-        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1798,16 +1861,16 @@ TEST(PlatformHeadless, text_picker_replay_level_prompt_gates_and_arms)
         "1\n"       //   list: open company...
         "1\n"       //     row 1 = REPLAY BAND -> team build
         "10\n"      // team build: Scenario submenu
-        "7\n"       // scenario: replay level (invalid value)
+        "6\n"       // scenario: replay level (invalid value)
         "abc\n"
-        "7\n"       // scenario: replay level (unearned forward id)
+        "6\n"       // scenario: replay level (unearned forward id)
         "15\n"
-        "7\n"       // scenario: replay level (in frontier but uncleared)
+        "6\n"       // scenario: replay level (in frontier but uncleared)
         "3\n"
-        "7\n"       // scenario: replay level -> 1 (cleared: ARMS)
+        "6\n"       // scenario: replay level -> 1 (cleared: ARMS)
         "1\n"
         "5\n"       // scenario: progress (prints the moved cursor)
-        "8\n"       // scenario: back -> team build
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1870,11 +1933,11 @@ TEST(PlatformHeadless, text_picker_campaign_switch_after_replay_arm)
         "1\n"       //   list: open company...
         "1\n"       //     row 1 = SWITCH BAND -> team build
         "10\n"      // team build: Scenario submenu
-        "7\n"       // scenario: replay level -> 1 (cleared: ARMS)
+        "6\n"       // scenario: replay level -> 1 (cleared: ARMS)
         "1\n"
         "1\n"       // scenario: set campaign
         "2\n"       //   entry 2 = the first NON-default campaign (SWITCH)
-        "8\n"       // scenario: back -> team build
+        "7\n"       // scenario: back -> team build (B5: TROOPS retired)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1932,7 +1995,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "move 1 1\n"    //   valid: back to team 1
         "gibberish\n"   //   unrecognized command
         "\n"            //   blank exits matchup
-        "8\n"           // scenario: back -> team build (#207: Replay Level joined at 7)
+        "7\n"           // scenario: back -> team build (B5: TROOPS retired)
         "8\n"           // base camp: back -> main
         "6\n";          // main: quit
 
@@ -1995,11 +2058,18 @@ namespace {
 class ScopedSyntheticCampaignPicker
 {
 public:
-    explicit ScopedSyntheticCampaignPicker(const std::string& source)
+    // `replace_all` drops the installed packs for the lifetime of the guard
+    // instead of registering on top of them — the only way to reach a VM
+    // where NOTHING is registered now that packs/core ships a default
+    // lineup pricing (docs/lineup-design.md C5).
+    explicit ScopedSyntheticCampaignPicker(const std::string& source,
+                                           bool replace_all = false)
         : previous_game_(current_game)
         , scripts_(og::script::pack_scripts())
     {
         current_game = nullptr;  // dispatch resolves the shared UI VM
+        if (replace_all)
+            og::script::clear_pack_scripts();
         og::script::register_pack_script(
             {"test.textcamp", "textcamp/scripts/c.lua", source});
     }
@@ -2229,6 +2299,800 @@ TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
     // company-listing tests stay order-independent.
     (void)remove_user_file("save/" + config.save_name + ".gtl");
     og::data::set_active_company_slot("save0");
+}
+
+// --- LINEUP, the text twin (docs/lineup-design.md §8) -------------------
+
+namespace {
+
+// A company with two seated teams: three fighters on team 0 (my_team, so
+// the derivation seats it) and one on team 1. Levels descend by slot so the
+// power-less SPLIT FAIR order (level desc, tie slot) is fully determined.
+bool seed_lineup_company(const std::string& slot)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = "LINEUP BAND";
+    // A versus campaign, kept deliberately after C5 made the knobs live
+    // everywhere: this drive is the modes half of the pair, and its classic
+    // twin below now asserts the SAME answers on gladiator.
+    sd.current_campaign = "modes";
+    sd.my_team = 0;
+    for (int i = 0; i < 4; ++i) {
+        sd.team_list[static_cast<std::size_t>(i)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        guy& member = *sd.team_list[static_cast<std::size_t>(i)];
+        member.name = std::string("F") + static_cast<char>('1' + i);
+        member.teamnum = i == 3 ? 1 : 0;
+        member.deployed = true;
+        member.level = static_cast<short>(4 - i);
+    }
+    sd.team_size = 4;
+    sd.scen_num = 1;
+    return sd.save_with_error(slot) == SaveDataIoError::None;
+}
+
+} // namespace
+
+// The host drive: the bands print through the shared formatters, the FILL
+// wheel and the MAP UNITS box both LAND IN THE SAVE (the .gtl round-trip is
+// the proof — a label that changed without a write would be a lie the next
+// launch tells), and SPLIT FAIR snake-drafts the company across the seated
+// teams.
+TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_lineup_company("lineupd"));
+
+    const std::string input =
+        "7\n"        // main: load company -> the company list
+        "1\n"        //   list: open company...
+        "1\n"        //     #1 = lineupd -> team build
+        "12\n"       // team build: LINEUP
+        // B8: no value on either control is refused on any team, so one
+        // press is one step of the shared wheel and nothing toasts.
+        "1\n"        //   lineup: TEAM 1 FILL -> NONE steps to WEAK
+        "2\n"        //   lineup: TEAM 1 MAP UNITS -> ON flips to OFF
+        "10\n"       //   lineup: SPLIT FAIR (B6: FIGHTERS is gone, so the
+                     //     strip starts right after the eight knob rows)
+        "99\n"       //   lineup: out of range -> refused, page reprints
+        "12\n"       //   lineup: back -> team build
+        "8\n"        // team build: back -> main
+        "6\n";       // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+
+    // The bands: header (colour + POWER + seats) over the knob/census line.
+    EXPECT_NE(std::string::npos, out.find("--- Lineup ---"))
+        << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 1 RED  POWER "))
+        << "the band names the colour, the price and the seats:\n" << out;
+    EXPECT_NE(std::string::npos,
+              out.find("[FILL: NONE] [MAP UNITS: ON]  3 FIGHTERS"))
+        << "the shared census formatter spells the fighter count:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 3 BLUE  POWER --   NO SEAT"))
+        << "an unoccupied team is honestly unpriced, and still says NO SEAT:\n"
+        << out;
+    EXPECT_NE(std::string::npos,
+              out.find("[FILL: NONE] [MAP UNITS: ON]  NO FIGHTERS"))
+        << out;
+    EXPECT_EQ(std::string::npos, out.find("NO MAP UNITS"))
+        << "B4: nothing censused the staged world here, and an absent census "
+           "is not an empty map:\n" << out;
+    // E1: there is no resolution left to disagree about. Every band renders
+    // the STORED code, the stored code of a fresh company is 0, and 0 is
+    // NONE — so this modes drive and the classic twin below now read the
+    // same word on all four bands at rest. (Before amendment 4 this arm
+    // read FAIR because a company naming "modes" over a mounted gladiator
+    // could not stage a world to resolve against.)
+    EXPECT_NE(std::string::npos, out.find("TEAM 2  FILL: NONE"))
+        << "an untouched band's knob row reads the stored 0 as NONE:\n" << out;
+    // Both presses answer with the SAME formatter the row label uses.
+    EXPECT_NE(std::string::npos, out.find("FILL: WEAK"))
+        << "E1: one click off the stored NONE reaches the wheel's next "
+           "slot, WEAK:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("MAP UNITS: OFF"))
+        << "B4: the box is a flip, and the label is the answer:\n" << out;
+    EXPECT_EQ(std::string::npos, out.find("HAS PLAYERS"))
+        << "B8: no wheel value is refused on any team any more:\n" << out;
+    // B6: FIGHTERS is deleted, not hidden — MATCHUP moves a colour and the
+    // DEPLOY row benches, so the page never offers a second door to them.
+    EXPECT_EQ(std::string::npos, out.find("--- Fighters ---")) << out;
+    EXPECT_NE(std::string::npos, out.find("Invalid selection."))
+        << "the page refuses an out-of-range row and reprints:\n" << out;
+
+    // M3 + §5: a text client is a ONE-SEAT machine (a company file always
+    // loads with numplayers 1), and its seat picture is the launch's own —
+    // so there is one seated team and split_company's single-seat rule makes
+    // SPLIT FAIR an ALL TO 1. Only F4, parked on GREEN, moves.
+    EXPECT_NE(std::string::npos, out.find("Moved 1 fighter.")) << out;
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("lineupd"));
+    EXPECT_EQ(og::sim::kFillWeak, reloaded.fill[0])
+        << "the FILL cycle must reach the company file (NONE -> WEAK)";
+    EXPECT_EQ(og::sim::kMapUnitsOff, reloaded.map_units[0])
+        << "the MAP UNITS flip must reach the company file (ON -> OFF)";
+    EXPECT_EQ(og::sim::kFillNone, reloaded.fill[1])
+        << "only the cycled team moved";
+    ASSERT_TRUE(reloaded.team_list[0] && reloaded.team_list[1] &&
+                reloaded.team_list[2] && reloaded.team_list[3]);
+    for (int slot = 0; slot < 4; ++slot) {
+        EXPECT_EQ(0, reloaded.team_list[static_cast<std::size_t>(slot)]->teamnum)
+            << "slot " << slot;
+    }
+
+    (void)remove_user_file("save/lineupd.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// The same two rows on a CLASSIC campaign. Amendment 3 C5 moved the match
+// machinery into packs/core and gave a mode-less level its own stage step, so
+// gladiator's levels no longer "decide the bots" on their own: the write
+// lands in the company file here exactly as it does on modes, the row carries
+// no mark, and nothing refuses. This test asserted the opposite until C5.
+TEST(PlatformHeadless, text_picker_lineup_knob_cycles_on_a_classic_campaign)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "CLASSIC BAND";
+        sd.current_campaign = "gladiator";
+        sd.my_team = 0;
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "F1";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = true;
+        sd.team_size = 1;
+        sd.scen_num = 1;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("classicd"));
+    }
+
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "1\n"   //   list: open company...
+        "1\n"   //     #1 = classicd -> team build
+        "12\n"  // team build: LINEUP
+        "1\n"   //   lineup: TEAM 1 FILL -> NONE steps to WEAK
+        "2\n"   //   lineup: TEAM 1 MAP UNITS -> ON flips to OFF
+        "12\n"  //   lineup: back -> team build
+        "8\n"   // team build: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ(std::string::npos, out.find("MAP RULES"))
+        << "C5: nothing on this page speaks for a classic exception:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 1  FILL: NONE"))
+        << "the row is the bare shared label now:\n" << out;
+    // E1/E2: the per-team resolver is gone, so what a band authors no
+    // longer changes the word at rest. Gladiator scen 1 ships elves onto
+    // team 2 and nothing onto teams 3 and 4; all four read the stored 0,
+    // and 0 is NONE. (Before amendment 4 team 2 read FAIR here off the
+    // presence resolver while its unauthored neighbours read NONE.)
+    EXPECT_NE(std::string::npos, out.find("TEAM 2  FILL: NONE"))
+        << "an authored team no longer resolves itself a squad:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 3  FILL: NONE"))
+        << "and neither does an unauthored one:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("TEAM 4  FILL: NONE"))
+        << "...nor its twin:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("FILL: WEAK"))
+        << "the wheel steps on gladiator:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("MAP UNITS: OFF"))
+        << "and so does the box:\n" << out;
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("classicd"));
+    EXPECT_EQ(og::sim::kFillWeak, reloaded.fill[0])
+        << "the classic write reaches the .gtl like any other";
+    EXPECT_EQ(og::sim::kMapUnitsOff, reloaded.map_units[0]);
+    EXPECT_EQ(og::sim::kFillNone, reloaded.fill[1])
+        << "only the cycled team moved";
+
+    (void)remove_user_file("save/classicd.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// B4/F3: the text page censuses the map's own units off the world it stages
+// (the same walk the SDL box state gates on), so a team the map ships no
+// units for says NO MAP UNITS beside its census and REFUSES the toggle with
+// that hint — the SDL box's dim and click belt, in the band's words. Before
+// this the terminals fed no count at all: the hint was dead and the toggle
+// wrote freely where the SDL screen refuses. Gladiator scen 1 ships elves
+// onto team 2 and nothing onto team 4, so one drive covers both arms.
+TEST(PlatformHeadless, text_picker_lineup_map_units_refuses_where_the_map_ships_none)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "CLASSIC BOX";
+        sd.current_campaign = "gladiator";
+        sd.my_team = 0;
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "F1";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = true;
+        sd.team_size = 1;
+        sd.scen_num = 1;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("classicb"));
+    }
+
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "1\n"   //   list: open company...
+        "1\n"   //     #1 = classicb -> team build
+        "12\n"  // team build: LINEUP
+        "8\n"   //   lineup: TEAM 4 MAP UNITS -> refused, NO MAP UNITS
+        "4\n"   //   lineup: TEAM 2 MAP UNITS -> ON flips to OFF (the elves)
+        "12\n"  //   lineup: back -> team build
+        "8\n"   // team build: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    // The hint rides beside the census on the unauthored band...
+    EXPECT_NE(std::string::npos,
+              out.find("TEAM 4 YELLOW  POWER --   NO SEAT\n"
+                       "  [FILL: NONE] [MAP UNITS: ON]  NO FIGHTERS  "
+                       "NO MAP UNITS"))
+        << "B4: a censused page says NO MAP UNITS where the map ships "
+           "none:\n" << out;
+    // ...and never on the elves' band.
+    EXPECT_EQ(std::string::npos,
+              out.find("[FILL: FAIR] [MAP UNITS: ON]  NO FIGHTERS  "
+                       "NO MAP UNITS"))
+        << "the authored team keeps a live box:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("MAP UNITS: OFF"))
+        << "the elves' box flips:\n" << out;
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("classicb"));
+    EXPECT_EQ(og::sim::kMapUnitsOn, reloaded.map_units[3])
+        << "the refused toggle must not reach the company file";
+    EXPECT_EQ(og::sim::kMapUnitsOff, reloaded.map_units[1])
+        << "the authored team's toggle lands like any other";
+
+    (void)remove_user_file("save/classicb.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// D1/D4: the wheel gets a FULL-CYCLE label pin on an AUTHORED band and on an
+// UNAUTHORED one, through the real text picker, on the campaign the maintainer
+// played. The two sequences are the same five words in the same order and
+// differ only in where they START — which is the whole of D1: a band showing
+// the DEFAULT enters the wheel at the slot of the word it is showing, so the
+// first click moves the face by exactly one step. Gladiator scen 1 authors
+// twelve elves onto team 2 (resolved FAIR) and nothing onto team 3 (resolved
+// NONE), so one drive covers both bands.
+//
+// Six presses per band: five to walk the whole wheel back to where it started
+// and a sixth to prove the wrap is a step and not a stop.
+TEST(PlatformHeadless, text_picker_lineup_wheel_cycles_both_bands_fully)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "WHEEL BAND";
+        sd.current_campaign = "gladiator";
+        sd.my_team = 0;
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "F1";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = true;
+        sd.team_size = 1;
+        sd.scen_num = 1;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("wheeld"));
+    }
+
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "1\n"   //   list: open company...
+        "1\n"   //     #1 = wheeld -> team build
+        "12\n"  // team build: LINEUP
+        // Row 1 = TEAM 1 FILL. Team 0 carries the deployed fighter and the
+        // map's own units; since E1 that buys it nothing at rest — it reads
+        // the stored 0 like every other band and the wheel leaves from
+        // NONE's slot.
+        "1\n" "1\n" "1\n" "1\n" "1\n" "1\n"
+        // Row 5 = TEAM 3 FILL. Gladiator authors nothing onto that team,
+        // which is now the SAME starting slot: one wheel, one entry point.
+        "5\n" "5\n" "5\n" "5\n" "5\n" "5\n"
+        "12\n"  //   lineup: back -> team build
+        "8\n"   // team build: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+
+    // The client echoes the label it just wrote directly after the page
+    // prompt (which carries no newline of its own), so the press-by-press
+    // sequence is readable off the transcript exactly where the prompt ends.
+    // The band lines ("  [FILL: ...]") and the row labels
+    // ("  1. TEAM 1  FILL: ...") never follow that prompt text.
+    static constexpr std::string_view kEcho = "(blank exits): FILL: ";
+    std::vector<std::string> echoed;
+    for (std::size_t at = out.find(kEcho); at != std::string::npos;
+         at = out.find(kEcho, at + 1)) {
+        const std::size_t start = at + kEcho.size() - std::strlen("FILL: ");
+        const std::size_t end = out.find('\n', start);
+        echoed.push_back(out.substr(
+            start, end == std::string::npos ? std::string::npos : end - start));
+    }
+
+    const std::vector<std::string> expected = {
+        // TEAM 1, entering at NONE (the word its band was showing).
+        "FILL: WEAK", "FILL: FAIR", "FILL: STRONG", "FILL: BRUTAL",
+        "FILL: NONE", "FILL: WEAK",
+        // TEAM 3, entering at NONE too — E1 left one entry point, so the
+        // two bands walk the identical five words in the identical order.
+        "FILL: WEAK", "FILL: FAIR", "FILL: STRONG", "FILL: BRUTAL",
+        "FILL: NONE", "FILL: WEAK",
+    };
+    EXPECT_EQ(expected, echoed)
+        << "the wheel must walk NONE -> WEAK -> FAIR -> STRONG -> BRUTAL and "
+           "wrap, from the slot the face reads:\n" << out;
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("wheeld"));
+    EXPECT_EQ(og::sim::kFillWeak, reloaded.fill[0])
+        << "six steps from NONE's slot land on WEAK";
+    EXPECT_EQ(og::sim::kFillWeak, reloaded.fill[2])
+        << "six steps from NONE's slot land on WEAK";
+    EXPECT_EQ(og::sim::kFillNone, reloaded.fill[1])
+        << "the untouched bands keep the stored default";
+    EXPECT_EQ(og::sim::kFillNone, reloaded.fill[3])
+        << "the untouched bands keep the stored default";
+
+    (void)remove_user_file("save/wheeld.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// The joiner projection of the same page: §2.3 hides the eight host knobs
+// (they are the host's, and a joiner writing them would be a silent
+// divergence) while the bands and every roster action stay.
+TEST(PlatformHeadless, lineup_terminal_model_hides_the_knobs_from_a_joiner)
+{
+    using og::ui::TerminalLineupItem;
+
+    // The classic half needs a real mount: since C5 the POWER cell is priced
+    // by packs/core's default, so what is installed decides what the header
+    // line says.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData save;
+    save.reset();
+    save.my_team = 0;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_size = 1;
+
+    const std::vector<og::sim::LobbyPlayer> seats =
+        og::ui::synthesize_local_lobby_players(save);
+
+    og::ui::TerminalLineupInputs inputs;
+    inputs.save = &save;
+    inputs.players = seats;
+
+    inputs.is_host = true;
+    const og::ui::TerminalLineupModel host =
+        og::ui::build_terminal_lineup_model(inputs);
+    inputs.is_host = false;
+    const og::ui::TerminalLineupModel joiner =
+        og::ui::build_terminal_lineup_model(inputs);
+
+    EXPECT_EQ(8u, host.lines.size())
+        << "four bands of two lines each, whether or not a team is on";
+    EXPECT_EQ(joiner.lines, host.lines)
+        << "a joiner sees exactly the census the host sees";
+    EXPECT_EQ(12u, host.items.size())
+        << "eight knobs + the three SPLIT rows + Back (B6: no FIGHTERS)";
+    EXPECT_EQ(4u, joiner.items.size())
+        << "the eight host-only knob rows are gone, nothing else is";
+    for (const TerminalLineupItem& item : joiner.items) {
+        EXPECT_NE(TerminalLineupItem::Kind::Fill, item.kind);
+        EXPECT_NE(TerminalLineupItem::Kind::MapUnits, item.kind);
+    }
+    // B6: the strip is BACK | SPLIT EVEN | SPLIT FAIR | UNITE and nothing
+    // else — a FIGHTERS row here would be a second door to the two writes
+    // MATCHUP and DEPLOY already own on every terminal client.
+    EXPECT_EQ(TerminalLineupItem::Kind::SplitEven, joiner.items[0].kind);
+    // §5 over one seated team is UNITE by arithmetic, and a terminal client
+    // is single-seat by construction — so the two SPLIT rows keep their
+    // ordinals and say what they will actually do.
+    EXPECT_EQ("Split even  (one seat: same as Unite)", joiner.items[0].label);
+    EXPECT_EQ("Split fair  (one seat: same as Unite)", joiner.items[1].label);
+    EXPECT_EQ("Unite", joiner.items[2].label);
+    EXPECT_EQ(TerminalLineupItem::Kind::Back, joiner.items.back().kind);
+    EXPECT_EQ("Back", joiner.items.back().label);
+    // The knob rows quote the shared label VERBATIM behind the team ordinal.
+    // This save names no campaign, so it is CLASSIC — and since amendment 3
+    // C5 that changes NOTHING about the row: the match machinery is the core
+    // pack's now and runs on a mode-less level, so the label carries no mark
+    // and the band censuses the fighters exactly as a versus campaign does.
+    EXPECT_EQ("TEAM 1  FILL: NONE", host.items[0].label);
+    EXPECT_EQ("TEAM 1  MAP UNITS: ON", host.items[1].label);
+    EXPECT_EQ(std::string::npos, host.lines[1].find("MAP RULES"))
+        << "C5 retired the classic census: " << host.lines[1];
+    EXPECT_NE(std::string::npos, host.lines[1].find("FIGHTER"))
+        << "a classic band counts its fighters like any other: "
+        << host.lines[1];
+    // Every stored FILL code reads as its word, and a value no wheel can
+    // produce (a crafted joiner, a legacy .gtl) reads as NONE rather than
+    // as a number — one shared formatter, one fallback, and since E1 that
+    // fallback is the storage default itself.
+    save.fill[0] = og::sim::kFillBrutal;
+    save.fill[1] = 99;
+    save.map_units[1] = og::sim::kMapUnitsOff;
+    inputs.is_host = true;
+    const og::ui::TerminalLineupModel named =
+        og::ui::build_terminal_lineup_model(inputs);
+    EXPECT_EQ("TEAM 1  FILL: BRUTAL", named.items[0].label);
+    EXPECT_EQ("TEAM 2  FILL: NONE", named.items[2].label);
+    EXPECT_EQ("TEAM 2  MAP UNITS: OFF", named.items[3].label);
+
+    // ...and a VERSUS campaign reads the same, which is the whole point of
+    // C5: one page, one meaning, whatever the campaign.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    save.current_campaign = "modes";
+    save.fill[0] = og::sim::kFillNone;
+    save.fill[1] = og::sim::kFillNone;
+    save.map_units[1] = og::sim::kMapUnitsOn;
+    const og::ui::TerminalLineupModel versus =
+        og::ui::build_terminal_lineup_model(inputs);
+    EXPECT_EQ(host.items[0].label, versus.items[0].label);
+    EXPECT_EQ(host.items[1].label, versus.items[1].label);
+    // EVERY line is identical word for word now, header included: the modes
+    // book prices with the core lib's stat_power and gladiator prices with
+    // packs/core's default, which IS that same function — so the last
+    // campaign-shaped difference on this page closed with C5's engine half.
+    EXPECT_EQ(host.lines, versus.lines);
+    EXPECT_TRUE(versus.bands[0].power.has_value())
+        << "a registered pricing book puts a number on the band: "
+        << versus.lines[0];
+    EXPECT_TRUE(host.bands[0].power.has_value())
+        << "...and so does the shipped default, on a classic campaign: "
+        << host.lines[0];
+    EXPECT_EQ(host.bands[0].power, versus.bands[0].power)
+        << "one metric, one currency (C5)";
+    (void)unmount_campaign_package_with_error("modes");
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// C5: POWER is priced by a registered `lineup.power`, and the terminal band
+// asks for it on EVERY campaign — there was never a versus gate in the
+// pricing path, and after C5 there is none anywhere on the page. Three arms,
+// which are the three answers the seam can give a classic save: the SHIPPED
+// DEFAULT (packs/core's own registration, so gladiator prices itself now), a
+// campaign book that OVERRIDES it, and — reachable only with the packs
+// dropped — nothing at all, which honestly carries `--`.
+TEST(PlatformHeadless, lineup_terminal_band_prices_a_classic_campaign)
+{
+    // The default lives in packs/core, so this test needs a real mount
+    // rather than whatever the previous test left installed.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData save;
+    save.reset();
+    save.my_team = 0;
+    save.current_campaign = "gladiator";  // classic, and priced all the same
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "F1";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_list[0]->level = 3;
+    save.team_size = 1;
+
+    const std::vector<og::sim::LobbyPlayer> seats =
+        og::ui::synthesize_local_lobby_players(save);
+    og::ui::TerminalLineupInputs inputs;
+    inputs.save = &save;
+    inputs.players = seats;
+
+    // The shipped default alone — no campaign book anywhere: gladiator's
+    // band carries a number, which is the whole of C5. The PRICE is the core
+    // lib's stat_power over this fighter's derived stats and moves with the
+    // family's balance, so what is pinned is that a number is there at all.
+    {
+        ScopedSyntheticCampaignPicker zone(
+            R"LUA(og.log("a campaign with no lineup"))LUA");
+        og::ui::lineup_power_cache_clear();
+        const og::ui::TerminalLineupModel defaulted =
+            og::ui::build_terminal_lineup_model(inputs);
+        ASSERT_TRUE(defaulted.bands[0].power.has_value())
+            << "packs/core prices a classic campaign: " << defaulted.lines[0];
+        EXPECT_GT(*defaulted.bands[0].power, 0);
+        EXPECT_EQ(std::string::npos, defaulted.lines[0].find("POWER --"))
+            << defaulted.lines[0];
+    }
+
+    // Nothing registered anywhere — the packs dropped, not merely book-less.
+    // This is the only shape that still reads `--`, and it is the shape a
+    // pack-less install has.
+    {
+        ScopedSyntheticCampaignPicker zone(
+            R"LUA(og.log("a campaign with no lineup"))LUA", true);
+        og::ui::lineup_power_cache_clear();
+        const og::ui::TerminalLineupModel unpriced =
+            og::ui::build_terminal_lineup_model(inputs);
+        EXPECT_FALSE(unpriced.bands[0].power.has_value())
+            << "no pricing anywhere invents none: " << unpriced.lines[0];
+        EXPECT_NE(std::string::npos, unpriced.lines[0].find("POWER --"))
+            << unpriced.lines[0];
+    }
+
+    // A book: it OVERRIDES the shipped default, and the same classic band
+    // carries the book's number, summed over the team's deployed fighters.
+    {
+        ScopedSyntheticCampaignPicker zone(R"LUA(
+og.register_campaign_hooks({
+  lineup = { power = function(row) return row.level * 100 end },
+})
+)LUA");
+        og::ui::lineup_power_cache_clear();
+        const og::ui::TerminalLineupModel priced =
+            og::ui::build_terminal_lineup_model(inputs);
+        ASSERT_TRUE(priced.bands[0].power.has_value())
+            << "a classic campaign's roster is priced like any other";
+        EXPECT_EQ(300, *priced.bands[0].power);
+        EXPECT_NE(std::string::npos, priced.lines[0].find("POWER 300"))
+            << priced.lines[0];
+        EXPECT_FALSE(priced.bands[1].power.has_value())
+            << "an empty team has nothing to sum";
+    }
+    og::ui::lineup_power_cache_clear();
+}
+
+// B4: the MAP UNITS hint speaks for a census that HAPPENED. An empty
+// map_unit_counts span means nobody censused the staged world, which is a
+// different fact from "the map ships no units on this team" — a terminal
+// that printed NO MAP UNITS off the default zeros would tell all four teams
+// the map is empty. Supply the census and the hint appears, per team,
+// beside the fighter count rather than instead of it.
+TEST(PlatformHeadless, lineup_terminal_map_units_hint_needs_a_real_census)
+{
+    SaveData save;
+    save.reset();
+    save.my_team = 0;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_size = 1;
+
+    const std::vector<og::sim::LobbyPlayer> seats =
+        og::ui::synthesize_local_lobby_players(save);
+    og::ui::TerminalLineupInputs inputs;
+    inputs.save = &save;
+    inputs.players = seats;
+
+    const og::ui::TerminalLineupModel uncensused =
+        og::ui::build_terminal_lineup_model(inputs);
+    for (const std::string& line : uncensused.lines) {
+        EXPECT_EQ(std::string::npos, line.find("NO MAP UNITS"))
+            << "no census, no claim: " << line;
+    }
+    for (const og::ui::LineupTeamBand& band : uncensused.bands)
+        EXPECT_EQ(0, band.map_unit_count);
+
+    const std::array<int, 4> counts = {7, 0, 0, 3};
+    inputs.map_unit_counts = counts;
+    const og::ui::TerminalLineupModel censused =
+        og::ui::build_terminal_lineup_model(inputs);
+    EXPECT_EQ(7, censused.bands[0].map_unit_count)
+        << "the span reaches build_lineup_bands unchanged";
+    EXPECT_EQ(3, censused.bands[3].map_unit_count);
+    EXPECT_EQ(std::string::npos, censused.lines[1].find("NO MAP UNITS"))
+        << "team 1 is shipped seven: " << censused.lines[1];
+    EXPECT_NE(std::string::npos, censused.lines[3].find("NO MAP UNITS"))
+        << "team 2 is shipped none: " << censused.lines[3];
+    // Whatever is in the census cell, the hint rides BESIDE it — that is why
+    // format_lineup_map_units_census is its own formatter and not a new Diag
+    // inside format_lineup_census. Team 2 has no fighters and no map units,
+    // so both halves are spoken.
+    EXPECT_NE(std::string::npos, censused.lines[3].find("NO FIGHTERS"))
+        << "the hint rides BESIDE the census, never instead of it: "
+        << censused.lines[3];
+    EXPECT_EQ(std::string::npos, censused.lines[7].find("NO MAP UNITS"))
+        << "team 4 is shipped three: " << censused.lines[7];
+}
+
+// M3: a seat picture has ONE derivation. The SDL screens and the launch both
+// read derive_local_gameplay_seat_teams (through synthesize_local_lobby_
+// players): my_team first, then the deployed teams, PADDED and truncated to
+// numplayers. The terminal bands and their SPLIT used the unpadded
+// derive_local_seat_teams instead, so on this two-player company — every
+// character on team 0, which is what a fresh save looks like — the terminals
+// saw ONE seat where the SDL sees two, painted NO SEAT on TEAM 2, and turned
+// every SPLIT into ALL TO 1 while the SDL dealt the company across the pair.
+TEST(PlatformHeadless, terminal_seat_picture_matches_the_sdl_derivation)
+{
+    SaveData save;
+    save.reset();
+    save.save_name = "ONE SEAT";
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    for (int i = 0; i < 4; ++i) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::string("F") + static_cast<char>('1' + i);
+        member->deployed = true;
+        member->teamnum = 0;  // the fresh-save shape: everyone on one colour
+        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
+    }
+    save.team_size = 4;
+
+    // The picture the SDL screens read.
+    const std::vector<og::sim::LobbyPlayer> seats =
+        og::ui::synthesize_local_lobby_players(save);
+    ASSERT_EQ(2u, seats.size()) << "numplayers=2 means two seats";
+    EXPECT_EQ(0, seats[0].team);
+    EXPECT_EQ(1, seats[1].team) << "the second seat is padded onto a free team";
+
+    og::ui::TerminalLineupInputs inputs;
+    inputs.save = &save;
+    inputs.players = seats;
+    const og::ui::TerminalLineupModel model =
+        og::ui::build_terminal_lineup_model(inputs);
+    ASSERT_EQ(8u, model.lines.size());
+    // The POWER cell is whatever pricing is installed — since C5 packs/core
+    // ships a default, so a classic company is priced and the figure moves
+    // with the mounted campaign. This test is about the SEAT picture, so it
+    // pins the halves that FRAME the cell: the colour ahead of it and the
+    // seat run behind it (NO SEAT would replace the latter).
+    EXPECT_TRUE(model.lines[0].starts_with("TEAM 1 RED  POWER "))
+        << model.lines[0];
+    EXPECT_TRUE(model.lines[0].ends_with("   P1 ONE")) << model.lines[0];
+    EXPECT_TRUE(model.lines[2].starts_with("TEAM 2 GREEN  POWER "))
+        << model.lines[2];
+    EXPECT_TRUE(model.lines[2].ends_with("   P2 ONE"))
+        << "the padded seat must not read NO SEAT: " << model.lines[2];
+
+    // ...and the SPLIT plans over the same pair, not over one team. These are
+    // the exact moves LineupUi.split_even_and_unite_direct pins on the SDL
+    // screen for the same roster: one derivation, one answer.
+    std::vector<std::string> report;
+    EXPECT_EQ(2, og::ui::terminal_apply_lineup_split(
+                     save, og::ui::LineupSplit::Even, report));
+    EXPECT_EQ(0, save.team_list[0]->teamnum);
+    EXPECT_EQ(1, save.team_list[1]->teamnum);
+    EXPECT_EQ(0, save.team_list[2]->teamnum);
+    EXPECT_EQ(1, save.team_list[3]->teamnum);
+}
+
+// §5 + §2.2: a SPLIT is a bulk team assignment, so it obeys the campaign's
+// own can_team rule — the same rule that gates one fighter row at a time.
+// The terminal clients used to hardcode zone_can_team=true, which made the
+// three SPLIT rows a way around a composition that had taken the team chip
+// away. Both terminals now run this one helper.
+TEST(PlatformHeadless, terminal_split_obeys_the_campaign_can_team_rule)
+{
+    const auto seed = [](SaveData& save) {
+        save.reset();
+        save.my_team = 0;
+        save.numplayers = 2;
+        save.allied_mode = 0;
+        for (int i = 0; i < 4; ++i) {
+            auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+            member->name = "S" + std::to_string(i);
+            member->deployed = true;
+            // Seats derive from the deployed teams: {0, 1}.
+            member->teamnum = static_cast<short>(i < 2 ? 0 : 1);
+            save.team_list[static_cast<std::size_t>(i)] = std::move(member);
+        }
+        save.team_size = 4;
+    };
+
+    // A composition that ALLOWS team changes: the split lands.
+    {
+        ScopedSyntheticCampaignPicker zone(R"LUA(
+og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster", can_team = true } } }
+  end,
+})
+)LUA");
+        SaveData save;
+        seed(save);
+        std::vector<std::string> report;
+        const int moved = og::ui::terminal_apply_lineup_split(
+            save, og::ui::LineupSplit::AllToFirst, report);
+        EXPECT_EQ(2, moved) << "the two team-1 fighters march to team 0";
+        EXPECT_EQ("Moved 2 fighters.", report.front());
+        for (int i = 0; i < 4; ++i) {
+            EXPECT_EQ(0, save.team_list[static_cast<std::size_t>(i)]->teamnum)
+                << "slot " << i;
+        }
+    }
+
+    // The same company under a composition that CLEARS can_team: every slot
+    // is locked, nothing moves, and the refusal is in words.
+    {
+        ScopedSyntheticCampaignPicker zone(R"LUA(
+og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster", can_team = false } } }
+  end,
+})
+)LUA");
+        SaveData save;
+        seed(save);
+        const std::array<short, 4> before = {
+            save.team_list[0]->teamnum, save.team_list[1]->teamnum,
+            save.team_list[2]->teamnum, save.team_list[3]->teamnum};
+
+        for (const og::ui::LineupSplit mode :
+             {og::ui::LineupSplit::Even, og::ui::LineupSplit::Fair,
+              og::ui::LineupSplit::AllToFirst}) {
+            std::vector<std::string> report;
+            const int moved =
+                og::ui::terminal_apply_lineup_split(save, mode, report);
+            EXPECT_EQ(0, moved) << "no bulk write past a cleared can_team";
+            ASSERT_EQ(2u, report.size());
+            EXPECT_EQ("Moved 0 fighters.", report[0]);
+            EXPECT_EQ("4 fighters are locked and stayed put.", report[1]);
+            for (int i = 0; i < 4; ++i) {
+                EXPECT_EQ(before[static_cast<std::size_t>(i)],
+                          save.team_list[static_cast<std::size_t>(i)]->teamnum)
+                    << "slot " << i;
+            }
+        }
+    }
 }
 
 // With no og.register_campaign_hooks anywhere the camp door refuses with the

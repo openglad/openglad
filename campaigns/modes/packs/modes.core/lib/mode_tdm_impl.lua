@@ -85,20 +85,25 @@ local function decide(level, inputs)
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  -- TROOPS:OWN/FAIR (rosters or all-bot alike): the lobby request wins
-  -- the COUNT — roster teams plus authored backfill (issue #218), with
-  -- TEAMS: Auto resolving to the authored census count (2026-08-18
-  -- directive); under TROOPS:ALL the raw lobby request over the authored
-  -- teams (no manifest default — the verified per-mode Auto asymmetry).
+  -- The shared activation rule (lineup B1-B4): every authored team is
+  -- the map's own value (no manifest default — the verified per-mode
+  -- Auto asymmetry, auto_default 0), plus every occupied team; the
+  -- fills rows below drop any team the knobs leave with nothing.
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, 0)
   local row = levels.levels[level]
   local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
                                     T.score_limit)
-  local teams = match.fills(inputs, mask, {
+  local teams, _, lineup_mask = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
+  -- The NONE knob can empty a backfilled team outright (lineup §3.2):
+  -- the fills' narrowed mask is the decision's, and starts recounts it.
+  mask = lineup_mask
+  if starts then
+    starts = core.mask_count(mask) >= 2
+  end
   local reason = nil
   if not starts then
     reason = "tdm: fewer than two teams"
@@ -133,9 +138,9 @@ local function on_mode_init(level)
   og.mode_set(S.TEAM_MASK, mask)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
-  -- Roster-only armies on request, before the plan's squad fills below,
-  -- so the spawns land in the final world.
-  strip.strip_authored_troops(nil)
+  -- The per-team MAP UNITS strip (amendment B4), before the squad fills
+  -- below, so the spawns land in the final world.
+  strip.strip_authored_troops()
 
   -- Score limit is the decision's (request > manifest row > default,
   -- clamped); the time/respawn knobs resolve here.
@@ -149,10 +154,10 @@ local function on_mode_init(level)
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
 
-  -- Bot squads where the decision said so (the empty active teams).
+  -- FILL squads where the decision said so (the empty active teams,
+  -- plus any company row with an allies gap — amendment B2/B3).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = decision.teams[team + 1].fill
-    if fill == "bots" or fill == "matched" then
+    if match.wants_squad(decision.teams[team + 1]) then
       match.spawn_bots(team, T.bot_squad, S.ANCHOR_CURSOR)
     end
   end

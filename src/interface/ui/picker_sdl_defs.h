@@ -91,20 +91,103 @@ inline constexpr int32_t PICKER_NETWORKING_PORT_WIDTH = 60;
 inline constexpr int32_t PICKER_NETWORKING_TOGGLE_X = 196;
 inline constexpr int32_t PICKER_NETWORKING_TOGGLE_WIDTH = 86;
 #endif
-inline constexpr int kNetworkingMenuButtonCount =
+// LINEUP §6: the session-mode DISCONNECT row, appended after the room rows
+// (index contract: growth is append-only). It is drawn in JOIN's exact rect —
+// the two are never visible in the same mode, so the shared cell reads as one
+// stable action slot.
+inline constexpr int kNetworkingMenuDisconnectIndex =
     kNetworkingMenuRoomFirstIndex + kNetworkingMenuRoomSlots;
+inline constexpr int kNetworkingMenuButtonCount =
+    kNetworkingMenuDisconnectIndex + 1;
 // Room-row label budget (6px/char, centered with no clipping).
 inline constexpr std::size_t kNetworkingMenuRoomLabelChars = 39;
+// Machine-row (PLAYERS list) label budget: the centered no-clip rule over the
+// room-row face — (w-8)/6 = 38 on the web's 240px face; native's 252px face
+// keeps the established 39-char room budget.
+#ifdef __EMSCRIPTEN__
+inline constexpr std::size_t kNetworkingMenuMachineRowLabelChars = 38;
+#else
+inline constexpr std::size_t kNetworkingMenuMachineRowLabelChars = 39;
+#endif
 
 // Forward declare button for menu descriptor arrays.
 struct button;
 
 // Deterministically rewires the NETWORKING subscreen nav graph for the
-// current number of visible ACTIVE GAMES rows (0..kNetworkingMenuRoomSlots):
-// every visible button stays keyboard-reachable and no link ever points at a
-// hidden room row.
+// current number of visible list rows (0..kNetworkingMenuRoomSlots): every
+// visible button stays keyboard-reachable and no link ever points at a
+// hidden row. Idle (`networked_session` false): the classic ACTIVE GAMES
+// graph. Session (`networked_session` true, LINEUP §6): the PLAYERS graph —
+// room-code value, the machine rows, BACK | DISCONNECT; HOST/JOIN and the
+// native DIRECT (LAN) fields are hidden and never linked.
 void picker_wire_networking_menu_nav(button* buttons, int count,
-                                     int visible_rooms);
+                                     int visible_rooms,
+                                     bool networked_session = false);
+
+// LINEUP §6: one frame's NETWORKING subscreen mode, derived from the lobby
+// client ({Idle, Hosting, Joined} — Hosting/Joined = `networked` with `host`
+// telling them apart). `list_rows` counts the visible list rows (relay rooms
+// when idle, lobby machines in a session); `row_actionable[slot]` marks the
+// session rows the host may kick (a foreign, non-host machine). Kept as a
+// plain value so layout tests can drive every variant without a lobby.
+struct NetworkingMenuModeState
+{
+    bool networked = false;
+    bool host = false;
+    int list_rows = 0;
+    std::array<bool, kNetworkingMenuRoomSlots> row_actionable{};
+};
+
+// LINEUP §6: the ONE place that decides which mode the NETWORKING subscreen
+// is in, read from the active lobby client. Session mode needs an
+// ESTABLISHED session, never a merely-networked client:
+//   hosting = networked && picker_lobby_host_controls_visible()
+//   joined  = networked && !host && the joiner holds lobby state
+//             (picker_lobby_players() non-empty)
+// A joiner that is still connecting, or whose connect failed, reads Idle —
+// HOST / JOIN / the DIRECT (LAN) fields stay exactly as they are on a fresh
+// menu, so a re-JOIN replaces the pending client the way it always did
+// instead of landing on DISCONNECT (which is drawn in JOIN's rect).
+// Only the mode-deciding fields are filled; the caller adds `list_rows` and
+// `row_actionable` from the rows it actually drew.
+NetworkingMenuModeState picker_current_networking_menu_mode();
+
+// The per-frame mode sync for the static NETWORKING table (LINEUP §6):
+// writes every mode-dependent hidden flag and action id (deterministic
+// full-write — no variant inherits a stale one), makes inert rows
+// keyboard-dead (myfun = 0), and rewires the graph through
+// picker_wire_networking_menu_nav. The label pass and the live-vbutton
+// mirror stay in configure_networking's sync (they read the live session).
+void picker_apply_networking_menu_mode(button* buttons, int count,
+                                       const NetworkingMenuModeState& mode);
+
+// LINEUP §6: the per-frame kicked-joiner revert. When the OWNED lobby client
+// (the one SdlPickerClient registered) is the active client and has latched
+// was_kicked(), swap in a fresh local client re-initialized from the save
+// (the picker_replace_lobby_client teardown/install order) and say why
+// (popup "KICKED BY HOST"; trace "networking"). Inert when a test stub is
+// installed as the active client. Returns true when a swap happened.
+bool picker_revert_lobby_client_if_kicked();
+
+// LINEUP §6: the kicked-revert is DEFERRED for the lifetime of this scope.
+// A held-click spin-wait (picker_progress_menu_engine_frame_tick's
+// `while (mymouse.left)`) polls the lobby and runs the Team Build remote-start
+// check from INSIDE an input dispatch: the click's coordinates were already
+// sampled against the current client's screen, and the revert both swaps that
+// client and opens a modal — which grabs the mouse and eats the button-up the
+// spin is waiting for. The revert lands on the next top-of-frame check
+// instead, which is where it was always meant to run. Nesting is counted, so
+// an inner scope cannot re-arm an outer one.
+class PickerHeldClickScope
+{
+public:
+    PickerHeldClickScope() noexcept;
+    ~PickerHeldClickScope() noexcept;
+    PickerHeldClickScope(const PickerHeldClickScope&) = delete;
+    PickerHeldClickScope& operator=(const PickerHeldClickScope&) = delete;
+};
+// True while a PickerHeldClickScope is open (or a revert is already running).
+[[nodiscard]] bool picker_kick_revert_suspended() noexcept;
 
 // Per-session mutable button descriptors (Phase 12).
 button* picker_mainmenu_buttons();
@@ -160,6 +243,10 @@ int picker_help_button_count();
 // Campaign zone submenu (the scripted page chassis) — engine screen.
 button* picker_zone_submenu_buttons();
 int picker_zone_submenu_button_count();
+// LINEUP (docs/lineup-design.md §2) — engine screen. (The FIGHTERS list
+// retired with amendment B6.)
+button* picker_lineup_buttons();
+int picker_lineup_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
@@ -399,26 +486,38 @@ std::string format_binding_panel_line(const char* label,
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
-// SET CAMPAIGN / SET LEVEL / TROOPS keep their host-only visibility here and
-// the re-homed TEAMS / LIMIT rows their versus-only visibility (per-frame
+// SET CAMPAIGN / SET LEVEL keep their host-only visibility here and
+// the re-homed SCORE row its versus-only visibility (per-frame
 // sync_scenario_menu_host_control_visibility); BACK / VIEW LEVEL / PROGRESS
-// are always visible and the spare is never visible.
+// / LINEUP are always visible (LINEUP is deliberately NOT host-gated:
+// joiners open it read-only — docs/lineup-design.md §2.3).
 inline constexpr int kScenarioMenuBackIndex = 0;
 inline constexpr int kScenarioMenuSetCampaignIndex = 1;
 inline constexpr int kScenarioMenuSetLevelIndex = 2;
 inline constexpr int kScenarioMenuViewScenarioIndex = 3;
-// The retired MATCHUP door's ordinal (#218), parked as a permanently-hidden
-// zero-size spare (the kBaseCampSeatRailSpareIndex precedent) so every
-// index below keeps its value.
-inline constexpr int kScenarioMenuSpareIndex = 4;
+// The retired MATCHUP door's ordinal (#218), parked as a spare until the
+// LINEUP door (docs/lineup-design.md §2) reclaimed it: the y=100 row now
+// reads VIEW LEVEL | PROGRESS | LINEUP with no table growth and every
+// index below keeping its value.
+inline constexpr int kScenarioMenuLineupIndex = 4;
 inline constexpr int kScenarioMenuProgressIndex = 5;
-// Appended (index contract: growth is append-only). Host-gated like
-// SET CAMPAIGN / SET LEVEL.
+// The retired TROOPS cycler's ordinal (amendment B5: whether the map's own
+// authored cast fights is the LINEUP band's per-team MAP UNITS box now).
+// Parked exactly like the TEAMS spare below it — zero-size rect, empty
+// label, hidden, no nav — so kScenarioMenuCtfCapsIndex and the count keep
+// their values (growth is append-only, retirement is a park). The name is
+// kept so the ordinal stays traceable to what vacated it.
 inline constexpr int kScenarioMenuTroopsIndex = 6;
-// Match Teams / Score Limit, re-homed from MATCHUP (#218): they complete
-// the y=140 match-settings band around TROOPS. Versus campaigns only;
-// joiners get the read-only label (visible, host-actionable).
-inline constexpr int kScenarioMenuCtfTeamsIndex = 7;
+// The retired TEAMS cycler's ordinal (A1/A3: its one power — deactivating an
+// authored team — is LINEUP's BOTS: OFF now). Parked exactly like the
+// Base Camp's seat_rail_spare and the MATCHUP door before it: zero-size
+// rect, empty label, hidden, no nav — so kScenarioMenuCtfCapsIndex and the
+// count keep their values (growth is append-only, retirement is a park).
+inline constexpr int kScenarioMenuSpareIndex = 7;
+// Score limit, re-homed from MATCHUP (#218), relabelled SCORE (A5): the
+// only occupant of the y=140 knob row since TROOPS retired (B5). Versus
+// campaigns only; joiners get the read-only label (visible,
+// host-actionable).
 inline constexpr int kScenarioMenuCtfCapsIndex = 8;
 inline constexpr int kScenarioMenuButtonCount = 9;
 
@@ -451,11 +550,125 @@ inline constexpr int kZoneSubmenuPanelBottomY = 158;
 inline constexpr std::size_t kZoneSubmenuRowLabelChars =
     (kZoneSubmenuRowWidth - 8) / 6;  // 48
 
+// --- LINEUP screen layout contract (docs/lineup-design.md §2) --------------
+// One engine-hosted screen: title band, FOUR team bands of equal pitch, one
+// action strip. The grid is declared here and every rect derives from it
+// (the menus discipline: a literal coordinate that appears once is a future
+// 1px drift); the layout tests assert the RELATIONS (equal pitch, shared
+// column x across bands, strip flush right) as well as the exact table.
+// Positional indices into kLineupMenuRows / picker_lineup_buttons():
+inline constexpr int kLineupBackIndex = 0;
+inline constexpr int kLineupFillBase = 1;      // lineup_fill_t = 1 + t
+inline constexpr int kLineupMapUnitsBase = 5;  // lineup_map_units_t = 5 + t
+// The FIGHTERS door (ordinal 9) retired with amendment B6 and the strip
+// re-packed: the three actions after BACK shifted down one.
+inline constexpr int kLineupSplitEvenIndex = 9;
+inline constexpr int kLineupSplitFairIndex = 10;
+inline constexpr int kLineupUniteIndex = 11;
+inline constexpr int kLineupButtonCount = 12;
+// The opaque grey ground painted PRE-buttons (a band of raw backdrop
+// between two opaque things reads as a defect — the menus skill).
+inline constexpr int kLineupPanelX1 = 8;
+inline constexpr int kLineupPanelY1 = 20;
+inline constexpr int kLineupPanelX2 = 311;
+inline constexpr int kLineupPanelY2 = 170;
+// Four bands at band_y(t) = 24 + 36*t (24/60/96/132), 34 px tall each.
+inline constexpr int kLineupBandY0 = 24;
+inline constexpr int kLineupBandPitch = 36;
+inline constexpr int kLineupBandHeight = 34;
+constexpr int lineup_band_y(int team)
+{
+    return kLineupBandY0 + kLineupBandPitch * team;
+}
+// Header line at y+2: team chip | "TEAM n" | POWER | seat run.
+inline constexpr int kLineupHeaderDy = 2;
+inline constexpr int kLineupChipX = 12;
+inline constexpr int kLineupChipSize = 10;
+inline constexpr int kLineupTeamTextX = 26;
+inline constexpr int kLineupPowerTextX = 70;
+inline constexpr int kLineupSeatRunX = 150;
+inline constexpr int kLineupSeatRunRightX = 306;
+inline constexpr int kLineupSeatRunChars =
+    (kLineupSeatRunRightX - kLineupSeatRunX) / 6;  // 26, then "+n"
+// Knob line at y+15 (amendment B9): the FILL face, then the MAP UNITS box
+// — the Base Camp deploy box verbatim (14x10, label "X" when the map's
+// units are fielded) — with its caption text at x=116, then the
+// census/diagnostic text at x=190 (21-char budget: 190 + 21*6 = 316, the
+// glyph columns land inside the 320 canvas even past the panel's bevel).
+inline constexpr int kLineupKnobDy = 15;
+inline constexpr int kLineupKnobH = 15;
+inline constexpr int kLineupFillX = 12;
+inline constexpr int kLineupFillW = 80;
+inline constexpr int kLineupMapUnitsX = 98;
+inline constexpr int kLineupMapUnitsW = 14;
+inline constexpr int kLineupMapUnitsH = 10;
+// The box centers in the 15px knob line: y+15 + (15-10)/2 = y+17.
+inline constexpr int kLineupMapUnitsDy =
+    kLineupKnobDy + (kLineupKnobH - kLineupMapUnitsH) / 2;
+inline constexpr int kLineupMapUnitsTextX = 116;
+inline constexpr int kLineupCensusX = 190;
+inline constexpr int kLineupCensusChars = 21;
+inline constexpr int kLineupCensusDy = 19;
+// The title band's right-hand slot: an active toast wins it, else the
+// networked session census (right-aligned, ending on the panel edge).
+inline constexpr int kLineupTitleCensusChars = 40;
+// Action strip (amendment B6): BACK | SPLIT EVEN | SPLIT FAIR | UNITE.
+// BACK anchors on the panel's left rail (x=8, the panel edge); the three
+// actions pack RIGHT from the panel rail at x=312 with uniform 6px gutters,
+// leaving one deliberate wide gap between BACK and SPLIT EVEN — the cancel
+// stands apart from the roster actions.
+inline constexpr int kLineupStripY = 176;
+inline constexpr int kLineupStripH = 18;
+inline constexpr int kLineupStripGap = 6;
+inline constexpr int kLineupStripRightX = 312;
+inline constexpr int kLineupBackX = kLineupPanelX1;  // 8
+inline constexpr int kLineupBackW = 44;
+inline constexpr int kLineupSplitW = 68;
+inline constexpr int kLineupUniteW = 38;
+inline constexpr int kLineupUniteX =
+    kLineupStripRightX - kLineupUniteW;                         // 274
+inline constexpr int kLineupSplitFairX =
+    kLineupUniteX - kLineupStripGap - kLineupSplitW;            // 200
+inline constexpr int kLineupSplitEvenX =
+    kLineupSplitFairX - kLineupStripGap - kLineupSplitW;        // 126
+static_assert(kLineupUniteX + kLineupUniteW == kLineupStripRightX,
+              "the action strip closes flush on the panel rail");
+static_assert(kLineupBackX + kLineupBackW + kLineupStripGap <=
+                  kLineupSplitEvenX,
+              "BACK keeps clear of the right-packed actions");
+static_assert(lineup_band_y(3) + kLineupKnobDy + kLineupKnobH <
+                  kLineupPanelY2,
+              "the last band's knob row stays inside the panel");
+
+// The lobby's seat picture as LINEUP consumes it. A LOCAL session's lobby
+// owns every seat it lists but reports EMPTY local_player_indices by
+// contract (picker_lobby_client.h), and an uninitialized local lobby lists
+// nothing at all — this helper applies the Base Camp recipe (all seats
+// local; synthesize from the save when the lobby is empty) so the bands,
+// the knob occupancy check, and the SPLIT actions all read one picture.
+struct LineupSeatView {
+    std::vector<og::sim::LobbyPlayer> players;  // sorted by player_index
+    std::vector<std::uint8_t> local_indices;    // THIS machine's seats
+};
+LineupSeatView picker_lineup_seat_view();
+
+// The FIGHTERS list layout contract retired with amendment B6: the Base
+// Camp roster (its chip networked-editable through
+// lineup_fighter_team_editable) is the one home of the per-fighter team
+// cycler and deploy toggle.
+
+// The per-team census of the map's own authored units on the loaded picker
+// level (amendment B4): the count the MAP UNITS box gates on — 0 dims the
+// box inert and the band reads NO MAP UNITS. Livings only (generators
+// belong to the GENERATOR RATE knob), dead skipped, teams 0..3. The
+// terminals read the same numbers through LineupTeamBand::map_unit_count.
+std::array<int, 4> picker_lineup_map_unit_counts();
+
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
 // installed BaseCampScreenState); the SCENARIO subscreen has two visibility
-// axes: SET CAMPAIGN / SET LEVEL / TROOPS gate on the host axis, and the
+// axes: SET CAMPAIGN / SET LEVEL gate on the host axis, and the
 // re-homed TEAMS / LIMIT rows (#218) gate on the versus-campaign axis
 // (match_settings_visible) — visible to joiners too, read-only there.
 void picker_wire_scenario_menu_nav(button* buttons, int count,
@@ -463,16 +676,17 @@ void picker_wire_scenario_menu_nav(button* buttons, int count,
                                    bool match_settings_visible);
 
 // The SCENARIO screen's per-frame visibility/label/nav sync (the spec's
-// Rewire program): host-gates SET CAMPAIGN / SET LEVEL / TROOPS,
+// Rewire program): host-gates SET CAMPAIGN / SET LEVEL,
 // versus-gates TEAMS / LIMIT (visible read-only for joiners), re-derives
-// the three settings labels from the save on both surfaces, parks the
-// spare, and rewires the graph through picker_wire_scenario_menu_nav.
+// the three settings labels from the save on both surfaces (LINEUP stays
+// visible for everyone), and rewires the graph through
+// picker_wire_scenario_menu_nav.
 void sync_scenario_menu_host_control_visibility(button* buttons,
                                                 int num_buttons,
                                                 int& highlighted_button);
 
 // --- TRAIN screen layout contract ------------------------------------------
-// Positional index of the team cycler ("Playing on Team N") in
+// Positional index of the team cycler ("Team N") in
 // kTrainMenuRows / picker_trainmenu_buttons(). The train content pass and
 // the ChangeTeam/cycle callbacks write its live label/outline by this index
 // (the G8 sweep of the raw allbuttons_[18] writes when VIEW TEAM retired).

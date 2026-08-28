@@ -468,6 +468,9 @@ TEST_F(ModesMutant, bot_fill_reaches_the_default_fighter_count)
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
+    // E5: the band fill needs a turned wheel now — the stored 0 is NONE
+    // (E1) and an all-NONE empty band refuses instead of filling.
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;
     fx.tick(1);
 
     ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
@@ -527,17 +530,19 @@ TEST_F(ModesMutant, authored_troops_always_strip_and_wildlife_stays)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
-TEST_F(ModesMutant, matched_request_is_a_noop_for_band_bot_fill)
+TEST_F(ModesMutant, band_fill_solves_without_touching_the_matched_seam)
 {
-    // TROOPS: FAIR's power model packs a 4-team plan (PLAN_BASE) that band
-    // bytes overflow, so the conversion's bot singles use the legacy
-    // session-difficulty level formula and never touch the MATCHED seam.
+    // The team modes' plan packing (PLAN_BASE) indexes score teams, which
+    // band bytes overflow — so the conversion's bot singles solve against
+    // the weakest deployed fighter (B3's band spelling) WITHOUT banking
+    // anything in the shared MATCHED slots: no target, no plan, no
+    // announce, no facts.
     ModesCtfWorld fx(kMutantLevelA);
-    fx.arm_matched();
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: turned wheel
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
     ASSERT_NE(nullptr, hero);
     fx.tick(1);
@@ -547,9 +552,10 @@ TEST_F(ModesMutant, matched_request_is_a_noop_for_band_bot_fill)
     EXPECT_FALSE(hero->dead());
     EXPECT_GE(hero->team_num(), kBandBase);
     EXPECT_EQ(0, fx.var(kSlotMatchedTarget))
-        << "the band fill never censuses a matched target";
-    EXPECT_EQ(0, fx.var(kSlotMatchedPlan)) << "no seat ever solves";
-    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+        << "the band fill never banks a matched target";
+    EXPECT_EQ(0, fx.var(kSlotMatchedPlan)) << "no plan is ever packed";
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced))
+        << "no announce latch, no banked facts";
     EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"));
     for (const auto& uptr : fx.world().oblist)
     {
@@ -558,9 +564,9 @@ TEST_F(ModesMutant, matched_request_is_a_noop_for_band_bot_fill)
             continue;
         if (w->myguy != nullptr || w->stats() == nullptr)
             continue;
-        EXPECT_EQ(2, w->stats()->level())
-            << "legacy formula: max(1, difficulty/100 + 1) at the default "
-               "100 percent";
+        EXPECT_EQ(1, w->stats()->level())
+            << "each single solves against the fresh hero's f (a fresh "
+               "soldier prices closest to the L1 rung of its own family)";
     }
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
@@ -1417,6 +1423,7 @@ TEST_F(ModesMutant, bot_only_win_is_rematch_shape)
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot band
     fx.tick(1);
     ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
     int winner_slot = -1;
@@ -1506,6 +1513,7 @@ std::string run_mutant_bot_match(int ticks, bool* crowned)
     fx.spawn_anchor(1, 400, 300);
     fx.spawn_anchor(2, 300, 400);
     fx.spawn_anchor(3, 400, 400);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot band
     fx.world().ctf_requested_respawn_ticks = 30;
     for (int i = 0; i < ticks; ++i)
     {

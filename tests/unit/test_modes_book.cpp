@@ -21,15 +21,17 @@
 // header readout and the GAME row, and the RANDOM SCENARIO roll (D3, which
 // replaced TONIGHT'S CARD) is a camp action whose result carries the level.
 // The seven field pages, the games index (which keeps the signature, since
-// the cover is what it changes) and MATCH SETUP — three knobs the host
-// turns one click at a time (D4, which retired the presets) — are the
-// rooms, reached by page rows.
+// the cover is what it changes) and MATCH SETUP — the TEAMS/FILL macros
+// over the per-team fill array (lineup amendment 5) above the two knobs
+// the host turns one click at a time (D4, which retired the presets) —
+// are the rooms, reached by page rows.
 
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -109,17 +111,21 @@ constexpr int kCampRosterRows = 3;
 // DECK_SIZE, which the roll inherits as og.campaign_random(#rows)).
 constexpr int kArenaCount = 39;
 
-// MATCH SETUP's knobs (D4 — the presets retired): one row each, in the
+// MATCH SETUP's rows (D4 — the presets retired): one row each, in the
 // order the page composes them, each labelled with the value it holds.
-// TIME LIMIT joined as the fourth in #241 — the summaries below (the rules
-// line and the camp's digest) deliberately stayed at three, because the
-// digest's 20-char note budget cannot hold a fourth term and the row itself
-// already wears its value where the host turns it.
+// TIME LIMIT joined in #241 — the rules line deliberately stays at the
+// score, because the row itself already wears its value where the host
+// turns it. TEAMS left in the 2026-08-26 lineup amendment (A1/A3) and
+// TROOPS in amendment B5; lineup amendment 5 (G1-G3) seats TEAMS and FILL
+// back ABOVE the knobs as macros over the one per-team fill[] array — no
+// store of their own, faces derived at fetch, writes only through
+// og.campaign_match_set("fill_N") — and the camp's digest now carries the
+// sides and the fill beside the score.
 constexpr std::size_t kTeamsRow = 0;
-constexpr std::size_t kScoreRow = 1;
-constexpr std::size_t kTroopsRow = 2;
+constexpr std::size_t kFillRow = 1;
+constexpr std::size_t kScoreRow = 2;
 constexpr std::size_t kTimeRow = 3;
-constexpr const char* kKnobIds[] = {"teams", "score", "troops", "time"};
+constexpr const char* kKnobIds[] = {"teams", "fill", "score", "time"};
 constexpr std::size_t kKnobCount = sizeof(kKnobIds) / sizeof(kKnobIds[0]);
 
 // Display budgets (the imaginations pins).
@@ -599,8 +605,9 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_EQ(CampaignPickerSession::Kind::Page, setup.kind);
     EXPECT_EQ("setup", setup.id);
     EXPECT_EQ("MATCH SETUP", setup.label);
-    EXPECT_EQ("Auto, map, all", setup.note) << "the rules digest, at note "
-                                               "length";
+    EXPECT_EQ("1-way, none, map", setup.note)
+        << "the rules digest, at note length: the sides, the fill and the "
+           "score (amendment 5)";
 
     // The roster keeps every capability and no oath column: this campaign
     // has no story reason for locks or assignment.
@@ -722,7 +729,7 @@ TEST_F(ModesBookTest, terminal_camp_rolls_the_scenario_and_names_what_it_set)
               io.pages[0].find("   3. RANDOM SCENARIO - any game, any field\n"))
         << io.pages[0];
     EXPECT_NE(std::string::npos,
-              io.pages[0].find("   4. MATCH SETUP - Auto, map, all  >\n"))
+              io.pages[0].find("   4. MATCH SETUP - 1-way, none, map  >\n"))
         << "the fourth row is on the first face of every client";
 
     // And the click was not a no-op: the refetched camp is set to the
@@ -842,7 +849,7 @@ TEST_F(ModesBookTest, joiner_camp_cuts_the_roll_and_the_sign)
     const CampaignZoneSession::Row& setup = rows[kCampJoinerSetupRow];
     EXPECT_EQ("setup", setup.id);
     EXPECT_EQ("MATCH SETUP", setup.label);
-    EXPECT_EQ("Auto, map, all", setup.note)
+    EXPECT_EQ("1-way, none, map", setup.note)
         << "the match rules are SYNCED: a joiner reads the same digest it "
            "cannot write, and the page behind the row says whose call it "
            "is";
@@ -1367,13 +1374,14 @@ TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
     const CampaignPickerSession::DecoratedPage& page = session.page();
     EXPECT_EQ("MATCH SETUP", page.title);
     ASSERT_EQ(1u, page.lines.size());
-    EXPECT_EQ("Auto sides, map score, all.", page.lines[0])
-        << "0 spells its MATCHUP meaning, and nothing is 'posted'";
+    EXPECT_EQ("Map score.", page.lines[0])
+        << "0 spells its MATCHUP meaning, and nothing is 'posted'; the "
+           "sides are LINEUP's, so the sentence opens on the score";
     ASSERT_EQ(kKnobCount, page.rows.size());
-    const char* labels[] = {"TEAMS: AUTO", "TARGET SCORE: MAP", "TROOPS: ALL",
+    const char* labels[] = {"TEAMS: 1", "FILL: NONE", "TARGET SCORE: MAP",
                             "TIME LIMIT: MAP"};
-    const char* notes[] = {"auto, 2, 3, 4", "map, 1, 3, 5, 10",
-                           "all, own, fair", "map, 5, 10, 15, 20m"};
+    const char* notes[] = {"2, 3, 4", "none to brutal", "map, 1, 3, 5, 10",
+                           "map, 5, 10, 15, 20m"};
     for (std::size_t i = 0; i < kKnobCount; i++)
     {
         EXPECT_EQ(CampaignPickerSession::Kind::Action, page.rows[i].kind);
@@ -1388,15 +1396,21 @@ TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
 
     // An off-menu value (a match settled from the MATCHUP screen or a
     // lobby) spells itself on the row and in the line rather than lying.
+    // The macro faces DERIVE from the fill array the same way (G1): a
+    // LINEUP band set by hand reads back as the sides it fields.
     save_.ctf_strip_scenario_troops = 1;
     save_.ctf_capture_limit = 7;
     save_.time_limit = 2160;  // 3 minutes, off the cycle
+    save_.fill[2] = og::sim::kFillStrong;  // TEAM 3, straight off LINEUP
     session.refresh();
-    EXPECT_EQ("Auto sides, to 7, 1.", session.page().lines[0])
-        << "the line still speaks the three knobs it always did: a fourth "
-           "term does not fit the camp digest that shares its words";
+    EXPECT_EQ("To 7.", session.page().lines[0])
+        << "the line speaks the score, as ever; the sides and the clock "
+           "stay on their own rows";
+    EXPECT_EQ("TEAMS: 2", session.page().rows[kTeamsRow].label)
+        << "one on opponent beside the local team's own side";
+    EXPECT_EQ("FILL: STRONG", session.page().rows[kFillRow].label)
+        << "the common on-opponent value is the face";
     EXPECT_EQ("TARGET SCORE: 7", session.page().rows[kScoreRow].label);
-    EXPECT_EQ("TROOPS: 1", session.page().rows[kTroopsRow].label);
     EXPECT_EQ("TIME LIMIT: 3M", session.page().rows[kTimeRow].label)
         << "minutes, from the ticks the modes actually run on";
 
@@ -1408,6 +1422,7 @@ TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
     EXPECT_EQ(7, save_.ctf_capture_limit);
     EXPECT_EQ(1, save_.ctf_strip_scenario_troops);
     EXPECT_EQ(2160, save_.time_limit);
+    EXPECT_EQ(og::sim::kFillStrong, save_.fill[2]);
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "a fetch never writes a knob";
 }
@@ -1422,23 +1437,12 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
         const char* label;
         const char* said;
     };
-    const std::vector<Step> teams = {
-        {2, "TEAMS: 2", "Teams: 2."},
-        {3, "TEAMS: 3", "Teams: 3."},
-        {4, "TEAMS: 4", "Teams: 4."},
-        {0, "TEAMS: AUTO", "Teams: the map's own."},
-    };
     const std::vector<Step> score = {
         {1, "TARGET SCORE: 1", "Score to 1."},
         {3, "TARGET SCORE: 3", "Score to 3."},
         {5, "TARGET SCORE: 5", "Score to 5."},
         {10, "TARGET SCORE: 10", "Score to 10."},
         {0, "TARGET SCORE: MAP", "Score: the map's own."},
-    };
-    const std::vector<Step> troops = {
-        {2, "TROOPS: OWN", "Troops: your own."},
-        {3, "TROOPS: FAIR", "Troops: fair bots."},
-        {0, "TROOPS: ALL", "Troops: the map's own."},
     };
     // Ticks in the save (12/s, the manifest's own unit), minutes on the
     // face. Every value on the cycle survives the provider's [720, 21600]
@@ -1455,9 +1459,7 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
         const char* setting;
         const std::vector<Step>* steps;
     } knobs[] = {
-        {kTeamsRow, "team_count", &teams},
         {kScoreRow, "score_limit", &score},
-        {kTroopsRow, "strip_troops", &troops},
         {kTimeRow, "time_limit", &time},
     };
 
@@ -1481,11 +1483,15 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
                 << "the refetched row wears the new value";
         }
         // A whole lap leaves the knob exactly where it started, and the
-        // other three never moved.
+        // other never moved (nor the two retired fields, which no row can
+        // reach: TEAMS since A3, TROOPS since B5 — nor the fill array,
+        // which only the macro rows and LINEUP write).
         EXPECT_EQ(0, save_.ctf_team_count);
         EXPECT_EQ(0, save_.ctf_capture_limit);
         EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
         EXPECT_EQ(0, save_.time_limit);
+        for (const short fill : save_.fill)
+            EXPECT_EQ(0, fill) << "a score/time lap never deals a squad";
     }
 }
 
@@ -1494,29 +1500,18 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
 // pretending to know where it was.
 TEST_F(ModesBookTest, an_off_menu_value_rejoins_the_cycle_at_its_head)
 {
-    save_.ctf_team_count = 1;   // below the 2..4 the cycle offers
     save_.ctf_capture_limit = 7;
     save_.ctf_strip_scenario_troops = 1;  // the retired middle state
     save_.time_limit = 5400;    // a 7:30 court, between two cycle stops
 
     CampaignPickerSession session(save_);
     ASSERT_TRUE(session.open_at("setup"));
-    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label);
-
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTeamsRow).kind);
-    EXPECT_EQ("Teams: the map's own.", session.take_message());
-    EXPECT_EQ(0, save_.ctf_team_count);
+    EXPECT_EQ("TARGET SCORE: 7", session.page().rows[kScoreRow].label);
 
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
               session.choose(kScoreRow).kind);
     EXPECT_EQ("Score: the map's own.", session.take_message());
     EXPECT_EQ(0, save_.ctf_capture_limit);
-
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTroopsRow).kind);
-    EXPECT_EQ("Troops: the map's own.", session.take_message());
-    EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
 
     EXPECT_EQ("TIME LIMIT: 7M", session.page().rows[kTimeRow].label)
         << "5400 ticks is 7 whole minutes, said plainly";
@@ -1526,6 +1521,226 @@ TEST_F(ModesBookTest, an_off_menu_value_rejoins_the_cycle_at_its_head)
     EXPECT_EQ(0, save_.time_limit);
 }
 
+// ---------------------------------------------------------------------------
+// The TEAMS/FILL macros (lineup amendment 5, G1-G3)
+// ---------------------------------------------------------------------------
+
+// G2 round the wheel from rest: TEAMS: 1 is the derived all-NONE face, off
+// the 2 -> 3 -> 4 wheel, so the first click rejoins at the head and each
+// later one steps on — dealing FAIR (the effective value while FILL reads
+// NONE) to the lowest opponents in ascending order and turning the rest
+// NONE. Every write is a fill_N write (G1): the faces, the LINEUP bands
+// and the camp digest all read the one array.
+TEST_F(ModesBookTest, teams_macro_deals_fair_sides_ascending_and_wraps)
+{
+    (void)og::data::consume_match_settings_dirty();
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("setup"));
+    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label)
+        << "the all-NONE rest: the local side alone";
+
+    struct Step {
+        const char* said;
+        const char* teams_label;
+        const char* fill_label;
+        std::array<short, 4> fills;
+    };
+    const short fair = og::sim::kFillFair;
+    const std::vector<Step> steps = {
+        {"Two sides. One squad at FAIR.", "TEAMS: 2", "FILL: FAIR",
+         {0, fair, 0, 0}},
+        {"Three sides. Two squads at FAIR.", "TEAMS: 3", "FILL: FAIR",
+         {0, fair, fair, 0}},
+        {"Four sides. Three squads at FAIR.", "TEAMS: 4", "FILL: FAIR",
+         {0, fair, fair, fair}},
+        {"Two sides. One squad at FAIR.", "TEAMS: 2", "FILL: FAIR",
+         {0, fair, 0, 0}},
+    };
+    for (const Step& step : steps)
+    {
+        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+                  session.choose(kTeamsRow).kind)
+            << step.teams_label;
+        EXPECT_EQ(step.said, session.take_message());
+        EXPECT_EQ(step.fills, save_.fill);
+        EXPECT_EQ(step.teams_label, session.page().rows[kTeamsRow].label)
+            << "the refetched face derives from the array";
+        EXPECT_EQ(step.fill_label, session.page().rows[kFillRow].label);
+        EXPECT_TRUE(og::data::consume_match_settings_dirty())
+            << "every macro write rides the dirty -> sync -> restage tail";
+    }
+    EXPECT_EQ(0, save_.fill[0])
+        << "a TEAMS turn never deals the local band (H1 is FILL's rule)";
+
+    // The camp digest follows the array: the sides, the fill, the score.
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ("2-way, fair, map", camp_rows(zone)[kCampSetupRow].note);
+}
+
+// The effective value (G2): the FILL row's own word where it names one —
+// a STRONG face deals STRONG sides — and FAIR where the face is MIXED,
+// because a diverged pair names nothing a new side could honestly copy.
+TEST_F(ModesBookTest, teams_macro_copies_the_fill_face_and_fair_on_mixed)
+{
+    save_.fill[1] = og::sim::kFillStrong;
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("setup"));
+    EXPECT_EQ("TEAMS: 2", session.page().rows[kTeamsRow].label);
+    EXPECT_EQ("FILL: STRONG", session.page().rows[kFillRow].label);
+
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kTeamsRow).kind);
+    EXPECT_EQ("Three sides. Two squads at STRONG.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{0, og::sim::kFillStrong,
+                                    og::sim::kFillStrong, 0}),
+              save_.fill)
+        << "the new side copies the face, the standing one keeps it";
+
+    // LINEUP diverges a band (G1 keeps that its right): the face reads
+    // MIXED, the digest says so, and the next TEAMS turn falls back to
+    // FAIR for every side it deals.
+    save_.fill[1] = og::sim::kFillWeak;
+    session.refresh();
+    EXPECT_EQ("TEAMS: 3", session.page().rows[kTeamsRow].label);
+    EXPECT_EQ("FILL: MIXED", session.page().rows[kFillRow].label);
+    {
+        CampaignZoneSession zone(save_);
+        zone.fetch();
+        ASSERT_TRUE(zone.scripted());
+        EXPECT_EQ("3-way, mixed, map", camp_rows(zone)[kCampSetupRow].note);
+    }
+
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kTeamsRow).kind);
+    EXPECT_EQ("Four sides. Three squads at FAIR.", session.take_message());
+    const short fair = og::sim::kFillFair;
+    EXPECT_EQ((std::array<short, 4>{0, fair, fair, fair}), save_.fill)
+        << "MIXED names nothing to copy, so the deal is FAIR across";
+}
+
+// G3 round the wheel: from rest each click turns on the LOWEST opponent
+// (the TEAMS: 2 shape) and the local band with it (H1) and walks them
+// WEAK, FAIR, STRONG, BRUTAL; the wrap writes NONE — the own band
+// cleared with the rest — and the table goes quiet. With two sides on,
+// one click deals them BOTH plus the own band; a MIXED face is off the
+// wheel and rejoins at the head — NONE — like every off-menu value on
+// this page.
+TEST_F(ModesBookTest, fill_macro_turns_on_the_lowest_opponent_then_every_on_side)
+{
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("setup"));
+
+    struct Step {
+        const char* said;
+        const char* label;
+        short code;
+        const char* teams_label;
+    };
+    const std::vector<Step> steps = {
+        {"One squad at WEAK. Yours too.", "FILL: WEAK", og::sim::kFillWeak,
+         "TEAMS: 2"},
+        {"One squad at FAIR. Yours too.", "FILL: FAIR", og::sim::kFillFair,
+         "TEAMS: 2"},
+        {"One squad at STRONG. Yours too.", "FILL: STRONG",
+         og::sim::kFillStrong, "TEAMS: 2"},
+        {"One squad at BRUTAL. Yours too.", "FILL: BRUTAL",
+         og::sim::kFillBrutal, "TEAMS: 2"},
+        {"No squads.", "FILL: NONE", 0, "TEAMS: 1"},
+    };
+    for (const Step& step : steps)
+    {
+        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+                  session.choose(kFillRow).kind)
+            << step.label;
+        EXPECT_EQ(step.said, session.take_message());
+        EXPECT_EQ((std::array<short, 4>{step.code, step.code, 0, 0}),
+                  save_.fill)
+            << "the lowest opponent AND the own band carry the wheel (H1)";
+        EXPECT_EQ(step.label, session.page().rows[kFillRow].label);
+        EXPECT_EQ(step.teams_label, session.page().rows[kTeamsRow].label)
+            << "the own band adds allies, never a side (H2)";
+    }
+
+    // Two sides on: one click deals them both, and the own band with them.
+    save_.fill = {0, og::sim::kFillFair, og::sim::kFillFair, 0};
+    session.refresh();
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kFillRow).kind);
+    EXPECT_EQ("Two squads at STRONG. Yours too.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillStrong,
+                                    og::sim::kFillStrong,
+                                    og::sim::kFillStrong, 0}),
+              save_.fill);
+
+    // LINEUP diverges them: MIXED rejoins at the head, and the head is
+    // NONE — every side off, the honest zero of a face that named
+    // nothing.
+    save_.fill[2] = og::sim::kFillWeak;
+    session.refresh();
+    EXPECT_EQ("FILL: MIXED", session.page().rows[kFillRow].label);
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kFillRow).kind);
+    EXPECT_EQ("No squads.", session.take_message());
+    for (const short fill : save_.fill)
+        EXPECT_EQ(0, fill);
+    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label);
+}
+
+// G2's "skipping the local team" means the seat's team, not team 0: with
+// the save's my_team on TEAM 3 (the G4 fallback every scriptless surface
+// ends on) the macros deal teams 1 and 2 first. Amendment 6 seats the own
+// band in the FILL face (H2: a LINEUP-set own fill wears its word, and a
+// TEAMS deal copies it) and under the FILL wheel (H1) — but it is never a
+// SIDE, and a TEAMS turn never writes it.
+TEST_F(ModesBookTest, macros_answer_to_the_local_seats_team)
+{
+    save_.my_team = 2;
+    save_.fill[2] = og::sim::kFillBrutal;  // the OWN band, set from LINEUP
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("setup"));
+    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label)
+        << "an own-team fill adds allies, never a side";
+    EXPECT_EQ("FILL: BRUTAL", session.page().rows[kFillRow].label)
+        << "the face wears the own band's word (H2)";
+
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kTeamsRow).kind);
+    EXPECT_EQ("Two sides. One squad at BRUTAL.", session.take_message())
+        << "the deal copies the face, and the face is the own band's";
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillBrutal, 0,
+                                    og::sim::kFillBrutal, 0}),
+              save_.fill)
+        << "the lowest OPPONENT is TEAM 1; a TEAMS turn leaves the own band";
+
+    // FILL from the BRUTAL face wraps to NONE — clearing the own band
+    // WITH the on opponent (H1: the wheel owns every band it counts).
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kFillRow).kind);
+    EXPECT_EQ("No squads.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{0, 0, 0, 0}), save_.fill);
+    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label);
+
+    // And on from rest: the lowest opponent turns on and the own band
+    // rides along, both at WEAK.
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kFillRow).kind);
+    EXPECT_EQ("One squad at WEAK. Yours too.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillWeak, 0,
+                                    og::sim::kFillWeak, 0}),
+              save_.fill)
+        << "the own band is my_team's, not team 0's";
+
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kTeamsRow).kind);
+    EXPECT_EQ("Three sides. Two squads at WEAK.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillWeak, og::sim::kFillWeak,
+                                    og::sim::kFillWeak, 0}),
+              save_.fill)
+        << "ascending order skips the local seat's own team";
+}
+
 TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
 {
     (void)og::data::consume_match_settings_dirty();
@@ -1533,37 +1748,33 @@ TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
     ASSERT_TRUE(session.open_at("setup"));
 
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTeamsRow).kind);
-    EXPECT_EQ(2, save_.ctf_team_count);
+              session.choose(kScoreRow).kind);
+    EXPECT_EQ(1, save_.ctf_capture_limit);
     EXPECT_TRUE(og::data::consume_match_settings_dirty())
         << "a successful write arms the session tail";
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "the flag is consumed";
-    EXPECT_EQ("2 sides, map score, all.", session.page().lines[0])
+    EXPECT_EQ("To 1.", session.page().lines[0])
         << "the refetched page re-derives the rules";
 
-    // Three more clicks put the score on 5, two put the troops on fair:
-    // the knobs are independent, and the line carries all three.
-    for (int i = 0; i < 3; i++)
+    // Two more clicks put the score on 5: the knobs are independent.
+    for (int i = 0; i < 2; i++)
     {
         ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
                   session.choose(kScoreRow).kind);
     }
-    for (int i = 0; i < 2; i++)
-    {
-        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-                  session.choose(kTroopsRow).kind);
-    }
     // And one puts the clock on five minutes — which the summaries
-    // deliberately do NOT speak: the line and the camp digest stayed at
-    // three knobs (#241), so the TIME LIMIT row is the only place its value
+    // deliberately do NOT speak: the line and the camp digest speak the
+    // score (#241), so the TIME LIMIT row is the only place its value
     // shows.
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
               session.choose(kTimeRow).kind);
     EXPECT_EQ(5, save_.ctf_capture_limit);
-    EXPECT_EQ(3, save_.ctf_strip_scenario_troops);
     EXPECT_EQ(3600, save_.time_limit);
-    EXPECT_EQ("2 sides, to 5, fair.", session.page().lines[0]);
+    EXPECT_EQ(0, save_.ctf_team_count) << "no row reaches the retired knob";
+    EXPECT_EQ(0, save_.ctf_strip_scenario_troops)
+        << "and none reaches the other one either (B5)";
+    EXPECT_EQ("To 5.", session.page().lines[0]);
     EXPECT_EQ("TIME LIMIT: 5M", session.page().rows[kTimeRow].label);
     EXPECT_TRUE(og::data::consume_match_settings_dirty());
 
@@ -1572,7 +1783,7 @@ TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
     CampaignZoneSession zone(save_);
     zone.fetch();
     ASSERT_TRUE(zone.scripted());
-    EXPECT_EQ("2, to 5, fair", camp_rows(zone)[kCampSetupRow].note);
+    EXPECT_EQ("1-way, none, to 5", camp_rows(zone)[kCampSetupRow].note);
     EXPECT_TRUE(zone.texts().empty());
 }
 
@@ -1588,7 +1799,7 @@ TEST_F(ModesBookTest, joiner_setup_page_reads_and_refuses_without_writing)
     const CampaignPickerSession::DecoratedPage page = open_page("setup");
     EXPECT_TRUE(page.rows.empty()) << "no row that could only refuse";
     ASSERT_EQ(2u, page.lines.size());
-    EXPECT_EQ("Auto sides, map score, all.", page.lines[0]);
+    EXPECT_EQ("Map score.", page.lines[0]);
     EXPECT_EQ("The host calls the rules.", page.lines[1])
         << "who decides, stated before any click";
 
@@ -1603,6 +1814,8 @@ TEST_F(ModesBookTest, joiner_setup_page_reads_and_refuses_without_writing)
     EXPECT_EQ(0, save_.ctf_capture_limit);
     EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
     EXPECT_EQ(0, save_.time_limit);
+    for (const short fill : save_.fill)
+        EXPECT_EQ(0, fill) << "the macro backstop refuses before any write";
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "a refusal never arms the session tail";
 }
@@ -1645,10 +1858,14 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
     // than quietly ellipsing on the panel.
     //
     // Both ends of the rules digest are swept with it: the defaults spell
-    // the longest SENTENCE ("map score"), a set score the longest
-    // NOTE ("to 50").
+    // the longest SENTENCE ("map score"), and the macro worst case the
+    // longest NOTE — three BRUTAL sides over a 50-point score is
+    // "4-way, brutal, to 50", the digest's whole 20-char budget spent to
+    // the last column.
     const DerivedBook book = derive_book();
     save_.ctf_strip_scenario_troops = 3;
+    save_.fill = {0, og::sim::kFillBrutal, og::sim::kFillBrutal,
+                  og::sim::kFillBrutal};
     const short limits[] = {0, 50};
     for (const short limit : limits)
     {
@@ -1692,4 +1909,32 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
             save_.completed_levels.clear();
         }
     }
+}
+
+// The LINEUP hook through the REAL shipped campaign script (§4): mounting
+// builtin/modes.glad registers campaign_picker.lua, whose lineup table is
+// `power` alone since amendment B1 (the preset names retired with the BOTS
+// wheel) — mode_match's own stat_power over the derived-stat row.
+TEST_F(ModesBookTest, lineup_hook_registers_and_prices_with_stat_power)
+{
+    EXPECT_TRUE(hooks::campaign_lineup_registered())
+        << "campaign_picker.lua must register the lineup table";
+
+    // power(row) == stat_power(hp, mp, armor, damage, stepsize, ff,
+    // level), hand computed for a fixed row:
+    //   ED = (10 * (2 + 3)) / 4 = 12; RATE = 120 / 6 = 20;
+    //   OFF = 12 * 20 + 5 * 3 = 255; EHP = 100 + 4 * 4 + 20 / 2 = 126;
+    //   f = (126 * (255 + 60)) / 60 = 39690 / 60 = 661.
+    hooks::LineupPowerRow row;
+    row.family = "SOLDIER";
+    row.level = 2;
+    row.hp = 100;
+    row.mp = 20;
+    row.armor = 4;
+    row.damage = 10;
+    row.stepsize = 3;
+    row.fire_frequency = 6;
+    long long power = 0;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(661, power) << "the campaign's power IS mode_match.stat_power";
 }

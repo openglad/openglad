@@ -334,6 +334,12 @@ void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
     save.my_team = 0;
     save.numplayers = 1;
     save.allied_mode = 0;
+    // A defined resting state includes the match knobs: in binary order an
+    // earlier flow's fill/map_units would otherwise leak into this save and
+    // the amendment-5 macro faces (derived from fill[]) would not be at
+    // rest (caught by the ordered og_test_matchup run, invisible alone).
+    save.fill = {};
+    save.map_units = {};
     save.scen_num = scen_num;
     save.current_campaign = campaign;
     save.current_levels.clear();
@@ -427,7 +433,7 @@ constexpr const char* kZoneScript = R"LUA(og.register_campaign_hooks({
       return { message = "Kit stowed." }
     end
     if entry_id == "bread" then
-      og.campaign_match_set("team_count", 3)
+      og.campaign_match_set("respawn_ticks", 300)
       return { message = "Bread eaten." }
     end
     if entry_id == "dice" then
@@ -692,7 +698,7 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
         << "a submenu action that wrote a MATCHUP knob must sync it";
     EXPECT_EQ(15, save.ctf_capture_limit)
         << "the zone action's og.campaign_match_set landed";
-    EXPECT_EQ(3, save.ctf_team_count)
+    EXPECT_EQ(300, save.ctf_respawn_ticks)
         << "the submenu action's og.campaign_match_set landed";
 
     // The deploy lock refused the unassigned re-deploy with the toast.
@@ -2071,15 +2077,24 @@ bool wait_for_interactable_label_containing(const std::string& id,
 // row of named presets, so the still that documents it has to show the
 // VALUES on the faces — and the later captures have to show them actually
 // moving, since a page of labels that never change would look exactly the
-// same from a screenshot. The fourth row is the clock (#241), and it gets
-// its own shot: MAP is the map's own limit, 5M is a host overriding it.
+// same from a screenshot. TEAMS retired with lineup amendment A1/A3 and
+// TROOPS with B5, and amendment 5 (G2/G3) seats TEAMS and FILL back on
+// top as MACROS over the per-team fill array: the page is now TEAMS and
+// FILL over TARGET SCORE and the clock (#241). The macro shot steps TEAMS
+// to 2 (dealing the lowest opponent FAIR) and FILL one stop past that
+// FAIR face to STRONG; the clock still gets its own shot — MAP is the
+// map's own limit, 5M is a host overriding it.
 struct MatchSetupShotState
 {
     bool camp_seen = false;
     bool setup_row_seen = false;
     bool page_opened = false;
-    bool teams_row_read_auto = false;
-    bool teams_row_stepped_to_two = false;
+    bool teams_row_read_one = false;
+    bool fill_row_read_none = false;
+    bool teams_stepped_to_two = false;
+    bool fill_stepped_to_strong = false;
+    bool score_row_read_map = false;
+    bool score_row_stepped_to_one = false;
     bool time_row_read_map = false;
     bool time_row_stepped_to_five = false;
     bool finished = false;
@@ -2101,27 +2116,46 @@ int match_setup_injector(void* data)
     SDL_Delay(400);
     interact("zone_action_3");
 
-    // The zone submenu's own BACK owns the unique (10,169) rect.
+    // The zone submenu's own BACK owns the unique (10,169) rect. At rest
+    // the two macro rows lead the page (amendment 5): TEAMS: 1 — the
+    // derived all-NONE face — over FILL: NONE, then the two knobs at MAP.
     state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
-    state->teams_row_read_auto = wait_for_interactable_label_containing(
-        "zone_row_0", "TEAMS: AUTO ", 10000);
+    state->teams_row_read_one = wait_for_interactable_label_containing(
+        "zone_row_0", "TEAMS: 1", 10000);
+    state->fill_row_read_none = wait_for_interactable_label_containing(
+        "zone_row_1", "FILL: NONE", 10000);
+    state->score_row_read_map = wait_for_interactable_label_containing(
+        "zone_row_2", "TARGET SCORE: MAP", 10000);
+    state->time_row_read_map = wait_for_interactable_label_containing(
+        "zone_row_3", "TIME LIMIT: MAP", 10000);
     SDL_Delay(500);
     capture_zone_frame("zone_submenu_match_setup");
 
-    // One click walks the cycle one stop (auto -> 2) and speaks it.
+    // The macros move: one TEAMS click deals the lowest opponent FAIR
+    // (both faces re-derive from the one fill array), and one FILL click
+    // steps that FAIR face to STRONG.
     interact("zone_row_0");
-    state->teams_row_stepped_to_two = wait_for_interactable_label_containing(
-        "zone_row_0", "TEAMS: 2 ", 10000);
+    state->teams_stepped_to_two = wait_for_interactable_label_containing(
+        "zone_row_0", "TEAMS: 2", 10000);
+    SDL_Delay(400);
+    interact("zone_row_1");
+    state->fill_stepped_to_strong = wait_for_interactable_label_containing(
+        "zone_row_1", "FILL: STRONG", 10000);
+    SDL_Delay(400);
+    capture_zone_frame("uxr_match_setup_macros");
+    SDL_Delay(400);
+
+    // One click walks the score cycle one stop (map -> 1) and speaks it.
+    interact("zone_row_2");
+    state->score_row_stepped_to_one = wait_for_interactable_label_containing(
+        "zone_row_2", "TARGET SCORE: 1", 10000);
     SDL_Delay(400);
     capture_zone_frame("uxr_match_setup_cycled");
     SDL_Delay(400);
 
-    // Row 3 is the clock. A fresh match wears MAP — the limit the level's
-    // own manifest authored — and one click hands the host the shortest
+    // The clock: a fresh match wears MAP — the limit the level's own
+    // manifest authored — and one click hands the host the shortest
     // override the cycle offers.
-    state->time_row_read_map = wait_for_interactable_label_containing(
-        "zone_row_3", "TIME LIMIT: MAP", 10000);
-    SDL_Delay(400);
     interact("zone_row_3");
     state->time_row_stepped_to_five = wait_for_interactable_label_containing(
         "zone_row_3", "TIME LIMIT: 5M", 10000);
@@ -2158,17 +2192,27 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    verify_zone_shots("match_setup", 3);
+    verify_zone_shots("match_setup", 4);
 
     EXPECT_TRUE(state.camp_seen) << "main menu";
     EXPECT_TRUE(state.setup_row_seen)
         << "the Gamesmaster's fourth row is the MATCH SETUP door";
     EXPECT_TRUE(state.page_opened)
         << "the MATCH SETUP row must open the zone submenu";
-    EXPECT_TRUE(state.teams_row_read_auto)
-        << "a fresh match holds the map's own team count, and the row says "
-           "so on its face";
-    EXPECT_TRUE(state.teams_row_stepped_to_two)
+    EXPECT_TRUE(state.teams_row_read_one)
+        << "the macro rows lead the page (amendment 5), and the all-NONE "
+           "rest derives TEAMS: 1";
+    EXPECT_TRUE(state.fill_row_read_none)
+        << "FILL: NONE is the resting face of the second macro row";
+    EXPECT_TRUE(state.teams_stepped_to_two)
+        << "one TEAMS click deals the lowest opponent and re-derives the "
+           "face";
+    EXPECT_TRUE(state.fill_stepped_to_strong)
+        << "one FILL click steps the dealt FAIR face to STRONG";
+    EXPECT_TRUE(state.score_row_read_map)
+        << "a fresh match plays to the map's own target, and the row that "
+           "leads the page now says so on its face";
+    EXPECT_TRUE(state.score_row_stepped_to_one)
         << "clicking a knob row steps its cycle and re-labels the row";
     EXPECT_TRUE(state.time_row_read_map)
         << "a fresh match runs the map's own clock, and the TIME LIMIT row "

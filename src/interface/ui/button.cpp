@@ -453,9 +453,21 @@ private:
 } // namespace
 #endif
 
+namespace
+{
+// See allbuttons_generation() in button.h.
+unsigned int g_allbuttons_generation = 0;
+} // namespace
+
+unsigned int allbuttons_generation()
+{
+    return g_allbuttons_generation;
+}
+
 vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 {
     TRACE("menu", "init_buttons count=%d", numbuttons);
+    ++g_allbuttons_generation;
 
 #ifdef TESTING
     AllButtonsLock lock(get_allbuttons_mutex());
@@ -735,12 +747,23 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_hire_teamnum(arg);
     case ButtonAction::AlliedMode:
         return change_allied();
-    case ButtonAction::CycleCtfTeamCount:
-        return change_ctf_teams();
     case ButtonAction::CycleCtfCaptureLimit:
         return change_ctf_caps();
-    case ButtonAction::CycleCtfScenarioTroops:
-        return change_ctf_troops();
+    // LINEUP (docs/lineup-design.md §2): door, the two per-team band knobs
+    // (the button's arg carries the team 0..3), and the three SPLIT
+    // actions. (The FIGHTERS list door retired with amendment B6.)
+    case ButtonAction::OpenLineup:
+        return create_lineup_menu(call_arg);
+    case ButtonAction::CycleLineupFill:
+        return change_lineup_fill(arg);
+    case ButtonAction::ToggleLineupMapUnits:
+        return change_lineup_map_units(arg);
+    case ButtonAction::LineupSplitEven:
+        return lineup_split_action(0);
+    case ButtonAction::LineupSplitFair:
+        return lineup_split_action(1);
+    case ButtonAction::LineupUnite:
+        return lineup_split_action(2);
     case ButtonAction::ViewScenario:
         return create_view_scenario_menu(call_arg);
     case ButtonAction::ViewScenarioPageFlip:
@@ -791,6 +814,15 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         // Stash which ACTIVE GAMES row was clicked; configure_networking's
         // menu loop consumes it (retvalue only carries the action id).
         pks().networking_clicked_room_slot = arg;
+        return whatfunc;
+    case ButtonAction::NetworkingMachineRow:
+        // Session modes reuse the same stash for the clicked PLAYERS row
+        // (LINEUP §6) — the two list shapes are mutually exclusive per frame.
+        pks().networking_clicked_room_slot = arg;
+        return whatfunc;
+    case ButtonAction::NetworkingDisconnect:
+        // Confirm + teardown live in configure_networking's menu loop (they
+        // need the owned lobby client); retvalue carries the action id.
         return whatfunc;
     case ButtonAction::MenuSpecRow:
         // Stash which engine spec row was activated; run_menu_screen's loop

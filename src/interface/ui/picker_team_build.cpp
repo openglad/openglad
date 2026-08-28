@@ -250,6 +250,12 @@ void picker_prepare_async_team_build_start_request()
 // (run_menu_screen) calls this too; declared in picker_sdl_defs.h.
 bool team_build_remote_start_requested(Sint32& retvalue)
 {
+    // LINEUP §6: the Team Build family's per-frame poll is also where a
+    // kicked joiner notices the latched LobbyKickedMessage and swaps back
+    // to a local client (one call site — this check runs every frame in
+    // every TeamBuildScope screen and in the held-click spin waits).
+    (void)picker_revert_lobby_client_if_kicked();
+
     if (!g_start_game_requested || !picker_lobby_has_game_start_config())
         return false;
 
@@ -309,11 +315,12 @@ void ensure_highlighted_button_visible(const button* buttons,
 // the rewire lives on the spec in menu_screen_specs.cpp.
 
 // Full-graph rewire for the SCENARIO subscreen (pattern b): two visibility
-// axes — SET CAMPAIGN / SET LEVEL / TROOPS gate on the host,
-// TEAMS / LIMIT (#218, re-homed from MATCHUP) gate on the versus campaign
-// and stay visible to joiners as read-only labels. Every link is written on
-// every call so no variant inherits a stale one; the parked spare (the
-// retired MATCHUP door's ordinal) never participates.
+// axes — SET CAMPAIGN / SET LEVEL gate on the host, SCORE (#218,
+// re-homed from MATCHUP; A5) gates on the versus campaign and stays visible
+// to joiners as a read-only label. LINEUP (docs/lineup-design.md §2) is
+// always visible, like its row-mates; the parked spare (ordinal 7, the
+// retired TEAMS cell) is never linked. Every link is written on every call
+// so no variant inherits a stale one.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
                                    bool host_controls_visible,
@@ -332,45 +339,42 @@ void picker_wire_scenario_menu_nav(button* buttons,
         {.up = kScenarioMenuSetCampaignIndex,
          .down = kScenarioMenuViewScenarioIndex};
 
-    // y=100 row: VIEW LEVEL <-> PROGRESS; up-links close for joiners.
+    // y=140 knob row: SCORE alone at (30,140) since TROOPS retired
+    // (amendment B5), versus-gated. What DOWN from the y=100 row lands on
+    // is SCORE when it is visible, else BACK.
+    const int score_or = match ? kScenarioMenuCtfCapsIndex : -1;
+    const int under_left = score_or >= 0 ? score_or : kScenarioMenuBackIndex;
+    const int under_right = under_left;
+
+    // y=100 row: VIEW LEVEL <-> PROGRESS <-> LINEUP; up-links close for
+    // joiners.
     const int row_up = host ? kScenarioMenuSetLevelIndex : -1;
     buttons[kScenarioMenuViewScenarioIndex].nav =
         {.up = row_up,
-         .down = match ? kScenarioMenuCtfTeamsIndex : kScenarioMenuBackIndex,
+         .down = under_left,
          .right = kScenarioMenuProgressIndex};
     buttons[kScenarioMenuProgressIndex].nav =
         {.up = row_up,
-         .down = host ? kScenarioMenuTroopsIndex
-                      : (match ? kScenarioMenuCtfCapsIndex
-                               : kScenarioMenuBackIndex),
-         .left = kScenarioMenuViewScenarioIndex};
+         .down = under_right,
+         .left = kScenarioMenuViewScenarioIndex,
+         .right = kScenarioMenuLineupIndex};
+    buttons[kScenarioMenuLineupIndex].nav =
+        {.up = row_up,
+         .down = under_right,
+         .left = kScenarioMenuProgressIndex};
 
-    // y=140 match-settings band: TEAMS (30) | TROOPS (120) | LIMIT (210).
-    // TROOPS is host-gated, TEAMS/LIMIT versus-gated, so the horizontal
-    // chain skips whichever member is hidden this frame.
-    buttons[kScenarioMenuCtfTeamsIndex].nav =
-        {.up = kScenarioMenuViewScenarioIndex,
-         .down = kScenarioMenuBackIndex,
-         .right = host ? kScenarioMenuTroopsIndex
-                       : kScenarioMenuCtfCapsIndex};
-    buttons[kScenarioMenuTroopsIndex].nav =
-        {.up = kScenarioMenuProgressIndex,
-         .down = kScenarioMenuBackIndex,
-         .left = match ? kScenarioMenuCtfTeamsIndex : -1,
-         .right = match ? kScenarioMenuCtfCapsIndex : -1};
+    // SCORE sits in the x=30 column now: it climbs into VIEW LEVEL above
+    // it and drops onto BACK below it.
     buttons[kScenarioMenuCtfCapsIndex].nav =
-        {.up = kScenarioMenuProgressIndex,
-         .down = kScenarioMenuBackIndex,
-         .left = host ? kScenarioMenuTroopsIndex
-                      : kScenarioMenuCtfTeamsIndex};
-
-    // BACK climbs into the nearest visible x=30 column member.
-    buttons[kScenarioMenuBackIndex].nav =
-        {.up = match ? kScenarioMenuCtfTeamsIndex
-                     : kScenarioMenuViewScenarioIndex};
-
-    // The parked spare: no links in, no links out (#236 precedent).
+        {.up = kScenarioMenuViewScenarioIndex,
+         .down = kScenarioMenuBackIndex};
+    buttons[kScenarioMenuTroopsIndex].nav = {};
     buttons[kScenarioMenuSpareIndex].nav = {};
+
+    // BACK climbs into the nearest visible member above it: SCORE, else
+    // VIEW LEVEL.
+    buttons[kScenarioMenuBackIndex].nav =
+        {.up = score_or >= 0 ? score_or : kScenarioMenuViewScenarioIndex};
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -386,33 +390,17 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
-    buttons[kScenarioMenuTroopsIndex].hidden = !host_controls_visible;
     sync_button_hidden_state(buttons, kScenarioMenuSetCampaignIndex);
     sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
-    // Re-derive the label from the save every frame: a host cycling TROOPS
-    // reaches a joiner through the lobby settings, which land in the save
-    // under the open menu (both label surfaces, per the menu skill).
-    buttons[kScenarioMenuTroopsIndex].label =
-        og::ui::format_ctf_troops_label(save);
-    sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
-    if (og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex] !=
-        nullptr)
-    {
-        og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex]
-            ->label = buttons[kScenarioMenuTroopsIndex].label;
-    }
-    // TEAMS / LIMIT (#218, re-homed from MATCHUP): versus campaigns only,
-    // and — unlike TROOPS — visible to JOINERS as read-only labels (the
-    // host's turns land in the lobby-synced save and the same re-derive
-    // shows them; change_ctf_teams/change_ctf_caps popup for a non-host).
+    // SCORE (#218, re-homed from MATCHUP; A5): versus campaigns only, and —
+    // unlike the host-gated pair — visible to JOINERS as a read-only label (the host's
+    // turns land in the lobby-synced save and the same re-derive shows
+    // them; change_ctf_caps popups for a non-host).
     const bool match_settings_visible = og::ui::is_versus_campaign(save);
-    for (const int index :
-         {kScenarioMenuCtfTeamsIndex, kScenarioMenuCtfCapsIndex})
     {
+        const int index = kScenarioMenuCtfCapsIndex;
         buttons[index].hidden = !match_settings_visible;
-        buttons[index].label = index == kScenarioMenuCtfTeamsIndex
-            ? og::ui::format_ctf_teams_label(save)
-            : og::ui::format_ctf_caps_label(save);
+        buttons[index].label = og::ui::format_ctf_score_label(save);
         sync_button_hidden_state(buttons, index);
         if (og::runtime::current_session
                 ->allbuttons_[static_cast<std::size_t>(index)] != nullptr)
@@ -422,11 +410,16 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
                 ->label = buttons[index].label;
         }
     }
-    // The retired MATCHUP door's ordinal stays parked: hidden, zero-size,
-    // no nav (the #236 seat_rail_spare precedent) — re-asserted per frame
-    // because the engine's gate pass marks ungated rows visible.
+    // The retired TEAMS (A3) and TROOPS (B5) cells stay parked whatever
+    // the frame says — the engine's gate pass re-derives visibility per
+    // frame, so a park must be re-asserted here, not only in the static
+    // table.
     buttons[kScenarioMenuSpareIndex].hidden = true;
     sync_button_hidden_state(buttons, kScenarioMenuSpareIndex);
+    buttons[kScenarioMenuTroopsIndex].hidden = true;
+    sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
+    // LINEUP (the ordinal the MATCHUP door vacated) is never gated: a
+    // joiner opens the page read-only (docs/lineup-design.md §2.3).
     picker_wire_scenario_menu_nav(buttons, num_buttons,
                                   host_controls_visible,
                                   match_settings_visible);
@@ -583,7 +576,7 @@ Sint32 view_scenario_page_flip(Sint32 step)
 // the heavy world rebuild lives in MatchStage behind its 250 ms debounce
 // (roster edits and knob turns move the owner's change key, restage, and
 // bump the generation), so the frame tick's job is only the cheap
-// deserialize + apply + line rebuild. A host cycling TEAMS / TROOPS /
+// deserialize + apply + line rebuild. A host cycling SCORE /
 // SET LEVEL while a joiner sits in the viewer changes this key and the
 // frame tick rebuilds the report (the pre-#218 screen never refreshed).
 struct ViewScenarioKey
@@ -597,6 +590,10 @@ struct ViewScenarioKey
     // LIMIT change must invalidate the cached staged world like any other
     // knob — without it the viewer keeps promising the old deadline.
     short time_limit = 0;
+    // LINEUP §3.1: the staged preview bakes the resolved bot fills, so a
+    // squad/level change must invalidate the cached staged world too.
+    std::array<short, 4> fill = {};
+    std::array<short, 4> map_units = {};
     std::uint32_t stage_generation = 0;
     // Seat block (#218): digest of the displayed seat facts. REQUIRED as a
     // key member because ready flips deliberately never restage
@@ -701,6 +698,8 @@ static ViewScenarioKey view_scenario_current_key(const SaveData& save)
     key.capture_limit = save.ctf_capture_limit;
     key.respawn_ticks = save.ctf_respawn_ticks;
     key.time_limit = save.time_limit;
+    key.fill = save.fill;
+    key.map_units = save.map_units;
     key.save_campaign = save.current_campaign;
     key.mounted_campaign = get_mounted_campaign();
     og::ui::IPickerLobbyClient* const lobby =
@@ -827,7 +826,7 @@ static void view_scenario_rebuild(ViewScenarioEngineState& state,
 }
 
 // Per-frame refresh guard: rebuild the cached report when the change key
-// moved (host SET LEVEL / TEAMS / TROOPS under a parked joiner — the
+// moved (host SET LEVEL / SCORE under a parked joiner — the
 // blocking-subscreen level-reload discipline; a stage-generation move —
 // the owner's debounced restage or a joiner mirror refresh — re-heals the
 // render copy first). Never exits the loop.
@@ -1396,6 +1395,14 @@ bool picker_progress_menu_engine_frame_tick(void* screen_state, int /*frame*/)
     const int mx = static_cast<int>(mymouse.x);
     const int my = static_cast<int>(mymouse.y);
     if (clicked) {
+        // LINEUP §6: mx/my were sampled BEFORE this wait, against the client
+        // that is on screen now. The kicked-revert would swap that client and
+        // open a modal from inside the wait — the modal grabs the mouse and
+        // eats the button-up this loop is spinning on, and the row hit-tests
+        // below would then dispatch stale coordinates against a fresh local
+        // client. Deferred to the next top-of-frame check; the kick is
+        // latched, so nothing is lost.
+        PickerHeldClickScope held_click;
         while (mymouse.left) {
             picker_lobby_poll();
             Sint32 remote_retvalue = 0;
@@ -2029,7 +2036,7 @@ void picker_train_menu_engine_on_reset(void* /*screen_state*/)
 // The legacy per-frame content pass, verbatim (runs after draw_buttons):
 // portrait, name box, stat box with change-coloring against the original,
 // the info box (kills/accuracy/exp, derived stats, cash/cost), and the live
-// allbuttons_[18] "Playing on Team N" write + vdisplay (G8: swept only at
+// allbuttons_[18] "Team N" write + vdisplay (G8: swept only at
 // Layer F). current_cost re-derives from the session each frame — it only
 // changes through clicks, which is when the legacy loop re-read it.
 void picker_train_menu_engine_draw_content(void* screen_state)
@@ -2188,7 +2195,7 @@ void picker_train_menu_engine_draw_content(void* screen_state)
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
 
         // Update our team-number display ..
-        og::runtime::current_session->message_ = std::format("Playing on Team {}", og::runtime::current_session->current_guy_->teamnum+1);
+        og::runtime::current_session->message_ = std::format("Team {}", og::runtime::current_session->current_guy_->teamnum+1);
         og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = og::runtime::current_session->message_;
         og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->vdisplay();
 }

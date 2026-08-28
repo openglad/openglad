@@ -831,19 +831,23 @@ local function decide(level, inputs, row)
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  -- TROOPS:OWN/FAIR (rosters or all-bot alike): the lobby request wins
-  -- the COUNT — roster teams plus authored backfill (issue #218), with
-  -- TEAMS: Auto resolving to the authored count (2026-08-18 directive).
-  -- Only TROOPS:ALL falls through to the lobby request (manifest default
-  -- at Auto) over the authored anchor teams.
+  -- The shared activation rule (lineup B1-B4): the manifest row.teams is
+  -- the map's own value, plus every occupied team; the fills rows below
+  -- drop any team the knobs leave with nothing.
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, row.teams or 0)
   local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
                                     T.score_limit)
-  local teams, seeded = match.fills(inputs, mask, {
+  local teams, seeded, lineup_mask = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
+  -- The NONE knob can empty a backfilled team outright (lineup §3.2):
+  -- the fills' narrowed mask is the decision's, and starts recounts it.
+  mask = lineup_mask
+  if starts then
+    starts = core.mask_count(mask) >= 2
+  end
   local reason = nil
   if not starts then
     reason = "soccer: fewer than two anchor teams"
@@ -943,14 +947,14 @@ local function on_mode_init(level, row)
       end
     end
   end
-  -- Roster-only armies on request, before the plan's squad fills below,
-  -- so the spawns land in the final world.
-  strip.strip_authored_troops(nil)
+  -- The per-team MAP UNITS strip (amendment B4), before the squad fills
+  -- below, so the spawns land in the final world.
+  strip.strip_authored_troops()
 
-  -- Bot squads where the decision said so (the empty active teams).
+  -- FILL squads where the decision said so (the empty active teams,
+  -- plus any company row with an allies gap — amendment B2/B3).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = decision.teams[team + 1].fill
-    if fill == "bots" or fill == "matched" then
+    if match.wants_squad(decision.teams[team + 1]) then
       anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
     end
   end

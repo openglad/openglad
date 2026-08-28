@@ -54,7 +54,12 @@ constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
 // place, appended so nothing above it moved. It is past the digit-jump
 // budget, like Scenario before it — the arrow keys reach it, and unlike a
 // match rule it is not something a player retunes every round.
-constexpr std::array<PickerMenuItem, 11> kTeamBuildItems = {{
+// LINEUP (docs/lineup-design.md §8) then appended after difficulty, by the
+// same rule difficulty itself followed: nothing above it moves, so the two
+// 1-based position consumers keep every ordinal they already pin and only
+// gain one. It sits past the digit-jump budget for the same reason
+// difficulty does — a match-composition page is not a per-round retune.
+constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
     {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
@@ -73,32 +78,36 @@ constexpr std::array<PickerMenuItem, 11> kTeamBuildItems = {{
     {"scenario", "Scenario", PickerMenuCommand::Scenario},
     // The door into the DIFFICULTY submenu (kDifficultyMenuItems below).
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
+    // The LINEUP door (kTeamBuildItems' growth rule above).
+    {"lineup", "Lineup", PickerMenuCommand::Lineup},
 }};
 
 // The SCENARIO submenu: everything that chooses or inspects the scenario.
 // SET CAMPAIGN / SET LEVEL stay host-gated on the SDL surface; the terminal
 // clients present the submenu as a nested flat list.
-constexpr std::array<PickerMenuItem, 8> kScenarioItems = {{
+constexpr std::array<PickerMenuItem, 7> kScenarioItems = {{
     {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
     {"set_level", "Set Level", PickerMenuCommand::SetLevel},
     {"view_scenario", "View Scenario", PickerMenuCommand::ViewScenario},
     {"matchup", "Matchup", PickerMenuCommand::Teams},
     {"progress", "Progress", PickerMenuCommand::ShowProgress},
-    // Appended before Back: the two 1-based TEXT position consumers
+    // The "troops" row retired with the knob (amendment B5) — the LINEUP
+    // page's per-team MAP UNITS box asks its question now. This is the one
+    // place on this branch where a terminal row was REMOVED rather than
+    // appended, so the two 1-based TEXT position consumers
     // (scripts/test_text_picker_interactive.sh, tests/unit/
-    // test_platform_headless.cpp) select by ordinal, so growth stays
-    // append-only and Back keeps its "last item" reading.
-    {"troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+    // test_platform_headless.cpp) move down a place here and must be
+    // re-pinned; Back keeps its "last item" reading either way.
     // #207: the terminal replay prompt — a CLEARED level re-fought with its
     // authored census, the cursor coming home on the win. Appended before
-    // Back like troops above (the 1-based position consumers again); the
-    // SDL surface carries the arm on PROGRESS's per-row REPLAY instead.
+    // Back (the 1-based position consumers again); the SDL surface carries
+    // the arm on PROGRESS's per-row REPLAY instead.
     {"replay_level", "Replay Level", PickerMenuCommand::ReplayLevel},
     // The v1 MISSIONS row is gone, not moved: the scripted book is a room
     // inside the Base Camp now, reached from a camp page row, so a fourth
     // level-selection door in SCENARIO would restructure nothing
     // (docs/basecamp-zones-design.md "Retirement ledger"). Back returns to
-    // its "last item" reading, at 8 now.
+    // its "last item" reading, at 7 now.
     {"back", "Back", PickerMenuCommand::Back},
 }};
 

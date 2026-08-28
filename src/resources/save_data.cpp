@@ -763,6 +763,30 @@ bool SaveData::load(const std::string& filename)
         time_limit = 0; // the map's own value
     }
 
+    // Versions 18+ append the eight per-team band knobs (amendment B1-B4):
+    // four FILL codes then four MAP UNITS boxes. Read-side default only
+    // (the all-zero default state); the writer is unconditional.
+    if (temp_version >= 18)
+    {
+        for (short& value : fill)
+        {
+            std::int16_t temp_fill = 0;
+            READ_OR_FAIL(&temp_fill, 2, 1);
+            value = temp_fill;
+        }
+        for (short& value : map_units)
+        {
+            std::int16_t temp_map_units = 0;
+            READ_OR_FAIL(&temp_map_units, 2, 1);
+            value = temp_map_units;
+        }
+    }
+    else
+    {
+        fill.fill(0);      // FAIR
+        map_units.fill(0); // the map's own units are fielded
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -1026,7 +1050,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 17;
+	std::uint8_t temp_version = 18;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -1426,6 +1450,19 @@ bool SaveData::save(const std::string& filename)
 	// reader's append point exactly.
 	std::int16_t temp_time_limit = time_limit;
 	WRITE_OR_FAIL(&temp_time_limit, 2, 1);
+
+	// Versions 18+ append the eight per-team band knobs, after the v17 time
+	// limit, in the reader's order: four FILL codes then four MAP UNITS.
+	for (const short value : fill)
+	{
+	    std::int16_t temp_fill = value;
+	    WRITE_OR_FAIL(&temp_fill, 2, 1);
+	}
+	for (const short value : map_units)
+	{
+	    std::int16_t temp_map_units = value;
+	    WRITE_OR_FAIL(&temp_map_units, 2, 1);
+	}
 
     // unique_ptr auto-closes outfile
 

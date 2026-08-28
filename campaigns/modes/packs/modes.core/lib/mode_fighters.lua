@@ -49,9 +49,10 @@ end
 
 -- Deployed-fighter enumeration (D3): live has_guy Livings, BOUND walkers
 -- first (user() >= 0 — every seat's controlled hero is guaranteed a slot),
--- then unbound, oblist order within each pass. Extras past the cap are
--- retired (mode_strip.retire: off the score range, then dead) with a toast.
-local function deploy(obs, cap)
+-- then unbound, oblist order within each pass. Pure — the band modes'
+-- decide fold counts this list BEFORE any world write, so a refusal
+-- leaves the staged world exactly as authored.
+local function enumerate(obs)
   local fighters = {}
   for k = 1, #obs do
     local w = obs[k]
@@ -77,6 +78,12 @@ local function deploy(obs, cap)
       end
     end
   end
+  return fighters
+end
+
+-- The deployed list, capped: extras past the cap are retired
+-- (mode_strip.retire: off the score range, then dead) with a toast.
+local function deploy(fighters, cap)
   if #fighters <= cap then
     return fighters
   end
@@ -141,12 +148,84 @@ end
 -- caller's roster (family cycles over the free color indices), one per
 -- free band slot, ascending. mode_match.spawn_bots is not reusable here —
 -- its matched-plan decode indexes PLAN_BASE by team byte, which band
--- bytes overflow — so the single-bot spawn is spelled out with the legacy
--- session-difficulty level formula (mode_match.bot_level_for's fallback
--- arm). Returns the new fighter count.
+-- bytes overflow — so the single-bot spawn is spelled out, each single
+-- solved on its own (below). Returns the new fighter count.
+--
+-- The FILL wheel (amendment B2/B3) reaches the band through TEAM 1's
+-- knob — the band is ONE fighter population, so the first team's wheel
+-- governs it: NONE fields nothing, and every other value fills singles
+-- at the SOLVED level — each bot's level is the D22 argmin of its own
+-- measured base against reference × multiplier, where the reference is
+-- the weakest DEPLOYED FIGHTER's f (every human team in a band is one
+-- fighter, so the weakest human team's f-sum is the weakest fighter's
+-- f). The reference always exists at fill time: the fold refused below
+-- two fighters, and a live has_guy fighter always prices above zero
+-- (the +60 offense floor). PLAN_BASE stays untouched
+-- (band bytes overflow its decode) and nothing is banked in the shared
+-- facts slot: the staged report renders a band by its fighters, not by
+-- team squad rows.
+--
+-- The pairs of teams 2-4 are DEAD in a band mode: every fighter wears a
+-- band byte, no score team ever fields a squad, so fill_2..4 and
+-- map_units_2..4 are read by nobody here. The fact a menu needs to dim
+-- them is the mode name the staged world already carries (FFA / MUTANT
+-- via og.set_mode_name — the staged report's mode_name); no extra
+-- variable is banked for it (docs/lineup-design.md §3.2).
+-- The band's one knob is the stored code itself (E1: 0 = NONE = no
+-- singles fill, whatever the map authors — the C8 presence resolution
+-- retired with the DEFAULT code), read raw at each decision.
+local function band_knob()
+  return og.match_setting("fill_1")
+end
+
+-- The weakest deployed fighter's f (B3's reference, spelled for a band):
+-- minimum walker_power over the live has_guy Livings, whatever byte they
+-- wear (at fill time the fighters already wear band bytes). 0 = none.
+local function weakest_fighter_power(obs)
+  local reference = 0
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        if w:has_guy() then
+          local p = match.walker_power(w)
+          if reference == 0 then
+            reference = p
+          elseif p < reference then
+            reference = p
+          end
+        end
+      end
+    end
+  end
+  return reference
+end
+
+-- The fighter count the fill below will reach, decided from the census
+-- alone (the band modes' decide fold): NONE keeps the deployed count,
+-- anything else fills the free slots up to the row's target. The band
+-- modes refuse on this number BEFORE touching the world, so no knob shape
+-- can reach an error() from a half-applied init.
+local function planned_count(deployed_count, target)
+  if match.squad_off(band_knob()) then
+    return deployed_count
+  end
+  return og.max(deployed_count, target)
+end
+
 local function fill_bots(count, target, id_base, bitmap_slot, cursor_slot,
                          roster)
-  local level = og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
+  local knob = band_knob()
+  if match.squad_off(knob) then
+    return count
+  end
+  -- The band's solve inputs (B3): the weakest fighter's f times the
+  -- wheel, read once — every single solves against the same target. The
+  -- fold refused below two fighters already, and a live has_guy fighter
+  -- always prices above zero (the +60 offense floor), so the reference
+  -- always exists here.
+  local reference = weakest_fighter_power(og.oblist())
+  local target_power = og.div(reference * match.fill_percent(knob), 100)
   local bitmap = og.mode_get(bitmap_slot)
   for c = 0, C.FFA_TEAM_COUNT - 1 do
     if count < target then
@@ -157,6 +236,10 @@ local function fill_bots(count, target, id_base, bitmap_slot, cursor_slot,
         if w ~= nil then
           w:set_team_num(band_byte(c))
           w:set_real_team_num(255)
+          -- One single, solved on its own measured base (D24's
+          -- measure-and-solve, squad size one).
+          local bases = { { family = name, stats = match.measured_base(w) } }
+          local level = match.solve_matched_levels(target_power, bases)
           w:s_set_level(level)
           w:set_difficulty(level)
           place_rotated(w, cursor_slot, true)
@@ -347,9 +430,11 @@ return {
   band_count = band_count,
   band_byte = band_byte,
   slot_of = slot_of,
+  enumerate = enumerate,
   deploy = deploy,
   assign = assign,
   place_rotated = place_rotated,
+  planned_count = planned_count,
   fill_bots = fill_bots,
   adopt_new = adopt_new,
   renormalize = renormalize,

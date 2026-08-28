@@ -7659,6 +7659,151 @@ TEST(PickerNetworkClient, dedicated_server_denial_echo_reaches_elected_host_then
         << "server_main's break-into-gameplay read";
 }
 
+// LINEUP §6 on the DEDICATED shape: with no in-process host client anywhere,
+// every picker client is a JOIN client and the first-connected one is the
+// ELECTED host — the normal dedicated-server path, and after a host
+// disconnect the only path there is. The elected host's host controls are
+// live (it sets settings, it starts the game), so its KICK has to be live
+// too; while kick_machine was a host-client-only override, the one machine
+// entitled to remove a peer was the one that could not.
+TEST(PickerNetworkClient, dedicated_server_elected_host_kicks_a_guest)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Elected Host");
+
+    // server_main's transport + lobby shape (no local session).
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options transport_options;
+    transport_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server_transport(port, transport_options);
+    server_transport.accept_connections();
+    og::sim::LobbyServer lobby_server(server_transport);
+
+    og::ui::PickerJoinGameOptions host_options;
+    host_options.mode = og::ui::PickerJoinMode::Direct;
+    host_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto elected_host = og::ui::create_join_picker_lobby_client(host_options);
+    elected_host->initialize_from_save();
+
+    ASSERT_TRUE(wait_until([&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        return elected_host->host_controls_visible();
+    })) << "the first-connected peer must be elected host";
+
+    og::runtime::GameSession::Config guest_cfg;
+    guest_cfg.create_display = false;
+    guest_cfg.install_legacy_globals = false;
+    og::runtime::GameSession guest_session(guest_cfg);
+    prepare_single_member_network_save(
+        guest_session.myscreen_->save_data, 1, "Dedicated Guest");
+    og::ui::PickerJoinGameOptions guest_options;
+    guest_options.mode = og::ui::PickerJoinMode::Direct;
+    guest_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> guest_client;
+    {
+        auto guest_scope = guest_session.activate();
+        guest_client = og::ui::create_join_picker_lobby_client(guest_options);
+        guest_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* guest_session = nullptr;
+        og::ui::IPickerLobbyClient* elected_host = nullptr;
+        og::ui::IPickerLobbyClient* guest_client = nullptr;
+        ~CleanupGuard()
+        {
+            if (guest_session != nullptr && guest_client != nullptr)
+            {
+                auto guest_scope = guest_session->activate();
+                guest_client->shutdown();
+            }
+            if (elected_host != nullptr)
+                elected_host->shutdown();
+        }
+    } cleanup{&guest_session, elected_host.get(), guest_client.get()};
+
+    const auto pump = [&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        auto guest_scope = guest_session.activate();
+        guest_client->poll_and_apply();
+    };
+
+    ASSERT_TRUE(wait_until([&] {
+        pump();
+        return lobby_server.state().players.size() == 2u &&
+            elected_host->lobby_players().size() == 2u;
+    })) << "both machines should join the dedicated lobby";
+
+    // The kick targets a MACHINE, read off the replicated roster.
+    og::sim::LobbyMachineId guest_machine = og::sim::kInvalidLobbyMachineId;
+    og::sim::LobbyMachineId own_machine = og::sim::kInvalidLobbyMachineId;
+    {
+        const std::vector<std::uint8_t> own_indices =
+            elected_host->local_player_indices();
+        for (const og::sim::LobbyPlayer& player :
+             elected_host->lobby_players())
+        {
+            const bool is_own =
+                std::find(own_indices.begin(), own_indices.end(),
+                          player.player_index) != own_indices.end();
+            if (is_own)
+                own_machine = player.machine_id;
+            else
+                guest_machine = player.machine_id;
+        }
+    }
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, guest_machine);
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, own_machine);
+
+    // The same refusals the host client makes, before any round trip.
+    EXPECT_FALSE(elected_host->kick_machine(og::sim::kInvalidLobbyMachineId));
+    EXPECT_FALSE(elected_host->kick_machine(0x7fffffffu))
+        << "an id nobody holds is not a kick";
+    EXPECT_FALSE(elected_host->kick_machine(own_machine))
+        << "leaving is DISCONNECT, not a self-kick";
+
+    // A non-elected guest may not kick — client-side and server-side.
+    {
+        auto guest_scope = guest_session.activate();
+        EXPECT_FALSE(guest_client->kick_machine(own_machine));
+    }
+    pump();
+    EXPECT_EQ(2u, lobby_server.state().players.size())
+        << "a refused kick must not disturb the dedicated lobby";
+
+    ASSERT_TRUE(elected_host->kick_machine(guest_machine))
+        << "the elected host is the ONE machine entitled to kick";
+
+    bool guest_saw_the_kick = false;
+    ASSERT_TRUE(wait_until([&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        {
+            auto guest_scope = guest_session.activate();
+            guest_client->poll_and_apply();
+            if (guest_client->was_kicked())
+                guest_saw_the_kick = true;
+        }
+        return guest_saw_the_kick &&
+            elected_host->lobby_players().size() == 1u;
+    })) << "the dedicated lobby drops to one machine and the guest is told why";
+
+    {
+        auto guest_scope = guest_session.activate();
+        const std::optional<std::string> alert =
+            guest_client->connection_alert();
+        ASSERT_TRUE(alert.has_value());
+        EXPECT_EQ("KICKED BY HOST", *alert);
+    }
+}
+
 TEST(PickerNetworkClient,
      join_relay_flow_keeps_authoritative_peer_when_room_host_migrates)
 {
@@ -10031,4 +10176,194 @@ TEST(PickerNetworkClient, join_ready_is_refused_while_a_pack_transfer_is_pending
         << "the refused click keeps the progress line on screen";
 
     join_client->shutdown();
+}
+
+// LINEUP §6: the host removes a joiner's MACHINE. The joiner must learn WHY —
+// a LobbyKickedMessage arrives on the still-live link, ahead of the server's
+// disconnect — and the host's lobby must re-converge on one machine. This is
+// the only place the whole kick chain (client request -> wire -> LobbyServer
+// host gate -> notice -> disconnect -> joiner receipt) runs end to end.
+TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    // LINEUP §6 session_established(): the host IS the lobby, so it is
+    // established the moment the server exists — before anyone joins. The
+    // base-class default answers false, so a true here can only come from the
+    // real host override.
+    EXPECT_TRUE(host_client->session_established())
+        << "a running host is in a session before anyone joins";
+    {
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        EXPECT_TRUE(picker_lobby_session_established())
+            << "the free function reports the installed host client";
+    }
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+        // A joiner that has only opened its socket knows nothing about the
+        // lobby yet: initialize_from_save polls nothing, so no lobby state has
+        // landed and the session is not established.
+        EXPECT_FALSE(join_client->session_established())
+            << "a handshaking joiner is not yet in a session";
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        EXPECT_FALSE(picker_lobby_session_established())
+            << "the free function reports the installed joiner client";
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+                if (join_session->myscreen_ != nullptr)
+                    join_session->myscreen_->world().delete_objects();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+        }
+        return host_client->lobby_players().size() == 2u;
+    })) << "host and join should converge on a two-player lobby";
+
+    ASSERT_TRUE(status_lines_contain_exact(host_client->status_lines(),
+                                           "Lobby: 2 players"));
+    {
+        // Once the lobby state lands on a live link, the joiner is in a
+        // session too (the host's roster converging does not by itself mean
+        // the broadcast has reached the joiner, hence the wait).
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(wait_until([&] {
+            join_client->poll_and_apply();
+            return join_client->session_established();
+        })) << "a joiner with the roster on a live link is in a session";
+        EXPECT_TRUE(status_lines_contain_exact(join_client->status_lines(),
+                                               "Lobby: 2 players"));
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        EXPECT_TRUE(picker_lobby_session_established());
+    }
+
+    // The kick targets a MACHINE, so the id comes off the replicated roster.
+    og::sim::LobbyMachineId joiner_machine = og::sim::kInvalidLobbyMachineId;
+    const std::vector<std::uint8_t> host_indices =
+        host_client->local_player_indices();
+    for (const og::sim::LobbyPlayer& player : host_client->lobby_players())
+    {
+        const bool is_own = std::find(host_indices.begin(), host_indices.end(),
+                                      player.player_index) !=
+            host_indices.end();
+        if (!is_own)
+            joiner_machine = player.machine_id;
+    }
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, joiner_machine)
+        << "the foreign seat must carry a machine id";
+
+    // Own and unknown machines are refused before a round trip.
+    ASSERT_FALSE(host_client->kick_machine(og::sim::kInvalidLobbyMachineId));
+    ASSERT_FALSE(host_client->kick_machine(0x7fffffffu))
+        << "an id nobody holds is not a kick";
+    for (const std::uint8_t own_index : host_indices)
+    {
+        for (const og::sim::LobbyPlayer& player : host_client->lobby_players())
+        {
+            if (player.player_index != own_index)
+                continue;
+            EXPECT_FALSE(host_client->kick_machine(player.machine_id))
+                << "leaving is DISCONNECT, not a self-kick";
+        }
+    }
+    ASSERT_EQ(2u, host_client->lobby_players().size())
+        << "a refused kick must not disturb the lobby";
+
+    // A joiner cannot kick anybody (the server's host gate).
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_FALSE(join_client->kick_machine(joiner_machine));
+    }
+
+    ASSERT_TRUE(host_client->kick_machine(joiner_machine));
+
+    bool joiner_saw_the_kick = false;
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            if (join_client->was_kicked())
+                joiner_saw_the_kick = true;
+        }
+        return joiner_saw_the_kick &&
+            host_client->lobby_players().size() == 1u;
+    })) << "the host lobby drops to one machine and the joiner is told why";
+
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_TRUE(join_client->was_kicked());
+        const std::optional<std::string> alert =
+            join_client->connection_alert();
+        ASSERT_TRUE(alert.has_value());
+        EXPECT_EQ("KICKED BY HOST", *alert)
+            << "the kick outranks the link state, which is about to read "
+               "'connection lost'";
+        // The joiner tears its own client down; the picker swaps in a local
+        // client afterwards (WP-F). The latched receipt survives that
+        // teardown so the swap-in code can still explain the drop.
+        EXPECT_TRUE(join_client->disconnect_session());
+        EXPECT_TRUE(join_client->was_kicked());
+        EXPECT_FALSE(join_client->disconnect_session())
+            << "a client with no transport left has nothing to disconnect";
+        EXPECT_FALSE(join_client->session_established())
+            << "no transport, no session";
+    }
+
+    // And the host stops being established the moment its server is gone.
+    EXPECT_TRUE(host_client->session_established());
+
+    // And the host can stop hosting.
+    EXPECT_TRUE(host_client->disconnect_session());
+    EXPECT_FALSE(host_client->disconnect_session());
+    EXPECT_FALSE(host_client->session_established())
+        << "no server, no lobby, no session";
 }

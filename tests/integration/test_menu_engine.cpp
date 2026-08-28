@@ -1541,6 +1541,108 @@ TEST(MenuEngine, disabled_row_activation_no_op)
 }
 
 // ---------------------------------------------------------------------------
+// A dispatch must not tear the live buttons down. The frame a screen
+// composes is drawn from the LIVE vbuttons, and everything the frame-top
+// gate pass publishes about a row's LOOK — the Disabled GREY face, its
+// darker bevels, the company list's red active-row outline, the pointer's
+// hover ring — lives on the live vbutton alone. Re-creating them mid-frame
+// (the legacy reset_buttons) dropped all of it, and the frame composed at
+// the bottom of that same iteration was presented from the defaults: every
+// dimmed control on the page flashed bright for exactly one frame on every
+// knob click (the LINEUP FILL / MAP UNITS blink). frame_tick sits exactly
+// where the reset does — after the dispatch, before the frame is composed —
+// so it sees what that frame will draw.
+namespace
+{
+
+std::atomic<int> g_dim_frames{0};
+std::atomic<int> g_undim_frames{0};
+
+bool dim_watch_frame_tick(void* /*state*/, int /*frame*/)
+{
+    const vbutton* const live = og::runtime::current_session->allbuttons_[0];
+    if (live != nullptr) {
+        if (live->color == GREY && live->dimmed)
+            ++g_dim_frames;
+        else
+            ++g_undim_frames;
+    }
+    return true;
+}
+
+Sint32 synth_on_spec_row_ok(int row, void* /*state*/)
+{
+    ++g_spec_row_hits;
+    g_spec_row_last = row;
+    return MENU_OK;  // the knob-dispatch shape (change_lineup_fill)
+}
+
+int dim_watch_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    SpecRowState* state = static_cast<SpecRowState*>(data);
+    state->started = true;
+    if (!wait_for_interactable("engine_knob", 5000))
+        return 0;
+    SDL_Delay(300);
+    interact("engine_knob");
+    SDL_Delay(500);
+    state->alive_after_click = !g_run_returned;
+    interact("engine_back");
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(MenuEngine, dispatch_keeps_the_dim_face_on_every_other_row)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_dimmed", .label = "DIMMED ROW",
+         .x = 90, .y = 40, .w = 140, .h = 15,
+         .action = ButtonAction::MenuSpecRow, .arg = 1, .nav = {.down = 1},
+         .state_override = &disabled_row_state},
+        {.id = "engine_knob", .label = "KNOB",
+         .x = 90, .y = 60, .w = 140, .h = 15,
+         .action = ButtonAction::MenuSpecRow, .arg = 2,
+         .nav = {.up = 0, .down = 2}},
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+         .nav = {.up = 1}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 3, "synthetic_dim");
+    spec.on_spec_row = &synth_on_spec_row_ok;
+    spec.frame_tick = &dim_watch_frame_tick;
+    g_synth_spec = &spec;
+    g_spec_row_hits = 0;
+    g_run_returned = false;
+    g_dim_frames = 0;
+    g_undim_frames = 0;
+
+    SpecRowState state;
+    SDL_Thread* thread = SDL_CreateThread(dim_watch_injector, "dim_watch",
+                                          &state);
+    ASSERT_NE(nullptr, thread);
+
+    const Sint32 result = og::ui::run_menu_screen(spec);
+    g_run_returned = true;
+
+    SDL_WaitThread(thread, nullptr);
+    EXPECT_EQ(MENU_REDRAW, result);
+    EXPECT_TRUE(state.finished);
+    EXPECT_EQ(1, g_spec_row_hits) << "the knob row must dispatch once";
+    EXPECT_GT(g_dim_frames.load(), 0) << "the dimmed row must be dimmed";
+    EXPECT_EQ(0, g_undim_frames.load())
+        << "a dispatch re-created the live buttons: the untouched dimmed "
+           "row lost its GREY face for the frame that click composed";
+}
+
+// ---------------------------------------------------------------------------
 // G13 gate-lattice sweep over EVERY engine screen in the registry (grows
 // automatically with each migration): materialize through the D3 accessor
 // pair, then for each host-visibility variant mirror the runner's gate/nav

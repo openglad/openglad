@@ -503,6 +503,30 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
         }
     }
 
+    // Snapshot v12 (amendment B1-B4): the eight per-team band knobs. Without them
+    // an unknown field masquerades as a snapshot_hash divergence with no name
+    // attached — the documented find_first_snapshot_difference rule.
+    for (std::size_t i = 0; i < expected.ctf_requested_fill.size(); ++i)
+    {
+        if (!compare_value(std::format("ctf_requested_fill[{}]", i),
+                           expected.ctf_requested_fill[i],
+                           actual.ctf_requested_fill[i],
+                           failure))
+        {
+            return false;
+        }
+    }
+    for (std::size_t i = 0; i < expected.ctf_requested_map_units.size(); ++i)
+    {
+        if (!compare_value(std::format("ctf_requested_map_units[{}]", i),
+                           expected.ctf_requested_map_units[i],
+                           actual.ctf_requested_map_units[i],
+                           failure))
+        {
+            return false;
+        }
+    }
+
     if (!compare_mode_snapshot_state(expected, actual, failure))
         return false;
 

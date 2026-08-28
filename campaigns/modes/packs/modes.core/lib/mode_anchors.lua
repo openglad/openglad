@@ -3,7 +3,10 @@
 
 local match = og.use("mode_match")
 
-local BOT_SQUAD = { "core:soldier", "core:archer", "core:elf", "core:mage", "core:thief" }
+-- The stock five-bot squad (D35, soldier-first) lives in the shared core
+-- pack with the rest of the match machinery (docs/lineup-design.md C1);
+-- the seeded shuffle below is the modes' own spelling of fielding it.
+local BOT_SQUAD = og.use("core:lineup").BOT_SQUAD
 
 -- Shared header-band slot (mode_match's MATCHED precedent: slots 0-7 are
 -- mode-neutral by convention; MATCHED owns 2-5, this claims 6): the
@@ -46,8 +49,10 @@ end
 -- the order varies match to match, so a small matched roster faces a
 -- varying subset instead of the fixed soldier-first prefix, and every
 -- wiped-team revive decodes the SAME latched code back to the same squad.
-local function spawn_bot_squad(team, cursor_slot)
-  match.spawn_bots(team, shuffled_squad(squad_code()), cursor_slot)
+-- cap is the caller's hard shape (basketball's 5v5 — lineup §3.2), handed
+-- through to the one squad seam; nil for every other caller.
+local function spawn_bot_squad(team, cursor_slot, cap)
+  match.spawn_bots(team, shuffled_squad(squad_code()), cursor_slot, nil, cap)
 end
 
 -- The walker's scoring team: the banked pre-charm team when one exists.

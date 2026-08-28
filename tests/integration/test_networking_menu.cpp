@@ -2,6 +2,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/platform/video_sdl.h>
 
@@ -24,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_interact.h"
 
 void picker_main(Sint32 argc, char** argv);
@@ -33,6 +35,8 @@ extern int g_picker_max_mainmenu_calls;
 
 void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
 
 namespace {
 
@@ -1640,3 +1644,779 @@ TEST(NetworkingMenu, host_flow_enters_team_build_and_returns_to_main_menu)
                 : og::video_testing::fade_violation_messages().front());
 }
 #endif
+
+// ---------------------------------------------------------------------------
+// LINEUP §6 session modes (Hosting / Joined), driven through the real
+// NETWORKING screen with a stub lobby client (the test_menu_layout pattern):
+// the five list rows become PLAYERS machine rows, DISCONNECT replaces
+// HOST/JOIN, kicks confirm and land on the stub with the clicked row's
+// machine id, and DISCONNECT swaps a fresh LOCAL client in. The live
+// two-peer kick wire is pinned by test_picker_network_client.cpp
+// (host_kicks_a_joiner_which_learns_it_was_kicked) — these flows pin the
+// picker glue only.
+
+namespace {
+
+class FakeSessionLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return host_view.load();
+    }
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players()
+        const override
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return players;
+    }
+    [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
+        const override
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return local_indices;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    // The real clients answer this from the server pointer (host) or from
+    // "lobby state landed AND the link is alive" (joiner); the stub carries
+    // the answer directly so a test can pose a pending, a dead and a live
+    // session without a transport.
+    [[nodiscard]] bool session_established() const noexcept override
+    {
+        return established.load();
+    }
+    [[nodiscard]] std::string session_room_code() const override
+    {
+        return "GLAD-7Q2F";
+    }
+    bool kick_machine(og::sim::LobbyMachineId machine_id) override
+    {
+        kicked_machine.store(machine_id);
+        return true;
+    }
+    bool disconnect_session() override
+    {
+        disconnect_calls.fetch_add(1);
+        return true;
+    }
+
+    std::atomic<bool> host_view{true};
+    std::atomic<bool> established{true};
+    std::atomic<og::sim::LobbyMachineId> kicked_machine{0};
+    std::atomic<int> disconnect_calls{0};
+    mutable std::mutex mutex;
+    std::vector<og::sim::LobbyPlayer> players;
+    std::vector<std::uint8_t> local_indices;
+};
+
+og::sim::LobbyPlayer session_seat(std::uint8_t index,
+                                  og::sim::LobbyMachineId machine_id,
+                                  const char* name, const char* company,
+                                  bool is_host)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = index;
+    player.seat_id = static_cast<og::sim::LobbySeatId>(index) + 1;
+    player.machine_id = machine_id;
+    player.name = name;
+    player.company = company;
+    player.is_host = is_host;
+    return player;
+}
+
+void seed_session_flow_save()
+{
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    ASSERT_TRUE(save.save("save0"));
+}
+
+struct SessionHostKickState
+{
+    FakeSessionLobbyClient* lobby = nullptr;
+    og::ui::IPickerLobbyClient* saved_client = nullptr;
+    bool started = false;
+    bool finished = false;
+    bool entered_session_view = false;
+    bool host_join_hidden = false;
+    bool machine_rows_labeled = false;
+    bool room_code_shown = false;
+    bool kick_confirmed = false;
+    bool returned_to_main_menu = false;
+};
+
+int session_host_kick_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<SessionHostKickState*>(data);
+    state->started = true;
+
+    if (!enter_team_build_from_continue_game())
+    {
+        state->finished = true;
+        return 0;
+    }
+
+    // Install the session stub between engine frames (the issue #257 pump);
+    // the Base Camp screen is engine-hosted, so the pump is live here.
+    run_on_main_thread([state] {
+        state->saved_client = og::ui::active_picker_lobby_client();
+        og::ui::install_active_picker_lobby_client(state->lobby);
+    });
+    SDL_Delay(200);
+    interact("networking");
+    state->entered_session_view =
+        wait_for_interactable("network_disconnect", 10000);
+    SDL_Delay(300);
+    state->host_join_hidden = !has_interactable("network_host") &&
+        !has_interactable("network_join");
+    // §6: the COMPANY leads each row; the opaque transport name never
+    // shows while a company name exists.
+    state->machine_rows_labeled =
+        wait_for_interactable_label_contains("network_room_0", "(HOST)") &&
+        interactable_label_contains("network_room_0", "(YOU)") &&
+        interactable_label_contains("network_room_0", "M1 IRON KETTLE BAND") &&
+        wait_for_interactable_label_contains("network_room_1",
+                                             "M2 RIVER BAND") &&
+        !interactable_label_contains("network_room_1", "net-far");
+    state->room_code_shown = wait_for_interactable_label_contains(
+        "network_room_value", "GLAD-7Q2F");
+
+    // Host kicks the foreign machine: confirm YES, stub records id 2.
+    // Bounded retry (the click_until idiom): a swallowed click consumes no
+    // queued answer it did not reach, so each attempt queues its own YES.
+    for (int attempt = 0;
+         attempt < 3 && !trace_contains("networking", "KICKED"); ++attempt)
+    {
+        picker_testing_yes_or_no_queue_push(true);
+        SDL_Delay(150);
+        interact("network_room_1");
+        (void)wait_for_trace_contains("networking", "KICKED", 3000);
+    }
+    state->kick_confirmed = trace_contains("networking", "KICKED");
+
+    SDL_Delay(300);
+    interact("network_back");
+    wait_for_interactable("networking", 10000);
+    // Uninstall the stub before leaving (its storage is the test frame).
+    run_on_main_thread([state] {
+        og::ui::install_active_picker_lobby_client(state->saved_client);
+    });
+    SDL_Delay(300);
+    interact("back");
+    state->returned_to_main_menu = wait_for_interactable("quit", 10000);
+    SDL_Delay(150);
+    interact("quit");
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(NetworkingMenu, session_host_view_lists_machines_and_kicks)
+{
+    trace_clear();
+    picker_testing_yes_or_no_queue_clear();
+    seed_session_flow_save();
+
+    FakeSessionLobbyClient lobby;
+    lobby.players = {
+        session_seat(0, 1, "net-self", "IRON KETTLE BAND", true),
+        session_seat(1, 2, "net-far", "RIVER BAND", false),
+    };
+    lobby.local_indices = {0};
+
+    SessionHostKickState state;
+    state.lobby = &lobby;
+    SDL_Thread* thread = SDL_CreateThread(
+        session_host_kick_injector, "networking_session_kick", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    picker_testing_yes_or_no_queue_clear();
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.entered_session_view)
+        << "hosting view must show DISCONNECT";
+    EXPECT_TRUE(state.host_join_hidden)
+        << "HOST/JOIN must hide in a session";
+    EXPECT_TRUE(state.machine_rows_labeled)
+        << "PLAYERS rows must carry the machine labels";
+    EXPECT_TRUE(state.room_code_shown)
+        << "the session room code shows read-only";
+    EXPECT_TRUE(state.kick_confirmed);
+    EXPECT_TRUE(state.returned_to_main_menu);
+    EXPECT_TRUE(trace_contains("confirm", "KICK"))
+        << "the kick must go through the yes/no confirm";
+    EXPECT_EQ(2u, lobby.kicked_machine.load())
+        << "the clicked row's machine id reaches kick_machine";
+    EXPECT_EQ(0, lobby.disconnect_calls.load());
+}
+
+namespace {
+
+struct SessionJoinDisconnectState
+{
+    FakeSessionLobbyClient* lobby = nullptr;
+    bool started = false;
+    bool finished = false;
+    bool entered_session_view = false;
+    bool foreign_row_inert = false;
+    bool disconnected = false;
+    bool back_in_team_build_local = false;
+    bool returned_to_main_menu = false;
+};
+
+int session_join_disconnect_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<SessionJoinDisconnectState*>(data);
+    state->started = true;
+
+    if (!enter_team_build_from_continue_game())
+    {
+        state->finished = true;
+        return 0;
+    }
+
+    run_on_main_thread([state] {
+        og::ui::install_active_picker_lobby_client(state->lobby);
+    });
+    SDL_Delay(200);
+    interact("networking");
+    state->entered_session_view =
+        wait_for_interactable("network_disconnect", 10000);
+    SDL_Delay(300);
+
+    // Every machine row is inert for a joiner: clicking the host's row
+    // must not open the kick confirm or reach the stub.
+    interact("network_room_0");
+    SDL_Delay(400);
+    state->foreign_row_inert = !trace_contains("confirm", "KICK") &&
+        state->lobby->kicked_machine.load() == 0;
+
+    // Bounded retry: each attempt queues its own YES; once the disconnect
+    // lands the screen exits and the button disappears, so a retried click
+    // is a no-op.
+    for (int attempt = 0;
+         attempt < 3 && !trace_contains("networking", "DISCONNECTED");
+         ++attempt)
+    {
+        picker_testing_yes_or_no_queue_push(true);
+        SDL_Delay(150);
+        interact("network_disconnect");
+        (void)wait_for_trace_contains("networking", "DISCONNECTED", 3000);
+    }
+    state->disconnected = trace_contains("networking", "DISCONNECTED");
+
+    // The swap left a fresh LOCAL client active: Team Build shows GO again
+    // (a networked joiner would show the READY twin instead).
+    state->back_in_team_build_local = wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+    state->returned_to_main_menu = wait_for_interactable("quit", 10000);
+    SDL_Delay(150);
+    interact("quit");
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(NetworkingMenu, session_joined_rows_inert_and_disconnect_goes_local)
+{
+    trace_clear();
+    picker_testing_yes_or_no_queue_clear();
+    seed_session_flow_save();
+
+    FakeSessionLobbyClient lobby;
+    lobby.host_view.store(false);
+    lobby.players = {
+        session_seat(0, 1, "net-host", "IRON KETTLE BAND", true),
+        session_seat(1, 2, "net-self", "RIVER BAND", false),
+    };
+    lobby.local_indices = {1};
+
+    SessionJoinDisconnectState state;
+    state.lobby = &lobby;
+    SDL_Thread* thread = SDL_CreateThread(
+        session_join_disconnect_injector, "networking_session_leave", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    picker_testing_yes_or_no_queue_clear();
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.entered_session_view);
+    EXPECT_TRUE(state.foreign_row_inert)
+        << "a joiner's machine rows never dispatch";
+    EXPECT_TRUE(state.disconnected);
+    EXPECT_TRUE(state.back_in_team_build_local)
+        << "after DISCONNECT the local client is active (GO visible)";
+    EXPECT_TRUE(state.returned_to_main_menu);
+    EXPECT_EQ(1, lobby.disconnect_calls.load())
+        << "DISCONNECT must reach disconnect_session exactly once";
+    EXPECT_EQ(0u, lobby.kicked_machine.load());
+    EXPECT_TRUE(trace_contains("popup", "DISCONNECTED"));
+}
+
+namespace {
+
+struct ActiveLobbyClientGuard
+{
+    og::ui::IPickerLobbyClient* saved = nullptr;
+
+    explicit ActiveLobbyClientGuard(og::ui::IPickerLobbyClient* client)
+        : saved(og::ui::active_picker_lobby_client())
+    {
+        og::ui::install_active_picker_lobby_client(client);
+    }
+
+    ~ActiveLobbyClientGuard()
+    {
+        og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+} // namespace
+
+// LINEUP §6: session mode needs an ESTABLISHED session, not merely a
+// networked client. A joiner mid-handshake (or one whose connect failed) has
+// received no lobby state, so it keeps the IDLE table — JOIN clickable in its
+// own rect, DISCONNECT hidden — and a second JOIN replaces the pending client
+// the way it always did. Getting this wrong put DISCONNECT (drawn in JOIN's
+// exact rect) under the JOIN click.
+TEST(NetworkingMenu, connecting_joiner_keeps_the_idle_table_until_lobby_state)
+{
+    button* const buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    ASSERT_EQ(kNetworkingMenuButtonCount, count);
+
+    FakeSessionLobbyClient lobby;
+    lobby.host_view.store(false);  // a joiner, never the host
+    lobby.established.store(false);  // ...still handshaking
+    ActiveLobbyClientGuard guard(&lobby);
+
+    // is_networked_session() is true, no session behind it yet: Idle.
+    const NetworkingMenuModeState connecting =
+        picker_current_networking_menu_mode();
+    EXPECT_FALSE(connecting.networked)
+        << "a joiner without lobby state is not an established session";
+    std::vector<button> idle(buttons, buttons + count);
+    picker_apply_networking_menu_mode(idle.data(), count, connecting);
+    EXPECT_FALSE(idle[kNetworkingMenuJoinIndex].hidden)
+        << "JOIN must stay clickable so a re-JOIN replaces the client";
+    EXPECT_FALSE(idle[kNetworkingMenuHostIndex].hidden);
+    EXPECT_TRUE(idle[kNetworkingMenuDisconnectIndex].hidden)
+        << "DISCONNECT must not sit in JOIN's rect while idle";
+
+    // A roster ALONE is not a session: the real join client keeps the last
+    // state after the link dies, so the stale roster must not buy back the
+    // session table (and with it JOIN's rect).
+    {
+        std::lock_guard<std::mutex> lock(lobby.mutex);
+        lobby.players = {
+            session_seat(0, 1, "net-host", "IRON KETTLE BAND", true),
+            session_seat(1, 2, "net-self", "RIVER BAND", false),
+        };
+    }
+    const NetworkingMenuModeState lost = picker_current_networking_menu_mode();
+    EXPECT_FALSE(lost.networked)
+        << "a dead link is Idle however full its retained roster is";
+    std::vector<button> after_loss(buttons, buttons + count);
+    picker_apply_networking_menu_mode(after_loss.data(), count, lost);
+    EXPECT_FALSE(after_loss[kNetworkingMenuJoinIndex].hidden)
+        << "a joiner whose session died keeps its JOIN retry";
+    EXPECT_TRUE(after_loss[kNetworkingMenuDisconnectIndex].hidden);
+
+    // The session is live: the joiner is in.
+    lobby.established.store(true);
+    const NetworkingMenuModeState joined =
+        picker_current_networking_menu_mode();
+    EXPECT_TRUE(joined.networked);
+    EXPECT_FALSE(joined.host);
+    std::vector<button> session(buttons, buttons + count);
+    picker_apply_networking_menu_mode(session.data(), count, joined);
+    EXPECT_TRUE(session[kNetworkingMenuJoinIndex].hidden);
+    EXPECT_TRUE(session[kNetworkingMenuHostIndex].hidden);
+    EXPECT_FALSE(session[kNetworkingMenuDisconnectIndex].hidden);
+
+    // The hosting half never waits on a roster: this machine runs the lobby
+    // from the moment host controls are visible.
+    lobby.host_view.store(true);
+    {
+        std::lock_guard<std::mutex> lock(lobby.mutex);
+        lobby.players.clear();
+    }
+    const NetworkingMenuModeState hosting =
+        picker_current_networking_menu_mode();
+    EXPECT_TRUE(hosting.networked);
+    EXPECT_TRUE(hosting.host);
+}
+
+namespace {
+
+// A joiner client the picker OWNS (installed through the join factory
+// bridge), so the per-frame kicked check may swap it: was_kicked() flips
+// when the test raises the shared flag — the picker glue under test is
+// picker_revert_lobby_client_if_kicked, not the wire (wave 1 pinned that).
+class FakeKickedJoinClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    explicit FakeKickedJoinClient(std::atomic<bool>* kicked_flag)
+        : kicked_flag_(kicked_flag)
+    {
+    }
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool was_kicked() const noexcept override
+    {
+        return kicked_flag_->load();
+    }
+    [[nodiscard]] std::optional<std::string> connection_alert() const override
+    {
+        if (kicked_flag_->load())
+            return "KICKED BY HOST";
+        return std::nullopt;
+    }
+
+private:
+    std::atomic<bool>* kicked_flag_;
+};
+
+struct KickedJoinerRevertState
+{
+    std::atomic<bool>* kicked_flag = nullptr;
+    bool started = false;
+    bool finished = false;
+    bool joined_session = false;
+    bool reverted = false;
+    bool popup_seen = false;
+    bool go_visible_again = false;
+    bool returned_to_main_menu = false;
+};
+
+int kicked_joiner_revert_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<KickedJoinerRevertState*>(data);
+    state->started = true;
+
+    if (!enter_team_build_from_continue_game())
+    {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("networking");
+    if (!wait_for_interactable("network_join", 10000))
+    {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
+    // JOIN with a blank code: the prompt consumes the queued room code and
+    // the bridge factory returns the owned fake join client. Bounded retry:
+    // a successful prompt persists the code, so a retried JOIN goes
+    // straight to submit.
+    state->joined_session = interact_until_any_interactable(
+        "network_join", {"networking"}, 15000);
+    SDL_Delay(300);
+
+    // The kick lands while parked in Team Build: the per-frame check swaps
+    // the owned client for a fresh local one and says why.
+    state->kicked_flag->store(true);
+    state->reverted = wait_for_trace_contains(
+        "networking", "kicked by host", 5000);
+    state->popup_seen =
+        wait_for_trace_contains("popup", "KICKED BY HOST", 5000);
+    state->go_visible_again = wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+    state->returned_to_main_menu = wait_for_interactable("quit", 10000);
+    SDL_Delay(150);
+    interact("quit");
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+// The owned-client slot SdlPickerClient installs, exposed for this test only
+// (tests/coverage_internal/picker_sdl_client_factory.inc).
+void picker_testing_set_lobby_client_owner(
+    std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
+
+// picker.cpp's swap seam (external linkage; declared here with every
+// parameter spelled out because the defaults live at its own declaration).
+bool picker_replace_lobby_client(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
+    const char* popup_title,
+    bool show_success_popup,
+    bool restore_previous_on_failure);
+
+namespace {
+
+// A client that records whether anyone re-ran its initialize_from_save —
+// which, for a real join client, is a RECONNECT.
+class ReinitCountingLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    // The counters live OUTSIDE the object: a swap that does not roll back
+    // destroys the previous client, which is the whole point.
+    ReinitCountingLobbyClient(int* init, int* shutdown)
+        : init_calls(init), shutdown_calls(shutdown)
+    {
+    }
+    void initialize_from_save() override { ++*init_calls; }
+    void shutdown() override { ++*shutdown_calls; }
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+
+    int* init_calls;
+    int* shutdown_calls;
+};
+
+// The fresh client whose initialize_from_save fails.
+class ThrowingLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override
+    {
+        throw std::runtime_error("could not load the local save");
+    }
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+};
+
+} // namespace
+
+// LINEUP §6: DISCONNECT (and the kicked revert) tear the network session down
+// FIRST and then swap in a fresh local client. If that fresh client's
+// initialize_from_save fails, the generic rollback would restore the previous
+// client and re-run ITS initialize_from_save — and a join client's
+// initialize_from_save reconnects, so the rollback would dial straight back
+// into the lobby this machine just left, or into the host that just kicked
+// it. Those callers ask for no rollback: they stay local and report.
+TEST(NetworkingMenu, disconnect_rollback_never_redials_the_dead_session)
+{
+    int previous_init = 0;
+    int previous_shutdown = 0;
+    std::unique_ptr<og::ui::IPickerLobbyClient> owner =
+        std::make_unique<ReinitCountingLobbyClient>(&previous_init,
+                                                    &previous_shutdown);
+    ActiveLobbyClientGuard guard(owner.get());
+
+    auto next = std::make_unique<ThrowingLobbyClient>();
+    og::ui::IPickerLobbyClient* const next_raw = next.get();
+    EXPECT_THROW(
+        (void)picker_replace_lobby_client(owner, std::move(next), "NETWORKING",
+                                          /*show_success_popup=*/false,
+                                          /*restore_previous_on_failure=*/false),
+        std::exception);
+    EXPECT_EQ(1, previous_shutdown)
+        << "the dead session is still torn down";
+    EXPECT_EQ(0, previous_init)
+        << "and NOT re-initialized: that is the reconnect";
+    EXPECT_EQ(next_raw, owner.get())
+        << "the machine stays on the fresh local client";
+    EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
+
+    // The HOST/JOIN direction keeps its rollback: there the previous client
+    // is a live session nobody asked to leave.
+    int live_init = 0;
+    int live_shutdown = 0;
+    std::unique_ptr<og::ui::IPickerLobbyClient> live =
+        std::make_unique<ReinitCountingLobbyClient>(&live_init, &live_shutdown);
+    og::ui::IPickerLobbyClient* const kept = live.get();
+    og::ui::install_active_picker_lobby_client(live.get());
+    EXPECT_THROW(
+        (void)picker_replace_lobby_client(
+            live, std::make_unique<ThrowingLobbyClient>(), "NETWORKING",
+            /*show_success_popup=*/false,
+            /*restore_previous_on_failure=*/true),
+        std::exception);
+    EXPECT_EQ(kept, live.get()) << "the live session comes back";
+    EXPECT_EQ(1, live_init) << "...re-initialized, which is the point";
+}
+
+// LINEUP §6: the kicked revert swaps the ACTIVE lobby client and opens a
+// modal. Both are safe at the top of a frame and neither is safe from inside
+// a held click: the PROGRESS spin-wait samples the click's coordinates before
+// it starts spinning, then polls the lobby and runs the Team Build
+// remote-start check on every turn of the loop — so a kick landing mid-hold
+// used to swap the client under the pending dispatch and pop a modal that
+// eats the very button-up the loop is waiting for. The revert is now deferred
+// for the life of the held-click scope and lands on the next top-of-frame
+// check.
+TEST(NetworkingMenu, kick_revert_waits_for_a_held_click_to_finish)
+{
+    trace_clear();
+    std::atomic<bool> kicked{true};
+    std::unique_ptr<og::ui::IPickerLobbyClient> owned =
+        std::make_unique<FakeKickedJoinClient>(&kicked);
+    og::ui::IPickerLobbyClient* const raw = owned.get();
+    ActiveLobbyClientGuard guard(raw);
+    picker_testing_set_lobby_client_owner(&owned);
+
+    EXPECT_FALSE(picker_kick_revert_suspended());
+    {
+        PickerHeldClickScope held_click;
+        EXPECT_TRUE(picker_kick_revert_suspended());
+        {
+            // Nesting must not re-arm the outer scope on the inner's exit.
+            PickerHeldClickScope nested;
+            EXPECT_TRUE(picker_kick_revert_suspended());
+        }
+        EXPECT_TRUE(picker_kick_revert_suspended());
+
+        EXPECT_FALSE(picker_revert_lobby_client_if_kicked())
+            << "no swap while a click is being held/dispatched";
+        EXPECT_EQ(raw, og::ui::active_picker_lobby_client())
+            << "the pending click was sampled against THIS client";
+        EXPECT_FALSE(trace_contains("popup", "KICKED BY HOST"))
+            << "and no modal opened to eat the button-up";
+    }
+
+    EXPECT_FALSE(picker_kick_revert_suspended());
+    EXPECT_TRUE(picker_revert_lobby_client_if_kicked())
+        << "the latched kick lands on the next top-of-frame check";
+    EXPECT_NE(raw, og::ui::active_picker_lobby_client());
+    EXPECT_TRUE(trace_contains("networking", "kicked by host"));
+    EXPECT_TRUE(trace_contains("popup", "KICKED BY HOST"));
+
+    picker_testing_set_lobby_client_owner(nullptr);
+}
+
+TEST(NetworkingMenu, kicked_joiner_reverts_to_local_client_in_team_build)
+{
+    trace_clear();
+    level_editor_testing_prompt_queue_clear();
+    picker_testing_yes_or_no_queue_clear();
+    seed_session_flow_save();
+
+    std::atomic<bool> kicked_flag{false};
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    bridge.begin_list_relay_rooms = {};
+    bridge.list_relay_rooms =
+        [](const std::string&, const std::string&)
+            -> std::vector<og::ui::PickerRelayRoomInfo> {
+        return {};
+    };
+    bridge.create_join_picker_lobby_client =
+        [&kicked_flag](const og::ui::PickerJoinGameOptions&)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        return std::make_unique<FakeKickedJoinClient>(&kicked_flag);
+    };
+    set_platform_bridge(std::move(bridge));
+
+    level_editor_testing_prompt_queue_push("glad-kick-test");
+
+    KickedJoinerRevertState state;
+    state.kicked_flag = &kicked_flag;
+    SDL_Thread* thread = SDL_CreateThread(
+        kicked_joiner_revert_injector, "networking_kicked_revert", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    level_editor_testing_prompt_queue_clear();
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.joined_session)
+        << "the bridge join client must enter Team Build networked";
+    EXPECT_TRUE(state.reverted)
+        << "the per-frame Team Build check must notice was_kicked";
+    EXPECT_TRUE(state.popup_seen)
+        << "the revert says KICKED BY HOST";
+    EXPECT_TRUE(state.go_visible_again)
+        << "after the revert the local client is active (GO visible)";
+    EXPECT_TRUE(state.returned_to_main_menu);
+}

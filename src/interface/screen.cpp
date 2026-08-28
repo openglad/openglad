@@ -27,6 +27,7 @@
 #include <openglad/interface/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/statistics.h>
@@ -1349,10 +1350,17 @@ void screen::sync_world_from_save_data()
 {
     world_.my_team = save_data.my_team;
     world_.allied_mode = save_data.allied_mode;
-    world_.ctf_requested_team_count = save_data.ctf_team_count;
+    // The retired TEAMS knob (A3): inert on the way into the sim, in BOTH
+    // sync_world_from_save_data twins, so a hand-edited save cannot field a
+    // different team set than its mirrors. og.match_setting("team_count")
+    // therefore always answers 0 = "every team the map authors".
+    world_.ctf_requested_team_count = 0;
     world_.ctf_requested_capture_limit = save_data.ctf_capture_limit;
     world_.ctf_requested_respawn_ticks = save_data.ctf_respawn_ticks;
-    world_.ctf_requested_strip_scenario_troops = save_data.ctf_strip_scenario_troops;
+    // The retired TROOPS knob (B5): inert on the way into the sim, in BOTH
+    // twins, so a hand-edited save cannot strip a cast its mirrors keep.
+    // og.match_setting("strip_troops") therefore always answers 0.
+    world_.ctf_requested_strip_scenario_troops = 0;
     // World-entry twin of the lobby sanitizer / provider clamp (#241): a
     // hand-edited save is the one route that reaches the sim unchecked, and
     // the mirror that snapshot-applies this world clamps the same field
@@ -1365,6 +1373,20 @@ void screen::sync_world_from_save_data()
             ? std::clamp<std::int16_t>(
                   static_cast<std::int16_t>(save_data.time_limit), 720, 21600)
             : static_cast<std::int16_t>(0);
+    // World-entry twin of the same shared clamp for the eight band knobs
+    // (B1-B4): a hand-edited save is the one route that reaches the sim
+    // unchecked, and the mirror that snapshot-applies this world clamps the
+    // same fields (world_snapshot.cpp apply_mode_state) — so without this the
+    // server and its mirrors hold different values and every snapshot hash
+    // check mismatches. 0 stays 0 (FAIR, and MAP UNITS ON).
+    for (std::size_t team = 0; team < world_.ctf_requested_fill.size();
+         ++team)
+    {
+        world_.ctf_requested_fill[team] = static_cast<short>(
+            og::sim::clamp_fill(save_data.fill[team]));
+        world_.ctf_requested_map_units[team] = static_cast<short>(
+            og::sim::clamp_map_units(save_data.map_units[team]));
+    }
     // Modes may clamp world knobs (Classic: identity). Applied in BOTH
     // sync_world_from_save_data twins (see headless_server_runtime.cpp).
     world_.respawn_mode =

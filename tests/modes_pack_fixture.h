@@ -106,9 +106,7 @@ inline constexpr int kOnsLevelC = 9403;
 // lib/mode_strip.lua probes (9500+): the shared scenario-troops strip the
 // six mode impls call from on_mode_init. One level per opts shape, so the
 // keep_generators arm is exercised on its own.
-inline constexpr int kStripLevelDefault = 9500;      // opts = nil
-inline constexpr int kStripLevelKeepGens = 9501;     // keep_generators = true
-inline constexpr int kStripLevelDropGens = 9502;     // keep_generators = false
+inline constexpr int kStripLevelDefault = 9500;  // the per-team box strip
 
 // lib/mode_items.lua probes (9600+): synthetic item-pad rows driven
 // straight through items.run with test-owned mode-var slots 40/41.
@@ -140,13 +138,15 @@ inline constexpr int kBballLevelNoJump = 9707;    // jump_ball absent
 inline constexpr int kBballLevelHalfHoops = 9708; // hoop for team 0 only
 inline constexpr int kBballLevelNoRow = 9709;     // make_hooks(nil)
 
-// TROOPS: FAIR power-model probes (9095/9096, matched-teams WP-E).
-// 9095 logs the pure-function arms (census, walker_power, predicted_power,
-// solver, bot_level_for) plus the model-pin ladder over whatever world the
-// test authored. 9096 drives match.spawn_bots directly at team 1, cursor
-// slot 12, parameterized through input mode vars the C++ test sets before
-// the first tick (mode vars are NOT cleared by lazy init): target, plan,
-// mid-match flag, and the MATCHED.SIZE headcount latch (D34/D40).
+// FILL power-model probes (9095/9096, matched-teams WP-E as amended by
+// lineup B2/B3). 9095 logs the pure-function arms (census, walker_power,
+// predicted_power, solver, bot_level_for) plus the model-pin ladder over
+// whatever world the test authored. 9096 drives match.spawn_bots directly
+// at team 1, cursor slot 12, parameterized through input mode vars the
+// C++ test sets before the first tick (mode vars are NOT cleared by lazy
+// init): plan, mid-match flag, and the MATCHED.SIZE headcount latch
+// (D34/D40); the solve target comes from the world's own census (B3), so
+// tests author heroes instead of dialing a number.
 inline constexpr int kMatchProbeLevel = 9095;
 inline constexpr int kMatchSpawnProbeLevel = 9096;
 
@@ -162,7 +162,6 @@ inline constexpr int kSlotMatchedSize = 5;
 // 9096 probe inputs (test-owned scratch slots — mode-private on the probe
 // level, which registers its own hooks; relocated 5/6/7 -> 8/9/10 when
 // MATCHED.SIZE claimed header slot 5, matched-teams D40).
-inline constexpr int kMatchProbeInTarget = 8;
 inline constexpr int kMatchProbeInPlan = 9;
 inline constexpr int kMatchProbeInMidMatch = 10;
 inline constexpr int kMatchProbeInSize = 11;
@@ -375,22 +374,18 @@ inline constexpr const char* kTestRegistrationLua =
     "end\n"
     "og.register_level_hooks(9409, onslaught.make_hooks(nil))\n"
     "local strip_lib = og.use(\"mode_strip\")\n"
-    "local function strip_hooks(opts)\n"
+    "local function strip_hooks()\n"
     "  return {\n"
     "    on_mode_init = function(level)\n"
-    "      og.log(\"stripped\", strip_lib.strip_authored_troops(opts))\n"
+    "      og.log(\"stripped\", strip_lib.strip_authored_troops())\n"
     "      og.log(\"is_troop\",\n"
-    "             strip_lib.is_troop(og.C.ORDER_LIVING, true) and 1 or 0,\n"
-    "             strip_lib.is_troop(og.C.ORDER_GENERATOR, true) and 1 or 0,\n"
-    "             strip_lib.is_troop(og.C.ORDER_GENERATOR, false) and 1 or 0,\n"
-    "             strip_lib.is_troop(og.C.ORDER_TREASURE, false) and 1 or 0)\n"
-    "      og.log(\"states\", strip_lib.KEEP, strip_lib.OWN)\n"
+    "             strip_lib.is_troop(og.C.ORDER_LIVING) and 1 or 0,\n"
+    "             strip_lib.is_troop(og.C.ORDER_GENERATOR) and 1 or 0,\n"
+    "             strip_lib.is_troop(og.C.ORDER_TREASURE) and 1 or 0)\n"
     "    end,\n"
     "  }\n"
     "end\n"
-    "og.register_level_hooks(9500, strip_hooks(nil))\n"
-    "og.register_level_hooks(9501, strip_hooks({ keep_generators = true }))\n"
-    "og.register_level_hooks(9502, strip_hooks({ keep_generators = false }))\n"
+    "og.register_level_hooks(9500, strip_hooks())\n"
     "local items = og.use(\"mode_items\")\n"
     "local items_row_a = {\n"
     "  item_pads = {\n"
@@ -585,7 +580,6 @@ inline constexpr const char* kTestRegistrationLua =
     "    if og.mode_get(10) == 1 then\n"
     "      og.mode_set(0, 99)\n"
     "    end\n"
-    "    og.mode_set(2, og.mode_get(8))\n"
     "    og.mode_set(3, og.mode_get(9))\n"
     "    og.mode_set(5, og.mode_get(11))\n"
     "    match_lib.spawn_bots(2, {}, 12)\n"

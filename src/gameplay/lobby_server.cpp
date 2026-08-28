@@ -68,15 +68,14 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.scenario_id = fallback.scenario_id;
     if (sanitized.allied_mode != 0 && sanitized.allied_mode != 1)
         sanitized.allied_mode = fallback.allied_mode;
-    if (sanitized.ctf_team_count > 0)
-    {
-        sanitized.ctf_team_count =
-            std::clamp<std::int16_t>(sanitized.ctf_team_count, 2, 4);
-    }
-    else
-    {
-        sanitized.ctf_team_count = 0; // Auto: every team the map authors
-    }
+    // RETIRED (amendment A3): TEAMS stopped being a control when its only
+    // power — dropping an authored team — moved onto the band as the
+    // fill value OFF. The field keeps its place in the save and on the
+    // wire (no format moves), but the authority answers one value for it, so
+    // an old peer, an old .gtl or a crafted client cannot reintroduce a
+    // second rule for which teams are fielded. A legacy 2/3/4 heals to Auto
+    // here, once, silently (the D30 precedent).
+    sanitized.ctf_team_count = 0;
     sanitized.ctf_authored_team_mask = static_cast<std::uint8_t>(
         sanitized.ctf_authored_team_mask & og::sim::kAllLobbyTeamMask);
     sanitized.ctf_capture_limit =
@@ -86,16 +85,15 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.ctf_respawn_ticks =
             std::clamp<std::int16_t>(sanitized.ctf_respawn_ticks, 12, 1200);
     }
-    // 0 keeps the authored cast, 2 strips it, 3 (kTroopsMatched, "TROOPS:
-    // FAIR") strips it and sizes the generated bot squads to the human
-    // census. The retired middle state 1 is still accepted so a peer or save
-    // from that build syncs instead of snapping back to the host's value;
-    // every strip rule reads it as 2. 4+ still reverts to the fallback.
-    if (sanitized.ctf_strip_scenario_troops < 0 ||
-        sanitized.ctf_strip_scenario_troops > og::sim::kTroopsMatched)
-    {
-        sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
-    }
+    // RETIRED (amendment B5), exactly like ctf_team_count above: TROOPS
+    // asked once, for the whole map, whether the authored cast fights; the
+    // per-team MAP UNITS box asks it per team, and two rules for one
+    // question is the twin this branch keeps deleting. The field keeps its
+    // place in the save and on the wire (no format moves), but the authority
+    // answers one value for it, so an old peer, an old .gtl or a crafted
+    // client cannot reintroduce the second rule. A legacy 1/2/3 heals to 0
+    // here, once, silently (the D30 precedent).
+    sanitized.ctf_strip_scenario_troops = 0;
     if (sanitized.respawn_mode < og::sim::kRespawnModeOff ||
         sanitized.respawn_mode > og::sim::kRespawnModeTeamOneHeroes)
     {
@@ -127,6 +125,19 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     {
         sanitized.time_limit =
             std::clamp<std::int16_t>(sanitized.time_limit, 720, 21600);
+    }
+    // Per-team band knobs (amendment B1-B4). Both clamp rather than revert:
+    // 0 is a legal value on both (FAIR, and MAP UNITS ON), and the ceilings
+    // are engine constants a joiner can enforce without owning the
+    // campaign's package at all. The ONE implementation lives in
+    // lobby_state.h and is shared with clamp_match_setting, both
+    // sync_world_from_save_data twins and world_snapshot apply_mode_state.
+    for (std::size_t team = 0; team < sanitized.fill.size(); ++team)
+    {
+        sanitized.fill[team] =
+            og::sim::clamp_fill(sanitized.fill[team]);
+        sanitized.map_units[team] =
+            og::sim::clamp_map_units(sanitized.map_units[team]);
     }
     return sanitized;
 }
@@ -1104,6 +1115,58 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         }
         break;
 
+    case LobbyMessageKind::Kick:
+    {
+        // LINEUP §6. The host removes a MACHINE, not a seat: every seat the
+        // target owns goes with the connection, and rebuild_state re-indexes
+        // the survivors. A non-host sender is refused outright (the historic
+        // non-host StartGame rule, but with an echo so a confused client can
+        // see the refusal instead of waiting on a timeout); so are the host's
+        // own machine (leaving is DISCONNECT) and any id nobody holds.
+        if (!host_peer_id_.has_value() || *host_peer_id_ != peer_id)
+        {
+            send_state(peer_id);
+            break;
+        }
+        const auto& kick = std::get<LobbyKickMessage>(message.payload);
+        std::optional<PeerId> target = std::nullopt;
+        if (kick.machine_id != kInvalidLobbyMachineId)
+        {
+            for (const auto& [other_peer_id, peer] : peers_)
+            {
+                if (peer.machine_id == kick.machine_id)
+                {
+                    target = other_peer_id;
+                    break;
+                }
+            }
+        }
+        if (!target.has_value() || *target == peer_id)
+        {
+            send_state(peer_id);
+            break;
+        }
+        // The notice must precede the disconnect: after disconnect_client the
+        // transport will not carry another byte to that peer, so a Kicked sent
+        // afterwards is a message nobody receives and the client can only
+        // render a bare "connection lost".
+        LobbyMessage kicked;
+        kicked.payload = LobbyKickedMessage{};
+        transport_.send_lobby_message(
+            *target, std::make_shared<LobbyMessage>(std::move(kicked)));
+        // disconnect_client runs its own rebuild + broadcast, so return
+        // instead of falling into the trailing echo (which would compare
+        // against a previous_state the disconnect already superseded and
+        // broadcast the same state twice).
+        disconnect_client(*target);
+        return;
+    }
+
+    // A Kicked reaching the SERVER is a crafted/echoed message: it is a
+    // server->peer notice and carries no request. Ignore it silently.
+    case LobbyMessageKind::Kicked:
+        break;
+
     case LobbyMessageKind::StartGame:
         if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
         {
@@ -1156,9 +1219,12 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                 sanitize_settings(settings_change.settings, state_.settings,
                                   local_session_);
 
-            // A level or CTF-count change can strand joined players outside
-            // the selected map's authored domain; re-resolve them so nobody
-            // starts on a team the next match will not activate.
+            // A level change — or the host turning a team's BOTS knob to
+            // OFF (A2) — can strand joined players outside the domain the
+            // next match will field; re-resolve them so nobody starts on a
+            // team that will not be there. The rule itself is one function
+            // (lobby_effective_team_mask), so OFF needed no second copy
+            // here: it narrows the mask this loop already sweeps against.
             const std::uint8_t team_mask = effective_team_mask();
             const std::int16_t first_team =
                 lobby_first_selectable_team(state_.settings);
@@ -1413,6 +1479,8 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.cross_control = state_.settings.cross_control;
     equivalent.infinite_gold = state_.settings.infinite_gold;
     equivalent.time_limit = state_.settings.time_limit;
+    equivalent.fill = state_.settings.fill;
+    equivalent.map_units = state_.settings.map_units;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

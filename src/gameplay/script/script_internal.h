@@ -127,6 +127,17 @@ struct VmState {
     int campaign_hooks_ref = -1;  // table: 1 = picker_menu,
                                   // 2 = picker_action, 3 = base_camp
     std::vector<std::string> campaign_vars;  // sim-visible names, in order
+    // The `lineup` table (docs/lineup-design.md §4): since amendment B1 it
+    // carries `power` alone, which lives in the registry table (slot 4), so
+    // this flag is the whole plain-data half of the registration.
+    bool campaign_lineup_registered = false;
+    // og.register_default_lineup storage (docs/lineup-design.md C5): the
+    // DEFAULT `lineup.power`, held HERE and not in campaign_hooks_ref, so
+    // the shipped pack's pricing can neither poison the one-book-per-VM
+    // campaign registrar nor be poisoned by a campaign that registers
+    // twice. Last registration wins, the og.register_level_hooks wildcard
+    // precedent; -1 = nothing registered.
+    int default_lineup_power_ref = -1;   // registry ref to the power fn
     bool campaign_registered = false;
     std::string campaign_source;            // registering chunk (diagnostics)
     std::string campaign_conflict_source;   // second registrant; ""=no conflict
@@ -150,6 +161,8 @@ enum class LevelHook : int {
     ModeTick = 5,     // on_mode_tick(level, tick) — post-act, every tick
     Damage = 6,       // on_damage(target, attacker, amount) -> number|false|nil
     Respawn = 7,      // on_respawn(ent) — engine revive -> Lua placement
+    // The MODE-LESS stage step (docs/lineup-design.md C2), peer of ModeInit:
+    LineupStage = 8,  // on_lineup_stage(level) — once, when no mode owns it
 };
 
 VmState* get_vm_state(lua_State* L);

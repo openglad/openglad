@@ -68,7 +68,10 @@ bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
     const char* popup_title,
-    bool show_success_popup = true);
+    bool show_success_popup = true,
+    // LINEUP §6: false for callers that already tore the previous session
+    // down (DISCONNECT, the kicked revert) — restoring it would reconnect.
+    bool restore_previous_on_failure = true);
 bool picker_try_intercept_button_action(
     Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue);
 bool picker_join_game(
@@ -169,6 +172,58 @@ public:
     std::vector<og::sim::LobbyPlayer> players;
     bool restrict_editable_slots = false;
     std::array<bool, MAX_TEAM_SIZE> editable_slots{};
+
+    // LINEUP §6 seam (kick / disconnect / kicked receipt).
+    bool kick_machine(og::sim::LobbyMachineId machine_id) override
+    {
+        kicked_machines.push_back(machine_id);
+        return kick_result;
+    }
+    bool disconnect_session() override
+    {
+        ++disconnect_calls;
+        return disconnect_result;
+    }
+    [[nodiscard]] bool was_kicked() const noexcept override
+    {
+        return was_kicked_result;
+    }
+
+    std::vector<og::sim::LobbyMachineId> kicked_machines;
+    bool kick_result = true;
+    int disconnect_calls = 0;
+    bool disconnect_result = true;
+    bool was_kicked_result = false;
+};
+
+// A client that overrides NOTHING past the pure virtuals, so the
+// IPickerLobbyClient defaults for the LINEUP §6 seam are exercised as the
+// contract every non-networked client inherits.
+class DefaultSeamPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
 };
 
 struct ActivePickerLobbyClientGuard
@@ -741,7 +796,7 @@ TEST(PickerFuncs, how_many_with_team)
         button_action_id(ButtonAction::ChangeTeam), 1))
         << "the button dispatcher should route team changes";
     ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum) << "team should increment";
-    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label).find("Playing on Team ") == 0) << "team label should be updated";
+    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label).find("Team ") == 0) << "team label should be updated";
 
     og::runtime::current_session->current_team_num_ = 0;
     ASSERT_EQ(4, (int)dispatcher.do_call(
@@ -868,6 +923,54 @@ TEST(PickerFuncs, picker_lobby_host_controls_visible_follows_active_client_bound
 
     EXPECT_TRUE(picker_lobby_host_controls_visible());
     picker_lobby_shutdown();
+}
+
+// LINEUP §6: the three free functions are the UI's only handle on the kick /
+// disconnect seam, and each must forward to the ACTIVE client and answer
+// false with no client installed (the local/offline case WP-F swaps in).
+TEST(PickerFuncs, picker_lobby_kick_and_disconnect_forward_to_the_active_client)
+{
+    picker_lobby_shutdown();
+    EXPECT_FALSE(picker_lobby_kick_machine(7u))
+        << "no client installed: nothing to kick";
+    EXPECT_FALSE(picker_lobby_disconnect_session());
+    EXPECT_FALSE(picker_lobby_was_kicked());
+
+    ContractPickerLobbyClient client;
+    client.was_kicked_result = true;
+    {
+        ActivePickerLobbyClientGuard guard(&client);
+        EXPECT_TRUE(picker_lobby_kick_machine(0x1234u));
+        ASSERT_EQ(1u, client.kicked_machines.size());
+        EXPECT_EQ(0x1234u, client.kicked_machines.front())
+            << "the machine id must reach the client unchanged";
+        EXPECT_TRUE(picker_lobby_disconnect_session());
+        EXPECT_EQ(1, client.disconnect_calls);
+        EXPECT_TRUE(picker_lobby_was_kicked());
+
+        // A refusal propagates as a refusal, not as a silent success.
+        client.kick_result = false;
+        client.disconnect_result = false;
+        EXPECT_FALSE(picker_lobby_kick_machine(0x99u));
+        EXPECT_FALSE(picker_lobby_disconnect_session());
+        EXPECT_EQ(2u, client.kicked_machines.size());
+        EXPECT_EQ(2, client.disconnect_calls);
+    }
+
+    // The base-class defaults: a client with no networking behind it refuses
+    // both requests and has never been kicked.
+    DefaultSeamPickerLobbyClient plain;
+    {
+        ActivePickerLobbyClientGuard guard(&plain);
+        EXPECT_FALSE(picker_lobby_kick_machine(1u));
+        EXPECT_FALSE(picker_lobby_disconnect_session());
+        EXPECT_FALSE(picker_lobby_was_kicked());
+    }
+
+    picker_lobby_shutdown();
+    EXPECT_FALSE(picker_lobby_kick_machine(7u));
+    EXPECT_FALSE(picker_lobby_disconnect_session());
+    EXPECT_FALSE(picker_lobby_was_kicked());
 }
 
 TEST(PickerFuncs, picker_replace_lobby_client_is_transactional_on_initialize_failure)
@@ -2947,7 +3050,7 @@ TEST(PickerFuncs,
     save.allied_mode = original_allied_mode;
 }
 
-TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
+TEST(PickerFuncs, local_lobby_fill_leaves_seats_and_sparse_domains_reconcile)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -2961,7 +3064,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     const short original_allied_mode = save.allied_mode;
     const std::string original_campaign = save.current_campaign;
     const short original_scenario = save.scen_num;
-    const short original_ctf_team_count = save.ctf_team_count;
+    const std::array<short, 4> original_bot_squad = save.fill;
     const std::string original_mount = get_mounted_campaign();
     const int original_world_id = world.id;
     const char original_world_type = world.type;
@@ -2992,7 +3095,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     save.allied_mode = 0;
     save.current_campaign = "modes";
     save.scen_num = 7;
-    save.ctf_team_count = 0;
+    save.fill = {};
     // A REAL mount: the versus predicate reads the campaign's matchup: yaml
     // key through the mounted package (a faked mount id would read another
     // campaign's yaml).
@@ -3014,24 +3117,31 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(3, players[1].team);
 
-        // Explicit 2 selects authored {0,2}; the old team-3 assignment is
-        // invalidated by the settings echo and moves to the first active team.
-        save.ctf_team_count = 2;
+        // B8: nothing the band holds narrows the seat domain. The host sets
+        // FILL: NONE on team 4 — the very team the second seat is sitting
+        // on — and the settings echo re-resolves every seat against the
+        // UNCHANGED authored mask {0,2,3}: the seat stays where it sits.
+        // (The A2-era OFF value, which DID narrow the domain, is gone.)
+        save.fill[3] = og::sim::kFillNone;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
-        EXPECT_EQ(0, players[1].team);
+        EXPECT_EQ(3, players[1].team);
+        // Per-seat reassignment follows the authored mask exactly: 2 is
+        // authored, 1 is not, and the NONE team stays perfectly seatable.
         EXPECT_TRUE(client->request_seat_team_change(
             players[1].player_index, 2));
         EXPECT_FALSE(client->request_seat_team_change(
             players[1].player_index, 1));
+        EXPECT_TRUE(client->request_seat_team_change(
+            players[1].player_index, 3));
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
-        EXPECT_EQ(2, players[1].team);
+        EXPECT_EQ(3, players[1].team);
 
-        // A next level with sparse authored {1,3} in Auto invalidates both
-        // old assignments; the client adopts the server's deterministic team
-        // 1 normalization without recoloring the saved heroes.
+        // A next level with sparse authored {1,3} invalidates the host's
+        // team-0 assignment; the client adopts the server's deterministic
+        // team 1 normalization without recoloring the saved heroes.
         while (world.oblist.size() > original_ob_size)
             world.oblist.pop_back();
         walker* marker1 = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
@@ -3040,12 +3150,13 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
         ASSERT_NE(nullptr, marker3);
         marker1->set_team_num(1);
         marker3->set_team_num(3);
-        save.ctf_team_count = 0;
+        save.fill[3] = og::sim::kFillFair;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(1, players[0].team);
-        EXPECT_EQ(1, players[1].team);
+        EXPECT_EQ(3, players[1].team)
+            << "team 4 is still authored, so that seat never moved";
         EXPECT_EQ(0, save.team_list[0]->teamnum);
         EXPECT_EQ(3, save.team_list[1]->teamnum);
         client->shutdown();
@@ -3067,7 +3178,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     save.allied_mode = original_allied_mode;
     save.current_campaign = original_campaign;
     save.scen_num = original_scenario;
-    save.ctf_team_count = original_ctf_team_count;
+    save.fill = original_bot_squad;
 }
 
 namespace {
@@ -3148,12 +3259,12 @@ struct LocalLobbySessionGuard
 
 }  // namespace
 
-// Matched teams E11 (amendment re-target): the matched request rides the
-// TROOPS field (kTroopsMatched), which feeds no mask anywhere (D29) — so
-// the settings echo re-resolves every seat against an UNCHANGED domain,
-// cycling TROOPS to/from FAIR moves no seats, and per-seat reassignment
-// obeys the same authored-mask rule as before.
-TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
+// TROOPS is inert since amendment B5: a legacy save carrying the retired
+// kTroopsMatched sentinel heals to 0 in the lobby's sanitize (the D30
+// one-time migration), the field feeds no mask anywhere, so the settings
+// echo re-resolves every seat against an UNCHANGED domain — no seat moves
+// — and per-seat reassignment obeys the same authored-mask rule as before.
+TEST(PickerFuncs, local_lobby_retired_troops_value_heals_and_moves_no_seats)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -3196,19 +3307,20 @@ TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
         EXPECT_EQ(0, players[0].team);
         EXPECT_EQ(3, players[1].team);
 
-        // ALL -> FAIR: the strip field feeds no mask, so the settings
-        // echo moves no seats, and the sentinel survives the lobby
-        // round-trip unclamped (sanitize keeps exactly 3, D27).
+        // The retired sentinel rides in: the field feeds no mask, so the
+        // settings echo moves no seats — and the sanitize heals the value
+        // to 0 (B5: TROOPS is inert on disk and on the wire).
         save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(0, players[0].team);
         EXPECT_EQ(3, players[1].team);
-        EXPECT_EQ(og::sim::kTroopsMatched, save.ctf_strip_scenario_troops);
+        EXPECT_EQ(0, save.ctf_strip_scenario_troops)
+            << "the one-time heal: every retired TROOPS value reads 0 back";
 
-        // Seat changes under FAIR follow the authored mask exactly as
-        // before: 2 is authored, 1 is not.
+        // Seat changes follow the authored mask exactly as before: 2 is
+        // authored, 1 is not.
         EXPECT_TRUE(client->request_seat_team_change(
             players[1].player_index, 2));
         EXPECT_FALSE(client->request_seat_team_change(
@@ -3217,7 +3329,8 @@ TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(2, players[1].team);
 
-        // FAIR -> ALL: same domain again, so still no seat movement.
+        // A second sync at the healed value: same domain again, so still
+        // no seat movement.
         save.ctf_strip_scenario_troops = 0;
         client->sync_settings_from_save();
         players = client->lobby_players();

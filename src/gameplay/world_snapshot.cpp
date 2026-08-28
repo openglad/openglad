@@ -4,6 +4,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -925,6 +926,13 @@ void serialize_match_knobs(std::vector<std::uint8_t>& buffer,
     // Snapshot v11 appends the time limit LAST: every raw payload-offset pin
     // that addresses the respawn/mode blocks keeps its number.
     append_i16(buffer, snapshot.ctf_requested_time_limit);
+    // Snapshot v12 appends the eight per-team band knobs LAST, for the same
+    // reason v11 appended the time limit: every raw payload-offset pin that
+    // addresses the respawn/mode blocks keeps its number.
+    for (const std::int16_t squad : snapshot.ctf_requested_fill)
+        append_i16(buffer, squad);
+    for (const std::int16_t level : snapshot.ctf_requested_map_units)
+        append_i16(buffer, level);
 }
 
 void deserialize_match_knobs(ByteReader& reader,
@@ -940,6 +948,10 @@ void deserialize_match_knobs(ByteReader& reader,
         reader.read_i16("world.ctf_requested_strip_scenario_troops");
     snapshot.ctf_requested_time_limit =
         reader.read_i16("world.ctf_requested_time_limit");
+    for (std::int16_t& squad : snapshot.ctf_requested_fill)
+        squad = reader.read_i16("world.ctf_requested_fill");
+    for (std::int16_t& level : snapshot.ctf_requested_map_units)
+        level = reader.read_i16("world.ctf_requested_map_units");
 }
 
 // `snapshot_hash` is passed in rather than read off the snapshot: the hash
@@ -2595,6 +2607,14 @@ void capture_mode_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot
     snapshot.ctf_requested_strip_scenario_troops =
         world.ctf_requested_strip_scenario_troops;
     snapshot.ctf_requested_time_limit = world.ctf_requested_time_limit;
+    for (std::size_t team = 0; team < snapshot.ctf_requested_fill.size();
+         ++team)
+    {
+        snapshot.ctf_requested_fill[team] =
+            static_cast<std::int16_t>(world.ctf_requested_fill[team]);
+        snapshot.ctf_requested_map_units[team] =
+            static_cast<std::int16_t>(world.ctf_requested_map_units[team]);
+    }
 }
 
 // Rebuilds the world's RespawnState + ModeState from the snapshot.
@@ -2631,11 +2651,16 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
     for (og::sim::ModeHudLine& line : world.mode.hud)
         line.text.back() = '\0';
 
-    world.ctf_requested_team_count = snapshot.ctf_requested_team_count;
+    // The retired TEAMS knob (A3): a crafted snapshot reaches this field
+    // unchecked, and the host's own world holds 0, so the mirror snaps it
+    // too — a mirror that kept 3 here would hash-mismatch every keyframe.
+    world.ctf_requested_team_count = 0;
     world.ctf_requested_capture_limit = snapshot.ctf_requested_capture_limit;
     world.ctf_requested_respawn_ticks = snapshot.ctf_requested_respawn_ticks;
-    world.ctf_requested_strip_scenario_troops =
-        snapshot.ctf_requested_strip_scenario_troops;
+    // The retired TROOPS knob (B5): a crafted snapshot reaches this field
+    // unchecked, and the host's own world holds 0, so the mirror snaps it
+    // too — a mirror that kept 3 here would strip a cast the host fielded.
+    world.ctf_requested_strip_scenario_troops = 0;
     // Sim-side twin of the lobby sanitizer / provider clamp (#241): a
     // crafted snapshot reaches this field unchecked, and a wild tick count
     // would let a mode's deadline underflow or outrun the engine's 36000-
@@ -2645,6 +2670,18 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
             ? std::clamp<std::int16_t>(snapshot.ctf_requested_time_limit,
                                        720, 21600)
             : static_cast<std::int16_t>(0);
+    // Same crafted-snapshot rule for the band knobs: a wild FILL code would
+    // index past the mode's multiplier table, and a wild MAP UNITS value is
+    // neither on nor off. The bound is the shared og::sim clamp, so the
+    // mirror lands on exactly the value the lobby authority holds.
+    for (std::size_t team = 0; team < world.ctf_requested_fill.size();
+         ++team)
+    {
+        world.ctf_requested_fill[team] = static_cast<short>(
+            og::sim::clamp_fill(snapshot.ctf_requested_fill[team]));
+        world.ctf_requested_map_units[team] = static_cast<short>(
+            og::sim::clamp_map_units(snapshot.ctf_requested_map_units[team]));
+    }
 }
 
 og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
@@ -3247,6 +3284,8 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.ctf_requested_strip_scenario_troops =
         delta.ctf_requested_strip_scenario_troops;
     baseline.ctf_requested_time_limit = delta.ctf_requested_time_limit;
+    baseline.ctf_requested_fill = delta.ctf_requested_fill;
+    baseline.ctf_requested_map_units = delta.ctf_requested_map_units;
     baseline.respawn_mode = delta.respawn_mode;
     baseline.generator_rate = delta.generator_rate;
     baseline.control_policy = delta.control_policy;

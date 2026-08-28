@@ -17,18 +17,28 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
 #     name entry); blank keeps the campaign. Back, then 2=Continue returns to
 #     Base Camp. The retired 1–4 player-count rows are no longer present.
-#   Base camp / Team Build (11 items, §2.5 substitution + the #206 Camp door
+#   Base camp / Team Build (12 items, §2.5 substitution + the #206 Camp door
 #     inserted before Back; the flat CTF trio left for the camp's MATCH SETUP
 #     page and 11=Difficulty was appended in its place —
-#     docs/camp-controls-design.md): 3=Hire Troops (n/h/b — the hire
-#     AUTOSAVES the company, §3.8), 1=Roster (deploy 2 toggles + blank
-#     exits), 4=Deploy (prompt re-deploys row 2), 7=Camp (gladiator composes
-#     no camp, so the guard line prints and Team Build re-presents without
-#     consuming further input), 10=Scenario, 11=Difficulty, 6=GO!, 8=Back.
-#   Scenario submenu (8 items — the missions door retired into the camp;
-#     7=Replay Level was appended before Back, #207): 4=Matchup (set
-#     preferred-team metadata, blank exits), 3=View Scenario (blank
-#     dismisses), 6=Scenario Troops, 8=Back.
+#     docs/camp-controls-design.md — with 12=Lineup appended below it,
+#     docs/lineup-design.md §8, so no ordinal above moved): 3=Hire Troops
+#     (n/h/b — the hire AUTOSAVES the company, §3.8), 1=Roster (deploy 2
+#     toggles + blank exits), 4=Deploy (prompt re-deploys row 2), 7=Camp
+#     (gladiator composes no camp, so the guard line prints and Team Build
+#     re-presents without consuming further input), 10=Scenario,
+#     11=Difficulty, 12=Lineup, 6=GO!, 8=Back.
+#   Lineup page (host rows: 1..8 the four teams' FILL/MAP UNITS knobs,
+#     9=Split even, 10=Split fair, 11=Unite, 12=Back — amendment B6 deleted
+#     the FIGHTERS row, so the strip moved up one): 1 steps TEAM 1's FILL
+#     wheel one place (amendment 3 C5 retired the classic gating, so the
+#     knob is live on gladiator too, and amendment 4 E1 makes every band
+#     read its stored code — NONE at rest, WEAK after one press); 12 backs
+#     out.
+#   Scenario submenu (7 items — the missions door retired into the camp;
+#     6=Replay Level, #207; amendment B5 retired the TROOPS row, which is
+#     the one row this branch REMOVED, so replay and back each moved up
+#     one): 4=Matchup (set preferred-team metadata, blank exits),
+#     3=View Scenario (blank dismisses), 7=Back.
 #   Difficulty submenu (7 items): 7=Back straight out.
 #   Protocol session after GO!: state, quit.
 #   Main: 6=Quit (the difficulty door left this menu, so every row below it
@@ -55,9 +65,12 @@ play 1
 
 3
 
-8
+7
 11
 7
+12
+1
+12
 6
 state
 quit
@@ -167,6 +180,56 @@ if not any('Preferred-team metadata is now RED;' in l for l in lines):
     sys.exit(1)
 if any(' TEAM (P' in l or 'P1 plays' in l or 'P2 plays' in l for l in lines):
     print('FAIL: text Matchup must not claim playable P# seats', file=sys.stderr)
+    sys.exit(1)
+# Amendment A1/A3: TEAMS is not a control any more, so its readout is gone
+# from this screen too. How many teams fight is the LINEUP page's answer.
+if any('Teams:' in l for l in lines):
+    print('FAIL: the retired TEAMS readout leaked into text Matchup',
+          file=sys.stderr)
+    sys.exit(1)
+
+# LINEUP (docs/lineup-design.md §8): the four bands and the two shared
+# band labels (amendments B1/B6 — one FILL wheel, one MAP UNITS box, and no
+# FIGHTERS page behind them).
+if not any('--- Lineup ---' in l for l in lines):
+    print('FAIL: expected the Lineup page banner', file=sys.stderr)
+    sys.exit(1)
+if not any('TEAM 1 RED' in l for l in lines):
+    print('FAIL: expected the TEAM 1 band header', file=sys.stderr)
+    sys.exit(1)
+# gladiator is a CLASSIC (non-versus) campaign, and since amendment 3 C5 the
+# match machinery lives in packs/core and runs on a mode-less level, so the
+# knob rows are LIVE here: no MAP RULES mark, no refusal, and one press steps
+# the wheel. This drive asserted the opposite until C5.
+if not any('TEAM 1  FILL: NONE' in l for l in lines):
+    print('FAIL: expected the bare FILL row on a classic campaign',
+          file=sys.stderr)
+    sys.exit(1)
+if not any('TEAM 1  MAP UNITS: ON' in l for l in lines):
+    print('FAIL: expected the MAP UNITS row beside the FILL wheel',
+          file=sys.stderr)
+    sys.exit(1)
+# Amendment 4 E1: FILL: NONE is the stored default on every map, and with
+# the per-team resolver retired every band simply reads its stored code. So
+# all four teams read NONE at rest on gladiator scen 1 — the authored elf
+# team included — and the three clients agree by construction rather than by
+# each running the same resolution.
+for row in ('TEAM 2  FILL: NONE', 'TEAM 3  FILL: NONE', 'TEAM 4  FILL: NONE'):
+    if not any(row in l for l in lines):
+        print('FAIL: expected ' + row + ' at rest', file=sys.stderr)
+        sys.exit(1)
+if any('MAP RULES' in l for l in lines):
+    print('FAIL: the retired MAP RULES gating leaked into the Lineup page',
+          file=sys.stderr)
+    sys.exit(1)
+if not any('FILL: WEAK' in l for l in lines):
+    print('FAIL: a classic campaign must cycle the FILL wheel', file=sys.stderr)
+    sys.exit(1)
+# B6: FIGHTERS is deleted, not hidden. MATCHUP moves a colour and the DEPLOY
+# row benches, so nothing on this page offers a second door to them.
+if any('--- Fighters ---' in l for l in lines):
+    print('FAIL: the retired FIGHTERS page leaked into the Lineup strip',
+          file=sys.stderr)
     sys.exit(1)
 
 # View Scenario: the shared roster report from a scratch headless load.

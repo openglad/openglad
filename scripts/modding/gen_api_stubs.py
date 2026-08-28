@@ -628,6 +628,9 @@ CAMPAIGN_HOOK_SIGS: Dict[str, str] = {
     "picker_menu": "fun(page_id: string): og.CampaignPage?",
     "picker_action": "fun(entry_id: string): og.CampaignActionResult?",
     "base_camp": "fun(): og.CampaignZone?",
+    # The one hook that is a TABLE, not a function (docs/lineup-design.md
+    # §3.3): the LINEUP page's bot-squad names and its fighter pricer.
+    "lineup": "og.CampaignLineup",
 }
 
 
@@ -1333,6 +1336,26 @@ def generate(repo_root: Path) -> str:
         out.append(f"---@field {stat} integer")
     out.append("---@field deployed boolean")
     out.append("")
+    out.append("-- One fighter handed to lineup.power: the ENGINE's own")
+    out.append("-- derived stats (guy bonuses + family bases, already")
+    out.append("-- truncated to integers), so a book prices exactly what")
+    out.append("-- the sim would field. fire_frequency is busy ticks after")
+    out.append("-- an attack -- lower is faster.")
+    out.append("---@class og.LineupPowerRow")
+    out.append("---@field family string")
+    for stat in ("level", "hp", "mp", "armor", "damage", "stepsize",
+                 "fire_frequency"):
+        out.append(f"---@field {stat} integer")
+    out.append("")
+    out.append("-- The LINEUP table: `power` prices one fighter for the")
+    out.append("-- team bands, and it is the whole table (the preset names")
+    out.append("-- retired with the BOTS wheel; `default_fill` and its")
+    out.append("-- og.LineupResolveRow retired with the per-team default")
+    out.append("-- resolver in amendment 4 -- FILL: NONE is the stored 0")
+    out.append("-- on every map now, so nothing resolves).")
+    out.append("---@class og.CampaignLineup")
+    out.append("---@field power? fun(row: og.LineupPowerRow): integer")
+    out.append("")
     out.append("-- Hook table for og.register_campaign_hooks. `vars` names")
     out.append("-- the campaign state keys (max 64, each 1-32 chars of")
     out.append("-- [a-z0-9_]) that level scripts may read via")
@@ -1357,6 +1380,10 @@ def generate(repo_root: Path) -> str:
         "register_hooks": hook_union,
         "register_level_hooks": "og.LevelHooks",
         "register_campaign_hooks": "og.CampaignHooks",
+        # The shipped-pack DEFAULT lineup (docs/lineup-design.md C5) takes
+        # the campaign book's own `lineup` table, spelled identically —
+        # only the registrar differs, so the class does not.
+        "register_default_lineup": "og.CampaignLineup",
         "set_entity_hooks": "og.EntityHooks",
     }
     out.append("-- Draw-free bindings over the og::combat constexpr helpers")

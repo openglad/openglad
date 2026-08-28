@@ -441,6 +441,34 @@ public:
         return last_level_id_ != id;
     }
 
+    // The MODE-LESS stage step (docs/lineup-design.md C2), the twin of
+    // og::sim::mode_stage_init for the levels no mode owns: dispatches the
+    // on_lineup_stage hook a pack registered (packs/core, wildcard level
+    // -1), which applies the per-team map-unit strip and the FILL squads.
+    // Returns true iff a hook actually ran. A mode-owned world already had
+    // its stage step and is skipped; with no hook registered the call
+    // writes nothing and draws no RNG, so a classic world is byte-identical
+    // either way.
+    bool run_lineup_stage_step();
+
+    // The stage->adoption handoff for that step, keyed on the level id: the
+    // stager ran the step on the staged world, and the adopted world IS
+    // that world's state, so its first tick must not run it again. Level-
+    // keyed rather than a bare flag so an unconsumed claim (an adopted
+    // level abandoned before its first tick) cannot suppress the NEXT
+    // level's step. Never serialized — mirrors do not tick, which is the
+    // same reason the on_load latch stays armed on them.
+    void claim_staged_lineup_stage() noexcept
+    {
+        staged_lineup_stage_level_ = id;
+    }
+    [[nodiscard]] bool consume_staged_lineup_stage_claim() noexcept
+    {
+        const bool claimed = (staged_lineup_stage_level_ == id);
+        staged_lineup_stage_level_ = -1;
+        return claimed;
+    }
+
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
 
@@ -467,7 +495,10 @@ public:
     short ctf_requested_team_count = 0;
     short ctf_requested_capture_limit = 0;
     short ctf_requested_respawn_ticks = 0;
-    short ctf_requested_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
+    // RETIRED (amendment B5): snapped to 0 by both
+    // sync_world_from_save_data twins and by apply_mode_state, so
+    // og.match_setting("strip_troops") always answers 0.
+    short ctf_requested_strip_scenario_troops = 0;
     // Lobby-requested match time limit in SIM TICKS; 0 = the map's own value
     // (#241). Scripted modes read it as og.match_setting("time_limit") and
     // resolve it against their manifest row through match.resolve_limit.
@@ -476,6 +507,15 @@ public:
     // Independent of the 36000-tick hard mission timeout below, which is a
     // runaway-loop safety net and ends the level as a LOSS.
     short ctf_requested_time_limit = 0;
+    // Lobby-requested per-team FILL wheel and MAP UNITS box (amendment
+    // B1-B4). Index is the team (0..3); 0 is the default on both.
+    // fill: 0 = NONE (amendment 4 E1), 1 = WEAK, 2 = FAIR, 3 = STRONG,
+    // 4 = BRUTAL.
+    // map_units: 0 = the map's own authored units on this team are fielded,
+    // 1 = they are not. Scripted modes read them as
+    // og.match_setting("fill_1") .. ("map_units_4").
+    std::array<short, 4> ctf_requested_fill = {};
+    std::array<short, 4> ctf_requested_map_units = {};
     // Classic (non-CTF) respawn mode: 0 = off (legacy), 1 = heroes respawn,
     // 2 = heroes + level-authored AI livings respawn ("endless battle"),
     // 3 = only Team 1 heroes respawn (player-facing Team 1 = internal team 0).
@@ -552,6 +592,8 @@ private:
 
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
+    // The level id whose lineup stage step the stager already ran (-1 = none).
+    int staged_lineup_stage_level_ = -1;
     WeatherKind weather_ = WeatherKind::None;
     std::function<void()> detach_callback_;
     std::uint32_t next_entity_id_ = 1;

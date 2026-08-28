@@ -25,6 +25,7 @@ og_test_guy
 og_test_input
 og_test_io
 og_test_level
+og_test_lineup
 og_test_living
 og_test_mass_coverage
 og_test_matchup

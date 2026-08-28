@@ -229,6 +229,11 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.settings.shared_teams = 1;
     // v15: the match time limit in sim ticks (the fourteenth i16).
     state.settings.time_limit = 7200;
+    // v16: the eight per-team bot knobs (LINEUP §3.1). Distinct per team and
+    // distinct between squad and level, so a transposed loop in either
+    // serializer shows up as a value mismatch, not a silent pass.
+    state.settings.fill = {0, 1, 5, 9};
+    state.settings.map_units = {3, 0, 9, 1};
     state.host_player_id = 1u;
     state.last_start_denial =
         og::sim::start_denial_reason_value(
@@ -258,7 +263,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x0f, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x10, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -399,9 +404,22 @@ TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
             .ctf_respawn_ticks = 180,
             .ctf_strip_scenario_troops = 1,
             .respawn_mode = 3,
+            .fill = {2, 0, 9, 1},
+            .map_units = {0, 7, 1, 9},
         },
     };
     messages.push_back(settings_change);
+
+    // v16 (LINEUP §6): the kick pair. Kicked carries no payload, so its kind
+    // byte is the whole message — a serializer that wrote anything extra
+    // would fail the reader's finished() check here.
+    og::sim::LobbyMessage kick;
+    kick.payload = og::sim::LobbyKickMessage{.machine_id = 0x0badc0deu};
+    messages.push_back(kick);
+
+    og::sim::LobbyMessage kicked;
+    kicked.payload = og::sim::LobbyKickedMessage{};
+    messages.push_back(kicked);
 
     for (const og::sim::LobbyMessage& message : messages)
     {
@@ -1283,8 +1301,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x0f, 0x01, 0x17, 0x00,
-            0x0f, 0x0f, 0x03,
+            0x10, 0x01, 0x17, 0x00,
+            0x10, 0x10, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -3043,19 +3061,26 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
-    // Wire layout of an empty LobbyState (protocol v15): 4-byte transport
-    // header, then the settings block (4-byte empty campaign string + 14 i16
-    // fields and the authored-team-mask u8 = 33 bytes), then the 1-byte host
+    // Wire layout of an empty LobbyState (protocol v16): 4-byte transport
+    // header, then the settings block (4-byte empty campaign string + 22 i16
+    // fields and the authored-team-mask u8 = 49 bytes), then the 1-byte host
     // player id, 1-byte last_start_denial echo, and u32 request correlation —
-    // so player-count sits at offset 43. A trailing u8 local-seat-id count
+    // so player-count sits at offset 59. A trailing u8 local-seat-id count
     // follows the players, then a u32 recipient-specific Join acknowledgement
     // and a bool recipient-host flag.
+    //
+    // The 22 i16s: scenario_id, difficulty, allied_mode, ctf_team_count,
+    // ctf_capture_limit, ctf_respawn_ticks, ctf_strip_scenario_troops,
+    // respawn_mode, generator_rate, keep_fallen_heroes, cross_control,
+    // infinite_gold, shared_teams, time_limit, then the v16 fill[4] and
+    // map_units[4]. Re-derived from the field list, not bumped by +16: two
+    // of these offsets were silently stale for months once.
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 43, 0xffffffffu);
+    write_u32_le(oversized_player_count, 59, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -3108,9 +3133,9 @@ TEST(NetTransport,
                                   player_state_bytes.end());
     // First player record (v9): index u8 + seat-id u32 + machine-id u32 +
     // empty-name u32 + empty-company u32 + team i16 + ready/host bools =
-    // 21 bytes after the player-count u32 at 43 (v15 settings block), putting
-    // its slot-count u32 at 68.
-    write_u32_le(oversized_slot_count, 68, 0xffffffffu);
+    // 21 bytes after the player-count u32 at 59 (v16 settings block), putting
+    // its slot-count u32 at 84.
+    write_u32_le(oversized_slot_count, 84, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());
@@ -3120,6 +3145,32 @@ TEST(NetTransport,
     auto bad_kind = og::sim::serialize_lobby_message(message);
     bad_kind[og::sim::kTransportHeaderSize] = 0xffu;
     EXPECT_FALSE(og::sim::deserialize_lobby_message(bad_kind).has_value());
+
+    // v16 added kinds 8 (Kick) and 9 (Kicked). 10 is the first still-unknown
+    // kind: a reader that fell through to a default-constructed payload
+    // instead of failing would decode this as a Join.
+    og::sim::LobbyMessage kicked;
+    kicked.payload = og::sim::LobbyKickedMessage{};
+    auto past_the_end_kind = og::sim::serialize_lobby_message(kicked);
+    ASSERT_EQ(9u, past_the_end_kind[og::sim::kTransportHeaderSize]);
+    past_the_end_kind[og::sim::kTransportHeaderSize] = 10u;
+    EXPECT_FALSE(
+        og::sim::deserialize_lobby_message(past_the_end_kind).has_value());
+
+    // A Kick truncated inside its machine-id u32 must fail, not read a
+    // partially-filled id.
+    og::sim::LobbyMessage kick;
+    kick.payload = og::sim::LobbyKickMessage{.machine_id = 0x11223344u};
+    auto truncated_kick = og::sim::serialize_lobby_message(kick);
+    truncated_kick.pop_back();
+    const std::uint16_t kick_payload_size = static_cast<std::uint16_t>(
+        truncated_kick.size() - og::sim::kTransportHeaderSize);
+    truncated_kick[2] =
+        static_cast<std::uint8_t>(kick_payload_size & 0xffu);
+    truncated_kick[3] =
+        static_cast<std::uint8_t>((kick_payload_size >> 8) & 0xffu);
+    EXPECT_FALSE(
+        og::sim::deserialize_lobby_message(truncated_kick).has_value());
 }
 
 TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)

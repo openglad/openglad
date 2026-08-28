@@ -11,6 +11,7 @@
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/statistics.h>
@@ -1225,6 +1226,20 @@ private:
     bool mounted_ = false;
 };
 
+// Turns the band's one FILL wheel to the explicit FAIR the retired default
+// used to mean (E5). The FFA arenas author no livings at all, so under E1's
+// stored NONE a seat's staged hero would be the only fighter on the floor
+// and the band would honestly refuse with FEWER THAN 2 FIGHTERS before any
+// of the replication these tests exist to measure could happen. The knob is
+// a world field, so setting it on the server before the initial sync is
+// what a host's click does and it rides the keyframe to every mirror.
+void ffa_turn_band_wheel(NetworkTestFixture& fixture)
+{
+    fixture.with_server_context([&fixture] {
+        fixture.server_world().ctf_requested_fill[0] = og::sim::kFillFair;
+    });
+}
+
 // Stages one seat's deployed hero the way the level assembly does: an
 // owner-tagged myguy walker on the seat's lobby team (the FFA arenas author
 // no livings, so every fighter is either a staged hero or an init bot).
@@ -1303,6 +1318,7 @@ TEST(FfaNetwork, host_join_scen850_assigns_distinct_band_bytes_on_all_mirrors)
     ScopedModesCampaign modes;
     ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
     fixture.load_level();
+    ffa_turn_band_wheel(fixture);
 
     walker* hero0 = stage_ffa_hero(fixture, 0, 61);
     walker* hero1 = stage_ffa_hero(fixture, 1, 62, FAMILY_ELF);
@@ -1387,6 +1403,7 @@ TEST(FfaNetwork, seat_keeps_control_through_reseat_and_band_respawn_cycle)
     ScopedModesCampaign modes;
     ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
     fixture.load_level();
+    ffa_turn_band_wheel(fixture);
 
     walker* hero = stage_ffa_hero(fixture, 0, 31);
     ASSERT_NE(nullptr, hero);
@@ -1455,6 +1472,7 @@ TEST(FfaNetwork, band_frag_replicates_to_client_mode_vars)
     ScopedModesCampaign modes;
     ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
     fixture.load_level();
+    ffa_turn_band_wheel(fixture);
 
     walker* hero = stage_ffa_hero(fixture, 0, 32);
     ASSERT_NE(nullptr, hero);
@@ -1503,6 +1521,7 @@ TEST(FfaNetwork, win_latch_and_band_winner_replicate)
     ScopedModesCampaign modes;
     ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
     fixture.load_level();
+    ffa_turn_band_wheel(fixture);
 
     walker* hero = stage_ffa_hero(fixture, 0, 33);
     ASSERT_NE(nullptr, hero);
@@ -1564,6 +1583,7 @@ TEST(FfaNetwork, mid_join_hero_adopts_free_band_byte_on_both_sides)
     ScopedModesCampaign modes;
     ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
     fixture.load_level();
+    ffa_turn_band_wheel(fixture);
 
     // Only seat 0 deploys before init; seat 1's hero arrives mid-match.
     walker* hero0 = stage_ffa_hero(fixture, 0, 34);

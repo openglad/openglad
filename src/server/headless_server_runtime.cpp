@@ -2,6 +2,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/guy.h>
@@ -88,10 +89,14 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
 {
     world.my_team = save.my_team;
     world.allied_mode = save.allied_mode;
-    world.ctf_requested_team_count = save.ctf_team_count;
+    // The retired TEAMS knob (A3): inert on the way into the sim, in BOTH
+    // sync_world_from_save_data twins (see screen.cpp).
+    world.ctf_requested_team_count = 0;
     world.ctf_requested_capture_limit = save.ctf_capture_limit;
     world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
-    world.ctf_requested_strip_scenario_troops = save.ctf_strip_scenario_troops;
+    // The retired TROOPS knob (B5): inert on the way into the sim, in BOTH
+    // sync_world_from_save_data twins (see screen.cpp).
+    world.ctf_requested_strip_scenario_troops = 0;
     // World-entry twin of the lobby sanitizer / provider clamp (#241): a
     // hand-edited save is the one route that reaches the sim unchecked, and
     // the mirror that snapshot-applies this world clamps the same field
@@ -104,6 +109,20 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
             ? std::clamp<std::int16_t>(
                   static_cast<std::int16_t>(save.time_limit), 720, 21600)
             : static_cast<std::int16_t>(0);
+    // World-entry twin of the same shared clamp for the eight band knobs
+    // (B1-B4): a hand-edited save is the one route that reaches the sim
+    // unchecked, and the mirror that snapshot-applies this world clamps the
+    // same fields (world_snapshot.cpp apply_mode_state) — so without this the
+    // server and its mirrors hold different values and every snapshot hash
+    // check mismatches. 0 stays 0 (FAIR, and MAP UNITS ON).
+    for (std::size_t team = 0; team < world.ctf_requested_fill.size();
+         ++team)
+    {
+        world.ctf_requested_fill[team] = static_cast<short>(
+            og::sim::clamp_fill(save.fill[team]));
+        world.ctf_requested_map_units[team] = static_cast<short>(
+            og::sim::clamp_map_units(save.map_units[team]));
+    }
     // Modes may clamp world knobs (Classic: identity). Applied in BOTH
     // sync_world_from_save_data twins (see screen.cpp).
     world.respawn_mode =
@@ -356,6 +375,10 @@ void copy_headless_server_save_data(SaveData& destination,
     // Match time limit (protocol v15 / GTL v17): same rule — a dropped copy
     // would silently restore the map's own clock across the staged handoff.
     destination.time_limit = source.time_limit;
+    // Per-team bot knobs (protocol v16 / GTL v18): same rule — a dropped copy
+    // would silently restore the map's own fills across the staged handoff.
+    destination.fill = source.fill;
+    destination.map_units = source.map_units;
     // Difficulty submenu (protocol v6): same lobby-negotiated rule — the
     // staged-lobby adoption copies the staged save through here, and a copy
     // that dropped these would launch with default respawns/permadeath.
@@ -415,6 +438,11 @@ og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
     equivalent.cross_control = save.cross_control;
     equivalent.infinite_gold = save.infinite_gold;
     equivalent.time_limit = save.time_limit;
+    for (std::size_t team = 0; team < equivalent.fill.size(); ++team)
+    {
+        equivalent.fill[team] = save.fill[team];
+        equivalent.map_units[team] = save.map_units[team];
+    }
 
     // Full roster, benched kept (the local rule): campaign_tag stays off the
     // equivalent by the documented GTL v16 rule — the record it is stored on
@@ -518,6 +546,13 @@ void apply_headless_lobby_game_start_config(
     save.cross_control = static_cast<short>(config_save.cross_control);
     save.infinite_gold = static_cast<short>(config_save.infinite_gold);
     save.time_limit = static_cast<short>(config_save.time_limit);
+    for (std::size_t team = 0; team < save.fill.size(); ++team)
+    {
+        save.fill[team] =
+            static_cast<short>(config_save.fill[team]);
+        save.map_units[team] =
+            static_cast<short>(config_save.map_units[team]);
+    }
     save.my_team = 0;
 
     for (auto& member : save.team_list)

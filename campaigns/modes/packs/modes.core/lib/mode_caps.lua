@@ -14,14 +14,10 @@ local SPAWN_MARK_BIT = 32768
 -- the paused one, so no per-generator storage is needed (R6).
 local PAUSE_FIRE_FREQUENCY = 16384
 
--- Squad bots carry stats bit 65536 (the next free bit above the spawn
--- mark) so the staged VIEW LEVEL census can tell BOT SQUAD / MATCHED BOTS
--- from authored map troops on any client — bit_flags rides the entity
--- snapshot, so provenance is networked-exact on every mirror. Set at the
--- one squad choke point (mode_match add_squad_member: init squads AND
--- wiped-team revives). The C++ reader pins the value (picker_common
--- kBotMarkBit).
-local BOT_MARK_BIT = 65536
+-- The bot-squad provenance mark (stats bit 65536) lives in the shared core
+-- pack now, beside the one squad seam that stamps it (docs/lineup-design.md
+-- C1); this module re-exports the pair so the modes keep their name for it.
+local lineup = og.use("core:lineup")
 
 local function mark_spawn(spawn)
   spawn:s_set_bit_flags(SPAWN_MARK_BIT, 1)
@@ -29,10 +25,6 @@ end
 
 local function is_marked_spawn(w)
   return w:s_query_bit_flags(SPAWN_MARK_BIT)
-end
-
-local function mark_bot(w)
-  w:s_set_bit_flags(BOT_MARK_BIT, 1)
 end
 
 -- Bank a manifest row's spawn_caps into 8 mode vars (team byte keyed,
@@ -93,11 +85,11 @@ end
 
 return {
   SPAWN_MARK_BIT = SPAWN_MARK_BIT,
-  BOT_MARK_BIT = BOT_MARK_BIT,
+  BOT_MARK_BIT = lineup.BOT_MARK_BIT,
   PAUSE_FIRE_FREQUENCY = PAUSE_FIRE_FREQUENCY,
   mark_spawn = mark_spawn,
   is_marked_spawn = is_marked_spawn,
-  mark_bot = mark_bot,
+  mark_bot = lineup.mark_bot,
   bank_caps = bank_caps,
   pause_generator = pause_generator,
   resume_generator = resume_generator,

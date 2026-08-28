@@ -385,6 +385,7 @@ TEST_F(ModesItems, mutant_840_items_cycle_deterministically)
         fx.spawn_living(FAMILY_ORC, 1, 544, 96);
         fx.spawn_living(FAMILY_SOLDIER, 2, 96, 800);
         fx.spawn_living(FAMILY_ORC, 3, 544, 800);
+        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: band
         fx.tick(1);
         EXPECT_TRUE(fx.world().mode.active);
         EXPECT_EQ(1, fx.var(kMutItemLast))

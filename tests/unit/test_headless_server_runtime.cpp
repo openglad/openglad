@@ -765,21 +765,28 @@ TEST_F(HeadlessServerRuntimeTest, mirror_level_load_never_rolls_weather)
         << "level load must reset the kind; only snapshots set it on mirrors";
 }
 
-// Matched-teams I4 ordering (docs/matched-teams-design.md §3.2, amended
-// D25/D27): the TROOPS: FAIR sentinel rides the existing SaveData -> world
-// chain and is in `world.ctf_requested_strip_scenario_troops` strictly
-// BEFORE the first world.tick() runs on_mode_init, with the lobby roster
-// already in the oblist — so the mode census can see both. The mode var
-// written by on_mode_init (slot 2, mode_match.MATCHED.TARGET) is the proof
-// Lua saw the sentinel and censused the roster.
+// Matched-teams I4 ordering (docs/matched-teams-design.md §3.2), now
+// carrying the amendment B1-B4 band knobs: the eight scalars ride the
+// existing LobbySaveDataEquivalent -> SaveData -> world chain and are in
+// `world.ctf_requested_fill` / `ctf_requested_map_units` strictly BEFORE
+// the first world.tick() runs on_mode_init, with the lobby roster already
+// in the oblist — so the mode census can see both. This is the
+// dropped-copy-site bug class the design calls M8, pinned at the headless
+// authority.
 TEST_F(HeadlessServerRuntimeTest,
-       matched_sentinel_reaches_world_before_first_tick_and_lua_sees_it)
+       band_knobs_reach_the_world_before_the_first_tick)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
     lobby_save.current_campaign = "modes";
     lobby_save.scen_num = 302; // shipped TDM level
     lobby_save.numplayers = 2;
     lobby_save.allied_mode = 0;
+    lobby_save.fill = {og::sim::kFillFair, og::sim::kFillNone,
+                       og::sim::kFillWeak, og::sim::kFillBrutal};
+    lobby_save.map_units = {og::sim::kMapUnitsOn, og::sim::kMapUnitsOff,
+                            og::sim::kMapUnitsOff, og::sim::kMapUnitsOn};
+    // A legacy peer's TROOPS value rides along and must NOT reach the sim
+    // (amendment B5): the world-entry twin snaps it to 0.
     lobby_save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     lobby_save.team_list = {
         make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
@@ -788,16 +795,23 @@ TEST_F(HeadlessServerRuntimeTest,
 
     initialize_from_lobby(lobby_save);
 
-    EXPECT_EQ(og::sim::kTroopsMatched,
-              active_save_.ctf_strip_scenario_troops)
-        << "the start config carries the sentinel into the SaveData";
+    const std::array<short, 4> expected_fill = {
+        og::sim::kFillFair, og::sim::kFillNone, og::sim::kFillWeak,
+        og::sim::kFillBrutal};
+    const std::array<short, 4> expected_map_units = {
+        og::sim::kMapUnitsOn, og::sim::kMapUnitsOff, og::sim::kMapUnitsOff,
+        og::sim::kMapUnitsOn};
+    EXPECT_EQ(expected_fill, active_save_.fill)
+        << "the start config carries the band knobs into the SaveData";
+    EXPECT_EQ(expected_map_units, active_save_.map_units);
     GameWorld& world = level_data_->world();
-    EXPECT_EQ(og::sim::kTroopsMatched,
-              world.ctf_requested_strip_scenario_troops)
+    EXPECT_EQ(expected_fill, world.ctf_requested_fill)
         << "sync_world_from_save_data ran before the first tick (I4)";
+    EXPECT_EQ(expected_map_units, world.ctf_requested_map_units);
+    EXPECT_EQ(0, world.ctf_requested_strip_scenario_troops)
+        << "the retired TROOPS value heals at the world-entry twin (B5)";
     EXPECT_EQ(0u, world.tick_count_);
     EXPECT_FALSE(world.mode.active) << "on_mode_init has not run yet";
-    EXPECT_EQ(0, world.mode.vars[2]);
     ASSERT_NE(nullptr, find_team_member(world, 100))
         << "the roster is in the oblist before init — censusable (D15)";
     ASSERT_NE(nullptr, find_team_member(world, 200));
@@ -806,27 +820,37 @@ TEST_F(HeadlessServerRuntimeTest,
 
     EXPECT_TRUE(world.mode.active) << "the first tick ran on_mode_init";
     EXPECT_NE(0, world.mode.vars[0]) << "the mode id var is written";
-    EXPECT_GT(world.mode.vars[2], 0)
-        << "on_mode_init stored the matched census target — Lua saw the "
-           "sentinel through og.match_setting before any other tick ran";
 }
 
-// The unmatched twin: the identical lobby handoff without the sentinel
-// leaves the matched census idle — the target var stays 0 and the flow is
-// byte-identical to today's behavior.
+// The unmatched twin: the lobby handoff that leaves the matched census
+// idle, so the target var stays 0.
+//
+// Intent history: this twin used to be "the identical handoff WITHOUT the
+// Teams: Match sentinel", back when ctf_team_count == 5 was what asked for
+// a matched world. A1/A3 retired that sentinel and W5-A retired the last
+// gate with it — `matched` now means only "a reference exists", which
+// activation reports for ANY deployed roster, so the rostered handoff above
+// is always matched and there is no knob left that can ask it not to be.
+// The one live way to leave the census idle is to give it no roster to
+// measure: no human power anywhere is B3's legacy-formula arm, and
+// bank_match_target returns before it writes a thing.
 TEST_F(HeadlessServerRuntimeTest,
-       auto_team_count_lobby_handoff_writes_no_matched_target)
+       rosterless_lobby_handoff_writes_no_matched_target)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
     lobby_save.current_campaign = "modes";
     lobby_save.scen_num = 302;
-    lobby_save.numplayers = 2;
+    lobby_save.numplayers = 0;
     lobby_save.allied_mode = 0;
-    lobby_save.ctf_strip_scenario_troops = 0;
-    lobby_save.team_list = {
-        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
-        make_slot(3u, 200, "Guest Guy", FAMILY_ARCHER, 1),
-    };
+    // E5: the two sides come from turned wheels now. Amendment 4's E1 makes
+    // the stored knob NONE, so a handoff with no roster AND no wheel leaves
+    // the arena empty and TDM refuses before the census this test is about
+    // ever runs. FILL on both halves gives the mode its two teams while
+    // keeping the thing under test intact — the squads are B3's
+    // no-human-power arm, so there is still no reference to measure.
+    lobby_save.fill = {og::sim::kFillFair, og::sim::kFillFair,
+                       og::sim::kFillNone, og::sim::kFillNone};
+    lobby_save.team_list = {};
 
     initialize_from_lobby(lobby_save);
 
@@ -838,8 +862,7 @@ TEST_F(HeadlessServerRuntimeTest,
     EXPECT_TRUE(world.mode.active);
     EXPECT_NE(0, world.mode.vars[0]);
     EXPECT_EQ(0, world.mode.vars[2])
-        << "no matched request -> the census never stores a target (E1 "
-           "posture: byte-identical to Auto)";
+        << "no roster to measure -> the census never stores a target";
 }
 
 // Match clock clamp at world entry (#241), server twin: a SaveData whose

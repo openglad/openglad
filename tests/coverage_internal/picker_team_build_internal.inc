@@ -439,8 +439,8 @@ int picker_team_build_testing_exercise_internal_paths()
     check(buttons[kScenarioMenuSetCampaignIndex].hidden &&
         buttons[kScenarioMenuSetLevelIndex].hidden &&
         buttons[kScenarioMenuViewScenarioIndex].nav.up == -1 &&
-        buttons[kScenarioMenuSpareIndex].nav.up == -1 &&
-        buttons[kScenarioMenuSpareIndex].hidden &&
+        buttons[kScenarioMenuLineupIndex].nav.up == -1 &&
+        !buttons[kScenarioMenuLineupIndex].hidden &&
         buttons[kScenarioMenuProgressIndex].nav.up == -1);
     client.host_visible = true;
     sync_scenario_menu_host_control_visibility(buttons, 11, highlighted);

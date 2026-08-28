@@ -3,6 +3,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/mode/mode_state.h>
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <set>
@@ -241,7 +243,69 @@ inline bool lobby_join_seats_content_identical(
 // hand it over meaning OWN) and 2 is OWN itself. Old builds degrade it to
 // plain OWN: their strip rules read it as strip-on, their sanitize reverts
 // it at publish, and their toggle cycles it back to ALL.
+//
+// RETIRED by amendment B5: ctf_strip_scenario_troops is sanitized to 0 at
+// every authority (sanitize_settings, both sync_world_from_save_data twins,
+// apply_mode_state), so nothing writes this value any more and no strip
+// consumer ever sees it. The per-team MAP UNITS box answers the question
+// TROOPS used to ask. The constant stays because legacy saves and legacy
+// peers still hand the value over and the migration tests name it.
 inline constexpr std::int16_t kTroopsMatched = 3;
+
+// The per-team LINEUP band knobs (amendment B1-B4). Eight scalars — one
+// FILL wheel and one MAP UNITS box per team — carried through the whole
+// match-knob chain beside the older ctf_* knobs.
+//
+//   fill[t]:      the matched solver WITH A MULTIPLIER (B2). 0 = NONE (no
+//                 squad on this team at all), 1 = WEAK, 2 = FAIR,
+//                 3 = STRONG, 4 = BRUTAL. Amendment 4 (E1) collapsed the
+//                 old DEFAULT/explicit split: NONE simply IS the stored 0,
+//                 so an all-zero save still reads as the default state and
+//                 that state is now honest — no team fields a squad unless
+//                 the host turned its wheel. While a sixth DEFAULT code
+//                 sat below NONE it had to RESOLVE per team at stage time,
+//                 and a resolved NONE and a chosen NONE were the same word
+//                 on the band with different behaviour behind it; the
+//                 resolver retires with the code. The engine stores and
+//                 clamps the code and nothing else: the multiplier table
+//                 that turns a code into a target lives in the mode Lua,
+//                 which is the only layer that solves anything, so there is
+//                 no percent twin here. Wheel order on the band is the five
+//                 codes in storage order — NONE, WEAK, FAIR, STRONG,
+//                 BRUTAL, weakest to strongest — and a fresh band enters
+//                 the wheel at NONE's own slot.
+//   map_units[t]: whether the map's OWN authored units on this team are
+//                 fielded (B4). 0 = on (the default and the classic
+//                 behaviour), 1 = off. The retired TROOPS knob asked this
+//                 once for the whole map; the box asks it per team.
+inline constexpr std::int16_t kFillNone = 0;
+inline constexpr std::int16_t kFillWeak = 1;
+inline constexpr std::int16_t kFillFair = 2;
+inline constexpr std::int16_t kFillStrong = 3;
+inline constexpr std::int16_t kFillBrutal = 4;
+inline constexpr std::int16_t kMaxFill = kFillBrutal;
+
+inline constexpr std::int16_t kMapUnitsOn = 0;
+inline constexpr std::int16_t kMapUnitsOff = 1;
+inline constexpr std::int16_t kMaxMapUnits = kMapUnitsOff;
+
+// The ONE implementation of each band-knob bound. Every clamp home calls
+// these — sanitize_settings (lobby authority), clamp_match_setting (the
+// menu/script provider), both sync_world_from_save_data twins (the
+// hand-edited-save route into the sim) and world_snapshot apply_mode_state
+// (the crafted-snapshot route into a mirror). A divergent copy is a
+// host/mirror hash mismatch, so there are no copies.
+[[nodiscard]] inline std::int16_t clamp_fill(std::int32_t value) noexcept
+{
+    return static_cast<std::int16_t>(
+        std::clamp<std::int32_t>(value, 0, kMaxFill));
+}
+
+[[nodiscard]] inline std::int16_t clamp_map_units(std::int32_t value) noexcept
+{
+    return static_cast<std::int16_t>(
+        std::clamp<std::int32_t>(value, 0, kMaxMapUnits));
+}
 
 struct LobbySettings {
     std::string campaign_id;
@@ -285,6 +349,11 @@ struct LobbySettings {
     // The fourteenth i16, appended LAST in append/read_lobby_settings.
     // sanitize_settings clamps a non-zero request into [720, 21600].
     std::int16_t time_limit = 0;
+    // Per-team FILL / MAP UNITS (protocol v16, amendment B1-B4). Eight i16s
+    // appended LAST in append/read_lobby_settings, after time_limit.
+    // sanitize_settings clamps through clamp_fill / clamp_map_units.
+    std::array<std::int16_t, SCORE_TEAM_COUNT> fill = {};
+    std::array<std::int16_t, SCORE_TEAM_COUNT> map_units = {};
 
     bool operator==(const LobbySettings&) const = default;
 };
@@ -319,6 +388,11 @@ lobby_effective_team_mask(const LobbySettings& settings) noexcept
     const std::uint8_t authored = published_authored == 0
         ? kAllLobbyTeamMask
         : published_authored;
+    // The authored mask, clamped, and nothing else. Amendment B8 deleted the
+    // one band value that could narrow this: BOTS: OFF is gone, and no value
+    // the band can hold deactivates a team any more, so a seat may go
+    // wherever the map authored a team — exactly the rule that stood before
+    // amendment A2 added the OFF clause.
     return og::sim::effective_team_mask(authored, settings.ctf_team_count);
 }
 
@@ -415,6 +489,12 @@ enum class LobbyMessageKind : std::uint8_t {
     StartGame = 5,
     SettingsChange = 6,
     RemoveSeat = 7,
+    // Protocol v16 (LINEUP §6): host -> server, "remove that machine from my
+    // lobby"; and the server -> peer courtesy notice that precedes the
+    // disconnect, so the kicked client can say WHY its link died instead of
+    // rendering a bare "connection lost".
+    Kick = 8,
+    Kicked = 9,
 };
 
 constexpr std::uint8_t lobby_message_kind_value(LobbyMessageKind kind) noexcept
@@ -490,6 +570,24 @@ struct LobbySettingsChangeMessage {
     bool operator==(const LobbySettingsChangeMessage&) const = default;
 };
 
+// Host -> server (protocol v16). The target is a MACHINE, not a seat: a kick
+// removes every seat that machine owns and drops its transport connection.
+// The server refuses a non-host sender, and refuses the host's own machine
+// (leaving is DISCONNECT, not a kick) — a refusal answers with a state echo
+// so the requester never waits on a timeout.
+struct LobbyKickMessage {
+    LobbyMachineId machine_id = kInvalidLobbyMachineId;
+
+    bool operator==(const LobbyKickMessage&) const = default;
+};
+
+// Server -> peer (protocol v16). Sent immediately BEFORE the disconnect so it
+// is still deliverable on the live link; carries no payload because the only
+// fact it conveys is "the host removed you".
+struct LobbyKickedMessage {
+    bool operator==(const LobbyKickedMessage&) const = default;
+};
+
 using LobbyMessagePayload =
     std::variant<LobbyJoinMessage,
                  LobbyLeaveMessage,
@@ -497,7 +595,9 @@ using LobbyMessagePayload =
                  LobbyTeamChangeMessage,
                  LobbyRemoveSeatMessage,
                  LobbyStartGameMessage,
-                 LobbySettingsChangeMessage>;
+                 LobbySettingsChangeMessage,
+                 LobbyKickMessage,
+                 LobbyKickedMessage>;
 
 struct LobbyMessage {
     LobbyMessagePayload payload = LobbyJoinMessage{};
@@ -519,6 +619,10 @@ struct LobbyMessage {
                     return LobbyMessageKind::RemoveSeat;
                 if constexpr (std::is_same_v<Message, LobbyStartGameMessage>)
                     return LobbyMessageKind::StartGame;
+                if constexpr (std::is_same_v<Message, LobbyKickMessage>)
+                    return LobbyMessageKind::Kick;
+                if constexpr (std::is_same_v<Message, LobbyKickedMessage>)
+                    return LobbyMessageKind::Kicked;
                 return LobbyMessageKind::SettingsChange;
             },
             payload);

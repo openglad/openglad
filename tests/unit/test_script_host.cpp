@@ -3518,3 +3518,182 @@ TEST_F(PackLibTest, module_mutations_rebuild_the_shared_host)
     EXPECT_NE(built, og::script::pack_scripts_build_generation());
     EXPECT_EQ("v\t2", ws().host().log().back());
 }
+
+// ---------------------------------------------------------------------------
+// Qualified og.use — "<pack-id>:<module>" (docs/lineup-design.md C1)
+// ---------------------------------------------------------------------------
+//
+// The shared match library lives in packs/core and the campaign packs that
+// consume it must reach ACROSS the pack boundary instead of keeping a copy.
+// Only the resolution root moves: the memo key, the load-time-only gate, the
+// cycle detection and the failure latch are the pack-relative form's.
+
+// A campaign pack reads another installed pack's module, and that pack's own
+// unqualified use of the same name answers the identical export.
+TEST_F(PackLibTest, qualified_use_reads_another_installed_packs_module)
+{
+    register_module("core", "match", "return { name = 'core match' }");
+    og::script::register_pack_script(
+        {"core", "s_core.lua", "og.log('core reads', og.use('match').name)"});
+    og::script::register_pack_script(
+        {"modes.core", "s_modes.lua",
+         "og.log('modes reads', og.use('core:match').name)"});
+
+    const std::vector<std::string>& log = ws().host().log();
+    ASSERT_EQ(2u, log.size()) << last_error();
+    EXPECT_EQ("core reads\tcore match", log[0]);
+    EXPECT_EQ("modes reads\tcore match", log[1]);
+    EXPECT_TRUE(ws().host().errors().empty()) << last_error();
+}
+
+// The qualified form does not widen the unqualified one: 'modes.core' still
+// cannot see 'core's module without naming the pack, and the pack-relative
+// error still spells the path it looked for.
+TEST_F(PackLibTest, qualified_use_does_not_widen_bare_names)
+{
+    register_module("core", "match", "return { name = 'core match' }");
+    og::script::register_pack_script(
+        {"modes.core", "s.lua", "og.use('match')"});
+
+    EXPECT_TRUE(any_error_contains(
+        "no module 'match' in pack 'modes.core' (expected "
+        "packs/modes.core/lib/match.lua)"))
+        << last_error();
+}
+
+// One compile, one export: a module two packs use — one of them by name —
+// runs its chunk ONCE and both see the same frozen table (the memo key is
+// "<pack>/<name>" whichever form asked for it).
+TEST_F(PackLibTest, qualified_use_shares_the_memoized_export)
+{
+    register_module("core", "match",
+                    "og.log('match compiled')\n"
+                    "return { scratch = {} }");
+    // Pack scripts share an environment PER PACK, so the two readers cannot
+    // compare references through a global. They write and read a mark on the
+    // export's inner table instead — the freeze is shallow, so that reaches
+    // the real data, and a second compile would hand the second reader a
+    // fresh table with no mark on it.
+    og::script::register_pack_script(
+        {"core", "s_core.lua", "og.use('match').scratch.mark = 'core wrote'"});
+    og::script::register_pack_script(
+        {"modes.core", "s_modes.lua",
+         "og.log('modes sees', tostring(og.use('core:match').scratch.mark))"});
+
+    const std::vector<std::string>& log = ws().host().log();
+    ASSERT_EQ(2u, log.size()) << last_error();
+    EXPECT_EQ("match compiled", log[0])
+        << "the module chunk must run exactly once, in the eager pass";
+    EXPECT_EQ("modes sees\tcore wrote", log[1])
+        << "both forms must hand back the same memoized frozen export";
+}
+
+// A module the qualified form pulls in ON DEMAND still resolves ITS own
+// og.use calls against its OWN pack — the loader swaps the resolution root
+// for the duration of the load, so a cross-pack entry point cannot drag the
+// caller's pack into the callee's dependencies.
+TEST_F(PackLibTest, qualified_use_keeps_the_callee_packs_resolution_root)
+{
+    register_module("core", "match",
+                    "local helper = og.use('helper')\n"
+                    "return { n = helper.n + 1 }");
+    register_module("core", "helper", "return { n = 41 }");
+    register_module("modes.core", "helper", "return { n = -1 }");
+    og::script::register_pack_script(
+        {"modes.core", "s.lua", "og.log('n', og.use('core:match').n)"});
+
+    ASSERT_FALSE(ws().host().log().empty()) << last_error();
+    EXPECT_EQ("n\t42", ws().host().log().back())
+        << "'match' must see core's helper, not the caller's";
+    EXPECT_TRUE(ws().host().errors().empty()) << last_error();
+}
+
+// An unknown pack is its own error, named: "no module X in pack Y" would
+// send the author looking for a file in a directory that does not exist.
+TEST_F(PackLibTest, qualified_use_names_an_unknown_pack)
+{
+    register_module("core", "match", "return { n = 1 }");
+    og::script::register_pack_script(
+        {"core", "s.lua", "og.use('ghost.pack:match')"});
+
+    EXPECT_TRUE(any_error_contains(
+        "og.use: no installed pack 'ghost.pack' with lib modules (expected "
+        "packs/ghost.pack/lib/match.lua)"))
+        << last_error();
+}
+
+// A pack that IS installed but ships no such module keeps the pack-relative
+// spelling of the error, now naming the pack that was asked.
+TEST_F(PackLibTest, qualified_use_names_a_missing_module_of_a_known_pack)
+{
+    register_module("core", "match", "return { n = 1 }");
+    og::script::register_pack_script(
+        {"modes.core", "s.lua", "og.use('core:absent')"});
+
+    EXPECT_TRUE(any_error_contains(
+        "no module 'absent' in pack 'core' (expected "
+        "packs/core/lib/absent.lua)"))
+        << last_error();
+}
+
+// Malformed qualifications are refused with the shape they should have had,
+// rather than being looked up as a file stem containing a colon.
+TEST_F(PackLibTest, qualified_use_refuses_malformed_names)
+{
+    register_module("core", "match", "return { n = 1 }");
+    og::script::register_pack_script({"core", "s1.lua", "og.use(':match')"});
+    og::script::register_pack_script({"core", "s2.lua", "og.use('core:')"});
+    og::script::register_pack_script(
+        {"core", "s3.lua", "og.use('core:lib:match')"});
+
+    EXPECT_TRUE(any_error_contains(
+        "og.use: malformed qualified name ':match' "
+        "(expected \"<pack-id>:<module>\")"))
+        << last_error();
+    EXPECT_TRUE(any_error_contains(
+        "og.use: malformed qualified name 'core:' "))
+        << last_error();
+    EXPECT_TRUE(any_error_contains(
+        "og.use: malformed qualified name 'core:lib:match' "))
+        << last_error();
+}
+
+// Load-time-only, both forms: naming a pack does not buy a dispatch-time
+// og.use. (The gate is checked before the name is parsed at all, so the
+// message is the same instruction the bare form gives.)
+TEST_F(PackLibTest, qualified_use_is_load_time_only)
+{
+    register_module("core", "match", "return { n = 1 }");
+    og::script::register_pack_script(
+        {"modes.core", "s.lua",
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  do_special = function(self)\n"
+         "    og.use('core:match')\n"
+         "    return true\n"
+         "  end,\n"
+         "})"});
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    const std::optional<bool> handled =
+        og::script::hooks::do_special(fd, nullptr);
+    EXPECT_FALSE(handled.has_value());
+    EXPECT_TRUE(any_error_contains(
+        "og.use: only callable while a pack chunk loads"))
+        << last_error();
+}
+
+// A cross-pack cycle is caught by the same in-flight status the
+// pack-relative form uses, and names the module the way the caller spelled
+// it.
+TEST_F(PackLibTest, qualified_use_detects_cross_pack_cycles)
+{
+    register_module("core", "match", "return { via = og.use('modes.core:up') }");
+    register_module("modes.core", "up", "return { via = og.use('core:match') }");
+    og::script::register_pack_script(
+        {"modes.core", "s.lua", "og.use('core:match')"});
+
+    EXPECT_TRUE(any_error_contains("circular dependency on module"))
+        << last_error();
+    EXPECT_TRUE(any_error_contains("og.use: module 'core:match' failed to load"))
+        << last_error();
+}

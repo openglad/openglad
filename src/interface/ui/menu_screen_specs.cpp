@@ -18,8 +18,10 @@
 
 #include <openglad/core/irandom.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/device_seats.h>
@@ -1234,9 +1236,11 @@ bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
 // ---------------------------------------------------------------------------
 // SCENARIO subscreen (§1.8 step 5): the column at x=30 stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | PROGRESS row and the versus-gated y=140
-// match-settings band (TEAMS | TROOPS | LIMIT, #218); BACK sits apart at
-// (30,170) so no other screen's "back" shares its geometry (injector tests
+// always-visible VIEW LEVEL | PROGRESS | LINEUP row and the y=140 knob row
+// (SCORE alone at (30,140), versus-gated — amendment B5 retired TROOPS into
+// the LINEUP band's MAP UNITS box; the TEAMS cell retired before it, A1/A3);
+// BACK sits apart at (30,170) so no other screen's "back" shares its
+// geometry (injector tests
 // disambiguate the per-screen "back" buttons by position). Static nav
 // encodes the host+versus (all-visible) variant; the sync (hide + rewire)
 // is the spec's Rewire program (G1). Nested screens return MENU_REDRAW for
@@ -1248,7 +1252,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 30, .y = 170, .w = 60, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 7}},
+     .nav = {.up = 8}},
     {.id = "set_campaign", .label = "SET CAMPAIGN",
      .x = 30, .y = 40, .w = 80, .h = 15,
      .action = ButtonAction::DoPickCampaign, .arg = -1,
@@ -1260,48 +1264,53 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "view_scenario", .label = "VIEW LEVEL",
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
-     .nav = {.up = 2, .down = 7, .right = 5}},
-    // The ordinal the MATCHUP door vacated (#218): the screen's seat/team
-    // overview lives in VIEW LEVEL now and its knobs re-homed below (TEAMS /
-    // LIMIT) and onto DIFFICULTY (cross-control). Parked exactly like the
-    // Base Camp's seat_rail_spare — zero-size rect, empty label, hidden, no
-    // nav — so kScenarioMenuProgressIndex and every pin below never shifted.
+     .nav = {.up = 2, .down = 8, .right = 5}},
+    // The ordinal the MATCHUP door vacated (#218), reclaimed by the LINEUP
+    // door (docs/lineup-design.md §2): the y=100 row reads VIEW LEVEL |
+    // PROGRESS | LINEUP on the declared 30/120/210 grid, above the y=140
+    // knob row where composition already lives. Deliberately NOT
+    // host-gated — joiners open the page read-only (§2.3). Its cell below,
+    // (210,140), is free since TEAMS retired (A5), so DOWN lands on SCORE.
+    {.id = "lineup", .label = "LINEUP",
+     .x = 210, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::OpenLineup, .arg = -1,
+     .nav = {.up = 2, .down = 8, .left = 5}},
+    // PROGRESS left-packs into the middle cell of that row.
+    {.id = "progress", .label = "PROGRESS",
+     .x = 120, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::CreateProgressMenu, .arg = -1,
+     .nav = {.up = 2, .down = 8, .left = 3, .right = 4}},
+    // The retired TROOPS cycler's ordinal (amendment B5: whether the map's
+    // own authored cast fights is a per-team MAP UNITS box on the LINEUP
+    // band now). Parked like the TEAMS spare below it — zero-size rect,
+    // empty label, hidden, no nav — so kScenarioMenuCtfCapsIndex and every
+    // pin below it never shifted.
+    {.id = "scenario_troops_spare", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuTroopsIndex,
+     .hidden = true},
+    // The retired TEAMS cycler's ordinal (docs/lineup-design.md A1/A3:
+    // deactivating an authored team is LINEUP's BOTS: OFF now). Parked
+    // exactly like the Base Camp's seat_rail_spare and the MATCHUP door
+    // before it — zero-size rect, empty label, hidden, no nav — so
+    // kScenarioMenuCtfCapsIndex and every pin below never shifted.
     {.id = "scenario_spare", .label = "",
      .x = 0, .y = 0, .w = 0, .h = 0,
      .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuSpareIndex,
      .hidden = true},
-    // PROGRESS left-packs into the vacated middle cell so the y=100 row
-    // reads VIEW LEVEL | PROGRESS on the declared 30/120/210 grid.
-    {.id = "progress", .label = "PROGRESS",
-     .x = 120, .y = 100, .w = 80, .h = 15,
-     .action = ButtonAction::CreateProgressMenu, .arg = -1,
-     .nav = {.up = 2, .down = 6, .left = 3}},
-    // Scenario troops: keep the authored cast, or strip all of it.
-    // Host-gated like SET CAMPAIGN and SET LEVEL; joiners read the label off
-    // the lobby-synced save. It sits at (120,140) rather than the y=70 cell
-    // beside SET LEVEL because scenario_menu_draw_content paints the level
-    // title strip from x=114 across that whole row AFTER draw_buttons, so a
-    // button there would be overprinted. (120,140) is the free grid cell of
-    // the y=140 match-settings band, between TEAMS and LIMIT.
-    {.id = "troops", .label = "TROOPS: ALL",
-     .x = 120, .y = 140, .w = 80, .h = 15,
-     .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
-     .nav = {.up = 5, .down = 0, .left = 7, .right = 8}},
-    // Match Teams / Score Limit, re-homed from MATCHUP (#218): match rules
-    // belong on the scenario axis (the TEAMS -> TROOPS migration precedent),
-    // and this keeps third-party versus packs' access (docs/
-    // camp-controls-design.md). They complete the y=140 band around TROOPS.
-    // Versus campaigns only; joiners see the read-only label (the lobby-
-    // synced save feeds the per-frame re-derive) while the host acts.
-    // Static labels are the formatters' defaults (both re-derive per frame).
-    {.id = "ctf_teams", .label = "Teams: Auto",
+    // Score limit, re-homed from MATCHUP (#218) and relabelled SCORE (A5:
+    // captures, goals, kills; MAP = the level's own target): match rules
+    // belong on the scenario axis (the TEAMS -> TROOPS migration
+    // precedent), and this keeps third-party versus packs' access (docs/
+    // camp-controls-design.md). Versus campaigns only; joiners see the
+    // read-only label (the lobby-synced save feeds the per-frame re-derive)
+    // while the host acts. The static label is the formatter's default.
+    // B5 re-grid: SCORE is ALONE on the y=140 knob row since TROOPS
+    // retired, so it takes the x=30 column under VIEW LEVEL.
+    {.id = "ctf_caps", .label = "SCORE: MAP",
      .x = 30, .y = 140, .w = 80, .h = 15,
-     .action = ButtonAction::CycleCtfTeamCount, .arg = -1,
-     .nav = {.up = 3, .down = 0, .right = 6}},
-    {.id = "ctf_caps", .label = "Limit: Map",
-     .x = 210, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
-     .nav = {.up = 5, .down = 0, .left = 6}},
+     .nav = {.up = 3, .down = 0}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change
@@ -2073,7 +2082,10 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
      .x = 240, .y = 8, .w = 64, .h = 22,
      .action = ButtonAction::CreateDetailMenu, .arg = 0,
      .nav = {.down = kTrainMenuChangeTeamIndex, .left = 15}},
-    {.id = "change_team", .label = "Playing on Team X",
+    // "Team N" (docs/lineup-design.md §1: one noun per meaning — the old
+    // "Playing on Team N" phrasing implied a seat where it writes a
+    // character's fighting colour).
+    {.id = "change_team", .label = "Team X",
      .x = 174, .y = 138, .w = 133, .h = 22,
      .action = ButtonAction::ChangeTeam, .arg = 1,
      .nav = {.up = 16, .down = kTrainMenuSellIndex, .left = 13},
@@ -2978,16 +2990,16 @@ int base_camp_seat_local_slot(const BaseCampScreenState& state,
         std::distance(state.local_seat_indices.begin(), local));
 }
 
-std::string base_camp_seat_label(const BaseCampScreenState& state,
-                                 const og::sim::LobbyPlayer& seat)
+// The owner-short-name half of base_camp_seat_label, factored so the LINEUP
+// bands' seat run names a local seat's controller the same way the rail card
+// does (docs/lineup-design.md §2.1). Empty when the seat is not local (the
+// caller falls back to the company abbreviation — all a remote seat has).
+std::string local_seat_owner_short_name(int local_slot)
 {
-    const int local_slot =
-        base_camp_seat_local_slot(state, seat.player_index);
     // Design §2.3: a local card names the seat's INPUT mapping, so the roster
     // rail answers "which controller am I?" without opening the editor.
     const bool named = local_slot >= 0 && local_slot < MAX_PLAYERS &&
         picker_lobby_local_seat_count() > 0;
-    std::string owner;
     if (named)
     {
         const og::ui::InputCycleOption selection =
@@ -2995,17 +3007,23 @@ std::string base_camp_seat_label(const BaseCampScreenState& state,
         // #249: on a single-seat device the touchscreen IS the controller,
         // so the card names the screen instead of keys the device lacks. A
         // seat cycled onto a real pad still names that pad.
-        owner = og::input::seat_owner_is_screen(
-                    og::input::is_single_seat_device(), selection.is_joystick,
-                    local_slot)
+        return og::input::seat_owner_is_screen(
+                   og::input::is_single_seat_device(), selection.is_joystick,
+                   local_slot)
             ? std::string(og::input::kScreenSeatOwnerLabel)
             : og::input::mapping_short_name(selection.name);
     }
-    else
-    {
-        owner = local_slot >= 0 ? std::string("SPEC")
-                                : company_abbreviation(seat.company);
-    }
+    return local_slot >= 0 ? std::string("SPEC") : std::string();
+}
+
+std::string base_camp_seat_label(const BaseCampScreenState& state,
+                                 const og::sim::LobbyPlayer& seat)
+{
+    const int local_slot =
+        base_camp_seat_local_slot(state, seat.player_index);
+    std::string owner = local_seat_owner_short_name(local_slot);
+    if (owner.empty())
+        owner = company_abbreviation(seat.company);
     // TWO trailing visual pads shift the visible centered ink a full cell
     // left, which centers it over the chip-free zone (the face minus the last
     // ten pixels, which the chip owns) instead of over the whole face. One pad
@@ -3940,9 +3958,19 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         const bool own = on && owned_row[static_cast<std::size_t>(r)];
         // The chip cell forks on the assign spec (red-team rule): an
         // active assign shows chips on own rows even networked; otherwise
-        // the classic solo-only team cycler (gated by can_team).
+        // the team cycler, gated by the ONE team-edit predicate
+        // (docs/lineup-design.md §2.2, amendment B6):
+        // og::ui::lineup_fighter_team_editable. Networked sessions show it
+        // on OWN rows too — repairing a seat/colour mismatch moved here
+        // when the LINEUP FIGHTERS list retired — while foreign rows stay
+        // inert (never `own`, so they never grow a chip).
+        const int chip_save_slot = own
+            ? st->slots[static_cast<std::size_t>(first + r)].save_slot
+            : -1;
         const bool team_cycler = own &&
-            (assign_mode || (can_team && !networked));
+            (assign_mode ||
+             og::ui::lineup_fighter_team_editable(save, chip_save_slot,
+                                                  can_team, assign_mode));
         const bool move_up = on && movable_row[static_cast<std::size_t>(r)] &&
             can_reorder;
         button& dep = buttons[r];
@@ -5540,15 +5568,21 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             base_camp_refresh_rows(*st);
             return MENU_OK;
         }
-        // Multiplayer assigns teams through lobby seats, so this solo-only
-        // control is hidden there and stale dispatches remain inert — as
-        // are dispatches while the composition cleared can_team.
-        if (picker_lobby_is_networked())
-            return MENU_OK;
-        if (zone != nullptr && !zone->roster().can_team)
-            return MENU_OK;
-        if (!picker_lobby_save_slot_editable(slot)) {
-            popup_dialog("TEAM", "LOCKED");
+        // Networked sessions cycle teams here too (amendment B6): the chip
+        // is the one home of the per-fighter colour — repairing a
+        // seat/colour mismatch moved onto it when the LINEUP FIGHTERS list
+        // retired. OWN rows only (a foreign row never grows a chip and its
+        // slot fails the editable predicate anyway); the capability itself
+        // is the ONE shared predicate (docs/lineup-design.md §2.2),
+        // og::ui::lineup_fighter_team_editable, and the mutation tail
+        // below re-syncs the lobby roster so every machine sees the new
+        // colour.
+        if (!og::ui::lineup_fighter_team_editable(save, slot, zone,
+                                                  /*assign_mode=*/false)) {
+            // A stale dispatch while the composition cleared can_team stays
+            // silent; an uneditable (locked) slot keeps its explicit answer.
+            if (!picker_lobby_save_slot_editable(slot))
+                popup_dialog("TEAM", "LOCKED");
             return MENU_OK;
         }
         const short team = cycle_guy_team(save, slot, 1);
@@ -7242,6 +7276,455 @@ Sint32 run_cloud_save_screen()
     return MENU_REDRAW;
 }
 
+// ---------------------------------------------------------------------------
+// LINEUP (docs/lineup-design.md §2, amendment B1/B9): teams, seats,
+// fighters and bots on one page. One engine-hosted screen — four team bands
+// (header chip / POWER / seat run; the FILL face + MAP UNITS box knob line
+// with census text at x=190) over an opaque panel, and the BACK |
+// SPLIT EVEN | SPLIT FAIR | UNITE action strip. The knobs are host-only
+// (hidden per frame for joiners) and live on EVERY campaign (amendment C5:
+// the classic dim retired when the lineup stage moved to packs/core — the
+// map applies the knobs now); the bands themselves are readable by everyone.
+
+namespace {
+
+LineupScreenState* g_lineup_state = nullptr;
+
+// §2.3 gating, expressed in the engine's own row-state grammar so the
+// generic sweeps exercise it: joiners never see the knobs. That is the
+// whole gate — C5 retired the classic (non-versus) dim.
+RowState lineup_knob_row_state(const MenuLabelContext& context)
+{
+    if (!context.is_host)
+        return RowState::Hidden;
+    return RowState::Visible;
+}
+
+// The MAP UNITS box adds one axis (B4): a team the map ships no units for
+// has nothing to switch, so its box is dimmed and inert — the engine's
+// Disabled grammar again — and the band's census says NO MAP UNITS.
+template <int Team>
+RowState lineup_map_units_row_state(const MenuLabelContext& context)
+{
+    const RowState base = lineup_knob_row_state(context);
+    if (base == RowState::Hidden)
+        return base;
+    if (picker_lineup_map_unit_counts()[static_cast<std::size_t>(Team)] == 0)
+        return RowState::Disabled;
+    return base;
+}
+
+// Static nav encodes the all-visible (host + versus + two-seat) variant;
+// the per-frame rewire below rewrites every link. The static label is the
+// word a pristine save's stored code renders (E1: 0 is NONE) — the rewire
+// rewrites it from the save on the first frame either way, but the table is
+// pinned, so it may as well name a reachable state.
+#define OG_LINEUP_FILL(t)                                                     \
+    {.id = "lineup_fill_" #t, .label = "FILL: NONE",                          \
+     .x = kLineupFillX, .y = lineup_band_y(t) + kLineupKnobDy,                \
+     .w = kLineupFillW, .h = kLineupKnobH,                                    \
+     .action = ButtonAction::CycleLineupFill, .arg = (t),                     \
+     .nav = {.up = (t) > 0 ? kLineupFillBase + (t) - 1 : -1,                  \
+             .down = (t) < 3 ? kLineupFillBase + (t) + 1 : kLineupBackIndex,  \
+             .right = kLineupMapUnitsBase + (t)},                                \
+     .state_override = &lineup_knob_row_state}
+// The MAP UNITS box (B9): the Base Camp deploy box verbatim — 14x10, label
+// "X" when the map's own units are fielded — centered in the knob line,
+// with its caption drawn by the content pass at kLineupMapUnitsTextX.
+#define OG_LINEUP_MAP_UNITS(t)                                                    \
+    {.id = "lineup_map_units_" #t, .label = "X",                              \
+     .x = kLineupMapUnitsX, .y = lineup_band_y(t) + kLineupMapUnitsDy,        \
+     .w = kLineupMapUnitsW, .h = kLineupMapUnitsH,                            \
+     .action = ButtonAction::ToggleLineupMapUnits, .arg = (t),                    \
+     .nav = {.up = (t) > 0 ? kLineupMapUnitsBase + (t) - 1 : -1,                 \
+             .down = (t) < 3 ? kLineupMapUnitsBase + (t) + 1                     \
+                             : kLineupSplitEvenIndex,                         \
+             .left = kLineupFillBase + (t)},                                  \
+     .state_override = &lineup_map_units_row_state<(t)>}
+
+constexpr MenuButtonSpec kLineupMenuRows[] = {
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = kLineupBackX, .y = kLineupStripY, .w = kLineupBackW,
+     .h = kLineupStripH,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = kLineupFillBase + 3, .right = kLineupSplitEvenIndex}},
+    OG_LINEUP_FILL(0), OG_LINEUP_FILL(1), OG_LINEUP_FILL(2),
+    OG_LINEUP_FILL(3),
+    OG_LINEUP_MAP_UNITS(0), OG_LINEUP_MAP_UNITS(1), OG_LINEUP_MAP_UNITS(2),
+    OG_LINEUP_MAP_UNITS(3),
+    {.id = "lineup_split_even", .label = "SPLIT EVEN",
+     .x = kLineupSplitEvenX, .y = kLineupStripY, .w = kLineupSplitW,
+     .h = kLineupStripH,
+     .action = ButtonAction::LineupSplitEven, .arg = -1,
+     .nav = {.up = kLineupMapUnitsBase + 3, .left = kLineupBackIndex,
+             .right = kLineupSplitFairIndex}},
+    {.id = "lineup_split_fair", .label = "SPLIT FAIR",
+     .x = kLineupSplitFairX, .y = kLineupStripY, .w = kLineupSplitW,
+     .h = kLineupStripH,
+     .action = ButtonAction::LineupSplitFair, .arg = -1,
+     .nav = {.up = kLineupMapUnitsBase + 3, .left = kLineupSplitEvenIndex,
+             .right = kLineupUniteIndex}},
+    // "UNITE" is ALL TO 1 (§5): every deployed fighter to the lowest team
+    // with a local seat. Always offered — a single seat makes every split
+    // this action anyway.
+    {.id = "lineup_unite", .label = "UNITE",
+     .x = kLineupUniteX, .y = kLineupStripY, .w = kLineupUniteW,
+     .h = kLineupStripH,
+     .action = ButtonAction::LineupUnite, .arg = -1,
+     .nav = {.up = kLineupMapUnitsBase + 3, .left = kLineupSplitFairIndex}},
+};
+
+#undef OG_LINEUP_FILL
+#undef OG_LINEUP_MAP_UNITS
+
+static_assert(static_cast<int>(std::size(kLineupMenuRows))
+                  == kLineupButtonCount,
+              "LINEUP spec ordinals are the layout contract");
+
+// The campaign power metric as a band-pricing callback (empty when the
+// campaign registers no `lineup` hook: bands read `POWER --` and SPLIT
+// FAIR falls back to level order).
+LineupPowerFn lineup_active_power_fn()
+{
+    if (!og::script::hooks::campaign_lineup_registered())
+        return {};
+    return &lineup_power_for_guy;
+}
+
+void lineup_draw_background(void* /*screen_state*/)
+{
+    picker_backdrop_draw_background(nullptr);
+    // The opaque grey ground under the bands (pre-buttons, draw-order rule).
+    og::runtime::current_session->myscreen_->draw_button(
+        kLineupPanelX1, kLineupPanelY1, kLineupPanelX2, kLineupPanelY2, 2, 1);
+}
+
+std::int64_t lineup_now_ms()
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+void lineup_draw_content(void* screen_state)
+{
+    const LineupScreenState* st =
+        static_cast<const LineupScreenState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+    text& mytext = game->text_normal;
+    const SaveData& save = game->save_data;
+
+    mytext.write_xy(10, 8, "LINEUP", WHITE, 1);
+
+    // §6: the bands census the picture picker_lineup_seat_view just built, so
+    // they must ask the SAME question it did — an unestablished joiner reads
+    // its own save, and the session status line stays off until there is a
+    // session to report.
+    const bool networked = picker_lobby_session_established();
+    const LineupSeatView seat_view = picker_lineup_seat_view();
+    const std::vector<og::sim::LobbyPlayer>& players = seat_view.players;
+    const std::vector<std::uint8_t>& locals = seat_view.local_indices;
+
+    // Title band, right slot: an active toast wins it; else the networked
+    // session census (the compose_base_camp_line_b healthy shape),
+    // right-aligned to end on the panel edge.
+    std::string right_line;
+    unsigned char right_color = WHITE;
+    if (st != nullptr && !st->toast.empty() &&
+        lineup_now_ms() < st->toast_until_ms)
+    {
+        right_line = st->toast;
+        right_color = YELLOW;
+    }
+    else if (networked)
+    {
+        right_line = format_base_camp_session_status(
+            picker_lobby_host_controls_visible(),
+            picker_lobby_session_room_code(), players,
+            kLineupTitleCensusChars);
+    }
+    if (!right_line.empty()) {
+        if (right_line.size() >
+            static_cast<std::size_t>(kLineupTitleCensusChars))
+        {
+            right_line.resize(
+                static_cast<std::size_t>(kLineupTitleCensusChars));
+        }
+        const int x =
+            kLineupPanelX2 - static_cast<int>(right_line.size()) * 6;
+        mytext.write_xy(x, 8, right_line.c_str(), right_color, 1);
+    }
+
+    const auto short_name = [&locals](std::uint8_t player_index) {
+        const auto it =
+            std::find(locals.begin(), locals.end(), player_index);
+        if (it == locals.end())
+            return std::string();
+        return local_seat_owner_short_name(
+            static_cast<int>(std::distance(locals.begin(), it)));
+    };
+    // The staged census of the map's own units feeds the bands (B4): the
+    // same numbers the MAP UNITS box state gates on, so the box and its
+    // NO MAP UNITS hint can never disagree.
+    const std::array<int, 4> map_unit_counts =
+        picker_lineup_map_unit_counts();
+    const std::array<LineupTeamBand, 4> bands = build_lineup_bands(
+        save, players, locals, networked, lineup_active_power_fn(),
+        short_name, map_unit_counts);
+
+    const bool knobs = picker_lobby_host_controls_visible();
+    for (int t = 0; t < 4; ++t) {
+        const LineupTeamBand& band =
+            bands[static_cast<std::size_t>(t)];
+        const int y = lineup_band_y(t);
+        const int header_y = y + kLineupHeaderDy;
+
+        // The same 10x10 team chip the Base Camp roster draws.
+        game->fastbox(kLineupChipX, header_y, kLineupChipSize,
+                      kLineupChipSize, BLACK);
+        game->fastbox(kLineupChipX + 1, header_y + 1, 8, 8,
+                      static_cast<unsigned char>(t * 16 + 40));
+        const char digit[] = {static_cast<char>('1' + t), '\0'};
+        // The old font's "1" is a column narrower: bias that lone glyph one
+        // pixel right (the Base Camp chip's own rule).
+        mytext.write_xy_flat(kLineupChipX + (t == 0 ? 4 : 3), header_y + 3,
+                             digit, PURE_BLACK, 1);
+
+        mytext.write_xy_flat(kLineupTeamTextX, header_y + 2,
+                             std::format("TEAM {}", t + 1).c_str(),
+                             PURE_BLACK, 1);
+        mytext.write_xy_flat(kLineupPowerTextX, header_y + 2,
+                             format_lineup_power(band.power).c_str(), BLACK,
+                             1);
+
+        // Seat run x=150..306 (26-char budget): the seats on this team,
+        // whole labels only, then "+n" for what did not fit; NO SEAT when
+        // the team has none.
+        std::string run;
+        int shown = 0;
+        for (const std::string& label : band.seat_labels) {
+            const std::string candidate =
+                run.empty() ? label : run + "  " + label;
+            if (static_cast<int>(candidate.size()) > kLineupSeatRunChars)
+                break;
+            run = candidate;
+            ++shown;
+        }
+        if (band.seat_count == 0) {
+            run = "NO SEAT";
+        } else if (shown < band.seat_count) {
+            std::string more =
+                std::format(" +{}", band.seat_count - shown);
+            if (static_cast<int>(run.size() + more.size()) >
+                kLineupSeatRunChars)
+            {
+                run.resize(static_cast<std::size_t>(
+                    kLineupSeatRunChars - static_cast<int>(more.size())));
+            }
+            run += more;
+        }
+        mytext.write_xy_flat(kLineupSeatRunX, header_y + 2, run.c_str(),
+                             BLACK, 1);
+
+        // The MAP UNITS caption beside the box (B9): drawn ink, not a
+        // button face, so it follows the box's visibility (host-only) and
+        // dims with it when the box is inert (a team the map ships no
+        // units for — the one dim C5 kept).
+        if (knobs) {
+            const bool box_live = band.map_unit_count > 0;
+            mytext.write_xy_flat(kLineupMapUnitsTextX,
+                                 y + kLineupCensusDy, "MAP UNITS",
+                                 box_live
+                                     ? static_cast<unsigned char>(BLACK)
+                                     : kBenchedTextShade,
+                                 1);
+        }
+
+        // Census / diagnostics at (190, y+19), 21-char budget. Diagnostics
+        // keep their slot in every mode (they mirror GO's refusal); a team
+        // the map ships no units for says NO MAP UNITS (B4: why its box is
+        // inert), and every other band counts deployed fighters. The old
+        // classic-campaign MAP RULES census retired with the dim (C5).
+        std::string census;
+        unsigned char census_color = BLACK;
+        if (band.diag != LineupTeamBand::Diag::None) {
+            census = format_lineup_census(band);
+            census_color = kBenchedTextShade;
+        } else if (!format_lineup_map_units_census(band).empty()) {
+            census = format_lineup_map_units_census(band);
+            census_color = kBenchedTextShade;
+        } else {
+            census = format_lineup_census(band);
+        }
+        if (census.size() > static_cast<std::size_t>(kLineupCensusChars))
+            census.resize(static_cast<std::size_t>(kLineupCensusChars));
+        mytext.write_xy_flat(kLineupCensusX, y + kLineupCensusDy,
+                             census.c_str(), census_color, 1);
+    }
+}
+
+bool lineup_frame_tick(void* screen_state, int /*frame*/)
+{
+    if (screen_state == nullptr)
+        return true;
+    auto* const st = static_cast<LineupScreenState*>(screen_state);
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    if (st->last_level_id != myscreen->save_data.scen_num || st->was_reset)
+    {
+        st->was_reset = false;
+        st->last_level_id = myscreen->save_data.scen_num;
+        reload_picker_level_and_sync_settings(*myscreen, st->last_level_id);
+        // A reload can bring a different campaign registration with it, and
+        // the memoized prices key on the FIGHTER, not the hook (§4).
+        lineup_power_cache_clear();
+    }
+    return true;
+}
+
+void lineup_on_reset(void* screen_state)
+{
+    if (screen_state == nullptr)
+        return;
+    static_cast<LineupScreenState*>(screen_state)->was_reset = true;
+    lineup_power_cache_clear();
+}
+
+// Per-frame visibility/label/nav sync (the spec's Rewire program): knob
+// visibility re-asserted from the host axis, knob labels re-derived from
+// the save on BOTH surfaces (a host's cycle reaches a joiner through the
+// lobby settings landing in the save under the open menu), SPLIT EVEN/FAIR
+// gated on this machine holding a second seat, and the full graph rewired.
+void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
+{
+    if (buttons == nullptr || count < kLineupButtonCount)
+        return;
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    const bool knobs = picker_lobby_host_controls_visible();
+
+    const auto write_label = [buttons](int index, std::string label) {
+        buttons[index].label = label;
+        vbutton* const live =
+            og::runtime::current_session
+                ->allbuttons_[static_cast<std::size_t>(index)];
+        if (live != nullptr)
+            live->label = std::move(label);
+    };
+
+    // E1: the FILL face renders the STORED code and nothing else. There is
+    // no DEFAULT to resolve any more — NONE is the stored 0 — so the face,
+    // the click callback (change_lineup_fill) and the terminals' cells all
+    // read one value off one save. A junk code the clamp has not reached
+    // yet reads as lineup_fill_name's own NONE, the word the clamp would
+    // land it on anyway.
+    for (int t = 0; t < 4; ++t) {
+        const int fill_index = kLineupFillBase + t;
+        const int map_units_index = kLineupMapUnitsBase + t;
+        buttons[fill_index].hidden = !knobs;
+        buttons[map_units_index].hidden = !knobs;
+        const short stored_fill = save.fill[static_cast<std::size_t>(t)];
+        write_label(fill_index, format_lineup_fill_label(stored_fill));
+        // The box is the Base Camp deploy-box grammar (B9): "X" = the
+        // map's units are fielded, empty = stripped. The word form
+        // (format_lineup_map_units_label) belongs to the terminals.
+        write_label(map_units_index,
+                    save.map_units[static_cast<std::size_t>(t)] ==
+                            og::sim::kMapUnitsOn
+                        ? "X"
+                        : "");
+        sync_button_hidden_state(buttons, fill_index);
+        sync_button_hidden_state(buttons, map_units_index);
+    }
+
+    const bool splits = picker_lobby_local_seat_count() >= 2;
+    buttons[kLineupSplitEvenIndex].hidden = !splits;
+    buttons[kLineupSplitFairIndex].hidden = !splits;
+    sync_button_hidden_state(buttons, kLineupSplitEvenIndex);
+    sync_button_hidden_state(buttons, kLineupSplitFairIndex);
+
+    // Full-graph rewire (every link written every frame). B6: the strip is
+    // BACK | SPLIT EVEN | SPLIT FAIR | UNITE — the knob columns drop onto
+    // BACK (left) and the first visible strip action (right).
+    const int first_action =
+        splits ? kLineupSplitEvenIndex : kLineupUniteIndex;
+    for (int t = 0; t < 4; ++t) {
+        if (!knobs) {
+            buttons[kLineupFillBase + t].nav = {};
+            buttons[kLineupMapUnitsBase + t].nav = {};
+            continue;
+        }
+        buttons[kLineupFillBase + t].nav =
+            {.up = t > 0 ? kLineupFillBase + t - 1 : -1,
+             .down = t < 3 ? kLineupFillBase + t + 1 : kLineupBackIndex,
+             .right = kLineupMapUnitsBase + t};
+        buttons[kLineupMapUnitsBase + t].nav =
+            {.up = t > 0 ? kLineupMapUnitsBase + t - 1 : -1,
+             .down = t < 3 ? kLineupMapUnitsBase + t + 1 : first_action,
+             .left = kLineupFillBase + t};
+    }
+    const int strip_up_left = knobs ? kLineupFillBase + 3 : -1;
+    const int strip_up_right = knobs ? kLineupMapUnitsBase + 3 : -1;
+    buttons[kLineupBackIndex].nav =
+        {.up = strip_up_left, .right = first_action};
+    buttons[kLineupSplitEvenIndex].nav =
+        {.up = strip_up_right, .left = kLineupBackIndex,
+         .right = kLineupSplitFairIndex};
+    buttons[kLineupSplitFairIndex].nav =
+        {.up = strip_up_right, .left = kLineupSplitEvenIndex,
+         .right = kLineupUniteIndex};
+    buttons[kLineupUniteIndex].nav =
+        {.up = strip_up_right,
+         .left = splits ? kLineupSplitFairIndex : kLineupBackIndex};
+
+    ensure_highlighted_button_visible(buttons, count, highlighted_button);
+}
+
+} // namespace
+
+const MenuScreenSpec& lineup_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "lineup_menu",
+        .rows = kLineupMenuRows,
+        .row_count = static_cast<int>(std::size(kLineupMenuRows)),
+        .buttons_accessor = &picker_lineup_buttons,
+        .count_accessor = &picker_lineup_button_count,
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &lineup_menu_rewire},
+        // A joiner parked here still follows the host's GO.
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = kLineupBackIndex,
+        .polls_lobby = true,
+        .draw_background = &lineup_draw_background,
+        .draw_content = &lineup_draw_content,
+        .frame_tick = &lineup_frame_tick,
+        .on_reset = &lineup_on_reset,
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
+void install_lineup_state_for_screen(LineupScreenState* state)
+{
+    // Opening or closing the page is the outer bound on how long a memoized
+    // campaign price may live (§4): between these two calls the registration
+    // can only move through a level reload, which clears it too.
+    lineup_power_cache_clear();
+    g_lineup_state = state;
+}
+
+void lineup_show_toast(std::string text)
+{
+    if (text.size() > static_cast<std::size_t>(kLineupTitleCensusChars))
+        text.resize(static_cast<std::size_t>(kLineupTitleCensusChars));
+    TRACE("lineup", "toast %s", text.c_str());
+    if (g_lineup_state == nullptr)
+        return;
+    g_lineup_state->toast = std::move(text);
+    g_lineup_state->toast_until_ms = lineup_now_ms() + 2500;
+}
+
 // G4 registry: the one-lookup answer to "which system owns this screen"
 // while legacy loops remain. Update the row when a screen migrates (and the
 // host table in docs/menu-engine.md with it).
@@ -7308,6 +7791,11 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::CampaignZoneSubmenu,
                 {.kind = Kind::Engine,
                  .spec = &zone_submenu_menu_screen_spec()});
+            // LINEUP (docs/lineup-design.md §2): engine-hosted from birth,
+            // so the G5 remote-start and G13 shape sweeps cover it
+            // automatically. (Its FIGHTERS list retired with amendment B6.)
+            set(MenuScreenId::Lineup,
+                {.kind = Kind::Engine, .spec = &lineup_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];
@@ -7585,6 +8073,63 @@ Sint32 create_scenario_menu(Sint32 arg1)
         return retvalue;
     return MENU_REDRAW;
 }
+
+button* picker_lineup_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::lineup_menu_screen_spec(),
+                                     pks().lineup_buttons);
+    return pks().lineup_buttons.data();
+}
+
+int picker_lineup_button_count()
+{
+    return static_cast<int>(pks().lineup_buttons.size());
+}
+
+// The MAP UNITS census (amendment B4): the map's own authored units per
+// team, read off the loaded picker level — the level-reload guard keeps it
+// synced to save.scen_num for every screen in the team-build family. The
+// walk itself is the shared og::ui::census_lineup_map_units (F3): on the
+// raw picker world it counts exactly what the inline loop here used to,
+// and the terminals run the same walk over their staged world, so the box
+// state, the band hint and the toggle refusal read one set of numbers on
+// every client.
+std::array<int, 4> picker_lineup_map_unit_counts()
+{
+    if (og::runtime::current_session == nullptr ||
+        og::runtime::current_session->myscreen_ == nullptr)
+    {
+        return {};
+    }
+    return og::ui::census_lineup_map_units(
+        og::runtime::current_session->myscreen_->world());
+}
+
+// The LINEUP screen (docs/lineup-design.md §2), engine-hosted from birth.
+// Entry/exit buffer clears and the exit fold follow create_scenario_menu:
+// a remote start propagates so the parent screens exit into GO; BACK's own
+// MENU_EXIT folds into MENU_REDRAW to keep SCENARIO running. The reload
+// cursor starts at the current level (the parent already loaded it).
+Sint32 create_lineup_menu(Sint32 arg1)
+{
+    (void)arg1;
+    og::runtime::current_session->myscreen_->clearbuffer();
+    og::ui::LineupScreenState state;
+    state.last_level_id =
+        og::runtime::current_session->myscreen_->save_data.scen_num;
+    og::ui::install_lineup_state_for_screen(&state);
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::lineup_menu_screen_spec(), &state);
+    og::ui::install_lineup_state_for_screen(nullptr);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+        return retvalue;
+    return MENU_REDRAW;
+}
+
+// The FIGHTERS list (§2.2) retired with amendment B6: repairing a
+// seat/colour mismatch networked is the Base Camp roster chip's job now
+// (the same lineup_fighter_team_editable predicate, one home).
 
 // create_view_menu and the create_save_menu/create_load_menu slot wrappers
 // are RETIRED with their screens (§2.5/§3.8): the base camp roster replaced

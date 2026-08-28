@@ -81,6 +81,12 @@ touches any file under `src/gameplay/` or `src/resources/`.**
    ruled by D24: the replacement squad matches the stored target, never the
    legacy formula.) Pinned by the oblist-sweep no-op test (§8) in the
    `test_modes_mutant.cpp:306-351` idiom.
+   **Amended by LINEUP (docs/lineup-design.md §3.2):** an explicit per-team
+   bot-squad preset (`bot_squad_N` >= 2) applies to ANY active team,
+   occupied or not — a host may field bot allies beside a human roster.
+   The invariant survives in its AUTO spelling: `bot_squad_N = 0` on an
+   occupied team still means no bots, and all-zero knobs reproduce the
+   pre-lineup fills byte for byte.
 4. **I4 Networked correctness.** The sentinel rides the existing
    SaveData -> LobbySettings -> start-config -> `sync_world_from_save_data`
    chain, which completes strictly before the first `world.tick()` runs

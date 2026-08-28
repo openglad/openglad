@@ -476,7 +476,9 @@ TEST_F(ModesSoccer, init_below_two_anchor_teams_demotes)
     EXPECT_FALSE(fx.world().mode.active) << "the demotion is latched";
 }
 
-TEST_F(ModesSoccer, four_team_pitch_strips_beyond_requested_count)
+// BOTS: OFF on two of the four-team pitch's sides (lineup A1/A2, the
+// retired TEAMS count's successor) strips them exactly as TEAMS: 2 did.
+TEST_F(ModesSoccer, four_team_pitch_strips_the_sides_switched_off)
 {
     ModesCtfWorld fx(kSoccerLevelB);
     for (int team = 0; team < 4; ++team)
@@ -486,7 +488,10 @@ TEST_F(ModesSoccer, four_team_pitch_strips_beyond_requested_count)
                         static_cast<short>(96 + 64 * team), 96);
     }
     walker* stripped = fx.world().oblist.back().get();
-    fx.world().ctf_requested_team_count = 2;
+    fx.world().ctf_requested_fill[2] = og::sim::kFillNone;
+    fx.world().ctf_requested_map_units[2] = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
+    fx.world().ctf_requested_map_units[3] = og::sim::kMapUnitsOff;
     fx.tick(1);
 
     ASSERT_TRUE(fx.world().mode.active);
@@ -503,6 +508,8 @@ TEST_F(ModesSoccer, empty_active_teams_get_bot_squads)
     ModesCtfWorld fx(kSoccerLevelA);
     fx.spawn_anchor(0, 96, 448);
     fx.spawn_anchor(1, 528, 448);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: the fill
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     // Team 1's only anchor is blocked by a parked generator: its bots
     // fall back to the RNG teleport. Init-time draws: the #235 squad-order
     // seed (one og.rand inside the first squad spawn, before placement),
@@ -542,87 +549,79 @@ TEST_F(ModesSoccer, init_stamps_the_generator_hp_denominator)
         << "so the bar has a fraction to draw";
 }
 
-TEST_F(ModesSoccer, scenario_troops_strip_takes_the_pitch_generators_too)
+TEST_F(ModesSoccer, map_units_off_takes_the_pitch_generators_too)
 {
-    // Soccer passes no keep_generators: an ally generator is scenery here,
-    // not the board, so "strip ALL" means the pitch as well as the troops.
+    // Generators follow the same box as the livings (B4): an ally
+    // generator is scenery here, not the board, so a box turned off takes
+    // the pitch as well as the troops.
     SoccerWorld fx;
-    fx.world().ctf_requested_strip_scenario_troops = 2;
+    for (auto& box : fx.world().ctf_requested_map_units)
+        box = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: the trade
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     walker* tent = fx.spawn_generator(FAMILY_TENT, 0, 200, 700);
     ASSERT_NE(nullptr, tent);
     fx.tick(1);
 
     ASSERT_TRUE(fx.soccer_active());
-    EXPECT_TRUE(tent->dead()) << "no keep_generators arm for soccer";
+    EXPECT_TRUE(tent->dead()) << "generators follow the box (B4)";
     EXPECT_TRUE(fx.red->dead()) << "the authored livings go with it";
     EXPECT_EQ(5, alive_on_team(fx.world(), 0))
         << "and the emptied team is backfilled by the census behind the strip";
 }
 
-TEST_F(ModesSoccer, troops_own_at_auto_activates_the_authored_team_count)
+TEST_F(ModesSoccer, rosters_on_the_foursquare_pitch_field_all_four_sides)
 {
-    // The scen-841 shape on the FOURSQUARE pitch at TEAMS: Auto: Auto is
-    // the zero sentinel ("as many teams as the map actually has"), so OWN
-    // with rosters on the north and south mouths fields all FOUR authored
-    // sides — the rosters stay untouched and the east/west teams backfill
-    // with the OWN legacy five-bot squads, exactly like an explicit
-    // TEAMS: 4 (issue #218; the 2026-08-18 directive superseding D26's
-    // Auto scope).
+    // The scen-841 shape on the FOURSQUARE pitch: rosters on the north
+    // and south mouths field all FOUR authored sides — the rosters stay
+    // untouched (equal companies, no allies gap) and the east/west teams
+    // backfill with squads matched to the roster headcount (B2).
     SoccerPitch fx(kSoccerLevelB);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfills
+    fx.world().ctf_requested_fill[3] = og::sim::kFillFair;
     walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
-    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
+    walker* other = fx.spawn_hero(FAMILY_SOLDIER, 2, 300, 860, 2);
     fx.tick(1);
 
     ASSERT_TRUE(fx.soccer_active());
-    EXPECT_EQ(15, fx.var(kSocTeamMask))
-        << "Auto resolves to the authored team count: all four sides";
+    EXPECT_EQ(15, fx.var(kSocTeamMask)) << "all four authored sides";
     EXPECT_EQ(4, fx.var(kSocTeamCount));
     EXPECT_NE(nullptr, fx.ball()) << "the match still gets its ball";
     EXPECT_FALSE(soldier->dead());
-    EXPECT_FALSE(barbarian->dead());
+    EXPECT_FALSE(other->dead());
     EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the rosters stay as-is";
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "the empty-team census fields the OWN legacy squad";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the empty-team census fields a headcount-matched squad";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
-    EXPECT_EQ(5, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(1, alive_on_team(fx.world(), 3));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
-TEST_F(ModesSoccer, all_bot_own_auto_matches_the_explicit_count_shape)
+TEST_F(ModesSoccer, all_bot_anchor_only_pitch_takes_the_manifest_default)
 {
-    // The 2026-08-18 Auto directive in the ALL-BOT shape (#218 review):
-    // TROOPS: OWN with no roster deployed, on a FOUR-anchor pitch whose
-    // manifest row declares teams = 2 and authors two goal mouths
-    // (kSoccerLevelA). TEAMS: Auto must behave exactly like explicit
-    // TEAMS: 4 — here that is the malformed-authoring refusal (four anchor
-    // teams, two authored mouths), NOT a silent 2-team match riding the
-    // manifest default. Twin worlds prove the equivalence from both sides.
-    auto author = [](ModesCtfWorld& fx) {
-        for (int team = 0; team < 4; ++team)
-            fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 448);
-    };
-    ModesCtfWorld explicit_four(kSoccerLevelA);
-    explicit_four.world().ctf_requested_strip_scenario_troops = 2;
-    explicit_four.world().ctf_requested_team_count = 4;
-    author(explicit_four);
-    explicit_four.tick(1);
-    ModesCtfWorld at_auto(kSoccerLevelA);
-    at_auto.world().ctf_requested_strip_scenario_troops = 2;
-    author(at_auto);
-    at_auto.tick(1);
+    // The map's own value in the ALL-BOT shape (B1-B4): anchors-only
+    // teams carry no fielded units, so on a FOUR-anchor pitch whose
+    // manifest row declares teams = 2 (kSoccerLevelA, two authored goal
+    // mouths) exactly the first two sides play — the retired OWN arm's
+    // whole-domain refusal shape is gone with TROOPS.
+    ModesCtfWorld fx(kSoccerLevelA);
+    for (int team = 0; team < 4; ++team)
+    {
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 448);
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            og::sim::kFillFair;  // E5: every wheel turned
+    }
+    fx.tick(1);
 
-    EXPECT_TRUE(explicit_four.world().mode.init_attempted);
-    EXPECT_FALSE(explicit_four.world().mode.active);
-    EXPECT_TRUE(has_script_error(explicit_four.world(),
-                                 "no goal rect for team 2"));
-    EXPECT_TRUE(at_auto.world().mode.init_attempted);
-    EXPECT_FALSE(at_auto.world().mode.active)
-        << "Auto rides the explicit-count arm, not the manifest default";
-    EXPECT_TRUE(has_script_error(at_auto.world(), "no goal rect for team 2"))
-        << "same refusal as the explicit TEAMS: 4 twin";
+    ASSERT_TRUE(fx.world().mode.active)
+        << "the manifest default is a clean two-side match";
+    EXPECT_EQ(0b0011, fx.var(kSocTeamMask));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 0));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 2))
+        << "an anchors-only team past the default fields nothing";
 }
 
 TEST_F(ModesSoccer, fair_teams_four_with_a_solo_roster_fields_four_teams)
@@ -638,14 +637,17 @@ TEST_F(ModesSoccer, fair_teams_four_with_a_solo_roster_fields_four_teams)
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
     arm_matched(fx.world());
-    fx.world().ctf_requested_team_count = 4;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfills
+    fx.world().ctf_requested_fill[2] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillFair;
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
     ASSERT_NE(nullptr, hero);
     fx.tick(1);
 
     ASSERT_TRUE(fx.soccer_active());
     EXPECT_EQ(15, fx.var(kSocTeamMask))
-        << "the explicit TEAMS: 4 request fields all four sides";
+        << "AUTO is every authored side: all four field (the TEAMS count "
+           "is retired, lineup A1)";
     EXPECT_EQ(4, fx.var(kSocTeamCount));
     EXPECT_FALSE(hero->dead());
     EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the roster is untouched";
@@ -677,6 +679,9 @@ TEST_F(ModesSoccer, fair_teams_auto_with_a_solo_roster_fields_four_teams)
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
     arm_matched(fx.world());
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfills
+    fx.world().ctf_requested_fill[2] = og::sim::kFillFair;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillFair;
     ASSERT_EQ(0, fx.world().ctf_requested_team_count) << "TEAMS: Auto";
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
     ASSERT_NE(nullptr, hero);
@@ -704,81 +709,90 @@ TEST_F(ModesSoccer, fair_teams_auto_with_a_solo_roster_fields_four_teams)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
-TEST_F(ModesSoccer, own_and_fair_masks_agree_at_an_explicit_count)
+TEST_F(ModesSoccer, wheel_values_never_move_the_mask)
 {
-    // The D26/D33 twin invariant extended to explicit counts: FAIR's mask
-    // is byte-identical to OWN's at TEAMS: 4, and the delta stays confined
-    // to the generated squads (legacy five-bot vs one matched bot).
-    // Sequentially scoped worlds — script bindings resolve against the
-    // last-constructed live world (the two-live-fixtures trap).
-    std::int32_t own_mask = 0;
-    std::int32_t fair_mask = 0;
+    // The D26/D33 mask-invariance restated for the wheel (B2/B8): WEAK
+    // and BRUTAL stage the identical mask and fill sites — the multiplier
+    // moves only the solved LEVELS. Sequentially scoped worlds — script
+    // bindings resolve against the last-constructed live world (the
+    // two-live-fixtures trap).
+    std::int32_t weak_mask = 0;
+    std::vector<int> weak_levels;
+    std::int32_t brutal_mask = 0;
+    std::vector<int> brutal_levels;
     {
-        SoccerPitch own(kSoccerLevelB);
+        SoccerPitch weak(kSoccerLevelB);
         for (int team = 0; team < 4; ++team)
-            own.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
-        own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
-        own.world().ctf_requested_team_count = 4;
-        own.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
-        own.tick(1);
-        ASSERT_TRUE(own.soccer_active());
-        own_mask = own.var(kSocTeamMask);
-        EXPECT_EQ(15, own_mask);
+            weak.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        for (auto& knob : weak.world().ctf_requested_fill)
+            knob = og::sim::kFillWeak;
+        weak.spawn_leveled_hero(FAMILY_SOLDIER, 0, 300, 100, 1, 5);
+        weak.tick(1);
+        ASSERT_TRUE(weak.soccer_active());
+        weak_mask = weak.var(kSocTeamMask);
+        EXPECT_EQ(15, weak_mask);
         for (int team = 1; team < 4; ++team)
         {
-            EXPECT_EQ(5, alive_on_team(own.world(), team))
-                << "OWN backfill keeps the legacy five-bot squad on team "
-                << team;
+            EXPECT_EQ(1, alive_on_team(weak.world(), team))
+                << "headcount-matched squad on team " << team;
+            weak_levels.push_back(
+                matched_plan_code(weak.var(kSlotMatchedPlan), team) / 10);
         }
-        EXPECT_EQ(0, own.var(kSlotMatchedPlan)) << "OWN never solves";
-        EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
     }
     {
-        SoccerPitch fair(kSoccerLevelB);
+        SoccerPitch brutal(kSoccerLevelB);
         for (int team = 0; team < 4; ++team)
-            fair.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
-        arm_matched(fair.world());
-        fair.world().ctf_requested_team_count = 4;
-        fair.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
-        fair.tick(1);
-        ASSERT_TRUE(fair.soccer_active());
-        fair_mask = fair.var(kSocTeamMask);
+            brutal.spawn_anchor(team, static_cast<short>(96 + 64 * team),
+                                700);
+        for (auto& knob : brutal.world().ctf_requested_fill)
+            knob = og::sim::kFillBrutal;
+        brutal.spawn_leveled_hero(FAMILY_SOLDIER, 0, 300, 100, 1, 5);
+        brutal.tick(1);
+        ASSERT_TRUE(brutal.soccer_active());
+        brutal_mask = brutal.var(kSocTeamMask);
         for (int team = 1; team < 4; ++team)
         {
-            EXPECT_EQ(1, alive_on_team(fair.world(), team))
-                << "FAIR's one delta: matched headcount on team " << team;
+            EXPECT_EQ(1, alive_on_team(brutal.world(), team));
+            brutal_levels.push_back(
+                matched_plan_code(brutal.var(kSlotMatchedPlan), team) / 10);
         }
     }
-    EXPECT_EQ(own_mask, fair_mask) << "FAIR-mask == OWN-mask (D26/D33)";
+    EXPECT_EQ(weak_mask, brutal_mask) << "the wheel never moves the mask";
+    for (std::size_t i = 0; i < weak_levels.size(); ++i)
+    {
+        EXPECT_LT(weak_levels[i], brutal_levels[i])
+            << "the multiplier moves the solved level, team " << (i + 1);
+    }
 }
 
-TEST_F(ModesSoccer, explicit_count_never_strips_a_roster_team)
+TEST_F(ModesSoccer, bots_off_never_strips_a_roster_team)
 {
-    // (a) Rosters at their authored seats beat index order: TEAMS: 2 with
-    // rosters {0, 2} fields exactly {0, 2}, never the first-two clamp's
-    // {0, 1}.
+    // (a) OFF on the two empty sides of rosters {0, 2} fields exactly
+    // {0, 2}: the sides a player chose, never an index-order clamp.
     {
         SoccerPitch fx(kSoccerLevelB);
         for (int team = 0; team < 4; ++team)
             fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
-        fx.world().ctf_requested_strip_scenario_troops = 2;
-        fx.world().ctf_requested_team_count = 2;
+        fx.world().ctf_requested_fill[1] = og::sim::kFillNone;
+        fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
         fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
         fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
         fx.tick(1);
         ASSERT_TRUE(fx.soccer_active());
         EXPECT_EQ(1 + 4, fx.var(kSocTeamMask))
-            << "roster placement beats index order";
+            << "the roster sides stay, the OFF sides leave";
         EXPECT_EQ(2, fx.var(kSocTeamCount));
     }
-    // (b) Max semantics: three rosters outrank TEAMS: 2 — a deployed side
-    // is never stripped to satisfy a count.
+    // (b) OFF beside a roster is ignored — a deployed side is never
+    // stripped to satisfy a knob (lineup A2: the seat keeps it on); OFF
+    // on the empty fourth side drops it.
     {
         SoccerPitch fx(kSoccerLevelB);
         for (int team = 0; team < 4; ++team)
             fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
-        fx.world().ctf_requested_strip_scenario_troops = 2;
-        fx.world().ctf_requested_team_count = 2;
+        fx.world().ctf_requested_fill[0] = og::sim::kFillNone;
+        fx.world().ctf_requested_fill[1] = og::sim::kFillNone;
+        fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
         fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
         fx.spawn_hero(FAMILY_BARBARIAN, 1, 300, 700, 2);
         fx.spawn_hero(FAMILY_ELF, 2, 300, 860, 3);
@@ -792,26 +806,27 @@ TEST_F(ModesSoccer, explicit_count_never_strips_a_roster_team)
     }
 }
 
-TEST_F(ModesSoccer, explicit_count_three_backfills_the_first_non_roster_team)
+TEST_F(ModesSoccer, bots_off_on_the_fourth_side_leaves_three)
 {
-    // Rosters {0, 2} at TEAMS: 3: both roster teams stay, and team 1 (the
-    // first authored non-roster team in index order) joins with OWN's
-    // legacy squad; team 3 stays dead and banks no mouth.
+    // Rosters {0, 2} with the fourth side OFF: both roster teams stay,
+    // team 1 (authored, nothing on it, not OFF) plays with OWN's legacy
+    // squad — AUTO is the map's own value, every authored side — and
+    // team 3 stays dead and banks no mouth.
     SoccerPitch fx(kSoccerLevelB);
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
-    fx.world().ctf_requested_team_count = 3;
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: backfill
+    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
     fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
-    fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
+    fx.spawn_hero(FAMILY_SOLDIER, 2, 300, 860, 2);
     fx.tick(1);
 
     ASSERT_TRUE(fx.soccer_active());
     EXPECT_EQ(1 + 2 + 4, fx.var(kSocTeamMask))
-        << "rosters {0, 2} plus the first non-roster team, 1";
+        << "rosters {0, 2} plus the untouched authored side, 1";
     EXPECT_EQ(3, fx.var(kSocTeamCount));
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "the backfilled team gets OWN's legacy squad";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the backfilled team gets a squad at the roster headcount (B2)";
     EXPECT_EQ(0, alive_on_team(fx.world(), 3));
     EXPECT_EQ(pos_pack(592, 256), fx.team_var(kSocGoalPos, 1))
         << "a backfilled team banks its goal mouth";
@@ -827,9 +842,10 @@ TEST_F(ModesSoccer, ball_in_a_closed_authored_mouth_announces_and_resets)
     // paints every mouth identically, so a dead one looks live. A ball
     // entering one must announce the closed goal and re-spot at the
     // kickoff instead of sitting there silently. (Since the 2026-08-18
-    // Auto-resolves-to-authored-count directive, a dead mouth is reachable
-    // ONLY through an explicit TEAMS below the authored count — the shape
-    // this test constructs explicitly; TEAMS: Auto activates every mouth.)
+    // Auto-resolves-to-authored-count directive a dead mouth is reachable
+    // only by switching a side OFF on the LINEUP band — lineup A1/A2, the
+    // retired TEAMS count's successor — which is the shape this test
+    // constructs; AUTO activates every mouth.)
     SoccerPitch fx(kSoccerLevelB);
     for (int team = 0; team < 4; ++team)
     {
@@ -837,7 +853,10 @@ TEST_F(ModesSoccer, ball_in_a_closed_authored_mouth_announces_and_resets)
         fx.spawn_living(FAMILY_SOLDIER, team,
                         static_cast<short>(96 + 64 * team), 96);
     }
-    fx.world().ctf_requested_team_count = 2;
+    fx.world().ctf_requested_fill[2] = og::sim::kFillNone;
+    fx.world().ctf_requested_map_units[2] = og::sim::kMapUnitsOff;
+    fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
+    fx.world().ctf_requested_map_units[3] = og::sim::kMapUnitsOff;
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     ASSERT_EQ(3, fx.var(kSocTeamMask))
@@ -1697,6 +1716,11 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
     fx.world().respawn_mode = 0;  // the submenu no longer gates a ball game
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
+    // E5: turn the wheel AFTER init — at init an explicit FAIR would walk
+    // a squad on beside the authored green troop (D3); the reprovision
+    // backstop reads the knob at spawn time, so the mid-match turn is what
+    // lets the wiped side come back.
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.thaw_kickoff();
     // Team 1 is wiped; team 0 loses a member but keeps red alive. Every
     // corpse schedules the tick it falls — submenu Off included.
@@ -1753,6 +1777,7 @@ TEST_F(ModesSoccer, wiped_bot_team_revives_with_the_same_match_squad)
     SoccerPitch fx(kSoccerLevelA);
     fx.spawn_anchor(0, 96, 448);
     fx.spawn_anchor(1, 528, 448);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: the fill
     walker* red = fx.spawn_living(FAMILY_SOLDIER, 0, 96, 96);
     fx.world().respawn_mode = 0;
     fx.tick(1);
@@ -2492,6 +2517,8 @@ std::string run_soccer_bot_match_digest(int ticks)
     fx.spawn_anchor(0, 96, 496);
     fx.spawn_anchor(1, 528, 432);
     fx.spawn_anchor(1, 528, 496);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot sides
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.tick(ticks);  // bot squads for both teams play the ball
     EXPECT_TRUE(fx.world().mode.active);
     return digest_world(fx.world());
@@ -2516,6 +2543,8 @@ TEST_F(ModesSoccer, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
         fx.spawn_anchor(0, 96, 496);
         fx.spawn_anchor(1, 528, 432);
         fx.spawn_anchor(1, 528, 496);
+        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
         fx.tick(1);  // init (bot squads + ball) under the budget
         ASSERT_TRUE(fx.world().mode.active);
         fx.tick(45);  // 3 director cadences + kicks + flight + HUD
@@ -2549,6 +2578,8 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
     fx.spawn_anchor(0, 96, 496);
     fx.spawn_anchor(1, 528, 432);
     fx.spawn_anchor(1, 528, 496);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot sides
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     ModeMirror mirror(kSoccerLevelA);
 
     // kMaxConsecutiveSnapshotHashMismatches ticks: the exact run the server
@@ -2638,46 +2669,27 @@ struct SoccerSoloRosterWorld : SoccerPitch
         spawn_anchor(0, 96, 480);
         spawn_anchor(1, 528, 448);
         spawn_anchor(1, 528, 480);
+        // E5: the opponent's fill is a turned wheel now (the stored 0 is
+        // NONE and would leave the solo roster unopposed).
+        world().ctf_requested_fill[1] = og::sim::kFillFair;
         hero = spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, guy_level);
     }
 };
 
 }  // namespace
 
-// The FAIR-mask == OWN-mask twin (D26/D33(a), one-delta restated by D39):
-// FAIR bundles OWN's whole deployment policy — same mask, same fill sites
-// — and the ONLY delta is the generated squad, which spawns at matched
-// power AND matched headcount: the solo roster's opponent is one bot, not
-// OWN's legacy five (D34).
-TEST_F(ModesSoccer, matched_mask_equals_own_mask_with_a_solo_roster)
+// Explicit FILL: FAIR (E5 — the stored default is NONE now and fields
+// nothing) solves the solo roster's opponent at matched power AND matched
+// headcount: one bot, not the old legacy five (D34).
+TEST_F(ModesSoccer, explicit_fair_matches_a_solo_roster_opponent)
 {
     SoccerSoloRosterWorld matched(4);
-    arm_matched(matched.world());
     matched.tick(1);
     ASSERT_TRUE(matched.soccer_active());
 
-    SoccerSoloRosterWorld own(4);
-    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
-    own.tick(1);
-    ASSERT_TRUE(own.soccer_active());
-
-    EXPECT_EQ(own.var(kSocTeamMask), matched.var(kSocTeamMask))
-        << "FAIR-mask == OWN-mask (D26/D33)";
-    EXPECT_EQ(alive_on_team(own.world(), 0),
-              alive_on_team(matched.world(), 0))
-        << "the roster team is untouched under both";
-    EXPECT_EQ(5, alive_on_team(own.world(), 1))
-        << "OWN keeps the full legacy squad";
     EXPECT_EQ(1, alive_on_team(matched.world(), 1))
-        << "FAIR's generated squad matches the solo headcount (D34/D39)";
+        << "the generated squad matches the solo headcount (D34/D39)";
     EXPECT_EQ(1, matched.var(kSlotMatchedSize));
-
-    const std::vector<int> own_levels =
-        team_levels_sorted(own.world(), 1);
-    ASSERT_EQ(5u, own_levels.size());
-    EXPECT_EQ(2, own_levels.front()) << "OWN keeps the legacy L2 squad";
-    EXPECT_EQ(2, own_levels.back());
-    EXPECT_EQ(0, own.var(kSlotMatchedTarget));
 
     ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
     const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
@@ -2758,6 +2770,7 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     fx.spawn_anchor(0, 96, 480);
     fx.spawn_anchor(1, 528, 448);
     fx.spawn_anchor(1, 528, 480);
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;  // E5: refield
     walker* red_hero = fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, 1);
     walker* green_hero =
         fx.spawn_leveled_hero(FAMILY_SOLDIER, 1, 560, 96, 2, 1);

@@ -13,8 +13,11 @@
  * The loop shape is transcribed from the canonical legacy loops
  * (run_difficulty_menu / run_fx_options_screen / create_team_menu): inner
  * breaks fire only on an exact MENU_EXIT, composite values exit at the
- * loop-top bit test after one final draw, and reset_buttons consumes
- * MENU_OK/MENU_REDRAW by re-initializing the live vbuttons.
+ * loop-top bit test after one final draw, and the reset point consumes
+ * MENU_OK/MENU_REDRAW by re-publishing the descriptor rows onto the live
+ * vbuttons (refresh_live_buttons — the legacy reset_buttons' teardown is
+ * kept for the one case that needs it, a dispatch that ran a blocking
+ * child).
  */
 
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -47,8 +50,6 @@ void draw_highlight(const button& b);
 void draw_highlight_interior(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
                      bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons,
-                   Sint32& retvalue);
 void sync_button_hidden_state(const button* buttons, int button_index);
 void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
@@ -362,6 +363,47 @@ void check_entry_found_black_window(std::optional<MenuEntryFade> override_fade,
 #endif
 }
 
+// The engine's button refresh — the legacy reset_buttons' place in the loop,
+// without its teardown. reset_buttons DESTROYS every live vbutton and builds
+// fresh ones from the descriptor rows, and a fresh vbutton carries only what
+// a descriptor row holds. Everything the frame-top passes publish about a
+// row's LOOK lives on the live surface alone — a Disabled row's GREY face
+// and its darker bevels, the company list's red active-row outline, the
+// pointer's hover ring — and the frame this same iteration composes and
+// presents at the bottom of the loop is drawn from those defaults: every
+// dimmed control on the screen flashed bright for exactly one frame on every
+// knob click (the LINEUP FILL / MAP UNITS blink). Re-publish the descriptor
+// rows onto the live buttons IN PLACE instead, so a click repaints what the
+// click changed and nothing else. Sizes come from the descriptor exactly as
+// init_buttons took them; an art row's pixie-derived size is restored by the
+// apply_art_bindings pass that follows either path.
+void refresh_live_buttons(const button* buttons, int num_buttons)
+{
+#ifdef TESTING
+    std::lock_guard<std::mutex> lock(get_allbuttons_mutex());
+#endif
+    for (int i = 0; i < num_buttons; ++i) {
+        vbutton* const live =
+            og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
+        if (live == nullptr)
+            continue;
+        const button& row = buttons[i];
+        live->id = row.id;
+        live->label = row.label;
+        live->hotkey = row.hotkey;
+        live->xloc = row.x;
+        live->yloc = row.y;
+        live->width = row.sizex;
+        live->height = row.sizey;
+        live->xend = row.x + row.sizex;
+        live->yend = row.y + row.sizey;
+        live->myfunc = row.myfun;
+        live->arg = row.arg1;
+        live->hidden = row.hidden;
+        live->no_draw = row.no_draw;
+    }
+}
+
 bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant)
 {
     switch (row.build) {
@@ -585,6 +627,8 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         spec.prepare_buttons(buttons, num_buttons, screen_state);
     int highlighted_button = spec.default_highlight;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+    // The array these live buttons belong to (the loop's reset point below).
+    unsigned int live_generation = allbuttons_generation();
     clear_keyboard();
     // Pointer handoff (menu_screen_spec.h): every engine screen starts from
     // a fresh pointer baseline — a click completed on the previous surface
@@ -775,11 +819,37 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         OG_MENU_ENGINE_CHECK(pks().menu_spec_clicked_row < 0,
                              "MenuSpecRow stash was not consumed");
 
-        const bool was_reset = reset_buttons(
-            og::runtime::current_session->localbuttons_, buttons, num_buttons,
-            retvalue);
+        // The reset point (legacy reset_buttons' trigger and its retvalue
+        // consumption, verbatim). A dispatch that ran a BLOCKING CHILD — a
+        // popup, a nested screen — left the child's live buttons in the
+        // array, so those must be rebuilt whole; a dispatch that only wrote
+        // this screen's own state refreshes in place and keeps the look the
+        // frame-top passes published (see refresh_live_buttons).
+        const bool was_reset = og::runtime::current_session->localbuttons_
+            != nullptr
+            && (retvalue == MENU_OK || retvalue == MENU_REDRAW);
         if (was_reset) {
+            const bool rebuilt = allbuttons_generation() != live_generation;
+            if (rebuilt) {
+                og::runtime::current_session->localbuttons_ =
+                    init_buttons(buttons, num_buttons);
+                live_generation = allbuttons_generation();
+            } else {
+                refresh_live_buttons(buttons, num_buttons);
+            }
+            retvalue = 0;
             apply_art_bindings(spec_rows, num_buttons);
+            if (rebuilt) {
+                // A rebuilt array is bare of the gate pass's live-only
+                // state; republish it before this frame is composed.
+                const MenuLabelContext reset_context =
+                    build_label_context(spec);
+#ifdef TESTING
+                std::lock_guard<std::mutex> lock(get_allbuttons_mutex());
+#endif
+                apply_row_states(spec_rows, buttons, num_buttons,
+                                 reset_context, states);
+            }
             if (spec.on_reset != nullptr)
                 spec.on_reset(screen_state);
         }

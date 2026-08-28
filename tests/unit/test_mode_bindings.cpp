@@ -395,6 +395,30 @@ TEST(ModeBindings, match_setting_reads_all_six_knobs)
     EXPECT_TRUE(fx.logged("err\t0"));
 }
 
+TEST(ModeBindings, match_setting_reads_the_eight_per_team_bot_knobs)
+{
+    ModeBindingsWorld fx;
+    // Distinct per team and distinct between squad and level, so an
+    // off-by-one or transposed index shows as a value mismatch.
+    fx.world().ctf_requested_fill = {0, 2, 1, 9};
+    fx.world().ctf_requested_map_units = {3, 0, 9, 1};
+    fx.run_on_load(
+        "    og.log('squad', og.match_setting('fill_1'),\n"
+        "           og.match_setting('fill_2'),\n"
+        "           og.match_setting('fill_3'),\n"
+        "           og.match_setting('fill_4'))\n"
+        "    og.log('level', og.match_setting('map_units_1'),\n"
+        "           og.match_setting('map_units_2'),\n"
+        "           og.match_setting('map_units_3'),\n"
+        "           og.match_setting('map_units_4'))\n"
+        "    local ok = pcall(og.match_setting, 'fill_5')\n"
+        "    og.log('err', ok and 1 or 0)\n");
+    EXPECT_TRUE(fx.logged("squad\t0\t2\t1\t9"));
+    EXPECT_TRUE(fx.logged("level\t3\t0\t9\t1"));
+    EXPECT_TRUE(fx.logged("err\t0"))
+        << "a fifth team is outside the vocabulary and must raise";
+}
+
 TEST(ModeBindings, match_setting_reads_back_matched_sentinel_raw)
 {
     ModeBindingsWorld fx;

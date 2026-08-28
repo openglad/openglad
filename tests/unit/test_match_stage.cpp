@@ -11,10 +11,12 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/weather.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -24,12 +26,15 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
+
+#include "../test_game_world_fixture.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -69,6 +74,13 @@ og::server::MatchStageInputs make_modes_inputs(std::uint32_t match_seed)
     og::server::MatchStageInputs inputs;
     inputs.equivalent.current_campaign = "modes";
     inputs.equivalent.scen_num = 820; // soccer pitch: fills draw bot squads
+    // E5: the opponent's fill is a turned wheel now. The pitch authors no
+    // units of its own, so under E1's stored-NONE default the lone striker
+    // would be the only team standing and every oracle below would be
+    // measuring a REFUSED stage instead of a staged match. FILL: FAIR on
+    // team 1 is the world this fixture was always written against — the
+    // squad the retired resolver used to field on the host's behalf.
+    inputs.equivalent.fill[1] = og::sim::kFillFair;
     inputs.equivalent.numplayers = 1;
     inputs.equivalent.allied_mode = 0;
     inputs.equivalent.team_list = {
@@ -1278,6 +1290,10 @@ TEST_F(MatchStageTest, staged_report_carries_the_combined_roster)
 
     og::server::MatchStage stage({.networked = true});
     og::server::MatchStageInputs inputs = make_modes_inputs(1001u);
+    // A remote seat's two fighters ARE team 1's second team, so this is the
+    // one consumer of the fixture that needs no backfill: the wheel goes
+    // back to its stored NONE and the census below counts humans only.
+    inputs.equivalent.fill[1] = og::sim::kFillNone;
     inputs.equivalent.team_list.push_back(
         make_slot(1u, 200, "Winger", FAMILY_ELF, 1));
     inputs.equivalent.team_list.push_back(
@@ -1673,6 +1689,367 @@ TEST_F(MatchStageTest, self_script_adoption_is_a_no_op)
     staged_world->adopt_scripts_from(*staged_world);
     EXPECT_EQ(before, staged_keyframe_bytes(stage))
         << "self-adoption must not move the VM out from under the world";
+}
+
+// ---------------------------------------------------------------------------
+// The MODE-LESS stage step (docs/lineup-design.md C2)
+// ---------------------------------------------------------------------------
+//
+// A level has exactly ONE stage step: mode_stage_init's on_mode_init when a
+// mode claims it, on_lineup_stage when none does. The second one is what
+// makes the LINEUP knobs live on classic campaigns — the strip and the FILL
+// squads run on the staged world, so the preview IS the launch there too.
+// These are its oracles: it fires once where no mode owns the level, never
+// where one does, never twice on a world seeded from the stager, and it is
+// invisible (byte-for-byte) while no pack registers the hook.
+
+namespace {
+
+// A wildcard registration — level -1, "every level" — because that is how
+// packs/core arms whole campaigns at once. The probe writes only to the VM
+// log, so its presence cannot itself move a keyframe byte.
+constexpr const char* kLineupStageProbeLua =
+    "og.register_level_hooks(-1, {\n"
+    "  on_lineup_stage = function(level)\n"
+    "    og.log('lineup_stage', level)\n"
+    "  end,\n"
+    "})\n";
+
+// The shape a real FILL squad has: the step puts a hostile fighter on the
+// board, after this tick's foe scan already ran.
+constexpr const char* kLineupStageFillProbeLua =
+    "og.register_level_hooks(-1, {\n"
+    "  on_lineup_stage = function(level)\n"
+    "    og.log('lineup_stage', level)\n"
+    "    local w = og.add_ob('living', og.family_id('living', 'core:orc'))\n"
+    "    w:setxy(160, 160)\n"
+    "    w:set_team_num(1)\n"
+    "  end,\n"
+    "})\n";
+
+loader& lineup_stage_test_loader()
+{
+    static loader instance{EntityFactory{}};
+    return instance;
+}
+
+// The C3 control: registered, and does nothing at all.
+constexpr const char* kLineupStageNoOpLua =
+    "og.register_level_hooks(-1, {\n"
+    "  on_lineup_stage = function(level) end,\n"
+    "})\n";
+
+struct LineupStageProbeScript
+{
+    explicit LineupStageProbeScript(const char* body)
+    {
+        og::script::register_pack_script(
+            {"test.lineup", "zz_lineup_stage_probe.lua", body});
+    }
+    ~LineupStageProbeScript()
+    {
+        og::script::register_pack_script(
+            {"test.lineup", "zz_lineup_stage_probe.lua", ""});
+    }
+};
+
+int count_log_lines(GameWorld& world, const std::string& needle)
+{
+    int count = 0;
+    for (const std::string& line : world.scripts().host().log())
+    {
+        if (line.find(needle) != std::string::npos)
+            ++count;
+    }
+    return count;
+}
+
+og::server::MatchStageInputs make_classic_inputs(std::uint32_t match_seed)
+{
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "gladiator";
+    inputs.equivalent.scen_num = 1;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.allied_mode = 0;
+    inputs.equivalent.team_list = {
+        make_slot(0u, 100, "Host", FAMILY_SOLDIER, 0),
+    };
+    inputs.difficulty = 1;
+    inputs.match_seed = match_seed;
+    return inputs;
+}
+
+}  // namespace
+
+// A classic level: no mode claims it, so the stager dispatches the lineup
+// step on the staged world — once, before any tick.
+TEST_F(MatchStageTest, lineup_stage_runs_once_on_a_mode_less_staged_world)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    LineupStageProbeScript probe(kLineupStageProbeLua);
+
+    og::server::MatchStage stage({.networked = false});
+    stage.observe_inputs(make_classic_inputs(11u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    GameWorld* const staged_world = stage.world();
+    ASSERT_NE(nullptr, staged_world);
+
+    EXPECT_EQ(0, staged_world->type & GameWorld::TYPE_SCRIPTED);
+    EXPECT_FALSE(staged_world->mode.active);
+    EXPECT_EQ(0u, staged_world->tick_count_) << "staging must not tick";
+    EXPECT_EQ(1, count_log_lines(*staged_world, "lineup_stage\t1"))
+        << "the stage step runs exactly once, on the staged world";
+    EXPECT_TRUE(staged_world->scripts().host().errors().empty());
+}
+
+// A mode-owned level: on_mode_init claimed it in step 8, so the lineup step
+// must not run. One stage step per level, never two.
+TEST_F(MatchStageTest, lineup_stage_never_runs_where_a_mode_owns_the_level)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    LineupStageProbeScript probe(kLineupStageProbeLua);
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(12u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    GameWorld* const staged_world = stage.world();
+    ASSERT_NE(nullptr, staged_world);
+
+    ASSERT_TRUE(staged_world->mode.active)
+        << "the soccer pitch must have activated its mode";
+    EXPECT_EQ(0, count_log_lines(*staged_world, "lineup_stage"))
+        << "a mode-owned level already had its stage step";
+}
+
+// C3: the seam is invisible until a pack uses it. An unregistered world and
+// one carrying a registered NO-OP hook stage the same keyframe, byte for
+// byte — the dispatch writes nothing and draws no RNG of its own.
+TEST_F(MatchStageTest, lineup_stage_no_op_hook_keeps_the_keyframe_identical)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    std::vector<std::uint8_t> unregistered;
+    {
+        og::server::MatchStage stage({.networked = false});
+        stage.observe_inputs(make_classic_inputs(4242u), /*now_ms=*/0);
+        ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+        unregistered = staged_keyframe_bytes(stage);
+    }
+    ASSERT_FALSE(unregistered.empty());
+
+    LineupStageProbeScript probe(kLineupStageNoOpLua);
+    og::server::MatchStage stage({.networked = false});
+    stage.observe_inputs(make_classic_inputs(4242u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    EXPECT_EQ(unregistered, staged_keyframe_bytes(stage))
+        << "an empty registered stage step must not move a single byte";
+}
+
+// The on_load latch discipline, for the stage step: the adopted world IS
+// the staged world's state, squads included, so its first tick must not run
+// the step a second time and field them twice.
+TEST_F(MatchStageTest, adopted_world_does_not_re_run_the_lineup_stage)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    LineupStageProbeScript probe(kLineupStageProbeLua);
+
+    og::server::MatchStage stage({.networked = false});
+    stage.observe_inputs(make_classic_inputs(13u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    ASSERT_NE(nullptr, stage.world());
+    ASSERT_EQ(1, count_log_lines(*stage.world(), "lineup_stage\t1"));
+
+    LevelRuntimeData dst_level(1, /*headless=*/true,
+                               &headless_level_data_hooks());
+    SaveData dst_save;
+    GameWorld& dst = dst_level.world();
+    og::sim::SimEventLog dst_events;
+    IRandom* dst_rng = &dst.rng_;
+    bool dst_active = false;
+    GameplayContext dst_ctx;
+    dst_ctx.world = &dst;
+    dst_ctx.save = &dst_save;
+    dst_ctx.sim_events = &dst_events;
+    dst_ctx.config = &cfg;
+    dst_ctx.session_rng_ref = &dst_rng;
+    dst_ctx.gameplay_active_ref = &dst_active;
+    GameplayContext* const previous_context = current_game;
+    current_game = &dst_ctx;
+    dst.tick_count_ = 0;
+    dst.reset_level_progress();
+    ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
+    stage.dispose();
+
+    // The VM moved with the content, so the staged dispatch is in dst's log.
+    ASSERT_EQ(1, count_log_lines(dst, "lineup_stage\t1"));
+    dst.tick();
+    EXPECT_EQ(1, count_log_lines(dst, "lineup_stage\t1"))
+        << "the claimed stage step must not run again on the adopted world";
+
+    // The claim is consumed by that first tick, so the NEXT level of the
+    // same world is armed again rather than silently skipped.
+    dst.tick();
+    EXPECT_FALSE(dst.consume_staged_lineup_stage_claim());
+    current_game = previous_context;
+}
+
+// The lazy arm: a world nobody staged (solo play, a level entered without a
+// MatchStage) runs the step itself, on its first tick, exactly once — the
+// mode_stage_init twin discipline.
+TEST(LineupStageLazyArm, un_staged_world_runs_the_step_on_its_first_tick)
+{
+    init_all_registries();
+    og::script::clear_pack_scripts();
+    TestGameWorld fx(7);
+    LineupStageProbeScript probe(kLineupStageProbeLua);
+
+    EXPECT_EQ(0, count_log_lines(fx.world(), "lineup_stage"))
+        << "nothing runs before the first tick";
+    fx.world().tick();
+    EXPECT_EQ(1, count_log_lines(fx.world(), "lineup_stage\t7"));
+    fx.world().tick();
+    fx.world().tick();
+    EXPECT_EQ(1, count_log_lines(fx.world(), "lineup_stage\t7"))
+        << "the step belongs to the first tick of the level, and to no other";
+    og::script::clear_pack_scripts();
+}
+
+// The lazy arm runs AFTER this tick's foe scan (which is fused into the act
+// loops), so a step that fields fighters has to hold the level open for one
+// tick — otherwise a kill-all map would declare victory on the same tick the
+// enemy squad walked onto it.
+TEST(LineupStageLazyArm, a_step_that_fields_fighters_holds_the_level_open)
+{
+    init_all_registries();
+    og::script::clear_pack_scripts();
+    TestGameWorld fx(7);
+    loader* game_loader = &lineup_stage_test_loader();
+    fx.world().entity_factory =
+        [game_loader](Order order, std::int32_t family) {
+            return game_loader->create_walker_owned(order, family);
+        };
+    fx.world().entity_configurator =
+        [game_loader](walker& entity, Order order,
+                      std::int32_t family) -> const PixieData* {
+            game_loader->set_walker(&entity, order, family);
+            return game_loader->graphics_for(entity.query_order(),
+                                             entity.family());
+        };
+    fx.world().entity_derived_stats =
+        [game_loader](walker* entity, Order order, std::int32_t family) {
+            if (entity != nullptr)
+                game_loader->set_derived_stats(entity, order, family);
+        };
+    LineupStageProbeScript probe(kLineupStageFillProbeLua);
+
+    // An empty arena: with nothing on it, tick 1 would complete the level.
+    fx.world().tick();
+    EXPECT_EQ(1, count_log_lines(fx.world(), "lineup_stage\t7"));
+    EXPECT_FALSE(fx.world().game_ended)
+        << "the squad the step just fielded must be counted first";
+
+    // Tick 2 decides against the world the step built: the orc is hostile,
+    // so the level is genuinely open now.
+    fx.world().tick();
+    EXPECT_FALSE(fx.world().game_ended);
+    EXPECT_EQ(1, count_log_lines(fx.world(), "lineup_stage\t7"))
+        << "and the step still belongs to the first tick alone";
+    og::script::clear_pack_scripts();
+}
+
+// A TYPE_SCRIPTED level whose mode init REFUSES (or registers no
+// on_mode_init at all): the stager's step 8b covers it — mode_stage_init
+// then the lineup step on the same world — but on an UN-STAGED world tick
+// 1 is spent in the mode branch (a failed init owns its tick), and the
+// classic else is only reached from tick 2 on, past the tick-1 gate. The
+// probe registers the pair on the level itself: an init that raises, and
+// the lineup step that logs.
+constexpr const char* kRefusedModeLineupProbeLua =
+    "og.register_level_hooks(7, {\n"
+    "  on_mode_init = function(level)\n"
+    "    error('probe: this mode refuses')\n"
+    "  end,\n"
+    "  on_lineup_stage = function(level)\n"
+    "    og.log('lineup_stage', level)\n"
+    "  end,\n"
+    "})\n";
+
+// The tick-path mirror of step 8b (review F4): an un-staged scripted world
+// whose init refused runs the lineup step exactly once — on the refusal
+// tick itself, the way the stager runs 8b right after step 8 — and never
+// again.
+TEST(LineupStageLazyArm, refused_mode_world_runs_the_step_once)
+{
+    init_all_registries();
+    og::script::clear_pack_scripts();
+    TestGameWorld fx(7);
+    fx.world().type |= GameWorld::TYPE_SCRIPTED;
+    LineupStageProbeScript probe(kRefusedModeLineupProbeLua);
+
+    fx.world().tick();
+    EXPECT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_FALSE(fx.world().mode.active) << "the probe's init must refuse";
+    EXPECT_EQ(1, count_log_lines(fx.world(), "lineup_stage\t7"))
+        << "the refused level gets its one stage step, on the refusal tick";
+    fx.world().tick();
+    fx.world().tick();
+    EXPECT_EQ(1, count_log_lines(fx.world(), "lineup_stage\t7"))
+        << "and never a second one";
+    og::script::clear_pack_scripts();
+}
+
+// A world seeded from a snapshot of that refused world — the step already
+// ran on the source — must not run it again: the snapshot carries the
+// init latch and the level tick count, and neither the mode-branch arm
+// nor the classic tick-1 arm may fire on a tick past the first.
+TEST(LineupStageLazyArm, snapshot_seeded_twin_of_a_refused_world_does_not_rerun)
+{
+    init_all_registries();
+    og::script::clear_pack_scripts();
+    LineupStageProbeScript probe(kRefusedModeLineupProbeLua);
+    std::vector<std::uint8_t> bytes;
+    {
+        // Strictly sequential: the twin is built only after this world is
+        // gone (two live script-bound worlds resolve bindings against the
+        // last-constructed one).
+        TestGameWorld source(7);
+        source.world().type |= GameWorld::TYPE_SCRIPTED;
+        source.world().tick();
+        ASSERT_EQ(1, count_log_lines(source.world(), "lineup_stage\t7"));
+        bytes = og::sim::serialize_snapshot(
+            og::sim::peek_keyframe_snapshot(source.world()));
+    }
+    ASSERT_FALSE(bytes.empty());
+
+    TestGameWorld twin(7);
+    twin.world().type |= GameWorld::TYPE_SCRIPTED;
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::deserialize_snapshot(bytes);
+    ASSERT_TRUE(og::sim::apply_snapshot(twin.world(), snapshot));
+    EXPECT_TRUE(twin.world().mode.init_attempted)
+        << "the refusal latch rides the snapshot";
+    EXPECT_FALSE(twin.world().mode.active);
+    twin.world().tick();
+    twin.world().tick();
+    EXPECT_EQ(0, count_log_lines(twin.world(), "lineup_stage"))
+        << "the seeded twin must not field a second set of squads";
+    og::script::clear_pack_scripts();
+}
+
+// And with no hook registered the lazy arm is the empty statement it has to
+// be: no VM is even built for a script-less world.
+TEST(LineupStageLazyArm, un_registered_world_dispatches_nothing)
+{
+    init_all_registries();
+    og::script::clear_pack_scripts();
+    TestGameWorld fx(7);
+    EXPECT_FALSE(fx.world().run_lineup_stage_step());
+    fx.world().tick();
+    EXPECT_FALSE(fx.world().run_lineup_stage_step());
 }
 
 } // namespace

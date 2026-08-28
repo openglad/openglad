@@ -2047,9 +2047,12 @@ bool known_match_setting(const char* name)
 
 // og.campaign_match_get(name) → int32 — the menu-time twin of the sim's
 // read-only og.match_setting, over the persisted match knobs
-// ("team_count", "score_limit", "respawn_ticks", "strip_troops",
-// "respawn_mode", "generator_rate", "time_limit"). Unknown names error,
-// like the twin.
+// ("score_limit", "respawn_ticks", "respawn_mode", "generator_rate",
+// "time_limit", and the per-team "fill_1".."fill_4" /
+// "map_units_1".."map_units_4"). Unknown names error, like the twin — and
+// "team_count" (amendment A3) and "strip_troops" (amendment B5) are now two
+// of them: both knobs are retired, and both sim-side reads survive, always
+// answering 0.
 int og_campaign_match_get(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_match_get");
@@ -2098,6 +2101,24 @@ int og_campaign_is_host(lua_State* L)
         return luaL_error(
             L, "og.campaign_is_host: no campaign provider installed");
     lua_pushboolean(L, p.is_host() ? 1 : 0);
+    return 1;
+}
+
+// og.campaign_my_team() → integer 0..3 — the local seat's fighting team
+// (docs/lineup-design.md Amendment 5 G4), so a page can say "mine" and
+// mean the machine reading it: on a joiner this is the joiner's own team,
+// never the host's. The surface answers from its own seat view and this
+// binding is the domain choke — a seat value outside the four teams is
+// clamped here rather than handed to a script as a team index that
+// addresses nothing.
+int og_campaign_my_team(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_my_team");
+    const auto& p = campaign_providers();
+    if (!p.my_team)
+        return luaL_error(
+            L, "og.campaign_my_team: no campaign provider installed");
+    lua_pushinteger(L, std::clamp(p.my_team(), 0, SCORE_TEAM_COUNT - 1));
     return 1;
 }
 
@@ -2730,16 +2751,22 @@ int og_team_color_name(lua_State* L)
 }
 
 // og.match_setting(name) — the lobby/save match knobs, reinterpreted as
-// generic match settings; 0 always means "mode default" (strip_troops:
-// 0 keep, 2 own, 3 match; 1 legacy = own). Names: "team_count" (0 = Auto),
-// "score_limit", "respawn_ticks", "strip_troops" (0 keeps the authored
-// cast; 2 strips it; 3 = "TROOPS: FAIR" strips it AND sizes the generated
-// bot squads to the human census — the bot-squad power model is the only
-// reader that separates 3 from 2, and classic maps play 3 as plain own;
-// the retired middle state 1 reads as own),
+// generic match settings. Names: "team_count" (RETIRED by amendment A3 and
+// always 0 — every team the map authors; kept readable so scripts written
+// against it keep running),
+// "score_limit", "respawn_ticks",
+// "strip_troops" (RETIRED by amendment B5 — always 0; the per-team
+// "map_units_N" box answers what it used to ask, and the name stays
+// readable so an old script keeps running),
 // "respawn_mode" (the difficulty submenu's classic respawn selector),
 // "time_limit" (the match clock in SIM TICKS; 0 = the map's own value, so
 // modes resolve it against their manifest row through match.resolve_limit),
+// "fill_1".."fill_4" (the per-team FILL wheel: 0 = NONE, 1 = WEAK,
+// 2 = FAIR, 3 = STRONG, 4 = BRUTAL — the multiplier each code means lives
+// in the mode Lua, which is the only layer that solves a target; NONE is
+// the stored 0, so a map nobody turned a wheel on fields no squad at all),
+// "map_units_1".."map_units_4" (the per-team MAP UNITS box: 0 = the map's
+// own authored units are fielded, 1 = they are not),
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF
 // bot-squad level formula reads it).
 int og_match_setting(lua_State* L)
@@ -2759,6 +2786,22 @@ int og_match_setting(lua_State* L)
         value = world->respawn_mode;
     else if (std::strcmp(s, "time_limit") == 0)
         value = world->ctf_requested_time_limit;
+    else if (std::strcmp(s, "fill_1") == 0)
+        value = world->ctf_requested_fill[0];
+    else if (std::strcmp(s, "fill_2") == 0)
+        value = world->ctf_requested_fill[1];
+    else if (std::strcmp(s, "fill_3") == 0)
+        value = world->ctf_requested_fill[2];
+    else if (std::strcmp(s, "fill_4") == 0)
+        value = world->ctf_requested_fill[3];
+    else if (std::strcmp(s, "map_units_1") == 0)
+        value = world->ctf_requested_map_units[0];
+    else if (std::strcmp(s, "map_units_2") == 0)
+        value = world->ctf_requested_map_units[1];
+    else if (std::strcmp(s, "map_units_3") == 0)
+        value = world->ctf_requested_map_units[2];
+    else if (std::strcmp(s, "map_units_4") == 0)
+        value = world->ctf_requested_map_units[3];
     else if (std::strcmp(s, "difficulty") == 0)
         value = world->difficulty;
     else
@@ -3244,6 +3287,7 @@ const luaL_Reg kOgCampaignFuncs[] = {
     {"campaign_match_get", og_campaign_match_get},
     {"campaign_match_set", og_campaign_match_set},
     {"campaign_is_host", og_campaign_is_host},
+    {"campaign_my_team", og_campaign_my_team},
     {"campaign_random", og_campaign_random},
     {nullptr, nullptr},
 };
