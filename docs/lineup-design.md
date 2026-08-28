@@ -1615,3 +1615,40 @@ every fetch. Rulings the implementation had to make:
   LINEUP tweak to WEAK reads back `FILL: MIXED` with the sides count
   kept); the `zzz_uxr_capture_modes_match_setup_page` capture regenerated
   with the macro rows at rest and stepped.
+
+## Amendment 6 — the FILL macro deals the local band too (maintainer, 2026-08-28)
+
+> "the match setup FILL should also set team 1, right??"
+
+Amendment 5's as-built excluded the local seat's own band from both
+macros ("the faces count opponents only"). That was wrong for FILL, and
+the maintainer's original words already said so: *one selector for the
+FILL of **all selected teams***. The exclusion is also an asymmetry with
+no principle behind it: "opponents" is measured from the HOST's seat, so
+every joiner's team is reachable by the macro and exactly one band — the
+host's — is not. And the own band's fill is the ALLIES knob (the solver's
+occupied-team arm: the gap to the strongest other team's human f-sum,
+scaled by the wheel), which is precisely what an outnumbered host wants
+from quick setup; on a solo table the gap is ≤ 0 and the knob fields
+nobody, so including it costs nothing there.
+
+Rulings (H1–H3), superseding G's "count opponents only" for FILL:
+
+- **H1 — FILL writes the local band, always.** A FILL turn's targets are
+  the on opponents (the lowest opponent when none are on) PLUS the local
+  seat's team, NONE included: the wrap clears the own band with the rest.
+  TEAMS stays opponents-only — it deals SIDES, and the local side is
+  already at the table; a TEAMS click never touches the own band.
+- **H2 — the FILL face counts every non-NONE band, own included.** One
+  uniform rule instead of G's carve-out: `common` runs over all bands
+  whose fill ≠ NONE, the local one among them. A LINEUP-diverged own band
+  honestly reads `FILL: MIXED`; an own-only fill (opponents all NONE)
+  wears its own word. NONE stays silent, so a fresh TEAMS deal (own band
+  NONE) does not read MIXED. `TEAMS: n` is unchanged — `1 + count(on
+  opponents)`; an own-band fill adds allies, never a side. The effective
+  value TEAMS deals follows the same face (a BRUTAL own band deals BRUTAL
+  sides; MIXED still deals FAIR).
+- **H3 — the said-line owns the new write**: `"One squad at STRONG.
+  Yours too."` — the two-word tail because the own band is a KNOB write,
+  not a promised squad (solo tables field no allies). The wrap keeps
+  `"No squads."`: nothing fielded anywhere covers the cleared own band.

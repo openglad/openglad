@@ -1569,7 +1569,8 @@ TEST_F(ModesBookTest, teams_macro_deals_fair_sides_ascending_and_wraps)
         EXPECT_TRUE(og::data::consume_match_settings_dirty())
             << "every macro write rides the dirty -> sync -> restage tail";
     }
-    EXPECT_EQ(0, save_.fill[0]) << "the local team's band is never dealt";
+    EXPECT_EQ(0, save_.fill[0])
+        << "a TEAMS turn never deals the local band (H1 is FILL's rule)";
 
     // The camp digest follows the array: the sides, the fill, the score.
     CampaignZoneSession zone(save_);
@@ -1620,10 +1621,12 @@ TEST_F(ModesBookTest, teams_macro_copies_the_fill_face_and_fair_on_mixed)
 }
 
 // G3 round the wheel: from rest each click turns on the LOWEST opponent
-// alone (the TEAMS: 2 shape) and walks its band WEAK, FAIR, STRONG,
-// BRUTAL; the wrap writes NONE and the table goes quiet. With two sides
-// on, one click deals them BOTH; a MIXED face is off the wheel and
-// rejoins at the head — NONE — like every off-menu value on this page.
+// (the TEAMS: 2 shape) and the local band with it (H1) and walks them
+// WEAK, FAIR, STRONG, BRUTAL; the wrap writes NONE — the own band
+// cleared with the rest — and the table goes quiet. With two sides on,
+// one click deals them BOTH plus the own band; a MIXED face is off the
+// wheel and rejoins at the head — NONE — like every off-menu value on
+// this page.
 TEST_F(ModesBookTest, fill_macro_turns_on_the_lowest_opponent_then_every_on_side)
 {
     CampaignPickerSession session(save_);
@@ -1636,12 +1639,14 @@ TEST_F(ModesBookTest, fill_macro_turns_on_the_lowest_opponent_then_every_on_side
         const char* teams_label;
     };
     const std::vector<Step> steps = {
-        {"One squad at WEAK.", "FILL: WEAK", og::sim::kFillWeak, "TEAMS: 2"},
-        {"One squad at FAIR.", "FILL: FAIR", og::sim::kFillFair, "TEAMS: 2"},
-        {"One squad at STRONG.", "FILL: STRONG", og::sim::kFillStrong,
+        {"One squad at WEAK. Yours too.", "FILL: WEAK", og::sim::kFillWeak,
          "TEAMS: 2"},
-        {"One squad at BRUTAL.", "FILL: BRUTAL", og::sim::kFillBrutal,
+        {"One squad at FAIR. Yours too.", "FILL: FAIR", og::sim::kFillFair,
          "TEAMS: 2"},
+        {"One squad at STRONG. Yours too.", "FILL: STRONG",
+         og::sim::kFillStrong, "TEAMS: 2"},
+        {"One squad at BRUTAL. Yours too.", "FILL: BRUTAL",
+         og::sim::kFillBrutal, "TEAMS: 2"},
         {"No squads.", "FILL: NONE", 0, "TEAMS: 1"},
     };
     for (const Step& step : steps)
@@ -1650,20 +1655,22 @@ TEST_F(ModesBookTest, fill_macro_turns_on_the_lowest_opponent_then_every_on_side
                   session.choose(kFillRow).kind)
             << step.label;
         EXPECT_EQ(step.said, session.take_message());
-        EXPECT_EQ((std::array<short, 4>{0, step.code, 0, 0}), save_.fill)
-            << "the lowest opponent's band alone carries the wheel";
+        EXPECT_EQ((std::array<short, 4>{step.code, step.code, 0, 0}),
+                  save_.fill)
+            << "the lowest opponent AND the own band carry the wheel (H1)";
         EXPECT_EQ(step.label, session.page().rows[kFillRow].label);
-        EXPECT_EQ(step.teams_label, session.page().rows[kTeamsRow].label);
+        EXPECT_EQ(step.teams_label, session.page().rows[kTeamsRow].label)
+            << "the own band adds allies, never a side (H2)";
     }
 
-    // Two sides on: one click deals them both.
-    save_.fill[1] = og::sim::kFillFair;
-    save_.fill[2] = og::sim::kFillFair;
+    // Two sides on: one click deals them both, and the own band with them.
+    save_.fill = {0, og::sim::kFillFair, og::sim::kFillFair, 0};
     session.refresh();
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
               session.choose(kFillRow).kind);
-    EXPECT_EQ("Two squads at STRONG.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{0, og::sim::kFillStrong,
+    EXPECT_EQ("Two squads at STRONG. Yours too.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillStrong,
+                                    og::sim::kFillStrong,
                                     og::sim::kFillStrong, 0}),
               save_.fill);
 
@@ -1683,9 +1690,10 @@ TEST_F(ModesBookTest, fill_macro_turns_on_the_lowest_opponent_then_every_on_side
 
 // G2's "skipping the local team" means the seat's team, not team 0: with
 // the save's my_team on TEAM 3 (the G4 fallback every scriptless surface
-// ends on) the macros deal teams 1 and 2 first and never touch their own
-// band — and the faces never count it, an explicit own-team fill (legal
-// per D2) included.
+// ends on) the macros deal teams 1 and 2 first. Amendment 6 seats the own
+// band in the FILL face (H2: a LINEUP-set own fill wears its word, and a
+// TEAMS deal copies it) and under the FILL wheel (H1) — but it is never a
+// SIDE, and a TEAMS turn never writes it.
 TEST_F(ModesBookTest, macros_answer_to_the_local_seats_team)
 {
     save_.my_team = 2;
@@ -1693,30 +1701,42 @@ TEST_F(ModesBookTest, macros_answer_to_the_local_seats_team)
     CampaignPickerSession session(save_);
     ASSERT_TRUE(session.open_at("setup"));
     EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label)
-        << "an own-team fill is no side these rows count";
-    EXPECT_EQ("FILL: NONE", session.page().rows[kFillRow].label);
+        << "an own-team fill adds allies, never a side";
+    EXPECT_EQ("FILL: BRUTAL", session.page().rows[kFillRow].label)
+        << "the face wears the own band's word (H2)";
 
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
               session.choose(kTeamsRow).kind);
-    EXPECT_EQ("Two sides. One squad at FAIR.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{og::sim::kFillFair, 0,
+    EXPECT_EQ("Two sides. One squad at BRUTAL.", session.take_message())
+        << "the deal copies the face, and the face is the own band's";
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillBrutal, 0,
                                     og::sim::kFillBrutal, 0}),
               save_.fill)
-        << "the lowest OPPONENT is TEAM 1; the own band is never dealt";
+        << "the lowest OPPONENT is TEAM 1; a TEAMS turn leaves the own band";
 
+    // FILL from the BRUTAL face wraps to NONE — clearing the own band
+    // WITH the on opponent (H1: the wheel owns every band it counts).
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
               session.choose(kFillRow).kind);
-    EXPECT_EQ("One squad at STRONG.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{og::sim::kFillStrong, 0,
-                                    og::sim::kFillBrutal, 0}),
-              save_.fill);
+    EXPECT_EQ("No squads.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{0, 0, 0, 0}), save_.fill);
+    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label);
+
+    // And on from rest: the lowest opponent turns on and the own band
+    // rides along, both at WEAK.
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kFillRow).kind);
+    EXPECT_EQ("One squad at WEAK. Yours too.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillWeak, 0,
+                                    og::sim::kFillWeak, 0}),
+              save_.fill)
+        << "the own band is my_team's, not team 0's";
 
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
               session.choose(kTeamsRow).kind);
-    EXPECT_EQ("Three sides. Two squads at STRONG.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{og::sim::kFillStrong,
-                                    og::sim::kFillStrong,
-                                    og::sim::kFillBrutal, 0}),
+    EXPECT_EQ("Three sides. Two squads at WEAK.", session.take_message());
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillWeak, og::sim::kFillWeak,
+                                    og::sim::kFillWeak, 0}),
               save_.fill)
         << "ascending order skips the local seat's own team";
 }

@@ -314,8 +314,8 @@ local function opponents()
 end
 
 -- The opponents whose band is ON (fill ~= NONE), each with the code it
--- holds. The local team's own band never counts: an explicit fill there
--- is legal (D2) but it is LINEUP's affair, not a side these rows claim.
+-- holds. Opponents only: this list is the SIDES count, and the local
+-- team is already at the table.
 local function on_opponents()
   local opp = opponents()
   local on = {}
@@ -328,7 +328,26 @@ local function on_opponents()
   return on
 end
 
--- The FILL face's one number: the common code of the on opponents, 0 with
+-- Every band the FILL face answers for (amendment 6, H2): the on
+-- opponents plus the local seat's own band where it holds a word — one
+-- uniform non-NONE rule instead of G's own-band carve-out, so a LINEUP
+-- tweak to the own band reads back MIXED here like any other. NONE stays
+-- silent: a fresh TEAMS deal leaves the own band NONE and must not read
+-- MIXED for it.
+local function face_bands(on)
+  local bands = {}
+  for i = 1, #on do
+    bands[#bands + 1] = on[i]
+  end
+  local mine = og.campaign_my_team()
+  local code = og.campaign_match_get(fill_key(mine))
+  if code ~= 0 then
+    bands[#bands + 1] = { team = mine, code = code }
+  end
+  return bands
+end
+
+-- The FILL face's one number: the common code of the given bands, 0 with
 -- none on, nil where LINEUP diverged them (the MIXED face).
 local function common_fill(on)
   if #on == 0 then
@@ -343,10 +362,11 @@ local function common_fill(on)
   return code
 end
 
--- What a TEAMS turn deals its chosen opponents (G2): the FILL row's own
--- value where it names one, FAIR where the face reads NONE or MIXED.
+-- What a TEAMS turn deals its chosen opponents (G2, H2): the FILL row's
+-- own value where the face names one — own band included, so a BRUTAL
+-- own band deals BRUTAL sides — FAIR where the face reads NONE or MIXED.
 local function effective_fill(on)
-  local code = common_fill(on)
+  local code = common_fill(face_bands(on))
   if code == nil or code == 0 then
     return FILL_FAIR
   end
@@ -358,7 +378,7 @@ local function teams_face(on)
 end
 
 local function fill_face(on)
-  local code = common_fill(on)
+  local code = common_fill(face_bands(on))
   if code == nil then
     return "FILL: MIXED"
   end
@@ -377,11 +397,14 @@ local function teams_said(n, code)
   return COUNT_WORDS[n] .. " sides. " .. squads_phrase(n - 1, code)
 end
 
+-- H3: the own band is a KNOB write, not a promised squad (a solo table
+-- fields no allies), so it rides as a two-word tail. The wrap cleared it
+-- with the rest, and "No squads." covers nothing fielded anywhere.
 local function fill_said(code, count)
   if count == 0 then
     return "No squads."
   end
-  return squads_phrase(count, code)
+  return squads_phrase(count, code) .. " Yours too."
 end
 
 -- A sentence starts with a capital: the score phrase leads now that the
@@ -405,7 +428,7 @@ end
 -- value where the host turns it (#241).
 local function rules_digest()
   local on = on_opponents()
-  local code = common_fill(on)
+  local code = common_fill(face_bands(on))
   local word = "mixed"
   if code ~= nil then
     word = string.lower(fill_word(code))
@@ -809,17 +832,19 @@ local function turn_teams()
   return { message = teams_said(n, code) }
 end
 
--- Turning FILL (G3): one step along the wheel, written to every on
--- opponent; with none on the lowest opponent turns on at the new value —
--- the TEAMS: 2 shape. A MIXED face is off the wheel and rejoins at the
--- head, NONE, the same rule every knob applies to a value it cannot
--- place.
+-- Turning FILL (G3, H1): one step along the wheel, written to every on
+-- opponent AND the local seat's own band — the maintainer's "all selected
+-- teams", and the own band is the allies knob; with no opponent on the
+-- lowest one turns on at the new value — the TEAMS: 2 shape. NONE
+-- included: the wrap clears the own band with the rest. A MIXED face is
+-- off the wheel and rejoins at the head, NONE, the same rule every knob
+-- applies to a value it cannot place.
 local function turn_fill()
   if not og.campaign_is_host() then
     return { message = "The host calls the rules." }
   end
   local on = on_opponents()
-  local current = common_fill(on)
+  local current = common_fill(face_bands(on))
   if current == nil then
     current = -1
   end
@@ -831,10 +856,11 @@ local function turn_fill()
   if #targets == 0 then
     targets[1] = opponents()[1]
   end
+  local count = #targets
+  targets[#targets + 1] = og.campaign_my_team()
   for i = 1, #targets do
     og.campaign_match_set(fill_key(targets[i]), code)
   end
-  local count = #targets
   if code == 0 then
     count = 0
   end

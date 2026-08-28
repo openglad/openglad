@@ -1990,9 +1990,9 @@ int macro_round_trip_injector(void* data)
         SDL_Delay(300);
     }
 
-    // (d) LINEUP reads the same array band by band: STRONG, STRONG, NONE
-    // beside the human team's own NONE. Then the tweak that diverges
-    // them: TEAM 2's wheel walked on to WEAK.
+    // (d) LINEUP reads the same array band by band: STRONG on the human
+    // team's own band too (H1), STRONG, STRONG, NONE. Then the tweak
+    // that diverges them: TEAM 2's wheel walked on to WEAK.
     interact("scenario");
     if (!wait_for_interactable("lineup", 10000)) {
         state->finished = true;
@@ -2091,8 +2091,8 @@ TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
     EXPECT_TRUE(state.fill_strong)
         << "one FILL click steps the FAIR face to STRONG on both sides";
     ASSERT_TRUE(state.lineup_opened) << "the LINEUP page should open";
-    EXPECT_EQ("FILL: NONE", state.band_labels[0])
-        << "the human team's own band is never dealt";
+    EXPECT_EQ("FILL: STRONG", state.band_labels[0])
+        << "the FILL macro deals the human team's own band too (H1)";
     EXPECT_EQ("FILL: STRONG", state.band_labels[1]);
     EXPECT_EQ("FILL: STRONG", state.band_labels[2]);
     EXPECT_EQ("FILL: NONE", state.band_labels[3])
@@ -2107,7 +2107,8 @@ TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
         << "a diverged pair reads MIXED, never a value of the camp's own "
            "invention: '"
         << state.mixed_fill_label << "'";
-    EXPECT_EQ(og::sim::kFillNone, save.fill[0]);
+    EXPECT_EQ(og::sim::kFillStrong, save.fill[0])
+        << "the own band keeps the macro's STRONG through the LINEUP tweak";
     EXPECT_EQ(og::sim::kFillWeak, save.fill[1]);
     EXPECT_EQ(og::sim::kFillStrong, save.fill[2]);
     EXPECT_EQ(og::sim::kFillNone, save.fill[3]);
