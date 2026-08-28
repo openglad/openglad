@@ -1409,3 +1409,16 @@ The SDL half of D1's label rule, and the end-to-end half of D4.
   world (one level load plus a per-world Lua VM), and each knob turn
   restages once. Twelve presses cost 215 ms on gladiator scen 1; a heavy
   level will make the page's first paint cost what VIEW LEVEL costs.
+
+# Amendment 4 (2026-08-28): FILL: NONE is the default on every map
+
+Maintainer ruling: "make FILL: NONE the default for all maps." Rulings
+E1–E5 supersede C8 and the D1 scale.
+
+| # | Ruling |
+|--|--|
+| E1 | **Scale**: `0 = NONE` (the default), `1 = WEAK`, `2 = FAIR`, `3 = STRONG`, `4 = BRUTAL`; sanitize `[0,4]`. There is no DEFAULT/explicit distinction any more: stored 0 *is* NONE, and the wheel from a fresh band enters at NONE's slot (one click = WEAK, two = FAIR). |
+| E2 | **The per-team default resolver retires**: `resolved_fill`, the `lineup.default_fill` registrar member and campaign-book override, `campaign_lineup_resolved_fill`, `LineupResolveRow`, `LineupTeamBand::resolved_fill` and the presence-to-resolver plumbing are deleted (no dead seams). The presence/map-unit census stays only for the `MAP UNITS` dim and the band diagnostics. |
+| E3 | **Semantics**: no squad fields anywhere unless the host sets FILL — modes maps' empty authored teams included (the FAIR-by-default "matched teams" behaviour is gone; a solo player on a two-team mode map sees the honest `MATCH WILL NOT START: FEWER THAN 2 TEAMS` in VIEW LEVEL until a wheel is turned). Explicit fills behave exactly per D2/D3. All-default is a no-op on every map, trivially. |
+| E4 | **Facts**: a banked fill code is the stored code of a squad that spawned (1..4); NONE never spawns and never banks; 0 = nothing banked, unambiguous. |
+| E5 | **Pins move, not weaken**: the modes staged matrices' FAIR-by-default rows become NONE-by-default rows plus explicit-FAIR rows that preserve the old expectations; every label/wheel/fact pin follows the new scale; captures regenerate (every band reads `FILL: NONE` at rest). |
