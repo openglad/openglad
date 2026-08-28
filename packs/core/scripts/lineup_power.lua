@@ -23,15 +23,8 @@ local function default_power(row)
                            row.stepsize, row.fire_frequency, row.level)
 end
 
--- The C8 resolver, registered beside the pricing so the LINEUP band's
--- knob face renders the RESOLVED default through the same lib function
--- the stage executes (lineup.resolved_fill — the ONE home of the rule;
--- the menus never re-derive it). The engine hands over the stored wheel
--- code and the team's censused presence row; explicit values come back
--- as themselves, the default resolves FAIR-with-presence / NONE-without.
-local function default_fill(stored, row)
-  return lineup.resolved_fill(stored, row)
-end
-
-og.register_default_lineup({ power = default_power,
-                             default_fill = default_fill })
+-- The registration carried a second `default_fill` member for as long as
+-- the FILL wheel had a DEFAULT code to resolve per team. Amendment 4 (E2)
+-- made NONE the stored 0 on every map, so nothing resolves and the pricing
+-- is the whole default lineup again.
+og.register_default_lineup({ power = default_power })

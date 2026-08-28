@@ -196,10 +196,9 @@ struct CampaignRosterEntry {
 // twin's unknown-name rule — while match_set answers false (policy lives
 // in the provider).
 // The eight per-team band knobs (amendment B1-B4) join the list: "fill_N"
-// is the FILL wheel (0 = DEFAULT, which resolves per team, then the five
-// explicit codes 1 = NONE, 2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL)
-// and "map_units_N" the MAP UNITS box (0 = on, 1 = off), N being the
-// 1-based team.
+// is the FILL wheel (0 = NONE, 1 = WEAK, 2 = FAIR, 3 = STRONG,
+// 4 = BRUTAL) and "map_units_N" the MAP UNITS box (0 = on, 1 = off), N
+// being the 1-based team.
 // "team_count" is NOT in the list any more (amendment A3) and neither is
 // "strip_troops" (amendment B5): both knobs are retired, so a campaign that
 // wrote either would be writing a value nothing reads. The sim-side
@@ -325,8 +324,7 @@ std::vector<std::string> og_function_names();
 // A SHIPPED PACK registers the DEFAULT pricing through a registrar of its
 // own (amendment C5), spelling the same table:
 //
-//   og.register_default_lineup({ power = function(row) ... end,
-//                                default_fill = function(stored, row) ... end })
+//   og.register_default_lineup({ power = function(row) ... end })
 //
 // packs/core does exactly that, so the bands price rosters on every
 // campaign — gladiator included — instead of showing `POWER --` wherever
@@ -364,33 +362,11 @@ bool campaign_lineup_registered();
 // errors, or it answers anything but a number.
 bool campaign_fighter_power(const LineupPowerRow& row, long long& out);
 
-// One team's censused presence, the input of the C8 resolved-default query
-// below. Counts, not booleans, so a registered resolver reads the same
-// row shape the pack's own stage census builds; a surface that cannot
-// gather one of these leaves it 0 (the classic stage has no seat
-// visibility, the band census has no anchors beside its markers — the
-// marker count includes consumed/dead markers exactly as the engine
-// anchor scan does, so the two spell one fact).
-struct LineupResolveRow {
-    int units = 0;       // authored (guy-less) livings standing on the team
-    int generators = 0;  // authored generators
-    int markers = 0;     // team start markers, dead/consumed ones included
-    int anchors = 0;     // engine respawn anchors (already covered by
-                         // markers wherever the caller counted dead ones)
-    int roster = 0;      // deployed fighters (has_guy livings / save slots)
-    int seats = 0;       // lobby seats pointed at the team
-};
-
-// Dispatches lineup.default_fill(stored, row) under the campaign fence —
-// the campaign book's when it registered one, otherwise the shipped
-// default's (docs/lineup-design.md C8: packs/core registers the ONE
-// resolver, lineup.resolved_fill, so no menu re-derives the rule). On
-// success `out` is the RESOLVED wheel code (an explicit stored value comes
-// back as itself; the stored default resolves FAIR-with-presence /
-// NONE-without). False — and the caller's honest fallback is the STORED
-// value — when neither resolver is registered, the hook errors, or it
-// answers anything but a wheel code.
-bool campaign_lineup_resolved_fill(int stored, const LineupResolveRow& row,
-                                   int& out);
+// The `lineup` table carried a second member, `default_fill`, for as long
+// as the FILL wheel had a sixth DEFAULT code to resolve per team (C8).
+// Amendment 4 (E1/E2) made NONE the stored 0 on every map, so there is
+// nothing left to resolve and the whole seam — the registrar member, the
+// LineupResolveRow query row and this dispatcher — is gone rather than
+// kept as a hook nobody calls.
 
 }  // namespace og::script::hooks

@@ -1110,7 +1110,6 @@ private:
 
     TerminalLineupInputs lineup_inputs(
         const std::vector<og::sim::LobbyPlayer>& seats,
-        std::span<const LineupTeamPresence> presence,
         std::span<const int> map_unit_counts) const
     {
         TerminalLineupInputs inputs;
@@ -1121,12 +1120,10 @@ private:
         // fighter census reads THIS save.
         inputs.networked = false;
         inputs.is_host = label_context().is_host;
-        // W7-G: the FILL cells read the world VIEW LEVEL would show. Empty
-        // when nothing could be staged — the documented stored-code
-        // fallback, not an invented census. F3: the MAP UNITS census rides
-        // beside it off the same world, so the B4 hint and the toggle
-        // refusal are live here exactly as on the SDL band.
-        inputs.presence = presence;
+        // F3: the MAP UNITS census comes off the world VIEW LEVEL would
+        // show, so the B4 hint and the toggle refusal are live here exactly
+        // as on the SDL band. Empty when nothing could be staged — the
+        // documented silence, not an invented census.
         inputs.map_unit_counts = map_unit_counts;
         return inputs;
     }
@@ -1159,21 +1156,17 @@ private:
             .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
             .host_company_save = &save_data_,
         });
-        std::array<LineupTeamPresence, 4> presence{};
         std::array<int, 4> map_unit_counts{};
 
         for (;;) {
-            const bool censused = census_staged_lineup_presence(
+            const bool censused = census_staged_lineup_map_units(
                 stage, save_data_,
                 og::runtime::current_session->current_difficulty_,
-                config_.seed, presence, &map_unit_counts);
+                config_.seed, map_unit_counts);
             const std::vector<og::sim::LobbyPlayer> seats =
                 synthesize_local_lobby_players(save_data_);
             const TerminalLineupModel model = build_terminal_lineup_model(
                 lineup_inputs(seats,
-                              censused
-                                  ? std::span<const LineupTeamPresence>(presence)
-                                  : std::span<const LineupTeamPresence>(),
                               censused ? std::span<const int>(map_unit_counts)
                                        : std::span<const int>()));
 
@@ -1235,13 +1228,10 @@ private:
                         format_lineup_map_units_label(save_data_.map_units[team])
                             .c_str());
                 } else {
-                    // D1's entry rule needs the value the row is SHOWING,
-                    // which is the band's own resolution (W7-G: the staged
-                    // census, or the stored code where nothing could be
-                    // staged) — never a second derivation of it here.
+                    // E1: the row shows the STORED code, so the wheel steps
+                    // from it directly — no second derivation here.
                     save_data_.fill[team] = og::sim::clamp_fill(
-                        cycle_lineup_fill(save_data_.fill[team],
-                                          model.bands[team].resolved_fill, 1));
+                        cycle_lineup_fill(save_data_.fill[team], 1));
                     std::printf(
                         "%s\n",
                         format_lineup_fill_label(save_data_.fill[team])

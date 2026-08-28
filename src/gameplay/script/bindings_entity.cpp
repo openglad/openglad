@@ -2743,10 +2743,10 @@ int og_team_color_name(lua_State* L)
 // "respawn_mode" (the difficulty submenu's classic respawn selector),
 // "time_limit" (the match clock in SIM TICKS; 0 = the map's own value, so
 // modes resolve it against their manifest row through match.resolve_limit),
-// "fill_1".."fill_4" (the per-team FILL wheel: 0 = DEFAULT, 1 = NONE,
-// 2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL — the multiplier each code
-// means lives in the mode Lua, which is the only layer that solves a
-// target, and the DEFAULT is resolved there too),
+// "fill_1".."fill_4" (the per-team FILL wheel: 0 = NONE, 1 = WEAK,
+// 2 = FAIR, 3 = STRONG, 4 = BRUTAL — the multiplier each code means lives
+// in the mode Lua, which is the only layer that solves a target; NONE is
+// the stored 0, so a map nobody turned a wheel on fields no squad at all),
 // "map_units_1".."map_units_4" (the per-team MAP UNITS box: 0 = the map's
 // own authored units are fielded, 1 = they are not),
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF

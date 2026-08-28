@@ -1068,25 +1068,22 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
         .host_company_save = &save,
     });
-    std::array<og::ui::LineupTeamPresence, 4> presence{};
     std::array<int, 4> map_unit_counts{};
 
     for (;;) {
-        const bool censused = og::ui::census_staged_lineup_presence(
-            stage, save, options.difficulty, config.seed, presence,
-            &map_unit_counts);
+        const bool censused = og::ui::census_staged_lineup_map_units(
+            stage, save, options.difficulty, config.seed, map_unit_counts);
         const std::vector<og::sim::LobbyPlayer> seats =
             og::ui::synthesize_local_lobby_players(save);
 
         og::ui::TerminalLineupInputs inputs;
         inputs.save = &save;
         inputs.players = seats;
-        // The FILL cells read the staged world; an empty span where nothing
-        // could be staged keeps the documented stored-code fallback. F3: the
-        // MAP UNITS census rides beside it off the same world, so the B4
-        // hint and the toggle refusal are live here as on the SDL band.
+        // F3: the MAP UNITS census comes off the staged world, so the B4
+        // hint and the toggle refusal are live here as on the SDL band. An
+        // empty span where nothing could be staged keeps the page silent
+        // about the map's units rather than inventing a fact.
         if (censused) {
-            inputs.presence = presence;
             inputs.map_unit_counts = map_unit_counts;
         }
         // The curses picker screen is local-only (its network lobby is a
@@ -1142,14 +1139,10 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
                 break;
             }
             if (item.kind == Kind::Fill) {
-                // D1: the wheel enters at the slot of the value the row
-                // shows — the band's own resolution (W7-G: the staged
-                // census, or the stored code where nothing staged), never a
-                // second derivation of it here.
+                // E1: the row shows the STORED code, so the wheel enters at
+                // its slot — never a second derivation of it here.
                 save.fill[team] = og::sim::clamp_fill(
-                    og::ui::cycle_lineup_fill(save.fill[team],
-                                              model.bands[team].resolved_fill,
-                                              1));
+                    og::ui::cycle_lineup_fill(save.fill[team], 1));
             } else {
                 save.map_units[team] = og::sim::clamp_map_units(
                     og::ui::toggle_lineup_map_units(save.map_units[team]));

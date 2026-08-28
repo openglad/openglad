@@ -3058,15 +3058,6 @@ constexpr std::size_t kMaxScenarioReportRows = 200;
 // a wire-visible contract with the pack, pinned by the staged report tests.
 constexpr std::int32_t kBotMarkBit = 65536;
 
-// The CTF flag treasure family, pinned the way kBotMarkBit is: the modes
-// pack declares modes:flag at wire id 13
-// (campaigns/modes/packs/modes.core/families/treasure-flag.lua), and the
-// two halves live in different languages, so they can only agree on
-// paper. The presence census (F2) reads it off the fxlist — a flag is
-// the CTF domain's whole authorship of a team, invisible to any oblist
-// walk.
-constexpr int kLineupFlagFamily = 13;
-
 // The shared MATCHED header-band mode var (lib/mode_match.lua MATCHED.SIZE,
 // slot 5, mode-neutral by convention): non-zero exactly when the FAIR
 // census ran with a roster, banked at staged init — the match.fills rule
@@ -3091,17 +3082,17 @@ constexpr std::size_t kModeVarMatchedSize = 5;
 //
 //   code = 0                 nothing banked — no squad of this team's
 //                            fielded anybody, so the pane names no fill
-//        = fill              the APPLIED FILL code itself, 1 = NONE,
-//                            2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL
+//        = fill              the APPLIED FILL code itself, 1 = WEAK,
+//                            2 = FAIR, 3 = STRONG, 4 = BRUTAL
 //
-// The code carried a +1 bias for as long as FAIR shared 0 with the default
+// The code carried a +1 bias for as long as FAIR shared 0 with the DEFAULT
 // and a bare code could not tell "a FAIR squad walked on" from "this team
-// banked nothing". D1 moved FAIR to 3 and left 0 to the default alone, so
-// no explicit fill is 0 any more and the bias has nothing left to do: what
-// is banked is the fill, and a team whose stored DEFAULT resolved banks
-// what it RESOLVED to. Amendment B7 replaced the older mixed-radix
-// `squad * 11 + offset` pair with this single value when the preset
-// ordinals and the LV offset went away.
+// banked nothing". Amendment 4 (E4) makes 0 unambiguous a second way and
+// for good: NONE is the stored 0 now, a NONE team spawns no squad, and a
+// squad that never spawned banks nothing — so the four codes a bank can
+// carry are exactly WEAK..BRUTAL and 0 is always "nothing". Amendment B7
+// replaced the older mixed-radix `squad * 11 + offset` pair with this
+// single value when the preset ordinals and the LV offset went away.
 constexpr std::size_t kModeVarLineupFacts = 4;
 
 // Decode team t's applied lineup code from the shared slot.
@@ -3114,19 +3105,18 @@ int lineup_fact_code(std::int32_t slot_value, int team)
 }
 
 // The applied FILL value a code carries, or -1 when the team banked
-// nothing (and for any code outside the five legal fills, which is what a
-// stale bank from an older build reads as).
+// nothing (and for any code outside the four spawnable fills, which is
+// what a stale bank from an older build reads as).
 //
-// D1 retired the old +1 bias along with the shared FAIR/DEFAULT code: a
-// banked code IS the explicit fill it applied, 1..5, and 0 — the empty
-// digit pair every unbanked team leaves behind — is the one value that
-// cannot collide with a fill. A team whose stored DEFAULT resolved banks
-// the code it RESOLVED to, never the 0, because "no squad, by resolution"
-// is a thing that was applied. The Lua half (packs/core/lib/lineup.lua
-// bank_lineup_facts) banks exactly this, unbiased.
+// E4: a banked code IS the stored fill of a squad that SPAWNED, so it runs
+// WEAK..BRUTAL and never NONE — a NONE team fields no squad, and a squad
+// that never walked on banks nothing. 0 is therefore the empty digit pair
+// every unbanked team leaves behind and nothing else. The Lua half
+// (packs/core/lib/lineup.lua bank_lineup_facts) banks exactly this,
+// unbiased.
 int lineup_fact_fill(int code)
 {
-    if (code < og::sim::kFillNone || code > og::sim::kFillBrutal)
+    if (code < og::sim::kFillWeak || code > og::sim::kFillBrutal)
         return -1;
     return code;
 }
@@ -3859,100 +3849,11 @@ bool same_power_row(const og::script::hooks::LineupPowerRow& lhs,
         lhs.fire_frequency == rhs.fire_frequency && lhs.family == rhs.family;
 }
 
-// The C8 resolved-default query is a Lua pcall too, and the band labels
-// re-derive on every frame — same memo discipline as the pricing above,
-// keyed on the WHOLE query (stored code + the full presence row, never a
-// folded boolean: a campaign's own resolver may weigh the counts), and
-// cleared by the same lineup_power_cache_clear whenever the registration
-// could have moved.
-struct LineupResolveMemoEntry {
-    short stored = 0;
-    og::script::hooks::LineupResolveRow row;
-    short resolved = 0;
-};
-
-constexpr std::size_t kLineupResolveMemoMax = 64;
-std::vector<LineupResolveMemoEntry>& lineup_resolve_memo()
-{
-    static std::vector<LineupResolveMemoEntry> memo;
-    return memo;
-}
-
-bool same_resolve_row(const og::script::hooks::LineupResolveRow& lhs,
-                      const og::script::hooks::LineupResolveRow& rhs)
-{
-    return lhs.units == rhs.units && lhs.generators == rhs.generators &&
-        lhs.markers == rhs.markers && lhs.anchors == rhs.anchors &&
-        lhs.roster == rhs.roster && lhs.seats == rhs.seats;
-}
-
 }  // namespace
 
 void lineup_power_cache_clear() noexcept
 {
     lineup_power_memo().clear();
-    lineup_resolve_memo().clear();
-}
-
-std::array<LineupTeamPresence, 4> census_lineup_presence(
-    const GameWorld& world)
-{
-    // The C8 presence census, the counts the resolved-default query is fed:
-    // authored livings and generators (live — a retired unit stands on
-    // nothing), deployed fighters, and team start markers with DEAD ones
-    // included — the engine anchor scan (respawn_scan_anchors) counts
-    // consumed markers too, so the marker column speaks for the anchors as
-    // well and the two can never disagree.
-    std::array<LineupTeamPresence, 4> counts{};
-    for (const auto& uptr : world.oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr)
-            continue;
-        const int team = w->team_num();
-        if (!is_score_team_index(team))
-            continue;
-        const auto ti = static_cast<std::size_t>(team);
-        const Order order = w->query_order();
-        if (order == Order::Special)
-        {
-            if (w->family() == FAMILY_RESERVED_TEAM)
-                counts[ti].markers++;
-            continue;
-        }
-        if (w->dead() || w->dormant())
-            continue;
-        if (order == Order::Living)
-        {
-            if (w->myguy != nullptr)
-                counts[ti].roster++;
-            else
-                counts[ti].units++;
-        }
-        else if (order == Order::Generator)
-        {
-            counts[ti].generators++;
-        }
-    }
-    // The mode-authored facts (F2): a CTF team can be authored by its
-    // FLAG alone, and flags are ORDER_TREASURE entities on the fxlist —
-    // the walk above never sees them, so a flag-only team's band used to
-    // resolve NONE while its launch resolved FAIR. Live flags only: a
-    // surplus-killed flag authors nothing (the CTF fold's own rule).
-    for (const auto& uptr : world.fxlist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead())
-            continue;
-        if (w->query_order() != Order::Treasure ||
-            w->family() != kLineupFlagFamily)
-            continue;
-        const int team = w->team_num();
-        if (!is_score_team_index(team))
-            continue;
-        counts[static_cast<std::size_t>(team)].flags++;
-    }
-    return counts;
 }
 
 std::array<int, 4> census_lineup_map_units(const GameWorld& world)
@@ -3982,53 +3883,6 @@ std::array<int, 4> census_lineup_map_units(const GameWorld& world)
             ++counts[static_cast<std::size_t>(team)];
     }
     return counts;
-}
-
-short lineup_resolved_fill(short stored, const LineupTeamPresence& presence,
-                           int seat_count, int fighter_count)
-{
-    og::script::hooks::LineupResolveRow row;
-    // Mode-authored flags fold into the units column — the launch's own
-    // spelling of the fact (mode_match.fills resolves {units = 1} for a
-    // team the mode's domain authored), so band == launch on a flag-only
-    // team (F2). The resolver row grows no flags column of its own: the
-    // Lua presence fold (lineup.team_present) has no such key either.
-    row.units = presence.units + presence.flags;
-    row.generators = presence.generators;
-    row.markers = presence.markers;
-    // The census marker count includes dead markers, which is exactly what
-    // the engine anchor scan counts — the anchors column stays 0 here so
-    // the one fact is never double-spoken.
-    row.anchors = 0;
-    // Deployed fighters: the census's own (a staged world's has_guy
-    // livings) plus the caller's band census (the save/lobby roster the
-    // picker world has not spawned) — in a staged world the two are the
-    // same walkers, and only one of the two sources is ever non-zero.
-    row.roster = presence.roster + fighter_count;
-    row.seats = seat_count;
-
-    std::vector<LineupResolveMemoEntry>& memo = lineup_resolve_memo();
-    for (const LineupResolveMemoEntry& entry : memo)
-    {
-        if (entry.stored == stored && same_resolve_row(entry.row, row))
-            return entry.resolved;
-    }
-
-    // The ONE resolver is the pack's (docs/lineup-design.md C8) — this
-    // surface never re-derives the rule. No registered resolver (no packs
-    // mounted), or one that refuses: the honest fallback is the STORED
-    // value, which renders exactly as it did before the ruling.
-    int resolved = stored;
-    if (!og::script::hooks::campaign_lineup_resolved_fill(
-            static_cast<int>(stored), row, resolved))
-    {
-        resolved = stored;
-    }
-    if (memo.size() >= kLineupResolveMemoMax)
-        memo.clear();
-    memo.push_back(LineupResolveMemoEntry{stored, row,
-                                          static_cast<short>(resolved)});
-    return static_cast<short>(resolved);
 }
 
 std::optional<long long> lineup_power_for_guy(const guy& g)
@@ -4120,8 +3974,7 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
     bool networked,
     const LineupPowerFn& power,
     const std::function<std::string(std::uint8_t)>& local_seat_short_name,
-    std::span<const int> map_unit_counts,
-    std::span<const LineupTeamPresence> presence)
+    std::span<const int> map_unit_counts)
 {
     std::array<LineupTeamBand, 4> bands{};
     std::array<LineupPowerAccumulator, 4> prices{};
@@ -4202,15 +4055,6 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
         {
             band.diag = LineupTeamBand::Diag::NoSeatAi;
         }
-        // C8: the knob face's value. With a presence census the pack's ONE
-        // resolver answers (seats and fighters ride the same query); with
-        // none — no loaded level to census — the stored code stands, the
-        // documented honest fallback.
-        const short stored = own.fill[team];
-        band.resolved_fill = team < presence.size()
-            ? lineup_resolved_fill(stored, presence[team], band.seat_count,
-                                   band.fighter_count)
-            : stored;
     }
     return bands;
 }
@@ -4228,13 +4072,12 @@ std::string_view lineup_fill_name(short fill)
     case og::sim::kFillBrutal: return "BRUTAL";
     default: break;
     }
-    // The DEFAULT (0), and everything the clamp would land beside it. Since
-    // D1 the default is a code of its own, and every band surface hands
-    // this function the RESOLVED value instead — so the only callers left
-    // here are the ones with no census to resolve against (the two terminal
-    // clients), where the honest reading of "whatever the level decides" is
-    // the resolver's own presence arm: FAIR.
-    return "FAIR";
+    // Junk from a hand-edited save or an older build's sixth code. NONE is
+    // the storage default and where clamp_fill lands a negative, so it is
+    // the honest word for a value the engine does not recognise — and,
+    // unlike the FAIR this used to answer, it promises no squad the level
+    // will not field.
+    return "NONE";
 }
 
 std::string format_lineup_fill_label(short fill)
@@ -4333,19 +4176,17 @@ std::string format_lineup_power_cell(std::optional<long long> power, int width)
     return std::format("{:>{}}", text, field);
 }
 
-// The FILL wheel holds the five EXPLICIT codes and nothing else, weakest
-// to strongest: NONE, WEAK, FAIR, STRONG, BRUTAL. Since D1 gave FAIR its
-// own code (3) the display order IS the storage order, and the DEFAULT (0)
-// is off the wheel entirely — a band sitting on it enters at the slot of
-// the value it RESOLVES to, and no step ever returns it. That is the knob
-// precedent: an explicit choice is a choice, and there is no way back to
-// "whatever the level decides" except a fresh save.
+// The FILL wheel holds the five codes and nothing else, weakest to
+// strongest: NONE, WEAK, FAIR, STRONG, BRUTAL. Since amendment 4 (E1) the
+// display order IS the storage order AND the whole value space — NONE is
+// the stored 0, so a fresh band sits on the wheel's first slot instead of
+// somewhere off it, one click reaches WEAK and the wheel wraps both ways.
 constexpr std::array<short, 5> kLineupFillWheel = {
     og::sim::kFillNone, og::sim::kFillWeak, og::sim::kFillFair,
     og::sim::kFillStrong, og::sim::kFillBrutal};
 
-// The wheel slot a code sits in, or -1 for anything not on the wheel (the
-// DEFAULT, and any junk a hand-edited save carries).
+// The wheel slot a code sits in, or -1 for any junk a hand-edited save
+// carries.
 int lineup_fill_slot(short value)
 {
     const auto steps = static_cast<int>(kLineupFillWheel.size());
@@ -4357,21 +4198,18 @@ int lineup_fill_slot(short value)
     return -1;
 }
 
-short cycle_lineup_fill(short current, short resolved, int dir)
+short cycle_lineup_fill(short current, int dir)
 {
     const auto steps = static_cast<int>(kLineupFillWheel.size());
-    // The step leaves from the slot of the word the band is SHOWING. An
-    // explicit code shows itself, so it enters at its own slot and the
-    // resolution is ignored; a stored DEFAULT shows its resolution, so it
-    // enters there — otherwise the wheel turns from a position the player
-    // cannot see, which is how the first click on gladiator's empty sides
-    // used to skip WEAK. Junk on both counts falls back to FAIR's slot,
-    // where the clamp would have put it anyway.
+    // The step leaves from the slot of the word the band is SHOWING, which
+    // is now always the stored code's own slot — there is no resolution to
+    // step from and no off-wheel value to enter at, so the first click on
+    // gladiator's empty sides reaches WEAK the way the band reads. Junk
+    // enters at NONE, the word lineup_fill_name gives it and the value
+    // clamp_fill would land a negative on.
     int index = lineup_fill_slot(current);
     if (index < 0)
-        index = lineup_fill_slot(resolved);
-    if (index < 0)
-        index = lineup_fill_slot(og::sim::kFillFair);
+        index = lineup_fill_slot(og::sim::kFillNone);
     long long next = (static_cast<long long>(index) + dir) % steps;
     if (next < 0)
         next += steps;

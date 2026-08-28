@@ -1516,53 +1516,21 @@ struct LineupTeamBand {
     };
     Diag diag = Diag::None;
     int needs = 0;  // NeedsFighters: how many more the team wants
-    // The RESOLVED wheel value the knob face renders (C8): an explicit
-    // stored code is itself; the stored default (0) resolves through the
-    // pack's ONE resolver — FAIR where the team has any presence, NONE
-    // where it has none. Equal to the stored code whenever the caller
-    // supplied no presence census (the documented honest fallback: with
-    // nothing censused there is nothing to resolve against).
-    short resolved_fill = 0;
 };
 
-// One team's authored presence in a loaded/staged level, the census the
-// C8 resolved-default query is fed (the band adds the seat/fighter axis).
-// `markers` counts team start markers with dead/consumed ones INCLUDED —
-// exactly the engine anchor scan's population, so this column speaks for
-// the anchors too and the two facts can never disagree.
-struct LineupTeamPresence {
-    int units = 0;       // live authored (guy-less) livings
-    int generators = 0;  // live authored generators
-    int markers = 0;     // start markers, dead ones included
-    int roster = 0;      // live has_guy livings (a staged world's fighters)
-    // Live mode-authored flags (fxlist treasures of the CTF flag family):
-    // the mode domain's own authorship, which the oblist walk cannot see.
-    // The resolver row folds these into `units` — the launch's spelling
-    // (mode_match.fills resolves {units = 1} over the active mask), so a
-    // flag-only team's band resolves exactly as its launch does (F2).
-    int flags = 0;
-};
+// The band carried a `resolved_fill` — the pack resolver's answer for a
+// team still sitting on the old DEFAULT code — and the presence census
+// (LineupTeamPresence / census_lineup_presence) that fed it. Amendment 4
+// (E1/E2) made NONE the stored 0, so every surface renders the STORED code
+// and there is nothing to resolve or to census for it. The B4 MAP UNITS
+// census below is a separate walk and stays.
 
-// The presence census over a loaded (or staged) world, one walk.
-std::array<LineupTeamPresence, 4> census_lineup_presence(
-    const GameWorld& world);
-
-// The B4 MAP UNITS census over the same two worlds: authored (guy-less,
-// un-bot-marked) livings per team, retired-dead ones included — the
-// numbers the box state, its NO MAP UNITS hint and the toggle refusal
+// The B4 MAP UNITS census over the two worlds the surfaces read: authored
+// (guy-less, un-bot-marked) livings per team, retired-dead ones included —
+// the numbers the box state, its NO MAP UNITS hint and the toggle refusal
 // gate on, identical whether the walk reads the SDL picker's raw loaded
 // level or the terminals' staged world (F3).
 std::array<int, 4> census_lineup_map_units(const GameWorld& world);
-
-// The resolved wheel value for one team (C8): dispatches the pack's ONE
-// resolver (og.register_default_lineup's `default_fill`; a campaign book's
-// own overrides it) over the stored code and the censused presence plus
-// the caller's seat/fighter counts. Memoized like the pricing hook and
-// cleared by lineup_power_cache_clear. No registered resolver, or one
-// that refuses: the STORED value comes back — the honest fallback, which
-// renders exactly as it did before the ruling.
-short lineup_resolved_fill(short stored, const LineupTeamPresence& presence,
-                           int seat_count, int fighter_count);
 
 // The seat chip's owner label: "P{n} {short}". `short_name` is the local
 // seat's input-mapping short name where the caller can resolve one (the
@@ -1580,11 +1548,6 @@ std::string lineup_seat_label(const og::sim::LobbyPlayer& seat,
 // `map_unit_counts` is the staged census of authored map units per team
 // (B4); an empty span leaves every band's count at 0, which reads as "the
 // map ships none" and dims every box.
-// `presence` feeds the C8 resolved-default: with a 4-team span each band's
-// `resolved_fill` is the pack resolver's answer over that census plus the
-// band's own seats/fighters; an EMPTY span means nobody censused a level,
-// and the band's resolved_fill honestly stays the stored code (documented
-// fallback — the terminal clients with no loaded level ride it).
 std::array<LineupTeamBand, 4> build_lineup_bands(
     const SaveData& own,
     std::span<const og::sim::LobbyPlayer> players,
@@ -1592,24 +1555,21 @@ std::array<LineupTeamBand, 4> build_lineup_bands(
     bool networked,
     const LineupPowerFn& power,
     const std::function<std::string(std::uint8_t)>& local_seat_short_name = {},
-    std::span<const int> map_unit_counts = {},
-    std::span<const LineupTeamPresence> presence = {});
+    std::span<const int> map_unit_counts = {});
 
 // --- LINEUP labels (exact strings; every one of them is pinned) ---
 
-// The FILL wheel's bare value name: "FAIR" / "NONE" / "WEAK" / "STRONG" /
-// "BRUTAL". The DEFAULT and every out-of-range value read FAIR — the
-// resolver's presence arm, and where the clamp lands junk; the band
-// surfaces hand this the RESOLVED code, so the word "FAIR" here is only
-// ever seen by a caller with nothing to resolve against. Shared by the band
-// face and the preview pane, so the two can never disagree about what a
-// stored code is called.
+// The FILL wheel's bare value name: "NONE" / "WEAK" / "FAIR" / "STRONG" /
+// "BRUTAL". Every out-of-range value reads NONE — the stored 0 the clamp
+// lands a negative on, and the value a band that nobody has turned holds.
+// Shared by the band face and the preview pane, so the two can never
+// disagree about what a stored code is called.
 std::string_view lineup_fill_name(short fill);
-// "FILL: FAIR" / "FILL: NONE" / "FILL: WEAK" / "FILL: STRONG" /
+// "FILL: NONE" / "FILL: WEAK" / "FILL: FAIR" / "FILL: STRONG" /
 // "FILL: BRUTAL" — the band's 12-char knob face, and exactly 12 chars at
-// its two longest values, which is the whole budget. Since C8 the band
-// surfaces hand it the RESOLVED value (LineupTeamBand::resolved_fill), so
-// a stored default reads "FILL: NONE" on a team with nothing to stand on.
+// its two longest values, which is the whole budget. Every surface hands
+// it the STORED code (E1: there is no resolved value any more), so a fresh
+// band reads "FILL: NONE" on every map.
 std::string format_lineup_fill_label(short fill);
 // "MAP UNITS: ON" / "MAP UNITS: OFF" — the terminal clients' spelling of
 // the box the SDL band draws as a checkmark (B9).
@@ -1630,21 +1590,20 @@ std::string format_lineup_power(std::optional<long long> power);
 std::string format_lineup_power_cell(std::optional<long long> power,
                                      int width = 6);
 
-// The two knob steps. The FILL wheel holds the five EXPLICIT codes in
-// storage order — NONE, WEAK, FAIR, STRONG, BRUTAL, weakest to strongest —
-// and `dir` may be any step. The DEFAULT is NOT on the wheel (D1): a band
-// storing it enters at the slot of `resolved`, the value the band is
-// currently SHOWING (LineupTeamBand::resolved_fill), so the wheel steps
-// from the word the player is reading; junk enters at FAIR, which is where
-// the clamp would have put it. Every step returns an explicit code, so a
-// turned wheel can never come back to the default — the knob precedent.
+// The two knob steps. The FILL wheel holds the five codes in storage order
+// — NONE, WEAK, FAIR, STRONG, BRUTAL, weakest to strongest — and `dir` may
+// be any step. Since amendment 4 (E1) NONE is the stored 0, so the wheel
+// covers the whole value space and the band always steps from the word the
+// player is reading; junk enters at NONE, which is both the storage default
+// and where the clamp lands a negative. The wheel wraps, so BRUTAL steps
+// back to NONE — nothing is one-way any more.
 // MAP UNITS is a box, so its step is a flip, and any junk value flips to ON.
 //
 // There are no refusals on either (amendment B8): nothing the band can hold
 // deactivates a team, so every value is legal on every team, on every
 // client, and the three clients share one write rule with no toast between
 // them.
-short cycle_lineup_fill(short current, short resolved, int dir);
+short cycle_lineup_fill(short current, int dir);
 short toggle_lineup_map_units(short current);
 
 // --- SPLIT (§5) --------------------------------------------------------

@@ -98,11 +98,11 @@ public:
     short time_limit = 0;
     // Per-team FILL wheel and MAP UNITS box (amendment B1-B4, GTL v18).
     // Index is the team (0..3); 0 is the default on both, so an all-zero
-    // pair is the default state. fill: 0 = DEFAULT (resolved per team at
-    // stage time — D1), then the five explicit codes 1 = NONE, 2 = WEAK,
-    // 3 = FAIR, 4 = STRONG, 5 = BRUTAL — the matched solver with a
-    // multiplier the mode Lua owns. map_units: 0 = the map's own authored
-    // units on this team are fielded, 1 = they are not.
+    // pair is the default state. fill: 0 = NONE (amendment 4 E1 — no
+    // squad on this team at all), 1 = WEAK, 2 = FAIR, 3 = STRONG,
+    // 4 = BRUTAL — the matched solver with a multiplier the mode Lua owns.
+    // map_units: 0 = the map's own authored units on this team are
+    // fielded, 1 = they are not.
     std::array<short, 4> fill = {};
     std::array<short, 4> map_units = {};
     // Difficulty submenu settings (0 = legacy default behavior for all three).

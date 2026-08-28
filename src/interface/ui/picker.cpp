@@ -3535,21 +3535,15 @@ Sint32 change_lineup_fill(Sint32 team)
    }
 
    const std::size_t t = static_cast<std::size_t>(team);
-   // D1: the wheel steps from the slot of the word the band is SHOWING, so
-   // a band on the stored default enters where its resolution sits rather
-   // than two places to the right of it. Read the resolution BEFORE the
-   // write — afterwards the stored code is explicit and resolves to itself.
-   const short resolved = picker_lineup_resolved_fills()[t];
+   // E1: the wheel steps from the stored code's own slot — NONE is a stop
+   // on the wheel now, not a default sitting off it, so there is nothing to
+   // resolve before the write and nothing many-to-one to run a stop back
+   // through afterwards. The face renders the STORED code, the same value
+   // the band reads.
    save.fill[t] = og::sim::clamp_fill(
-       og::ui::cycle_lineup_fill(save.fill[t], resolved, 1));
+       og::ui::cycle_lineup_fill(save.fill[t], 1));
    TRACE("lineup", "fill team=%d value=%d", static_cast<int>(team),
          static_cast<int>(save.fill[t]));
-   // And the face renders the STORED code, which the step has just made
-   // explicit. Re-resolving it here is what made the wheel lossy: an
-   // explicit stop must never be run back through a many-to-one map, or
-   // FAIR paints itself NONE on a team with nothing to stand on. A stored
-   // default still renders its resolution (C8) — but a click can no longer
-   // leave one behind.
    refresh_lineup_button_label(
        kLineupFillBase + team,
        og::ui::format_lineup_fill_label(save.fill[t]));

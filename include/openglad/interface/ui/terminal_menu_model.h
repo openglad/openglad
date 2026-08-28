@@ -116,24 +116,12 @@ struct TerminalLineupInputs {
     // MAP UNITS hint is written only when this is supplied. A terminal that
     // printed NO MAP UNITS off an absent census would be inventing a rule.
     //
-    // F3: both live terminal clients FILL this span from the same staged
-    // world their presence census reads (census_staged_lineup_presence's
-    // map_units_out), and refuse the MAP UNITS toggle with the hint where
-    // the count is 0 — the SDL box's dim and click belt, in the band's own
-    // words. The empty-span fallback survives for the no-world shapes.
+    // F3: both live terminal clients FILL this span from the staged world
+    // their VIEW LEVEL shows (census_staged_lineup_map_units below), and
+    // refuse the MAP UNITS toggle with the hint where the count is 0 — the
+    // SDL box's dim and click belt, in the band's own words. The empty-span
+    // fallback survives for the no-world shapes.
     std::span<const int> map_unit_counts;
-    // C8's presence census, handed straight to build_lineup_bands: with a
-    // 4-team span every FILL cell renders the RESOLVED default (the pack
-    // resolver's answer); an EMPTY span means no level was censused, and
-    // the cells honestly render the STORED code — the documented fallback.
-    //
-    // D1/W7-G: both live terminal clients now FILL this span from the world
-    // their own VIEW LEVEL stages (census_staged_lineup_presence below), so
-    // all three clients read the same word off the same save. The empty-span
-    // fallback survives for the shapes where there is genuinely no world to
-    // census — an unmounted campaign, a stage that failed or fell back to
-    // another level, and every caller that hands the model a bare save.
-    std::span<const LineupTeamPresence> presence;
     bool networked = false;
     bool is_host = true;
 };
@@ -141,12 +129,11 @@ struct TerminalLineupInputs {
 TerminalLineupModel build_terminal_lineup_model(
     const TerminalLineupInputs& inputs);
 
-// W7-G: the terminals' presence census, taken over the world the launch
+// F3/W7-G: the terminals' MAP UNITS census, taken over the world the launch
 // would adopt — the SAME MatchStage both clients' VIEW LEVEL already stages
 // with, on the same three inputs (save, difficulty, session seed). One
 // source, so the LINEUP page and the VIEW LEVEL report can never describe
-// two different worlds, and the terminals stop reading a stored 0 as FAIR
-// on a team the SDL band calls NONE.
+// two different worlds.
 //
 // The caller owns the stage across its page loop: observe_inputs keys on
 // the knobs themselves (MatchStageInputs::equivalent carries fill/map_units),
@@ -154,22 +141,20 @@ TerminalLineupModel build_terminal_lineup_model(
 // restage is forced synchronously (ensure_current) because a page redraw
 // cannot wait out the trailing-edge debounce.
 //
+// `out` receives og::ui::census_lineup_map_units of that world — the SDL
+// box walk over the world the terminals actually have, so the NO MAP UNITS
+// hint and the toggle refusal live on the text/curses pages too.
+//
 // Returns false — and leaves `out` untouched — for every shape with no world
 // to census: an unmounted campaign, a failed stage, or a stage that fell back
 // to a level other than the requested one (a fallback world must not
 // masquerade as this level's census, exactly as VIEW LEVEL refuses it).
-// The caller then passes an EMPTY presence span and the cells fall back to
-// the stored code.
-// F3: `map_units_out`, when supplied, receives the B4 MAP UNITS census of
-// the same staged world (og::ui::census_lineup_map_units — the SDL box
-// walk over the world the terminals actually have), so the NO MAP UNITS
-// hint and the toggle refusal live on the text/curses pages too. Left
-// untouched on every false return, exactly like `out`.
-bool census_staged_lineup_presence(og::server::MatchStage& stage,
-                                   const SaveData& save, int difficulty,
-                                   std::uint32_t match_seed,
-                                   std::array<LineupTeamPresence, 4>& out,
-                                   std::array<int, 4>* map_units_out = nullptr);
+// The caller then passes an EMPTY map_unit_counts span and the page says
+// nothing about the map's units rather than inventing a fact.
+bool census_staged_lineup_map_units(og::server::MatchStage& stage,
+                                    const SaveData& save, int difficulty,
+                                    std::uint32_t match_seed,
+                                    std::array<int, 4>& out);
 
 // Amendment 3 C5: the classic gating is GONE. The match machinery moved to
 // packs/core and runs on every campaign through the mode-less stage step, so

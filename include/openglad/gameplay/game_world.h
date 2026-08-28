@@ -509,8 +509,8 @@ public:
     short ctf_requested_time_limit = 0;
     // Lobby-requested per-team FILL wheel and MAP UNITS box (amendment
     // B1-B4). Index is the team (0..3); 0 is the default on both.
-    // fill: 0 = DEFAULT (resolved per team at stage time), 1 = NONE,
-    // 2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL.
+    // fill: 0 = NONE (amendment 4 E1), 1 = WEAK, 2 = FAIR, 3 = STRONG,
+    // 4 = BRUTAL.
     // map_units: 0 = the map's own authored units on this team are fielded,
     // 1 = they are not. Scripted modes read them as
     // og.match_setting("fill_1") .. ("map_units_4").

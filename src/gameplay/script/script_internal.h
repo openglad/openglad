@@ -138,12 +138,6 @@ struct VmState {
     // twice. Last registration wins, the og.register_level_hooks wildcard
     // precedent; -1 = nothing registered.
     int default_lineup_power_ref = -1;   // registry ref to the power fn
-    // The C8 resolver half of the same registration: the shipped
-    // `lineup.default_fill` (docs/lineup-design.md C8) the band query
-    // consults when the active book carries none. Registered by the same
-    // og.register_default_lineup call (whole-table last-wins), so a later
-    // registration that omits the key clears it.
-    int default_lineup_fill_ref = -1;    // registry ref to the resolver fn
     bool campaign_registered = false;
     std::string campaign_source;            // registering chunk (diagnostics)
     std::string campaign_conflict_source;   // second registrant; ""=no conflict

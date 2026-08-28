@@ -1683,6 +1683,13 @@ TEST_F(CampaignHooksTest, lineup_registration_rejections)
          "unknown 'lineup' key 'presets'"},
         {R"LUA(og.register_campaign_hooks({ lineup = { powr = 1 } }))LUA",
          "unknown 'lineup' key 'powr'"},
+        // E2: the per-team default resolver retired, so a book that still
+        // names it is refused like any other misspelling — never
+        // half-registered with a hook nothing calls.
+        {R"LUA(og.register_campaign_hooks({
+             lineup = { power = function(row) return 1 end,
+                        default_fill = function(s, r) return 1 end } }))LUA",
+         "unknown 'lineup' key 'default_fill'"},
         {R"LUA(og.register_campaign_hooks({ lineup = {} }))LUA",
          "carries no 'power'"},
     };
@@ -1915,10 +1922,12 @@ TEST_F(CampaignHooksTest, default_lineup_registration_rejections)
                                             power = function(r) return 1 end }))LUA",
          "unknown key 'presets'"},
         {R"LUA(og.register_default_lineup({ [1] = "x" }))LUA",
-         "the keys are 'power' and 'default_fill'"},
+         "the only key is 'power'"},
+        // E2: the shipped resolver retired with the book's, so packs/core's
+        // own registrar refuses the key too.
         {R"LUA(og.register_default_lineup({ power = function(r) return 1 end,
-                                            default_fill = 7 }))LUA",
-         "'default_fill' must be a function"},
+                                            default_fill = function(s, r) return 1 end }))LUA",
+         "unknown key 'default_fill'"},
     };
     for (const Case& c : cases) {
         clear_pack_scripts();
@@ -1944,223 +1953,12 @@ TEST_F(CampaignHooksTest, default_lineup_power_for_guy_bridges_engine_stats)
         << "the default reads the same engine-derived row a book does";
 }
 
-// ---------------------------------------------------------------------------
-// The C8 resolved-default query: lineup.default_fill
-// ---------------------------------------------------------------------------
-//
-// The second member of the same lineup table, both registrars: the ONE
-// resolver of the stored default (packs/core hands over the lib's
-// lineup.resolved_fill), queried by the band surfaces so no menu ever
-// re-derives the rule. The caller's honest fallback on ANY refusal is the
-// stored value.
-
-TEST_F(CampaignHooksTest, default_fill_resolves_default_by_presence)
-{
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row)
-    if stored ~= 0 then return stored end
-    if row.units + row.generators + row.markers + row.anchors
-       + row.roster + row.seats > 0 then
-      return 3
-    end
-    return 1
-  end,
-}))LUA", kDefaultChunk);
-    hooks::LineupResolveRow bare;
-    int out = -1;
-    ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(0, bare, out));
-    EXPECT_EQ(og::sim::kFillNone, out)
-        << "a bare team's default resolves NONE";
-    hooks::LineupResolveRow seated;
-    seated.seats = 1;
-    ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(0, seated, out));
-    EXPECT_EQ(og::sim::kFillFair, out)
-        << "a seat flips it back to FAIR — which since D1 is a code of its "
-           "own (3), not the stored default it resolved from";
-    ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(og::sim::kFillStrong,
-                                                     bare, out));
-    EXPECT_EQ(og::sim::kFillStrong, out) << "an explicit value is itself";
-    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
-}
-
-TEST_F(CampaignHooksTest, a_book_default_fill_overrides_the_default)
-{
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row) return 4 end,
-}))LUA", kDefaultChunk);
-    register_script(R"LUA(og.register_campaign_hooks({
-  lineup = { power = function(row) return 1 end,
-             default_fill = function(stored, row) return 2 end },
-}))LUA");
-    hooks::LineupResolveRow row;
-    int out = -1;
-    ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(0, row, out));
-    EXPECT_EQ(2, out) << "the book's own resolver wins outright";
-}
-
-TEST_F(CampaignHooksTest, a_book_without_default_fill_falls_to_the_default)
-{
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row) return 4 end,
-}))LUA", kDefaultChunk);
-    register_script(R"LUA(og.register_campaign_hooks({
-  lineup = { power = function(row) return 1 end },
-}))LUA");
-    hooks::LineupResolveRow row;
-    int out = -1;
-    ASSERT_TRUE(hooks::campaign_lineup_resolved_fill(0, row, out));
-    EXPECT_EQ(4, out) << "power alone in the book leaves the resolver gap "
-                         "to the shipped default";
-}
-
-// Whole-table last-wins (the W6-D ruling, now with two members): a later
-// registration that omits default_fill CLEARS the shipped resolver rather
-// than keeping half of a replaced table.
-TEST_F(CampaignHooksTest, a_second_default_without_fill_clears_the_resolver)
-{
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row) return 4 end,
-}))LUA", "campaigntest/scripts/a.lua");
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 2 end,
-}))LUA", "campaigntest/scripts/b.lua");
-    hooks::LineupResolveRow row;
-    int out = 7;
-    EXPECT_FALSE(hooks::campaign_lineup_resolved_fill(0, row, out));
-    EXPECT_EQ(7, out) << "the caller's value is untouched";
-    hooks::LineupPowerRow power_row;
-    long long power = 0;
-    ASSERT_TRUE(hooks::campaign_fighter_power(power_row, power));
-    EXPECT_EQ(2, power);
-}
-
-TEST_F(CampaignHooksTest, default_fill_refusals_answer_false_and_name_who)
-{
-    // Errors, a non-integer, and a value off the wheel all refuse — the
-    // surface then renders the STORED value, never an invented one.
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row) return "NONE" end,
-}))LUA", kDefaultChunk);
-    hooks::LineupResolveRow row;
-    int out = 3;
-    EXPECT_FALSE(hooks::campaign_lineup_resolved_fill(0, row, out));
-    EXPECT_EQ(3, out);
-    EXPECT_TRUE(errors_contain(
-        "default lineup.default_fill returned a non-integer"));
-
-    clear_pack_scripts();
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row) return 99 end,
-}))LUA", kDefaultChunk);
-    EXPECT_FALSE(hooks::campaign_lineup_resolved_fill(0, row, out));
-    EXPECT_TRUE(errors_contain("returned 99, not a wheel code"));
-
-    // And since D1 the DEFAULT is not an answer either: a resolver that
-    // hands back the code it was asked to resolve has resolved nothing,
-    // and the caller says so more honestly by keeping the stored value.
-    clear_pack_scripts();
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row) return 0 end,
-}))LUA", kDefaultChunk);
-    out = 3;
-    EXPECT_FALSE(hooks::campaign_lineup_resolved_fill(0, row, out));
-    EXPECT_EQ(3, out);
-    EXPECT_TRUE(errors_contain("returned 0, not a wheel code"));
-
-    clear_pack_scripts();
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row) return nil + 1 end,
-}))LUA", kDefaultChunk);
-    EXPECT_FALSE(hooks::campaign_lineup_resolved_fill(0, row, out));
-}
-
-// Menu-time Lua may never pull the sim RNG — the resolver is fenced like
-// every campaign dispatch.
-TEST_F(CampaignHooksTest, default_fill_is_fenced_like_a_campaign_hook)
-{
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row) return og.rand(2) end,
-}))LUA", kDefaultChunk);
-    hooks::LineupResolveRow row;
-    int out = 0;
-    EXPECT_FALSE(hooks::campaign_lineup_resolved_fill(0, row, out));
-    EXPECT_FALSE(vm_errors().empty());
-}
-
-// The og::ui bridge: lineup_resolved_fill hands the census plus the band's
-// seat/fighter counts to the registered resolver, and falls back to the
-// STORED code when nothing is registered.
-TEST_F(CampaignHooksTest, ui_resolved_fill_bridges_and_falls_back)
-{
-    register_script(R"LUA(og.log("a pack that resolves nothing"))LUA");
-    og::ui::lineup_power_cache_clear();
-    og::ui::LineupTeamPresence bare;
-    EXPECT_EQ(0, og::ui::lineup_resolved_fill(0, bare, 0, 0))
-        << "no resolver: the stored default stands (honest fallback)";
-    EXPECT_EQ(3, og::ui::lineup_resolved_fill(3, bare, 0, 0));
-
-    clear_pack_scripts();
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row)
-    if stored ~= 0 then return stored end
-    if row.units + row.generators + row.markers + row.anchors
-       + row.roster + row.seats > 0 then
-      return 0
-    end
-    return 1
-  end,
-}))LUA", kDefaultChunk);
-    og::ui::lineup_power_cache_clear();
-    EXPECT_EQ(1, og::ui::lineup_resolved_fill(0, bare, 0, 0))
-        << "a bare team's default resolves NONE";
-    EXPECT_EQ(0, og::ui::lineup_resolved_fill(0, bare, 1, 0))
-        << "a seat is presence";
-    EXPECT_EQ(0, og::ui::lineup_resolved_fill(0, bare, 0, 2))
-        << "a deployed fighter is presence";
-    og::ui::LineupTeamPresence authored;
-    authored.markers = 1;
-    EXPECT_EQ(0, og::ui::lineup_resolved_fill(0, authored, 0, 0))
-        << "a start marker is presence";
-    EXPECT_EQ(4, og::ui::lineup_resolved_fill(4, bare, 0, 0))
-        << "explicit values are untouched";
-    og::ui::lineup_power_cache_clear();
-}
-
-// F2: a mode-authored flag reaches the resolver in the row's units
-// column — the launch's own spelling (mode_match.fills resolves
-// {units = 1} for a team the mode's domain authored), so a flag-only
-// team's band and its launch read the same word off the same save.
-TEST_F(CampaignHooksTest, mode_flags_reach_the_resolver_as_units)
-{
-    register_script(R"LUA(og.register_default_lineup({
-  power = function(row) return 1 end,
-  default_fill = function(stored, row)
-    if row.units > 0 then
-      return 3
-    end
-    return 1
-  end,
-}))LUA", kDefaultChunk);
-    og::ui::lineup_power_cache_clear();
-    og::ui::LineupTeamPresence flagged;
-    flagged.flags = 1;
-    EXPECT_EQ(3, og::ui::lineup_resolved_fill(0, flagged, 0, 0))
-        << "a censused flag is units to the resolver (band == launch)";
-    og::ui::LineupTeamPresence bare;
-    EXPECT_EQ(1, og::ui::lineup_resolved_fill(0, bare, 0, 0))
-        << "a bare team still resolves NONE";
-    og::ui::lineup_power_cache_clear();
-}
+// The C8 resolved-default query (lineup.default_fill, LineupResolveRow,
+// campaign_lineup_resolved_fill and the og::ui::lineup_resolved_fill
+// bridge) retired with amendment 4 (E2): FILL: NONE is the stored 0 on
+// every map, so there is no default left to resolve and no seam to test.
+// The registrars' refusal of the retired key is pinned in the two
+// rejection tables above.
 
 // ---------------------------------------------------------------------------
 // The lineup review rows (wp/review-lua L5/L6)

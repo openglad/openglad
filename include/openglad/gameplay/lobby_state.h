@@ -256,33 +256,33 @@ inline constexpr std::int16_t kTroopsMatched = 3;
 // FILL wheel and one MAP UNITS box per team — carried through the whole
 // match-knob chain beside the older ctf_* knobs.
 //
-//   fill[t]:      the matched solver WITH A MULTIPLIER (B2). 0 = DEFAULT,
-//                 so an all-zero save is still the default state, and it
-//                 RESOLVES per team at stage time (C8: FAIR where the team
-//                 has authored presence, NONE where it has none). The five
-//                 EXPLICIT codes are 1 = NONE (no squad on this team at
-//                 all), 2 = WEAK, 3 = FAIR, 4 = STRONG, 5 = BRUTAL.
-//                 Amendment D1 gave FAIR its own code: while it shared 0
-//                 with the default, the band's wheel swallowed it whole on
-//                 every team whose default resolved NONE, and no player
-//                 could tell an explicit NONE from a resolved one. The
-//                 engine stores and clamps the code and nothing else: the
-//                 multiplier table that turns a code into a target lives in
-//                 the mode Lua, which is the only layer that solves
-//                 anything, so there is no percent twin here. Wheel order
-//                 on the band is the five explicit codes in storage order —
-//                 NONE, WEAK, FAIR, STRONG, BRUTAL, weakest to strongest —
-//                 and the wheel never lands back on the DEFAULT.
+//   fill[t]:      the matched solver WITH A MULTIPLIER (B2). 0 = NONE (no
+//                 squad on this team at all), 1 = WEAK, 2 = FAIR,
+//                 3 = STRONG, 4 = BRUTAL. Amendment 4 (E1) collapsed the
+//                 old DEFAULT/explicit split: NONE simply IS the stored 0,
+//                 so an all-zero save still reads as the default state and
+//                 that state is now honest — no team fields a squad unless
+//                 the host turned its wheel. While a sixth DEFAULT code
+//                 sat below NONE it had to RESOLVE per team at stage time,
+//                 and a resolved NONE and a chosen NONE were the same word
+//                 on the band with different behaviour behind it; the
+//                 resolver retires with the code. The engine stores and
+//                 clamps the code and nothing else: the multiplier table
+//                 that turns a code into a target lives in the mode Lua,
+//                 which is the only layer that solves anything, so there is
+//                 no percent twin here. Wheel order on the band is the five
+//                 codes in storage order — NONE, WEAK, FAIR, STRONG,
+//                 BRUTAL, weakest to strongest — and a fresh band enters
+//                 the wheel at NONE's own slot.
 //   map_units[t]: whether the map's OWN authored units on this team are
 //                 fielded (B4). 0 = on (the default and the classic
 //                 behaviour), 1 = off. The retired TROOPS knob asked this
 //                 once for the whole map; the box asks it per team.
-inline constexpr std::int16_t kFillDefault = 0;
-inline constexpr std::int16_t kFillNone = 1;
-inline constexpr std::int16_t kFillWeak = 2;
-inline constexpr std::int16_t kFillFair = 3;
-inline constexpr std::int16_t kFillStrong = 4;
-inline constexpr std::int16_t kFillBrutal = 5;
+inline constexpr std::int16_t kFillNone = 0;
+inline constexpr std::int16_t kFillWeak = 1;
+inline constexpr std::int16_t kFillFair = 2;
+inline constexpr std::int16_t kFillStrong = 3;
+inline constexpr std::int16_t kFillBrutal = 4;
 inline constexpr std::int16_t kMaxFill = kFillBrutal;
 
 inline constexpr std::int16_t kMapUnitsOn = 0;

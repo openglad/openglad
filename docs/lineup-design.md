@@ -1422,3 +1422,27 @@ E1–E5 supersede C8 and the D1 scale.
 | E3 | **Semantics**: no squad fields anywhere unless the host sets FILL — modes maps' empty authored teams included (the FAIR-by-default "matched teams" behaviour is gone; a solo player on a two-team mode map sees the honest `MATCH WILL NOT START: FEWER THAN 2 TEAMS` in VIEW LEVEL until a wheel is turned). Explicit fills behave exactly per D2/D3. All-default is a no-op on every map, trivially. |
 | E4 | **Facts**: a banked fill code is the stored code of a squad that spawned (1..4); NONE never spawns and never banks; 0 = nothing banked, unambiguous. |
 | E5 | **Pins move, not weaken**: the modes staged matrices' FAIR-by-default rows become NONE-by-default rows plus explicit-FAIR rows that preserve the old expectations; every label/wheel/fact pin follows the new scale; captures regenerate (every band reads `FILL: NONE` at rest). |
+
+## E1/E2 as built (W8-B, the C++ half)
+
+Two rulings E2 left to the implementation, recorded here because a later
+reader will otherwise go looking for the seams:
+
+- **The presence census went with the resolver.** E2 kept "the
+  presence/map-unit census... for the `MAP UNITS` dim and the band
+  diagnostics", and as built neither reads it: the dim is
+  `census_lineup_map_units` (a separate walk over the same two worlds) and
+  the diagnostics are seats-vs-fighters arithmetic. `LineupTeamPresence`,
+  `census_lineup_presence`, `og::ui::lineup_resolved_fill` and its memo
+  therefore go too, along with the `presence` span on
+  `build_lineup_bands`, `LineupTeamBand::resolved_fill`,
+  `picker_lineup_team_presence` and `picker_lineup_resolved_fills`. The
+  terminals' `census_staged_lineup_presence` is now
+  `census_staged_lineup_map_units` — same stage, same three inputs, the
+  one column anybody still reads.
+- **Junk reads NONE.** `lineup_fill_name` answered FAIR for anything off
+  the wheel while FAIR was the resolver's presence arm. With the resolver
+  gone the honest word for an unrecognised code is NONE: it is the storage
+  default, it is where `clamp_fill` lands a negative, and it promises no
+  squad the level will not field. The wheel enters there for the same
+  reason.
