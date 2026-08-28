@@ -31,8 +31,9 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #     9=Split even, 10=Split fair, 11=Unite, 12=Back — amendment B6 deleted
 #     the FIGHTERS row, so the strip moved up one): 1 steps TEAM 1's FILL
 #     wheel one place (amendment 3 C5 retired the classic gating, so the
-#     knob is live on gladiator too, and W7-G's staged census makes the
-#     bands read what the SDL screen reads); 12 backs out.
+#     knob is live on gladiator too, and amendment 4 E1 makes every band
+#     read its stored code — NONE at rest, WEAK after one press); 12 backs
+#     out.
 #   Scenario submenu (7 items — the missions door retired into the camp;
 #     6=Replay Level, #207; amendment B5 retired the TROOPS row, which is
 #     the one row this branch REMOVED, so replay and back each moved up
@@ -200,7 +201,7 @@ if not any('TEAM 1 RED' in l for l in lines):
 # match machinery lives in packs/core and runs on a mode-less level, so the
 # knob rows are LIVE here: no MAP RULES mark, no refusal, and one press steps
 # the wheel. This drive asserted the opposite until C5.
-if not any('TEAM 1  FILL: FAIR' in l for l in lines):
+if not any('TEAM 1  FILL: NONE' in l for l in lines):
     print('FAIL: expected the bare FILL row on a classic campaign',
           file=sys.stderr)
     sys.exit(1)
@@ -208,21 +209,20 @@ if not any('TEAM 1  MAP UNITS: ON' in l for l in lines):
     print('FAIL: expected the MAP UNITS row beside the FILL wheel',
           file=sys.stderr)
     sys.exit(1)
-# W7-G: the page censuses the world its own VIEW LEVEL stages, so a stored
-# default RESOLVES here exactly as it does on the SDL band. Gladiator scen 1
-# authors nothing onto teams 3 and 4, so the terminal must say NONE there —
-# it read FAIR everywhere until the census was fed, which is the disagreement
-# between the three clients this drive now pins shut end to end.
-for row in ('TEAM 3  FILL: NONE', 'TEAM 4  FILL: NONE'):
+# Amendment 4 E1: FILL: NONE is the stored default on every map, and with
+# the per-team resolver retired every band simply reads its stored code. So
+# all four teams read NONE at rest on gladiator scen 1 — the authored elf
+# team included — and the three clients agree by construction rather than by
+# each running the same resolution.
+for row in ('TEAM 2  FILL: NONE', 'TEAM 3  FILL: NONE', 'TEAM 4  FILL: NONE'):
     if not any(row in l for l in lines):
-        print('FAIL: expected ' + row + ' from the staged presence census',
-              file=sys.stderr)
+        print('FAIL: expected ' + row + ' at rest', file=sys.stderr)
         sys.exit(1)
 if any('MAP RULES' in l for l in lines):
     print('FAIL: the retired MAP RULES gating leaked into the Lineup page',
           file=sys.stderr)
     sys.exit(1)
-if not any('FILL: STRONG' in l for l in lines):
+if not any('FILL: WEAK' in l for l in lines):
     print('FAIL: a classic campaign must cycle the FILL wheel', file=sys.stderr)
     sys.exit(1)
 # B6: FIGHTERS is deleted, not hidden. MATCHUP moves a colour and the DEPLOY
