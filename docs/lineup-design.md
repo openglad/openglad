@@ -1545,3 +1545,29 @@ tweakable there." Rulings G1–G5.
 | G3 | **`FILL: x`** (wheel NONE → WEAK → FAIR → STRONG → BRUTAL) writes x to every opponent team currently on; with none on it turns on the lowest opponent at x (the `TEAMS: 2` shape). Face: the common value of the on opponents, `MIXED` when LINEUP diverged them, `NONE` at rest. |
 | G4 | **The local team comes from a new campaign binding `og.campaign_my_team()`** (the first local seat's team; falls back to `save.my_team`) — the one C++ hook this needs. Campaign fence rules as for the other `og.campaign_*` reads. |
 | G5 | **Pins**: the modes book page pins (row labels, faces, said-lines), a macro↔LINEUP round-trip test (set TEAMS/FILL on the page, read the bands; tweak one band in LINEUP, the page face reads MIXED), the zone-UI capture regenerated. Writes ride the existing match-settings dirty → sync → restage tail, so preview == launch needs no new plumbing. |
+
+## G4 as built: `og.campaign_my_team()`
+
+The binding is `og.campaign_my_team()` → integer, campaign-dispatch only
+(the fence refusal and the "no campaign provider installed" raise are
+spelled exactly like `og.campaign_is_host`). It reads
+`CampaignProviders::my_team` (`std::function<int()>`, beside `is_host`),
+and the BINDING is the domain choke: the answer is clamped into
+`0..SCORE_TEAM_COUNT-1`, so a surface may hand over its raw seat value and
+a script's team index always addresses a real team.
+
+Who answers it:
+
+| Surface | Answer |
+|--|--|
+| SDL (`GameSession`, `src/platform/sdl/game_session.cpp`) | the lowest local `player_index`'s team from the live lobby seat view (`picker_lobby_local_player_indices` / `picker_lobby_players`) — a joiner reads the JOINER's team — falling to `og::ui::first_local_seat_team` before a lobby exists |
+| text picker (`src/platform/text/text_picker.cpp`) | `og::ui::first_local_seat_team(save)` — the same derived seats its View Level and launch stage from |
+| curses picker (`src/platform/curses/curses_picker_client.cpp`) | `og::ui::first_local_seat_team(save)` |
+| everyone else (unit fixtures, any scriptless install) | the default `make_campaign_providers` installs: `og::data::campaign_my_team_fallback(save)` |
+
+`og::ui::first_local_seat_team` (picker_common) is
+`derive_local_gameplay_seat_teams(save).front()`, and
+`og::data::campaign_my_team_fallback` is `clamp(save.my_team, 0, 3)` — ONE
+fallback rule that every install site ends on, so no surface can answer a
+silent 0 of its own invention. `openglad_server` installs no providers at
+all, and there the binding raises rather than inventing a team.

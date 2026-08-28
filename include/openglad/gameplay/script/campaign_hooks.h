@@ -236,6 +236,16 @@ struct CampaignProviders {
     std::function<std::int32_t(const std::string&)> match_get;
     std::function<bool(const std::string&, std::int32_t)> match_set;
     std::function<bool()> is_host;
+    // og.campaign_my_team() → the FIRST LOCAL SEAT's fighting team, from
+    // the surface's OWN seat view (the SDL lobby's seat list, a terminal's
+    // synthesized seats) — the team a page means when it says "mine", and
+    // on a joiner that is the joiner's team, never the host's. Answering
+    // the raw seat value is fine: the binding is the 0..SCORE_TEAM_COUNT-1
+    // choke, so no surface has to restate the domain. A surface with no
+    // seat view of its own leaves this to the shipped default, which
+    // answers the save's own my_team (og::data::campaign_my_team_fallback)
+    // — the fallback every installer ends on, never a silent 0.
+    std::function<int()> my_team;
     // og.campaign_random(n) → 1..n. Menu-time randomness ONLY: the default
     // (og::data::make_campaign_providers) is a process-lifetime generator
     // seeded from the wall clock at first use, and the sim RNG stays

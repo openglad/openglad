@@ -471,6 +471,13 @@ std::vector<short> derive_local_seat_teams(const SaveData& save);
 // with otherwise-unused colors. Base Camp then owns the live assignments.
 std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save);
 
+// The team og.campaign_my_team answers where the save IS the seat source
+// (docs/lineup-design.md Amendment 5 G4): the first local seat's team, or
+// og::data::campaign_my_team_fallback when there are no seats at all. The
+// terminals' whole answer — their View Level and launch stage from these
+// same derived seats — and the SDL answer before a lobby exists.
+int first_local_seat_team(const SaveData& save);
+
 // True iff each requested seat can claim a distinct deployed character on its
 // gameplay team. Repeated Together seats consume one character each.
 bool local_seat_teams_have_controls(const SaveData& save,

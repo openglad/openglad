@@ -482,6 +482,56 @@ TEST(CampaignStateProviders, default_is_host_is_always_true)
     (void)og::data::consume_match_settings_dirty();
 }
 
+// G4 (docs/lineup-design.md Amendment 5): og.campaign_my_team's provider.
+// The surface that owns a seat view supplies it; the shipped default —
+// every terminal fixture, every scriptless install — answers the save's
+// own team, which is the ONE fallback rule
+// (og::data::campaign_my_team_fallback) all three installers end on.
+TEST(CampaignStateProviders, default_my_team_answers_the_saves_own_team)
+{
+    SaveData save;
+    save.my_team = 2;
+    const CampaignProviders providers = make_campaign_providers(save);
+    ASSERT_TRUE(static_cast<bool>(providers.my_team));
+    EXPECT_EQ(2, providers.my_team());
+
+    // Read live, never latched: Base Camp moves my_team while the book is
+    // installed.
+    save.my_team = 1;
+    EXPECT_EQ(1, providers.my_team());
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, my_team_fallback_clamps_unvalidated_save_data)
+{
+    SaveData save;
+    save.my_team = 9; // save data is not validated on load
+    EXPECT_EQ(SCORE_TEAM_COUNT - 1, og::data::campaign_my_team_fallback(save));
+    EXPECT_EQ(9, save.my_team) << "the fallback reads, it never repairs";
+    save.my_team = -4;
+    EXPECT_EQ(0, og::data::campaign_my_team_fallback(save));
+
+    const CampaignProviders providers = make_campaign_providers(save);
+    EXPECT_EQ(0, providers.my_team()) << "the default is that same rule";
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, my_team_provider_overrides_the_fallback)
+{
+    SaveData save;
+    save.my_team = 0;
+    int seat_team = 3;
+    const CampaignProviders providers =
+        make_campaign_providers(save, {}, [&seat_team] { return seat_team; });
+    EXPECT_EQ(3, providers.my_team())
+        << "a surface with a seat view outranks the save";
+    seat_team = 2;
+    EXPECT_EQ(2, providers.my_team()) << "the seat view is read live";
+    EXPECT_TRUE(providers.is_host())
+        << "the my_team argument must not disturb the host default";
+    (void)og::data::consume_match_settings_dirty();
+}
+
 TEST(CampaignStateProviders, match_set_dirty_flag_check_and_clear)
 {
     SaveData save;

@@ -131,8 +131,14 @@ public:
         // mutates — so campaign hooks always read/write the live save (the
         // design doc's install-site list: the text picker's init, beside
         // the [SAVE-R2] slot repoint).
+        // G4 (docs/lineup-design.md Amendment 5): og.campaign_my_team
+        // answers from THIS client's seat source — the same synthesized
+        // seats the LINEUP page and the launch read, so "mine" means the
+        // same team on the page and in the world.
         og::script::hooks::install_campaign_providers(
-            og::data::make_campaign_providers(save_data_));
+            og::data::make_campaign_providers(save_data_, {}, [this] {
+                return og::ui::first_local_seat_team(save_data_);
+            }));
     }
 
     ~TextPickerClient() override

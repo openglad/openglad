@@ -26,6 +26,7 @@
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/picker_common.h> // G4 local seat teams
 #include <openglad/interface/ui/picker_lobby_client.h> // #212 host predicate
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
@@ -103,6 +104,27 @@ PlatformBridge make_sdl_platform_bridge()
         };
 
     return bridge;
+}
+
+// og.campaign_my_team's SDL answer (docs/lineup-design.md Amendment 5 G4):
+// the FIRST LOCAL SEAT's team, taken from the lobby's own seat view so a
+// joiner's book reads the joiner's team and not the host's. The lobby is
+// authoritative once it exists — its per-seat choices outlive the legacy
+// save fields, the same rule the GO gate applies — and before one is open
+// the save-derived seat answers (og::ui::first_local_seat_team, which the
+// terminals install on its own).
+int sdl_campaign_my_team(const SaveData& save)
+{
+    const std::vector<std::uint8_t> local = picker_lobby_local_player_indices();
+    if (!local.empty()) {
+        const std::uint8_t first =
+            *std::min_element(local.begin(), local.end());
+        for (const og::sim::LobbyPlayer& player : picker_lobby_players()) {
+            if (player.player_index == first)
+                return player.team;
+        }
+    }
+    return og::ui::first_local_seat_team(save);
 }
 } // namespace
 
@@ -237,10 +259,12 @@ GameSession::GameSession(const Config& session_cfg)
         // predicate (#212) is the SET LEVEL gate: joiners' match_set
         // writes answer false instead of drifting from the host's knobs.
         if (cfg_.install_legacy_globals) {
+            SaveData* const save = &myscreen_->save_data;
             og::script::hooks::install_campaign_providers(
                 og::data::make_campaign_providers(
-                    myscreen_->save_data,
-                    [] { return picker_lobby_host_controls_visible(); }));
+                    *save,
+                    [] { return picker_lobby_host_controls_visible(); },
+                    [save] { return sdl_campaign_my_team(*save); }));
             campaign_providers_installed_ = true;
         }
     }

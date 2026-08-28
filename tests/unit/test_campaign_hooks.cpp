@@ -420,6 +420,7 @@ TEST_F(CampaignHooksTest, fence_walk_everything_outside_the_allowlist_errors)
         "campaign_level_completed", "campaign_current_level",
         "campaign_scenario_title",
         "campaign_match_get", "campaign_match_set", "campaign_is_host",
+        "campaign_my_team",
         "campaign_random",
         "div", "mod", "fadd", "fsub", "fmul", "fdiv", "i8", "i16", "i32",
         "u8", "trunc", "log",
@@ -480,6 +481,7 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_outside_campaign_dispatch)
   "campaign_match_get",
   "campaign_match_set",
   "campaign_is_host",
+  "campaign_my_team",
   "campaign_random",
 }
 for i = 1, #names do
@@ -522,6 +524,7 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_with_no_provider)
       { "campaign_match_get", "score_limit" },
       { "campaign_match_set", "score_limit", 2 },
       { "campaign_is_host" },
+      { "campaign_my_team" },
       { "campaign_random", 1 },
     }
     for i = 1, #calls do
@@ -749,6 +752,48 @@ TEST_F(CampaignHooksTest, match_bindings_round_trip)
     EXPECT_EQ("host2 false", log2[log2.size() - 2]);
     EXPECT_EQ("set2 false", log2.back());
     EXPECT_EQ(20, knobs.at("score_limit")) << "a joiner's write never lands";
+}
+
+// G4 og.campaign_my_team (docs/lineup-design.md Amendment 5): the page's
+// "which team am I" read. The provider's answer rides through, and the
+// binding is the 0..3 choke — a surface that answers a team outside the
+// domain still hands the script an index that addresses a real team.
+TEST_F(CampaignHooksTest, campaign_my_team_provider_answer_and_clamp)
+{
+    int seat_team = 2;
+    int calls = 0;
+    hooks::CampaignProviders providers;
+    providers.my_team = [&] {
+        calls++;
+        return seat_team;
+    };
+    hooks::install_campaign_providers(std::move(providers));
+
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    og.log("mine " .. og.campaign_my_team())
+    return nil
+  end,
+}))LUA");
+
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_TRUE(result.ok);
+    ASSERT_EQ(1u, vm_log().size());
+    EXPECT_EQ("mine 2", vm_log().back()) << "the provider's own answer";
+
+    // Read LIVE, never latched: the seat can change between dispatches.
+    seat_team = 1;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_EQ("mine 1", vm_log().back());
+
+    seat_team = 9;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_EQ("mine 3", vm_log().back()) << "clamped to the top team";
+    seat_team = -4;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_EQ("mine 0", vm_log().back()) << "clamped to team 0";
+    EXPECT_EQ(4, calls);
 }
 
 // D3 og.campaign_random: the provider's answer rides through untouched (a

@@ -184,6 +184,12 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
     return false; // unknown name
 }
 
+int campaign_my_team_fallback(const SaveData& save)
+{
+    return std::clamp(static_cast<int>(save.my_team), 0,
+                      SCORE_TEAM_COUNT - 1);
+}
+
 bool consume_match_settings_dirty()
 {
     const bool was_dirty = g_match_settings_dirty;
@@ -192,12 +198,19 @@ bool consume_match_settings_dirty()
 }
 
 og::script::hooks::CampaignProviders make_campaign_providers(
-    SaveData& save, std::function<bool()> is_host)
+    SaveData& save, std::function<bool()> is_host,
+    std::function<int()> my_team)
 {
     og::script::hooks::CampaignProviders providers;
     SaveData* const save_ptr = &save;
     if (!is_host)
         is_host = [] { return true; }; // local play is always host
+    // G4: no seat view here — og_resources cannot see the lobby or the
+    // picker. A surface that has one passes it in; everyone else answers
+    // the save's own team, read live (Base Camp moves my_team while the
+    // book is installed).
+    if (!my_team)
+        my_team = [save_ptr] { return campaign_my_team_fallback(*save_ptr); };
 
     providers.state_get = [save_ptr](const std::string& key) -> std::int32_t {
         return save_ptr->campaign_state_get(save_ptr->current_campaign, key);
@@ -321,6 +334,7 @@ og::script::hooks::CampaignProviders make_campaign_providers(
         return true;
     };
     providers.is_host = std::move(is_host);
+    providers.my_team = std::move(my_team);
 
     // og.campaign_random's default: a process-lifetime menu-side generator,
     // seeded from the wall clock the first time any camp action rolls.

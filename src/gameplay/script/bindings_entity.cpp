@@ -2104,6 +2104,24 @@ int og_campaign_is_host(lua_State* L)
     return 1;
 }
 
+// og.campaign_my_team() → integer 0..3 — the local seat's fighting team
+// (docs/lineup-design.md Amendment 5 G4), so a page can say "mine" and
+// mean the machine reading it: on a joiner this is the joiner's own team,
+// never the host's. The surface answers from its own seat view and this
+// binding is the domain choke — a seat value outside the four teams is
+// clamped here rather than handed to a script as a team index that
+// addresses nothing.
+int og_campaign_my_team(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_my_team");
+    const auto& p = campaign_providers();
+    if (!p.my_team)
+        return luaL_error(
+            L, "og.campaign_my_team: no campaign provider installed");
+    lua_pushinteger(L, std::clamp(p.my_team(), 0, SCORE_TEAM_COUNT - 1));
+    return 1;
+}
+
 // og.campaign_random(n) → integer in 1..n — the menu-time roll. Campaign
 // dispatch only, resolved through the surface's random_pick provider (a
 // process-lifetime menu-side generator by default — NEVER the sim stream,
@@ -3269,6 +3287,7 @@ const luaL_Reg kOgCampaignFuncs[] = {
     {"campaign_match_get", og_campaign_match_get},
     {"campaign_match_set", og_campaign_match_set},
     {"campaign_is_host", og_campaign_is_host},
+    {"campaign_my_team", og_campaign_my_team},
     {"campaign_random", og_campaign_random},
     {nullptr, nullptr},
 };

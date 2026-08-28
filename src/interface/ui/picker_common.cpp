@@ -7,6 +7,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h> // G4 my_team fallback
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/campaign_ids.h>
@@ -1350,6 +1351,14 @@ std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save)
     if (save.allied_mode != 0)
         teams.assign(static_cast<std::size_t>(required_players), teams.front());
     return teams;
+}
+
+int first_local_seat_team(const SaveData& save)
+{
+    const std::vector<short> teams = derive_local_gameplay_seat_teams(save);
+    if (teams.empty())
+        return og::data::campaign_my_team_fallback(save);
+    return teams.front();
 }
 
 bool local_seat_teams_have_controls(const SaveData& save,

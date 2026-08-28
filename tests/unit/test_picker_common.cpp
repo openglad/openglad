@@ -16,6 +16,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include "test_game_world_fixture.h"
@@ -2603,6 +2604,44 @@ TEST(PickerCommon, synthesize_local_lobby_players_pins)
     save.numplayers = 0;
     EXPECT_TRUE(og::ui::synthesize_local_lobby_players(save).empty())
         << "spectator/autoplay saves synthesize no seats";
+}
+
+// G4 (docs/lineup-design.md Amendment 5): the team og.campaign_my_team
+// answers where the save IS the seat source — both terminals, and the SDL
+// session before a lobby is open. The first derived seat, and the shared
+// save fallback when a company has no seats at all.
+TEST(PickerCommon, first_local_seat_team_is_the_first_derived_seat)
+{
+    SaveData save;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.my_team = 2;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+
+    const std::vector<short> seats =
+        og::ui::derive_local_gameplay_seat_teams(save);
+    ASSERT_FALSE(seats.empty());
+    EXPECT_EQ(2, seats.front()) << "my_team hoists to the front when it fields";
+    EXPECT_EQ(seats.front(), og::ui::first_local_seat_team(save));
+
+    // A seat 1 that is NOT my_team still answers: the page follows the
+    // seat this machine actually plays, not the saved preference.
+    save.my_team = 1;
+    EXPECT_EQ(1, og::ui::first_local_seat_team(save));
+
+    // No seats at all (a spectator/autoplay save): the one shared fallback,
+    // never a silent 0 of this function's own invention.
+    save.numplayers = 0;
+    save.my_team = 3;
+    EXPECT_EQ(og::data::campaign_my_team_fallback(save),
+              og::ui::first_local_seat_team(save));
+    EXPECT_EQ(3, og::ui::first_local_seat_team(save));
 }
 
 // The builder resolves a seat context into the report and the formatter
