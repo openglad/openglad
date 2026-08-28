@@ -883,8 +883,13 @@ short new_score_panel(screen* s, short /*do_it*/)
 #endif
 
             int special_y = score_bottom + special_offset;
+            // Deliberately keyed on numviews (humans), never on the camera-
+            // inclusive layout_pane_count() — docs/camera-views-design.md
+            // constraint 7 (a docked camera must not densify seat HUDs).
             const bool compact_score_panel =
                 s->numviews > 2 && !(s->numviews == 3 && players == 0);
+            TRACE("hud", "panel_density view=%d compact=%d",
+                  players, compact_score_panel ? 1 : 0);
             // Don't show score and XP (clutter) when in a small viewport
             if (compact_score_panel)
                 special_y = score_bottom - 8;

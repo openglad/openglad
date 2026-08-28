@@ -30,6 +30,7 @@
 #include <openglad/resources/win_shares.h>
 
 #include <array>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -411,6 +412,31 @@ public:
     short redrawme;
     std::unique_ptr<viewscreen> viewob[MAX_VIEWS];
     short numviews;
+    // Camera view (docs/camera-views-design.md §4): engine-owned, display-side
+    // only, NOT a seat. Lives outside viewob[]/numviews by design — no seat
+    // loop (input dispatch, HUD density, seat claiming/surgery, results
+    // classification, pause seats) can reach it.
+    std::unique_ptr<viewscreen> camera_view_;
+    std::int32_t camera_entity_id_ = 0;   // last-synced declaration
+    std::uint8_t camera_style_ = 0;       // kCameraStyleAuto / kCameraStyleInset
+    bool camera_docked_ = false;          // per-machine resolution (§6), off-wire
+    // Camera-view lifecycle (§5): one idempotent, diff-based pass, run as the
+    // first statement of redraw() — construct on change, retarget every
+    // frame, destroy on a cleared slot. Display screens only (identity belt).
+    void sync_camera_views();
+    // Derived camera geometry: the docked quadrant through the one
+    // compute_view_layout pipeline, or the centered GameplayUI inset rect.
+    void relayout_camera_view();
+    // Docked pane world pixels + its own bevel on GameplayUI; no-op unless a
+    // docked camera is live. draw_panel_chrome stays untouched (constraint 7).
+    void draw_camera_view_world();
+    // Inset camera draw at the game_loop seams (§6). WP3 lands resolution +
+    // geometry only; WP4 fills this via the staged-preview draw mechanism.
+    void draw_camera_view_ui();
+    // Pane count the LAYOUT consumes: the human seats plus the docked camera.
+    // With no docked camera this is numviews exactly — the byte-identical
+    // OFF state at every call site (constraint 7).
+    int layout_pane_count() const { return numviews + (camera_docked_ ? 1 : 0); }
     Uint32 timerstart;
     Uint32 framecount;
     const og::sim::GameClient* render_interpolation_client_ = nullptr;

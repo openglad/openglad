@@ -1212,6 +1212,13 @@ int screen::min_view_zoom_scale_num() const
 // touched here.
 void screen::relayout_views()
 {
+	// Camera dock resolution (docs/camera-views-design.md §4.5): recompute at
+	// the TOP, before the seat resize loop consumes layout_pane_count(), so a
+	// seat-count change never lets seats resize against a stale docked flag
+	// (4 seats against a stale docked=true would consume a 5-pane count).
+	// Per-machine and off-wire: local seat count never rides the declaration.
+	camera_docked_ = (camera_view_ != nullptr) &&
+	    (camera_style_ == og::sim::kCameraStyleAuto) && (numviews == 3);
 	const int old_w = world_canvas_w();
 	const int old_h = world_canvas_h();
 	video_impl_->set_world_view_scale(min_view_zoom_scale_num());
@@ -1244,7 +1251,179 @@ void screen::relayout_views()
 		    static_cast<int>(v->slot_w_), static_cast<int>(v->slot_h_)});
 	}
 	video_impl_->set_world_present_slices(slices);
+	// Camera geometry at the tail, re-derived from the flag recomputed above:
+	// direct-geometry resize (slot == window), so the camera publishes no
+	// present slice and never perturbs the presentation partition.
+	relayout_camera_view();
 	redrawme = 1;
+}
+
+// Derived camera geometry (docs/camera-views-design.md §6): docked = the
+// fourth quadrant through the SAME pure pipeline the seats use
+// (compute_view_layout + project_view_layout — no parallel layout math);
+// inset = the centered GameplayUI-canvas rect (fixed classic density, immune
+// to world-canvas zoom recomposition). Always derived, never accumulated.
+void screen::relayout_camera_view()
+{
+	if (camera_view_ == nullptr)
+		return;
+	if (camera_docked_)
+	{
+		const int ui_w = gameplay_ui_canvas_w();
+		const int ui_h = gameplay_ui_canvas_h();
+		const og::view_layout::ViewLayout baseline =
+		    og::view_layout::compute_view_layout(
+		        layout_pane_count(), 3, og::view_layout::kModeFull,
+		        ui_w, ui_h);
+		const og::view_layout::ViewLayout r =
+		    og::view_layout::project_view_layout(
+		        baseline, ui_w, ui_h, world_canvas_w(), world_canvas_h());
+		if (r.applies)
+			camera_view_->resize(
+			    static_cast<short>(r.x), static_cast<short>(r.y),
+			    static_cast<short>(r.w), static_cast<short>(r.h));
+		return;
+	}
+	// Inset (pinned geometry): w = ui_w*3/10, h = ui_h*3/10, min 96x60,
+	// centered. GameplayUI coordinates; the World canvas and the seat layout
+	// never see it, so layout_pane_count() stays == numviews.
+	const int ui_w = gameplay_ui_canvas_w();
+	const int ui_h = gameplay_ui_canvas_h();
+	int w = ui_w * 3 / 10;
+	int h = ui_h * 3 / 10;
+	if (w < 96)
+		w = 96;
+	if (h < 60)
+		h = 60;
+	camera_view_->resize(
+	    static_cast<short>((ui_w - w) / 2), static_cast<short>((ui_h - h) / 2),
+	    static_cast<short>(w), static_cast<short>(h));
+}
+
+// Camera-view lifecycle (docs/camera-views-design.md §5). One idempotent,
+// diff-based pass, run as the FIRST statement of redraw(): that seam covers
+// the main loop, render_pending_redraw (draw_panels -> redraw), the demo/
+// capture path (demo.cpp calls draw_panels/redraw directly and never runs
+// game_frame) and every direct redraw() call in tests — while the
+// authoritative server never calls redraw() at all.
+void screen::sync_camera_views()
+{
+	// Display-screen identity belt (design-review ruling): exact screen
+	// identity, never a transport-mode predicate — a stray direct call on the
+	// authority's screen must not materialize a camera there.
+	if (og::runtime::current_session != nullptr &&
+	    this != og::runtime::current_session->myscreen_)
+		return;
+
+	const bool declared = (world_.type & GameWorld::TYPE_SCRIPTED) &&
+	    world_.mode.active && world_.mode.cameras[0].entity_id != 0;
+	if (!declared)
+	{
+		// The destroy branch still runs when the gate fails while a pane is
+		// live — a cleared slot must not strand a stale camera pane.
+		if (camera_view_ != nullptr)
+		{
+			const bool was_docked = camera_docked_;
+			camera_view_.reset();
+			camera_entity_id_ = 0;
+			camera_style_ = og::sim::kCameraStyleAuto;
+			camera_docked_ = false;
+			TRACE("camera", "destroy docked=%d", was_docked ? 1 : 0);
+			if (was_docked)
+				relayout_views(); // seats fall back to the 3-view layout
+			redrawme = 1;
+		}
+		return;
+	}
+
+	// Consumer-side belt over the deserializer's identity clamp: a crafted
+	// style byte can never select an invalid geometry path.
+	const std::uint8_t style =
+	    world_.mode.cameras[0].style <= og::sim::kCameraStyleMax
+	        ? world_.mode.cameras[0].style
+	        : og::sim::kCameraStyleAuto;
+	if (camera_view_ == nullptr)
+	{
+		// Materialize: construct only on change, never per frame.
+		camera_view_ = viewscreen::make_camera(this);
+		camera_style_ = style;
+		const bool docked =
+		    (style == og::sim::kCameraStyleAuto) && (numviews == 3);
+		TRACE("camera", "materialize docked=%d style=%d",
+		      docked ? 1 : 0, static_cast<int>(style));
+		if (docked)
+			relayout_views(); // seats re-arm into quadrants; tail sizes the camera
+		else
+		{
+			camera_docked_ = false;
+			relayout_camera_view();
+		}
+		redrawme = 1;
+	}
+	else if (camera_style_ != style)
+	{
+		// Restyle: re-resolve docked-vs-inset. A dock flip re-lays the
+		// seats; a same-mode restyle only re-derives the camera rect.
+		camera_style_ = style;
+		const bool docked_now =
+		    (style == og::sim::kCameraStyleAuto) && (numviews == 3);
+		TRACE("camera", "restyle docked=%d style=%d",
+		      docked_now ? 1 : 0, static_cast<int>(style));
+		if (docked_now != camera_docked_)
+			relayout_views();
+		else
+			relayout_camera_view();
+		redrawme = 1;
+	}
+	camera_entity_id_ = world_.mode.cameras[0].entity_id;
+
+	// Retarget every frame — the demo-Boss re-aim shape with the standard
+	// triple guard. Target loss keeps the pane AND keeps drawing with
+	// control = nullptr: viewscreen::redraw falls back to the LevelVisuals
+	// free camera (a wide static shot, never a stale/black quadrant). With a
+	// live target, the camera adopts its floor through the normal control->
+	// floor() path in update_floor_glide (the bare set-floor snap is the
+	// accepted multi-floor behavior for a camera pane).
+	walker* target =
+	    world_.find_by_id(static_cast<std::uint32_t>(camera_entity_id_));
+	if (target != nullptr && (target->dead() || target->dormant()))
+		target = nullptr;
+	camera_view_->control = target;
+}
+
+// Docked camera pane (docs/camera-views-design.md §6): the camera's world
+// pixels through the normal viewscreen redraw (radar/HUD silenced by
+// global_player_index_ = -1; the chrome scope skipped by the camera_view_
+// flag; the text feed empty because do_notify cannot reach it), then a
+// minimal bevel drawn by this hook itself on the GameplayUI canvas —
+// draw_panel_chrome is untouched, so the numviews-keyed border rule never
+// re-keys (constraint 7). No-op unless a docked camera is live; the inset
+// draw is draw_camera_view_ui at the game_loop seams (WP4).
+void screen::draw_camera_view_world()
+{
+	if (camera_view_ == nullptr || !camera_docked_)
+		return;
+	camera_view_->redraw();
+	ScopedGameplayUiCanvas gameplay_ui(*this);
+	const og::view_layout::ViewLayout r =
+	    og::view_layout::compute_view_layout(
+	        layout_pane_count(), 3, og::view_layout::kModeFull,
+	        gameplay_ui_canvas_w(), gameplay_ui_canvas_h());
+	if (!r.applies)
+		return;
+	// Minimal bevel, drawn INSIDE the pane so a corner quadrant never clips:
+	// a light frame with the seat chrome's dark inner outline.
+	draw_box(r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, GREY, 0, 1);
+	draw_box(r.x + 1, r.y + 1, r.x + r.w - 2, r.y + r.h - 2, 0, 0, 1);
+}
+
+// Inset camera draw (docs/camera-views-design.md §6): renders the camera's
+// world content onto the GameplayUI canvas at the inset geometry via the
+// staged-preview draw mechanism, called at the two game_loop seams (after
+// score_panel, before the present). WP3 lands the resolution + geometry
+// only; WP4 fills this body.
+void screen::draw_camera_view_ui()
+{
 }
 
 void screen::cleanup(short howmany)
@@ -1256,6 +1435,11 @@ void screen::cleanup(short howmany)
     {
         viewob[i].reset();
     }
+    // Camera view (docs/camera-views-design.md §5): destroyed by named intent
+    // with the seats; the next redraw() re-materializes it from the
+    // still-replicated ModeState declaration.
+    camera_view_.reset();
+    camera_docked_ = false;
     // §7.1: destroyed views leave no windows to present; a later World
     // present must not replay their canvas-space slices.
     video_impl_->set_world_present_slices({});
@@ -1307,8 +1491,13 @@ void screen::reset(short howmany)
 		static constexpr std::array<short, 4> kPvpConstructionOrder = {1, 0, 2, 3};
 		for (Sint32 n = 0; n < numviews; n++)
 		{
+			// Hardening (docs/camera-views-design.md §4): the guard above
+			// admits numviews up to MAX_VIEWS (5) but the order table is
+			// 4-wide — bound the index explicitly; any extra view
+			// constructs in natural order.
 			const short i = (numviews == 1) ? static_cast<short>(0)
-			                                : kPvpConstructionOrder[static_cast<size_t>(n)];
+			                                : (n < 4 ? kPvpConstructionOrder[static_cast<size_t>(n)]
+			                                         : static_cast<short>(n));
 			const og::view_layout::ViewLayout r =
 			    og::view_layout::compute_view_layout(
 			        numviews, static_cast<int>(i), og::view_layout::kModeFull,
@@ -1479,6 +1668,12 @@ void screen::clear()
 bool screen::redraw()
 {
 	short i;
+	// Camera view (docs/camera-views-design.md §5): materialize / retarget /
+	// destroy from the replicated declaration before anything draws — the one
+	// sync seam (the game loop, render_pending_redraw, the demo/capture path
+	// and direct test calls all pass through here; the authoritative server
+	// never calls redraw()).
+	sync_camera_views();
 	// Reserve the stable classic-density gameplay-chrome layer before any view
 	// draws. At exact classic dimensions with nearest rendering, and on an
 	// allocation fallback, the HUD scopes safely alias World.
@@ -1490,6 +1685,8 @@ bool screen::redraw()
 	announce_way_clear_if_needed();
 	for (i=0; i < numviews; i++)
 		viewob[i]->redraw();
+	// Docked camera pane: world pixels + its own bevel (no-op unless docked).
+	draw_camera_view_world();
 
 	return 1;
 }
@@ -1836,6 +2033,7 @@ void screen::draw_panel_chrome(short howmany)
 			; // do nothing
 		else
 		{
+			TRACE("hud", "panel_border view=%d", i);
 			draw_button(viewob[i]->xloc-4, viewob[i]->yloc-3,
 			            viewob[i]->endx+3, viewob[i]->endy+3, 3, 1);
 			draw_box(viewob[i]->xloc-1, viewob[i]->yloc-1,

@@ -332,10 +332,14 @@ short radar::draw(LevelRuntimeData* data)
 	}
     
     unsigned char alpha = 255;
+    // Deliberately keyed on numviews (humans), never on the camera-inclusive
+    // layout_pane_count() — docs/camera-views-design.md constraint 7 (a
+    // docked camera must not fade the seat radars).
     if(og::runtime::current_session->myscreen_->numviews > 2 && !(og::runtime::current_session->myscreen_->numviews == 3 && mynum == 0))
     {
         alpha = 127;
     }
+    TRACE("radar", "alpha view=%d a=%d", mynum, static_cast<int>(alpha));
 	{
 		size_t offset = static_cast<size_t>(radarx + (radary * sizex));
 		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, bmp.size() - offset};
