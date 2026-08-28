@@ -2485,6 +2485,33 @@ TEST_F(ModesSoccer, hud_rows_and_ball_beacon_track_the_match)
     EXPECT_STREQ("RED 2/3", fx.world().mode.hud[0].text.data());
 }
 
+// The camera declaration (issue #224, design §8 F): on_mode_init points
+// camera slot 0 at the ball in the "auto" style. Nothing seat-derived rides
+// the wire — docked-vs-inset is each machine's own resolution.
+TEST_F(ModesSoccer, init_points_the_camera_view_at_the_ball)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+
+    const walker* const ball = fx.ball();
+    ASSERT_NE(nullptr, ball);
+    EXPECT_EQ(fx.var(kSocBallEntity), fx.world().mode.cameras[0].entity_id)
+        << "camera slot 0 follows the banked ball";
+    EXPECT_EQ(static_cast<std::int32_t>(ball->entity_id()),
+              fx.world().mode.cameras[0].entity_id);
+    EXPECT_EQ(og::sim::kCameraStyleAuto, fx.world().mode.cameras[0].style)
+        << "auto: each machine resolves docked-vs-inset locally";
+
+    // Set ONCE, in on_mode_init — no per-tick re-assertion (the
+    // instruction-budget rule). Hand-clearing the slot therefore STAYS
+    // cleared across a live window including a kickoff reset.
+    fx.world().mode.cameras[0] = og::sim::ModeCameraView{};
+    fx.tick(30);
+    EXPECT_EQ(0, fx.world().mode.cameras[0].entity_id)
+        << "on_mode_tick must not re-declare the camera every tick";
+}
+
 TEST_F(ModesSoccer, shipped_manifest_registers_the_soccer_levels)
 {
     // scripts/mode_soccer.lua scans the committed manifest: scen820 binds
@@ -2629,6 +2656,51 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
     EXPECT_EQ(ball->entity_id(),
               static_cast<std::uint32_t>(mirror.world().mode.beacons[0].entity_id))
         << "the ball beacon must point at the replicated ball";
+    EXPECT_EQ(ball->entity_id(),
+              static_cast<std::uint32_t>(mirror.world().mode.cameras[0].entity_id))
+        << "the camera declaration must point at the replicated ball";
+}
+
+// The camera channel is replicated state, not a local render decision: a
+// mirror never runs mode Lua, so it learns the declaration ONLY through a
+// snapshot apply — and learning it must not cost a hash strike.
+TEST_F(ModesSoccer, the_camera_declaration_replicates_to_a_client_mirror)
+{
+    ModesCtfWorld fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 432);
+    fx.spawn_anchor(1, 528, 432);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 96, 96);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 528, 96);
+    ModeMirror mirror(kSoccerLevelA);
+
+    // Ordering: empty BEFORE the first apply — mirrors run no mode Lua.
+    EXPECT_EQ(0, mirror.world().mode.cameras[0].entity_id)
+        << "a mirror has no camera before its first snapshot apply";
+    EXPECT_FALSE(mirror.world().mode.active);
+
+    // One tick: the authority inits and the mirror applies that keyframe.
+    const MirrorReplication first = replicate_to_mirror(fx, mirror, 1);
+    EXPECT_EQ(0, first.strikes) << "the camera slot must hash identically";
+    ASSERT_TRUE(fx.world().mode.active);
+
+    const std::int32_t declared = fx.world().mode.cameras[0].entity_id;
+    ASSERT_NE(0, declared) << "the authority declared a camera on init";
+    EXPECT_EQ(declared, mirror.world().mode.cameras[0].entity_id)
+        << "the mirror follows the same replicated entity id";
+    EXPECT_EQ(fx.world().mode.cameras[0].style,
+              mirror.world().mode.cameras[0].style);
+    EXPECT_NE(nullptr, mirror.world().find_by_id(
+                           static_cast<std::uint32_t>(declared)))
+        << "the followed id resolves in the mirror world too";
+
+    // ... and stays matched across a live window of ball play.
+    const MirrorReplication rest = replicate_to_mirror(fx, mirror, 60);
+    EXPECT_EQ(0, rest.strikes)
+        << "the mirror first desynced at tick " << rest.first_strike_tick;
+    EXPECT_EQ(fx.world().mode.cameras[0].entity_id,
+              mirror.world().mode.cameras[0].entity_id);
+    EXPECT_EQ(fx.world().mode.cameras[0].style,
+              mirror.world().mode.cameras[0].style);
 }
 
 // ===========================================================================
