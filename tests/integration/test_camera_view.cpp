@@ -20,15 +20,20 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/video.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <cstdint>
 #include <format>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 // From glad.cpp (the shared HUD entry point the game loop uses).
 short score_panel(screen* scr, short do_it);
@@ -120,7 +125,7 @@ protected:
     }
 
     // A camera target living in the display world; returns its entity id.
-    std::int32_t spawn_target()
+    std::int32_t spawn_target(Sint32 x = 120, Sint32 y = 100)
     {
         loader* const l = game_->myloader;
         if (l == nullptr)
@@ -131,7 +136,7 @@ protected:
         w->set_team_num(2);
         w->set_dead(0);
         w->set_user(-1);
-        w->setxy(120, 100);
+        w->setxy(x, y);
         walker* const raw = w.get();
         game_->world().oblist.push_back(std::move(w));
         return static_cast<std::int32_t>(raw->entity_id());
@@ -663,6 +668,224 @@ TEST_F(CameraView, nil_clear_scrubs_the_inset_rect)
                     << "stale camera pixel at " << x << "," << y
                     << " after the nil-clear";
     }
+}
+
+// Forces the per-walker overlay cfg keys ON for a test body (the shipped
+// defaults, but earlier tests in the binary may have flipped them through
+// their own guards); restores the saved values on exit.
+class OverlayCfgOnGuard
+{
+public:
+    OverlayCfgOnGuard()
+    {
+        for (const char* const key : kKeys)
+        {
+            saved_.emplace_back(key, cfg.get_setting("effects", key));
+            cfg.apply_setting("effects", key, "on");
+        }
+    }
+    ~OverlayCfgOnGuard()
+    {
+        for (const auto& [key, value] : saved_)
+            cfg.apply_setting("effects", key,
+                              value.empty() ? "on" : value);
+    }
+    OverlayCfgOnGuard(const OverlayCfgOnGuard&) = delete;
+    OverlayCfgOnGuard& operator=(const OverlayCfgOnGuard&) = delete;
+
+private:
+    static constexpr std::array<const char*, 2> kKeys = {
+        "mini_hp_bar", "heal_numbers"};
+    std::vector<std::pair<std::string, std::string>> saved_;
+};
+
+// R1 (code-review finding): a camera pane draws NO per-walker UI overlays —
+// no mini HP bars, no damage/heal numbers (the design's §6 suppression list,
+// extended by the review ruling). Their GameplayUI projection is keyed on
+// layout_pane_count() + mynum, which has no arm for the camera identity: at
+// 1 seat the full-canvas layout would scale a bar for a walker in the 96x60
+// inset across the whole 320x200 UI canvas. Teeth: a damaged living (below
+// the 95% bar threshold, plus a live heal number) inside the camera's world
+// view but far OUTSIDE the seat's own view, so any overlay pixel can only
+// have come from the camera pane; after a full-canvas scrub the inset seam
+// draw must land pixels only inside the inset rect (+1px border), and the
+// inset content must be pixel-identical between the damaged and the healed
+// walker — total suppression, outside AND inside the pane.
+TEST_F(CameraView, camera_pane_draws_no_per_walker_ui_overlays)
+{
+    OverlayCfgOnGuard overlay_cfg;
+    game_->ready_for_battle(1);
+    arm_seats();
+    game_->world().create_new_grid();
+    // (400,700): well outside the 1-seat view of the level origin.
+    const std::int32_t target_id = spawn_target(400, 700);
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    // Both seams: screen::redraw (materialize + retarget, settles the seat),
+    // then the game_loop inset seam idiom (settles the camera on its target
+    // before any probe below).
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_FALSE(game_->camera_docked_);
+    const SeatRect r = inset_rect();
+    ASSERT_EQ(r, capture_rect(*game_->camera_view_));
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->draw_camera_view_ui();
+    }
+
+    walker* const target =
+        game_->world().find_by_id(static_cast<std::uint32_t>(target_id));
+    ASSERT_NE(nullptr, target);
+    ASSERT_EQ(target, game_->camera_view_->control)
+        << "the damaged walker must be the one inside the camera view";
+    const float max_hp = target->stats()->max_hitpoints();
+    ASSERT_GT(max_hp, 0.0f);
+
+    const auto scrub_canvas_and_seam_draw = [&]() {
+        {
+            ScopedGameplayUiCanvas gameplay_ui(*game_);
+            game_->clearbuffer(0, 0, game_->canvas_w(), game_->canvas_h());
+        }
+        {
+            ScopedGameplayUiCanvas gameplay_ui(*game_);
+            game_->draw_camera_view_ui();
+        }
+    };
+    const auto capture_inset = [&]() {
+        std::vector<Uint32> pixels;
+        pixels.reserve(static_cast<std::size_t>(r.xview * r.yview));
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        for (int y = r.yloc; y < r.yloc + r.yview; ++y)
+            for (int x = r.xloc; x < r.xloc + r.xview; ++x)
+            {
+                Uint8 pr = 0, pg = 0, pb = 0;
+                game_->get_pixel(x, y, &pr, &pg, &pb);
+                pixels.push_back((static_cast<Uint32>(pr) << 16) |
+                                 (static_cast<Uint32>(pg) << 8) |
+                                 static_cast<Uint32>(pb));
+            }
+        return pixels;
+    };
+
+    // Damaged: below the bar threshold, with a last-hit segment and a live
+    // heal number (the camera IS this walker's control, so pre-suppression
+    // the number block would fire from the camera pane too).
+    target->set_last_hitpoints(max_hp);
+    target->stats()->set_hitpoints(max_hp * 0.5f);
+    target->damage_numbers.emplace_back(
+        static_cast<float>(target->xpos()), static_cast<float>(target->ypos()),
+        25.0f, static_cast<unsigned char>(56), game_->world().tick_count_);
+    scrub_canvas_and_seam_draw();
+    {
+        // Outside the inset rect and its 1px border ring the scrubbed canvas
+        // must still be black: nothing from the camera pane may leak out.
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        for (int y = 0; y < game_->canvas_h(); y += 2)
+            for (int x = 0; x < game_->canvas_w(); x += 2)
+            {
+                if (x >= r.xloc - 1 && x <= r.xloc + r.xview &&
+                    y >= r.yloc - 1 && y <= r.yloc + r.yview)
+                    continue;
+                ASSERT_TRUE(pixel_is_black(game_, x, y))
+                    << "camera-pane overlay leaked outside the inset at "
+                    << x << "," << y;
+            }
+    }
+    const std::vector<Uint32> damaged = capture_inset();
+
+    // Healed baseline: at full HP with no numbers, no overlay can
+    // legitimately draw anywhere — any inside-inset difference below was a
+    // per-walker UI overlay drawn by the camera pane.
+    target->stats()->set_hitpoints(max_hp);
+    target->set_last_hitpoints(max_hp);
+    target->damage_numbers.clear();
+    scrub_canvas_and_seam_draw();
+    const std::vector<Uint32> healed = capture_inset();
+    ASSERT_EQ(damaged.size(), healed.size());
+    int diffs = 0;
+    for (std::size_t i = 0; i < damaged.size(); ++i)
+        if (damaged[i] != healed[i])
+            ++diffs;
+    EXPECT_EQ(0, diffs)
+        << diffs << " inset pixels changed with the walker damaged: a "
+        << "per-walker UI overlay was drawn inside the camera pane";
+}
+
+// R2 (code-review finding): when the fixed GameplayUI overlay is not active
+// for the frame (allocation failure under a split graphics/zoom world
+// canvas), the GameplayUI scope deliberately aliases the larger World
+// surface, and the inset's fixed classic-density coords would land inside
+// seat world pixels. draw_camera_view_ui must skip the inset draw and
+// clear_camera_inset_rect must skip the scrub for that frame — the pane is
+// simply absent in the degraded mode, like every other adapting HUD path
+// (GameplayUiProjector, ScopedGameplayUiViewLayout, touch controls).
+TEST_F(CameraView, overlay_allocation_failure_skips_inset_draw_and_scrub)
+{
+    ASSERT_TRUE(E_Screen);
+    int win_w = 0, win_h = 0;
+    SDL_GetWindowSize(E_Screen->window, &win_w, &win_h);
+
+    game_->ready_for_battle(1);
+    arm_seats();
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_FALSE(game_->camera_docked_);
+    const SeatRect r = inset_rect();
+
+    // The maintained degraded mode (test_canvas_scale's allocation-failure
+    // pattern): a split 640x400 world canvas whose overlay allocation fails,
+    // so GameplayUI aliases World while the fixed UI dims stay 320x200.
+    game_->set_world_canvas_pinned_classic(false);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
+    ASSERT_EQ(640, E_Screen->world_w());
+    ASSERT_EQ(400, E_Screen->world_h());
+    ASSERT_EQ(320, game_->gameplay_ui_canvas_w());
+    ASSERT_EQ(200, game_->gameplay_ui_canvas_h());
+    game_->relayout_views();
+    ASSERT_EQ(r, capture_rect(*game_->camera_view_))
+        << "the inset geometry stays in fixed UI coords";
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    E_Screen->fail_next_gameplay_ui_allocation_for_testing();
+    E_Screen->begin_gameplay_frame();
+    ASSERT_FALSE(E_Screen->gameplay_ui_overlay_active());
+
+    // Sentinel-fill the classic-coord rect (+ border and scrub ring) on the
+    // aliased World surface: any inset draw or scrub would overwrite it.
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        ASSERT_EQ(640, game_->canvas_w())
+            << "the GameplayUI scope must alias the split World canvas";
+        game_->draw_box(r.xloc - 2, r.yloc - 2,
+                        r.xloc + r.xview + 1, r.yloc + r.yview + 1,
+                        ORANGE_START, 1, 1);
+    }
+    game_->redrawme = 0;
+    game_->draw_camera_view_ui();
+    game_->clear_camera_inset_rect(r.xloc, r.yloc, r.xview, r.yview);
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        for (int y = r.yloc - 2; y <= r.yloc + r.yview + 1; ++y)
+            for (int x = r.xloc - 2; x <= r.xloc + r.xview + 1; ++x)
+                ASSERT_TRUE(pixel_matches_index(game_, x, y, ORANGE_START))
+                    << "pixel written at " << x << "," << y
+                    << " on the aliased World canvas in the degraded mode";
+    }
+    EXPECT_EQ(0, game_->redrawme)
+        << "a skipped scrub must not force a repaint";
+
+    // Restore the classic fixture state (the failed-size latch clears on the
+    // world-canvas change; the ClassicCanvasRestore recipe minus the window
+    // resize this test never made).
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer,
+                             win_w, win_h);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    game_->set_world_canvas_pinned_classic(true);
+    game_->relayout_views();
 }
 
 // H10 (flip arm): restyling inset -> docked goes through relayout_views,

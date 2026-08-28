@@ -235,6 +235,7 @@ The pass diffs the declaration (`camera_entity_id_`/`camera_style_`/local seat c
 
 - Radar: `global_player_index_ = -1` fails the gate at `view.cpp:948-952`/`1223-1229`; inset additionally passes `draw_radar = false`. The 60×44 radar-anchor overflow hazard for small panes (`radar.cpp:210-267`) is unreachable as a hard property.
 - Seat HUD / mode panel / beacons / respawn countdown / FOLLOWING caption / notification feed / pause banner: the camera is absent from every loop that draws them (`score_panel.cpp:705-731`, `screen.cpp:1853-1870`, `local_transport_shadow.cpp:1019-1078`).
+- Per-walker UI overlays — mini HP bars and damage/heal numbers (code-review finding R1): a camera pane draws NONE of them. Both blocks in `walker_draw.cpp` are gated on the pane's explicit `camera_view_` flag (the chrome-scope mechanism, never the `mynum==-1` clamp coincidence), because their GameplayUI projection is keyed on `layout_pane_count()` + `mynum` and has no camera arm — a 1-seat inset would scale them across the full UI canvas and 4 seats would stamp them into seat 3's quadrant.
 - Zoom composition: absent from `min_view_zoom_scale_num` and `view_zoom_step_allowed`; direct geometry pins `slot == window` → zero present slices → the no-camera present path is byte-identical.
 - **Jitter-0 discipline (constraint 4):** the camera draw paths make zero game-rng calls — they render exactly what a seat pane renders; the sync pass is pure integer state; the camera never draws a radar (the beacon-rng site).
 

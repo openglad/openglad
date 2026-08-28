@@ -1456,6 +1456,16 @@ void screen::draw_camera_view_ui()
 	if (camera_view_ == nullptr || camera_docked_)
 		return;
 	ScopedGameplayUiCanvas gameplay_ui(*this);
+	// Overlay-allocation fallback (review finding R2): when the fixed
+	// GameplayUI overlay is not active for the frame, this scope aliases the
+	// differently-sized split World surface, and the inset's fixed
+	// classic-density coords would land inside seat world pixels. Detect it
+	// exactly the way GameplayUiProjector does — live canvas dims vs the
+	// fixed UI dims — and skip the inset for the frame (the pane is simply
+	// absent in the degraded mode, like every other adapting HUD path).
+	if (canvas_w() != gameplay_ui_canvas_w() ||
+	    canvas_h() != gameplay_ui_canvas_h())
+		return;
 	(void)camera_view_->redraw(&level_runtime_data_, /*draw_radar=*/false);
 	// 1px border framing the world content (corners inclusive).
 	draw_box(camera_view_->xloc - 1, camera_view_->yloc - 1,
@@ -1475,6 +1485,13 @@ void screen::clear_camera_inset_rect(int x, int y, int w, int h)
 	if (w <= 0 || h <= 0)
 		return;
 	ScopedGameplayUiCanvas gameplay_ui(*this);
+	// Overlay-allocation fallback (review finding R2): with GameplayUI
+	// aliasing the split World surface no inset was drawn at these coords
+	// (draw_camera_view_ui skips), so scrubbing here would black a box of
+	// seat world pixels instead. Skip the scrub in the degraded mode.
+	if (canvas_w() != gameplay_ui_canvas_w() ||
+	    canvas_h() != gameplay_ui_canvas_h())
+		return;
 	clearbuffer(x - 1, y - 1, w + 2, h + 2);
 	redrawme = 1;
 }

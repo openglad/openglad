@@ -338,6 +338,17 @@ static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
 
 void draw_small_health_bar(walker* w, viewscreen* view_buf)
 {
+    // Camera panes draw NO per-walker UI overlays (docs/camera-views-design.md
+    // §6, review finding R1): the GameplayUI projection below is keyed on
+    // layout_pane_count() + mynum, which has no arm for the camera identity
+    // (mynum -1) — a 1-seat inset would scale the bar across the full UI
+    // canvas and 4 seats would stamp it into seat 3's quadrant. Same explicit
+    // flag as the chrome-scope skip; never the mynum==-1 clamp coincidence.
+    if(view_buf->camera_view_)
+    {
+        return;
+    }
+
     if(w->query_order() != Order::Living && w->query_order() != Order::Generator)
     {
         return;
@@ -675,7 +686,13 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
         damage_numbers_matter && cfg.is_on("effects", "damage_numbers");
     const bool show_heal_numbers =
         damage_numbers_matter && cfg.is_on("effects", "heal_numbers");
-    if (show_damage_numbers || show_heal_numbers)
+    // Camera panes draw NO per-walker UI overlays (docs/camera-views-design.md
+    // §6, review finding R1): same mis-projection hazard as the mini HP bar
+    // above — draw_damage_number projects through the mynum-keyed GameplayUI
+    // layout, which has no camera arm. Skipping the whole block also skips the
+    // UI-only advance/expire bookkeeping, exactly the treatment a walker on no
+    // screen at all already gets; a seat pane drawing the walker advances it.
+    if (!view_buf->camera_view_ && (show_damage_numbers || show_heal_numbers))
     {
         if (game_screen == nullptr)
             return 1;
