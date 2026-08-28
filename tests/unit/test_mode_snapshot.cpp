@@ -144,6 +144,11 @@ void populate_full_mode_state(GameWorld& world)
         mode.beacons[static_cast<std::size_t>(i)].entity_id = 100 + i;
         mode.beacons[static_cast<std::size_t>(i)].team = static_cast<std::uint8_t>(3 - i);
     }
+    for (int i = 0; i < og::sim::kModeCameraViews; ++i)
+    {
+        mode.cameras[static_cast<std::size_t>(i)].entity_id = 200 + i;
+        mode.cameras[static_cast<std::size_t>(i)].style = og::sim::kCameraStyleInset;
+    }
 
     // The retired TEAMS knob (A3) holds one value everywhere, and
     // apply_snapshot writes it: populating a 4 here would only assert that
@@ -217,6 +222,15 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
         EXPECT_EQ(mode.beacons[static_cast<std::size_t>(i)].team, snapshot.mode.beacons[static_cast<std::size_t>(i)].team)
             << "beacon " << i;
     }
+    for (int i = 0; i < og::sim::kModeCameraViews; ++i)
+    {
+        EXPECT_EQ(mode.cameras[static_cast<std::size_t>(i)].entity_id,
+                  snapshot.mode.cameras[static_cast<std::size_t>(i)].entity_id)
+            << "camera " << i;
+        EXPECT_EQ(mode.cameras[static_cast<std::size_t>(i)].style,
+                  snapshot.mode.cameras[static_cast<std::size_t>(i)].style)
+            << "camera " << i;
+    }
 
     EXPECT_EQ(world.ctf_requested_team_count, snapshot.ctf_requested_team_count);
     EXPECT_EQ(world.ctf_requested_capture_limit,
@@ -264,6 +278,13 @@ void expect_snapshot_mode_defaults(const og::sim::WorldSnapshot& snapshot)
     }
     for (int i = 0; i < og::sim::kModeBeacons; ++i)
         EXPECT_EQ(0, snapshot.mode.beacons[static_cast<std::size_t>(i)].entity_id) << "beacon " << i;
+    for (int i = 0; i < og::sim::kModeCameraViews; ++i)
+    {
+        EXPECT_EQ(0, snapshot.mode.cameras[static_cast<std::size_t>(i)].entity_id) << "camera " << i;
+        EXPECT_EQ(og::sim::kCameraStyleAuto,
+                  snapshot.mode.cameras[static_cast<std::size_t>(i)].style)
+            << "camera " << i;
+    }
     EXPECT_EQ(defaults.ctf_requested_team_count,
               snapshot.ctf_requested_team_count);
     EXPECT_EQ(defaults.ctf_requested_capture_limit,
@@ -345,18 +366,22 @@ std::vector<std::uint8_t> rebuild_patched_snapshot_message(
     return message;
 }
 
-// Self-describing raw-payload offsets for a DEFAULT (empty-state) v12
+// Self-describing raw-payload offsets for a DEFAULT (empty-state) v13
 // snapshot: format byte, then 72 world-scalar bytes, then the respawn block
 // (respawn_ticks u16 at 73, respawn_serial u16 at 75, the four anchor counts
 // at 77..80 — no anchor pairs follow when all counts are zero — and the
 // queue size at 81), then the mode block (8 scalar bytes at 82..89, the
 // 12-byte name at 90, 64 i32 vars at 102, the HUD lines at 358, the beacons
-// at 466), then the thirteen match-knob i16s at 486 (v12 appended the eight
-// per-team bot knobs LAST, which is why every offset above is unchanged).
+// at 466, the camera-view slots at 486), then the thirteen match-knob i16s
+// at 491 (v12 appended the eight per-team bot knobs LAST and v13 appended
+// the camera slots LAST inside the mode block, which is why every offset
+// above the camera slots is unchanged).
 constexpr std::size_t kFirstAnchorCountOffset = 77;
 constexpr std::size_t kQueueSizeOffset = 81;
 constexpr std::size_t kModeNameOffset = 90;
 constexpr std::size_t kFirstHudTextOffset = 359; // hud[0].team is at 358
+constexpr std::size_t kFirstCameraEntityIdOffset = 486;
+constexpr std::size_t kFirstCameraStyleOffset = 490;
 
 } // namespace
 
@@ -442,6 +467,7 @@ TEST(ModeSnapshot, delta_payload_carries_mode_changes_onto_baseline)
     world.mode.vars[5] = 424242;
     set_hud_text(world.mode.hud[0].text, "RED 2 CAPS");
     world.mode.beacons[0].entity_id = 777;
+    world.mode.cameras[0].entity_id = 909;
 
     const og::sim::WorldSnapshot delta_source = og::sim::capture_snapshot(world);
     const std::vector<std::uint8_t> delta_bytes =
@@ -454,6 +480,8 @@ TEST(ModeSnapshot, delta_payload_carries_mode_changes_onto_baseline)
     EXPECT_EQ(424242, baseline.mode.vars[5]);
     EXPECT_STREQ("RED 2 CAPS", baseline.mode.hud[0].text.data());
     EXPECT_EQ(777, baseline.mode.beacons[0].entity_id);
+    EXPECT_EQ(909, baseline.mode.cameras[0].entity_id);
+    EXPECT_EQ(og::sim::kCameraStyleInset, baseline.mode.cameras[0].style);
     expect_snapshot_matches_world(baseline, world);
 }
 
@@ -573,6 +601,55 @@ TEST(ModeSnapshot, deserializer_nul_terminates_crafted_mode_text)
         og::sim::deserialize_snapshot(unterminated_hud);
     EXPECT_EQ('\0', decoded_hud.mode.hud[0].text.back());
     EXPECT_EQ('A', decoded_hud.mode.hud[0].text[0]);
+}
+
+// Snapshot v13's camera-view slot: the style byte selects a render geometry
+// path, so a crafted byte outside the declared range must collapse onto
+// kCameraStyleAuto rather than reach the interface. The clamp is deliberately
+// the IDENTITY for every value the binding can write (0 and 1), which is what
+// keeps round-trip equality true under VALIDATE_SERIALIZATION=ON.
+TEST(ModeSnapshot, deserializer_clamps_crafted_camera_style_byte)
+{
+    og::sim::WorldSnapshot snapshot;
+    snapshot.mode.cameras[0].entity_id = 0x11223344;
+    snapshot.mode.cameras[0].style = og::sim::kCameraStyleInset;
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
+    const std::size_t payload_length = payload_length_from_header(bytes);
+    const std::vector<std::uint8_t> raw_payload = zlib_decompress_for_test(
+        bytes.data() + og::sim::kTransportHeaderSize, payload_length);
+
+    // The offsets are self-describing: the four little-endian entity-id bytes
+    // are followed by the style byte the writer emitted.
+    ASSERT_GE(raw_payload.size(), kFirstCameraStyleOffset + 1);
+    EXPECT_EQ(0x44u, raw_payload[kFirstCameraEntityIdOffset + 0]);
+    EXPECT_EQ(0x33u, raw_payload[kFirstCameraEntityIdOffset + 1]);
+    EXPECT_EQ(0x22u, raw_payload[kFirstCameraEntityIdOffset + 2]);
+    EXPECT_EQ(0x11u, raw_payload[kFirstCameraEntityIdOffset + 3]);
+    EXPECT_EQ(og::sim::kCameraStyleInset, raw_payload[kFirstCameraStyleOffset]);
+
+    // Every legitimately-written byte round-trips byte-identical.
+    for (std::uint8_t legit = 0; legit <= og::sim::kCameraStyleMax; ++legit)
+    {
+        const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(
+            rebuild_patched_snapshot_message(raw_payload,
+                                             kFirstCameraStyleOffset, legit));
+        EXPECT_EQ(legit, decoded.mode.cameras[0].style)
+            << "legit style byte " << static_cast<int>(legit);
+        EXPECT_EQ(0x11223344, decoded.mode.cameras[0].entity_id);
+    }
+
+    // A crafted byte above the range collapses onto auto, entity id intact.
+    for (const std::uint8_t crafted : {std::uint8_t{2}, std::uint8_t{0x7f},
+                                       std::uint8_t{0xff}})
+    {
+        const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(
+            rebuild_patched_snapshot_message(raw_payload,
+                                             kFirstCameraStyleOffset, crafted));
+        EXPECT_EQ(og::sim::kCameraStyleAuto, decoded.mode.cameras[0].style)
+            << "crafted style byte " << static_cast<int>(crafted);
+        EXPECT_EQ(0x11223344, decoded.mode.cameras[0].entity_id);
+    }
 }
 
 // Per-entry hardening for the respawn queue: the queue drives

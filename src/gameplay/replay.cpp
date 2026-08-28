@@ -439,6 +439,20 @@ bool compare_mode_snapshot_state(const WorldSnapshot& expected,
             return false;
         }
     }
+    for (int i = 0; i < kModeCameraViews; ++i)
+    {
+        if (!compare_value(std::format("mode.cameras[{}].entity_id", i),
+                           expected_mode.cameras[static_cast<std::size_t>(i)].entity_id,
+                           actual_mode.cameras[static_cast<std::size_t>(i)].entity_id,
+                           failure) ||
+            !compare_value(std::format("mode.cameras[{}].style", i),
+                           expected_mode.cameras[static_cast<std::size_t>(i)].style,
+                           actual_mode.cameras[static_cast<std::size_t>(i)].style,
+                           failure))
+        {
+            return false;
+        }
+    }
 
     return true;
 }
