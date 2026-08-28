@@ -7315,9 +7315,12 @@ RowState lineup_map_units_row_state(const MenuLabelContext& context)
 }
 
 // Static nav encodes the all-visible (host + versus + two-seat) variant;
-// the per-frame rewire below rewrites every link.
+// the per-frame rewire below rewrites every link. The static label is the
+// word a pristine save's stored code renders (E1: 0 is NONE) — the rewire
+// rewrites it from the save on the first frame either way, but the table is
+// pinned, so it may as well name a reachable state.
 #define OG_LINEUP_FILL(t)                                                     \
-    {.id = "lineup_fill_" #t, .label = "FILL: FAIR",                          \
+    {.id = "lineup_fill_" #t, .label = "FILL: NONE",                          \
      .x = kLineupFillX, .y = lineup_band_y(t) + kLineupKnobDy,                \
      .w = kLineupFillW, .h = kLineupKnobH,                                    \
      .action = ButtonAction::CycleLineupFill, .arg = (t),                     \

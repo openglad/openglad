@@ -658,10 +658,12 @@ int lineup_fill_flow_injector(void* data)
         SDL_Delay(300);
 
         // The FILL wheel on RED, all five labels with the save pinned at
-        // every stop (the wheel is a display order, not the storage order).
+        // every stop. E1: every band rests on the stored 0 -- NONE -- so
+        // the wheel walks WEAK, FAIR, STRONG, BRUTAL and back to NONE, and
+        // the display order is now the storage order.
         const std::array<const char*, 5> wheel_labels = {
-            "FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK",
-            "FILL: FAIR"};
+            "FILL: WEAK", "FILL: FAIR", "FILL: STRONG", "FILL: BRUTAL",
+            "FILL: NONE"};
         state->wheel_walked = true;
         for (std::size_t step = 0; step < wheel_labels.size(); ++step) {
             if (!click_until_label("lineup_fill_0", wheel_labels[step], 3,
@@ -674,14 +676,16 @@ int lineup_fill_flow_injector(void* data)
             state->wheel_values[step] =
                 og::runtime::current_session->myscreen_->save_data.fill[0];
         }
-        // Land RED on STRONG for the end-to-end staged read.
-        state->fill_red_strong =
-            click_until_label("lineup_fill_0", "FILL: STRONG");
+        // Land RED on STRONG for the end-to-end staged read (the wheel
+        // closed on NONE, so it is three stops away).
+        state->fill_red_strong = click_through_labels(
+            "lineup_fill_0",
+            {"FILL: WEAK", "FILL: FAIR", "FILL: STRONG"});
         SDL_Delay(300);
-        // BLUE takes WEAK (the capture shows two different fill words).
-        state->fill_blue_weak = click_through_labels(
-            "lineup_fill_1",
-            {"FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK"});
+        // BLUE takes WEAK (the capture shows two different fill words) --
+        // one click off its resting NONE.
+        state->fill_blue_weak =
+            click_until_label("lineup_fill_1", "FILL: WEAK");
         SDL_Delay(300);
 
         // The MAP UNITS box: RED's is live (5 authored units) and flips
@@ -767,16 +771,16 @@ TEST(LineupUi, fill_wheel_map_units_box_and_staged_labels_end_to_end)
         << "with MAP UNITS on, RED fields its five authored units";
     EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
     EXPECT_TRUE(state.wheel_walked)
-        << "the FILL wheel walks STRONG, BRUTAL, NONE, WEAK, FAIR from "
-           "FAIR (B2 display order)";
+        << "the FILL wheel walks WEAK, FAIR, STRONG, BRUTAL, NONE from "
+           "NONE (E1: one band, one order, one stored code)";
     // The save value at every stop of the wheel — each write survived every
     // later per-frame picker_lobby_poll() only because change_lineup_fill
     // pushed it into the lobby first.
-    EXPECT_EQ(og::sim::kFillStrong, state.wheel_values[0]);
-    EXPECT_EQ(og::sim::kFillBrutal, state.wheel_values[1]);
-    EXPECT_EQ(og::sim::kFillNone, state.wheel_values[2]);
-    EXPECT_EQ(og::sim::kFillWeak, state.wheel_values[3]);
-    EXPECT_EQ(og::sim::kFillFair, state.wheel_values[4]);
+    EXPECT_EQ(og::sim::kFillWeak, state.wheel_values[0]);
+    EXPECT_EQ(og::sim::kFillFair, state.wheel_values[1]);
+    EXPECT_EQ(og::sim::kFillStrong, state.wheel_values[2]);
+    EXPECT_EQ(og::sim::kFillBrutal, state.wheel_values[3]);
+    EXPECT_EQ(og::sim::kFillNone, state.wheel_values[4]);
     EXPECT_TRUE(state.fill_red_strong);
     EXPECT_TRUE(state.fill_blue_weak);
     EXPECT_EQ(og::sim::kFillStrong, save.fill[0]);
@@ -1160,18 +1164,26 @@ int lineup_classic_flow_injector(void* data)
     if (state->page_opened) {
         SDL_Delay(750);
         state->knobs_visible = interactable_visible("lineup_fill_0");
-        // C8: before anything cycles, the faces render the RESOLVED
-        // default — gladiator scen 1 authors nothing on teams 3/4, so
-        // their stored default reads NONE while the fielded team reads
-        // FAIR (asserted on the main thread).
+        // E1: before anything cycles, every face renders the STORED code,
+        // and a pristine save stores 0 on all four — so the fielded team
+        // and the two the map authored nothing for read the same word.
+        // There is no resolution left to tell them apart (asserted on the
+        // main thread).
         state->fill_0_label = interactable_label("lineup_fill_0");
         state->fill_2_label = interactable_label("lineup_fill_2");
         state->fill_3_label = interactable_label("lineup_fill_3");
-        // C5: the click cycles the wheel — FAIR steps to STRONG (B2
-        // display order) on a classic campaign too.
+        // E5: the all-NONE page at rest, the picture every band now opens
+        // on. Filmed before the first click so the shot is the default.
+        state->captures += capture_frame("lineup_gladiator_all_none_at_rest");
+        SDL_Delay(200);
+        // C5: the click cycles the wheel — NONE steps to WEAK on a classic
+        // campaign too.
         state->fill_cycled =
-            click_until_label("lineup_fill_0", "FILL: STRONG");
+            click_until_label("lineup_fill_0", "FILL: WEAK");
         SDL_Delay(500);
+        // E5: the first click's own frame — the NONE -> WEAK step.
+        state->captures += capture_frame("lineup_wheel_from_none");
+        SDL_Delay(200);
         state->captures += capture_frame("lineup_gladiator_live_knobs");
         SDL_Delay(200);
         interact("back");
@@ -1206,21 +1218,22 @@ TEST(LineupUi, classic_campaign_knobs_are_live)
     EXPECT_TRUE(state.page_opened);
     EXPECT_TRUE(state.knobs_visible)
         << "classic campaigns keep the knobs visible AND live (C5)";
-    // C8: the two labels. Gladiator scen 1 fields team 1 (the company and
-    // the map's troops), so its default resolves FAIR; teams 3/4 have
-    // nothing — no units, no markers (W6-C: gladiator authors none off
-    // team 0), no seat — so their stored default renders NONE.
-    EXPECT_EQ("FILL: FAIR", state.fill_0_label)
-        << "a fielded team's default resolves FAIR (C8)";
+    // E1: one word on all three. Gladiator scen 1 fields team 1 (the
+    // company and the map's troops) and authors nothing at all on teams
+    // 3/4 (W6-C: gladiator authors none off team 0) — and under E1 that
+    // difference no longer reaches the face, because the face is the
+    // stored code and a pristine save stores 0 everywhere.
+    EXPECT_EQ("FILL: NONE", state.fill_0_label)
+        << "a fielded team rests on the stored NONE (E1)";
     EXPECT_EQ("FILL: NONE", state.fill_2_label)
-        << "an unauthored team's default resolves NONE (C8)";
+        << "an unauthored team rests on the stored NONE (E1)";
     EXPECT_EQ("FILL: NONE", state.fill_3_label)
-        << "an unauthored team's default resolves NONE (C8)";
+        << "an unauthored team rests on the stored NONE (E1)";
     EXPECT_TRUE(state.fill_cycled)
         << "the FILL wheel turns on a classic campaign (C5)";
-    EXPECT_EQ(og::sim::kFillStrong, save.fill[0])
-        << "the classic click writes the save knob";
-    EXPECT_EQ(1, state.captures);
+    EXPECT_EQ(og::sim::kFillWeak, save.fill[0])
+        << "the classic click writes the save knob: NONE steps to WEAK";
+    EXPECT_EQ(3, state.captures);
 
     // C5's POWER half, CLOSED (docs/lineup-design.md, "As built: W6-D"):
     // packs/core registers the default `lineup.power` through
@@ -1352,8 +1365,9 @@ int lineup_classic_viewer_injector(void* data)
         return 0;
     }
     SDL_Delay(750);
-    state->fill_green_strong =
-        click_until_label("lineup_fill_1", "FILL: STRONG");
+    // E1: the band rests on NONE, so STRONG is three stops along.
+    state->fill_green_strong = click_through_labels(
+        "lineup_fill_1", {"FILL: WEAK", "FILL: FAIR", "FILL: STRONG"});
     SDL_Delay(300);
     interact("lineup_map_units_1");
     state->map_units_green_off =
@@ -1485,19 +1499,21 @@ TEST(LineupUi, classic_view_level_censuses_the_staged_world)
 }
 
 // ---------------------------------------------------------------------------
-// D1 flow pin: the FILL wheel's full five-label cycle, on an UNAUTHORED band
-// and on an authored one. gladiator scen 1 carries both shapes at once —
-// TEAM 2 is the elves' twelve authored units, TEAM 3 ships nothing at all —
-// so one page proves both halves of the ruling.
+// E1/E5 flow pin: the FILL wheel's full five-label cycle, on an UNAUTHORED
+// band and on an authored one. gladiator scen 1 carries both shapes at once
+// — TEAM 2 is the elves' twelve authored units, TEAM 3 ships nothing at all
+// — so one page proves the ruling on both.
 //
-// The pristine page reads each band's RESOLUTION (C8): FAIR where the map
-// authored something, NONE where it did not. The wheel then steps from the
-// slot of the word the player can SEE, which is why the first click on the
-// empty side is WEAK and not STRONG. Every stop after that renders its own
-// explicit word, so all five appear and none repeats. Before D1 the empty
-// band showed only four: its FAIR stop was stored code 0, re-resolved on the
-// way to the face, and painted a second, indistinguishable NONE — the
-// maintainer's report, and the reason label-only pins stopped counting.
+// What the two bands prove is now SAMENESS. Under C8 the pristine page read
+// each band's resolution (FAIR where the map authored something, NONE where
+// it did not) and the wheel entered at whatever word that landed on, two
+// slots apart. E1 retires the resolver: the face is the stored code, a
+// pristine save stores 0, and 0 is NONE — so both bands rest on NONE and
+// walk the one order, WEAK, FAIR, STRONG, BRUTAL, NONE. Five distinct words
+// on each, none repeated, and the same five in the same places. (The D1
+// hazard this test was built for — a stop that re-resolved on the way to
+// the face and painted a second, indistinguishable NONE — cannot exist with
+// nothing left to re-resolve, but the counted labels still catch it.)
 
 namespace {
 
@@ -1542,8 +1558,8 @@ int lineup_wheel_cycle_injector(void* data)
     SDL_Delay(750);
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
-    // The pristine faces: both bands still hold the stored DEFAULT, and each
-    // reads the word its own presence resolved to.
+    // The pristine faces: both bands hold the stored 0, and 0 is NONE on
+    // both — the authored one included.
     state->unauthored_rest_label = interactable_label("lineup_fill_2");
     state->authored_rest_label = interactable_label("lineup_fill_1");
     state->captures +=
@@ -1575,11 +1591,11 @@ int lineup_wheel_cycle_injector(void* data)
         SDL_Delay(200);
     }
 
-    // TEAM 2 (index 1), the elves' band: the same wheel entered two slots
-    // further along, because that is where its face reads.
+    // TEAM 2 (index 1), the elves' band: the same wheel entered at the same
+    // slot, because both faces read the same stored code (E1).
     const std::array<const char*, 5> authored_faces = {
-        "FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK",
-        "FILL: FAIR"};
+        "FILL: WEAK", "FILL: FAIR", "FILL: STRONG", "FILL: BRUTAL",
+        "FILL: NONE"};
     state->authored_walked = true;
     for (std::size_t step = 0; step < authored_faces.size(); ++step) {
         if (!click_until_label("lineup_fill_1", authored_faces[step], 3,
@@ -1622,28 +1638,201 @@ TEST(LineupUi, fill_wheel_full_cycle_on_authored_and_unauthored_bands)
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
     EXPECT_EQ("FILL: NONE", state.unauthored_rest_label)
-        << "a band with no presence resolves its stored default to NONE (C8)";
-    EXPECT_EQ("FILL: FAIR", state.authored_rest_label)
-        << "a band the map authored resolves its stored default to FAIR (C8)";
+        << "a band with nothing on it rests on the stored NONE (E1)";
+    EXPECT_EQ("FILL: NONE", state.authored_rest_label)
+        << "a band the map authored rests on the SAME stored NONE (E1): "
+           "presence no longer reaches the face";
     EXPECT_TRUE(state.unauthored_walked)
         << "the empty band's wheel must read WEAK, FAIR, STRONG, BRUTAL, "
-           "NONE: five distinct words, and the FIRST click WEAK, not STRONG "
-           "(D1 -- the wheel steps from the slot of the word on the face)";
+           "NONE: five distinct words, and the FIRST click WEAK (E1 -- the "
+           "wheel steps from the stored code's own slot)";
     EXPECT_EQ(og::sim::kFillWeak, state.unauthored_values[0]);
     EXPECT_EQ(og::sim::kFillFair, state.unauthored_values[1]);
     EXPECT_EQ(og::sim::kFillStrong, state.unauthored_values[2]);
     EXPECT_EQ(og::sim::kFillBrutal, state.unauthored_values[3]);
     EXPECT_EQ(og::sim::kFillNone, state.unauthored_values[4]);
     EXPECT_TRUE(state.authored_walked)
-        << "the authored band enters at FAIR: STRONG, BRUTAL, NONE, WEAK, "
-           "FAIR";
-    EXPECT_EQ(og::sim::kFillStrong, state.authored_values[0]);
-    EXPECT_EQ(og::sim::kFillBrutal, state.authored_values[1]);
-    EXPECT_EQ(og::sim::kFillNone, state.authored_values[2]);
-    EXPECT_EQ(og::sim::kFillWeak, state.authored_values[3]);
-    EXPECT_EQ(og::sim::kFillFair, state.authored_values[4]);
+        << "the authored band walks the IDENTICAL five stops: WEAK, FAIR, "
+           "STRONG, BRUTAL, NONE";
+    EXPECT_EQ(state.unauthored_values, state.authored_values)
+        << "E1: one wheel, one entry point, whatever the map authored";
+    EXPECT_EQ(og::sim::kFillWeak, state.authored_values[0]);
+    EXPECT_EQ(og::sim::kFillFair, state.authored_values[1]);
+    EXPECT_EQ(og::sim::kFillStrong, state.authored_values[2]);
+    EXPECT_EQ(og::sim::kFillBrutal, state.authored_values[3]);
+    EXPECT_EQ(og::sim::kFillNone, state.authored_values[4]);
     EXPECT_EQ(6, state.captures)
         << "the pristine face and all five wheel stops should film";
+}
+
+// ---------------------------------------------------------------------------
+// E3 flow pin: nothing fields anywhere until the host turns a wheel — on a
+// modes map too. THE CROSSING (scen 500) is a CTF map that authors no units
+// of its own, so a solo company leaves exactly ONE team standing on it, and
+// with every band resting on NONE the mode has nobody to match. VIEW LEVEL
+// must say that in the honest sentence rather than quietly matching a FAIR
+// opponent into the empty half — the "matched teams" default E3 retires.
+// One band turned to FILL: FAIR fields the squad that clears the refusal,
+// and the staged census names it.
+//
+// The two halves are the whole ruling: the refusal is what "no squad fields
+// anywhere unless the host sets FILL" COSTS on a mode map, and the cleared
+// census is what it buys back the moment the host asks. Pinning only the
+// second half would pass just as well under the old default.
+
+namespace {
+
+struct LineupE3FlowState
+{
+    bool finished = false;
+    bool page_opened = false;
+    std::array<std::string, 4> rest_labels;
+    bool viewer_opened_at_rest = false;
+    bool refusal_at_rest = false;
+    bool second_page_opened = false;
+    bool green_fair = false;
+    bool viewer_opened_after = false;
+    bool refusal_after = true;
+    std::string green_line_after;
+    int captures = 0;
+};
+
+int lineup_e3_flow_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<LineupE3FlowState*>(data);
+    if (!injector_open_lineup()) {
+        state->finished = true;
+        return 0;
+    }
+
+    // (a) At rest: read all four faces, then go and read the refusal.
+    interact("lineup");
+    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    if (!state->page_opened) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(750);
+    for (int t = 0; t < 4; ++t) {
+        state->rest_labels[static_cast<std::size_t>(t)] =
+            interactable_label("lineup_fill_" + std::to_string(t));
+    }
+    interact("back");  // LINEUP -> SCENARIO
+    SDL_Delay(300);
+
+    if (wait_for_interactable("view_scenario", 10000)) {
+        SDL_Delay(750);
+        trace_clear();
+        interact("view_scenario");
+        state->viewer_opened_at_rest =
+            wait_for_interactable_at("back", 10, 170, 10000);
+        if (state->viewer_opened_at_rest) {
+            state->refusal_at_rest = wait_for_trace(
+                "picker",
+                "view_scenario line MATCH WILL NOT START: FEWER THAN 2 "
+                "TEAMS",
+                10000);
+            SDL_Delay(300);
+            state->captures +=
+                capture_frame("lineup_modes_all_none_refusal");
+            SDL_Delay(300);
+            interact("back");
+            SDL_Delay(300);
+            (void)wait_for_interactable("progress", 10000);
+            SDL_Delay(300);
+        }
+    }
+
+    // (b) FILL: FAIR on TEAM 2 — two stops off its resting NONE.
+    interact("lineup");
+    state->second_page_opened =
+        wait_for_interactable_at("back", 8, 176, 10000);
+    if (state->second_page_opened) {
+        SDL_Delay(750);
+        state->green_fair = click_through_labels(
+            "lineup_fill_1", {"FILL: WEAK", "FILL: FAIR"});
+        SDL_Delay(300);
+        interact("back");  // LINEUP -> SCENARIO
+        SDL_Delay(300);
+    }
+
+    if (wait_for_interactable("view_scenario", 10000)) {
+        SDL_Delay(750);
+        trace_clear();
+        interact("view_scenario");
+        state->viewer_opened_after =
+            wait_for_interactable_at("back", 10, 170, 10000);
+        if (state->viewer_opened_after) {
+            (void)wait_for_trace(
+                "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
+            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+            state->refusal_after =
+                trace_contains("picker", "FEWER THAN 2 TEAMS");
+            state->green_line_after =
+                first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
+            SDL_Delay(300);
+            interact("back");
+            SDL_Delay(300);
+            (void)wait_for_interactable("progress", 10000);
+            SDL_Delay(300);
+        }
+    }
+
+    injector_unwind_from_scenario();
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, modes_all_none_refuses_until_a_wheel_turns)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // Solo: one deployed fighter, one seat, all of it on RED. The other
+    // three halves of the CTF map are bare ground.
+    write_save0_with_fighters("modes", 500, 1, {{"Solo", 3, true, 0}});
+
+    LineupE3FlowState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(lineup_e3_flow_injector, "lineup_e3", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.finished);
+    ASSERT_TRUE(state.page_opened) << "the LINEUP page should open";
+    for (int t = 0; t < 4; ++t) {
+        EXPECT_EQ("FILL: NONE",
+                  state.rest_labels[static_cast<std::size_t>(t)])
+            << "band " << t << " rests on NONE on a modes map too (E1)";
+    }
+    EXPECT_TRUE(state.viewer_opened_at_rest) << "VIEW LEVEL should open";
+    EXPECT_TRUE(state.refusal_at_rest)
+        << "E3: with every wheel at NONE a solo company is the only team "
+           "standing, and the pane says so — no FAIR opponent matched in "
+           "on the player's behalf";
+    EXPECT_TRUE(state.second_page_opened);
+    EXPECT_TRUE(state.green_fair) << "FILL: FAIR on TEAM 2";
+    EXPECT_EQ(og::sim::kFillFair, save.fill[1]);
+    EXPECT_TRUE(state.viewer_opened_after);
+    EXPECT_FALSE(state.refusal_after)
+        << "the one explicit fill gives the match its second team";
+    EXPECT_FALSE(state.green_line_after.empty())
+        << "the staged census must carry the squad the wheel fielded";
+    EXPECT_TRUE(state.green_line_after.ends_with("FAIR"))
+        << "the row closes with the applied fill word (B7): '"
+        << state.green_line_after << "'";
+    EXPECT_EQ(1, state.captures) << "the refusal capture should land";
+
+    restore_gladiator_mount();
 }
 
 // ---------------------------------------------------------------------------
@@ -1722,24 +1911,25 @@ TEST(LineupUi, knob_callbacks_gate_branches)
     // host's write goes through on gladiator exactly as on modes.
     save.current_campaign = "gladiator";
     EXPECT_EQ(MENU_OK, change_lineup_fill(0));
-    EXPECT_EQ(og::sim::kFillStrong, save.fill[0])
-        << "a classic campaign's FILL wheel turns (C5)";
+    EXPECT_EQ(og::sim::kFillWeak, save.fill[0])
+        << "a classic campaign's FILL wheel turns (C5), and it turns from "
+           "the stored NONE like every other band (E1)";
     EXPECT_EQ(MENU_OK, change_lineup_map_units(3));
     EXPECT_EQ(og::sim::kMapUnitsOff, save.map_units[3])
         << "a classic campaign's MAP UNITS box flips (C5)";
     // Park both knobs back at their defaults so the versus wheel walk below
-    // starts from FAIR / ON.
-    save.fill[0] = og::sim::kFillFair;
+    // starts from NONE / ON.
+    save.fill[0] = og::sim::kFillNone;
     save.map_units[3] = og::sim::kMapUnitsOn;
 
-    // Host + versus: the FILL wheel walks the DISPLAY order from FAIR —
-    // STRONG, BRUTAL, NONE, WEAK, FAIR (B2) — and the save value rides
-    // every step through the clamp. No value is ever refused (B8).
+    // Host + versus: the FILL wheel walks from the stored NONE — WEAK,
+    // FAIR, STRONG, BRUTAL, NONE (E1) — and the save value rides every step
+    // through the clamp. No value is ever refused (B8).
     save.current_campaign = "modes";
     trace_clear();
-    const short wheel[] = {og::sim::kFillStrong, og::sim::kFillBrutal,
-                           og::sim::kFillNone, og::sim::kFillWeak,
-                           og::sim::kFillFair};
+    const short wheel[] = {og::sim::kFillWeak, og::sim::kFillFair,
+                           og::sim::kFillStrong, og::sim::kFillBrutal,
+                           og::sim::kFillNone};
     for (const short expected : wheel)
     {
         EXPECT_EQ(MENU_OK, change_lineup_fill(0));
@@ -2423,8 +2613,10 @@ int lineup_outcome_injector(void* data)
         return 0;
     }
     SDL_Delay(750);
+    // E1: the band rests on NONE, so BRUTAL is four stops along.
     state->elves_brutal = click_through_labels(
-        "lineup_fill_1", {"FILL: STRONG", "FILL: BRUTAL"});
+        "lineup_fill_1",
+        {"FILL: WEAK", "FILL: FAIR", "FILL: STRONG", "FILL: BRUTAL"});
     SDL_Delay(300);
     interact("back");  // LINEUP -> SCENARIO
     SDL_Delay(300);
