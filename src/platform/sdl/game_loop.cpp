@@ -357,6 +357,14 @@ void render_pending_redraw(screen& s, bool enable_render)
         s.set_active_canvas(CanvasTarget::World);
         s.draw_panels(s.numviews);
         score_panel(&s, 1);
+        // Inset camera pane (docs/camera-views-design.md §6): above all seat
+        // HUD chrome (the GameplayUI overlay composites after every world
+        // slice), below the pause modal (its own canvas + present). No-op
+        // unless an inset camera is live.
+        {
+            ScopedGameplayUiCanvas gameplay_ui(s);
+            s.draw_camera_view_ui();
+        }
         // Present once after the HUD overlay has been redrawn; otherwise
         // the overlay visibly flashes off for the intermediate frame.
         s.buffer_to_screen(0, 0, s.canvas_w(), s.canvas_h());
@@ -565,6 +573,12 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         }
 #endif
         score_panel(&s);
+        // Inset camera pane (docs/camera-views-design.md §6): after the seat
+        // HUD, before the present — the touch-controls canvas-scope idiom.
+        {
+            ScopedGameplayUiCanvas gameplay_ui(s);
+            s.draw_camera_view_ui();
+        }
         s.refresh();
     }
 #endif

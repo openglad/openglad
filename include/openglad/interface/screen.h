@@ -430,9 +430,13 @@ public:
     // Docked pane world pixels + its own bevel on GameplayUI; no-op unless a
     // docked camera is live. draw_panel_chrome stays untouched (constraint 7).
     void draw_camera_view_world();
-    // Inset camera draw at the game_loop seams (§6). WP3 lands resolution +
-    // geometry only; WP4 fills this via the staged-preview draw mechanism.
+    // Inset camera draw at the game_loop seams (§6): world content via the
+    // staged-preview draw mechanism + 1px border on the GameplayUI canvas.
     void draw_camera_view_ui();
+    // Stale-pixel rule (§6): scrub an abandoned inset rect (+ border ring)
+    // on the GameplayUI canvas — it persists across frames on the classic
+    // alias path — and set redrawme.
+    void clear_camera_inset_rect(int x, int y, int w, int h);
     // Pane count the LAYOUT consumes: the human seats plus the docked camera.
     // With no docked camera this is numviews exactly — the byte-identical
     // OFF state at every call site (constraint 7).

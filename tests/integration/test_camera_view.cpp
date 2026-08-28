@@ -17,6 +17,9 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/interface/base.h>
+#include <openglad/interface/render/pal32.h>
+#include <openglad/interface/render/video.h>
 #include <openglad/platform/video_sdl.h>
 #include <openglad/resources/gloader.h>
 #include <gtest/gtest.h>
@@ -530,6 +533,172 @@ TEST_F(CameraView, staged_preview_never_materializes)
     view->resize(view->prefs[PREF_VIEW]);
     EXPECT_EQ(seat_before, capture_rect(*game_->viewob[0]));
     EXPECT_EQ(nullptr, game_->camera_view_.get());
+}
+
+// WP4 pixel probes. All three tests read the GameplayUI canvas under the
+// production canvas scope; on the classic-pinned fixture that target aliases
+// the persistent World surface (begin_gameplay_frame arms the independent
+// overlay only at non-classic dims), which is exactly why the stale-pixel
+// rule below exists.
+bool pixel_is_black(screen* scr, int x, int y)
+{
+    Uint8 r = 1, g = 1, b = 1;
+    scr->get_pixel(x, y, &r, &g, &b);
+    return r == 0 && g == 0 && b == 0;
+}
+
+bool pixel_matches_index(screen* scr, int x, int y, unsigned char index)
+{
+    Uint8 r = 0, g = 0, b = 0;
+    scr->get_pixel(x, y, &r, &g, &b);
+    int pr = 0, pg = 0, pb = 0;
+    query_palette_reg(index, &pr, &pg, &pb);
+    return r / 4 == pr && g / 4 == pg && b / 4 == pb;
+}
+
+// H10 prototype gate (risk #1, the least-proven render path): the inset draw
+// — the staged-preview composition aimed at the live level data under the
+// GameplayUI canvas scope — must actually land world pixels inside the inset
+// rect, frame them with the 1px GREY border, and keep direct geometry
+// (slot == window, so no present slice can ever exist for the camera).
+TEST_F(CameraView, inset_draw_lands_world_pixels_and_border)
+{
+    game_->ready_for_battle(1);
+    arm_seats();
+    // A real grid to draw (the prepare_view_world pattern): grass tiles are
+    // non-black, so the probe below measures actual world content.
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_FALSE(game_->camera_docked_);
+    const SeatRect r = inset_rect();
+    ASSERT_EQ(r, capture_rect(*game_->camera_view_));
+
+    // Scrub the rect + border ring first, and prove the probe sees black:
+    // any pixel found after the draw below was drawn by the inset pass, not
+    // left over from the seat's world redraw underneath.
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->clearbuffer(r.xloc - 1, r.yloc - 1, r.xview + 2, r.yview + 2);
+        for (int y = r.yloc - 1; y <= r.yloc + r.yview; y += 3)
+            for (int x = r.xloc - 1; x <= r.xloc + r.xview; x += 3)
+                ASSERT_TRUE(pixel_is_black(game_, x, y))
+                    << "scrub failed at " << x << "," << y;
+    }
+
+    // The game_loop seam idiom, verbatim.
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->draw_camera_view_ui();
+    }
+
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        int samples = 0;
+        int lit = 0;
+        for (int y = r.yloc; y < r.yloc + r.yview; y += 4)
+            for (int x = r.xloc; x < r.xloc + r.xview; x += 4)
+            {
+                ++samples;
+                if (!pixel_is_black(game_, x, y))
+                    ++lit;
+            }
+        EXPECT_GT(lit, samples / 4)
+            << "the inset world draw landed too few pixels (" << lit << "/"
+            << samples << ") — the GameplayUI-canvas world draw is broken";
+        // The 1px GREY frame, all four corners (draw_box is inclusive).
+        const int x2 = r.xloc + r.xview;
+        const int y2 = r.yloc + r.yview;
+        EXPECT_TRUE(pixel_matches_index(game_, r.xloc - 1, r.yloc - 1, GREY));
+        EXPECT_TRUE(pixel_matches_index(game_, x2, r.yloc - 1, GREY));
+        EXPECT_TRUE(pixel_matches_index(game_, r.xloc - 1, y2, GREY));
+        EXPECT_TRUE(pixel_matches_index(game_, x2, y2, GREY));
+    }
+
+    // Direct geometry: no present slice can exist for the camera.
+    EXPECT_EQ(game_->camera_view_->xloc, game_->camera_view_->slot_x_);
+    EXPECT_EQ(game_->camera_view_->yloc, game_->camera_view_->slot_y_);
+    EXPECT_EQ(game_->camera_view_->xview, game_->camera_view_->slot_w_);
+    EXPECT_EQ(game_->camera_view_->yview, game_->camera_view_->slot_h_);
+}
+
+// H10: after a nil-clear the old inset rect on the GameplayUI canvas holds
+// no stale camera pixels — the destroy branch scrubs rect + border ring and
+// forces a repaint (redrawme), because on the classic alias path nothing
+// else ever clears that canvas.
+TEST_F(CameraView, nil_clear_scrubs_the_inset_rect)
+{
+    game_->ready_for_battle(1);
+    arm_seats();
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    const SeatRect r = inset_rect();
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->draw_camera_view_ui();
+        // Sanity: the pane is visibly there before the nil-clear (the border
+        // is the deterministic pixel — world content is asserted above).
+        ASSERT_TRUE(pixel_matches_index(
+            game_, r.xloc - 1, r.yloc - 1, GREY));
+    }
+
+    game_->world().mode.cameras[0] = og::sim::ModeCameraView{};
+    game_->redrawme = 0;
+    game_->sync_camera_views();
+    ASSERT_EQ(nullptr, game_->camera_view_.get());
+    EXPECT_EQ(1, game_->redrawme)
+        << "the scrub must force a repaint underneath";
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        for (int y = r.yloc - 1; y <= r.yloc + r.yview; ++y)
+            for (int x = r.xloc - 1; x <= r.xloc + r.xview; ++x)
+                ASSERT_TRUE(pixel_is_black(game_, x, y))
+                    << "stale camera pixel at " << x << "," << y
+                    << " after the nil-clear";
+    }
+}
+
+// H10 (flip arm): restyling inset -> docked goes through relayout_views,
+// which must scrub the abandoned inset rect the same way.
+TEST_F(CameraView, inset_to_docked_flip_scrubs_the_inset_rect)
+{
+    game_->ready_for_battle(3);
+    arm_seats();
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id, og::sim::kCameraStyleInset);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_FALSE(game_->camera_docked_);
+    const SeatRect r = inset_rect();
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->draw_camera_view_ui();
+        ASSERT_TRUE(pixel_matches_index(
+            game_, r.xloc - 1, r.yloc - 1, GREY));
+    }
+
+    // auto at 3 seats docks: the restyle relayout must scrub the old inset.
+    game_->world().mode.cameras[0].style = og::sim::kCameraStyleAuto;
+    game_->sync_camera_views();
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_TRUE(game_->camera_docked_);
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        for (int y = r.yloc - 1; y <= r.yloc + r.yview; y += 2)
+            for (int x = r.xloc - 1; x <= r.xloc + r.xview; x += 2)
+                ASSERT_TRUE(pixel_is_black(game_, x, y))
+                    << "stale inset pixel at " << x << "," << y
+                    << " after the dock flip";
+    }
 }
 
 } // namespace

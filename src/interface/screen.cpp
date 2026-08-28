@@ -1212,6 +1212,16 @@ int screen::min_view_zoom_scale_num() const
 // touched here.
 void screen::relayout_views()
 {
+	// Stale-pixel rule (§6): remember a live inset rect BEFORE the dock
+	// recompute below, so a flip to docked (or a geometry change) can scrub
+	// the GameplayUI pixels the old inset leaves behind (see
+	// clear_camera_inset_rect — the classic path aliases the persistent
+	// World surface).
+	const bool had_inset_rect = (camera_view_ != nullptr) && !camera_docked_;
+	const Sint32 old_inset_x = had_inset_rect ? camera_view_->xloc : 0;
+	const Sint32 old_inset_y = had_inset_rect ? camera_view_->yloc : 0;
+	const Sint32 old_inset_w = had_inset_rect ? camera_view_->xview : 0;
+	const Sint32 old_inset_h = had_inset_rect ? camera_view_->yview : 0;
 	// Camera dock resolution (docs/camera-views-design.md §4.5): recompute at
 	// the TOP, before the seat resize loop consumes layout_pane_count(), so a
 	// seat-count change never lets seats resize against a stale docked flag
@@ -1255,6 +1265,14 @@ void screen::relayout_views()
 	// direct-geometry resize (slot == window), so the camera publishes no
 	// present slice and never perturbs the presentation partition.
 	relayout_camera_view();
+	// Scrub a stale inset: the camera flipped to docked, or its rect moved.
+	if (had_inset_rect && camera_view_ != nullptr &&
+	    (camera_docked_ || old_inset_x != camera_view_->xloc ||
+	     old_inset_y != camera_view_->yloc ||
+	     old_inset_w != camera_view_->xview ||
+	     old_inset_h != camera_view_->yview))
+		clear_camera_inset_rect(old_inset_x, old_inset_y,
+		                        old_inset_w, old_inset_h);
 	redrawme = 1;
 }
 
@@ -1324,6 +1342,13 @@ void screen::sync_camera_views()
 		if (camera_view_ != nullptr)
 		{
 			const bool was_docked = camera_docked_;
+			// Stale-pixel rule (§6): an inset leaves its pixels on the
+			// GameplayUI canvas, which persists across frames on the classic
+			// alias path — scrub the rect before dropping the pane.
+			if (!was_docked)
+				clear_camera_inset_rect(
+				    camera_view_->xloc, camera_view_->yloc,
+				    camera_view_->xview, camera_view_->yview);
 			camera_view_.reset();
 			camera_entity_id_ = 0;
 			camera_style_ = og::sim::kCameraStyleAuto;
@@ -1420,10 +1445,38 @@ void screen::draw_camera_view_world()
 // Inset camera draw (docs/camera-views-design.md §6): renders the camera's
 // world content onto the GameplayUI canvas at the inset geometry via the
 // staged-preview draw mechanism, called at the two game_loop seams (after
-// score_panel, before the present). WP3 lands the resolution + geometry
-// only; WP4 fills this body.
+// score_panel, before the present). The camera's rect IS the inset geometry
+// — set by relayout_camera_view, never re-derived here (no rule twins). The
+// data overload composes exactly the picker staged-preview shape: direct
+// geometry + redraw(data, draw_radar=false) under a GameplayUI canvas scope
+// (the seams provide the scope too; nesting the target scope is the normal
+// HUD idiom and keeps direct calls correct).
 void screen::draw_camera_view_ui()
 {
+	if (camera_view_ == nullptr || camera_docked_)
+		return;
+	ScopedGameplayUiCanvas gameplay_ui(*this);
+	(void)camera_view_->redraw(&level_runtime_data_, /*draw_radar=*/false);
+	// 1px border framing the world content (corners inclusive).
+	draw_box(camera_view_->xloc - 1, camera_view_->yloc - 1,
+	         camera_view_->endx, camera_view_->endy, GREY, 0, 1);
+}
+
+// Stale-pixel rule (docs/camera-views-design.md §6, open question resolved at
+// WP4 time): the GameplayUI canvas is cleared every frame ONLY when the
+// independent overlay is active (begin_gameplay_frame); on the exact classic
+// path (and the allocation fallback) GameplayUI aliases the persistent World
+// surface, which is never cleared per frame. So every structural camera
+// transition that abandons an inset rect (destroy, inset->docked flip,
+// geometry change) must scrub the old rect — plus its 1px border ring — and
+// force a repaint underneath via redrawme.
+void screen::clear_camera_inset_rect(int x, int y, int w, int h)
+{
+	if (w <= 0 || h <= 0)
+		return;
+	ScopedGameplayUiCanvas gameplay_ui(*this);
+	clearbuffer(x - 1, y - 1, w + 2, h + 2);
+	redrawme = 1;
 }
 
 void screen::cleanup(short howmany)
