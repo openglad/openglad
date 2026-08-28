@@ -334,6 +334,12 @@ void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
     save.my_team = 0;
     save.numplayers = 1;
     save.allied_mode = 0;
+    // A defined resting state includes the match knobs: in binary order an
+    // earlier flow's fill/map_units would otherwise leak into this save and
+    // the amendment-5 macro faces (derived from fill[]) would not be at
+    // rest (caught by the ordered og_test_matchup run, invisible alone).
+    save.fill = {};
+    save.map_units = {};
     save.scen_num = scen_num;
     save.current_campaign = campaign;
     save.current_levels.clear();
