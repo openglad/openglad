@@ -1530,3 +1530,18 @@ itself turned up:
   maintainers want the CLI to be able to ask, the shape is a per-team fill
   on `TextProtocolArgs` (a `--fill` flag beside `--team`), not a carve-out
   in the sim.
+
+# Amendment 5 (2026-08-28): MATCH SETUP gets TEAMS and FILL macros over the per-team knobs
+
+Maintainer ruling: the Multiplayer Modes camp's MATCH SETUP page gains
+"one selector for number of teams and one selector for the FILL of all
+selected teams… they drive the same logic as LINEUP and are later
+tweakable there." Rulings G1–G5.
+
+| # | Ruling |
+|--|--|
+| G1 | **No second store.** Both rows are macros over the one per-team `fill[]` array (`og.campaign_match_set("fill_N")`); LINEUP keeps per-team authority and the camp faces DERIVE from the array on every refetch. |
+| G2 | **`TEAMS: n`** (wheel 2 → 3 → 4 → 2) = field n teams total: the local seat's team plus n−1 opponents, chosen by ascending team index skipping the local team; the chosen opponents get the FILL row's effective value (FAIR when the current common value is NONE or MIXED), the rest go NONE. Face: `TEAMS: 1 + count(opponents with fill ≠ NONE)` (reads `TEAMS: 1` in the all-NONE resting state; explicit fills on unauthored teams are legal per D2). |
+| G3 | **`FILL: x`** (wheel NONE → WEAK → FAIR → STRONG → BRUTAL) writes x to every opponent team currently on; with none on it turns on the lowest opponent at x (the `TEAMS: 2` shape). Face: the common value of the on opponents, `MIXED` when LINEUP diverged them, `NONE` at rest. |
+| G4 | **The local team comes from a new campaign binding `og.campaign_my_team()`** (the first local seat's team; falls back to `save.my_team`) — the one C++ hook this needs. Campaign fence rules as for the other `og.campaign_*` reads. |
+| G5 | **Pins**: the modes book page pins (row labels, faces, said-lines), a macro↔LINEUP round-trip test (set TEAMS/FILL on the page, read the bands; tweak one band in LINEUP, the page face reads MIXED), the zone-UI capture regenerated. Writes ride the existing match-settings dirty → sync → restage tail, so preview == launch needs no new plumbing. |
