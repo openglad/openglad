@@ -147,6 +147,8 @@ static void cmd_tick(GameWorld& world, int count)
 // the level authors TYPE_SCRIPTED — active:false before/without a
 // successful on_mode_init, so harnesses can watch activation itself. The
 // hud array carries only non-empty lines; beacons only occupied slots.
+// The cameras array follows the same occupied-slots-only rule (a camera
+// declaration is display-side observability: an entity id plus a style byte).
 static void json_mode(std::ostream& os, const GameWorld& world)
 {
     const og::sim::ModeState& mode = world.mode;
@@ -180,6 +182,17 @@ static void json_mode(std::ostream& os, const GameWorld& world)
         first = false;
         os << "{\"id\":" << beacon.entity_id
            << ",\"team\":" << static_cast<int>(beacon.team)
+           << "}";
+    }
+    os << "],\"cameras\":[";
+    first = true;
+    for (const og::sim::ModeCameraView& camera : mode.cameras) {
+        if (camera.entity_id == 0)
+            continue;
+        if (!first) os << ",";
+        first = false;
+        os << "{\"id\":" << camera.entity_id
+           << ",\"style\":" << static_cast<int>(camera.style)
            << "}";
     }
     os << "]}";
