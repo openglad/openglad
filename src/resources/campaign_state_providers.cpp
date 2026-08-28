@@ -167,10 +167,10 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
         return true;
     }
     // Per-team band knobs (B1-B4). Every value in range is legal — 0 is
-    // FAIR / MAP UNITS ON, the default state, not a refusal — so both clamp
-    // rather than refuse; the bounds come from the ONE og::sim
-    // implementation the lobby sanitizer uses, so a scripted preset can
-    // never publish a value the server would bounce.
+    // FILL: NONE / MAP UNITS ON, the default state (E1), not a refusal —
+    // so both clamp rather than refuse; the bounds come from the ONE
+    // og::sim implementation the lobby sanitizer uses, so a scripted preset
+    // can never publish a value the server would bounce.
     if (match_setting_team_suffix(name, "fill_") >= 0)
     {
         out = static_cast<short>(og::sim::clamp_fill(value));

@@ -966,15 +966,31 @@ int text_picker_testing_staged_view_scenario()
         return text;
     };
 
+    // E3, at rest: every band sits on its stored NONE (E1), so the pitch's
+    // empty half is NOT backfilled on the host's behalf and the one deployed
+    // soldier is the only team standing. The viewer says so in the mode's
+    // own words rather than showing a match nobody asked for. Pinning this
+    // half as well as the FAIR half below is the whole ruling — the FAIR
+    // half alone would pass just as well under the retired default.
+    const std::string at_rest = run_view_scenario();
+    check(at_rest.find("--- SCEN 820:") != std::string::npos);
+    check(at_rest.find("MATCH WILL NOT START: FEWER THAN 2 TEAMS") !=
+          std::string::npos);
+    check(at_rest.find("MATCHED BOTS") == std::string::npos);
+
+    // ...and one wheel turned to FILL: FAIR on the empty half buys the match
+    // back, with the census the old default used to hand over unasked.
+    client.testing_save_data_mutable().fill[1] = og::sim::kFillFair;
+
     const std::string first = run_view_scenario();
     const std::string second = run_view_scenario();
     // The staged census header and the soccer census over the 820 pitch:
-    // one deployed soldier = COMPANY on the roster team, a FILL squad
-    // backfilling the other. That squad is MATCHED BOTS (1) FAIR, not the
-    // BOT SQUAD (5) this arm pinned before Amendment 2: the deployed soldier
-    // IS human power, so B3's reference exists and the default FILL: FAIR
-    // solves one bot against it. BOT SQUAD is the legacy-formula label, and
-    // W5-A left it reachable only where no human power exists at all.
+    // one deployed soldier = COMPANY on the roster team, the FILL squad the
+    // wheel bought backfilling the other. That squad is MATCHED BOTS (1)
+    // FAIR, not the BOT SQUAD (5) this arm pinned before Amendment 2: the
+    // deployed soldier IS human power, so B3's reference exists and FILL:
+    // FAIR solves one bot against it. BOT SQUAD is the legacy-formula label,
+    // and W5-A left it reachable only where no human power exists at all.
     check(first.find("--- SCEN 820:") != std::string::npos);
     check(first.find("MATCH: SOCCER - 2 TEAMS ACTIVE") != std::string::npos);
     check(first.find("ACTIVE - COMPANY (1)") != std::string::npos);
@@ -1270,12 +1286,29 @@ int text_picker_testing_launch_census_matches_the_preview()
         return {preview, previewed_counts(preview), launched_counts(launch)};
     };
 
-    // (a) The four-team soccer pitch at rest. Every knob is at its default —
-    // FILL: FAIR on all four, MAP UNITS on — and B3's matched world is what
-    // that default now means: the company on RED, one solved bot on each of
-    // the other three. Before the caller split the launch fielded [1,5,5,5]
-    // here.
-    const Halves fair = preview_and_launch(822, TeamKnob{}, TeamKnob{});
+    // (a) The four-team soccer pitch. Under E1 the DEFAULT TeamKnob{} is
+    // all-NONE, and E3 says that default fields nothing anywhere: the
+    // company stands alone on RED and the pitch is not a match at all. The
+    // preview says exactly that — the refusal sentence stands INSTEAD of the
+    // per-team ACTIVE rows, so there are no previewed counts to read — and
+    // the launch agrees the only way it can, by building the company and
+    // nobody else. Pinning this alongside the turned-wheel arm below is the
+    // whole ruling; the FAIR arm alone would pass just as well under the
+    // retired default.
+    constexpr std::int16_t kFair = og::sim::kFillFair;
+    const Halves at_rest = preview_and_launch(822, TeamKnob{}, TeamKnob{});
+    check(at_rest.preview.find("MATCH WILL NOT START: FEWER THAN 2 TEAMS") !=
+          std::string::npos);
+    check(at_rest.preview.find("MATCHED BOTS") == std::string::npos);
+    check(at_rest.previewed.empty());
+    check(at_rest.launched == std::vector<int>({1}));
+
+    // ...and every wheel turned to FILL: FAIR is B3's matched world, the one
+    // the retired default used to hand over unasked: the company on RED, one
+    // solved bot on each of the other three. Before the caller split the
+    // launch fielded [1,5,5,5] here.
+    const Halves fair = preview_and_launch(
+        822, TeamKnob{kFair, kFair, kFair, kFair}, TeamKnob{});
     check(fair.preview.find("MATCHED BOTS (1)") != std::string::npos);
     check(fair.previewed == std::vector<int>({1, 1, 1, 1}));
     // A harness failure returns two empty censuses, and empty == empty would
@@ -1284,8 +1317,8 @@ int text_picker_testing_launch_census_matches_the_preview()
     check(fair.launched == fair.previewed);
 
     // The knob is doing the work, not a pitch that happens to field ones:
-    // one team's wheel to FILL: NONE and its bot leaves BOTH halves, so the
-    // pitch previews and launches three-a-side.
+    // one team's wheel back to FILL: NONE and its bot leaves BOTH halves, so
+    // the pitch previews and launches three-a-side.
     //
     // Intent history: this arm used to turn TROOPS off and pin the legacy
     // five-strong squads on both sides. Amendment 2's B5 retired TROOPS and
@@ -1294,7 +1327,7 @@ int text_picker_testing_launch_census_matches_the_preview()
     // NONE is its only value that moves a headcount (B2 sizes every other
     // value by the same matched-headcount rule and varies only the level).
     const Halves none_on_yellow = preview_and_launch(
-        822, TeamKnob{0, 0, 0, og::sim::kFillNone}, TeamKnob{});
+        822, TeamKnob{kFair, kFair, kFair, og::sim::kFillNone}, TeamKnob{});
     check(none_on_yellow.preview.find("MATCHED BOTS (1)") !=
           std::string::npos);
     check(none_on_yellow.preview.find("YELLOW TEAM") == std::string::npos);

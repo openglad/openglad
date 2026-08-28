@@ -1488,3 +1488,39 @@ reader will otherwise go looking for the seams:
   an untouched band keeps only its deployed fighters, and one fighter
   under all-NONE refuses with FEWER THAN 2 FIGHTERS before any world
   write.
+
+## As built: the merged wave (W8-C, W8-G, and the integration pass)
+
+The two halves that landed without a doc append, and the skew the merge
+itself turned up:
+
+- **The terminals' two wheel drives collapsed into one vector** (W8-G).
+  `text_picker_lineup_wheel_cycles_both_bands_fully` and
+  `CursesPickerClient.lineup_wheel_cycles_both_bands_fully` used to carry
+  an authored vector starting at STRONG and an unauthored one starting at
+  WEAK, because the two bands entered the wheel at different slots. Under
+  E1 both enter at NONE and walk WEAK, FAIR, STRONG, BRUTAL, NONE, WEAK —
+  one shared expectation asserted against both bands, so a "two entry
+  points" regression shows up as a diff in either arm. The SDL twin
+  (`LineupUi.fill_wheel_full_cycle_on_authored_and_unauthored_bands`) goes
+  further and asserts the two walks are EQUAL, which is the actual E1
+  claim.
+- **The E3 flow's map is scen 500** (W8-C). `CTF: FIRST BLOOD` is the CTF
+  map that authors no units of its own, so a solo company leaves exactly
+  one team standing and the refusal is the map's own honest answer rather
+  than an artifact of stripping something.
+- **A refusal replaces the census rows, it does not annotate them.** The
+  report emits `MATCH WILL NOT START: FEWER THAN 2 TEAMS` *instead of* the
+  per-team `ACTIVE - …` lines, so under E3 an at-rest mode map has no
+  previewed per-team counts to read at all. Every preview-vs-launch oracle
+  had to learn that shape: the pane refuses while the launched world still
+  contains the company (classic rules over the refused state), and the two
+  halves agree again the moment a wheel is turned. The seat block is a
+  property of the save, not of the match, so a refusal never hides it.
+- **A knob-less client cannot reach a wheel-fed mode.** `--protocol` (the
+  CLI shape) carries no match knobs by design — there is no picker save
+  behind it — so under E3 it can only activate a mode whose level ships
+  its own two sides. Onslaught still does; CTF and soccer no longer do
+  from that entry point. `PlatformHeadless.text_protocol_serializes_shipped_mode_state`
+  pins both halves: the active mode block on onslaught 801, and the honest
+  inactive block on the CTF map it used to drive.

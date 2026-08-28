@@ -765,37 +765,74 @@ TEST(PlatformHeadless, text_protocol_serializes_shipped_mode_state)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
 
-    StdinRedirect input("tick 2\nstate\nquit\n");
-    CoutRedirect output;
+    // The --protocol CLI shape carries no match knobs on purpose: there is
+    // no picker save behind it, so every FILL band sits at its stored NONE
+    // (E1). Amendment 4's E3 then decides which shipped map this oracle can
+    // use: a mode level whose SECOND team exists only when a host turns a
+    // wheel can no longer activate from here at all. Onslaught is the one
+    // that still can — it ships its own troops on both sides, so the mode
+    // owns the level with no wheel in the picture. The arm below pins the
+    // other half on the CTF map this test used to drive.
+    {
+        StdinRedirect input("tick 2\nstate\nquit\n");
+        CoutRedirect output;
 
-    og::ui::TextProtocolArgs args;
-    args.campaign = "modes";
-    args.level = 500;
-    args.team_families = {FAMILY_SOLDIER};
-    args.seed = 7;
-    EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+        og::ui::TextProtocolArgs args;
+        args.campaign = "modes";
+        args.level = 801;
+        args.team_families = {FAMILY_SOLDIER};
+        args.seed = 7;
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
 
-    const std::string text = output.str();
-    EXPECT_NE(std::string::npos,
-              text.find("\"status\":\"ready\",\"level\":500,"
-                        "\"title\":\"CTF: FIRST BLOOD\""));
-    EXPECT_NE(std::string::npos,
-              text.find("\"cmd\":\"tick\",\"count\":2"));
-    EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
+        const std::string text = output.str();
+        EXPECT_NE(std::string::npos,
+                  text.find("\"status\":\"ready\",\"level\":801,"
+                            "\"title\":\"Onslaught: TWIN SPIRES\""));
+        EXPECT_NE(std::string::npos,
+                  text.find("\"cmd\":\"tick\",\"count\":2"));
+        EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
 
-    // The shipped CTF Lua activates on the first scripted tick and names
-    // itself through og.set_mode_name; its scoreboard HUD line carries the
-    // 0:0 caps readout. The mode block is the ONLY match-state channel.
-    EXPECT_NE(std::string::npos,
-              text.find("\"mode\":{\"active\":true,\"name\":\"CTF\","
-                        "\"winner_team\":-1"))
-        << "the shipped scen500 must activate the Lua CTF mode";
-    EXPECT_NE(std::string::npos, text.find("\"hud\":["))
-        << "the mode block carries the HUD channel";
-    EXPECT_EQ(std::string::npos, text.find("\"ctf\":"))
-        << "the retired CTF JSON block must not be emitted";
-    EXPECT_NE(std::string::npos,
-              text.find("\"cmd\":\"quit\",\"status\":\"ok\""));
+        // The shipped mode Lua activates on the first scripted tick and
+        // names itself through og.set_mode_name; the mode block is the ONLY
+        // match-state channel.
+        EXPECT_NE(std::string::npos,
+                  text.find("\"mode\":{\"active\":true,\"name\":\"ONSLAUGHT\","
+                            "\"winner_team\":-1"))
+            << "the shipped scen801 must activate its Lua mode";
+        EXPECT_NE(std::string::npos, text.find("\"hud\":["))
+            << "the mode block carries the HUD channel";
+        EXPECT_EQ(std::string::npos, text.find("\"ctf\":"))
+            << "the retired CTF JSON block must not be emitted";
+        EXPECT_NE(std::string::npos,
+                  text.find("\"cmd\":\"quit\",\"status\":\"ok\""));
+    }
+
+    // E3, on the knob-less surface: scen 500 authors no units of its own, so
+    // a CLI crew (one family, all of it on team 0) is the only team standing
+    // and no FAIR opponent is matched in on its behalf. The mode block is
+    // still emitted — it just honestly reads inactive.
+    {
+        StdinRedirect input("tick 2\nstate\nquit\n");
+        CoutRedirect output;
+
+        og::ui::TextProtocolArgs args;
+        args.campaign = "modes";
+        args.level = 500;
+        args.team_families = {FAMILY_SOLDIER};
+        args.seed = 7;
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+
+        const std::string text = output.str();
+        EXPECT_NE(std::string::npos,
+                  text.find("\"status\":\"ready\",\"level\":500,"
+                            "\"title\":\"CTF: FIRST BLOOD\""));
+        EXPECT_NE(std::string::npos,
+                  text.find("\"mode\":{\"active\":false,\"name\":\"\","
+                            "\"winner_team\":-1"))
+            << "with every wheel at NONE the CTF map has one team (E3)";
+        EXPECT_EQ(std::string::npos, text.find("\"ctf\":"))
+            << "the retired CTF JSON block must not be emitted";
+    }
 
     EXPECT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));

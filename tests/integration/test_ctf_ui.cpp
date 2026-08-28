@@ -1286,6 +1286,7 @@ struct StagedPaneFlowState
     bool finished = false;
     bool viewer_opened = false;
     bool pane_trace_seen = false;
+    bool refusal_at_rest = false;
     bool company_line_seen = false;
     bool seats_block_seen = false;
     bool seat_identity_seen = false;
@@ -1314,14 +1315,20 @@ int view_scenario_staged_pane_injector(void* data)
     SDL_Delay(300);
 
     // The render copy heals from the owner's serialized pair (the heal
-    // trace), and the staged reader lists the company census.
+    // trace) — and what that pair says at rest is E3's own sentence. Scen
+    // 500 authors no units of its own, so with every band on its stored
+    // NONE (E1) the deployed company is the only team standing and CTF
+    // refuses rather than matching an opponent in unasked. The census rows
+    // come back below, once a wheel buys the match.
     state->pane_trace_seen =
         wait_for_picker_trace("view_scenario pane gen=", 1, 5000);
-    state->company_line_seen = wait_for_picker_trace(
-        "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)", 1, 5000);
+    state->refusal_at_rest = wait_for_picker_trace(
+        "view_scenario line MATCH WILL NOT START: FEWER THAN 2 TEAMS", 1,
+        5000);
 
     // Seat block (#218): the solo session's one seat, directly after the
-    // match block — inside the first-block trace seam.
+    // match block — inside the first-block trace seam. The seats are a
+    // property of the save, not of the match, so a refusal never hides them.
     state->seats_block_seen = wait_for_picker_trace(
         "view_scenario line SEATS: CO-OP", 1, 5000);
     state->seat_identity_seen = wait_for_picker_trace(
@@ -1330,7 +1337,9 @@ int view_scenario_staged_pane_injector(void* data)
     // Turn a band knob through the lobby (the sync path a host click
     // takes): FILL: STRONG on team 2 (GREEN) — the owner's change key
     // moves, ONE debounced restage lands, and the refreshed report shows
-    // the solved squad wearing its fill word (B7).
+    // the solved squad wearing its fill word (B7). That one wheel is also
+    // what gives the match its second team, so the company census the
+    // refusal was standing in place of arrives with it.
     (void)run_on_main_thread([] {
         og::runtime::current_session->myscreen_->save_data
             .fill[1] = og::sim::kFillStrong;
@@ -1339,6 +1348,8 @@ int view_scenario_staged_pane_injector(void* data)
     state->matched_line_seen = wait_for_picker_trace(
         "GREEN TEAM  ACTIVE", 1, 5000) &&
         wait_for_picker_trace("STRONG", 1, 5000);
+    state->company_line_seen = wait_for_picker_trace(
+        "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)", 1, 5000);
     SDL_Delay(300);
 
     // Viewer back -> SCENARIO -> team build -> main.
@@ -1357,10 +1368,11 @@ int view_scenario_staged_pane_injector(void* data)
 }
 
 // The staged pane shows the world GO adopts, refreshed once per debounced
-// restage: the heal trace fires, the census lists the save's deployed
-// company, and a FILL: STRONG flip under the OPEN viewer re-heals into a
-// solved squad wearing its fill word (the restage-trigger contract, made
-// visible — B2/B7).
+// restage: the heal trace fires, the pane carries E3's refusal while every
+// band still rests on NONE, and a FILL: STRONG flip under the OPEN viewer
+// re-heals into a match — the solved squad wearing its fill word, and the
+// save's deployed company censused beside it (the restage-trigger contract,
+// made visible — B2/B7).
 TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
 {
     trace_clear();
@@ -1383,6 +1395,9 @@ TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
     EXPECT_TRUE(state.pane_trace_seen)
         << "the render copy must heal from the staged pair bytes";
+    EXPECT_TRUE(state.refusal_at_rest)
+        << "E3: with every wheel at NONE the CTF map has one team, and the "
+           "pane says so instead of showing a match nobody asked for";
     EXPECT_TRUE(state.company_line_seen)
         << "the staged census must list the deployed company exactly";
     EXPECT_TRUE(state.seats_block_seen)

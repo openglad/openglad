@@ -16,6 +16,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -73,6 +74,13 @@ og::server::MatchStageInputs make_modes_inputs(std::uint32_t match_seed)
     og::server::MatchStageInputs inputs;
     inputs.equivalent.current_campaign = "modes";
     inputs.equivalent.scen_num = 820; // soccer pitch: fills draw bot squads
+    // E5: the opponent's fill is a turned wheel now. The pitch authors no
+    // units of its own, so under E1's stored-NONE default the lone striker
+    // would be the only team standing and every oracle below would be
+    // measuring a REFUSED stage instead of a staged match. FILL: FAIR on
+    // team 1 is the world this fixture was always written against — the
+    // squad the retired resolver used to field on the host's behalf.
+    inputs.equivalent.fill[1] = og::sim::kFillFair;
     inputs.equivalent.numplayers = 1;
     inputs.equivalent.allied_mode = 0;
     inputs.equivalent.team_list = {
@@ -1282,6 +1290,10 @@ TEST_F(MatchStageTest, staged_report_carries_the_combined_roster)
 
     og::server::MatchStage stage({.networked = true});
     og::server::MatchStageInputs inputs = make_modes_inputs(1001u);
+    // A remote seat's two fighters ARE team 1's second team, so this is the
+    // one consumer of the fixture that needs no backfill: the wheel goes
+    // back to its stored NONE and the census below counts humans only.
+    inputs.equivalent.fill[1] = og::sim::kFillNone;
     inputs.equivalent.team_list.push_back(
         make_slot(1u, 200, "Winger", FAMILY_ELF, 1));
     inputs.equivalent.team_list.push_back(

@@ -4406,11 +4406,12 @@ struct BballSoloRosterCourt : ModesCtfWorld
 // — and the ONLY delta is the generated squad, which spawns at matched
 // power AND matched headcount: the solo hero's court is a 1v1, not the
 // 5v5 the pre-amendment game shape pinned (D34 supersedes D12 here).
-TEST_F(ModesBasketball, default_fill_matches_a_solo_roster_court)
+TEST_F(ModesBasketball, explicit_fair_matches_a_solo_roster_court)
 {
-    // The default (FILL: FAIR, B2) solves the solo roster's opponent at
-    // matched power AND matched headcount: a 1v1 court, not the old
-    // legacy five (D34).
+    // FILL: FAIR (B2) solves the solo roster's opponent at matched power
+    // AND matched headcount: a 1v1 court, not the old legacy five (D34).
+    // E5: the fixture turns that wheel itself — the stored default is NONE
+    // and would leave the roster unopposed.
     BballSoloRosterCourt matched(4);
     matched.tick(1);
     ASSERT_TRUE(matched.basketball_active());

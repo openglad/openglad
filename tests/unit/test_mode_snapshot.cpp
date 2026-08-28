@@ -1030,7 +1030,7 @@ TEST(ModeSnapshot, applied_bot_knobs_are_clamped_into_the_sanitized_band)
         std::int16_t applied_map_units;
     };
     const Case cases[] = {
-        {0, 0, 0},  // FAIR, MAP UNITS ON — the default state
+        {0, 0, 0},  // FILL: NONE, MAP UNITS ON — the default state (E1)
         // Both floors are 0 (amendment B1-B4), so a negative clamps up.
         {-1, 0, 0},
         {-30000, 0, 0},
