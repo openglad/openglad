@@ -270,6 +270,120 @@ local function score_words()
   return phrase, phrase
 end
 
+-- The TEAMS/FILL macros (amendment 5, G1-G3): two rows over the ONE
+-- per-team fill array — no second store. The faces DERIVE from the array
+-- on every refetch, every write goes through og.campaign_match_set
+-- ("fill_N"), and LINEUP keeps per-team authority: a band diverged there
+-- reads back here as MIXED, never as a value of the camp's own invention.
+
+local FILL_WORDS = { "WEAK", "FAIR", "STRONG", "BRUTAL" }
+local COUNT_WORDS = { "One", "Two", "Three", "Four" }
+local FILL_FAIR = 2
+local TEAMS_CYCLE = { 2, 3, 4 }
+local FILL_CYCLE = { 0, 1, 2, 3, 4 }
+
+-- A stored code's word. Junk reads NONE — E2's ruling, worn here the way
+-- lineup_fill_name wears it: the storage default, and a promise of no
+-- squad the level will not field.
+local function fill_word(code)
+  local word = FILL_WORDS[code]
+  if word == nil then
+    return "NONE"
+  end
+  return word
+end
+
+-- The knob a 0-based team's band answers to: the 1-based team digit of
+-- the fill_N vocabulary.
+local function fill_key(team)
+  return "fill_" .. (team + 1)
+end
+
+-- The three opponents in G2's choosing order: ascending team index,
+-- skipping the local seat's own team (og.campaign_my_team, the G4
+-- binding).
+local function opponents()
+  local mine = og.campaign_my_team()
+  local list = {}
+  for team = 0, 3 do
+    if team ~= mine then
+      list[#list + 1] = team
+    end
+  end
+  return list
+end
+
+-- The opponents whose band is ON (fill ~= NONE), each with the code it
+-- holds. The local team's own band never counts: an explicit fill there
+-- is legal (D2) but it is LINEUP's affair, not a side these rows claim.
+local function on_opponents()
+  local opp = opponents()
+  local on = {}
+  for i = 1, #opp do
+    local code = og.campaign_match_get(fill_key(opp[i]))
+    if code ~= 0 then
+      on[#on + 1] = { team = opp[i], code = code }
+    end
+  end
+  return on
+end
+
+-- The FILL face's one number: the common code of the on opponents, 0 with
+-- none on, nil where LINEUP diverged them (the MIXED face).
+local function common_fill(on)
+  if #on == 0 then
+    return 0
+  end
+  local code = on[1].code
+  for i = 2, #on do
+    if on[i].code ~= code then
+      return nil
+    end
+  end
+  return code
+end
+
+-- What a TEAMS turn deals its chosen opponents (G2): the FILL row's own
+-- value where it names one, FAIR where the face reads NONE or MIXED.
+local function effective_fill(on)
+  local code = common_fill(on)
+  if code == nil or code == 0 then
+    return FILL_FAIR
+  end
+  return code
+end
+
+local function teams_face(on)
+  return "TEAMS: " .. (1 + #on)
+end
+
+local function fill_face(on)
+  local code = common_fill(on)
+  if code == nil then
+    return "FILL: MIXED"
+  end
+  return "FILL: " .. fill_word(code)
+end
+
+-- The second half of both macros' sentences: what was dealt, to how many.
+local function squads_phrase(count, code)
+  if count == 1 then
+    return "One squad at " .. fill_word(code) .. "."
+  end
+  return COUNT_WORDS[count] .. " squads at " .. fill_word(code) .. "."
+end
+
+local function teams_said(n, code)
+  return COUNT_WORDS[n] .. " sides. " .. squads_phrase(n - 1, code)
+end
+
+local function fill_said(code, count)
+  if count == 0 then
+    return "No squads."
+  end
+  return squads_phrase(count, code)
+end
+
 -- A sentence starts with a capital: the score phrase leads now that the
 -- sides no longer do, and "map score" / "to 7" are lower-case words.
 local function sentence(words)
@@ -283,14 +397,21 @@ local function rules_line()
   return sentence(long_score .. ".")
 end
 
--- The same rules at note length for the MATCH SETUP row — worst case
--- "to 50" at 5 of the 20-char note budget.
--- Both summaries deliberately stop at the score: the TIME LIMIT row
--- already wears its own value where the host turns it, the sides are
--- LINEUP's to state, and so are the map units since amendment B5.
+-- The same rules at note length for the MATCH SETUP row — the sides, the
+-- fill and the score, now that the page turns all three (amendment 5).
+-- Worst case "4-way, brutal, to 50" spends the whole 20-char note budget,
+-- which is why the sides wear "-way" and not "sides". The sentence above
+-- still stops at the score, and the TIME LIMIT row still wears its own
+-- value where the host turns it (#241).
 local function rules_digest()
+  local on = on_opponents()
+  local code = common_fill(on)
+  local word = "mixed"
+  if code ~= nil then
+    word = string.lower(fill_word(code))
+  end
   local _, short_score = score_words()
-  return short_score
+  return (1 + #on) .. "-way, " .. word .. ", " .. short_score
 end
 
 -- SEVEN GAMES — the index: what else the book holds, and how far each game
@@ -412,7 +533,9 @@ end
 -- shows only what it holds hides where the next click lands. TEAMS was the
 -- fourth until lineup amendment A1 retired it and TROOPS the third until
 -- amendment B5 did — the LINEUP band's per-team FILL wheel and MAP UNITS
--- box are their successors, and neither ever had a camp row.
+-- box are their successors. Amendment 5 seats TEAMS and FILL back above
+-- these rows as MACROS over that per-team array, not as knobs of their
+-- own: they have no store, no key, and no slot in this table.
 local KNOBS = {
   {
     id = "score",
@@ -437,12 +560,12 @@ local KNOBS = {
   },
 }
 
--- One step along a knob's cycle, wrapping at the end. A value that is not
--- on the cycle at all — a match settled from the MATCHUP screen or a lobby,
--- or an older save — rejoins at the head rather than pretending to know
--- where it was.
-local function next_value(knob, current)
-  local cycle = knob.cycle
+-- One step along a cycle, wrapping at the end. A value that is not on the
+-- cycle at all — a match settled from the MATCHUP screen or a lobby, an
+-- older save, or a derived face the wheel has no slot for (TEAMS: 1, FILL:
+-- MIXED) — rejoins at the head rather than pretending to know where it
+-- was.
+local function next_value(cycle, current)
   for i = 1, #cycle do
     if cycle[i] == current then
       return cycle[og.mod(i, #cycle) + 1]
@@ -460,14 +583,30 @@ local function knob_by_id(entry_id)
   return nil
 end
 
--- MATCH SETUP: the knobs as rows, each labelled with what it
--- holds and answering a click by stepping one on. The rows are CUT for a
--- non-host: the line carries the whole value of the page, and a row whose
--- only possible answer is a refusal is a row nobody should be offered.
+-- MATCH SETUP: the two macro rows over the knobs, each labelled with what
+-- it holds and answering a click by stepping one on. TEAMS and FILL lead
+-- (amendment 5): they are the rows a host reaches for first, and their
+-- faces derive from the same fill array LINEUP owns band by band. The rows
+-- are CUT for a non-host: the line carries the whole value of the page,
+-- and a row whose only possible answer is a refusal is a row nobody should
+-- be offered.
 local function setup_page()
   local lines = { rules_line() }
   local entries = {}
   if og.campaign_is_host() then
+    local on = on_opponents()
+    entries[#entries + 1] = {
+      id = "teams",
+      kind = "action",
+      label = teams_face(on),
+      note = "2, 3, 4",
+    }
+    entries[#entries + 1] = {
+      id = "fill",
+      kind = "action",
+      label = fill_face(on),
+      note = "none to brutal",
+    }
     for i = 1, #KNOBS do
       local knob = KNOBS[i]
       local value = og.campaign_match_get(knob.key)
@@ -642,9 +781,64 @@ local function turn_knob(knob)
   if not og.campaign_is_host() then
     return { message = "The host calls the rules." }
   end
-  local value = next_value(knob, og.campaign_match_get(knob.key))
+  local value = next_value(knob.cycle, og.campaign_match_get(knob.key))
   og.campaign_match_set(knob.key, value)
   return { message = knob.said(value) }
+end
+
+-- Turning TEAMS (G2): field n sides total — the local seat's team plus
+-- n-1 opponents in ascending order — each dealt the FILL row's effective
+-- value, the rest turned NONE. The face is derived, so the all-NONE rest
+-- reads TEAMS: 1, a value off the wheel, and the first click rejoins at
+-- the head: 2.
+local function turn_teams()
+  if not og.campaign_is_host() then
+    return { message = "The host calls the rules." }
+  end
+  local on = on_opponents()
+  local n = next_value(TEAMS_CYCLE, 1 + #on)
+  local code = effective_fill(on)
+  local opp = opponents()
+  for i = 1, #opp do
+    local value = 0
+    if i <= n - 1 then
+      value = code
+    end
+    og.campaign_match_set(fill_key(opp[i]), value)
+  end
+  return { message = teams_said(n, code) }
+end
+
+-- Turning FILL (G3): one step along the wheel, written to every on
+-- opponent; with none on the lowest opponent turns on at the new value —
+-- the TEAMS: 2 shape. A MIXED face is off the wheel and rejoins at the
+-- head, NONE, the same rule every knob applies to a value it cannot
+-- place.
+local function turn_fill()
+  if not og.campaign_is_host() then
+    return { message = "The host calls the rules." }
+  end
+  local on = on_opponents()
+  local current = common_fill(on)
+  if current == nil then
+    current = -1
+  end
+  local code = next_value(FILL_CYCLE, current)
+  local targets = {}
+  for i = 1, #on do
+    targets[#targets + 1] = on[i].team
+  end
+  if #targets == 0 then
+    targets[1] = opponents()[1]
+  end
+  for i = 1, #targets do
+    og.campaign_match_set(fill_key(targets[i]), code)
+  end
+  local count = #targets
+  if code == 0 then
+    count = 0
+  end
+  return { message = fill_said(code, count) }
 end
 
 local function picker_action(entry_id)
@@ -653,6 +847,12 @@ local function picker_action(entry_id)
   end
   if entry_id == "sign" then
     return sign_book()
+  end
+  if entry_id == "teams" then
+    return turn_teams()
+  end
+  if entry_id == "fill" then
+    return turn_fill()
   end
   local knob = knob_by_id(entry_id)
   if knob ~= nil then

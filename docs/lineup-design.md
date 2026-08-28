@@ -1571,3 +1571,47 @@ Who answers it:
 fallback rule that every install site ends on, so no surface can answer a
 silent 0 of its own invention. `openglad_server` installs no providers at
 all, and there the binding raises rather than inventing a team.
+
+## As built: W9 — the MATCH SETUP macros (G1–G3, G5)
+
+The two rows lead the page (TEAMS, FILL, then TARGET SCORE and TIME
+LIMIT), live entirely in `campaign_picker.lua`, and are macros exactly as
+G1 rules: no store, no key of their own, every write an
+`og.campaign_match_set("fill_N")`, both faces re-derived from the array at
+every fetch. Rulings the implementation had to make:
+
+- **Off-wheel faces rejoin at the head** — the book's standing rule for a
+  value a wheel cannot place, applied to the two derived faces it can now
+  meet: `TEAMS: 1` (the all-NONE rest) is off the 2→3→4 wheel, so the
+  first TEAMS click lands on 2; `FILL: MIXED` is off the fill wheel, so a
+  FILL click from a diverged pair lands on NONE — every side off, the
+  honest zero of a face that named nothing (it deliberately does NOT
+  harmonize the diverged bands at WEAK).
+- **The faces count opponents only.** An explicit fill on the local seat's
+  own band (legal per D2, LINEUP's affair) is invisible to both faces and
+  untouchable by both macros: `TEAMS: n` is `1 + count(on opponents)`, and
+  the TEAMS deal writes the three opponent keys only.
+- **Said-lines**: TEAMS speaks both halves — `"Three sides. Two squads at
+  FAIR."` (the effective value by name, so a STRONG face deals and says
+  STRONG); FILL speaks the deal — `"Two squads at STRONG."`, `"One squad
+  at WEAK."` for the none-on turn-on, `"No squads."` for the wrap to NONE.
+  Non-host clicks answer the knobs' own `"The host calls the rules."`
+  backstop, behind rows that are already cut at fetch.
+- **The digest is three-valued now**: `"<n>-way, <fill>, <score>"`
+  (`"1-way, none, map"` at rest; `mixed` when LINEUP diverged the on
+  bands). `-way` and not `sides` because the worst case —
+  `"4-way, brutal, to 50"` — spends the whole 20-char note budget to the
+  last column, and the budget sweep now runs it. The rules SENTENCE still
+  stops at the score; TIME LIMIT still wears its value on its own row.
+- **Row notes are the cycles**, as ever: `2, 3, 4` and `none to brutal`
+  (the five words spelled out would not fit the note budget).
+- **G5 pins as built**: the page matrix in `test_modes_book.cpp` (rest
+  faces, every wheel stop of both macros with the array pinned at each,
+  effective-value STRONG/MIXED→FAIR arms, the my_team=2 skip-order arm,
+  digest at rest/set/mixed/worst); the macro↔LINEUP round-trip in
+  `test_lineup_ui.cpp` (`match_setup_macros_round_trip_with_lineup`:
+  TEAMS: 2 clears the E3 refusal in VIEW LEVEL, TEAMS: 3 + FILL: STRONG
+  reads back STRONG/STRONG/NONE beside the human team's NONE on LINEUP, a
+  LINEUP tweak to WEAK reads back `FILL: MIXED` with the sides count
+  kept); the `zzz_uxr_capture_modes_match_setup_page` capture regenerated
+  with the macro rows at rest and stepped.
