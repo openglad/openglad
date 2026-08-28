@@ -425,7 +425,8 @@ public:
     // frame, destroy on a cleared slot. Display screens only (identity belt).
     void sync_camera_views();
     // Derived camera geometry: the docked quadrant through the one
-    // compute_view_layout pipeline, or the centered GameplayUI inset rect.
+    // compute_view_layout pipeline, the centered GameplayUI inset rect at 2
+    // and 4 seats, or the second minimap above the radar block at 1 seat.
     void relayout_camera_view();
     // Docked pane world pixels + its own bevel on GameplayUI; no-op unless a
     // docked camera is live. draw_panel_chrome stays untouched (constraint 7).

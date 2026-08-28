@@ -41,6 +41,7 @@
 #include <openglad/gameplay/smooth.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/render/effects.h>
+#include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
@@ -1280,7 +1281,8 @@ void screen::relayout_views()
 // fourth quadrant through the SAME pure pipeline the seats use
 // (compute_view_layout + project_view_layout — no parallel layout math);
 // inset = the centered GameplayUI-canvas rect (fixed classic density, immune
-// to world-canvas zoom recomposition). Always derived, never accumulated.
+// to world-canvas zoom recomposition) at 2 and 4 seats, and the second
+// minimap above the radar block at 1 seat. Always derived, never accumulated.
 void screen::relayout_camera_view()
 {
 	if (camera_view_ == nullptr)
@@ -1302,11 +1304,51 @@ void screen::relayout_camera_view()
 			    static_cast<short>(r.w), static_cast<short>(r.h));
 		return;
 	}
-	// Inset (pinned geometry): w = ui_w*3/10, h = ui_h*3/10, min 96x60,
-	// centered. GameplayUI coordinates; the World canvas and the seat layout
-	// never see it, so layout_pane_count() stays == numviews.
 	const int ui_w = gameplay_ui_canvas_w();
 	const int ui_h = gameplay_ui_canvas_h();
+	if (numviews == 1)
+	{
+		// One seat, the SECOND MINIMAP (maintainer ruling, §6): the lone seat
+		// camera keeps its own hero at the canvas centre, so a centered inset
+		// would sit exactly on top of him. The pane becomes a second minimap
+		// instead — the radar block mirrored: the same size, the same right
+		// edge, stacked directly above the radar's rect with the radar's own
+		// pane margin between the two. Derived from the COMPUTED radar
+		// position (radar_block_for_pane, the one placement rule), so
+		// PREF_RADAR off anchors it identically.
+		const int mode = (viewob[0] != nullptr)
+		    ? static_cast<int>(viewob[0]->prefs[PREF_VIEW])
+		    : og::view_layout::kModeFull;
+		// The seat's UI pane — the rectangle the radar anchors to, the same
+		// projection ScopedGameplayUiViewLayout applies before it draws.
+		og::view_layout::ViewLayout pane =
+		    og::view_layout::compute_view_layout(
+		        layout_pane_count(), 0, mode, ui_w, ui_h);
+		if (!pane.applies)
+			pane = og::view_layout::ViewLayout{true, 0, 0, ui_w, ui_h};
+		auto [block_w, block_h] = radar_block_extents(
+		    level_runtime_data_.world().grid.w,
+		    level_runtime_data_.world().grid.h);
+		// No level grid (a declared camera always has one): keep the
+		// unclamped block rather than a degenerate pane.
+		if (block_w <= 0)
+			block_w = RADAR_X;
+		if (block_h <= 0)
+			block_h = RADAR_Y;
+		const RadarBlock block = radar_block_for_pane(
+		    pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
+		    /*force_lower=*/false);
+		camera_view_->resize(
+		    static_cast<short>(block.x),
+		    static_cast<short>(block.y - block.margin - block.h),
+		    static_cast<short>(block.w), static_cast<short>(block.h));
+		return;
+	}
+	// Inset at 2 and 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
+	// min 96x60, centered — the canvas centre is a pane boundary there, and
+	// the bottom-right corner belongs to another seat's radar.
+	// GameplayUI coordinates; the World canvas and the seat layout
+	// never see it, so layout_pane_count() stays == numviews.
 	int w = ui_w * 3 / 10;
 	int h = ui_h * 3 / 10;
 	if (w < 96)

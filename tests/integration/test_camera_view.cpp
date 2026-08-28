@@ -90,6 +90,11 @@ protected:
         saved_world_type_ = game_->world().type;
         saved_mode_active_ = game_->world().mode.active;
         saved_slot_ = game_->world().mode.cameras[0];
+        // A known grid for every case in this file: the one-seat camera
+        // geometry mirrors the radar block, whose extents clamp to the live
+        // grid — without this the rect would depend on what the previous
+        // test in the binary left behind (--gtest_shuffle).
+        game_->world().create_new_grid();
         // The geometry pins below were authored against the classic canvas.
         game_->set_world_canvas_pinned_classic(true);
         game_->relayout_views();
@@ -168,7 +173,40 @@ protected:
         return SeatRect{r.x, r.y, r.w, r.h};
     }
 
-    SeatRect inset_rect() const
+    // The seat's radar block, through the SHARED placement rule the radar
+    // itself uses (radar_block_for_pane over the seat's UI pane and the live
+    // grid's clamp) — so nothing here can drift from where the minimap
+    // actually lands, and no rect literal is typed by hand.
+    RadarBlock seat_radar_block() const
+    {
+        const int ui_w = game_->gameplay_ui_canvas_w();
+        const int ui_h = game_->gameplay_ui_canvas_h();
+        const int mode = (game_->viewob[0] != nullptr)
+            ? static_cast<int>(game_->viewob[0]->prefs[PREF_VIEW])
+            : og::view_layout::kModeFull;
+        const og::view_layout::ViewLayout pane =
+            og::view_layout::compute_view_layout(
+                game_->layout_pane_count(), 0, mode, ui_w, ui_h);
+        EXPECT_TRUE(pane.applies);
+        const auto [block_w, block_h] = radar_block_extents(
+            game_->world().grid.w, game_->world().grid.h);
+        return radar_block_for_pane(pane.y, pane.x + pane.w,
+                                    pane.y + pane.h, block_w, block_h,
+                                    /*force_lower=*/false);
+    }
+
+    // The one-seat SECOND MINIMAP rect (maintainer ruling): the radar block
+    // mirrored — same size, same right edge, stacked directly above the
+    // radar with the radar's own pane margin between them.
+    SeatRect second_minimap_rect() const
+    {
+        const RadarBlock block = seat_radar_block();
+        return SeatRect{block.x, block.y - block.margin - block.h, block.w,
+                        block.h};
+    }
+
+    // The centered GameplayUI inset the 2- and 4-seat layouts keep.
+    SeatRect centered_inset_rect() const
     {
         const int ui_w = game_->gameplay_ui_canvas_w();
         const int ui_h = game_->gameplay_ui_canvas_h();
@@ -179,6 +217,15 @@ protected:
         if (h < 60)
             h = 60;
         return SeatRect{(ui_w - w) / 2, (ui_h - h) / 2, w, h};
+    }
+
+    // The non-docked camera geometry for the live seat count: the second
+    // minimap at 1 seat, the centered inset at 2/4.
+    SeatRect inset_rect() const
+    {
+        if (game_->numviews == 1)
+            return second_minimap_rect();
+        return centered_inset_rect();
     }
 };
 
@@ -345,8 +392,10 @@ TEST_F(CameraView, docked_geometry_comes_from_the_four_pane_pipeline)
     EXPECT_EQ(game_->camera_view_->yview, game_->camera_view_->slot_h_);
 }
 
-// H4: 1 seat + auto -> inset. The camera carries the centered GameplayUI
-// inset geometry; the seat's geometry is byte-identical to the no-camera run.
+// H4: 1 seat + auto -> inset. At one seat the inset is the SECOND MINIMAP
+// (maintainer ruling): the seat camera already centres the hero on the
+// canvas, so the pane mirrors the radar block above the radar instead of
+// covering him. The seat's geometry is byte-identical to the no-camera run.
 TEST_F(CameraView, single_seat_auto_resolves_to_inset)
 {
     game_->ready_for_battle(1);
@@ -362,6 +411,24 @@ TEST_F(CameraView, single_seat_auto_resolves_to_inset)
     EXPECT_EQ(seat_before, capture_rect(*game_->viewob[0]))
         << "an inset camera must not move the seat";
     EXPECT_EQ(inset_rect(), capture_rect(*game_->camera_view_));
+    // Spelled out against the radar block itself, so the ruling — not just a
+    // formula — is what has teeth here.
+    {
+        const RadarBlock block = seat_radar_block();
+        const viewscreen& cam = *game_->camera_view_;
+        EXPECT_EQ(block.w, cam.xview) << "the pane must match the radar block";
+        EXPECT_EQ(block.h, cam.yview);
+        EXPECT_EQ(block.x, cam.xloc) << "same right-edge alignment";
+        EXPECT_EQ(block.y, cam.yloc + cam.yview + block.margin)
+            << "the pane must sit one radar margin ABOVE the radar block";
+        // And decidedly NOT on top of the hero at the canvas centre.
+        EXPECT_NE(centered_inset_rect(), capture_rect(cam));
+        const int ui_cx = game_->gameplay_ui_canvas_w() / 2;
+        const int ui_cy = game_->gameplay_ui_canvas_h() / 2;
+        EXPECT_FALSE(ui_cx >= cam.xloc && ui_cx < cam.xloc + cam.xview &&
+                     ui_cy >= cam.yloc && ui_cy < cam.yloc + cam.yview)
+            << "the one-seat pane covers the canvas centre — the hero";
+    }
     // The WP4 draw stub must not perturb resolution or geometry either.
     game_->draw_camera_view_ui();
     EXPECT_EQ(inset_rect(), capture_rect(*game_->camera_view_));
@@ -373,6 +440,26 @@ TEST_F(CameraView, single_seat_auto_resolves_to_inset)
     ASSERT_TRUE(game_->redraw());
     EXPECT_FALSE(game_->camera_docked_);
     EXPECT_EQ(inset_rect(), capture_rect(*game_->camera_view_));
+}
+
+// The split the ruling draws: 2 seats keep the CENTERED inset. The canvas
+// centre is a pane boundary at 2 seats (nobody's hero sits there) and the
+// bottom-right corner belongs to seat 1's radar, so the second-minimap
+// placement is a one-seat rule only. Pins the other side of the branch.
+TEST_F(CameraView, two_seats_keep_the_centered_inset)
+{
+    game_->ready_for_battle(2);
+    arm_seats();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    EXPECT_FALSE(game_->camera_docked_);
+    EXPECT_EQ(2, game_->layout_pane_count());
+    EXPECT_EQ(centered_inset_rect(), capture_rect(*game_->camera_view_));
+    EXPECT_NE(second_minimap_rect(), capture_rect(*game_->camera_view_))
+        << "2 seats must not take the one-seat second-minimap placement";
 }
 
 // H5: seat add 3->4 flips docked->inset with no intermediate 5-pane layout
@@ -703,8 +790,9 @@ private:
 // no mini HP bars, no damage/heal numbers (the design's §6 suppression list,
 // extended by the review ruling). Their GameplayUI projection is keyed on
 // layout_pane_count() + mynum, which has no arm for the camera identity: at
-// 1 seat the full-canvas layout would scale a bar for a walker in the 96x60
-// inset across the whole 320x200 UI canvas. Teeth: a damaged living (below
+// 1 seat the full-canvas layout would scale a bar for a walker in the
+// second-minimap pane across the whole 320x200 UI canvas. Teeth: a damaged
+// living (below
 // the 95% bar threshold, plus a live heal number) inside the camera's world
 // view but far OUTSIDE the seat's own view, so any overlay pixel can only
 // have come from the camera pane; after a full-canvas scrub the inset seam

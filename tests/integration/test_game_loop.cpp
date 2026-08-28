@@ -7363,7 +7363,8 @@ TEST(GameLoop, host_and_join_soccer_camera_docks_on_a_three_seat_machine)
 }
 
 // One local seat, the same replicated declaration: style "auto" resolves
-// INSET — a centered GameplayUI-canvas overlay, the seat layout untouched
+// INSET — a GameplayUI-canvas overlay stacked above the seat's radar block
+// (the one-seat second-minimap ruling), the seat layout untouched
 // (layout_pane_count() == numviews). Same wire, different presentation: the
 // divergence the constraint-5 rule exists to allow.
 TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
@@ -7397,18 +7398,31 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
             << "1 seat + auto must draw the camera as an inset";
         EXPECT_EQ(1, display->layout_pane_count())
             << "an inset camera never joins the seat layout";
+        // At one seat the inset is the SECOND MINIMAP (maintainer ruling):
+        // the radar block mirrored — derived here from the same shared
+        // placement rule the radar itself uses over this real level's grid,
+        // never a typed rect.
         const int ui_w = display->gameplay_ui_canvas_w();
         const int ui_h = display->gameplay_ui_canvas_h();
-        int w = ui_w * 3 / 10;
-        int h = ui_h * 3 / 10;
-        if (w < 96)
-            w = 96;
-        if (h < 60)
-            h = 60;
-        EXPECT_EQ((ui_w - w) / 2, display->camera_view_->xloc);
-        EXPECT_EQ((ui_h - h) / 2, display->camera_view_->yloc);
-        EXPECT_EQ(w, display->camera_view_->xview);
-        EXPECT_EQ(h, display->camera_view_->yview);
+        const og::view_layout::ViewLayout pane =
+            og::view_layout::compute_view_layout(
+                display->layout_pane_count(), 0,
+                static_cast<int>(display->viewob[0]->prefs[PREF_VIEW]),
+                ui_w, ui_h);
+        ASSERT_TRUE(pane.applies);
+        const auto [block_w, block_h] = radar_block_extents(
+            display->world().grid.w, display->world().grid.h);
+        const RadarBlock block = radar_block_for_pane(
+            pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
+            /*force_lower=*/false);
+        EXPECT_EQ(block.x, display->camera_view_->xloc);
+        EXPECT_EQ(block.y - block.margin - block.h,
+                  display->camera_view_->yloc);
+        EXPECT_EQ(block.w, display->camera_view_->xview);
+        EXPECT_EQ(block.h, display->camera_view_->yview);
+        EXPECT_EQ(block.y, display->camera_view_->yloc +
+                               display->camera_view_->yview + block.margin)
+            << "the pane must sit one radar margin above the radar block";
         // The seat is byte-identical to its pre-camera geometry.
         EXPECT_EQ(seat_before.xloc, display->viewob[0]->xloc);
         EXPECT_EQ(seat_before.yloc, display->viewob[0]->yloc);
