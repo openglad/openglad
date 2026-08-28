@@ -6,24 +6,20 @@
 -- ones (game_world.cpp), so preview == launch on classic campaigns.
 --
 -- THE CLASSIC RULES (the rulings this file settles, recorded in the design
--- doc's "As built: W6-A" as corrected by the D-series — D2 and D3
--- supersede W6-A's "may not turn on an unauthored team" and W5-A's
--- "troops-only teams get no squad"):
+-- doc's "As built: W6-A" as corrected by the D-series and Amendment 4 —
+-- E1 supersedes C8 and the D1 scale: the stored 0 IS NONE, there is no
+-- default to resolve):
 --   * the MAP UNITS box strips a team's authored units exactly as in the
 --     modes (one strip implementation, lineup.strip_authored_troops).
---   * AN EXPLICIT WHEEL VALUE ALWAYS FIELDS (D2/D3): any explicit code
---     but NONE fields a solved squad on its team — BESIDE standing map
---     troops (D3: the troops are not the answer to a turned wheel), on a
---     ships-empty authored team, and on a team the map does not author
---     at all (D2: the squad turns the team on — hostile to all, ordinary
---     walkers). The one team shape that never fields here is a team with
---     a deployed roster fighter: allies are a match-mode rule.
---   * THE STORED DEFAULT NEVER ADDS A SQUAD BESIDE ANYTHING: a default
---     that resolves FAIR fields only where the box traded the team's
---     authored units away ("turn the box off to trade them for a solved
---     squad"); on a troops-fielded team it stays squadless — only an
---     explicit choice puts bots beside troops — and on a ships-empty or
---     unauthored team it is the map's own value: nothing (C3: the
+--   * A TURNED WHEEL ALWAYS FIELDS (D2/D3): any code but NONE fields a
+--     solved squad on its team — BESIDE standing map troops (D3: the
+--     troops are not the answer to a turned wheel), on a ships-empty
+--     authored team, and on a team the map does not author at all (D2:
+--     the squad turns the team on — hostile to all, ordinary walkers).
+--     The one team shape that never fields here is a team with a
+--     deployed roster fighter: allies are a match-mode rule.
+--   * NONE = NO SQUAD (E1/E3): the stored 0 is NONE on every team, so an
+--     untouched wheel is the map's own value: nothing (C3: the
 --     all-default stage writes nothing, draws nothing, spawns nothing).
 --   * no refusals, ever (C4): NONE or an emptied side simply means fewer
 --     enemies, and the campaign's own win logic governs. Spawned squads
@@ -38,13 +34,6 @@
 --     spot farthest from every existing team's centroid and never lands
 --     a member adjacent to a hostile — the rule lives with
 --     classic_anchor/classic_place below.
---   * THE RESOLVED DEFAULT (C8/D1): a stored FILL of 0 is the default,
---     not an explicit FAIR — it resolves per team through the lib's ONE
---     rule (lineup.resolved_fill): the explicit FAIR where the team has
---     any presence (units, generators, markers, anchors or a deployed
---     fighter), the explicit NONE where it has none. The resolved value
---     is what the pass executes and what the facts bank; explicit wheel
---     values are untouched.
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -297,69 +286,32 @@ local function classic_place(w, ax, ay, allow_teleport, hostiles)
   return landed
 end
 
--- The C8 presence row over a classic census row: the census gathers the
--- authored units (generators folded in by is_troop), the deployed roster
--- and the first live start marker; the engine anchor count covers markers
--- the level bootstrap consumed (its scan counts dead ones too). Seats are
--- invisible here by design — at any launch GO can pass, a seat implies a
--- deployed fighter on its team (the M4 refusal), so the roster stands in.
-local function presence_row(row, team)
-  local markers = 0
-  if row.mx >= 0 then
-    markers = 1
-  end
-  return {
-    units = row.units,
-    markers = markers,
-    anchors = og.respawn_anchor_count(team),
-    roster = row.roster,
-  }
-end
-
 -- Should team's row field a FILL squad? The classic fill rule from the
--- header comment, one decision per team, pure over the census row. raw
--- is the stored knob, knob its C8 resolution: an EXPLICIT wheel value
--- always fields (D2/D3 — beside troops, on a marker team, on unauthored
--- ground) unless it is NONE or a roster fighter stands; the stored
--- DEFAULT fields only the box-trade (units authored, box off), never a
--- squad beside anything — only an explicit choice adds bots beside
--- troops, and a default on a ships-empty or unauthored team is the
--- map's own value.
-local function classic_wants_squad(row, raw, knob, fielded)
+-- header comment, one decision per team, pure over the census row: a
+-- turned wheel always fields (D2/D3 — beside troops, on a marker team,
+-- on unauthored ground) unless it is NONE (E1: the stored 0, the default
+-- everywhere) or a roster fighter stands.
+local function classic_wants_squad(row, knob)
   if lineup.squad_off(knob) then
     return false
   end
-  if row.roster > 0 then
-    return false
-  end
-  if raw ~= lineup.FILL_DEFAULT then
-    return true
-  end
-  if row.units > 0 then
-    return not fielded
-  end
-  return false
+  return row.roster == 0
 end
 
 -- The stage step. The C3 fast path returns before any world read: with
--- every box on and no wheel past FAIR/NONE nothing below could strip or
--- spawn, so the all-default stage costs eight knob reads and is a proven
--- byte no-op (every parity scenario rides this arm). C8 keeps that proof
--- intact: the resolution maps the default onto FAIR or NONE only, and
--- neither value is a touch — so an all-default world resolves without a
--- single write or draw, and the resolved-NONE fact below banks only on a
--- stage something ELSE already made run.
+-- every box on and every wheel at NONE (E1: the stored 0, the default on
+-- every map) nothing below could strip or spawn, so the all-default
+-- stage costs eight knob reads and is a proven byte no-op (every parity
+-- scenario rides this arm). NONE banks no fact either (E4: NONE never
+-- spawns and never banks), so the untouched world writes nothing.
 local function stage_level(level)
   local touched = false
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if not lineup.map_units_fielded(team) then
       touched = true
     end
-    local knob = lineup.fill_knob(team)
-    if knob ~= lineup.FILL_DEFAULT then
-      if not lineup.squad_off(knob) then
-        touched = true
-      end
+    if not lineup.squad_off(lineup.fill_knob(team)) then
+      touched = true
     end
   end
   if not touched then
@@ -369,21 +321,8 @@ local function stage_level(level)
   lineup.strip_authored_troops()
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     local row = teams[team + 1]
-    local raw = lineup.fill_knob(team)
-    -- C8/D1: the stored default resolves per team — the explicit FAIR
-    -- with any presence, the explicit NONE with none — and the RESOLVED
-    -- value is what this pass executes.
-    local knob = lineup.resolved_fill(raw, presence_row(row, team))
-    if raw == lineup.FILL_DEFAULT and knob == lineup.FILL_NONE then
-      -- A resolved NONE is a decision this stage made, so it banks like
-      -- an applied fill (C8: the facts render the resolved value) — the
-      -- one exception to R4's spawned-only rule, because "no squad, by
-      -- resolution" IS what was applied. An explicit NONE stays unbanked
-      -- (explicit wheel values are unchanged), and the all-default stage
-      -- never reaches this line: the fast path above already returned.
-      lineup.bank_lineup_facts(team, lineup.FILL_NONE)
-    end
-    if classic_wants_squad(row, raw, knob, lineup.map_units_fielded(team)) then
+    local knob = lineup.fill_knob(team)
+    if classic_wants_squad(row, knob) then
       local ax, ay = classic_anchor(row)
       local hostiles = nil
       local centroids = nil
@@ -406,9 +345,9 @@ local function stage_level(level)
       -- The one squad seam (solver reference per B3: the weakest human
       -- team's f-sum; no humans -> the legacy difficulty formula). No
       -- cursor slot — the classic placer never reads one — no announce:
-      -- TEAMS MATCHED is match-mode vocabulary — and the knob rides in
-      -- already resolved, so the seam never re-reads the raw default.
-      lineup.spawn_bots(team, lineup.BOT_SQUAD, nil, placer, nil, nil, knob)
+      -- TEAMS MATCHED is match-mode vocabulary. The seam re-reads the
+      -- stored knob itself (E1: the code is the fill, nothing resolves).
+      lineup.spawn_bots(team, lineup.BOT_SQUAD, nil, placer, nil, nil)
     end
   end
 end

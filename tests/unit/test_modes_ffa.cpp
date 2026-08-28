@@ -177,6 +177,11 @@ struct FfaRig
                     bool anchors = true, int act = ACT_CONTROL)
         : fx(level_id)
     {
+        // E5: the band suites were written when the default knob filled
+        // the band; the stored 0 is NONE now (E1), so the rig turns the
+        // band's one wheel to the explicit FAIR the old default meant.
+        // The default/NONE tests set the knob back to 0 themselves.
+        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;
         if (anchors)
         {
             fx.spawn_anchor(0, 96, 96);
@@ -430,8 +435,9 @@ TEST_F(ModesFfa, bot_fill_reaches_the_row_fighter_count)
 }
 
 // The band path honours the FILL wheel through TEAM 1's knob (B2 — the
-// band is ONE population): NONE suppresses the fill entirely, leaving
-// only the deployed fighters (mode_fighters.lua band_knob).
+// band is ONE population): NONE — the stored 0, the default on every map
+// since E1 — suppresses the fill entirely, leaving only the deployed
+// fighters (mode_fighters.lua band_knob).
 TEST_F(ModesFfa, lineup_none_suppresses_the_band_fill)
 {
     FfaRig rig(850, 2);

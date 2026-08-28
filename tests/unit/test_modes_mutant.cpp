@@ -468,6 +468,9 @@ TEST_F(ModesMutant, bot_fill_reaches_the_default_fighter_count)
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
+    // E5: the band fill needs a turned wheel now — the stored 0 is NONE
+    // (E1) and an all-NONE empty band refuses instead of filling.
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;
     fx.tick(1);
 
     ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
@@ -539,6 +542,7 @@ TEST_F(ModesMutant, band_fill_solves_without_touching_the_matched_seam)
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: turned wheel
     walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
     ASSERT_NE(nullptr, hero);
     fx.tick(1);
@@ -1419,6 +1423,7 @@ TEST_F(ModesMutant, bot_only_win_is_rematch_shape)
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot band
     fx.tick(1);
     ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
     int winner_slot = -1;
@@ -1508,6 +1513,7 @@ std::string run_mutant_bot_match(int ticks, bool* crowned)
     fx.spawn_anchor(1, 400, 300);
     fx.spawn_anchor(2, 300, 400);
     fx.spawn_anchor(3, 400, 400);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot band
     fx.world().ctf_requested_respawn_ticks = 30;
     for (int i = 0; i < ticks; ++i)
     {

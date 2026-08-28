@@ -171,16 +171,11 @@ end
 -- them is the mode name the staged world already carries (FFA / MUTANT
 -- via og.set_mode_name — the staged report's mode_name); no extra
 -- variable is banked for it (docs/lineup-design.md §3.2).
--- The band's one knob, C8/D1-resolved at the read: a stored default
--- resolves against the band's presence — the manifest row's fighter
--- target is the band's AUTHORED population (its units column: the map's
--- own value on a band level, present even in a bot-only match), the
--- deployed fighters its roster — so the default always resolves FAIR on
--- a real band level, exactly the pre-D1 behaviour, and an explicit code
--- is itself. The seam never hands the raw 0 to the multiplier table.
-local function band_knob(target, fighters)
-  return match.resolved_fill(og.match_setting("fill_1"),
-                             { units = target, roster = fighters })
+-- The band's one knob is the stored code itself (E1: 0 = NONE = no
+-- singles fill, whatever the map authors — the C8 presence resolution
+-- retired with the DEFAULT code), read raw at each decision.
+local function band_knob()
+  return og.match_setting("fill_1")
 end
 
 -- The weakest deployed fighter's f (B3's reference, spelled for a band):
@@ -212,7 +207,7 @@ end
 -- modes refuse on this number BEFORE touching the world, so no knob shape
 -- can reach an error() from a half-applied init.
 local function planned_count(deployed_count, target)
-  if match.squad_off(band_knob(target, deployed_count)) then
+  if match.squad_off(band_knob()) then
     return deployed_count
   end
   return og.max(deployed_count, target)
@@ -220,7 +215,7 @@ end
 
 local function fill_bots(count, target, id_base, bitmap_slot, cursor_slot,
                          roster)
-  local knob = band_knob(target, count)
+  local knob = band_knob()
   if match.squad_off(knob) then
     return count
   end

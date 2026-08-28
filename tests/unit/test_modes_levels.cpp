@@ -36,6 +36,7 @@ inline constexpr int kModesWaypointFamily = 14;
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mapgen/builders.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/script/family_hooks.h>
@@ -1416,6 +1417,13 @@ TEST_F(ModesLevels, scripted_levels_tick_clean_without_mode_lua)
     {
         LoadedModesLevel loaded(id, 7u);
         ASSERT_TRUE(loaded.loaded) << "scen" << id;
+        // E5: the shipped maps' empty sides field bots only under a
+        // turned wheel — under the all-NONE default the flag/band folds
+        // refuse (their error() IS the refusal record), so the clean-tick
+        // pin turns every wheel to the explicit FAIR the old default
+        // meant.
+        for (auto& knob : loaded.world().ctf_requested_fill)
+            knob = og::sim::kFillFair;
         for (int i = 0; i < 30; ++i)
             loaded.world().tick();
         EXPECT_TRUE(loaded.world().scripts().host().errors().empty())
