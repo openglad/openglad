@@ -3224,6 +3224,46 @@ TEST(CursesPickerClient, camp_prompt_scrolls_a_composition_past_the_screen)
     EXPECT_NE(dump.find("Camp # [1-15]"), std::string::npos) << dump;
 }
 
+// G4 (docs/lineup-design.md Amendment 5): the install-site table promises the
+// curses picker answers og.campaign_my_team from its OWN derived seats
+// (og::ui::first_local_seat_team over the client's live save). This drives
+// that promise end-to-end: a camp composition asks for "mine" and must be
+// told the FIRST FIELDED seat. The save's my_team deliberately names a team
+// with no fighters, so the shared fallback (campaign_my_team_fallback, which
+// answers my_team verbatim) would say 3 — only the client's own seat lambda
+// says 1.
+TEST(CursesPickerClient, camp_page_reads_my_team_from_the_clients_own_seats)
+{
+    PickerFixture f;
+    for (auto& member : f.save().team_list)
+        member.reset();
+    f.save().team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    f.save().team_list[0]->teamnum = 1;
+    f.save().team_list[0]->deployed = true;
+    f.save().team_size = 1;
+    f.save().my_team = 3;
+    f.save().numplayers = 1;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "text", lines = { "MY SEAT TEAM " .. og.campaign_my_team() } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+    f.t().push_special(KeyCode::Escape);  // close the camp
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_NE(f.t().dump().find("MY SEAT TEAM 1"), std::string::npos)
+        << "the camp's og.campaign_my_team must answer THIS client's first "
+           "derived seat, not a fallback:\n"
+        << f.t().dump();
+}
+
 // #207: a camp docket row marked `replay = true` on a CLEARED level arms
 // the excursion through the curses tail — arm_replay (origin remembered,
 // cursor onto the level) instead of the plain write, answered in the
