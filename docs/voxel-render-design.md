@@ -415,3 +415,29 @@ of a rounded solid, stage 1 with pillowed height and facing swaps). The
 pictures decide θ. Hand-authored per-family models (`.vox` in packs) remain
 the path to more than this; reliefs are the automatic default for every
 family and every pack.
+
+## 15. Reliefs are cards — chunky voting-hull voxel figures (maintainer, 2026-08-29)
+
+Ruling on rounds 6–8: "still clearly not what we want. I want to combine
+these into voxel-based shapes with nice big voxels (just like we have nice
+big pixels)." A relief is a card; the target is a SOLID figure at sprite
+resolution — 1 voxel = 1 sprite pixel — rendered as visible cubes.
+
+**Construction (round 9):**
+1. *Voting hull* at 1:1: grid 16×16×Z (Z ≈ 20), camera elevation θ = 55°;
+   a voxel survives if its projection lies inside the silhouette in ≥ k of
+   the 8 facings (k swept 6/7/8; k = 8 is the round-1 intersection that
+   carved the sword away). Cleanup: largest component + cavity fill.
+2. *Per-facing residuals*: for each facing, the frame's opaque pixels not
+   covered by the hull's projection (1-px tolerance) become thin voxel
+   detail (thickness 2) on that facing's world-fixed plane, attached at the
+   depth of the nearest hull surface along the view ray — the sword, bow,
+   cape edge the hull cannot carry.
+3. *Colour*: hull surface voxels by normal-aligned back-projection of the
+   frames (exact palette indices, team band preserved); residual voxels by
+   their own pixel. No palette guesses.
+4. *Render*: cube faces at 1 voxel = 1 world px, shading top 1.00 / sun 0.85
+   / shade 0.70, no AO, no silhouette darkening — the cubes must read as
+   big blocks at hero scale, exactly as the pixels read as big blocks.
+Acceptance: the fidelity strip at the game camera (sprite vs model, reported
+per facing), and the spin: a solid turning, not a card swapping its face.
