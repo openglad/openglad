@@ -175,6 +175,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
     ${SRC_DIR}/interface/render/text.cpp
     ${SRC_DIR}/interface/render/view.cpp
+    ${SRC_DIR}/interface/render/voxel_art.cpp
     ${SRC_DIR}/interface/render/voxel_carve.cpp
     ${SRC_DIR}/interface/render/voxel_figure.cpp
     ${SRC_DIR}/interface/render/voxel_fit.cpp

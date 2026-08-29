@@ -5,7 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-// Voting-hull voxel figures (docs/voxel-render-design.md §15, §16).
+// Voting-hull voxel figures (docs/voxel-render-design.md §15).
 //
 // The projection is the sprite's own space, the same one the fidelity strips
 // use: put the figure's footprint centre on the ground at the sprite's foot

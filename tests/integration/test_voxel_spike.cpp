@@ -28,6 +28,7 @@
 #include <SDL3/SDL.h>
 
 #include <openglad/interface/render/voxel_carve.h>
+#include <openglad/interface/render/voxel_art.h>
 #include <openglad/interface/render/voxel_figure.h>
 #include <openglad/interface/render/voxel_fit.h>
 #include <openglad/interface/render/voxel_relief.h>
@@ -506,22 +507,23 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 }
 
 // ===========================================================================
-// Stage 2 rounds 9-10 (docs/voxel-render-design.md §15, §16): voting-hull
-// voxel figures.
+// Stage 2 round 11 (docs/voxel-render-design.md §16): AUTHORED voxel figures.
 //
-// Reliefs were rejected as cards. This is one SOLID per family at sprite
-// resolution — one voxel is one sprite pixel, drawn as a visible cube — built
-// by relaxing round 1's strict silhouette intersection to a quorum, carving
-// the result back to what the views can actually see, and putting back the
-// pixels the hull still misses as attached residual details. Reliefs survive
-// only as the comparison panel and as the fallback for non-living orders.
+// Every algorithmic route was closed by ruling — carving gives solids of
+// revolution, reliefs give cards, fitting gives lumps, hulls give dirt. The
+// figures are now drawn by hand from the sprite frames and live in the repo
+// as text (assets/voxelart/<family>.voxtxt), the way the sprites live in it
+// as PNG. This harness loads them and renders the same set of pictures, so
+// the comparison against every earlier round is like for like. Reliefs
+// survive only as the comparison panel and as the fallback for non-living
+// orders.
 // ===========================================================================
 
 namespace {
 
-// Round 10 (the figure cleanup) writes its own set; models9/ stays as the
-// before picture.
-constexpr const char* kRoundDir = "models10";
+// Round 11 (authored art) writes its own set; models10/ stays as the before
+// picture.
+constexpr const char* kRoundDir = "models11";
 
 std::string models_dir()
 {
@@ -680,8 +682,6 @@ bool family_walk_frames(int family, og::render::VoxelCarveFrames& out)
     return true;
 }
 
-const char* kFacingNames[NUM_FACINGS] = {"up",   "up-r",   "right", "down-r",
-                                         "down", "down-l", "left",  "up-l"};
 
 int shown_facing(int entity_dir, float camera_yaw_deg)
 {
@@ -952,20 +952,26 @@ Shot shoot(const og::render::VoxelModel* model,
     return out;
 }
 
-// The camera that lands a figure on its own sprite, pixel for pixel: aimed at
-// the world origin with the figure's foot line where the sprite's is.
-ShotCamera exact_camera(int sprite_w, int sprite_h, float scale)
+// The same camera with room around the sprite box, because an authored
+// figure is a whole character and stands taller than the icon the sprite
+// draws. Row 1 pads the frame the same way, so the two rows stay aligned.
+constexpr int kFidelityPad = 6;
+
+ShotCamera game_camera(int sprite_w, int sprite_h, float scale, int pad)
 {
     const float sp = std::sin(kTheta * kPi / 180.0f);
     ShotCamera sc;
     sc.yaw = 0.0f;
     sc.pitch = kTheta;
     sc.scale = scale;
-    sc.w = static_cast<int>(std::lround(static_cast<float>(sprite_w) * scale));
-    sc.h = static_cast<int>(std::lround(static_cast<float>(sprite_h) * scale));
-    sc.view_cx = 0.0f;
+    sc.w = static_cast<int>(
+        std::lround(static_cast<float>(sprite_w + pad * 2) * scale));
+    sc.h = static_cast<int>(
+        std::lround(static_cast<float>(sprite_h + pad * 2) * scale));
+    sc.view_cx = static_cast<float>(pad) * scale;
     sc.view_cy = (static_cast<float>(sprite_h - 1) -
-                  static_cast<float>(sprite_h) * sp) * scale;
+                  static_cast<float>(sprite_h) * sp +
+                  static_cast<float>(pad)) * scale;
     return sc;
 }
 
@@ -1041,6 +1047,40 @@ const FamilySpec kFamilies[] = {
     {"mage", FAMILY_MAGE},       {"elf", FAMILY_ELF},
     {"ghost", FAMILY_GHOST},     {"cleric", FAMILY_CLERIC},
 };
+
+std::string voxel_art_dir()
+{
+    const char* d = getenv("OG_VOXEL_ART_DIR");
+    return d ? std::string(d) : std::string("assets/voxelart");
+}
+
+// Load every family's authored figure. A parse error is a hard failure: a
+// figure that silently fails to load is a family that silently reverts to a
+// relief, which is exactly the confusion this round exists to end.
+bool load_figures(std::map<int, og::render::VoxelModel>& out,
+                  std::string& error)
+{
+    out.clear();
+    for (const FamilySpec& fs : kFamilies)
+    {
+        og::render::VoxelModel m;
+        const std::string path =
+            voxel_art_dir() + "/" + fs.name + ".voxtxt";
+        if (!og::render::voxel_art_load_file(path, m, error))
+            return false;
+        out.emplace(fs.family, std::move(m));
+    }
+    return true;
+}
+
+int voxel_count(const og::render::VoxelModel& m)
+{
+    int n = 0;
+    for (unsigned char o : m.occ)
+        if (o != 0)
+            ++n;
+    return n;
+}
 
 void densest_cluster(GameWorld& world, float& out_x, float& out_y)
 {
@@ -1172,7 +1212,7 @@ void run_figure_scene(const std::string& name, const char* campaign, int level,
 
 } // namespace
 
-TEST_F(VoxelModels, voting_hull_figures)
+TEST_F(VoxelModels, authored_figures)
 {
     if (spike_dir().empty())
         GTEST_SKIP() << "set OG_VOXEL_SPIKE_DIR to record";
@@ -1186,138 +1226,52 @@ TEST_F(VoxelModels, voting_hull_figures)
     ASSERT_TRUE(scr()->load_level()) << "gladiator scen1";
     const std::vector<std::uint32_t> lut = build_palette_lut();
 
-    std::vector<std::pair<FamilySpec, og::render::VoxelCarveFrames>> fams;
+    std::map<int, og::render::VoxelModel> figures;
+    std::string err;
+    ASSERT_TRUE(load_figures(figures, err)) << err;
+
+    printf("[voxel-art] authored figures from %s\n", voxel_art_dir().c_str());
+    std::vector<Image> lineup, lineup_orig;
+    int lh = 0, oh = 0;
     for (const FamilySpec& fs : kFamilies)
     {
         og::render::VoxelCarveFrames fr;
-        if (family_walk_frames(fs.family, fr))
-            fams.push_back({fs, fr});
-    }
-
-    // ---- the k sweep -----------------------------------------------------
-    printf("[voxel-figure] quorum sweep (1 voxel = 1 sprite pixel, "
-           "theta %.0f)\n", static_cast<double>(kTheta));
-    printf("  %-9s %s\n", "family",
-           "k=6 IoU/agr/vox        k=7 IoU/agr/vox        k=8 IoU/agr/vox");
-    double best_mean[3] = {0, 0, 0};
-    for (auto& f : fams)
-    {
-        printf("  %-9s", f.first.name);
-        for (int ki = 0; ki < 3; ++ki)
-        {
-            const og::render::FigureReport r =
-                og::render::voxel_build_figure(f.second, 6 + ki, kTheta);
-            int vox = 0;
-            for (unsigned char o : r.model.occ)
-                if (o != 0)
-                    ++vox;
-            printf("  %.3f/%.0f%%/%-5d", static_cast<double>(r.mean_iou),
-                   static_cast<double>(r.mean_agreement) * 100.0, vox);
-            best_mean[ki] += static_cast<double>(r.mean_iou);
-        }
-        printf("\n");
-    }
-    int chosen_k = 6;
-    for (int ki = 1; ki < 3; ++ki)
-        if (best_mean[ki] > best_mean[chosen_k - 6])
-            chosen_k = 6 + ki;
-    printf("[voxel-figure] mean IoU  k=6 %.3f  k=7 %.3f  k=8 %.3f  ->  "
-           "CHOSEN k = %d (one global k)\n",
-           best_mean[0] / static_cast<double>(fams.size()),
-           best_mean[1] / static_cast<double>(fams.size()),
-           best_mean[2] / static_cast<double>(fams.size()), chosen_k);
-
-    // ---- build at the chosen k, then the pages ---------------------------
-    std::map<int, og::render::VoxelModel> figures;
-    std::vector<Image> lineup, lineup_orig;
-    int lh = 0, oh = 0;
-    for (auto& f : fams)
-    {
-        const FamilySpec& fs = f.first;
-        og::render::VoxelCarveFrames& fr = f.second;
-        og::render::FigureReport rep =
-            og::render::voxel_build_figure(fr, chosen_k, kTheta);
+        if (!family_walk_frames(fs.family, fr))
+            continue;
+        const og::render::VoxelModel& model = figures[fs.family];
         const og::render::VoxelModel shadow = make_shadow(fr.w, fr.h, 16);
 
-        const int cw = fr.w * 6;
-        const int ch = fr.h * 6;
+        const int cw = (fr.w + kFidelityPad * 2) * 6;
+        const int ch = (fr.h + kFidelityPad * 2) * 6;
         Image page = make_image(cw * NUM_FACINGS, ch * 3, RGB{18, 18, 24});
-        double si = 0.0, sa = 0.0;
-        int worst = 0;
-        double pi_[NUM_FACINGS] = {}, pa_[NUM_FACINGS] = {};
         for (int d = 0; d < NUM_FACINGS; ++d)
         {
-            Image src = make_image(fr.w, fr.h, RGB{18, 18, 24});
-            draw_indices(src, 0, 0, fr.frame[d], fr.w, fr.h, lut, kShotTeam);
+            Image src = make_image(fr.w + kFidelityPad * 2,
+                                   fr.h + kFidelityPad * 2, RGB{18, 18, 24});
+            draw_indices(src, kFidelityPad, kFidelityPad, fr.frame[d], fr.w,
+                         fr.h, lut, kShotTeam);
             paste(page, d * cw, 0, upscale(src, 6));
 
             const float yaw = og::render::voxel_facing_yaw_rad(d);
-            const Shot lo = shoot(&rep.model, nullptr, yaw,
-                                  exact_camera(fr.w, fr.h, 1.0f), 0.0f, 0.0f,
-                                  lut, kShotTeam, RGB{18, 18, 24}, nullptr);
+            const Shot lo =
+                shoot(&model, nullptr, yaw,
+                      game_camera(fr.w, fr.h, 1.0f, kFidelityPad), 0.0f, 0.0f,
+                      lut, kShotTeam, RGB{18, 18, 24}, nullptr);
             paste(page, d * cw, ch, upscale(lo.rgb, 6));
-            const Shot hd = shoot(&rep.model, nullptr, yaw,
-                                  exact_camera(fr.w, fr.h, 6.0f), 0.0f, 0.0f,
-                                  lut, kShotTeam, RGB{18, 18, 24}, nullptr);
+            const Shot hd =
+                shoot(&model, nullptr, yaw,
+                      game_camera(fr.w, fr.h, 6.0f, kFidelityPad), 0.0f, 0.0f,
+                      lut, kShotTeam, RGB{18, 18, 24}, nullptr);
             paste(page, d * cw, ch * 2, hd.rgb);
-
-            int inter = 0, uni = 0, matched = 0;
-            for (int i = 0; i < fr.w * fr.h; ++i)
-            {
-                const unsigned char raw =
-                    fr.frame[d][static_cast<std::size_t>(i)];
-                const unsigned char a = remap_team(raw, kShotTeam);
-                const bool sa2 = raw != 0;
-                const unsigned char b = lo.index[static_cast<std::size_t>(i)];
-                const bool sb = b != 0;
-                if (sa2 || sb)
-                    ++uni;
-                if (sa2 && sb)
-                {
-                    ++inter;
-                    if (a == b)
-                        ++matched;
-                }
-            }
-            pi_[d] = uni > 0 ? static_cast<double>(inter) /
-                    static_cast<double>(uni)
-                             : 0.0;
-            pa_[d] = uni > 0 ? 100.0 * static_cast<double>(matched) /
-                    static_cast<double>(uni)
-                             : 0.0;
-            si += pi_[d];
-            sa += pa_[d];
-            if (pi_[d] < pi_[worst])
-                worst = d;
         }
         write_image(models_dir(), std::string("fidelity_") + fs.name, page);
-        printf("  %-9s k=%d  hull %d -> %d (%d cut over %d pass%s), "
-               "hull IoU %.3f -> %.3f, with residuals %.3f\n",
-               fs.name, chosen_k, rep.hull_voxels_initial, rep.hull_voxels,
-               rep.tighten_deleted, rep.tighten_passes,
-               rep.tighten_passes == 1 ? "" : "es",
-               static_cast<double>(rep.mean_iou_initial),
-               static_cast<double>(rep.mean_iou_hull),
-               static_cast<double>(rep.mean_iou));
-        printf("            residuals %d kept over %d growth round(s), %d "
-               "pixels asked in round 1, %d unattached and dropped; "
-               "components dropped %d, cavities %d, %.2fs\n",
-               rep.residual_voxels, rep.residual_rounds,
-               rep.residual_candidates, rep.residual_dropped,
-               rep.components_dropped, rep.cavities_filled, rep.seconds);
-        printf("            IoU mean %.3f (worst %s %.3f)  agreement mean "
-               "%.1f%%  per-facing IoU:",
-               si / NUM_FACINGS, kFacingNames[worst], pi_[worst],
-               sa / NUM_FACINGS);
-        for (int d = 0; d < NUM_FACINGS; ++d)
-            printf(" %.2f", pi_[d]);
-        printf("\n");
+        printf("  %-9s %2dx%2dx%-2d  %4d voxels\n", fs.name, model.w, model.d,
+               model.z, voxel_count(model));
 
-        // lineup + hero
         const float yaw0 = og::render::voxel_facing_yaw_rad(FACE_DOWN);
-        ShotCamera lc = frame_model(rep.model, yaw0, 20.0f, 45.0f, 6.0f, 10);
-        lineup.push_back(shoot(&rep.model, nullptr, yaw0, lc, rep.model.anchor_x,
-                               rep.model.anchor_y, lut, kShotTeam, kPlateBg,
+        ShotCamera lc = frame_model(model, yaw0, 20.0f, 45.0f, 6.0f, 10);
+        lineup.push_back(shoot(&model, nullptr, yaw0, lc, model.anchor_x,
+                               model.anchor_y, lut, kShotTeam, kPlateBg,
                                &shadow)
                              .rgb);
         lh = std::max(lh, lineup.back().h);
@@ -1329,15 +1283,15 @@ TEST_F(VoxelModels, voting_hull_figures)
             oh = std::max(oh, lineup_orig.back().h);
         }
         {
-            ShotCamera fc = frame_model(rep.model, yaw0, 20.0f, 45.0f, 6.0f, 10);
-            ShotCamera bc = frame_model(rep.model, yaw0, 200.0f, 45.0f, 6.0f, 10);
-            const Image a = shoot(&rep.model, nullptr, yaw0, fc,
-                                  rep.model.anchor_x, rep.model.anchor_y, lut,
-                                  kShotTeam, kPlateBg, &shadow)
+            ShotCamera fc = frame_model(model, yaw0, 20.0f, 45.0f, 6.0f, 10);
+            ShotCamera bc = frame_model(model, yaw0, 200.0f, 45.0f, 6.0f, 10);
+            const Image a = shoot(&model, nullptr, yaw0, fc, model.anchor_x,
+                                  model.anchor_y, lut, kShotTeam, kPlateBg,
+                                  &shadow)
                                 .rgb;
-            const Image b = shoot(&rep.model, nullptr, yaw0, bc,
-                                  rep.model.anchor_x, rep.model.anchor_y, lut,
-                                  kShotTeam, kPlateBg, &shadow)
+            const Image b = shoot(&model, nullptr, yaw0, bc, model.anchor_x,
+                                  model.anchor_y, lut, kShotTeam, kPlateBg,
+                                  &shadow)
                                 .rgb;
             Image hero = make_image(a.w + b.w + 6, std::max(a.h, b.h),
                                     kPlateBg);
@@ -1345,7 +1299,6 @@ TEST_F(VoxelModels, voting_hull_figures)
             paste(hero, a.w + 6, hero.h - b.h, b);
             write_image(models_dir(), std::string("hero_") + fs.name, hero);
         }
-        figures.emplace(fs.family, std::move(rep.model));
     }
 
     const auto row = [&](std::vector<Image>& cells, int hh,
@@ -1438,14 +1391,17 @@ TEST_F(VoxelModels, figure_animations)
     const std::vector<std::uint32_t> lut = build_palette_lut();
     og::render::VoxelReliefCache cache(kTheta);
 
-    printf("[voxel-figure] animations\n");
+    std::map<int, og::render::VoxelModel> figures;
+    std::string err;
+    ASSERT_TRUE(load_figures(figures, err)) << err;
+
+    printf("[voxel-art] animations\n");
     for (const FamilySpec& fs : kFamilies)
     {
         og::render::VoxelCarveFrames fr;
         if (!family_walk_frames(fs.family, fr))
             continue;
-        const og::render::FigureReport rep =
-            og::render::voxel_build_figure(fr, 7, kTheta);
+        const og::render::VoxelModel& model = figures[fs.family];
         const og::render::VoxelModel shadow = make_shadow(fr.w, fr.h, 16);
         const float yaw0 = og::render::voxel_facing_yaw_rad(FACE_DOWN);
 
@@ -1461,8 +1417,8 @@ TEST_F(VoxelModels, figure_animations)
         for (int t = 0; t < 72; ++t)
         {
             sc.yaw = static_cast<float>(t * 5);
-            spin.push_back(shoot(&rep.model, nullptr, yaw0, sc,
-                                 rep.model.anchor_x, rep.model.anchor_y, lut,
+            spin.push_back(shoot(&model, nullptr, yaw0, sc,
+                                 model.anchor_x, model.anchor_y, lut,
                                  kShotTeam, kPlateBg, &shadow)
                                .rgb);
             accumulate(box, spin.back(), kPlateBg);
@@ -1494,8 +1450,8 @@ TEST_F(VoxelModels, figure_animations)
                       &shadow)
                     .rgb;
             const Image solid =
-                shoot(&rep.model, nullptr, yaw0, sc, rep.model.anchor_x,
-                      rep.model.anchor_y, lut, kShotTeam, kPlateBg, &shadow)
+                shoot(&model, nullptr, yaw0, sc, model.anchor_x,
+                      model.anchor_y, lut, kShotTeam, kPlateBg, &shadow)
                     .rgb;
             Image art = make_image(panel, panel, kPlateBg);
             Image cell = make_image(fr.w, fr.h, kPlateBg);
@@ -1523,8 +1479,8 @@ TEST_F(VoxelModels, figure_animations)
         {
             const int step = (t < 40) ? t : (79 - t);
             tc.pitch = 90.0f - static_cast<float>(step) * (75.0f / 39.0f);
-            tilt.push_back(shoot(&rep.model, nullptr, yaw0, tc,
-                                 rep.model.anchor_x, rep.model.anchor_y, lut,
+            tilt.push_back(shoot(&model, nullptr, yaw0, tc,
+                                 model.anchor_x, model.anchor_y, lut,
                                  kShotTeam, kPlateBg, &shadow)
                                .rgb);
             accumulate(tbox, tilt.back(), kPlateBg);

@@ -7,7 +7,7 @@
  */
 #pragma once
 
-// Voting-hull voxel figures (docs/voxel-render-design.md §15, §16).
+// Voting-hull voxel figures (docs/voxel-render-design.md §15).
 //
 // One solid per family at SPRITE resolution — one voxel is one sprite pixel,
 // drawn as a visible cube, so the figure has the same coarseness the art has.

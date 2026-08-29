@@ -442,7 +442,7 @@ resolution — 1 voxel = 1 sprite pixel — rendered as visible cubes.
 Acceptance: the fidelity strip at the game camera (sprite vs model, reported
 per facing), and the spin: a solid turning, not a card swapping its face.
 
-## 16. Figure cleanup: visibility-tight hull, attached residuals (2026-08-29)
+### Round 10 — figure cleanup: visibility-tight hull, attached residuals
 
 Round 9 (`e5c91135`) built the §15 figure and it was dirty in three ways:
 floating detached cubes around every family, speckled colour from per-voxel
@@ -505,6 +505,22 @@ each family its own build, in the sprite's own palette and identity, at big-
 voxel scale (~20–22 tall). The sprite is the reference for WHO the character
 is (gear, colours, proportions of the little figure it depicts), not a
 constraint solved against.
+
+**Round 11 (built).** `assets/voxelart/<family>.voxtxt` — eight figures, each
+its own build, 285 to 620 voxels, 16 to 19 voxels tall on footprints of 9x7 to
+13x9. `voxel_art.h/.cpp` in interface parses them; the harness renders them
+through the same cube-face path every earlier round used, so the pictures
+compare like for like. The figures were drawn against the walk frames and
+carry the frames' own palette indices, team band included — the footman's
+surcoat, the archer's hood, the skeleton's ribcage and the orc's straps are
+band because that is what the sprites use there, not because a robe should be
+red. Seven passes of "render it, look at it, change the grid": the corrections
+that mattered were that an ellipsoid stair-steps into knobs at this scale (a
+written per-layer stack does not), that a rectangular plan reads as masonry (a
+chamfered one reads as cloth), that a recessed face is invisible five voxels
+across (a flat patch with two dark eye voxels reads), and that a hat brim
+wider than the head hides the face from the game camera unless it is cut away
+in front.
 
 **Mechanism: a human-readable voxel-art asset format.** Each family's model
 is a text asset — z-layer grids of characters with a palette legend (ASCII
