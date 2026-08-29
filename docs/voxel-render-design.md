@@ -441,3 +441,54 @@ resolution — 1 voxel = 1 sprite pixel — rendered as visible cubes.
    big blocks at hero scale, exactly as the pixels read as big blocks.
 Acceptance: the fidelity strip at the game camera (sprite vs model, reported
 per facing), and the spin: a solid turning, not a card swapping its face.
+
+## 16. Figure cleanup: visibility-tight hull, attached residuals (2026-08-29)
+
+Round 9 (`e5c91135`) built the §15 figure and it was dirty in three ways:
+floating detached cubes around every family, speckled colour from per-voxel
+votes, and a hull inflated past the sprite (IoU ~0.64). Round 10 fixes each
+without changing the construction.
+
+**Hull.** The vote still starts it, but the hull is then carved back to what
+the eight views can actually SEE: a voxel no other voxel hides along a view's
+ray, whose projection lands outside that view's silhouette, is deleted;
+repeat to convergence (cap 4 passes), then largest 26-component + cavity fill.
+The test that matters is what "its projection" means. A voxel is a unit cube
+covering about two pixels, and point-sampling its centre turns a half-pixel
+misregistration into "outside" — measured, that peels a shell per pass: 33% of
+the hull gone in four passes and the *silhouette fit gets worse*
+(footman 0.770 → 0.710 hull IoU). Requiring only one of the eight projected
+corners to land on art is the other extreme and cuts 2%. Most of the corners
+is the rule that carves (30–45% of the hull) and improves the fit on five
+families of eight.
+
+The carve does the tightening the quorum used to be asked for, so the quorum
+can relax: the k sweep now picks **k = 6** (mean IoU 0.709 vs 0.700 at k = 7,
+0.646 at k = 8), and k = 6 is also the cleaner picture. Round 9's k = 7 stood
+only because nothing carved after it.
+
+**Residuals.** Round 9's floating cubes were the residual stage: a frame pixel
+far from the hull took its depth from a covered pixel up to three away, or —
+when nothing was found — from the plane through the body's centre, which puts
+a cube in the air near the figure. Now a residual pixel qualifies only if it
+is 8-connected to the frame's own main silhouette component and lands within
+two pixels of the hull's projection in that view, and it is placed where its
+ray first *touches* the solid (the frontmost empty cell along the ray with an
+occupied neighbour), two voxels thick, so it is attached by construction
+rather than by luck. Placement rounds repeat until nothing more lands, which
+is how a four-pixel blade gets rebuilt from the hilt outward. Anything not
+26-connected to the hull afterwards is deleted. Round 9's dilate-by-one hole
+close stays: a point-sampled projection has gaps inside its own body, and
+without it every gap reads as a missing detail and the figure grows a fur
+coat.
+
+**Colour.** One view decides each surface voxel: of the views that see it, the
+one whose direction is most nearly along the voxel's outward normal, falling
+through to the next-best when that pixel is transparent. The frames no longer
+vote pixel by pixel, which is where the speckle came from. Two surface
+majority passes follow, team band 248..255 as its own class, and a voxel is
+left alone when it still wears its primary view's pixel and two surface
+neighbours agree. Interior voxels are untouched.
+
+Rendering is unchanged (§15: cube faces, top 1.00 / sun 0.85 / shade 0.70, no
+AO). Classic parity unmoved: 0 / 64000 on all five spike scenes.

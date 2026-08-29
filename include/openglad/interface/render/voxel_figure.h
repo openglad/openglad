@@ -7,23 +7,27 @@
  */
 #pragma once
 
-// Voting-hull voxel figures (docs/voxel-render-design.md §15).
+// Voting-hull voxel figures (docs/voxel-render-design.md §15, §16).
 //
 // One solid per family at SPRITE resolution — one voxel is one sprite pixel,
 // drawn as a visible cube, so the figure has the same coarseness the art has.
-// Two stages:
+// Three stages:
 //
 //   * a voting hull, which is the round-1 space carve with the "every view
 //     must agree" rule relaxed to "at least k of 8": a strict intersection
 //     deletes anything only some facings can see, which is how the sword went
 //     missing;
-//   * per-facing residuals, which put back exactly the pixels the hull still
-//     fails to cover — the sword, the bow, a cape edge — as thin details
-//     sitting on the facing's own plane at the depth where its view ray first
-//     touches the hull.
+//   * a visibility-tight carve, which deletes any voxel a view can actually
+//     SEE and puts outside its silhouette — the vote alone lets a voxel
+//     survive on seven agreements while the eighth looks straight at it and
+//     says background, and that is the inflation;
+//   * per-facing residuals, which put back the pixels the hull still fails to
+//     cover — the sword, the bow, a cape edge — placed where their view ray
+//     first touches the solid, so they are attached rather than floating.
 //
-// Colour is back-projected from the frames (never invented), residual voxels
-// keep the pixel they came from, and nothing is hand-placed.
+// Colour is back-projected from the frames (never invented): each surface
+// voxel takes the pixel of the one seeing view it faces most squarely, and
+// nothing is hand-placed.
 //
 // SDL-free, deterministic.
 
@@ -41,8 +45,19 @@ struct FigureReport
 {
     VoxelModel model;
     int votes_required = 7;
+    // The vote's own result, before the visibility-tight passes.
+    int hull_voxels_initial = 0;
+    float mean_iou_initial = 0.0f;
+    // After the tightening.
     int hull_voxels = 0;
+    float mean_iou_hull = 0.0f;
+    int tighten_passes = 0;
+    int tighten_deleted = 0;
+    // Residuals: how many frame pixels asked, how many were attachable.
+    int residual_candidates = 0;
+    int residual_rounds = 0;
     int residual_voxels = 0;
+    int residual_dropped = 0;
     int components_dropped = 0;
     int cavities_filled = 0;
     float iou[NUM_VOXEL_FACINGS] = {};

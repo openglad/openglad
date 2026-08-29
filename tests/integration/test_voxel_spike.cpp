@@ -506,22 +506,26 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 }
 
 // ===========================================================================
-// Stage 2 round 9 (docs/voxel-render-design.md §15): voting-hull voxel
-// figures.
+// Stage 2 rounds 9-10 (docs/voxel-render-design.md §15, §16): voting-hull
+// voxel figures.
 //
 // Reliefs were rejected as cards. This is one SOLID per family at sprite
 // resolution — one voxel is one sprite pixel, drawn as a visible cube — built
-// by relaxing round 1's strict silhouette intersection to a quorum, then
-// putting back the pixels the hull still misses as per-facing residual
-// details. Reliefs survive only as the comparison panel and as the fallback
-// for non-living orders.
+// by relaxing round 1's strict silhouette intersection to a quorum, carving
+// the result back to what the views can actually see, and putting back the
+// pixels the hull still misses as attached residual details. Reliefs survive
+// only as the comparison panel and as the fallback for non-living orders.
 // ===========================================================================
 
 namespace {
 
-std::string models9_dir()
+// Round 10 (the figure cleanup) writes its own set; models9/ stays as the
+// before picture.
+constexpr const char* kRoundDir = "models10";
+
+std::string models_dir()
 {
-    return spike_dir() + "/models9";
+    return spike_dir() + "/" + kRoundDir;
 }
 
 struct Image
@@ -1156,7 +1160,7 @@ void run_figure_scene(const std::string& name, const char* campaign, int level,
         Image im = make_image(kClassicW, kClassicH, RGB{0, 0, 0});
         for (std::size_t i = 0; i < buf.size(); ++i)
             im.px[i] = unpack(buf[i]);
-        write_image(models9_dir(), "scene_" + name + "_" + f.tag,
+        write_image(models_dir(), "scene_" + name + "_" + f.tag,
                     upscale(im, 2));
     }
 
@@ -1286,10 +1290,20 @@ TEST_F(VoxelModels, voting_hull_figures)
             if (pi_[d] < pi_[worst])
                 worst = d;
         }
-        write_image(models9_dir(), std::string("fidelity_") + fs.name, page);
-        printf("  %-9s k=%d  %d hull + %d residual voxels, dropped %d, "
-               "cavities %d, %.2fs\n",
-               fs.name, chosen_k, rep.hull_voxels, rep.residual_voxels,
+        write_image(models_dir(), std::string("fidelity_") + fs.name, page);
+        printf("  %-9s k=%d  hull %d -> %d (%d cut over %d pass%s), "
+               "hull IoU %.3f -> %.3f, with residuals %.3f\n",
+               fs.name, chosen_k, rep.hull_voxels_initial, rep.hull_voxels,
+               rep.tighten_deleted, rep.tighten_passes,
+               rep.tighten_passes == 1 ? "" : "es",
+               static_cast<double>(rep.mean_iou_initial),
+               static_cast<double>(rep.mean_iou_hull),
+               static_cast<double>(rep.mean_iou));
+        printf("            residuals %d kept over %d growth round(s), %d "
+               "pixels asked in round 1, %d unattached and dropped; "
+               "components dropped %d, cavities %d, %.2fs\n",
+               rep.residual_voxels, rep.residual_rounds,
+               rep.residual_candidates, rep.residual_dropped,
                rep.components_dropped, rep.cavities_filled, rep.seconds);
         printf("            IoU mean %.3f (worst %s %.3f)  agreement mean "
                "%.1f%%  per-facing IoU:",
@@ -1329,7 +1343,7 @@ TEST_F(VoxelModels, voting_hull_figures)
                                     kPlateBg);
             paste(hero, 0, hero.h - a.h, a);
             paste(hero, a.w + 6, hero.h - b.h, b);
-            write_image(models9_dir(), std::string("hero_") + fs.name, hero);
+            write_image(models_dir(), std::string("hero_") + fs.name, hero);
         }
         figures.emplace(fs.family, std::move(rep.model));
     }
@@ -1346,7 +1360,7 @@ TEST_F(VoxelModels, voting_hull_figures)
             paste(im, x, hh - c.h, c);
             x += c.w + 4;
         }
-        write_image(models9_dir(), nm, im);
+        write_image(models_dir(), nm, im);
     };
     row(lineup, lh, "lineup");
     row(lineup_orig, oh, "lineup_orig");
@@ -1412,7 +1426,7 @@ TEST_F(VoxelModels, figure_animations)
     if (spike_dir().empty())
         GTEST_SKIP() << "set OG_VOXEL_SPIKE_DIR to record";
 
-    const std::string dir = models9_dir() + "/anim";
+    const std::string dir = models_dir() + "/anim";
     constexpr int kCanvas = 260;
     ASSERT_TRUE(mount_scene_campaign("gladiator"));
     all_effects_off();
