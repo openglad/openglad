@@ -1416,3 +1416,364 @@ TEST_F(VoxelModels, world_fixed_reliefs_tilt_sweep)
             ASSERT_TRUE(family_walk_frames(f.first.family, f.second));
     }
 }
+
+// ===========================================================================
+// Animation capture. No model changes: this renders the round-8 world-fixed
+// reliefs through the same path the stills use and dumps numbered frames for
+// imagemagick to assemble. The stamp comparison exists to answer the only
+// question that matters here — a stage-1 extrusion orbits as a smeared column
+// with no facing changes, a relief turns and shows the art drawn for that
+// side.
+// ===========================================================================
+
+namespace {
+
+Image crop(const Image& src, int x0, int y0, int w, int h)
+{
+    Image out = make_image(w, h, kPlateBg);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
+        {
+            const int sx = x0 + x, sy = y0 + y;
+            if (sx < 0 || sy < 0 || sx >= src.w || sy >= src.h)
+                continue;
+            out.px[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                   static_cast<std::size_t>(x)] =
+                src.px[static_cast<std::size_t>(sy) *
+                           static_cast<std::size_t>(src.w) +
+                       static_cast<std::size_t>(sx)];
+        }
+    return out;
+}
+
+// Stage-1 stamp: the sprite frame extruded straight up to the living height,
+// with no facing swap. This is what "are the reliefs stamps?" is asking about.
+Shot shoot_stamp(const unsigned char* frame, int w, int h,
+                 const ShotCamera& sc, const std::vector<std::uint32_t>& lut,
+                 unsigned char team, RGB bg,
+                 const og::render::VoxelModel* shadow)
+{
+    Shot out;
+    out.rgb = make_image(sc.w, sc.h, bg);
+    std::vector<std::uint32_t> buf(
+        static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h),
+        pack(bg));
+
+    og::render::VoxelScene scene;
+    if (shadow != nullptr && !shadow->empty())
+    {
+        og::render::VoxelVolume sv;
+        sv.model = shadow;
+        sv.x = 0.0f;
+        sv.y = 0.0f;
+        sv.z = -1.0f;
+        sv.material.team_color = team;
+        scene.emit(sv);
+    }
+    og::render::VoxelVolume v;
+    v.texels = frame;
+    v.w = w;
+    v.h = h;
+    v.x = 0.0f;
+    v.y = 0.0f;
+    v.z = 0.0f;
+    v.height = og::render::kVoxelHeightLiving;
+    v.material.team_color = team;
+    scene.emit(v);
+
+    og::render::VoxelCamera cam;
+    cam.kind = og::render::VoxelCameraKind::Free;
+    cam.cx = static_cast<float>(w) * 0.5f;
+    cam.cy = static_cast<float>(h);
+    cam.yaw_deg = sc.yaw;
+    cam.pitch_deg = sc.pitch;
+    cam.scale = sc.scale;
+    cam.view_cx = sc.view_cx;
+    cam.view_cy = sc.view_cy;
+
+    og::render::VoxelRenderTarget rt;
+    rt.pixels = buf.data();
+    rt.pitch_px = sc.w;
+    rt.w = sc.w;
+    rt.h = sc.h;
+    rt.clip_x0 = 0;
+    rt.clip_y0 = 0;
+    rt.clip_x1 = sc.w;
+    rt.clip_y1 = sc.h;
+    rt.lut256 = lut.data();
+
+    og::render::VoxelRaster raster;
+    (void)raster.render(scene, cam, rt);
+    for (std::size_t i = 0; i < buf.size(); ++i)
+        out.rgb.px[i] = unpack(buf[i]);
+    return out;
+}
+
+// Union of the non-background pixels over a whole sequence, so every frame
+// crops to the same box and the GIF does not jitter.
+struct Box
+{
+    int x0 = 1 << 30, y0 = 1 << 30, x1 = -1, y1 = -1;
+    bool touches_edge = false;
+};
+
+void accumulate(Box& b, const Image& im, RGB bg)
+{
+    for (int y = 0; y < im.h; ++y)
+        for (int x = 0; x < im.w; ++x)
+        {
+            const RGB p = im.px[static_cast<std::size_t>(y) *
+                                    static_cast<std::size_t>(im.w) +
+                                static_cast<std::size_t>(x)];
+            if (p == bg)
+                continue;
+            b.x0 = std::min(b.x0, x);
+            b.x1 = std::max(b.x1, x);
+            b.y0 = std::min(b.y0, y);
+            b.y1 = std::max(b.y1, y);
+            if (x == 0 || y == 0 || x == im.w - 1 || y == im.h - 1)
+                b.touches_edge = true;
+        }
+}
+
+void write_sequence(const std::string& dir, const std::string& prefix,
+                    const std::vector<Image>& frames, const Box& b, int pad,
+                    int canvas)
+{
+    const int x0 = std::max(0, b.x0 - pad);
+    const int y0 = std::max(0, b.y0 - pad);
+    const int w = std::min(canvas - x0, b.x1 - b.x0 + 1 + pad * 2);
+    const int h = std::min(canvas - y0, b.y1 - b.y0 + 1 + pad * 2);
+    std::filesystem::create_directories(dir);
+    char name[64];
+    for (std::size_t i = 0; i < frames.size(); ++i)
+    {
+        snprintf(name, sizeof(name), "%s_%03d", prefix.c_str(),
+                 static_cast<int>(i));
+        write_image(dir, name, crop(frames[i], x0, y0, w, h));
+    }
+    printf("    %-26s %d frames, cell %dx%d%s\n", prefix.c_str(),
+           static_cast<int>(frames.size()), w, h,
+           b.touches_edge ? "   *** CLIPPED at the render canvas ***" : "");
+}
+
+class VoxelAnim : public testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        scr()->set_world_canvas_pinned_classic(true);
+        scr()->relayout_views();
+    }
+    void TearDown() override
+    {
+        scr()->set_active_canvas(CanvasTarget::UI);
+        scr()->set_world_canvas_pinned_classic(false);
+        scr()->relayout_views();
+        restore_default_settings();
+    }
+};
+
+} // namespace
+
+TEST_F(VoxelAnim, spin_and_tilt_captures)
+{
+    if (spike_dir().empty())
+        GTEST_SKIP() << "set OG_VOXEL_SPIKE_DIR to record";
+
+    const std::string dir = spike_dir() + "/models8/anim";
+    constexpr int kCanvas = 260; // generous; every sequence crops to its own box
+    constexpr float kThetaPlane = 55.0f;
+
+    ASSERT_TRUE(mount_scene_campaign("gladiator"));
+    all_effects_off();
+    GameWorld& world = scr()->world();
+    world.delete_objects();
+    world.id = 1;
+    scr()->save_data.scen_num = 1;
+    ASSERT_TRUE(scr()->load_level()) << "gladiator scen1";
+    const std::vector<std::uint32_t> lut = build_palette_lut();
+
+    og::render::VoxelReliefCache cache(kThetaPlane);
+    printf("[voxel-anim] theta %.0f reliefs, scale 6, dark plate + shadow\n",
+           static_cast<double>(kThetaPlane));
+
+    for (const FamilySpec& fs : kFamilies)
+    {
+        og::render::VoxelCarveFrames fr;
+        if (!family_walk_frames(fs.family, fr))
+            continue;
+        std::array<const og::render::VoxelRelief*, NUM_FACINGS> rels{};
+        for (int d = 0; d < NUM_FACINGS; ++d)
+            rels[static_cast<std::size_t>(d)] = cache.get(
+                fr.frame[d], fr.w, fr.h,
+                og::render::kVoxelReliefDepthLiving);
+        const og::render::VoxelModel shadow = make_shadow(fr.w, fr.h, 16);
+
+        // ---- 1. the orbit ----
+        ShotCamera sc;
+        sc.pitch = 45.0f;
+        sc.scale = 6.0f;
+        sc.w = kCanvas;
+        sc.h = kCanvas;
+        sc.view_cx = static_cast<float>(kCanvas) * 0.5f;
+        sc.view_cy = static_cast<float>(kCanvas) * 0.62f;
+        std::vector<Image> spin;
+        Box box;
+        for (int t = 0; t < 72; ++t)
+        {
+            sc.yaw = static_cast<float>(t * 5);
+            const int shown = shown_facing(FACE_DOWN, sc.yaw);
+            spin.push_back(
+                shoot_relief(*rels[static_cast<std::size_t>(shown)],
+                             plane_yaw_for(sc.yaw), sc, lut, kShotTeam,
+                             kPlateBg, &shadow)
+                    .rgb);
+            accumulate(box, spin.back(), kPlateBg);
+        }
+        write_sequence(dir, std::string("spin_") + fs.name, spin, box, 6,
+                       kCanvas);
+        // A still for the page fallback, same crop as the GIF's first frame.
+        {
+            const int x0 = std::max(0, box.x0 - 6);
+            const int y0 = std::max(0, box.y0 - 6);
+            write_image(dir, std::string("spin_") + fs.name + "_frame00",
+                        crop(spin[0], x0, y0,
+                             std::min(kCanvas - x0, box.x1 - box.x0 + 13),
+                             std::min(kCanvas - y0, box.y1 - box.y0 + 13)));
+        }
+
+        const bool wants_extra = (std::string(fs.name) == "footman" ||
+                                  std::string(fs.name) == "orc");
+        if (!wants_extra)
+            continue;
+
+        // ---- 2. stamp beside relief, same orbit ----
+        std::vector<Image> pair;
+        Box pbox;
+        for (int t = 0; t < 72; ++t)
+        {
+            sc.yaw = static_cast<float>(t * 5);
+            const Image st =
+                shoot_stamp(fr.frame[FACE_DOWN], fr.w, fr.h, sc, lut,
+                            kShotTeam, kPlateBg, &shadow)
+                    .rgb;
+            const int shown = shown_facing(FACE_DOWN, sc.yaw);
+            const Image rl =
+                shoot_relief(*rels[static_cast<std::size_t>(shown)],
+                             plane_yaw_for(sc.yaw), sc, lut, kShotTeam,
+                             kPlateBg, &shadow)
+                    .rgb;
+            Image both = make_image(kCanvas * 2 + 12, kCanvas, kPlateBg);
+            paste(both, 0, 0, st);
+            paste(both, kCanvas + 12, 0, rl);
+            pair.push_back(std::move(both));
+            accumulate(pbox, pair.back(), kPlateBg);
+        }
+        write_sequence(dir, std::string("spin_stamp_") + fs.name, pair, pbox,
+                       6, kCanvas * 2 + 12);
+
+        // ---- 3. the tilt, ping-ponged ----
+        std::vector<Image> tilt;
+        Box tbox;
+        ShotCamera tc = sc;
+        tc.yaw = 20.0f;
+        const int shown20 = shown_facing(FACE_DOWN, 20.0f);
+        const float pyaw20 = plane_yaw_for(20.0f);
+        for (int t = 0; t < 80; ++t)
+        {
+            const int step = (t < 40) ? t : (79 - t);
+            tc.pitch = 90.0f - static_cast<float>(step) * (75.0f / 39.0f);
+            tilt.push_back(
+                shoot_relief(*rels[static_cast<std::size_t>(shown20)], pyaw20,
+                             tc, lut, kShotTeam, kPlateBg, &shadow)
+                    .rgb);
+            accumulate(tbox, tilt.back(), kPlateBg);
+        }
+        write_sequence(dir, std::string("tilt_") + fs.name, tilt, tbox, 6,
+                       kCanvas);
+    }
+
+    // ---- 4. the scene, orbiting ----
+    {
+        viewscreen* const vs = view0();
+        ASSERT_TRUE(mount_scene_campaign("westlands"));
+        all_effects_off();
+        world.delete_objects();
+        world.id = 1;
+        scr()->save_data.scen_num = 1;
+        ASSERT_TRUE(scr()->load_level());
+        scr()->clear_all_view_text();
+        vs->control = nullptr;
+        vs->editor_floor_override_ = 0;
+        vs->editor_authoring_view_ = true;
+        frame_camera(vs, world, 0);
+        ASSERT_TRUE(vs->redraw(&scr()->level_runtime_data(), false));
+
+        const std::vector<std::uint32_t> slut = build_palette_lut();
+        ReliefModels models(kThetaPlane);
+        build_terrain_models(models, scr()->level_visuals());
+        float cxw = static_cast<float>(vs->topx) +
+            static_cast<float>(vs->xview) / 2.0f;
+        float cyw = static_cast<float>(vs->topy) +
+            static_cast<float>(vs->yview) / 2.0f;
+        densest_cluster(world, cxw, cyw);
+
+        std::filesystem::create_directories(dir);
+        char name[64];
+        for (int t = 0; t < 72; ++t)
+        {
+            const float yaw = static_cast<float>(t * 5);
+            og::render::VoxelScene scene;
+            og::render::VoxelSceneBuildParams bp;
+            bp.topx = vs->topx - vs->xview;
+            bp.topy = vs->topy - vs->yview;
+            bp.xview = vs->xview * 3;
+            bp.yview = vs->yview * 3;
+            bp.floor_from = 0;
+            bp.floor_to = world.floor_count() - 1;
+            bp.floor_stride = og::render::kVoxelFloorStride;
+            bp.draw_dormant = true;
+            bp.skip_hit_fx = true;
+            bp.models = &models;
+            bp.camera_yaw_deg = yaw;
+            (void)og::render::build_voxel_scene(scene, world,
+                                                scr()->level_visuals(), bp);
+
+            std::vector<std::uint32_t> buf(
+                static_cast<std::size_t>(kClassicW) * kClassicH, 0xFF000000u);
+            og::render::VoxelCamera cam;
+            cam.kind = og::render::VoxelCameraKind::Free;
+            cam.cx = cxw;
+            cam.cy = cyw;
+            cam.yaw_deg = yaw;
+            cam.pitch_deg = 50.0f;
+            cam.scale = 3.0f;
+            cam.view_cx = static_cast<float>(kClassicW) / 2.0f;
+            cam.view_cy = static_cast<float>(kClassicH) / 2.0f;
+            og::render::VoxelRenderTarget rt;
+            rt.pixels = buf.data();
+            rt.pitch_px = kClassicW;
+            rt.w = kClassicW;
+            rt.h = kClassicH;
+            rt.clip_x0 = 0;
+            rt.clip_y0 = 0;
+            rt.clip_x1 = kClassicW;
+            rt.clip_y1 = kClassicH;
+            rt.lut256 = slut.data();
+            og::render::VoxelRaster raster;
+            (void)raster.render(scene, cam, rt);
+            Image im = make_image(kClassicW, kClassicH, RGB{0, 0, 0});
+            for (std::size_t i = 0; i < buf.size(); ++i)
+                im.px[i] = unpack(buf[i]);
+            snprintf(name, sizeof(name), "spin_scene_%03d", t);
+            write_image(dir, name, upscale(im, 2));
+        }
+        printf("    %-26s 72 frames, cell %dx%d\n", "spin_scene",
+               kClassicW * 2, kClassicH * 2);
+        vs->editor_authoring_view_ = false;
+        vs->editor_floor_override_ = -1;
+        world.delete_objects();
+        world.set_floor_count(1);
+    }
+}
