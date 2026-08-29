@@ -1234,11 +1234,10 @@ void screen::relayout_views()
 	// the GameplayUI pixels the old inset leaves behind (see
 	// clear_camera_inset_rect — the classic path aliases the persistent
 	// World surface).
-	const bool had_inset_rect = (camera_view_ != nullptr) && !camera_docked_;
-	const Sint32 old_inset_x = had_inset_rect ? camera_view_->xloc : 0;
-	const Sint32 old_inset_y = had_inset_rect ? camera_view_->yloc : 0;
-	const Sint32 old_inset_w = had_inset_rect ? camera_view_->xview : 0;
-	const Sint32 old_inset_h = had_inset_rect ? camera_view_->yview : 0;
+	// Every inset rect, not just the camera viewscreen's own: at 2 seats
+	// there are two blocks (one above each seat's radar) and a transition
+	// must scrub both. The list is empty while docked or without a camera.
+	const std::vector<CameraPaneRect> old_inset_rects = camera_pane_rects_;
 	// Camera dock resolution (docs/camera-views-design.md §4.5): recompute at
 	// the TOP, before the seat resize loop consumes layout_pane_count(), so a
 	// seat-count change never lets seats resize against a stale docked flag
@@ -1283,13 +1282,11 @@ void screen::relayout_views()
 	// present slice and never perturbs the presentation partition.
 	relayout_camera_view();
 	// Scrub a stale inset: the camera flipped to docked, or its rect moved.
-	if (had_inset_rect && camera_view_ != nullptr &&
-	    (camera_docked_ || old_inset_x != camera_view_->xloc ||
-	     old_inset_y != camera_view_->yloc ||
-	     old_inset_w != camera_view_->xview ||
-	     old_inset_h != camera_view_->yview))
-		clear_camera_inset_rect(old_inset_x, old_inset_y,
-		                        old_inset_w, old_inset_h);
+	// (Or its rect LIST changed — a seat add/remove between 1, 2 and 4 seats
+	// moves, adds or drops blocks; every previous block is scrubbed.)
+	if (!old_inset_rects.empty() && camera_view_ != nullptr &&
+	    (camera_docked_ || old_inset_rects != camera_pane_rects_))
+		clear_camera_pane_rects(old_inset_rects);
 	redrawme = 1;
 }
 
@@ -1301,11 +1298,15 @@ void screen::relayout_views()
 // minimap above the radar block at 1 seat. Always derived, never accumulated.
 void screen::relayout_camera_view()
 {
+	camera_pane_rects_.clear();
 	if (camera_view_ == nullptr)
 		return;
 	// Zoom is resolved WITH the geometry: only the one-seat second minimap
 	// below sets it (maintainer ruling, §6) — the docked quadrant and the
 	// 2/4-seat centered inset are full-size panes and stay 1:1.
+	// (Two-seat ruling: the two-seat blocks are second minimaps too, so they
+	// take the same zoom; the docked quadrant and the 4-seat centered inset
+	// are the panes that stay 1:1.)
 	camera_minimap_zoom_ = false;
 	if (camera_docked_)
 	{
@@ -1326,7 +1327,14 @@ void screen::relayout_camera_view()
 	}
 	const int ui_w = gameplay_ui_canvas_w();
 	const int ui_h = gameplay_ui_canvas_h();
-	if (numviews == 1)
+	// The inset style rule, resolved ONCE here from the local seat count
+	// (docs/camera-views-design.md §6): 1 seat -> one second-minimap block,
+	// 2 seats -> one such block per seat, otherwise (4 seats) the centered
+	// inset. Nothing else derives it.
+	switch (numviews)
+	{
+	case 1:
+	case 2:
 	{
 		// One seat, the SECOND MINIMAP (maintainer ruling, §6): the lone seat
 		// camera keeps its own hero at the canvas centre, so a centered inset
@@ -1336,53 +1344,83 @@ void screen::relayout_camera_view()
 		// pane margin between the two. Derived from the COMPUTED radar
 		// position (radar_block_for_pane, the one placement rule), so
 		// PREF_RADAR off anchors it identically.
-		const int mode = (viewob[0] != nullptr)
-		    ? static_cast<int>(viewob[0]->prefs[PREF_VIEW])
-		    : og::view_layout::kModeFull;
-		// The seat's UI pane — the rectangle the radar anchors to, the same
-		// projection ScopedGameplayUiViewLayout applies before it draws.
-		og::view_layout::ViewLayout pane =
-		    og::view_layout::compute_view_layout(
-		        layout_pane_count(), 0, mode, ui_w, ui_h);
-		if (!pane.applies)
-			pane = og::view_layout::ViewLayout{true, 0, 0, ui_w, ui_h};
-		auto [block_w, block_h] = radar_block_extents(
-		    level_runtime_data_.world().grid.w,
-		    level_runtime_data_.world().grid.h);
-		// No level grid (a declared camera always has one): keep the
-		// unclamped block rather than a degenerate pane.
-		if (block_w <= 0)
-			block_w = RADAR_X;
-		if (block_h <= 0)
-			block_h = RADAR_Y;
-		const RadarBlock block = radar_block_for_pane(
-		    pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
-		    /*force_lower=*/false);
-		camera_view_->resize(
-		    static_cast<short>(block.x),
-		    static_cast<short>(block.y - block.margin - block.h),
-		    static_cast<short>(block.w), static_cast<short>(block.h));
+		// Two seats (maintainer ruling): EACH seat gets that block, stacked
+		// above its own radar inside its own side-by-side pane, both showing
+		// the same target at the same zoom — the loop below is the one rule
+		// applied per seat, never a second copy of it.
+		for (int seat = 0; seat < numviews; ++seat)
+			camera_pane_rects_.push_back(
+			    camera_minimap_block_for_seat(seat, ui_w, ui_h));
 		// A radar-sized pane at 1:1 is too zoomed-in to be useful
 		// (maintainer ruling, §6): draw it at 0.25 zoom — the same rect, a
 		// kCameraMinimapZoomDenominator-times world window, integer-
 		// downsampled by draw_camera_view_ui through the camera_scale layer.
 		camera_minimap_zoom_ = true;
-		return;
+		break;
 	}
-	// Inset at 2 and 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
-	// min 96x60, centered — the canvas centre is a pane boundary there, and
-	// the bottom-right corner belongs to another seat's radar.
-	// GameplayUI coordinates; the World canvas and the seat layout
-	// never see it, so layout_pane_count() stays == numviews.
-	int w = ui_w * 3 / 10;
-	int h = ui_h * 3 / 10;
-	if (w < 96)
-		w = 96;
-	if (h < 60)
-		h = 60;
+	default:
+	{
+		// Inset at 2 and 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
+		// min 96x60, centered — the canvas centre is a pane boundary there, and
+		// the bottom-right corner belongs to another seat's radar.
+		// GameplayUI coordinates; the World canvas and the seat layout
+		// never see it, so layout_pane_count() stays == numviews.
+		// (Two-seat ruling: 4 seats only now — 2 seats take the per-seat
+		// blocks above.)
+		int w = ui_w * 3 / 10;
+		int h = ui_h * 3 / 10;
+		if (w < 96)
+			w = 96;
+		if (h < 60)
+			h = 60;
+		camera_pane_rects_.push_back(
+		    CameraPaneRect{(ui_w - w) / 2, (ui_h - h) / 2, w, h});
+		break;
+	}
+	}
+	// The camera viewscreen rests on the first rect; draw_camera_view_ui
+	// walks the rest with draw-scoped resizes.
+	const CameraPaneRect& home = camera_pane_rects_.front();
 	camera_view_->resize(
-	    static_cast<short>((ui_w - w) / 2), static_cast<short>((ui_h - h) / 2),
-	    static_cast<short>(w), static_cast<short>(h));
+	    static_cast<short>(home.x), static_cast<short>(home.y),
+	    static_cast<short>(home.w), static_cast<short>(home.h));
+}
+
+// The near-minimap block for one seat (docs/camera-views-design.md §6): the
+// seat's UI pane through compute_view_layout — the rectangle the radar
+// anchors to, the same projection ScopedGameplayUiViewLayout applies before
+// it draws — then the radar block on it through the shared placement rule,
+// mirrored one radar margin above the block. Shared by the one-seat and the
+// two-seat arms of relayout_camera_view.
+CameraPaneRect screen::camera_minimap_block_for_seat(int seat, int ui_w,
+                                                     int ui_h) const
+{
+	const viewscreen* const seat_view =
+	    (seat >= 0 && seat < MAX_VIEWS) ? viewob[seat].get() : nullptr;
+	const int mode = (seat_view != nullptr)
+	    ? static_cast<int>(seat_view->prefs[PREF_VIEW])
+	    : og::view_layout::kModeFull;
+	// The seat's UI pane — the rectangle the radar anchors to, the same
+	// projection ScopedGameplayUiViewLayout applies before it draws.
+	og::view_layout::ViewLayout pane =
+	    og::view_layout::compute_view_layout(
+	        layout_pane_count(), seat, mode, ui_w, ui_h);
+	if (!pane.applies)
+		pane = og::view_layout::ViewLayout{true, 0, 0, ui_w, ui_h};
+	auto [block_w, block_h] = radar_block_extents(
+	    level_runtime_data_.world().grid.w,
+	    level_runtime_data_.world().grid.h);
+	// No level grid (a declared camera always has one): keep the
+	// unclamped block rather than a degenerate pane.
+	if (block_w <= 0)
+		block_w = RADAR_X;
+	if (block_h <= 0)
+		block_h = RADAR_Y;
+	const RadarBlock block = radar_block_for_pane(
+	    pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
+	    /*force_lower=*/false);
+	return CameraPaneRect{block.x, block.y - block.margin - block.h,
+	                      block.w, block.h};
 }
 
 // Camera-view lifecycle (docs/camera-views-design.md §5). One idempotent,
@@ -1412,10 +1450,10 @@ void screen::sync_camera_views()
 			// Stale-pixel rule (§6): an inset leaves its pixels on the
 			// GameplayUI canvas, which persists across frames on the classic
 			// alias path — scrub the rect before dropping the pane.
+			// (Every block: two of them at 2 seats.)
 			if (!was_docked)
-				clear_camera_inset_rect(
-				    camera_view_->xloc, camera_view_->yloc,
-				    camera_view_->xview, camera_view_->yview);
+				clear_camera_pane_rects(camera_pane_rects_);
+			camera_pane_rects_.clear();
 			camera_view_.reset();
 			camera_entity_id_ = 0;
 			camera_style_ = og::sim::kCameraStyleAuto;
@@ -1521,7 +1559,7 @@ void screen::draw_camera_view_world()
 // HUD idiom and keeps direct calls correct).
 void screen::draw_camera_view_ui()
 {
-	if (camera_view_ == nullptr || camera_docked_)
+	if (camera_view_ == nullptr || camera_docked_ || camera_pane_rects_.empty())
 		return;
 	ScopedGameplayUiCanvas gameplay_ui(*this);
 	// Overlay-allocation fallback (review finding R2): when the fixed
@@ -1534,6 +1572,27 @@ void screen::draw_camera_view_ui()
 	if (canvas_w() != gameplay_ui_canvas_w() ||
 	    canvas_h() != gameplay_ui_canvas_h())
 		return;
+	// The widened resize is draw-scoped geometry, not a relayout:
+	// leave redrawme as the frame found it. (So is every per-block
+	// placement below, hence the save spans the whole draw.)
+	const short saved_redrawme = redrawme;
+	// Draw-scoped placement: the camera viewscreen rests on the first rect
+	// (relayout_camera_view); walking a second block at 2 seats moves it
+	// for the draw and the tail puts it back. A no-op when already there.
+	const auto place = [&](const CameraPaneRect& r) {
+		if (camera_view_->xloc == r.x && camera_view_->yloc == r.y &&
+		    camera_view_->xview == r.w && camera_view_->yview == r.h)
+			return;
+		camera_view_->resize(
+		    static_cast<short>(r.x), static_cast<short>(r.y),
+		    static_cast<short>(r.w), static_cast<short>(r.h));
+	};
+	// The plain 1:1 pane draw, at a rect.
+	const auto draw_one_to_one = [&](const CameraPaneRect& r) {
+		place(r);
+		(void)camera_view_->redraw(&level_runtime_data_,
+		                           /*draw_radar=*/false);
+	};
 	bool drew_scaled = false;
 	if (camera_minimap_zoom_)
 	{
@@ -1548,35 +1607,66 @@ void screen::draw_camera_view_ui()
 		// merely zoomed in for the frame (the R2 degrade-don't-corrupt
 		// shape). Still zero game-rng calls: the layer path draws exactly
 		// what a (larger) seat pane draws.
-		const short pane_x = static_cast<short>(camera_view_->xloc);
-		const short pane_y = static_cast<short>(camera_view_->yloc);
-		const short pane_w = static_cast<short>(camera_view_->xview);
-		const short pane_h = static_cast<short>(camera_view_->yview);
-		const short zoomed_w =
-		    static_cast<short>(pane_w * kCameraMinimapZoomDenominator);
-		const short zoomed_h =
-		    static_cast<short>(pane_h * kCameraMinimapZoomDenominator);
-		if (camera_scale_begin(zoomed_w, zoomed_h))
-		{
-			// The widened resize is draw-scoped geometry, not a relayout:
-			// leave redrawme as the frame found it.
-			const short saved_redrawme = redrawme;
+		// Two seats (maintainer ruling): both blocks show the same target
+		// at the same zoom, so when they share extents (they do for the
+		// symmetric side-by-side split) the layer is rendered ONCE and
+		// sampled into every block — camera_scale_end per rect, the first
+		// call restoring the target and each call sampling the held layer.
+		// Blocks of differing extents (a seat in a different PREF_VIEW
+		// mode is still the same grid clamp, but keep the fallback honest)
+		// render per block instead.
+		const auto render_layer_for = [&](const CameraPaneRect& r) {
+			const short zoomed_w =
+			    static_cast<short>(r.w * kCameraMinimapZoomDenominator);
+			const short zoomed_h =
+			    static_cast<short>(r.h * kCameraMinimapZoomDenominator);
+			if (!camera_scale_begin(zoomed_w, zoomed_h))
+				return false;
 			camera_view_->resize(static_cast<short>(0),
 			                     static_cast<short>(0), zoomed_w, zoomed_h);
 			(void)camera_view_->redraw(&level_runtime_data_,
 			                           /*draw_radar=*/false);
-			camera_scale_end(pane_x, pane_y, pane_w, pane_h,
-			                 kCameraMinimapZoomDenominator);
-			camera_view_->resize(pane_x, pane_y, pane_w, pane_h);
-			redrawme = saved_redrawme;
+			return true;
+		};
+		const CameraPaneRect& first = camera_pane_rects_.front();
+		bool uniform = true;
+		for (const CameraPaneRect& r : camera_pane_rects_)
+			if (r.w != first.w || r.h != first.h)
+				uniform = false;
+		if (uniform)
+		{
+			if (render_layer_for(first))
+			{
+				for (const CameraPaneRect& r : camera_pane_rects_)
+					camera_scale_end(r.x, r.y, r.w, r.h,
+					                 kCameraMinimapZoomDenominator);
+				drew_scaled = true;
+			}
+		}
+		else
+		{
+			for (const CameraPaneRect& r : camera_pane_rects_)
+			{
+				if (render_layer_for(r))
+					camera_scale_end(r.x, r.y, r.w, r.h,
+					                 kCameraMinimapZoomDenominator);
+				else
+					draw_one_to_one(r);
+			}
 			drew_scaled = true;
 		}
 	}
 	if (!drew_scaled)
-		(void)camera_view_->redraw(&level_runtime_data_, /*draw_radar=*/false);
+		for (const CameraPaneRect& r : camera_pane_rects_)
+			draw_one_to_one(r);
+	// Back on the first rect — the rect the geometry pins and the scrubs
+	// read.
+	place(camera_pane_rects_.front());
+	redrawme = saved_redrawme;
 	// 1px border framing the world content (corners inclusive).
-	draw_box(camera_view_->xloc - 1, camera_view_->yloc - 1,
-	         camera_view_->endx, camera_view_->endy, GREY, 0, 1);
+	// (One per block.)
+	for (const CameraPaneRect& r : camera_pane_rects_)
+		draw_box(r.x - 1, r.y - 1, r.x + r.w, r.y + r.h, GREY, 0, 1);
 }
 
 // Stale-pixel rule (docs/camera-views-design.md §6, open question resolved at
@@ -1603,6 +1693,12 @@ void screen::clear_camera_inset_rect(int x, int y, int w, int h)
 	redrawme = 1;
 }
 
+void screen::clear_camera_pane_rects(const std::vector<CameraPaneRect>& rects)
+{
+	for (const CameraPaneRect& r : rects)
+		clear_camera_inset_rect(r.x, r.y, r.w, r.h);
+}
+
 void screen::cleanup(short howmany)
 {
 	Sint32 i;
@@ -1616,6 +1712,7 @@ void screen::cleanup(short howmany)
     // with the seats; the next redraw() re-materializes it from the
     // still-replicated ModeState declaration.
     camera_view_.reset();
+    camera_pane_rects_.clear();
     camera_docked_ = false;
     camera_minimap_zoom_ = false;
     // §7.1: destroyed views leave no windows to present; a later World

@@ -210,6 +210,10 @@ public:
     // j*denominator), whole-pixel copies, no floats, no filtering. Default
     // no-ops for backends without an off-screen surface: a false begin tells
     // the caller to draw 1:1 instead (the allocation-fallback yield).
+    // camera_scale_end may follow one begin once PER PANE RECT: the first
+    // call restores the target, and every call samples the still-held layer
+    // — the two-seat near-minimap renders one layer and lands it in both
+    // seats' blocks that way.
     virtual bool camera_scale_begin(Sint32 /*w*/, Sint32 /*h*/)
     {
         return false;

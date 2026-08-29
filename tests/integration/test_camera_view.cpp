@@ -173,20 +173,27 @@ protected:
         return SeatRect{r.x, r.y, r.w, r.h};
     }
 
-    // The seat's radar block, through the SHARED placement rule the radar
-    // itself uses (radar_block_for_pane over the seat's UI pane and the live
-    // grid's clamp) — so nothing here can drift from where the minimap
-    // actually lands, and no rect literal is typed by hand.
-    RadarBlock seat_radar_block() const
+    // A seat's UI pane — the rectangle its radar anchors to (the projection
+    // ScopedGameplayUiViewLayout applies before the radar draws), through
+    // the same compute_view_layout pipeline at the live pane count.
+    og::view_layout::ViewLayout seat_ui_pane(int seat) const
     {
         const int ui_w = game_->gameplay_ui_canvas_w();
         const int ui_h = game_->gameplay_ui_canvas_h();
-        const int mode = (game_->viewob[0] != nullptr)
-            ? static_cast<int>(game_->viewob[0]->prefs[PREF_VIEW])
+        const int mode = (game_->viewob[seat] != nullptr)
+            ? static_cast<int>(game_->viewob[seat]->prefs[PREF_VIEW])
             : og::view_layout::kModeFull;
-        const og::view_layout::ViewLayout pane =
-            og::view_layout::compute_view_layout(
-                game_->layout_pane_count(), 0, mode, ui_w, ui_h);
+        return og::view_layout::compute_view_layout(
+            game_->layout_pane_count(), seat, mode, ui_w, ui_h);
+    }
+
+    // A seat's radar block, through the SHARED placement rule the radar
+    // itself uses (radar_block_for_pane over the seat's UI pane and the live
+    // grid's clamp) — so nothing here can drift from where the minimap
+    // actually lands, and no rect literal is typed by hand.
+    RadarBlock seat_radar_block(int seat = 0) const
+    {
+        const og::view_layout::ViewLayout pane = seat_ui_pane(seat);
         EXPECT_TRUE(pane.applies);
         const auto [block_w, block_h] = radar_block_extents(
             game_->world().grid.w, game_->world().grid.h);
@@ -195,17 +202,34 @@ protected:
                                     /*force_lower=*/false);
     }
 
-    // The one-seat SECOND MINIMAP rect (maintainer ruling): the radar block
-    // mirrored — same size, same right edge, stacked directly above the
-    // radar with the radar's own pane margin between them.
-    SeatRect second_minimap_rect() const
+    // The SECOND MINIMAP rect for a seat (maintainer rulings): the radar
+    // block mirrored — same size, same right edge, stacked directly above
+    // that seat's radar with the radar's own pane margin between them. Seat
+    // 0's at one seat; one per seat at two seats.
+    SeatRect second_minimap_rect(int seat = 0) const
     {
-        const RadarBlock block = seat_radar_block();
+        const RadarBlock block = seat_radar_block(seat);
         return SeatRect{block.x, block.y - block.margin - block.h, block.w,
                         block.h};
     }
 
-    // The centered GameplayUI inset the 2- and 4-seat layouts keep.
+    static SeatRect to_seat_rect(const CameraPaneRect& r)
+    {
+        return SeatRect{r.x, r.y, r.w, r.h};
+    }
+
+    // Whether a rect covers the canvas point where a seat's camera holds
+    // that seat's own hero — the centre of the seat's UI pane.
+    bool covers_seat_centre(const SeatRect& r, int seat) const
+    {
+        const og::view_layout::ViewLayout pane = seat_ui_pane(seat);
+        const int cx = pane.x + pane.w / 2;
+        const int cy = pane.y + pane.h / 2;
+        return cx >= r.xloc && cx < r.xloc + r.xview && cy >= r.yloc &&
+               cy < r.yloc + r.yview;
+    }
+
+    // The centered GameplayUI inset the 4-seat layout keeps.
     SeatRect centered_inset_rect() const
     {
         const int ui_w = game_->gameplay_ui_canvas_w();
@@ -219,12 +243,14 @@ protected:
         return SeatRect{(ui_w - w) / 2, (ui_h - h) / 2, w, h};
     }
 
-    // The non-docked camera geometry for the live seat count: the second
-    // minimap at 1 seat, the centered inset at 2/4.
+    // The non-docked camera geometry for the live seat count — the rect the
+    // camera viewscreen itself rests on: seat 0's second minimap at 1 and 2
+    // seats (the 2-seat second block is camera_pane_rects_[1]), the centered
+    // inset at 4.
     SeatRect inset_rect() const
     {
-        if (game_->numviews == 1)
-            return second_minimap_rect();
+        if (game_->numviews == 1 || game_->numviews == 2)
+            return second_minimap_rect(0);
         return centered_inset_rect();
     }
 };
@@ -413,6 +439,9 @@ TEST_F(CameraView, single_seat_auto_resolves_to_inset)
     EXPECT_EQ(seat_before, capture_rect(*game_->viewob[0]))
         << "an inset camera must not move the seat";
     EXPECT_EQ(inset_rect(), capture_rect(*game_->camera_view_));
+    // Exactly ONE block at one seat (the two-seat rule adds a second).
+    ASSERT_EQ(1u, game_->camera_pane_rects_.size());
+    EXPECT_EQ(inset_rect(), to_seat_rect(game_->camera_pane_rects_[0]));
     // Spelled out against the radar block itself, so the ruling — not just a
     // formula — is what has teeth here.
     {
@@ -444,13 +473,89 @@ TEST_F(CameraView, single_seat_auto_resolves_to_inset)
     EXPECT_EQ(inset_rect(), capture_rect(*game_->camera_view_));
 }
 
-// The split the ruling draws: 2 seats keep the CENTERED inset. The canvas
-// centre is a pane boundary at 2 seats (nobody's hero sits there) and the
-// bottom-right corner belongs to seat 1's radar, so the second-minimap
-// placement is a one-seat rule only. Pins the other side of the branch.
-TEST_F(CameraView, two_seats_keep_the_centered_inset)
+// Two seats get a near-minimap EACH (maintainer ruling): the one-seat
+// second-minimap block for both seats — each stacked directly above ITS OWN
+// seat's radar block (radar_block_for_pane over that seat's side-by-side
+// pane), the radar's footprint, the same 0.25 zoom, the same target. One
+// camera viewscreen (resting on seat 0's block), two draw rects; neither
+// block covers either seat's canvas centre — the hero that seat's camera
+// holds there. Forcing 2 seats back onto the old centered path reds this.
+TEST_F(CameraView, two_seats_get_a_near_minimap_each)
 {
     game_->ready_for_battle(2);
+    arm_seats();
+    std::array<SeatRect, 2> seats_before;
+    for (int i = 0; i < 2; ++i)
+        seats_before[static_cast<std::size_t>(i)] =
+            capture_rect(*game_->viewob[i]);
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    EXPECT_FALSE(game_->camera_docked_);
+    EXPECT_EQ(2, game_->layout_pane_count())
+        << "the blocks never join the seat layout";
+    for (int i = 0; i < 2; ++i)
+        EXPECT_EQ(seats_before[static_cast<std::size_t>(i)],
+                  capture_rect(*game_->viewob[i]))
+            << "seat " << i << " moved for the camera blocks";
+
+    ASSERT_EQ(2u, game_->camera_pane_rects_.size())
+        << "two seats must produce TWO camera blocks";
+    for (int seat = 0; seat < 2; ++seat)
+    {
+        const SeatRect block_rect =
+            to_seat_rect(game_->camera_pane_rects_[
+                static_cast<std::size_t>(seat)]);
+        EXPECT_EQ(second_minimap_rect(seat), block_rect)
+            << "block " << seat << " is not seat " << seat
+            << "'s second minimap";
+        // Spelled out against that seat's radar block itself.
+        const RadarBlock radar = seat_radar_block(seat);
+        EXPECT_EQ(radar.w, block_rect.xview)
+            << "block " << seat << " must match the radar footprint";
+        EXPECT_EQ(radar.h, block_rect.yview);
+        EXPECT_EQ(radar.x, block_rect.xloc)
+            << "block " << seat << ": same right-edge alignment";
+        EXPECT_EQ(radar.y, block_rect.yloc + block_rect.yview + radar.margin)
+            << "block " << seat
+            << " must sit one radar margin ABOVE its own seat's radar";
+        // Inside its own seat's pane, not the other's.
+        const og::view_layout::ViewLayout pane = seat_ui_pane(seat);
+        EXPECT_GE(block_rect.xloc, pane.x);
+        EXPECT_LE(block_rect.xloc + block_rect.xview, pane.x + pane.w);
+        // And on nobody's hero: neither seat's canvas centre.
+        for (int other = 0; other < 2; ++other)
+            EXPECT_FALSE(covers_seat_centre(block_rect, other))
+                << "block " << seat << " covers seat " << other
+                << "'s canvas centre — its hero";
+    }
+    // The two blocks are distinct rects with identical extents (the
+    // symmetric split), which is what lets the draw render once.
+    EXPECT_NE(game_->camera_pane_rects_[0], game_->camera_pane_rects_[1]);
+    EXPECT_EQ(game_->camera_pane_rects_[0].w, game_->camera_pane_rects_[1].w);
+    EXPECT_EQ(game_->camera_pane_rects_[0].h, game_->camera_pane_rects_[1].h);
+    // The camera viewscreen itself rests on seat 0's block.
+    EXPECT_EQ(inset_rect(), capture_rect(*game_->camera_view_));
+    EXPECT_NE(centered_inset_rect(), capture_rect(*game_->camera_view_))
+        << "2 seats must not take the old centered inset";
+    EXPECT_TRUE(game_->camera_minimap_zoom_)
+        << "the two-seat blocks are second minimaps and take the 0.25 zoom";
+    // The seam draw leaves the resting geometry where the pins read it.
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->draw_camera_view_ui();
+    }
+    EXPECT_EQ(inset_rect(), capture_rect(*game_->camera_view_));
+    ASSERT_EQ(2u, game_->camera_pane_rects_.size());
+}
+
+// The other side of the split, so it has teeth: 4 seats keep the CENTERED
+// 1:1 inset — one block, the canvas centre is a pane boundary there.
+TEST_F(CameraView, four_seats_keep_the_centered_inset)
+{
+    game_->ready_for_battle(4);
     arm_seats();
     const std::int32_t target_id = spawn_target();
     ASSERT_NE(0, target_id);
@@ -458,10 +563,16 @@ TEST_F(CameraView, two_seats_keep_the_centered_inset)
     ASSERT_TRUE(game_->redraw());
     ASSERT_NE(nullptr, game_->camera_view_.get());
     EXPECT_FALSE(game_->camera_docked_);
-    EXPECT_EQ(2, game_->layout_pane_count());
+    EXPECT_EQ(4, game_->layout_pane_count());
+    ASSERT_EQ(1u, game_->camera_pane_rects_.size())
+        << "4 seats keep a single centered block";
+    EXPECT_EQ(centered_inset_rect(),
+              to_seat_rect(game_->camera_pane_rects_[0]));
     EXPECT_EQ(centered_inset_rect(), capture_rect(*game_->camera_view_));
-    EXPECT_NE(second_minimap_rect(), capture_rect(*game_->camera_view_))
-        << "2 seats must not take the one-seat second-minimap placement";
+    for (int seat = 0; seat < 4; ++seat)
+        EXPECT_NE(second_minimap_rect(seat),
+                  capture_rect(*game_->camera_view_))
+            << "4 seats must not take the near-minimap placement";
     EXPECT_FALSE(game_->camera_minimap_zoom_)
         << "the centered inset is a full-size pane and stays 1:1";
 }
@@ -1250,6 +1361,173 @@ TEST_F(CameraView, one_seat_minimap_allocation_failure_falls_back_to_one_to_one)
         EXPECT_TRUE(pixel_matches_index(game_, r.xloc - 1, r.yloc - 1, GREY));
         EXPECT_TRUE(pixel_matches_index(game_, r.xloc + r.xview,
                                         r.yloc + r.yview, GREY));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Two-seat near-minimap ×2 (maintainer ruling): the same 4:1 lattice pin as
+// the one-seat case, on BOTH blocks — the second block (seat 1's, the one the
+// camera viewscreen does not rest on) especially — and the scrub over both.
+// ---------------------------------------------------------------------------
+
+// Every pane pixel of EACH block equals the 4x world-window render sampled
+// at dst(i,j) = src(4i,4j), corners included; both blocks show the same
+// window, so they are pixel-identical to each other too.
+TEST_F(CameraView, two_seat_minimap_blocks_map_world_pixels_four_to_one)
+{
+    game_->ready_for_battle(2);
+    arm_seats();
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_FALSE(game_->camera_docked_);
+    ASSERT_TRUE(game_->camera_minimap_zoom_);
+    ASSERT_EQ(2u, game_->camera_pane_rects_.size());
+    const SeatRect r0 = to_seat_rect(game_->camera_pane_rects_[0]);
+    const SeatRect r1 = to_seat_rect(game_->camera_pane_rects_[1]);
+    ASSERT_EQ(second_minimap_rect(0), r0);
+    ASSERT_EQ(second_minimap_rect(1), r1);
+    ASSERT_EQ(r0.xview, r1.xview);
+    ASSERT_EQ(r0.yview, r1.yview);
+
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->clearbuffer(r0.xloc - 1, r0.yloc - 1, r0.xview + 2,
+                           r0.yview + 2);
+        game_->clearbuffer(r1.xloc - 1, r1.yloc - 1, r1.xview + 2,
+                           r1.yview + 2);
+        game_->draw_camera_view_ui();
+    }
+    const std::vector<Uint32> pane0 = capture_rect_pixels(game_, r0);
+    const std::vector<Uint32> pane1 = capture_rect_pixels(game_, r1);
+    ASSERT_EQ(pane0.size(), pane1.size());
+    // Both borders, all four corners each — read now, before the comparison
+    // render below repaints the canvas origin (it can reach block 0).
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        for (const SeatRect& r : {r0, r1})
+        {
+            const int x2 = r.xloc + r.xview;
+            const int y2 = r.yloc + r.yview;
+            EXPECT_TRUE(pixel_matches_index(game_, r.xloc - 1, r.yloc - 1,
+                                            GREY));
+            EXPECT_TRUE(pixel_matches_index(game_, x2, r.yloc - 1, GREY));
+            EXPECT_TRUE(pixel_matches_index(game_, r.xloc - 1, y2, GREY));
+            EXPECT_TRUE(pixel_matches_index(game_, x2, y2, GREY));
+        }
+    }
+
+    const short zw =
+        static_cast<short>(r0.xview * kCameraMinimapZoomDenominator);
+    const short zh =
+        static_cast<short>(r0.yview * kCameraMinimapZoomDenominator);
+    const SeatRect big_rect{0, 0, zw, zh};
+    std::vector<Uint32> big;
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->clearbuffer(0, 0, zw, zh);
+        game_->camera_view_->resize(static_cast<short>(0),
+                                    static_cast<short>(0), zw, zh);
+        ASSERT_TRUE(game_->camera_view_->redraw(&game_->level_runtime_data(),
+                                                /*draw_radar=*/false));
+        big = capture_rect_pixels(game_, big_rect);
+    }
+    // Restore the resting geometry through the one placement rule.
+    game_->relayout_camera_view();
+    ASSERT_EQ(r0, capture_rect(*game_->camera_view_));
+    ASSERT_EQ(2u, game_->camera_pane_rects_.size());
+
+    const auto expect_sample = [&](const std::vector<Uint32>& pane, int x,
+                                   int y) {
+        const std::size_t pane_i = static_cast<std::size_t>(y * r0.xview + x);
+        const std::size_t big_i = static_cast<std::size_t>(
+            (y * kCameraMinimapZoomDenominator) * zw +
+            (x * kCameraMinimapZoomDenominator));
+        return pane[pane_i] == big[big_i];
+    };
+    // Seat 1's block — the one the camera does not rest on — by name.
+    EXPECT_TRUE(expect_sample(pane1, 0, 0))
+        << "block 1 (0,0) must sample the 4x window's top-left pixel";
+    EXPECT_TRUE(expect_sample(pane1, r1.xview - 1, 0))
+        << "block 1 right edge must sample layer column 4*(w-1)";
+    EXPECT_TRUE(expect_sample(pane1, 0, r1.yview - 1))
+        << "block 1 bottom edge must sample layer row 4*(h-1)";
+    EXPECT_TRUE(expect_sample(pane1, r1.xview - 1, r1.yview - 1))
+        << "block 1 bottom-right corner must sample layer (4w-4, 4h-4)";
+    int mismatches0 = 0;
+    int mismatches1 = 0;
+    int lit = 0;
+    for (int y = 0; y < r0.yview; y += 3)
+        for (int x = 0; x < r0.xview; x += 3)
+        {
+            if (!expect_sample(pane0, x, y))
+                ++mismatches0;
+            if (!expect_sample(pane1, x, y))
+                ++mismatches1;
+            if (big[static_cast<std::size_t>(
+                    (y * kCameraMinimapZoomDenominator) * zw +
+                    (x * kCameraMinimapZoomDenominator))] != 0u)
+                ++lit;
+        }
+    EXPECT_GT(lit, 0) << "the sampled window is entirely black: no world";
+    EXPECT_EQ(0, mismatches0)
+        << mismatches0 << " block-0 pixels off the dst(i,j) = src(4i,4j) map";
+    EXPECT_EQ(0, mismatches1)
+        << mismatches1 << " block-1 pixels off the dst(i,j) = src(4i,4j) map";
+    int block_diffs = 0;
+    for (std::size_t i = 0; i < pane0.size(); ++i)
+        if (pane0[i] != pane1[i])
+            ++block_diffs;
+    EXPECT_EQ(0, block_diffs)
+        << block_diffs << " pixels differ between the two blocks: they must "
+        << "show the same camera window";
+}
+
+// After a nil-clear at 2 seats BOTH blocks (rect + border ring) are scrubbed
+// and a repaint is forced — the destroy branch walks the whole rect list.
+TEST_F(CameraView, two_seat_nil_clear_scrubs_both_blocks)
+{
+    game_->ready_for_battle(2);
+    arm_seats();
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_EQ(2u, game_->camera_pane_rects_.size());
+    const SeatRect r0 = to_seat_rect(game_->camera_pane_rects_[0]);
+    const SeatRect r1 = to_seat_rect(game_->camera_pane_rects_[1]);
+    ASSERT_EQ(second_minimap_rect(1), r1);
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->draw_camera_view_ui();
+        // Both panes visibly there before the nil-clear.
+        ASSERT_TRUE(pixel_matches_index(game_, r0.xloc - 1, r0.yloc - 1,
+                                        GREY));
+        ASSERT_TRUE(pixel_matches_index(game_, r1.xloc - 1, r1.yloc - 1,
+                                        GREY));
+    }
+
+    game_->world().mode.cameras[0] = og::sim::ModeCameraView{};
+    game_->redrawme = 0;
+    game_->sync_camera_views();
+    ASSERT_EQ(nullptr, game_->camera_view_.get());
+    EXPECT_TRUE(game_->camera_pane_rects_.empty());
+    EXPECT_EQ(1, game_->redrawme)
+        << "the scrub must force a repaint underneath";
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        for (const SeatRect& r : {r0, r1})
+            for (int y = r.yloc - 1; y <= r.yloc + r.yview; ++y)
+                for (int x = r.xloc - 1; x <= r.xloc + r.xview; ++x)
+                    ASSERT_TRUE(pixel_is_black(game_, x, y))
+                        << "stale camera pixel at " << x << "," << y
+                        << " after the nil-clear (block at " << r.xloc
+                        << "," << r.yloc << ")";
     }
 }
 

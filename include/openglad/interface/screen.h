@@ -39,6 +39,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 struct InputState;
 class soundob;
@@ -53,7 +54,24 @@ inline constexpr int MAX_VIEWS = 5;
 // world window this many times wider and taller, integer-downsampled with
 // nearest sampling — 4 means 0.25x zoom. The docked quadrant and the 2/4-seat
 // centered inset stay 1:1 (full-size panes with adequate context).
+// Two seats take the same zoom (maintainer ruling): each seat gets its own
+// near-minimap block above its own radar; only the 4-seat centered inset and
+// the docked quadrant remain 1:1.
 inline constexpr int kCameraMinimapZoomDenominator = 4;
+
+// One inset camera pane rect on the GameplayUI canvas (docs/camera-views-
+// design.md §6). The camera viewscreen stays singular; at two seats the SAME
+// camera draws into two of these — one block above each seat's own radar —
+// so the multiplicity lives purely in draw geometry.
+struct CameraPaneRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+
+    bool operator==(const CameraPaneRect&) const = default;
+};
 
 class screen : public video
 {
@@ -437,6 +455,15 @@ public:
     // with the geometry in relayout_camera_view; never set for the docked
     // quadrant or the 2/4-seat centered inset (full-size panes, 1:1).
     bool camera_minimap_zoom_ = false;
+    // The inset pane rects (§6), resolved with the geometry in
+    // relayout_camera_view: one centered rect at 4 seats, one second-minimap
+    // block at 1 seat, TWO blocks at 2 seats (one above each seat's radar).
+    // Empty while docked or with no camera. Outside a draw the camera
+    // viewscreen sits on the first rect; draw_camera_view_ui walks the list
+    // (rendering the zoomed layer once and sampling it into every block when
+    // the blocks share extents), the border draws per rect, and every
+    // structural transition scrubs every previous rect.
+    std::vector<CameraPaneRect> camera_pane_rects_;
     // Camera-view lifecycle (§5): one idempotent, diff-based pass, run as the
     // first statement of redraw() — construct on change, retarget every
     // frame, destroy on a cleared slot. Display screens only (identity belt).
@@ -444,7 +471,16 @@ public:
     // Derived camera geometry: the docked quadrant through the one
     // compute_view_layout pipeline, the centered GameplayUI inset rect at 2
     // and 4 seats, or the second minimap above the radar block at 1 seat.
+    // (Amended by the two-seat ruling: 2 seats now take a second-minimap
+    // block per seat; only 4 seats keep the centered rect. One function, one
+    // switch over the local seat count — the whole inset style rule.)
     void relayout_camera_view();
+    // The near-minimap block for ONE seat: the radar block mirrored above
+    // that seat's own radar, through the shared radar_block_* placement rule
+    // over the seat's UI pane (§6). Used for seat 0 at 1 seat and for both
+    // seats at 2 seats — the one geometry rule, never two copies.
+    CameraPaneRect camera_minimap_block_for_seat(int seat, int ui_w,
+                                                 int ui_h) const;
     // Docked pane world pixels + its own bevel on GameplayUI; no-op unless a
     // docked camera is live. draw_panel_chrome stays untouched (constraint 7).
     void draw_camera_view_world();
@@ -455,6 +491,8 @@ public:
     // on the GameplayUI canvas — it persists across frames on the classic
     // alias path — and set redrawme.
     void clear_camera_inset_rect(int x, int y, int w, int h);
+    // The same scrub over a whole rect list (every block at 2 seats).
+    void clear_camera_pane_rects(const std::vector<CameraPaneRect>& rects);
     // Pane count the LAYOUT consumes: the human seats plus the docked camera.
     // With no docked camera this is numviews exactly — the byte-identical
     // OFF state at every call site (constraint 7).
