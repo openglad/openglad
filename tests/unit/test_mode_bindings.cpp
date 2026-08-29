@@ -248,6 +248,104 @@ TEST(ModeBindings, beacons_set_clear_and_validate)
     EXPECT_EQ(255, fx.world().mode.beacons[1].team);
 }
 
+// og.set_camera_view — the replicated camera declaration
+// (docs/camera-views-design.md §7). One slot today, so slot 1 is already out
+// of range: the range-naming message is what tells a pack author that.
+TEST(ModeBindings, camera_view_sets_slot_zero_and_rejects_out_of_range_slots)
+{
+    ModeBindingsWorld fx;
+    walker* ball = fx.spawn_living(FAMILY_SOLDIER, 1, 160, 160);
+    ASSERT_NE(nullptr, ball);
+    const std::uint32_t id = ball->entity_id();
+    fx.run_on_load(
+        "    local obs = og.oblist()\n"
+        "    og.set_camera_view(0, obs[1])\n"
+        "    local ok1, e1 = pcall(og.set_camera_view, 1, obs[1])\n"
+        "    local ok2, e2 = pcall(og.set_camera_view, -1, obs[1])\n"
+        "    og.log('errs', ok1 and 1 or 0, ok2 and 1 or 0)\n"
+        "    og.log('hi', e1)\n"
+        "    og.log('lo', e2)\n");
+    EXPECT_TRUE(fx.logged("errs\t0\t0")) << fx.script_errors();
+    EXPECT_TRUE(fx.logged("slot 1 out of range [0, 0]")) << fx.script_errors();
+    EXPECT_TRUE(fx.logged("slot -1 out of range [0, 0]"))
+        << fx.script_errors();
+    EXPECT_EQ(static_cast<std::int32_t>(id),
+              fx.world().mode.cameras[0].entity_id);
+    // No opts table: the default style is "auto".
+    EXPECT_EQ(og::sim::kCameraStyleAuto, fx.world().mode.cameras[0].style);
+}
+
+TEST(ModeBindings, camera_view_nil_clears_the_whole_slot)
+{
+    ModeBindingsWorld fx;
+    walker* ball = fx.spawn_living(FAMILY_SOLDIER, 1, 160, 160);
+    ASSERT_NE(nullptr, ball);
+    fx.run_on_load(
+        "    local obs = og.oblist()\n"
+        "    og.set_camera_view(0, obs[1], { style = 'inset' })\n"
+        "    og.set_camera_view(0, nil)\n");
+    EXPECT_TRUE(fx.script_errors().find("set_camera_view") ==
+                std::string::npos)
+        << fx.script_errors();
+    EXPECT_EQ(0, fx.world().mode.cameras[0].entity_id);
+    // The style resets with the id — a cleared slot is the default POD.
+    EXPECT_EQ(og::sim::kCameraStyleAuto, fx.world().mode.cameras[0].style);
+}
+
+// The opts table is validated in the og.summon_configured shape: typed
+// checks, unknown-key rejection, and nothing written until every check
+// passes — so the four rejected calls below leave the "inset" declaration
+// from the first call standing.
+TEST(ModeBindings, camera_view_style_maps_to_byte_and_rejects_bad_opts)
+{
+    ModeBindingsWorld fx;
+    walker* ball = fx.spawn_living(FAMILY_SOLDIER, 1, 160, 160);
+    ASSERT_NE(nullptr, ball);
+    const std::uint32_t id = ball->entity_id();
+    walker* other = fx.spawn_living(FAMILY_SOLDIER, 2, 200, 200);
+    ASSERT_NE(nullptr, other);
+    fx.run_on_load(
+        "    local obs = og.oblist()\n"
+        "    og.set_camera_view(0, obs[1], { style = 'inset' })\n"
+        "    local ok1, e1 = pcall(og.set_camera_view, 0, obs[2],\n"
+        "                          { style = 'docked' })\n"
+        "    local ok2, e2 = pcall(og.set_camera_view, 0, obs[2],\n"
+        "                          { styel = 'auto' })\n"
+        "    local ok3 = pcall(og.set_camera_view, 0, obs[2], { style = 7 })\n"
+        "    local ok4 = pcall(og.set_camera_view, 0, obs[2], 'inset')\n"
+        "    og.log('errs', ok1 and 1 or 0, ok2 and 1 or 0,\n"
+        "           ok3 and 1 or 0, ok4 and 1 or 0)\n"
+        "    og.log('bad_style', e1)\n"
+        "    og.log('bad_key', e2)\n");
+    EXPECT_TRUE(fx.logged("errs\t0\t0\t0\t0")) << fx.script_errors();
+    EXPECT_TRUE(fx.logged("unknown style 'docked' (allowed: auto, inset)"))
+        << fx.script_errors();
+    EXPECT_TRUE(fx.logged("unknown option key (allowed: style)"))
+        << fx.script_errors();
+    // "inset" mapped to byte 1, and no rejected call retargeted the slot.
+    EXPECT_EQ(og::sim::kCameraStyleInset, fx.world().mode.cameras[0].style);
+    EXPECT_EQ(static_cast<std::int32_t>(id),
+              fx.world().mode.cameras[0].entity_id);
+}
+
+// The camera declaration is a world binding, so the load-time fence must
+// wrap it: a pack chunk's top level has no world to declare against.
+TEST(ModeBindings, camera_view_is_fenced_at_pack_top_level)
+{
+    ModeBindingsWorld fx;
+    og::script::clear_pack_scripts();
+    og::script::register_pack_script(
+        {"test.mode", "camera_top_level.lua",
+         "og.set_camera_view(0, nil)\n"});
+    fx.world().tick();
+    const std::string errors = fx.script_errors();
+    EXPECT_NE(std::string::npos,
+              errors.find("og.set_camera_view: the world API is "
+                          "dispatch-time only"))
+        << errors;
+    EXPECT_EQ(0, fx.world().mode.cameras[0].entity_id);
+}
+
 TEST(ModeBindings, team_score_reads_award_scores_counter)
 {
     ModeBindingsWorld fx;

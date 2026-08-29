@@ -30,6 +30,17 @@ inline constexpr int kModeHudTextBytes = 26;   // 25 chars + NUL (notification b
 inline constexpr int kModeBeacons = 4;
 inline constexpr int kModeNameBytes = 12;      // 11 chars + NUL
 
+// Camera viewscreens (docs/camera-views-design.md §3): a host-authored
+// declaration that "a camera pane follows this entity". ONE slot — the
+// interface materializes at most one camera pane, and a wire slot that can
+// never render would be a standing API lie. The style byte carries no
+// seat-count-derived decision: docked-vs-inset is resolved per machine by
+// the interface layer from its own local seat count, so it never rides here.
+inline constexpr int kModeCameraViews = 1;
+inline constexpr std::uint8_t kCameraStyleAuto = 0;   // interface resolves docked/inset per machine
+inline constexpr std::uint8_t kCameraStyleInset = 1;  // always inset
+inline constexpr std::uint8_t kCameraStyleMax = 1;
+
 // Kill-attribution freshness window (D3): on_entity_death passes the killer
 // only when the walker's last combat stamp is at most this many world ticks
 // old (4 s @ 12 Hz); older stamps read as environment deaths (nil, -1).
@@ -47,6 +58,16 @@ struct ModeBeacon
     std::uint8_t team = 255;
 };
 
+// A camera pane declaration. entity_id is the standard weak int32 reference
+// resolved through GameWorld::find_by_id by each consumer, every frame; a
+// stale or unknown id simply fails to resolve (the beacon convention). No
+// team byte: a camera is team-less.
+struct ModeCameraView
+{
+    std::int32_t entity_id = 0;           // 0 = empty slot
+    std::uint8_t style = 0;               // kCameraStyleAuto / kCameraStyleInset
+};
+
 struct ModeState
 {
     bool active = false;                  // set on a successful on_mode_init
@@ -60,6 +81,7 @@ struct ModeState
     std::array<std::int32_t, kModeVarCount> vars{}; // og.mode_get / og.mode_set
     std::array<ModeHudLine, kModeHudLines> hud{};
     std::array<ModeBeacon, kModeBeacons> beacons{};
+    std::array<ModeCameraView, kModeCameraViews> cameras{}; // og.set_camera_view
 };
 
 // The scripted-mode per-tick engine, called from GameWorld::tick() behind

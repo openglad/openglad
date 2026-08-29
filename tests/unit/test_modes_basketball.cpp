@@ -618,6 +618,40 @@ TEST_F(ModesBasketball, init_banks_manifest_row)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
+// The camera declaration (issue #224, design §8 F): camera slot 0 follows
+// the SHADOW, not the ball. The ball draws lifted by up to ~40px of fake Z,
+// so a ball camera would bob through every shot arc; the shadow is the
+// ground truth on the floor — the same reason beacon 0 is the shadow.
+TEST_F(ModesBasketball, init_points_the_camera_view_at_the_shadow)
+{
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+
+    const walker* const ball = fx.ball();
+    const walker* const shadow = fx.shadow();
+    ASSERT_NE(nullptr, ball);
+    ASSERT_NE(nullptr, shadow);
+    ASSERT_NE(ball->entity_id(), shadow->entity_id());
+
+    EXPECT_EQ(static_cast<std::int32_t>(shadow->entity_id()),
+              fx.world().mode.cameras[0].entity_id)
+        << "camera slot 0 follows the SHADOW (the fake-Z decision)";
+    EXPECT_NE(static_cast<std::int32_t>(ball->entity_id()),
+              fx.world().mode.cameras[0].entity_id)
+        << "following the ball would bob the pane on every arc";
+    EXPECT_EQ(fx.var(kBbShadowEntity), fx.world().mode.cameras[0].entity_id);
+    EXPECT_EQ(og::sim::kCameraStyleAuto, fx.world().mode.cameras[0].style)
+        << "auto: each machine resolves docked-vs-inset locally";
+
+    // Set ONCE, in on_mode_init — no per-tick re-assertion (the
+    // instruction-budget rule), so a hand-cleared slot stays cleared.
+    fx.world().mode.cameras[0] = og::sim::ModeCameraView{};
+    fx.tick(30);
+    EXPECT_EQ(0, fx.world().mode.cameras[0].entity_id)
+        << "on_mode_tick must not re-declare the camera every tick";
+}
+
 TEST_F(ModesBasketball, init_missing_hoop_errors_to_classic)
 {
     BballCourt fx(kBballLevelNoHoops);
@@ -2520,6 +2554,53 @@ TEST_F(ModesBasketball, mirror_replication_120_ticks)
               static_cast<std::uint32_t>(
                   mirror.world().mode.beacons[0].entity_id))
         << "beacon 0 must point at the replicated shadow";
+    EXPECT_EQ(shadow->entity_id(),
+              static_cast<std::uint32_t>(
+                  mirror.world().mode.cameras[0].entity_id))
+        << "the camera declaration must point at the replicated shadow";
+}
+
+// The camera channel is replicated state, not a local render decision: a
+// mirror never runs mode Lua, so it learns the declaration ONLY through a
+// snapshot apply — and learning it must not cost a hash strike.
+TEST_F(ModesBasketball, the_camera_declaration_replicates_to_a_client_mirror)
+{
+    ModesCtfWorld fx(kBballLevelA);
+    fx.spawn_anchor(0, 128, 448);
+    fx.spawn_anchor(1, 512, 448);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 128, 128);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 512, 128);
+    ModeMirror mirror(kBballLevelA);
+
+    // Ordering: empty BEFORE the first apply — mirrors run no mode Lua.
+    EXPECT_EQ(0, mirror.world().mode.cameras[0].entity_id)
+        << "a mirror has no camera before its first snapshot apply";
+    EXPECT_FALSE(mirror.world().mode.active);
+
+    // One tick: the authority inits and the mirror applies that keyframe.
+    const MirrorReplication first = replicate_to_mirror(fx, mirror, 1);
+    EXPECT_EQ(0, first.strikes) << "the camera slot must hash identically";
+    ASSERT_TRUE(fx.world().mode.active);
+
+    const std::int32_t declared = fx.world().mode.cameras[0].entity_id;
+    ASSERT_NE(0, declared) << "the authority declared a camera on init";
+    EXPECT_EQ(fx.var(kBbShadowEntity), declared) << "the shadow, not the ball";
+    EXPECT_EQ(declared, mirror.world().mode.cameras[0].entity_id)
+        << "the mirror follows the same replicated entity id";
+    EXPECT_EQ(fx.world().mode.cameras[0].style,
+              mirror.world().mode.cameras[0].style);
+    EXPECT_NE(nullptr, mirror.world().find_by_id(
+                           static_cast<std::uint32_t>(declared)))
+        << "the followed shadow resolves in the mirror world too";
+
+    // ... and stays matched across a live window of play.
+    const MirrorReplication rest = replicate_to_mirror(fx, mirror, 60);
+    EXPECT_EQ(0, rest.strikes)
+        << "the mirror first desynced at tick " << rest.first_strike_tick;
+    EXPECT_EQ(fx.world().mode.cameras[0].entity_id,
+              mirror.world().mode.cameras[0].entity_id);
+    EXPECT_EQ(fx.world().mode.cameras[0].style,
+              mirror.world().mode.cameras[0].style);
 }
 
 // ===========================================================================

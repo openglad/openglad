@@ -883,6 +883,15 @@ void serialize_mode_state(std::vector<std::uint8_t>& buffer,
         append_i32(buffer, beacon.entity_id);
         append_u8(buffer, beacon.team);
     }
+    // Snapshot v13 appends the camera-view slots LAST inside the mode block,
+    // so every raw payload-offset pin that addresses the scalars, name, vars,
+    // HUD lines or beacons keeps its number (only the block's total size and
+    // the match knobs that follow it move).
+    for (const og::sim::ModeCameraView& camera : mode.cameras)
+    {
+        append_i32(buffer, camera.entity_id);
+        append_u8(buffer, camera.style);
+    }
 }
 
 void deserialize_mode_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -913,6 +922,20 @@ void deserialize_mode_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot
     {
         beacon.entity_id = reader.read_i32("mode_beacon.entity_id");
         beacon.team = reader.read_u8("mode_beacon.team");
+    }
+    for (og::sim::ModeCameraView& camera : mode.cameras)
+    {
+        camera.entity_id = reader.read_i32("mode_camera.entity_id");
+        camera.style = reader.read_u8("mode_camera.style");
+        // Read-side defense in the same shape as the NUL re-termination
+        // above: the binding only ever writes kCameraStyleAuto/Inset, so this
+        // is the identity for every legitimately-written value and round-trip
+        // equality still holds under VALIDATE_SERIALIZATION. A crafted byte
+        // outside the range collapses onto auto rather than selecting a
+        // geometry path no renderer names. entity_id needs no clamp: an
+        // unknown or negative id simply fails find_by_id.
+        if (camera.style > og::sim::kCameraStyleMax)
+            camera.style = og::sim::kCameraStyleAuto;
     }
 }
 

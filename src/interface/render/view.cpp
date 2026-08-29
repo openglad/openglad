@@ -396,6 +396,56 @@ viewscreen::viewscreen(short x, short y, short width,
 	resize(prefs[PREF_VIEW]); // Properly resize the viewscreen
 }
 
+// Camera-pane constructor (docs/camera-views-design.md §4, reached only via
+// viewscreen::make_camera): the camera identity — never a seat, never a
+// player. Nothing dispatches input to it (it is not in viewob[]), so the
+// players[mynum] sites are unreachable; options::load and
+// apply_hud_settings_from_cfg are deliberately skipped so no player cfg key
+// is read or written; the HUD/radar ownership gates fail closed on
+// global_player_index_ == -1. Geometry comes later from the owner
+// (screen::relayout_camera_view) via the direct-geometry resize.
+viewscreen::viewscreen(CameraViewTag, screen* screenp)
+{
+	camera_view_ = true;
+	xview = 0;
+	yview = 0;
+	topx = topy = 0;
+	xloc = 0;
+	yloc = 0;
+	endx = 0;
+	endy = 0;
+	control = nullptr;
+	prefsob = active_prefs();
+
+	mynum = -1;                // out of every seat role by construction
+	global_player_index_ = -1; // the documented "no seat" sentinel
+	my_team = 0;
+	following_ = false;        // never the FOLLOWING caption
+
+	// Seeded prefs (prefs[] is zero-initialized in-class); name the values
+	// the render path reads.
+	prefs[PREF_VIEW] = PREF_VIEW_FULL;
+	prefs[PREF_RADAR] = PREF_RADAR_OFF;
+	prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+
+	myradar = std::make_unique<radar>(this, screenp, mynum);
+	radarstart = 0; // never started: the camera draws no radar
+
+	for (Sint32 i = 0; i < MAX_MESSAGES; i++)
+	{
+		textcycles[i] = 0;
+		text_expire_ticks[i] = 0;
+		text_stamp_ticks[i] = 0;
+		textlist[i].clear();
+	}
+}
+
+std::unique_ptr<viewscreen> viewscreen::make_camera(screen* screenp)
+{
+	return std::unique_ptr<viewscreen>(
+	    new viewscreen(CameraViewTag{}, screenp));
+}
+
 // Destruct the viewscreen and its variables
 viewscreen::~viewscreen() = default;
 
@@ -941,6 +991,10 @@ bool viewscreen::redraw()
 	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
 	// Gameplay chrome is composited nearest after the zoomed/filtered scenery.
 	// On the exact classic path or an allocation fallback this aliases World.
+	// Camera panes skip the whole chrome scope (no radar, no text feed): the
+	// UI-layout swap must not be entered on the mynum=-1 default-arm clamp
+	// coincidence (docs/camera-views-design.md §4, design-review ruling).
+	if (!camera_view_)
 	{
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
 		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
@@ -1218,6 +1272,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	// See the no-arg redraw(): open-sky weather overlay, before radar/text.
 	draw_cloud_overlay(this, vworld);
 	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
+	// See the no-arg redraw(): camera panes skip the chrome scope entirely.
+	if (!camera_view_)
 	{
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
 		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
@@ -1901,9 +1957,15 @@ void viewscreen::resize(char whatmode)
 	// at non-integer ratios (project_view_layout scales rectangle edges).
 	const int ui_w = active_screen()->gameplay_ui_canvas_w();
 	const int ui_h = active_screen()->gameplay_ui_canvas_h();
+	// layout_pane_count(): the human seats plus a docked camera pane. With no
+	// docked camera it equals numviews exactly — value-identical, the
+	// byte-identity OFF state (docs/camera-views-design.md §4.5).
+	const int pane_count = active_screen()->layout_pane_count();
+	TRACE("layout", "view_resize panes=%d mynum=%d",
+	      pane_count, static_cast<int>(mynum));
 	const og::view_layout::ViewLayout baseline =
 	    og::view_layout::compute_view_layout(
-	        active_screen()->numviews, mynum, whatmode, ui_w, ui_h);
+	        pane_count, mynum, whatmode, ui_w, ui_h);
 	const og::view_layout::ViewLayout r = og::view_layout::project_view_layout(
 	    baseline, ui_w, ui_h,
 	    active_screen()->world_canvas_w(), active_screen()->world_canvas_h());
@@ -1960,7 +2022,7 @@ GameplayUiProjector::GameplayUiProjector(const viewscreen& view)
 	}
 	const og::view_layout::ViewLayout ui =
 		og::view_layout::compute_view_layout(
-			output->numviews, view.mynum, view.prefs[PREF_VIEW],
+			output->layout_pane_count(), view.mynum, view.prefs[PREF_VIEW],
 			output->gameplay_ui_canvas_w(), output->gameplay_ui_canvas_h());
 	if (!ui.applies)
 		return;
@@ -2026,7 +2088,8 @@ ScopedGameplayUiViewLayout::ScopedGameplayUiViewLayout(
 	}
 	const og::view_layout::ViewLayout ui =
 		og::view_layout::compute_view_layout(
-			active_screen()->numviews, view_.mynum, view_.prefs[PREF_VIEW],
+			active_screen()->layout_pane_count(), view_.mynum,
+			view_.prefs[PREF_VIEW],
 			output.gameplay_ui_canvas_w(), output.gameplay_ui_canvas_h());
 	if (!ui.applies)
 		return;

@@ -863,17 +863,52 @@ TEST(PlatformHeadless, text_protocol_json_mode_literal_shape)
         "{\"active\":true,\"name\":\"CTF\",\"winner_team\":-1,"
         "\"vars\":[" + vars + "],"
         "\"hud\":[{\"team\":0,\"text\":\"2H\"}],"
-        "\"beacons\":[{\"id\":123,\"team\":2}]}";
+        "\"beacons\":[{\"id\":123,\"team\":2}],"
+        "\"cameras\":[]}";
     EXPECT_EQ(expected, og::ui::text_protocol_testing_json_mode(world));
 
-    // The pre-activation shape: everything default, empty hud/beacons.
+    // The pre-activation shape: everything default, empty hud/beacons/cameras.
     GameWorld blank(998);
     std::string zeros = "0";
     for (int i = 1; i < og::sim::kModeVarCount; ++i)
         zeros += ",0";
     EXPECT_EQ("{\"active\":false,\"name\":\"\",\"winner_team\":-1,"
-              "\"vars\":[" + zeros + "],\"hud\":[],\"beacons\":[]}",
+              "\"vars\":[" + zeros + "],\"hud\":[],\"beacons\":[],"
+              "\"cameras\":[]}",
               og::ui::text_protocol_testing_json_mode(blank));
+}
+
+// A declared camera view surfaces in the same block: occupied slots only,
+// id plus style byte. This is the headless observability handle a real
+// openglad_text session uses to prove the camera channel replicated.
+TEST(PlatformHeadless, text_protocol_json_mode_camera_shape)
+{
+    std::string zeros = "0";
+    for (int i = 1; i < og::sim::kModeVarCount; ++i)
+        zeros += ",0";
+    const std::string prefix =
+        "{\"active\":true,\"name\":\"\",\"winner_team\":-1,"
+        "\"vars\":[" + zeros + "],\"hud\":[],\"beacons\":[],";
+
+    // style auto (0) — the default the Lua binding writes with no opts.
+    GameWorld world(999);
+    world.type |= SCEN_TYPE_SCRIPTED;
+    world.mode.active = true;
+    world.mode.cameras[0].entity_id = 77;
+    world.mode.cameras[0].style = og::sim::kCameraStyleAuto;
+    EXPECT_EQ(prefix + "\"cameras\":[{\"id\":77,\"style\":0}]}",
+              og::ui::text_protocol_testing_json_mode(world));
+
+    // style inset (1) — the byte is emitted as a number, not remapped.
+    world.mode.cameras[0].style = og::sim::kCameraStyleInset;
+    EXPECT_EQ(prefix + "\"cameras\":[{\"id\":77,\"style\":1}]}",
+              og::ui::text_protocol_testing_json_mode(world));
+
+    // A cleared slot drops out of the array entirely (the beacon rule): a
+    // style byte left behind by a previous declaration is not observable.
+    world.mode.cameras[0].entity_id = 0;
+    EXPECT_EQ(prefix + "\"cameras\":[]}",
+              og::ui::text_protocol_testing_json_mode(world));
 }
 
 // End-to-end: a level authored with SCEN_TYPE_SCRIPTED makes cmd_state emit

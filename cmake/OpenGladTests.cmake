@@ -88,6 +88,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_screen_extended.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_resize.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_redraw.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_camera_view.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_ops.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_error_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_png_conversion.cpp
@@ -440,6 +441,7 @@ og_add_test_group(og_test_screen FILES
 og_add_test_group(og_test_view FILES
     test_view_draw.cpp
     test_view_redraw.cpp
+    test_camera_view.cpp
     test_view_funcs.cpp
     test_view_lifecycle.cpp
     test_view_resize.cpp

@@ -731,6 +731,7 @@
 ---@field scenario_title fun(name: string): string # og.scenario_title(name) → title string ("none" when unreadable).
 ---@field scrub_corpse_stain fun(x: integer, y: integer, floor: integer?) # og.scrub_corpse_stain(x, y [, floor]) — preserve pending-respawn STAIN drops (player or AI); otherwise kill fresh STAIN/LIFE_GEM drops at a corpse position (...
 ---@field set_beacon fun(slot: integer, entity: og.Walker?, t: integer?) # og.set_beacon(slot, entity_or_nil [, team]) — mark an entity for the off-screen/radar beacon channel (the Mutant marker, a flag carrier).
+---@field set_camera_view fun(slot: integer, entity: og.Walker?, opts: table?) # og.set_camera_view(slot, entity_or_nil [, opts]) — declare a camera pane that follows an entity without being a player seat; nil clears the slot.
 ---@field set_enemy_freeze fun(enemy_freeze: integer)
 ---@field set_entity_hooks fun(entity: og.Walker, hooks: og.EntityHooks) # og.set_entity_hooks(handle, { on_death = fn }) — per-entity overrides, registered from a level script (typically in on_load after finding the entity).
 ---@field set_hud_line fun(slot: integer, s: string, t: integer?) # og.set_hud_line(slot, text [, team]) — write a generic mode HUD line: slot 0-3, text clamped to 25 bytes, team (0-3 or band 16-31) tints the line (nil = defa...

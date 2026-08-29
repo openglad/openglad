@@ -165,9 +165,6 @@ short radar_terrain_floor(viewscreen* view, walker* control,
 }
 } // namespace
 
-inline constexpr int RADAR_X = 60;  // These are the dimensions of the radar
-inline constexpr int RADAR_Y = 44;  // viewport
-
 // ************************************************************
 //  RADAR -- It's nothing like pixie, it just looks like it
 // ************************************************************
@@ -212,57 +209,72 @@ void radar::sync_to_grid(LevelRuntimeData* data)
 	sizex = static_cast<short>(data->world().grid.w);
 	sizey = static_cast<short>(data->world().grid.h);
 	size = static_cast<unsigned short>((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
-	xview = RADAR_X;
-	yview = RADAR_Y;
+	const auto [block_w, block_h] = radar_block_extents(sizex, sizey);
+	xview = static_cast<short>(block_w);
+	yview = static_cast<short>(block_h);
 	radarx = 0;
 	radary = 0;
 
-	if (xview > sizex)
-		xview = sizex;
-	if (yview > sizey)
-		yview = sizey;
-
 	sync_position_to_view();
     bmp.resize(size);
+}
+
+std::pair<int, int> radar_block_extents(int grid_w, int grid_h)
+{
+	int w = RADAR_X;
+	int h = RADAR_Y;
+
+	if (w > grid_w)
+		w = grid_w;
+	if (h > grid_h)
+		h = grid_h;
+	return {w, h};
+}
+
+RadarBlock radar_block_for_pane(int pane_yloc, int pane_endx, int pane_endy,
+                                int w, int h, bool force_lower)
+{
+	RadarBlock block;
+	block.w = w;
+	block.h = h;
+        #ifdef REDUCE_OVERSCAN
+        block.margin = 8;
+        #else
+        block.margin = 4;
+        #endif
+        block.x = (pane_endx - w) - block.margin;
+        #ifdef USE_TOUCH_INPUT
+        if(force_lower)  // used by level editor to place minimap
+        {
+            // At bottom
+            block.y = (pane_endy - h) - block.margin;
+        }
+        else
+        {
+            // At top
+            block.y = pane_yloc + block.margin;
+        }
+        #else
+            (void)force_lower;
+            (void)pane_yloc;
+            // At bottom
+            block.y = (pane_endy - h) - block.margin;
+        #endif
+	return block;
 }
 
 void radar::sync_position_to_view()
 {
 	if(viewscreenp)
 	{
-        #ifdef USE_TOUCH_INPUT
-        if(force_lower_position)  // used by level editor to place minimap
-        {
-            // At bottom
-            #ifdef REDUCE_OVERSCAN
-            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 8) );
-            yloc = static_cast<short>( ((viewscreenp->endy - yview) - 8) );
-            #else
-            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 4) );
-            yloc = static_cast<short>( ((viewscreenp->endy - yview) - 4) );
-            #endif
-        }
-        else
-        {
-            // At top
-            #ifdef REDUCE_OVERSCAN
-            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 8) );
-            yloc = static_cast<short>(viewscreenp->yloc + 8);
-            #else
-            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 4) );
-            yloc = static_cast<short>(viewscreenp->yloc + 4);
-            #endif
-        }
-        #else
-            // At bottom
-            #ifdef REDUCE_OVERSCAN
-            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 8) );
-            yloc = static_cast<short>( ((viewscreenp->endy - yview) - 8) );
-            #else
-            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 4) );
-            yloc = static_cast<short>( ((viewscreenp->endy - yview) - 4) );
-            #endif
-        #endif
+		const RadarBlock block = radar_block_for_pane(
+		    static_cast<int>(viewscreenp->yloc),
+		    static_cast<int>(viewscreenp->endx),
+		    static_cast<int>(viewscreenp->endy),
+		    static_cast<int>(xview), static_cast<int>(yview),
+		    force_lower_position);
+		xloc = static_cast<short>(block.x);
+		yloc = static_cast<short>(block.y);
 	}
 }
 
@@ -332,10 +344,14 @@ short radar::draw(LevelRuntimeData* data)
 	}
     
     unsigned char alpha = 255;
+    // Deliberately keyed on numviews (humans), never on the camera-inclusive
+    // layout_pane_count() — docs/camera-views-design.md constraint 7 (a
+    // docked camera must not fade the seat radars).
     if(og::runtime::current_session->myscreen_->numviews > 2 && !(og::runtime::current_session->myscreen_->numviews == 3 && mynum == 0))
     {
         alpha = 127;
     }
+    TRACE("radar", "alpha view=%d a=%d", mynum, static_cast<int>(alpha));
 	{
 		size_t offset = static_cast<size_t>(radarx + (radary * sizex));
 		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, bmp.size() - offset};

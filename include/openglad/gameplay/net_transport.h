@@ -167,7 +167,15 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // carries the same eight scalars, appended after ctf_requested_time_limit, so
 // snapshot format moves to v12 and replay format to v18. The knobs also
 // persist in the GTL save (v18), which is versioned separately from the wire.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 16;
+// v17: camera viewscreens (docs/camera-views-design.md §3). ModeState gains
+// a one-slot cameras array (i32 entity_id + u8 style), appended LAST inside
+// the scripted-mode block in serialize/deserialize_mode_state, so every raw
+// payload-offset pin addressing the mode scalars/name/vars/HUD/beacons keeps
+// its number. Snapshot format moves to v13 and replay format to v19. No
+// LobbySettings change — the declaration is authored by host mode Lua and
+// replicates through ModeState like a beacon; docked-vs-inset is resolved per
+// machine by the interface layer and never rides the wire.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 17;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,

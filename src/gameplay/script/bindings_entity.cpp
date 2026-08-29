@@ -2667,6 +2667,72 @@ int og_set_beacon(lua_State* L)
     return 0;
 }
 
+// og.set_camera_view(slot, entity_or_nil [, opts]) — declare a camera pane
+// that follows an entity without being a player seat; nil clears the slot.
+// opts: { style = "auto" | "inset" } (default "auto"). "auto" lets each
+// machine dock the camera into the free quadrant when it locally has exactly
+// three seats and draw a centered inset otherwise; "inset" is always inset.
+// There is deliberately no "docked" force: docked-ness follows LOCAL seat
+// count, which differs per machine, so a replicated force value would be a
+// seat-count-derived decision on the wire — the desync
+// docs/camera-views-design.md §7 forbids. Options are read and checked
+// BEFORE the slot is written, so a rejected call leaves the previous
+// declaration exactly as it was (the og.summon_configured shape).
+int og_set_camera_view(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer slot = luaL_checkinteger(L, 1);
+    if (slot < 0 || slot >= og::sim::kModeCameraViews)
+        return luaL_error(L, "slot %d out of range [0, %d]",
+                          static_cast<int>(slot),
+                          og::sim::kModeCameraViews - 1);
+    walker* w = resolve_walker_or_nil(L, 2);
+    std::uint8_t style = og::sim::kCameraStyleAuto;
+    if (!lua_isnoneornil(L, 3)) {
+        luaL_checktype(L, 3, LUA_TTABLE);
+        int recognized = 0;
+        if (lua_getfield(L, 3, "style") != LUA_TNIL) {
+            // lua_type before lua_tostring: converting a number in place
+            // would mutate the table the lua_next walk below is about to
+            // traverse.
+            if (lua_type(L, -1) != LUA_TSTRING)
+                return luaL_error(
+                    L, "og.set_camera_view: 'style' must be a string");
+            const char* s = lua_tostring(L, -1);
+            if (std::strcmp(s, "auto") == 0)
+                style = og::sim::kCameraStyleAuto;
+            else if (std::strcmp(s, "inset") == 0)
+                style = og::sim::kCameraStyleInset;
+            else
+                return luaL_error(L,
+                                  "og.set_camera_view: unknown style '%s' "
+                                  "(allowed: auto, inset)",
+                                  s);
+            recognized++;
+        }
+        lua_pop(L, 1);
+        int total = 0;
+        lua_pushnil(L);
+        while (lua_next(L, 3) != 0) {
+            lua_pop(L, 1);  // value; the key stays for the next lua_next
+            total++;
+        }
+        if (total != recognized)
+            return luaL_error(L,
+                              "og.set_camera_view: unknown option key "
+                              "(allowed: style)");
+    }
+    og::sim::ModeCameraView& cam =
+        world->mode.cameras[static_cast<std::size_t>(slot)];
+    if (w == nullptr) {
+        cam = og::sim::ModeCameraView{};
+        return 0;
+    }
+    cam.entity_id = static_cast<std::int32_t>(w->entity_id());
+    cam.style = style;
+    return 0;
+}
+
 // og.team_score(t) — read GameWorld::m_score[t] (og.award_score's counter);
 // errors outside [0, 3].
 int og_team_score(lua_State* L)
@@ -3231,6 +3297,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"set_hud_line", og_set_hud_line},
     {"clear_hud_line", og_clear_hud_line},
     {"set_beacon", og_set_beacon},
+    {"set_camera_view", og_set_camera_view},
     {"team_score", og_team_score},
     {"team_color_name", og_team_color_name},
     {"match_setting", og_match_setting},

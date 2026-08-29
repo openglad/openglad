@@ -1966,6 +1966,47 @@ TEST(WorldSnapshot, serialize_snapshot_roundtrip_preserves_keyframe_and_compress
     expect_world_snapshot_eq(keyframe, decoded);
 }
 
+// Snapshot v13's camera-view slot rides the keyframe and the delta the same
+// way a beacon does: the mode block replicates wholesale, so a declaration set
+// on the authority reaches a mirror through either path.
+TEST(WorldSnapshot, camera_view_slot_survives_keyframe_and_delta_merge)
+{
+    og::sim::WorldSnapshot keyframe;
+    keyframe.tick_count = 7;
+    keyframe.mode.active = true;
+    keyframe.mode.cameras[0].entity_id = 4242;
+    keyframe.mode.cameras[0].style = og::sim::kCameraStyleInset;
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(keyframe));
+    EXPECT_EQ(4242, decoded.mode.cameras[0].entity_id);
+    EXPECT_EQ(og::sim::kCameraStyleInset, decoded.mode.cameras[0].style);
+    expect_world_snapshot_eq(keyframe, decoded);
+
+    // The delta merge is wholesale (baseline.mode = delta.mode), so a later
+    // retarget and a later clear both land on a baseline that already holds a
+    // camera.
+    og::sim::WorldSnapshot baseline = decoded;
+
+    og::sim::WorldSnapshot retarget;
+    retarget.tick_count = 8;
+    retarget.mode.active = true;
+    retarget.mode.cameras[0].entity_id = 909;
+    retarget.mode.cameras[0].style = og::sim::kCameraStyleAuto;
+    og::sim::apply_delta(
+        baseline, og::sim::deserialize_delta(og::sim::serialize_delta(retarget)));
+    EXPECT_EQ(909, baseline.mode.cameras[0].entity_id);
+    EXPECT_EQ(og::sim::kCameraStyleAuto, baseline.mode.cameras[0].style);
+
+    og::sim::WorldSnapshot cleared;
+    cleared.tick_count = 9;
+    cleared.mode.active = true;
+    og::sim::apply_delta(
+        baseline, og::sim::deserialize_delta(og::sim::serialize_delta(cleared)));
+    EXPECT_EQ(0, baseline.mode.cameras[0].entity_id)
+        << "a cleared declaration must not survive as a stale slot";
+}
+
 // The per-character owner tags must survive capture and the snapshot wire so
 // the server world (seeded from the host's keyframe) and every client mirror
 // can tell which characters each peer owns when persisting saves.
@@ -2410,12 +2451,13 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         decode_delta_payload_for_test(delta_bytes);
 
     // Offset of grid.full_grid_size in a default delta payload: format byte +
-    // 532 bytes of world state (72 pre-block scalars, the v11 respawn block
-    // at its empty size 9, the fixed 404-byte mode block, the 26 match-knob
-    // bytes — v12 appended the eight per-team bot i16s — and the trailing
+    // 537 bytes of world state (72 pre-block scalars, the v11 respawn block
+    // at its empty size 9, the fixed 409-byte mode block — v13 appended the
+    // one 5-byte camera-view slot — the 26 match-knob bytes, and the trailing
     // respawn_mode/generator_rate/control_policy/player_machine 21) + 4 grid
-    // bytes.
-    constexpr std::size_t kEntityCountOffset = 537;
+    // bytes. Not to be confused with the world-state size itself, which v13
+    // moved to 537: the two constants collide numerically one bump apart.
+    constexpr std::size_t kEntityCountOffset = 542;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;
@@ -3399,3 +3441,4 @@ TEST(WorldSnapshot, campaign_tag_does_not_ride_the_snapshot_wire_but_survives_th
     EXPECT_EQ(3, static_cast<int>(disk.team_list[0]->campaign_tag))
         << "a joiner's won level must not un-assign its own company";
 }
+

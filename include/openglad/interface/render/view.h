@@ -70,6 +70,7 @@ inline constexpr int MAX_MESSAGES = 5;  // max of 5 lines, currently
 
 struct InputState;
 class GameWorld;
+class screen;
 class viewscreen;
 class walker;
 class radar;
@@ -100,6 +101,14 @@ class viewscreen
 {
 	public:
 		viewscreen(short x, short y, short length, short height, short whatnum);
+		// Camera-pane factory (docs/camera-views-design.md §4): builds a
+		// viewscreen with the camera identity — mynum -1 (never a seat, so
+		// no players[]/prefs[] role can index with it), global_player_index_
+		// -1 (the documented "no seat" sentinel: HUD/radar ownership gates
+		// fail closed), following_ false, prefs seeded directly. The public
+		// constructor above is seat-flavored (keyprefs load, cfg overlay,
+		// seat-mode resize); the factory touches no player cfg key.
+		static std::unique_ptr<viewscreen> make_camera(screen* screenp);
 		~viewscreen();
 		void clear();
 		bool draw ();
@@ -245,7 +254,7 @@ class viewscreen
 			Sint32 topx, topy;
 			Sint32 xloc, yloc; // physical screen coords
 			Sint32 endx, endy; // screen coords of lower right corner
-			signed char prefs[10]; // User preferences ..
+			signed char prefs[10] = {}; // User preferences ..
 			std::unique_ptr<radar> myradar;
 			short radarstart; //has the radar been started yet?
 			Sint32 xview;
@@ -286,6 +295,14 @@ class viewscreen
 		// the caption ("" = unknown / AI target -> name-only caption).
 		std::string follow_company_;
 
+		// True only for camera panes (set by make_camera, never by a seat
+		// constructor): both redraw overloads skip their GameplayUI
+		// chrome-scope block (radar/text) when set — the camera must not
+		// depend on the coincidence that compute_view_layout's default arm
+		// clamps mynum -1 onto quadrant 3 (design-review ruling). Also the
+		// greppable handle for TESTING asserts.
+		bool camera_view_ = false;
+
 		// ---- Floor-glide transition (render-only; per-viewport => mirror-safe and
 		// split-screen-independent, exactly like current_floor_). Inactive whenever
 		// glide_frames_left_ == 0; the inactive render path is the pre-glide integer
@@ -311,6 +328,12 @@ class viewscreen
 			                              : static_cast<float>(current_floor_);
 		}
 		[[nodiscard]] Sint32 floor_glide_cause()      const { return static_cast<Sint32>(glide_cause_); }
+
+	private:
+		// make_camera's constructor, tag-dispatched so the seat-flavored
+		// public constructor keeps its exact historical shape.
+		struct CameraViewTag {};
+		viewscreen(CameraViewTag, screen* screenp);
 
 	protected:
 		options *prefsob;

@@ -2393,6 +2393,11 @@ local function on_mode_init(level, row)
   end
   og.mode_set(S.BALL_ENTITY, og.entity_id(ball))
   og.mode_set(S.SHADOW_ENTITY, og.entity_id(shadow))
+  -- The camera follows the SHADOW, not the ball: the ball draws lifted by
+  -- up to ~40px of fake Z, so a ball camera would bob through every shot
+  -- arc. The shadow is the ground truth on the floor — the same reason
+  -- beacon 0 is the shadow. Set once; never re-asserted per tick.
+  og.set_camera_view(0, shadow)
   spawn_hoops()
   center_reset(ball)
   og.set_mode_name("BASKETBALL")

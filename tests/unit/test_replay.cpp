@@ -596,6 +596,33 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
         expect_diff(expected, actual, "mode.hud[1].text", "RED 2", "RED 3");
     }
 
+    // Snapshot v13's camera-view slots: without these rows a camera
+    // declaration that diverged between authority and mirror would surface
+    // only as an unexplained snapshot_hash mismatch (constraint 8).
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.mode.cameras[0].entity_id = 41;
+        actual.mode.cameras[0].entity_id = 77;
+        expect_diff(expected,
+                    actual,
+                    "mode.cameras[0].entity_id",
+                    "41",
+                    "77");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.mode.cameras[0].style = og::sim::kCameraStyleAuto;
+        actual.mode.cameras[0].style = og::sim::kCameraStyleInset;
+        expect_diff(expected,
+                    actual,
+                    "mode.cameras[0].style",
+                    "0",
+                    "1");
+    }
+
     {
         og::sim::WorldSnapshot expected;
         og::sim::WorldSnapshot actual = expected;

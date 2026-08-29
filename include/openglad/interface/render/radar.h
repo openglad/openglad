@@ -19,10 +19,44 @@
 // Definition of RADAR class
 
 #include <openglad/interface/level_runtime_data.h>
+#include <utility>
 #include <vector>
 
 class screen;
 class viewscreen;
+
+inline constexpr int RADAR_X = 60;  // These are the dimensions of the radar
+inline constexpr int RADAR_Y = 44;  // viewport
+
+// The radar block — where the minimap sits inside a view pane — as ONE rule,
+// so the things that mirror it never drift from it. radar::sync_to_grid and
+// radar::sync_position_to_view place the live radar with it;
+// screen::relayout_camera_view mirrors it to stack the one-seat camera pane
+// directly above the block (docs/camera-views-design.md §6, the second-minimap
+// ruling). Coordinates are the pane's own — the GameplayUI canvas coordinates
+// the radar draws in, inside a ScopedGameplayUiViewLayout scope.
+struct RadarBlock
+{
+	int x = 0;
+	int y = 0;
+	int w = 0;
+	int h = 0;
+	int margin = 0;  // the gap the block keeps from its pane edge
+};
+
+// The block's viewport extents on a grid_w x grid_h tile grid: RADAR_X x
+// RADAR_Y, clamped to a grid smaller than itself. A degenerate grid (no level
+// loaded) clamps to nothing, which is what keeps the pre-level radar's plot
+// loops empty; a caller that needs a drawable block regardless substitutes
+// the unclamped RADAR_X/RADAR_Y.
+[[nodiscard]] std::pair<int, int> radar_block_extents(int grid_w, int grid_h);
+
+// The w x h block anchored inside a view pane whose top edge is pane_yloc and
+// whose right/bottom edges are pane_endx/pane_endy. force_lower is the level
+// editor's minimap placement (touch builds only).
+[[nodiscard]] RadarBlock radar_block_for_pane(int pane_yloc, int pane_endx,
+                                              int pane_endy, int w, int h,
+                                              bool force_lower);
 
 class radar
 {

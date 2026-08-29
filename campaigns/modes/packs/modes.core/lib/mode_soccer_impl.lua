@@ -968,6 +968,11 @@ local function on_mode_init(level, row)
     error("soccer: cannot spawn the ball")
   end
   og.mode_set(S.BALL_ENTITY, og.entity_id(ball))
+  -- The camera pane follows the ball for the whole match. Set ONCE here,
+  -- never re-asserted per tick: the declaration rides the mode block into
+  -- every snapshot, and each machine resolves docked-vs-inset from its own
+  -- local seat count.
+  og.set_camera_view(0, ball)
   kickoff_reset(ball)
 
   og.set_mode_name("SOCCER")
