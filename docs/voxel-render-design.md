@@ -339,3 +339,28 @@ pack family descriptor (families are Lua mods), loader default = plain
 humanoid coloured from the sprite. Rigs are also the path to animated
 walk/attack poses in Free view later. The classic camera is unaffected
 (sprites remain the imposter — §10).
+
+## 12. Rigs rejected — reliefs from the sprites (maintainer, 2026-08-29)
+
+Ruling: the parametric rigs (rounds 3–5) "took a lot of liberties; the art
+style is completely lost. I want the same art style, as close as possible to
+the original look, just with voxel models that concretize to our current
+shapes." Rigs are withdrawn as the shape source.
+
+**Construction: per-facing voxel bas-reliefs.** Every sprite frame becomes a
+relief whose front face IS the frame — exact silhouette, exact palette
+indices, no invented parts, no lighting applied to the front face — and whose
+thickness is a heightfield from the silhouette's Euclidean distance transform
+(`h = clamp(k·EDT, 1, max_by_order)`; living ≈ 6, treasure 3, weapons/FX 2),
+side voxels taking the nearest front pixel's index. The relief plane is
+perpendicular to the game camera (elevation θ ≈ 55°), positioned so the
+frame's pixels project to their exact screen positions under that camera —
+which is why the classic look is reproduced by construction and the Classic
+camera (collapsed) stays byte-identical. Under the Free camera the relief
+billboards toward the camera's yaw, and the walker shows the facing frame
+matching its facing relative to the camera (8-rotation scheme, 45° bins), so
+turning the camera reveals the art the artists drew for that side, with
+volume and side shading (sides ×0.75, never the front). Applies to every
+order — fighters, treasure, projectiles, effects — so no flat stamps remain.
+Pitch far from θ shows the relief's lean; the Free camera's useful pitch
+range is therefore ~40–70°, which is the top-down game's natural range.
