@@ -106,9 +106,9 @@ struct VoxelModel
 // Cube-face shading (§10 round 2). A carved figure only reads as a figure if
 // its faces are lit differently, so each visible face carries a fixed factor
 // and the voxel's baked AO multiplies into it.
-inline constexpr float kVoxelFaceTop = 1.00f;
-inline constexpr float kVoxelFaceSun = 0.88f;
-inline constexpr float kVoxelFaceShadow = 0.66f;
+inline constexpr float kVoxelFaceTop = 0.90f;
+inline constexpr float kVoxelFaceSun = 1.00f;
+inline constexpr float kVoxelFaceShadow = 0.72f;
 // AO maps the fraction of empty neighbours into [kVoxelAoFloor, 1].
 inline constexpr float kVoxelAoFloor = 0.55f;
 // The silhouette gets a one-pixel darker rim, which is what makes pixel art
