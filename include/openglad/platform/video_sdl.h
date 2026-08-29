@@ -144,6 +144,10 @@ public:
     [[nodiscard]] std::int64_t floor_layer_source_pixels_for_testing() const override;
     [[nodiscard]] std::int64_t floor_layer_scaled_pixels_for_testing() const override;
     [[nodiscard]] bool floor_layer_redirect_active_for_testing() const override;
+    bool camera_scale_begin(Sint32 w, Sint32 h) override;
+    void camera_scale_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                          Sint32 denominator) override;
+    void fail_next_camera_scale_allocation_for_testing() override;
     void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                    Sint32 tilewidth, Sint32 tileheight,
                    Sint32 portstartx, Sint32 portstarty,
@@ -338,6 +342,16 @@ private:
     // same in every build.
     [[maybe_unused]] bool fail_next_floor_layer_allocation_ = false;
     [[maybe_unused]] int floor_layer_fallback_count_ = 0;
+
+    // Off-screen camera-pane downscale layer (camera_scale_begin/end): the
+    // one-seat second-minimap 0.5-zoom draw target. Its OWN surface + saved-
+    // render slot — never the floor layer's — so a multi-floor camera redraw
+    // can still begin/end floor layers inside this redirect. Created in the
+    // render surface's format (whole-pixel nearest sampling needs no
+    // conversion), grow-only like the floor layer, freed in the destructor.
+    SDL_Surface* camera_scale_layer_ = nullptr;
+    SDL_Surface* camera_scale_saved_render_ = nullptr;
+    [[maybe_unused]] bool fail_next_camera_scale_allocation_ = false;
 };
 
 // Installs cfg graphics/zoom + graphics/smoothing on the live display. The

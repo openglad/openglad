@@ -692,6 +692,22 @@ bool screen::floor_layer_redirect_active_for_testing() const
     return video_impl_->floor_layer_redirect_active_for_testing();
 }
 
+bool screen::camera_scale_begin(Sint32 w, Sint32 h)
+{
+    return video_impl_->camera_scale_begin(w, h);
+}
+
+void screen::camera_scale_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                              Sint32 denominator)
+{
+    video_impl_->camera_scale_end(x, y, w, h, denominator);
+}
+
+void screen::fail_next_camera_scale_allocation_for_testing()
+{
+    video_impl_->fail_next_camera_scale_allocation_for_testing();
+}
+
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                            Sint32 walkerwidth, Sint32 walkerheight,
                            Sint32 portstartx, Sint32 portstarty,
@@ -1287,6 +1303,10 @@ void screen::relayout_camera_view()
 {
 	if (camera_view_ == nullptr)
 		return;
+	// Zoom is resolved WITH the geometry: only the one-seat second minimap
+	// below sets it (maintainer ruling, §6) — the docked quadrant and the
+	// 2/4-seat centered inset are full-size panes and stay 1:1.
+	camera_minimap_zoom_ = false;
 	if (camera_docked_)
 	{
 		const int ui_w = gameplay_ui_canvas_w();
@@ -1342,6 +1362,11 @@ void screen::relayout_camera_view()
 		    static_cast<short>(block.x),
 		    static_cast<short>(block.y - block.margin - block.h),
 		    static_cast<short>(block.w), static_cast<short>(block.h));
+		// A radar-sized pane at 1:1 is too zoomed-in to be useful
+		// (maintainer ruling, §6): draw it at 0.5 zoom — the same rect, a
+		// kCameraMinimapZoomDenominator-times world window, integer-
+		// downsampled by draw_camera_view_ui through the camera_scale layer.
+		camera_minimap_zoom_ = true;
 		return;
 	}
 	// Inset at 2 and 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
@@ -1395,6 +1420,7 @@ void screen::sync_camera_views()
 			camera_entity_id_ = 0;
 			camera_style_ = og::sim::kCameraStyleAuto;
 			camera_docked_ = false;
+			camera_minimap_zoom_ = false;
 			TRACE("camera", "destroy docked=%d", was_docked ? 1 : 0);
 			if (was_docked)
 				relayout_views(); // seats fall back to the 3-view layout
@@ -1508,7 +1534,46 @@ void screen::draw_camera_view_ui()
 	if (canvas_w() != gameplay_ui_canvas_w() ||
 	    canvas_h() != gameplay_ui_canvas_h())
 		return;
-	(void)camera_view_->redraw(&level_runtime_data_, /*draw_radar=*/false);
+	bool drew_scaled = false;
+	if (camera_minimap_zoom_)
+	{
+		// One-seat 0.5 zoom (maintainer ruling, §6): same pane rect, a
+		// kCameraMinimapZoomDenominator-times world window. Render the
+		// doubled window 1:1 into the off-screen camera_scale layer through
+		// the SAME viewscreen redraw as above — the viewscreen is simply
+		// twice as large for this draw, so the seat centering and the
+		// world-edge behavior are inherited, not re-implemented — then
+		// integer-downsample the layer onto the pane rect. A failed layer
+		// allocation yields to the 1:1 draw below: the pane stays live,
+		// merely zoomed in for the frame (the R2 degrade-don't-corrupt
+		// shape). Still zero game-rng calls: the layer path draws exactly
+		// what a (larger) seat pane draws.
+		const short pane_x = static_cast<short>(camera_view_->xloc);
+		const short pane_y = static_cast<short>(camera_view_->yloc);
+		const short pane_w = static_cast<short>(camera_view_->xview);
+		const short pane_h = static_cast<short>(camera_view_->yview);
+		const short zoomed_w =
+		    static_cast<short>(pane_w * kCameraMinimapZoomDenominator);
+		const short zoomed_h =
+		    static_cast<short>(pane_h * kCameraMinimapZoomDenominator);
+		if (camera_scale_begin(zoomed_w, zoomed_h))
+		{
+			// The double resize is draw-scoped geometry, not a relayout:
+			// leave redrawme as the frame found it.
+			const short saved_redrawme = redrawme;
+			camera_view_->resize(static_cast<short>(0),
+			                     static_cast<short>(0), zoomed_w, zoomed_h);
+			(void)camera_view_->redraw(&level_runtime_data_,
+			                           /*draw_radar=*/false);
+			camera_scale_end(pane_x, pane_y, pane_w, pane_h,
+			                 kCameraMinimapZoomDenominator);
+			camera_view_->resize(pane_x, pane_y, pane_w, pane_h);
+			redrawme = saved_redrawme;
+			drew_scaled = true;
+		}
+	}
+	if (!drew_scaled)
+		(void)camera_view_->redraw(&level_runtime_data_, /*draw_radar=*/false);
 	// 1px border framing the world content (corners inclusive).
 	draw_box(camera_view_->xloc - 1, camera_view_->yloc - 1,
 	         camera_view_->endx, camera_view_->endy, GREY, 0, 1);
@@ -1552,6 +1617,7 @@ void screen::cleanup(short howmany)
     // still-replicated ModeState declaration.
     camera_view_.reset();
     camera_docked_ = false;
+    camera_minimap_zoom_ = false;
     // §7.1: destroyed views leave no windows to present; a later World
     // present must not replay their canvas-space slices.
     video_impl_->set_world_present_slices({});

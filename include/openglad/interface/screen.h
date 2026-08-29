@@ -48,6 +48,13 @@ namespace og::sim { class GameClient; }
 // Maximum number of split-screen viewscreens (one per local player).
 inline constexpr int MAX_VIEWS = 5;
 
+// One-seat camera-minimap zoom (docs/camera-views-design.md §6, maintainer
+// ruling): the second-minimap pane keeps its radar-matched rect but shows a
+// world window this many times wider and taller, integer-downsampled with
+// nearest sampling — 2 means 0.5x zoom. The docked quadrant and the 2/4-seat
+// centered inset stay 1:1 (full-size panes with adequate context).
+inline constexpr int kCameraMinimapZoomDenominator = 2;
+
 class screen : public video
 {
 private:
@@ -135,6 +142,10 @@ public:
     [[nodiscard]] std::int64_t floor_layer_source_pixels_for_testing() const override;
     [[nodiscard]] std::int64_t floor_layer_scaled_pixels_for_testing() const override;
     [[nodiscard]] bool floor_layer_redirect_active_for_testing() const override;
+    bool camera_scale_begin(Sint32 w, Sint32 h) override;
+    void camera_scale_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                          Sint32 denominator) override;
+    void fail_next_camera_scale_allocation_for_testing() override;
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,
                        Sint32 portstartx, Sint32 portstarty,
@@ -420,6 +431,12 @@ public:
     std::int32_t camera_entity_id_ = 0;   // last-synced declaration
     std::uint8_t camera_style_ = 0;       // kCameraStyleAuto / kCameraStyleInset
     bool camera_docked_ = false;          // per-machine resolution (§6), off-wire
+    // One-seat second-minimap 0.5 zoom (maintainer ruling, §6): draw a
+    // kCameraMinimapZoomDenominator-times world window through the off-screen
+    // camera_scale layer, downsampled onto the unchanged pane rect. Resolved
+    // with the geometry in relayout_camera_view; never set for the docked
+    // quadrant or the 2/4-seat centered inset (full-size panes, 1:1).
+    bool camera_minimap_zoom_ = false;
     // Camera-view lifecycle (§5): one idempotent, diff-based pass, run as the
     // first statement of redraw() — construct on change, retarget every
     // frame, destroy on a cleared slot. Display screens only (identity belt).

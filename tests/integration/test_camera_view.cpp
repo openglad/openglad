@@ -384,6 +384,8 @@ TEST_F(CameraView, docked_geometry_comes_from_the_four_pane_pipeline)
             << "seat " << i << " is not in its 4-pane quadrant";
     EXPECT_EQ(four_pane_rect(3), capture_rect(*game_->camera_view_))
         << "camera is not in quadrant 3";
+    EXPECT_FALSE(game_->camera_minimap_zoom_)
+        << "the docked quadrant is a full-size pane and stays 1:1";
     // Direct geometry: slot == window, so the camera publishes no present
     // slice and the presentation partition never sees it.
     EXPECT_EQ(game_->camera_view_->xloc, game_->camera_view_->slot_x_);
@@ -460,6 +462,8 @@ TEST_F(CameraView, two_seats_keep_the_centered_inset)
     EXPECT_EQ(centered_inset_rect(), capture_rect(*game_->camera_view_));
     EXPECT_NE(second_minimap_rect(), capture_rect(*game_->camera_view_))
         << "2 seats must not take the one-seat second-minimap placement";
+    EXPECT_FALSE(game_->camera_minimap_zoom_)
+        << "the centered inset is a full-size pane and stays 1:1";
 }
 
 // H5: seat add 3->4 flips docked->inset with no intermediate 5-pane layout
@@ -1009,6 +1013,236 @@ TEST_F(CameraView, inset_to_docked_flip_scrubs_the_inset_rect)
                 ASSERT_TRUE(pixel_is_black(game_, x, y))
                     << "stale inset pixel at " << x << "," << y
                     << " after the dock flip";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// One-seat 0.5 zoom (maintainer ruling): the second-minimap pane keeps its
+// exact radar-matched rect but shows a kCameraMinimapZoomDenominator-times
+// wider and taller world window around the target, integer-downsampled onto
+// the pane. The docked quadrant and the 2/4-seat centered inset stay 1:1.
+// ---------------------------------------------------------------------------
+
+// The RGB content of the camera pane rect, row-major, read under the
+// production GameplayUI canvas scope.
+std::vector<Uint32> capture_rect_pixels(screen* scr, const SeatRect& r)
+{
+    std::vector<Uint32> pixels;
+    pixels.reserve(static_cast<std::size_t>(r.xview * r.yview));
+    ScopedGameplayUiCanvas gameplay_ui(*scr);
+    for (int y = r.yloc; y < r.yloc + r.yview; ++y)
+        for (int x = r.xloc; x < r.xloc + r.xview; ++x)
+        {
+            Uint8 pr = 0, pg = 0, pb = 0;
+            scr->get_pixel(x, y, &pr, &pg, &pb);
+            pixels.push_back((static_cast<Uint32>(pr) << 16) |
+                             (static_cast<Uint32>(pg) << 8) |
+                             static_cast<Uint32>(pb));
+        }
+    return pixels;
+}
+
+// Zoom evidence: a witness entity fully OUTSIDE the 1:1 world window but
+// inside the 2x window appears in the pane at 0.5 zoom — and its pixels land
+// in the pane band the 2:1 mapping predicts. Forcing the draw back to 1:1
+// makes the witness disappear (diffs == 0): that is this test's red lever.
+TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_half_zoom)
+{
+    game_->ready_for_battle(1);
+    arm_seats();
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_FALSE(game_->camera_docked_);
+    const SeatRect r = inset_rect();
+    ASSERT_EQ(r, capture_rect(*game_->camera_view_))
+        << "the pane rect itself must not change with the zoom";
+    EXPECT_TRUE(game_->camera_minimap_zoom_)
+        << "the one-seat second minimap must resolve to the 0.5 zoom";
+
+    walker* const target =
+        game_->world().find_by_id(static_cast<std::uint32_t>(target_id));
+    ASSERT_NE(nullptr, target);
+    // The window edges, from the same centering rule the viewscreen applies
+    // (topy = y - (yview - sizey)/2) at 1x and at the zoomed window height.
+    const Sint32 zoomed_h = r.yview * kCameraMinimapZoomDenominator;
+    const Sint32 topy1 =
+        target->ypos() - (r.yview - target->sizey()) / 2;
+    const Sint32 bottom1 = topy1 + r.yview;
+    const Sint32 topy2 = target->ypos() - (zoomed_h - target->sizey()) / 2;
+    const Sint32 bottom2 = topy2 + zoomed_h;
+    ASSERT_GT(bottom2 - 8, bottom1 + 8)
+        << "no world band between the 1x and 2x windows: pane too small";
+    // The witness: fully below the 1:1 window, inside the 2x window.
+    const std::int32_t witness_id =
+        spawn_target(target->xpos(), bottom1 + 8);
+    ASSERT_NE(0, witness_id);
+
+    const auto seam_draw = [&]() {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->clearbuffer(r.xloc - 1, r.yloc - 1, r.xview + 2, r.yview + 2);
+        game_->draw_camera_view_ui();
+    };
+
+    seam_draw();
+    const std::vector<Uint32> with_witness = capture_rect_pixels(game_, r);
+    walker* const witness =
+        game_->world().find_by_id(static_cast<std::uint32_t>(witness_id));
+    ASSERT_NE(nullptr, witness);
+    witness->set_dead(1);
+    seam_draw();
+    const std::vector<Uint32> without_witness = capture_rect_pixels(game_, r);
+    witness->set_dead(0);
+    ASSERT_EQ(with_witness.size(), without_witness.size());
+
+    // Where the 2:1 mapping puts the witness: pane y = (world_y - topy2) / 2,
+    // so everything at or below bottom1 + 8 lands in the lower quarter of
+    // the pane (with slack for the interpolation rounding).
+    const int expected_min_pane_y =
+        static_cast<int>((bottom1 + 8 - topy2) /
+                         kCameraMinimapZoomDenominator) - 2;
+    int diffs = 0;
+    int stray = 0;
+    for (int y = 0; y < r.yview; ++y)
+        for (int x = 0; x < r.xview; ++x)
+        {
+            const std::size_t i =
+                static_cast<std::size_t>(y * r.xview + x);
+            if (with_witness[i] == without_witness[i])
+                continue;
+            ++diffs;
+            if (y < expected_min_pane_y)
+                ++stray;
+        }
+    EXPECT_GT(diffs, 0)
+        << "the witness below the 1:1 window never appeared in the pane: "
+        << "the one-seat minimap is not showing the 2x world window";
+    EXPECT_EQ(0, stray)
+        << stray << " witness pixels above pane row " << expected_min_pane_y
+        << ": the 2:1 world-to-pane mapping is off";
+    // The seat and the pane geometry never moved for the zoomed draw.
+    EXPECT_EQ(r, capture_rect(*game_->camera_view_));
+}
+
+// The 2:1 sampling pin: every pane pixel equals the corresponding pixel of
+// the 2x world-window render — dst(i,j) = src(i*2, j*2) — including the
+// window-edge corners. The comparison source is the SAME viewscreen draw the
+// production path renders into the off-screen layer (the doubled window at
+// port origin), reproduced on the visible canvas where the test can read it.
+TEST_F(CameraView, one_seat_minimap_maps_world_pixels_two_to_one)
+{
+    game_->ready_for_battle(1);
+    arm_seats();
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    ASSERT_FALSE(game_->camera_docked_);
+    const SeatRect r = inset_rect();
+    ASSERT_EQ(r, capture_rect(*game_->camera_view_));
+
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->draw_camera_view_ui();
+    }
+    const std::vector<Uint32> pane = capture_rect_pixels(game_, r);
+
+    const short zw =
+        static_cast<short>(r.xview * kCameraMinimapZoomDenominator);
+    const short zh =
+        static_cast<short>(r.yview * kCameraMinimapZoomDenominator);
+    const SeatRect big_rect{0, 0, zw, zh};
+    std::vector<Uint32> big;
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->clearbuffer(0, 0, zw, zh);
+        game_->camera_view_->resize(static_cast<short>(0),
+                                    static_cast<short>(0), zw, zh);
+        ASSERT_TRUE(game_->camera_view_->redraw(&game_->level_runtime_data(),
+                                                /*draw_radar=*/false));
+        big = capture_rect_pixels(game_, big_rect);
+    }
+    // Restore the pane geometry through the one placement rule.
+    game_->relayout_camera_view();
+    ASSERT_EQ(r, capture_rect(*game_->camera_view_));
+
+    const auto expect_sample = [&](int x, int y) {
+        const std::size_t pane_i = static_cast<std::size_t>(y * r.xview + x);
+        const std::size_t big_i = static_cast<std::size_t>(
+            (y * kCameraMinimapZoomDenominator) * zw +
+            (x * kCameraMinimapZoomDenominator));
+        return pane[pane_i] == big[big_i];
+    };
+    // The four window-edge corners of the mapping, pinned by name.
+    EXPECT_TRUE(expect_sample(0, 0))
+        << "pane (0,0) must sample the 2x window's top-left pixel";
+    EXPECT_TRUE(expect_sample(r.xview - 1, 0))
+        << "pane right edge must sample layer column 2*(w-1)";
+    EXPECT_TRUE(expect_sample(0, r.yview - 1))
+        << "pane bottom edge must sample layer row 2*(h-1)";
+    EXPECT_TRUE(expect_sample(r.xview - 1, r.yview - 1))
+        << "pane bottom-right corner must sample layer (2w-2, 2h-2)";
+    // And the whole lattice: nearest integer sampling, no filtering.
+    int mismatches = 0;
+    for (int y = 0; y < r.yview; y += 3)
+        for (int x = 0; x < r.xview; x += 3)
+            if (!expect_sample(x, y))
+                ++mismatches;
+    EXPECT_EQ(0, mismatches)
+        << mismatches << " pane pixels off the dst(i,j) = src(2i,2j) mapping";
+}
+
+// The allocation-fallback yield for the zoom layer: a failed off-screen
+// allocation must fall back to the 1:1 pane draw — the pane stays live and
+// framed, merely zoomed in for the frame (the same degrade-don't-corrupt
+// shape as the R2 overlay yield).
+TEST_F(CameraView, one_seat_minimap_allocation_failure_falls_back_to_one_to_one)
+{
+    game_->ready_for_battle(1);
+    arm_seats();
+    game_->world().create_new_grid();
+    const std::int32_t target_id = spawn_target();
+    ASSERT_NE(0, target_id);
+    declare_camera(target_id);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    const SeatRect r = inset_rect();
+
+    game_->fail_next_camera_scale_allocation_for_testing();
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->clearbuffer(r.xloc - 1, r.yloc - 1, r.xview + 2, r.yview + 2);
+        game_->draw_camera_view_ui();
+    }
+    const std::vector<Uint32> fallback = capture_rect_pixels(game_, r);
+
+    // The fallback content IS the plain 1:1 pane draw: reproduce it directly
+    // and expect pixel identity.
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        ASSERT_TRUE(game_->camera_view_->redraw(&game_->level_runtime_data(),
+                                                /*draw_radar=*/false));
+    }
+    const std::vector<Uint32> direct = capture_rect_pixels(game_, r);
+    ASSERT_EQ(fallback.size(), direct.size());
+    int diffs = 0;
+    for (std::size_t i = 0; i < fallback.size(); ++i)
+        if (fallback[i] != direct[i])
+            ++diffs;
+    EXPECT_EQ(0, diffs)
+        << diffs << " pixels differ from the plain 1:1 draw: the allocation "
+        << "fallback did not yield to the unscaled pane";
+    // The border survived the fallback frame.
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        EXPECT_TRUE(pixel_matches_index(game_, r.xloc - 1, r.yloc - 1, GREY));
+        EXPECT_TRUE(pixel_matches_index(game_, r.xloc + r.xview,
+                                        r.yloc + r.yview, GREY));
     }
 }
 

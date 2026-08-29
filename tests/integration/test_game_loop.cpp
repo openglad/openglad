@@ -7423,6 +7423,11 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
         EXPECT_EQ(block.y, display->camera_view_->yloc +
                                display->camera_view_->yview + block.margin)
             << "the pane must sit one radar margin above the radar block";
+        // And it draws at 0.5 zoom (maintainer ruling): the radar-sized rect
+        // shows the kCameraMinimapZoomDenominator-times world window through
+        // the camera_scale layer, so the ball arrives with its surroundings.
+        EXPECT_TRUE(display->camera_minimap_zoom_)
+            << "the one-seat second minimap must resolve to the 0.5 zoom";
         // The seat is byte-identical to its pre-camera geometry.
         EXPECT_EQ(seat_before.xloc, display->viewob[0]->xloc);
         EXPECT_EQ(seat_before.yloc, display->viewob[0]->yloc);
