@@ -310,3 +310,32 @@ voxel pruning, hole fill, optional bilateral symmetry prior), baked shading
 (palette-ramp AO / edge darkening) so faces read at small sizes, and
 per-family parameter polish. Sprite-agreement % remains a sanity check only —
 the gate is Fable's visual review.
+
+## 11. Carving verdict and the rig pivot (2026-08-29)
+
+**Space carving is a dead end for shape — measured, not guessed.** Rounds 1–2
+(`bd4be050`, `dea559ed`) carved 64³ hulls with normal-aligned colour, cleanup,
+baked AO and a cube-face renderer. The classic-angle re-renders read as the
+characters, but every hero view is a solid of revolution ("mushrooms"). The
+probe: relabelling the eight facings by any multiple of 90° leaves the hull
+essentially unchanged (IoU 58–61% between all offsets; only mirroring drops it
+to ~40%). A 16×16 near-top-down sprite's eight silhouettes are nearly
+rotation-invariant, so their intersection is by construction a body of
+revolution, and photo-consistency cannot break it because the distinguishing
+features (the footman's red band, the orc's harness) appear in every facing.
+No carver tuning fixes this. The carver stays only as an optional colour
+sampler.
+
+**Pivot: parametric voxel rigs.** Shape comes from a stylized voxel-art rig
+per archetype (humanoid, skeleton variant, ghost sheet, slime blob, robe) —
+chunky proportions, 32 voxels tall (2× sprite scale), built from box /
+ellipsoid / cylinder primitives with mirrored symmetry — plus a per-family
+part list (helmet, hood, hat, cape, robe, sword / bow / staff / axe, quiver,
+shield, tusks, ears, horns) and palette indices sampled from the family's own
+sprite, team-band indices where the sprite uses team colour. Rendering reuses
+the round-2 AO + cube-face lighting. Integration home after the prototype:
+a render-only `voxel = { rig = ..., parts = ..., colors = ... }` block in the
+pack family descriptor (families are Lua mods), loader default = plain
+humanoid coloured from the sprite. Rigs are also the path to animated
+walk/attack poses in Free view later. The classic camera is unaffected
+(sprites remain the imposter — §10).
