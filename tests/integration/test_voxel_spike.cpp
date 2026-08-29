@@ -517,9 +517,9 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 
 namespace {
 
-std::string models3_dir()
+std::string models4_dir()
 {
-    return spike_dir() + "/models3";
+    return spike_dir() + "/models4";
 }
 
 struct Image
@@ -1082,6 +1082,24 @@ PaletteChoice pick_palette(const og::render::VoxelCarveFrames& fr,
         grey_block >= 0 && grey_block != primary_block
             ? lightest_of_block(grey_block)
             : lightest_of_block(primary_block));
+    // G3: armour and cloth one ramp step darker than the sprite's own mid
+    // tone, so the lightest-metal blade and the bare skin both separate from
+    // it. Ramps do not all run the same direction, so step by luminance.
+    {
+        const int blk = p.primary / 8;
+        int step = p.primary;
+        float best_gap = 1e9f;
+        for (int i = blk * 8; i < blk * 8 + 8 && i < 248; ++i)
+        {
+            const float gap = lum(p.primary) - lum(i);
+            if (gap > 1.0f && gap < best_gap)
+            {
+                best_gap = gap;
+                step = i;
+            }
+        }
+        p.primary = static_cast<unsigned char>(step);
+    }
 
     // Eye pits and boots want to be near black. Take the darkest thing in the
     // whole palette rather than the darkest thing the sprite happened to use:
@@ -1397,7 +1415,7 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
         Image im = make_image(kClassicW, kClassicH, RGB{0, 0, 0});
         for (std::size_t i = 0; i < buf.size(); ++i)
             im.px[i] = unpack(buf[i]);
-        write_image(models3_dir(), "scene_" + name + "_" + f.tag,
+        write_image(models4_dir(), "scene_" + name + "_" + f.tag,
                     upscale(im, 2));
         printf("  %-18s %llu faces, %llu samples, %llu writes, %.2f s\n", f.tag,
                static_cast<unsigned long long>(rs.slices),
@@ -1418,41 +1436,63 @@ struct RigFamily
 {
     const char* name;
     int family;
-    og::render::RigArchetype archetype;
-    og::render::RigWeapon weapon;
-    bool helmet, plume, hood, hat, cape, robe, quiver, shield, tusks, ears;
-    int widen;
-    int lift;
-    bool turntable;
+    og::render::RigArchetype archetype = og::render::RigArchetype::Humanoid;
+    og::render::RigWeapon weapon = og::render::RigWeapon::None;
+    og::render::RigTeamSlot team = og::render::RigTeamSlot::Sash;
+    bool helmet = false;
+    bool hood = false;
+    bool hat = false;
+    bool cape = false;
+    bool robe = false;
+    bool quiver = false;
+    bool shield = false;
+    bool tusks = false;
+    bool ears = false;
+    bool bow_pose = false;
+    bool planted = false;
+    bool beard = false;
+    bool hair = false;
+    bool cross = false;
+    bool pauldrons = false;
+    int widen = 0;
+    int lift = 0;
 };
 
+// Lineup order, which is also build order: the two heavies at the ends, the
+// robes together, the two bowmen side by side so their silhouettes have to
+// differ.
 const RigFamily kRigs[] = {
-    // name       family              archetype                       weapon
-    //            helm  plume hood  hat   cape  robe  quiv  shld  tusk  ears  widen lift turn
-    {"footman", FAMILY_SOLDIER, og::render::RigArchetype::Humanoid,
-     og::render::RigWeapon::Sword,
-     true, true, false, false, true, false, false, false, false, false, 0, 0, true},
-    {"archer", FAMILY_ARCHER, og::render::RigArchetype::Humanoid,
-     og::render::RigWeapon::Bow,
-     false, false, true, false, false, false, true, false, false, false, 0, 0, true},
-    {"orc", FAMILY_ORC, og::render::RigArchetype::Humanoid,
-     og::render::RigWeapon::Axe,
-     false, false, false, false, false, false, false, false, true, false, 2, 0, true},
-    {"skeleton", FAMILY_SKELETON, og::render::RigArchetype::Skeleton,
-     og::render::RigWeapon::Sword,
-     false, false, false, false, false, false, false, false, false, false, 0, 0, false},
-    {"mage", FAMILY_MAGE, og::render::RigArchetype::Humanoid,
-     og::render::RigWeapon::Staff,
-     false, false, false, true, false, true, false, false, false, false, 0, 0, true},
-    {"elf", FAMILY_ELF, og::render::RigArchetype::Humanoid,
-     og::render::RigWeapon::Bow,
-     false, false, false, false, false, false, true, false, false, true, -2, 0, false},
-    {"ghost", FAMILY_GHOST, og::render::RigArchetype::Ghost,
-     og::render::RigWeapon::None,
-     false, false, false, false, false, false, false, false, false, false, 0, 6, true},
-    {"cleric", FAMILY_CLERIC, og::render::RigArchetype::Humanoid,
-     og::render::RigWeapon::Mace,
-     false, false, true, false, false, true, false, true, false, false, 0, 0, false},
+    {.name = "footman", .family = FAMILY_SOLDIER,
+     .weapon = og::render::RigWeapon::Sword,
+     .team = og::render::RigTeamSlot::Crest,
+     .helmet = true, .cape = true, .pauldrons = true},
+    {.name = "cleric", .family = FAMILY_CLERIC,
+     .weapon = og::render::RigWeapon::Mace,
+     .team = og::render::RigTeamSlot::HoodTrim,
+     .hood = true, .robe = true, .shield = true, .cross = true},
+    {.name = "mage", .family = FAMILY_MAGE,
+     .weapon = og::render::RigWeapon::Staff,
+     .team = og::render::RigTeamSlot::HatBand,
+     .hat = true, .robe = true, .planted = true, .beard = true},
+    {.name = "elf", .family = FAMILY_ELF,
+     .weapon = og::render::RigWeapon::Bow,
+     .team = og::render::RigTeamSlot::Belt,
+     .ears = true, .bow_pose = true, .hair = true, .widen = -2},
+    {.name = "archer", .family = FAMILY_ARCHER,
+     .weapon = og::render::RigWeapon::Bow,
+     .team = og::render::RigTeamSlot::HoodTrim,
+     .hood = true, .quiver = true, .bow_pose = true},
+    {.name = "orc", .family = FAMILY_ORC,
+     .weapon = og::render::RigWeapon::Axe,
+     .team = og::render::RigTeamSlot::ChestStrap,
+     .tusks = true, .pauldrons = true, .widen = 2},
+    {.name = "skeleton", .family = FAMILY_SKELETON,
+     .archetype = og::render::RigArchetype::Skeleton,
+     .weapon = og::render::RigWeapon::Sword,
+     .team = og::render::RigTeamSlot::Armband},
+    {.name = "ghost", .family = FAMILY_GHOST,
+     .archetype = og::render::RigArchetype::Ghost,
+     .team = og::render::RigTeamSlot::None, .lift = 6},
 };
 
 og::render::RigSpec spec_for(const RigFamily& f, const og::render::RigPalette& p)
@@ -1462,7 +1502,6 @@ og::render::RigSpec spec_for(const RigFamily& f, const og::render::RigPalette& p
     s.pal = p;
     s.weapon = f.weapon;
     s.helmet = f.helmet;
-    s.plume = f.plume;
     s.hood = f.hood;
     s.hat = f.hat;
     s.cape = f.cape;
@@ -1473,7 +1512,51 @@ og::render::RigSpec spec_for(const RigFamily& f, const og::render::RigPalette& p
     s.pointed_ears = f.ears;
     s.torso_widen = f.widen;
     s.lift = f.lift;
+    s.team_slot = f.team;
+    s.bow_pose = f.bow_pose;
+    s.planted_staff = f.planted;
+    s.beard = f.beard;
+    s.long_hair = f.hair;
+    s.chest_cross = f.cross;
+    s.pauldrons = f.pauldrons;
     return s;
+}
+
+// Three families whose sprite palette cannot supply what the character needs.
+// Everything else is sampled.
+void override_palette(int family, og::render::RigPalette& p)
+{
+    if (family == FAMILY_SKELETON)
+    {
+        // No skin anywhere on a skeleton: bone is the light grey ramp, and
+        // the sword is the middle of it so it reads as rust-pitted iron.
+        p.skin = 30;
+        p.primary = 29;
+        p.secondary = 27;
+        p.metal = 23;
+        p.dark = 16;
+    }
+    else if (family == FAMILY_ELF)
+    {
+        // Nothing in the living sprites uses the palette's green ramp, so a
+        // forest tunic has to be named. Brown stays for hair and legs, which
+        // is also what keeps the elf and the (brown) archer apart.
+        p.primary = og::render::kVoxelRigGreen;
+        p.secondary = 140;
+    }
+    else if (family == FAMILY_ARCHER)
+    {
+        // The archer's sprite is mostly skin tones, which would put it in a
+        // pink tunic next to the green elf. Brown, per the brief.
+        p.primary = 133;
+        p.secondary = 135;
+    }
+    else if (family == FAMILY_ORC)
+    {
+        // Brown hide from the sprite, but the armour goes to the bottom of
+        // that ramp so the tusks and the axe read against it.
+        p.primary = 143;
+    }
 }
 
 } // namespace
@@ -1493,7 +1576,7 @@ TEST_F(VoxelModels, parametric_rigs_and_scene_renders)
     ASSERT_TRUE(scr()->load_level()) << "gladiator scen1";
     const std::vector<std::uint32_t> lut = build_palette_lut();
 
-    printf("[voxel-rigs] parametric rigs at 2x sprite scale (cell %.2f), "
+    printf("[voxel-rigs] round-4 character pass, 2x sprite scale (cell %.2f), "
            "camera theta %.0f\n",
            static_cast<double>(og::render::kVoxelRigCell),
            static_cast<double>(og::render::kVoxelCarveTheta));
@@ -1510,7 +1593,8 @@ TEST_F(VoxelModels, parametric_rigs_and_scene_renders)
             printf("  %-9s : no eight-facing walk art, skipped\n", f.name);
             continue;
         }
-        const PaletteChoice pc = pick_palette(fr, lut);
+        PaletteChoice pc = pick_palette(fr, lut);
+        override_palette(f.family, pc.pal);
         const auto t0 = std::chrono::steady_clock::now();
         og::render::VoxelModel rig =
             og::render::voxel_build_rig(spec_for(f, pc.pal), fr.w, fr.h);
@@ -1524,13 +1608,12 @@ TEST_F(VoxelModels, parametric_rigs_and_scene_renders)
             og::render::voxel_build_shadow(rig, pc.pal.dark);
 
         float agree[NUM_FACINGS] = {};
-        write_image(models3_dir(), std::string("classic_") + f.name,
+        write_image(models4_dir(), std::string("classic_") + f.name,
                     build_classic_page(fr, rig, lut, agree));
-        write_image(models3_dir(), std::string("hero_") + f.name,
+        write_image(models4_dir(), std::string("hero_") + f.name,
                     build_hero(rig, shadow, lut));
-        if (f.turntable)
-            write_image(models3_dir(), std::string("turntable_") + f.name,
-                        build_turntable(rig, shadow, lut));
+        write_image(models4_dir(), std::string("turntable_") + f.name,
+                    build_turntable(rig, shadow, lut));
         const auto t2 = std::chrono::steady_clock::now();
 
         const ShotCamera line =
@@ -1583,7 +1666,7 @@ TEST_F(VoxelModels, parametric_rigs_and_scene_renders)
             paste(row, x, lineup_h - im.h, im);
             x += im.w + 4;
         }
-        write_image(models3_dir(), "lineup", upscale(row, 2));
+        write_image(models4_dir(), "lineup", upscale(row, 2));
     }
 
     world.delete_objects();

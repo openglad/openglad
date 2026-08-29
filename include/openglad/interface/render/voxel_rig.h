@@ -50,6 +50,30 @@ enum class RigArchetype : unsigned char
     Slime,
 };
 
+// The orange band 224..231 is colour-cycled by the game (base.h ORANGE_START
+// / ORANGE_END), so an orb built out of it animates for free.
+inline constexpr unsigned char kVoxelRigOrb = 228;
+// The palette's pure-green ramp is 56..63, bright to dark; the tile greens
+// live there. Nothing in the living sprites does, which is why the elf's
+// tunic has to be named rather than sampled.
+inline constexpr unsigned char kVoxelRigGreen = 59;
+inline constexpr unsigned char kVoxelRigGreenDark = 61;
+
+// Where a family spends its team band. Exactly one element per family: a rig
+// wearing team colour on both a sash and a cape reads as painted, not
+// uniformed.
+enum class RigTeamSlot : unsigned char
+{
+    None,
+    Sash,      // chest band
+    Crest,     // helmet ridge
+    Armband,   // weapon arm
+    ChestStrap,// diagonal leather strap
+    HatBand,
+    HoodTrim,
+    Belt,
+};
+
 enum class RigWeapon : unsigned char
 {
     None,
@@ -85,6 +109,16 @@ struct RigSpec
     int torso_widen = 0;
     // Ghosts float: the model's base sits this many voxels off the ground.
     int lift = 0;
+    RigTeamSlot team_slot = RigTeamSlot::Sash;
+    // Archer / elf: the bow goes out to the LEFT across the body with the
+    // string hand at the chin, instead of hanging in a fist.
+    bool bow_pose = false;
+    // Mage: the staff is planted on the ground beside the right foot.
+    bool planted_staff = false;
+    bool beard = false;
+    bool long_hair = false;
+    bool chest_cross = false;
+    bool pauldrons = false;
 };
 
 // Build one rig. `sprite_w`/`sprite_h` set the model's anchor so it lands
