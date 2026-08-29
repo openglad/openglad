@@ -345,7 +345,8 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
         ++stats.volumes;
         // A model-only volume carries no texture: the hero and comparison
         // renders emit one, and terrain/sprite volumes still carry both.
-        const bool has_model = (v.model != nullptr && !v.model->empty());
+        const bool has_model = (v.model != nullptr && !v.model->empty()) ||
+            (v.relief != nullptr && !v.relief->empty());
         if (!has_model && (v.texels == nullptr || v.w <= 0 || v.h <= 0))
             continue;
         if (has_model && camera.collapse() &&
@@ -356,11 +357,98 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
         const float base_z =
             v.z + ((!collapse && v.material.lift) ? kVoxelProjectileLift : 0.0f);
 
+        // ---- §12: a sprite relief on the game camera's own plane ----
+        // The front face is the sprite frame, unshaded, on a plane tilted to
+        // kVoxelReliefTheta and turned to face the camera's yaw. At that
+        // pitch the plane is perpendicular to the view, so the relief
+        // projects to exactly the pixels the stamp blits and the thickness is
+        // hidden directly behind it; away from that pitch the layers slide
+        // apart and the depth shows. That is the whole design: the classic
+        // look is reproduced by construction, not approximated.
+        if (!collapse && v.relief != nullptr && !v.relief->empty())
+        {
+            const VoxelRelief& r = *v.relief;
+            const float ph = kVoxelReliefTheta * kDeg2Rad;
+            const float sp = std::sin(ph), cp = std::cos(ph);
+            const float psi = camera.yaw_deg * kDeg2Rad;
+            const float cyaw = std::cos(psi), syaw = std::sin(psi);
+
+            // Billboard: the plane's basis is turned by MINUS the camera yaw
+            // so the camera's own +yaw rotation brings it back square on.
+            // u runs screen-right, v runs screen-down, t runs away from the
+            // camera along the view axis (0, cos, sin) — the sign checked
+            // against §3's depth, where near = y'*cos(phi) + z*sin(phi).
+            const float ux = cyaw, uy = -syaw, uz = 0.0f;
+            const float vx = sp * syaw, vy = sp * cyaw, vz = -cp;
+            const float tx = -cp * syaw, ty = -cp * cyaw, tz = -sp;
+
+            // Anchor: the frame's bottom edge sits on the ground at the
+            // entity's foot line, billboarding about the foot CENTRE so the
+            // sprite pivots in place instead of swinging round a corner.
+            const float ax = v.x + static_cast<float>(r.w) * 0.5f;
+            const float ay = v.y + static_cast<float>(r.h);
+            const float az = v.z;
+            const float half_w = static_cast<float>(r.w) * 0.5f;
+            const float up = static_cast<float>(r.h - 1);
+            const float ox = ax - half_w * ux - up * vx;
+            const float oy = ay - half_w * uy - up * vy;
+            const float oz = az - half_w * uz - up * vz;
+
+            const VoxelMaterial mat = v.material;
+            const float lift = mat.lift ? kVoxelProjectileLift : 0.0f;
+            for (int t = 0; t < r.depth; ++t)
+            {
+                const float bx = ox + static_cast<float>(t) * tx;
+                const float by = oy + static_cast<float>(t) * ty;
+                const float bz = oz + static_cast<float>(t) * tz + lift;
+                const VoxelProjection q00 = camera.project(bx, by, bz);
+                const VoxelProjection q10 = camera.project(
+                    bx + static_cast<float>(r.w) * ux,
+                    by + static_cast<float>(r.w) * uy,
+                    bz + static_cast<float>(r.w) * uz);
+                const VoxelProjection q01 = camera.project(
+                    bx + static_cast<float>(r.h) * vx,
+                    by + static_cast<float>(r.h) * vy,
+                    bz + static_cast<float>(r.h) * vz);
+                const int layer = t;
+                raster_affine_slice(
+                    q00, q10, q01, r.w, r.h, cx0, cy0, cx1, cy1, target,
+                    depth_.data(), depth_w_, stats,
+                    [&](int tu, int tv, std::uint32_t& color,
+                        unsigned char& pal) {
+                        const std::size_t s = r.at(tu, tv);
+                        if (static_cast<int>(r.thick[s]) <= layer)
+                            return false;
+                        const unsigned char c = r.index[s];
+                        if (c == 0)
+                            return false;
+                        pal = apply_material(c, mat);
+                        if (layer == 0)
+                        {
+                            // Never shaded, never occluded: under the game
+                            // camera this pixel has to equal the sprite's.
+                            color = target.lut256[pal];
+                            return true;
+                        }
+                        const unsigned char sh = r.shade[r.at(tu, tv, layer)];
+                        int level = (static_cast<int>(sh) *
+                                     kVoxelShadeLevels) / 256;
+                        level = std::clamp(level, 0, kVoxelShadeLevels - 1);
+                        color = shade_table_[static_cast<std::size_t>(level) *
+                                                 256u +
+                                             static_cast<std::size_t>(pal)];
+                        return true;
+                    });
+            }
+            ++stats.slices;
+            continue;
+        }
+
         // ---- §10: a carved model, rotated by the walker's facing ----
         // Classic ignores models by ruling: the sprite frames ARE the baked
         // view of the model from the game camera, so drawing the model there
         // would be a renderer twin of an imposter that is already exact.
-        if (!collapse && has_model)
+        if (!collapse && v.model != nullptr && !v.model->empty())
         {
             const VoxelModel& m = *v.model;
             const float c = m.cell;

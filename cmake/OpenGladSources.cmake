@@ -177,6 +177,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/voxel_carve.cpp
     ${SRC_DIR}/interface/render/voxel_raster.cpp
+    ${SRC_DIR}/interface/render/voxel_relief.cpp
     ${SRC_DIR}/interface/render/voxel_rig.cpp
     ${SRC_DIR}/interface/render/voxel_scene_builder.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp

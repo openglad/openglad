@@ -26,6 +26,17 @@ namespace og::render {
 struct VoxelModelSource
 {
     virtual ~VoxelModelSource() = default;
+    // §12: the sprite relief to show for this entity given where the camera
+    // is standing. Applies to EVERY order — fighters, treasure, projectiles,
+    // effects — so a Free view has no flat stamps left in it. Return nullptr
+    // to fall through to the model/stamp paths.
+    virtual const VoxelRelief* relief_for(const walker& w,
+                                          float camera_yaw_deg) const
+    {
+        (void)w;
+        (void)camera_yaw_deg;
+        return nullptr;
+    }
     // Carved model for a living walker, plus the world-space yaw its facing
     // implies. Return nullptr to leave it an extruded sprite stamp.
     virtual const VoxelModel* living_model(const walker& w,
@@ -78,10 +89,14 @@ struct VoxelSceneBuildParams
     // Order::FX walkers of FAMILY_HIT.
     bool skip_hit_fx = false;
 
-    // Optional carved-model source (§10). Borrowed, never owned; the models
-    // must outlive the scene. Volumes keep their texels either way, so the
-    // Classic camera renders exactly what it renders today.
+    // Optional carved-model / relief source. Borrowed, never owned; the
+    // models must outlive the scene. Volumes keep their texels either way, so
+    // the Classic camera renders exactly what it renders today.
     const VoxelModelSource* models = nullptr;
+    // The Free camera's yaw, which is what decides WHICH facing frame each
+    // relief shows (§12). Reliefs are picked at build time because the scene
+    // is built per camera anyway.
+    float camera_yaw_deg = 0.0f;
 };
 
 // Reports what the builder could not represent with the spike's plain

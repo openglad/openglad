@@ -175,10 +175,13 @@ void emit_entity_list(VoxelScene& out, const GameWorld::EntityList& list,
         v.material.team_color = w->query_team_color();
         v.material.opaque = false;
         v.material.lift = (w->query_order() == Order::Weapon);
-        // §10: livings become carved models rotated by curdir. Weapons, fx
-        // and treasure stay stamps — they have no eight-facing walk cycle to
-        // carve from.
-        if (params.models != nullptr && w->query_order() == Order::Living)
+        // §12 first: a sprite relief covers every order, so a Free view has
+        // no flat stamps left in it. The model paths below are the older
+        // carved/rig route and only run when no relief is offered.
+        if (params.models != nullptr)
+            v.relief = params.models->relief_for(*w, params.camera_yaw_deg);
+        if (v.relief == nullptr && params.models != nullptr &&
+            w->query_order() == Order::Living)
         {
             float yaw = 0.0f;
             const VoxelModel* const m = params.models->living_model(*w, yaw);
@@ -191,7 +194,7 @@ void emit_entity_list(VoxelScene& out, const GameWorld::EntityList& list,
                 // footprint centre inside that box.
             }
         }
-        else if (params.models != nullptr &&
+        else if (v.relief == nullptr && params.models != nullptr &&
                  (w->query_order() == Order::Weapon ||
                   w->query_order() == Order::FX))
         {

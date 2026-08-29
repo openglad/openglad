@@ -117,6 +117,46 @@ inline constexpr float kVoxelEdgeShade = 0.5f;
 // Quantisation of the shade axis in the precomputed shade x palette table.
 inline constexpr int kVoxelShadeLevels = 32;
 
+// A per-facing sprite RELIEF (§12). The front face IS the sprite frame —
+// exact silhouette, exact palette indices, never shaded, never AO'd — and the
+// thickness behind each pixel is a heightfield from the silhouette's distance
+// transform. The relief lies on a plane perpendicular to a game camera at
+// elevation kVoxelReliefTheta, so under that camera it projects to exactly the
+// pixels the stamp blits: the classic look is reproduced by construction
+// rather than approximated.
+struct VoxelRelief
+{
+    int w = 0;
+    int h = 0;
+    int depth = 0;                      // thickness layers, >= 1
+    std::vector<unsigned char> index;   // w*h front palette indices, 0 = empty
+    std::vector<unsigned char> thick;   // w*h thickness in layers
+    // w*h*depth shade factors, 255 = unshaded. Layer 0 is always 255: the
+    // front face carries no lighting at all.
+    std::vector<unsigned char> shade;
+
+    [[nodiscard]] bool empty() const noexcept { return index.empty(); }
+    [[nodiscard]] std::size_t at(int u, int v) const noexcept
+    {
+        return static_cast<std::size_t>(v) * static_cast<std::size_t>(w) +
+               static_cast<std::size_t>(u);
+    }
+    [[nodiscard]] std::size_t at(int u, int v, int t) const noexcept
+    {
+        return (static_cast<std::size_t>(t) * static_cast<std::size_t>(h) +
+                static_cast<std::size_t>(v)) *
+                   static_cast<std::size_t>(w) +
+               static_cast<std::size_t>(u);
+    }
+};
+
+// The game camera's elevation, which is the tilt the relief plane is built
+// for. A Free camera at this pitch sees a relief as exactly its sprite.
+inline constexpr float kVoxelReliefTheta = 55.0f;
+// §12 shading: sides 0.75, upward-facing steps 0.9, front never touched.
+inline constexpr float kVoxelReliefSide = 0.75f;
+inline constexpr float kVoxelReliefTop = 0.90f;
+
 // World-space yaw for a walker facing, in the rasterizer's rotation sense
 // (positive turns +x toward +y, i.e. clockwise on a y-down screen).
 //
@@ -172,6 +212,11 @@ struct VoxelVolume
     // model->d) and `height` is ignored.
     const VoxelModel* model = nullptr;
     float yaw = 0.0f; // radians
+
+    // §12: a sprite relief, billboarded to the camera's yaw and tilted to the
+    // game camera's elevation. Takes precedence over `model`. Classic ignores
+    // it and blits `texels`, so parity is untouched.
+    const VoxelRelief* relief = nullptr;
 };
 
 class VoxelScene
