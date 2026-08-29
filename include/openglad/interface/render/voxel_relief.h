@@ -28,20 +28,21 @@ namespace og::render {
 
 // Thickness caps per order (§12). A fighter reads as a slab about a third as
 // deep as it is wide; a projectile is barely more than paper.
-inline constexpr int kVoxelReliefDepthLiving = 6;
-inline constexpr int kVoxelReliefDepthGenerator = 4;
-inline constexpr int kVoxelReliefDepthTreasure = 3;
-inline constexpr int kVoxelReliefDepthWeapon = 2;
-inline constexpr int kVoxelReliefDepthFx = 2;
-// h = clamp(round(k * EDT), 1, max). k = 1 keeps the profile at the same
-// scale as the drawing.
-inline constexpr float kVoxelReliefK = 1.0f;
+inline constexpr int kVoxelReliefDepthLiving = 8;
+inline constexpr int kVoxelReliefDepthGenerator = 6;
+inline constexpr int kVoxelReliefDepthTreasure = 4;
+inline constexpr int kVoxelReliefDepthWeapon = 3;
+inline constexpr int kVoxelReliefDepthFx = 3;
+// h = clamp(round(k * EDT), 1, max). §14 raises k so the middle of a figure
+// actually reaches the cap and the solid pillows instead of tapering flat.
+inline constexpr float kVoxelReliefK = 1.4f;
 
 [[nodiscard]] int voxel_relief_max_depth(Order order) noexcept;
 
 // Build one relief from one frame of palette indices (0 = transparent).
 [[nodiscard]] VoxelRelief voxel_build_relief(const unsigned char* frame, int w,
-                                             int h, int max_depth);
+                                             int h, int max_depth,
+                                             float theta_deg);
 
 // Reliefs are built lazily and kept for the life of the cache. The key is the
 // frame's own data pointer, which is unique per (PixieData, frame index) and
@@ -49,6 +50,11 @@ inline constexpr float kVoxelReliefK = 1.0f;
 class VoxelReliefCache
 {
 public:
+    explicit VoxelReliefCache(float theta_deg = kVoxelReliefTheta)
+        : theta_deg_(theta_deg)
+    {
+    }
+    [[nodiscard]] float theta_deg() const noexcept { return theta_deg_; }
     [[nodiscard]] const VoxelRelief* get(const unsigned char* frame, int w,
                                          int h, int max_depth);
     void clear() { cache_.clear(); }
@@ -56,6 +62,7 @@ public:
 
 private:
     std::map<const unsigned char*, VoxelRelief> cache_;
+    float theta_deg_ = kVoxelReliefTheta;
 };
 
 } // namespace og::render

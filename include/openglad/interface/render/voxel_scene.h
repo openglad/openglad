@@ -117,6 +117,13 @@ inline constexpr float kVoxelEdgeShade = 0.5f;
 // Quantisation of the shade axis in the precomputed shade x palette table.
 inline constexpr int kVoxelShadeLevels = 32;
 
+// The game camera's elevation, which is the tilt the relief plane is built
+// for. A Free camera at this pitch sees a relief as exactly its sprite.
+inline constexpr float kVoxelReliefTheta = 55.0f;
+// §14 shading: sides 0.72, upward-facing steps 0.88, front never touched.
+inline constexpr float kVoxelReliefSide = 0.72f;
+inline constexpr float kVoxelReliefTop = 0.88f;
+
 // A per-facing sprite RELIEF (§12). The front face IS the sprite frame —
 // exact silhouette, exact palette indices, never shaded, never AO'd — and the
 // thickness behind each pixel is a heightfield from the silhouette's distance
@@ -134,6 +141,10 @@ struct VoxelRelief
     // w*h*depth shade factors, 255 = unshaded. Layer 0 is always 255: the
     // front face carries no lighting at all.
     std::vector<unsigned char> shade;
+    // Tilt of the plane this relief was built for, in the game camera's pitch
+    // convention. 90 lays the plane on the ground and the sprite becomes a
+    // top face on a solid standing out of it.
+    float theta_deg = kVoxelReliefTheta;
 
     [[nodiscard]] bool empty() const noexcept { return index.empty(); }
     [[nodiscard]] std::size_t at(int u, int v) const noexcept
@@ -150,12 +161,6 @@ struct VoxelRelief
     }
 };
 
-// The game camera's elevation, which is the tilt the relief plane is built
-// for. A Free camera at this pitch sees a relief as exactly its sprite.
-inline constexpr float kVoxelReliefTheta = 55.0f;
-// §12 shading: sides 0.75, upward-facing steps 0.9, front never touched.
-inline constexpr float kVoxelReliefSide = 0.75f;
-inline constexpr float kVoxelReliefTop = 0.90f;
 
 // World-space yaw for a walker facing, in the rasterizer's rotation sense
 // (positive turns +x toward +y, i.e. clockwise on a y-down screen).

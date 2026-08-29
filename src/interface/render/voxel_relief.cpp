@@ -35,7 +35,7 @@ int voxel_relief_max_depth(Order order) noexcept
 }
 
 VoxelRelief voxel_build_relief(const unsigned char* frame, int w, int h,
-                               int max_depth)
+                               int max_depth, float theta_deg)
 {
     VoxelRelief r;
     if (frame == nullptr || w <= 0 || h <= 0)
@@ -44,6 +44,7 @@ VoxelRelief voxel_build_relief(const unsigned char* frame, int w, int h,
     r.w = w;
     r.h = h;
     r.depth = max_depth;
+    r.theta_deg = theta_deg;
     const std::size_t n =
         static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
     r.index.assign(n, 0u);
@@ -110,7 +111,7 @@ const VoxelRelief* VoxelReliefCache::get(const unsigned char* frame, int w,
     const auto it = cache_.find(frame);
     if (it != cache_.end())
         return &it->second;
-    VoxelRelief r = voxel_build_relief(frame, w, h, max_depth);
+    VoxelRelief r = voxel_build_relief(frame, w, h, max_depth, theta_deg_);
     if (r.empty())
         return nullptr;
     return &cache_.emplace(frame, std::move(r)).first->second;

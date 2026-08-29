@@ -368,9 +368,13 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
         if (!collapse && v.relief != nullptr && !v.relief->empty())
         {
             const VoxelRelief& r = *v.relief;
-            const float ph = kVoxelReliefTheta * kDeg2Rad;
+            const float ph = r.theta_deg * kDeg2Rad;
             const float sp = std::sin(ph), cp = std::cos(ph);
-            const float psi = camera.yaw_deg * kDeg2Rad;
+            // §14: the plane's world orientation, NOT the camera's. The
+            // caller quantizes the camera yaw into 45-degree bins and hands
+            // it here, so the relief stands still in the world while the
+            // camera pans across a bin.
+            const float psi = v.yaw;
             const float cyaw = std::cos(psi), syaw = std::sin(psi);
 
             // Billboard: the plane's basis is turned by MINUS the camera yaw
@@ -396,11 +400,19 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
 
             const VoxelMaterial mat = v.material;
             const float lift = mat.lift ? kVoxelProjectileLift : 0.0f;
+            // The solid is anchored on its BACK face: layer depth-1 sits
+            // where the flat sprite sat, and the thickness grows toward the
+            // camera. That shift runs along the plane's own view axis, so it
+            // moves nothing on screen at the plane's own camera (fidelity is
+            // untouched) while at theta 90 it is what stands the solid up out
+            // of the ground instead of burying it.
+            const float back = static_cast<float>(r.depth - 1);
             for (int t = 0; t < r.depth; ++t)
             {
-                const float bx = ox + static_cast<float>(t) * tx;
-                const float by = oy + static_cast<float>(t) * ty;
-                const float bz = oz + static_cast<float>(t) * tz + lift;
+                const float off = static_cast<float>(t) - back;
+                const float bx = ox + off * tx;
+                const float by = oy + off * ty;
+                const float bz = oz + off * tz + lift;
                 const VoxelProjection q00 = camera.project(bx, by, bz);
                 const VoxelProjection q10 = camera.project(
                     bx + static_cast<float>(r.w) * ux,

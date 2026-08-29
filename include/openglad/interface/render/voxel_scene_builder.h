@@ -30,11 +30,18 @@ struct VoxelModelSource
     // is standing. Applies to EVERY order — fighters, treasure, projectiles,
     // effects — so a Free view has no flat stamps left in it. Return nullptr
     // to fall through to the model/stamp paths.
+    // `plane_yaw_rad` receives the world orientation the relief's plane takes.
+    // §14: that is the camera yaw QUANTIZED to 45-degree bins, not the camera
+    // yaw itself — within a bin the plane stands still in the world, so
+    // panning reveals its thickness instead of hiding it behind a billboard,
+    // and at a bin boundary the plane and the facing frame pop together.
     virtual const VoxelRelief* relief_for(const walker& w,
-                                          float camera_yaw_deg) const
+                                          float camera_yaw_deg,
+                                          float& plane_yaw_rad) const
     {
         (void)w;
         (void)camera_yaw_deg;
+        (void)plane_yaw_rad;
         return nullptr;
     }
     // Carved model for a living walker, plus the world-space yaw its facing

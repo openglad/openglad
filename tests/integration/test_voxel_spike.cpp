@@ -505,23 +505,24 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 }
 
 // ===========================================================================
-// Stage 2 round 6 (docs/voxel-render-design.md §12): per-facing sprite
+// Stage 2 round 8 (docs/voxel-render-design.md §14): WORLD-FIXED thick
 // reliefs.
 //
-// The parametric rigs were rejected for inventing shapes and losing the art.
-// A relief invents nothing: its front face IS the sprite frame, and the only
-// addition is thickness taken from the silhouette's own distance transform.
-// The plane is tilted to the game camera's elevation, so at that pitch the
-// relief projects to exactly the pixels the stamp blits — the classic look is
-// reproduced by construction. Turning the camera swaps which facing frame is
-// shown, which is how the artists' side and back art gets used.
+// Round 6's reliefs were pixel-perfect and showed no volume, because a plane
+// billboarded to the camera hides its own thickness behind itself. §14 fixes
+// the plane in the world instead — quantized to the same eight bins the
+// facing frames use — so the camera sits at most 22.5 degrees off-axis and
+// that offset is exactly what lets the thickness show. Frames and plane pop
+// together at a bin boundary; that is accepted.
 // ===========================================================================
 
 namespace {
 
-std::string models7_dir()
+std::string models8_dir(float theta)
 {
-    return spike_dir() + "/models7";
+    char buf[32];
+    snprintf(buf, sizeof(buf), "/models8/t%.0f", static_cast<double>(theta));
+    return spike_dir() + buf;
 }
 
 struct Image
@@ -546,8 +547,6 @@ std::uint32_t pack(RGB c)
         (static_cast<std::uint32_t>(c.g) << 8) | c.b;
 }
 
-// The team-band remap every walkputbuffer variant does (video_sdl.cpp:2131),
-// so a sprite and a relief render can be compared on equal terms.
 unsigned char remap_team(unsigned char c, unsigned char team)
 {
     return c >= 248 ? static_cast<unsigned char>(team + (255 - c)) : c;
@@ -623,15 +622,10 @@ void write_image(const std::string& dir, const std::string& name,
     fclose(fp);
 }
 
-// Team 0's palette ramp base (mode_tick.cpp team_ramp_base: team * 16 + 40).
 constexpr unsigned char kShotTeam = 40;
 constexpr RGB kPlateBg{38, 40, 46};
-constexpr float kTheta = og::render::kVoxelReliefTheta;
+constexpr float kPi = 3.14159265358979f;
 
-// The first walk frame of each facing: gloader.cpp's living tables are 8 rows
-// of ANI_WALK followed by 8 of ANI_ATTACK (animan = bit1..bit8, att1..att8),
-// and walker::animate() reads them as ani[curdir + ani_type * NUM_FACINGS],
-// so row ANI_WALK * NUM_FACINGS + d is facing d's walk cycle.
 bool family_walk_frames(int family, og::render::VoxelCarveFrames& out)
 {
     loader* const L = scr()->myloader;
@@ -664,51 +658,50 @@ bool family_walk_frames(int family, og::render::VoxelCarveFrames& out)
     return true;
 }
 
-// curdir order, from gloader.cpp's bit1..bit8 comments.
-const char* kFacingNames[NUM_FACINGS] = {"up",   "up-r",   "right", "down-r",
-                                         "down", "down-l", "left",  "up-l"};
+// §14: both the shown frame and the plane's world orientation snap to the same
+// eight 45-degree bins, so they pop together and never disagree.
+int shown_facing(int entity_dir, float camera_yaw_deg)
+{
+    const float ent = static_cast<float>((entity_dir - FACE_DOWN) * 45);
+    int shown = FACE_DOWN + static_cast<int>(std::lround(
+                                (ent + camera_yaw_deg) / 45.0f));
+    return ((shown % NUM_FACINGS) + NUM_FACINGS) % NUM_FACINGS;
+}
+
+float plane_yaw_for(float camera_yaw_deg)
+{
+    const int bin = static_cast<int>(std::lround(camera_yaw_deg / 45.0f));
+    return static_cast<float>(bin * 45) * kPi / 180.0f;
+}
 
 // --------------------------------------------------------------------------
-// The relief source: every entity of every order gets the facing frame that
-// matches where it is pointing RELATIVE TO THE CAMERA.
+// The relief source. Every order draws a relief; livings included — the
+// fitted bodies of round 7 are withdrawn as a shape source.
 // --------------------------------------------------------------------------
 class ReliefModels : public og::render::VoxelModelSource
 {
 public:
+    explicit ReliefModels(float theta) : cache(theta), theta_(theta) {}
     mutable og::render::VoxelReliefCache cache;
     std::map<int, og::render::VoxelModel> tiles;
-    // §13: livings get fitted bodies; everything else keeps the relief, which
-    // is the fallback the maintainer asked to retain.
-    std::map<int, og::render::VoxelModel> bodies;
 
     const og::render::VoxelRelief* relief_for(const walker& w,
-                                              float camera_yaw_deg) const override
+                                              float camera_yaw_deg,
+                                              float& plane_yaw_rad) const override
     {
         loader* const L = scr()->myloader;
         if (L == nullptr)
             return nullptr;
         const Order order = w.query_order();
-        if (order == Order::Living &&
-            bodies.find(static_cast<int>(w.family())) != bodies.end())
-            return nullptr; // a fitted body covers this one
         const int family = static_cast<int>(w.family());
         const int depth = og::render::voxel_relief_max_depth(order);
+        plane_yaw_rad = plane_yaw_for(camera_yaw_deg);
 
         int dir = static_cast<int>(static_cast<unsigned char>(w.curdir()));
         if (dir < 0 || dir >= NUM_FACINGS)
             dir = FACE_DOWN;
-        // The camera turns the world by +yaw, so an entity's facing APPEARS
-        // rotated by +yaw too: the frame to show is the one whose canonical
-        // facing is entity_yaw + camera_yaw. (Checked against the raster's own
-        // rotation: at yaw 90, world +x maps to screen-down, so a
-        // right-facing walker must show its DOWN frame.)
-        const float ent_yaw = static_cast<float>((dir - FACE_DOWN) * 45);
-        int shown = FACE_DOWN + static_cast<int>(std::lround(
-                                    (ent_yaw + camera_yaw_deg) / 45.0f));
-        shown = ((shown % NUM_FACINGS) + NUM_FACINGS) % NUM_FACINGS;
+        const int shown = shown_facing(dir, camera_yaw_deg);
 
-        // Its own facing: take the walker's live frame pointer, which is by
-        // definition the one the stamp would blit.
         if (shown == dir && w.bmp_data() != nullptr && w.sizex() > 0 &&
             w.sizey() > 0)
             return cache.get(w.bmp_data(), w.sizex(), w.sizey(), depth);
@@ -748,26 +741,22 @@ public:
         return cache.get(ptr, pd->w, pd->h, depth);
     }
 
-    const og::render::VoxelModel* living_model(const walker& w,
-                                               float& yaw_rad) const override
+    const og::render::VoxelModel* living_model(const walker&,
+                                               float&) const override
     {
-        const auto it = bodies.find(static_cast<int>(w.family()));
-        if (it == bodies.end())
-            return nullptr;
-        int dir = static_cast<int>(static_cast<unsigned char>(w.curdir()));
-        if (dir < 0 || dir >= NUM_FACINGS)
-            dir = FACE_DOWN;
-        yaw_rad = og::render::voxel_facing_yaw_rad(dir);
-        return &it->second;
+        return nullptr;
     }
     const og::render::VoxelModel* tile_model(int pix) const override
     {
         const auto it = tiles.find(pix);
         return it == tiles.end() ? nullptr : &it->second;
     }
+
+private:
+    float theta_ = og::render::kVoxelReliefTheta;
 };
 
-// §10's terrain fixes, unchanged: terrain stays stage-1 extrusion.
+// Terrain stays stage-1 extrusion.
 void build_terrain_models(ReliefModels& out, const LevelVisuals& visuals)
 {
     out.tiles.clear();
@@ -826,8 +815,8 @@ namespace {
 
 struct ShotCamera
 {
-    float yaw = 0.0f;
-    float pitch = kTheta;
+    float yaw = 0.0f;   // camera yaw
+    float pitch = 55.0f;
     float scale = 1.0f;
     int w = 0;
     int h = 0;
@@ -841,7 +830,6 @@ struct Shot
     std::vector<unsigned char> index;
 };
 
-// A flat dark ellipse at the relief's foot line, for the plates.
 og::render::VoxelModel make_shadow(int w, int h, unsigned char idx)
 {
     og::render::VoxelModel m;
@@ -874,18 +862,151 @@ og::render::VoxelModel make_shadow(int w, int h, unsigned char idx)
     return m;
 }
 
+Shot shoot_relief(const og::render::VoxelRelief& r, float plane_yaw,
+                  const ShotCamera& sc,
+                  const std::vector<std::uint32_t>& lut, unsigned char team,
+                  RGB bg, const og::render::VoxelModel* shadow)
+{
+    Shot out;
+    out.rgb = make_image(sc.w, sc.h, bg);
+    out.index.assign(
+        static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h), 0u);
+    std::vector<std::uint32_t> buf(
+        static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h),
+        pack(bg));
+
+    og::render::VoxelScene scene;
+    if (shadow != nullptr && !shadow->empty())
+    {
+        og::render::VoxelVolume sv;
+        sv.model = shadow;
+        sv.x = 0.0f;
+        sv.y = 0.0f;
+        sv.z = -1.0f;
+        sv.material.team_color = team;
+        scene.emit(sv);
+    }
+    og::render::VoxelVolume v;
+    v.relief = &r;
+    v.yaw = plane_yaw;
+    v.x = 0.0f;
+    v.y = 0.0f;
+    v.z = 0.0f;
+    v.material.team_color = team;
+    scene.emit(v);
+
+    og::render::VoxelCamera cam;
+    cam.kind = og::render::VoxelCameraKind::Free;
+    // Aim at the relief's own foot anchor, not the world origin: a world-fixed
+    // relief orbited around the origin swings across the frame as the camera
+    // yaws, which reads as the figure sliding rather than the camera turning.
+    cam.cx = static_cast<float>(r.w) * 0.5f;
+    cam.cy = static_cast<float>(r.h);
+    cam.yaw_deg = sc.yaw;
+    cam.pitch_deg = sc.pitch;
+    cam.scale = sc.scale;
+    cam.view_cx = sc.view_cx;
+    cam.view_cy = sc.view_cy;
+
+    og::render::VoxelRenderTarget rt;
+    rt.pixels = buf.data();
+    rt.pitch_px = sc.w;
+    rt.w = sc.w;
+    rt.h = sc.h;
+    rt.clip_x0 = 0;
+    rt.clip_y0 = 0;
+    rt.clip_x1 = sc.w;
+    rt.clip_y1 = sc.h;
+    rt.lut256 = lut.data();
+    rt.index_plane = out.index.data();
+
+    og::render::VoxelRaster raster;
+    (void)raster.render(scene, cam, rt);
+    for (std::size_t i = 0; i < buf.size(); ++i)
+        out.rgb.px[i] = unpack(buf[i]);
+    return out;
+}
+
+// The camera that lands a relief on its own frame, pixel for pixel: aimed
+// square at the plane's own tilt and bin.
+ShotCamera exact_camera(const og::render::VoxelRelief& r, float scale)
+{
+    const float sp = std::sin(r.theta_deg * kPi / 180.0f);
+    ShotCamera sc;
+    sc.yaw = 0.0f;
+    sc.pitch = r.theta_deg;
+    sc.scale = scale;
+    sc.w = static_cast<int>(std::lround(static_cast<float>(r.w) * scale));
+    sc.h = static_cast<int>(std::lround(static_cast<float>(r.h) * scale));
+    // With the camera aimed at the anchor, the sprite's pixel (0,0) lands at
+    // (w/2, h*sin(theta) - (h-1)) in camera-relative terms; put the view
+    // centre at the negative of that and it lands on (0,0) exactly.
+    sc.view_cx = static_cast<float>(r.w) * 0.5f * scale;
+    sc.view_cy = (static_cast<float>(r.h - 1) -
+                  static_cast<float>(r.h) * sp +
+                  static_cast<float>(r.h) * sp) * scale;
+    sc.view_cy = static_cast<float>(r.h - 1) * scale;
+    return sc;
+}
+
 struct Extent
 {
     float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
 };
 
-// Which facing frame a down-facing entity shows to a camera at this yaw.
-int shown_facing(int entity_dir, float camera_yaw_deg)
+// Screen bounds of a world-fixed relief at scale 1, camera aimed at the
+// origin. Mirrors the raster's own basis, including the back-face anchor.
+Extent relief_extent(const og::render::VoxelRelief& r, float plane_yaw,
+                     float cam_yaw, float pitch)
 {
-    const float ent = static_cast<float>((entity_dir - FACE_DOWN) * 45);
-    int shown = FACE_DOWN + static_cast<int>(std::lround(
-                                (ent + camera_yaw_deg) / 45.0f));
-    return ((shown % NUM_FACINGS) + NUM_FACINGS) % NUM_FACINGS;
+    const float rad = kPi / 180.0f;
+    const float sp = std::sin(r.theta_deg * rad), cp = std::cos(r.theta_deg * rad);
+    const float cy = std::cos(plane_yaw), sy = std::sin(plane_yaw);
+    const float ux = cy, uy = -sy, uz = 0.0f;
+    const float vx = sp * sy, vy = sp * cy, vz = -cp;
+    const float tx = -cp * sy, ty = -cp * cy, tz = -sp;
+    const float ax = static_cast<float>(r.w) * 0.5f;
+    const float ay = static_cast<float>(r.h);
+    const float ox = ax - ax * ux - static_cast<float>(r.h - 1) * vx;
+    const float oy = ay - ax * uy - static_cast<float>(r.h - 1) * vy;
+    const float oz = 0.0f - ax * uz - static_cast<float>(r.h - 1) * vz;
+    const float back = static_cast<float>(r.depth - 1);
+    const float csp = std::sin(pitch * rad), ccp = std::cos(pitch * rad);
+    const float ccy = std::cos(cam_yaw * rad), csy = std::sin(cam_yaw * rad);
+    Extent e;
+    for (int c = 0; c < 8; ++c)
+    {
+        const float fu = (c & 1) ? static_cast<float>(r.w) : 0.0f;
+        const float fv = (c & 2) ? static_cast<float>(r.h) : 0.0f;
+        const float ft = (c & 4) ? 0.0f : back; // both ends of the thickness
+        const float off = ft - back;
+        const float X = ox + fu * ux + fv * vx + off * tx - ax;
+        const float Y = oy + fu * uy + fv * vy + off * ty - ay;
+        const float Z = oz + fu * uz + fv * vz + off * tz;
+        const float rx = X * ccy - Y * csy;
+        const float ry = X * csy + Y * ccy;
+        const float syy = ry * csp - Z * ccp;
+        e.x0 = std::min(e.x0, rx);
+        e.x1 = std::max(e.x1, rx);
+        e.y0 = std::min(e.y0, syy);
+        e.y1 = std::max(e.y1, syy);
+    }
+    return e;
+}
+
+ShotCamera frame_relief(const og::render::VoxelRelief& r, float plane_yaw,
+                        float cam_yaw, float pitch, float scale, int pad)
+{
+    const Extent e = relief_extent(r, plane_yaw, cam_yaw, pitch);
+    ShotCamera sc;
+    sc.yaw = cam_yaw;
+    sc.pitch = pitch;
+    sc.scale = scale;
+    sc.w = static_cast<int>(std::ceil((e.x1 - e.x0) * scale)) + pad * 2;
+    sc.h = static_cast<int>(std::ceil((e.y1 - e.y0) * scale)) + pad * 2;
+    sc.view_cx = -e.x0 * scale + static_cast<float>(pad);
+    sc.view_cy = -e.y0 * scale + static_cast<float>(pad);
+    return sc;
 }
 
 struct FamilySpec
@@ -901,8 +1022,6 @@ const FamilySpec kFamilies[] = {
     {"ghost", FAMILY_GHOST},     {"cleric", FAMILY_CLERIC},
 };
 
-// Where the fighters actually are: the living walker with the most livings
-// within one screen-ish radius.
 void densest_cluster(GameWorld& world, float& out_x, float& out_y)
 {
     constexpr float kRadius = 110.0f;
@@ -934,11 +1053,8 @@ void densest_cluster(GameWorld& world, float& out_x, float& out_y)
     }
 }
 
-// Free renders of a real level with a relief on every entity. The scene is
-// rebuilt per view because which facing frame each relief shows depends on
-// where the camera is standing.
 void run_relief_scene(const std::string& name, const char* campaign, int level,
-                      const std::map<int, og::render::VoxelModel>& bodies)
+                      float theta)
 {
     viewscreen* const vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -956,13 +1072,10 @@ void run_relief_scene(const std::string& name, const char* campaign, int level,
     vs->editor_floor_override_ = 0;
     vs->editor_authoring_view_ = true;
     frame_camera(vs, world, 0);
-    // set_level_draw_pos only reaches viewscreen::topx/topy through a draw
-    // pass, so the scene window has to be taken AFTER one redraw.
     ASSERT_TRUE(vs->redraw(&scr()->level_runtime_data(), false));
 
     const std::vector<std::uint32_t> lut = build_palette_lut();
-    ReliefModels models;
-    models.bodies = bodies;
+    ReliefModels models(theta);
     build_terrain_models(models, scr()->level_visuals());
 
     const float wide_x =
@@ -982,11 +1095,9 @@ void run_relief_scene(const std::string& name, const char* campaign, int level,
     };
     const FreeSpec views[] = {
         {"y30_p60", 30.0f, 60.0f, 1.0f, false},
-        {"crowd_z3_y30_p60", 30.0f, 60.0f, 3.0f, true},
+        {"crowd_z3_y20_p50", 20.0f, 50.0f, 3.0f, true},
         {"crowd_z3_y45_p45", 45.0f, 45.0f, 3.0f, true},
-        {"crowd_z3_y00_p55", 0.0f, kTheta, 3.0f, true},
     };
-    int relief_volumes = 0;
     for (const FreeSpec& f : views)
     {
         og::render::VoxelScene scene;
@@ -1005,10 +1116,10 @@ void run_relief_scene(const std::string& name, const char* campaign, int level,
         const og::render::VoxelSceneBuildStats bs =
             og::render::build_voxel_scene(scene, world, scr()->level_visuals(),
                                           bp);
-        relief_volumes = 0;
+        int reliefs = 0;
         for (const auto& v : scene.volumes())
             if (v.relief != nullptr)
-                ++relief_volumes;
+                ++reliefs;
 
         std::vector<std::uint32_t> buf(
             static_cast<std::size_t>(kClassicW) * kClassicH, 0xFF000000u);
@@ -1035,26 +1146,18 @@ void run_relief_scene(const std::string& name, const char* campaign, int level,
 
         og::render::VoxelRaster raster;
         const og::render::VoxelRasterStats rs = raster.render(scene, cam, rt);
-        // No silhouette darkening: the sprites carry their own outlines (§12).
 
         Image im = make_image(kClassicW, kClassicH, RGB{0, 0, 0});
         for (std::size_t i = 0; i < buf.size(); ++i)
             im.px[i] = unpack(buf[i]);
-        write_image(models7_dir(), "scene_" + name + "_" + f.tag,
+        write_image(models8_dir(theta), "scene_" + name + "_" + f.tag,
                     upscale(im, 2));
         if (f.tag == std::string("y30_p60"))
-            printf("[voxel-fit] scene %s (%s scen%d): %d tiles, %d decor, "
-                   "%d entities, %d reliefs; crowd at (%.0f, %.0f)\n",
-                   name.c_str(), campaign, level, bs.tiles, bs.decor,
-                   bs.entities, relief_volumes,
-                   static_cast<double>(crowd_x), static_cast<double>(crowd_y));
-        printf("  %-18s %llu quads, %llu samples, %llu writes\n", f.tag,
-               static_cast<unsigned long long>(rs.slices),
-               static_cast<unsigned long long>(rs.pixel_samples),
-               static_cast<unsigned long long>(rs.pixels_written));
+            printf("    scene %s: %d tiles, %d entities, %d reliefs, "
+                   "%llu quads\n",
+                   name.c_str(), bs.tiles, bs.entities, reliefs,
+                   static_cast<unsigned long long>(rs.slices));
     }
-    printf("  relief cache: %d frames\n",
-           static_cast<int>(models.cache.size()));
 
     vs->editor_authoring_view_ = false;
     vs->editor_floor_override_ = -1;
@@ -1062,140 +1165,9 @@ void run_relief_scene(const std::string& name, const char* campaign, int level,
     world.set_floor_count(1);
 }
 
-
-// --------------------------------------------------------------------------
-// Fitted bodies (§13): rendered through the REAL cube-face rasterizer, in the
-// same projection the sprites live in, so the fidelity number comes from the
-// product path.
-// --------------------------------------------------------------------------
-ShotCamera exact_body_camera(int sprite_w, int sprite_h, float scale)
-{
-    const float sp = std::sin(kTheta * 3.14159265358979f / 180.0f);
-    ShotCamera sc;
-    sc.yaw = 0.0f;
-    sc.pitch = kTheta;
-    sc.scale = scale;
-    sc.w = static_cast<int>(std::lround(static_cast<float>(sprite_w) * scale));
-    sc.h = static_cast<int>(std::lround(static_cast<float>(sprite_h) * scale));
-    sc.view_cx = 0.0f;
-    sc.view_cy = (static_cast<float>(sprite_h - 1) -
-                  static_cast<float>(sprite_h) * sp) * scale;
-    return sc;
-}
-
-Shot shoot_body(const og::render::VoxelModel& m, float model_yaw,
-                const ShotCamera& sc, const std::vector<std::uint32_t>& lut,
-                unsigned char team, RGB bg,
-                const og::render::VoxelModel* shadow)
-{
-    Shot out;
-    out.rgb = make_image(sc.w, sc.h, bg);
-    out.index.assign(
-        static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h), 0u);
-    std::vector<std::uint32_t> buf(
-        static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h),
-        pack(bg));
-
-    og::render::VoxelScene scene;
-    if (shadow != nullptr && !shadow->empty())
-    {
-        og::render::VoxelVolume sv;
-        sv.model = shadow;
-        sv.x = 0.0f;
-        sv.y = 0.0f;
-        sv.z = -1.0f;
-        sv.material.team_color = team;
-        scene.emit(sv);
-    }
-    og::render::VoxelVolume v;
-    v.model = &m;
-    v.yaw = model_yaw;
-    v.x = 0.0f;
-    v.y = 0.0f;
-    v.z = 0.0f;
-    v.material.team_color = team;
-    scene.emit(v);
-
-    og::render::VoxelCamera cam;
-    cam.kind = og::render::VoxelCameraKind::Free;
-    cam.cx = 0.0f;
-    cam.cy = 0.0f;
-    cam.yaw_deg = sc.yaw;
-    cam.pitch_deg = sc.pitch;
-    cam.scale = sc.scale;
-    cam.view_cx = sc.view_cx;
-    cam.view_cy = sc.view_cy;
-
-    og::render::VoxelRenderTarget rt;
-    rt.pixels = buf.data();
-    rt.pitch_px = sc.w;
-    rt.w = sc.w;
-    rt.h = sc.h;
-    rt.clip_x0 = 0;
-    rt.clip_y0 = 0;
-    rt.clip_x1 = sc.w;
-    rt.clip_y1 = sc.h;
-    rt.lut256 = lut.data();
-    rt.index_plane = out.index.data();
-
-    og::render::VoxelRaster raster;
-    (void)raster.render(scene, cam, rt);
-    for (std::size_t i = 0; i < buf.size(); ++i)
-        out.rgb.px[i] = unpack(buf[i]);
-    return out;
-}
-
-// Screen bounds of a body's OCCUPIED cells at scale 1, camera aimed at the
-// model's own anchor.
-Extent body_extent(const og::render::VoxelModel& m, float model_yaw,
-                   float cam_yaw, float pitch)
-{
-    const float rad = 3.14159265358979f / 180.0f;
-    const float cm = std::cos(model_yaw), sm = std::sin(model_yaw);
-    const float cc = std::cos(cam_yaw * rad), sc2 = std::sin(cam_yaw * rad);
-    const float sp = std::sin(pitch * rad), cp = std::cos(pitch * rad);
-    const float hw = m.extent_x() * 0.5f, hd = m.extent_y() * 0.5f;
-    Extent e;
-    for (int k = 0; k < m.z; ++k)
-        for (int j = 0; j < m.d; ++j)
-            for (int i = 0; i < m.w; ++i)
-            {
-                if (m.occ[m.at(i, j, k)] == 0)
-                    continue;
-                const float lx = static_cast<float>(i) * m.cell - hw;
-                const float ly = static_cast<float>(j) * m.cell - hd;
-                const float lz = static_cast<float>(k) * m.cell;
-                const float X = m.anchor_x + lx * cm - ly * sm;
-                const float Y = m.anchor_y + lx * sm + ly * cm;
-                const float rx = X * cc - Y * sc2;
-                const float ry = X * sc2 + Y * cc;
-                const float sy2 = ry * sp - lz * cp;
-                e.x0 = std::min(e.x0, rx);
-                e.x1 = std::max(e.x1, rx + m.cell);
-                e.y0 = std::min(e.y0, sy2);
-                e.y1 = std::max(e.y1, sy2 + m.cell);
-            }
-    return e;
-}
-
-ShotCamera frame_body(const og::render::VoxelModel& m, float model_yaw,
-                      float cam_yaw, float pitch, float scale, int pad)
-{
-    const Extent e = body_extent(m, model_yaw, cam_yaw, pitch);
-    ShotCamera sc;
-    sc.yaw = cam_yaw;
-    sc.pitch = pitch;
-    sc.scale = scale;
-    sc.w = static_cast<int>(std::ceil((e.x1 - e.x0) * scale)) + pad * 2;
-    sc.h = static_cast<int>(std::ceil((e.y1 - e.y0) * scale)) + pad * 2;
-    sc.view_cx = -e.x0 * scale + static_cast<float>(pad);
-    sc.view_cy = -e.y0 * scale + static_cast<float>(pad);
-    return sc;
-}
-
 } // namespace
 
-TEST_F(VoxelModels, fitted_bodies_and_scene_renders)
+TEST_F(VoxelModels, world_fixed_reliefs_tilt_sweep)
 {
     if (spike_dir().empty())
         GTEST_SKIP() << "set OG_VOXEL_SPIKE_DIR to record";
@@ -1209,206 +1181,27 @@ TEST_F(VoxelModels, fitted_bodies_and_scene_renders)
     ASSERT_TRUE(scr()->load_level()) << "gladiator scen1";
     const std::vector<std::uint32_t> lut = build_palette_lut();
 
-    // ---- collect the eight facing frames per family -----------------------
     std::vector<std::pair<FamilySpec, og::render::VoxelCarveFrames>> fams;
     for (const FamilySpec& fs : kFamilies)
     {
         og::render::VoxelCarveFrames fr;
-        if (!family_walk_frames(fs.family, fr))
-        {
-            printf("  %-9s : no eight-facing walk art, skipped\n", fs.name);
-            continue;
-        }
-        fams.push_back({fs, fr});
+        if (family_walk_frames(fs.family, fr))
+            fams.push_back({fs, fr});
     }
 
-    // ---- theta sweep: one elevation for the whole game --------------------
-    const float thetas[] = {50.0f, 55.0f, 60.0f, 65.0f};
-    float best_theta = kTheta;
-    double best_mean = 1e9;
-    printf("[voxel-fit] theta sweep (silhouette loss, mean over families):\n");
-    for (float th : thetas)
+    // lineup_orig once: the sprites the lineups are supposed to look like.
     {
-        double sum = 0.0;
+        std::vector<Image> cells;
+        int hh = 0;
         for (auto& f : fams)
         {
-            const og::render::FitReport r =
-                og::render::voxel_fit_family(f.second, th);
-            sum += static_cast<double>(r.loss);
-        }
-        const double mean = sum / static_cast<double>(fams.size());
-        printf("    theta %2.0f : %.4f\n", static_cast<double>(th), mean);
-        if (mean < best_mean)
-        {
-            best_mean = mean;
-            best_theta = th;
-        }
-    }
-    printf("[voxel-fit] CHOSEN theta = %.0f (mean silhouette loss %.4f)\n",
-           static_cast<double>(best_theta), best_mean);
-
-    // ---- final fits at the chosen theta ----------------------------------
-    std::map<int, og::render::VoxelModel> bodies;
-    std::vector<Image> lineup, lineup_orig;
-    int lineup_h = 0, lineup_orig_h = 0;
-
-    for (auto& f : fams)
-    {
-        const FamilySpec& fs = f.first;
-        og::render::VoxelCarveFrames& fr = f.second;
-        og::render::FitReport rep =
-            og::render::voxel_fit_family(fr, best_theta);
-        if (rep.model.empty())
-        {
-            printf("  %-9s : fit produced nothing\n", fs.name);
-            continue;
-        }
-        const char* tname = rep.params.tmpl == og::render::FitTemplate::Blob
-            ? "blob"
-            : "humanoid";
-
-        // ---- fidelity page ----
-        const int cw = fr.w * 6;
-        const int ch = fr.h * 6;
-        Image page = make_image(cw * NUM_FACINGS, ch * 3, RGB{18, 18, 24});
-        double sum_i = 0.0, sum_a = 0.0;
-        double per_i[NUM_FACINGS] = {}, per_a[NUM_FACINGS] = {};
-        int worst = 0;
-        for (int d = 0; d < NUM_FACINGS; ++d)
-        {
-            Image src = make_image(fr.w, fr.h, RGB{18, 18, 24});
-            draw_indices(src, 0, 0, fr.frame[d], fr.w, fr.h, lut, kShotTeam);
-            paste(page, d * cw, 0, upscale(src, 6));
-
-            const float yaw = og::render::voxel_facing_yaw_rad(d);
-            const Shot lo =
-                shoot_body(rep.model, yaw, exact_body_camera(fr.w, fr.h, 1.0f),
-                           lut, kShotTeam, RGB{18, 18, 24}, nullptr);
-            paste(page, d * cw, ch, upscale(lo.rgb, 6));
-            const Shot hd =
-                shoot_body(rep.model, yaw, exact_body_camera(fr.w, fr.h, 6.0f),
-                           lut, kShotTeam, RGB{18, 18, 24}, nullptr);
-            paste(page, d * cw, ch * 2, hd.rgb);
-
-            int inter = 0, uni = 0, matched = 0;
-            for (int i = 0; i < fr.w * fr.h; ++i)
-            {
-                const unsigned char raw =
-                    fr.frame[d][static_cast<std::size_t>(i)];
-                const unsigned char a = remap_team(raw, kShotTeam);
-                const bool sa = raw != 0;
-                const unsigned char b = lo.index[static_cast<std::size_t>(i)];
-                const bool sb = b != 0;
-                if (sa || sb)
-                    ++uni;
-                if (sa && sb)
-                {
-                    ++inter;
-                    if (a == b)
-                        ++matched;
-                }
-            }
-            per_i[d] = uni > 0 ? static_cast<double>(inter) /
-                    static_cast<double>(uni)
-                               : 0.0;
-            per_a[d] = uni > 0 ? 100.0 * static_cast<double>(matched) /
-                    static_cast<double>(uni)
-                               : 0.0;
-            sum_i += per_i[d];
-            sum_a += per_a[d];
-            if (per_i[d] < per_i[worst])
-                worst = d;
-        }
-        write_image(models7_dir(), std::string("fidelity_") + fs.name, page);
-
-        printf("  %-9s %-8s sprite %2dx%-2d  %5d voxels  fit %.1fs tex %.2fs\n",
-               fs.name, tname, fr.w, fr.h, rep.voxels, rep.fit_seconds,
-               rep.texture_seconds);
-        printf("            IoU mean %.3f  worst %s %.3f  agreement mean "
-               "%.1f%%  per-facing IoU:",
-               sum_i / NUM_FACINGS, kFacingNames[worst], per_i[worst],
-               sum_a / NUM_FACINGS);
-        for (int d = 0; d < NUM_FACINGS; ++d)
-            printf(" %.2f", per_i[d]);
-        printf("\n");
-
-        const og::render::VoxelModel shadow = make_shadow(fr.w, fr.h, 16);
-
-        // ---- lineup / hero / turntable ----
-        {
-            const float yaw0 = og::render::voxel_facing_yaw_rad(FACE_DOWN);
-            ShotCamera lc = frame_body(rep.model, yaw0, 30.0f, best_theta,
-                                       6.0f, 10);
-            lineup.push_back(
-                shoot_body(rep.model, yaw0, lc, lut, kShotTeam, kPlateBg,
-                           &shadow)
-                    .rgb);
-            lineup_h = std::max(lineup_h, lineup.back().h);
             const int shown = shown_facing(FACE_DOWN, 30.0f);
-            Image orig = make_image(fr.w + 4, fr.h + 4, kPlateBg);
-            draw_indices(orig, 2, 2, fr.frame[shown], fr.w, fr.h, lut,
-                         kShotTeam);
-            lineup_orig.push_back(upscale(orig, 6));
-            lineup_orig_h = std::max(lineup_orig_h, lineup_orig.back().h);
-
-            ShotCamera fc = frame_body(rep.model, yaw0, 30.0f, 35.0f, 6.0f, 10);
-            ShotCamera bc = frame_body(rep.model, yaw0, 210.0f, 35.0f, 6.0f, 10);
-            const Image a =
-                shoot_body(rep.model, yaw0, fc, lut, kShotTeam, kPlateBg,
-                           &shadow)
-                    .rgb;
-            const Image b =
-                shoot_body(rep.model, yaw0, bc, lut, kShotTeam, kPlateBg,
-                           &shadow)
-                    .rgb;
-            Image hero = make_image(a.w + b.w + 6, std::max(a.h, b.h),
-                                    kPlateBg);
-            paste(hero, 0, hero.h - a.h, a);
-            paste(hero, a.w + 6, hero.h - b.h, b);
-            write_image(models7_dir(), std::string("hero_") + fs.name, hero);
-
-            constexpr int kFrames = 16;
-            Extent u;
-            for (int t = 0; t < kFrames; ++t)
-            {
-                const Extent e = body_extent(rep.model, yaw0,
-                                             static_cast<float>(t) * 22.5f,
-                                             40.0f);
-                u.x0 = std::min(u.x0, e.x0);
-                u.x1 = std::max(u.x1, e.x1);
-                u.y0 = std::min(u.y0, e.y0);
-                u.y1 = std::max(u.y1, e.y1);
-            }
-            ShotCamera tc;
-            tc.pitch = 40.0f;
-            tc.scale = 4.0f;
-            const int pad = 6;
-            tc.w = static_cast<int>(std::ceil((u.x1 - u.x0) * tc.scale)) +
-                pad * 2;
-            tc.h = static_cast<int>(std::ceil((u.y1 - u.y0) * tc.scale)) +
-                pad * 2;
-            tc.view_cx = -u.x0 * tc.scale + static_cast<float>(pad);
-            tc.view_cy = -u.y0 * tc.scale + static_cast<float>(pad);
-            Image strip = make_image(tc.w * kFrames, tc.h, kPlateBg);
-            for (int t = 0; t < kFrames; ++t)
-            {
-                tc.yaw = static_cast<float>(t) * 22.5f;
-                paste(strip, t * tc.w, 0,
-                      shoot_body(rep.model, yaw0, tc, lut, kShotTeam, kPlateBg,
-                                 &shadow)
-                          .rgb);
-            }
-            write_image(models7_dir(), std::string("turntable_") + fs.name,
-                        strip);
+            Image orig = make_image(f.second.w + 4, f.second.h + 4, kPlateBg);
+            draw_indices(orig, 2, 2, f.second.frame[shown], f.second.w,
+                         f.second.h, lut, kShotTeam);
+            cells.push_back(upscale(orig, 6));
+            hh = std::max(hh, cells.back().h);
         }
-
-        bodies.emplace(fs.family, std::move(rep.model));
-    }
-
-    const auto row = [&](std::vector<Image>& cells, int hh,
-                         const std::string& name) {
-        if (cells.empty())
-            return;
         int tw = 0;
         for (const Image& c : cells)
             tw += c.w + 4;
@@ -1419,15 +1212,207 @@ TEST_F(VoxelModels, fitted_bodies_and_scene_renders)
             paste(im, x, hh - c.h, c);
             x += c.w + 4;
         }
-        write_image(models7_dir(), name, im);
-    };
-    row(lineup, lineup_h, "lineup");
-    row(lineup_orig, lineup_orig_h, "lineup_orig");
+        write_image(spike_dir() + "/models8", "lineup_orig", im);
+    }
 
-    world.delete_objects();
-    world.set_floor_count(1);
-    run_relief_scene("gladiator_scen1", "gladiator", 1, bodies);
-    if (testing::Test::HasFatalFailure())
-        return;
-    run_relief_scene("westlands_scen1", "westlands", 1, bodies);
+    const float thetas[] = {55.0f, 70.0f, 90.0f};
+    const char* heroes[] = {"footman", "orc", "elf", "ghost", "skeleton"};
+    const char* turns[] = {"footman", "orc", "ghost"};
+    const char* fids[] = {"footman", "orc"};
+
+    for (float theta : thetas)
+    {
+        printf("[voxel-relief] theta %.0f  (k=%.1f, living depth %d)\n",
+               static_cast<double>(theta),
+               static_cast<double>(og::render::kVoxelReliefK),
+               og::render::kVoxelReliefDepthLiving);
+        og::render::VoxelReliefCache cache(theta);
+        std::vector<Image> lineup;
+        int lineup_h = 0;
+
+        for (auto& f : fams)
+        {
+            const FamilySpec& fs = f.first;
+            og::render::VoxelCarveFrames& fr = f.second;
+            std::array<const og::render::VoxelRelief*, NUM_FACINGS> rels{};
+            for (int d = 0; d < NUM_FACINGS; ++d)
+                rels[static_cast<std::size_t>(d)] = cache.get(
+                    fr.frame[d], fr.w, fr.h,
+                    og::render::kVoxelReliefDepthLiving);
+            const og::render::VoxelModel shadow = make_shadow(fr.w, fr.h, 16);
+            const auto has = [&](const char* const* list, std::size_t n) {
+                for (std::size_t i = 0; i < n; ++i)
+                    if (std::string(list[i]) == fs.name)
+                        return true;
+                return false;
+            };
+
+            // lineup cell: camera pitch 55 yaw 30 -> bin 45, frame down-l.
+            {
+                const float cy = 30.0f;
+                const int shown = shown_facing(FACE_DOWN, cy);
+                const float py = plane_yaw_for(cy);
+                const og::render::VoxelRelief& r =
+                    *rels[static_cast<std::size_t>(shown)];
+                ShotCamera sc = frame_relief(r, py, cy, 55.0f, 6.0f, 10);
+                lineup.push_back(
+                    shoot_relief(r, py, sc, lut, kShotTeam, kPlateBg, &shadow)
+                        .rgb);
+                lineup_h = std::max(lineup_h, lineup.back().h);
+            }
+
+            if (has(heroes, std::size(heroes)))
+            {
+                std::vector<Image> cells;
+                int hh = 0;
+                for (float cy : {20.0f, 200.0f})
+                {
+                    const int shown = shown_facing(FACE_DOWN, cy);
+                    const float py = plane_yaw_for(cy);
+                    const og::render::VoxelRelief& r =
+                        *rels[static_cast<std::size_t>(shown)];
+                    ShotCamera sc = frame_relief(r, py, cy, 45.0f, 6.0f, 10);
+                    cells.push_back(
+                        shoot_relief(r, py, sc, lut, kShotTeam, kPlateBg,
+                                     &shadow)
+                            .rgb);
+                    hh = std::max(hh, cells.back().h);
+                }
+                Image hero = make_image(cells[0].w + cells[1].w + 6, hh,
+                                        kPlateBg);
+                paste(hero, 0, hh - cells[0].h, cells[0]);
+                paste(hero, cells[0].w + 6, hh - cells[1].h, cells[1]);
+                write_image(models8_dir(theta),
+                            std::string("hero_") + fs.name, hero);
+            }
+
+            if (has(turns, std::size(turns)))
+            {
+                constexpr int kFrames = 16;
+                Extent u;
+                for (int t = 0; t < kFrames; ++t)
+                {
+                    const float cy = static_cast<float>(t) * 22.5f;
+                    const int shown = shown_facing(FACE_DOWN, cy);
+                    const Extent e = relief_extent(
+                        *rels[static_cast<std::size_t>(shown)],
+                        plane_yaw_for(cy), cy, 50.0f);
+                    u.x0 = std::min(u.x0, e.x0);
+                    u.x1 = std::max(u.x1, e.x1);
+                    u.y0 = std::min(u.y0, e.y0);
+                    u.y1 = std::max(u.y1, e.y1);
+                }
+                ShotCamera sc;
+                sc.pitch = 50.0f;
+                sc.scale = 4.0f;
+                const int pad = 6;
+                sc.w = static_cast<int>(std::ceil((u.x1 - u.x0) * sc.scale)) +
+                    pad * 2;
+                sc.h = static_cast<int>(std::ceil((u.y1 - u.y0) * sc.scale)) +
+                    pad * 2;
+                sc.view_cx = -u.x0 * sc.scale + static_cast<float>(pad);
+                sc.view_cy = -u.y0 * sc.scale + static_cast<float>(pad);
+                Image strip = make_image(sc.w * kFrames, sc.h, kPlateBg);
+                for (int t = 0; t < kFrames; ++t)
+                {
+                    sc.yaw = static_cast<float>(t) * 22.5f;
+                    const int shown = shown_facing(FACE_DOWN, sc.yaw);
+                    paste(strip, t * sc.w, 0,
+                          shoot_relief(*rels[static_cast<std::size_t>(shown)],
+                                       plane_yaw_for(sc.yaw), sc, lut,
+                                       kShotTeam, kPlateBg, &shadow)
+                              .rgb);
+                }
+                write_image(models8_dir(theta),
+                            std::string("turntable_") + fs.name, strip);
+            }
+
+            if (has(fids, std::size(fids)))
+            {
+                const int cw = fr.w * 6;
+                const int ch = fr.h * 6;
+                Image page =
+                    make_image(cw * NUM_FACINGS, ch * 3, RGB{18, 18, 24});
+                double sum = 0.0;
+                for (int d = 0; d < NUM_FACINGS; ++d)
+                {
+                    const og::render::VoxelRelief& r =
+                        *rels[static_cast<std::size_t>(d)];
+                    Image src = make_image(fr.w, fr.h, RGB{18, 18, 24});
+                    draw_indices(src, 0, 0, fr.frame[d], fr.w, fr.h, lut,
+                                 kShotTeam);
+                    paste(page, d * cw, 0, upscale(src, 6));
+
+                    const Shot one =
+                        shoot_relief(r, 0.0f, exact_camera(r, 1.0f), lut,
+                                     kShotTeam, RGB{18, 18, 24}, nullptr);
+                    paste(page, d * cw, ch, upscale(one.rgb, 6));
+
+                    ShotCamera off =
+                        frame_relief(r, 0.0f, 20.0f, 50.0f, 6.0f, 4);
+                    Image cell = make_image(cw, ch, RGB{18, 18, 24});
+                    const Image shot = shoot_relief(r, 0.0f, off, lut,
+                                                    kShotTeam,
+                                                    RGB{18, 18, 24}, nullptr)
+                                           .rgb;
+                    paste(cell, (cw - shot.w) / 2, (ch - shot.h) / 2, shot);
+                    paste(page, d * cw, ch * 2, cell);
+
+                    int matched = 0, uni = 0;
+                    for (int i = 0; i < fr.w * fr.h; ++i)
+                    {
+                        const unsigned char raw =
+                            fr.frame[d][static_cast<std::size_t>(i)];
+                        const unsigned char a = remap_team(raw, kShotTeam);
+                        const bool sa = raw != 0;
+                        const unsigned char b =
+                            one.index[static_cast<std::size_t>(i)];
+                        const bool sb = b != 0;
+                        if (sa || sb)
+                            ++uni;
+                        if (sa && sb && a == b)
+                            ++matched;
+                    }
+                    sum += uni > 0 ? 100.0 * static_cast<double>(matched) /
+                            static_cast<double>(uni)
+                                   : 100.0;
+                }
+                write_image(models8_dir(theta),
+                            std::string("fidelity_") + fs.name, page);
+                printf("    %-9s own-camera fidelity %.2f%%\n", fs.name,
+                       sum / NUM_FACINGS);
+            }
+        }
+
+        int tw = 0;
+        for (const Image& c : lineup)
+            tw += c.w + 4;
+        Image im = make_image(tw, lineup_h, kPlateBg);
+        int x = 0;
+        for (const Image& c : lineup)
+        {
+            paste(im, x, lineup_h - c.h, c);
+            x += c.w + 4;
+        }
+        write_image(models8_dir(theta), "lineup", im);
+
+        world.delete_objects();
+        world.set_floor_count(1);
+        run_relief_scene("gladiator_scen1", "gladiator", 1, theta);
+        if (testing::Test::HasFatalFailure())
+            return;
+        run_relief_scene("westlands_scen1", "westlands", 1, theta);
+        if (testing::Test::HasFatalFailure())
+            return;
+        // The scenes remount campaigns; put gladiator's frames back for the
+        // next theta.
+        ASSERT_TRUE(mount_scene_campaign("gladiator"));
+        all_effects_off();
+        world.delete_objects();
+        world.id = 1;
+        scr()->save_data.scen_num = 1;
+        ASSERT_TRUE(scr()->load_level());
+        for (auto& f : fams)
+            ASSERT_TRUE(family_walk_frames(f.first.family, f.second));
+    }
 }

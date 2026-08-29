@@ -179,7 +179,13 @@ void emit_entity_list(VoxelScene& out, const GameWorld::EntityList& list,
         // no flat stamps left in it. The model paths below are the older
         // carved/rig route and only run when no relief is offered.
         if (params.models != nullptr)
-            v.relief = params.models->relief_for(*w, params.camera_yaw_deg);
+        {
+            float plane_yaw = 0.0f;
+            v.relief = params.models->relief_for(*w, params.camera_yaw_deg,
+                                                 plane_yaw);
+            if (v.relief != nullptr)
+                v.yaw = plane_yaw;
+        }
         if (v.relief == nullptr && params.models != nullptr &&
             w->query_order() == Order::Living)
         {
