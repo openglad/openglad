@@ -492,3 +492,26 @@ neighbours agree. Interior voxels are untouched.
 
 Rendering is unchanged (§15: cube faces, top 1.00 / sun 0.85 / shade 0.70, no
 AO). Classic parity unmoved: 0 / 64000 on all five spike scenes.
+
+## 16. Figures rejected — authored voxel art, guided by the sprites (maintainer, 2026-08-29)
+
+Ruling on round 10: "these look absolutely fucking terrible. Just make voxels
+inspired by the actual things, in a fucking reasonable way." The algorithmic
+program is CLOSED in both directions: fidelity-first gives cards (§13) or
+lumps (§15); template-first without craft lost the game (§12 on rounds 3–5).
+What is wanted: hand-designed voxel figures of the characters themselves —
+a small armoured footman, a hooded archer, a tusked orc — made with judgment,
+each family its own build, in the sprite's own palette and identity, at big-
+voxel scale (~20–22 tall). The sprite is the reference for WHO the character
+is (gear, colours, proportions of the little figure it depicts), not a
+constraint solved against.
+
+**Mechanism: a human-readable voxel-art asset format.** Each family's model
+is a text asset — z-layer grids of characters with a palette legend (ASCII
+slices, like pixel art), deterministic, diffable, committed to the repo, and
+ultimately a pack asset (`voxel:` in the family descriptor) so modders and
+artists edit models the way they edit sprites. A tiny parser in interface
+loads it into the existing cube-face renderer (shading and drop shadows from
+round 2/10 kept; no AO on faces carrying drawn detail). Iteration is Fable
+visual review with per-family redlines on the text grids. The Classic camera
+still draws the sprites, byte-identical; figures are the Free-camera body.
