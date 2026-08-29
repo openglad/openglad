@@ -299,3 +299,14 @@ carved model rotated by `curdir` (yaw += 45° per step) so facing is real.
 Terrain stays extruded, with two look fixes from stage 1: wall columns sample
 the matching `PIX_WALLSIDE*` art on their side slices, and trees get a
 canopy profile (narrow trunk, wide top) instead of flat extrusion.
+
+**§10 bar, raised (maintainer, 2026-08-29):** the models are the product, not
+a fidelity exercise. Acceptance = "badass models that could work under normal
+camera angles and look incredible": re-rendered at the classic game angle a
+model must read as a *better* version of the sprite, not a degraded one.
+Expected consequences for the pipeline (whatever it takes): supersampled
+carving (frames upscaled 2–4× → 32³/64³ grids), post-carve cleanup (floating
+voxel pruning, hole fill, optional bilateral symmetry prior), baked shading
+(palette-ramp AO / edge darkening) so faces read at small sizes, and
+per-family parameter polish. Sprite-agreement % remains a sanity check only —
+the gate is Fable's visual review.
