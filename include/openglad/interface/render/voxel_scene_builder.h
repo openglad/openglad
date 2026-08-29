@@ -33,6 +33,22 @@ struct VoxelModelSource
     // Terrain model for a base tile id (§10's wall-side and tree-canopy
     // fixes). Return nullptr to leave it a flat extrusion.
     virtual const VoxelModel* tile_model(int pix) const = 0;
+    // Volumetric model for a small flying thing — Order::Weapon or
+    // Order::FX — oriented by the same curdir -> yaw mapping the livings use.
+    // An extruded sprite FRAME reads as a plank flying over the map, which is
+    // what this replaces.
+    //
+    // Order::Treasure is deliberately NOT routed here: ground clutter turned
+    // into spheres reads far worse than it does as a stamp (tried, and the
+    // scene filled with beach balls). Treasure wants its own shapes, not a
+    // projectile's.
+    virtual const VoxelModel* projectile_model(const walker& w,
+                                               float& yaw_rad) const
+    {
+        (void)w;
+        (void)yaw_rad;
+        return nullptr;
+    }
 };
 
 struct VoxelSceneBuildParams

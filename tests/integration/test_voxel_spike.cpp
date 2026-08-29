@@ -517,9 +517,9 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 
 namespace {
 
-std::string models4_dir()
+std::string models5_dir()
 {
-    return spike_dir() + "/models4";
+    return spike_dir() + "/models5";
 }
 
 struct Image
@@ -667,6 +667,7 @@ class SpikeModels : public og::render::VoxelModelSource
 public:
     std::map<int, og::render::VoxelModel> living;
     std::map<int, og::render::VoxelModel> tiles;
+    std::map<int, og::render::VoxelModel> weapons;
 
     const og::render::VoxelModel* living_model(const walker& w,
                                                float& yaw_rad) const override
@@ -688,7 +689,92 @@ public:
         const auto it = tiles.find(pix);
         return it == tiles.end() ? nullptr : &it->second;
     }
+
+    const og::render::VoxelModel* projectile_model(const walker& w,
+                                                   float& yaw_rad) const override
+    {
+        const int key = static_cast<int>(w.query_order()) * 256 +
+            static_cast<int>(w.family());
+        const auto it = weapons.find(key);
+        if (it == weapons.end())
+            return nullptr;
+        int dir = static_cast<int>(static_cast<unsigned char>(w.curdir()));
+        if (dir < 0 || dir >= NUM_FACINGS)
+            dir = FACE_DOWN;
+        yaw_rad = og::render::voxel_facing_yaw_rad(dir);
+        return &it->second;
+    }
 };
+
+// Projectiles: a shaft with a bright head and dark flights for the things
+// that fly point-first, a small sphere for the things that do not. Colours
+// come from the weapon sprite's own dominant ramp, so a fire arrow stays
+// orange and a rock stays grey.
+void build_weapon_models(SpikeModels& out, const std::vector<std::uint32_t>& lut)
+{
+    out.weapons.clear();
+    loader* const L = scr()->myloader;
+    if (L == nullptr)
+        return;
+    const auto lum = [&](int i) {
+        const std::uint32_t c = lut[static_cast<std::size_t>(i)];
+        return 0.30f * static_cast<float>((c >> 16) & 0xFFu) +
+            0.59f * static_cast<float>((c >> 8) & 0xFFu) +
+            0.11f * static_cast<float>(c & 0xFFu);
+    };
+    // The flying things that point where they are going, versus the ones that
+    // are just a blob of light.
+    const auto is_dart = [](int family) {
+        return family == FAMILY_KNIFE || family == FAMILY_ARROW ||
+            family == FAMILY_BONE || family == FAMILY_FIRE_ARROW ||
+            family == FAMILY_HAMMER;
+    };
+    const Order orders[] = {Order::Weapon, Order::FX};
+    for (Order order : orders)
+        for (int family = 0; family < NUM_FAMILIES; ++family)
+        {
+            const PixieData* const pd = L->graphics_for(order, family);
+            if (pd == nullptr || !pd->valid())
+                continue;
+            std::array<int, 256> hist{};
+            const std::size_t len = static_cast<std::size_t>(pd->w) *
+                static_cast<std::size_t>(pd->h) *
+                static_cast<std::size_t>(pd->frames);
+            for (std::size_t i = 0; i < len; ++i)
+                ++hist[pd->data[i]];
+            hist[0] = 0;
+            int body = 0, best = 0;
+            for (int i = 1; i < 248; ++i)
+                if (hist[static_cast<std::size_t>(i)] > best)
+                {
+                    best = hist[static_cast<std::size_t>(i)];
+                    body = i;
+                }
+            if (body == 0)
+                continue;
+            // Lighter and darker siblings out of the same eight-entry ramp.
+            const int blk = body / 8;
+            int tip = body, tail = body;
+            for (int i = blk * 8; i < blk * 8 + 8 && i < 248; ++i)
+            {
+                if (lum(i) > lum(tip))
+                    tip = i;
+                if (lum(i) < lum(tail))
+                    tail = i;
+            }
+            const bool dart = (order == Order::Weapon) && is_dart(family);
+            og::render::VoxelModel m = og::render::voxel_build_projectile(
+                dart ? og::render::RigProjectile::Dart
+                     : og::render::RigProjectile::Orb,
+                static_cast<unsigned char>(body),
+                static_cast<unsigned char>(tip),
+                static_cast<unsigned char>(tail), pd->w, pd->h,
+                std::min(static_cast<int>(pd->w), static_cast<int>(pd->h)));
+            if (!m.empty())
+                out.weapons.emplace(
+                    static_cast<int>(order) * 256 + family, std::move(m));
+        }
+}
 
 // §10's terrain fixes, built from the live level art.
 void build_terrain_models(SpikeModels& out, const LevelVisuals& visuals)
@@ -1333,6 +1419,7 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
     SpikeModels models;
     models.living = living;
     build_terrain_models(models, scr()->level_visuals());
+    build_weapon_models(models, lut);
 
     og::render::VoxelScene scene;
     og::render::VoxelSceneBuildParams bp;
@@ -1353,6 +1440,27 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
     for (const auto& v : scene.volumes())
         if (v.model != nullptr)
             ++modelled;
+    {
+        std::map<std::pair<int, int>, int> tally;
+        const auto count = [&](const GameWorld::EntityList& list, int order) {
+            for (const auto& u : list)
+            {
+                walker* const ww = u.get();
+                if (ww == nullptr || ww->dead())
+                    continue;
+                ++tally[{order, static_cast<int>(ww->family())}];
+            }
+        };
+        count(world.fxlist, 1);
+        count(world.weaplist, 2);
+        count(world.oblist, 0);
+        printf("  entities by (list,family):");
+        for (const auto& kv : tally)
+            printf(" (%d,%d)x%d", kv.first.first, kv.first.second,
+                   kv.second);
+        printf("   projectile models available: %d\n",
+               static_cast<int>(models.weapons.size()));
+    }
 
     const float wide_x =
         static_cast<float>(vs->topx) + static_cast<float>(vs->xview) / 2.0f;
@@ -1415,7 +1523,7 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
         Image im = make_image(kClassicW, kClassicH, RGB{0, 0, 0});
         for (std::size_t i = 0; i < buf.size(); ++i)
             im.px[i] = unpack(buf[i]);
-        write_image(models4_dir(), "scene_" + name + "_" + f.tag,
+        write_image(models5_dir(), "scene_" + name + "_" + f.tag,
                     upscale(im, 2));
         printf("  %-18s %llu faces, %llu samples, %llu writes, %.2f s\n", f.tag,
                static_cast<unsigned long long>(rs.slices),
@@ -1454,6 +1562,7 @@ struct RigFamily
     bool hair = false;
     bool cross = false;
     bool pauldrons = false;
+    bool vest = false;
     int widen = 0;
     int lift = 0;
 };
@@ -1477,7 +1586,8 @@ const RigFamily kRigs[] = {
     {.name = "elf", .family = FAMILY_ELF,
      .weapon = og::render::RigWeapon::Bow,
      .team = og::render::RigTeamSlot::Belt,
-     .ears = true, .bow_pose = true, .hair = true, .widen = -2},
+     .ears = true, .bow_pose = true, .hair = true, .vest = true,
+     .widen = -2},
     {.name = "archer", .family = FAMILY_ARCHER,
      .weapon = og::render::RigWeapon::Bow,
      .team = og::render::RigTeamSlot::HoodTrim,
@@ -1519,6 +1629,7 @@ og::render::RigSpec spec_for(const RigFamily& f, const og::render::RigPalette& p
     s.long_hair = f.hair;
     s.chest_cross = f.cross;
     s.pauldrons = f.pauldrons;
+    s.vest = f.vest;
     return s;
 }
 
@@ -1541,8 +1652,20 @@ void override_palette(int family, og::render::RigPalette& p)
         // Nothing in the living sprites uses the palette's green ramp, so a
         // forest tunic has to be named. Brown stays for hair and legs, which
         // is also what keeps the elf and the (brown) archer apart.
-        p.primary = og::render::kVoxelRigGreen;
+        // Two ramp steps darker than round 4: at the round-4 green the elves
+        // sat on grass of almost the same value and vanished in the gladiator
+        // crowd view. The brown vest and hair do the rest of the separating.
+        p.primary = og::render::kVoxelRigGreenDark + 1;
         p.secondary = 140;
+    }
+    else if (family == FAMILY_MAGE)
+    {
+        // The hat wears the robe's base colour and the robe is one ramp step
+        // darker, so the two stop merging. Lower index is lighter throughout
+        // this palette's brown ramps.
+        p.secondary = (p.primary % 8) > 0
+            ? static_cast<unsigned char>(p.primary - 1)
+            : static_cast<unsigned char>(p.primary + 1);
     }
     else if (family == FAMILY_ARCHER)
     {
@@ -1608,11 +1731,11 @@ TEST_F(VoxelModels, parametric_rigs_and_scene_renders)
             og::render::voxel_build_shadow(rig, pc.pal.dark);
 
         float agree[NUM_FACINGS] = {};
-        write_image(models4_dir(), std::string("classic_") + f.name,
+        write_image(models5_dir(), std::string("classic_") + f.name,
                     build_classic_page(fr, rig, lut, agree));
-        write_image(models4_dir(), std::string("hero_") + f.name,
+        write_image(models5_dir(), std::string("hero_") + f.name,
                     build_hero(rig, shadow, lut));
-        write_image(models4_dir(), std::string("turntable_") + f.name,
+        write_image(models5_dir(), std::string("turntable_") + f.name,
                     build_turntable(rig, shadow, lut));
         const auto t2 = std::chrono::steady_clock::now();
 
@@ -1666,7 +1789,7 @@ TEST_F(VoxelModels, parametric_rigs_and_scene_renders)
             paste(row, x, lineup_h - im.h, im);
             x += im.w + 4;
         }
-        write_image(models4_dir(), "lineup", upscale(row, 2));
+        write_image(models5_dir(), "lineup", upscale(row, 2));
     }
 
     world.delete_objects();

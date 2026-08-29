@@ -327,6 +327,14 @@ void build_torso(RigCanvas& c, const Body& b, const RigSpec& s)
     // Belt: one dark row at the waist, which separates torso from legs at any
     // scale.
     c.tint_box_c(b.torso_w + 1, b.torso_d, 1, b.z_torso, kInk);
+    if (s.vest)
+    {
+        // A leather panel over the tunic front. A figure in one flat green
+        // dissolves into grass; a brown block on its chest does not.
+        const int fy = front_of(b.torso_d);
+        c.tint_box(-3, fy - 2, b.z_torso + 3, 6, 3, 6, p.secondary);
+        c.tint_box(-3, fy - 2, b.z_torso + 2, 6, 3, 1, kInk);
+    }
     if (!b.sunken_head)
         c.box_c(2, 2, 3, b.z_shoulder, p.skin); // the floating neck
 }
@@ -423,13 +431,26 @@ void build_face(RigCanvas& c, const Body& b, const RigSpec& s)
         }
     }
     if (s.beard)
-        c.box_c(6, 2, 3, b.z_head + 1, kBone, front_of(b.head_d));
+    {
+        // A real beard: six wide under the mouth, tapering to two, standing
+        // one voxel proud of the face so it casts its own shade.
+        const int fy = front_of(b.head_d);
+        const int width[4] = {6, 5, 3, 2};
+        for (int t = 0; t < 4; ++t)
+            c.box(-(width[t] / 2), fy, b.z_head + 3 - t, width[t], 2, 1,
+                  kBone);
+    }
     if (s.long_hair)
     {
+        // One ramp step lighter than the vest leather, so hair and vest do
+        // not merge into a single brown mass from behind.
+        const unsigned char hair = (p.secondary % 8) > 0
+            ? static_cast<unsigned char>(p.secondary - 1)
+            : p.secondary;
         const int back = -(b.head_d / 2);
         c.box(-(b.head_w / 2), back - 1, b.z_head - 3, b.head_w, 1,
-              b.head_h + 2, p.secondary);
-        c.tint_box_c(b.head_w, b.head_d, 2, b.z_top - 2, p.secondary);
+              b.head_h + 2, hair);
+        c.tint_box_c(b.head_w, b.head_d, 2, b.z_top - 2, hair);
     }
 }
 
@@ -468,15 +489,23 @@ void build_hood(RigCanvas& c, const Body& b, const RigPalette& p)
 
 void build_hat(RigCanvas& c, const Body& b, const RigPalette& p)
 {
-    // The hat takes the trim colour, not the robe's: a wizard whose hat and
-    // robe are the same brown is one brown lump.
+    // A proper wizard hat, not a party cone: a wide flat brim sitting on the
+    // crown, then a tall cone whose tip leans back. The hat wears the robe's
+    // BASE colour and the robe itself is a ramp step darker, so the two read
+    // apart instead of merging into one brown lump. (The brim is 16 across
+    // both ways as asked, but rounded — a square brim reads as a table.)
     const unsigned char cloth = p.secondary != p.primary ? p.secondary
                                                          : cloth_of(p);
-    // Brim 12 across, cone 9 tall, seated ON the head so the face rows below
-    // it stay visible.
-    const int brim_z = b.z_top - 3;
-    c.cylinder(0.0f, 0.0f, brim_z, 1, 6.0f, cloth);
-    c.taper(brim_z + 1, 9, 5.0f, 0.8f, 0.0f, cloth);
+    const int brim_z = b.z_head + 8;
+    c.cylinder(0.0f, 0.0f, brim_z, 1, 8.0f, cloth);
+    for (int t = 0; t < 13; ++t)
+    {
+        const float u = static_cast<float>(t) / 12.0f;
+        const float r = 5.0f * (1.0f - u) + 0.6f * u;
+        // Tip bent two voxels toward the back over the length of the cone.
+        const float ey = -2.0f * u;
+        c.cylinder(0.0f, ey, brim_z + 1 + t, 1, r, cloth);
+    }
 }
 
 void build_cape(RigCanvas& c, const Body& b, const RigPalette& p,
@@ -497,13 +526,14 @@ void build_cape(RigCanvas& c, const Body& b, const RigPalette& p,
 
 void build_robe(RigCanvas& c, const Body& b, const RigPalette& p)
 {
-    c.clear_box(-10, -9, b.z_boot, 20, 18, b.z_torso - b.z_boot);
-    const int h = b.z_torso - b.z_boot;
-    // One colour, smooth from belt to hem, with a darker two-row band at the
-    // bottom and a belt row at the top. No stripes.
-    c.taper(b.z_boot, h, 7.0f, 5.0f, 0.0f, cloth_of(p));
-    c.cylinder(0.0f, 0.0f, b.z_boot, 2, 7.0f, p.dark);
-    c.cylinder(0.0f, 0.0f, b.z_torso - 1, 1, 5.2f, p.secondary);
+    // Belt high on the torso, hem on the ground: no legs show, and the cone
+    // widens all the way down so the figure reads as robed rather than as a
+    // man wearing a skirt.
+    const int belt_z = b.z_torso + 2;
+    c.clear_box(-12, -12, b.z_boot, 24, 24, belt_z - b.z_boot + 1);
+    c.taper(b.z_boot, belt_z - b.z_boot, 8.0f, 5.0f, 0.0f, cloth_of(p));
+    c.cylinder(0.0f, 0.0f, b.z_boot, 1, 8.0f, p.dark); // hem line
+    c.cylinder(0.0f, 0.0f, belt_z, 1, 5.4f, kInk);     // belt
 }
 
 void build_quiver(RigCanvas& c, const Body& b, const RigPalette& p)
@@ -583,8 +613,11 @@ void build_weapon(RigCanvas& c, const Body& b, const RigSpec& s)
         const int base = s.planted_staff ? 0 : hz - 3;
         // Three wide: a two-voxel shaft is one world pixel and disappears
         // against a robe of the same family of browns.
-        c.box(sx, sy, base, 3, 3, 28, p.metal);
-        c.box(sx - 1, sy - 1, base + 28, 5, 5, 4, kVoxelRigOrb);
+        c.box(sx, sy, base, 3, 3, 30, p.metal);
+        c.ellipsoid(static_cast<float>(sx) + 1.0f,
+                    static_cast<float>(sy) + 1.0f,
+                    static_cast<float>(base) + 32.0f, 4.0f, 4.0f, 4.0f,
+                    kVoxelRigOrb);
         break;
     }
     case RigWeapon::Axe:
@@ -774,7 +807,9 @@ void apply_team(RigCanvas& c, const Body& b, const RigSpec& s)
                        b.torso_d, 2, team);
         break;
     case RigTeamSlot::HatBand:
-        c.cylinder(0.0f, 0.0f, b.z_top - 2, 1, 5.2f, team);
+        // One row above the brim. The round-4 band landed at z_top - 2, which
+        // is inside the HEAD — it read as a red blindfold across the face.
+        c.cylinder(0.0f, 0.0f, b.z_head + 9, 1, 5.4f, team);
         break;
     case RigTeamSlot::HoodTrim:
         c.tint_box_c(b.head_w + 2, b.head_d + 2, 1, b.z_head + 2, team);
@@ -920,6 +955,84 @@ VoxelModel voxel_build_rig(const RigSpec& spec, int sprite_w, int sprite_h)
     recompute_lit(c.m);
     voxel_model_bake_ao(c.m, 0.5f);
     return std::move(c.m);
+}
+
+VoxelModel voxel_build_projectile(RigProjectile kind, unsigned char body,
+                                  unsigned char tip, unsigned char tail,
+                                  int sprite_w, int sprite_h, int span_px)
+{
+    // Built pointing along +y, which is the direction a living faces at yaw 0,
+    // so the walker's curdir maps onto the volume yaw with no special case.
+    VoxelModel m;
+    m.cell = kVoxelRigCell;
+    m.cube_faces = true;
+    m.theta_deg = kVoxelCarveTheta;
+    m.anchor_x = static_cast<float>(sprite_w) * 0.5f;
+    m.anchor_y = static_cast<float>(sprite_h) * 0.5f;
+    if (kind == RigProjectile::Dart)
+    {
+        m.w = 4;
+        m.d = 24;
+        m.z = 4;
+    }
+    else
+    {
+        // Two cells to the world pixel, so a sprite-sized blob needs twice
+        // its diameter in cells.
+        const int span = std::clamp(span_px > 0 ? span_px : 4, 3, 12);
+        m.w = span * 2;
+        m.d = span * 2;
+        m.z = span * 2;
+    }
+    const std::size_t n = static_cast<std::size_t>(m.w) *
+                          static_cast<std::size_t>(m.d) *
+                          static_cast<std::size_t>(m.z);
+    m.occ.assign(n, 0u);
+    m.index.assign(n, 0u);
+    const auto put = [&](int i, int j, int k, unsigned char idx) {
+        if (i < 0 || j < 0 || k < 0 || i >= m.w || j >= m.d || k >= m.z)
+            return;
+        const std::size_t t = m.at(i, j, k);
+        m.occ[t] = 1u;
+        m.index[t] = idx;
+    };
+
+    if (kind == RigProjectile::Dart)
+    {
+        // Shaft, a bright head at the leading end, dark flights at the tail.
+        for (int j = 2; j < 22; ++j)
+            for (int k = 1; k <= 2; ++k)
+                for (int i = 1; i <= 2; ++i)
+                    put(i, j, k, j >= 18 ? tip : body);
+        for (int j = 2; j < 6; ++j)
+        {
+            put(0, j, 1, tail);
+            put(0, j, 2, tail);
+            put(3, j, 1, tail);
+            put(3, j, 2, tail);
+        }
+    }
+    else
+    {
+        const float c = static_cast<float>(m.w) * 0.5f;
+        const float r = c - 0.4f;
+        const float core = r - 1.8f;
+        for (int k = 0; k < m.z; ++k)
+            for (int j = 0; j < m.d; ++j)
+                for (int i = 0; i < m.w; ++i)
+                {
+                    const float dx = static_cast<float>(i) + 0.5f - c;
+                    const float dy = static_cast<float>(j) + 0.5f - c;
+                    const float dz = static_cast<float>(k) + 0.5f - c;
+                    const float d2 = dx * dx + dy * dy + dz * dz;
+                    if (d2 <= r * r)
+                        put(i, j, k,
+                            (core > 0.0f && d2 <= core * core) ? tip : body);
+                }
+    }
+    recompute_lit(m);
+    voxel_model_bake_ao(m, 0.5f);
+    return m;
 }
 
 VoxelModel voxel_build_shadow(const VoxelModel& figure, unsigned char index)

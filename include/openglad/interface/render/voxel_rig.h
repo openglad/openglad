@@ -74,6 +74,14 @@ enum class RigTeamSlot : unsigned char
     Belt,
 };
 
+// Projectiles are not sprites-on-a-stick: an extruded knife frame reads as a
+// white plank flying over the map. These are the two shapes worth having.
+enum class RigProjectile : unsigned char
+{
+    Dart, // arrows, knives, bones: a shaft with a bright tip and dark flights
+    Orb,  // rocks, fireballs, blobs: a small sphere
+};
+
 enum class RigWeapon : unsigned char
 {
     None,
@@ -119,11 +127,21 @@ struct RigSpec
     bool long_hair = false;
     bool chest_cross = false;
     bool pauldrons = false;
+    // Elf: a leather vest over the tunic front, which is what stops a green
+    // figure dissolving into grass.
+    bool vest = false;
 };
 
 // Build one rig. `sprite_w`/`sprite_h` set the model's anchor so it lands
 // where that family's sprite lands under the game camera.
 VoxelModel voxel_build_rig(const RigSpec& spec, int sprite_w, int sprite_h);
+
+// One projectile, built pointing along +y so the walker's curdir maps onto
+// the volume yaw exactly as it does for a living.
+// `span_px` sizes an Orb in world pixels (0 = 4). A Dart ignores it.
+VoxelModel voxel_build_projectile(RigProjectile kind, unsigned char body,
+                                  unsigned char tip, unsigned char tail,
+                                  int sprite_w, int sprite_h, int span_px = 0);
 
 // A flat drop-shadow disc sized to a model's footprint, for hero and
 // turntable plates. One layer, no AO, so it reads as a soft dark ellipse.

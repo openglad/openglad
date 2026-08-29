@@ -191,6 +191,19 @@ void emit_entity_list(VoxelScene& out, const GameWorld::EntityList& list,
                 // footprint centre inside that box.
             }
         }
+        else if (params.models != nullptr &&
+                 (w->query_order() == Order::Weapon ||
+                  w->query_order() == Order::FX))
+        {
+            float yaw = 0.0f;
+            const VoxelModel* const m =
+                params.models->projectile_model(*w, yaw);
+            if (m != nullptr && !m->empty())
+            {
+                v.model = m;
+                v.yaw = yaw;
+            }
+        }
         out.emit(v);
         ++stats.entities;
     }
