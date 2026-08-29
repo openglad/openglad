@@ -28,6 +28,7 @@
 #include <SDL3/SDL.h>
 
 #include <openglad/interface/render/voxel_carve.h>
+#include <openglad/interface/render/voxel_rig.h>
 
 #include <algorithm>
 #include <array>
@@ -516,9 +517,9 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 
 namespace {
 
-std::string models2_dir()
+std::string models3_dir()
 {
-    return spike_dir() + "/models2";
+    return spike_dir() + "/models3";
 }
 
 struct Image
@@ -660,19 +661,6 @@ struct FamilySpec
 const char* kFacingNames[NUM_FACINGS] = {"up",   "up-r",   "right", "down-r",
                                          "down", "down-l", "left",  "up-l"};
 
-const char* core_family_name(int family)
-{
-    static const char* const kNames[] = {
-        "soldier",      "elf",       "archer",   "mage",     "skeleton",
-        "cleric",       "firelem",   "faerie",   "slime",    "small_slime",
-        "medium_slime", "thief",     "ghost",    "druid",    "orc",
-        "orc_captain",  "barbarian", "archmage", "golem",    "giant_skeleton",
-        "tower1"};
-    if (family < 0 || family >= static_cast<int>(std::size(kNames)))
-        return "unknown";
-    return kNames[family];
-}
-
 // The carved models the scene renders draw through, keyed by living family.
 class SpikeModels : public og::render::VoxelModelSource
 {
@@ -763,20 +751,38 @@ struct ModelShot
     std::vector<unsigned char> index;
 };
 
+std::uint32_t pack(RGB c)
+{
+    return 0xFF000000u | (static_cast<std::uint32_t>(c.r) << 16) |
+        (static_cast<std::uint32_t>(c.g) << 8) | c.b;
+}
+
 ModelShot shoot_model(const og::render::VoxelModel& m, float model_yaw,
                       const ShotCamera& sc,
                       const std::vector<std::uint32_t>& lut,
-                      unsigned char team)
+                      unsigned char team, RGB bg = RGB{0, 0, 0},
+                      const og::render::VoxelModel* shadow = nullptr)
 {
     ModelShot out;
-    out.rgb = make_image(sc.w, sc.h, RGB{0, 0, 0});
+    out.rgb = make_image(sc.w, sc.h, bg);
     out.index.assign(
         static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h), 0u);
     std::vector<std::uint32_t> buf(
         static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h),
-        0xFF000000u);
+        pack(bg));
 
     og::render::VoxelScene scene;
+    if (shadow != nullptr && !shadow->empty())
+    {
+        og::render::VoxelVolume sv;
+        sv.model = shadow;
+        sv.yaw = 0.0f;
+        sv.x = -shadow->anchor_x;
+        sv.y = -shadow->anchor_y;
+        sv.z = -1.0f; // just under the figure's feet
+        sv.material.team_color = team;
+        scene.emit(sv);
+    }
     og::render::VoxelVolume v;
     v.model = &m;
     v.yaw = model_yaw;
@@ -885,24 +891,6 @@ Extent model_extent(const og::render::VoxelModel& m, float model_yaw,
     return e;
 }
 
-// Frame a model so the figure lands at roughly `target_h` pixels tall.
-ShotCamera frame_model(const og::render::VoxelModel& m, float model_yaw,
-                       float cam_yaw_deg, float pitch_deg, float target_h,
-                       int pad)
-{
-    const Extent e = model_extent(m, model_yaw, cam_yaw_deg, pitch_deg);
-    const float span_y = std::max(1e-3f, e.y1 - e.y0);
-    ShotCamera sc;
-    sc.cam_yaw_deg = cam_yaw_deg;
-    sc.pitch_deg = pitch_deg;
-    sc.scale = target_h / span_y;
-    sc.w = static_cast<int>(std::ceil((e.x1 - e.x0) * sc.scale)) + pad * 2;
-    sc.h = static_cast<int>(std::ceil(span_y * sc.scale)) + pad * 2;
-    sc.view_cx = -e.x0 * sc.scale + static_cast<float>(pad);
-    sc.view_cy = -e.y0 * sc.scale + static_cast<float>(pad);
-    return sc;
-}
-
 class VoxelModels : public testing::Test
 {
 protected:
@@ -925,43 +913,254 @@ protected:
 namespace {
 
 // Team 0's palette ramp base (mode_tick.cpp team_ramp_base: team * 16 + 40).
-// Both the sprite row and the model render go through it, so the comparison
-// is like for like.
+// Both the sprite row and the rig render go through it, so the comparison is
+// like for like.
 constexpr unsigned char kShotTeam = 40;
+// Hero and turntable plates sit on a neutral ground so the drop shadow reads.
+constexpr RGB kPlateBg{38, 40, 46};
 
-// hero_<family>.png — one model big enough for a human to judge, front and
-// back. D5 in the round-1 review: nothing in the deliverable showed a model
-// at a size anyone could read.
-Image build_hero(const og::render::VoxelModel& m,
-                 const std::vector<std::uint32_t>& lut, float& out_scale)
+// --------------------------------------------------------------------------
+// Palette: the rigs take their colours from the family's own sprite. Nothing
+// else about the sprite survives into a rig, so this is the only place the
+// art still speaks.
+// --------------------------------------------------------------------------
+struct PaletteChoice
 {
-    const float pitch = 35.0f;
-    const float target = 220.0f;
-    ShotCamera front = frame_model(m, 0.0f, 30.0f, pitch, target, 10);
-    ShotCamera back = frame_model(m, 0.0f, 210.0f, pitch, target, 10);
-    out_scale = front.scale;
-    const ModelShot a = shoot_model(m, 0.0f, front, lut, kShotTeam);
-    const ModelShot b = shoot_model(m, 0.0f, back, lut, kShotTeam);
-    Image im = make_image(a.rgb.w + b.rgb.w + 8,
-                          std::max(a.rgb.h, b.rgb.h), RGB{18, 18, 24});
-    paste(im, 0, (im.h - a.rgb.h) / 2, a.rgb);
-    paste(im, a.rgb.w + 8, (im.h - b.rgb.h) / 2, b.rgb);
-    return im;
+    og::render::RigPalette pal;
+    std::string note;
+};
+
+PaletteChoice pick_palette(const og::render::VoxelCarveFrames& fr,
+                           const std::vector<std::uint32_t>& lut)
+{
+    std::array<int, 256> hist{};
+    for (int d = 0; d < NUM_FACINGS; ++d)
+    {
+        if (fr.frame[d] == nullptr)
+            continue;
+        for (int i = 0; i < fr.w * fr.h; ++i)
+            ++hist[fr.frame[d][static_cast<std::size_t>(i)]];
+    }
+    hist[0] = 0;
+    int total = 0;
+    for (int c : hist)
+        total += c;
+
+    const auto rgb = [&](int i) {
+        const std::uint32_t c = lut[static_cast<std::size_t>(i)];
+        return RGB{static_cast<Uint8>((c >> 16) & 0xFFu),
+                   static_cast<Uint8>((c >> 8) & 0xFFu),
+                   static_cast<Uint8>(c & 0xFFu)};
+    };
+    const auto lum = [&](int i) {
+        const RGB c = rgb(i);
+        return 0.30f * static_cast<float>(c.r) + 0.59f * static_cast<float>(c.g) +
+            0.11f * static_cast<float>(c.b);
+    };
+    const auto sat = [&](int i) {
+        const RGB c = rgb(i);
+        const int v = std::max(c.r, std::max(c.g, c.b));
+        const int mn = std::min(c.r, std::min(c.g, c.b));
+        return v > 0 ? static_cast<float>(v - mn) / static_cast<float>(v)
+                     : 0.0f;
+    };
+
+    // This palette is laid out in eight-entry ramps, so a "colour" is a
+    // BLOCK, not an index: picking two indices out of one ramp gives two
+    // shades of the same thing, which is what made round-3's first pass
+    // monochrome. Choose blocks first, then shades inside them.
+    std::array<int, 32> block{};
+    for (int i = 1; i < 248; ++i)
+        block[static_cast<std::size_t>(i / 8)] += hist[static_cast<std::size_t>(i)];
+
+    const auto top_of_block = [&](int b) {
+        int win = 0, wc = -1;
+        for (int i = b * 8; i < b * 8 + 8 && i < 248; ++i)
+            if (hist[static_cast<std::size_t>(i)] > wc)
+            {
+                wc = hist[static_cast<std::size_t>(i)];
+                win = i;
+            }
+        return win;
+    };
+    const auto lightest_of_block = [&](int b) {
+        int win = b * 8;
+        for (int i = b * 8; i < b * 8 + 8 && i < 248; ++i)
+            if (lum(i) > lum(win))
+                win = i;
+        return win;
+    };
+    const auto darkest_of_block = [&](int b) {
+        int win = b * 8;
+        for (int i = b * 8; i < b * 8 + 8 && i < 248; ++i)
+            if (lum(i) < lum(win))
+                win = i;
+        return win;
+    };
+
+    og::render::RigPalette p;
+
+    // Team band first: whatever the sprite paints in 248..255 is what the
+    // game recolours per team, so the rig has to spend it somewhere visible.
+    int team_best = 0, team_count = 0;
+    for (int i = 248; i < 256; ++i)
+        if (hist[static_cast<std::size_t>(i)] > team_count)
+        {
+            team_count = hist[static_cast<std::size_t>(i)];
+            team_best = i;
+        }
+    p.team = static_cast<unsigned char>(team_best);
+
+    // Skin: an orange-ish mid tone. Its whole ramp is then off limits for
+    // cloth, or the figure comes out one colour from head to boot.
+    int skin = 0, skin_count = 0;
+    for (int i = 1; i < 248; ++i)
+    {
+        const RGB c = rgb(i);
+        if (c.r <= c.g || c.g < c.b || sat(i) < 0.18f || sat(i) > 0.85f ||
+            lum(i) < 70.0f)
+            continue;
+        if (hist[static_cast<std::size_t>(i)] > skin_count)
+        {
+            skin_count = hist[static_cast<std::size_t>(i)];
+            skin = i;
+        }
+    }
+    const int skin_block = skin > 0 ? skin / 8 : -1;
+
+    std::array<int, 32> order{};
+    for (int i = 0; i < 32; ++i)
+        order[static_cast<std::size_t>(i)] = i;
+    std::sort(order.begin(), order.end(), [&](int a2, int b2) {
+        return block[static_cast<std::size_t>(a2)] >
+            block[static_cast<std::size_t>(b2)];
+    });
+
+    int primary_block = -1, secondary_block = -1, grey_block = -1;
+    for (int b : order)
+    {
+        if (block[static_cast<std::size_t>(b)] <= 0)
+            continue;
+        const int t = top_of_block(b);
+        if (grey_block < 0 && sat(t) < 0.18f && lum(t) > 60.0f)
+            grey_block = b;
+        if (b == skin_block)
+            continue;
+        if (primary_block < 0)
+            primary_block = b;
+        // A second ramp only counts as a second COLOUR if the sprite spends
+        // real area on it; otherwise it is outline pixels, and taking it
+        // paints the legs a hue that appears nowhere on the character.
+        else if (secondary_block < 0 &&
+                 block[static_cast<std::size_t>(b)] * 8 >= total)
+            secondary_block = b;
+    }
+    // A family drawn almost entirely in its own skin ramp (the orc) has
+    // nothing else to spend, so keep the ramp and separate the parts by shade.
+    const bool thin = primary_block < 0 ||
+        block[static_cast<std::size_t>(primary_block)] * 5 < total;
+    if (thin && skin_block >= 0)
+    {
+        secondary_block = primary_block;
+        primary_block = skin_block;
+    }
+    if (primary_block < 0)
+        primary_block = skin_block >= 0 ? skin_block : 2;
+
+    p.skin = static_cast<unsigned char>(
+        skin > 0 ? skin : lightest_of_block(primary_block));
+    p.primary = static_cast<unsigned char>(top_of_block(primary_block));
+    if (p.primary == p.skin)
+        p.primary = static_cast<unsigned char>(darkest_of_block(primary_block));
+    p.secondary = static_cast<unsigned char>(
+        secondary_block >= 0 ? top_of_block(secondary_block)
+                             : darkest_of_block(primary_block));
+    if (p.secondary == p.primary)
+        p.secondary = static_cast<unsigned char>(
+            lightest_of_block(primary_block));
+    p.metal = static_cast<unsigned char>(
+        grey_block >= 0 && grey_block != primary_block
+            ? lightest_of_block(grey_block)
+            : lightest_of_block(primary_block));
+
+    // Eye pits and boots want to be near black. Take the darkest thing in the
+    // whole palette rather than the darkest thing the sprite happened to use:
+    // a rig is not trying to reproduce the sprite's index set.
+    int dark = 1;
+    for (int i = 1; i < 248; ++i)
+        if (lum(i) < lum(dark))
+            dark = i;
+    p.dark = static_cast<unsigned char>(dark);
+    p.accent = p.team != 0 ? p.team : p.secondary;
+
+    char buf[320];
+    const auto show = [&](const char* n, unsigned char i) {
+        const RGB c = rgb(i);
+        snprintf(buf, sizeof(buf), "%s=%u(%u,%u,%u) ", n, i, c.r, c.g, c.b);
+        return std::string(buf);
+    };
+    PaletteChoice out;
+    out.pal = p;
+    out.note = show("skin", p.skin) + show("primary", p.primary) +
+        show("secondary", p.secondary) + show("metal", p.metal) +
+        show("dark", p.dark) + show("accent", p.accent);
+    out.note += p.team != 0 ? show("team", p.team) : std::string("team=none");
+    return out;
 }
 
-// turntable_<family>.png — 16 yaws at 22.5 degrees, one shared frame so the
-// figure does not breathe between cells.
+// --------------------------------------------------------------------------
+// Plates
+// --------------------------------------------------------------------------
+ShotCamera frame_at_scale(const og::render::VoxelModel& m, float model_yaw,
+                          float cam_yaw_deg, float pitch_deg, float scale,
+                          int pad)
+{
+    const Extent e = model_extent(m, model_yaw, cam_yaw_deg, pitch_deg);
+    ShotCamera sc;
+    sc.cam_yaw_deg = cam_yaw_deg;
+    sc.pitch_deg = pitch_deg;
+    sc.scale = scale;
+    sc.w = static_cast<int>(std::ceil((e.x1 - e.x0) * scale)) + pad * 2;
+    sc.h = static_cast<int>(std::ceil((e.y1 - e.y0) * scale)) + pad * 2;
+    sc.view_cx = -e.x0 * scale + static_cast<float>(pad);
+    sc.view_cy = -e.y0 * scale + static_cast<float>(pad);
+    return sc;
+}
+
+// hero_<family>.png — front and back, on a ground shadow, at a size a human
+// can actually judge.
+Image build_hero(const og::render::VoxelModel& m,
+                 const og::render::VoxelModel& shadow,
+                 const std::vector<std::uint32_t>& lut)
+{
+    const float pitch = 35.0f;
+    const float scale = 6.0f;
+    const ShotCamera front = frame_at_scale(m, 0.0f, 30.0f, pitch, scale, 14);
+    const ShotCamera back = frame_at_scale(m, 0.0f, 210.0f, pitch, scale, 14);
+    const ModelShot a =
+        shoot_model(m, 0.0f, front, lut, kShotTeam, kPlateBg, &shadow);
+    const ModelShot b =
+        shoot_model(m, 0.0f, back, lut, kShotTeam, kPlateBg, &shadow);
+    Image im = make_image(a.rgb.w + b.rgb.w + 6, std::max(a.rgb.h, b.rgb.h),
+                          kPlateBg);
+    paste(im, 0, im.h - a.rgb.h, a.rgb);
+    paste(im, a.rgb.w + 6, im.h - b.rgb.h, b.rgb);
+    return upscale(im, 2);
+}
+
+// turntable_<family>.png — 16 yaws at 22.5 degrees on one shared frame.
 Image build_turntable(const og::render::VoxelModel& m,
+                      const og::render::VoxelModel& shadow,
                       const std::vector<std::uint32_t>& lut)
 {
     constexpr int kFrames = 16;
     const float pitch = 40.0f;
-    const float target = 120.0f;
+    const float scale = 4.0f;
     Extent u{1e9f, 1e9f, -1e9f, -1e9f};
     for (int f = 0; f < kFrames; ++f)
     {
-        const Extent e = model_extent(
-            m, 0.0f, static_cast<float>(f) * 22.5f, pitch);
+        const Extent e =
+            model_extent(m, 0.0f, static_cast<float>(f) * 22.5f, pitch);
         u.x0 = std::min(u.x0, e.x0);
         u.x1 = std::max(u.x1, e.x1);
         u.y0 = std::min(u.y0, e.y0);
@@ -969,33 +1168,33 @@ Image build_turntable(const og::render::VoxelModel& m,
     }
     ShotCamera sc;
     sc.pitch_deg = pitch;
-    sc.scale = target / std::max(1e-3f, u.y1 - u.y0);
-    const int pad = 10;
-    sc.w = static_cast<int>(std::ceil((u.x1 - u.x0) * sc.scale)) + pad * 2;
-    sc.h = static_cast<int>(std::ceil((u.y1 - u.y0) * sc.scale)) + pad * 2;
-    sc.view_cx = -u.x0 * sc.scale + static_cast<float>(pad);
-    sc.view_cy = -u.y0 * sc.scale + static_cast<float>(pad);
+    sc.scale = scale;
+    const int pad = 6;
+    sc.w = static_cast<int>(std::ceil((u.x1 - u.x0) * scale)) + pad * 2;
+    sc.h = static_cast<int>(std::ceil((u.y1 - u.y0) * scale)) + pad * 2;
+    sc.view_cx = -u.x0 * scale + static_cast<float>(pad);
+    sc.view_cy = -u.y0 * scale + static_cast<float>(pad);
 
-    Image im = make_image(sc.w * kFrames, sc.h, RGB{18, 18, 24});
+    Image im = make_image(sc.w * kFrames, sc.h, kPlateBg);
     for (int f = 0; f < kFrames; ++f)
     {
         sc.cam_yaw_deg = static_cast<float>(f) * 22.5f;
-        const ModelShot shot = shoot_model(m, 0.0f, sc, lut, kShotTeam);
+        const ModelShot shot =
+            shoot_model(m, 0.0f, sc, lut, kShotTeam, kPlateBg, &shadow);
         paste(im, f * sc.w, 0, shot.rgb);
     }
-    return im;
+    return upscale(im, 2);
 }
 
-// classic_<family>.png — the honest comparison at the game angle.
+// classic_<family>.png — the "could it work under the normal camera" page.
 //   row 1  the eight source facings, 8x nearest
-//   row 2  the model at the assumed game camera, 1x, upscaled 8x: pixel for
-//          pixel comparable with the sprite, and where the agreement number
-//          comes from
+//   row 2  the rig at the assumed game camera, 1x, upscaled 8x: this is the
+//          candidate replacement sprite
 //   row 3  the same camera rendered natively at 4x — the HD version
 Image build_classic_page(const og::render::VoxelCarveFrames& fr,
                          const og::render::VoxelModel& m,
                          const std::vector<std::uint32_t>& lut,
-                         float* agreement_out, float* iou_out)
+                         float* agreement_out)
 {
     const int cell_w = fr.w * 8;
     const int cell_h = fr.h * 8;
@@ -1017,7 +1216,8 @@ Image build_classic_page(const og::render::VoxelCarveFrames& fr,
         one.view_cx = m.anchor_x;
         one.view_cy = m.anchor_y;
         one.outline = false; // 16 px tall: an outline would eat the figure
-        const ModelShot lo = shoot_model(m, yaw, one, lut, kShotTeam);
+        const ModelShot lo =
+            shoot_model(m, yaw, one, lut, kShotTeam, RGB{18, 18, 24});
         paste(im, d * cell_w, cell_h, upscale(lo.rgb, 8));
 
         ShotCamera hd = one;
@@ -1027,33 +1227,25 @@ Image build_classic_page(const og::render::VoxelCarveFrames& fr,
         hd.view_cx = m.anchor_x * 4.0f;
         hd.view_cy = m.anchor_y * 4.0f;
         hd.outline = true;
-        const ModelShot hi = shoot_model(m, yaw, hd, lut, kShotTeam);
+        const ModelShot hi =
+            shoot_model(m, yaw, hd, lut, kShotTeam, RGB{18, 18, 24});
         paste(im, d * cell_w, cell_h * 2, upscale(hi.rgb, 2));
 
-        // Agreement of row 2 against the sprite, both team-remapped: matched
-        // palette index over the union of opaque pixels.
-        int matched = 0, both = 0, uni = 0;
+        int matched = 0, uni = 0;
         for (int i = 0; i < fr.w * fr.h; ++i)
         {
             const unsigned char a =
                 remap_team(fr.frame[d][static_cast<std::size_t>(i)], kShotTeam);
             const bool sa = fr.frame[d][static_cast<std::size_t>(i)] != 0;
-            const unsigned char b = lo.index[static_cast<std::size_t>(i)];
-            const bool sb = b != 0;
+            const unsigned char bb = lo.index[static_cast<std::size_t>(i)];
+            const bool sb = bb != 0;
             if (sa || sb)
                 ++uni;
-            if (sa && sb)
-            {
-                ++both;
-                if (a == b)
-                    ++matched;
-            }
+            if (sa && sb && a == bb)
+                ++matched;
         }
         agreement_out[d] = uni > 0
             ? static_cast<float>(matched) / static_cast<float>(uni)
-            : 0.0f;
-        iou_out[d] = uni > 0
-            ? static_cast<float>(both) / static_cast<float>(uni)
             : 0.0f;
     }
     return im;
@@ -1093,8 +1285,8 @@ void densest_cluster(GameWorld& world, float& out_x, float& out_y)
     }
 }
 
-// A Free render of a real level whose livings are carved models turned by
-// curdir, with §10's wall-side and tree-canopy terrain fixes applied.
+// A Free render of a real level whose livings are rigs turned by curdir, with
+// §10's wall-side and tree-canopy terrain fixes applied.
 void run_model_scene(const std::string& name, const char* campaign, int level,
                      const std::map<int, og::render::VoxelModel>& living)
 {
@@ -1151,9 +1343,8 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
     float crowd_x = wide_x, crowd_y = wide_y;
     densest_cluster(world, crowd_x, crowd_y);
 
-    printf("[voxel-models] scene %s (%s scen%d): grid %dx%d  %d tiles, "
-           "%d decor, %d entities, %d volumes carry a model; crowd at "
-           "(%.0f, %.0f)\n",
+    printf("[voxel-rigs] scene %s (%s scen%d): grid %dx%d  %d tiles, %d decor, "
+           "%d entities, %d volumes carry a model; crowd at (%.0f, %.0f)\n",
            name.c_str(), campaign, level, world.grid_for_floor(0).w,
            world.grid_for_floor(0).h, bs.tiles, bs.decor, bs.entities,
            modelled, static_cast<double>(crowd_x),
@@ -1206,7 +1397,7 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
         Image im = make_image(kClassicW, kClassicH, RGB{0, 0, 0});
         for (std::size_t i = 0; i < buf.size(); ++i)
             im.px[i] = unpack(buf[i]);
-        write_image(models2_dir(), "scene_" + name + "_" + f.tag,
+        write_image(models3_dir(), "scene_" + name + "_" + f.tag,
                     upscale(im, 2));
         printf("  %-18s %llu faces, %llu samples, %llu writes, %.2f s\n", f.tag,
                static_cast<unsigned long long>(rs.slices),
@@ -1221,9 +1412,73 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
     world.set_floor_count(1);
 }
 
+// The cast. Everything about a rig except its colours is authored here; the
+// sprite supplies the palette.
+struct RigFamily
+{
+    const char* name;
+    int family;
+    og::render::RigArchetype archetype;
+    og::render::RigWeapon weapon;
+    bool helmet, plume, hood, hat, cape, robe, quiver, shield, tusks, ears;
+    int widen;
+    int lift;
+    bool turntable;
+};
+
+const RigFamily kRigs[] = {
+    // name       family              archetype                       weapon
+    //            helm  plume hood  hat   cape  robe  quiv  shld  tusk  ears  widen lift turn
+    {"footman", FAMILY_SOLDIER, og::render::RigArchetype::Humanoid,
+     og::render::RigWeapon::Sword,
+     true, true, false, false, true, false, false, false, false, false, 0, 0, true},
+    {"archer", FAMILY_ARCHER, og::render::RigArchetype::Humanoid,
+     og::render::RigWeapon::Bow,
+     false, false, true, false, false, false, true, false, false, false, 0, 0, true},
+    {"orc", FAMILY_ORC, og::render::RigArchetype::Humanoid,
+     og::render::RigWeapon::Axe,
+     false, false, false, false, false, false, false, false, true, false, 2, 0, true},
+    {"skeleton", FAMILY_SKELETON, og::render::RigArchetype::Skeleton,
+     og::render::RigWeapon::Sword,
+     false, false, false, false, false, false, false, false, false, false, 0, 0, false},
+    {"mage", FAMILY_MAGE, og::render::RigArchetype::Humanoid,
+     og::render::RigWeapon::Staff,
+     false, false, false, true, false, true, false, false, false, false, 0, 0, true},
+    {"elf", FAMILY_ELF, og::render::RigArchetype::Humanoid,
+     og::render::RigWeapon::Bow,
+     false, false, false, false, false, false, true, false, false, true, -2, 0, false},
+    {"ghost", FAMILY_GHOST, og::render::RigArchetype::Ghost,
+     og::render::RigWeapon::None,
+     false, false, false, false, false, false, false, false, false, false, 0, 6, true},
+    {"cleric", FAMILY_CLERIC, og::render::RigArchetype::Humanoid,
+     og::render::RigWeapon::Mace,
+     false, false, true, false, false, true, false, true, false, false, 0, 0, false},
+};
+
+og::render::RigSpec spec_for(const RigFamily& f, const og::render::RigPalette& p)
+{
+    og::render::RigSpec s;
+    s.archetype = f.archetype;
+    s.pal = p;
+    s.weapon = f.weapon;
+    s.helmet = f.helmet;
+    s.plume = f.plume;
+    s.hood = f.hood;
+    s.hat = f.hat;
+    s.cape = f.cape;
+    s.robe = f.robe;
+    s.quiver = f.quiver;
+    s.shield = f.shield;
+    s.tusks = f.tusks;
+    s.pointed_ears = f.ears;
+    s.torso_widen = f.widen;
+    s.lift = f.lift;
+    return s;
+}
+
 } // namespace
 
-TEST_F(VoxelModels, carve_facings_and_scene_renders)
+TEST_F(VoxelModels, parametric_rigs_and_scene_renders)
 {
     if (spike_dir().empty())
         GTEST_SKIP() << "set OG_VOXEL_SPIKE_DIR to record";
@@ -1231,156 +1486,104 @@ TEST_F(VoxelModels, carve_facings_and_scene_renders)
     ASSERT_TRUE(mount_scene_campaign("gladiator"));
     all_effects_off();
 
-    // Which livings does gladiator scen1 actually put on the field?
     GameWorld& world = scr()->world();
     world.delete_objects();
     world.id = 1;
     scr()->save_data.scen_num = 1;
     ASSERT_TRUE(scr()->load_level()) << "gladiator scen1";
-    std::set<int> in_scen1;
-    for (const auto& u : world.oblist)
-    {
-        walker* const w = u.get();
-        if (w != nullptr && w->query_order() == Order::Living)
-            in_scen1.insert(static_cast<int>(w->family()));
-    }
-    printf("[voxel-models] gladiator scen1 livings:");
-    for (int f : in_scen1)
-        printf(" %s(%d)", core_family_name(f), f);
-    printf("\n");
-
     const std::vector<std::uint32_t> lut = build_palette_lut();
 
-    // --- convention probe -------------------------------------------------
-    // The facing -> yaw map is derived in voxel_scene.h from gloader's bit1..
-    // bit8 comments and the FACE_* constants. Check it against the art rather
-    // than trusting the derivation: carve under every rotational offset and
-    // both handednesses. A wrong map intersects the eight silhouettes in the
-    // wrong relative orientations, so its hull collapses.
-    {
-        og::render::VoxelCarveFrames probe;
-        if (family_walk_frames(FAMILY_SOLDIER, probe))
-        {
-            printf("[voxel-models] facing convention probe (footman, 1x): "
-                   "yaw_d = sign * (d - 4 + offset) * 45\n");
-            for (int sign = 1; sign >= -1; sign -= 2)
-                for (int off = 0; off < NUM_FACINGS; ++off)
-                {
-                    og::render::VoxelCarveParams cp;
-                    cp.supersample = 1;
-                    cp.custom_yaw = true;
-                    for (int d = 0; d < NUM_FACINGS; ++d)
-                        cp.yaw_rad[static_cast<std::size_t>(d)] =
-                            static_cast<float>(
-                                sign * ((d - FACE_DOWN + off) * 45)) *
-                            3.14159265358979f / 180.0f;
-                    const og::render::VoxelCarveReport r =
-                        og::render::voxel_carve(probe, cp);
-                    printf("    sign %+d offset %d : iou %.1f%%  %d voxels%s\n",
-                           sign, off,
-                           static_cast<double>(r.fit_iou_mean) * 100.0,
-                           r.voxel_count,
-                           (sign == 1 && off == 0) ? "   <- derived map" : "");
-                }
-        }
-    }
-
-    std::vector<FamilySpec> fams = {
-        {"footman", FAMILY_SOLDIER},  {"archer", FAMILY_ARCHER},
-        {"orc", FAMILY_ORC},          {"skeleton", FAMILY_SKELETON},
-        {"mage", FAMILY_MAGE},        {"elf", FAMILY_ELF},
-        {"ghost", FAMILY_GHOST},
-    };
-    for (int f : in_scen1)
-    {
-        bool have = false;
-        for (const FamilySpec& fs : fams)
-            if (fs.family == f)
-                have = true;
-        if (!have)
-            fams.push_back({core_family_name(f), f});
-    }
-
-    printf("[voxel-models] theta fixed at %.0f (45/55/65 measured within a "
-           "point of each other and looked identical)\n",
+    printf("[voxel-rigs] parametric rigs at 2x sprite scale (cell %.2f), "
+           "camera theta %.0f\n",
+           static_cast<double>(og::render::kVoxelRigCell),
            static_cast<double>(og::render::kVoxelCarveTheta));
-    printf("[voxel-models] agreement = matched palette index / union of "
-           "opaque pixels, on the 1x classic-angle render (row 2)\n");
 
     std::map<int, og::render::VoxelModel> scene_models;
-    for (const FamilySpec& fs : fams)
+    std::vector<Image> lineup;
+    int lineup_h = 0;
+
+    for (const RigFamily& f : kRigs)
     {
         og::render::VoxelCarveFrames fr;
-        if (!family_walk_frames(fs.family, fr))
+        if (!family_walk_frames(f.family, fr))
         {
-            printf("  %-10s : no eight-facing walk art, skipped\n", fs.name);
+            printf("  %-9s : no eight-facing walk art, skipped\n", f.name);
             continue;
         }
-        og::render::VoxelCarveParams cp;
-        const og::render::VoxelCarveReport rep = og::render::voxel_carve(fr, cp);
-        if (rep.model.empty())
+        const PaletteChoice pc = pick_palette(fr, lut);
+        const auto t0 = std::chrono::steady_clock::now();
+        og::render::VoxelModel rig =
+            og::render::voxel_build_rig(spec_for(f, pc.pal), fr.w, fr.h);
+        const auto t1 = std::chrono::steady_clock::now();
+        if (rig.empty())
         {
-            printf("  %-10s : carved to nothing\n", fs.name);
+            printf("  %-9s : rig built nothing\n", f.name);
             continue;
         }
-        const og::render::VoxelModel& hi = rep.model;
-        og::render::VoxelModel lo = og::render::voxel_model_downsample(hi, 2);
+        const og::render::VoxelModel shadow =
+            og::render::voxel_build_shadow(rig, pc.pal.dark);
 
-        const auto r0 = std::chrono::steady_clock::now();
         float agree[NUM_FACINGS] = {};
-        float iou[NUM_FACINGS] = {};
-        write_image(models2_dir(), std::string("classic_") + fs.name,
-                    build_classic_page(fr, hi, lut, agree, iou));
-        float hero_scale = 0.0f;
-        write_image(models2_dir(), std::string("hero_") + fs.name,
-                    build_hero(hi, lut, hero_scale));
-        const auto r1 = std::chrono::steady_clock::now();
+        write_image(models3_dir(), std::string("classic_") + f.name,
+                    build_classic_page(fr, rig, lut, agree));
+        write_image(models3_dir(), std::string("hero_") + f.name,
+                    build_hero(rig, shadow, lut));
+        if (f.turntable)
+            write_image(models3_dir(), std::string("turntable_") + f.name,
+                        build_turntable(rig, shadow, lut));
+        const auto t2 = std::chrono::steady_clock::now();
 
-        float mean = 0.0f, mean_iou = 0.0f;
+        const ShotCamera line =
+            frame_at_scale(rig, 0.0f, 30.0f, 35.0f, 5.0f, 8);
+        lineup.push_back(
+            shoot_model(rig, 0.0f, line, lut, kShotTeam, kPlateBg, &shadow)
+                .rgb);
+        lineup_h = std::max(lineup_h, lineup.back().h);
+
+        int vox = 0;
+        for (unsigned char o : rig.occ)
+            if (o != 0)
+                ++vox;
+        float mean = 0.0f;
         int worst = 0;
         for (int d = 0; d < NUM_FACINGS; ++d)
         {
             mean += agree[d];
-            mean_iou += iou[d];
             if (agree[d] < agree[worst])
                 worst = d;
         }
         mean /= static_cast<float>(NUM_FACINGS);
-        mean_iou /= static_cast<float>(NUM_FACINGS);
-
-        printf("  %-9s sprite %2dx%-2d  hi %dx%dx%d %6d vox (%d surface)  "
-               "lo %dx%dx%d %5d vox\n",
-               fs.name, fr.w, fr.h, hi.w, hi.d, hi.z, rep.voxel_count,
-               rep.surface_voxels, lo.w, lo.d, lo.z,
-               static_cast<int>(std::count_if(
-                   lo.occ.begin(), lo.occ.end(),
-                   [](unsigned char c) { return c != 0; })));
-        printf("            fit %.2fs carve %.2fs render %.2fs  "
-               "opened %d, photo %d%s, dropped %d, cavities %d, "
-               "despeckled %d  anchor (%.2f,%.2f)  hero scale %.1f\n",
-               rep.fit_seconds, rep.carve_seconds,
-               std::chrono::duration<double>(r1 - r0).count(),
-               rep.opened_away, rep.photo_carved,
-               rep.photo_rolled_back ? " ROLLED BACK" : "",
-               rep.components_dropped, rep.cavity_voxels_filled,
-               rep.despeckled, static_cast<double>(hi.anchor_x),
-               static_cast<double>(hi.anchor_y),
-               static_cast<double>(hero_scale));
-        printf("            agreement mean %.1f%%  iou %.1f%%  worst %s "
+        printf("  %-9s sprite %2dx%-2d  rig %dx%dx%d %5d vox  build %.3fs "
+               "render %.2fs\n",
+               f.name, fr.w, fr.h, rig.w, rig.d, rig.z, vox,
+               std::chrono::duration<double>(t1 - t0).count(),
+               std::chrono::duration<double>(t2 - t1).count());
+        printf("            palette %s\n", pc.note.c_str());
+        printf("            classic-angle agreement mean %.1f%%  worst %s "
                "%.1f%%  per-facing:",
-               static_cast<double>(mean) * 100.0,
-               static_cast<double>(mean_iou) * 100.0, kFacingNames[worst],
+               static_cast<double>(mean) * 100.0, kFacingNames[worst],
                static_cast<double>(agree[worst]) * 100.0);
         for (int d = 0; d < NUM_FACINGS; ++d)
             printf(" %.0f", static_cast<double>(agree[d]) * 100.0);
         printf("\n");
 
-        if (std::string(fs.name) == "footman" ||
-            std::string(fs.name) == "archer" || std::string(fs.name) == "orc")
-            write_image(models2_dir(), std::string("turntable_") + fs.name,
-                        build_turntable(hi, lut));
+        scene_models.emplace(f.family, std::move(rig));
+    }
 
-        scene_models.emplace(fs.family, std::move(lo));
+    // lineup.png — the cast photo.
+    if (!lineup.empty())
+    {
+        int total_w = 0;
+        for (const Image& im : lineup)
+            total_w += im.w + 4;
+        Image row = make_image(total_w, lineup_h, kPlateBg);
+        int x = 0;
+        for (const Image& im : lineup)
+        {
+            paste(row, x, lineup_h - im.h, im);
+            x += im.w + 4;
+        }
+        write_image(models3_dir(), "lineup", upscale(row, 2));
     }
 
     world.delete_objects();
