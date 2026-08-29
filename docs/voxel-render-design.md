@@ -394,3 +394,24 @@ facing at the game camera (report agreement per facing) and is a solid,
 sprite-coloured figure from every other angle. The rig template code is
 reused for primitives only; no hand-chosen proportions or invented parts
 survive. Classic camera unchanged (sprites remain the imposter).
+
+## 14. Fitted bodies measured; world-fixed thick reliefs (2026-08-29)
+
+Round 7 (`255115e6`): a 39-parameter humanoid solved against the 8 facings
+reaches only IoU 0.61–0.71 and 8–35% colour agreement, and doubling solver
+effort moves it by 0.01 — a model-class failure, not convergence. The lineup
+is lumps. Cause: the sprites are top-down *icons* (helmet and shoulders), so
+the body that projects to them is squat; the fit is right and the figure is
+wrong. Fitting is closed.
+
+**Round 8: world-fixed thick reliefs.** §12's relief keeps the art exactly;
+its volume vanished only because it billboarded. Now each facing's relief is
+fixed in the world (its plane faces that facing's own view direction), the
+walker shows the facing relief nearest the camera's relative angle (45° bins,
+so a relief is seen at most 22.5° off-axis and never edge-on), and the
+thickness is larger (`k = 1.4`, living up to 8 voxels). The relief tilt θ
+is swept: 55°, 70°, and 90° (flat on the ground — the sprite as the top face
+of a rounded solid, stage 1 with pillowed height and facing swaps). The
+pictures decide θ. Hand-authored per-family models (`.vox` in packs) remain
+the path to more than this; reliefs are the automatic default for every
+family and every pack.
