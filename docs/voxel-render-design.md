@@ -515,3 +515,12 @@ loads it into the existing cube-face renderer (shading and drop shadows from
 round 2/10 kept; no AO on faces carrying drawn detail). Iteration is Fable
 visual review with per-family redlines on the text grids. The Classic camera
 still draws the sprites, byte-identical; figures are the Free-camera body.
+
+**§16 amendment (maintainer, same day):** "author it so it fucking looks like
+the other ones, not some random-ass new thing." The authored figures are the
+SAME characters as the sprites — the frames are the character sheet being
+transcribed into 3D: front guided by the "down" frame, back by "up", sides by
+"left"/"right"; proportions as drawn; exact sprite palette indices region by
+region; no invented gear, no restyled colours. Author-time check: the figure
+rendered at the game camera per facing must read as "same guy" against the
+frame for every facing (fidelity strip as a review tool, not a solver).
