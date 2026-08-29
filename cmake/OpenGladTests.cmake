@@ -47,6 +47,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_primitives.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_effects_prims.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_render_effects.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_voxel_spike.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_decor_render.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stair_overlay.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_text_rendering.cpp
@@ -467,6 +468,7 @@ og_add_test_group(og_test_rendering FILES
     test_video_modes_more.cpp
     test_video_effects_prims.cpp
     test_render_effects.cpp
+    test_voxel_spike.cpp
     test_decor_render.cpp
     test_stair_overlay.cpp
     test_video_pixel_ops.cpp
