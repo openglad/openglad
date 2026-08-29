@@ -1017,7 +1017,7 @@ TEST_F(CameraView, inset_to_docked_flip_scrubs_the_inset_rect)
 }
 
 // ---------------------------------------------------------------------------
-// One-seat 0.5 zoom (maintainer ruling): the second-minimap pane keeps its
+// One-seat 0.25 zoom (maintainer ruling): the second-minimap pane keeps its
 // exact radar-matched rect but shows a kCameraMinimapZoomDenominator-times
 // wider and taller world window around the target, integer-downsampled onto
 // the pane. The docked quadrant and the 2/4-seat centered inset stay 1:1.
@@ -1043,10 +1043,13 @@ std::vector<Uint32> capture_rect_pixels(screen* scr, const SeatRect& r)
 }
 
 // Zoom evidence: a witness entity fully OUTSIDE the 1:1 world window but
-// inside the 2x window appears in the pane at 0.5 zoom — and its pixels land
-// in the pane band the 2:1 mapping predicts. Forcing the draw back to 1:1
+// inside the 4x window appears in the pane at 0.25 zoom — and its pixels land
+// in the pane band the 4:1 mapping predicts. Forcing the draw back to 1:1
 // makes the witness disappear (diffs == 0): that is this test's red lever.
-TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_half_zoom)
+// The witness sits at the MIDPOINT of the band the zoom adds below the 1:1
+// window, so it is out of reach of any smaller denominator too — a draw that
+// quietly reverted to the old 2x window would not reach it either.
+TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_quarter_zoom)
 {
     game_->ready_for_battle(1);
     arm_seats();
@@ -1061,7 +1064,7 @@ TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_half_zoom)
     ASSERT_EQ(r, capture_rect(*game_->camera_view_))
         << "the pane rect itself must not change with the zoom";
     EXPECT_TRUE(game_->camera_minimap_zoom_)
-        << "the one-seat second minimap must resolve to the 0.5 zoom";
+        << "the one-seat second minimap must resolve to the 0.25 zoom";
 
     walker* const target =
         game_->world().find_by_id(static_cast<std::uint32_t>(target_id));
@@ -1074,11 +1077,15 @@ TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_half_zoom)
     const Sint32 bottom1 = topy1 + r.yview;
     const Sint32 topy2 = target->ypos() - (zoomed_h - target->sizey()) / 2;
     const Sint32 bottom2 = topy2 + zoomed_h;
-    ASSERT_GT(bottom2 - 8, bottom1 + 8)
-        << "no world band between the 1x and 2x windows: pane too small";
-    // The witness: fully below the 1:1 window, inside the 2x window.
-    const std::int32_t witness_id =
-        spawn_target(target->xpos(), bottom1 + 8);
+    // The witness: the MIDPOINT of the world band the zoom adds below the
+    // 1:1 window — well clear of the 1:1 bottom edge, and past where a
+    // half-scale (or any shallower) window would still end.
+    const Sint32 witness_y = bottom1 + (bottom2 - bottom1) / 2;
+    ASSERT_GT(witness_y, bottom1 + 8)
+        << "no world band between the 1x and 4x windows: pane too small";
+    ASSERT_GT(bottom2, witness_y + target->sizey())
+        << "the witness must fit inside the zoomed window";
+    const std::int32_t witness_id = spawn_target(target->xpos(), witness_y);
     ASSERT_NE(0, witness_id);
 
     const auto seam_draw = [&]() {
@@ -1098,11 +1105,11 @@ TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_half_zoom)
     witness->set_dead(0);
     ASSERT_EQ(with_witness.size(), without_witness.size());
 
-    // Where the 2:1 mapping puts the witness: pane y = (world_y - topy2) / 2,
-    // so everything at or below bottom1 + 8 lands in the lower quarter of
-    // the pane (with slack for the interpolation rounding).
+    // Where the 4:1 mapping puts the witness: pane y = (world_y - topy2) / 4,
+    // so everything at or below witness_y lands in the lower part of the
+    // pane (with slack for the interpolation rounding).
     const int expected_min_pane_y =
-        static_cast<int>((bottom1 + 8 - topy2) /
+        static_cast<int>((witness_y - topy2) /
                          kCameraMinimapZoomDenominator) - 2;
     int diffs = 0;
     int stray = 0;
@@ -1119,20 +1126,20 @@ TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_half_zoom)
         }
     EXPECT_GT(diffs, 0)
         << "the witness below the 1:1 window never appeared in the pane: "
-        << "the one-seat minimap is not showing the 2x world window";
+        << "the one-seat minimap is not showing the 4x world window";
     EXPECT_EQ(0, stray)
         << stray << " witness pixels above pane row " << expected_min_pane_y
-        << ": the 2:1 world-to-pane mapping is off";
+        << ": the 4:1 world-to-pane mapping is off";
     // The seat and the pane geometry never moved for the zoomed draw.
     EXPECT_EQ(r, capture_rect(*game_->camera_view_));
 }
 
-// The 2:1 sampling pin: every pane pixel equals the corresponding pixel of
-// the 2x world-window render — dst(i,j) = src(i*2, j*2) — including the
+// The 4:1 sampling pin: every pane pixel equals the corresponding pixel of
+// the 4x world-window render — dst(i,j) = src(i*4, j*4) — including the
 // window-edge corners. The comparison source is the SAME viewscreen draw the
-// production path renders into the off-screen layer (the doubled window at
+// production path renders into the off-screen layer (the widened window at
 // port origin), reproduced on the visible canvas where the test can read it.
-TEST_F(CameraView, one_seat_minimap_maps_world_pixels_two_to_one)
+TEST_F(CameraView, one_seat_minimap_maps_world_pixels_four_to_one)
 {
     game_->ready_for_battle(1);
     arm_seats();
@@ -1180,13 +1187,13 @@ TEST_F(CameraView, one_seat_minimap_maps_world_pixels_two_to_one)
     };
     // The four window-edge corners of the mapping, pinned by name.
     EXPECT_TRUE(expect_sample(0, 0))
-        << "pane (0,0) must sample the 2x window's top-left pixel";
+        << "pane (0,0) must sample the 4x window's top-left pixel";
     EXPECT_TRUE(expect_sample(r.xview - 1, 0))
-        << "pane right edge must sample layer column 2*(w-1)";
+        << "pane right edge must sample layer column 4*(w-1)";
     EXPECT_TRUE(expect_sample(0, r.yview - 1))
-        << "pane bottom edge must sample layer row 2*(h-1)";
+        << "pane bottom edge must sample layer row 4*(h-1)";
     EXPECT_TRUE(expect_sample(r.xview - 1, r.yview - 1))
-        << "pane bottom-right corner must sample layer (2w-2, 2h-2)";
+        << "pane bottom-right corner must sample layer (4w-4, 4h-4)";
     // And the whole lattice: nearest integer sampling, no filtering.
     int mismatches = 0;
     for (int y = 0; y < r.yview; y += 3)
@@ -1194,7 +1201,7 @@ TEST_F(CameraView, one_seat_minimap_maps_world_pixels_two_to_one)
             if (!expect_sample(x, y))
                 ++mismatches;
     EXPECT_EQ(0, mismatches)
-        << mismatches << " pane pixels off the dst(i,j) = src(2i,2j) mapping";
+        << mismatches << " pane pixels off the dst(i,j) = src(4i,4j) mapping";
 }
 
 // The allocation-fallback yield for the zoom layer: a failed off-screen

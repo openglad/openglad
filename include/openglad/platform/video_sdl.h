@@ -344,7 +344,7 @@ private:
     [[maybe_unused]] int floor_layer_fallback_count_ = 0;
 
     // Off-screen camera-pane downscale layer (camera_scale_begin/end): the
-    // one-seat second-minimap 0.5-zoom draw target. Its OWN surface + saved-
+    // one-seat second-minimap 0.25-zoom draw target. Its OWN surface + saved-
     // render slot — never the floor layer's — so a multi-floor camera redraw
     // can still begin/end floor layers inside this redirect. Created in the
     // render surface's format (whole-pixel nearest sampling needs no

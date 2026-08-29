@@ -51,9 +51,9 @@ inline constexpr int MAX_VIEWS = 5;
 // One-seat camera-minimap zoom (docs/camera-views-design.md §6, maintainer
 // ruling): the second-minimap pane keeps its radar-matched rect but shows a
 // world window this many times wider and taller, integer-downsampled with
-// nearest sampling — 2 means 0.5x zoom. The docked quadrant and the 2/4-seat
+// nearest sampling — 4 means 0.25x zoom. The docked quadrant and the 2/4-seat
 // centered inset stay 1:1 (full-size panes with adequate context).
-inline constexpr int kCameraMinimapZoomDenominator = 2;
+inline constexpr int kCameraMinimapZoomDenominator = 4;
 
 class screen : public video
 {
@@ -431,7 +431,7 @@ public:
     std::int32_t camera_entity_id_ = 0;   // last-synced declaration
     std::uint8_t camera_style_ = 0;       // kCameraStyleAuto / kCameraStyleInset
     bool camera_docked_ = false;          // per-machine resolution (§6), off-wire
-    // One-seat second-minimap 0.5 zoom (maintainer ruling, §6): draw a
+    // One-seat second-minimap 0.25 zoom (maintainer ruling, §6): draw a
     // kCameraMinimapZoomDenominator-times world window through the off-screen
     // camera_scale layer, downsampled onto the unchanged pane rect. Resolved
     // with the geometry in relayout_camera_view; never set for the docked

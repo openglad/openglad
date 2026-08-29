@@ -1363,7 +1363,7 @@ void screen::relayout_camera_view()
 		    static_cast<short>(block.y - block.margin - block.h),
 		    static_cast<short>(block.w), static_cast<short>(block.h));
 		// A radar-sized pane at 1:1 is too zoomed-in to be useful
-		// (maintainer ruling, §6): draw it at 0.5 zoom — the same rect, a
+		// (maintainer ruling, §6): draw it at 0.25 zoom — the same rect, a
 		// kCameraMinimapZoomDenominator-times world window, integer-
 		// downsampled by draw_camera_view_ui through the camera_scale layer.
 		camera_minimap_zoom_ = true;
@@ -1537,11 +1537,11 @@ void screen::draw_camera_view_ui()
 	bool drew_scaled = false;
 	if (camera_minimap_zoom_)
 	{
-		// One-seat 0.5 zoom (maintainer ruling, §6): same pane rect, a
+		// One-seat 0.25 zoom (maintainer ruling, §6): same pane rect, a
 		// kCameraMinimapZoomDenominator-times world window. Render the
-		// doubled window 1:1 into the off-screen camera_scale layer through
+		// widened window 1:1 into the off-screen camera_scale layer through
 		// the SAME viewscreen redraw as above — the viewscreen is simply
-		// twice as large for this draw, so the seat centering and the
+		// four times as large for this draw, so the seat centering and the
 		// world-edge behavior are inherited, not re-implemented — then
 		// integer-downsample the layer onto the pane rect. A failed layer
 		// allocation yields to the 1:1 draw below: the pane stays live,
@@ -1558,7 +1558,7 @@ void screen::draw_camera_view_ui()
 		    static_cast<short>(pane_h * kCameraMinimapZoomDenominator);
 		if (camera_scale_begin(zoomed_w, zoomed_h))
 		{
-			// The double resize is draw-scoped geometry, not a relayout:
+			// The widened resize is draw-scoped geometry, not a relayout:
 			// leave redrawme as the frame found it.
 			const short saved_redrawme = redrawme;
 			camera_view_->resize(static_cast<short>(0),

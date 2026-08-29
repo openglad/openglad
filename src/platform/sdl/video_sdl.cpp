@@ -1981,7 +1981,7 @@ bool sdl_video::camera_scale_begin(Sint32 w, Sint32 h)
 
 // Restore the real target, then copy the layer down onto the (x,y,w,h) pane
 // rect with the integer nearest sample dst(i,j) = layer(i*den, j*den) —
-// whole-pixel copies, no floats, no filtering (the 2:1 mapping the one-seat
+// whole-pixel copies, no floats, no filtering (the 4:1 mapping the one-seat
 // minimap tests pin).
 void sdl_video::camera_scale_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                                  Sint32 denominator)

@@ -199,7 +199,7 @@ public:
     {
         return false;
     }
-    // Off-screen camera-pane downscale (the one-seat second-minimap 0.5 zoom,
+    // Off-screen camera-pane downscale (the one-seat second-minimap 0.25 zoom,
     // docs/camera-views-design.md §6). camera_scale_begin redirects subsequent
     // tile/sprite blits to a black-cleared off-screen layer of exactly w x h
     // pixels anchored at (0,0) — the floor_layer redirect shape on its OWN
