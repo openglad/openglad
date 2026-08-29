@@ -264,3 +264,38 @@ Goal: the picture that decides whether to continue, plus a parity number.
 Exit criteria: mismatch count 0 on the effects-OFF scenes (or each nonzero
 explained by a D-entry), and a Free-view render the maintainer wants to keep
 looking at.
+
+---
+
+## 10. Stage 2 — carved models (maintainer direction, 2026-08-29)
+
+Ruling: the stamp extrusions proved the pipeline; entities should now be
+**real voxel models that rotate with the walker's facing**. The eight facing
+frames of a family are eight rotations of one character seen by one camera —
+so the model is *reconstructed*, not authored, by **space carving**:
+
+- Assume the game camera is orthographic at elevation θ above the ground
+  plane (θ is a tunable; the sprite art reads as roughly 45–65°).
+- Model grid `16×16×Z` (x = width, y = depth, z = up), Z ≈ 20. For each of
+  the 8 facings d (yaw_d = the direction's compass angle): rotate the voxel
+  grid by yaw_d, project each voxel through the camera onto the facing-d
+  sprite frame; a voxel whose projection lands on a transparent pixel in ANY
+  facing is carved away.
+- Color: a surviving voxel is *seen* by a view if no surviving voxel projects
+  to the same pixel nearer the camera; it takes its palette index (indices,
+  never RGB — the team band must survive) from the views that see it
+  (nearest-depth wins, majority as the tiebreak). Unseen interior voxels copy
+  their nearest surface neighbour.
+- Validation is a measurement, not a gate: re-render the carved model at each
+  of the 8 facings under the assumed camera and report per-facing pixel
+  agreement vs the original frame. The comparison strip (sprite row vs
+  re-render row, all 8 facings, a few θ values) is the deliverable that
+  answers "what does it look like, compared to the original".
+
+**Parity consequence, decided:** the Classic camera keeps drawing the sprite
+frames — they are exactly the baked view of the model from the game camera,
+i.e. an imposter cache, not a renderer twin. Free-camera views draw the
+carved model rotated by `curdir` (yaw += 45° per step) so facing is real.
+Terrain stays extruded, with two look fixes from stage 1: wall columns sample
+the matching `PIX_WALLSIDE*` art on their side slices, and trees get a
+canopy profile (narrow trunk, wide top) instead of flat extrusion.
