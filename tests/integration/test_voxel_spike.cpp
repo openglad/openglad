@@ -29,7 +29,9 @@
 
 #include <openglad/interface/render/voxel_carve.h>
 
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -504,17 +506,19 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 // Stage 2 (docs/voxel-render-design.md §10): space-carved facing models.
 //
 // The eight walk frames of a family are eight rotations of one character seen
-// by one camera, so the model is reconstructed by carving, not authored. This
-// half of the harness carves one model per family, measures how well a
-// re-render of the model reproduces each source frame, and dumps the pictures
-// that answer "does it still look like the same character".
+// by one camera, so the model is reconstructed by carving, not authored. §10's
+// raised bar makes the MODEL the product: it has to read as a better version
+// of the sprite, not a degraded one. So this harness carves supersampled,
+// renders through the real cube-face rasterizer, and dumps the pages a human
+// judges — hero shots, turntables, the honest classic-angle comparison, and
+// scenes with the models turned by curdir.
 // ===========================================================================
 
 namespace {
 
-std::string models_dir()
+std::string models2_dir()
 {
-    return spike_dir() + "/models";
+    return spike_dir() + "/models2";
 }
 
 struct Image
@@ -533,8 +537,16 @@ Image make_image(int w, int h, RGB bg)
     return im;
 }
 
+// The team-band remap every walkputbuffer variant does (video_sdl.cpp:2131),
+// so a sprite and a model render can be compared on equal terms.
+unsigned char remap_team(unsigned char c, unsigned char team)
+{
+    return c >= 248 ? static_cast<unsigned char>(team + (255 - c)) : c;
+}
+
 void draw_indices(Image& im, int x0, int y0, const unsigned char* idx, int w,
-                  int h, const std::vector<std::uint32_t>& lut)
+                  int h, const std::vector<std::uint32_t>& lut,
+                  unsigned char team)
 {
     for (int y = 0; y < h; ++y)
         for (int x = 0; x < w; ++x)
@@ -550,7 +562,7 @@ void draw_indices(Image& im, int x0, int y0, const unsigned char* idx, int w,
                 continue;
             im.px[static_cast<std::size_t>(dy) * static_cast<std::size_t>(im.w) +
                   static_cast<std::size_t>(dx)] =
-                unpack(lut[static_cast<std::size_t>(c)]);
+                unpack(lut[static_cast<std::size_t>(remap_team(c, team))]);
         }
 }
 
@@ -566,6 +578,23 @@ Image upscale(const Image& src, int f)
                            static_cast<std::size_t>(src.w) +
                        static_cast<std::size_t>(x / f)];
     return out;
+}
+
+void paste(Image& dst, int x0, int y0, const Image& src)
+{
+    for (int y = 0; y < src.h; ++y)
+        for (int x = 0; x < src.w; ++x)
+        {
+            const int dx = x0 + x, dy = y0 + y;
+            if (dx < 0 || dy < 0 || dx >= dst.w || dy >= dst.h)
+                continue;
+            dst.px[static_cast<std::size_t>(dy) *
+                       static_cast<std::size_t>(dst.w) +
+                   static_cast<std::size_t>(dx)] =
+                src.px[static_cast<std::size_t>(y) *
+                           static_cast<std::size_t>(src.w) +
+                       static_cast<std::size_t>(x)];
+        }
 }
 
 void write_image(const std::string& dir, const std::string& name,
@@ -627,6 +656,23 @@ struct FamilySpec
     int family;
 };
 
+// curdir order, from gloader.cpp's bit1..bit8 comments.
+const char* kFacingNames[NUM_FACINGS] = {"up",   "up-r",   "right", "down-r",
+                                         "down", "down-l", "left",  "up-l"};
+
+const char* core_family_name(int family)
+{
+    static const char* const kNames[] = {
+        "soldier",      "elf",       "archer",   "mage",     "skeleton",
+        "cleric",       "firelem",   "faerie",   "slime",    "small_slime",
+        "medium_slime", "thief",     "ghost",    "druid",    "orc",
+        "orc_captain",  "barbarian", "archmage", "golem",    "giant_skeleton",
+        "tower1"};
+    if (family < 0 || family >= static_cast<int>(std::size(kNames)))
+        return "unknown";
+    return kNames[family];
+}
+
 // The carved models the scene renders draw through, keyed by living family.
 class SpikeModels : public og::render::VoxelModelSource
 {
@@ -656,7 +702,7 @@ public:
     }
 };
 
-// §10's two terrain fixes, built from the live level art.
+// §10's terrain fixes, built from the live level art.
 void build_terrain_models(SpikeModels& out, const LevelVisuals& visuals)
 {
     out.tiles.clear();
@@ -676,6 +722,7 @@ void build_terrain_models(SpikeModels& out, const LevelVisuals& visuals)
         if (!m.empty())
             out.tiles.emplace(pix, std::move(m));
     }
+    const PixieData& grass = visuals.pixdata[PIX_GRASS1];
     for (int pix : {PIX_TREE_T1, PIX_TREE_M1, PIX_TREE_ML, PIX_TREE_MR,
                     PIX_TREE_MT, PIX_TREE_B1})
     {
@@ -683,13 +730,177 @@ void build_terrain_models(SpikeModels& out, const LevelVisuals& visuals)
         if (!top.valid())
             continue;
         // Trunk: a 4x4 centre column for the lower 12 voxels. Canopy: the
-        // full footprint for the top 8. Together they are still
-        // kVoxelHeightTree tall, so nothing else in the scene moves.
+        // full footprint for the top 8. The base slice is GRASS, so the
+        // overhang shows ground under it instead of a black trench.
         og::render::VoxelModel m = og::render::voxel_build_tree_model(
-            top.data.get(), top.w, top.h, 12, 8, 4);
+            top.data.get(), top.w, top.h,
+            grass.valid() ? grass.data.get() : nullptr,
+            grass.valid() ? grass.w : 0, grass.valid() ? grass.h : 0, 12, 8, 4);
         if (!m.empty())
             out.tiles.emplace(pix, std::move(m));
     }
+}
+
+// --------------------------------------------------------------------------
+// Rendering a single model through the REAL rasterizer, so hero shots and the
+// sprite-agreement number both come from the product path.
+// --------------------------------------------------------------------------
+struct ShotCamera
+{
+    float cam_yaw_deg = 0.0f;
+    float pitch_deg = og::render::kVoxelCarveTheta;
+    float scale = 1.0f;
+    int w = 0;
+    int h = 0;
+    float view_cx = 0.0f;
+    float view_cy = 0.0f;
+    bool outline = true;
+};
+
+struct ModelShot
+{
+    Image rgb;
+    std::vector<unsigned char> index;
+};
+
+ModelShot shoot_model(const og::render::VoxelModel& m, float model_yaw,
+                      const ShotCamera& sc,
+                      const std::vector<std::uint32_t>& lut,
+                      unsigned char team)
+{
+    ModelShot out;
+    out.rgb = make_image(sc.w, sc.h, RGB{0, 0, 0});
+    out.index.assign(
+        static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h), 0u);
+    std::vector<std::uint32_t> buf(
+        static_cast<std::size_t>(sc.w) * static_cast<std::size_t>(sc.h),
+        0xFF000000u);
+
+    og::render::VoxelScene scene;
+    og::render::VoxelVolume v;
+    v.model = &m;
+    v.yaw = model_yaw;
+    // The raster puts the footprint centre at (v.x + anchor_x, v.y + anchor_y);
+    // park that centre on the world origin so the camera can aim at (0, 0).
+    v.x = -m.anchor_x;
+    v.y = -m.anchor_y;
+    v.z = 0.0f;
+    v.material.team_color = team;
+    scene.emit(v);
+
+    og::render::VoxelCamera cam;
+    cam.kind = og::render::VoxelCameraKind::Free;
+    cam.cx = 0.0f;
+    cam.cy = 0.0f;
+    cam.yaw_deg = sc.cam_yaw_deg;
+    cam.pitch_deg = sc.pitch_deg;
+    cam.scale = sc.scale;
+    cam.view_cx = sc.view_cx;
+    cam.view_cy = sc.view_cy;
+
+    og::render::VoxelRenderTarget rt;
+    rt.pixels = buf.data();
+    rt.pitch_px = sc.w;
+    rt.w = sc.w;
+    rt.h = sc.h;
+    rt.clip_x0 = 0;
+    rt.clip_y0 = 0;
+    rt.clip_x1 = sc.w;
+    rt.clip_y1 = sc.h;
+    rt.lut256 = lut.data();
+    rt.index_plane = out.index.data();
+
+    og::render::VoxelRaster raster;
+    (void)raster.render(scene, cam, rt);
+    if (sc.outline)
+        raster.edge_darken(rt, 1.0f, og::render::kVoxelEdgeShade);
+    for (std::size_t i = 0; i < buf.size(); ++i)
+        out.rgb.px[i] = unpack(buf[i]);
+    return out;
+}
+
+struct Extent
+{
+    float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+};
+
+// Screen bounding box of a model at scale 1, about its footprint centre.
+// Measured over the OCCUPIED cells, not the grid: a carve leaves most of its
+// grid empty, and framing on the grid box shrinks the figure to a speck in
+// the middle of a large canvas.
+Extent model_extent(const og::render::VoxelModel& m, float model_yaw,
+                    float cam_yaw_deg, float pitch_deg)
+{
+    const float rad = 3.14159265358979f / 180.0f;
+    const float cm = std::cos(model_yaw), sm = std::sin(model_yaw);
+    const float cc = std::cos(cam_yaw_deg * rad), sc = std::sin(cam_yaw_deg * rad);
+    const float sp = std::sin(pitch_deg * rad), cp = std::cos(pitch_deg * rad);
+    int i0 = m.w, i1 = -1, j0 = m.d, j1 = -1, k0 = m.z, k1 = -1;
+    for (int k = 0; k < m.z; ++k)
+        for (int j = 0; j < m.d; ++j)
+            for (int i = 0; i < m.w; ++i)
+            {
+                if (m.occ[m.at(i, j, k)] == 0)
+                    continue;
+                i0 = std::min(i0, i);
+                i1 = std::max(i1, i);
+                j0 = std::min(j0, j);
+                j1 = std::max(j1, j);
+                k0 = std::min(k0, k);
+                k1 = std::max(k1, k);
+            }
+    if (i1 < 0)
+    {
+        i0 = 0;
+        i1 = m.w - 1;
+        j0 = 0;
+        j1 = m.d - 1;
+        k0 = 0;
+        k1 = m.z - 1;
+    }
+    const float hw = m.extent_x() * 0.5f, hd = m.extent_y() * 0.5f;
+    const float lox = static_cast<float>(i0) * m.cell - hw;
+    const float hix = static_cast<float>(i1 + 1) * m.cell - hw;
+    const float loy = static_cast<float>(j0) * m.cell - hd;
+    const float hiy = static_cast<float>(j1 + 1) * m.cell - hd;
+    const float loz = static_cast<float>(k0) * m.cell;
+    const float hiz = static_cast<float>(k1 + 1) * m.cell;
+    Extent e{1e9f, 1e9f, -1e9f, -1e9f};
+    for (int c = 0; c < 8; ++c)
+    {
+        const float lx = (c & 1) ? hix : lox;
+        const float ly = (c & 2) ? hiy : loy;
+        const float lz = (c & 4) ? hiz : loz;
+        const float wx = lx * cm - ly * sm;
+        const float wy = lx * sm + ly * cm;
+        const float rx = wx * cc - wy * sc;
+        const float ry = wx * sc + wy * cc;
+        const float sx = rx;
+        const float sy = ry * sp - lz * cp;
+        e.x0 = std::min(e.x0, sx);
+        e.x1 = std::max(e.x1, sx);
+        e.y0 = std::min(e.y0, sy);
+        e.y1 = std::max(e.y1, sy);
+    }
+    return e;
+}
+
+// Frame a model so the figure lands at roughly `target_h` pixels tall.
+ShotCamera frame_model(const og::render::VoxelModel& m, float model_yaw,
+                       float cam_yaw_deg, float pitch_deg, float target_h,
+                       int pad)
+{
+    const Extent e = model_extent(m, model_yaw, cam_yaw_deg, pitch_deg);
+    const float span_y = std::max(1e-3f, e.y1 - e.y0);
+    ShotCamera sc;
+    sc.cam_yaw_deg = cam_yaw_deg;
+    sc.pitch_deg = pitch_deg;
+    sc.scale = target_h / span_y;
+    sc.w = static_cast<int>(std::ceil((e.x1 - e.x0) * sc.scale)) + pad * 2;
+    sc.h = static_cast<int>(std::ceil(span_y * sc.scale)) + pad * 2;
+    sc.view_cx = -e.x0 * sc.scale + static_cast<float>(pad);
+    sc.view_cy = -e.y0 * sc.scale + static_cast<float>(pad);
+    return sc;
 }
 
 class VoxelModels : public testing::Test
@@ -713,56 +924,173 @@ protected:
 
 namespace {
 
-// One family page: the eight source frames over the eight re-renders of the
-// carved model, at one theta.
-Image build_facing_strip(const og::render::VoxelCarveFrames& fr,
-                         const og::render::VoxelModel& model,
-                         const std::vector<std::uint32_t>& lut)
+// Team 0's palette ramp base (mode_tick.cpp team_ramp_base: team * 16 + 40).
+// Both the sprite row and the model render go through it, so the comparison
+// is like for like.
+constexpr unsigned char kShotTeam = 40;
+
+// hero_<family>.png — one model big enough for a human to judge, front and
+// back. D5 in the round-1 review: nothing in the deliverable showed a model
+// at a size anyone could read.
+Image build_hero(const og::render::VoxelModel& m,
+                 const std::vector<std::uint32_t>& lut, float& out_scale)
 {
-    const int cw = fr.w + 2;
-    const int ch = fr.h + 2;
-    Image im = make_image(cw * NUM_FACINGS, ch * 2, RGB{24, 24, 32});
-    std::vector<unsigned char> render(
-        static_cast<std::size_t>(fr.w) * static_cast<std::size_t>(fr.h), 0u);
-    for (int d = 0; d < NUM_FACINGS; ++d)
+    const float pitch = 35.0f;
+    const float target = 220.0f;
+    ShotCamera front = frame_model(m, 0.0f, 30.0f, pitch, target, 10);
+    ShotCamera back = frame_model(m, 0.0f, 210.0f, pitch, target, 10);
+    out_scale = front.scale;
+    const ModelShot a = shoot_model(m, 0.0f, front, lut, kShotTeam);
+    const ModelShot b = shoot_model(m, 0.0f, back, lut, kShotTeam);
+    Image im = make_image(a.rgb.w + b.rgb.w + 8,
+                          std::max(a.rgb.h, b.rgb.h), RGB{18, 18, 24});
+    paste(im, 0, (im.h - a.rgb.h) / 2, a.rgb);
+    paste(im, a.rgb.w + 8, (im.h - b.rgb.h) / 2, b.rgb);
+    return im;
+}
+
+// turntable_<family>.png — 16 yaws at 22.5 degrees, one shared frame so the
+// figure does not breathe between cells.
+Image build_turntable(const og::render::VoxelModel& m,
+                      const std::vector<std::uint32_t>& lut)
+{
+    constexpr int kFrames = 16;
+    const float pitch = 40.0f;
+    const float target = 120.0f;
+    Extent u{1e9f, 1e9f, -1e9f, -1e9f};
+    for (int f = 0; f < kFrames; ++f)
     {
-        draw_indices(im, d * cw + 1, 1, fr.frame[d], fr.w, fr.h, lut);
-        og::render::voxel_model_render_indices(
-            model, og::render::voxel_facing_yaw_rad(d), model.theta_deg,
-            render.data(), fr.w, fr.h, model.anchor_x, model.anchor_y);
-        draw_indices(im, d * cw + 1, ch + 1, render.data(), fr.w, fr.h, lut);
+        const Extent e = model_extent(
+            m, 0.0f, static_cast<float>(f) * 22.5f, pitch);
+        u.x0 = std::min(u.x0, e.x0);
+        u.x1 = std::max(u.x1, e.x1);
+        u.y0 = std::min(u.y0, e.y0);
+        u.y1 = std::max(u.y1, e.y1);
+    }
+    ShotCamera sc;
+    sc.pitch_deg = pitch;
+    sc.scale = target / std::max(1e-3f, u.y1 - u.y0);
+    const int pad = 10;
+    sc.w = static_cast<int>(std::ceil((u.x1 - u.x0) * sc.scale)) + pad * 2;
+    sc.h = static_cast<int>(std::ceil((u.y1 - u.y0) * sc.scale)) + pad * 2;
+    sc.view_cx = -u.x0 * sc.scale + static_cast<float>(pad);
+    sc.view_cy = -u.y0 * sc.scale + static_cast<float>(pad);
+
+    Image im = make_image(sc.w * kFrames, sc.h, RGB{18, 18, 24});
+    for (int f = 0; f < kFrames; ++f)
+    {
+        sc.cam_yaw_deg = static_cast<float>(f) * 22.5f;
+        const ModelShot shot = shoot_model(m, 0.0f, sc, lut, kShotTeam);
+        paste(im, f * sc.w, 0, shot.rgb);
     }
     return im;
 }
 
-// Sixteen yaws at 22.5 degrees, pitch 45 — the model turned on the spot.
-Image build_turntable(const og::render::VoxelModel& model,
-                      const std::vector<std::uint32_t>& lut)
+// classic_<family>.png — the honest comparison at the game angle.
+//   row 1  the eight source facings, 8x nearest
+//   row 2  the model at the assumed game camera, 1x, upscaled 8x: pixel for
+//          pixel comparable with the sprite, and where the agreement number
+//          comes from
+//   row 3  the same camera rendered natively at 4x — the HD version
+Image build_classic_page(const og::render::VoxelCarveFrames& fr,
+                         const og::render::VoxelModel& m,
+                         const std::vector<std::uint32_t>& lut,
+                         float* agreement_out, float* iou_out)
 {
-    constexpr int kFrames = 16;
-    constexpr float kPitch = 45.0f;
-    const float sp = std::sin(kPitch * 3.14159265358979f / 180.0f);
-    const float cp = std::cos(kPitch * 3.14159265358979f / 180.0f);
-    const float diag = std::sqrt(static_cast<float>(model.w * model.w +
-                                                    model.d * model.d));
-    const int cw = static_cast<int>(std::ceil(diag)) + 4;
-    const int ch = static_cast<int>(std::ceil(
-                       diag * 0.5f * sp + static_cast<float>(model.z) * cp)) +
-        6;
-    const float ax = static_cast<float>(cw) * 0.5f;
-    const float ay = static_cast<float>(ch) - 2.0f - diag * 0.5f * sp;
-    Image im = make_image(cw * kFrames, ch, RGB{24, 24, 32});
-    std::vector<unsigned char> render(
-        static_cast<std::size_t>(cw) * static_cast<std::size_t>(ch), 0u);
-    for (int f = 0; f < kFrames; ++f)
+    const int cell_w = fr.w * 8;
+    const int cell_h = fr.h * 8;
+    Image im = make_image(cell_w * NUM_FACINGS, cell_h * 3, RGB{18, 18, 24});
+    for (int d = 0; d < NUM_FACINGS; ++d)
     {
-        const float yaw = static_cast<float>(f) * 22.5f * 3.14159265358979f /
-            180.0f;
-        og::render::voxel_model_render_indices(model, yaw, kPitch,
-                                               render.data(), cw, ch, ax, ay);
-        draw_indices(im, f * cw, 0, render.data(), cw, ch, lut);
+        const float yaw = og::render::voxel_facing_yaw_rad(d);
+
+        Image src = make_image(fr.w, fr.h, RGB{18, 18, 24});
+        draw_indices(src, 0, 0, fr.frame[d], fr.w, fr.h, lut, kShotTeam);
+        paste(im, d * cell_w, 0, upscale(src, 8));
+
+        ShotCamera one;
+        one.cam_yaw_deg = 0.0f;
+        one.pitch_deg = m.theta_deg;
+        one.scale = 1.0f;
+        one.w = fr.w;
+        one.h = fr.h;
+        one.view_cx = m.anchor_x;
+        one.view_cy = m.anchor_y;
+        one.outline = false; // 16 px tall: an outline would eat the figure
+        const ModelShot lo = shoot_model(m, yaw, one, lut, kShotTeam);
+        paste(im, d * cell_w, cell_h, upscale(lo.rgb, 8));
+
+        ShotCamera hd = one;
+        hd.scale = 4.0f;
+        hd.w = fr.w * 4;
+        hd.h = fr.h * 4;
+        hd.view_cx = m.anchor_x * 4.0f;
+        hd.view_cy = m.anchor_y * 4.0f;
+        hd.outline = true;
+        const ModelShot hi = shoot_model(m, yaw, hd, lut, kShotTeam);
+        paste(im, d * cell_w, cell_h * 2, upscale(hi.rgb, 2));
+
+        // Agreement of row 2 against the sprite, both team-remapped: matched
+        // palette index over the union of opaque pixels.
+        int matched = 0, both = 0, uni = 0;
+        for (int i = 0; i < fr.w * fr.h; ++i)
+        {
+            const unsigned char a =
+                remap_team(fr.frame[d][static_cast<std::size_t>(i)], kShotTeam);
+            const bool sa = fr.frame[d][static_cast<std::size_t>(i)] != 0;
+            const unsigned char b = lo.index[static_cast<std::size_t>(i)];
+            const bool sb = b != 0;
+            if (sa || sb)
+                ++uni;
+            if (sa && sb)
+            {
+                ++both;
+                if (a == b)
+                    ++matched;
+            }
+        }
+        agreement_out[d] = uni > 0
+            ? static_cast<float>(matched) / static_cast<float>(uni)
+            : 0.0f;
+        iou_out[d] = uni > 0
+            ? static_cast<float>(both) / static_cast<float>(uni)
+            : 0.0f;
     }
     return im;
+}
+
+// Where the fighters actually are: the living walker with the most livings
+// within one screen-ish radius. A zoomed render of a random map corner shows
+// nothing; the review needs the crowd.
+void densest_cluster(GameWorld& world, float& out_x, float& out_y)
+{
+    constexpr float kRadius = 110.0f;
+    int best = -1;
+    for (const auto& u : world.oblist)
+    {
+        walker* const w = u.get();
+        if (w == nullptr || w->dead() || w->dormant() ||
+            w->query_order() != Order::Living)
+            continue;
+        int count = 0;
+        for (const auto& v : world.oblist)
+        {
+            walker* const o = v.get();
+            if (o == nullptr || o->dead() || o->dormant() ||
+                o->query_order() != Order::Living)
+                continue;
+            const float dx = o->worldx() - w->worldx();
+            const float dy = o->worldy() - w->worldy();
+            if (dx * dx + dy * dy <= kRadius * kRadius)
+                ++count;
+        }
+        if (count > best)
+        {
+            best = count;
+            out_x = w->worldx();
+            out_y = w->worldy();
+        }
+    }
 }
 
 // A Free render of a real level whose livings are carved models turned by
@@ -815,18 +1143,21 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
     for (const auto& v : scene.volumes())
         if (v.model != nullptr)
             ++modelled;
-    printf("[voxel-models] scene %s (%s scen%d): grid %dx%d topx=%d topy=%d "
-           "oblist=%d\n",
-           name.c_str(), campaign, level, world.grid_for_floor(0).w,
-           world.grid_for_floor(0).h, static_cast<int>(vs->topx),
-           static_cast<int>(vs->topy), static_cast<int>(world.oblist.size()));
-    printf("  %d tiles, %d decor, %d entities, %d volumes carry a model\n",
-           bs.tiles, bs.decor, bs.entities, modelled);
 
-    const float focus_x =
+    const float wide_x =
         static_cast<float>(vs->topx) + static_cast<float>(vs->xview) / 2.0f;
-    const float focus_y =
+    const float wide_y =
         static_cast<float>(vs->topy) + static_cast<float>(vs->yview) / 2.0f;
+    float crowd_x = wide_x, crowd_y = wide_y;
+    densest_cluster(world, crowd_x, crowd_y);
+
+    printf("[voxel-models] scene %s (%s scen%d): grid %dx%d  %d tiles, "
+           "%d decor, %d entities, %d volumes carry a model; crowd at "
+           "(%.0f, %.0f)\n",
+           name.c_str(), campaign, level, world.grid_for_floor(0).w,
+           world.grid_for_floor(0).h, bs.tiles, bs.decor, bs.entities,
+           modelled, static_cast<double>(crowd_x),
+           static_cast<double>(crowd_y));
 
     struct FreeSpec
     {
@@ -834,11 +1165,12 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
         float yaw;
         float pitch;
         float scale;
+        bool crowd;
     };
     const FreeSpec views[] = {
-        {"y30_p60", 30.0f, 60.0f, 1.0f},
-        {"y45_p45", 45.0f, 45.0f, 1.0f},
-        {"y30_p60_zoom2", 30.0f, 60.0f, 2.0f},
+        {"y30_p60", 30.0f, 60.0f, 1.0f, false},
+        {"crowd_z3_y30_p60", 30.0f, 60.0f, 3.0f, true},
+        {"crowd_z3_y45_p45", 45.0f, 45.0f, 3.0f, true},
     };
     for (const FreeSpec& f : views)
     {
@@ -846,8 +1178,8 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
             static_cast<std::size_t>(kClassicW) * kClassicH, 0xFF000000u);
         og::render::VoxelCamera cam;
         cam.kind = og::render::VoxelCameraKind::Free;
-        cam.cx = focus_x;
-        cam.cy = focus_y;
+        cam.cx = f.crowd ? crowd_x : wide_x;
+        cam.cy = f.crowd ? crowd_y : wide_y;
         cam.yaw_deg = f.yaw;
         cam.pitch_deg = f.pitch;
         cam.scale = f.scale;
@@ -866,40 +1198,27 @@ void run_model_scene(const std::string& name, const char* campaign, int level,
         rt.lut256 = lut.data();
 
         og::render::VoxelRaster raster;
+        const auto t0 = std::chrono::steady_clock::now();
         const og::render::VoxelRasterStats rs = raster.render(scene, cam, rt);
+        raster.edge_darken(rt, 2.0f, 0.72f);
+        const auto t1 = std::chrono::steady_clock::now();
 
         Image im = make_image(kClassicW, kClassicH, RGB{0, 0, 0});
         for (std::size_t i = 0; i < buf.size(); ++i)
             im.px[i] = unpack(buf[i]);
-        write_image(models_dir(), "scene_" + name + "_" + f.tag,
+        write_image(models2_dir(), "scene_" + name + "_" + f.tag,
                     upscale(im, 2));
-        printf("  %s: %llu slices, %llu samples, %llu writes\n", f.tag,
+        printf("  %-18s %llu faces, %llu samples, %llu writes, %.2f s\n", f.tag,
                static_cast<unsigned long long>(rs.slices),
                static_cast<unsigned long long>(rs.pixel_samples),
-               static_cast<unsigned long long>(rs.pixels_written));
+               static_cast<unsigned long long>(rs.pixels_written),
+               std::chrono::duration<double>(t1 - t0).count());
     }
 
     vs->editor_authoring_view_ = false;
     vs->editor_floor_override_ = -1;
     world.delete_objects();
     world.set_floor_count(1);
-}
-
-// curdir order, from gloader.cpp's bit1..bit8 comments.
-const char* kFacingNames[NUM_FACINGS] = {"up",   "up-r", "right", "down-r",
-                                         "down", "down-l", "left", "up-l"};
-
-const char* core_family_name(int family)
-{
-    static const char* const kNames[] = {
-        "soldier", "elf",    "archer",   "mage",      "skeleton",
-        "cleric",  "firelem","faerie",   "slime",     "small_slime",
-        "medium_slime", "thief", "ghost", "druid",    "orc",
-        "orc_captain",  "barbarian", "archmage", "golem", "giant_skeleton",
-        "tower1"};
-    if (family < 0 || family >= static_cast<int>(std::size(kNames)))
-        return "unknown";
-    return kNames[family];
 }
 
 } // namespace
@@ -925,10 +1244,6 @@ TEST_F(VoxelModels, carve_facings_and_scene_renders)
         if (w != nullptr && w->query_order() == Order::Living)
             in_scen1.insert(static_cast<int>(w->family()));
     }
-    printf("[voxel-models] gladiator scen1: grid %dx%d oblist=%d campaign=%s\n",
-           world.grid_for_floor(0).w, world.grid_for_floor(0).h,
-           static_cast<int>(world.oblist.size()),
-           scr()->save_data.current_campaign.c_str());
     printf("[voxel-models] gladiator scen1 livings:");
     for (int f : in_scen1)
         printf(" %s(%d)", core_family_name(f), f);
@@ -936,10 +1251,45 @@ TEST_F(VoxelModels, carve_facings_and_scene_renders)
 
     const std::vector<std::uint32_t> lut = build_palette_lut();
 
+    // --- convention probe -------------------------------------------------
+    // The facing -> yaw map is derived in voxel_scene.h from gloader's bit1..
+    // bit8 comments and the FACE_* constants. Check it against the art rather
+    // than trusting the derivation: carve under every rotational offset and
+    // both handednesses. A wrong map intersects the eight silhouettes in the
+    // wrong relative orientations, so its hull collapses.
+    {
+        og::render::VoxelCarveFrames probe;
+        if (family_walk_frames(FAMILY_SOLDIER, probe))
+        {
+            printf("[voxel-models] facing convention probe (footman, 1x): "
+                   "yaw_d = sign * (d - 4 + offset) * 45\n");
+            for (int sign = 1; sign >= -1; sign -= 2)
+                for (int off = 0; off < NUM_FACINGS; ++off)
+                {
+                    og::render::VoxelCarveParams cp;
+                    cp.supersample = 1;
+                    cp.custom_yaw = true;
+                    for (int d = 0; d < NUM_FACINGS; ++d)
+                        cp.yaw_rad[static_cast<std::size_t>(d)] =
+                            static_cast<float>(
+                                sign * ((d - FACE_DOWN + off) * 45)) *
+                            3.14159265358979f / 180.0f;
+                    const og::render::VoxelCarveReport r =
+                        og::render::voxel_carve(probe, cp);
+                    printf("    sign %+d offset %d : iou %.1f%%  %d voxels%s\n",
+                           sign, off,
+                           static_cast<double>(r.fit_iou_mean) * 100.0,
+                           r.voxel_count,
+                           (sign == 1 && off == 0) ? "   <- derived map" : "");
+                }
+        }
+    }
+
     std::vector<FamilySpec> fams = {
         {"footman", FAMILY_SOLDIER},  {"archer", FAMILY_ARCHER},
         {"orc", FAMILY_ORC},          {"skeleton", FAMILY_SKELETON},
         {"mage", FAMILY_MAGE},        {"elf", FAMILY_ELF},
+        {"ghost", FAMILY_GHOST},
     };
     for (int f : in_scen1)
     {
@@ -951,143 +1301,92 @@ TEST_F(VoxelModels, carve_facings_and_scene_renders)
             fams.push_back({core_family_name(f), f});
     }
 
-    // --- convention probe -------------------------------------------------
-    // The facing -> yaw map is derived in voxel_scene.h from gloader's bit1..
-    // bit8 comments and the FACE_* constants. Check it against the art rather
-    // than trusting the derivation: carve the same frames under every
-    // rotational offset and both handednesses. A wrong map intersects the
-    // eight silhouettes in the wrong relative orientations, so its agreement
-    // collapses; the derived map should win.
-    {
-        og::render::VoxelCarveFrames probe;
-        if (family_walk_frames(FAMILY_SOLDIER, probe))
-        {
-            printf("[voxel-models] facing convention probe (footman, "
-                   "theta 55): yaw_d = sign * (d - 4 + offset) * 45\n");
-            for (int sign = 1; sign >= -1; sign -= 2)
-                for (int off = 0; off < NUM_FACINGS; ++off)
-                {
-                    og::render::VoxelCarveParams cp;
-                    cp.theta_deg = 55.0f;
-                    cp.custom_yaw = true;
-                    for (int d = 0; d < NUM_FACINGS; ++d)
-                        cp.yaw_rad[static_cast<std::size_t>(d)] =
-                            static_cast<float>(sign * ((d - FACE_DOWN + off) * 45)) *
-                            3.14159265358979f / 180.0f;
-                    const og::render::VoxelCarveReport r =
-                        og::render::voxel_carve(probe, cp);
-                    printf("    sign %+d offset %d : mean %.1f%%  iou %.1f%%  "
-                           "%d voxels%s\n",
-                           sign, off,
-                           static_cast<double>(r.agreement_mean) * 100.0,
-                           static_cast<double>(r.silhouette_iou_mean) * 100.0,
-                           r.voxel_count,
-                           (sign == 1 && off == 0) ? "   <- derived map" : "");
-                }
-        }
-    }
-
-    const float thetas[] = {45.0f, 55.0f, 65.0f};
-    constexpr int kThetas = 3;
-    double theta_sum[kThetas] = {};
-    int theta_n[kThetas] = {};
-    std::vector<std::array<og::render::VoxelModel, kThetas>> carved(fams.size());
-
+    printf("[voxel-models] theta fixed at %.0f (45/55/65 measured within a "
+           "point of each other and looked identical)\n",
+           static_cast<double>(og::render::kVoxelCarveTheta));
     printf("[voxel-models] agreement = matched palette index / union of "
-           "opaque pixels, per facing (up, up-r, right, down-r, down, "
-           "down-l, left, up-l)\n");
-    for (std::size_t fi = 0; fi < fams.size(); ++fi)
+           "opaque pixels, on the 1x classic-angle render (row 2)\n");
+
+    std::map<int, og::render::VoxelModel> scene_models;
+    for (const FamilySpec& fs : fams)
     {
-        const FamilySpec& fs = fams[fi];
         og::render::VoxelCarveFrames fr;
         if (!family_walk_frames(fs.family, fr))
         {
             printf("  %-10s : no eight-facing walk art, skipped\n", fs.name);
             continue;
         }
-        printf("  %-10s  sprite %dx%d\n", fs.name, fr.w, fr.h);
-        for (int ti = 0; ti < kThetas; ++ti)
+        og::render::VoxelCarveParams cp;
+        const og::render::VoxelCarveReport rep = og::render::voxel_carve(fr, cp);
+        if (rep.model.empty())
         {
-            og::render::VoxelCarveParams cp;
-            cp.theta_deg = thetas[ti];
-            const og::render::VoxelCarveReport rep = og::render::voxel_carve(fr, cp);
-            if (rep.model.empty())
-            {
-                printf("    theta %2.0f : carved to nothing\n",
-                       static_cast<double>(thetas[ti]));
-                continue;
-            }
-            printf("    theta %2.0f  grid %dx%dx%d  anchor (%.2f,%.2f)  "
-                   "%d voxels  %.3f s  mean %.1f%%  iou %.1f%%  worst %s "
-                   "%.1f%%\n",
-                   static_cast<double>(thetas[ti]), rep.model.w, rep.model.d,
-                   rep.model.z, static_cast<double>(rep.model.anchor_x),
-                   static_cast<double>(rep.model.anchor_y), rep.voxel_count,
-                   rep.carve_seconds,
-                   static_cast<double>(rep.agreement_mean) * 100.0,
-                   static_cast<double>(rep.silhouette_iou_mean) * 100.0,
-                   kFacingNames[rep.worst_facing],
-                   static_cast<double>(rep.agreement[rep.worst_facing]) * 100.0);
-            printf("             per-facing:");
-            for (int d = 0; d < NUM_FACINGS; ++d)
-                printf(" %s=%.0f%%", kFacingNames[d],
-                       static_cast<double>(rep.agreement[d]) * 100.0);
-            printf("\n");
-
-            char fname[128];
-            snprintf(fname, sizeof(fname), "strip_%s_t%.0f", fs.name,
-                     static_cast<double>(thetas[ti]));
-            write_image(models_dir(), fname,
-                        upscale(build_facing_strip(fr, rep.model, lut), 4));
-
-            theta_sum[ti] += static_cast<double>(rep.agreement_mean);
-            ++theta_n[ti];
-            carved[fi][static_cast<std::size_t>(ti)] = rep.model;
-        }
-    }
-
-    int best_ti = 0;
-    for (int ti = 0; ti < kThetas; ++ti)
-    {
-        const double m = theta_n[ti] > 0 ? theta_sum[ti] / theta_n[ti] : 0.0;
-        printf("[voxel-models] theta %2.0f mean agreement over %d families: "
-               "%.1f%%\n",
-               static_cast<double>(thetas[ti]), theta_n[ti], m * 100.0);
-        if (theta_n[ti] > 0 && theta_n[best_ti] > 0 &&
-            m > theta_sum[best_ti] / theta_n[best_ti])
-            best_ti = ti;
-    }
-    printf("[voxel-models] RECOMMENDED theta = %.0f\n",
-           static_cast<double>(thetas[best_ti]));
-
-    // Turntables for the first two families that carved.
-    int turned = 0;
-    for (std::size_t fi = 0; fi < fams.size() && turned < 2; ++fi)
-    {
-        const og::render::VoxelModel& m =
-            carved[fi][static_cast<std::size_t>(best_ti)];
-        if (m.empty())
+            printf("  %-10s : carved to nothing\n", fs.name);
             continue;
-        char fname[128];
-        snprintf(fname, sizeof(fname), "turntable_%s", fams[fi].name);
-        write_image(models_dir(), fname, upscale(build_turntable(m, lut), 4));
-        ++turned;
-    }
+        }
+        const og::render::VoxelModel& hi = rep.model;
+        og::render::VoxelModel lo = og::render::voxel_model_downsample(hi, 2);
 
-    // The scene renders draw livings as carved models turned by curdir.
-    std::map<int, og::render::VoxelModel> living;
-    for (std::size_t fi = 0; fi < fams.size(); ++fi)
-    {
-        const og::render::VoxelModel& m =
-            carved[fi][static_cast<std::size_t>(best_ti)];
-        if (!m.empty())
-            living.emplace(fams[fi].family, m);
+        const auto r0 = std::chrono::steady_clock::now();
+        float agree[NUM_FACINGS] = {};
+        float iou[NUM_FACINGS] = {};
+        write_image(models2_dir(), std::string("classic_") + fs.name,
+                    build_classic_page(fr, hi, lut, agree, iou));
+        float hero_scale = 0.0f;
+        write_image(models2_dir(), std::string("hero_") + fs.name,
+                    build_hero(hi, lut, hero_scale));
+        const auto r1 = std::chrono::steady_clock::now();
+
+        float mean = 0.0f, mean_iou = 0.0f;
+        int worst = 0;
+        for (int d = 0; d < NUM_FACINGS; ++d)
+        {
+            mean += agree[d];
+            mean_iou += iou[d];
+            if (agree[d] < agree[worst])
+                worst = d;
+        }
+        mean /= static_cast<float>(NUM_FACINGS);
+        mean_iou /= static_cast<float>(NUM_FACINGS);
+
+        printf("  %-9s sprite %2dx%-2d  hi %dx%dx%d %6d vox (%d surface)  "
+               "lo %dx%dx%d %5d vox\n",
+               fs.name, fr.w, fr.h, hi.w, hi.d, hi.z, rep.voxel_count,
+               rep.surface_voxels, lo.w, lo.d, lo.z,
+               static_cast<int>(std::count_if(
+                   lo.occ.begin(), lo.occ.end(),
+                   [](unsigned char c) { return c != 0; })));
+        printf("            fit %.2fs carve %.2fs render %.2fs  "
+               "opened %d, photo %d%s, dropped %d, cavities %d, "
+               "despeckled %d  anchor (%.2f,%.2f)  hero scale %.1f\n",
+               rep.fit_seconds, rep.carve_seconds,
+               std::chrono::duration<double>(r1 - r0).count(),
+               rep.opened_away, rep.photo_carved,
+               rep.photo_rolled_back ? " ROLLED BACK" : "",
+               rep.components_dropped, rep.cavity_voxels_filled,
+               rep.despeckled, static_cast<double>(hi.anchor_x),
+               static_cast<double>(hi.anchor_y),
+               static_cast<double>(hero_scale));
+        printf("            agreement mean %.1f%%  iou %.1f%%  worst %s "
+               "%.1f%%  per-facing:",
+               static_cast<double>(mean) * 100.0,
+               static_cast<double>(mean_iou) * 100.0, kFacingNames[worst],
+               static_cast<double>(agree[worst]) * 100.0);
+        for (int d = 0; d < NUM_FACINGS; ++d)
+            printf(" %.0f", static_cast<double>(agree[d]) * 100.0);
+        printf("\n");
+
+        if (std::string(fs.name) == "footman" ||
+            std::string(fs.name) == "archer" || std::string(fs.name) == "orc")
+            write_image(models2_dir(), std::string("turntable_") + fs.name,
+                        build_turntable(hi, lut));
+
+        scene_models.emplace(fs.family, std::move(lo));
     }
 
     world.delete_objects();
     world.set_floor_count(1);
-    run_model_scene("gladiator_scen1", "gladiator", 1, living);
+    run_model_scene("gladiator_scen1", "gladiator", 1, scene_models);
     if (testing::Test::HasFatalFailure())
         return;
-    run_model_scene("westlands_scen1", "westlands", 1, living);
+    run_model_scene("westlands_scen1", "westlands", 1, scene_models);
 }

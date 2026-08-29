@@ -87,6 +87,7 @@ inline void raster_affine_slice(const VoxelProjection& p00,
     if (bx0 >= bx1 || by0 >= by1)
         return;
     ++stats.slices;
+    std::uint64_t wrote = 0;
 
     // Screen -> unit quad, then unit -> texel.
     const float inv = 1.0f / det;
@@ -120,16 +121,55 @@ inline void raster_affine_slice(const VoxelProjection& p00,
                 continue;
             ++stats.pixel_samples;
             std::uint32_t color = 0;
-            if (!sample(tx, ty, color))
+            unsigned char pal = 0;
+            if (!sample(tx, ty, color, pal))
                 continue;
             const float depth = d00 + u * ddu + vv * ddv;
             if (depth < drow[x])
                 continue; // keep nearer; ties overwrite
             drow[x] = depth;
             row[x] = color;
+            if (target.index_plane != nullptr)
+                target.index_plane[static_cast<std::size_t>(y) *
+                                       static_cast<std::size_t>(target.pitch_px) +
+                                   static_cast<std::size_t>(x)] = pal;
             ++stats.pixels_written;
+            ++wrote;
         }
     }
+
+    if (wrote != 0)
+        return;
+    // Sub-pixel quad. A carved model has four cells to the sprite pixel, so at
+    // the game camera's 1:1 scale every cube face is a quarter of a pixel
+    // across and NO pixel centre lands inside it — the inverse map rejects
+    // them all and the figure renders full of holes. Plot the quad's centre
+    // instead, which is what a point-sampled face of sub-pixel size means.
+    const float qcx = p00.sx + (ax + bx) * 0.5f;
+    const float qcy = p00.sy + (ay + by) * 0.5f;
+    const int px = static_cast<int>(std::floor(qcx));
+    const int py = static_cast<int>(std::floor(qcy));
+    if (px < cx0 || py < cy0 || px >= cx1 || py >= cy1)
+        return;
+    ++stats.pixel_samples;
+    std::uint32_t color = 0;
+    unsigned char pal = 0;
+    if (!sample(tex_w / 2, tex_h / 2, color, pal))
+        return;
+    const float depth = d00 + (ddu + ddv) * 0.5f;
+    float* const drow = depth_buf + static_cast<std::size_t>(py) *
+                                        static_cast<std::size_t>(depth_w);
+    if (depth < drow[px])
+        return;
+    drow[px] = depth;
+    target.pixels[static_cast<std::size_t>(py) *
+                      static_cast<std::size_t>(target.pitch_px) +
+                  static_cast<std::size_t>(px)] = color;
+    if (target.index_plane != nullptr)
+        target.index_plane[static_cast<std::size_t>(py) *
+                               static_cast<std::size_t>(target.pitch_px) +
+                           static_cast<std::size_t>(px)] = pal;
+    ++stats.pixels_written;
 }
 
 } // namespace
@@ -173,6 +213,80 @@ VoxelProjection VoxelCamera::project(float x, float y, float z) const
     return p;
 }
 
+void VoxelRaster::build_shade_tables(const VoxelRenderTarget& target)
+{
+    shade_table_.resize(static_cast<std::size_t>(kVoxelShadeLevels) * 256u);
+    for (int level = 0; level < kVoxelShadeLevels; ++level)
+    {
+        const float f = (static_cast<float>(level) + 0.5f) /
+            static_cast<float>(kVoxelShadeLevels);
+        for (int i = 0; i < 256; ++i)
+            shade_table_[static_cast<std::size_t>(level) * 256u +
+                         static_cast<std::size_t>(i)] =
+                shade_xrgb(target.lut256[i], f);
+    }
+}
+
+void VoxelRaster::edge_darken(const VoxelRenderTarget& target,
+                              float depth_jump, float factor)
+{
+    if (target.pixels == nullptr || depth_w_ <= 0 || depth_h_ <= 0)
+        return;
+    const int cx0 = std::max(0, target.clip_x0);
+    const int cy0 = std::max(0, target.clip_y0);
+    const int cx1 = std::min(target.w, target.clip_x1);
+    const int cy1 = std::min(target.h, target.clip_y1);
+    if (cx0 >= cx1 || cy0 >= cy1)
+        return;
+    // Two passes: decide from the untouched depth buffer, then write, so a
+    // darkened pixel cannot seed its neighbours.
+    std::vector<unsigned char> mark(
+        static_cast<std::size_t>(target.w) * static_cast<std::size_t>(target.h),
+        0u);
+    for (int y = cy0; y < cy1; ++y)
+        for (int x = cx0; x < cx1; ++x)
+        {
+            const std::size_t di = static_cast<std::size_t>(y) *
+                                       static_cast<std::size_t>(depth_w_) +
+                                   static_cast<std::size_t>(x);
+            const float d = depth_[di];
+            if (d == -std::numeric_limits<float>::infinity())
+                continue; // nothing drawn here
+            const int nb[4][2] = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
+            for (const auto& q : nb)
+            {
+                if (q[0] < cx0 || q[1] < cy0 || q[0] >= cx1 || q[1] >= cy1)
+                    continue;
+                const float nd = depth_[static_cast<std::size_t>(q[1]) *
+                                            static_cast<std::size_t>(depth_w_) +
+                                        static_cast<std::size_t>(q[0])];
+                // A neighbour that is much FARTHER (or empty) means this pixel
+                // sits on a silhouette against the background behind it.
+                if (nd == -std::numeric_limits<float>::infinity() ||
+                    nd < d - depth_jump)
+                {
+                    mark[static_cast<std::size_t>(y) *
+                             static_cast<std::size_t>(target.w) +
+                         static_cast<std::size_t>(x)] = 1u;
+                    break;
+                }
+            }
+        }
+    for (int y = cy0; y < cy1; ++y)
+        for (int x = cx0; x < cx1; ++x)
+        {
+            if (mark[static_cast<std::size_t>(y) *
+                         static_cast<std::size_t>(target.w) +
+                     static_cast<std::size_t>(x)] == 0u)
+                continue;
+            std::uint32_t* const px =
+                target.pixels + static_cast<std::size_t>(y) *
+                                    static_cast<std::size_t>(target.pitch_px) +
+                static_cast<std::size_t>(x);
+            *px = shade_xrgb(*px, factor);
+        }
+}
+
 void VoxelRaster::reset_depth(int w, int h)
 {
     const std::size_t need =
@@ -212,13 +326,31 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
         for (int i = 0; i < 256; ++i)
             shaded_lut_[static_cast<std::size_t>(i)] =
                 shade_xrgb(target.lut256[i], kVoxelSideShade);
+        build_shade_tables(target);
     }
+
+    // A cube face is one flat colour, so the face shade x AO product collapses
+    // to a table lookup instead of three float multiplies per pixel.
+    const auto shade_lookup = [this](float f, unsigned char pal) {
+        int level =
+            static_cast<int>(f * static_cast<float>(kVoxelShadeLevels));
+        level = std::clamp(level, 0, kVoxelShadeLevels - 1);
+        return shade_table_[static_cast<std::size_t>(level) * 256u +
+                            static_cast<std::size_t>(pal)];
+    };
+
 
     for (const VoxelVolume& v : scene.volumes())
     {
         ++stats.volumes;
-        if (v.texels == nullptr || v.w <= 0 || v.h <= 0)
+        // A model-only volume carries no texture: the hero and comparison
+        // renders emit one, and terrain/sprite volumes still carry both.
+        const bool has_model = (v.model != nullptr && !v.model->empty());
+        if (!has_model && (v.texels == nullptr || v.w <= 0 || v.h <= 0))
             continue;
+        if (has_model && camera.collapse() &&
+            (v.texels == nullptr || v.w <= 0 || v.h <= 0))
+            continue; // Classic draws the sprite imposter or nothing at all
 
         const int top_slice = collapse ? 0 : std::max(0, v.height);
         const float base_z =
@@ -228,57 +360,155 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
         // Classic ignores models by ruling: the sprite frames ARE the baked
         // view of the model from the game camera, so drawing the model there
         // would be a renderer twin of an imposter that is already exact.
-        if (!collapse && v.model != nullptr && !v.model->empty())
+        if (!collapse && has_model)
         {
             const VoxelModel& m = *v.model;
-            const float hw = static_cast<float>(m.w) * 0.5f;
-            const float hd = static_cast<float>(m.d) * 0.5f;
+            const float c = m.cell;
+            const float hw = m.extent_x() * 0.5f;
+            const float hd = m.extent_y() * 0.5f;
             // The model's anchor is its footprint centre expressed in the
             // volume's own texel box, so the volume position stays exactly
             // what the Classic camera wants: the sprite/tile top-left.
             const float ccx = v.x + m.anchor_x;
             const float ccy = v.y + m.anchor_y;
             const float cyaw = std::cos(v.yaw), syaw = std::sin(v.yaw);
-            // The unrotated footprint corners, turned about the centre. Same
-            // matrix as the camera's own yaw, so the two simply compose.
-            const float ox = ccx + (-hw) * cyaw - (-hd) * syaw;
-            const float oy = ccy + (-hw) * syaw + (-hd) * cyaw;
-            const float ux = static_cast<float>(m.w) * cyaw;
-            const float uy = static_cast<float>(m.w) * syaw;
-            const float vx = static_cast<float>(m.d) * -syaw;
-            const float vy = static_cast<float>(m.d) * cyaw;
             const VoxelMaterial mat = v.material;
-            for (int k = 0; k < m.z; ++k)
+
+            // Model-local (lx, ly) -> world, through the volume's own yaw.
+            // Same matrix as the camera's, so the two simply compose.
+            const auto wx = [&](float lx, float ly) {
+                return ccx + lx * cyaw - ly * syaw;
+            };
+            const auto wy = [&](float lx, float ly) {
+                return ccy + lx * syaw + ly * cyaw;
+            };
+
+            if (!m.cube_faces)
             {
-                const float slice_z = base_z + static_cast<float>(k);
-                const VoxelProjection q00 = camera.project(ox, oy, slice_z);
-                const VoxelProjection q10 =
-                    camera.project(ox + ux, oy + uy, slice_z);
-                const VoxelProjection q01 =
-                    camera.project(ox + vx, oy + vy, slice_z);
-                const std::size_t layer = static_cast<std::size_t>(k) *
-                                          static_cast<std::size_t>(m.w) *
-                                          static_cast<std::size_t>(m.d);
-                raster_affine_slice(
-                    q00, q10, q01, m.w, m.d, cx0, cy0, cx1, cy1, target,
-                    depth_.data(), depth_w_, stats,
-                    [&](int tx, int ty, std::uint32_t& color) {
-                        const std::size_t idx =
-                            layer + static_cast<std::size_t>(ty) *
-                                        static_cast<std::size_t>(m.w) +
-                            static_cast<std::size_t>(tx);
-                        if (m.occ[idx] == 0)
-                            return false;
-                        const unsigned char c =
-                            apply_material(m.index[idx], mat);
-                        // A voxel with solid neighbours above it is a flank,
-                        // not a top surface: the §4 side shade, per voxel.
-                        color = (m.lit[idx] != 0)
-                            ? target.lut256[c]
-                            : shaded_lut_[c];
-                        return true;
-                    });
+                // Terrain models keep the stacked-slice look they were built
+                // for: one textured quad per layer, no per-voxel faces.
+                for (int k = 0; k < m.z; ++k)
+                {
+                    const float slice_z = base_z + static_cast<float>(k) * c;
+                    const VoxelProjection q00 =
+                        camera.project(wx(-hw, -hd), wy(-hw, -hd), slice_z);
+                    const VoxelProjection q10 =
+                        camera.project(wx(hw, -hd), wy(hw, -hd), slice_z);
+                    const VoxelProjection q01 =
+                        camera.project(wx(-hw, hd), wy(-hw, hd), slice_z);
+                    const std::size_t layer = static_cast<std::size_t>(k) *
+                                              static_cast<std::size_t>(m.w) *
+                                              static_cast<std::size_t>(m.d);
+                    raster_affine_slice(
+                        q00, q10, q01, m.w, m.d, cx0, cy0, cx1, cy1, target,
+                        depth_.data(), depth_w_, stats,
+                        [&](int tx, int ty, std::uint32_t& color,
+                            unsigned char& pal) {
+                            const std::size_t idx =
+                                layer + static_cast<std::size_t>(ty) *
+                                            static_cast<std::size_t>(m.w) +
+                                static_cast<std::size_t>(tx);
+                            if (m.occ[idx] == 0)
+                                return false;
+                            pal = apply_material(m.index[idx], mat);
+                            color = (m.lit[idx] != 0)
+                                ? target.lut256[pal]
+                                : shaded_lut_[pal];
+                            return true;
+                        });
+                }
+                continue;
             }
+
+            // ---- cube faces ----
+            // Each surface voxel shows at most three faces: its top, and the
+            // two vertical sides whose outward normal has a component toward
+            // the viewer. Which two those are follows from the total turn the
+            // model has taken on screen — the volume's own yaw composed with
+            // the camera's — so it is decided once per volume, not per voxel.
+            const float total_yaw =
+                v.yaw + camera.yaw_deg * kDeg2Rad;
+            const float tsin = std::sin(total_yaw);
+            const float tcos = std::cos(total_yaw);
+            // World +y runs toward the viewer, so a face is camera-facing
+            // when its screen-space normal has a positive +y component.
+            const int xdir = (tsin > 0.0f) ? 1 : -1;
+            const int ydir = (tcos > 0.0f) ? 1 : -1;
+            const float x_face_shade =
+                (xdir > 0) ? kVoxelFaceSun : kVoxelFaceShadow;
+            const float y_face_shade =
+                (ydir > 0) ? kVoxelFaceShadow : kVoxelFaceSun;
+
+            for (int k = 0; k < m.z; ++k)
+                for (int j = 0; j < m.d; ++j)
+                    for (int i = 0; i < m.w; ++i)
+                    {
+                        const std::size_t idx = m.at(i, j, k);
+                        if (m.occ[idx] == 0)
+                            continue;
+                        const bool show_top = !m.solid(i, j, k + 1);
+                        const bool show_x = !m.solid(i + xdir, j, k);
+                        const bool show_y = !m.solid(i, j + ydir, k);
+                        if (!show_top && !show_x && !show_y)
+                            continue;
+
+                        const unsigned char pal =
+                            apply_material(m.index[idx], mat);
+                        const float ao = m.shade.empty()
+                            ? 1.0f
+                            : (kVoxelAoFloor +
+                               (1.0f - kVoxelAoFloor) *
+                                   static_cast<float>(m.shade[idx]) / 255.0f);
+
+                        const float lx0 = (static_cast<float>(i) * c) - hw;
+                        const float ly0 = (static_cast<float>(j) * c) - hd;
+                        const float lx1 = lx0 + c;
+                        const float ly1 = ly0 + c;
+                        const float z0 = base_z + static_cast<float>(k) * c;
+                        const float z1 = z0 + c;
+                        ++stats.slices;
+
+                        const auto face = [&](float ax0, float ay0, float az0,
+                                              float ux, float uy, float uz,
+                                              float vx2, float vy2, float vz2,
+                                              float shade) {
+                            const VoxelProjection q00 =
+                                camera.project(wx(ax0, ay0), wy(ax0, ay0), az0);
+                            const VoxelProjection q10 = camera.project(
+                                wx(ax0 + ux, ay0 + uy), wy(ax0 + ux, ay0 + uy),
+                                az0 + uz);
+                            const VoxelProjection q01 = camera.project(
+                                wx(ax0 + vx2, ay0 + vy2),
+                                wy(ax0 + vx2, ay0 + vy2), az0 + vz2);
+                            const std::uint32_t colour =
+                                shade_lookup(shade * ao, pal);
+                            raster_affine_slice(
+                                q00, q10, q01, 1, 1, cx0, cy0, cx1, cy1, target,
+                                depth_.data(), depth_w_, stats,
+                                [&](int, int, std::uint32_t& out_c,
+                                    unsigned char& out_p) {
+                                    out_c = colour;
+                                    out_p = pal;
+                                    return true;
+                                });
+                        };
+
+                        if (show_top)
+                            face(lx0, ly0, z1, c, 0.0f, 0.0f, 0.0f, c, 0.0f,
+                                 kVoxelFaceTop);
+                        if (show_x)
+                        {
+                            const float xf = (xdir > 0) ? lx1 : lx0;
+                            face(xf, ly0, z0, 0.0f, c, 0.0f, 0.0f, 0.0f, c,
+                                 x_face_shade);
+                        }
+                        if (show_y)
+                        {
+                            const float yf = (ydir > 0) ? ly1 : ly0;
+                            face(lx0, yf, z0, c, 0.0f, 0.0f, 0.0f, 0.0f, c,
+                                 y_face_shade);
+                        }
+                    }
             continue;
         }
 
@@ -327,6 +557,11 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
                             continue; // ties overwrite: list order wins
                         drow[dx] = depth;
                         row[dx] = target.lut256[c];
+                        if (target.index_plane != nullptr)
+                            target.index_plane[static_cast<std::size_t>(dy) *
+                                                   static_cast<std::size_t>(
+                                                       target.pitch_px) +
+                                               static_cast<std::size_t>(dx)] = c;
                         ++stats.pixels_written;
                     }
                 }
@@ -347,7 +582,7 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
             raster_affine_slice(
                 p00, p10, p01, v.w, v.h, cx0, cy0, cx1, cy1, target,
                 depth_.data(), depth_w_, stats,
-                [&](int tx, int ty, std::uint32_t& color) {
+                [&](int tx, int ty, std::uint32_t& color, unsigned char& pal) {
                     unsigned char c =
                         texels[static_cast<std::size_t>(ty) *
                                    static_cast<std::size_t>(tw) +
@@ -356,6 +591,7 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
                         return false;
                     c = apply_material(c, mat);
                     color = lut[c];
+                    pal = c;
                     return true;
                 });
         }

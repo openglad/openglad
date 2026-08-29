@@ -59,11 +59,22 @@ struct VoxelModel
     int w = 0;
     int d = 0;
     int z = 0;
+    // World units per cell. A model carved from frames upscaled 4x has four
+    // cells to the sprite pixel, so cell = 0.25 and the model still occupies
+    // exactly the sprite's footprint in the world.
+    float cell = 1.0f;
     std::vector<unsigned char> occ;   // 1 = solid
     std::vector<unsigned char> index; // palette index
     std::vector<unsigned char> lit;   // 1 = top surface (nothing solid above)
-    // Sprite-space image of the model origin: the footprint centre at z = 0
-    // projects here in every facing frame. Placement in the world reads it.
+    // Baked ambient occlusion, 0..255 over the [kVoxelAoFloor, 1] range.
+    // Multiplied into the colour AFTER the palette LUT, so the index stays an
+    // index and the team-colour remap still happens on it.
+    std::vector<unsigned char> shade;
+    // Carved figures draw as cubes (three faces, lit); terrain models keep the
+    // cheap stacked-slice look they were built for.
+    bool cube_faces = true;
+    // Sprite-space image of the model origin, in WORLD pixels: the footprint
+    // centre at z = 0 projects here in every facing frame. Placement reads it.
     float anchor_x = 0.0f;
     float anchor_y = 0.0f;
     float theta_deg = 0.0f;
@@ -82,7 +93,29 @@ struct VoxelModel
             return false;
         return occ[at(i, j, k)] != 0;
     }
+    [[nodiscard]] float extent_x() const noexcept
+    {
+        return static_cast<float>(w) * cell;
+    }
+    [[nodiscard]] float extent_y() const noexcept
+    {
+        return static_cast<float>(d) * cell;
+    }
 };
+
+// Cube-face shading (§10 round 2). A carved figure only reads as a figure if
+// its faces are lit differently, so each visible face carries a fixed factor
+// and the voxel's baked AO multiplies into it.
+inline constexpr float kVoxelFaceTop = 1.00f;
+inline constexpr float kVoxelFaceSun = 0.86f;
+inline constexpr float kVoxelFaceShadow = 0.68f;
+// AO maps the fraction of empty neighbours into [kVoxelAoFloor, 1].
+inline constexpr float kVoxelAoFloor = 0.55f;
+// The silhouette gets a one-pixel darker rim, which is what makes pixel art
+// read at small sizes.
+inline constexpr float kVoxelEdgeShade = 0.5f;
+// Quantisation of the shade axis in the precomputed shade x palette table.
+inline constexpr int kVoxelShadeLevels = 32;
 
 // World-space yaw for a walker facing, in the rasterizer's rotation sense
 // (positive turns +x toward +y, i.e. clockwise on a y-down screen).
@@ -233,6 +266,11 @@ struct VoxelRenderTarget
     int clip_x1 = 0;
     int clip_y1 = 0;
     const std::uint32_t* lut256 = nullptr;
+    // Optional parallel plane of palette INDICES, same pitch and dimensions.
+    // Written wherever a colour is written, so a caller can measure what the
+    // real renderer produced in index space instead of re-deriving it — the
+    // sprite-agreement number comes from the product path, not a twin of it.
+    unsigned char* index_plane = nullptr;
 };
 
 // Per-frame cost accounting, so the wasm viability question has a number.
@@ -252,11 +290,22 @@ public:
     VoxelRasterStats render(const VoxelScene& scene, const VoxelCamera& camera,
                             const VoxelRenderTarget& target);
 
+    // Darkens every pixel that sits on a silhouette: one whose depth jumps by
+    // more than `depth_jump` against a 4-neighbour, or which borders a pixel
+    // nothing was drawn to. Reads the depth buffer left by the last render(),
+    // so call it straight after.
+    void edge_darken(const VoxelRenderTarget& target, float depth_jump,
+                     float factor);
+
 private:
     void reset_depth(int w, int h);
+    void build_shade_tables(const VoxelRenderTarget& target);
 
     std::vector<float> depth_;
     std::vector<std::uint32_t> shaded_lut_;
+    // kVoxelShadeLevels x 256 of pre-shaded palette entries, so a cube face
+    // costs a table lookup rather than three float multiplies per pixel.
+    std::vector<std::uint32_t> shade_table_;
     int depth_w_ = 0;
     int depth_h_ = 0;
 };
