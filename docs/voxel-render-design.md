@@ -364,3 +364,33 @@ volume and side shading (sides ×0.75, never the front). Applies to every
 order — fighters, treasure, projectiles, effects — so no flat stamps remain.
 Pitch far from θ shows the relief's lean; the Free camera's useful pitch
 range is therefore ~40–70°, which is the top-down game's natural range.
+
+## 13. Reliefs: fidelity without volume — the fitted-body pivot (2026-08-29)
+
+Round 6 (`2a381b79`) implemented §12 and measured 100.00% fidelity on all
+8 families × 8 facings with Classic parity intact — and **no visible volume**:
+a relief that billboards to the camera hides its thickness directly behind
+its front face (0.26 px/layer of side at pitch 40/70; ~1.5 px total). The
+lineup is the sprites with drop shadows; the turntable is a Doom-style frame
+swap. Honest, style-perfect, not a voxel model. Reliefs stay in the tree as
+the fallback for entities no template fits.
+
+**Pivot: fitted bodies, textured by the art.** "Concretize the sprite" =
+(1) a small parametric body plan per archetype — humanoid: head ellipsoid,
+torso box, two arms, two legs, optional cape sheet, optional weapon rod
+(side/angle/length), optional headgear; blob for ghosts/slimes — with every
+dimension an integer parameter; (2) the parameters SOLVED, not chosen: for
+each family minimise the silhouette mismatch between the body rendered at the
+game camera (elevation θ, itself fitted from a small set) rotated to each of
+the 8 facings and the family's 8 first-walk frames (symmetric IoU loss,
+coordinate descent with restarts; templates compete, best loss wins);
+(3) colour by back-projecting the 8 frames onto the fitted surface — each
+surface voxel takes the palette index of the frame whose view best aligns
+with its normal among the views that see it (the round-2 machinery), team
+band preserved; unseen voxels copy the nearest textured neighbour. Front
+faces get no AO; face shading only ×0.85/×0.70 on non-front faces so the
+palette reads as pixel art. The result projects to an approximation of each
+facing at the game camera (report agreement per facing) and is a solid,
+sprite-coloured figure from every other angle. The rig template code is
+reused for primitives only; no hand-chosen proportions or invented parts
+survive. Classic camera unchanged (sprites remain the imposter).
