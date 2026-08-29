@@ -50,6 +50,88 @@ inline std::uint32_t shade_xrgb(std::uint32_t c, float f)
     return x | (sc(r) << 16) | (sc(g) << 8) | sc(b);
 }
 
+// One textured slice: an affine quad given by three projected corners
+// (origin, +u edge, +v edge), inverse-mapped over its screen bounding box.
+// The extruded-texture path and the carved-model path share this body — the
+// only difference between them is the sampler, so there is exactly one
+// implementation of the slice raster.
+template <typename Sampler>
+inline void raster_affine_slice(const VoxelProjection& p00,
+                                const VoxelProjection& p10,
+                                const VoxelProjection& p01, int tex_w,
+                                int tex_h, int cx0, int cy0, int cx1, int cy1,
+                                const VoxelRenderTarget& target,
+                                float* depth_buf, int depth_w,
+                                VoxelRasterStats& stats, Sampler&& sample)
+{
+    const float ax = p10.sx - p00.sx, ay = p10.sy - p00.sy;
+    const float bx = p01.sx - p00.sx, by = p01.sy - p00.sy;
+    const float det = ax * by - ay * bx;
+    if (std::fabs(det) < 1e-6f)
+        return; // degenerate (edge-on) slice
+
+    const float p11x = p00.sx + ax + bx;
+    const float p11y = p00.sy + ay + by;
+    int bx0 = static_cast<int>(std::floor(
+        std::min(std::min(p00.sx, p10.sx), std::min(p01.sx, p11x))));
+    int bx1 = static_cast<int>(std::ceil(
+        std::max(std::max(p00.sx, p10.sx), std::max(p01.sx, p11x))));
+    int by0 = static_cast<int>(std::floor(
+        std::min(std::min(p00.sy, p10.sy), std::min(p01.sy, p11y))));
+    int by1 = static_cast<int>(std::ceil(
+        std::max(std::max(p00.sy, p10.sy), std::max(p01.sy, p11y))));
+    bx0 = std::max(bx0, cx0);
+    by0 = std::max(by0, cy0);
+    bx1 = std::min(bx1, cx1);
+    by1 = std::min(by1, cy1);
+    if (bx0 >= bx1 || by0 >= by1)
+        return;
+    ++stats.slices;
+
+    // Screen -> unit quad, then unit -> texel.
+    const float inv = 1.0f / det;
+    const float iu_x = by * inv, iu_y = -bx * inv;
+    const float iv_x = -ay * inv, iv_y = ax * inv;
+    // depth is affine in (u, v) too.
+    const float d00 = p00.depth;
+    const float ddu = p10.depth - d00;
+    const float ddv = p01.depth - d00;
+
+    for (int y = by0; y < by1; ++y)
+    {
+        std::uint32_t* row =
+            target.pixels + static_cast<std::size_t>(y) *
+                                static_cast<std::size_t>(target.pitch_px);
+        float* drow = depth_buf + static_cast<std::size_t>(y) *
+                                      static_cast<std::size_t>(depth_w);
+        const float ry = static_cast<float>(y) + 0.5f - p00.sy;
+        for (int x = bx0; x < bx1; ++x)
+        {
+            const float rx = static_cast<float>(x) + 0.5f - p00.sx;
+            const float u = rx * iu_x + ry * iu_y;
+            if (u < 0.0f || u >= 1.0f)
+                continue;
+            const float vv = rx * iv_x + ry * iv_y;
+            if (vv < 0.0f || vv >= 1.0f)
+                continue;
+            const int tx = static_cast<int>(u * static_cast<float>(tex_w));
+            const int ty = static_cast<int>(vv * static_cast<float>(tex_h));
+            if (tx < 0 || tx >= tex_w || ty < 0 || ty >= tex_h)
+                continue;
+            ++stats.pixel_samples;
+            std::uint32_t color = 0;
+            if (!sample(tx, ty, color))
+                continue;
+            const float depth = d00 + u * ddu + vv * ddv;
+            if (depth < drow[x])
+                continue; // keep nearer; ties overwrite
+            drow[x] = depth;
+            row[x] = color;
+            ++stats.pixels_written;
+        }
+    }
+}
+
 } // namespace
 
 VoxelProjection VoxelCamera::project(float x, float y, float z) const
@@ -79,7 +161,15 @@ VoxelProjection VoxelCamera::project(float x, float y, float z) const
     const float ry = dx * st + dy * ct;
     p.sx = rx * scale + view_cx;
     p.sy = (ry * sp - z * cp) * scale + view_cy;
-    p.depth = z * sp - ry * cp; // "near": larger = nearer
+    // "near": larger = nearer. The camera sits above the scene AND on the +y
+    // side of it (world +y runs down the screen, toward the viewer), so a
+    // larger y' is nearer, not farther. §3 of the design doc wrote this as
+    // `z*sinφ - y'*cosφ`, which only orders columns correctly for φ > 45 and
+    // inverts below it — visible as walls and fighters drawn behind the
+    // ground they stand on in the φ=35 spike render. Two points that share a
+    // screen row differ by Δy' = Δz·cosφ/sinφ, so the correct near must gain
+    // Δz/sinφ across them; y'·cosφ + z·sinφ does, for every φ.
+    p.depth = ry * cp + z * sp;
     return p;
 }
 
@@ -133,6 +223,64 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
         const int top_slice = collapse ? 0 : std::max(0, v.height);
         const float base_z =
             v.z + ((!collapse && v.material.lift) ? kVoxelProjectileLift : 0.0f);
+
+        // ---- §10: a carved model, rotated by the walker's facing ----
+        // Classic ignores models by ruling: the sprite frames ARE the baked
+        // view of the model from the game camera, so drawing the model there
+        // would be a renderer twin of an imposter that is already exact.
+        if (!collapse && v.model != nullptr && !v.model->empty())
+        {
+            const VoxelModel& m = *v.model;
+            const float hw = static_cast<float>(m.w) * 0.5f;
+            const float hd = static_cast<float>(m.d) * 0.5f;
+            // The model's anchor is its footprint centre expressed in the
+            // volume's own texel box, so the volume position stays exactly
+            // what the Classic camera wants: the sprite/tile top-left.
+            const float ccx = v.x + m.anchor_x;
+            const float ccy = v.y + m.anchor_y;
+            const float cyaw = std::cos(v.yaw), syaw = std::sin(v.yaw);
+            // The unrotated footprint corners, turned about the centre. Same
+            // matrix as the camera's own yaw, so the two simply compose.
+            const float ox = ccx + (-hw) * cyaw - (-hd) * syaw;
+            const float oy = ccy + (-hw) * syaw + (-hd) * cyaw;
+            const float ux = static_cast<float>(m.w) * cyaw;
+            const float uy = static_cast<float>(m.w) * syaw;
+            const float vx = static_cast<float>(m.d) * -syaw;
+            const float vy = static_cast<float>(m.d) * cyaw;
+            const VoxelMaterial mat = v.material;
+            for (int k = 0; k < m.z; ++k)
+            {
+                const float slice_z = base_z + static_cast<float>(k);
+                const VoxelProjection q00 = camera.project(ox, oy, slice_z);
+                const VoxelProjection q10 =
+                    camera.project(ox + ux, oy + uy, slice_z);
+                const VoxelProjection q01 =
+                    camera.project(ox + vx, oy + vy, slice_z);
+                const std::size_t layer = static_cast<std::size_t>(k) *
+                                          static_cast<std::size_t>(m.w) *
+                                          static_cast<std::size_t>(m.d);
+                raster_affine_slice(
+                    q00, q10, q01, m.w, m.d, cx0, cy0, cx1, cy1, target,
+                    depth_.data(), depth_w_, stats,
+                    [&](int tx, int ty, std::uint32_t& color) {
+                        const std::size_t idx =
+                            layer + static_cast<std::size_t>(ty) *
+                                        static_cast<std::size_t>(m.w) +
+                            static_cast<std::size_t>(tx);
+                        if (m.occ[idx] == 0)
+                            return false;
+                        const unsigned char c =
+                            apply_material(m.index[idx], mat);
+                        // A voxel with solid neighbours above it is a flank,
+                        // not a top surface: the §4 side shade, per voxel.
+                        color = (m.lit[idx] != 0)
+                            ? target.lut256[c]
+                            : shaded_lut_[c];
+                        return true;
+                    });
+            }
+            continue;
+        }
 
         for (int s = 0; s <= top_slice; ++s)
         {
@@ -191,79 +339,25 @@ VoxelRasterStats VoxelRaster::render(const VoxelScene& scene,
                 camera.project(v.x + static_cast<float>(v.w), v.y, slice_z);
             const VoxelProjection p01 =
                 camera.project(v.x, v.y + static_cast<float>(v.h), slice_z);
-
-            const float ax = p10.sx - p00.sx, ay = p10.sy - p00.sy;
-            const float bx = p01.sx - p00.sx, by = p01.sy - p00.sy;
-            const float det = ax * by - ay * bx;
-            if (std::fabs(det) < 1e-6f)
-                continue; // degenerate (edge-on) slice
-
-            const float p11x = p00.sx + ax + bx;
-            const float p11y = p00.sy + ay + by;
-            int bx0 = static_cast<int>(std::floor(
-                std::min(std::min(p00.sx, p10.sx), std::min(p01.sx, p11x))));
-            int bx1 = static_cast<int>(std::ceil(
-                std::max(std::max(p00.sx, p10.sx), std::max(p01.sx, p11x))));
-            int by0 = static_cast<int>(std::floor(
-                std::min(std::min(p00.sy, p10.sy), std::min(p01.sy, p11y))));
-            int by1 = static_cast<int>(std::ceil(
-                std::max(std::max(p00.sy, p10.sy), std::max(p01.sy, p11y))));
-            bx0 = std::max(bx0, cx0);
-            by0 = std::max(by0, cy0);
-            bx1 = std::min(bx1, cx1);
-            by1 = std::min(by1, cy1);
-            if (bx0 >= bx1 || by0 >= by1)
-                continue;
-            ++stats.slices;
-
-            // Screen -> unit quad, then unit -> texel.
-            const float inv = 1.0f / det;
-            const float iu_x = by * inv, iu_y = -bx * inv;
-            const float iv_x = -ay * inv, iv_y = ax * inv;
-            // depth is affine in (u, v) too.
-            const float d00 = p00.depth;
-            const float ddu = p10.depth - d00;
-            const float ddv = p01.depth - d00;
             const std::uint32_t* lut =
                 is_top ? target.lut256 : shaded_lut_.data();
-
-            for (int y = by0; y < by1; ++y)
-            {
-                std::uint32_t* row =
-                    target.pixels + static_cast<std::size_t>(y) *
-                                        static_cast<std::size_t>(target.pitch_px);
-                float* drow = depth_.data() + static_cast<std::size_t>(y) *
-                                                  static_cast<std::size_t>(depth_w_);
-                const float ry = static_cast<float>(y) + 0.5f - p00.sy;
-                for (int x = bx0; x < bx1; ++x)
-                {
-                    const float rx = static_cast<float>(x) + 0.5f - p00.sx;
-                    const float u = rx * iu_x + ry * iu_y;
-                    if (u < 0.0f || u >= 1.0f)
-                        continue;
-                    const float vv = rx * iv_x + ry * iv_y;
-                    if (vv < 0.0f || vv >= 1.0f)
-                        continue;
-                    const int tx = static_cast<int>(u * static_cast<float>(v.w));
-                    const int ty = static_cast<int>(vv * static_cast<float>(v.h));
-                    if (tx < 0 || tx >= v.w || ty < 0 || ty >= v.h)
-                        continue;
-                    ++stats.pixel_samples;
+            const VoxelMaterial mat = v.material;
+            const unsigned char* texels = v.texels;
+            const int tw = v.w;
+            raster_affine_slice(
+                p00, p10, p01, v.w, v.h, cx0, cy0, cx1, cy1, target,
+                depth_.data(), depth_w_, stats,
+                [&](int tx, int ty, std::uint32_t& color) {
                     unsigned char c =
-                        v.texels[static_cast<std::size_t>(ty) *
-                                     static_cast<std::size_t>(v.w) +
-                                 static_cast<std::size_t>(tx)];
-                    if (c == 0 && !v.material.opaque)
-                        continue;
-                    c = apply_material(c, v.material);
-                    const float depth = d00 + u * ddu + vv * ddv;
-                    if (depth < drow[x])
-                        continue; // keep nearer; ties overwrite
-                    drow[x] = depth;
-                    row[x] = lut[c];
-                    ++stats.pixels_written;
-                }
-            }
+                        texels[static_cast<std::size_t>(ty) *
+                                   static_cast<std::size_t>(tw) +
+                               static_cast<std::size_t>(tx)];
+                    if (c == 0 && !mat.opaque)
+                        return false;
+                    c = apply_material(c, mat);
+                    color = lut[c];
+                    return true;
+                });
         }
     }
 

@@ -175,13 +175,30 @@ void emit_entity_list(VoxelScene& out, const GameWorld::EntityList& list,
         v.material.team_color = w->query_team_color();
         v.material.opaque = false;
         v.material.lift = (w->query_order() == Order::Weapon);
+        // §10: livings become carved models rotated by curdir. Weapons, fx
+        // and treasure stay stamps — they have no eight-facing walk cycle to
+        // carve from.
+        if (params.models != nullptr && w->query_order() == Order::Living)
+        {
+            float yaw = 0.0f;
+            const VoxelModel* const m = params.models->living_model(*w, yaw);
+            if (m != nullptr && !m->empty())
+            {
+                v.model = m;
+                v.yaw = yaw;
+                // v.x/v.y stay the sprite's top-left, exactly as the Classic
+                // camera needs them; the model's own anchor locates its
+                // footprint centre inside that box.
+            }
+        }
         out.emit(v);
         ++stats.entities;
     }
 }
 
 void emit_tile(VoxelScene& out, const LevelVisuals& visuals, int tile, int x,
-               int y, float floor_z, VoxelSceneBuildStats& stats)
+               int y, float floor_z, const VoxelSceneBuildParams& params,
+               VoxelSceneBuildStats& stats)
 {
     if (tile < 0 || tile >= PIX_MAX)
         return;
@@ -200,6 +217,8 @@ void emit_tile(VoxelScene& out, const LevelVisuals& visuals, int tile, int x,
     // Tiles blit through putbuffer: index 0 is a real colour and the team
     // band is NOT remapped.
     v.material.opaque = true;
+    if (params.models != nullptr)
+        v.model = params.models->tile_model(tile);
     out.emit(v);
     ++stats.tiles;
 }
@@ -267,13 +286,13 @@ VoxelSceneBuildStats build_voxel_scene(VoxelScene& out, GameWorld& world,
                         else if (j == -2 && i > -1 && i < maxx)
                             border = PIX_H_WALL1;
                         emit_tile(out, visuals, border, i * GRID_SIZE,
-                                  j * GRID_SIZE, floor_z, stats);
+                                  j * GRID_SIZE, floor_z, params, stats);
                         continue;
                     }
                     const int tile = static_cast<int>(
                         gridp.data[static_cast<std::size_t>(i + maxx * j)]);
                     emit_tile(out, visuals, tile, i * GRID_SIZE, j * GRID_SIZE,
-                              floor_z, stats);
+                              floor_z, params, stats);
                     if (!has_decor)
                         continue;
                     const int d = static_cast<int>(

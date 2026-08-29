@@ -19,10 +19,15 @@
 // SDL-free by contract: this is the `interface` component's renderer core and
 // takes a caller-supplied XRGB buffer plus a 256-entry palette LUT.
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
 namespace og::render {
+
+// The eight walker facings (core/constants.h FACE_UP = 0 ... FACE_UP_LEFT =
+// 7). Named here so the renderer core needs no gameplay header.
+inline constexpr int NUM_VOXEL_FACINGS = 8;
 
 // Per-kind extrusion heights (§2 table). Render-only data: the sim never
 // reads any of this.
@@ -40,8 +45,58 @@ inline constexpr float kVoxelFloorStride = 24.0f;
 // §7 D3: projectiles ride this high so they clear fighter columns. Applied
 // ONLY when the camera does not collapse, so Classic is untouched.
 inline constexpr float kVoxelProjectileLift = 8.0f;
-// §4: slices below the top are drawn at RGB * this constant.
+// §4: slices below the top are drawn at RGB * this constant. For a carved
+// model the same shade marks every voxel that is not a top surface, which is
+// what gives a rotating model its lit top and shaded flanks.
 inline constexpr float kVoxelSideShade = 0.72f;
+
+// A carved voxel model (§10). Layer-major: (k * d + j) * w + i, with i across
+// the footprint width, j across its depth, k up. Colours are palette INDICES
+// — the team band 248..255 must survive to the blitter — so occupancy needs
+// its own plane rather than the "index 0 = empty" convention a texture uses.
+struct VoxelModel
+{
+    int w = 0;
+    int d = 0;
+    int z = 0;
+    std::vector<unsigned char> occ;   // 1 = solid
+    std::vector<unsigned char> index; // palette index
+    std::vector<unsigned char> lit;   // 1 = top surface (nothing solid above)
+    // Sprite-space image of the model origin: the footprint centre at z = 0
+    // projects here in every facing frame. Placement in the world reads it.
+    float anchor_x = 0.0f;
+    float anchor_y = 0.0f;
+    float theta_deg = 0.0f;
+
+    [[nodiscard]] bool empty() const noexcept { return occ.empty(); }
+    [[nodiscard]] std::size_t at(int i, int j, int k) const noexcept
+    {
+        return (static_cast<std::size_t>(k) * static_cast<std::size_t>(d) +
+                static_cast<std::size_t>(j)) *
+                   static_cast<std::size_t>(w) +
+               static_cast<std::size_t>(i);
+    }
+    [[nodiscard]] bool solid(int i, int j, int k) const noexcept
+    {
+        if (i < 0 || j < 0 || k < 0 || i >= w || j >= d || k >= z)
+            return false;
+        return occ[at(i, j, k)] != 0;
+    }
+};
+
+// World-space yaw for a walker facing, in the rasterizer's rotation sense
+// (positive turns +x toward +y, i.e. clockwise on a y-down screen).
+//
+// Derivation: FACE_DOWN (curdir 4, gloader.cpp bit5) is the character facing
+// the viewer, so it is yaw 0; each curdir step is 45 degrees. Checking the
+// ends: curdir 2 (FACE_RIGHT) wants the model's front on +x, which the matrix
+// [[cos,-sin],[sin,cos]] delivers at -90 degrees, and curdir 6 (FACE_LEFT) at
+// +90. Hence (curdir - FACE_DOWN) * 45.
+[[nodiscard]] constexpr float voxel_facing_yaw_rad(int curdir) noexcept
+{
+    return static_cast<float>((curdir - 4) * 45) *
+           (3.14159265358979323846f / 180.0f);
+}
 
 // The per-pixel colour logic that lives in the walkputbuffer family today.
 // The spike only needs the plain material; the mode flags (alpha, flash,
@@ -74,6 +129,16 @@ struct VoxelVolume
     // Painter rank for the Classic camera (§3): the position in today's draw
     // sequence. Assigned by VoxelScene::emit in emission order.
     int rank = 0;
+
+    // §10: a volume may ALSO carry a carved model, rotated by `yaw` about its
+    // own footprint centre. The Classic camera ignores it entirely — the
+    // sprite frames are the baked view of the model from the game camera, an
+    // imposter cache rather than a renderer twin — so `texels`/`height` stay
+    // populated and Classic output is unchanged. Free cameras draw the model.
+    // When set, the unrotated footprint is [x, x + model->w) x [y, y +
+    // model->d) and `height` is ignored.
+    const VoxelModel* model = nullptr;
+    float yaw = 0.0f; // radians
 };
 
 class VoxelScene
