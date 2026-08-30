@@ -25,6 +25,7 @@ class weap : public walker
 		using walker::setxy; // unhide overloads (std::int32_t/float/std::uint32_t) from base
 		weap(const PixieData& data);
 		weap();  // Headless constructor (no rendering data)
+		explicit weap(WeaponProfileProbeTag);
 		~weap() override;
 		weap(const weap&) = delete;
 		weap& operator=(const weap&) = delete;

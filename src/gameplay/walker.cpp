@@ -30,7 +30,9 @@
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/generator_family_descriptor.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/weap.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/core/pixdefs.h>
@@ -38,6 +40,7 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/constants.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/core/util.h>
 #include <openglad/core/sound_ids.h>
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
@@ -62,6 +65,8 @@
 extern std::int32_t calculate_level(std::uint32_t temp_exp);
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
+short collide(short x, short y, short xsize, short ysize,
+              short x2, short y2, short xsize2, short ysize2);
 
 namespace
 {
@@ -132,7 +137,7 @@ int next_path_check_counter(IRandom& rng)
 } // namespace
 
 // Common initialization shared by both constructors
-void walker_init_common(walker* w, IRandom& rng)
+void walker_init_common(walker* w, IRandom* rng)
 {
 	w->set_curdir(FACE_DOWN);
 	w->set_enddir(FACE_DOWN);
@@ -168,7 +173,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->set_weapons_left(1);
 	w->set_current_special(0);
 	w->set_in_act(false);
-	w->set_path_check_counter(next_path_check_counter(rng));
+	w->set_path_check_counter(rng != nullptr ? next_path_check_counter(*rng) : 0);
 	w->set_regen_delay(0);
 	w->set_hurt_flash(false);
 	w->set_attack_lunge(0.0f);
@@ -186,7 +191,8 @@ walker::walker(const PixieData& data)
 	stats_ = std::make_unique<statistics>(this);
 	myself_ = this;
 
-	walker_init_common(this, walker_rng());
+	IRandom& rng = walker_rng();
+	walker_init_common(this, &rng);
 
 	set_act_type_state(ACT_RANDOM);
 	set_frame(0);
@@ -199,8 +205,21 @@ walker::walker()
 	stats_ = std::make_unique<statistics>(this);
 	myself_ = this;
 
-	walker_init_common(this, walker_rng());
+	IRandom& rng = walker_rng();
+	walker_init_common(this, &rng);
 
+	set_act_type_state(ACT_RANDOM);
+}
+
+walker::walker(WeaponProfileProbeTag)
+    : SimEntity()
+{
+	stats_ = std::make_unique<statistics>(this);
+	myself_ = this;
+	// Direct state assignment is intentional: set_dormant(true) consults the
+	// active obmap, while this detached profile must never touch it at all.
+	dormant_ = true;
+	walker_init_common(this, nullptr);
 	set_act_type_state(ACT_RANDOM);
 }
 
@@ -1152,16 +1171,247 @@ bool walker::set_order_family(Order neworder, char newfamily)
 	return 1;
 }
 
+void walker::configure_weapon_profile_base(walker* weapon, float heading_x,
+                                           float heading_y)
+{
+	weapon->set_team_num(team_num());
+	weapon->set_owner(this);
+	weapon->set_floor(floor());
+	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
+	weapon->set_damage(
+		(weapon->damage() * (static_cast<float>(stats_->level()) + 3.0f)) /
+		4.0f);
+	if (myguy)
+	{
+		weapon->set_lineofsight(
+			weapon->lineofsight() + (myguy->strength / 23) +
+			(myguy->dexterity / 31));
+		weapon->set_damage(weapon->damage() + (myguy->strength / 7.0f));
+	}
+	else
+	{
+		weapon->set_damage(weapon->damage() *
+		                   static_cast<float>(stats_->level()));
+	}
+	weapon->set_lineofsight(weapon->lineofsight() + (stats_->level() / 3));
+	switch (facing(heading_x, heading_y)) // make 'circular' ranges
+	{
+		case FACE_UP:
+		case FACE_RIGHT:
+		case FACE_DOWN:
+		case FACE_LEFT:
+			// this will multiply by 1.207 ..
+			weapon->set_lineofsight(scale_los_circular(weapon->lineofsight()));
+			// this will multiply by 1.414
+			weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);
+			break;
+		default:
+			break;
+	}
+}
+
+void walker::finalize_weapon_profile(walker* weapon, float heading_x,
+                                     float heading_y)
+{
+	configure_weapon_profile_base(weapon, heading_x, heading_y);
+	if (order() != Order::Living)
+		return;
+
+	const auto* fd = get_family_descriptor(family());
+	og::script::hooks::customize_weapon(fd, this, weapon);
+}
+
+namespace
+{
+std::int32_t finalized_weapon_reach(const walker& weapon)
+{
+	return static_cast<std::int32_t>(weapon.stepsize()) *
+	       static_cast<std::int32_t>(weapon.lineofsight());
+}
+
+bool weapon_profile_requires_hook(const walker& owner)
+{
+	if (owner.query_order() != Order::Living)
+		return false;
+	const FamilyDescriptor* descriptor =
+		get_family_descriptor(owner.family());
+	if (descriptor == nullptr || descriptor->customize_weapon != nullptr ||
+	    descriptor->on_fire_weapon != nullptr)
+		return true;
+
+	// This predicate is reached from a Lua method, so the current world's VM
+	// is already active. Inspect only its registration mask: dispatching an
+	// arbitrary weapon hook on a detached probe would not be pure. on_fire may
+	// also veto the launch or rewrite the projectile after this profile step.
+	const og::script::WorldScripts& scripts =
+		og::script::active_world_scripts();
+	return scripts.has_hook(Order::Living, owner.family(),
+	                        og::script::FamilyHook::CustomizeWeapon) ||
+	       scripts.has_hook(Order::Living, owner.family(),
+	                        og::script::FamilyHook::OnFireWeapon);
+}
+
+bool footprint_touches_water(GameWorld& world, const walker& mover,
+                             std::int32_t x, std::int32_t y)
+{
+	const std::int32_t right = x + mover.sizex() - 1;
+	const std::int32_t bottom = y + mover.sizey() - 1;
+	const std::int32_t tile_left = x / GRID_SIZE;
+	const std::int32_t tile_top = y / GRID_SIZE;
+	const std::int32_t tile_right = right / GRID_SIZE;
+	const std::int32_t tile_bottom = bottom / GRID_SIZE;
+	smoother& terrain = world.smoother_for_floor(mover.floor());
+	for (std::int32_t ty = tile_top; ty <= tile_bottom; ++ty)
+	{
+		for (std::int32_t tx = tile_left; tx <= tile_right; ++tx)
+		{
+			if (terrain.query_genre_x_y(tx, ty) == TYPE_WATER)
+				return true;
+		}
+	}
+	return false;
+}
+
+bool water_blocks_mover(const walker& mover)
+{
+	const statistics* stats = mover.stats();
+	if (stats == nullptr)
+		return true;
+	if (stats->query_bit_flags(BIT_ETHEREAL))
+		return false;
+	if (stats->query_bit_flags(BIT_FLYING) || mover.flight_left())
+		return false;
+	return !stats->query_bit_flags(BIT_SWIMMING);
+}
+
+std::int32_t step_along(std::int32_t from, std::int32_t direction,
+                        std::int32_t amount)
+{
+	return from + direction * amount;
+}
+} // namespace
+
+bool walker::query_prospective_weapon_reach(short xdelta, short ydelta,
+                                             std::int32_t& reach)
+{
+	reach = 0;
+	if (query_order() != Order::Living || stats_ == nullptr ||
+	    current_game == nullptr || current_game->world == nullptr ||
+	    weapon_profile_requires_hook(*this))
+	{
+		return false;
+	}
+
+	weap probe(WeaponProfileProbeTag{});
+	const PixieData* data = current_game->world->configure_existing_entity(
+		probe, Order::Weapon,
+		static_cast<std::int32_t>(static_cast<char>(current_weapon())));
+	if (data == nullptr)
+		return false;
+	probe.set_data(*data);
+	configure_weapon_profile_base(&probe, static_cast<float>(xdelta),
+	                              static_cast<float>(ydelta));
+	reach = finalized_weapon_reach(probe);
+	return true;
+}
+
+std::int32_t walker::prospective_weapon_reach(short xdelta, short ydelta)
+{
+	std::int32_t reach = 0;
+	(void)query_prospective_weapon_reach(xdelta, ydelta, reach);
+	return reach;
+}
+
+bool walker::can_approach_weapon_range(const walker* objective)
+{
+	if (objective == nullptr || objective->dead() || objective->dormant() ||
+	    objective->floor() != floor() || query_order() != Order::Living ||
+	    current_game == nullptr || current_game->world == nullptr)
+	{
+		return false;
+	}
+
+	std::int32_t x = xpos();
+	std::int32_t y = ypos();
+	const std::int32_t target_x = objective->xpos();
+	const std::int32_t target_y = objective->ypos();
+	const std::int32_t movement_step =
+		static_cast<std::int32_t>(stepsize());
+	const bool blocked_by_water = water_blocks_mover(*this);
+	std::int32_t cardinal_reach = 0;
+	std::int32_t diagonal_reach = 0;
+	bool cardinal_profile_ready = false;
+	bool diagonal_profile_ready = false;
+	const std::int32_t initial_distance =
+		std::abs(target_x - x) + std::abs(target_y - y);
+
+	// A one-pixel fallback is the slowest real walkstep can advance after its
+	// full family step is denied, so initial_distance + 1 is a hard bound.
+	// COMMAND_ATTACK may next try a perpendicular slide. We deliberately do
+	// not speculate about that stateful wall-follow route: rejecting at the
+	// direct shoreline can omit a usable shooter, but cannot reserve one that
+	// must enter water before reaching ordinary weapon range.
+	for (std::int32_t attempt = 0; attempt <= initial_distance; ++attempt)
+	{
+		std::int32_t dx = target_x - x;
+		std::int32_t dy = target_y - y;
+		if (std::abs(dx) > std::abs(3 * dy))
+			dy = 0;
+		if (std::abs(dy) > std::abs(3 * dx))
+			dx = 0;
+		const short sx = static_cast<short>((dx > 0) - (dx < 0));
+		const short sy = static_cast<short>((dy > 0) - (dy < 0));
+		const bool cardinal = sx == 0 || sy == 0;
+		std::int32_t& reach = cardinal ? cardinal_reach : diagonal_reach;
+		bool& profile_ready = cardinal ? cardinal_profile_ready
+		                               : diagonal_profile_ready;
+		if (!profile_ready)
+		{
+			if (!query_prospective_weapon_reach(sx, sy, reach))
+				return false;
+			profile_ready = true;
+		}
+		const std::int32_t distance =
+			std::abs(target_x - x) + std::abs(target_y - y);
+		if (distance <= reach)
+			return true;
+		if ((sx == 0 && sy == 0) || movement_step <= 0)
+			return false;
+
+		std::int32_t next_x = step_along(x, sx, movement_step);
+		std::int32_t next_y = step_along(y, sy, movement_step);
+		if (blocked_by_water &&
+		    footprint_touches_water(*current_game->world, *this,
+		                            next_x, next_y))
+		{
+			// walkstep's real second try is a one-pixel move. If even that
+			// enters water, the bot has reached this approach's shoreline.
+			next_x = step_along(x, sx, 1);
+			next_y = step_along(y, sy, 1);
+			if (footprint_touches_water(*current_game->world, *this,
+			                            next_x, next_y))
+			{
+				return false;
+			}
+		}
+		if (next_x == x && next_y == y)
+			return false;
+		x = next_x;
+		y = next_y;
+	}
+	return false;
+}
+
 walker  *walker::create_weapon()
 {
 	walker  *weapon;
-	short weapon_type;
 
 
 	// Special case for generators
 	if (query_order() == Order::Generator)
 	{
-			weapon = current_game->world->add_ob(Order::Living, static_cast<char>(default_weapon()));
+		weapon = current_game->world->add_ob(
+			Order::Living, static_cast<char>(default_weapon()));
 		if (!weapon) return nullptr;
 		weapon->set_team_num(team_num());
 		weapon->set_owner(this);
@@ -1176,45 +1426,10 @@ walker  *walker::create_weapon()
 		return weapon;
 	}
 	// Normally, only livings fire
-		weapon_type = static_cast<short>(current_weapon());
-
-	weapon = current_game->world->add_ob(Order::Weapon, static_cast<char>(weapon_type));
+	weapon = current_game->world->add_ob(
+		Order::Weapon, static_cast<char>(current_weapon()));
 	if (!weapon) return nullptr;
-	weapon->set_team_num(team_num());
-	weapon->set_owner(this);
-	weapon->set_floor(floor());  // projectile travels on the shooter's floor
-	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
-	weapon->set_damage((weapon->damage() * (static_cast<float>(stats_->level()) + 3.0f)) / 4.0f);
-	if (myguy)
-	{
-			weapon->set_lineofsight(weapon->lineofsight() + (myguy->strength / 23) + (myguy->dexterity / 31));
-			weapon->set_damage(weapon->damage() + (myguy->strength / 7.0f));
-	}
-	else
-	{
-			weapon->set_damage(weapon->damage() * static_cast<float>(stats_->level()));
-		}
-		weapon->set_lineofsight(weapon->lineofsight() + (stats_->level() / 3));
-		switch (facing(lastx(), lasty())) // make 'circular' ranges
-		{
-			case FACE_UP:
-			case FACE_RIGHT:
-			case FACE_DOWN:
-			case FACE_LEFT:
-				// this will multiply by 1.207 ..
-				weapon->set_lineofsight(scale_los_circular(weapon->lineofsight()));
-				// this will multiply by 1.414
-				weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);
-				break;
-		default :
-			break;
-	}
-
-	if (order() == Order::Living)
-	{
-		const auto* fd = get_family_descriptor(family());
-		og::script::hooks::customize_weapon(fd, this, weapon);
-	}
+	finalize_weapon_profile(weapon, lastx(), lasty());
 	return weapon;
 }
 
@@ -1289,7 +1504,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	// fix, 2026-07-07). Every reordered gate returns the same 0 and no
 	// gate consumes RNG, so all other callers see identical behavior.
 	distance = distance_to_ob(foe());
-	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize()) * static_cast<std::int32_t>(weapon->lineofsight())) )
+	if (distance > finalized_weapon_reach(*weapon))
 	{
 		weapon->set_dead(1);
 		deny(FireCheckDenial::OutOfRange);
@@ -1319,6 +1534,17 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 		return 0;
 	}
 
+	// Ignored entities deliberately stay out of the obmap. A mode may still
+	// name one as the explicit attack objective (for example, a waterlogged
+	// ball), so let the ordinary ray recognize that one hostile bounding box.
+	// The normal range, mana, facing and terrain gates above/below remain the
+	// authority; generic ignored effects remain non-colliding.
+	walker* const ignored_foe =
+		foe()->ignore() && !foe()->dead() && !foe()->dormant() &&
+		foe()->floor() == weapon->floor() && !weapon->is_friendly(foe())
+			? foe()
+			: nullptr;
+
 	// Run weapon through where it would go if all went well ..
 	for (i=0; i < weapon->lineofsight(); i++)
 	{
@@ -1330,6 +1556,15 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 			weapon->set_dead(1);
 			deny(FireCheckDenial::WallBlocked);
 			return 0;
+		}
+		if (ignored_foe != nullptr &&
+		    ::collide(weapon->xpos(), weapon->ypos(),
+		            weapon->sizex(), weapon->sizey(),
+		            ignored_foe->xpos(), ignored_foe->ypos(),
+		            ignored_foe->sizex(), ignored_foe->sizey()))
+		{
+			weapon->set_dead(1);
+			return 1;
 		}
 		if ( !current_game->world->query_object_passable(weapon->xpos(), weapon->ypos(), weapon) )
 		{

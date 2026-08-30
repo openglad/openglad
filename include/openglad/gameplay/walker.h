@@ -133,6 +133,14 @@ class walker : public og::sim::SimEntity
 			return order();
 		}
 		walker  *create_weapon();
+		// Read-only recovery-objective feasibility. A profile with an arbitrary
+		// family customize/on-fire hook cannot be dry-run safely and is
+		// conservatively ineligible, as is a missing loader profile. Otherwise
+		// the detached prospective weapon follows the real loader/stat path
+		// without an id, list insertion, or RNG. A valid zero reach stays valid.
+		[[nodiscard]] std::int32_t prospective_weapon_reach(short xdelta,
+		                                                    short ydelta);
+		[[nodiscard]] bool can_approach_weapon_range(const walker* objective);
 		// Why a fire_check() attempt was denied. Callers that care (the
 		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
 		// Facing, and NoRanged at bump range ("the foe is in weapon reach
@@ -462,6 +470,17 @@ class walker : public og::sim::SimEntity
 		std::list<DamageNumber> damage_numbers;
 
 	protected:
+		// A detached weapon-profile object needs the ordinary walker fields and
+		// statistics without consuming the construction-time path cadence draw.
+		// Only weap and walker's prospective-range query can name this tag.
+		struct WeaponProfileProbeTag {};
+		explicit walker(WeaponProfileProbeTag);
+		void configure_weapon_profile_base(walker* weapon, float heading_x,
+		                                   float heading_y);
+		void finalize_weapon_profile(walker* weapon, float heading_x,
+		                             float heading_y);
+		[[nodiscard]] bool query_prospective_weapon_reach(
+			short xdelta, short ydelta, std::int32_t& reach);
 		bool act_generate();
 		bool act_fire();
 		bool act_guard();

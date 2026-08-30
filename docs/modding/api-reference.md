@@ -96,6 +96,16 @@ Non-living orders (`weapon`, `effect`/`fx`, `treasure`, `generator`) take an
 weapon HP is what gives shipped scenery its durability. Omit it (or declare
 `0`) to keep whatever the engine's row supplies.
 
+`radar_landmark` and `radar_ping` are independent presentation fields.
+`radar_landmark` is accepted only on treasure and effect families; with a
+drawable `radar_color`, it makes treasure blips visible without treasure sight
+and effect blips visible to opposing radars. It has no curses effect.
+`radar_ping` is accepted on all five orders and changes emphasis, not
+visibility: an SDL radar blip already eligible to draw becomes an oversized
+pulse driven by a render-only counter, and the curses glyph becomes bold. Ping
+does not supply a colour or grant landmark status. Public objectives normally
+combine both flags.
+
 `description` is plain prose: the HIRE screen auto-flows it to its box at
 render time, so do NOT hand-wrap it to a column or pad it with trailing
 spaces. `'\n\n'` is a paragraph break (the core families use it before
@@ -459,6 +469,27 @@ with a matching `set_*`.
 `default_weapon()/set_default_weapon(v)`
 `do_bounce()/set_do_bounce(v)` — **weapons only**; errors on any other order.
 
+`can_approach_weapon_range(objective) → bool` is the read-only eligibility
+query used when an AI may have to approach a non-living objective before it
+fires. It finalizes a detached current-weapon profile through the same loader,
+owner level/stat scaling, and cardinal/diagonal scaling as a real shot. It then
+traces the living's current movement step toward the objective and answers
+false when water blocks that approach before the weapon's exact
+`trunc(stepsize) * lineofsight` range. Dry terrain never rejects the query:
+ordinary `COMMAND_ATTACK` remains responsible for facing, walls, pathing,
+mana, cooldown, animation, and the actual projectile ray. The probe has no
+entity id, never enters an object list, consumes no RNG, and dispatches no
+hooks. A family with either a Lua or native `customize_weapon` or
+`on_fire_weapon` callback is conservatively ineligible because arbitrary
+customization, launch rewriting, and launch vetoes cannot be safely dry-run.
+A missing loader profile is likewise ineligible; a valid profile whose exact
+range is zero remains valid (and can therefore reach an exactly overlapping
+objective). Against water, the direct un-clamped full-step and one-pixel
+approach attempts mirror the ordinary command; the query declines rather than
+predicting its stateful perpendicular wall slide, so this rule may omit a
+usable shooter but cannot reserve one that must enter water before getting into
+range.
+
 ### References
 
 `foe()/set_foe(h)` `leader()/set_leader(h)` `owner()/set_owner(h)`
@@ -611,7 +642,17 @@ rather than whether it can be walked on — compare the result against
 terrain call that takes **tile** coordinates, because the smoother it reads
 does; divide pixels by `og.C.GRID_SIZE` first. Out-of-range tiles report
 `TYPE_GRASS`, so there is no nil case. Omitting `floor` reads the
-default-floor smoother.
+default-floor smoother. Open-water tiles and the water-dominant
+`PIX_WATERGRASS_*` shoreline variants report `TYPE_WATER`; the inverse,
+grass-dominant `PIX_GRASSWATER_*` corner variants report `TYPE_GRASS`.
+Marsh remains the distinct `TYPE_MARSH`.
+
+`BIT_SWIMMING` is deliberately narrower than `BIT_FLYING`: an entity whose
+live stats carry it passes water in `og.query_grid_passable`, but it does not
+pass trees, lava, wall sides, torches, columns, boulders, or decor marked
+`BlocksGround`. The flag means that water is traversable, not that scripts
+must ignore water contact; a mode can still use `query_genre` for drag or
+other surface behavior.
 
 ### Family data
 
@@ -978,10 +1019,11 @@ og.family("living", {
   glyph_bold = true,
   radar_color = 228,
   radar_jitter = 3,                   -- adds rand(3) — a real RNG call
-  -- radar_ping = true,               -- objective families draw LOUD: an
-                                      -- oversized pulsing SDL radar blip
+  -- radar_ping = true,               -- styling only: an oversized pulsing
+                                      -- SDL radar blip when already visible
                                       -- (render-side counter, rng-free)
-                                      -- and a bold curses glyph (#209)
+                                      -- and a bold curses glyph (#209);
+                                      -- it grants no radar visibility
   tuning = {                          -- balance data, read by the hooks
     flare_cost = 6.0,                 -- decimal → Lua float
     burn_floor = 10,                  -- integer → Lua integer

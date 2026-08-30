@@ -1,4 +1,10 @@
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/core/decordefs.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
@@ -10,6 +16,7 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -112,7 +119,141 @@ static walker* add_living(unsigned char family = FAMILY_SOLDIER)
     return w;
 }
 
+struct DescriptorRestore
+{
+    int living_family;
+    FamilyDescriptor living;
+    int weapon_family;
+    WeaponFamilyDescriptor weapon;
+    int effect_family;
+    EffectFamilyDescriptor effect;
+
+    ~DescriptorRestore()
+    {
+        set_family_descriptor(living_family, living);
+        set_weapon_family_descriptor(weapon_family, weapon);
+        set_effect_family_descriptor(effect_family, effect);
+    }
+};
+
 } // namespace
+
+TEST(LevelDataCoverage, swimming_descriptor_flag_reaches_every_supported_order)
+{
+    constexpr int living_family = FAMILY_SOLDIER;
+    constexpr int weapon_family = FAMILY_ARROW;
+    constexpr int effect_family = FAMILY_FLASH;
+    const FamilyDescriptor* living_original =
+        get_family_descriptor(living_family);
+    const WeaponFamilyDescriptor* weapon_original =
+        get_weapon_family_descriptor(weapon_family);
+    const EffectFamilyDescriptor* effect_original =
+        get_effect_family_descriptor(effect_family);
+    ASSERT_NE(nullptr, living_original);
+    ASSERT_NE(nullptr, weapon_original);
+    ASSERT_NE(nullptr, effect_original);
+    DescriptorRestore restore{living_family, *living_original,
+                              weapon_family, *weapon_original,
+                              effect_family, *effect_original};
+
+    FamilyDescriptor living_patched = restore.living;
+    WeaponFamilyDescriptor weapon_patched = restore.weapon;
+    EffectFamilyDescriptor effect_patched = restore.effect;
+    living_patched.init_bit_flags |= BIT_SWIMMING;
+    weapon_patched.init_bit_flags |= BIT_SWIMMING;
+    effect_patched.init_bit_flags |= BIT_SWIMMING;
+    ASSERT_TRUE(set_family_descriptor(living_family, living_patched));
+    ASSERT_TRUE(set_weapon_family_descriptor(weapon_family, weapon_patched));
+    ASSERT_TRUE(set_effect_family_descriptor(effect_family, effect_patched));
+
+    LevelRuntimeData level(1);
+    GameWorld& world = level.world();
+    walker* living = world.add_ob(Order::Living, living_family);
+    walker* weapon = world.add_ob(Order::Weapon, weapon_family);
+    walker* effect = world.add_ob(Order::FX, effect_family);
+    ASSERT_NE(nullptr, living);
+    ASSERT_NE(nullptr, weapon);
+    ASSERT_NE(nullptr, effect);
+    EXPECT_TRUE(living->stats()->query_bit_flags(BIT_SWIMMING));
+    EXPECT_TRUE(weapon->stats()->query_bit_flags(BIT_SWIMMING));
+    EXPECT_TRUE(effect->stats()->query_bit_flags(BIT_SWIMMING));
+    world.delete_objects();
+}
+
+TEST(LevelDataCoverage, swimming_grants_water_passage_but_not_obstacle_passage)
+{
+    LevelRuntimeData level(1);
+    level.create_new_grid();
+    GameWorld& world = level.world();
+
+    walker* ground = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* swimmer = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* flyer = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* weapon = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, ground);
+    ASSERT_NE(nullptr, swimmer);
+    ASSERT_NE(nullptr, flyer);
+    ASSERT_NE(nullptr, weapon);
+    for (walker* ob : {ground, swimmer, flyer, weapon})
+    {
+        ob->setxy(0, 0);
+        ob->set_sizex(1);
+        ob->set_sizey(1);
+    }
+    swimmer->stats()->set_bit_flags(BIT_SWIMMING, 1);
+    flyer->stats()->set_bit_flags(BIT_FLYING, 1);
+
+    world.grid.frames = 1;
+    world.grid.w = 1;
+    world.grid.h = 1;
+    world.pixmaxx = GRID_SIZE;
+    world.pixmaxy = GRID_SIZE;
+    world.grid.data = std::make_unique<unsigned char[]>(1);
+    PixieData& decor = world.decor_for_floor(0);
+    decor.frames = 1;
+    decor.w = 1;
+    decor.h = 1;
+    decor.data = std::make_unique<unsigned char[]>(1);
+    decor.data[0] = DECOR_NONE;
+
+    constexpr std::array<unsigned char, 11> water_tiles = {
+        PIX_WATER1,        PIX_WATER2,        PIX_WATER3,
+        PIX_WATERGRASS_LL, PIX_WATERGRASS_LR, PIX_WATERGRASS_UL,
+        PIX_WATERGRASS_UR, PIX_WATERGRASS_U,  PIX_WATERGRASS_L,
+        PIX_WATERGRASS_R,  PIX_WATERGRASS_D,
+    };
+    for (unsigned char tile : water_tiles)
+    {
+        world.grid.data[0] = tile;
+        EXPECT_FALSE(world.query_grid_passable(0.0f, 0.0f, ground))
+            << "ground verdict for water tile " << static_cast<int>(tile);
+        EXPECT_TRUE(world.query_grid_passable(0.0f, 0.0f, swimmer))
+            << "swimmer verdict for water tile " << static_cast<int>(tile);
+        EXPECT_TRUE(world.query_grid_passable(0.0f, 0.0f, flyer))
+            << "flyer verdict for water tile " << static_cast<int>(tile);
+        EXPECT_TRUE(world.query_grid_passable(0.0f, 0.0f, weapon))
+            << "weapon verdict for water tile " << static_cast<int>(tile);
+    }
+
+    constexpr std::array<unsigned char, 6> swimmer_blockers = {
+        PIX_WALLSIDE_L, PIX_TORCH1,  PIX_COLUMN1,
+        PIX_BOULDER_1,  PIX_TREE_M1, PIX_LAVA1,
+    };
+    for (unsigned char tile : swimmer_blockers)
+    {
+        world.grid.data[0] = tile;
+        EXPECT_FALSE(world.query_grid_passable(0.0f, 0.0f, swimmer))
+            << "swimming must not bypass obstacle tile "
+            << static_cast<int>(tile);
+    }
+
+    world.grid.data[0] = PIX_GRASS1;
+    decor.data[0] = DECOR_TORCH1;
+    EXPECT_FALSE(world.query_grid_passable(0.0f, 0.0f, swimmer))
+        << "swimming must not bypass BlocksGround decor";
+
+    world.delete_objects();
+}
 
 TEST(LevelDataCoverage, level_data_save_rejects_null_fx_and_weap_entries)
 {

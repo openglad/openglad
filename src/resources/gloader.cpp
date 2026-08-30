@@ -856,6 +856,8 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->set_bit_flags(BIT_ETHEREAL, 1);
 				if (fd->init_bit_flags & BIT_NO_RANGED)
 					ob->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+				if (fd->init_bit_flags & BIT_SWIMMING)
+					ob->stats()->set_bit_flags(BIT_SWIMMING, 1);
 			}
 			else
 			{
@@ -882,6 +884,8 @@ walker  *loader::set_walker(walker *ob,
 						ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
 					if (wfd->init_bit_flags & BIT_PHANTOM)
 						ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
+					if (wfd->init_bit_flags & BIT_SWIMMING)
+						ob->stats()->set_bit_flags(BIT_SWIMMING, 1);
 					if (wfd->init_lifetime != 0)
 						ob->set_lifetime(wfd->init_lifetime);
 					if (wfd->init_ani_type != 0)
@@ -925,6 +929,8 @@ walker  *loader::set_walker(walker *ob,
 						ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
 					if (efd->init_bit_flags & BIT_FLYING)
 						ob->stats()->set_bit_flags(BIT_FLYING, 1);
+					if (efd->init_bit_flags & BIT_SWIMMING)
+						ob->stats()->set_bit_flags(BIT_SWIMMING, 1);
 				}
 			}
 

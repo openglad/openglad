@@ -44,6 +44,12 @@ weap::weap()
 	set_do_bounce(0);
 }
 
+weap::weap(WeaponProfileProbeTag tag)
+    : walker(tag)
+{
+	set_do_bounce(0);
+}
+
 weap::~weap()
 {
 	//buffers: PORT: can't call destructor w/o obj: walker::~walker();
