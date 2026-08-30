@@ -11,6 +11,8 @@
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
+#include <openglad/interface/ui/pause_menu.h>
+#include <openglad/interface/ui/picker_common.h>
 
 #include <atomic>
 
@@ -20,17 +22,19 @@
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+void picker_lobby_sync_roster_from_save();
+void picker_lobby_sync_settings_from_save();
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 namespace {
 constexpr Uint32 kUiSettleMs = 150;
-constexpr Uint32 kMenuTransitionMs = 250;
-constexpr Uint32 kCycleStepMs = 100;
 constexpr int kTeamMenuTimeoutMs = 20000;
 constexpr int kGameStartTimeoutMs = 20000;
 constexpr int kGameFinishTimeoutMs = 90000;
+constexpr int kGameAbortTimeoutMs = 20000;
+constexpr int kMenuActionTimeoutMs = 5000;
 }
 
 
@@ -39,9 +43,6 @@ extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 #endif
-
-// Number of hireable character types in allowable_guys[]
-#define NUM_HIRE_TYPES 14
 
 static void cleanup_picker_state()
 {
@@ -102,7 +103,105 @@ struct OpState {
     bool finished;
     float original_speed;
     int num_hired;
+    const char* failure_message;
 };
+
+static int remaining_before(Uint64 deadline)
+{
+    const Uint64 now = SDL_GetTicks();
+    return now < deadline ? static_cast<int>(deadline - now) : 0;
+}
+
+static bool wait_for_menu_click_release(Uint64 deadline)
+{
+    while (SDL_HasEvent(SDL_EVENT_MOUSE_BUTTON_UP)) {
+        if (remaining_before(deadline) <= 0)
+            return false;
+        SDL_Delay(1);
+    }
+
+    // A menu action can publish its postcondition at the top of a frame
+    // before that frame's leftmouse() call consumes the queued mouse-up.
+    // Cross one more frame-top barrier before injecting the next press.
+    const int remaining_ms = remaining_before(deadline);
+    return remaining_ms > 0 &&
+           run_on_main_thread([] {}, remaining_ms);
+}
+
+template <typename Predicate>
+static bool interact_and_wait_for_menu_postcondition(
+    const char* id,
+    Predicate predicate,
+    int timeout_ms = kMenuActionTimeoutMs)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    interact(id);
+
+    while (remaining_before(deadline) > 0) {
+        bool observed = false;
+        const int remaining_ms = remaining_before(deadline);
+        if (remaining_ms <= 0 ||
+            !run_on_main_thread([&] { observed = predicate(); },
+                                remaining_ms)) {
+            break;
+        }
+        if (observed)
+            return wait_for_menu_click_release(deadline);
+    }
+
+    fprintf(stderr,
+            "  [test] ERROR: '%s' did not reach its menu postcondition "
+            "within %d ms\n",
+            id, timeout_ms);
+    return false;
+}
+
+static void unwind_picker_after_failure(OpState* state)
+{
+    set_game_speed(state->original_speed);
+    g_test_remove_exits = false;
+
+    if (g_test_in_game.load(std::memory_order_acquire)) {
+        og::ui::pause_menu_testing_clear_queue();
+        og::ui::pause_menu_testing_queue_outcome(
+            og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
+        inject_key_press(SDLK_ESCAPE);
+
+        int waited_ms = 0;
+        constexpr int poll_ms = 10;
+        while (g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kGameAbortTimeoutMs) {
+            SDL_Delay(poll_ms);
+            waited_ms += poll_ms;
+        }
+        og::ui::pause_menu_testing_clear_queue();
+    }
+
+    // infinite_gold is a session-only test aid. Reset it on the menu thread
+    // before unwinding either Hire or Base Camp.
+    (void)run_on_main_thread([] {
+        og::runtime::current_session->myscreen_->save_data.infinite_gold = 0;
+        picker_lobby_sync_settings_from_save();
+    }, kMenuActionTimeoutMs);
+
+    for (int step = 0; step < 2; ++step) {
+        if (wait_for_interactable("begin_new_game", 1000))
+            return;
+        if (!wait_for_interactable("back", 2000))
+            return;
+        (void)wait_for_menu_click_release(
+            SDL_GetTicks() + static_cast<Uint64>(kMenuActionTimeoutMs));
+        interact("back");
+    }
+}
+
+static int fail_op_run(OpState* state, const char* message)
+{
+    fprintf(stderr, "  [test] ERROR: %s\n", message);
+    state->failure_message = message;
+    unwind_picker_after_failure(state);
+    return 0;
+}
 
 static int op_injector(void* data)
 {
@@ -111,67 +210,114 @@ static int op_injector(void* data)
     state->started = true;
 
     // -- Main Menu --
-    wait_for_interactable("begin_new_game", 5000);
+    if (!wait_for_interactable("begin_new_game", 5000))
+        return fail_op_run(state, "main menu did not appear");
     SDL_Delay(kUiSettleMs);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
 
     // §2.2: accept the generated company name at the name-entry screen.
-    accept_generated_company_name();
+    if (!accept_generated_company_name())
+        return fail_op_run(state, "company-name screen did not appear");
 
     // No campaign intro here anymore (issue #186: it moved behind the
     // campaign select, skipped under TESTING) — an Escape here would BACK
     // out of the team-build screen instead.
 
     // New games now land on team build first, then enter hire explicitly.
-    SDL_Delay(kUiSettleMs);
-    wait_for_interactable("hire_troops", 10000);
-    SDL_Delay(kUiSettleMs);
-    interact("hire_troops");
-    SDL_Delay(kUiSettleMs);
-    wait_for_interactable("hire_me", 10000);
-    SDL_Delay(kUiSettleMs);
+    if (!wait_for_interactable("hire_troops", 10000))
+        return fail_op_run(state, "team menu did not expose HIRE");
+    if (!interact_and_wait_for_menu_postcondition("hire_troops", [] {
+            const auto* const session = pks().hire_session;
+            const guy* const recruit =
+                session != nullptr ? session->current_recruit() : nullptr;
+            return session != nullptr && session->family_index() == 0 &&
+                   recruit != nullptr &&
+                   recruit->family == og::ui::kAllowableGuys[0];
+        })) {
+        return fail_op_run(state, "hire menu did not start on SOLDIER");
+    }
+
+    // This test proves the complete HIRE/NEXT flow, not the random opening
+    // wallet. Free purchases let every visible class exercise HIRE exactly
+    // once; the session-only flag is restored before the level starts.
+    if (!run_on_main_thread([] {
+            og::runtime::current_session->myscreen_->save_data.infinite_gold = 1;
+            picker_lobby_sync_settings_from_save();
+        })) {
+        return fail_op_run(state, "could not enable free test purchases");
+    }
 
     // -- Hire Menu: hire one of each type --
     // The hire menu starts showing allowable_guys[0] (SOLDIER).
-    // For each type: click HIRE ME (succeeds if we can afford it),
-    // then click NEXT to cycle to the next type.
+    // Each click is acknowledged by its exact roster/session postcondition,
+    // then by the menu frame that consumes mouse-up. This keeps adjacent
+    // HIRE/NEXT presses distinct even when the full binary is under load.
     fprintf(stderr, "  [test] hiring characters through UI...\n");
-    for (int i = 0; i < NUM_HIRE_TYPES; i++) {
-        interact("hire_me");
-        SDL_Delay(kCycleStepMs);
+    for (std::size_t i = 0; i < og::ui::kAllowableGuys.size(); ++i) {
+        const int expected_family = og::ui::kAllowableGuys[i];
+        if (!interact_and_wait_for_menu_postcondition(
+                "hire_me", [i, expected_family] {
+                    const SaveData& save =
+                        og::runtime::current_session->myscreen_->save_data;
+                    const auto* const session = pks().hire_session;
+                    return save.team_size == static_cast<int>(i + 1) &&
+                           save.team_list[i] != nullptr &&
+                           save.team_list[i]->family == expected_family &&
+                           session != nullptr &&
+                           session->family_index() == static_cast<int>(i);
+                })) {
+            return fail_op_run(state,
+                               "HIRE did not add the displayed character");
+        }
 
-        if (i < NUM_HIRE_TYPES - 1) {
-            interact("next");
-            SDL_Delay(kCycleStepMs);
+        if (i + 1 < og::ui::kAllowableGuys.size()) {
+            const int next_family = og::ui::kAllowableGuys[i + 1];
+            if (!interact_and_wait_for_menu_postcondition(
+                    "next", [i, next_family] {
+                        const auto* const session = pks().hire_session;
+                        const guy* const recruit = session != nullptr
+                            ? session->current_recruit()
+                            : nullptr;
+                        const guy* const displayed =
+                            og::runtime::current_session->current_guy_.get();
+                        return session != nullptr &&
+                               session->family_index() ==
+                                   static_cast<int>(i + 1) &&
+                               recruit != nullptr &&
+                               recruit->family == next_family &&
+                               displayed != nullptr &&
+                               displayed->family == next_family;
+                    })) {
+                return fail_op_run(
+                    state, "NEXT did not display the next character type");
+            }
         }
     }
 
-    // The final roster update becomes visible before add_guy's main-thread
-    // callback finishes its input reset, recruit sync, and autosave tail.
-    // Do not let BACK overlap that callback.
-    SDL_Delay(750);
     fprintf(stderr, "  [test] done hiring, clicking back\n");
     interact("back");
 
     // -- Team Menu: cheat stats then GO --
-    SDL_Delay(kUiSettleMs);
-    if (!wait_for_team_menu()) {
-        set_game_speed(state->original_speed);
-        g_test_remove_exits = false;
-        return 0;
+    if (!wait_for_team_menu())
+        return fail_op_run(state, "team menu did not appear after hiring");
+    if (!wait_for_menu_click_release(
+            SDL_GetTicks() + static_cast<Uint64>(kMenuActionTimeoutMs))) {
+        return fail_op_run(state, "Hire BACK release was not acknowledged");
     }
-    SDL_Delay(kUiSettleMs);
 
-    // Programmatically crank every stat to ludicrous levels
-    state->num_hired = og::runtime::current_session->myscreen_->save_data.team_size;
-    fprintf(stderr, "  [test] hired %d characters, cheating stats\n", state->num_hired);
+    // Programmatically crank every stat to ludicrous levels.
     // On the menu thread (#257): the team menu draws these roster fields
     // every frame.
-    (void)run_on_main_thread([] {
-        for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; i++) {
-            guy* g = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].get();
+    if (!run_on_main_thread([state] {
+        SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        save.infinite_gold = 0;
+        picker_lobby_sync_settings_from_save();
+        state->num_hired = save.team_size;
+        for (int i = 0; i < save.team_size; i++) {
+            guy* g = save.team_list[static_cast<std::size_t>(i)].get();
             if (g) {
                 g->strength = 200;
                 g->dexterity = 200;
@@ -180,7 +326,35 @@ static int op_injector(void* data)
                 g->armor = 200;
             }
         }
-    });
+        // Base Camp projects the lobby roster back into SaveData every
+        // frame. Publish the cheated roster through the same boundary as a
+        // real roster mutation so the next poll cannot restore stale stats.
+        picker_lobby_sync_roster_from_save();
+    })) {
+        return fail_op_run(state, "could not prepare the hired roster");
+    }
+
+    bool roster_persisted = false;
+    if (!run_on_main_thread([&] {
+            const SaveData& save =
+                og::runtime::current_session->myscreen_->save_data;
+            roster_persisted =
+                save.team_size ==
+                    static_cast<int>(og::ui::kAllowableGuys.size());
+            for (int i = 0; roster_persisted && i < save.team_size; ++i) {
+                const guy* const g =
+                    save.team_list[static_cast<std::size_t>(i)].get();
+                roster_persisted =
+                    g != nullptr && g->strength == 200 &&
+                    g->dexterity == 200 && g->constitution == 200 &&
+                    g->intelligence == 200 && g->armor == 200;
+            }
+        }) || !roster_persisted) {
+        return fail_op_run(state,
+                           "lobby projection did not retain cheated stats");
+    }
+    fprintf(stderr, "  [test] hired %d characters, cheating stats\n",
+            state->num_hired);
 
     // Set up for auto-win: remove exits so level completes when enemies die
     g_test_remove_exits = true;
@@ -205,10 +379,8 @@ static int op_injector(void* data)
             waited_ms += poll_ms;
         }
         if (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before) {
-            fprintf(stderr, "  [test] ERROR: game never started (epoch unchanged)\n");
-            set_game_speed(state->original_speed);
-            g_test_remove_exits = false;
-            return 0;
+            return fail_op_run(state,
+                               "game never started (epoch unchanged)");
         }
         waited_ms = 0;
         while (g_test_in_game.load(std::memory_order_acquire)
@@ -217,16 +389,14 @@ static int op_injector(void* data)
             waited_ms += poll_ms;
         }
         if (g_test_in_game.load(std::memory_order_acquire)) {
-            fprintf(stderr, "  [test] ERROR: game did not finish within timeout\n");
-            set_game_speed(state->original_speed);
-            g_test_remove_exits = false;
-            return 0;
+            return fail_op_run(state,
+                               "game did not finish within timeout");
         }
     }
 
     // Now we're truly back in create_team_menu with fresh buttons
-    wait_for_interactable("back", 10000);
-    SDL_Delay(kUiSettleMs);
+    if (!wait_for_interactable("back", 10000))
+        return fail_op_run(state, "Base Camp did not return after the game");
 
     // Restore state
     set_game_speed(state->original_speed);
@@ -249,7 +419,9 @@ TEST(OverpoweredTeam, overpowered_team) {
     og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    OpState state = { false, false, og::runtime::current_session->g_game_speed_factor_, 0 };
+    OpState state = { false, false,
+                      og::runtime::current_session->g_game_speed_factor_,
+                      0, nullptr };
     SDL_Thread* thread = SDL_CreateThread(op_injector, "op_injector", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -265,8 +437,13 @@ TEST(OverpoweredTeam, overpowered_team) {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    ASSERT_EQ(nullptr, state.failure_message)
+        << (state.failure_message != nullptr ? state.failure_message : "");
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
-    ASSERT_TRUE(state.num_hired >= 5) << "should have hired at least 5 characters via UI";
+    ASSERT_EQ(static_cast<int>(og::ui::kAllowableGuys.size()), state.num_hired)
+        << "should have hired exactly one character of every displayed type";
+    ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.infinite_gold)
+        << "session-only free purchases must be restored before gameplay";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.is_level_completed(1)) << "level 1 should be marked completed (team should have won)";
 
     fprintf(stderr, "  [test] Team of %d won level 1 via UI hire flow\n",

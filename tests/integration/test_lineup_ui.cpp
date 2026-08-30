@@ -218,19 +218,54 @@ bool wait_for_interactable_label(const std::string& id,
     return false;
 }
 
-// Click `id` until its label reads `want` (bounded retries: a press and
-// release landing in one stretched frame are swallowed whole under load).
-bool click_until_label(const std::string& id, const std::string& want,
-                       int attempts = 3, int wait_ms = 2500)
+// Read pointer readiness on the menu thread, then publish the click from the
+// injector. inject_click deliberately leaves a real frame-polling window
+// between DOWN and UP; running the whole injection inside the frame-top task
+// collapses that window and can lose the click under aggregate CTest load.
+template <typename Predicate>
+bool wait_for_menu_thread_condition(Predicate predicate, int timeout_ms = 5000)
 {
-    for (int i = 0; i < attempts; ++i) {
-        interact(id);
-        if (wait_for_interactable_label(id, want, wait_ms))
+    const Uint64 deadline =
+        SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (SDL_GetTicks() < deadline) {
+        bool satisfied = false;
+        const Uint64 now = SDL_GetTicks();
+        const int remaining = static_cast<int>(deadline - now);
+        if (!run_on_main_thread([&] { satisfied = predicate(); }, remaining))
+            return false;
+        if (satisfied)
             return true;
-        fprintf(stderr, "  [lineup] retry %d: '%s' not yet '%s'\n", i + 1,
-                id.c_str(), want.c_str());
     }
     return false;
+}
+
+bool wait_for_menu_pointer_quiescent(int timeout_ms = 5000)
+{
+    return wait_for_menu_thread_condition([] {
+        const InputHardwareState& input = input_hardware_state();
+        return !input.mouse.left && !input.picker_was_left_down &&
+            og::input::testing_pending_left_clicks() == 0;
+    }, timeout_ms);
+}
+
+bool interact_on_engine_menu(const std::string& id, int timeout_ms = 10000)
+{
+    if (!wait_for_interactable(id, timeout_ms) ||
+        !wait_for_menu_pointer_quiescent(timeout_ms))
+        return false;
+    interact(id);
+    return true;
+}
+
+std::size_t trace_occurrences(const char* category, const std::string& message)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    return static_cast<std::size_t>(std::count_if(
+        g_trace_buffer.begin(), g_trace_buffer.end(),
+        [category, &message](const TraceEntry& entry) {
+            return entry.category == category &&
+                entry.message.find(message) != std::string::npos;
+        }));
 }
 
 // The zone submenu's rows compose "FACE - note" onto one button label, so
@@ -257,18 +292,166 @@ bool wait_for_interactable_label_containing(const std::string& id,
     return false;
 }
 
-bool click_until_label_containing(const std::string& id,
-                                  const std::string& want, int attempts = 3,
-                                  int wait_ms = 2500)
+template <typename Predicate>
+bool wait_for_saved_action_surface(
+    const std::string& id, const std::string& want, bool contains,
+    const char* action_category, const std::string& action_message,
+    std::size_t action_count_before, std::size_t save_count_before,
+    Predicate save_matches, int wait_ms = 5000)
 {
-    for (int i = 0; i < attempts; ++i) {
-        interact(id);
-        if (wait_for_interactable_label_containing(id, want, wait_ms))
-            return true;
-        fprintf(stderr, "  [lineup] retry %d: '%s' not yet ~'%s'\n", i + 1,
-                id.c_str(), want.c_str());
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(wait_ms);
+    while (SDL_GetTicks() < deadline) {
+        bool label_matches = false;
+        for (const Interactable& item : get_interactables()) {
+            if (item.id != id || item.hidden)
+                continue;
+            label_matches = contains
+                ? item.label.find(want) != std::string::npos
+                : item.label == want;
+            break;
+        }
+        const bool action_landed =
+            trace_occurrences(action_category, action_message) >
+            action_count_before;
+        const bool save_completed =
+            trace_occurrences("save", "SaveData::save complete") >
+            save_count_before;
+        if (label_matches && action_landed && save_completed) {
+            const Uint64 now = SDL_GetTicks();
+            if (now >= deadline)
+                break;
+            const int remaining = static_cast<int>(deadline - now);
+            // The save-complete trace is emitted after synchronous sync_fs.
+            // Only now is it safe to post a frame-top task: it proves both
+            // SaveData's exact value and consumption of this click's release.
+            return wait_for_menu_thread_condition([=] {
+                const SaveData& save =
+                    og::runtime::current_session->myscreen_->save_data;
+                const InputHardwareState& input = input_hardware_state();
+                return save_matches(save) && !input.mouse.left &&
+                    !input.picker_was_left_down &&
+                    og::input::testing_pending_left_clicks() == 0;
+            }, remaining);
+        }
+        SDL_Delay(25);
     }
+    fprintf(stderr,
+            "  [lineup] '%s' never reached %s'%s' with %s/%s and saved state\n",
+            id.c_str(), contains ? "~" : "", want.c_str(), action_category,
+            action_message.c_str());
     return false;
+}
+
+bool click_lineup_fill_and_wait(int team, const std::string& want,
+                                short expected, int wait_ms = 5000)
+{
+    const std::string id = "lineup_fill_" + std::to_string(team);
+    const std::string action =
+        "fill team=" + std::to_string(team) +
+        " value=" + std::to_string(expected);
+    const std::size_t action_before = trace_occurrences("lineup", action);
+    const std::size_t save_before =
+        trace_occurrences("save", "SaveData::save complete");
+    if (!interact_on_engine_menu(id))
+        return false;
+    return wait_for_saved_action_surface(
+        id, want, false, "lineup", action, action_before, save_before,
+        [team, expected](const SaveData& save) {
+            return save.fill[static_cast<std::size_t>(team)] == expected;
+        },
+        wait_ms);
+}
+
+bool click_and_wait_for_label(const std::string& id, const std::string& want,
+                              int wait_ms = 5000)
+{
+    static constexpr std::string_view prefix = "lineup_fill_";
+    if (!id.starts_with(prefix) || id.size() != prefix.size() + 1 ||
+        id.back() < '0' || id.back() > '3') {
+        fprintf(stderr, "  [lineup] unsupported saved-label action '%s'\n",
+                id.c_str());
+        return false;
+    }
+    short expected = -1;
+    if (want == "FILL: NONE")
+        expected = og::sim::kFillNone;
+    else if (want == "FILL: WEAK")
+        expected = og::sim::kFillWeak;
+    else if (want == "FILL: FAIR")
+        expected = og::sim::kFillFair;
+    else if (want == "FILL: STRONG")
+        expected = og::sim::kFillStrong;
+    else if (want == "FILL: BRUTAL")
+        expected = og::sim::kFillBrutal;
+    else {
+        fprintf(stderr, "  [lineup] unsupported FILL face '%s'\n",
+                want.c_str());
+        return false;
+    }
+    return click_lineup_fill_and_wait(id.back() - '0', want, expected,
+                                      wait_ms);
+}
+
+bool click_zone_macro_and_wait(
+    const std::string& id, const std::string& want,
+    const std::array<short, 4>& expected_fill, int wait_ms = 5000)
+{
+    const std::string action = "acted MATCH SETUP";
+    const std::size_t action_before = trace_occurrences("zone", action);
+    const std::size_t save_before =
+        trace_occurrences("save", "SaveData::save complete");
+    if (!interact_on_engine_menu(id))
+        return false;
+    return wait_for_saved_action_surface(
+        id, want, true, "zone", action, action_before, save_before,
+        [expected_fill](const SaveData& save) {
+            return save.fill == expected_fill;
+        },
+        wait_ms);
+}
+
+template <typename Predicate>
+bool click_lineup_saved_action_and_wait(const std::string& id,
+                                        const std::string& action,
+                                        Predicate save_matches,
+                                        int wait_ms = 5000)
+{
+    const std::size_t action_before = trace_occurrences("lineup", action);
+    const std::size_t save_before =
+        trace_occurrences("save", "SaveData::save complete");
+    if (!interact_on_engine_menu(id))
+        return false;
+    return wait_for_saved_action_surface(
+        id, "", true, "lineup", action, action_before, save_before,
+        save_matches, wait_ms);
+}
+
+bool click_inert_map_units_and_wait_unchanged(int team)
+{
+    const std::string id = "lineup_map_units_" + std::to_string(team);
+    const short before = og::runtime::current_session->myscreen_
+                             ->save_data.map_units[static_cast<std::size_t>(team)];
+    const std::size_t trace_before = trace_occurrences(
+        "lineup", "map_units team=" + std::to_string(team));
+    const std::size_t save_before =
+        trace_occurrences("save", "SaveData::save complete");
+    if (!interact_on_engine_menu(id) || !wait_for_menu_pointer_quiescent())
+        return false;
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    bool blank_face = false;
+    for (const Interactable& item : get_interactables()) {
+        if (item.id == id && !item.hidden) {
+            blank_face = item.label.empty();
+            break;
+        }
+    }
+    return blank_face &&
+        save.map_units[static_cast<std::size_t>(team)] == before &&
+        trace_occurrences("lineup",
+                          "map_units team=" + std::to_string(team)) ==
+            trace_before &&
+        trace_occurrences("save", "SaveData::save complete") == save_before;
 }
 
 bool wait_for_interactable_at(const std::string& id, int x, int y,
@@ -286,6 +469,61 @@ bool wait_for_interactable_at(const std::string& id, int x, int y,
     fprintf(stderr, "  [lineup] TIMEOUT waiting for '%s' at (%d,%d)\n",
             id.c_str(), x, y);
     return false;
+}
+
+bool interactable_at(const std::string& id, int x, int y)
+{
+    for (const Interactable& item : get_interactables()) {
+        if (item.id == id && !item.hidden && item.x == x && item.y == y)
+            return true;
+    }
+    return false;
+}
+
+// One click, one exact screen transition. The shared BACK id is identified by
+// the source geometry before clicking and by the destination geometry after;
+// stale LINEUP buttons can therefore never masquerade as SCENARIO readiness.
+bool click_and_wait_for_screen(const std::string& click_id,
+                               const std::string& next_id, int next_x,
+                               int next_y, int timeout_ms = 10000)
+{
+    if (!interact_on_engine_menu(click_id, timeout_ms) ||
+        !wait_for_interactable_at(next_id, next_x, next_y, timeout_ms)) {
+        return false;
+    }
+    return wait_for_menu_pointer_quiescent(timeout_ms);
+}
+
+bool back_to_scenario_from(int source_x, int source_y)
+{
+    if (!wait_for_interactable_at("back", source_x, source_y, 10000) ||
+        !click_and_wait_for_screen("back", "back", 30, 170) ||
+        !wait_for_interactable("view_scenario", 10000)) {
+        return false;
+    }
+    return wait_for_menu_pointer_quiescent();
+}
+
+bool wait_for_trace(const char* category, const char* substring,
+                    int timeout_ms);
+
+bool click_map_units_and_wait_off(int team)
+{
+    const std::string id = "lineup_map_units_" + std::to_string(team);
+    const std::string trace =
+        "map_units team=" + std::to_string(team) + " value=1";
+    const std::size_t action_before = trace_occurrences("lineup", trace);
+    const std::size_t save_before =
+        trace_occurrences("save", "SaveData::save complete");
+    if (!interact_on_engine_menu(id)) {
+        return false;
+    }
+    return wait_for_saved_action_surface(
+        id, "", false, "lineup", trace, action_before, save_before,
+        [team](const SaveData& save) {
+            return save.map_units[static_cast<std::size_t>(team)] ==
+                og::sim::kMapUnitsOff;
+        });
 }
 
 bool interactable_visible(const std::string& id)
@@ -426,20 +664,17 @@ bool injector_open_lineup()
     return true;
 }
 
-// SCENARIO -> Base Camp -> main menu -> quit (every flow's unwind).
+// SCENARIO -> Base Camp -> the one-call picker_main test seam.  Every caller
+// sets g_picker_max_mainmenu_calls=1, so returning from Base Camp ends the
+// picker before it republishes the main-menu buttons; waiting ten seconds for
+// begin_new_game here was an expected timeout, not synchronization.
 void injector_unwind_from_scenario()
 {
     if (wait_for_interactable_at("back", 30, 170, 5000)) {
-        SDL_Delay(300);
-        interact("back");
+        (void)interact_on_engine_menu("back");
     }
     if (wait_for_team_menu(10000)) {
-        SDL_Delay(300);
-        interact("back");
-    }
-    if (wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
-        interact("quit");
+        (void)interact_on_engine_menu("back");
     }
 }
 
@@ -610,18 +845,13 @@ struct LineupFillFlowState
     int captures = 0;
 };
 
-// Walk a knob through consecutive labels, one click per step (each step
-// waits for its own label, so a swallowed click is retried, never skipped;
-// the 300ms settle after every label flip is the menus-skill rule — the
-// press is still held when the label flips, and a second press without a
-// release is silently dropped).
+// Walk a knob through consecutive labels, one acknowledged click per step.
 bool click_through_labels(const std::string& id,
                           const std::vector<std::string>& labels)
 {
     for (const std::string& label : labels) {
-        if (!click_until_label(id, label, 3, 2000))
+        if (!click_and_wait_for_label(id, label))
             return false;
-        SDL_Delay(300);
     }
     return true;
 }
@@ -685,9 +915,9 @@ int lineup_fill_flow_injector(void* data)
         SDL_Delay(300);
     }
 
-    interact("lineup");
     // The page: the action strip's BACK sits at its own (8,176) geometry.
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->page_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (state->page_opened) {
         SDL_Delay(750);
         // The pristine page: three bands' boxes dimmed with the
@@ -704,8 +934,8 @@ int lineup_fill_flow_injector(void* data)
             "FILL: NONE"};
         state->wheel_walked = true;
         for (std::size_t step = 0; step < wheel_labels.size(); ++step) {
-            if (!click_until_label("lineup_fill_0", wheel_labels[step], 3,
-                                   2000))
+            if (!click_and_wait_for_label("lineup_fill_0",
+                                          wheel_labels[step]))
             {
                 state->wheel_walked = false;
                 break;
@@ -723,18 +953,18 @@ int lineup_fill_flow_injector(void* data)
         // BLUE takes WEAK (the capture shows two different fill words) --
         // one click off its resting NONE.
         state->fill_blue_weak =
-            click_until_label("lineup_fill_1", "FILL: WEAK");
+            click_and_wait_for_label("lineup_fill_1", "FILL: WEAK");
         SDL_Delay(300);
 
         // The MAP UNITS box: RED's is live (5 authored units) and flips
         // OFF; BLUE's is dimmed-inert (the map ships none there), so its
         // click must move nothing.
-        interact("lineup_map_units_0");
-        state->map_units_red_off =
-            wait_for_trace("lineup", "map_units team=0 value=1", 5000);
+        state->map_units_red_off = click_map_units_and_wait_off(0);
         SDL_Delay(300);
-        interact("lineup_map_units_1");
-        SDL_Delay(500);
+        const bool blue_box_stayed_inert =
+            click_inert_map_units_and_wait_unchanged(1);
+        if (!blue_box_stayed_inert)
+            state->map_units_red_off = false;
 
         state->captures += capture_frame("lineup_fill_wheel");
         SDL_Delay(300);
@@ -752,7 +982,8 @@ int lineup_fill_flow_injector(void* data)
             wait_for_interactable_at("back", 10, 170, 10000);
         if (state->viewer_opened_after) {
             (void)wait_for_trace(
-                "picker", "view_scenario line   RED TEAM  ACTIVE - BOT SQUAD",
+                "picker",
+                "view_scenario line   RED TEAM  ACTIVE - MATCHED BOTS",
                 10000);
             (void)wait_for_trace("picker", "view_scenario lines=", 5000);
             state->troops_line_after =
@@ -877,24 +1108,25 @@ int lineup_split_flow_injector(void* data)
         return 0;
     }
     SDL_Delay(300);
-    interact("lineup");
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->page_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (state->page_opened) {
         SDL_Delay(750);
         state->splits_visible = interactable_visible("lineup_split_fair");
         state->captures += capture_frame("lineup_solo_two_seats");
         SDL_Delay(300);
-        // Bounded-retry click (the click_until_label idiom, keyed on the
-        // action's own trace): a press and release landing inside one
-        // stretched frame — the capture pause above stretches one — are
-        // swallowed whole.
-        for (int attempt = 0;
-             attempt < 3 && !trace_contains("lineup", "split mode=1");
-             ++attempt)
-        {
-            interact("lineup_split_fair");
-            SDL_Delay(750);
-        }
+        (void)click_lineup_saved_action_and_wait(
+            "lineup_split_fair", "split mode=1 moved=3 locked=0",
+            [](const SaveData& save) {
+                const std::array<short, 6> expected = {0, 1, 1, 0, 0, 1};
+                for (std::size_t i = 0; i < expected.size(); ++i) {
+                    if (!save.team_list[i] ||
+                        save.team_list[i]->teamnum != expected[i]) {
+                        return false;
+                    }
+                }
+                return true;
+            });
         interact("back");
     }
     injector_unwind_from_scenario();
@@ -985,9 +1217,8 @@ int lineup_net_flow_injector(void* data)
         interact("scenario");
         if (wait_for_interactable("lineup", 10000)) {
             SDL_Delay(750);
-            interact("lineup");
             state->page_opened =
-                wait_for_interactable_at("back", 8, 176, 10000);
+                click_and_wait_for_screen("lineup", "back", 8, 176);
             if (state->page_opened) {
                 SDL_Delay(1000);
                 state->knobs_visible =
@@ -1113,11 +1344,11 @@ int basecamp_chip_flow_injector(void* data)
         SDL_Delay(300);
         state->captures += capture_frame("basecamp_networked_chip");
         SDL_Delay(300);
-        interact("roster_team_0");
-        state->chip_cycled =
-            wait_for_trace("basecamp", "team slot=0 team=1", 5000);
-        SDL_Delay(300);
-        interact("back");
+        if (interact_on_engine_menu("roster_team_0")) {
+            state->chip_cycled =
+                wait_for_trace("basecamp", "team slot=0 team=1", 5000);
+        }
+        (void)interact_on_engine_menu("back");
     }
     state->finished = true;
     return 0;
@@ -1197,8 +1428,8 @@ int lineup_classic_flow_injector(void* data)
         return 0;
     }
     SDL_Delay(300);
-    interact("lineup");
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->page_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (state->page_opened) {
         SDL_Delay(750);
         state->knobs_visible = interactable_visible("lineup_fill_0");
@@ -1217,7 +1448,7 @@ int lineup_classic_flow_injector(void* data)
         // C5: the click cycles the wheel — NONE steps to WEAK on a classic
         // campaign too.
         state->fill_cycled =
-            click_until_label("lineup_fill_0", "FILL: WEAK");
+            click_and_wait_for_label("lineup_fill_0", "FILL: WEAK");
         SDL_Delay(500);
         // E5: the first click's own frame — the NONE -> WEAK step.
         state->captures += capture_frame("lineup_wheel_from_none");
@@ -1364,7 +1595,26 @@ struct LineupClassicViewerState
     bool green_line_when_none = true;
     bool company_line_still_there = false;
     int captures = 0;
+    std::string failure;
 };
+
+int fail_lineup_classic_viewer(LineupClassicViewerState* state,
+                               const char* failure)
+{
+    state->failure = failure;
+    fprintf(stderr, "  [lineup] classic viewer flow failed: %s\n", failure);
+
+    // A failed transition must still unwind whichever blocking subscreen is
+    // live. Geometry distinguishes VIEW LEVEL's BACK from LINEUP's; both
+    // lead to SCENARIO, after which the shared unwind returns through Base
+    // Camp. These are structural BACKs, never retries of a failed action.
+    if (interactable_at("back", 10, 170))
+        (void)back_to_scenario_from(10, 170);
+    else if (interactable_at("back", 8, 176))
+        (void)back_to_scenario_from(8, 176);
+    injector_unwind_from_scenario();
+    return 0;
+}
 
 int lineup_classic_viewer_injector(void* data)
 {
@@ -1374,107 +1624,90 @@ int lineup_classic_viewer_injector(void* data)
         state->finished = true;
         return 0;
     }
-    SDL_Delay(300);
-
     // Visit (a): the all-default census block.
-    interact("view_scenario");
-    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
-    if (state->viewer_opened) {
-        state->company_line_seen = wait_for_trace(
-            "picker", "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)",
-            10000);
-        state->troops_line_seen = wait_for_trace(
-            "picker",
-            "view_scenario line   GREEN TEAM  ACTIVE - MAP TROOPS (12)",
-            10000);
-        SDL_Delay(300);
-        interact("back");
-        SDL_Delay(300);
-        (void)wait_for_interactable("progress", 10000);
-        SDL_Delay(300);
-    }
+    state->viewer_opened =
+        click_and_wait_for_screen("view_scenario", "back", 10, 170);
+    if (!state->viewer_opened)
+        return fail_lineup_classic_viewer(state,
+                                          "the default VIEW LEVEL did not open");
+    state->company_line_seen = wait_for_trace(
+        "picker", "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)",
+        10000);
+    state->troops_line_seen = wait_for_trace(
+        "picker",
+        "view_scenario line   GREEN TEAM  ACTIVE - MAP TROOPS (12)",
+        10000);
+    if (!back_to_scenario_from(10, 170))
+        return fail_lineup_classic_viewer(
+            state, "the default VIEW LEVEL did not return to SCENARIO");
 
     // LINEUP: FILL: STRONG on GREEN and its MAP UNITS box OFF (the trade).
-    interact("lineup");
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
-    if (!state->page_opened) {
-        injector_unwind_from_scenario();
-        state->finished = true;
-        return 0;
-    }
-    SDL_Delay(750);
+    state->page_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
+    if (!state->page_opened)
+        return fail_lineup_classic_viewer(state, "the LINEUP page did not open");
     // E1: the band rests on NONE, so STRONG is three stops along.
     state->fill_green_strong = click_through_labels(
         "lineup_fill_1", {"FILL: WEAK", "FILL: FAIR", "FILL: STRONG"});
-    SDL_Delay(300);
-    interact("lineup_map_units_1");
-    state->map_units_green_off =
-        wait_for_trace("lineup", "map_units team=1 value=1", 5000);
-    SDL_Delay(300);
-    interact("back");  // LINEUP -> SCENARIO
-    SDL_Delay(300);
+    if (!state->fill_green_strong)
+        return fail_lineup_classic_viewer(
+            state, "GREEN FILL did not reach STRONG");
+    state->map_units_green_off = click_map_units_and_wait_off(1);
+    if (!state->map_units_green_off)
+        return fail_lineup_classic_viewer(
+            state, "GREEN MAP UNITS did not reach the acknowledged OFF state");
+    if (!back_to_scenario_from(8, 176))
+        return fail_lineup_classic_viewer(
+            state, "LINEUP did not return to SCENARIO after the trade");
 
     // Visit (b): the traded squad wears its fill word; the troops are gone.
-    if (wait_for_interactable("view_scenario", 10000)) {
-        SDL_Delay(750);
-        trace_clear();
-        interact("view_scenario");
-        state->viewer_fill_opened =
-            wait_for_interactable_at("back", 10, 170, 10000);
-        if (state->viewer_fill_opened) {
-            (void)wait_for_trace(
-                "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
-            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
-            state->troops_line_after_trade =
-                trace_contains("picker", "MAP TROOPS (12)");
-            state->green_line_after_trade =
-                first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
-            SDL_Delay(300);
-            state->captures += capture_frame("view_level_gladiator_fill");
-            SDL_Delay(300);
-            interact("back");
-            SDL_Delay(300);
-            (void)wait_for_interactable("progress", 10000);
-            SDL_Delay(300);
-        }
-    }
+    trace_clear();
+    state->viewer_fill_opened =
+        click_and_wait_for_screen("view_scenario", "back", 10, 170);
+    if (!state->viewer_fill_opened)
+        return fail_lineup_classic_viewer(
+            state, "the traded VIEW LEVEL did not open from SCENARIO");
+    (void)wait_for_trace(
+        "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
+    (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+    state->troops_line_after_trade =
+        trace_contains("picker", "MAP TROOPS (12)");
+    state->green_line_after_trade =
+        first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
+    state->captures += capture_frame("view_level_gladiator_fill");
+    if (!back_to_scenario_from(10, 170))
+        return fail_lineup_classic_viewer(
+            state, "the traded VIEW LEVEL did not return to SCENARIO");
 
     // LINEUP again: GREEN's wheel to NONE (STRONG -> BRUTAL -> NONE).
-    interact("lineup");
-    if (wait_for_interactable_at("back", 8, 176, 10000)) {
-        SDL_Delay(750);
-        state->fill_green_none = click_through_labels(
-            "lineup_fill_1", {"FILL: BRUTAL", "FILL: NONE"});
-        SDL_Delay(300);
-        interact("back");
-        SDL_Delay(300);
-    }
+    if (!click_and_wait_for_screen("lineup", "back", 8, 176))
+        return fail_lineup_classic_viewer(
+            state, "LINEUP did not reopen for the NONE transition");
+    state->fill_green_none = click_through_labels(
+        "lineup_fill_1", {"FILL: BRUTAL", "FILL: NONE"});
+    if (!state->fill_green_none)
+        return fail_lineup_classic_viewer(state,
+                                          "GREEN FILL did not reach NONE");
+    if (!back_to_scenario_from(8, 176))
+        return fail_lineup_classic_viewer(
+            state, "LINEUP did not return to SCENARIO after NONE");
 
     // Visit (c): nothing stands on GREEN — its line drops entirely.
-    if (wait_for_interactable("view_scenario", 10000)) {
-        SDL_Delay(750);
-        trace_clear();
-        interact("view_scenario");
-        state->viewer_stripped_opened =
-            wait_for_interactable_at("back", 10, 170, 10000);
-        if (state->viewer_stripped_opened) {
-            state->company_line_still_there = wait_for_trace(
-                "picker",
-                "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)",
-                10000);
-            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
-            state->green_line_when_none =
-                trace_contains("picker", "GREEN TEAM");
-            SDL_Delay(300);
-            state->captures +=
-                capture_frame("view_level_gladiator_stripped");
-            SDL_Delay(300);
-            interact("back");
-            SDL_Delay(300);
-            (void)wait_for_interactable("progress", 10000);
-            SDL_Delay(300);
-        }
-    }
+    trace_clear();
+    state->viewer_stripped_opened =
+        click_and_wait_for_screen("view_scenario", "back", 10, 170);
+    if (!state->viewer_stripped_opened)
+        return fail_lineup_classic_viewer(
+            state, "the stripped VIEW LEVEL did not open from SCENARIO");
+    state->company_line_still_there = wait_for_trace(
+        "picker", "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)",
+        10000);
+    (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+    state->green_line_when_none = trace_contains("picker", "GREEN TEAM");
+    state->captures += capture_frame("view_level_gladiator_stripped");
+    if (!back_to_scenario_from(10, 170))
+        return fail_lineup_classic_viewer(
+            state, "the stripped VIEW LEVEL did not return to SCENARIO");
 
     injector_unwind_from_scenario();
     state->finished = true;
@@ -1502,7 +1735,7 @@ TEST(LineupUi, classic_view_level_censuses_the_staged_world)
     g_picker_max_mainmenu_calls = 0;
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    EXPECT_TRUE(state.finished);
+    EXPECT_TRUE(state.finished) << state.failure;
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open";
     EXPECT_TRUE(state.company_line_seen)
         << "the classic census labels the company COMPANY with its count";
@@ -1586,8 +1819,8 @@ int lineup_wheel_cycle_injector(void* data)
         state->finished = true;
         return 0;
     }
-    interact("lineup");
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->page_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (!state->page_opened) {
         injector_unwind_from_scenario();
         state->finished = true;
@@ -1617,8 +1850,8 @@ int lineup_wheel_cycle_injector(void* data)
         "lineup_wheel_unauthored_full_cycle_5_none"};
     state->unauthored_walked = true;
     for (std::size_t step = 0; step < unauthored_faces.size(); ++step) {
-        if (!click_until_label("lineup_fill_2", unauthored_faces[step], 3,
-                               2000))
+        if (!click_and_wait_for_label("lineup_fill_2",
+                                      unauthored_faces[step]))
         {
             state->unauthored_walked = false;
             break;
@@ -1636,8 +1869,8 @@ int lineup_wheel_cycle_injector(void* data)
         "FILL: NONE"};
     state->authored_walked = true;
     for (std::size_t step = 0; step < authored_faces.size(); ++step) {
-        if (!click_until_label("lineup_fill_1", authored_faces[step], 3,
-                               2000))
+        if (!click_and_wait_for_label("lineup_fill_1",
+                                      authored_faces[step]))
         {
             state->authored_walked = false;
             break;
@@ -1745,8 +1978,8 @@ int lineup_e3_flow_injector(void* data)
     }
 
     // (a) At rest: read all four faces, then go and read the refusal.
-    interact("lineup");
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->page_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (!state->page_opened) {
         injector_unwind_from_scenario();
         state->finished = true;
@@ -1784,9 +2017,8 @@ int lineup_e3_flow_injector(void* data)
     }
 
     // (b) FILL: FAIR on TEAM 2 — two stops off its resting NONE.
-    interact("lineup");
     state->second_page_opened =
-        wait_for_interactable_at("back", 8, 176, 10000);
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (state->second_page_opened) {
         SDL_Delay(750);
         state->green_fair = click_through_labels(
@@ -1923,8 +2155,8 @@ int macro_round_trip_injector(void* data)
         return 0;
     }
     SDL_Delay(400);
-    interact("zone_action_3");
-    state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
+    state->page_opened =
+        click_and_wait_for_screen("zone_action_3", "back", 10, 169);
     if (!state->page_opened) {
         state->finished = true;
         return 0;
@@ -1935,8 +2167,10 @@ int macro_round_trip_injector(void* data)
 
     // (b) TEAMS: 2 — the one click that gives the solo map its second
     // side — then out to VIEW LEVEL: the E3 refusal must be gone.
-    state->teams_two =
-        click_until_label_containing("zone_row_0", "TEAMS: 2");
+    state->teams_two = click_zone_macro_and_wait(
+        "zone_row_0", "TEAMS: 2",
+        {og::sim::kFillNone, og::sim::kFillFair, og::sim::kFillNone,
+         og::sim::kFillNone});
     SDL_Delay(400);
     interact("back");  // zone submenu -> Base Camp
     (void)wait_for_team_menu(10000);
@@ -1972,18 +2206,21 @@ int macro_round_trip_injector(void* data)
 
     // (c) Back at the page: TEAMS persisted, one more click deals the
     // third side, and one FILL click steps the FAIR face to STRONG.
-    interact("zone_action_3");
     state->second_page_opened =
-        wait_for_interactable_at("back", 10, 169, 10000);
+        click_and_wait_for_screen("zone_action_3", "back", 10, 169);
     if (state->second_page_opened) {
         (void)wait_for_interactable_label_containing("zone_row_0",
                                                      "TEAMS: 2", 10000);
         SDL_Delay(400);
-        state->teams_three =
-            click_until_label_containing("zone_row_0", "TEAMS: 3");
+        state->teams_three = click_zone_macro_and_wait(
+            "zone_row_0", "TEAMS: 3",
+            {og::sim::kFillNone, og::sim::kFillFair, og::sim::kFillFair,
+             og::sim::kFillNone});
         SDL_Delay(400);
-        state->fill_strong =
-            click_until_label_containing("zone_row_1", "FILL: STRONG");
+        state->fill_strong = click_zone_macro_and_wait(
+            "zone_row_1", "FILL: STRONG",
+            {og::sim::kFillStrong, og::sim::kFillStrong,
+             og::sim::kFillStrong, og::sim::kFillNone});
         SDL_Delay(400);
         interact("back");  // zone submenu -> Base Camp
         (void)wait_for_team_menu(10000);
@@ -1999,8 +2236,8 @@ int macro_round_trip_injector(void* data)
         return 0;
     }
     SDL_Delay(300);
-    interact("lineup");
-    state->lineup_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->lineup_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (state->lineup_opened) {
         SDL_Delay(750);
         for (int t = 0; t < 4; ++t) {
@@ -2024,9 +2261,8 @@ int macro_round_trip_injector(void* data)
     SDL_Delay(300);
 
     // (e) The camp face answers the divergence: FILL: MIXED, sides kept.
-    interact("zone_action_3");
     state->third_page_opened =
-        wait_for_interactable_at("back", 10, 169, 10000);
+        click_and_wait_for_screen("zone_action_3", "back", 10, 169);
     if (state->third_page_opened) {
         (void)wait_for_interactable_label_containing("zone_row_1",
                                                      "FILL: MIXED", 10000);
@@ -2041,10 +2277,6 @@ int macro_round_trip_injector(void* data)
     if (wait_for_team_menu(5000)) {
         SDL_Delay(300);
         interact("back");
-    }
-    if (wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
-        interact("quit");
     }
     state->finished = true;
     return 0;
@@ -2579,27 +2811,15 @@ int lineup_no_rebuild_injector(void* data)
     auto* state = static_cast<LineupBlinkState*>(data);
     if (!injector_open_lineup())
         return 0;
-    interact("lineup");
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->page_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (state->page_opened) {
         SDL_Delay(750);
-        SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        // One cycle of RED's wheel, retried on a swallowed click (the
-        // ledger is cleared for each attempt so a retry cannot smuggle a
-        // rebuild past the assertion).
-        for (int attempt = 0; attempt < 3 && !state->cycled; ++attempt) {
-            const short before = save.fill[0];
-            trace_clear();
-            interact("lineup_fill_0");
-            for (int waited = 0; waited < 2500; waited += 50) {
-                if (save.fill[0] != before) {
-                    state->cycled = true;
-                    break;
-                }
-                SDL_Delay(50);
-            }
-        }
-        SDL_Delay(300);
+        // One acknowledged NONE -> WEAK cycle. Clearing the ledger before
+        // the click keeps the no-rebuild assertion scoped to this action.
+        trace_clear();
+        state->cycled = click_and_wait_for_label(
+            "lineup_fill_0", "FILL: WEAK");
         state->rebuilt_buttons = trace_contains("menu", "init_buttons");
         interact("back");
         SDL_Delay(300);
@@ -2887,8 +3107,8 @@ int lineup_outcome_injector(void* data)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
     // (a) FILL: BRUTAL beside the elves, MAP UNITS left ON — D3's shape.
-    interact("lineup");
-    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->page_opened =
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (!state->page_opened) {
         injector_unwind_from_scenario();
         state->finished = true;
@@ -2927,8 +3147,7 @@ int lineup_outcome_injector(void* data)
 
     // (b) FILL: FAIR on TEAM 3, the side the map authored nothing for. The
     // band reads NONE at rest, so two clicks reach FAIR.
-    interact("lineup");
-    if (wait_for_interactable_at("back", 8, 176, 10000)) {
+    if (click_and_wait_for_screen("lineup", "back", 8, 176)) {
         SDL_Delay(750);
         state->empty_side_fair = click_through_labels(
             "lineup_fill_2", {"FILL: WEAK", "FILL: FAIR"});
@@ -2983,9 +3202,8 @@ int lineup_outcome_injector(void* data)
         return 0;
     }
     SDL_Delay(300);
-    interact("lineup");
     state->second_page_opened =
-        wait_for_interactable_at("back", 8, 176, 10000);
+        click_and_wait_for_screen("lineup", "back", 8, 176);
     if (state->second_page_opened) {
         SDL_Delay(750);
         trace_clear();
@@ -3010,10 +3228,6 @@ int lineup_outcome_injector(void* data)
             static_cast<int>(save.fill[2]), static_cast<int>(save.fill[3]));
 
     interact("back");  // team menu -> main menu
-    if (wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
-        interact("quit");
-    }
     state->finished = true;
     return 0;
 }

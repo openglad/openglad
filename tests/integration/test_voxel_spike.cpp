@@ -507,7 +507,7 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 }
 
 // ===========================================================================
-// Stage 2 round 11 (docs/voxel-render-design.md §16): AUTHORED voxel figures.
+// Stage 2 round 12 (docs/voxel-render-design.md §16): refined AUTHORED figures.
 //
 // Every algorithmic route was closed by ruling — carving gives solids of
 // revolution, reliefs give cards, fitting gives lumps, hulls give dirt. The
@@ -521,9 +521,9 @@ TEST_F(VoxelSpike, classic_parity_and_free_views)
 
 namespace {
 
-// Round 11 (authored art) writes its own set; models10/ stays as the before
+// Round 12 writes its own set; models11/ stays as the rejected tall-doll
 // picture.
-constexpr const char* kRoundDir = "models11";
+constexpr const char* kRoundDir = "models12";
 
 std::string models_dir()
 {

@@ -3781,21 +3781,16 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 
         ~CleanupGuard()
         {
+            // Tear gameplay down on both sides before either lobby transport,
+            // then close the authoritative listener before joining the remote
+            // client's IXWebSocket thread. Stopping the join client while its
+            // server peer is still live can leave IXWebSocket::stop() joining a
+            // poll thread whose interrupt was lost under load. The server close
+            // is the protocol synchronization that wakes that poll reliably.
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
                 og::runtime::clear_local_transport_shadow(*join_session);
-                if (join_client != nullptr)
-                    join_client->shutdown();
-                if (join_session->myscreen_ != nullptr)
-                {
-                    for (auto& view : join_session->myscreen_->viewob)
-                    {
-                        if (view != nullptr)
-                            view->control = nullptr;
-                    }
-                    join_session->myscreen_->world().delete_objects();
-                }
             }
 
             if (host_session != nullptr)
@@ -3803,15 +3798,34 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
                 og::runtime::clear_local_transport_shadow(*host_session);
                 if (host_client != nullptr)
                     host_client->shutdown();
-                if (host_session->myscreen_ != nullptr)
+            }
+
+            if (join_session != nullptr && join_client != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                join_client->shutdown();
+            }
+
+            if (join_session != nullptr && join_session->myscreen_ != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                for (auto& view : join_session->myscreen_->viewob)
                 {
-                    for (auto& view : host_session->myscreen_->viewob)
-                    {
-                        if (view != nullptr)
-                            view->control = nullptr;
-                    }
-                    host_session->myscreen_->world().delete_objects();
+                    if (view != nullptr)
+                        view->control = nullptr;
                 }
+                join_session->myscreen_->world().delete_objects();
+            }
+
+            if (host_session != nullptr && host_session->myscreen_ != nullptr)
+            {
+                auto host_scope = host_session->activate();
+                for (auto& view : host_session->myscreen_->viewob)
+                {
+                    if (view != nullptr)
+                        view->control = nullptr;
+                }
+                host_session->myscreen_->world().delete_objects();
             }
         }
     } cleanup;
@@ -5150,13 +5164,17 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             }
         }
     }
-    bool both_ended_level2 = false;
-    for (int round = 0; round < 80 && !both_ended_level2; ++round)
-    {
+    // EndGame reaches each display as a session-level terminal event after
+    // the authoritative final keyframe.  A fixed number of in-process pumps
+    // can finish before the real socket peer has delivered that event under
+    // load, even though authority already ended correctly.  Wait on the two
+    // display latches, just as the level-1 leg above does; each pass still
+    // advances both server/display contexts in lockstep.
+    const bool both_ended_level2 = wait_until([&] {
         pump(5);
-        both_ended_level2 = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     ASSERT_TRUE(both_ended_level2)
         << "both peers must finish the forced level-2 win";
 
@@ -6402,7 +6420,13 @@ TEST(PickerNetworkClient,
 
     // ---- Per-seat input routing. ----
     const InputState neutral{};
-    std::uint32_t pump_tick = 1;
+    // The launch-handshake pump above may already have advanced authority by
+    // several ticks before all three real-socket mirrors report a baseline.
+    // Stamp the first synthetic input against the authoritative next tick;
+    // starting again at tick 1 makes every pressed edge permanently older
+    // than MAX_LATE_PRESS_TICKS when that happens, so held state arrives but
+    // SwitchChar is correctly discarded as stale.
+    std::uint32_t pump_tick = server_screen->world().tick_count_ + 1u;
     const auto drive_three_tick = [&](const InputState& host_input,
                                       const InputState& a_input,
                                       const InputState& b_input) -> bool {

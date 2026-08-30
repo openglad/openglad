@@ -1,5 +1,6 @@
 #include <memory>
 #include <array>
+#include <functional>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
@@ -20,6 +21,105 @@ extern int g_picker_max_mainmenu_calls;
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
+namespace
+{
+int remaining_menu_wait_ms(Uint64 deadline)
+{
+    const Uint64 now = SDL_GetTicks();
+    return now >= deadline ? 0 : static_cast<int>(deadline - now);
+}
+
+bool wait_for_menu_surface(const char* description,
+                           const std::function<bool()>& visible,
+                           int timeout_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (remaining_menu_wait_ms(deadline) > 0)
+    {
+        if (visible())
+        {
+            const int remaining = remaining_menu_wait_ms(deadline);
+            if (remaining > 0 && run_on_main_thread([] {}, remaining))
+                return true;
+            break;
+        }
+        SDL_Delay(50);
+    }
+    fprintf(stderr, "  [interact] TIMEOUT waiting for live %s (%d ms)\n",
+            description, timeout_ms);
+    return false;
+}
+
+bool interact_on_menu_thread(const char* id, int timeout_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (remaining_menu_wait_ms(deadline) > 0)
+    {
+        if (has_interactable(id))
+        {
+            const int remaining = remaining_menu_wait_ms(deadline);
+            if (remaining > 0
+                && run_on_main_thread([id] { interact(id); }, remaining))
+            {
+                return true;
+            }
+            break;
+        }
+        SDL_Delay(50);
+    }
+    fprintf(stderr, "  [interact] TIMEOUT dispatching live '%s' (%d ms)\n",
+            id, timeout_ms);
+    return false;
+}
+
+bool wait_for_menu_condition(const char* description,
+                             const std::function<bool()>& condition,
+                             int timeout_ms = 10000)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (remaining_menu_wait_ms(deadline) > 0)
+    {
+        bool matched = false;
+        const int remaining = remaining_menu_wait_ms(deadline);
+        if (remaining <= 0
+            || !run_on_main_thread([&] { matched = condition(); }, remaining))
+        {
+            break;
+        }
+        if (matched)
+            return true;
+        SDL_Delay(10);
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for menu condition '%s' (%d ms)\n",
+            description, timeout_ms);
+    return false;
+}
+
+bool wait_for_base_camp(int timeout_ms = 10000)
+{
+    return wait_for_menu_surface(
+        "Base Camp surface",
+        [] {
+            return has_interactable("hire_troops")
+                && has_interactable("networking");
+        },
+        timeout_ms);
+}
+
+// On a failed condition, unwind whichever engine-hosted menu is still open
+// so the owning test reports its assertion instead of timing out in
+// picker_main. These BACK clicks are cleanup, not retries of the tested path.
+void unwind_picker_menu_stack()
+{
+    for (int depth = 0; depth < 3; ++depth)
+    {
+        if (!interact_on_menu_thread("back", 2000))
+            return;
+    }
+}
+} // namespace
 
 
 static void cleanup_picker_state()
@@ -48,6 +148,7 @@ static void cleanup_picker_state()
 struct HireState {
     bool started;
     bool finished;
+    bool saw_team_menu;
     bool saw_hire_menu;
     int cycles_completed;
 };
@@ -58,60 +159,142 @@ static int hire_injector(void* data)
     HireState* state = static_cast<HireState*>(data);
     state->started = true;
 
-    // Wait for main menu
-    wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(750);
-
     fprintf(stderr, "  [test] clicking begin_new_game\n");
-    interact("begin_new_game");
+    if (!interact_on_menu_thread("begin_new_game", 5000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
 
     // §2.2: accept the generated company name at the name-entry screen.
-    accept_generated_company_name();
+    fprintf(stderr, "  [test] accepting generated company name\n");
+    if (!interact_on_menu_thread("company_name_accept", 5000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
 
     // No campaign intro here anymore (issue #186: it moved behind the
     // campaign select, skipped under TESTING) — an Escape here would BACK
     // out of the team-build screen instead.
 
     // New games now land on team build first, then enter hire explicitly.
-    SDL_Delay(500);
-    wait_for_interactable("hire_troops", 10000);
-    SDL_Delay(300);
-    fprintf(stderr, "  [test] clicking hire_troops\n");
-    interact("hire_troops");
-
-    SDL_Delay(500);
-    if (wait_for_interactable("hire_me", 10000)) {
-        state->saw_hire_menu = true;
-        SDL_Delay(500);
-
-        // Cycle through characters with NEXT
-        fprintf(stderr, "  [test] clicking next\n");
-        interact("next");
-        state->cycles_completed++;
-        SDL_Delay(300);
-
-        fprintf(stderr, "  [test] clicking next again\n");
-        interact("next");
-        state->cycles_completed++;
-        SDL_Delay(300);
-
-        // And back with PREV
-        fprintf(stderr, "  [test] clicking prev\n");
-        interact("prev");
-        state->cycles_completed++;
-        SDL_Delay(300);
+    if (!wait_for_base_camp()) {
+        unwind_picker_menu_stack();
+        return 0;
     }
+    state->saw_team_menu = true;
+    fprintf(stderr, "  [test] clicking hire_troops\n");
+    if (!interact_on_menu_thread("hire_troops", 10000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+
+    if (!wait_for_menu_surface(
+            "hire surface",
+            [] {
+                return has_interactable("hire_me")
+                    && has_interactable("next")
+                    && has_interactable("prev");
+            },
+            10000))
+    {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+    state->saw_hire_menu = true;
+
+    int initial_family = -1;
+    if (!wait_for_menu_condition("initial hire family", [&] {
+            const guy* const current =
+                og::runtime::current_session->current_guy_.get();
+            if (current == nullptr)
+                return false;
+            initial_family = static_cast<unsigned char>(current->family);
+            return true;
+        }))
+    {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+
+    // Cycle through candidates, acknowledging each click by the exact family
+    // transition instead of assuming it landed after a flat delay.
+    fprintf(stderr, "  [test] clicking next\n");
+    if (!interact_on_menu_thread("next", 10000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+    int first_next_family = -1;
+    if (!wait_for_menu_condition("first NEXT family", [&] {
+            const guy* const current =
+                og::runtime::current_session->current_guy_.get();
+            if (current == nullptr)
+                return false;
+            const int family = static_cast<unsigned char>(current->family);
+            if (family == initial_family)
+                return false;
+            first_next_family = family;
+            return true;
+        }))
+    {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+    ++state->cycles_completed;
+
+    fprintf(stderr, "  [test] clicking next again\n");
+    if (!interact_on_menu_thread("next", 10000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+    int second_next_family = -1;
+    if (!wait_for_menu_condition("second NEXT family", [&] {
+            const guy* const current =
+                og::runtime::current_session->current_guy_.get();
+            if (current == nullptr)
+                return false;
+            const int family = static_cast<unsigned char>(current->family);
+            if (family == first_next_family)
+                return false;
+            second_next_family = family;
+            return true;
+        }))
+    {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+    ++state->cycles_completed;
+
+    fprintf(stderr, "  [test] clicking prev\n");
+    if (!interact_on_menu_thread("prev", 10000)
+        || !wait_for_menu_condition("PREV restores first NEXT family", [&] {
+            const guy* const current =
+                og::runtime::current_session->current_guy_.get();
+            return current != nullptr
+                && static_cast<unsigned char>(current->family)
+                    == first_next_family;
+        }))
+    {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+    ++state->cycles_completed;
+    (void)second_next_family;
 
     // Go back to team menu
     fprintf(stderr, "  [test] clicking back from hire menu\n");
-    interact("back");
+    if (!interact_on_menu_thread("back", 10000)
+        || !wait_for_base_camp())
+    {
+        unwind_picker_menu_stack();
+        return 0;
+    }
 
     // Back to main menu
-    SDL_Delay(500);
-    wait_for_interactable("hire_troops", 10000);
-    SDL_Delay(750);
     fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
+    if (!interact_on_menu_thread("back", 10000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
 
     state->finished = true;
     return 0;
@@ -126,7 +309,7 @@ TEST(HireTeam, hire_menu_browsing) {
     og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    HireState state = { false, false, false, 0 };
+    HireState state = { false, false, false, false, 0 };
     SDL_Thread* thread = SDL_CreateThread(hire_injector, "hire_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -142,8 +325,11 @@ TEST(HireTeam, hire_menu_browsing) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_team_menu)
+        << "company-name ACCEPT should land on Base Camp";
     ASSERT_TRUE(state.saw_hire_menu) << "should have seen the hire menu";
-    ASSERT_TRUE(state.cycles_completed >= 3) << "should have cycled through characters 3 times";
+    ASSERT_EQ(3, state.cycles_completed)
+        << "NEXT, NEXT, PREV must each change the displayed family once";
 }
 
 // §2.9 flow 7 + §3.8: HIRE re-enters from the base-camp command strip, a
@@ -158,6 +344,7 @@ TEST(HireTeam, hire_menu_browsing) {
 struct HireDeployState {
     bool started;
     bool finished;
+    bool saw_base_camp;
     bool saw_hire_menu;
     bool hired;
     bool saw_new_row;
@@ -169,40 +356,72 @@ static int hire_deployed_injector(void* data)
     auto* state = static_cast<HireDeployState*>(data);
     state->started = true;
 
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
-
-    SDL_Delay(500);
-    if (!wait_for_interactable("hire_troops", 10000)) {
-        state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+    if (!interact_on_menu_thread("continue_game", 5000)) {
+        unwind_picker_menu_stack();
         return 0;
     }
-    SDL_Delay(750);
-    interact("hire_troops");
 
-    SDL_Delay(500);
-    if (wait_for_interactable("hire_me", 10000)) {
-        state->saw_hire_menu = true;
-        SDL_Delay(500);
-        fprintf(stderr, "  [test] clicking hire_me\n");
-        interact("hire_me");
-        state->hired = true;
-        SDL_Delay(500);
+    if (!wait_for_base_camp()) {
+        unwind_picker_menu_stack();
+        return 0;
     }
+    state->saw_base_camp = true;
+    if (!interact_on_menu_thread("hire_troops", 10000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+
+    if (!wait_for_menu_surface(
+            "hire surface",
+            [] {
+                return has_interactable("hire_me")
+                    && has_interactable("next")
+                    && has_interactable("back");
+            },
+            10000))
+    {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+    state->saw_hire_menu = true;
+    fprintf(stderr, "  [test] clicking hire_me\n");
+    if (!interact_on_menu_thread("hire_me", 10000)
+        || !wait_for_menu_condition("new hire in roster", [] {
+            const SaveData& save =
+                og::runtime::current_session->myscreen_->save_data;
+            return save.team_size == 2 && save.team_list[1] != nullptr
+                && save.team_list[1]->deployed;
+        }))
+    {
+        unwind_picker_menu_stack();
+        return 0;
+    }
+    state->hired = true;
 
     fprintf(stderr, "  [test] clicking back from hire menu\n");
-    interact("back");
+    if (!interact_on_menu_thread("back", 10000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
 
     // Re-entry: the base camp shows the hired member as roster row 1.
-    SDL_Delay(500);
-    if (wait_for_interactable("roster_dep_1", 10000)) {
-        state->saw_new_row = true;
+    if (!wait_for_menu_surface(
+            "Base Camp hired roster row",
+            [] {
+                return has_interactable("hire_troops")
+                    && has_interactable("roster_dep_1");
+            },
+            10000))
+    {
+        unwind_picker_menu_stack();
+        return 0;
     }
-    SDL_Delay(750);
+    state->saw_new_row = true;
     fprintf(stderr, "  [test] clicking back from base camp\n");
-    interact("back");
+    if (!interact_on_menu_thread("back", 10000)) {
+        unwind_picker_menu_stack();
+        return 0;
+    }
 
     state->finished = true;
     return 0;
@@ -227,7 +446,7 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     }
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    HireDeployState state = { false, false, false, false, false };
+    HireDeployState state = { false, false, false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(hire_deployed_injector, "hire_deploy_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -243,6 +462,8 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_base_camp)
+        << "CONTINUE should land on the Base Camp surface";
     ASSERT_TRUE(state.saw_hire_menu) << "HIRE strip button should open the hire screen";
     ASSERT_TRUE(state.hired) << "hire_me should be clickable";
     ASSERT_TRUE(state.saw_new_row)

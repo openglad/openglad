@@ -495,10 +495,17 @@ int text_picker_testing_exercise_internal_paths()
         check(item != nullptr && item->command == PickerMenuCommand::Quit);
     }
 
-    check(client.prepare_new_game() &&
-          save.team_size == 1 &&
-          save.team_list[0] != nullptr &&
-          save.team_list[0]->family == FAMILY_SOLDIER);
+    {
+        // Accept the generated company name explicitly. Relying on the test
+        // runner's stdin to answer EOF blocks forever when CTest inherits an
+        // open terminal.
+        ScopedCinRedirect input("\n");
+        check(client.prepare_new_game() &&
+              input.exhausted() &&
+              save.team_size == 1 &&
+              save.team_list[0] != nullptr &&
+              save.team_list[0]->family == FAMILY_SOLDIER);
+    }
     {
         const std::string submitted_name = "A COMPANY NAME THAT IS TOO LONG";
         ScopedCinRedirect input("reroll\n" + submitted_name + "\n");
@@ -682,9 +689,13 @@ int text_picker_testing_exercise_internal_paths()
     // [SAVE-R2] A stale process-wide slot must not survive a new game: the
     // client re-asserts its own slot in prepare_new_game.
     (void)og::data::set_active_company_slot("save0");
-    check(client.prepare_new_game() &&
-          save.team_size >= 1 &&
-          !config.team_families.empty());
+    {
+        ScopedCinRedirect input("\n");
+        check(client.prepare_new_game() &&
+              input.exhausted() &&
+              save.team_size >= 1 &&
+              !config.team_families.empty());
+    }
     check(og::data::active_company_slot() == "missing-text-picker-save");
 
     {

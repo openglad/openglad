@@ -540,3 +540,38 @@ transcribed into 3D: front guided by the "down" frame, back by "up", sides by
 region; no invented gear, no restyled colours. Author-time check: the figure
 rendered at the game camera per facing must read as "same guy" against the
 frame for every facing (fidelity strip as a review tool, not a solver).
+
+**Round 12 (built after the round-11 review was rejected).** Round 11 had the
+right asset mechanism but the wrong anatomy: all eight figures reused a tall,
+upright, rectangular doll construction. At the fixed 1x game camera its side
+views made that objective — for example the footman projected 6x16 beside a
+10x10 sprite, the skeleton 5x18 beside 10x12, and the cleric 11x15 beside
+16x10. Class tokens were present, but the compact top-down Gladiator pose was
+not. "Same guy" was therefore a false acceptance.
+
+The eight layer grids were redrawn around the sprites' actual visual grammar:
+low centres of mass; broad, foreshortened torsos; large heads/helmets/hats;
+short legs; and arms, sleeves, shields, bows, and blades extending laterally
+with empty space separating them from the body. The families remain separate
+authored designs rather than variants of one humanoid template:
+
+- footman `13x10x11` — flattened helmet, narrow visor/nasal, short surcoat,
+  separated sword;
+- archer `13x10x10` — crouched hood and face inside a negative-space bow,
+  with quiver tips behind;
+- orc `13x10x9` — deep hunch, forward muzzle/tusks, band harness, outboard axe;
+- skeleton `13x10x11` — forward skull, open ribs/spine, thin bent limbs;
+- mage `13x9x10` — short robe under a broad brim and crooked four-step hat;
+- elf `11x8x9` — the deliberately tiny figure, with ear points and face wedge;
+- ghost `13x13x10` — hollow hood, separated sleeves, hover gap, trailing shroud;
+- cleric `15x11x10` — wedge mitre and independent mace/cross-shield span.
+
+Review is now cardinal-first at the fixed 1x camera, then diagonals, hero
+renders, a continuous 72-view spin, and real scenes. The projected bounding
+box must be within roughly two source pixels on each axis; round 12 meets that
+bar except for three deliberate three-pixel differences: the mage's overhead
+view is shallower because the crooked hat is foreshortened, while the archer's
+rear bow view and the cleric's mace/shield side are taller so their held
+equipment does not collapse into the torso. This is a review guard, not
+another fitting algorithm. The proof set writes to `models12/`; `models11/`
+remains the rejected comparison.

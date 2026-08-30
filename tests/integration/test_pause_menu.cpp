@@ -2757,6 +2757,21 @@ TEST(PauseMenuFlow, quit_to_base_camp_fades_out_once)
 namespace
 {
 
+bool wait_for_pause_menu_click_release()
+{
+    const Uint64 started_at = SDL_GetTicks();
+    while (SDL_HasEvent(SDL_EVENT_MOUSE_BUTTON_UP))
+    {
+        if (SDL_GetTicks() - started_at >= 5'000)
+            return false;
+        SDL_Delay(1);
+    }
+    // The runner can publish changed labels before its next leftmouse() poll
+    // consumes the queued release. Cross one further frame-top barrier so
+    // picker_was_left_down has observed that release before another press.
+    return run_on_main_thread([] {}, 5'000);
+}
+
 int add_cycle_input_injector(void* /*data*/)
 {
     og::runtime::ensure_thread_session();
@@ -2768,7 +2783,8 @@ int add_cycle_input_injector(void* /*data*/)
     interact("pause_add_player");
     if (!wait_for_interactable("pause_player_1", 10'000))
         return 2;
-    SDL_Delay(300);
+    if (!wait_for_pause_menu_click_release())
+        return 6;
     interact("pause_resume");
 
     // Menu 2 (the main thread plays real frames, then sends Esc again):
@@ -2778,13 +2794,26 @@ int add_cycle_input_injector(void* /*data*/)
         return 3;
     SDL_Delay(300);
     interact("pause_player_1");
-    if (!wait_for_interactable("pause_input", 10'000))
+    if (!wait_for_interactable_label(
+            "pause_input",
+            "INPUT: " + og::input::mapping_short_name("ARROWS"),
+            10'000))
         return 4;
-    SDL_Delay(300);
-    interact("pause_input");
-    SDL_Delay(200);
-    interact("pause_input");
-    SDL_Delay(200);
+    if (!wait_for_pause_menu_click_release())
+        return 7;
+    const std::array<std::string, 2> expected_labels = {
+        "INPUT: " + og::input::mapping_short_name("IJKL"),
+        "INPUT: " + og::input::mapping_short_name("TFGH")};
+    for (std::size_t i = 0; i < expected_labels.size(); ++i)
+    {
+        interact("pause_input");
+        if (!wait_for_interactable_label(
+                "pause_input", expected_labels[i], 5'000) ||
+            !wait_for_pause_menu_click_release())
+        {
+            return 8 + static_cast<int>(i);
+        }
+    }
     interact("pause_player_back");
     if (!wait_for_interactable("pause_resume", 10'000))
         return 5;
@@ -2942,6 +2971,24 @@ struct HostilePadFlow
     std::atomic<bool> menu_returned{false};
 };
 
+int dismiss_hostile_pad_menu(HostilePadFlow* flow, int result_when_closed)
+{
+    // An injector failure must still release the main thread from the real,
+    // blocking menu so GoogleTest can report the precise failed stage.
+    SDL_SetJoystickVirtualAxis(flow->pad, 1, 0);
+    for (int waited = 0; waited < 10'000; waited += 250)
+    {
+        if (flow->menu_returned.load())
+            return result_when_closed;
+        if (has_interactable("pause_player_back"))
+            interact("pause_player_back");
+        else if (has_interactable("pause_resume"))
+            interact("pause_resume");
+        SDL_Delay(250);
+    }
+    return 8;
+}
+
 int pause_hostile_pad_injector(void* data)
 {
     auto* const flow = static_cast<HostilePadFlow*>(data);
@@ -2949,19 +2996,33 @@ int pause_hostile_pad_injector(void* data)
 
     // The solo seat's player screen.
     if (!wait_for_interactable("pause_player_0", 10'000))
-        return 1;
+        return dismiss_hostile_pad_menu(flow, 1);
     SDL_Delay(300);
     interact("pause_player_0");
-    if (!wait_for_interactable("pause_input", 10'000))
-        return 2;
+    if (!wait_for_interactable_label("pause_input", "INPUT: WASD", 10'000))
+        return dismiss_hostile_pad_menu(flow, 2);
     SDL_Delay(300);
 
     // WASD -> ARROWS -> IJKL -> TFGH -> JOY1: the fourth cycle assigns the
-    // hostile pad to seat 0 (the reporter's "past TFGH" step).
-    for (int i = 0; i < 4; ++i)
+    // hostile pad to seat 0 (the reporter's "past TFGH" step). A label
+    // transition acknowledges that the menu consumed each click before the
+    // injector sends the next one; flat delays can queue multiple clicks
+    // under full-suite load and leave the flow one cycle short.
+    const std::array<std::string, 4> expected_labels = {
+        "INPUT: " + og::input::mapping_short_name("ARROWS"),
+        "INPUT: " + og::input::mapping_short_name("IJKL"),
+        "INPUT: " + og::input::mapping_short_name("TFGH"),
+        "INPUT: JOY1"};
+    for (std::size_t i = 0; i < expected_labels.size(); ++i)
     {
         interact("pause_input");
-        SDL_Delay(400);
+        if (!wait_for_interactable_label(
+                "pause_input", expected_labels[i], 5'000) ||
+            !wait_for_pause_menu_click_release())
+        {
+            return dismiss_hostile_pad_menu(flow,
+                                            3 + static_cast<int>(i));
+        }
     }
 
     // The reported hang struck on the frame after the assignment. A live
@@ -2983,16 +3044,7 @@ int pause_hostile_pad_injector(void* data)
     // Wedged (the pre-fix behavior). Neutralize the resting axis so the
     // spin can exit and the suite stays bounded, then flush the queued
     // clicks until the menu finally closes.
-    SDL_SetJoystickVirtualAxis(flow->pad, 1, 0);
-    for (int waited = 0; waited < 10'000; waited += 250)
-    {
-        if (flow->menu_returned.load())
-            return 7;
-        if (has_interactable("pause_resume"))
-            interact("pause_resume");
-        SDL_Delay(250);
-    }
-    return 8;
+    return dismiss_hostile_pad_menu(flow, 7);
 }
 
 } // namespace

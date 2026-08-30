@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -279,6 +280,83 @@ struct TrainPromoteFlowState
     bool back_in_train_menu = false;
 };
 
+// allbuttons[] is published before run_menu_screen finishes its input-edge
+// reset.  Merely seeing a button is therefore not enough to prove a click is
+// safe: under load the injector can enqueue the click, then have the menu's
+// reset_mouse_click_tracking() discard it.  A main-thread task is only pumped
+// from the live menu loop, after that reset, so this is the readiness barrier
+// every click in these nested flows needs.
+static bool wait_for_engine_interactable(const char* id,
+                                         int timeout_ms = 10000)
+{
+    if (!wait_for_interactable(id, timeout_ms))
+        return false;
+    if (run_on_main_thread([] {}, timeout_ms))
+        return true;
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for live '%s' menu pump (%d ms)\n",
+            id, timeout_ms);
+    return false;
+}
+
+// Queue the synthetic click FROM the menu thread at its frame-top pump.  The
+// runner will poll it later in that same frame, eliminating the scheduler gap
+// between an injector-thread readiness observation and event publication.
+static bool interact_on_engine_menu(const char* id, int timeout_ms = 10000)
+{
+    if (!wait_for_interactable(id, timeout_ms))
+        return false;
+    if (run_on_main_thread([id] { interact(id); }, timeout_ms))
+        return true;
+    fprintf(stderr,
+            "  [interact] TIMEOUT dispatching '%s' on menu thread (%d ms)\n",
+            id, timeout_ms);
+    return false;
+}
+
+// Poll game-owned state on the menu thread.  This acknowledges that a click
+// was consumed instead of guessing with a flat delay; it also avoids racing
+// the runner's lobby poll and TrainSession writes from the injector thread.
+static bool wait_for_menu_condition(
+    const char* description, const std::function<bool()>& condition,
+    int timeout_ms = 10000)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (SDL_GetTicks() < deadline)
+    {
+        bool matched = false;
+        const int remaining = static_cast<int>(deadline - SDL_GetTicks());
+        if (!run_on_main_thread([&] { matched = condition(); }, remaining))
+            break;
+        if (matched)
+            return true;
+        SDL_Delay(10);
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for menu condition '%s' (%d ms)\n",
+            description, timeout_ms);
+    return false;
+}
+
+// A failed readiness/postcondition check must fail as an assertion, not leave
+// the owning test wedged in a blocking child.  BACK is cleanup here, never a
+// retry of the action under test.  The pump barrier distinguishes a parent's
+// BACK after a nested screen has closed from the child's old button surface.
+static void leave_open_menu_stack()
+{
+    // create_detail_menu is still a legacy loop and does not pump tasks.
+    // If it is the live child, close it first using its unique PROMOTE row as
+    // the screen-identity probe; the parent TRAIN screen can then use the
+    // engine readiness barrier normally.
+    if (has_interactable("promote"))
+    {
+        SDL_Delay(750);
+        interact("back");
+    }
+    if (wait_for_engine_interactable("details", 2000))
+        (void)interact_on_engine_menu("back", 2000);
+}
+
 // Drives the REAL nesting: train menu -> DETAILS -> promote -> back in the
 // train menu -> ACCEPT -> BACK. This is the flow bug A9 broke: the promotion
 // mutated the real team member, but the train menu's stale TrainSession
@@ -288,33 +366,37 @@ static int train_menu_promote_injector(void* data)
     og::runtime::ensure_thread_session();
     auto* state = static_cast<TrainPromoteFlowState*>(data);
 
-    if (!wait_for_interactable("details", 10000)) {
+    if (!interact_on_engine_menu("details")) {
+        leave_open_menu_stack();
         state->finished.store(true, std::memory_order_relaxed);
         return 0;
     }
     state->saw_train_menu = true;
-    SDL_Delay(300);
-    interact("details");
 
     if (!wait_for_interactable("promote", 10000)) {
+        leave_open_menu_stack();
         state->finished.store(true, std::memory_order_relaxed);
         return 0;
     }
     state->saw_promote = true;
-    SDL_Delay(300);
+    SDL_Delay(750);  // legacy detail loop has no menu-pump handshake
     interact("promote");
 
     // The promotion returns MENU_REDRAW straight into the train menu;
     // "accept" only exists there.
-    if (!wait_for_interactable("accept", 10000)) {
+    if (!wait_for_engine_interactable("accept")) {
+        leave_open_menu_stack();
         state->finished.store(true, std::memory_order_relaxed);
         return 0;
     }
     state->back_in_train_menu = true;
-    SDL_Delay(300);
-    interact("accept"); // must NOT revert the promotion (bug A9)
-    SDL_Delay(300);
-    interact("back");
+    if (!interact_on_engine_menu("accept")
+        || !interact_on_engine_menu("back"))
+    {
+        leave_open_menu_stack();
+        state->finished.store(true, std::memory_order_relaxed);
+        return 0;
+    }
     state->finished.store(true, std::memory_order_relaxed);
     return 0;
 }
@@ -381,52 +463,100 @@ struct TrainPromoteScriptState
     // promotion, before BACK.
     bool do_stat_edit = false;
     bool do_accept = false;
+    short expected_strength = 0;
+    bool saw_stat_edit = false;
+    bool saw_accept = false;
 };
 
 // Drives: train menu -> DETAILS -> promote -> back in the train menu ->
-// [inc_str] -> [ACCEPT] -> BACK. The waits give the train menu loop plenty
-// of picker_lobby_poll() iterations after the promotion — the issue #133
-// clobber window (each poll rewrites save.team_list from the lobby's cached
-// roster, which pre-fix still held the un-promoted mage).
+// [inc_str] -> [ACCEPT] -> BACK. The post-click state conditions cross real
+// train-menu frames and therefore real picker_lobby_poll() iterations — the
+// issue #133 clobber window (each poll rewrites save.team_list from the
+// lobby's cached roster, which pre-fix still held the un-promoted mage).
 static int train_menu_promote_script_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<TrainPromoteScriptState*>(data);
 
-    if (!wait_for_interactable("details", 10000)) {
+    if (!interact_on_engine_menu("details")) {
+        leave_open_menu_stack();
         state->finished.store(true, std::memory_order_relaxed);
         return 0;
     }
     state->saw_train_menu = true;
-    SDL_Delay(300);
-    interact("details");
 
     if (!wait_for_interactable("promote", 10000)) {
+        leave_open_menu_stack();
         state->finished.store(true, std::memory_order_relaxed);
         return 0;
     }
     state->saw_promote = true;
-    SDL_Delay(300);
+    SDL_Delay(750);  // legacy detail loop has no menu-pump handshake
     interact("promote");
 
     // "accept" only exists in the train menu, so this waits out the return
     // from the details submenu.
-    if (!wait_for_interactable("accept", 10000)) {
+    if (!wait_for_engine_interactable("accept")) {
+        leave_open_menu_stack();
         state->finished.store(true, std::memory_order_relaxed);
         return 0;
     }
     state->back_in_train_menu = true;
-    SDL_Delay(500); // several poll iterations — the pre-fix revert window
+    if (!wait_for_menu_condition("promoted train working copy", [] {
+            const guy* const current =
+                og::runtime::current_session->current_guy_.get();
+            return current != nullptr && current->family == FAMILY_ARCHMAGE;
+        }))
+    {
+        leave_open_menu_stack();
+        state->finished.store(true, std::memory_order_relaxed);
+        return 0;
+    }
 
     if (state->do_stat_edit) {
-        interact("inc_str");
-        SDL_Delay(300);
+        if (!interact_on_engine_menu("inc_str")) {
+            leave_open_menu_stack();
+            state->finished.store(true, std::memory_order_relaxed);
+            return 0;
+        }
+        state->saw_stat_edit = wait_for_menu_condition(
+            "working-copy strength increment", [state] {
+                const guy* const current =
+                    og::runtime::current_session->current_guy_.get();
+                return current != nullptr
+                    && current->strength == state->expected_strength + 1;
+            });
+        if (!state->saw_stat_edit) {
+            leave_open_menu_stack();
+            state->finished.store(true, std::memory_order_relaxed);
+            return 0;
+        }
     }
     if (state->do_accept) {
-        interact("accept");
-        SDL_Delay(300);
+        if (!interact_on_engine_menu("accept")) {
+            leave_open_menu_stack();
+            state->finished.store(true, std::memory_order_relaxed);
+            return 0;
+        }
+        state->saw_accept = wait_for_menu_condition(
+            "accepted roster strength", [state] {
+                const auto& save =
+                    og::runtime::current_session->myscreen_->save_data;
+                return save.team_list[0] != nullptr
+                    && save.team_list[0]->strength
+                        == state->expected_strength + 1;
+            });
+        if (!state->saw_accept) {
+            leave_open_menu_stack();
+            state->finished.store(true, std::memory_order_relaxed);
+            return 0;
+        }
     }
-    interact("back");
+    if (!interact_on_engine_menu("back")) {
+        leave_open_menu_stack();
+        state->finished.store(true, std::memory_order_relaxed);
+        return 0;
+    }
     state->finished.store(true, std::memory_order_relaxed);
     return 0;
 }
@@ -436,10 +566,9 @@ static int train_menu_exit_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<TrainPromoteScriptState*>(data);
-    if (wait_for_interactable("details", 10000)) {
+    if (wait_for_engine_interactable("details")) {
         state->saw_train_menu = true;
-        SDL_Delay(300);
-        interact("back");
+        (void)interact_on_engine_menu("back");
     }
     state->finished.store(true, std::memory_order_relaxed);
     return 0;
@@ -487,6 +616,7 @@ TEST(PickerDetailMenuDriven, train_menu_promote_alone_persists_on_exit_and_reent
 
     prepare_detail_menu_mouse_click();
     TrainPromoteScriptState state;
+    state.expected_strength = expected.strength;
     SDL_Thread* th = SDL_CreateThread(
         train_menu_promote_script_injector, "train_promote_exit", &state);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
@@ -542,6 +672,7 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_stat_edit_keeps_both)
     TrainPromoteScriptState state;
     state.do_stat_edit = true;
     state.do_accept = true;
+    state.expected_strength = expected.strength;
     SDL_Thread* th = SDL_CreateThread(
         train_menu_promote_script_injector, "train_promote_edit", &state);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
@@ -552,6 +683,10 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_stat_edit_keeps_both)
     ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
     ASSERT_TRUE(state.saw_promote);
     ASSERT_TRUE(state.back_in_train_menu);
+    ASSERT_TRUE(state.saw_stat_edit)
+        << "the injector must observe the working-copy STR increment";
+    ASSERT_TRUE(state.saw_accept)
+        << "the injector must observe ACCEPT commit that increment";
 
     ASSERT_TRUE(save.team_list[0] != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)
@@ -580,6 +715,7 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_cancel_discards_pending_edi
     prepare_detail_menu_mouse_click();
     TrainPromoteScriptState state;
     state.do_stat_edit = true; // +1 STR, but never accepted
+    state.expected_strength = expected.strength;
     SDL_Thread* th = SDL_CreateThread(
         train_menu_promote_script_injector, "train_promote_cancel", &state);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
@@ -590,6 +726,10 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_cancel_discards_pending_edi
     ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
     ASSERT_TRUE(state.saw_promote);
     ASSERT_TRUE(state.back_in_train_menu);
+    ASSERT_TRUE(state.saw_stat_edit)
+        << "the injector must observe the pending working-copy STR edit";
+    ASSERT_FALSE(state.saw_accept)
+        << "the cancel flow must never dispatch ACCEPT";
 
     ASSERT_TRUE(save.team_list[0] != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)

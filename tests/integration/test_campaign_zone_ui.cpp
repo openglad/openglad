@@ -115,6 +115,50 @@ bool wait_for_interactable_at(const std::string& id, int x, int y,
     return false;
 }
 
+// The engine-menu task pump runs at frame-top, before that frame's input
+// poll. Requiring the exact quiescent pointer state on that thread proves the
+// previous click's release has crossed leftmouse() before another press is
+// published. `not_before` additionally honors the roster's deliberate 250ms
+// same-row deploy debounce; it is a readiness condition, not proof that an
+// action landed.
+template <typename Predicate>
+bool wait_for_menu_thread_condition(Predicate predicate, int timeout_ms = 5000)
+{
+    const Uint64 deadline =
+        SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (SDL_GetTicks() < deadline) {
+        bool satisfied = false;
+        const Uint64 now = SDL_GetTicks();
+        const int remaining = static_cast<int>(deadline - now);
+        if (!run_on_main_thread([&] { satisfied = predicate(); }, remaining))
+            return false;
+        if (satisfied)
+            return true;
+    }
+    return false;
+}
+
+bool wait_for_menu_pointer_ready(Uint64 not_before = 0)
+{
+    return wait_for_menu_thread_condition([not_before] {
+        const InputHardwareState& input = input_hardware_state();
+        return SDL_GetTicks() >= not_before && !input.mouse.left &&
+            !input.picker_was_left_down &&
+            og::input::testing_pending_left_clicks() == 0;
+    });
+}
+
+bool interact_when_menu_ready(const std::string& id, Uint64 not_before = 0)
+{
+    if (!wait_for_interactable(id, 5000) ||
+        !wait_for_menu_pointer_ready(not_before)) {
+        fprintf(stderr, "  [zone] '%s' was not click-ready\n", id.c_str());
+        return false;
+    }
+    interact(id);
+    return true;
+}
+
 // Stash/restore the picker save across an injector flow (the test_ctf_ui
 // pattern, plus the campaign-state book and the v16 campaign_tag bytes the
 // zone flows write into).
@@ -459,7 +503,70 @@ struct ZoneFlowState
     bool nested_page_opened = false;
     bool nested_page_popped = false;
     bool returned_from_submenu = false;
+    std::string failure;
 };
+
+int fail_zone_flow(ZoneFlowState* state, const char* failure)
+{
+    state->failure = failure;
+    fprintf(stderr, "  [zone] flow failed: %s\n", failure);
+
+    // The injector must not abandon picker_main's blocking Base Camp loop.
+    // This is one structural BACK during failure cleanup, never an action
+    // retry. At the roster steps below Base Camp owns the unique (8,178)
+    // BACK; if screen identity changed, leave the failed state untouched.
+    if (wait_for_interactable_at("back", 8, 178, 5000) &&
+        wait_for_menu_pointer_ready()) {
+        interact("back");
+    }
+    return 0;
+}
+
+bool wait_for_alpha_roster_state(bool deployed, std::uint8_t campaign_tag,
+                                 const char* trace_category,
+                                 const char* trace_message,
+                                 const char* toast_message = nullptr)
+{
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    const std::string expected_label = deployed ? "X" : "";
+
+    // Autosave/refetch runs inside the action frame, when the frame-top task
+    // pump is intentionally unavailable. Observe only the mutex-protected
+    // live button and trace surfaces until that action publishes its exact
+    // result; then cross the next menu-frame barrier to verify SaveData and
+    // the consumed release together. Posting the barrier before the action
+    // finishes can strand it behind synchronous autosave under load.
+    while (SDL_GetTicks() < deadline) {
+        const bool exact_surface =
+            has_interactable("roster_dep_0") &&
+            interactable_label("roster_dep_0") == expected_label &&
+            trace_contains(trace_category, trace_message) &&
+            (toast_message == nullptr ||
+             trace_contains("zone", toast_message));
+        if (exact_surface) {
+            const Uint64 now = SDL_GetTicks();
+            if (now >= deadline)
+                break;
+            const int remaining = static_cast<int>(deadline - now);
+            return wait_for_menu_thread_condition([=] {
+                const SaveData& save = test_screen()->save_data;
+                const guy* const alpha = save.team_list[0].get();
+                const InputHardwareState& input = input_hardware_state();
+                return alpha != nullptr && alpha->deployed == deployed &&
+                    alpha->campaign_tag == campaign_tag &&
+                    !input.mouse.left && !input.picker_was_left_down &&
+                    og::input::testing_pending_left_clicks() == 0;
+            }, remaining);
+        }
+        SDL_Delay(25);
+    }
+
+    fprintf(stderr,
+            "  [zone] Alpha never reached deployed=%d tag=%u trace=%s/%s\n",
+            deployed ? 1 : 0, static_cast<unsigned>(campaign_tag),
+            trace_category, trace_message);
+    return false;
+}
 
 int zone_flow_injector(void* data)
 {
@@ -482,28 +589,49 @@ int zone_flow_injector(void* data)
     // Deploy-lock refusal: Alpha starts DEPLOYED, so bench first (allowed —
     // locks gate the toggle-ON only), then the re-deploy refuses with the
     // toast while the hero is unassigned.
-    interact("roster_dep_0");
-    SDL_Delay(300);
+    if (!interact_when_menu_ready("roster_dep_0") ||
+        !wait_for_alpha_roster_state(false, 0, "basecamp",
+                                     "deploy slot=0 off")) {
+        return fail_zone_flow(state, "Alpha was not acknowledged as benched");
+    }
     capture_zone_frame("uxr_after_bench");
-    interact("roster_dep_0");
-    SDL_Delay(150);
+    // The accepted bench stamped the production 250ms same-row debounce.
+    // Start the lock click only after both that boundary and the input-release
+    // condition hold on the menu thread.
+    const Uint64 lock_click_ready_at = SDL_GetTicks() + 251;
+    if (!interact_when_menu_ready("roster_dep_0", lock_click_ready_at) ||
+        !wait_for_alpha_roster_state(
+            false, 0, "zone", "deploy_locked slot=0",
+            "toast Swear at the fire first.")) {
+        return fail_zone_flow(state,
+                              "Alpha's unset deploy lock was not acknowledged");
+    }
     capture_zone_frame("uxr_lock_toast");
-    SDL_Delay(300);
 
     // The assign chip: unset -> WAR (undeployed cycle rides the autosave
     // tail), then WAR -> BURDEN.
-    interact("roster_team_0");
-    SDL_Delay(150);
+    if (!interact_when_menu_ready("roster_team_0") ||
+        !wait_for_alpha_roster_state(false, 1, "zone",
+                                     "assign slot=0 tag=1",
+                                     "toast Sworn to WAR.")) {
+        return fail_zone_flow(state, "Alpha was not acknowledged as WAR");
+    }
     capture_zone_frame("uxr_assign_war");
-    SDL_Delay(300);
-    interact("roster_team_0");
-    SDL_Delay(150);
+    if (!interact_when_menu_ready("roster_team_0") ||
+        !wait_for_alpha_roster_state(false, 2, "zone",
+                                     "assign slot=0 tag=2",
+                                     "toast Sworn to BURDEN.")) {
+        return fail_zone_flow(state, "Alpha was not acknowledged as BURDEN");
+    }
     capture_zone_frame("uxr_assign_burden");
-    SDL_Delay(300);
 
     // Assigned heroes clear the unset-lock: the deploy sticks now.
-    interact("roster_dep_0");
-    SDL_Delay(300);
+    if (!interact_when_menu_ready("roster_dep_0") ||
+        !wait_for_alpha_roster_state(true, 2, "basecamp",
+                                     "deploy slot=0 on")) {
+        return fail_zone_flow(state,
+                              "assigned Alpha was not acknowledged as deployed");
+    }
 
     // Without the kit the road row points at a level that is not there:
     // the load-with-rollback failure arm toasts and restores the cursor.
@@ -603,8 +731,12 @@ int zone_flow_injector(void* data)
     // Cycling a DEPLOYED hero first un-deploys through the full roster
     // tail (ready clears — correct), then the tag applies: Alpha is
     // deployed with tag BURDEN, so this cycle benches her and swears WAR.
-    interact("roster_team_0");
-    SDL_Delay(300);
+    if (!interact_when_menu_ready("roster_team_0") ||
+        !wait_for_alpha_roster_state(false, 1, "zone",
+                                     "assign_undeploys slot=0")) {
+        return fail_zone_flow(
+            state, "deployed Alpha's BURDEN-to-WAR cycle was not acknowledged");
+    }
 
     // Base Camp -> main menu.
     wait_for_interactable("go", 10000);
@@ -649,7 +781,8 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
     verify_zone_shots("scripted_zone_flow", 13);
 
     SaveData& save = test_screen()->save_data;
-    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.finished)
+        << "injector should complete the flow: " << state.failure;
     EXPECT_TRUE(state.zone_rows_seen)
         << "the scripted composition re-bands the parked action rows";
     EXPECT_TRUE(state.kit_label_flipped)

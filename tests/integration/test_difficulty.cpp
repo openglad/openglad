@@ -12,6 +12,7 @@
 #include <openglad/resources/io_common.h>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -75,14 +76,77 @@ struct DifficultyState {
     bool returned_to_base_camp;
 };
 
-// Click `id` `times` times, spacing the clicks so each press/release pair is
-// consumed before the next (a second press without a release is dropped).
-static void interact_times(const std::string& id, int times)
+// Click through one complete row cycle, waiting for each exact live label
+// before sending the next click. A flat delay let two clicks collect in the
+// SDL queue while the menu thread was busy autosaving; under load the pair
+// could be sampled as one transition and leave the cycle one step short.
+static bool wait_for_menu_pointer_release()
 {
-    for (int i = 0; i < times; ++i) {
-        fprintf(stderr, "  [test] clicking %s (%d/%d)\n", id.c_str(), i + 1, times);
+    // Tasks run at frame-top, before the menu's event poll. If the release is
+    // still queued, the first probe sees the held baseline; that frame's
+    // leftmouse() consumes the release, and the next probe sees the exact
+    // quiescent condition. This is a frame/condition handshake, not a delay.
+    for (int frame = 0; frame < 3; ++frame) {
+        bool released = false;
+        if (!run_on_main_thread([&released] {
+                const InputHardwareState& input = input_hardware_state();
+                released = !input.mouse.left && !input.picker_was_left_down
+                    && og::input::testing_pending_left_clicks() == 0;
+            })) {
+            return false;
+        }
+        if (released)
+            return true;
+    }
+    fprintf(stderr, "  [test] pointer release was not consumed by the menu\n");
+    return false;
+}
+
+static bool interact_cycle(
+    const std::string& id,
+    std::initializer_list<const char*> expected_labels)
+{
+    int step = 0;
+    for (const char* expected_label : expected_labels) {
+        ++step;
+        fprintf(stderr, "  [test] clicking %s (%d/%zu)\n", id.c_str(),
+                step, expected_labels.size());
         interact(id);
-        SDL_Delay(300);
+        if (!wait_for_interactable_label(id, expected_label, 5000))
+            return false;
+        if (!wait_for_menu_pointer_release())
+            return false;
+    }
+    return true;
+}
+
+// A failed readiness/postcondition check must still release picker_main's
+// blocking menu stack so the TEST body can report the exact failed state.
+// Each branch is a distinct structural BACK, never a retry of the action
+// whose postcondition failed.
+static void unwind_difficulty_flow()
+{
+    if (has_interactable("difficulty_back")) {
+        (void)wait_for_menu_pointer_release();
+        interact("difficulty_back");
+        (void)wait_for_interactable("go", 5000);
+    }
+
+    if (has_interactable("go")) {
+        (void)wait_for_menu_pointer_release();
+        interact("back");
+        (void)wait_for_interactable("continue_game", 5000);
+    }
+
+    if (has_interactable("options_back")) {
+        (void)wait_for_menu_pointer_release();
+        interact("options_back");
+        return;
+    }
+
+    if (has_interactable("quit")) {
+        SDL_Delay(750);  // legacy main-menu fade-in settle
+        interact("quit");
     }
 }
 
@@ -99,6 +163,8 @@ static int difficulty_injector(void* data)
     SDL_Delay(500);
     if (!wait_for_interactable("difficulty", 10000)) {
         fprintf(stderr, "  [test] Base Camp never showed the DIFFICULTY door\n");
+        unwind_difficulty_flow();
+        state->finished = true;
         return 0;
     }
     state->reached_base_camp = true;
@@ -109,19 +175,33 @@ static int difficulty_injector(void* data)
     interact("difficulty");
     if (!wait_for_interactable("difficulty_back", 5000)) {
         fprintf(stderr, "  [test] DIFFICULTY subscreen never appeared\n");
+        unwind_difficulty_flow();
+        state->finished = true;
         return 0;
     }
     state->entered_submenu = true;
     SDL_Delay(300);
 
-    // Full cycle on every row: each setting ends back at its default.
-    interact_times("difficulty", 3);     // Battle -> Slaughter -> Skirmish -> Battle
-    interact_times("respawn_mode", 4);   // Off -> Heroes -> Everyone -> Team 1 -> Off
-    interact_times("respawn_delay", 3);  // Normal -> Fast -> Slow -> Normal
-    interact_times("permadeath", 2);     // On -> Off -> On
-    interact_times("generator_rate", 3); // Normal -> Calm -> Frenzy -> Normal
-    interact_times("infinite_gold", 2);  // Off -> On -> Off
-    state->cycled_settings = true;
+    // Full cycle on every row: each click is acknowledged by the row's live
+    // label before the next one is injected, and every setting ends back at
+    // its default.
+    state->cycled_settings =
+        interact_cycle("difficulty",
+                       {"Difficulty: Slaughter", "Difficulty: Skirmish",
+                        "Difficulty: Battle"})
+        && interact_cycle("respawn_mode",
+                          {"Respawns: Heroes", "Respawns: Everyone",
+                           "Respawns: Team 1 Heroes", "Respawns: Off"})
+        && interact_cycle("respawn_delay",
+                          {"Spawn Delay: Fast", "Spawn Delay: Slow",
+                           "Spawn Delay: Normal"})
+        && interact_cycle("permadeath",
+                          {"Permadeath: Off", "Permadeath: On"})
+        && interact_cycle("generator_rate",
+                          {"Generators: Calm", "Generators: Frenzy",
+                           "Generators: Normal"})
+        && interact_cycle("infinite_gold",
+                          {"Infinite Gold: On", "Infinite Gold: Off"});
 
     // Leave the subscreen: the nested MENU_REDRAW must land back on a LIVE
     // Base Camp, not unwind it.
@@ -129,6 +209,8 @@ static int difficulty_injector(void* data)
     interact("difficulty_back");
     if (!wait_for_interactable("go", 5000)) {
         fprintf(stderr, "  [test] Base Camp did not survive the nested BACK\n");
+        unwind_difficulty_flow();
+        state->finished = true;
         return 0;
     }
     state->returned_to_base_camp = true;
@@ -142,7 +224,11 @@ static int difficulty_injector(void* data)
     // DIFFICULTY door of its own.
     fprintf(stderr, "  [test] clicking base camp back\n");
     interact("back");
-    wait_for_interactable("continue_game", 5000);
+    if (!wait_for_interactable("continue_game", 5000)) {
+        unwind_difficulty_flow();
+        state->finished = true;
+        return 0;
+    }
     SDL_Delay(300);
 
     EXPECT_FALSE(has_interactable("difficulty"))
@@ -151,8 +237,11 @@ static int difficulty_injector(void* data)
         << "seat lifecycle belongs to the live Base Camp roster";
     fprintf(stderr, "  [test] clicking GAME SETTINGS\n");
     interact("options");
-    if (!wait_for_interactable("options_back", 5000))
+    if (!wait_for_interactable("options_back", 5000)) {
+        unwind_difficulty_flow();
+        state->finished = true;
         return 0;
+    }
     SDL_Delay(300);
     // Player controls are per-seat now: GAME SETTINGS must not carry the
     // retired global CONTROLS door or its RESET ALL.
