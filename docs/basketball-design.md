@@ -34,8 +34,9 @@ into an enemy hoop's painted zone dunks for 2. Damage fumbles the carrier;
 a shot clock turns stale possession over; misses clang off the rim into live
 rebound scrums; authored walls give bank shots; blocks are legal low, the apex
 is untouchable, and swatting a falling shot near the rim is goaltending (basket
-counts). Five new arenas (824-828), everything in pack Lua + the mapgen —
-`src/` is byte-untouched.
+counts). Six arenas (824-829), including THE CAUSEWAY's four water bays;
+ball behavior stays in pack Lua, while shared engine passability now honors
+the declared `SWIMMING` capability and radar renders declared ball landmarks.
 
 ---
 
@@ -46,7 +47,7 @@ Later sections cite decisions by id.
 
 | # | Decision | Ruling & rationale |
 |---|----------|--------------------|
-| D1 | Scenario id band & count | **824-828, five arenas, row count 28 → 33** (A wins over M/S's four). All five courts earn their slot (reference / tight / 4-team / gimmick / generator); the band is inside both registration scans (`mode_core.lua:113-114` caps 300-899; per-script scans run 0-1023), contiguous with soccer on the numeric-sorted shelf, and 829-839 stays spare. |
+| D1 | Scenario id band & count | **824-829, six arenas** (the original five plus 829 THE CAUSEWAY). The roster covers reference / tight / 4-team / gimmick / generator / water courts; the band is inside both registration scans (`mode_core.lua:113-114` caps 300-899; per-script scans run 0-1023), contiguous with soccer on the numeric-sorted shelf, and 830-839 stays spare. |
 | D2 | Manifest schema | **Minimal**: `hoops = {[defending team] = {x, y}}` pixel centers, court-level `arc_radius` (px), `jump_ball = {x, y}` — plus the existing `mode/teams/time_limit/score_limit/spawn_caps`. S's `key_rects` field and A's per-hoop `{rim, arc, dunk}` records are dropped: rim radius is a tuning constant (D14), the dunk zone is derived (hoop center ± 24 px box, D3), the key is cosmetic paint. Saves 8 mode vars and keeps the 28 existing rows byte-identical. `goal_rects`/`kickoff` stay soccer-only names. |
 | D3 | Hoop geometry | **A's paint grammar**: hoop tile = `PIX_CARPET_M2` (id 34, verified passable) centered in a 3x3 `PIX_CARPET_M` dunk carpet inside a cosmetic cobble key; backboard = perimeter wall / authored stubs. Dunk zone = Chebyshev box `|dx| <= 24 and |dy| <= 24` matching the painted carpet exactly, replacing M's L1 radius 20. |
 | D4 | Arc metric | **Euclidean, integer d²** (A+S over M's L1 diamond): 3 points when release `dx*dx + dy*dy > arc_radius²`. The painted ring is a circle; the predicate matches the paint. Per-court shot range = `arc_radius + 64` px (A's rule), same d² compare, replacing M's fixed 192. Contact radii stay L1 (soccer parity). Flight-time distances stay L1 (cheap; the solver hits the target exactly regardless). |
@@ -80,16 +81,20 @@ Later sections cite decisions by id.
 | D32 | Blast radius | Enumerated; update, never weaken. **Mapgen** `tools/modes_mapgen/main.cpp`: `obmap_ledger` basketball arm `ball = 2` (`:239-251`) → `2 + hoop count` (= authored `row.hoops.size()`, the peak activation); `self_check_pack_art()` `:927-933` += `check_sprite(... "hoop.png", 24, 20, 6)`. No tile, manifest or briefing bytes change, so campaign regeneration stays byte-identical (§11.5 step 1 proves it); the only `campaigns/` diffs are the generated `sprites/hoop.png` + `hoop.json` and the new `families/fx-hoop.lua`. **Ledger values** (§6): 824 69→**71**, 825 65→**67**, 826 71→**75**, 827 69→**71**, 828 79→**81** — all ≤ 190. **tests/unit/test_modes_levels.cpp**: ledger expression `:733` `(mode == "basketball") ? 2 : 0` → `2 + <per-row hoop count>` (826: 4, others 2 — extend the pin table); sprite-pin table `:1189-1190` += `{"packs/modes.core/sprites/hoop.png", 24, 20, 6}`. **tests/unit/test_modes_basketball.cpp**: the grep-verified full set of fxlist/census assertions is — shadow-membership `:513-519` (still true), digest fxlist walk `:271-310` (hoops join the digest automatically; static frames, deterministic), mirror test `:2120-2199` (extend per test 46). No existing test pins an fxlist SIZE or a literal ball/shadow entity id, and the after-shadow spawn order (D30) keeps those ids unchanged — nothing else shifts. **tests/modes_pack_fixture.h**: rows 9701-9709 already author `hoops` (`:401-441`), so fixture worlds grow 2 hoops (9701/9704/9705) or 4 (9702) with NO literal change; `kTestRegistrationLua` bytes change ⟺ a new row is added, and only then does `scripts/coverage/runtime_only_lua.txt` need the sha256 update in the same commit (R2). `test_modes_soccer.cpp`: untouched (soccer rows author no hoops). **Docs**: `docs/mp-game-modes.md` basketball section gains the hoop-visual sentence. **Media refresh** (DELIVERED 2026-08-09 to `build/media/basketball/`, reproduction lines in that directory's manifest.md "Hoop sprite refresh" section; the push to openglad-screenshots `pr-190/` and the SHA-pinned raw URLs in the PR body are the orchestrator's landing step): (1) `hoop-idle-824.png` — 824 idle rims, both tints, as a two-crop composite (one 320x200 window cannot hold rims 608 px apart, on any court); (2) `hoop-swish-824.png` — full frame, "BASKET! GREEN +2" on screen with the scored-on net at swish frame 2, plus `hoop-swish-strip-824.png` rim close-ups through the whole ripple; (3) `hoop-clang-824.png` — full frame, rim gold-flashed at clang frame 4 with the missed ball popping away, plus `hoop-clang-strip-824.png`; (4) `hoop-tints-826.png` — FOUR HOOPS all four tick tints as a 2x2 of per-goal crops (656x656 px court, same single-frame impossibility); (5) RE-SCOPED — the 826 two-team partial spawn is not capturable by `openglad_demo`: the activation clamp reads the lobby `team_count` (`og.match_setting` → `world.ctf_requested_team_count`), which is save-file state the demo bootstraps to Auto (fresh save0 in `init_session_game`) with no env override, Auto activates all four authored anchor teams on shipped 826, and adding a demo knob would be a src/ change outside this delta. The partial-spawn behavior stays pinned by test 43 (`hoop_partial_spawn_two_of_four`: exactly two rims, nil for both dead goals); `hoop-frames.png` — the generator-truth sprite sheet (6 frames x neutral+4 team tints via the walkputbuffer remap, over court grounds) — ships as the fifth visual. |
 | D33 | Body denial of low shots | User-approved playtest rule ("if I shoot a ball right into a guard's face, shouldn't the guard intercept it?"): during a SHOT's low-flight window a nearby ENEMY body DEFLECTS the shot into a live REBOUND — a carom off the chest, deliberately NOT a clean catch (face-stuffs scramble; passes keep `try_catch`'s clean interception). **Window**: state SHOT and `z_px <= grab_z` (20 = head_z — body reach, the catch convention: `try_catch`'s interceptor arm is the same compare, `mode_basketball_impl.lua:1350-1355`; `block_ceiling` 24 is the WEAPON reach abstraction, §3.5, and stays weapons-only). The window is physically the release ascent alone: a shot leaves at carry_z 12 with `vz0` 944-1562 fp across Tf ∈ [10, 30] (§2.6), crosses 20 px within 2-3 ticks, and the descent terminates AT rim_z 32 > grab_z — so a body can NEVER touch a descending shot, **no body goaltending exists** (the deny band [0, 20] and the goaltend window (32, 48] are disjoint by arithmetic) and a basket cannot be body-denied at the rim: denial is exclusively a release-vicinity event, open from the release tick itself (release re-pins the ball to the shooter's center at z = carry_z, `:843-845`). **Candidates**: live ENEMY score-team Livings only — `team_num() < C.SCORE_TEAM_COUNT` and `~= SHOT_TEAM1 - 1`, read LIVE at the contact tick (`press_count`'s enemy definition, `:361-376`; charm follows §9 #12) — within `catch_radius` (12, the body-contact scale) L1 of the ball GROUND center; first in livings (oblist) order wins (§9 #4). **Teammate carom REJECTED**: the director's own spacing (cutter posts, seam holders) crosses the release lane routinely and rung 1's press gate counts only enemies (`:1863-1870`), so teammate-carom would self-deny normal bot offense and make human spacing a liability; and it mirrors the pass asymmetry — a teammate body in a pass lane is a benign CATCH (`try_catch` admits teammates), while a teammate body worsening a SHOT has no benign reading. Grace bars do NOT gate the deny (they bar TAKING the ball; the weapon-swat precedent, §9 #26 — a barred body still contests, and still cannot grab the carom until its bar lifts). **Shooter exclusion, two prongs**: SHOT_TEAM1 holds a TEAM, not an id (`:44-48`); the id naming the releasing entity for the whole flight is **LAST_TOUCHER** (slot 28) — `release_throw` stamps it to the carrier at every release (`:964`) and its only other writers are `gain_possession` `:799` (exits into CARRIED), `run_swat` `:1230/:1232` (converts to REBOUND in the same block, `:1227`) and `center_reset` `:484` (state FREE), so while BALL_STATE == SHOT, LAST_TOUCHER == the shooter's entity id invariantly. Prong 1: the enemy-team predicate already excludes the shooter. Prong 2: `og.entity_id(w) ~= LAST_TOUCHER` — this makes "the shooter can never deny its own shot" literally true even when the shooter is CHARMED mid-flight and walks into the path of its own slow shot (edge #34). **Impulse** (deterministic, ZERO RNG draws — the stream is untouched, unlike the fumble's scatter): horizontal = `swat_velocity(dx, dy, T.deny_speed)` with `(dx, dy)` = ball ground center − defender center (a carom away from the body) and `deny_speed = 4` — the `run_swat` impulse clamp FLOOR (`clamp(trunc(damage) * 2, 4, 12)`, `:1225`): a body has no damage operand, so it takes the weakest legal swat. Zero-vector degenerate (defender center exactly under the ball; `swat_velocity` divides by |dx|+|dy|, `:1063-1068`): fall back to the defender's facing via `curdir() + 1` → `ai.FACING_X/Y`, nil → (0, 1) — `consume_throw`'s dead-center rule verbatim (`:1015-1027`). **vz is SET to `T.fumble_pop`** (640), NOT the block path's `+512` add (`:1226`): adding to the 944-1562 fp ascent would sail the carom to a ~50-60 px apex, while fumble_pop from z <= 20 apexes ~8-10 px higher and falls straight back into grab range — the T5 loose-ball scramble grammar (`:747`), which IS the face-stuff scramble. Then exactly the block arm's bookkeeping: state REBOUND, `clear_flight`, `stamp_toucher(ball, defender id, defender team)` (LAST_TOUCH2 demotion and ball tint for free; grace bars never move, D24), NO grace write (the denier earned the scramble and may grab immediately; so may the shooter, which never had a self grace on a shot — the ARC arm arms none, `:915-944`), `landing_legal`, announce `"DENIED!"` + SOUND_ROAR (7 <= 25 bytes; distinct from the block's `"BLOCK!"`/SOUND_BOLT and the rim's CLANG; `og-api.d.lua:433`). **AI unaffected in the common case, by arithmetic**: rung 1 releases only at press_count == 0 — no enemy within 24 L1 of the shooter — while a deny needs an enemy within 12 L1 of the ball during the 2-3-tick low window, when the ball is <= ~18 px out. A defender parked beyond press_radius exactly on the lane CAN meet a long shot's tick-2 point — rare, legal, accepted (a lane camper is playing defense). **No new slots** (LAST_TOUCHER reused; 63 stays the last spare, R4); one new T key (`deny_speed`); one new function (`run_deny`). |
 | D34 | Deny ordering, clock and blast radius | **Pipeline**: `run_deny(ball, livings)` is a new scan called from `run_ball_logic` immediately BEFORE `run_swat` (`:2159`), same guard shape (STATE_SHOT only; `now >= JUMP_UNTIL` as a tripwire — a SHOT cannot exist during the freeze, §9 #5, edge #37). **Body before weapon**: the deny band is a strict z subset of the block window (20 < 24); in the overlap the ball is at body height and the body is the physical surface at the contact point — the weapon's flat-flight reach abstraction (§3.5) must not preempt an actual chest, and the rule completes the 4c695a48 throw-consumption story: the thrown weapon already dies on the adjacent guard, now the ball caroms off them too. After a deny the state is REBOUND and the SAME tick's weapon scan still runs on it (`run_swat` admits st >= STATE_SHOT, `:1171-1174`): a same-tick weapon tip of the fresh carom is legal and silent (was_shot false) — the ordinary rebound rule, accepted. **Score-tick collision impossible**: a SHOT scores only via `resolve_shot` at FLIGHT_TICKS == 0 (`:1430-1437`; SHOT skips `run_crossing`, `:1406`), where pre-move z > rim_z 32 — never <= grab_z; deny-vs-basket precedence has no case (edge #36). **Clock**: the release already cleared CLOCK_* (`:937-938`) and the deny writes neither slot — byte-identical to the weapon-block path (`run_swat` touches no CLOCK_*); the next possession gain arms fresh via §3.6 rule 3 (`:802-805`), either team. **No stall shape**: the deny fires only in STATE_SHOT and produces REBOUND, never another SHOT; the next SHOT costs a possession gain (clock arms) plus a release (clock clears), and the D25 wipe watchdog runs in EVERY state — deny-rebound loops are bounded exactly like block-rebound loops (edge #39). **Blast radius**: `mode_basketball_impl.lua` only (`T.deny_speed`, `run_deny`, the `run_ball_logic` call) plus this doc (§2.3, §2.4 SHOT, T20, §2.8 step 7, §3.5, §8 roster, edges #34-#39, tests 48-54, §11.3 row) and one sentence in `docs/mp-game-modes.md`. No src/ (I1), no manifest/sprite/slot/fixture-row change (`kTestRegistrationLua` bytes untouched — no runtime_only_lua digest churn); campaign regen stays byte-identical. Tests must survive ci-asan: judge the defender and any consumed weapon by entity id after ticks, never by stale handle. |
-| Errata | — | M's L1-diamond arc superseded by D4; M/S's 28→32 superseded by D1 (33); S §1.5 attribution ruling superseded by D5; A's shown ledger arithmetic for 825/826 was garbled but the final values (65/71) are correct — recomputed in §6. Red-team pass: first-synthesis scatter constants (48/6/20), shot_clock 288, turnover_grace 24, shot_sweet 144, dunk_drive_range 96, the owner-only throw scan, the clock-clears-on-loose-ball rule and the LAST_TOUCHER-dereferenced grace are all superseded by D19-D25. |
+| Errata | — | M's L1-diamond arc superseded by D4; M/S's 28→32 was superseded by the original five-court rollout (33), and the later Causeway addition raises the full modes campaign 39→40; S §1.5 attribution ruling superseded by D5; A's shown ledger arithmetic for 825/826 was garbled but the final values (65/71) are correct — recomputed in §6. Red-team pass: first-synthesis scatter constants (48/6/20), shot_clock 288, turnover_grace 24, shot_sweet 144, dunk_drive_range 96, the owner-only throw scan, the clock-clears-on-loose-ball rule and the LAST_TOUCHER-dereferenced grace are all superseded by D19-D25. |
 
 ---
 
 ## 1. Global invariants (apply to every work package)
 
-- **I1 — src/ byte-untouched.** Everything lives in pack Lua, `tools/modes_mapgen`,
-  `scripts/gen_modes_sprites.py`, regenerated `campaigns/modes` output, `tests/`,
-  `docs/`. No new binding, no protocol/replay bump, no mutation-pin churn, and
-  `api_stub_check` is a no-op.
+- **I1 — scoped shared-engine support.** Ball motion remains in pack Lua. The
+  shared engine supplies descriptor-installed `SWIMMING`, water terrain genre
+  and passability, ignored-object projectile targeting, and descriptor-driven
+  objective radar landmarks. It also exposes the read-only
+  `walker:can_approach_weapon_range` query used to choose a recovery shooter.
+  No protocol/replay bump is required; mutation-pin line anchors touched by
+  those source edits are reviewed and repinned without changing scenario
+  predicates.
 - **I2 — determinism.** Durable sim state ONLY in mode vars (64 int32 slots,
   header 0-7 owned by `mode_core.SLOT`, MODE_ID written LAST in init as the
   activation latch). Randomness ONLY `og.rand` at the pipeline points marked in
@@ -101,7 +106,7 @@ Later sections cite decisions by id.
 - **I3 — every existing gate stays green.** Campaign regeneration is
   byte-stable (run the generator twice, then prove `git status --porcelain --
   campaigns/` empty a third time); `test_modes_levels` invariants hold for the
-  five new rows (33-char briefing lines, `-- THE GAMESMASTER` sign-off, obmap
+  six rows (33-char briefing lines, `-- THE GAMESMASTER` sign-off, obmap
   ledger <= 190, closed perimeter, reachability); Lua coverage line >= 95 /
   function = 100 on ALL new pack Lua — design nothing untestable, every function
   must be executable from headless unit tests; `og.award_score` never receives a
@@ -115,9 +120,10 @@ Later sections cite decisions by id.
   `modes:ball` keeps auto id 21. `fx-bball.lua` (22) and `fx-bshadow.lua` (23)
   satisfy this; any future basketball family must too.
 - **I6 — identity & registration.** Mode id 6, mode name `"BASKETBALL"`
-  (10 chars < `kModeNameBytes` 12), scenario ids 824-828 (D1), manifest emitted
-  by the mapgen only (never hand-edit `mode_levels.lua`), row-count literals
-  28 → 33 everywhere §11.4 lists.
+  (10 chars < `kModeNameBytes` 12), scenario ids 824-829 (D1), manifest emitted
+  by the mapgen only (never hand-edit `mode_levels.lua`), and the Causeway
+  addition moves the shipped campaign count 39 → 40. Section 11.4 labels the
+  older 28 → 33 five-court rollout as historical rather than a current pin.
 - **I7 — metric discipline** (new). Every distance comparison names its metric:
   contact radii (pickup/catch/swat/goaltend/dead-ball) and director geometry are
   **L1**; arc classification, shot range, AI shot_sweet AND the scatter distance
@@ -876,7 +882,7 @@ Per tick O(oblist) scans + <= 2 substeps; director O(n) per team at cadence
 
 Mode id **6** (`MODE.BASKETBALL = 6` in `mode_core.lua:16-22`); mode name
 `"BASKETBALL"`; mode string `"basketball"` (manifest field + script stem
-`scripts/mode_basketball.lua`). Scenario ids **824-828** (D1). Registered
+`scripts/mode_basketball.lua`). Scenario ids **824-829** (D1). Registered
 hooks: `on_mode_init`, `on_mode_tick`, `on_respawn`, `on_damage` — hook mask
 `kModeInit | kModeTick | kRespawn | kDamage`.
 
@@ -906,7 +912,7 @@ pre-existing rows stay byte-identical.
 **Reversed by the #225 playtest.** The courts turned into a hunt for the last
 chicken: the ball keeps everyone moving and trading contact damage all match,
 while the authored food is eaten once and never returns. Every court drumstick
-is now a respawnable pad, `item_interval = 240`, and the five rows join the
+is now a respawnable pad, `item_interval = 240`, and the six rows join the
 mapgen's exact-(family, tile) multiset pin. 240 sits between the TDM/CTF 300
 and the FFA/Mutant 180: `mode_items` refills ONE pad per interval whatever the
 pad count, so the interval tracks mouths fed — a court fields 10-20 livings
@@ -937,21 +943,21 @@ run exits nonzero by design (regenerate-and-diff rewrites the stale
 
 | File | Anchor | Edit |
 |---|---|---|
-| `modes_mapgen.h` | `:3-6` | header roster += "Basketball 824-828", 28 → 33 |
+| `modes_mapgen.h` | `:3-6` | current roster names Basketball 824-829; campaign count 40 |
 | | `:48-57` | `enum class ModeKind` gains `Basketball` (between Soccer and Mutant, id order); `mode_name` decl unchanged |
 | | `:93-133` | `ExpectedLevel` gains §5.3 members |
 | | `:168-178` | declare `build_basketball()` / `basketball_expectations()` between the soccer and mutant pairs |
 | `builders_common.cpp` | `:40-51` | `mode_name()` gains `"basketball"` |
 | | `:187-196` | `all_expectations()` concatenates basketball between soccer and mutant (keeps `M.levels` ascending by id) |
-| `levels_basketball.cpp` | NEW | five builders (§6) + `basketball_expectations()`; TU-local `paint_arc_ring` (§6.0); `basketball_row(...)` helper mirroring `soccer_row` |
+| `levels_basketball.cpp` | NEW | six builders (§6) + `basketball_expectations()`; TU-local `paint_arc_ring` (§6.0); `basketball_row(...)` helper mirroring `soccer_row` |
 | `main.cpp` | `:5-7` | header roster/count comment |
-| | `:104-131` | campaign.yaml description: "six games", roster gains basketball, "thirty-three fields" |
+| | `:104-131` | current campaign.yaml description names all seven modes and forty fields |
 | | `:235-246` | obmap ledger ball term: soccer 1, **basketball 2** (ball + shadow) |
 | | `:520-535` | item-pad OFF arm gains Basketball |
 | | `:586-618` | basketball structural arm (§5.5) after the soccer arm |
 | | `:698-706` | reachability probes += each hoop tile and `jump_ball` |
 | | `:775-783` | `self_check_pack_art()` += `check_sprite(... "bball.png", 12, 12, 8)` and `(... "bshadow.png", 12, 12, 4)` |
-| | `:903-905` | `rows.size() != 28` → `!= 33` |
+| | `:903-905` | historical rollout changed 28 → 33; current table pins 40 after Causeway |
 | | `:936-940` | `build_basketball();` between soccer and mutant |
 | | `:964-968` | `self_check_mode_dispatch(ModeKind::Basketball, 824);` (the init announce satisfies its Notification assert; absent the pack script it self-downgrades to SKIP — land generator and pack together) |
 | `manifest.cpp` | `:5` | "five" → "six" |
@@ -979,7 +985,7 @@ run exits nonzero by design (regenerate-and-diff rewrites the stale
    player must never lose a point of shot value on an invisible boundary).
 5. Hoop separation: pairwise hoop-center L1 distance >
    `2 * (scatter_cap_total + rim_r + rim_lip)` = 84 px (makes cross-rim
-   landings impossible; trivially true on all five courts).
+   landings impossible; trivially true on all six courts).
 6. Reachability probes at every hoop tile and the jump tile — every rebound
    scrum spot is provably walkable.
 7. Ledger `+2 + hoops` term (D32; was `+2` pre-D29), pad-free arm, dispatch
@@ -1033,7 +1039,7 @@ static void paint_arc_ring(Canvas& c, int hx, int hy, int r)
 ```
 
 **Paint order is load-bearing** (Canvas has no getter; later paint wins):
-walls + hardwood → arc rings → center line(s) → center circle → keys →
+walls + hardwood → arc rings → optional water bays → center line(s) → center circle → keys →
 free-throw discs → dunk carpet + M2 → gimmick walls (stubs/pillars/alcoves) →
 decor. Consequences (intended): keys/dunk overwrite ring tiles near the hoop;
 826's center runners cross its rings; 828's alcoves truncate its corner arcs.
@@ -1041,7 +1047,7 @@ decor. Consequences (intended): keys/dunk overwrite ring tiles near the hoop;
 Spawns: `markers_per_team = 5` (D8) — PG lead marker (2x2 clearance), two
 wings, two bigs. `place_at` authors position/team only; tick-0 facing is
 cosmetic (the first director cadence re-commands everyone). Row constants
-shared by all five: `flags = 0`, `control_points = 0`, `doors = 0`,
+shared by all six: `flags = 0`, `control_points = 0`, `doors = 0`,
 `other_weapons = 0`, `authored_livings = 0`, `score_limit = 21` (825: 11),
 `time_limit = 7200` (825: 5400). Titles carry the `"Basketball: "` prefix,
 <= 30 bytes; briefings <= 33 chars/line ending `-- THE GAMESMASTER`.
@@ -1295,7 +1301,29 @@ Pins: teams 2, markers 5, treasures 6, gens 1/team, caps_total 8, decor_cells
 **6**, grid 47x29, par 10. Ledger 2+6+0+0+0+0+8+16+20+25+2+2 = **81** (D32;
 79 pre-D29).
 
-### 6.6 Cross-arena matrix
+### 6.6 Arena 829 — "Basketball: THE CAUSEWAY" (par 8)
+
+The water court. Two 11x8 flooded bays on each side leave a full dry cross:
+the vertical arm is x 19-29 and the horizontal arm is y 9-19. Players can
+reach every passable dry tile from the jump circle, but feet must route around
+a bay; an airborne ball takes the direct line over it. A free or landing ball
+that touches water keeps moving with severe drag, and a weapon hit can pop it
+loose. Because the dry arms put standable ground on opposite sides of open
+water, automatically filled squads replace the teleporting mage with an orc at
+the shared init/wipe spawn seam. Human roster mages remain legal and controlled
+by their player.
+
+Canvas **49x29** (784x464 px). Hoops are (3,14) and (45,14), the jump tile is
+(24,14), and `arc_radius = 176`. The four water rectangles are
+`(8..18,1..8)`, `(30..40,1..8)`, `(8..18,20..27)`, and
+`(30..40,20..27)`: **352 exact water cells**. Team 0 anchors are
+`{20,14},{17,10},{17,18},{11,12},{11,16}`; team 1 mirrors across x=24.
+All ten drumstick pads stay on the dry cross. Four baseline posts are the only
+decor. Pins: teams 2, markers 5, treasures 10, gens 0, decor_cells 4,
+water_cells 352, grid 49x29, par 8. Ledger
+`10+16+20+25+2+2 = 75`.
+
+### 6.7 Cross-arena matrix
 
 | Arena | Court px | Arc | Hoop-wall gap | Teams | Score | Twist |
 |---|---|---|---|---|---|---|
@@ -1304,6 +1332,7 @@ Pins: teams 2, markers 5, treasures 6, gens 1/team, caps_total 8, decor_cells
 | 826 FOUR HOOPS | 656x656 | 144 | 40 px | 4 (2-4) | 21 | four scrums, one ball |
 | 827 THE BANKHOUSE | 720x432 | 176 | 24 px (stub) | 2 | 21 | banks beat lanes |
 | 828 BENCHWARMERS | 752x464 | 160 | 40 px | 2 | 21 | generator benches, caps 4+4 |
+| 829 THE CAUSEWAY | 784x464 | 176 | 40 px | 2 | 21 | water bays, one dry cross |
 
 Rim radius is constant (12 px) across the roster on purpose (D14): difficulty
 scales through arc distance, court length and furniture — never the target.
@@ -1349,15 +1378,19 @@ blocks.
 
 **`families/fx-bball.lua`** — clone of `fx-ball.lua`'s one-call shape: effect
 order, `id = "modes:bball"`, `wire_id = "auto"` (→ 22), `name = "BBALL"`,
-`flags = { "NO_COLLIDE" }`, `sprite = "packs/modes.core/sprites/bball.png"`,
-glyph `"b"` yellow bold, `radar_landmark = true`, NO animation table, and an
-`on_act` returning true (the engine never moves/animates/expires it; the impl
-drives `set_frame`, and the resolved frame replicates — mirrors never run
-`animate()`). Spawned with **`og.add_ob`** (oblist — the fx list never acts).
+`flags = { "NO_COLLIDE", "SWIMMING" }`, sprite
+`"packs/modes.core/sprites/bball.png"`, glyph `"b"` yellow bold,
+`radar_landmark = false`, NO animation table, and an `on_act` returning true
+(the engine never moves/animates/expires it; the impl drives `set_frame`, and
+the resolved frame replicates — mirrors never run `animate()`). Spawned with
+**`og.add_ob`** (oblist — the fx list never acts). The drawn ball stays quiet
+on radar because fake z moves its render position above the ground truth.
 
-**`families/fx-bshadow.lua`** — same shape MINUS `on_act` (D11) and with
-`radar_landmark = false`, glyph `"."` dark, sprite `bshadow.png`. Spawned with
+**`families/fx-bshadow.lua`** — same shape MINUS `on_act` (D11), glyph `"."`
+dark, sprite `bshadow.png`, and a yellow, jitter-0 landmark pulse. Spawned with
 **`og.add_fx_ob`** (fxlist: never acts, renders under everything, replicates).
+Beacon slot 0 uses this descriptor-aware ground proxy for the basketball's
+single objective blip.
 
 Both family bytes (22, 23 >= NUM_FAMILIES) travel the snapshot wire — the
 mirror-replication test (§11.2 #22) is the regression for the historic
@@ -1388,8 +1421,8 @@ sorts after `fx-bshadow.lua`, keeping ids 21/22/23.
   have no spare slot).
 - **Beacons**: slot 0 = the SHADOW (ground truth for radar/off-screen — the
   ball entity is drawn offset up to ~40 px at apex); slot 1 = the carrier
-  (team-tinted) or nil. The ball family still radar-blips itself (landmark);
-  the shadow family is not a landmark, avoiding a double blip.
+  (team-tinted) or nil. The shadow descriptor supplies the one yellow pulse;
+  the fake-z ball is not a landmark, avoiding a lifted second blip.
 - **Announces** (all <= 25 bytes, counted): `"BASKETBALL! FIRST TO N"` +
   SOUND_CHARGE (init; satisfies the mapgen dispatch proof);
   `"JUMP BALL!"` + SOUND_YO; `"BASKET! {COLOR} +2"` / `"THREE! {COLOR} +3"` +
@@ -1591,10 +1624,10 @@ one agent and owns its files exclusively.
 | WP2 | Families + mode constant + roster prose | opus | `campaigns/modes/packs/modes.core/families/fx-bball.lua` (new), `families/fx-bshadow.lua` (new); `lib/mode_core.lua` (MODE.BASKETBALL = 6 only); `lib/mode_strip.lua:1`, `lib/mode_match.lua:1,75` (prose "five" → "six") | WP1 (family sprite paths must load) |
 | WP3 | Shared-helper hoist (D17) | opus | `lib/mode_core.lua` (iabs, walker_center), `lib/mode_ai.lua` (FACING_X/Y, dir8, drive_geometry, chaser_drives), `lib/mode_match.lua` (revive_wiped_teams, plus SOCCER's submenu-honoring run_death_scan variant ONLY — `mode_ctf_impl.lua`/`mode_onslaught_impl.lua` keep their own variants and are NOT owned files), `lib/mode_soccer_impl.lua` (consume the hoisted versions; delete locals). Proof: og_unit_soccer green unchanged — its director tests pin exact GOTO targets | — (parallel with WP1/WP2; coordinate mode_core/mode_match edits with WP2) |
 | WP4 | Mode impl + entry script | fable | `campaigns/modes/packs/modes.core/lib/mode_basketball_impl.lua` (new), `scripts/mode_basketball.lua` (new) | WP2, WP3 |
-| WP5 | Mapgen + arenas + regeneration | fable | `tools/modes_mapgen/levels_basketball.cpp` (new), `modes_mapgen.h`, `builders_common.cpp`, `main.cpp`, `manifest.cpp`; `CMakeLists.txt:914-931`; regenerated `campaigns/modes/{campaign.yaml, icon.png, scen/scen824-828.fss, pix/scen0824-0828*.png, packs/modes.core/lib/mode_levels.lua}` | WP1 (check_sprite), WP4 (dispatch proof needs the pack script) |
+| WP5 | Mapgen + arenas + regeneration | fable | `tools/modes_mapgen/levels_basketball.cpp` (new), `modes_mapgen.h`, `builders_common.cpp`, `main.cpp`, `manifest.cpp`; `CMakeLists.txt:914-931`; regenerated `campaigns/modes/{campaign.yaml, icon.png, scen/scen824-829.fss, pix/scen0824-0829*.png, packs/modes.core/lib/mode_levels.lua}` | WP1 (check_sprite), WP4 (dispatch proof needs the pack script) |
 | WP6 | Test fixture wiring | opus | `tests/modes_pack_fixture.h` (9701-9709 constants + kTestRegistrationLua basketball rows); `scripts/coverage/runtime_only_lua.txt` (digest update, SAME commit); `cmake/OpenGladTests.cmake:878` (one line) | WP4 |
 | WP7 | Mechanism tests | fable | `tests/unit/test_modes_basketball.cpp` (new; §11.2's 37 tests) | WP6 |
-| WP8 | Levels-sweep updates | opus | `tests/unit/test_modes_levels.cpp` (pin rows, 28→33, ledger +2 term, hook masks 824/828, sprite rows, tick-clean += 824, `basketball_pins()` sweep per §11.4) | WP5 |
+| WP8 | Levels-sweep updates | opus | `tests/unit/test_modes_levels.cpp` (pin rows, 28→33, ledger +2 term, hook masks 824/829, sprite rows, tick-clean += 824, `basketball_pins()` sweep per §11.4) | WP5 |
 | WP9 | Docs | opus | `docs/mp-game-modes.md` (:3-4, :10-14, :21, :134-152, :153-159), `docs/ARCHITECTURE.md` (:669, :700-703) | WP5 (describes shipped reality) |
 | WP10 | Integration + gate run | fable | no exclusive files — runs §11.5's gate checklist end to end; regressions route back to the owning WP | WP7, WP8, WP9 |
 
@@ -1897,11 +1930,16 @@ untestable may be written (I3).
 | `run_deny` (D33/D34: window gate, enemy/shooter prongs, impulse + zero-vector fallback, restamp, ordering vs run_swat) | 48, 49, 50, 51, 52, 53, 54 |
 | hoisted `ai.dir8/drive_geometry/chaser_drives`, `match.revive_wiped_teams/run_death_scan`, `core.iabs/walker_center` | existing soccer suite + tests 16, 19, 20 |
 
-### 11.4 Levels-sweep updates and the 28→33 literal ledger
+### 11.4 Historical five-court rollout and the current 39→40 ledger
 
-`tests/unit/test_modes_levels.cpp`: `shipped_levels()` += 5 rows (`:228-317`);
-`EXPECT_EQ(28u, ...)` → 33u (`:444`); ledger expression gains the basketball
-+2 term (`:678-705`); hook-mask rows for 824 and 828 =
+The original basketball rollout added five rows to the then-28-level campaign
+and changed its count to 33. That history is not the current literal pin. The
+later Causeway wave adds scen829 and moves the complete modes campaign from 39
+to **40** in `main.cpp`, `modes_mapgen.h`, `campaign.yaml`, the architecture
+roster, the player guide, and `test_modes_levels.cpp`.
+
+The original levels sweep gained the basketball +2 ball/shadow ledger term;
+the current hook-mask rows for 824 and 829 =
 `kModeInit|kModeTick|kRespawn|kDamage` (`:797-812`); sprite pin rows
 `bball.png` 12x12x8 and `bshadow.png` 12x12x4 (`:983-1000`) — D32 adds
 `hoop.png` 24x20x6 beside them and moves the basketball ledger term to
@@ -1911,15 +1949,14 @@ untestable may be written (I3).
 carpet with M2 center per hoop, jump tile passable, manifest field spot-checks
 through the sandbox.
 
-Full literal ledger (single sweep list): `main.cpp:903-905` (count) and
-`:5-7`, `:104-131` (prose); `modes_mapgen.h:3-6`;
-`test_modes_levels.cpp:444`; `docs/mp-game-modes.md:3-4,21`;
-`docs/ARCHITECTURE.md:669,700-703`; "five modes" prose in `manifest.cpp:5`,
-`CMakeLists.txt:907-913`, `mode_strip.lua:1`, `mode_match.lua:1,75`,
-`tests/unit/test_modes_strip.cpp:1`, `tests/modes_pack_fixture.h:11`.
+Current literal ledger (single sweep list): `main.cpp` count/roster/prose;
+`modes_mapgen.h:3-6`; `test_modes_levels.cpp` shipped count;
+`docs/mp-game-modes.md` count/roster; `docs/ARCHITECTURE.md` roster; and the
+generated `campaign.yaml`. Historical implementation notes elsewhere in this
+document must be labelled as such rather than presented as current pins.
 Generated outputs (regen produces them, never hand-edit): campaign.yaml
-description, `mode_levels.lua`, `scen/scen824-828.fss`,
-`pix/scen0824-0828*.png`.
+description, `mode_levels.lua`, `scen/scen824-829.fss`,
+`pix/scen0824-0829*.png`.
 
 ### 11.5 Gate checklist (I3 as commands)
 
@@ -1931,11 +1968,11 @@ description, `mode_levels.lua`, `scen/scen824-828.fss`,
    line >= 95 / function = 100 on all new pack Lua; judge local numbers by
    before/after delta (CI merges until-pass:3).
 4. `cmake --build --preset ci-coverage --target check_luals api_stub_check
-   check_lua_statement_lines_full` (api_stub_check is a no-op — no binding
-   changes).
-5. `python3 scripts/parity/check_mutation_pins.py` — expected clean:
-   `campaigns/**` carries no pins and src/ is untouched; this is a tripwire,
-   not a task.
+   check_lua_statement_lines_full` (`api_stub_check` verifies the generated
+   `walker:can_approach_weapon_range` declaration against its C++ binding).
+5. `python3 scripts/parity/check_mutation_pins.py` — expected clean after the
+   shared-engine source insertions' line anchors are reviewed and repinned;
+   scenario predicates and golden behavior remain unchanged.
 
 ---
 

@@ -1195,7 +1195,7 @@ TEST_F(ReplayPurgeTest, stale_arm_for_another_level_still_purges)
 // load restores WITHOUT any arm (mode objectives and bot squads survive a
 // rematch); the paired adventure pins above show a completed load purges
 // unless armed. Behavior-preserving: the only shipped bit-carrying levels
-// are the versus campaign's (modes') 39, so the bit — still set on this
+// are the versus campaign's (modes') 40, so the bit — still set on this
 // level, still meaning "carries scripts" — no longer drives the answer.
 TEST_F(ReplayPurgeTest, versus_campaign_completed_load_restores_without_arm)
 {

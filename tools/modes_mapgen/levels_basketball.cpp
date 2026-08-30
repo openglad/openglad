@@ -1,6 +1,6 @@
-/* Multiplayer Game Modes campaign generator — Basketball (824-828).
+/* Multiplayer Game Modes campaign generator — Basketball (824-829).
  *
- * Court grammar (all five, docs/basketball-design.md §6.0): a CLOSED
+ * Court grammar (all six, docs/basketball-design.md §6.0): a CLOSED
  * impassable perimeter, a hardwood PIX_FLOOR1 court, dashed carpet-runner
  * three-point arcs (cosmetic, D18 — the manifest arc_radius is the sim
  * truth), a cobble center circle on the jump tile, cosmetic cobble keys,
@@ -8,9 +8,9 @@
  * IS the rim tile (D3). Hoops/arc/jump-ball are ROW data the manifest
  * carries in pixels; the ball and its shadow are pack families the mode
  * Lua spawns at center court, never authored here. Paint order is
- * load-bearing (later paint wins): walls + hardwood, arc rings, center
- * line(s), center circle, keys, free-throw discs, dunk carpet + M2,
- * gimmick walls, decor.
+ * load-bearing (later paint wins): walls + hardwood, arc rings, optional
+ * water bays, center line(s), center circle, keys, free-throw discs, dunk
+ * carpet + M2, gimmick walls, decor.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -371,6 +371,59 @@ void build_benchwarmers(const ExpectedLevel& row)
     emit_painted(world, row);
 }
 
+// ---------------------------------------------------------------------------
+// 829 THE CAUSEWAY — 49x29, 2 teams. Four flooded corner bays leave one
+// dry cross for feet while airborne passes can take the direct line. A
+// grounded ball in a bay must be chased around the cross or shot loose.
+// Standable court lies across every bay, so mode_anchors fields the
+// non-teleporting automatic squad here. Human roster mages remain legal.
+// ---------------------------------------------------------------------------
+void build_the_causeway(const ExpectedLevel& row)
+{
+    LevelRuntimeData level(829, true, &headless_level_data_hooks());
+    GameWorld& world = level.world();
+    Canvas c(49, 29);
+    c.hline(0, 48, 0, PIX_H_WALL1);
+    c.hline(0, 48, 28, PIX_H_WALL1);
+    c.vline(0, 0, 28, PIX_H_WALL1);
+    c.vline(48, 0, 28, PIX_H_WALL1);
+    c.rect(1, 1, 47, 27, PIX_FLOOR1);
+    paint_arc_ring(c, 56, 232, 176);
+    paint_arc_ring(c, 728, 232, 176);
+
+    // Four 11x8 bays, exactly 352 tiles. Their inside edges stop at x
+    // 18/30 and y 8/20, leaving the full x 19-29 and y 9-19 dry cross.
+    c.water_rect(8, 1, 18, 8);
+    c.water_rect(30, 1, 40, 8);
+    c.water_rect(8, 20, 18, 27);
+    c.water_rect(30, 20, 40, 27);
+
+    c.vline(24, 1, 27, PIX_CARPET_SMALL_VER);
+    c.cobble_disc(48, 28, 7); // center (24,14), r 3.5
+    c.cobble_rect(1, 11, 7, 17);
+    c.cobble_rect(41, 11, 47, 17); // keys stay on the horizontal arm
+    c.cobble_disc(16, 28, 5);
+    c.cobble_disc(80, 28, 5); // free-throw circles
+    c.carpet_rect(2, 13, 4, 15);
+    c.set(3, 14, PIX_CARPET_M2);
+    c.carpet_rect(44, 13, 46, 15);
+    c.set(45, 14, PIX_CARPET_M2);
+    c.set_decor(1, 11, DECOR_COLUMN_BOTTOM);
+    c.set_decor(1, 17, DECOR_COLUMN_BOTTOM);
+    c.set_decor(47, 11, DECOR_COLUMN_BOTTOM);
+    c.set_decor(47, 17, DECOR_COLUMN_BOTTOM);
+    install_painted(world, c.finish());
+
+    const std::vector<TilePos> west = {
+        {20, 14}, {17, 10}, {17, 18}, {11, 12}, {11, 16}};
+    place_markers(world, 0, west);
+    place_markers(world, 1, mirror_x(west, 49));
+
+    place_item_pads(world, row);
+
+    emit_painted(world, row);
+}
+
 // Every court drumstick is a respawnable pad (#225, reversing D2's "no
 // item_pads ever"): the pad list IS the food scatter and row.treasures is
 // its length. Interval 240 (20 s) sits between the TDM/CTF 300 and the
@@ -555,6 +608,36 @@ std::vector<ExpectedLevel> basketball_expectations()
     benchwarmers.decor_cells = 6;
     out.push_back(std::move(benchwarmers));
 
+    // The pads live on the dry cross: six on its vertical arm, two at the
+    // shoulders and two at mid-court. None can respawn into a flooded bay.
+    ExpectedLevel causeway = basketball_row(
+        829, "Basketball: THE CAUSEWAY", 8, 49, 29, 2,
+        {
+            {FAMILY_DRUMSTICK, {20, 2}},
+            {FAMILY_DRUMSTICK, {24, 2}},
+            {FAMILY_DRUMSTICK, {28, 2}},
+            {FAMILY_DRUMSTICK, {20, 26}},
+            {FAMILY_DRUMSTICK, {24, 26}},
+            {FAMILY_DRUMSTICK, {28, 26}},
+            {FAMILY_DRUMSTICK, {24, 9}},
+            {FAMILY_DRUMSTICK, {24, 19}},
+            {FAMILY_DRUMSTICK, {12, 14}},
+            {FAMILY_DRUMSTICK, {36, 14}},
+        },
+        {{3, 14}, {45, 14}}, 176, {24, 14},
+        {
+            "THE CAUSEWAY. FOUR FLOODED",
+            "CORNERS LEAVE ONE DRY CROSS.",
+            "FEET TAKE THE LONG ROAD; THE",
+            "BALL CAN FLY STRAIGHT OVER.",
+            "LAND IT WET AND IT BOGS DOWN.",
+            "SHOOT IT LOOSE. FIRST TO 21.",
+            "-- THE GAMESMASTER",
+        });
+    causeway.decor_cells = 4;
+    causeway.water_cells = 352;
+    out.push_back(std::move(causeway));
+
     return out;
 }
 
@@ -566,6 +649,7 @@ void build_basketball()
     build_four_hoops(rows[2]);
     build_the_bankhouse(rows[3]);
     build_benchwarmers(rows[4]);
+    build_the_causeway(rows[5]);
 }
 
 } // namespace modesgen

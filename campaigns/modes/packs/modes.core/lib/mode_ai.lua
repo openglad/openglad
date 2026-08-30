@@ -111,6 +111,53 @@ local function nearest_unassigned(members, assigned, x, y)
   return best
 end
 
+-- Nearest unassigned bot whose ordinary ranged attack can reach the
+-- objective after its dry approach. The engine predicate uses the current
+-- family's non-customized projectile profile and live movement step; an
+-- arbitrary weapon customizer or on-fire hook is conservatively ineligible.
+-- Distance is only the tie-breaker, so an out-of-range bot still walks toward
+-- the ball, but a shoreline beyond that weapon's reach never reserves it.
+local function nearest_hostile_ranged_unassigned(
+    members, assigned, objective, x, y)
+  local best = nil
+  local best_distance = 0
+  for i = 1, #members do
+    local w = members[i]
+    local eligible = not assigned[i]
+    if eligible then
+      eligible = not w:s_query_bit_flags(C.BIT_NO_RANGED)
+    end
+    if eligible then
+      eligible = w.magicpoints >= w:s_weapon_cost()
+    end
+    if eligible then
+      eligible = not w:is_friendly(objective)
+    end
+    if eligible then
+      eligible = w:can_approach_weapon_range(objective)
+    end
+    if eligible then
+      local wx, wy = core.walker_center(w)
+      local distance = core.iabs(x - wx) + core.iabs(y - wy)
+      if best == nil or distance < best_distance then
+        best = i
+        best_distance = distance
+      end
+    end
+  end
+  return best
+end
+
+-- Engage a mode objective through the engine's ordinary combat command.
+-- This retains the current family's approach, range, sight ray, facing,
+-- mana, animation and cooldown behavior; the mode consumes the projectile
+-- when its own contact scan sees it.
+local function attack_objective(w, objective)
+  w:set_foe(objective)
+  w:set_leader(nil)
+  issue_front(w, C.COMMAND_ATTACK, 30, 0, 0)
+end
+
 -- Drive geometry, in the CENTER frame the contact rule reads. (bx, by) is
 -- the objective the mover has to touch — a ball, a loose flag — and
 -- (sx, sy) is the 8-dir step from it toward whatever the mover is driving
@@ -211,6 +258,8 @@ return {
   dist_to = dist_to,
   dir8 = dir8,
   nearest_unassigned = nearest_unassigned,
+  nearest_hostile_ranged_unassigned = nearest_hostile_ranged_unassigned,
+  attack_objective = attack_objective,
   drive_geometry = drive_geometry,
   chaser_drives = chaser_drives,
   clear_stale_leader = clear_stale_leader,

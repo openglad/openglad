@@ -1,8 +1,8 @@
 /* Multiplayer Game Modes campaign generator — shared declarations.
  *
- * Builds builtin/modes.glad: the 39-scenario seven-mode campaign (Team
+ * Builds builtin/modes.glad: the 40-scenario seven-mode campaign (Team
  * Deathmatch 300-305, CTF 500-509, Onslaught 800-803, Soccer 820-823,
- * Basketball 824-828, Mutant 840-843, Free For All 850-855) that absorbs
+ * Basketball 824-829, Mutant 840-843, Free For All 850-855) that absorbs
  * the arenas and CTF packages. SDL-free; reuses the headless platform
  * glue.
  *
@@ -29,8 +29,9 @@ namespace modesgen {
 
 // The campaign's hand-authored pack tree, committed inside the campaign
 // dir itself and composed into the archive under packs/<pack-id>/ by the
-// build. The generator only READS it (staging for self-checks, manifest
-// refresh) — export_campaign_tree never rewrites it.
+// build. The generator reads it for staging/self-checks and refreshes the
+// generated lib/mode_levels.lua manifest in place; export_campaign_tree
+// preserves every other pack member.
 inline constexpr const char* kPackSourceDir =
     "campaigns/modes/packs/modes.core";
 
@@ -130,6 +131,7 @@ struct ExpectedLevel
                                          // from each rim center
     TilePos jump_ball;                   // center-court jump-ball tile
     int decor_cells = 0;                 // exact nonzero floor-0 decor cells
+    int water_cells = -1;                // exact water tiles; -1 = no pin
     // Documented substrings of reachability-audit failures this level is
     // allowed to keep (deliberate design, e.g. teleporter-served vaults).
     std::vector<std::string> reachability_exceptions;

@@ -17,7 +17,7 @@ og.family("effect", {
   name = "BALL",
   loops_animation = false,
   creates_hit_effect = false,
-  flags = { "NO_COLLIDE" },
+  flags = { "NO_COLLIDE", "SWIMMING" },
   sprite = "packs/modes.core/sprites/ball.png",
   glyph = "o",
   glyph_ascii = "o",

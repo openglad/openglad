@@ -1,9 +1,9 @@
 // Shipped "Multiplayer Game Modes" campaign validation
 // (builtin/modes.glad, authored by tools/modes_mapgen).
 //
-// The 39-scenario seven-mode campaign (TDM 300-305 absorbing the arenas
+// The 40-scenario seven-mode campaign (TDM 300-305 absorbing the arenas
 // grids, CTF 500-509 keeping the shipped CTF maps, Onslaught 800-803,
-// Soccer 820-823, Basketball 824-828, Mutant 840-843, Free For All
+// Soccer 820-823, Basketball 824-829, Mutant 840-843, Free For All
 // 850-855) is loaded through the production campaign-mount path and
 // pinned against the authoring invariants the generator promises: every
 // level SCEN_TYPE_SCRIPTED with no exit treasures, Gamesmaster briefings
@@ -61,6 +61,7 @@ inline constexpr int kModesWaypointFamily = 14;
 #include <bit>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -200,8 +201,27 @@ bool tile_passable(GameWorld& world, walker* probe, int tx, int ty)
                                      probe);
 }
 
+bool is_water_tile(unsigned char tile)
+{
+    switch (tile)
+    {
+        case PIX_WATER1:
+        case PIX_WATER2:
+        case PIX_WATER3:
+        case PIX_WATERGRASS_LL:
+        case PIX_WATERGRASS_LR:
+        case PIX_WATERGRASS_UL:
+        case PIX_WATERGRASS_UR:
+        case PIX_WATERGRASS_U:
+        case PIX_WATERGRASS_D:
+        case PIX_WATERGRASS_L:
+        case PIX_WATERGRASS_R: return true;
+        default: return false;
+    }
+}
+
 // ---------------------------------------------------------------------------
-// The 39-row pin table (mirrors tools/modes_mapgen's ExpectedLevel rows —
+// The 40-row pin table (mirrors tools/modes_mapgen's ExpectedLevel rows —
 // tool and test move in lockstep).
 // ---------------------------------------------------------------------------
 struct ShippedModeLevel
@@ -326,6 +346,9 @@ const std::vector<ShippedModeLevel>& shipped_levels()
         {828, "basketball", "Basketball: BENCHWARMERS", 10, 47, 29, 2, 5, 0, 0,
          {1, 1, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 8, false, 6,
          {10, 0, 0, 0}, 240},
+        {829, "basketball", "Basketball: THE CAUSEWAY", 8, 49, 29, 2, 5, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 4,
+         {10, 0, 0, 0}, 240},
         {840, "mutant", "Mutant: THE PIT", 6, 30, 30, 4, 12, 0, 0,
          {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4,
          {6, 0, 0, 2}, 180, 4},
@@ -403,6 +426,7 @@ const std::vector<BasketballPins>& basketball_pins()
         {826, {{20, 3}, {37, 20}, {20, 37}, {3, 20}}, 144, 20, 20},
         {827, {{3, 13}, {41, 13}}, 176, 22, 13},
         {828, {{3, 14}, {43, 14}}, 160, 23, 14},
+        {829, {{3, 14}, {45, 14}}, 176, 24, 14},
     };
     return pins;
 }
@@ -509,7 +533,7 @@ using ModesLevels = ModesCampaignTest;
 TEST_F(ModesLevels, roster_structure_round_trips)
 {
     const std::vector<int> listed = list_levels_v();
-    EXPECT_EQ(39u, listed.size()) << "the package must ship 39 scenarios";
+    EXPECT_EQ(40u, listed.size()) << "the package must ship 40 scenarios";
     for (const ShippedModeLevel& pin : shipped_levels())
     {
         LoadedModesLevel loaded(pin.id);
@@ -980,12 +1004,111 @@ TEST_F(ModesLevels, basketball_courts_match_the_manifest)
     // in the shipped_levels table and checked against the loaded world by
     // item_pads_mirror_the_world_and_the_off_modes_stay_off.
 
-    // Only the five authored courts are basketball rows: an unauthored id
+    // Only the six authored courts are basketball rows: an unauthored id
     // in the band carries no manifest entry at all.
     const auto spare = host.eval_boolean(expr_prefix +
-                                         "M.levels[829] == nil end)()");
+                                         "M.levels[830] == nil end)()");
     ASSERT_TRUE(spare.has_value());
-    EXPECT_TRUE(*spare) << "829-839 is spare band, not a shipped court";
+    EXPECT_TRUE(*spare) << "830-839 is spare band, not a shipped court";
+}
+
+TEST_F(ModesLevels, water_showcases_pin_every_pool_and_one_connected_dry_field)
+{
+    struct WaterShowcase
+    {
+        int id;
+        int cells;
+        std::vector<std::array<int, 4>> pools;
+    };
+    const WaterShowcase showcases[] = {
+        {821, 24, {{20, 5, 23, 7}, {26, 22, 29, 24}}},
+        {829,
+         352,
+         {{8, 1, 18, 8}, {30, 1, 40, 8},
+          {8, 20, 18, 27}, {30, 20, 40, 27}}},
+    };
+
+    for (const WaterShowcase& pin : showcases)
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        GameWorld& world = loaded.world();
+        int water_cells = 0;
+        for (int ty = 0; ty < world.grid.h; ++ty)
+            for (int tx = 0; tx < world.grid.w; ++tx)
+            {
+                bool expected_water = false;
+                for (const std::array<int, 4>& pool : pin.pools)
+                    expected_water = expected_water ||
+                                     (tx >= pool[0] && tx <= pool[2] &&
+                                      ty >= pool[1] && ty <= pool[3]);
+                const bool actual_water = is_water_tile(
+                    world.grid.data[static_cast<std::size_t>(
+                        tx + ty * world.grid.w)]);
+                EXPECT_EQ(expected_water, actual_water)
+                    << "scen" << pin.id << " water at (" << tx << ", "
+                    << ty << ")";
+                water_cells += actual_water ? 1 : 0;
+            }
+        EXPECT_EQ(pin.cells, water_cells) << "scen" << pin.id;
+    }
+
+    // THE CAUSEWAY's four bays leave one uninterrupted water-free cross:
+    // x 19-29 from baseline to baseline and y 9-19 from sideline to
+    // sideline. All player-passable ground belongs to one component, so
+    // the water creates long routes without producing a stranded dry isle.
+    LoadedModesLevel causeway(829);
+    ASSERT_TRUE(causeway.loaded);
+    GameWorld& world = causeway.world();
+    auto water_at = [&world](int tx, int ty) {
+        return is_water_tile(world.grid.data[static_cast<std::size_t>(
+            tx + ty * world.grid.w)]);
+    };
+    for (int ty = 1; ty < world.grid.h - 1; ++ty)
+        for (int tx = 19; tx <= 29; ++tx)
+            EXPECT_FALSE(water_at(tx, ty))
+                << "vertical cross at (" << tx << ", " << ty << ")";
+    for (int ty = 9; ty <= 19; ++ty)
+        for (int tx = 1; tx < world.grid.w - 1; ++tx)
+            EXPECT_FALSE(water_at(tx, ty))
+                << "horizontal cross at (" << tx << ", " << ty << ")";
+
+    std::unique_ptr<walker> probe = make_tile_probe(world);
+    ASSERT_NE(nullptr, probe);
+    const int size = world.grid.w * world.grid.h;
+    std::vector<bool> reached(static_cast<std::size_t>(size), false);
+    std::deque<std::array<int, 2>> frontier;
+    frontier.push_back({24, 14});
+    reached[static_cast<std::size_t>(24 + 14 * world.grid.w)] = true;
+    int reached_cells = 0;
+    while (!frontier.empty())
+    {
+        const std::array<int, 2> at = frontier.front();
+        frontier.pop_front();
+        ++reached_cells;
+        for (const std::array<int, 2>& d :
+             {std::array<int, 2>{1, 0}, {-1, 0}, {0, 1}, {0, -1}})
+        {
+            const int tx = at[0] + d[0];
+            const int ty = at[1] + d[1];
+            if (tx < 0 || tx >= world.grid.w || ty < 0 || ty >= world.grid.h)
+                continue;
+            const std::size_t index =
+                static_cast<std::size_t>(tx + ty * world.grid.w);
+            if (reached[index] || !tile_passable(world, probe.get(), tx, ty))
+                continue;
+            reached[index] = true;
+            frontier.push_back({tx, ty});
+        }
+    }
+    int passable_cells = 0;
+    for (int ty = 0; ty < world.grid.h; ++ty)
+        for (int tx = 0; tx < world.grid.w; ++tx)
+            passable_cells += tile_passable(world, probe.get(), tx, ty) ? 1 : 0;
+    EXPECT_EQ(913, passable_cells)
+        << "917 dry interior tiles minus four blocking baseline posts";
+    EXPECT_EQ(passable_cells, reached_cells)
+        << "every passable tile must connect to the jump circle";
 }
 
 // NOTE: the pack-vs-archive byte comparison that lived here
@@ -1044,7 +1167,7 @@ TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
         {820, "soccer", kModeInit | kModeTick | kRespawn},
         {823, "soccer", kModeInit | kModeTick | kRespawn},
         {824, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
-        {828, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
+        {829, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
         {840, "mutant",
          kModeInit | kModeTick | kDamage | kEntityDeath | kEntitySpawn |
              kRespawn},

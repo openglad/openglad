@@ -15,9 +15,13 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/statistics.h>
@@ -231,6 +235,30 @@ void align_before_cadence(GameWorld& world)
     world.tick_count_ = next - 1;
 }
 
+void paint_water(GameWorld& world, int left, int top, int right, int bottom)
+{
+    for (int y = top; y <= bottom; ++y)
+    {
+        for (int x = left; x <= right; ++x)
+        {
+            world.grid.data[static_cast<std::size_t>(x + world.grid.w * y)] =
+                PIX_WATER1;
+        }
+    }
+}
+
+int live_weapons_owned_by(GameWorld& world, const walker* owner)
+{
+    int count = 0;
+    for (const auto& uptr : world.weaplist)
+    {
+        const walker* shot = uptr.get();
+        if (shot != nullptr && !shot->dead() && shot->owner() == owner)
+            count++;
+    }
+    return count;
+}
+
 // A live STAIN treasure whose top-left sits at (x, y).
 bool stain_alive_at(GameWorld& world, int x, int y)
 {
@@ -422,6 +450,90 @@ void park_away(walker* w)
     w->setxy(96, 96);
 }
 
+// Builds the exact short-range fire_check geometry used by the director
+// recovery test: an ignored neutral FX ball 40 px east of a team-0 soldier.
+// Each denial arm below uses a fresh world so scratch-weapon RNG and dead
+// probe cleanup cannot bleed between controls.
+walker* prepare_ignored_ball_ray(SoccerWorld& fx, int shooter_x = 272)
+{
+    walker* shooter =
+        fx.spawn_living(FAMILY_SOLDIER, 0, shooter_x, 456, ACT_SIT);
+    if (shooter == nullptr)
+        return nullptr;
+    shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    shooter->stats()->set_weapon_cost(0);
+    shooter->set_current_weapon(FAMILY_KNIFE);
+    fx.tick(1);
+    fx.thaw_kickoff();
+    fx.set_ball(320, 464, 0, 0);
+    shooter->set_foe(fx.ball());
+    shooter->face_delta(1, 0);
+    return shooter;
+}
+
+int g_weapon_customizer_calls = 0;
+int g_weapon_on_fire_calls = 0;
+
+void counting_one_pixel_weapon_profile(walker*, walker* weapon)
+{
+    g_weapon_customizer_calls++;
+    weapon->set_stepsize(1.0f);
+    weapon->set_lineofsight(1);
+}
+
+bool counting_reject_weapon_launch(walker*, walker* weapon)
+{
+    g_weapon_on_fire_calls++;
+    weapon->set_dead(1);
+    return false;
+}
+
+struct ScopedWeaponCustomizer
+{
+    FamilyDescriptor* descriptor = nullptr;
+    void (*previous)(walker*, walker*) = nullptr;
+
+    ScopedWeaponCustomizer(int family, void (*replacement)(walker*, walker*))
+        : descriptor(const_cast<FamilyDescriptor*>(
+              get_family_descriptor(family)))
+    {
+        if (descriptor != nullptr)
+        {
+            previous = descriptor->customize_weapon;
+            descriptor->customize_weapon = replacement;
+        }
+    }
+
+    ~ScopedWeaponCustomizer()
+    {
+        if (descriptor != nullptr)
+            descriptor->customize_weapon = previous;
+    }
+};
+
+struct ScopedWeaponFireHook
+{
+    FamilyDescriptor* descriptor = nullptr;
+    bool (*previous)(walker*, walker*) = nullptr;
+
+    ScopedWeaponFireHook(int family, bool (*replacement)(walker*, walker*))
+        : descriptor(const_cast<FamilyDescriptor*>(
+              get_family_descriptor(family)))
+    {
+        if (descriptor != nullptr)
+        {
+            previous = descriptor->on_fire_weapon;
+            descriptor->on_fire_weapon = replacement;
+        }
+    }
+
+    ~ScopedWeaponFireHook()
+    {
+        if (descriptor != nullptr)
+            descriptor->on_fire_weapon = previous;
+    }
+};
+
 }  // namespace
 
 // ===========================================================================
@@ -448,6 +560,9 @@ TEST_F(ModesSoccer, init_activates_anchor_teams_and_spawns_ball)
     walker* ball = fx.ball();
     ASSERT_NE(nullptr, ball) << "init must spawn the ball entity";
     EXPECT_EQ(Order::FX, ball->query_order());
+    ASSERT_NE(nullptr, ball->stats());
+    EXPECT_TRUE(ball->stats()->query_bit_flags(BIT_SWIMMING))
+        << "the real soccer ball carries its descriptor's SWIMMING flag";
     EXPECT_EQ(SCORE_TEAM_COUNT, ball->team_num()) << "ball starts neutral";
     EXPECT_EQ(320, fx.ball_cx());
     EXPECT_EQ(464, fx.ball_cy());
@@ -1013,6 +1128,738 @@ TEST_F(ModesSoccer, friction_stops_a_full_kick_in_32_ticks)
     fx.tick(1);
     EXPECT_EQ(0, fx.var(kSocBallVx)) << "stopped at tick 32";
     EXPECT_EQ(0, fx.var(kSocBallVy));
+}
+
+TEST_F(ModesSoccer, water_drag_uses_the_footprint_and_swept_contact)
+{
+    // Dry control: the shared surface damping's keep=256 arm is exactly the
+    // old linear friction, so an 8 px/tick roll keeps 2048 - 64 = 1984 fp.
+    {
+        SoccerWorld fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.set_ball(200, 200, 8 * 256, 0);
+        fx.tick(1);
+        EXPECT_EQ(208, fx.ball_cx());
+        EXPECT_EQ(8 * 256 - kFriction, fx.var(kSocBallVx));
+        EXPECT_EQ(0, fx.var(kSocBallVy));
+    }
+
+    // The center remains on dry tile 12, but the final 12x12 footprint
+    // reaches one pixel into water tile 13. Wet keep=64 then loss=64:
+    // div(2048*64,256)-64 = 448 fp. Center-only sampling would miss it.
+    {
+        SoccerWorld fx;
+        paint_water(fx.world(), 13, 12, 13, 12);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.set_ball(196, 200, 8 * 256, 0);
+        fx.tick(1);
+        EXPECT_EQ(204, fx.ball_cx());
+        EXPECT_EQ(448, fx.var(kSocBallVx));
+        EXPECT_EQ(0, fx.var(kSocBallVy));
+    }
+
+    // A synthetic 42 px/tick sweep starts dry and ends with its footprint
+    // dry, crossing the one-tile water strip only between accepted
+    // substeps. Contact must stay accumulated for the tick:
+    // div(10752*64,256)-64 = 2624 fp, not dry friction's 10688.
+    {
+        SoccerWorld fx;
+        paint_water(fx.world(), 12, 12, 12, 12);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.set_ball(173, 200, 42 * 256, 0);
+        fx.tick(1);
+        EXPECT_EQ(215, fx.ball_cx());
+        EXPECT_EQ(2624, fx.var(kSocBallVx));
+        EXPECT_EQ(0, fx.var(kSocBallVy));
+    }
+}
+
+TEST_F(ModesSoccer, projectile_dislodges_a_waterlogged_ball)
+{
+    SoccerWorld fx;
+    paint_water(fx.world(), 18, 27, 22, 31);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(320, 464, 0, 0);
+
+    walker* shot = fx.world().add_ob(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, shot);
+    shot->setxy(317, 461);  // 6x6 center exactly on the ball center
+    shot->set_owner(fx.green);
+    shot->set_lastx(4.0f);
+    shot->set_lasty(0.0f);
+    shot->set_damage(1.0f);  // clamp(trunc(1)*2, 4, 12) = 4 px/tick
+    const std::uint32_t shot_id = shot->entity_id();
+    fx.tick(1);
+
+    EXPECT_EQ(324, fx.ball_cx()) << "the projectile moves the bogged ball";
+    EXPECT_EQ(192, fx.var(kSocBallVx))
+        << "div(1024*64,256)-64: a short wet coast after the hit";
+    EXPECT_EQ(0, fx.var(kSocBallVy));
+    EXPECT_EQ(static_cast<std::int32_t>(fx.green->entity_id()),
+              fx.var(kSocLastKicker));
+    EXPECT_EQ(2, fx.var(kSocLastTouch1));
+    EXPECT_NE(nullptr, fx.world().find_by_id(shot_id))
+        << "ball contact never consumes the projectile";
+}
+
+TEST_F(ModesSoccer, fire_check_targets_only_live_hostile_ignored_foes)
+{
+    // Eligible objective: the ignored neutral FX ball is absent from obmap,
+    // but its explicit hostile bounding box satisfies the otherwise ordinary
+    // range/facing/grid-checked ray.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx);
+        ASSERT_NE(nullptr, shooter);
+        ASSERT_NE(nullptr, fx.ball());
+        ASSERT_TRUE(fx.ball()->ignore());
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_TRUE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::None, denial);
+    }
+
+    // Friendly ignored objectives remain transparent, exactly like the
+    // obmap's friendly-weapon skip.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx);
+        ASSERT_NE(nullptr, shooter);
+        fx.ball()->set_team_num(0);
+        ASSERT_TRUE(shooter->is_friendly(fx.ball()));
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_FALSE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::RayMiss, denial);
+    }
+
+    // Dead ignored entities are no longer valid objectives.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx);
+        ASSERT_NE(nullptr, shooter);
+        fx.ball()->set_dead(1);
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_FALSE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::RayMiss, denial);
+    }
+
+    // Dormant objectives are gameplay-inactive even though they are live and
+    // ignored; naming one as foe cannot make it hittable.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx);
+        ASSERT_NE(nullptr, shooter);
+        fx.ball()->set_dormant(true);
+        ASSERT_FALSE(fx.ball()->dead());
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_FALSE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::RayMiss, denial);
+    }
+
+    // An ignored objective on another floor is outside this projectile ray.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx);
+        ASSERT_NE(nullptr, shooter);
+        fx.ball()->set_floor(1);
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_FALSE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::RayMiss, denial);
+    }
+
+    // Terrain remains authoritative and is checked before ignored-foe
+    // contact. This wall column covers every possible knife waver.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx);
+        ASSERT_NE(nullptr, shooter);
+        for (int gy = 27; gy <= 31; ++gy)
+        {
+            fx.world().grid.data[static_cast<std::size_t>(
+                18 + fx.world().grid.w * gy)] = PIX_H_WALL1;
+        }
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_FALSE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::WallBlocked, denial);
+    }
+
+    // True family reach is still the first targeting gate.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx, 96);
+        ASSERT_NE(nullptr, shooter);
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_FALSE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::OutOfRange, denial);
+    }
+
+    // A close shooter still has to face the requested attack direction.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx);
+        ASSERT_NE(nullptr, shooter);
+        shooter->face_delta(-1, 0);
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_FALSE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::Facing, denial);
+    }
+
+    // Ordinary non-ignored enemies still satisfy the generic obmap arm.
+    {
+        SoccerWorld fx;
+        walker* shooter = prepare_ignored_ball_ray(fx);
+        ASSERT_NE(nullptr, shooter);
+        fx.green->setxy(314, 456);
+        shooter->set_foe(fx.green);
+        shooter->face_delta(1, 0);
+        ASSERT_FALSE(fx.green->ignore());
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        EXPECT_TRUE(shooter->fire_check(1, 0, &denial));
+        EXPECT_EQ(walker::FireCheckDenial::None, denial);
+    }
+}
+
+TEST_F(ModesSoccer, recovery_range_matches_every_ranged_core_class_profile)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+
+    int ranged = 0;
+    int exact_profiles = 0;
+    int conservative_profiles = 0;
+    for (int family = 0; family < NUM_FAMILIES; ++family)
+    {
+        const FamilyDescriptor* descriptor = get_family_descriptor(family);
+        ASSERT_NE(nullptr, descriptor) << family;
+        if ((descriptor->init_bit_flags & BIT_NO_RANGED) != 0)
+            continue;
+        ranged++;
+
+        walker* shooter =
+            fx.spawn_living(family, 0, 96, static_cast<short>(96 + family),
+                            ACT_SIT);
+        ASSERT_NE(nullptr, shooter) << family;
+        shooter->face_delta(1, 0);
+        const std::uint32_t rng_before = fx.world().rng_.state_;
+        const std::size_t weapons_before = fx.world().weaplist.size();
+
+        const std::int32_t prospective =
+            shooter->prospective_weapon_reach(1, 0);
+
+        EXPECT_EQ(rng_before, fx.world().rng_.state_) << family;
+        EXPECT_EQ(weapons_before, fx.world().weaplist.size()) << family;
+        walker* actual = shooter->create_weapon();
+        ASSERT_NE(nullptr, actual) << family;
+        const std::int32_t actual_reach =
+            static_cast<std::int32_t>(actual->stepsize()) *
+            actual->lineofsight();
+        const og::script::WorldScripts& scripts =
+            og::script::active_world_scripts();
+        const bool requires_hook =
+            descriptor->customize_weapon != nullptr ||
+            descriptor->on_fire_weapon != nullptr ||
+            scripts.has_hook(Order::Living, family,
+                             og::script::FamilyHook::CustomizeWeapon) ||
+            scripts.has_hook(Order::Living, family,
+                             og::script::FamilyHook::OnFireWeapon);
+        if (requires_hook)
+        {
+            EXPECT_EQ(0, prospective) << family;
+            conservative_profiles++;
+        }
+        else
+        {
+            EXPECT_EQ(actual_reach, prospective) << family;
+            exact_profiles++;
+        }
+        actual->set_dead(1);
+    }
+    EXPECT_EQ(NUM_FAMILIES - 3, ranged)
+        << "ghost, small slime, and orc are the three NO_RANGED classes";
+    EXPECT_EQ(NUM_FAMILIES - 6, exact_profiles)
+        << "every ordinary ranged core class uses the exact live profile";
+    EXPECT_EQ(3, conservative_profiles)
+        << "soldier/archmage on-fire and cleric customization hooks are "
+           "never dry-run";
+}
+
+TEST_F(ModesSoccer,
+       recovery_range_distinguishes_invalid_from_valid_zero_profiles)
+{
+    SoccerWorld fx;
+    walker* shooter =
+        fx.spawn_living(FAMILY_ARCHER, 0, 96, 96, ACT_SIT);
+    ASSERT_NE(nullptr, shooter);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_NE(nullptr, fx.ball());
+    fx.ball()->setxy(shooter->xpos(), shooter->ypos());
+
+    constexpr int kUnpopulatedWeapon = 120;
+    ASSERT_EQ(nullptr, get_weapon_family_descriptor(kUnpopulatedWeapon));
+    shooter->set_current_weapon(kUnpopulatedWeapon);
+    EXPECT_EQ(0, shooter->prospective_weapon_reach(0, 0));
+    EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
+        << "a missing loader profile is ineligible even at exact overlap";
+
+    // A real mod profile may intentionally have zero reach. Returning zero
+    // remains numeric API behavior; validity, not reach > 0, admits overlap.
+    const auto original_configurator = fx.world().entity_configurator;
+    fx.world().entity_configurator =
+        [original_configurator](walker& entity, Order order,
+                                std::int32_t family) {
+            const PixieData* data =
+                original_configurator(entity, order, family);
+            if (data != nullptr && order == Order::Weapon &&
+                family == FAMILY_ARROW)
+            {
+                entity.set_stepsize(0.0f);
+                entity.set_lineofsight(7);
+            }
+            return data;
+        };
+    shooter->set_current_weapon(FAMILY_ARROW);
+    EXPECT_EQ(0, shooter->prospective_weapon_reach(0, 0));
+    EXPECT_TRUE(shooter->can_approach_weapon_range(fx.ball()));
+}
+
+TEST_F(ModesSoccer, recovery_range_probe_never_touches_the_world_obmap)
+{
+    SoccerWorld fx;
+    walker* shooter =
+        fx.spawn_living(FAMILY_ARCHER, 0, 96, 96, ACT_SIT);
+    ASSERT_NE(nullptr, shooter);
+    shooter->set_current_weapon(FAMILY_ARROW);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+
+    const std::pair<short, short> probe_cell = {
+        obmap::hash(0), obmap::hash(0)};
+    auto [cell, inserted] =
+        fx.world().myobmap->pos_to_walker.try_emplace(probe_cell);
+    ASSERT_TRUE(inserted || cell->second.empty());
+    ASSERT_TRUE(cell->second.empty());
+    const std::size_t cells_before =
+        fx.world().myobmap->pos_to_walker.size();
+    const std::size_t walkers_before =
+        fx.world().myobmap->walker_to_pos.size();
+
+    EXPECT_EQ(154, shooter->prospective_weapon_reach(1, 0));
+
+    const auto after =
+        fx.world().myobmap->pos_to_walker.find(probe_cell);
+    ASSERT_NE(fx.world().myobmap->pos_to_walker.end(), after)
+        << "destroying a detached probe must not erase an empty world cell";
+    EXPECT_TRUE(after->second.empty());
+    EXPECT_EQ(cells_before, fx.world().myobmap->pos_to_walker.size());
+    EXPECT_EQ(walkers_before, fx.world().myobmap->walker_to_pos.size());
+}
+
+TEST_F(ModesSoccer,
+       recovery_range_conservatively_rejects_weapon_customization)
+{
+    SoccerWorld fx;
+    walker* shooter =
+        fx.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+    ASSERT_NE(nullptr, shooter);
+    shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    shooter->set_current_weapon(FAMILY_KNIFE);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    paint_water(fx.world(), 19, 27, 29, 31);
+    fx.set_ball(400, 464, 0, 0);
+
+    const std::uint32_t rng_before = fx.world().rng_.state_;
+    const std::size_t weapons_before = fx.world().weaplist.size();
+    {
+        g_weapon_customizer_calls = 0;
+        ScopedWeaponCustomizer customizer(FAMILY_ARCHER,
+                                           counting_one_pixel_weapon_profile);
+        ASSERT_NE(nullptr, customizer.descriptor);
+        EXPECT_EQ(0, shooter->prospective_weapon_reach(1, 0));
+        EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
+            << "an arbitrary customizer is ineligible without dispatch";
+        EXPECT_EQ(0, g_weapon_customizer_calls);
+        EXPECT_EQ(rng_before, fx.world().rng_.state_);
+        EXPECT_EQ(weapons_before, fx.world().weaplist.size())
+            << "the rejected profile never spawns a scratch projectile";
+
+        walker* actual = shooter->create_weapon();
+        ASSERT_NE(nullptr, actual);
+        EXPECT_EQ(1, g_weapon_customizer_calls)
+            << "a real shot still dispatches its family customizer once";
+        EXPECT_EQ(1, static_cast<std::int32_t>(actual->stepsize()) *
+                         actual->lineofsight());
+        actual->set_dead(1);
+    }
+    EXPECT_EQ(rng_before, fx.world().rng_.state_);
+
+    EXPECT_EQ(56, shooter->prospective_weapon_reach(1, 0));
+    EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
+        << "the ordinary knife still cannot span this deep water";
+    shooter->set_current_weapon(FAMILY_ARROW);
+    EXPECT_EQ(154, shooter->prospective_weapon_reach(1, 0));
+    EXPECT_TRUE(shooter->can_approach_weapon_range(fx.ball()))
+        << "the same class automatically follows its live weapon profile";
+}
+
+TEST_F(ModesSoccer, recovery_range_rejects_on_fire_hooks_without_dispatch)
+{
+    // Native descriptor path: metadata rejects it without invoking the
+    // callback, while a real launch still reaches and obeys that callback.
+    {
+        SoccerWorld fx;
+        walker* shooter =
+            fx.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, shooter);
+        shooter->set_current_weapon(FAMILY_ARROW);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        paint_water(fx.world(), 19, 27, 29, 31);
+        fx.set_ball(400, 464, 0, 0);
+
+        g_weapon_on_fire_calls = 0;
+        const std::uint32_t rng_before = fx.world().rng_.state_;
+        const std::size_t weapons_before = fx.world().weaplist.size();
+        {
+            ScopedWeaponFireHook hook(FAMILY_ARCHER,
+                                      counting_reject_weapon_launch);
+            ASSERT_NE(nullptr, hook.descriptor);
+            EXPECT_EQ(0, shooter->prospective_weapon_reach(1, 0));
+            EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()));
+            fx.ball()->setxy(shooter->xpos(), shooter->ypos());
+            EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
+                << "hooked profiles stay ineligible at exact overlap";
+            EXPECT_EQ(0, g_weapon_on_fire_calls);
+            EXPECT_EQ(rng_before, fx.world().rng_.state_);
+            EXPECT_EQ(weapons_before, fx.world().weaplist.size());
+
+            shooter->set_lastx(1.0f);
+            shooter->set_lasty(0.0f);
+            EXPECT_EQ(nullptr, shooter->fire());
+            EXPECT_EQ(1, g_weapon_on_fire_calls)
+                << "only the real launch dispatches on_fire_weapon";
+        }
+    }
+
+    // Active per-world Lua path: soldier's returning-knife hook would spend
+    // weapons_left if dispatched. The eligibility query only reads its mask.
+    {
+        SoccerWorld fx;
+        walker* shooter =
+            fx.spawn_living(FAMILY_SOLDIER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, shooter);
+        shooter->set_current_weapon(FAMILY_KNIFE);
+        shooter->set_weapons_left(1);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        paint_water(fx.world(), 19, 27, 29, 31);
+        fx.set_ball(400, 464, 0, 0);
+        ASSERT_TRUE(og::script::active_world_scripts().has_hook(
+            Order::Living, FAMILY_SOLDIER,
+            og::script::FamilyHook::OnFireWeapon));
+        const std::uint32_t rng_before = fx.world().rng_.state_;
+        const std::size_t weapons_before = fx.world().weaplist.size();
+        const float magic_before = shooter->stats()->magicpoints();
+
+        EXPECT_EQ(0, shooter->prospective_weapon_reach(1, 0));
+        EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()));
+        EXPECT_EQ(1, shooter->weapons_left());
+        EXPECT_EQ(magic_before, shooter->stats()->magicpoints());
+        EXPECT_EQ(rng_before, fx.world().rng_.state_);
+        EXPECT_EQ(weapons_before, fx.world().weaplist.size());
+    }
+}
+
+TEST_F(ModesSoccer, director_fires_to_recover_a_waterlogged_ball)
+{
+    {
+        SoccerWorld fx;
+        paint_water(fx.world(), 19, 27, 22, 31);
+        walker* shooter =
+            fx.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, shooter);
+        fx.red->set_act_type(ACT_SIT);
+        fx.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        shooter->stats()->set_weapon_cost(0);
+        shooter->set_current_weapon(FAMILY_ARROW);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.set_ball(320, 464, 0, 0);
+        fx.red->setxy(40, 456); // keep the melee-only bot in goal
+
+        align_before_cadence(fx.world());
+        fx.tick(1);
+        EXPECT_EQ(0, live_weapons_owned_by(fx.world(), shooter));
+        EXPECT_EQ(SCORE_TEAM_COUNT, fx.ball()->team_num());
+        EXPECT_EQ(COMMAND_ATTACK, front_type(shooter));
+        EXPECT_EQ(fx.ball(), shooter->foe());
+        EXPECT_EQ(nullptr, shooter->leader());
+
+        bool fired = false;
+        bool cooldown_seen = false;
+        for (int tick = 0; tick < 36 && fx.var(kSocLastKicker) == 0; ++tick)
+        {
+            fx.tick(1);
+            fired = fired || live_weapons_owned_by(fx.world(), shooter) > 0;
+            cooldown_seen = cooldown_seen || shooter->busy() > 0.0f;
+        }
+        EXPECT_TRUE(fired)
+            << "normal COMMAND_ATTACK must launch a live family projectile";
+        EXPECT_TRUE(cooldown_seen)
+            << "recovery fire retains the family's ordinary busy cooldown";
+        EXPECT_EQ(static_cast<std::int32_t>(shooter->entity_id()),
+                  fx.var(kSocLastKicker));
+        EXPECT_EQ(486, fx.var(kSocBallVx));
+        EXPECT_EQ(88, fx.var(kSocBallVy))
+            << "the live arrow's deterministic waver is preserved while "
+               "one wet damping step removes most of its speed";
+    }
+
+    // Dry control: the same capable bot retains the normal striker GOTO and
+    // does not waste a weapon on an ordinary loose ball.
+    {
+        SoccerWorld dry;
+        walker* dry_shooter =
+            dry.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, dry_shooter);
+        dry.red->set_act_type(ACT_SIT);
+        dry.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        dry_shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        dry_shooter->stats()->set_weapon_cost(0);
+        dry_shooter->set_current_weapon(FAMILY_ARROW);
+        dry.tick(1);
+        ASSERT_TRUE(dry.soccer_active());
+        dry.thaw_kickoff();
+        dry.set_ball(320, 464, 0, 0);
+        dry.red->setxy(40, 456);
+        align_before_cadence(dry.world());
+        dry.tick(1);
+        EXPECT_EQ(0, live_weapons_owned_by(dry.world(), dry_shooter));
+        EXPECT_TRUE(front_command_is(dry_shooter, COMMAND_GOTO, 320, 456));
+    }
+
+    // Capability control: a wet ball does not make a BIT_NO_RANGED bot
+    // bypass its family restriction.
+    {
+        SoccerWorld barred;
+        paint_water(barred.world(), 19, 27, 22, 31);
+        walker* barred_shooter =
+            barred.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, barred_shooter);
+        barred.red->set_act_type(ACT_SIT);
+        barred.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        barred_shooter->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        barred.tick(1);
+        ASSERT_TRUE(barred.soccer_active());
+        barred.thaw_kickoff();
+        barred.set_ball(320, 464, 0, 0);
+        barred.red->setxy(40, 456);
+        align_before_cadence(barred.world());
+        barred.tick(1);
+        EXPECT_EQ(0, live_weapons_owned_by(barred.world(), barred_shooter));
+        EXPECT_TRUE(front_command_is(barred_shooter, COMMAND_GOTO, 320, 456));
+    }
+
+    // Mana control: selection cannot appoint a bot that cannot currently pay
+    // its ordinary family weapon cost.
+    {
+        SoccerWorld drained;
+        paint_water(drained.world(), 19, 27, 22, 31);
+        walker* drained_shooter =
+            drained.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, drained_shooter);
+        drained.red->set_act_type(ACT_SIT);
+        drained.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        drained.green->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        drained_shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        drained_shooter->stats()->set_weapon_cost(10);
+        drained_shooter->stats()->set_magicpoints(0.0f);
+        drained_shooter->set_current_weapon(FAMILY_ARROW);
+        drained.tick(1);
+        ASSERT_TRUE(drained.soccer_active());
+        drained.thaw_kickoff();
+        drained.set_ball(320, 464, 0, 0);
+        drained.red->setxy(40, 456);
+        align_before_cadence(drained.world());
+        drained.tick(1);
+        EXPECT_EQ(0, live_weapons_owned_by(drained.world(), drained_shooter));
+        EXPECT_TRUE(front_command_is(drained_shooter, COMMAND_GOTO, 320, 456));
+    }
+
+    // Friendliness control: the ball's current team keeps every ranged bot
+    // in its normal pitch role; only a hostile team may appoint a shooter.
+    {
+        SoccerWorld friendly;
+        paint_water(friendly.world(), 19, 27, 22, 31);
+        walker* friendly_shooter =
+            friendly.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, friendly_shooter);
+        friendly.red->set_act_type(ACT_SIT);
+        friendly.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        friendly.green->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        friendly_shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        friendly_shooter->stats()->set_weapon_cost(0);
+        friendly_shooter->set_current_weapon(FAMILY_ARROW);
+        friendly.tick(1);
+        ASSERT_TRUE(friendly.soccer_active());
+        friendly.thaw_kickoff();
+        friendly.set_ball(320, 464, 0, 0);
+        friendly.ball()->set_team_num(0);
+        ASSERT_TRUE(friendly_shooter->is_friendly(friendly.ball()));
+        friendly.red->setxy(40, 456);
+        align_before_cadence(friendly.world());
+        friendly.tick(1);
+        EXPECT_EQ(0, live_weapons_owned_by(friendly.world(), friendly_shooter));
+        EXPECT_TRUE(front_command_is(friendly_shooter, COMMAND_GOTO, 320, 456));
+    }
+}
+
+TEST_F(ModesSoccer, director_skips_a_short_weapon_that_cannot_span_water)
+{
+    SoccerWorld fx;
+    paint_water(fx.world(), 19, 0, 29, fx.world().grid.h - 1);
+    walker* knife =
+        fx.spawn_living(FAMILY_THIEF, 0, 288, 444, ACT_SIT);
+    walker* archer =
+        fx.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+    ASSERT_NE(nullptr, knife);
+    ASSERT_NE(nullptr, archer);
+    fx.red->set_act_type(ACT_SIT);
+    fx.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    fx.green->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    knife->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    knife->stats()->set_weapon_cost(0);
+    knife->set_current_weapon(FAMILY_KNIFE);
+    archer->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    archer->stats()->set_weapon_cost(0);
+    archer->set_current_weapon(FAMILY_ARROW);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(352, 464, 0, 0);
+    fx.red->setxy(40, 456);
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+
+    EXPECT_NE(COMMAND_ATTACK, front_type(knife));
+    EXPECT_EQ(nullptr, knife->foe());
+    EXPECT_EQ(COMMAND_ATTACK, front_type(archer));
+    EXPECT_EQ(fx.ball(), archer->foe());
+    EXPECT_EQ(0, live_weapons_owned_by(fx.world(), knife));
+    EXPECT_EQ(0, live_weapons_owned_by(fx.world(), archer));
+
+    bool archer_fired = false;
+    bool archer_cooldown_seen = false;
+    int knife_attack_ticks = 0;
+    int knife_weapon_ticks = 0;
+    for (int tick = 0; tick < 180; ++tick)
+    {
+        fx.tick(1);
+        if (front_type(knife) == COMMAND_ATTACK)
+            ++knife_attack_ticks;
+        knife_weapon_ticks += live_weapons_owned_by(fx.world(), knife);
+        archer_fired = archer_fired ||
+                       live_weapons_owned_by(fx.world(), archer) > 0;
+        archer_cooldown_seen =
+            archer_cooldown_seen || archer->busy() > 0.0f;
+    }
+
+    EXPECT_EQ(0, knife_attack_ticks)
+        << "the nearer knife wielder is never assigned an unreachable shot";
+    EXPECT_EQ(0, knife_weapon_ticks)
+        << "the rejected knife profile never creates a projectile";
+    EXPECT_TRUE(archer_fired)
+        << "the reachable archer executes ordinary recovery fire";
+    EXPECT_TRUE(archer_cooldown_seen)
+        << "the archer's ordinary family cooldown remains in force";
+    EXPECT_EQ(0, fx.var(kSocLastKicker))
+        << "the full-height control isolates selection from arrow waver";
+    EXPECT_EQ(0, fx.var(kSocLastTouch1));
+    EXPECT_EQ(0, fx.var(kSocBallVx));
+    EXPECT_EQ(0, fx.var(kSocBallVy));
+}
+
+TEST_F(ModesSoccer, only_ranged_goalie_candidate_takes_recovery_role)
+{
+    // Wet edge: select the sole capable shooter before reserving the keeper,
+    // then deterministically give the remaining melee bot the goal mouth.
+    {
+        SoccerWorld fx;
+        fx.red->transform_to(Order::Living, FAMILY_ARCHER);
+        paint_water(fx.world(), 19, 27, 22, 31);
+        walker* melee =
+            fx.spawn_living(FAMILY_SOLDIER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, melee);
+        fx.red->set_act_type(ACT_SIT);
+        fx.red->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        fx.red->stats()->set_weapon_cost(0);
+        fx.red->set_current_weapon(FAMILY_KNIFE);
+        melee->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        fx.green->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.set_ball(320, 464, 0, 0);
+        fx.red->setxy(40, 456);
+
+        align_before_cadence(fx.world());
+        fx.tick(1);
+
+        EXPECT_EQ(COMMAND_ATTACK, front_type(fx.red));
+        EXPECT_EQ(fx.ball(), fx.red->foe());
+        EXPECT_EQ(nullptr, fx.red->leader());
+        EXPECT_TRUE(front_command_is(melee, COMMAND_GOTO, 64, 464))
+            << "the melee striker inherits the vacated goalie role";
+        EXPECT_EQ(nullptr, melee->foe());
+        EXPECT_EQ(fx.ball(), melee->leader());
+    }
+
+    // Dry control: role order is unchanged — the same near-goal ranged bot
+    // remains keeper, while the melee member keeps its normal ball drive.
+    {
+        SoccerWorld fx;
+        fx.red->transform_to(Order::Living, FAMILY_ARCHER);
+        walker* melee =
+            fx.spawn_living(FAMILY_SOLDIER, 0, 272, 456, ACT_SIT);
+        ASSERT_NE(nullptr, melee);
+        fx.red->set_act_type(ACT_SIT);
+        fx.red->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        fx.red->stats()->set_weapon_cost(0);
+        fx.red->set_current_weapon(FAMILY_KNIFE);
+        melee->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.set_ball(320, 464, 0, 0);
+        fx.red->setxy(40, 456);
+
+        align_before_cadence(fx.world());
+        fx.tick(1);
+
+        EXPECT_TRUE(front_command_is(fx.red, COMMAND_GOTO, 64, 464));
+        EXPECT_EQ(fx.ball(), fx.red->leader());
+        ASSERT_FALSE(melee->stats()->commands.empty());
+        const command& dry_role = melee->stats()->commands.front();
+        EXPECT_EQ(COMMAND_GOTO, dry_role.commandtype);
+        EXPECT_EQ(320, dry_role.com1);
+        EXPECT_EQ(456, dry_role.com2);
+        EXPECT_EQ(fx.ball(), melee->leader());
+    }
 }
 
 TEST_F(ModesSoccer, wall_bounce_reflects_the_blocked_axis)
@@ -1896,6 +2743,45 @@ TEST_F(ModesSoccer, a_nearby_living_clears_the_stall_clock)
     EXPECT_EQ(1, count_notifications(fx.events, "BALL RESET"));
 }
 
+TEST_F(ModesSoccer, attended_waterlogged_ball_resets_at_600_ticks)
+{
+    SoccerWorld fx;
+    paint_water(fx.world(), 18, 27, 22, 31);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(320, 464, 0, 0);
+    fx.red->setxy(250, 420);  // center (258,428): attended, outside kick reach
+    fx.tick(1);
+    const std::int32_t since = fx.var(kSocStallSince);
+    ASSERT_GT(since, 0) << "waterlogging starts the recovery clock";
+
+    constexpr int kDeadBallTicks = 600;
+    const std::int32_t one_before_reset = since + kDeadBallTicks - 1;
+    for (int step = 0;
+         step < kDeadBallTicks &&
+         static_cast<std::int32_t>(fx.world().tick_count_) < one_before_reset;
+         ++step)
+    {
+        fx.tick(1);
+    }
+    ASSERT_EQ(one_before_reset,
+              static_cast<std::int32_t>(fx.world().tick_count_))
+        << "the bounded watchdog probe must reach the exact boundary";
+    EXPECT_EQ(0, count_notifications(fx.events, "BALL RESET"))
+        << "one tick short: players get the full projectile-rescue window";
+    EXPECT_EQ(320, fx.ball_cx());
+    EXPECT_EQ(464, fx.ball_cy());
+
+    fx.tick(1);
+    EXPECT_EQ(1, count_notifications(fx.events, "BALL RESET"))
+        << "water attendance cannot strand the objective forever";
+    EXPECT_EQ(320, fx.ball_cx());
+    EXPECT_EQ(464, fx.ball_cy());
+    EXPECT_GT(fx.var(kSocKickoffUntil),
+              static_cast<std::int32_t>(fx.world().tick_count_));
+}
+
 // ===========================================================================
 // Respawns are always on: a ball game ignores the difficulty submenu's
 // respawn choice — every corpse that owns its life comes back.
@@ -2635,6 +3521,11 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
     EXPECT_EQ(ball->sizex(), mirrored->sizex());
     EXPECT_EQ(ball->sizey(), mirrored->sizey());
     EXPECT_EQ(ball->team_num(), mirrored->team_num());
+    ASSERT_NE(nullptr, ball->stats());
+    ASSERT_NE(nullptr, mirrored->stats());
+    EXPECT_TRUE(ball->stats()->query_bit_flags(BIT_SWIMMING));
+    EXPECT_TRUE(mirrored->stats()->query_bit_flags(BIT_SWIMMING))
+        << "the objective's terrain capability must cross the snapshot";
 
     // The rolling spin is server-authored: run_spin picks the frame and
     // EntitySnapshot.frame carries it, so the mirror draws the authority's

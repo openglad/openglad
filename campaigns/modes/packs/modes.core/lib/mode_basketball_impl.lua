@@ -9,6 +9,7 @@ local caps = og.use("mode_caps")
 local items = og.use("mode_items")
 local match = og.use("mode_match")
 local strip = og.use("mode_strip")
+local surface = og.use("mode_ball_surface")
 
 -- Mode-private slot map (8+; header 0-7 is mode_core.SLOT). Ball ground
 -- position, velocity AND height z are x256 fixed point ("fp"): 256 fp =
@@ -178,10 +179,10 @@ local T = {
   -- bounced |vz| < settle_vz.
   floor_rest_z = 128, -- keep half the vertical speed
   floor_rest_xy = 192, -- keep three quarters horizontal
+  water_rest_z = 32, -- wet landing keeps one eighth vertical speed
   settle_vz = 256,
 
-  -- Grounded roll (FREE): soccer's linear friction and substep bound.
-  roll_friction = 64,
+  -- Grounded roll (FREE): shared surface damping and soccer's substep bound.
   substep_px = 8,
 
   -- Spin frames: soccer constants for the roll; airborne states advance a
@@ -253,6 +254,7 @@ local T = {
   drive_cross = 24,
   drive_cross_hold = 32,
   drive_reach = 10, -- soccer chaser_drives constants, read via ai.* (D17)
+  water_recover_speed = 256, -- <= 1 px/tick L1: shoot a bogged ball loose
   oob_ring_max = 8, -- landing-legality ring scan bound (tiles)
   shadow_band = 12, -- shadow frame = clamp(div(z_px, 12), 0, 3)
 
@@ -1191,7 +1193,14 @@ end
 local function run_swat(ball)
   local st = og.mode_get(S.BALL_STATE)
   if st < STATE_SHOT then
-    return
+    local water_free = false
+    if st == STATE_FREE then
+      water_free = surface.touches_water(
+        ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY))
+    end
+    if not water_free then
+      return
+    end
   end
   if og.world_tick() < og.mode_get(S.JUMP_UNTIL) then
     return
@@ -1318,6 +1327,7 @@ local function move_substeps(ball, px, py, vx, vy, reflect)
   local half_x = og.div(ball:sizex(), 2)
   local half_y = og.div(ball:sizey(), 2)
   local steps = og.div(og.max(iabs(vx), iabs(vy)), T.substep_px * 256) + 1
+  local wet = surface.touches_water(ball, px, py)
   for _ = 1, steps do
     local nx = px + og.div(vx, steps)
     if reflect then
@@ -1327,6 +1337,9 @@ local function move_substeps(ball, px, py, vx, vy, reflect)
       end
     end
     px = nx
+    if surface.touches_water(ball, px, py) then
+      wet = true
+    end
     local ny = py + og.div(vy, steps)
     if reflect then
       if not og.query_grid_passable(og.div(px, 256) - half_x, og.div(ny, 256) - half_y, ball) then
@@ -1335,8 +1348,11 @@ local function move_substeps(ball, px, py, vx, vy, reflect)
       end
     end
     py = ny
+    if surface.touches_water(ball, px, py) then
+      wet = true
+    end
   end
-  return px, py, vx, vy
+  return px, py, vx, vy, wet
 end
 
 -- PASS contact (D23a): gather this tick's contenders — the intended
@@ -1391,10 +1407,24 @@ local function run_ground_touch(ball)
   if landing_legal(ball) then
     return
   end
-  local bounced = og.div(iabs(og.mode_get(S.BALL_VZ)) * T.floor_rest_z, 256)
+  local wet = surface.touches_water(
+    ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY))
+  local rest_z = T.floor_rest_z
+  if wet then
+    rest_z = T.water_rest_z
+  end
+  local bounced = og.div(iabs(og.mode_get(S.BALL_VZ)) * rest_z, 256)
   og.mode_set(S.BALL_PZ, 0)
-  og.mode_set(S.BALL_VX, og.div(og.mode_get(S.BALL_VX) * T.floor_rest_xy, 256))
-  og.mode_set(S.BALL_VY, og.div(og.mode_get(S.BALL_VY) * T.floor_rest_xy, 256))
+  local vx = og.mode_get(S.BALL_VX)
+  local vy = og.mode_get(S.BALL_VY)
+  if wet then
+    vx, vy = surface.damp(vx, vy, true)
+  else
+    vx = og.div(vx * T.floor_rest_xy, 256)
+    vy = og.div(vy * T.floor_rest_xy, 256)
+  end
+  og.mode_set(S.BALL_VX, vx)
+  og.mode_set(S.BALL_VY, vy)
   if bounced < T.settle_vz then
     og.mode_set(S.BALL_VZ, 0)
     og.mode_set(S.BALL_STATE, STATE_FREE)
@@ -1414,7 +1444,17 @@ local function run_air(ball, livings)
   local vz = og.mode_get(S.BALL_VZ)
   local prev_z_px = og.div(pz, 256)
   local falling = vz < 0
-  local px, py, vx, vy = move_substeps(ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY), og.mode_get(S.BALL_VX), og.mode_get(S.BALL_VY), prev_z_px < T.wall_top)
+  local px, py, vx, vy, swept_wet = move_substeps(
+    ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY),
+    og.mode_get(S.BALL_VX), og.mode_get(S.BALL_VY),
+    prev_z_px < T.wall_top)
+  if pz <= 0 then
+    if not falling then
+      if swept_wet then
+        vx, vy = surface.damp(vx, vy, true)
+      end
+    end
+  end
   pz = pz + vz
   vz = vz - T.gravity
   og.mode_set(S.BALL_PX, px)
@@ -1467,7 +1507,7 @@ end
 -- FREE-state tick: frozen during the jump freeze, the one-shot T19 toss
 -- at the boundary tick exactly (straight up; the grab race is live the
 -- same tick — the pickup scan runs later in the pipeline), then soccer's
--- roll — substeps, wall reflection, linear friction. The basketball never
+-- roll — substeps, wall reflection, shared dry/wet damping. Basketball never
 -- calls attack: zero combat RNG from the ball.
 local function run_free(ball)
   local now = og.world_tick()
@@ -1487,17 +1527,10 @@ local function run_free(ball)
   if speed == 0 then
     return
   end
-  local px, py
-  px, py, vx, vy = move_substeps(ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY), vx, vy, true)
-  speed = iabs(vx) + iabs(vy)
-  local slowed = speed - T.roll_friction
-  if slowed <= 0 then
-    vx = 0
-    vy = 0
-  else
-    vx = og.div(vx * slowed, speed)
-    vy = og.div(vy * slowed, speed)
-  end
+  local px, py, swept_wet
+  px, py, vx, vy, swept_wet = move_substeps(
+    ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY), vx, vy, true)
+  vx, vy = surface.damp(vx, vy, swept_wet)
   og.mode_set(S.BALL_PX, px)
   og.mode_set(S.BALL_PY, py)
   og.mode_set(S.BALL_VX, vx)
@@ -1624,12 +1657,16 @@ local function run_reset_watchdog(ball, livings, live_count)
       og.mode_set(S.STALL_SINCE, 0)
       return
     end
-    local gx, gy = ball_ground()
-    for k = 1, #livings do
-      local wx, wy = walker_center(livings[k])
-      if dist_l1(gx, gy, wx, wy) <= T.dead_ball_radius then
-        og.mode_set(S.STALL_SINCE, 0)
-        return
+    local waterlogged = surface.touches_water(
+      ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY))
+    if not waterlogged then
+      local gx, gy = ball_ground()
+      for k = 1, #livings do
+        local wx, wy = walker_center(livings[k])
+        if dist_l1(gx, gy, wx, wy) <= T.dead_ball_radius then
+          og.mode_set(S.STALL_SINCE, 0)
+          return
+        end
       end
     end
   end
@@ -2054,7 +2091,27 @@ local function run_loose(ball, livings, team, exclude_id)
   end
   local gx, gy = ball_ground()
   local assigned = fresh_flags(members)
-  for _ = 1, 2 do
+  local racers = 2
+  local slow = iabs(og.mode_get(S.BALL_VX)) +
+    iabs(og.mode_get(S.BALL_VY)) <= T.water_recover_speed
+  local water_recoverable = og.mode_get(S.BALL_STATE) == STATE_FREE
+  if water_recoverable then
+    water_recoverable = og.mode_get(S.BALL_PZ) == 0
+  end
+  if slow and water_recoverable then
+    if surface.touches_water(
+        ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY)) then
+      local recovery =
+        ai.nearest_hostile_ranged_unassigned(
+          members, assigned, ball, gx, gy)
+      if recovery ~= nil then
+        assigned[recovery] = true
+        racers = 1
+        ai.attack_objective(members[recovery], ball)
+      end
+    end
+  end
+  for _ = 1, racers do
     local idx = ai.nearest_unassigned(members, assigned, gx, gy)
     if idx ~= nil then
       assigned[idx] = true

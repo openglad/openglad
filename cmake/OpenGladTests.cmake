@@ -959,6 +959,7 @@ target_compile_definitions(og_unit_ffa PRIVATE
 
 og_add_unit_group(og_unit_basketball FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_basketball.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_water_stationarity.cpp
 )
 target_compile_definitions(og_unit_basketball PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
