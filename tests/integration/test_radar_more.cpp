@@ -1,4 +1,5 @@
 #include <openglad/interface/render/radar.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
@@ -9,14 +10,20 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/core/family_presentation.h>
 #include <openglad/core/irandom.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 
+#include "test_save_state_guard.h"
+
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -283,6 +290,39 @@ TEST_F(RadarMore, westlands_tiles_map_to_pinned_radar_colors)
     // frame on big lava fields.
     EXPECT_TRUE(r.bmp[2] < WATER_START || r.bmp[2] > ORANGE_END)
         << "lava radar color must not blink with palette cycling";
+}
+
+TEST_F(RadarMore, every_water_dominant_shoreline_uses_the_water_color)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    constexpr std::array<unsigned char, 11> water_tiles = {
+        PIX_WATER1,        PIX_WATER2,        PIX_WATER3,
+        PIX_WATERGRASS_LL, PIX_WATERGRASS_LR, PIX_WATERGRASS_UL,
+        PIX_WATERGRASS_UR, PIX_WATERGRASS_U,  PIX_WATERGRASS_L,
+        PIX_WATERGRASS_R,  PIX_WATERGRASS_D,
+    };
+    for (std::size_t i = 0; i < water_tiles.size(); ++i)
+        set_tile(d, static_cast<int>(i), 0, water_tiles[i]);
+
+    viewscreen* const vs =
+        og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    r.update(&d);
+    ASSERT_GE(r.bmp.size(), water_tiles.size());
+    for (std::size_t i = 0; i < water_tiles.size(); ++i)
+    {
+        EXPECT_EQ(COLOR_BLUE + 2, static_cast<int>(r.bmp[i]))
+            << "radar color for water tile "
+            << static_cast<int>(water_tiles[i]);
+    }
 }
 
 // B2: on multifloor levels the minimap tracks the floor being played — the
@@ -580,6 +620,31 @@ public:
     std::uint32_t last_max = 0;
 };
 
+class ScopedEffectDescriptorRestore final
+{
+public:
+    ScopedEffectDescriptorRestore(int family,
+                                  EffectFamilyDescriptor descriptor)
+        : family_(family), descriptor_(std::move(descriptor))
+    {
+    }
+
+    ~ScopedEffectDescriptorRestore()
+    {
+        EXPECT_TRUE(set_effect_family_descriptor(family_, descriptor_))
+            << "failed to restore effect family " << family_;
+    }
+
+    ScopedEffectDescriptorRestore(const ScopedEffectDescriptorRestore&) =
+        delete;
+    ScopedEffectDescriptorRestore& operator=(
+        const ScopedEffectDescriptorRestore&) = delete;
+
+private:
+    int family_;
+    EffectFamilyDescriptor descriptor_;
+};
+
 // Palette index the radar actually painted at a grid cell.
 int blip_index_at(const radar& r, int grid_x, int grid_y)
 {
@@ -588,7 +653,723 @@ int blip_index_at(const radar& r, int grid_x, int grid_y)
         r.xloc + grid_x - r.radarx, r.yloc + grid_y - r.radary, &index);
     return index;
 }
+
+std::array<int, 3> blip_rgb_at(const radar& r, int grid_x, int grid_y)
+{
+    Uint8 red = 0;
+    Uint8 green = 0;
+    Uint8 blue = 0;
+    og::runtime::current_session->myscreen_->get_pixel(
+        r.xloc + grid_x - r.radarx, r.yloc + grid_y - r.radary,
+        &red, &green, &blue);
+    return {red, green, blue};
+}
+
+std::array<int, 3> palette_rgb(int index)
+{
+    int red = 0;
+    int green = 0;
+    int blue = 0;
+    query_palette_reg(static_cast<unsigned char>(index), &red, &green, &blue);
+    return {red * 4, green * 4, blue * 4};
+}
 } // namespace
+
+// #267: descriptor landmarks can be acting Order::FX entities in oblist,
+// not treasures in fxlist. Render that path in the declared colour while a
+// quiet FX family remains invisible. Sixteen consecutive frames prove both
+// pulse sizes and every brightness phase without depending on the
+// process-global phase at which this test begins.
+TEST_F(RadarMore, landmark_fx_in_oblist_use_their_descriptor_ping)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    const int soccer_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:ball");
+    const int basketball_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:bball");
+    const int shadow_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:bshadow");
+    ASSERT_GE(soccer_family, 0);
+    ASSERT_GE(basketball_family, 0);
+    ASSERT_GE(shadow_family, 0);
+
+    const EffectFamilyDescriptor* soccer_d =
+        get_effect_family_descriptor(soccer_family);
+    const EffectFamilyDescriptor* basketball_d =
+        get_effect_family_descriptor(basketball_family);
+    const EffectFamilyDescriptor* shadow_d =
+        get_effect_family_descriptor(shadow_family);
+    ASSERT_NE(nullptr, soccer_d);
+    ASSERT_NE(nullptr, basketball_d);
+    ASSERT_NE(nullptr, shadow_d);
+    EXPECT_EQ(COLOR_WHITE, soccer_d->radar.color);
+    EXPECT_EQ(0, soccer_d->radar.jitter);
+    EXPECT_TRUE(soccer_d->radar.landmark);
+    EXPECT_TRUE(soccer_d->radar.ping);
+    EXPECT_EQ(og::kRadarColorNone, basketball_d->radar.color);
+    EXPECT_EQ(0, basketball_d->radar.jitter);
+    EXPECT_FALSE(basketball_d->radar.landmark);
+    EXPECT_FALSE(basketball_d->radar.ping);
+    EXPECT_EQ(COLOR_YELLOW, shadow_d->radar.color);
+    EXPECT_EQ(0, shadow_d->radar.jitter);
+    EXPECT_TRUE(shadow_d->radar.landmark);
+    EXPECT_TRUE(shadow_d->radar.ping);
+
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    struct PlacedFx
+    {
+        walker* ob;
+        int family;
+        int gx;
+        int gy;
+        int base;
+    };
+    auto place = [&d](int family, int gx, int gy, int base) {
+        walker* ob = d.add_ob(Order::FX, family);
+        EXPECT_NE(nullptr, ob) << "family " << family;
+        if (ob != nullptr)
+        {
+            ob->setxy(static_cast<short>(GRID_SIZE * gx),
+                      static_cast<short>(GRID_SIZE * gy));
+            ob->set_dead(0);
+        }
+        return PlacedFx{ob, family, gx, gy, base};
+    };
+    const PlacedFx soccer =
+        place(soccer_family, 8, 8, soccer_d->radar.color);
+    const PlacedFx shadow =
+        place(shadow_family, 16, 8, shadow_d->radar.color);
+    const PlacedFx basketball = place(basketball_family, 24, 8, 0);
+    ASSERT_NE(nullptr, soccer.ob);
+    ASSERT_NE(nullptr, basketball.ob);
+    ASSERT_NE(nullptr, shadow.ob);
+
+    auto pointer_count = [](const GameWorld::EntityList& list,
+                            const walker* needle) {
+        return std::count_if(list.begin(), list.end(),
+                             [needle](const auto& entry) {
+                                 return entry.get() == needle;
+                             });
+    };
+    for (const PlacedFx* placed : {&soccer, &basketball, &shadow})
+    {
+        EXPECT_EQ(Order::FX, placed->ob->query_order());
+        EXPECT_EQ(1, pointer_count(d.world().oblist, placed->ob));
+        EXPECT_EQ(0, pointer_count(d.world().fxlist, placed->ob));
+    }
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    std::array<int, 2> five_pixel_frames{};
+    std::array<int, 2> nine_pixel_frames{};
+    std::array<std::array<int, 4>, 2> color_frames{};
+    const std::array<const PlacedFx*, 2> landmarks = {&soccer, &shadow};
+    std::array<std::array<std::array<int, 3>, 4>, 2> expected_colors{};
+    for (std::size_t i = 0; i < landmarks.size(); ++i)
+        for (std::size_t phase = 0; phase < expected_colors[i].size(); ++phase)
+            expected_colors[i][phase] =
+                palette_rgb(landmarks[i]->base + static_cast<int>(phase));
+
+    counter.calls = 0;
+    for (int frame = 0; frame < 16; ++frame)
+    {
+        ASSERT_EQ(1, r.draw(&d));
+        const std::array<int, 3> background = blip_rgb_at(r, 30, 20);
+        for (std::size_t i = 0; i < landmarks.size(); ++i)
+        {
+            const PlacedFx& landmark = *landmarks[i];
+            const std::array<int, 3> center =
+                blip_rgb_at(r, landmark.gx, landmark.gy);
+            const auto phase = std::find(expected_colors[i].begin(),
+                                         expected_colors[i].end(), center);
+            ASSERT_NE(expected_colors[i].end(), phase)
+                << "frame " << frame << " landmark " << i;
+            color_frames[i][static_cast<std::size_t>(
+                std::distance(expected_colors[i].begin(), phase))]++;
+
+            int painted = 0;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                {
+                    const std::array<int, 3> pixel =
+                        blip_rgb_at(r, landmark.gx + dx, landmark.gy + dy);
+                    if (pixel != background)
+                    {
+                        painted++;
+                        EXPECT_EQ(center, pixel)
+                            << "frame " << frame << " landmark " << i;
+                    }
+                }
+            if (painted == 5)
+                five_pixel_frames[i]++;
+            else if (painted == 9)
+                nine_pixel_frames[i]++;
+            else
+                ADD_FAILURE() << "frame " << frame << " landmark " << i
+                              << " painted " << painted << " pixels";
+        }
+        EXPECT_EQ(background, blip_rgb_at(r, basketball.gx, basketball.gy))
+            << "quiet FX furniture must stay off the radar";
+    }
+
+    EXPECT_EQ(0, counter.calls) << "jitter 0 must not touch the game RNG";
+    for (std::size_t i = 0; i < landmarks.size(); ++i)
+    {
+        EXPECT_EQ(8, five_pixel_frames[i]);
+        EXPECT_EQ(8, nine_pixel_frames[i]);
+        for (int count : color_frames[i])
+            EXPECT_EQ(4, count);
+    }
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// A landmark created with og.add_fx_ob has no acting-object or beacon proxy.
+// It still uses the same public descriptor presentation as an oblist FX.
+// Same-family controls on another floor and just outside the radar prove the
+// direct fxlist path keeps both existing clipping gates.
+TEST_F(RadarMore, landmark_fx_in_fxlist_draw_without_a_beacon)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    const int shadow_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:bshadow");
+    ASSERT_GE(shadow_family, 0);
+    const EffectFamilyDescriptor* shadow_d =
+        get_effect_family_descriptor(shadow_family);
+    ASSERT_NE(nullptr, shadow_d);
+    ASSERT_TRUE(shadow_d->radar.landmark);
+    ASSERT_TRUE(shadow_d->radar.ping);
+    ASSERT_EQ(COLOR_YELLOW, shadow_d->radar.color);
+    ASSERT_EQ(0, shadow_d->radar.jitter);
+
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+    d.world().set_floor_count(2);
+    fill_floor_grid(d.world(), 1, PIX_COBBLE_1);
+
+    constexpr int landmark_gx = 8;
+    constexpr int landmark_gy = 8;
+    constexpr int other_floor_gx = 16;
+    walker* landmark = d.add_fx_ob(Order::FX, shadow_family);
+    walker* other_floor = d.add_fx_ob(Order::FX, shadow_family);
+    ASSERT_NE(nullptr, landmark);
+    ASSERT_NE(nullptr, other_floor);
+    landmark->setxy(GRID_SIZE * landmark_gx, GRID_SIZE * landmark_gy);
+    landmark->set_floor(0);
+    landmark->set_team_num(1);
+    landmark->set_invisibility_left(120);
+    other_floor->setxy(GRID_SIZE * other_floor_gx,
+                       GRID_SIZE * landmark_gy);
+    other_floor->set_floor(1);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    const Sint32 saved_override = vs->editor_floor_override_;
+    vs->control = nullptr; // radar team 0 opposes the invisible landmark
+    vs->radarstart = 1;
+    vs->editor_floor_override_ = 0;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    ASSERT_GT(r.xview, 1);
+    ASSERT_GT(r.yview, landmark_gy + 1);
+    ASSERT_LT(r.xloc + r.xview,
+              og::runtime::current_session->myscreen_->canvas_w());
+    const int outside_gx = r.radarx - 1;
+    walker* outside = d.add_fx_ob(Order::FX, shadow_family);
+    ASSERT_NE(nullptr, outside);
+    // The renderer maps `(xpos + 1) / GRID_SIZE`; -9, not -8, is grid -1
+    // under C++ truncation toward zero.
+    outside->setxy(GRID_SIZE * outside_gx - 1, GRID_SIZE * landmark_gy);
+    outside->set_floor(0);
+
+    EXPECT_EQ(3u, d.world().fxlist.size());
+    EXPECT_EQ(0u, d.world().oblist.size());
+    for (const og::sim::ModeBeacon& beacon : d.world().mode.beacons)
+        EXPECT_EQ(0, beacon.entity_id);
+
+    counter.calls = 0;
+    ASSERT_EQ(1, r.draw(&d));
+    const std::array<int, 3> background = blip_rgb_at(r, 30, 20);
+    const std::array<int, 3> center =
+        blip_rgb_at(r, landmark_gx, landmark_gy);
+    std::array<std::array<int, 3>, 4> expected_colors{};
+    for (std::size_t phase = 0; phase < expected_colors.size(); ++phase)
+        expected_colors[phase] =
+            palette_rgb(shadow_d->radar.color + static_cast<int>(phase));
+    const auto phase =
+        std::find(expected_colors.begin(), expected_colors.end(), center);
+    ASSERT_NE(expected_colors.end(), phase);
+
+    int painted = 0;
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            const std::array<int, 3> pixel =
+                blip_rgb_at(r, landmark_gx + dx, landmark_gy + dy);
+            if (pixel != background)
+            {
+                painted++;
+                EXPECT_EQ(center, pixel);
+            }
+        }
+    const int expected_painted =
+        std::distance(expected_colors.begin(), phase) < 2 ? 5 : 9;
+    EXPECT_EQ(expected_painted, painted);
+    EXPECT_EQ(background, blip_rgb_at(r, other_floor_gx, landmark_gy));
+    EXPECT_EQ(background, blip_rgb_at(r, outside_gx + 1, landmark_gy));
+    EXPECT_EQ(0, counter.calls) << "jitter 0 must not touch the game RNG";
+
+    // Jitter is also resolved by the direct descriptor path. Move the
+    // off-screen control to the filtered floor so exactly one eligible FX
+    // consumes exactly one draw.
+    outside->set_floor(1);
+    const EffectFamilyDescriptor saved_shadow = *shadow_d;
+    {
+        ScopedEffectDescriptorRestore restore(shadow_family, saved_shadow);
+        EffectFamilyDescriptor jittered_shadow = saved_shadow;
+        jittered_shadow.radar.jitter = 1;
+        ASSERT_TRUE(
+            set_effect_family_descriptor(shadow_family, jittered_shadow));
+        counter.calls = 0;
+        counter.last_max = 0;
+        ASSERT_EQ(1, r.draw(&d));
+        EXPECT_EQ(1, counter.calls);
+        EXPECT_EQ(1u, counter.last_max);
+    }
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    vs->editor_floor_override_ = saved_override;
+}
+
+// A pulse centered on any radar edge still visits all eight neighboring
+// offsets. The viewport's right/bottom endpoints are exclusive, just like
+// radar::on_screen; none of those neighbors may bleed into the one-pixel
+// perimeter outside the minimap. Four corner landmarks exercise all edges at
+// once, and sixteen draws prove the clip under every pulse size/colour phase.
+TEST_F(RadarMore, ping_landmarks_clip_to_all_four_radar_edges)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    const int soccer_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:ball");
+    ASSERT_GE(soccer_family, 0);
+    const EffectFamilyDescriptor* soccer_d =
+        get_effect_family_descriptor(soccer_family);
+    ASSERT_NE(nullptr, soccer_d);
+    ASSERT_TRUE(soccer_d->radar.landmark);
+    ASSERT_TRUE(soccer_d->radar.ping);
+    ASSERT_EQ(COLOR_WHITE, soccer_d->radar.color);
+    ASSERT_EQ(0, soccer_d->radar.jitter);
+
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    ASSERT_GT(r.xview, 1);
+    ASSERT_GT(r.yview, 1);
+    ASSERT_GT(r.xloc, 0);
+    ASSERT_GT(r.yloc, 0);
+    ASSERT_LT(r.xloc + r.xview,
+              og::runtime::current_session->myscreen_->canvas_w());
+    ASSERT_LT(r.yloc + r.yview,
+              og::runtime::current_session->myscreen_->canvas_h());
+
+    const std::array<std::array<int, 2>, 4> corners = {{
+        {0, 0},
+        {r.xview - 1, 0},
+        {0, r.yview - 1},
+        {r.xview - 1, r.yview - 1},
+    }};
+    for (const auto& corner : corners)
+    {
+        walker* ball = d.add_ob(Order::FX, soccer_family);
+        ASSERT_NE(nullptr, ball);
+        ball->setxy(static_cast<short>(corner[0] * GRID_SIZE),
+                    static_cast<short>(corner[1] * GRID_SIZE));
+    }
+
+    std::array<std::array<int, 3>, 4> expected_colors{};
+    for (std::size_t phase = 0; phase < expected_colors.size(); ++phase)
+        expected_colors[phase] =
+            palette_rgb(soccer_d->radar.color + static_cast<int>(phase));
+    const std::array<int, 3> black = palette_rgb(PURE_BLACK);
+    std::array<int, 4> color_frames{};
+    counter.calls = 0;
+    for (int frame = 0; frame < 16; ++frame)
+    {
+        // Re-arm the complete outside ring. The terrain blit is clipped to
+        // [0,xview) x [0,yview), so only an escaping pulse can alter it.
+        for (int gx = -1; gx <= r.xview; ++gx)
+        {
+            og::runtime::current_session->myscreen_->pointb(
+                r.xloc + gx, r.yloc - 1, PURE_BLACK);
+            og::runtime::current_session->myscreen_->pointb(
+                r.xloc + gx, r.yloc + r.yview, PURE_BLACK);
+        }
+        for (int gy = 0; gy < r.yview; ++gy)
+        {
+            og::runtime::current_session->myscreen_->pointb(
+                r.xloc - 1, r.yloc + gy, PURE_BLACK);
+            og::runtime::current_session->myscreen_->pointb(
+                r.xloc + r.xview, r.yloc + gy, PURE_BLACK);
+        }
+
+        ASSERT_EQ(1, r.draw(&d));
+        const std::array<int, 3> center =
+            blip_rgb_at(r, corners[0][0], corners[0][1]);
+        const auto phase =
+            std::find(expected_colors.begin(), expected_colors.end(), center);
+        ASSERT_NE(expected_colors.end(), phase) << "frame " << frame;
+        color_frames[static_cast<std::size_t>(
+            std::distance(expected_colors.begin(), phase))]++;
+        for (const auto& corner : corners)
+            EXPECT_EQ(center, blip_rgb_at(r, corner[0], corner[1]))
+                << "frame " << frame << " corner (" << corner[0] << ", "
+                << corner[1] << ")";
+
+        for (int gx = -1; gx <= r.xview; ++gx)
+        {
+            EXPECT_EQ(black, blip_rgb_at(r, gx, -1))
+                << "frame " << frame << " top outside x=" << gx;
+            EXPECT_EQ(black, blip_rgb_at(r, gx, r.yview))
+                << "frame " << frame << " bottom outside x=" << gx;
+        }
+        for (int gy = 0; gy < r.yview; ++gy)
+        {
+            EXPECT_EQ(black, blip_rgb_at(r, -1, gy))
+                << "frame " << frame << " left outside y=" << gy;
+            EXPECT_EQ(black, blip_rgb_at(r, r.xview, gy))
+                << "frame " << frame << " right outside y=" << gy;
+        }
+    }
+
+    EXPECT_EQ(0, counter.calls) << "jitter 0 must not touch the game RNG";
+    for (int count : color_frames)
+        EXPECT_EQ(4, count);
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// Soccer publishes the SAME acting ball through both presentation channels:
+// an oblist FX landmark and scripted beacon 0. The landmark is public even
+// while invisible to this opposing radar; the beacon must not overwrite its
+// descriptor-coloured pulse with a second centre dot.
+TEST_F(RadarMore, active_soccer_beacon_deduplicates_its_public_ball_landmark)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    const int soccer_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:ball");
+    const int quiet_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:bball");
+    ASSERT_GE(soccer_family, 0);
+    ASSERT_GE(quiet_family, 0);
+    const EffectFamilyDescriptor* soccer_d =
+        get_effect_family_descriptor(soccer_family);
+    ASSERT_NE(nullptr, soccer_d);
+    ASSERT_TRUE(soccer_d->radar.landmark);
+    ASSERT_TRUE(soccer_d->radar.ping);
+    ASSERT_EQ(COLOR_WHITE, soccer_d->radar.color);
+    ASSERT_EQ(0, soccer_d->radar.jitter);
+
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    walker* ball = d.add_ob(Order::FX, soccer_family);
+    walker* quiet = d.add_ob(Order::FX, quiet_family);
+    ASSERT_NE(nullptr, ball);
+    ASSERT_NE(nullptr, quiet);
+    constexpr int ball_gx = 10;
+    constexpr int ball_gy = 10;
+    constexpr int quiet_gx = 20;
+    constexpr int quiet_gy = 10;
+    ball->setxy(GRID_SIZE * ball_gx, GRID_SIZE * ball_gy);
+    ball->set_team_num(1);
+    ball->set_invisibility_left(120);
+    quiet->setxy(GRID_SIZE * quiet_gx, GRID_SIZE * quiet_gy);
+
+    d.world().type |= GameWorld::TYPE_SCRIPTED;
+    d.world().mode.active = true;
+    d.world().mode.beacons[0].entity_id =
+        static_cast<std::int32_t>(ball->entity_id());
+    // Omitted Lua team argument: the legacy beacon path would use the
+    // invisible ball's team colour and make the duplicate centre visible.
+    d.world().mode.beacons[0].team = 255;
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = nullptr; // default radar team 0 opposes the invisible ball
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    counter.calls = 0;
+    ASSERT_EQ(1, r.draw(&d));
+    const std::array<int, 3> background = blip_rgb_at(r, 30, 20);
+    const std::array<int, 3> center = blip_rgb_at(r, ball_gx, ball_gy);
+    std::array<std::array<int, 3>, 4> expected_colors{};
+    for (std::size_t phase = 0; phase < expected_colors.size(); ++phase)
+        expected_colors[phase] =
+            palette_rgb(soccer_d->radar.color + static_cast<int>(phase));
+    const auto phase =
+        std::find(expected_colors.begin(), expected_colors.end(), center);
+    ASSERT_NE(expected_colors.end(), phase);
+
+    int painted = 0;
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            const std::array<int, 3> pixel =
+                blip_rgb_at(r, ball_gx + dx, ball_gy + dy);
+            if (pixel != background)
+            {
+                painted++;
+                EXPECT_EQ(center, pixel)
+                    << "a duplicate beacon must not recolour the centre";
+            }
+        }
+    const int expected_painted =
+        std::distance(expected_colors.begin(), phase) < 2 ? 5 : 9;
+    EXPECT_EQ(expected_painted, painted)
+        << "one descriptor pulse must paint its exact phase shape";
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+            EXPECT_EQ(background,
+                      blip_rgb_at(r, quiet_gx + dx, quiet_gy + dy));
+    EXPECT_EQ(0, counter.calls) << "jitter 0 must not touch the game RNG";
+
+    // Mutation tooth for the dedupe itself: two identical jitter-0 pulses
+    // leave the same final pixels and consume no RNG, so that production
+    // contract alone cannot distinguish one paint from two. Temporarily give
+    // this descriptor a one-value jitter span. The oblist landmark must make
+    // exactly one draw; removing beacon_target_drawn makes the matching beacon
+    // draw again and raises this count to two. The scoped guard restores the
+    // mounted registry even when an ASSERT aborts this block.
+    const EffectFamilyDescriptor saved_soccer = *soccer_d;
+    {
+        ScopedEffectDescriptorRestore restore(soccer_family, saved_soccer);
+        EffectFamilyDescriptor jittered_soccer = saved_soccer;
+        jittered_soccer.radar.jitter = 1;
+        ASSERT_TRUE(
+            set_effect_family_descriptor(soccer_family, jittered_soccer));
+        counter.calls = 0;
+        counter.last_max = 0;
+        ASSERT_EQ(1, r.draw(&d));
+        EXPECT_EQ(1, counter.calls)
+            << "the exact scripted beacon target must not repaint its "
+               "oblist landmark";
+        EXPECT_EQ(1u, counter.last_max);
+    }
+    const EffectFamilyDescriptor* restored_soccer =
+        get_effect_family_descriptor(soccer_family);
+    ASSERT_NE(nullptr, restored_soccer);
+    EXPECT_EQ(saved_soccer.radar.jitter, restored_soccer->radar.jitter);
+    EXPECT_EQ(saved_soccer.radar.color, restored_soccer->radar.color);
+    EXPECT_EQ(saved_soccer.radar.landmark, restored_soccer->radar.landmark);
+    EXPECT_EQ(saved_soccer.radar.ping, restored_soccer->radar.ping);
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// Basketball's drawn entity rises by fake z, while beacon 0 intentionally
+// follows its fxlist shadow at the true ground spot. At a 40-pixel apex the
+// radar must show exactly one yellow descriptor pulse at the shadow and
+// leave the lifted, non-landmark ball position untouched.
+TEST_F(RadarMore, active_basketball_beacon_pulses_only_at_the_ground_shadow)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    const int basketball_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:bball");
+    const int shadow_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:bshadow");
+    ASSERT_GE(basketball_family, 0);
+    ASSERT_GE(shadow_family, 0);
+    const EffectFamilyDescriptor* basketball_d =
+        get_effect_family_descriptor(basketball_family);
+    const EffectFamilyDescriptor* shadow_d =
+        get_effect_family_descriptor(shadow_family);
+    ASSERT_NE(nullptr, basketball_d);
+    ASSERT_NE(nullptr, shadow_d);
+    ASSERT_FALSE(basketball_d->radar.landmark);
+    ASSERT_FALSE(basketball_d->radar.ping);
+    ASSERT_TRUE(shadow_d->radar.landmark);
+    ASSERT_TRUE(shadow_d->radar.ping);
+    ASSERT_EQ(COLOR_YELLOW, shadow_d->radar.color);
+    ASSERT_EQ(0, shadow_d->radar.jitter);
+
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    walker* ball = d.add_ob(Order::FX, basketball_family);
+    walker* shadow = d.add_fx_ob(Order::FX, shadow_family);
+    ASSERT_NE(nullptr, ball);
+    ASSERT_NE(nullptr, shadow);
+    // These are the real sync_render offsets for ground center (214,214)
+    // and z=40: both 12x12 sprites subtract their 6-pixel half-size.
+    ball->setxy(208, 168);
+    shadow->setxy(208, 208);
+    const int lifted_gx = (ball->xpos() + 1) / GRID_SIZE;
+    const int lifted_gy = (ball->ypos() + 1) / GRID_SIZE;
+    const int ground_gx = (shadow->xpos() + 1) / GRID_SIZE;
+    const int ground_gy = (shadow->ypos() + 1) / GRID_SIZE;
+    ASSERT_GE(std::abs(ground_gy - lifted_gy), 3)
+        << "the pulse neighborhoods must not overlap";
+
+    d.world().type |= GameWorld::TYPE_SCRIPTED;
+    d.world().mode.active = true;
+    d.world().mode.beacons[0].entity_id =
+        static_cast<std::int32_t>(shadow->entity_id());
+    d.world().mode.beacons[0].team = 255;
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    counter.calls = 0;
+    ASSERT_EQ(1, r.draw(&d));
+    const std::array<int, 3> background = blip_rgb_at(r, 30, 20);
+    const std::array<int, 3> center = blip_rgb_at(r, ground_gx, ground_gy);
+    std::array<std::array<int, 3>, 4> expected_colors{};
+    for (std::size_t phase = 0; phase < expected_colors.size(); ++phase)
+        expected_colors[phase] =
+            palette_rgb(shadow_d->radar.color + static_cast<int>(phase));
+    const auto phase =
+        std::find(expected_colors.begin(), expected_colors.end(), center);
+    ASSERT_NE(expected_colors.end(), phase);
+
+    int painted = 0;
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            const std::array<int, 3> pixel =
+                blip_rgb_at(r, ground_gx + dx, ground_gy + dy);
+            if (pixel != background)
+            {
+                painted++;
+                EXPECT_EQ(center, pixel);
+            }
+        }
+    const int expected_painted =
+        std::distance(expected_colors.begin(), phase) < 2 ? 5 : 9;
+    EXPECT_EQ(expected_painted, painted)
+        << "the ground proxy must paint its exact phase shape";
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+            EXPECT_EQ(background,
+                      blip_rgb_at(r, lifted_gx + dx, lifted_gy + dy))
+                << "the fake-z ball itself is quiet on radar";
+    EXPECT_EQ(0, counter.calls) << "jitter 0 must not touch the game RNG";
+
+    // The shadow now publishes through both the fxlist descriptor and beacon
+    // channels. A one-value jitter span makes duplicate painting observable:
+    // the descriptor must roll once, then reserve its matching beacon slot.
+    const EffectFamilyDescriptor saved_shadow = *shadow_d;
+    {
+        ScopedEffectDescriptorRestore restore(shadow_family, saved_shadow);
+        EffectFamilyDescriptor jittered_shadow = saved_shadow;
+        jittered_shadow.radar.jitter = 1;
+        ASSERT_TRUE(
+            set_effect_family_descriptor(shadow_family, jittered_shadow));
+        counter.calls = 0;
+        counter.last_max = 0;
+        ASSERT_EQ(1, r.draw(&d));
+        EXPECT_EQ(1, counter.calls)
+            << "the beacon must not repaint its fxlist landmark";
+        EXPECT_EQ(1u, counter.last_max);
+    }
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
 
 TEST_F(RadarMore, treasure_blips_and_rng_draws_come_from_the_descriptor)
 {

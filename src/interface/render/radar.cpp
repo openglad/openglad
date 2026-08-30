@@ -35,8 +35,9 @@
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
-#include <span>
 #include <algorithm>
+#include <array>
+#include <span>
 #include <openglad/interface/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
@@ -50,8 +51,9 @@ namespace
 unsigned g_radar_ping_phase = 0;
 
 // The declared radar blip for any (order, family), or nullptr when the
-// family has no descriptor. Only the `ping` flag is read here — colours
-// keep coming from the draw site's own per-order rules.
+// family has no descriptor. Existing orders retain their draw-site colour
+// rules; descriptor-declared FX landmarks use the full record because they
+// have no legacy per-order colour rule.
 const og::RadarBlip* radar_blip_for(Order order, int family)
 {
     switch (order)
@@ -102,8 +104,8 @@ void plot_ping_blip(short cx, short cy, unsigned char base_color,
                 continue;
             const short px = static_cast<short>(cx + dx);
             const short py = static_cast<short>(cy + dy);
-            if (px < xloc || px > xloc + xview || py < yloc ||
-                py > yloc + yview)
+            if (px < xloc || px >= xloc + xview || py < yloc ||
+                py >= yloc + yview)
                 continue;
             og::runtime::current_session->myscreen_->pointb(px, py, color,
                                                             alpha);
@@ -295,6 +297,7 @@ short radar::draw(LevelRuntimeData* data)
 	short obfamily, obteam;
 	short can_see = 0, do_show = 0;
 	Sint32 listtype = 0;
+	std::array<bool, og::sim::kModeBeacons> beacon_target_drawn{};
 
 	// #209: advance the ping pulse (render-side; see plot_ping_blip).
 	++g_radar_ping_phase;
@@ -390,6 +393,15 @@ short radar::draw(LevelRuntimeData* data)
 		        static_cast<int>(ob->floor()) != static_cast<int>(bmp_floor_))
 		        continue;
             oborder = ob->query_order();
+			const og::RadarBlip* fam_blip =
+				radar_blip_for(oborder, ob->family());
+			const bool fam_blip_has_color =
+				fam_blip != nullptr &&
+				(fam_blip->color > 0 ||
+				 fam_blip->color == og::kRadarColorTeam);
+			const bool fx_landmark =
+				oborder == Order::FX && !ob->dead() && fam_blip_has_color &&
+				fam_blip->landmark;
 			do_show = 0; // don't show, by default
 			// Treasures normally live in fxlist (blipped from their
 			// descriptors further down). The two families below are the ones
@@ -399,12 +411,19 @@ short radar::draw(LevelRuntimeData* data)
 			// so there is nothing on RadarBlip to drive it with. Widening it
 			// to every oblist treasure would light up loot the player has not
 			// earned treasure sight for.
-			if ((oborder == Order::Living || oborder == Order::Weapon
+			const bool object_blip =
+				oborder == Order::Living || oborder == Order::Weapon
 			            || (oborder == Order::Treasure && (ob->family() == FAMILY_LIFE_GEM))
 			            || (oborder == Order::Treasure && (ob->family() == FAMILY_EXIT))
 			            || (oborder == Order::Generator && can_see)
-			           )
-			        && (obteam==ob->team_num() || ob->invisibility_left() < 1 || can_see)
+			            || fx_landmark;
+			const bool visible_to_control =
+				obteam == ob->team_num() || ob->invisibility_left() < 1 || can_see;
+			if (object_blip
+			        // A declared landmark is public navigation information, just
+			        // like a treasure landmark below. Invisibility must not hide
+			        // a mode objective from an opposing radar.
+			        && (fx_landmark || visible_to_control)
 			        && on_screen( static_cast<short>((ob->xpos()+1)/GRID_SIZE), static_cast<short>((ob->ypos()+1)/GRID_SIZE), radarx, radary)
 			   )
 				do_show = 1;
@@ -427,6 +446,17 @@ short radar::draw(LevelRuntimeData* data)
 						return 1;
 					}
 					tempcolor = (ob->query_team_color());
+					if (fx_landmark)
+					{
+						const Uint32 base =
+							fam_blip->color == og::kRadarColorTeam
+								? static_cast<Uint32>(tempcolor)
+								: static_cast<Uint32>(fam_blip->color);
+						tempcolor = static_cast<unsigned char>(
+							fam_blip->jitter > 0
+								? base + rng(static_cast<Uint32>(fam_blip->jitter))
+								: base);
+					}
 					if (viewscreenp && viewscreenp->control == ob)
 					{
 						tempcolor = static_cast<unsigned char>(rng(256));
@@ -461,9 +491,7 @@ short radar::draw(LevelRuntimeData* data)
 							og::runtime::current_session->myscreen_->pointb(tempx+1,tempy+1,tempcolor, alpha);
 						}
 					}
-					else if (const og::RadarBlip* fam_blip =
-					             radar_blip_for(oborder, ob->family());
-					         fam_blip != nullptr && fam_blip->ping)
+					else if (fam_blip != nullptr && fam_blip->ping)
 					{
 						// #209: pinged families draw LOUD — an oversized
 						// pulsing blip in the colour the plain path would
@@ -475,6 +503,8 @@ short radar::draw(LevelRuntimeData* data)
 							ping_base = static_cast<unsigned char>(tempcolor+1);
 						else if (oborder == Order::Treasure)
 							ping_base = COLOR_FIRE;
+						else if (fx_landmark)
+							ping_base = tempcolor;
 						else
 							ping_base = COLOR_WHITE;
 						plot_ping_blip(static_cast<short>(tempx),
@@ -489,8 +519,25 @@ short radar::draw(LevelRuntimeData* data)
 						og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<unsigned char>(tempcolor+1), alpha);
 					else if (oborder == Order::Treasure) // currently life gems
 						og::runtime::current_session->myscreen_->pointb(tempx,tempy,COLOR_FIRE, alpha);
+					else if (fx_landmark)
+						og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);
 					else
 						og::runtime::current_session->myscreen_->pointb(tempx,tempy,COLOR_WHITE, alpha);
+
+					// A scripted beacon may name this exact landmark too (soccer's
+					// ball does). Remember every matching slot only after the blip
+					// was actually painted, so the beacon pass cannot overwrite the
+					// descriptor pulse with a second centre dot.
+					if (fx_landmark)
+					{
+						for (std::size_t slot = 0;
+						     slot < beacon_target_drawn.size(); ++slot)
+						{
+							if (data->world().mode.beacons[slot].entity_id ==
+							    static_cast<std::int32_t>(ob->entity_id()))
+								beacon_target_drawn[slot] = true;
+						}
+					}
 				}//draw the blob onto the radar
 			}
 		}
@@ -506,6 +553,13 @@ short radar::draw(LevelRuntimeData* data)
 				continue;
 			oborder  = ob->query_order();
 			obfamily = ob->family();
+			const og::RadarBlip* fam_blip =
+				radar_blip_for(oborder, obfamily);
+			const bool fx_landmark =
+				oborder == Order::FX && fam_blip != nullptr &&
+				fam_blip->landmark &&
+				(fam_blip->color > 0 ||
+				 fam_blip->color == og::kRadarColorTeam);
 
 			do_show = 0; // don't show, by default
 			if (oborder == Order::Treasure)
@@ -551,6 +605,19 @@ short radar::draw(LevelRuntimeData* data)
 							: base);
 				}
 			}
+			else if (fx_landmark)
+			{
+				TRACE("radar", "landmark_blip fam=%d",
+				      static_cast<int>(obfamily));
+				const Uint32 base =
+					fam_blip->color == og::kRadarColorTeam
+						? static_cast<Uint32>(ob->query_team_color())
+						: static_cast<Uint32>(fam_blip->color);
+				do_show = static_cast<short>(
+					fam_blip->jitter > 0
+						? base + rng(static_cast<Uint32>(fam_blip->jitter))
+						: base);
+			}
 			if (!on_screen( static_cast<short>((ob->xpos()+1)/GRID_SIZE),
 			                static_cast<short>((ob->ypos()+1)/GRID_SIZE),
 			                radarx, radary) )
@@ -573,9 +640,7 @@ short radar::draw(LevelRuntimeData* data)
 						Log("bad radar, bad\n");
 						return 1;
 					}
-					if (const og::RadarBlip* fam_blip =
-					        radar_blip_for(oborder, obfamily);
-					    fam_blip != nullptr && fam_blip->ping)
+					if (fam_blip != nullptr && fam_blip->ping)
 					{
 						// #209: oversized pulsing blip in the descriptor
 						// colour do_show already resolved (any jitter roll
@@ -592,23 +657,38 @@ short radar::draw(LevelRuntimeData* data)
 					{
 						og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<unsigned char>(do_show), alpha);
 					}
-				}//draw the blob onto the radar
+					if (fx_landmark)
+					{
+						for (std::size_t slot = 0;
+						     slot < beacon_target_drawn.size(); ++slot)
+						{
+							if (data->world().mode.beacons[slot].entity_id ==
+							    static_cast<std::int32_t>(ob->entity_id()))
+								beacon_target_drawn[slot] = true;
+						}
+					}
+					}//draw the blob onto the radar
 			} // end of valid do_show
 		}  // end of if here->ob
 	} // end of while (here)
 
-	// Scripted-mode beacon blips (og.set_beacon): unconditional landmarks in
-	// the beacon team color, resolved through the replicated entity id. The
-	// jitter-0 discipline applies — this render path draws from the game rng
-	// whose call count is part of the stream, so a beacon makes NO rng call.
+	// Scripted-mode beacon blips (og.set_beacon): unconditional landmarks
+	// resolved through the replicated entity id. Legacy beacon targets keep
+	// their team-coloured point; descriptor-declared FX landmarks use their
+	// own colour and pulse. Jitter 0 must make NO game-rng call.
 	{
 		const GameWorld& beacon_world = data->world();
 		if ((beacon_world.type & GameWorld::TYPE_SCRIPTED) &&
 		    beacon_world.mode.active)
 		{
-			for (const og::sim::ModeBeacon& beacon : beacon_world.mode.beacons)
+			for (std::size_t slot = 0; slot < beacon_world.mode.beacons.size();
+			     ++slot)
 			{
+				const og::sim::ModeBeacon& beacon =
+					beacon_world.mode.beacons[slot];
 				if (beacon.entity_id == 0)
+					continue;
+				if (beacon_target_drawn[slot])
 					continue;
 				const walker* target = beacon_world.find_by_id(
 					static_cast<std::uint32_t>(beacon.entity_id));
@@ -630,15 +710,49 @@ short radar::draw(LevelRuntimeData* data)
 				if (bx < xloc || bx > (xloc + xview) ||
 				    by < yloc || by > (yloc + yview))
 					continue;
-				// Score teams and FFA band bytes both name a ramp; anything
-				// else (255) falls back to the target's own team color.
-				const unsigned char beacon_color =
-					og::sim::is_scoring_identity(static_cast<int>(beacon.team))
-						? og::sim::team_ramp_base(
-							  static_cast<int>(beacon.team))
-						: target->query_team_color();
-				og::runtime::current_session->myscreen_->pointb(
-					bx, by, beacon_color, alpha);
+				// An FX landmark can deliberately use its beacon as a ground
+				// proxy (basketball's shadow): honour the proxy descriptor's
+				// colour, jitter and pulse. Other beacon orders retain the exact
+				// historical team-coloured single-point path below.
+				const og::RadarBlip* descriptor_blip =
+					target->query_order() == Order::FX
+						? radar_blip_for(target->query_order(), target->family())
+						: nullptr;
+				const bool descriptor_fx_landmark =
+					descriptor_blip != nullptr && descriptor_blip->landmark &&
+					(descriptor_blip->color > 0 ||
+					 descriptor_blip->color == og::kRadarColorTeam);
+				unsigned char beacon_color;
+				if (descriptor_fx_landmark)
+				{
+					const Uint32 base =
+						descriptor_blip->color == og::kRadarColorTeam
+							? static_cast<Uint32>(target->query_team_color())
+							: static_cast<Uint32>(descriptor_blip->color);
+					beacon_color = static_cast<unsigned char>(
+						descriptor_blip->jitter > 0
+							? base + rng(static_cast<Uint32>(descriptor_blip->jitter))
+							: base);
+					if (descriptor_blip->ping)
+						plot_ping_blip(static_cast<short>(bx),
+						               static_cast<short>(by), beacon_color,
+						               alpha, xloc, yloc, xview, yview);
+					else
+						og::runtime::current_session->myscreen_->pointb(
+							bx, by, beacon_color, alpha);
+				}
+				else
+				{
+					// Score teams and FFA band bytes both name a ramp; anything
+					// else (255) falls back to the target's own team color.
+					beacon_color =
+						og::sim::is_scoring_identity(static_cast<int>(beacon.team))
+							? og::sim::team_ramp_base(
+								  static_cast<int>(beacon.team))
+							: target->query_team_color();
+					og::runtime::current_session->myscreen_->pointb(
+						bx, by, beacon_color, alpha);
+				}
 				TRACE("radar", "beacon_blip id=%d x=%d y=%d color=%d",
 				      static_cast<int>(beacon.entity_id),
 				      static_cast<int>(bx), static_cast<int>(by),
@@ -896,6 +1010,10 @@ void radar::update(LevelRuntimeData* data)
 				case PIX_WATERGRASS_LR:
 				case PIX_WATERGRASS_UL:
 				case PIX_WATERGRASS_UR:
+				case PIX_WATERGRASS_U:
+				case PIX_WATERGRASS_L:
+				case PIX_WATERGRASS_R:
+				case PIX_WATERGRASS_D:
 				case PIX_GRASSWATER_LL:
 				case PIX_GRASSWATER_LR:
 				case PIX_GRASSWATER_UL:

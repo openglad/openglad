@@ -7,9 +7,9 @@
 -- The 4-frame strip in sprites/bshadow.png shrinks with altitude and the
 -- impl drives set_frame, so nothing here animates either.
 --
--- Not a radar landmark and no blip colour: the ball family already blips,
--- and beacon slot 0 points at this shadow, so a second blip on the same
--- object would only double-draw the ball.
+-- Beacon slot 0 points at this ground-truth proxy. Its descriptor supplies
+-- the basketball's one yellow radar pulse while the drawn ball rises with
+-- fake z, so an apex shot never produces a second, lifted objective dot.
 og.family("effect", {
   id = "modes:bshadow",
   wire_id = "auto",
@@ -23,7 +23,8 @@ og.family("effect", {
   glyph_color = "black",
   glyph_bold = true,
   glyph_transparent = false,
-  radar_color = "none",
+  radar_color = 88, -- COLOR_YELLOW, the nearest radar band to the orange art
   radar_jitter = 0,
-  radar_landmark = false,
+  radar_landmark = true,
+  radar_ping = true, -- #209: the ground-truth objective draws LOUD
 })
