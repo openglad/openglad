@@ -1192,9 +1192,47 @@ def build_lua_coverage(
 # ---------------------------------------------------------------------------
 
 
+def gcovr_lcov_1x_flag(base: List[str], repo_root: Path) -> str:
+    """Return the explicit LCOV-1.x option supported by this gcovr.
+
+    gcovr 8.4 spells it ``--lcov-format-1.x``.  Version 8.5 introduced
+    ``--lcov-format-version=1.x`` and deprecated (but retained) the old
+    spelling.  Inspecting --help lets one report invocation work cleanly on
+    both sides of that rename; deliberately trying an unknown option first
+    would print a CLI error even when a fallback later succeeded.
+    """
+    probe = subprocess.run(
+        base + ["--help"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    help_text = (probe.stdout or "") + (probe.stderr or "")
+    if probe.returncode != 0:
+        detail = help_text.strip()
+        detail_suffix = f": {detail}" if detail else ""
+        raise SystemExit(
+            f"gcovr --help failed with exit status {probe.returncode}; "
+            "coverage_report requires gcovr 8.4 or newer (install with "
+            "python3 -m pip install gcovr), or pass --cpp-tracefile"
+            + detail_suffix
+        )
+    if "--lcov-format-version" in help_text:
+        return "--lcov-format-version=1.x"
+    if "--lcov-format-1.x" in help_text:
+        return "--lcov-format-1.x"
+    raise SystemExit(
+        "gcovr does not advertise explicit LCOV 1.x output; "
+        "coverage_report requires gcovr 8.4 or newer, or a caller-supplied "
+        "--cpp-tracefile"
+    )
+
+
 def gcovr_tracefile(build_dir: Path, repo_root: Path, out: Path) -> None:
     gcovr = shutil.which("gcovr")
     base = [gcovr] if gcovr else [sys.executable, "-m", "gcovr"]
+    lcov_1x_flag = gcovr_lcov_1x_flag(base, repo_root)
     base += [
         "--root",
         str(repo_root),
@@ -1208,16 +1246,16 @@ def gcovr_tracefile(build_dir: Path, repo_root: Path, out: Path) -> None:
     # 1.x skips the per-file VER: checksum — and computing that checksum means
     # opening every source, which hard-fails on the stale .gcno an incremental
     # build keeps for sources the branch deleted.
-    attempts = [base + ["--lcov-format-version=1.x"] + tail, base + tail]
-    for cmd in attempts:
-        if out.exists():
-            out.unlink()
-        proc = subprocess.run(cmd, cwd=repo_root, check=False)
-        if proc.returncode == 0 and out.exists():
-            return
+    cmd = base + [lcov_1x_flag] + tail
+    if out.exists():
+        out.unlink()
+    proc = subprocess.run(cmd, cwd=repo_root, check=False)
+    if proc.returncode == 0 and out.exists():
+        return
     raise SystemExit(
-        "gcovr failed to produce a C++ tracefile; install gcovr "
-        "(python3 -m pip install gcovr) or pass --cpp-tracefile"
+        "gcovr failed to produce a C++ tracefile "
+        f"(exit status {proc.returncode}); install gcovr 8.4 or newer "
+        "or pass --cpp-tracefile"
     )
 
 

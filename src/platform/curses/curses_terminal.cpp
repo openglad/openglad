@@ -118,7 +118,9 @@ void on_fatal_signal(int sig)
 // Run the capability handshake on `in_fd`/`out_fd`. Returns true if the terminal
 // advertises Kitty keyboard support. Consumes (and discards) the handshake reply
 // so it never leaks into the key stream.
-bool detect_kitty_support(int in_fd, int out_fd)
+template <typename PollInput>
+bool detect_kitty_support_with_poll(int in_fd, int out_fd,
+                                    PollInput poll_input)
 {
     write_all(out_fd, kitty::kQuery);
 
@@ -130,14 +132,14 @@ bool detect_kitty_support(int in_fd, int out_fd)
         struct pollfd pfd{};
         pfd.fd = in_fd;
         pfd.events = POLLIN;
-        const int pr = ::poll(&pfd, 1, 50);
+        const int pr = poll_input(&pfd, 1, 50);
         if (pr < 0) {
             if (errno == EINTR)
                 continue;
             break;
         }
         if (pr == 0)
-            break; // no (more) data within this slice
+            continue; // honor the full probe budget across empty slices
         std::array<char, 256> tmp;
         const ssize_t n = ::read(in_fd, tmp.data(), tmp.size());
         if (n <= 0)
@@ -146,6 +148,15 @@ bool detect_kitty_support(int in_fd, int out_fd)
         supported = kitty::response_indicates_support(reply, done);
     }
     return supported;
+}
+
+bool detect_kitty_support(int in_fd, int out_fd)
+{
+    return detect_kitty_support_with_poll(
+        in_fd, out_fd,
+        [](pollfd* fds, nfds_t count, int timeout_ms) {
+            return ::poll(fds, count, timeout_ms);
+        });
 }
 
 #ifdef TESTING

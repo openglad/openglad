@@ -1856,6 +1856,104 @@ protected:
 
 }  // namespace
 
+// gcovr renamed its explicit LCOV-1.x switch in 8.5. The coverage wrapper
+// supports the Nix shell's 8.4 spelling and current CI's newer spelling, but
+// must not discover that distinction by launching a doomed report first:
+// that printed an argparse error before the old fallback silently emitted
+// LCOV 2.x. Exercise the real Python wrapper with a fake subprocess seam and
+// require exactly one report invocation for each advertised interface.
+TEST(CoverageReportGcovr, selects_the_advertised_lcov_1x_flag_once)
+{
+    const std::filesystem::path repo = find_repo_root();
+    ASSERT_FALSE(repo.empty());
+    const std::filesystem::path scratch =
+        make_unique_temp_dir("og_gcovr_contract_");
+    ASSERT_FALSE(scratch.empty());
+
+    write_text_file(scratch / "driver.py", std::string(R"PY(
+import pathlib
+import sys
+import types
+
+sys.path.insert(0, sys.argv[1])
+import coverage_report
+
+root = pathlib.Path(sys.argv[2])
+
+def exercise(help_text, expected):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        if cmd[-1] == "--help":
+            return types.SimpleNamespace(
+                returncode=0, stdout=help_text, stderr="")
+        assert expected in cmd, cmd
+        other = ("--lcov-format-1.x" if expected.startswith(
+            "--lcov-format-version") else "--lcov-format-version=1.x")
+        assert other not in cmd, cmd
+        out = pathlib.Path(cmd[cmd.index("--lcov") + 1])
+        out.write_text("TN:fake\n", encoding="utf-8")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    saved_which = coverage_report.shutil.which
+    saved_run = coverage_report.subprocess.run
+    coverage_report.shutil.which = lambda name: "/fake/gcovr"
+    coverage_report.subprocess.run = fake_run
+    try:
+        out = root / ("modern.info" if "version" in expected else
+                      "legacy.info")
+        coverage_report.gcovr_tracefile(root / "build", root, out)
+        assert out.read_text(encoding="utf-8") == "TN:fake\n"
+    finally:
+        coverage_report.shutil.which = saved_which
+        coverage_report.subprocess.run = saved_run
+
+    assert calls[0] == ["/fake/gcovr", "--help"], calls
+    assert len(calls) == 2, calls  # one capability probe, one real report
+
+exercise("  --lcov-format-1.x  Write LCOV 1.x\n",
+         "--lcov-format-1.x")
+exercise("  --lcov-format-version {1.x,2.0}\n"
+         "  --lcov-format-1.x  Deprecated\n",
+         "--lcov-format-version=1.x")
+
+# An older gcovr must fail at the capability check, not fall through to its
+# default LCOV dialect and produce a report that only happens to parse.
+saved_run = coverage_report.subprocess.run
+coverage_report.subprocess.run = lambda cmd, **kwargs: types.SimpleNamespace(
+    returncode=0, stdout="  --lcov OUTPUT\n", stderr="")
+try:
+    try:
+        coverage_report.gcovr_lcov_1x_flag(["/fake/old-gcovr"], root)
+        raise AssertionError("gcovr without explicit LCOV 1.x was accepted")
+    except SystemExit as exc:
+        assert "requires gcovr 8.4 or newer" in str(exc), exc
+finally:
+    coverage_report.subprocess.run = saved_run
+
+print("GCOVR-CONTRACT-OK")
+)PY"));
+
+    const std::filesystem::path log = scratch / "driver.log";
+    const std::string cmd =
+        "env -u OPENGLAD_LUA_COVERAGE python3 '" +
+        (scratch / "driver.py").string() + "' '" +
+        (repo / "scripts" / "coverage").string() + "' '" +
+        scratch.string() + "' > '" + log.string() + "' 2>&1";
+    const int rc = std::system(cmd.c_str());
+#if defined(WIFEXITED)
+    const int exit_code = WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
+#else
+    const int exit_code = rc;
+#endif
+    const std::string output = read_text_file(log);
+    EXPECT_EQ(0, exit_code) << output;
+    EXPECT_NE(std::string::npos, output.find("GCOVR-CONTRACT-OK"))
+        << output;
+    std::filesystem::remove_all(scratch);
+}
+
 // N1's demonstrated attack: a dump declares a 2-line stub as the source of
 // packs/core/families/living-17-archmage.lua while recording hits on the real file's
 // lines. While declarations pooled across dumps by chunk name, those hits

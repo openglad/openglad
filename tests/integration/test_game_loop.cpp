@@ -7175,6 +7175,11 @@ void camera_soccer_boot(screen* game_screen, int seats)
     save.scen_num = kCameraSoccerLevel;
     save.numplayers = static_cast<unsigned char>(seats);
     save.my_team = 0;
+    // SaveData::reset deliberately preserves lobby match settings. Establish
+    // the whole lineup baseline before opting team 1 into its FAIR bot squad,
+    // so a shuffled predecessor cannot change this fixture's battle shape.
+    save.fill.fill(og::sim::kFillNone);
+    save.map_units.fill(og::sim::kMapUnitsOn);
     save.fill[0] = og::sim::kFillNone;   // team 0 is this machine's crew
     save.fill[1] = og::sim::kFillFair;   // the opposing side, bot-filled
     for (int i = 0; i < seats; ++i)
@@ -7223,6 +7228,17 @@ void camera_soccer_teardown(screen* game_screen)
         *og::runtime::current_game_session);
     game_screen->world().delete_objects();
     game_screen->world().end = 0;
+    // The fixture switched both the mounted package and the saved campaign,
+    // and opted into a FAIR fill. Put the process-wide display save back on a
+    // complete classic baseline: reset() clears the campaign/roster half but
+    // intentionally carries lobby match settings, so scrub the coupled
+    // lineup arrays explicitly before rewriting save0.
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.fill.fill(og::sim::kFillNone);
+    save.map_units.fill(og::sim::kMapUnitsOn);
+    EXPECT_TRUE(save.save("save0"));
     game_screen->ready_for_battle(1);
     game_screen->relayout_views();
     (void)unmount_campaign_package_with_error(get_mounted_campaign());

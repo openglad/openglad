@@ -28,12 +28,17 @@
 #include <array>
 #include <chrono>
 #include <exception>
+#include <optional>
 #include <random>
 #include <utility>
 
 namespace og::server {
 
 namespace {
+
+#ifdef TESTING
+std::optional<std::uint32_t> s_match_seed_for_testing;
+#endif
 
 // Save/restore context swap (the curses-session bracketing). NOT
 // GameplayContextGuard: the guard asserts against re-entrant installation of
@@ -786,12 +791,23 @@ void StagedPreviewMirror::apply_retained_pair(std::string_view current_campaign,
 
 std::uint32_t draw_match_seed()
 {
+#ifdef TESTING
+    if (s_match_seed_for_testing.has_value())
+        return *s_match_seed_for_testing;
+#endif
     std::random_device device;
     const std::uint64_t clock_bits = static_cast<std::uint64_t>(
         std::chrono::steady_clock::now().time_since_epoch().count());
     return device() ^ static_cast<std::uint32_t>(clock_bits) ^
         static_cast<std::uint32_t>(clock_bits >> 32);
 }
+
+#ifdef TESTING
+void set_match_seed_for_testing(std::optional<std::uint32_t> seed)
+{
+    s_match_seed_for_testing = seed;
+}
+#endif
 
 std::uint64_t stage_clock_now_ms()
 {

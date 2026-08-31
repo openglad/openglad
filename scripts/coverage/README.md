@@ -28,10 +28,13 @@ the union all meet the thresholds. It writes `build/ci-coverage/coverage/`:
 | `combined.info` | both halves in one tracefile — feed to `genhtml` / `lcov` |
 | `summary.json` | totals plus a per-Lua-file breakdown |
 
-`gcovr` must be on `PATH` (`python3 -m pip install gcovr`). Lua-only numbers
-need no gcov build at all, so the same two targets work in the much cheaper
-`ci-test` preset — the report then says the C++ half was not measured and
-does not apply its bar (a half nobody requested is different from a
+`gcovr` 8.4 or newer must be on `PATH` (`python3 -m pip install gcovr`). 8.4
+spells explicit LCOV-1.x output `--lcov-format-1.x`; 8.5 and newer spell it
+`--lcov-format-version=1.x`. The report inspects `gcovr --help` and selects
+the advertised form before its single collection invocation. Lua-only
+numbers need no gcov build at all, so the same two targets work in the much
+cheaper `ci-test` preset — the report then says the C++ half was not measured
+and does not apply its bar (a half nobody requested is different from a
 requested half that found nothing, which is an error). The CI gate always
 measures both.
 

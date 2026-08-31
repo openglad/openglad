@@ -14,6 +14,7 @@
 #include <openglad/core/util.h>
 #include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 
 #include <atomic>
 
@@ -313,24 +314,39 @@ static int fairy_injector(void* data)
         return fail_fairy_run(state, "team menu did not appear after hiring");
     SDL_Delay(kUiSettleMs);
 
-    if (og::runtime::current_session->myscreen_->save_data.team_size < 1 ||
-        !og::runtime::current_session->myscreen_->save_data.team_list[0]) {
-        return fail_fairy_run(state,
-                              "expected hired fairy before starting level");
-    }
-
-    guy* const fairy =
-        og::runtime::current_session->myscreen_->save_data.team_list[0].get();
-    if (fairy->family != FAMILY_FAERIE)
-        return fail_fairy_run(state, "expected lone hired unit to be the fairy");
-
     // Roster stats and the level id land on the menu thread too: the team
-    // menu's per-frame label sync reads both (#257).
-    (void)run_on_main_thread([fairy] {
-        fairy->constitution = kFairyFragileConstitution;
-        fairy->armor = kFairyFragileArmor;
-        og::runtime::current_session->myscreen_->save_data.scen_num = 4;
-    });
+    // menu's per-frame label sync reads both (#257). A lobby poll also rebuilds
+    // every roster unique_ptr from the authoritative state, so resolve the
+    // current slot inside this task and push both edits before another poll can
+    // replace it. No raw guy pointer may cross that frame boundary.
+    bool fairy_configured = false;
+    if (!run_on_main_thread([&fairy_configured] {
+            SaveData& save =
+                og::runtime::current_session->myscreen_->save_data;
+            if (save.team_size < 1 || !save.team_list[0] ||
+                save.team_list[0]->family != FAMILY_FAERIE) {
+                return;
+            }
+
+            save.team_list[0]->constitution = kFairyFragileConstitution;
+            save.team_list[0]->armor = kFairyFragileArmor;
+            save.scen_num = 4;
+            picker_lobby_sync_from_save();
+
+            const std::unique_ptr<guy>& synced_fairy = save.team_list[0];
+            fairy_configured = synced_fairy &&
+                synced_fairy->family == FAMILY_FAERIE &&
+                synced_fairy->constitution == kFairyFragileConstitution &&
+                synced_fairy->armor == kFairyFragileArmor &&
+                save.scen_num == 4;
+        })) {
+        return fail_fairy_run(
+            state, "fairy setup never reached the menu thread");
+    }
+    if (!fairy_configured) {
+        return fail_fairy_run(
+            state, "expected synchronized lone fairy on level 4");
+    }
     set_game_speed(0.0f);
 
     fprintf(stderr, "  [test] clicking go\n");
