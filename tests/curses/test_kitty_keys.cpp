@@ -15,6 +15,7 @@ using namespace og::curses;
 using og::curses::kitty::Decoder;
 
 namespace og::curses {
+int curses_terminal_testing_delayed_handshake_poll_count();
 int curses_terminal_testing_exercise_internal_helpers();
 }
 
@@ -314,6 +315,11 @@ TEST(KittyKeys, response_indicates_support_partial_not_done)
     // The kitty reply arrived but the DA reply has not yet -> supported, not done.
     EXPECT_TRUE(kitty::response_indicates_support("\x1b[?0u", done));
     EXPECT_FALSE(done);
+}
+
+TEST(CursesTerminalInternals, capability_probe_waits_past_an_empty_poll_slice)
+{
+    EXPECT_EQ(2, curses_terminal_testing_delayed_handshake_poll_count());
 }
 
 TEST(CursesTerminalInternals, pure_helpers_cover_color_write_and_capability_probe)

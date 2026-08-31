@@ -5150,13 +5150,15 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             }
         }
     }
-    bool both_ended_level2 = false;
-    for (int round = 0; round < 80 && !both_ended_level2; ++round)
-    {
+    // The joiner consumes gameplay over a real websocket callback thread.
+    // Keep pumping until the exact terminal predicate lands, as for level 1
+    // above; a fixed tight loop can run all of its iterations before that
+    // thread gets scheduled even though the authoritative win was emitted.
+    const bool both_ended_level2 = wait_until([&] {
         pump(5);
-        both_ended_level2 = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     ASSERT_TRUE(both_ended_level2)
         << "both peers must finish the forced level-2 win";
 

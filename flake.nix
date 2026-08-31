@@ -225,6 +225,8 @@
             physfs
             pkg-config
             python3
+            # Local coverage runs use the same gcovr report input as CI.
+            gcovr
             zlib
             # Web target: emcmake/emcc for the web-emscripten preset, so the
             # wasm build is reachable from the dev shell instead of needing a

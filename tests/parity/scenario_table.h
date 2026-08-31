@@ -1185,7 +1185,8 @@ inline constexpr Mutation kMut_snapshot_dirty = {
     "src/gameplay/game_world.cpp", 1680,
     "level_done = 2;",
     "level_done = []{ static int _n = 0; return _n++; }();",
-    "Uses a static-counter level_done assignment so successive run_scenario() captures differ. The value flows into the snapshot and breaks dual-capture byte equality, flipping the Invariant determinism check."
+    "Uses a static-counter level_done assignment so successive run_scenario() captures differ. The value flows into the snapshot and breaks dual-capture byte equality, flipping the Invariant determinism check.",
+    "    ending = 0;"
 };
 
 // Per-special mutations. Each one points at the named family's
@@ -2093,8 +2094,8 @@ inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
 inline constexpr Mutation kMut_weapon_tree_emission = {
     "src/gameplay/weap.cpp", 95,
     "if (!wfd || !wfd->skip_sit_notify)",
-    "if (family() == FAMILY_TREE) setxy(static_cast<short>(xpos() + 2), ypos()); if (!wfd || !wfd->skip_sit_notify)",
-    "ACT_SIT case in weap::act() normally leaves the direct-spawn tree fixed at its spawn xy; this family-gated nudge advances FAMILY_TREE +2px/tick every tick it sits, so its weapon_tracks path becomes a straight x-run (pathlen ~= 29800 centi over 149 steps, max step = 200 centi). WeaponNetTravel(FAMILY_TREE,STATIONARY,200) flips (29800 > 200) and WeaponSpeed(FAMILY_TREE,0,0) flips (200 > 0)."
+    "if (family() == FAMILY_TREE) { setxy(static_cast<short>(xpos() + 2), ypos()); } if (!wfd || !wfd->skip_sit_notify)",
+    "ACT_SIT case in weap::act() normally leaves the direct-spawn tree fixed at its spawn xy; this family-gated nudge advances FAMILY_TREE +2px/tick every tick it sits, so its weapon_tracks path becomes a straight x-run (pathlen ~= 29800 centi over 149 steps, max step = 200 centi). WeaponNetTravel(FAMILY_TREE,STATIONARY,200) flips (29800 > 200) and WeaponSpeed(FAMILY_TREE,0,0) flips (200 > 0). Bracing the injected family guard keeps the adjacent original if unambiguous under -Wmisleading-indentation."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_meteor_emission[] = {
@@ -4741,25 +4742,26 @@ inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
 //
 // Three living walkers on THREE distinct teams share one arena: a player-team
 // soldier (team 0) at (120,120), a thief (team 2) at (140,140), and an archer
-// (team 1) at (200,200). None carry a myguy pointer, so is_friendly
-// (walker.cpp:1675-1742) falls into the no-myguy branch (has_myguy == 0,
-// lines 1711-1716) and the friendliness verdict reduces to the bare team-number
-// comparison on the load-bearing line 1723:
+// (team 1) at (200,200). None has an owner, so each owner-chain head is the
+// walker itself and is_friendly's verdict reduces to the bare team-number
+// comparison on the load-bearing walker.cpp:2303 line:
 // `headus->team_num() == headtarget->team_num()`. Because all three team
 // numbers differ, every pair is mutually hostile: the adjacent soldier and thief
 // trade blows, the cross-team melee spills toward the archer, and the arena emits
 // a stream of combat play_sound events (branch ~10, master ~12 at the 44-tick
 // budget). All three survive the budget.
 //
-// MUTATION DISCRIMINATOR — play_sound, not archer HP. The mutation rewrites
-// line 1723 to `return 1`, making EVERY pair mutually friendly regardless of
-// team. With no hostile pairs nobody attacks: every walker keeps full HP and the
+// MUTATION DISCRIMINATOR — play_sound, not archer HP. The mutation keeps an
+// owner-chain head friendly to itself but inverts the line-2303 comparison for
+// distinct heads, making every differently colored pair mutually friendly.
+// With no hostile pairs nobody attacks: every walker keeps full HP and the
 // combat-sound stream collapses to the player's lone scripted fire (play_sound
-// == 1, below the floor of 4). The archer's HP cannot be the discriminator here:
-// it must stay alive on BOTH sides, and at this budget the master leaves it
-// untouched at its spawn HP (~90) even unmutated, so its window has to bracket
-// the full no-damage..some-damage span ([0,100]) and necessarily also admits the
-// mutated full-HP value. The honest, side-stable falsification signal is
+// == 1, below the floor of 4). The archer's HP cannot be the
+// discriminator here: it must stay alive on BOTH sides, and at this budget the
+// master leaves it untouched at its spawn HP (~90) even unmutated, so its
+// window has to bracket the full no-damage..some-damage span ([0,100]) and
+// necessarily also admits the mutated full-HP value. The honest, side-stable
+// falsification signal is
 // therefore the play_sound count; the archer-HP row asserts only that the
 // third team's walker survives. The branch and master combat trajectories
 // diverge in the survivors' exact HP (branch soldier ~96 / thief ~56 /
@@ -4774,7 +4776,7 @@ inline constexpr InputEvent kInputs_multiplayer_two_teams[] = {
 
 inline constexpr SpawnSpec kFamilySpawns_multiplayer_two_teams_scen99[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 3, 200 }, // player-team soldier (team 0)
-    { FAMILY_THIEF,   2, kOrderLiving, 140, 140, 0, 0, 3, 200 }, // team-2 thief: hostile to both other teams via the line-1723 comparison
+    { FAMILY_THIEF,   2, kOrderLiving, 140, 140, 0, 0, 3, 200 }, // team-2 thief: hostile to both other teams via the line-2303 comparison
     { FAMILY_ARCHER,  1, kOrderLiving, 200, 200, 0, 0 },         // team-1 archer: third distinct team; survives the budget on both sides
 };
 
@@ -4786,14 +4788,14 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
     // friendliness mutation's discriminator is the play_sound floor below.
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 9000, 9000),
     pred::EventKindAtLeast(/*play_sound*/1, 4,
-        "consequence: the soldier (team 0), thief (team 2), and archer (team 1) carry three distinct team_nums and none holds a myguy pointer, so is_friendly takes the no-myguy branch and the verdict reduces to the team_num comparison on walker.cpp:1723; because the numbers differ every pair is hostile and the units trade blows, emitting a stream of combat play_sound events (branch ~10, master ~12). The mutation rewrites line 1723 to `return 1`, making every pair friendly: combat ceases, only the player's lone scripted fire remains, and the play_sound count collapses to 1 — below this floor of 4."),
+        "consequence: the soldier (team 0), thief (team 2), and archer (team 1) carry three distinct team_nums and no owners, so is_friendly reduces to the team_num comparison on walker.cpp:2303; because the numbers differ every pair is hostile and the units trade blows, emitting a stream of combat play_sound events (branch ~10, master ~12). The mutation keeps identical owner-chain heads friendly but inverts the comparison for distinct heads, making every differently colored pair friendly: combat ceases, only the player's lone scripted fire remains, and the play_sound count collapses to 1 — below this floor of 4."),
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
     "src/gameplay/walker.cpp", 2303,
     "return headus->team_num() == headtarget->team_num();",
-    "return 1;",
-    "Replaces the no-myguy team-number comparison with unconditional friendliness. The three-team melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
+    "return headus == headtarget || headus->team_num() != headtarget->team_num();",
+    "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
 };
 
 // Level-withdraw scenario. Reuses scripted_input_scen9301's spawn list

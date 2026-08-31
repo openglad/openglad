@@ -4,15 +4,20 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 #include <openglad/core/util.h>
 
 #include <atomic>
+#include <cstdint>
+#include <optional>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -31,6 +36,27 @@ constexpr Uint32 kCycleStepMs = 100;
 constexpr int kTeamMenuTimeoutMs = 20000;
 constexpr int kGameStartTimeoutMs = 20000;
 constexpr int kGameFinishTimeoutMs = 90000;
+// Real staged lobbies draw non-simulation entropy once per round. Pin this
+// battle so the victory oracle exercises one reproducible fight instead of a
+// random_device/clock-selected trajectory.
+constexpr std::uint32_t kBattleSeed = 0x0F00A90Eu;
+
+class ScopedMatchSeed final
+{
+public:
+    explicit ScopedMatchSeed(std::uint32_t seed)
+    {
+        og::server::set_match_seed_for_testing(seed);
+    }
+
+    ~ScopedMatchSeed()
+    {
+        og::server::set_match_seed_for_testing(std::nullopt);
+    }
+
+    ScopedMatchSeed(const ScopedMatchSeed&) = delete;
+    ScopedMatchSeed& operator=(const ScopedMatchSeed&) = delete;
+};
 }
 
 
@@ -102,7 +128,24 @@ struct OpState {
     bool finished;
     float original_speed;
     int num_hired;
+    const char* failure_message;
 };
+
+static int fail_op_run(OpState* state, const char* message)
+{
+    fprintf(stderr, "  [test] ERROR: %s\n", message);
+    state->failure_message = message;
+    set_game_speed(state->original_speed);
+    g_test_remove_exits = false;
+
+    // Leave the team screen so picker_main can return and the owning test can
+    // report the setup failure instead of hanging in SDL_WaitThread.
+    if (wait_for_interactable("back", 2000)) {
+        SDL_Delay(kUiSettleMs);
+        interact("back");
+    }
+    return 0;
+}
 
 static int op_injector(void* data)
 {
@@ -165,22 +208,75 @@ static int op_injector(void* data)
     SDL_Delay(kUiSettleMs);
 
     // Programmatically crank every stat to ludicrous levels
-    state->num_hired = og::runtime::current_session->myscreen_->save_data.team_size;
-    fprintf(stderr, "  [test] hired %d characters, cheating stats\n", state->num_hired);
     // On the menu thread (#257): the team menu draws these roster fields
     // every frame.
-    (void)run_on_main_thread([] {
-        for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; i++) {
-            guy* g = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].get();
-            if (g) {
-                g->strength = 200;
-                g->dexterity = 200;
-                g->constitution = 200;
-                g->intelligence = 200;
-                g->armor = 200;
-            }
+    bool roster_configured = false;
+    if (!run_on_main_thread([state, &roster_configured] {
+        SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        state->num_hired = save.team_size;
+        for (auto& member : save.team_list) {
+            if (!member)
+                continue;
+            member->strength = 200;
+            member->dexterity = 200;
+            member->constitution = 200;
+            member->intelligence = 200;
+            member->armor = 200;
         }
-    });
+
+        // The lobby is authoritative and the next menu-frame poll rebuilds
+        // team_list from it. Publish the cheated roster, drive the stage from
+        // that authoritative state on this same main-thread turn, then prove
+        // both the rebuilt save and the world GO will adopt carry the setup.
+        picker_lobby_sync_roster_from_save();
+        picker_lobby_poll();
+
+        const auto roster_is_overpowered = [state](const SaveData& roster) {
+            int verified_members = 0;
+            for (const auto& member : roster.team_list) {
+                if (!member)
+                    continue;
+                ++verified_members;
+                if (member->strength != 200 || member->dexterity != 200 ||
+                    member->constitution != 200 ||
+                    member->intelligence != 200 || member->armor != 200) {
+                    return false;
+                }
+            }
+            return roster.team_size == state->num_hired &&
+                verified_members == state->num_hired;
+        };
+        const auto lineup_is_baseline = [](const SaveData& roster) {
+            for (std::size_t team = 0; team < roster.fill.size(); ++team) {
+                if (roster.fill[team] != og::sim::kFillNone ||
+                    roster.map_units[team] != og::sim::kMapUnitsOn) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        og::ui::IPickerLobbyClient* const lobby =
+            og::ui::active_picker_lobby_client();
+        og::server::MatchStage* const stage =
+            lobby != nullptr ? lobby->take_match_stage() : nullptr;
+        if (stage == nullptr || stage->match_seed() != kBattleSeed ||
+            !stage->ensure_current(og::server::stage_clock_now_ms())) {
+            return;
+        }
+        roster_configured = roster_is_overpowered(save) &&
+            roster_is_overpowered(stage->staged_save()) &&
+            lineup_is_baseline(save) &&
+            lineup_is_baseline(stage->staged_save());
+    }))
+        return fail_op_run(
+            state, "roster preparation never reached the menu thread");
+    if (!roster_configured)
+        return fail_op_run(
+            state, "authoritative stage did not retain roster/rule setup");
+    fprintf(stderr, "  [test] hired %d characters, cheating stats\n",
+            state->num_hired);
 
     // Set up for auto-win: remove exits so level completes when enemies die
     g_test_remove_exits = true;
@@ -242,14 +338,29 @@ static int op_injector(void* data)
 
 TEST(OverpoweredTeam, overpowered_team) {
     trace_clear();
+    const ScopedMatchSeed match_seed(kBattleSeed);
+    ASSERT_EQ(kBattleSeed, og::server::draw_match_seed());
 
     // Start with empty team
-    og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    // Company resets preserve lobby match settings by design. This test's
+    // oracle assumes only the authored level-1 armies: no injected squads,
+    // with every map-authored unit still enabled.
+    save.fill.fill(og::sim::kFillNone);
+    save.map_units.fill(og::sim::kMapUnitsOn);
+    ASSERT_TRUE(save.save("save0"));
 
-    OpState state = { false, false, og::runtime::current_session->g_game_speed_factor_, 0 };
+    OpState state = {
+        false,
+        false,
+        og::runtime::current_session->g_game_speed_factor_,
+        0,
+        nullptr,
+    };
     SDL_Thread* thread = SDL_CreateThread(op_injector, "op_injector", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -265,6 +376,8 @@ TEST(OverpoweredTeam, overpowered_team) {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    ASSERT_EQ(nullptr, state.failure_message)
+        << "injector setup failed: " << state.failure_message;
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.num_hired >= 5) << "should have hired at least 5 characters via UI";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.is_level_completed(1)) << "level 1 should be marked completed (team should have won)";
