@@ -442,13 +442,17 @@ export class GameRoom extends DurableObject {
       return;
     }
 
-    await this.broadcastJson({ type: "peer_left", peer_id: peerId });
     if (this.peers.size === 0) {
       this.stateData.empty_since = Date.now();
     }
     await this.persistState();
     await this.updateRegistryEntry();
     await this.scheduleAlarm();
+
+    // Treat peer_left as the externally observable commit signal: once a
+    // remaining peer receives it, the registry must already expose the new
+    // membership count.
+    await this.broadcastJson({ type: "peer_left", peer_id: peerId });
   }
 
   /** Notify remaining peers (peer_left for `leavingPeerId`, when given), close

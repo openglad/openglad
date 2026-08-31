@@ -46,15 +46,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <charconv>
 #include <format>
 #include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
 #include <optional>
-#include <regex>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -202,6 +203,29 @@ struct ManifestRow {
     int cap_team0 = -1;  // spawn_caps[0], -1 = absent
 };
 
+std::optional<int> parse_decimal(std::string_view text)
+{
+    int value = 0;
+    const auto [end, error] =
+        std::from_chars(text.data(), text.data() + text.size(), value);
+    if (error != std::errc{} || end != text.data() + text.size())
+        return std::nullopt;
+    return value;
+}
+
+std::optional<int> parse_wrapped_decimal(std::string_view line,
+                                         std::string_view prefix,
+                                         std::string_view suffix)
+{
+    if (!line.starts_with(prefix) || !line.ends_with(suffix) ||
+        line.size() < prefix.size() + suffix.size())
+    {
+        return std::nullopt;
+    }
+    return parse_decimal(line.substr(
+        prefix.size(), line.size() - prefix.size() - suffix.size()));
+}
+
 std::map<int, ManifestRow> parse_manifest()
 {
     std::map<int, ManifestRow> rows;
@@ -209,20 +233,16 @@ std::map<int, ManifestRow> parse_manifest()
                              "/modes/packs/modes.core/lib/mode_levels.lua";
     std::ifstream in(path);
     EXPECT_TRUE(in.is_open()) << "cannot open " << path;
-    static const std::regex kRowStart(R"(^  \[(\d+)\] = \{$)");
-    static const std::regex kIntField(
-        R"(^    (teams|fighters|time_limit|score_limit) = (\d+),$)");
-    static const std::regex kModeField(R"re(^    mode = "(\w+)",$)re");
-    static const std::regex kCapEntry(R"(^      \[(\d+)\] = (\d+),$)");
     int current = -1;
     bool in_caps = false;
     std::string line;
     while (std::getline(in, line))
     {
-        std::smatch m;
-        if (std::regex_match(line, m, kRowStart))
+        const std::string_view view = line;
+        if (const auto row = parse_wrapped_decimal(view, "  [", "] = {");
+            row.has_value())
         {
-            current = std::stoi(m[1]);
+            current = *row;
             in_caps = false;
             continue;
         }
@@ -235,30 +255,53 @@ std::map<int, ManifestRow> parse_manifest()
         }
         if (in_caps)
         {
-            if (std::regex_match(line, m, kCapEntry))
+            constexpr std::string_view kCapPrefix = "      [";
+            const std::size_t split = view.find("] = ");
+            if (view.starts_with(kCapPrefix) && split != view.npos &&
+                view.ends_with(','))
             {
-                if (std::stoi(m[1]) == 0)
-                    rows[current].cap_team0 = std::stoi(m[2]);
+                const auto team = parse_decimal(view.substr(
+                    kCapPrefix.size(), split - kCapPrefix.size()));
+                const auto value = parse_decimal(view.substr(
+                    split + 4, view.size() - (split + 4) - 1));
+                if (team == 0 && value.has_value())
+                    rows[current].cap_team0 = *value;
             }
             else if (line == "    },")
                 in_caps = false;
             continue;
         }
-        if (std::regex_match(line, m, kModeField))
+        constexpr std::string_view kModePrefix = "    mode = \"";
+        constexpr std::string_view kModeSuffix = "\",";
+        if (view.starts_with(kModePrefix) && view.ends_with(kModeSuffix))
         {
-            rows[current].mode = m[1];
+            rows[current].mode = view.substr(
+                kModePrefix.size(),
+                view.size() - kModePrefix.size() - kModeSuffix.size());
         }
-        else if (std::regex_match(line, m, kIntField))
+        else if (const auto teams_value =
+                     parse_wrapped_decimal(view, "    teams = ", ",");
+                 teams_value.has_value())
         {
-            const int value = std::stoi(m[2]);
-            if (m[1] == "teams")
-                rows[current].teams = value;
-            else if (m[1] == "fighters")
-                rows[current].fighters = value;
-            else if (m[1] == "time_limit")
-                rows[current].time_limit = value;
-            else
-                rows[current].score_limit = value;
+            rows[current].teams = *teams_value;
+        }
+        else if (const auto fighters_value =
+                     parse_wrapped_decimal(view, "    fighters = ", ",");
+                 fighters_value.has_value())
+        {
+            rows[current].fighters = *fighters_value;
+        }
+        else if (const auto time_value = parse_wrapped_decimal(
+                     view, "    time_limit = ", ",");
+                 time_value.has_value())
+        {
+            rows[current].time_limit = *time_value;
+        }
+        else if (const auto score_value = parse_wrapped_decimal(
+                     view, "    score_limit = ", ",");
+                 score_value.has_value())
+        {
+            rows[current].score_limit = *score_value;
         }
     }
     return rows;

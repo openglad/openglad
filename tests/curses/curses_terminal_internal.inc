@@ -1,6 +1,46 @@
 // Test-only definition included by curses_terminal.cpp under TESTING. Keeping
 // orchestration in tests/ prevents source coverage from counting harness code.
 
+int curses_terminal_testing_delayed_handshake_poll_count()
+{
+    int input_pipe[2]{};
+    int output_pipe[2]{};
+    if (::pipe(input_pipe) != 0)
+        return -1;
+    ScopedFd input_read(input_pipe[0]);
+    ScopedFd input_write(input_pipe[1]);
+    if (::pipe(output_pipe) != 0)
+        return -1;
+    ScopedFd output_read(output_pipe[0]);
+    ScopedFd output_write(output_pipe[1]);
+
+    int poll_count = 0;
+    bool poll_contract_valid = true;
+    const bool supported = detect_kitty_support_with_poll(
+        input_read.get(), output_write.get(),
+        [&](pollfd* fds, nfds_t count, int timeout_ms) {
+            ++poll_count;
+            poll_contract_valid = poll_contract_valid && count == 1 &&
+                fds[0].fd == input_read.get() &&
+                (fds[0].events & POLLIN) != 0 && timeout_ms == 50;
+            if (poll_count == 1)
+                return 0; // No response during the first polling slice.
+            if (poll_count == 2 &&
+                !write_all(input_write.get(), "\x1b[?11u\x1b[?62;1c"))
+                return -1;
+            return ::poll(fds, count, timeout_ms);
+        });
+
+    output_write.reset();
+    std::vector<char> query(kitty::kQuery.size());
+    const ssize_t query_size =
+        ::read(output_read.get(), query.data(), query.size());
+    const bool query_matches =
+        query_size == static_cast<ssize_t>(kitty::kQuery.size()) &&
+        std::string_view(query.data(), query.size()) == kitty::kQuery;
+    return supported && poll_contract_valid && query_matches ? poll_count : -1;
+}
+
 int curses_terminal_testing_fatal_signal_probe()
 {
     sigset_t blocked{};

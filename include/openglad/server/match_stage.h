@@ -43,6 +43,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -387,6 +388,12 @@ private:
 // WITHIN a round reuses the latched seed, so identical inputs cannot flicker
 // the preview).
 [[nodiscard]] std::uint32_t draw_match_seed();
+#ifdef TESTING
+// Process-local deterministic seam for end-to-end lobby launches. nullopt
+// restores the production entropy source; callers must scope the override so
+// one test cannot choose another test's staged world.
+void set_match_seed_for_testing(std::optional<std::uint32_t> seed);
+#endif
 
 // The owners' debounce clock (SDL-free steady clock, milliseconds).
 [[nodiscard]] std::uint64_t stage_clock_now_ms();

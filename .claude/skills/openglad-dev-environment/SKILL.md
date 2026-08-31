@@ -116,9 +116,9 @@ text-client sessions must mount a campaign up front
 - `nix develop` provides the toolchain (GCC, cmake/ninja, SDL3, emcc,
   ffmpeg, imagemagick). Note SDL2 in the shell is sdl2-compat over SDL3,
   not real SDL2 — CI uses real libsdl2 where it needs SDL2.
-- **gcovr is NOT in the flake** (CI pip-installs it). Local coverage
-  runs need it on PATH; the clean fix is adding it to the flake dev
-  shell.
+- **gcovr is in the nix dev shell**, so local coverage runs need no separate
+  install. CI's Ubuntu runner still installs gcovr with pip before configuring
+  the coverage preset.
 - Parity companion: `git worktree add ../openglad-master
   parity-companion` and build `parity_dump_master` there (SDL2-era —
   see openglad-parity for the pkg-config recipe).
