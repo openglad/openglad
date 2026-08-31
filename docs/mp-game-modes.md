@@ -363,8 +363,9 @@ than the number above and they all play, up to sixteen.
   the clock runs out. Last team standing wins.
 - **Soccer** (820-823): hit the ball to send it flying; a fast ball hurts
   and bounces off whoever it hits. Fully inside the enemy goal strip = a
-  goal for the last-touching team. A ball that reaches water keeps moving
-  but bogs down hard; strike it again with a projectile to shoot it loose.
+  goal for the last-touching team. A ball that reaches water floats onward
+  while steadily slowing, then bogs sharply at the far shore; strike it again
+  with a projectile to shoot it loose.
   THE MUDBOWL's two pools make that recovery part of the field. Its automatic
   teams trade the usual mage for an orc so hunt-AI teleports cannot strand a
   bot across a pool; player-roster mages are unchanged. Dead heroes respawn,

@@ -106,6 +106,10 @@ local T = {
   drive_cross = 24,
   drive_cross_hold = 32,
   drive_reach = 10,
+  -- A floating ball sheds speed throughout the puddle, then takes the old
+  -- one-quarter bog only when its footprint clears the far shoreline.
+  water_keep = 248,
+  water_shore_keep = 64,
   water_recover_speed = 256, -- <= 1 px/tick L1: shoot a bogged ball loose
 }
 
@@ -277,10 +281,40 @@ local function run_shots(ball)
   return false
 end
 
+-- Sample every integer center the footprint can expose to terrain. Substep
+-- endpoints alone can straddle a narrow dry bank with wet footprints at both
+-- ends; once any sampled center clears water, that shoreline impact remains
+-- load-bearing even if the ball enters another pool before the tick ends.
+local function classify_water_sweep(ball, from_px, from_py, to_px, to_py,
+                                    on_water, touched_water, cleared_shore)
+  local from_x = og.div(from_px, 256)
+  local from_y = og.div(from_py, 256)
+  local delta_x = og.div(to_px, 256) - from_x
+  local delta_y = og.div(to_py, 256) - from_y
+  local sample_count = og.max(iabs(delta_x), iabs(delta_y))
+  if sample_count == 0 then
+    return on_water, touched_water, cleared_shore
+  end
+  for sample = 1, sample_count do
+    local sample_x = from_x + og.div(delta_x * sample, sample_count)
+    local sample_y = from_y + og.div(delta_y * sample, sample_count)
+    local now_water = surface.touches_water(ball, sample_x * 256, sample_y * 256)
+    if on_water and not now_water then
+      cleared_shore = true
+    end
+    if now_water then
+      touched_water = true
+    end
+    on_water = now_water
+  end
+  return on_water, touched_water, cleared_shore
+end
+
 -- Flight: sub-stepped movement with axis-separated wall reflection, then
--- fast-contact damage (1 per px/tick, capped, ball:attack), then shared
--- dry/wet damping. attack() draws RNG — the contact itself is the deterministic
--- input, so the draw order is stable.
+-- fast-contact damage (1 per px/tick, capped, ball:attack), then surface
+-- damping with a gradual wet coast and a harsh shoreline exit. attack() draws
+-- RNG — the contact itself is the deterministic input, so the draw order is
+-- stable.
 local function run_flight(ball, livings)
   local vx = og.mode_get(S.BALL_VX)
   local vy = og.mode_get(S.BALL_VY)
@@ -295,8 +329,11 @@ local function run_flight(ball, livings)
   local last_kicker = og.mode_get(S.LAST_KICKER)
   local steps = og.div(og.max(iabs(vx), iabs(vy)), T.substep_px * 256) + 1
   local bounced = false
-  local wet = surface.touches_water(ball, px, py)
+  local on_water = surface.touches_water(ball, px, py)
+  local touched_water = on_water
+  local cleared_shore = false
   for _ = 1, steps do
+    local old_px = px
     local nx = px + og.div(vx, steps)
     if not og.query_grid_passable(og.div(nx, 256) - half_x, og.div(py, 256) - half_y, ball) then
       vx = -vx
@@ -304,9 +341,9 @@ local function run_flight(ball, livings)
       bounced = true
     end
     px = nx
-    if surface.touches_water(ball, px, py) then
-      wet = true
-    end
+    on_water, touched_water, cleared_shore = classify_water_sweep(
+      ball, old_px, py, px, py, on_water, touched_water, cleared_shore)
+    local old_py = py
     local ny = py + og.div(vy, steps)
     if not og.query_grid_passable(og.div(px, 256) - half_x, og.div(ny, 256) - half_y, ball) then
       vy = -vy
@@ -314,9 +351,8 @@ local function run_flight(ball, livings)
       bounced = true
     end
     py = ny
-    if surface.touches_water(ball, px, py) then
-      wet = true
-    end
+    on_water, touched_water, cleared_shore = classify_water_sweep(
+      ball, px, old_py, px, py, on_water, touched_water, cleared_shore)
     if speed > T.fast_fp then
       local bx = og.div(px, 256)
       local by = og.div(py, 256)
@@ -345,7 +381,14 @@ local function run_flight(ball, livings)
   if bounced then
     og.emit_positional_sound(ball, C.SOUND_CLANG)
   end
-  vx, vy = surface.damp(vx, vy, wet)
+  local keep = 256
+  if touched_water then
+    keep = T.water_keep
+  end
+  if cleared_shore then
+    keep = T.water_shore_keep
+  end
+  vx, vy = surface.damp_keep(vx, vy, keep)
   og.mode_set(S.BALL_VX, vx)
   og.mode_set(S.BALL_VY, vy)
   og.mode_set(S.BALL_PX, px)

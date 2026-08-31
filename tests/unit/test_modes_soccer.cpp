@@ -75,7 +75,7 @@ enum SoccerSlot : int {
 
 inline constexpr int kModeIdSoccer = 4;  // mode_core.MODE.SOCCER
 inline constexpr int kAiCadence = 15;
-inline constexpr int kFriction = 64;           // fp/tick (T.friction)
+inline constexpr int kFriction = 64;           // shared surface loss, fp/tick
 inline constexpr int kKickoffFreeze = 36;      // T.kickoff_freeze
 inline constexpr int kPauseFireFrequency = 16384;
 inline constexpr int kSpawnMarkBit = 32768;
@@ -1120,7 +1120,7 @@ TEST_F(ModesSoccer, friction_stops_a_full_kick_in_32_ticks)
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     fx.thaw_kickoff();
-    // A full kick is 8 px/tick = 2048 fp; T.friction = 64 drains it in
+    // A full kick is 8 px/tick = 2048 fp; the 64 fp surface loss drains it in
     // exactly 2048/64 = 32 ticks (~2.67 s at 12 ticks/s).
     fx.set_ball(200, 200, 8 * 256, 0);
     fx.tick(31);
@@ -1147,8 +1147,8 @@ TEST_F(ModesSoccer, water_drag_uses_the_footprint_and_swept_contact)
     }
 
     // The center remains on dry tile 12, but the final 12x12 footprint
-    // reaches one pixel into water tile 13. Wet keep=64 then loss=64:
-    // div(2048*64,256)-64 = 448 fp. Center-only sampling would miss it.
+    // reaches one pixel into water tile 13. Floating keep=248 then loss=64:
+    // div(2048*248,256)-64 = 1920 fp. Center-only sampling would miss it.
     {
         SoccerWorld fx;
         paint_water(fx.world(), 13, 12, 13, 12);
@@ -1158,7 +1158,7 @@ TEST_F(ModesSoccer, water_drag_uses_the_footprint_and_swept_contact)
         fx.set_ball(196, 200, 8 * 256, 0);
         fx.tick(1);
         EXPECT_EQ(204, fx.ball_cx());
-        EXPECT_EQ(448, fx.var(kSocBallVx));
+        EXPECT_EQ(1920, fx.var(kSocBallVx));
         EXPECT_EQ(0, fx.var(kSocBallVy));
     }
 
@@ -1178,6 +1178,61 @@ TEST_F(ModesSoccer, water_drag_uses_the_footprint_and_swept_contact)
         EXPECT_EQ(2624, fx.var(kSocBallVx));
         EXPECT_EQ(0, fx.var(kSocBallVy));
     }
+
+    // A max 12 px/tick projectile impulse starts with the footprint touching
+    // water tile 12 and ends touching tile 14. Its two 6 px substeps have wet
+    // endpoints, but centers 214..218 clear the dry separator between them.
+    // The swept shoreline exit must survive re-entry:
+    // div(3072*64,256)-64 = 704 fp.
+    {
+        SoccerWorld fx;
+        paint_water(fx.world(), 12, 12, 12, 12);
+        paint_water(fx.world(), 14, 12, 14, 12);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.set_ball(213, 200, 12 * 256, 0);
+        fx.tick(1);
+        EXPECT_EQ(225, fx.ball_cx());
+        EXPECT_EQ(704, fx.var(kSocBallVx))
+            << "clearing a shoreline stays harsh even after same-tick re-entry";
+        EXPECT_EQ(0, fx.var(kSocBallVy));
+    }
+}
+
+TEST_F(ModesSoccer, water_roll_floats_through_puddle_then_bogs_at_far_shore)
+{
+    SoccerWorld fx;
+    paint_water(fx.world(), 13, 11, 16, 13);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(200, 200, 8 * 256, 0);
+
+    fx.tick(1);
+    EXPECT_EQ(208, fx.ball_cx());
+    EXPECT_EQ(1920, fx.var(kSocBallVx))
+        << "water entry starts a gradual float instead of quartering speed";
+
+    fx.tick(7);
+    EXPECT_EQ(250, fx.ball_cx());
+    EXPECT_EQ(1126, fx.var(kSocBallVx))
+        << "the ball keeps coasting through the puddle while steadily slowing";
+
+    fx.tick(9);
+    EXPECT_EQ(277, fx.ball_cx());
+    EXPECT_EQ(332, fx.var(kSocBallVx))
+        << "the footprint is still moving while it touches the far water edge";
+
+    fx.tick(1);
+    EXPECT_EQ(278, fx.ball_cx());
+    EXPECT_EQ(19, fx.var(kSocBallVx))
+        << "leaving the far edge applies the one harsh shoreline loss";
+
+    fx.tick(1);
+    EXPECT_EQ(278, fx.ball_cx());
+    EXPECT_EQ(0, fx.var(kSocBallVx));
+    EXPECT_EQ(0, fx.var(kSocBallVy));
 }
 
 TEST_F(ModesSoccer, projectile_dislodges_a_waterlogged_ball)
@@ -1200,8 +1255,8 @@ TEST_F(ModesSoccer, projectile_dislodges_a_waterlogged_ball)
     fx.tick(1);
 
     EXPECT_EQ(324, fx.ball_cx()) << "the projectile moves the bogged ball";
-    EXPECT_EQ(192, fx.var(kSocBallVx))
-        << "div(1024*64,256)-64: a short wet coast after the hit";
+    EXPECT_EQ(928, fx.var(kSocBallVx))
+        << "div(1024*248,256)-64: the hit starts a gradual wet coast";
     EXPECT_EQ(0, fx.var(kSocBallVy));
     EXPECT_EQ(static_cast<std::int32_t>(fx.green->entity_id()),
               fx.var(kSocLastKicker));
@@ -1623,10 +1678,10 @@ TEST_F(ModesSoccer, director_fires_to_recover_a_waterlogged_ball)
             << "recovery fire retains the family's ordinary busy cooldown";
         EXPECT_EQ(static_cast<std::int32_t>(shooter->entity_id()),
                   fx.var(kSocLastKicker));
-        EXPECT_EQ(486, fx.var(kSocBallVx));
-        EXPECT_EQ(88, fx.var(kSocBallVy))
-            << "the live arrow's deterministic waver is preserved while "
-               "one wet damping step removes most of its speed";
+        EXPECT_EQ(2044, fx.var(kSocBallVx));
+        EXPECT_EQ(370, fx.var(kSocBallVy))
+            << "the live arrow's deterministic waver is preserved through "
+               "the first gradual wet damping step";
     }
 
     // Dry control: the same capable bot retains the normal striker GOTO and
