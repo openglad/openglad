@@ -58,6 +58,7 @@ og_unit_headless_platform
 og_unit_mapgen
 og_unit_mode
 og_unit_modes
+og_unit_modes_water
 og_unit_onslaught
 og_unit_respawn
 og_unit_script
