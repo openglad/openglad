@@ -1,5 +1,6 @@
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_transport.h>
@@ -532,6 +533,16 @@ int count_free_team_livings(screen& server_screen, short team)
         }
     }
     return count;
+}
+
+std::uint32_t authoritative_next_tick(og::runtime::GameSession& host_session)
+{
+    auto host_scope = host_session.activate();
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(host_session);
+    EXPECT_NE(nullptr, server_screen);
+    return server_screen != nullptr ? server_screen->world().tick_count_ + 1u
+                                    : 1u;
 }
 
 InputState make_seat_switch_char_input(std::size_t slot)
@@ -4197,7 +4208,8 @@ TEST(PickerNetworkClient, host_and_join_real_win_returns_both_peers_to_menu)
     // ends its session (world.end=1 -> glad_main returns to the team-build menu).
     // Each peer sends neutral input every tick (the heartbeat the server needs).
     const InputState neutral{};
-    std::uint32_t pump_tick = 1;
+    std::uint32_t pump_tick =
+        authoritative_next_tick(*cleanup.host_session);
     const auto pump = [&](int iterations) {
         for (int i = 0; i < iterations; ++i, ++pump_tick)
         {
@@ -4436,7 +4448,8 @@ TEST(PickerNetworkClient, host_and_join_real_exit_returns_both_peers_to_menu)
     }
 
     const InputState neutral{};
-    std::uint32_t pump_tick = 1;
+    std::uint32_t pump_tick =
+        authoritative_next_tick(*cleanup.host_session);
     const auto pump = [&](int iterations) {
         for (int i = 0; i < iterations; ++i, ++pump_tick)
         {
@@ -4749,7 +4762,8 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     }
 
     const InputState neutral{};
-    std::uint32_t pump_tick = 1;
+    std::uint32_t pump_tick =
+        authoritative_next_tick(*cleanup.host_session);
     const auto pump = [&](int iterations) {
         for (int i = 0; i < iterations; ++i, ++pump_tick)
         {
@@ -6404,11 +6418,11 @@ TEST(PickerNetworkClient,
 
     // ---- Per-seat input routing. ----
     const InputState neutral{};
-    std::uint32_t pump_tick = 1;
     const auto drive_three_tick = [&](const InputState& host_input,
                                       const InputState& a_input,
                                       const InputState& b_input) -> bool {
-        const std::uint32_t tick = pump_tick++;
+        const std::uint32_t tick =
+            authoritative_next_tick(*cleanup.host_session);
         {
             auto host_scope = cleanup.host_session->activate();
             og::runtime::local_transport_shadow_send_input(
@@ -6424,6 +6438,25 @@ TEST(PickerNetworkClient,
             og::runtime::local_transport_shadow_send_input(
                 join_b_session, b_input, tick);
         }
+        // The joiners are real sockets. Receipt, not an unrelated snapshot
+        // tick, is the observable edge: advancing beyond MAX_LATE_PRESS_TICKS
+        // before their packets arrive legitimately discards a press edge.
+        const bool inputs_received = wait_until(
+            [&] {
+                auto host_scope = cleanup.host_session->activate();
+                og::sim::GameServer* const server =
+                    og::runtime::local_transport_shadow_testing_server(
+                        *cleanup.host_session);
+                if (server == nullptr)
+                    return false;
+                server->testing_poll_transport_without_step();
+                return server->testing_last_received_input_tick(1) >= tick &&
+                    server->testing_last_received_input_tick(4) >= tick &&
+                    server->testing_last_received_input_tick(6) >= tick;
+            },
+            8s);
+        if (!inputs_received)
+            return false;
         return wait_until(
             [&] {
                 bool host_ready = false;
@@ -6553,6 +6586,8 @@ TEST(PickerNetworkClient,
         auto scope = session.activate();
         return session.myscreen_->world().end != 0;
     };
+    std::uint32_t pump_tick =
+        authoritative_next_tick(*cleanup.host_session);
     const auto pump = [&](int iterations) {
         for (int i = 0; i < iterations; ++i, ++pump_tick)
         {
@@ -6984,7 +7019,8 @@ TEST(PickerNetworkClient, host_and_join_client_quit_mission_withdraws_both_peers
     }
 
     const InputState neutral{};
-    std::uint32_t pump_tick = 1;
+    std::uint32_t pump_tick =
+        authoritative_next_tick(*cleanup.host_session);
     const auto pump = [&](int iterations) {
         for (int i = 0; i < iterations; ++i, ++pump_tick)
         {
