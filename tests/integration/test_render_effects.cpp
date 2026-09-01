@@ -315,6 +315,8 @@ protected:
 
     void TearDown() override
     {
+        if (view0() != nullptr)
+            view0()->set_render_denominator(1);
         scr()->set_active_canvas(CanvasTarget::UI);
         scr()->set_world_canvas_pinned_classic(false);
         scr()->relayout_views();
@@ -370,6 +372,65 @@ TEST_F(RenderEffects, shadow_draws_darker_pixel_below_feet)
         << int(off.g) << "," << int(off.b) << ")";
 
     restore_world(vs);
+}
+
+// #277: near-minimap ground effects render directly into the final pane.
+// Exercise the three per-walker treatments that cannot reuse the projected
+// sprite blitter: a ground shadow, an upper-floor blob shadow, and a masked
+// reflection. Each assertion observes the resulting pane pixels, so a branch
+// that merely reports success without drawing still fails.
+TEST_F(RenderEffects, projected_camera_ground_effects_change_final_pane_pixels)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "attack_lunge", "off");
+    cfg.apply_setting("effects", "hit_recoil", "off");
+
+    GameWorld& world = scr()->world();
+    walker* const w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs));
+    vs->set_render_denominator(kCameraMinimapZoomDenominator);
+
+    ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+    const auto fill_pane = [&](unsigned char color) {
+        for (Sint32 y = vs->yloc; y < vs->endy; ++y)
+            for (Sint32 x = vs->xloc; x < vs->endx; ++x)
+                scr()->pointb(x, y, color);
+    };
+    const auto capture_pane = [&]() {
+        return grab_rect(vs->xloc, vs->yloc, vs->xview, vs->yview);
+    };
+
+    fill_pane(PURE_WHITE);
+    const std::vector<RGB> ground_before = capture_pane();
+    ASSERT_TRUE(draw_walker_shadow(*w, vs));
+    const std::vector<RGB> ground_after = capture_pane();
+    ASSERT_FALSE(rects_equal(ground_before, ground_after))
+        << "the projected ground shadow must darken the final pane";
+
+    fill_pane(PURE_WHITE);
+    const std::vector<RGB> blob_before = capture_pane();
+    ASSERT_TRUE(draw_walker_blob_shadow(*w, vs, 1));
+    const std::vector<RGB> blob_after = capture_pane();
+    ASSERT_FALSE(rects_equal(blob_before, blob_after))
+        << "the projected upper-floor blob must darken the final pane";
+
+    const std::size_t cells =
+        static_cast<std::size_t>(world.grid.w) * world.grid.h;
+    std::fill(world.grid.data.get(), world.grid.data.get() + cells,
+              static_cast<unsigned char>(PIX_GLASS));
+    fill_pane(PURE_BLACK);
+    const std::vector<RGB> reflection_before = capture_pane();
+    ASSERT_TRUE(draw_walker_reflection(*w, vs, world.grid));
+    const std::vector<RGB> reflection_after = capture_pane();
+    ASSERT_FALSE(rects_equal(reflection_before, reflection_after))
+        << "the projected glass reflection must light the final pane";
 }
 
 TEST_F(RenderEffects, weapon_shadow_stays_at_ground_when_raised_by_worldz)
