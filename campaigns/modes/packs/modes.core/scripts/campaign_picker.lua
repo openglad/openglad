@@ -70,7 +70,7 @@ local LAST_SCAN_ID = 1023
 local ZONE_ROW_UNITS = 8
 local ROSTER_FLOOR_UNITS = 3
 
--- The ordered manifest walk: every authored row ascending by id (39 rows,
+-- The ordered manifest walk: every authored row ascending by id (40 rows,
 -- the generator's own hard count). Re-derived per fetch — the book keeps
 -- no state.
 local function manifest_rows()
@@ -171,7 +171,7 @@ end
 
 -- One game's progress in the book's ONE word for a cleared field. Fields
 -- are stamped — never won — on every row that counts them, and the tally
--- takes the header readout's own "12/39" shape so the camp row, the index
+-- takes the header readout's own "12/40" shape so the camp row, the index
 -- row and the BOOK cell all read alike (and fit the 42-char panel row
 -- beside a 22-character game name).
 local function stamp_note(band)

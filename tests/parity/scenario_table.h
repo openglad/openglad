@@ -1153,7 +1153,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_tick_freeze = {
-    "src/gameplay/game_world.cpp", 1682,
+    "src/gameplay/game_world.cpp", 1694,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result.",
@@ -1182,7 +1182,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 };
 
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/game_world.cpp", 1680,
+    "src/gameplay/game_world.cpp", 1692,
     "level_done = 2;",
     "level_done = []{ static int _n = 0; return _n++; }();",
     "Uses a static-counter level_done assignment so successive run_scenario() captures differ. The value flows into the snapshot and breaks dual-capture byte equality, flipping the Invariant determinism check.",
@@ -1959,7 +1959,7 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
-    "src/gameplay/walker.cpp", 1207,
+    "src/gameplay/walker.cpp", 1206,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 512.0f) / 256.0f);",
     "Inflates the cardinal-facing projectile stepsize multiplier (walker.cpp:1190, applied in create_weapon() for FACE_UP/RIGHT/DOWN/LEFT). FAMILY_KNIFE fires FACE_RIGHT at the adjacent target; base stepsize 5 normally scales by 362/256 (~1.414) to ~7 giving a constant dx=7,dy=waver step of hypot(7,1)*100 = 707 centi-px/tick. Changing 362->512 scales to 10, raising the per-tick step to ~1005 centi-px/tick, which exceeds the WeaponSpeed(FAMILY_KNIFE,600,800) upper bound and flips that trajectory predicate. The only travelling weaplist family in this arena is the knife (FAMILY_BLOOD stays stationary), so the speed flip is unambiguous. WeaponNetTravel STRAIGHT stays satisfied because the path is still straight, but WeaponSpeed alone flipping satisfies the >=1-predicate canary requirement."
@@ -1982,7 +1982,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
-    "src/gameplay/walker.cpp", 1207,
+    "src/gameplay/walker.cpp", 1206,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize scale. FAMILY_ROCK remains emitted and travels straight, but its per-tick step falls below the exact 800-centipixel speed pin, flipping WeaponSpeed."
@@ -2005,7 +2005,7 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
-    "src/gameplay/walker.cpp", 1207,
+    "src/gameplay/walker.cpp", 1206,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "walker::create_weapon scales every fired projectile's stepsize by 362/256 (~1.414) for the cardinal/diagonal facing cases; FAMILY_ARROW is a data-only weapon family (descriptor installed from packs/core/families/weapon-02-arrow.lua, no script movement hook) so its per-tick speed is exactly this scaled stepsize. Dropping the scale (362->256) cuts the arrow's step from ~11.3px/tick to 8px/tick, so weapon_tracks seq=0 max_step_centi falls from 1105 to ~800, below WeaponSpeed(FAMILY_ARROW,1000,1250)'s lower bound, flipping that predicate. The path stays straight so WeaponNetTravel(STRAIGHT) is unaffected, demonstrating the speed teeth are independent of the path-class teeth."
@@ -2035,7 +2035,7 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
-    "src/gameplay/walker.cpp", 1207,
+    "src/gameplay/walker.cpp", 1206,
     "(weapon->stepsize() * 362.0f)",
     "(weapon->stepsize() * 256.0f)",
     "Removes the sqrt(2)=362/256 cardinal-fire velocity scale applied to the fired FIREBALL's stepsize in walker::create_weapon(); the projectile's per-tick step drops from ~922 to ~600-667 centi-px/tick, so WeaponSpeed(FAMILY_FIREBALL,850,1000) observes a max consecutive step below 850 and flips pass->fail. Path stays straight so WeaponNetTravel(STRAIGHT) is unaffected (>=1 trajectory predicate flips, as required)."
@@ -2092,7 +2092,7 @@ inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_tree_emission = {
-    "src/gameplay/weap.cpp", 95,
+    "src/gameplay/weap.cpp", 101,
     "if (!wfd || !wfd->skip_sit_notify)",
     "if (family() == FAMILY_TREE) { setxy(static_cast<short>(xpos() + 2), ypos()); } if (!wfd || !wfd->skip_sit_notify)",
     "ACT_SIT case in weap::act() normally leaves the direct-spawn tree fixed at its spawn xy; this family-gated nudge advances FAMILY_TREE +2px/tick every tick it sits, so its weapon_tracks path becomes a straight x-run (pathlen ~= 29800 centi over 149 steps, max step = 200 centi). WeaponNetTravel(FAMILY_TREE,STATIONARY,200) flips (29800 > 200) and WeaponSpeed(FAMILY_TREE,0,0) flips (200 > 0). Bracing the injected family guard keeps the adjacent original if unambiguous under -Wmisleading-indentation."
@@ -2114,7 +2114,7 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
-    "src/gameplay/walker.cpp", 1207,
+    "src/gameplay/walker.cpp", 1206,
     "362.0f",
     "181.0f",
     "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_METEOR is fired RIGHT (cardinal), so its per-tick stepsize halves: max_step_centi drops from ~1020 to ~510 centi-px/tick, falling below the 950 floor of WeaponSpeed(FAMILY_METEOR,950,1100), which flips pass->fail."
@@ -2138,9 +2138,9 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
-    "src/gameplay/walker.cpp", 1207,
-    "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
-    "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
+    "src/gameplay/walker.cpp", 1206,
+    "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
+    "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-fire stepsize boost. FAMILY_SPRINKLE fires right, so its speed drops below WeaponSpeed's 900 floor and its net displacement drops below WeaponNetTravel's 2500 threshold; both trajectory predicates flip."
 };
 
@@ -2217,7 +2217,7 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
-    "src/gameplay/walker.cpp", 1207,
+    "src/gameplay/walker.cpp", 1206,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "Neutralizes the cardinal-facing 1.414x stepsize boost (362/256) applied to weapons fired straight (FACE_UP/RIGHT/DOWN/LEFT) in create_weapon(). The FAMILY_BLOB the slime fires FACE_RIGHT now keeps its base stepsize (~2.12 px/tick instead of ~3 px/tick), so its max consecutive-tick step drops from 316 to ~224 centi-px/tick, below the WeaponSpeed(FAMILY_BLOB, 280, 360) floor of 280 -> WeaponSpeed flips pass->fail. BLOB is still emitted and still tracked with consecutive samples (no Indeterminate), and the path stays straight so WeaponNetTravel still holds. The from/to omit the line's leading TABs and match as the unique substring of walker.cpp:1190 (the canary's _apply_mutation does a substring str.replace, and the lint parser transports the from-text through a tab-delimited line, so embedded tabs would corrupt the canary's IFS parse — identical convention to the sibling kMut_weapon_knife_emission/_rock/_arrow which target the same line)."
@@ -2429,7 +2429,7 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave2_emission = {
-    "src/gameplay/weap.cpp", 142,
+    "src/gameplay/weap.cpp", 148,
     "\t\t\t\treturn 1;",
     "\t\t\t\tif (family() == FAMILY_WAVE2) { setxy(xpos() + 5, ypos() + 0); } return 1;",
     "Injects a per-tick +5px x-step into FAMILY_WAVE2's ACT_RANDOM act() path; the previously-stationary wave moves, so max_step_centi jumps to 500 and pathlen_centi grows ~74500, flipping WeaponSpeed([0,0]) and WeaponNetTravel(STATIONARY,50). The braces + ypos()+0 keep both setxy args int (unambiguous int32_t overload) and suppress -Wmisleading-indentation.",
@@ -2504,7 +2504,7 @@ inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave3_emission = {
-    "src/gameplay/weap.cpp", 66,
+    "src/gameplay/weap.cpp", 72,
     "set_collide_ob(nullptr); // always start with no collision..",
     "set_collide_ob(nullptr); if (family() == FAMILY_WAVE3) { setxy(xpos() + 5, ypos() + 0); } // always start with no collision..",
     "Injects a per-tick +5px x-step into FAMILY_WAVE3 at the TOP of weap::act (line 65, before the `if (ani_type() != ANI_WALK) return animate();` early-return that WAVE3 -- a looping immortal phantom -- takes, so it never reaches the ACT_RANDOM path WAVE2 uses). The previously-stationary WAVE3 then moves +5px/tick (verified: tick1 125,120 -> tick2 130,120), so max_step_centi jumps to 500 and pathlen exceeds the STATIONARY threshold, flipping WeaponSpeed(FAMILY_WAVE3,[0,0]) and WeaponNetTravel(FAMILY_WAVE3,STATIONARY,5) pass->fail. The family() guard scopes motion to WAVE3 only; from/to omit the line's leading tab and match the unique substring of weap.cpp:65."
@@ -2586,9 +2586,9 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
-    "src/gameplay/walker.cpp", 1207,
-    "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
-    "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
+    "src/gameplay/walker.cpp", 1206,
+    "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
+    "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize multiplier. HAMMER fires right, so its per-tick step falls from about 922 to 460 centipixels, below WeaponSpeed's 850 floor; emission and straight-path predicates remain satisfied."
 };
 
@@ -2641,7 +2641,7 @@ inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_door_emission = {
-    "src/gameplay/weap.cpp", 95,
+    "src/gameplay/weap.cpp", 101,
     "if (!wfd || !wfd->skip_sit_notify)",
     "if (wfd && (worldmove(1, 0), false))",
     "Rewrites the guard in weap::act()'s ACT_SIT case (weap.cpp:85-91) so the case, instead of being a stationary no-op, worldmoves the sitting weapon 1px east every tick. The original guard `if (!wfd || !wfd->skip_sit_notify)` gates a 'Weapon sitting' notification; the mutated `if (wfd && (worldmove(1, 0), false))` keeps wfd referenced (no unused-variable warning), unconditionally evaluates worldmove(1,0) -- advancing xpos by 1px/tick -- then yields false so the notification is still suppressed (DOOR has skip_sit_notify=true). The direct-spawned FAMILY_DOOR weapon, which hits this ACT_SIT case every tick, is no longer stationary: its weapon_tracks walk from (120,120) at tick0 to (270,120) at tick150 (150 distinct positions). max_step_centi jumps from 0 to 100 (WeaponSpeed(FAMILY_DOOR,0,0) fails its [0,0] bracket) and pathlen_centi reaches ~15000 (WeaponNetTravel STATIONARY,100 fails). Both trajectory predicates flip from pass to fail; the mutation lives in src/gameplay/weap.cpp, outside the forbidden tests/parity and openglad-master prefixes, and the canary restores via git checkout."
@@ -3269,7 +3269,7 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1794,
+    "src/gameplay/game_world.cpp", 1806,
     "level_done = 0;",
     "level_done = 2;",
     "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (`level_done = 0;` has textual twins in this function -- the dormant guard above and the frozen guard below, byte-identical including indentation -- so the pin says which one it means with context_before: only the awake branch runs its foe through set_in_act.)",
@@ -4293,7 +4293,7 @@ inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_saturation_scen99 = {
-    "src/gameplay/walker.cpp", 1368,
+    "src/gameplay/walker.cpp", 1603,
     "if ( current_game->world->living_count < MAXOBS &&",
     "if ( false &&",
     "Replaces the `living_count < MAXOBS` half of the act_generate gate with `false`, making the conjunction always false; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 3, 30) fails on its lower bound."
@@ -4634,7 +4634,7 @@ inline constexpr FactPredicate kFacts_input_hold_fire_search_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_hold_fire_search_scen99 = {
-    "src/gameplay/walker.cpp", 481,
+    "src/gameplay/walker.cpp", 500,
     "set_busy(busy() + fire_frequency());",
     "set_busy(busy() + fire_frequency() * 100.0f);",
     "Inflates walker::init_fire's post-throw busy pause by 100x. The first throw blocks later held-fire re-arms, collapsing the sustained knife stream and dropping play_sound below five."
@@ -4792,7 +4792,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2303,
+    "src/gameplay/walker.cpp", 2538,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."

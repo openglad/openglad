@@ -4,6 +4,7 @@
 #include <openglad/interface/game_context.h>
 #include <gtest/gtest.h>
 
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -89,6 +90,29 @@ TEST(Smoother, query_genre_maps_known_tiles)
     ASSERT_EQ(TYPE_COBBLE, s.query_genre_x_y(7, 0)) << "cobble should map to TYPE_COBBLE";
     ASSERT_EQ(TYPE_GRASS_DARK, s.query_genre_x_y(8, 0)) << "dark grass should map to TYPE_GRASS_DARK";
     ASSERT_EQ(TYPE_GRASS_LIGHT, s.query_genre_x_y(9, 0)) << "light grass should map to TYPE_GRASS_LIGHT";
+}
+
+TEST(Smoother, every_passability_water_tile_maps_to_water_genre)
+{
+    constexpr std::array<unsigned char, 11> water_tiles = {
+        PIX_WATER1,        PIX_WATER2,        PIX_WATER3,
+        PIX_WATERGRASS_LL, PIX_WATERGRASS_LR, PIX_WATERGRASS_UL,
+        PIX_WATERGRASS_UR, PIX_WATERGRASS_U,  PIX_WATERGRASS_L,
+        PIX_WATERGRASS_R,  PIX_WATERGRASS_D,
+    };
+    PixieData grid = make_grid(static_cast<unsigned char>(water_tiles.size()),
+                               1, PIX_GRASS1);
+    std::copy(water_tiles.begin(), water_tiles.end(), grid.data.get());
+
+    smoother s;
+    s.set_target(grid);
+
+    for (std::size_t x = 0; x < water_tiles.size(); ++x)
+    {
+        EXPECT_EQ(TYPE_WATER,
+                  s.query_genre_x_y(static_cast<Sint32>(x), 0))
+            << "water tile " << static_cast<int>(water_tiles[x]);
+    }
 }
 
 

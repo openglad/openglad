@@ -1,13 +1,13 @@
 /* Multiplayer Game Modes campaign generator.
  *
  * Produces campaigns/modes/ (the source tree the build
- * composes into builtin/modes.glad): the 39-scenario seven-mode
+ * composes into builtin/modes.glad): the 40-scenario seven-mode
  * campaign (TDM 300-305 absorbing the arenas grids, CTF 500-509 keeping
  * the shipped CTF maps, Onslaught 800-803, Soccer 820-823, Basketball
- * 824-828, Mutant 840-843, Free For All 850-855), every level typed
+ * 824-829, Mutant 840-843, Free For All 850-855), every level typed
  * SCEN_TYPE_SCRIPTED — the mode rules live in the campaign's embedded
  * Lua pack. This tool assembles the package (yaml + icon + pack tree +
- * 39 built levels), regenerates the committed
+ * 40 built levels), regenerates the committed
  * level manifest (pack/lib/mode_levels.lua) from the same tables that
  * build the maps, zips, remounts, and hard-fails on any self-check
  * violation before exporting the campaign tree.
@@ -101,6 +101,25 @@ namespace fs = std::filesystem;
 constexpr const char* kCampaignId = "modes";
 constexpr const char* kPackId = "modes.core";
 
+bool is_water_tile(unsigned char tile)
+{
+    switch (tile)
+    {
+        case PIX_WATER1:
+        case PIX_WATER2:
+        case PIX_WATER3:
+        case PIX_WATERGRASS_LL:
+        case PIX_WATERGRASS_LR:
+        case PIX_WATERGRASS_UL:
+        case PIX_WATERGRASS_UR:
+        case PIX_WATERGRASS_U:
+        case PIX_WATERGRASS_D:
+        case PIX_WATERGRASS_L:
+        case PIX_WATERGRASS_R: return true;
+        default: return false;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Campaign descriptor + icon.
 // ---------------------------------------------------------------------------
@@ -124,10 +143,10 @@ void write_campaign_yaml(const std::string& path)
         << "    team deathmatch, capture the\n"
         << "    flag, onslaught, mutant,\n"
         << "    soccer, basketball, and free\n"
-        << "    for all across thirty-nine\n"
-        << "    fields old and new. The bots\n"
-        << "    know the rules. Respawns honor\n"
-        << "    your difficulty. First to the\n"
+        << "    for all across forty fields\n"
+        << "    old and new. The bots know\n"
+        << "    the rules. Respawns honor your\n"
+        << "    difficulty. First to the\n"
         << "    target score takes the purse.\n";
     if (!out)
         fail(std::format("cannot write {}", path));
@@ -352,6 +371,25 @@ void self_check_level(const ExpectedLevel& row)
         fail(std::format("{}: {} decor cells, expected {}", where,
                          decor_cells, row.decor_cells));
 
+    // Water is opt-in because most inherited maps do not pin decorative
+    // terrain. The two ball-water showcases do: count the complete family,
+    // including all shoreline variants, so smoothing cannot make the pin
+    // silently forget a wet edge.
+    if (row.water_cells >= 0)
+    {
+        int water_cells = 0;
+        for (int ty = 0; ty < world.grid.h; ++ty)
+            for (int tx = 0; tx < world.grid.w; ++tx)
+                water_cells += is_water_tile(
+                                   world.grid.data[static_cast<std::size_t>(
+                                       tx + ty * world.grid.w)])
+                                   ? 1
+                                   : 0;
+        if (water_cells != row.water_cells)
+            fail(std::format("{}: {} water cells, expected {}", where,
+                             water_cells, row.water_cells));
+    }
+
     std::unique_ptr<walker> probe = make_probe(world);
     if (probe == nullptr)
     {
@@ -540,7 +578,7 @@ void self_check_level(const ExpectedLevel& row)
     // chicken, because the ball keeps everyone moving and fighting while
     // the authored food is eaten once and never returns. Both bands now
     // carry drumstick pads and join the exact-multiset pin, so every
-    // authored drumstick on 820-828 must appear in its row.
+    // authored drumstick on 820-829 must appear in its row.
     //
     // Onslaught stays OFF with its original rationale intact: its spawn
     // attrition IS the mode, and its mode-var budget is full.
@@ -1074,8 +1112,8 @@ int main(int argc, char* argv[])
 
     // The committed manifest must match the build tables (D8).
     const std::vector<ExpectedLevel> rows = all_expectations();
-    if (rows.size() != 39)
-        fail(std::format("expected 39 levels, tables carry {}", rows.size()));
+    if (rows.size() != 40)
+        fail(std::format("expected 40 levels, tables carry {}", rows.size()));
     (void)check_and_refresh_manifest(rows);
 
     // Assemble the campaign under <user>/temp/ (the repack layout).

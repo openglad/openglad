@@ -27,6 +27,7 @@
 
 #include <gtest/gtest.h>
 
+#include <openglad/core/colors.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
@@ -41,12 +42,14 @@
 #include <openglad/gameplay/walker.h>
 
 #include "../modes_pack_fixture.h"
+#include "../test_save_state_guard.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -259,6 +262,30 @@ void align_before_cadence(GameWorld& world)
     const std::uint32_t next =
         ((world.tick_count_ / kAiCadence) + 1) * kAiCadence;
     world.tick_count_ = next - 1;
+}
+
+void paint_water(GameWorld& world, int left, int top, int right, int bottom)
+{
+    for (int y = top; y <= bottom; ++y)
+    {
+        for (int x = left; x <= right; ++x)
+        {
+            world.grid.data[static_cast<std::size_t>(x + world.grid.w * y)] =
+                PIX_WATER1;
+        }
+    }
+}
+
+int live_weapons_owned_by(GameWorld& world, const walker* owner)
+{
+    int count = 0;
+    for (const auto& uptr : world.weaplist)
+    {
+        const walker* shot = uptr.get();
+        if (shot != nullptr && !shot->dead() && shot->owner() == owner)
+            count++;
+    }
+    return count;
 }
 
 int alive_on_team(GameWorld& world, int team)
@@ -579,6 +606,12 @@ TEST_F(ModesBasketball, init_banks_manifest_row)
     EXPECT_EQ(Order::FX, ball->query_order());
     walker* shadow = fx.shadow();
     ASSERT_NE(nullptr, shadow) << "init must spawn the ground shadow";
+    ASSERT_NE(nullptr, ball->stats());
+    ASSERT_NE(nullptr, shadow->stats());
+    EXPECT_TRUE(ball->stats()->query_bit_flags(BIT_SWIMMING))
+        << "the real basketball carries its descriptor's SWIMMING flag";
+    EXPECT_FALSE(shadow->stats()->query_bit_flags(BIT_SWIMMING))
+        << "the visual-only shadow never gains terrain capabilities";
     bool shadow_in_fxlist = false;
     for (const auto& uptr : fx.world().fxlist)
     {
@@ -1311,9 +1344,9 @@ TEST_F(ModesBasketball, dunk_scores_2)
 }
 
 // ===========================================================================
-// #209 — the balls ping the radar: both shipped ball declarations carry
-// radar_ping = true and the flag rides the install onto the effect
-// descriptors' RadarBlip, while the furniture (shadow, hoop) stays quiet.
+// #209 — objective radar beacons: soccer's drawn ball pings directly;
+// basketball's ground-truth shadow owns its single yellow landmark/pulse so
+// the fake-z ball stays radar-quiet. The hoop remains furniture.
 // ===========================================================================
 
 TEST_F(ModesBasketball, ball_families_install_the_radar_ping)
@@ -1342,14 +1375,350 @@ TEST_F(ModesBasketball, ball_families_install_the_radar_ping)
     ASSERT_NE(nullptr, shadow_d);
     ASSERT_NE(nullptr, hoop_d);
 
-    EXPECT_TRUE(bball_d->radar.ping)
-        << "modes:bball declares radar_ping (#209)";
+    EXPECT_FALSE(bball_d->radar.ping)
+        << "the fake-z basketball never draws a lifted duplicate pulse";
+    EXPECT_FALSE(bball_d->radar.landmark);
+    EXPECT_EQ(og::kRadarColorNone, bball_d->radar.color);
     EXPECT_TRUE(ball_d->radar.ping)
         << "modes:ball declares radar_ping (#209)";
-    EXPECT_FALSE(shadow_d->radar.ping)
-        << "the shadow is furniture, not the objective";
+    EXPECT_TRUE(shadow_d->radar.ping)
+        << "the ground shadow is basketball's objective proxy";
+    EXPECT_TRUE(shadow_d->radar.landmark);
+    EXPECT_EQ(COLOR_YELLOW, shadow_d->radar.color);
     EXPECT_FALSE(hoop_d->radar.ping)
         << "the hoop is furniture, not the objective";
+    EXPECT_NE(0, bball_d->init_bit_flags & BIT_SWIMMING)
+        << "modes:bball declares SWIMMING";
+    EXPECT_NE(0, ball_d->init_bit_flags & BIT_SWIMMING)
+        << "modes:ball declares SWIMMING";
+    EXPECT_EQ(0, shadow_d->init_bit_flags & BIT_SWIMMING)
+        << "the shadow is not a physical ball";
+}
+
+// ===========================================================================
+// Surface water: footprint/sweep drag, airborne clearance, wet landings and
+// projectile recovery. All values are x256 fixed point and exact.
+// ===========================================================================
+
+TEST_F(ModesBasketball, free_roll_water_drag_has_dry_and_swept_controls)
+{
+    // Dry keep=256 and loss=64 preserves the existing roll exactly.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        fx.set_ball_free(200, 200);
+        fx.world().mode.vars[kBbBallVx] = 8 * 256;
+        fx.tick(1);
+        EXPECT_EQ(208, fx.ball_cx());
+        EXPECT_EQ(1984, fx.var(kBbBallVx));
+        EXPECT_EQ(0, fx.var(kBbBallVy));
+    }
+
+    // A final footprint one pixel into water uses keep=64 and loss=64:
+    // div(2048*64,256)-64 = 448. A center-only probe would call this dry.
+    {
+        BballCourt fx;
+        paint_water(fx.world(), 13, 12, 13, 12);
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        fx.set_ball_free(196, 200);
+        fx.world().mode.vars[kBbBallVx] = 8 * 256;
+        fx.tick(1);
+        EXPECT_EQ(204, fx.ball_cx());
+        EXPECT_EQ(448, fx.var(kBbBallVx));
+        EXPECT_EQ(0, fx.var(kBbBallVy));
+    }
+
+    // Starts and ends dry; only an accepted substep crosses tile (12,12).
+    // Accumulated contact yields div(10752*64,256)-64 = 2624.
+    {
+        BballCourt fx;
+        paint_water(fx.world(), 12, 12, 12, 12);
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        fx.set_ball_free(173, 200);
+        fx.world().mode.vars[kBbBallVx] = 42 * 256;
+        fx.tick(1);
+        EXPECT_EQ(215, fx.ball_cx());
+        EXPECT_EQ(2624, fx.var(kBbBallVx));
+        EXPECT_EQ(0, fx.var(kBbBallVy));
+    }
+}
+
+TEST_F(ModesBasketball, low_airborne_ball_clears_water_without_drag)
+{
+    BballCourt fx;
+    paint_water(fx.world(), 10, 10, 16, 16);
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.thaw();
+    auto& vars = fx.world().mode.vars;
+    vars[kBbBallState] = kStateRebound;
+    vars[kBbBallPx] = 200 * 256;
+    vars[kBbBallPy] = 200 * 256;
+    vars[kBbBallPz] = 1 * 256;
+    vars[kBbBallVx] = 8 * 256;
+    vars[kBbBallVy] = 0;
+    vars[kBbBallVz] = 512;
+    fx.tick(1);
+
+    EXPECT_EQ(208, fx.ball_cx()) << "even a low arc crosses water";
+    EXPECT_EQ(3, fx.ball_z_px());
+    EXPECT_EQ(8 * 256, fx.var(kBbBallVx))
+        << "airborne horizontal speed is untouched by surface drag";
+    EXPECT_EQ(512 - kGravity, fx.var(kBbBallVz));
+    EXPECT_EQ(kStateRebound, fx.var(kBbBallState));
+}
+
+TEST_F(ModesBasketball, wet_landing_slows_and_settles)
+{
+    // Wet contact: horizontal keep=64/loss=64 and vertical restitution
+    // 32/256. Incoming vz -512 integrates to -608; 608*32/256 = 76 is
+    // below settle_vz, so the ball becomes FREE immediately.
+    {
+        BballCourt fx;
+        paint_water(fx.world(), 10, 10, 16, 16);
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateRebound;
+        vars[kBbBallPx] = 200 * 256;
+        vars[kBbBallPy] = 200 * 256;
+        vars[kBbBallPz] = 1 * 256;
+        vars[kBbBallVx] = 8 * 256;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = -512;
+        fx.tick(1);
+        EXPECT_EQ(208, fx.ball_cx());
+        EXPECT_EQ(0, fx.var(kBbBallPz));
+        EXPECT_EQ(448, fx.var(kBbBallVx));
+        EXPECT_EQ(0, fx.var(kBbBallVz));
+        EXPECT_EQ(kStateFree, fx.var(kBbBallState));
+    }
+
+    // Dry landing control retains the old 3/4 horizontal and 1/2 vertical
+    // bounce: vx=1536, vz=304, still a live REBOUND.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateRebound;
+        vars[kBbBallPx] = 200 * 256;
+        vars[kBbBallPy] = 200 * 256;
+        vars[kBbBallPz] = 1 * 256;
+        vars[kBbBallVx] = 8 * 256;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = -512;
+        fx.tick(1);
+        EXPECT_EQ(1536, fx.var(kBbBallVx));
+        EXPECT_EQ(304, fx.var(kBbBallVz));
+        EXPECT_EQ(kStateRebound, fx.var(kBbBallState));
+    }
+}
+
+TEST_F(ModesBasketball, projectile_pops_waterlogged_free_ball_but_not_dry)
+{
+    // Waterlogged FREE objective: the ordinary swat impulse/pop path is
+    // admitted. Same-tick launch begins at the surface, so 4 px/tick
+    // damps to 192 while vz 512 integrates to 416.
+    {
+        BballCourt fx;
+        paint_water(fx.world(), 18, 17, 22, 21);
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        fx.set_ball_free(320, 300);
+        walker* swat = fx.spawn_weapon(fx.green, 317, 297, 4.0f, 0.0f);
+        ASSERT_NE(nullptr, swat);
+        swat->set_damage(1.0f);
+        const std::uint32_t swat_id = swat->entity_id();
+        fx.tick(1);
+
+        EXPECT_EQ(kStateRebound, fx.var(kBbBallState));
+        EXPECT_EQ(324, fx.ball_cx());
+        EXPECT_EQ(2, fx.ball_z_px());
+        EXPECT_EQ(192, fx.var(kBbBallVx));
+        EXPECT_EQ(512 - kGravity, fx.var(kBbBallVz));
+        EXPECT_EQ(2, fx.var(kBbLastTouch1));
+        EXPECT_TRUE(fx.weapon_present(swat_id));
+        EXPECT_FALSE(has_notification(fx.events, "BLOCK!"))
+            << "a recovery pop is not a blocked shot";
+    }
+
+    // Identical dry FREE control: swats remain irrelevant to a loose ball.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        fx.set_ball_free(320, 300);
+        walker* swat = fx.spawn_weapon(fx.green, 317, 297, 4.0f, 0.0f);
+        ASSERT_NE(nullptr, swat);
+        swat->set_damage(1.0f);
+        const std::uint32_t swat_id = swat->entity_id();
+        fx.tick(1);
+        EXPECT_EQ(kStateFree, fx.var(kBbBallState));
+        EXPECT_EQ(320, fx.ball_cx());
+        EXPECT_EQ(0, fx.var(kBbBallVx));
+        EXPECT_EQ(0, fx.var(kBbBallVz));
+        EXPECT_TRUE(fx.weapon_present(swat_id));
+    }
+}
+
+TEST_F(ModesBasketball, director_fires_to_recover_a_waterlogged_free_ball)
+{
+    {
+        BballCourt fx;
+        paint_water(fx.world(), 19, 17, 22, 21);
+        walker* shooter =
+            fx.spawn_living(FAMILY_ARCHER, 0, 96, 292, ACT_SIT);
+        ASSERT_NE(nullptr, shooter);
+        fx.red->set_act_type(ACT_SIT);
+        fx.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        shooter->stats()->set_weapon_cost(0);
+        shooter->set_current_weapon(FAMILY_ARROW);
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        fx.set_ball_free(320, 300);
+
+        // Immediate range is not the gate: the dry shoreline lies within this
+        // arrow's eventual reach, so COMMAND_ATTACK walks there normally.
+        align_before_cadence(fx.world());
+        fx.tick(1);
+        EXPECT_EQ(0, live_weapons_owned_by(fx.world(), shooter));
+        EXPECT_EQ(SCORE_TEAM_COUNT, fx.ball()->team_num());
+        EXPECT_EQ(COMMAND_ATTACK, front_type(shooter));
+        EXPECT_EQ(fx.ball(), shooter->foe());
+        EXPECT_EQ(nullptr, shooter->leader());
+        const int far_x = shooter->xpos();
+        fx.tick(3);
+        EXPECT_GT(shooter->xpos(), far_x)
+            << "the out-of-range weapon approaches instead of wasting shots";
+        EXPECT_EQ(0, live_weapons_owned_by(fx.world(), shooter));
+
+        // The same command must complete the whole dry approach itself, then
+        // handle facing, animation, mana, cooldown and the family projectile.
+        bool fired = false;
+        bool cooldown_seen = false;
+        bool dislodged = false;
+        for (int tick = 0; tick < 180 && !dislodged; ++tick)
+        {
+            fx.tick(1);
+            fired = fired || live_weapons_owned_by(fx.world(), shooter) > 0;
+            cooldown_seen = cooldown_seen || shooter->busy() > 0.0f;
+            dislodged =
+                fx.var(kBbLastToucher) ==
+                    static_cast<std::int32_t>(shooter->entity_id()) &&
+                (fx.var(kBbBallState) != kStateFree ||
+                 std::abs(fx.var(kBbBallVx)) + std::abs(fx.var(kBbBallVy)) > 0);
+        }
+        EXPECT_TRUE(fired)
+            << "normal COMMAND_ATTACK must launch a live family projectile";
+        EXPECT_TRUE(cooldown_seen)
+            << "the normal fire-frequency cooldown must remain active";
+        EXPECT_TRUE(dislodged)
+            << "the director-fired projectile must pop the wet FREE ball";
+        EXPECT_EQ(kStateRebound, fx.var(kBbBallState));
+        EXPECT_EQ(416, fx.var(kBbBallVz));
+    }
+
+    // Dry control: the same capable racer keeps the normal loose-ball GOTO
+    // and does not spend a weapon.
+    {
+        BballCourt dry;
+        walker* dry_shooter =
+            dry.spawn_living(FAMILY_ARCHER, 0, 240, 292, ACT_SIT);
+        ASSERT_NE(nullptr, dry_shooter);
+        dry.red->set_act_type(ACT_SIT);
+        dry.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        dry_shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        dry_shooter->stats()->set_weapon_cost(0);
+        dry_shooter->set_current_weapon(FAMILY_ARROW);
+        dry.tick(1);
+        ASSERT_TRUE(dry.basketball_active());
+        dry.thaw();
+        dry.set_ball_free(320, 300);
+        align_before_cadence(dry.world());
+        dry.tick(1);
+        EXPECT_EQ(0, live_weapons_owned_by(dry.world(), dry_shooter));
+        EXPECT_TRUE(front_command_is(dry_shooter, COMMAND_GOTO, 312, 292));
+    }
+}
+
+TEST_F(ModesBasketball, director_never_shoots_airborne_water_overlap)
+{
+    BballCourt fx;
+    paint_water(fx.world(), 19, 17, 22, 21);
+    walker* shooter =
+        fx.spawn_living(FAMILY_ARCHER, 0, 240, 292, ACT_SIT);
+    ASSERT_NE(nullptr, shooter);
+    fx.red->set_act_type(ACT_SIT);
+    fx.red->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    shooter->stats()->set_weapon_cost(0);
+    shooter->set_current_weapon(FAMILY_ARROW);
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.thaw();
+    fx.set_ball_free(320, 300);
+    auto& vars = fx.world().mode.vars;
+    vars[kBbBallState] = kStateRebound;
+    vars[kBbBallPz] = 1 * 256;
+    vars[kBbBallVz] = 512;
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+
+    EXPECT_EQ(kStateRebound, fx.var(kBbBallState));
+    EXPECT_GT(fx.var(kBbBallPz), 0)
+        << "the low ball remains genuinely airborne over water";
+    EXPECT_EQ(0, live_weapons_owned_by(fx.world(), shooter));
+    EXPECT_NE(COMMAND_ATTACK, front_type(shooter));
+    EXPECT_TRUE(front_command_is(shooter, COMMAND_GOTO, 312, 292))
+        << "REBOUND keeps the ordinary loose-flight racer role";
+    EXPECT_EQ(nullptr, shooter->foe());
+    EXPECT_EQ(fx.ball(), shooter->leader());
+}
+
+TEST_F(ModesBasketball, attended_waterlogged_ball_resets_at_600_ticks)
+{
+    BballCourt fx;
+    paint_water(fx.world(), 18, 28, 22, 32);
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.thaw();
+    fx.set_ball_free(320, 480);
+    fx.red->setxy(292, 452);  // center (300,460): attended, no pickup
+    fx.tick(1);
+    const std::int32_t since = fx.var(kBbStallSince);
+    ASSERT_GT(since, 0) << "waterlogging starts the recovery clock";
+
+    const std::int32_t one_before_reset = since + kDeadBallTicks - 1;
+    for (int step = 0;
+         step < kDeadBallTicks &&
+         static_cast<std::int32_t>(fx.world().tick_count_) < one_before_reset;
+         ++step)
+    {
+        fx.tick(1);
+    }
+    ASSERT_EQ(one_before_reset,
+              static_cast<std::int32_t>(fx.world().tick_count_))
+        << "the bounded watchdog probe must reach the exact boundary";
+    EXPECT_EQ(0, count_notifications(fx.events, "BALL RESET"))
+        << "one tick short: projectile recovery still has time";
+    fx.tick(1);
+    EXPECT_EQ(1, count_notifications(fx.events, "BALL RESET"));
+    EXPECT_EQ(kBballJumpX, fx.ball_cx());
+    EXPECT_EQ(kBballJumpY, fx.ball_cy());
 }
 
 // ===========================================================================
@@ -2509,6 +2878,11 @@ TEST_F(ModesBasketball, mirror_replication_120_ticks)
     EXPECT_EQ(ball->team_num(), m_ball->team_num());
     EXPECT_EQ(ball->frame(), m_ball->frame())
         << "the drawn spin frame replicates — mirrors never animate()";
+    ASSERT_NE(nullptr, ball->stats());
+    ASSERT_NE(nullptr, m_ball->stats());
+    EXPECT_TRUE(ball->stats()->query_bit_flags(BIT_SWIMMING));
+    EXPECT_TRUE(m_ball->stats()->query_bit_flags(BIT_SWIMMING))
+        << "the objective's terrain capability crosses the snapshot";
 
     walker* const m_shadow = mirror.world().find_by_id(shadow->entity_id());
     ASSERT_NE(nullptr, m_shadow) << "the fxlist shadow must replicate too";
@@ -2518,6 +2892,11 @@ TEST_F(ModesBasketball, mirror_replication_120_ticks)
     EXPECT_EQ(shadow->ypos(), m_shadow->ypos());
     EXPECT_EQ(shadow->frame(), m_shadow->frame())
         << "the altitude frame replicates";
+    ASSERT_NE(nullptr, shadow->stats());
+    ASSERT_NE(nullptr, m_shadow->stats());
+    EXPECT_FALSE(shadow->stats()->query_bit_flags(BIT_SWIMMING));
+    EXPECT_FALSE(m_shadow->stats()->query_bit_flags(BIT_SWIMMING))
+        << "the visual shadow stays non-physical on both peers";
 
     // Test 46 — the hoops on the wire (D30/D31): family byte directly
     // after the shadow's, position/team/frame/cycle replicated. Judged by
@@ -4288,8 +4667,8 @@ TEST_F(ModesBasketball, hoop_freezes_on_win_latch)
 }
 
 // ===========================================================================
-// R1 calibration sanity — normal bot games on the five SHIPPED courts.
-// Loads the real scen824-828 geometry from builtin/modes.glad (the
+// R1 calibration sanity — normal bot games on the six SHIPPED courts.
+// Loads the real scen824-829 geometry from builtin/modes.glad (the
 // ModesItemsRealCampaign shape); no team is seated, so init fields a
 // 5-bot squad per active team and the director plays both ends. The
 // clock/range calibration claim (D7/D20): every court produces a score
@@ -4341,91 +4720,108 @@ int best_points(GameWorld& world)
     return best;
 }
 
+struct RealCourtBotGamePin
+{
+    int id;
+    int time_limit;
+    int first_score_tick;
+    int first_points[4];
+    bool play_to_regulation;
+    int final_tick;
+    int final_points[4];
+    int winner;
+    bool game_ended;
+    int ball_resets;
+};
+
+inline constexpr std::uint32_t kRealCourtBotGameSeed = 0x9E3779B9u;
+inline constexpr RealCourtBotGamePin kRealCourtBotGamePins[] = {
+    {824, 7200, 2787, {0, 2, 0, 0}, true, 7200, {2, 6, 0, 0}, 1, true, 0},
+    {825, 5400, 142, {0, 2, 0, 0}, false, 142, {0, 2, 0, 0}, -1, false, 0},
+    {826, 7200, 946, {0, 0, 2, 0}, false, 946, {0, 0, 2, 0}, -1, false, 0},
+    {827, 7200, 363, {0, 2, 0, 0}, false, 363, {0, 2, 0, 0}, -1, false, 0},
+    {828, 7200, 865, {0, 2, 0, 0}, false, 865, {0, 2, 0, 0}, -1, false, 0},
+    {829, 7200, 460, {2, 0, 0, 0}, false, 460, {2, 0, 0, 0}, -1, false, 0},
+};
+
 }  // namespace
 
 TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
 {
+    og::test::ScopedCampaignMountState mount_restore;
     restore_default_campaigns();
-    const std::string previous = get_mounted_campaign();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"))
         << "builtin/modes.glad should restore and mount";
-    const int courts[] = {824, 825, 826, 827, 828};
-    for (const int id : courts)
+    // One exact simulation per court. This seed scores quickly even on 828,
+    // whose default seed can reach the buzzer scoreless; retries would turn a
+    // deterministic regression into a probabilistic pass. Court 824 continues
+    // through regulation to pin the full-game and no-watchdog calibration.
+    for (const RealCourtBotGamePin& expected : kRealCourtBotGamePins)
     {
-        // A bot game's scoreline is chaotic, and "did this ONE game score"
-        // is a single Bernoulli sample of a ~95% event: a 24-seed sweep of
-        // 828 shuts out once, on the default seed after #225 gave the
-        // courts food (and twice, on other seeds, before it). Sampling
-        // three fixed seeds measures the calibration claim instead of one
-        // draw of it — it still fails hard for a court that cannot score,
-        // and it does not move with the map's chaos. The first game always
-        // runs the default RNG state, so the common case is one game.
-        int games = 0;
-        int points = 0;
-        int ticks = 0;
-        for (const unsigned seed : {0u, 0x9E3779B9u, 0x85EBCA77u})
-        {
-            LoadedRealCourt fx(id);
-            ASSERT_TRUE(fx.loaded) << "scen" << id << " must load";
-            // E5: the shipped courts' empty sides field bots only under
-            // a turned wheel — all-NONE would refuse the match.
-            for (auto& knob : fx.world().ctf_requested_fill)
-                knob = og::sim::kFillFair;
-            if (seed != 0u)
-                fx.world().rng_.state_ = seed;
-            fx.world().tick();
-            ASSERT_TRUE(fx.world().mode.active) << id;
-            ASSERT_EQ(kModeIdBasketball, fx.world().mode.vars[kBbModeId]) << id;
-            const int time_limit = fx.world().mode.vars[kBbTimeLimit];
-            ASSERT_GT(time_limit, 0) << id;
+        LoadedRealCourt fx(expected.id);
+        ASSERT_TRUE(fx.loaded) << "scen" << expected.id << " must load";
+        // E5: the shipped courts' empty sides field bots only under a turned
+        // wheel — all-NONE would refuse the match.
+        for (auto& knob : fx.world().ctf_requested_fill)
+            knob = og::sim::kFillFair;
+        fx.world().rng_.state_ = kRealCourtBotGameSeed;
+        fx.world().tick();
+        ASSERT_TRUE(fx.world().mode.active) << expected.id;
+        ASSERT_EQ(kModeIdBasketball, fx.world().mode.vars[kBbModeId])
+            << expected.id;
+        const int time_limit = fx.world().mode.vars[kBbTimeLimit];
+        ASSERT_EQ(expected.time_limit, time_limit) << expected.id;
 
-            // 824 plays a FULL game (score-limit win or buzzer) to give the
-            // no-watchdog claim teeth; the other courts stop at first blood.
-            const bool full_game = (id == 824);
-            ticks = 1;
-            while (ticks < time_limit && !fx.world().game_ended)
+        int ticks = 1;
+        int first_score_tick = 0;
+        int first_points[4] = {0, 0, 0, 0};
+        while (ticks < time_limit && !fx.world().game_ended)
+        {
+            fx.world().tick();
+            ticks++;
+            if (first_score_tick == 0 && best_points(fx.world()) > 0)
             {
-                fx.world().tick();
-                ticks++;
-                if (!full_game && best_points(fx.world()) > 0)
+                first_score_tick = ticks;
+                for (int team = 0; team < 4; ++team)
+                {
+                    first_points[team] = fx.world().mode.vars[
+                        static_cast<std::size_t>(kBbPoints + team)];
+                }
+                if (!expected.play_to_regulation)
                     break;
             }
-            games++;
-            points = best_points(fx.world());
-            std::printf("[ R1 CAL  ] scen%d game %d: %d ticks, best %d pts%s\n",
-                        id, games, ticks, points,
-                        fx.world().game_ended ? " (game ended)" : "");
-            if (id == 824)
-            {
-                EXPECT_EQ(0, count_notifications(fx.events, "BALL RESET"))
-                    << "the reference court must never need the dead-ball/"
-                    << "wipe watchdog in a normal bot game (R1)";
-            }
-            EXPECT_EQ(0u, og::script::hooks::hook_failures().count) << id;
-            for (const auto& err : fx.world().scripts().host().errors())
-                ADD_FAILURE()
-                    << "scen" << id << " script error: " << err.message;
-            if (points > 0)
-                break;
         }
-        EXPECT_GT(points, 0)
-            << "scen" << id << ": a normal bot game must produce a score "
-            << "inside the time limit (R1 calibration; " << games
-            << " seeded games run, last one " << ticks << " ticks)";
-    }
-    const std::string now = get_mounted_campaign();
-    if (now == "modes")
-        (void)unmount_campaign_package_with_error(now);
-    if (previous.empty())
-    {
-        const std::string still = get_mounted_campaign();
-        if (!still.empty())
-            (void)unmount_campaign_package_with_error(still);
-    }
-    else if (get_mounted_campaign() != previous)
-    {
-        (void)mount_campaign_package_with_error(previous);
+
+        EXPECT_EQ(expected.first_score_tick, first_score_tick)
+            << expected.id << " first-score tick";
+        EXPECT_EQ(expected.final_tick, ticks) << expected.id << " stop tick";
+        EXPECT_EQ(expected.final_tick,
+                  static_cast<int>(fx.world().tick_count_))
+            << expected.id << " world tick";
+        for (int team = 0; team < 4; ++team)
+        {
+            EXPECT_EQ(expected.first_points[team], first_points[team])
+                << expected.id << " first-score team " << team;
+            EXPECT_EQ(expected.final_points[team],
+                      fx.world().mode.vars[
+                          static_cast<std::size_t>(kBbPoints + team)])
+                << expected.id << " final team " << team;
+        }
+        EXPECT_EQ(expected.winner, fx.world().mode.winner_team)
+            << expected.id;
+        EXPECT_EQ(expected.game_ended, fx.world().game_ended)
+            << expected.id;
+        EXPECT_EQ(expected.game_ended, fx.world().mode.win_latched)
+            << expected.id << " win latch";
+        EXPECT_EQ(expected.ball_resets,
+                  count_notifications(fx.events, "BALL RESET"))
+            << expected.id << " dead-ball/wipe watchdog";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count)
+            << expected.id;
+        for (const auto& err : fx.world().scripts().host().errors())
+            ADD_FAILURE() << "scen" << expected.id
+                          << " script error: " << err.message;
     }
 }
 

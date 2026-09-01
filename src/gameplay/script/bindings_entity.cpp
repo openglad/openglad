@@ -379,6 +379,20 @@ int m_distance_to_ob_center(lua_State* L)
     return 1;
 }
 
+// walker:can_approach_weapon_range(objective) -> bool. Read-only: the C++
+// path evaluates a detached non-customized weapon profile and a virtual
+// terrain trace. Missing profiles and families with customize/on-fire hooks
+// are rejected without dispatch; a valid zero-range profile is distinct. The
+// query never spawns a projectile, consumes RNG, touches the obmap, or changes
+// either walker.
+int m_can_approach_weapon_range(lua_State* L)
+{
+    walker* w = self_arg(L);
+    walker* objective = resolve_walker(L, 2, /*required=*/true);
+    lua_pushboolean(L, w->can_approach_weapon_range(objective) ? 1 : 0);
+    return 1;
+}
+
 int m_attack(lua_State* L)
 {
     walker* w = self_arg(L);
@@ -3119,6 +3133,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"center_on", m_center_on},
     {"distance_to_ob", m_distance_to_ob},
     {"distance_to_ob_center", m_distance_to_ob_center},
+    {"can_approach_weapon_range", m_can_approach_weapon_range},
     {"attack", m_attack}, {"fire", m_fire}, {"special", m_special},
     {"death", m_death},
     {"teleport", m_teleport}, {"teleport_ranged", m_teleport_ranged},

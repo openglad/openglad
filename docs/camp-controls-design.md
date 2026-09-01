@@ -373,7 +373,7 @@ The old exemption keyed on the level's `SCEN_TYPE_SCRIPTED` bit conflated
 consequence scripts yet carry no bit); the bit itself is untouched in the
 `.fss` format and still means "level carries scripts" where genuinely
 consulted. Behavior-preserving for every shipped campaign: the only
-bit-carrying levels are the versus campaign's (modes') 39. A legacy
+bit-carrying levels are the versus campaign's (modes') 40. A legacy
 user-dir arena pack that relied on the bit needs one line of
 `campaign.yaml` — `matchup: versus`. Everything else is one REPLAY press
 away (per-row `replay = true` is the author's switch; tower never marks

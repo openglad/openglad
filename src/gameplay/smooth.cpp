@@ -106,6 +106,10 @@ static constexpr auto make_pix_to_genre() {
 	table[PIX_WATERGRASS_LR] = TYPE_WATER;
 	table[PIX_WATERGRASS_UL] = TYPE_WATER;
 	table[PIX_WATERGRASS_UR] = TYPE_WATER;
+	table[PIX_WATERGRASS_U] = TYPE_WATER;
+	table[PIX_WATERGRASS_L] = TYPE_WATER;
+	table[PIX_WATERGRASS_R] = TYPE_WATER;
+	table[PIX_WATERGRASS_D] = TYPE_WATER;
 
 	table[PIX_TREE_T1] = TYPE_TREES;
 	table[PIX_TREE_M1] = TYPE_TREES;

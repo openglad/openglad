@@ -14,7 +14,7 @@
 // mounted (the test_imaginations_dream_log pattern). Expectations derive
 // at runtime from the campaign's own data — the scen titles in the mounted
 // archive and the generated lib/mode_levels.lua manifest — never from a
-// pinned list of 39 strings, so a modes_mapgen regeneration moves both
+// pinned list of 40 strings, so a modes_mapgen regeneration moves both
 // sides together.
 //
 // The camp replaced the book's root and card pages: the tallies live in the
@@ -69,7 +69,7 @@ using og::ui::CampaignZoneSession;
 
 // The seven games in campaign.yaml description order — the one ordering
 // pin the book carries (mode tags, page titles and flavor lines; never the
-// 39 arena strings).
+// 40 arena strings).
 struct BookMode {
     const char* tag;
     const char* prefix;  // the scen-title prefix that marks the band
@@ -110,7 +110,7 @@ constexpr int kCampRosterRows = 3;
 
 // The campaign's arena census (the generator's own hard count — the old
 // DECK_SIZE, which the roll inherits as og.campaign_random(#rows)).
-constexpr int kArenaCount = 39;
+constexpr int kArenaCount = 40;
 
 // MATCH SETUP's rows (D4 — the presets retired): one row each, in the
 // order the page composes them, each labelled with the value it holds.
@@ -574,7 +574,7 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
 {
     const DerivedBook book = derive_book();
     ASSERT_EQ(static_cast<std::size_t>(kArenaCount), book.ordered.size())
-        << "the campaign ships 39 arenas";
+        << "the campaign ships 40 arenas";
     ASSERT_EQ(kModeCount, book.bands.size());
     const std::map<int, ManifestRow> manifest = parse_manifest();
     const int cursor = save_.scen_num;
@@ -596,7 +596,7 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
         << "the roster does not lead, so the readout heads the panel";
     ASSERT_EQ(1u, zone.readout()->items.size());
     EXPECT_EQ("BOOK", zone.readout()->items[0].label);
-    EXPECT_EQ("0/39", zone.readout()->items[0].value);
+    EXPECT_EQ("0/40", zone.readout()->items[0].value);
     for (const hooks::CampaignZoneWidget::ReadoutItem& item :
          zone.readout()->items)
     {
@@ -703,7 +703,7 @@ TEST_F(ModesBookTest, every_camp_row_renders_without_a_pager)
         ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
         EXPECT_EQ("sign the book", camp_rows(zone)[kCampGameRow].note)
             << "a full book asks for the signature through its own door";
-        check(zone, "39/39, unsigned");
+        check(zone, "40/40, unsigned");
     }
     ASSERT_TRUE(save_.campaign_state_set("modes", "book_signed", 1));
     {
@@ -711,7 +711,7 @@ TEST_F(ModesBookTest, every_camp_row_renders_without_a_pager)
         zone.fetch();
         ASSERT_TRUE(zone.scripted());
         ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
-        check(zone, "39/39, signed");
+        check(zone, "40/40, signed");
     }
 
     // And the joiner, whose one line costs a row unit rather than a row.
@@ -767,7 +767,7 @@ TEST_F(ModesBookTest, terminal_camp_rolls_the_scenario_and_names_what_it_set)
     ASSERT_GE(io.pages.size(), 2u);
     EXPECT_NE(std::string::npos, io.pages[0].find("Camp # [1-4] (0 = back): "))
         << io.pages[0];
-    EXPECT_NE(std::string::npos, io.pages[0].find("BOOK 0/39"));
+    EXPECT_NE(std::string::npos, io.pages[0].find("BOOK 0/40"));
     EXPECT_NE(std::string::npos,
               io.pages[0].find("   3. RANDOM SCENARIO - any game, any field\n"))
         << io.pages[0];
@@ -820,7 +820,7 @@ TEST_F(ModesBookTest, base_camp_tallies_recount_from_the_save)
     CampaignZoneSession zone(save_);
     zone.fetch();
     ASSERT_TRUE(zone.scripted());
-    EXPECT_EQ("3/39", zone.readout()->items[0].value)
+    EXPECT_EQ("3/40", zone.readout()->items[0].value)
         << "the header counts the whole book";
     const std::vector<CampaignZoneSession::Row>& rows = camp_rows(zone);
     EXPECT_EQ("GAME: CAPTURE THE FLAG", rows[kCampGameRow].label);
@@ -879,7 +879,7 @@ TEST_F(ModesBookTest, dangling_cursor_falls_back_to_the_first_open_game)
 TEST_F(ModesBookTest, joiner_camp_cuts_the_roll_and_the_sign)
 {
     const DerivedBook book = derive_book();
-    complete_all(book);  // even at 39/39 a joiner is offered no signature
+    complete_all(book);  // even at 40/40 a joiner is offered no signature
     install_providers([] { return false; });
 
     CampaignZoneSession zone(save_);
@@ -914,7 +914,7 @@ TEST_F(ModesBookTest, joiner_camp_cuts_the_roll_and_the_sign)
     EXPECT_EQ("The host calls the game.", zone.texts()[0].lines[0]);
 
     // Its own book, and a roster it may still shape.
-    EXPECT_EQ("39/39", zone.readout()->items[0].value);
+    EXPECT_EQ("40/40", zone.readout()->items[0].value);
     EXPECT_TRUE(zone.roster().can_deploy);
     EXPECT_TRUE(zone.roster().can_hire);
 }
@@ -984,7 +984,7 @@ TEST_F(ModesBookTest, games_index_lists_the_seven_games_with_stamp_tallies)
     EXPECT_EQ("SEVEN GAMES", page.title);
     ASSERT_EQ(2u, page.lines.size());
     EXPECT_EQ("Every game keeps its own page.", page.lines[0]);
-    EXPECT_EQ("Stamped: 3 of 39.", page.lines[1]);
+    EXPECT_EQ("Stamped: 3 of 40.", page.lines[1]);
 
     ASSERT_EQ(kModeCount, page.rows.size());
     for (std::size_t i = 0; i < kModeCount; i++)
@@ -1259,7 +1259,7 @@ TEST_F(ModesBookTest, roll_answers_every_arena_and_never_the_current_field)
         rolled.insert(outcome.level);
     }
     EXPECT_EQ(static_cast<std::size_t>(kArenaCount) - 1, rolled.size())
-        << "the 39 picks reach every arena but the current field";
+        << "the 40 picks reach every arena but the current field";
     EXPECT_FALSE(rolled.contains(pair));
 }
 
@@ -1322,7 +1322,7 @@ TEST_F(ModesBookTest, sign_the_book_materializes_latches_and_retitles)
         CampaignZoneSession zone(save_);
         zone.fetch();
         ASSERT_TRUE(zone.scripted());
-        EXPECT_EQ("39/39", zone.readout()->items[0].value);
+        EXPECT_EQ("40/40", zone.readout()->items[0].value);
         EXPECT_TRUE(zone.texts().empty());
         ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
         EXPECT_EQ("sign the book", camp_rows(zone)[kCampGameRow].note);

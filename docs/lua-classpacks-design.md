@@ -450,6 +450,12 @@ declaring `0`) means "keep whatever the engine's own row supplies", so a pack
 that says nothing about `hp` changes nothing — including for a core family
 whose art it overrides.
 
+`flags` install on living, weapon, and effect instances. `SWIMMING` has one
+narrow movement meaning: water (including shoreline variants) is passable.
+It does not confer height or bypass trees, lava, wall furniture, boulders, or
+blocking decor, and it does not stop a script from detecting water contact
+with `og.query_genre` to apply its own surface physics.
+
 ### The living blocks: `stats` / `combat` / `costs` / `specials`
 
 Those four blocks are the only place the "undeclared changes nothing" rule
@@ -580,7 +586,8 @@ rule above.
   glyph_transparent = false,    -- the curses "draw nothing here" flag
   radar_color = 40,             -- palette index, or "none" / "team"
   radar_jitter = 2,             -- adds rand(jitter); 0 = NO rng call
-  radar_ping = true,            -- draw LOUD (default false; issue #209)
+  radar_landmark = true,        -- public radar landmark; treasure/effect only
+  radar_ping = true,            -- emphasize an otherwise eligible blip
 ```
 
 `sprite` is nullable (`og.NIL` clears it) and its value is passed to the
@@ -616,11 +623,15 @@ entity's team colour". `radar_color` has two sentinels: `none`
 (`og::kRadarColorNone`, draw no blip) and `team` (`og::kRadarColorTeam`).
 `radar_jitter = 0` means *make no RNG call*, matching the legacy draw path
 where only flickering families rolled — the call count is observable.
-`radar_ping = true` (default false, all five orders) marks a family every
-player must be able to track — mode objectives like the soccer and
-basketball balls: the SDL radar draws it as an oversized blip pulsing on a
-render-side counter (never the game rng, so the sim stream is untouched),
-and the curses client promotes the family glyph to bold.
+`radar_landmark = true` (default false, treasure/effect only) makes a family
+with a drawable `radar_color` a public SDL radar landmark: treasures do not
+require treasure sight, and effects remain visible to opposing radars. It has
+no curses effect. `radar_ping = true` (default false, all five orders) changes
+emphasis, not visibility. An SDL blip already eligible to draw becomes an
+oversized pulse driven by a render-only counter (never the game rng, so the
+sim stream is untouched), and the curses client makes the family glyph bold.
+Ping does not supply a colour or grant landmark status. Public objectives
+normally combine both flags.
 
 Presentation is cosmetic, so a malformed value (a multi-character `glyph`, an
 unknown `glyph_color`, a negative `radar_jitter`) warns and keeps the current

@@ -766,12 +766,13 @@ loaded map's authored-team mask (start markers) so every peer agrees on sparse t
 With the type bit clear, every scripted path reduces to one false branch: zero extra RNG draws,
 events, or entity changes (classic parity preserved).
 
-The shipped modes campaign (39 scenarios: TDM 300-305, CTF 500-509, Onslaught 800-803,
-Soccer 820-823, Basketball 824-828, Mutant 840-843, FFA 850-855) is generated into
+The shipped modes campaign (40 scenarios: TDM 300-305, CTF 500-509, Onslaught 800-803,
+Soccer 820-823, Basketball 824-829, Mutant 840-843, FFA 850-855) is generated into
 `campaigns/modes/` by `tools/modes_mapgen` via `scripts/generate_modes_campaign.sh`;
 the build composes that one tree — including the hand-authored pack at
 `packs/modes.core/` (seven mode scripts, shared libs, flag/waypoint/ball/basketball
-families, sprites), which the generator never rewrites — into the
+families, sprites), which the generator preserves except for its generated
+`lib/mode_levels.lua` manifest — into the
 archive, so luals/lint/coverage see exactly the shipped bytes.
 `scripts/gen_modes_sprites.py` paints the pack sprites.
 

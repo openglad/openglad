@@ -314,7 +314,8 @@ version triple). Instead:
 - Manifest rows: `mode='ffa'`, `fighters=8..16` per arena (new row field),
   `time_limit=7200`, `score_limit=15`, `spawn_caps`, `item_pads`. Mutant rows
   840–843 gain `fighters=4` (keeps current feel, allows growth).
-- `campaign.yaml` description count: "thirty-three" → **"thirty-nine"**
+- `campaign.yaml` description count: "thirty-three" → "thirty-nine" →
+  **"forty"** (Basketball 829 is the later water-court addition)
   (`main.cpp:106-125` regenerates the text — update the literal there).
 - Regenerate flow: `scripts/generate_modes_campaign.sh` (rewrites campaign +
   `lib/mode_levels.lua` + rebuilds the staged archive; never hand-edit the

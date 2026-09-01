@@ -23,17 +23,19 @@ og.family("effect", {
   name = "BBALL",
   loops_animation = false,
   creates_hit_effect = false,
-  flags = { "NO_COLLIDE" },
+  flags = { "NO_COLLIDE", "SWIMMING" },
   sprite = "packs/modes.core/sprites/bball.png",
   glyph = "b",
   glyph_ascii = "b",
   glyph_color = "yellow",
   glyph_bold = true,
   glyph_transparent = false,
-  radar_color = 88, -- COLOR_YELLOW, the nearest radar band to the orange art
+  -- The drawn entity rises with fake z. Its ground-shadow beacon owns the
+  -- objective radar pulse so an apex shot never shows a second, lifted dot.
+  radar_color = "none",
   radar_jitter = 0,
-  radar_landmark = true,
-  radar_ping = true, -- #209: the ball is the objective — draw it LOUD
+  radar_landmark = false,
+  radar_ping = false,
 
   on_act = on_act,
 })

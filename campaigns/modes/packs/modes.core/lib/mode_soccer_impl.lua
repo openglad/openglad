@@ -9,6 +9,7 @@ local caps = og.use("mode_caps")
 local items = og.use("mode_items")
 local match = og.use("mode_match")
 local strip = og.use("mode_strip")
+local surface = og.use("mode_ball_surface")
 
 -- Mode-private slot map (8+; header 0-7 is mode_core.SLOT). Ball position
 -- and velocity are x256 fixed point (DECISIONS D16: int32 mode vars).
@@ -40,11 +41,6 @@ local S = {
 }
 
 local T = {
-  -- Friction: a full kick is 8 px/tick = 2048 in x256 fixed point. A
-  -- linear decay of F per tick stops it after 2048/F ticks; the 2.5-3 s
-  -- target at 12 ticks/s is 30-36 ticks, so F = 64 stops a full kick in
-  -- exactly 2048/64 = 32 ticks (~2.67 s).
-  friction = 64,
   kick_radius = 12, -- Manhattan center distance that counts as touching
   hit_radius = 12, -- flight contact distance (walker half 8 + ball half 6, less a graze)
   kick_min_px = 2, -- melee kick floor, px/tick
@@ -110,6 +106,11 @@ local T = {
   drive_cross = 24,
   drive_cross_hold = 32,
   drive_reach = 10,
+  -- A floating ball sheds speed throughout the puddle, then takes the old
+  -- one-quarter bog only when its footprint clears the far shoreline.
+  water_keep = 248,
+  water_shore_keep = 64,
+  water_recover_speed = 256, -- <= 1 px/tick L1: shoot a bogged ball loose
 }
 
 -- The shared scalar helpers, bound to locals at load time: soccer's L1
@@ -280,10 +281,40 @@ local function run_shots(ball)
   return false
 end
 
+-- Sample every integer center the footprint can expose to terrain. Substep
+-- endpoints alone can straddle a narrow dry bank with wet footprints at both
+-- ends; once any sampled center clears water, that shoreline impact remains
+-- load-bearing even if the ball enters another pool before the tick ends.
+local function classify_water_sweep(ball, from_px, from_py, to_px, to_py,
+                                    on_water, touched_water, cleared_shore)
+  local from_x = og.div(from_px, 256)
+  local from_y = og.div(from_py, 256)
+  local delta_x = og.div(to_px, 256) - from_x
+  local delta_y = og.div(to_py, 256) - from_y
+  local sample_count = og.max(iabs(delta_x), iabs(delta_y))
+  if sample_count == 0 then
+    return on_water, touched_water, cleared_shore
+  end
+  for sample = 1, sample_count do
+    local sample_x = from_x + og.div(delta_x * sample, sample_count)
+    local sample_y = from_y + og.div(delta_y * sample, sample_count)
+    local now_water = surface.touches_water(ball, sample_x * 256, sample_y * 256)
+    if on_water and not now_water then
+      cleared_shore = true
+    end
+    if now_water then
+      touched_water = true
+    end
+    on_water = now_water
+  end
+  return on_water, touched_water, cleared_shore
+end
+
 -- Flight: sub-stepped movement with axis-separated wall reflection, then
--- fast-contact damage (1 per px/tick, capped, ball:attack), then linear
--- friction. attack() draws RNG — the contact itself is the deterministic
--- input, so the draw order is stable.
+-- fast-contact damage (1 per px/tick, capped, ball:attack), then surface
+-- damping with a gradual wet coast and a harsh shoreline exit. attack() draws
+-- RNG — the contact itself is the deterministic input, so the draw order is
+-- stable.
 local function run_flight(ball, livings)
   local vx = og.mode_get(S.BALL_VX)
   local vy = og.mode_get(S.BALL_VY)
@@ -298,7 +329,11 @@ local function run_flight(ball, livings)
   local last_kicker = og.mode_get(S.LAST_KICKER)
   local steps = og.div(og.max(iabs(vx), iabs(vy)), T.substep_px * 256) + 1
   local bounced = false
+  local on_water = surface.touches_water(ball, px, py)
+  local touched_water = on_water
+  local cleared_shore = false
   for _ = 1, steps do
+    local old_px = px
     local nx = px + og.div(vx, steps)
     if not og.query_grid_passable(og.div(nx, 256) - half_x, og.div(py, 256) - half_y, ball) then
       vx = -vx
@@ -306,6 +341,9 @@ local function run_flight(ball, livings)
       bounced = true
     end
     px = nx
+    on_water, touched_water, cleared_shore = classify_water_sweep(
+      ball, old_px, py, px, py, on_water, touched_water, cleared_shore)
+    local old_py = py
     local ny = py + og.div(vy, steps)
     if not og.query_grid_passable(og.div(px, 256) - half_x, og.div(ny, 256) - half_y, ball) then
       vy = -vy
@@ -313,6 +351,8 @@ local function run_flight(ball, livings)
       bounced = true
     end
     py = ny
+    on_water, touched_water, cleared_shore = classify_water_sweep(
+      ball, px, old_py, px, py, on_water, touched_water, cleared_shore)
     if speed > T.fast_fp then
       local bx = og.div(px, 256)
       local by = og.div(py, 256)
@@ -341,15 +381,14 @@ local function run_flight(ball, livings)
   if bounced then
     og.emit_positional_sound(ball, C.SOUND_CLANG)
   end
-  speed = iabs(vx) + iabs(vy)
-  local slowed = speed - T.friction
-  if slowed <= 0 then
-    vx = 0
-    vy = 0
-  else
-    vx = og.div(vx * slowed, speed)
-    vy = og.div(vy * slowed, speed)
+  local keep = 256
+  if touched_water then
+    keep = T.water_keep
   end
+  if cleared_shore then
+    keep = T.water_shore_keep
+  end
+  vx, vy = surface.damp_keep(vx, vy, keep)
   og.mode_set(S.BALL_VX, vx)
   og.mode_set(S.BALL_VY, vy)
   og.mode_set(S.BALL_PX, px)
@@ -517,11 +556,15 @@ local function run_dead_ball(ball, livings)
     return
   end
   local bx, by = ball_center()
-  for k = 1, #livings do
-    local wx, wy = walker_center(livings[k])
-    if iabs(bx - wx) + iabs(by - wy) <= T.dead_ball_radius then
-      og.mode_set(S.STALL_SINCE, 0)
-      return
+  local waterlogged = surface.touches_water(
+    ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY))
+  if not waterlogged then
+    for k = 1, #livings do
+      local wx, wy = walker_center(livings[k])
+      if iabs(bx - wx) + iabs(by - wy) <= T.dead_ball_radius then
+        og.mode_set(S.STALL_SINCE, 0)
+        return
+      end
     end
   end
   local now = og.world_tick()
@@ -723,6 +766,22 @@ local function run_team_director(livings, ball, team)
   for i = 1, #members do
     assigned[i] = false
   end
+
+  local slow = iabs(og.mode_get(S.BALL_VX)) +
+    iabs(og.mode_get(S.BALL_VY)) <= T.water_recover_speed
+  if slow then
+    if surface.touches_water(
+        ball, og.mode_get(S.BALL_PX), og.mode_get(S.BALL_PY)) then
+      local recovery =
+        ai.nearest_hostile_ranged_unassigned(
+          members, assigned, ball, bx, by)
+      if recovery ~= nil then
+        assigned[recovery] = true
+        ai.attack_objective(members[recovery], ball)
+      end
+    end
+  end
+
   -- The small-team rule (matched-teams D38, general to every whittled
   -- squad): a sole member plays STRIKER, never goalkeeper — a lone keeper
   -- camps its mouth and can never score, so a 1v1 would stall for the
@@ -733,6 +792,7 @@ local function run_team_director(livings, ball, team)
   -- BOT beside a live human teammate keeps the mouth — the human can
   -- score, so the desperation reading does not apply (review finding on
   -- mixed human+bot teams; is_directable excludes player walkers).
+  -- Wet recovery reserves its shooter first, so the other member keeps goal.
   if #members > 1 or team_live > #members then
     local goalie_index = ai.nearest_unassigned(members, assigned, gcx, gcy)
     if goalie_index ~= nil then

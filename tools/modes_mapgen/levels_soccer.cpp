@@ -151,7 +151,9 @@ void build_the_pitch(const ExpectedLevel& row)
 }
 
 // ---------------------------------------------------------------------------
-// 821 THE MUDBOWL — 50x30, 2 teams; two water pools flank mid-field.
+// 821 THE MUDBOWL — 50x30, 2 teams; two water pools flank mid-field. Each
+// pool has standable pitch on opposite shores, so mode_anchors fields the
+// non-teleporting automatic squad here. Human roster mages remain legal.
 // ---------------------------------------------------------------------------
 void build_the_mudbowl(const ExpectedLevel& row)
 {
@@ -365,14 +367,15 @@ std::vector<ExpectedLevel> soccer_expectations()
         {{1, 11, 2, 18}, {47, 11, 48, 18}}, {24, 14},
         {
             "THE MUDBOWL, CONTENDERS. TWO",
-            "POOLS FLANK THE MIDDLE AND",
-            "THE BALL CARES NOT AT ALL.",
-            "WADE AND YOU DROWN BY INCHES;",
-            "FLY AND YOU GAMBLE. THREE",
-            "GOALS TAKE THE MATCH.",
+            "POOLS FLANK THE MIDDLE. A BALL",
+            "THAT HITS WATER BOGS DOWN.",
+            "IF IT BOGS, SHOOT IT LOOSE.",
+            "FLY THE POOLS OR GO AROUND.",
+            "THREE GOALS TAKE THE MATCH.",
             "-- THE GAMESMASTER",
         });
     mudbowl.decor_cells = 4;
+    mudbowl.water_cells = 24;
     // The two flight potions are static one-shots, so they are treasures
     // the world carries but never pads the respawner refills.
     mudbowl.treasures += 2;

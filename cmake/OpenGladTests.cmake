@@ -964,6 +964,16 @@ target_compile_definitions(og_unit_basketball PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
 )
 
+# The real-field water stationarity suite runs 9,000 scripted world ticks.
+# Keep its ASan cost parallel with basketball instead of stacking both suites
+# into one CTest process whose honest runtime exceeds the 180 s hang ceiling.
+og_add_unit_group(og_unit_modes_water FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_water_stationarity.cpp
+)
+target_compile_definitions(og_unit_modes_water PRIVATE
+    OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
+)
+
 og_add_unit_group(og_unit_soccer FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_soccer.cpp
 )

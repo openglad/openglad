@@ -295,7 +295,7 @@ behind a hover or a spent face:
   and the roster floor takes three, so text lines and docket rows share
   the other five; the host spends four of them on rows and speaks no
   line — a docket that states its own weight so all four render, rather
-  than three and an unlabelled pager. Readout: BOOK 12/39, and nothing
+  than three and an unlabelled pager. Readout: BOOK 12/40, and nothing
   else (the C++ header cell already inks the purse a few pixels above,
   and it spells an infinite purse "INF" where a scripted cell can only
   push the raw number). Rows: GAME (page → seven-game index with
@@ -316,7 +316,7 @@ behind a hover or a spent face:
   current pairing steps one row on in the ordered manifest, wrapping,
   because a green button that changes nothing is not a roll. SIGN THE
   BOOK lives on the index page whose cover it takes, asked for by the
-  GAME row's note at 39/39; the camp keeps no signature row and no cover
+  GAME row's note at 40/40; the camp keeps no signature row and no cover
   line. Joiners: own-book readout, the same read-only rules digest,
   "The host calls the game." / "The host calls the rules.", browsable
   pages with (HOST) level rows; the roll, the signature AND the three

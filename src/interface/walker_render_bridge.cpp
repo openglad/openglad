@@ -106,12 +106,18 @@ walker::~walker()
 	// under a different active gameplay context (for example, hidden server
 	// sessions inside the local transport runtime).
 	GameWorld* const owning_world = owning_world_;
-	obmap* active = (owning_world != nullptr) ? owning_world->myobmap.get() : nullptr;
-	if (active == nullptr &&
-	    current_game != nullptr &&
-	    current_game->world != nullptr)
+	obmap* active = nullptr;
+	// Dormant walkers are invariantly absent from obmap (set_dormant owns the
+	// removal). The detached weapon-profile probe reuses that invariant.
+	if (!dormant())
 	{
-		active = current_game->world->myobmap.get();
+		active =
+			(owning_world != nullptr) ? owning_world->myobmap.get() : nullptr;
+		if (active == nullptr && current_game != nullptr &&
+		    current_game->world != nullptr)
+		{
+			active = current_game->world->myobmap.get();
+		}
 	}
 	if (active != nullptr)
 		active->remove(this);

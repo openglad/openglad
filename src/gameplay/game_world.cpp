@@ -830,6 +830,29 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                 case PIX_WALLTOP_H:
                     return false;
 
+                // Water is surface terrain: projectiles and airborne walkers
+                // cross it as before, while explicitly swimming families can
+                // now move through it without gaining passage through any of
+                // the solid obstacle cases below.
+                case PIX_WATER1:
+                case PIX_WATER2:
+                case PIX_WATER3:
+                case PIX_WATERGRASS_LL:
+                case PIX_WATERGRASS_LR:
+                case PIX_WATERGRASS_UL:
+                case PIX_WATERGRASS_UR:
+                case PIX_WATERGRASS_U:
+                case PIX_WATERGRASS_L:
+                case PIX_WATERGRASS_R:
+                case PIX_WATERGRASS_D:
+                    if (ob->query_order() == Order::Weapon)
+                        break;
+                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
+                        break;
+                    if (ob->stats()->query_bit_flags(BIT_SWIMMING))
+                        break;
+                    return false;
+
                 case PIX_WALL4:
                 case PIX_WALL5:
                 case PIX_WALL_ARROW_GRASS:
@@ -865,17 +888,6 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                             return false;
                     }
                     [[fallthrough]];
-                case PIX_WATER1:
-                case PIX_WATER2:
-                case PIX_WATER3:
-                case PIX_WATERGRASS_LL:
-                case PIX_WATERGRASS_LR:
-                case PIX_WATERGRASS_UL:
-                case PIX_WATERGRASS_UR:
-                case PIX_WATERGRASS_U:
-                case PIX_WATERGRASS_L:
-                case PIX_WATERGRASS_R:
-                case PIX_WATERGRASS_D:
                 case PIX_WALLSIDE_L:
                 case PIX_WALLSIDE1:
                 case PIX_WALLSIDE_R:
@@ -920,7 +932,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                 case PIX_LAVA1:
                 case PIX_LAVA2:
                     // Molten: solid to ground walkers; projectiles fly over
-                    // and flyers cross (same conditional arm as water above).
+                    // and flyers cross. Swimming does not grant lava access.
                     if (ob->query_order() == Order::Weapon)
                         break;
                     if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
@@ -950,9 +962,9 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                         case DecorPassability::BlocksAll:
                             return false;
                         case DecorPassability::BlocksGround:
-                            // Exactly the legacy water/torch arm: weapons
-                            // pass, flyers (permanent or temporary) pass,
-                            // ground walkers are blocked.
+                            // Exactly the legacy obstacle arm: weapons pass,
+                            // flyers (permanent or temporary) pass, ground
+                            // walkers (including swimmers) are blocked.
                             if (ob->query_order() == Order::Weapon)
                                 break;
                             if (ob->stats()->query_bit_flags(BIT_FLYING) ||

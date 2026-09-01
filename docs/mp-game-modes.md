@@ -1,7 +1,7 @@
 # Multiplayer Game Modes
 
 OpenGlad ships seven competitive game modes in one built-in campaign:
-**`modes`** ("Multiplayer Game Modes"), 39 scenarios. Pick it
+**`modes`** ("Multiplayer Game Modes"), 40 scenarios. Pick it
 from SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
 Every scenario title is prefixed with its mode:
 
@@ -11,7 +11,7 @@ Every scenario title is prefixed with its mode:
 | Capture the Flag | 500-509 | Carry enemy flags home; first to the capture limit wins. |
 | Onslaught | 800-803 | Destroy generators to FLIP them to your team; a team with none left is eliminated. |
 | Soccer | 820-823 | Smack the ball into the enemy goal; first to the goal limit wins. |
-| Basketball | 824-828 | Carry or shoot the ball through an enemy hoop; first to the point limit wins. |
+| Basketball | 824-829 | Carry or shoot the ball through an enemy hoop; first to the point limit wins. |
 | Mutant | 840-843 | Up to sixteen lone competitors; first blood crowns the Mutant, and only the Mutant can be hurt — kill it to take its place. |
 | Free For All | 850-855 | Every fighter for itself, each in a color of its own; first to the frag limit wins. |
 
@@ -231,6 +231,14 @@ a dropped flag). Carriers run home and fight only when cornered.
   put-backs and bank shots all count. Low throws bounce off walls (that is the
   bank); shots and lobs clear them. Knock it through your *own* hoop and the
   points go to the opposition.
+- **Water separates flight from footing.** A basketball in the air sails
+  over flooded tiles without losing speed. The instant it lands in water,
+  or a loose ball rolls into it, the ball bogs down sharply. A weapon hit
+  can pop a stranded loose ball back into motion, which makes a long shot
+  into a flooded bay a recoverable mistake instead of an automatic re-spot.
+  On THE CAUSEWAY, automatically filled teams trade the usual mage for an
+  orc so hunt-AI teleports cannot strand a bot across a bay; a mage selected
+  from a player's roster is unchanged.
 - First team to the point limit (21, or 11 on THE PLAYGROUND) wins; otherwise
   the clock decides it on points, and a shot already in the air at the buzzer
   is allowed to land. Fallen fighters respawn on the usual difficulty setting
@@ -254,6 +262,7 @@ a dropped flag). Carriers run home and fight only when cornered.
 | 826 | Basketball: FOUR HOOPS | 4 | 41×41 | a hoop on every wall; every rebound has four claimants |
 | 827 | Basketball: THE BANKHOUSE | 2 | 45×27 | jutting backboards and pillars — straight passes die, banks live |
 | 828 | Basketball: BENCHWARMERS | 2 | 47×29 | a tent per side raising skeleton substitutes, four at a time |
+| 829 | Basketball: THE CAUSEWAY | 2 | 49×29 | four flooded corners; feet take the dry cross while airborne passes cut straight over |
 
 Rim size never changes; the courts vary the arc, the walk and the furniture.
 FOUR HOOPS fielded with fewer than four teams simply leaves the unused hoops
@@ -354,9 +363,14 @@ than the number above and they all play, up to sixteen.
   the clock runs out. Last team standing wins.
 - **Soccer** (820-823): hit the ball to send it flying; a fast ball hurts
   and bounces off whoever it hits. Fully inside the enemy goal strip = a
-  goal for the last-touching team. Dead heroes respawn, and the pitch's
-  drumsticks come back to their own spots on a fifteen-second trickle — a
-  full pitch is the hungriest field in the campaign.
+  goal for the last-touching team. A ball that reaches water floats onward
+  while steadily slowing, then bogs sharply at the far shore; strike it again
+  with a projectile to shoot it loose.
+  THE MUDBOWL's two pools make that recovery part of the field. Its automatic
+  teams trade the usual mage for an orc so hunt-AI teleports cannot strand a
+  bot across a pool; player-roster mages are unchanged. Dead heroes respawn,
+  and the pitch's drumsticks come back to their own spots on a fifteen-second
+  trickle — a full pitch is the hungriest field in the campaign.
 - **Mutant** (840-843): a true free-for-all until the first kill crowns
   the Mutant. Every deployed character enters as its own competitor in a
   color of its own — up to sixteen of them, whatever teams the lobby put
