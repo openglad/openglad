@@ -13,6 +13,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/render/pal32.h>
+#include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/gparser.h>
@@ -376,10 +377,10 @@ TEST_F(RenderEffects, shadow_draws_darker_pixel_below_feet)
 
 // #277: near-minimap ground effects render directly into the final pane.
 // Exercise the three per-walker treatments that cannot reuse the projected
-// sprite blitter: a ground shadow, an upper-floor blob shadow, and a masked
-// reflection. Each assertion observes the resulting pane pixels, so a branch
-// that merely reports success without drawing still fails.
-TEST_F(RenderEffects, projected_camera_ground_effects_change_final_pane_pixels)
+// sprite blitter, then both alpha and transparent pixie treatments used by
+// camera-floor decor/effects. Each assertion observes the resulting pane
+// pixels, so a branch that merely reports success without drawing still fails.
+TEST_F(RenderEffects, projected_camera_effects_change_final_pane_pixels)
 {
     viewscreen* const vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -431,6 +432,25 @@ TEST_F(RenderEffects, projected_camera_ground_effects_change_final_pane_pixels)
     const std::vector<RGB> reflection_after = capture_pane();
     ASSERT_FALSE(rects_equal(reflection_before, reflection_after))
         << "the projected glass reflection must light the final pane";
+
+    auto* const raw = new unsigned char[64];
+    std::fill(raw, raw + 64, static_cast<unsigned char>(40));
+    PixieData data(1, 8, 8, raw);
+    pixie projected(data);
+
+    fill_pane(PURE_BLACK);
+    const std::vector<RGB> alpha_before = capture_pane();
+    ASSERT_TRUE(projected.draw(160, 120, vs, 128));
+    const std::vector<RGB> alpha_after = capture_pane();
+    ASSERT_FALSE(rects_equal(alpha_before, alpha_after))
+        << "an alpha-projected pixie must light the final pane";
+
+    fill_pane(PURE_BLACK);
+    const std::vector<RGB> mix_before = capture_pane();
+    ASSERT_TRUE(projected.drawMix(160, 120, vs));
+    const std::vector<RGB> mix_after = capture_pane();
+    ASSERT_FALSE(rects_equal(mix_before, mix_after))
+        << "a transparent projected pixie must light the final pane";
 }
 
 TEST_F(RenderEffects, weapon_shadow_stays_at_ground_when_raised_by_worldz)
