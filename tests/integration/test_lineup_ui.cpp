@@ -218,14 +218,34 @@ bool wait_for_interactable_label(const std::string& id,
     return false;
 }
 
-// Click `id` until its label reads `want` (bounded retries: a press and
-// release landing in one stretched frame are swallowed whole under load).
+// Send one click and wait for its own label edge. The label changes on the
+// press, while synchronous save/stage work can keep the release queued well
+// past that edge under load. A menu-thread reset consumes that release before
+// the caller may send another press, preventing a late first attempt plus its
+// retry from advancing a wheel twice.
+bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
+{
+    const std::string before = interactable_label(id);
+    if (before.empty())
+        return false;
+    interact(id);
+    const bool changed =
+        ::wait_for_interactable_label_change(id, before, wait_ms);
+    const bool acknowledged =
+        run_on_main_thread([] { reset_mouse_click_tracking(); });
+    return changed && acknowledged;
+}
+
+// Click `id` until its label reads `want`, with every bounded retry starting
+// from an acknowledged pointer baseline.
 bool click_until_label(const std::string& id, const std::string& want,
                        int attempts = 3, int wait_ms = 2500)
 {
     for (int i = 0; i < attempts; ++i) {
-        interact(id);
-        if (wait_for_interactable_label(id, want, wait_ms))
+        if (interactable_label(id) == want)
+            return true;
+        if (click_and_acknowledge_label_change(id, wait_ms) &&
+            interactable_label(id) == want)
             return true;
         fprintf(stderr, "  [lineup] retry %d: '%s' not yet '%s'\n", i + 1,
                 id.c_str(), want.c_str());
@@ -262,8 +282,10 @@ bool click_until_label_containing(const std::string& id,
                                   int wait_ms = 2500)
 {
     for (int i = 0; i < attempts; ++i) {
-        interact(id);
-        if (wait_for_interactable_label_containing(id, want, wait_ms))
+        if (interactable_label(id).find(want) != std::string::npos)
+            return true;
+        if (click_and_acknowledge_label_change(id, wait_ms) &&
+            interactable_label(id).find(want) != std::string::npos)
             return true;
         fprintf(stderr, "  [lineup] retry %d: '%s' not yet ~'%s'\n", i + 1,
                 id.c_str(), want.c_str());

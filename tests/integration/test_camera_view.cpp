@@ -204,15 +204,21 @@ protected:
                                     /*force_lower=*/false);
     }
 
-    // The SECOND MINIMAP rect for a seat (maintainer rulings): the radar
-    // block mirrored — same size, same right edge, stacked directly above
-    // that seat's radar with the radar's own pane margin between them. Seat
-    // 0's at one seat; one per seat at two seats.
+    // The live-art camera rect for a seat: fixed 96x60 raster, right-aligned
+    // with the radar and stacked above it by the radar's own pane margin.
     SeatRect second_minimap_rect(int seat = 0) const
     {
         const RadarBlock block = seat_radar_block(seat);
-        return SeatRect{block.x, block.y - block.margin - block.h, block.w,
-                        block.h};
+        const og::view_layout::ViewLayout pane = seat_ui_pane(seat);
+        const int camera_bottom = block.y - block.margin;
+        const int max_height_below_centre =
+            camera_bottom - (pane.y + pane.h / 2 + 1);
+        const int camera_h = (game_->layout_pane_count() == 2)
+            ? std::clamp(max_height_below_centre, 1, kCameraMinimapHeight)
+            : kCameraMinimapHeight;
+        return SeatRect{block.x + block.w - kCameraMinimapWidth,
+                        camera_bottom - camera_h,
+                        kCameraMinimapWidth, camera_h};
     }
 
     static SeatRect to_seat_rect(const CameraPaneRect& r)
@@ -449,9 +455,10 @@ TEST_F(CameraView, single_seat_auto_resolves_to_inset)
     {
         const RadarBlock block = seat_radar_block();
         const viewscreen& cam = *game_->camera_view_;
-        EXPECT_EQ(block.w, cam.xview) << "the pane must match the radar block";
-        EXPECT_EQ(block.h, cam.yview);
-        EXPECT_EQ(block.x, cam.xloc) << "same right-edge alignment";
+        EXPECT_EQ(kCameraMinimapWidth, cam.xview);
+        EXPECT_EQ(kCameraMinimapHeight, cam.yview);
+        EXPECT_EQ(block.x + block.w, cam.xloc + cam.xview)
+            << "same right-edge alignment";
         EXPECT_EQ(block.y, cam.yloc + cam.yview + block.margin)
             << "the pane must sit one radar margin ABOVE the radar block";
         // And decidedly NOT on top of the hero at the canvas centre.
@@ -478,7 +485,7 @@ TEST_F(CameraView, single_seat_auto_resolves_to_inset)
 // Two seats get a near-minimap EACH (maintainer ruling): the one-seat
 // second-minimap block for both seats — each stacked directly above ITS OWN
 // seat's radar block (radar_block_for_pane over that seat's side-by-side
-// pane), the radar's footprint, the same 0.25 zoom, the same target. One
+// pane), a 96x60 raster, the same half-scale projection, the same target. One
 // camera viewscreen (resting on seat 0's block), two draw rects; neither
 // block covers either seat's canvas centre — the hero that seat's camera
 // holds there. Forcing 2 seats back onto the old centered path reds this.
@@ -515,10 +522,9 @@ TEST_F(CameraView, two_seats_get_a_near_minimap_each)
             << "'s second minimap";
         // Spelled out against that seat's radar block itself.
         const RadarBlock radar = seat_radar_block(seat);
-        EXPECT_EQ(radar.w, block_rect.xview)
-            << "block " << seat << " must match the radar footprint";
-        EXPECT_EQ(radar.h, block_rect.yview);
-        EXPECT_EQ(radar.x, block_rect.xloc)
+        EXPECT_EQ(kCameraMinimapWidth, block_rect.xview);
+        EXPECT_EQ(second_minimap_rect(seat).yview, block_rect.yview);
+        EXPECT_EQ(radar.x + radar.w, block_rect.xloc + block_rect.xview)
             << "block " << seat << ": same right-edge alignment";
         EXPECT_EQ(radar.y, block_rect.yloc + block_rect.yview + radar.margin)
             << "block " << seat
@@ -543,7 +549,7 @@ TEST_F(CameraView, two_seats_get_a_near_minimap_each)
     EXPECT_NE(centered_inset_rect(), capture_rect(*game_->camera_view_))
         << "2 seats must not take the old centered inset";
     EXPECT_TRUE(game_->camera_minimap_zoom_)
-        << "the two-seat blocks are second minimaps and take the 0.25 zoom";
+        << "the two-seat blocks must take the half-scale projection";
     // The seam draw leaves the resting geometry where the pins read it.
     {
         ScopedGameplayUiCanvas gameplay_ui(*game_);
@@ -1130,8 +1136,8 @@ TEST_F(CameraView, inset_to_docked_flip_scrubs_the_inset_rect)
 }
 
 // ---------------------------------------------------------------------------
-// One-seat 0.25 zoom (maintainer ruling): the second-minimap pane keeps its
-// exact radar-matched rect but shows a kCameraMinimapZoomDenominator-times
+// One-seat half-scale projection: the live-art pane shows a
+// kCameraMinimapZoomDenominator-times
 // wider and taller world window around the target, projected into the final
 // pane raster. The docked quadrant and the four-seat centered inset stay 1:1.
 // ---------------------------------------------------------------------------
@@ -1178,13 +1184,12 @@ void capture_camera_canvas_if_requested(screen* scr)
 }
 
 // Zoom evidence: a witness entity fully OUTSIDE the 1:1 world window but
-// inside the 4x window appears in the pane at 0.25 zoom — and its pixels land
-// in the pane band the 4:1 mapping predicts. Forcing the draw back to 1:1
+// inside the 2x window appears in the pane at half scale — and its pixels land
+// in the pane band the 2:1 mapping predicts. Forcing the draw back to 1:1
 // makes the witness disappear (diffs == 0): that is this test's red lever.
 // The witness sits at the MIDPOINT of the band the zoom adds below the 1:1
-// window, so it is out of reach of any smaller denominator too — a draw that
-// quietly reverted to the old 2x window would not reach it either.
-TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_quarter_zoom)
+// window.
+TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_half_scale)
 {
     game_->ready_for_battle(1);
     arm_seats();
@@ -1199,7 +1204,7 @@ TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_quarter_zoom)
     ASSERT_EQ(r, capture_rect(*game_->camera_view_))
         << "the pane rect itself must not change with the zoom";
     EXPECT_TRUE(game_->camera_minimap_zoom_)
-        << "the one-seat second minimap must resolve to the 0.25 zoom";
+        << "the one-seat second minimap must resolve to half scale";
 
     walker* const target =
         game_->world().find_by_id(static_cast<std::uint32_t>(target_id));
@@ -1217,7 +1222,7 @@ TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_quarter_zoom)
     // half-scale (or any shallower) window would still end.
     const Sint32 witness_y = bottom1 + (bottom2 - bottom1) / 2;
     ASSERT_GT(witness_y, bottom1 + 8)
-        << "no world band between the 1x and 4x windows: pane too small";
+        << "no world band between the 1x and 2x windows: pane too small";
     ASSERT_GT(bottom2, witness_y + target->sizey())
         << "the witness must fit inside the zoomed window";
     const std::int32_t witness_id = spawn_target(target->xpos(), witness_y);
@@ -1240,7 +1245,7 @@ TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_quarter_zoom)
     witness->set_dead(0);
     ASSERT_EQ(with_witness.size(), without_witness.size());
 
-    // Where the 4:1 mapping puts the witness: pane y = (world_y - topy2) / 4,
+    // Where the 2:1 mapping puts the witness: pane y = (world_y - topy2) / 2,
     // so everything at or below witness_y lands in the lower part of the
     // pane (with slack for the interpolation rounding).
     const int expected_min_pane_y =
@@ -1261,27 +1266,28 @@ TEST_F(CameraView, one_seat_minimap_shows_the_wider_world_at_quarter_zoom)
         }
     EXPECT_GT(diffs, 0)
         << "the witness below the 1:1 window never appeared in the pane: "
-        << "the one-seat minimap is not showing the 4x world window";
+        << "the one-seat minimap is not showing the 2x world window";
     EXPECT_EQ(0, stray)
         << stray << " witness pixels above pane row " << expected_min_pane_y
-        << ": the 4:1 world-to-pane mapping is off";
+        << ": the 2:1 world-to-pane mapping is off";
     // The seat and the pane geometry never moved for the zoomed draw.
     EXPECT_EQ(r, capture_rect(*game_->camera_view_));
 }
 
 // Reporter regression (#277): the near-minimap is rendered at its FINAL
-// resolution. Moving its followed ball by less than one 0.25x output pixel
-// must therefore keep the projected scene stable; the fourth world pixel
-// advances the final raster by one pixel. The old render-a-176x112-scene and
-// sample-every-fourth-pixel path changed the texture phase after the FIRST
+// resolution. Moving its followed ball by less than one half-scale output
+// pixel must therefore keep the projected scene stable; the second world
+// pixel advances the final raster by one pixel. The old render-large and
+// downsample path changed the texture phase after the FIRST
 // world pixel, making the tiny pane shimmer and look like a failed zoom.
 TEST_F(CameraView, one_seat_minimap_renders_at_final_resolution)
 {
     game_->ready_for_battle(1);
     arm_seats();
     game_->world().create_new_grid();
-    // With this x, the 4x camera's left edge is 41 mod 4. The +1 move stays
-    // inside one projected output pixel; +4 crosses exactly one pixel.
+    // Exercise the original quarter-scale stress case independently of the
+    // production half-scale choice. The +1 move stays inside one projected
+    // output pixel; +4 crosses one.
     const std::int32_t target_id = spawn_target(121, 100);
     ASSERT_NE(0, target_id);
     declare_camera(target_id);
@@ -1290,6 +1296,7 @@ TEST_F(CameraView, one_seat_minimap_renders_at_final_resolution)
     ASSERT_FALSE(game_->camera_docked_);
     const SeatRect r = inset_rect();
     ASSERT_EQ(r, capture_rect(*game_->camera_view_));
+    game_->camera_view_->set_render_denominator(4);
 
     walker* const target =
         game_->world().find_by_id(static_cast<std::uint32_t>(target_id));

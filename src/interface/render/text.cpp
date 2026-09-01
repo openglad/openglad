@@ -32,14 +32,6 @@
 static PixieData letters1;
 static PixieData letters_big;
 
-struct PromptButtonRect
-{
-    int x = 0;
-    int y = 0;
-    int w = 0;
-    int h = 0;
-};
-
 static void erase_last_utf8_codepoint(char* value, std::size_t length)
 {
     if (value == nullptr || length == 0)
@@ -669,10 +661,11 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	// The shared one-line prompt is used by hiring, networking, and the level
 	// editor. Keep its touch affordances in the same canvas surface as the
 	// field so a phone never has to discover that Return is the only way out.
-	const PromptButtonRect accept_button{x + field_width - 52,
-	                                     y + sizey + 4, 50, 14};
-	const PromptButtonRect cancel_button{x + field_width - 104,
-	                                     y + sizey + 4, 50, 14};
+	// Its equal columns and 12px gutter deliberately repeat new-company naming.
+	const og::ui::PromptActionLayout actions =
+	    og::ui::prompt_action_layout(x, y, field_width, sizey);
+	const og::ui::PromptButtonRect& cancel_button = actions.cancel;
+	const og::ui::PromptButtonRect& accept_button = actions.accept;
 
 	for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
 		editstring[i] = 0; // clear the string ...
@@ -692,11 +685,13 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	og::runtime::current_session->myscreen_->draw_button(
 	    accept_button.x, accept_button.y,
 	    accept_button.x + accept_button.w, accept_button.y + accept_button.h, 1);
-	write_xy(accept_button.x + 7, accept_button.y + 3, "ACCEPT", DARK_BLUE, 1);
+	write_xy(accept_button.x + (accept_button.w - query_width("ACCEPT")) / 2,
+	         accept_button.y + 3, "ACCEPT", DARK_BLUE, 1);
 	og::runtime::current_session->myscreen_->draw_button(
 	    cancel_button.x, cancel_button.y,
 	    cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
-	write_xy(cancel_button.x + 7, cancel_button.y + 3, "CANCEL", DARK_BLUE, 1);
+	write_xy(cancel_button.x + (cancel_button.w - query_width("CANCEL")) / 2,
+	         cancel_button.y + 3, "CANCEL", DARK_BLUE, 1);
 	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 
 	clear_keyboard();
@@ -809,7 +804,8 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 			const int click_x = static_cast<int>(prompt_mouse.x);
 			const int click_y = static_cast<int>(prompt_mouse.y);
 			prompt_mouse.left = 0;
-			const auto inside = [click_x, click_y](const PromptButtonRect& rect) {
+			const auto inside =
+			    [click_x, click_y](const og::ui::PromptButtonRect& rect) {
 				return click_x >= rect.x && click_x < rect.x + rect.w &&
 				       click_y >= rect.y && click_y < rect.y + rect.h;
 			};

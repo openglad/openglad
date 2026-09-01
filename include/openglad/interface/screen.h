@@ -49,15 +49,14 @@ namespace og::sim { class GameClient; }
 // Maximum number of split-screen viewscreens (one per local player).
 inline constexpr int MAX_VIEWS = 5;
 
-// One-seat camera-minimap zoom (docs/camera-views-design.md §6, maintainer
-// ruling): the second-minimap pane keeps its radar-matched rect but shows a
-// world window this many times wider and taller, integer-downsampled with
-// nearest sampling — 4 means 0.25x zoom. The docked quadrant and the 2/4-seat
-// centered inset stay 1:1 (full-size panes with adequate context).
-// Two seats take the same zoom (maintainer ruling): each seat gets its own
-// near-minimap block above its own radar; only the 4-seat centered inset and
-// the docked quadrant remain 1:1.
-inline constexpr int kCameraMinimapZoomDenominator = 4;
+// One/two-seat live camera geometry (docs/camera-views-design.md §6): each
+// pane spends a 96x60 raster budget and shows a world window this many times
+// wider and taller. A denominator of 2 is half scale: enough court context
+// without reducing the tracked ball to the quarter-scale speck from #277.
+// Docked and four-seat camera panes remain 1:1.
+inline constexpr int kCameraMinimapZoomDenominator = 2;
+inline constexpr int kCameraMinimapWidth = 96;
+inline constexpr int kCameraMinimapHeight = 60;
 
 // One inset camera pane rect on the GameplayUI canvas (docs/camera-views-
 // design.md §6). The camera viewscreen stays singular; at two seats the SAME
@@ -446,9 +445,9 @@ public:
     std::int32_t camera_entity_id_ = 0;   // last-synced declaration
     std::uint8_t camera_style_ = 0;       // kCameraStyleAuto / kCameraStyleInset
     bool camera_docked_ = false;          // per-machine resolution (§6), off-wire
-    // One/two-seat second-minimap 0.25 world projection. The viewscreen keeps
-    // its final pane geometry and directly rasterizes the enlarged world
-    // window into it; there is no scene-scale layer.
+    // One/two-seat second-minimap half-scale world projection. The viewscreen
+    // keeps its final pane geometry and directly rasterizes the enlarged
+    // world window into it; there is no scene-scale layer.
     bool camera_minimap_zoom_ = false;
     // The inset pane rects (§6), resolved with the geometry in
     // relayout_camera_view: one centered rect at 4 seats, one second-minimap
@@ -470,10 +469,9 @@ public:
     // block per seat; only 4 seats keep the centered rect. One function, one
     // switch over the local seat count — the whole inset style rule.)
     void relayout_camera_view();
-    // The near-minimap block for ONE seat: the radar block mirrored above
-    // that seat's own radar, through the shared radar_block_* placement rule
-    // over the seat's UI pane (§6). Used for seat 0 at 1 seat and for both
-    // seats at 2 seats — the one geometry rule, never two copies.
+    // The near-minimap block for ONE seat: a 96x60 live-art pane right-aligned
+    // above that seat's radar through the shared radar placement rule (§6).
+    // Used for seat 0 at 1 seat and both seats at 2 seats.
     CameraPaneRect camera_minimap_block_for_seat(int seat, int ui_w,
                                                  int ui_h) const;
     // Docked pane world pixels + its own bevel on GameplayUI; no-op unless a

@@ -27,6 +27,42 @@
 class screen;
 class viewscreen;
 
+namespace og::ui
+{
+struct PromptButtonRect
+{
+	int x = 0;
+	int y = 0;
+	int w = 0;
+	int h = 0;
+};
+
+struct PromptActionLayout
+{
+	PromptButtonRect cancel;
+	PromptButtonRect accept;
+};
+
+inline constexpr int kPromptActionGap = 12;
+
+// The new-company naming screen establishes the prompt grid: equal-width
+// CANCEL/ACCEPT faces, a 12px gutter, and outer edges aligned to the field.
+[[nodiscard]] constexpr PromptActionLayout prompt_action_layout(
+    int x, int y, int field_width, int field_height)
+{
+	const int usable_width = field_width > kPromptActionGap
+	    ? field_width - kPromptActionGap
+	    : 0;
+	const int button_width = usable_width / 2;
+	const int action_y = y + field_height + 4;
+	return PromptActionLayout{
+	    .cancel = {x, action_y, button_width, 14},
+	    .accept = {x + button_width + kPromptActionGap,
+	               action_y, button_width, 14},
+	};
+}
+} // namespace og::ui
+
 class text
 {
 	public:

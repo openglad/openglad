@@ -47,7 +47,7 @@ const ROOM_VALUE_CENTER = { x: 190, y: 47 };
 // with the shared ACCEPT/CANCEL footer below y=80 (text::input_string_ex).
 // Keep the capture frame tall enough to include that footer as well as text.
 const PROMPT_INPUT_REGION = { x: 56, y: 56, w: 184, h: 36 };
-const PROMPT_ACCEPT_BUTTON = { x: 205, y: 79 };
+const PROMPT_ACCEPT_BUTTON = { x: 191, y: 79 };
 
 async function captureRegion(page, region) {
   return await getCanvasGameRegionScreenshot(

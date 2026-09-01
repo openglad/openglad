@@ -85,10 +85,10 @@ static int injector_thread_accept_click(void* data)
     SDL_Event ev{};
     ev.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     ev.button.button = SDL_BUTTON_LEFT;
-    // prompt_for_string's production geometry places ACCEPT at x=180..230,
+    // prompt_for_string's production grid places ACCEPT at x=151..232,
     // y=74..88 in the shared prompt footer.
     // The dummy test window is 640x400 while the prompt canvas is 320x200.
-    ev.button.x = 410.0f;
+    ev.button.x = 382.0f;
     ev.button.y = 162.0f;
     SDL_PushEvent(&ev);
     return 0;
@@ -102,13 +102,37 @@ static int injector_thread_cancel_click(void* data)
     SDL_Event ev{};
     ev.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     ev.button.button = SDL_BUTTON_LEFT;
-    // CANCEL is x=128..178 beside ACCEPT in the production prompt.
-    ev.button.x = 306.0f;
+    // CANCEL is x=58..139 beside ACCEPT in the production prompt.
+    ev.button.x = 196.0f;
     ev.button.y = 162.0f;
     SDL_PushEvent(&ev);
     return 0;
 }
 } // namespace
+
+TEST(TextInputExValue, prompt_action_grid_matches_new_company_naming)
+{
+    constexpr int kFieldX = 58;
+    constexpr int kFieldY = 60;
+    constexpr int kFieldWidth = 29 * 6;
+    constexpr int kFieldHeight = 10;
+    constexpr og::ui::PromptActionLayout actions =
+        og::ui::prompt_action_layout(
+            kFieldX, kFieldY, kFieldWidth, kFieldHeight);
+
+    EXPECT_EQ(kFieldX, actions.cancel.x);
+    EXPECT_EQ(74, actions.cancel.y);
+    EXPECT_EQ(81, actions.cancel.w);
+    EXPECT_EQ(14, actions.cancel.h);
+    EXPECT_EQ(151, actions.accept.x);
+    EXPECT_EQ(actions.cancel.y, actions.accept.y);
+    EXPECT_EQ(actions.cancel.w, actions.accept.w);
+    EXPECT_EQ(actions.cancel.h, actions.accept.h);
+    EXPECT_EQ(og::ui::kPromptActionGap,
+              actions.accept.x - (actions.cancel.x + actions.cancel.w));
+    EXPECT_EQ(kFieldX + kFieldWidth,
+              actions.accept.x + actions.accept.w);
+}
 
 TEST(TextInputExValue, text_input_string_ex_value_accepts_backspace_then_text_and_return)
 {
@@ -148,6 +172,7 @@ TEST(TextInputExValue, text_input_string_ex_value_escape_returns_nullopt)
 TEST(TextInputExValue, text_input_string_ex_value_accept_button_returns_value)
 {
     text t(TEXT_1);
+    og::runtime::current_session->myscreen_->clearbuffer();
 
     SDL_Thread* th = SDL_CreateThread(injector_thread_accept_click,
                                       "text_ex_accept_click", nullptr);
