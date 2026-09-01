@@ -1242,9 +1242,10 @@ test.describe('Browser web back key (Backspace replaces Escape)', () => {
   // The relay-only web ROOM CODE field (x 110..270, y 40..55).
   const ROOM_VALUE_FIELD = { x: 190, y: 47 };
   const ROOM_VALUE_FIELD_REGION = { x: 108, y: 36, w: 164, h: 23 };
-  // prompt_for_string draws its frame from (53,40) to (242,80) over a
-  // darkened backdrop: the message line at y=50 and the input row at (58,60).
-  const ROOM_PROMPT_REGION = { x: 48, y: 36, w: 200, h: 48 };
+  // prompt_for_string draws its frame from (53,40) to (242,90) over a
+  // darkened backdrop: message at y=50, input at y=60, and the shared
+  // ACCEPT/CANCEL footer at y=74..88.
+  const ROOM_PROMPT_REGION = { x: 48, y: 36, w: 200, h: 58 };
 
   // Open the networking menu and PROVE it opened: the title region must
   // change away from its team-build content and settle on the "NETWORKING"

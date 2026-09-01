@@ -146,6 +146,7 @@ public:
                            Sint32 portstartx, Sint32 portstarty,
                            Sint32 portendx, Sint32 portendy,
                            void* sourceptr) override;
+    void putbuffer_projected(const IndexedBlit& blit) override;
     void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                Sint32 width, Sint32 height) override;
     void destroy_accel_surface(void* surface) override;
@@ -160,10 +161,6 @@ public:
     [[nodiscard]] std::int64_t floor_layer_source_pixels_for_testing() const override;
     [[nodiscard]] std::int64_t floor_layer_scaled_pixels_for_testing() const override;
     [[nodiscard]] bool floor_layer_redirect_active_for_testing() const override;
-    bool camera_scale_begin(Sint32 w, Sint32 h) override;
-    void camera_scale_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
-                          Sint32 denominator) override;
-    void fail_next_camera_scale_allocation_for_testing() override;
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,
                        Sint32 portstartx, Sint32 portstarty,
@@ -449,11 +446,9 @@ public:
     std::int32_t camera_entity_id_ = 0;   // last-synced declaration
     std::uint8_t camera_style_ = 0;       // kCameraStyleAuto / kCameraStyleInset
     bool camera_docked_ = false;          // per-machine resolution (§6), off-wire
-    // One-seat second-minimap 0.25 zoom (maintainer ruling, §6): draw a
-    // kCameraMinimapZoomDenominator-times world window through the off-screen
-    // camera_scale layer, downsampled onto the unchanged pane rect. Resolved
-    // with the geometry in relayout_camera_view; never set for the docked
-    // quadrant or the 2/4-seat centered inset (full-size panes, 1:1).
+    // One/two-seat second-minimap 0.25 world projection. The viewscreen keeps
+    // its final pane geometry and directly rasterizes the enlarged world
+    // window into it; there is no scene-scale layer.
     bool camera_minimap_zoom_ = false;
     // The inset pane rects (§6), resolved with the geometry in
     // relayout_camera_view: one centered rect at 4 seats, one second-minimap

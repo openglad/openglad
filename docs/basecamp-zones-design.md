@@ -40,6 +40,9 @@ became unreachable; the freed value is documented as free.
   at y=45. No `base_camp` hook ⇒ the C++ default: full-capability
   roster, header GOLD, and HIRE as the roster band's header-right button
   (id `hire_troops` preserved; the one deliberate visual change).
+  The roster's `<` and `>` faces remain as disabled placeholders when all
+  rows fit on one page, so HIRE and the header grid do not shift as the
+  roster crosses the paging threshold.
   HIRE's face overlaps line B's strip, so it is also line B's right wall:
   the band is 34 characters while a composition shows HIRE and 41 while
   one hides it (`kBaseCampLineBChars*` in `picker_common.h`, derived from

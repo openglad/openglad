@@ -43,9 +43,11 @@ const TEAM_BUILD_NETWORKING_REGION = { x: 200, y: 178, w: 56, h: 18 };
 const ROOM_VALUE_REGION = { x: 110, y: 40, w: 160, h: 15 };
 const ROOM_VALUE_CENTER = { x: 190, y: 47 };
 
-// prompt_for_string draws its input line at (58, 60), 29 chars * 6px wide
-// (src/interface/ui/level_editor_ui.cpp + text::input_string_ex).
-const PROMPT_INPUT_REGION = { x: 56, y: 56, w: 184, h: 18 };
+// prompt_for_string draws its input line at (58, 60), 29 chars * 6px wide,
+// with the shared ACCEPT/CANCEL footer below y=80 (text::input_string_ex).
+// Keep the capture frame tall enough to include that footer as well as text.
+const PROMPT_INPUT_REGION = { x: 56, y: 56, w: 184, h: 36 };
+const PROMPT_ACCEPT_BUTTON = { x: 205, y: 79 };
 
 async function captureRegion(page, region) {
   return await getCanvasGameRegionScreenshot(
@@ -585,7 +587,7 @@ test.describe('Touch overlay activation', () => {
       'typed characters should appear in the in-canvas prompt',
     );
 
-    // Enter accepts: the prompt closes and the accepted code lands in the
+    // Return accepts: the prompt closes and the accepted code lands in the
     // networking menu's ROOM VALUE field.
     await page.keyboard.press('Enter');
     await expect(wrap).toBeHidden({ timeout: 10_000 });
@@ -597,11 +599,36 @@ test.describe('Touch overlay activation', () => {
     );
     const acceptedField = await captureRegion(page, ROOM_VALUE_REGION);
 
+    // The shared prompt also exposes an on-canvas ACCEPT control. Tap its
+    // logical center rather than relying on the native keyboard, which is the
+    // path available to a phone user who has dismissed the keyboard.
+    await tapCanvasGameCoord(page, ROOM_VALUE_CENTER.x, ROOM_VALUE_CENTER.y);
+    await expect(wrap).toBeVisible({ timeout: 10_000 });
+    await expect(input).toHaveValue('GLAD-TEST');
+    await tapCanvasGameCoord(page, 160, 100); // gesture-focus the input
+    await input.selectText();
+    await page.keyboard.type('TOUCH-OK', { delay: 60 });
+    await expect(input).toHaveValue('TOUCH-OK');
+    await tapCanvasGameCoord(
+      page,
+      PROMPT_ACCEPT_BUTTON.x,
+      PROMPT_ACCEPT_BUTTON.y,
+    );
+    await expect(wrap).toBeHidden({ timeout: 10_000 });
+    await waitForRegionToLeave(
+      page,
+      ROOM_VALUE_REGION,
+      acceptedField,
+      'on-canvas ACCEPT should commit the edited room code',
+    );
+    const touchAcceptedField = await captureRegion(page, ROOM_VALUE_REGION);
+    expect(touchAcceptedField.equals(acceptedField)).toBe(false);
+
     // Reopen the prompt, type junk, then CANCEL: openglad_web_text_cancel
     // must deliver input_string's Escape path, restoring the original value.
     await tapCanvasGameCoord(page, ROOM_VALUE_CENTER.x, ROOM_VALUE_CENTER.y);
     await expect(wrap).toBeVisible({ timeout: 10_000 });
-    await expect(input).toHaveValue('GLAD-TEST');
+    await expect(input).toHaveValue('TOUCH-OK');
     await tapCanvasGameCoord(page, 160, 100); // gesture-focus the input
     await expect
       .poll(async () =>
@@ -620,7 +647,7 @@ test.describe('Touch overlay activation', () => {
     await waitForRegionToMatch(
       page,
       ROOM_VALUE_REGION,
-      acceptedField,
+      touchAcceptedField,
       'CANCEL should restore the previously accepted room code',
     );
   });

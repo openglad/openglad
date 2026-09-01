@@ -7441,7 +7441,8 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
             << "the pane must sit one radar margin above the radar block";
         // And it draws at 0.25 zoom (maintainer ruling): the radar-sized rect
         // shows the kCameraMinimapZoomDenominator-times world window through
-        // the camera_scale layer, so the ball arrives with its surroundings.
+        // direct final-pane projection, so the ball arrives with its
+        // surroundings.
         EXPECT_TRUE(display->camera_minimap_zoom_)
             << "the one-seat second minimap must resolve to the 0.25 zoom";
         // The seat is byte-identical to its pre-camera geometry.

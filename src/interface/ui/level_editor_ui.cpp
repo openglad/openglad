@@ -132,7 +132,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
     text& mytext = screen_ctx->text_normal;
     
     // Background
-    screen_ctx->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
+    // The shared one-line editor owns a 14px ACCEPT/CANCEL footer below the
+    // text field. Keep the prompt panel behind the whole footer rather than
+    // leaving its lower edge on the darkened screen.
+    screen_ctx->draw_button(x - 5, y - 20, x + w + 10, y + h + 20, 1);
     
     unsigned char forecolor = DARK_BLUE;
     

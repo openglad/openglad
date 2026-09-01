@@ -2248,6 +2248,17 @@ BaseCampScreenState* g_base_camp_state = nullptr;
 // base_camp_seat_rail_shape) and read by the draw and click consumers.
 og::ui::SeatRailLayout g_base_camp_rail_frame_shape;
 
+// Keep the roster pager cluster in place even when the current page is the
+// only page. The arrows are Disabled rather than Hidden: the fixed header
+// grid gives HIRE the same right-aligned home in every roster shape, while
+// the row remains visibly inert and keyboard-safe.
+RowState base_camp_page_row_state(const MenuLabelContext& /*context*/)
+{
+    return g_base_camp_state != nullptr && g_base_camp_state->page.multi_page()
+               ? RowState::Visible
+               : RowState::Disabled;
+}
+
 // Round-6 vertical rhythm: the panel's inner face is y=30..158. Header ink
 // is y=33..38; rows at y=45+14r leave six clear pixels after the header and
 // six below the final row. Player-seat assignments now own y=164..173.
@@ -2699,7 +2710,7 @@ const char* base_camp_slot_placeholder_label(BaseCampSlotKind kind)
                                                : kBaseCampAddPlayerLabel;
 }
 
-// Static nav encodes the full-page shape (8 visible rows, pagers hidden,
+// Static nav encodes the full-page shape (8 visible rows, inert pagers,
 // GO visible); the per-frame rewire recomputes every link from the live
 // state anyway (§2.5 keyboard-nav pattern b). §9.11 (G4): the TRAIN column
 // is deleted — the row BODY (84,y,214,10) is a no_draw hit zone spanning
@@ -2768,17 +2779,21 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_TEAM(6), OG_BASE_CAMP_TEAM(7),
     // Page cluster (§2.5 header line B right edge, §9.10.2 y=15 beside the
     // relocated line B); real MenuSpecRow pager actions (keyboard-live),
-    // hidden until the roster spans pages.
+    // Always visible: single-page rosters retain inert placeholders so HIRE
+    // does not jump when a roster grows onto its second page.
     {.id = "roster_page_prev", .label = "<",
      .x = kBaseCampPagePrevX, .y = 15, .w = kBaseCampPagerWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPagePrevIndex,
-     .nav = {.down = kBaseCampRowBodyBase, .right = kBaseCampPageNextIndex},
-     .hidden = true},
+     .nav = {.down = kBaseCampRowBodyBase,
+             .left = kCreateMenuHireIndex,
+             .right = kBaseCampPageNextIndex},
+     .state_override = &base_camp_page_row_state},
     {.id = "roster_page_next", .label = ">",
      .x = kBaseCampPageNextX, .y = 15, .w = kBaseCampPagerWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPageNextIndex,
-     .nav = {.down = kBaseCampRowBodyBase, .left = kBaseCampPagePrevIndex},
-     .hidden = true},
+     .nav = {.down = kBaseCampRowBodyBase,
+             .left = kBaseCampPagePrevIndex},
+     .state_override = &base_camp_page_row_state},
     // The solo SCEN status is useful navigation, not just decoration. Its
     // no-draw zone covers the full 34-char formatter budget and opens the
     // same Scenario menu as the bottom command. Network status replaces
@@ -2807,7 +2822,9 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .x = kBaseCampHireX, .y = kBaseCampHireY,
      .w = kBaseCampHireWidth, .h = kBaseCampHireHeight,
      .action = ButtonAction::CreateHireMenu, .arg = -1,
-     .nav = {.down = 0, .left = kBaseCampScenarioLineIndex}},
+     .nav = {.down = 0,
+             .left = kBaseCampScenarioLineIndex,
+             .right = kBaseCampPagePrevIndex}},
     {.id = "scenario", .label = "SCENARIO",
      .x = kBaseCampStripScenarioX, .y = kBaseCampStripY,
      .w = kBaseCampStripScenarioWidth, .h = kBaseCampStripHeight,
@@ -3808,7 +3825,6 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
     const int visible = std::min(std::max(0, end - first), roster_rows);
-    const bool pagers = st != nullptr && st->page.multi_page();
     // Write a mutated descriptor rect through to the live vbutton (the
     // foreign-deploy widening precedent, extended to the zone's per-frame
     // re-banding).
@@ -4334,7 +4350,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                                             : (has_move
                                                    ? kBaseCampMoveUpBase + r
                                                    : -1)))
-                    : (pagers ? kBaseCampPagePrevIndex : -1)};
+                    : kBaseCampPagePrevIndex};
         }
         if (has_body) {
             const int up_body = prev_in(body_on, r - 1);
@@ -4349,7 +4365,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                     : (dep_on[static_cast<std::size_t>(r)] ? r : -1),
                 .right = has_move
                     ? kBaseCampMoveUpBase + r
-                    : (pagers ? kBaseCampPagePrevIndex : -1)};
+                    : kBaseCampPagePrevIndex};
         }
         if (has_move) {
             const int up_move = prev_in(move_on, r - 1);
@@ -4368,7 +4384,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                     : (has_chip
                            ? kBaseCampTeamChipBase + r
                            : (dep_on[static_cast<std::size_t>(r)] ? r : -1)),
-                .right = pagers ? kBaseCampPagePrevIndex : -1};
+                .right = kBaseCampPagePrevIndex};
         }
         if (has_chip) {
             const int up_chip = prev_in(chip_on, r - 1);
@@ -4386,12 +4402,12 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                 .right = has_body
                     ? kBaseCampRowBodyBase + r
                     : (has_move ? kBaseCampMoveUpBase + r
-                                : (pagers ? kBaseCampPagePrevIndex : -1))};
+                                : kBaseCampPagePrevIndex)};
         }
     }
 
-    buttons[kBaseCampPagePrevIndex].hidden = !pagers;
-    buttons[kBaseCampPageNextIndex].hidden = !pagers;
+    buttons[kBaseCampPagePrevIndex].hidden = false;
+    buttons[kBaseCampPageNextIndex].hidden = false;
     // Pager down-links land on the row-body column's first row (train
     // affordance) and fall back to the roster's own top anchor, the zone
     // spine, then the rail.
@@ -4403,7 +4419,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     buttons[kBaseCampPagePrevIndex].nav = {
         .up = -1,
         .down = pager_down,
-        .left = can_hire ? kCreateMenuHireIndex : -1,
+        .left = can_hire ? kCreateMenuHireIndex : spine_first,
         .right = kBaseCampPageNextIndex};
     buttons[kBaseCampPageNextIndex].nav = {
         .up = -1,
@@ -4416,7 +4432,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         .up = -1,
         .down = spine_first >= 0 ? spine_first : rail_first,
         .left = networked ? -1 : kBaseCampScenarioLineIndex,
-        .right = pagers ? kBaseCampPagePrevIndex : -1};
+        .right = kBaseCampPagePrevIndex};
 
     // Solo line B is the current scenario and doubles as a generous click
     // target for its menu. Multiplayer replaces line B with connection

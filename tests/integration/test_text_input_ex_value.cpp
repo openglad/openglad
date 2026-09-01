@@ -1,14 +1,39 @@
 #include <openglad/interface/render/text.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <optional>
 #include <string>
 
 namespace
 {
+void capture_prompt_if_requested()
+{
+    const char* const path = std::getenv("OG_PROMPT_CAPTURE_PATH");
+    if (path == nullptr || path[0] == '\0')
+        return;
+    FILE* const output = std::fopen(path, "wb");
+    if (output == nullptr)
+        return;
+    std::fprintf(output, "P6\n320 200\n255\n");
+    screen* const scr = og::runtime::current_session->myscreen_;
+    for (int y = 0; y < 200; ++y)
+        for (int x = 0; x < 320; ++x)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            scr->get_pixel(x, y, &r, &g, &b);
+            std::fputc(r, output);
+            std::fputc(g, output);
+            std::fputc(b, output);
+        }
+    std::fclose(output);
+}
+
 static int injector_thread_backspace_text_and_return(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -50,6 +75,39 @@ static int injector_thread_escape(void* data)
     SDL_PushEvent(&ev);
     return 0;
 }
+
+static int injector_thread_accept_click(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    SDL_Delay(50);
+    capture_prompt_if_requested();
+    SDL_Event ev{};
+    ev.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    ev.button.button = SDL_BUTTON_LEFT;
+    // prompt_for_string's production geometry places ACCEPT at x=180..230,
+    // y=74..88 in the shared prompt footer.
+    // The dummy test window is 640x400 while the prompt canvas is 320x200.
+    ev.button.x = 410.0f;
+    ev.button.y = 162.0f;
+    SDL_PushEvent(&ev);
+    return 0;
+}
+
+static int injector_thread_cancel_click(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    SDL_Delay(50);
+    SDL_Event ev{};
+    ev.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    ev.button.button = SDL_BUTTON_LEFT;
+    // CANCEL is x=128..178 beside ACCEPT in the production prompt.
+    ev.button.x = 306.0f;
+    ev.button.y = 162.0f;
+    SDL_PushEvent(&ev);
+    return 0;
+}
 } // namespace
 
 TEST(TextInputExValue, text_input_string_ex_value_accepts_backspace_then_text_and_return)
@@ -85,4 +143,43 @@ TEST(TextInputExValue, text_input_string_ex_value_escape_returns_nullopt)
         SDL_WaitThread(th, &code);
 
     ASSERT_TRUE(!v.has_value()) << "escape should cancel and return nullopt";
+}
+
+TEST(TextInputExValue, text_input_string_ex_value_accept_button_returns_value)
+{
+    text t(TEXT_1);
+
+    SDL_Thread* th = SDL_CreateThread(injector_thread_accept_click,
+                                      "text_ex_accept_click", nullptr);
+    ASSERT_TRUE(th != nullptr) << "injector thread should start";
+
+    std::optional<std::string> v =
+        t.input_string_ex_value(58, 60, 29, "NAME THIS CHARACTER", "seed");
+    int code = 0;
+    if (th)
+        SDL_WaitThread(th, &code);
+
+    ASSERT_TRUE(v.has_value())
+        << "the on-canvas ACCEPT affordance should commit the value";
+    if (v.has_value()) {
+        ASSERT_EQ("seed", *v) << "ACCEPT preserves an unchanged name";
+    }
+}
+
+TEST(TextInputExValue, text_input_string_ex_value_cancel_button_returns_nullopt)
+{
+    text t(TEXT_1);
+
+    SDL_Thread* th = SDL_CreateThread(injector_thread_cancel_click,
+                                      "text_ex_cancel_click", nullptr);
+    ASSERT_TRUE(th != nullptr) << "injector thread should start";
+
+    std::optional<std::string> v =
+        t.input_string_ex_value(58, 60, 29, "NAME THIS CHARACTER", "seed");
+    int code = 0;
+    if (th)
+        SDL_WaitThread(th, &code);
+
+    ASSERT_FALSE(v.has_value())
+        << "the on-canvas CANCEL affordance should preserve cancellation";
 }

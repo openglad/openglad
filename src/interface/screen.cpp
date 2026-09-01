@@ -641,6 +641,11 @@ void screen::putbuffer_surface(Sint32 tilestartx, Sint32 tilestarty,
                                    sourceptr);
 }
 
+void screen::putbuffer_projected(const IndexedBlit& blit)
+{
+    video_impl_->putbuffer_projected(blit);
+}
+
 void* screen::create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                    Sint32 width, Sint32 height)
 {
@@ -690,22 +695,6 @@ std::int64_t screen::floor_layer_scaled_pixels_for_testing() const
 bool screen::floor_layer_redirect_active_for_testing() const
 {
     return video_impl_->floor_layer_redirect_active_for_testing();
-}
-
-bool screen::camera_scale_begin(Sint32 w, Sint32 h)
-{
-    return video_impl_->camera_scale_begin(w, h);
-}
-
-void screen::camera_scale_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
-                              Sint32 denominator)
-{
-    video_impl_->camera_scale_end(x, y, w, h, denominator);
-}
-
-void screen::fail_next_camera_scale_allocation_for_testing()
-{
-    video_impl_->fail_next_camera_scale_allocation_for_testing();
 }
 
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
@@ -1301,13 +1290,10 @@ void screen::relayout_camera_view()
 	camera_pane_rects_.clear();
 	if (camera_view_ == nullptr)
 		return;
-	// Zoom is resolved WITH the geometry: only the one-seat second minimap
-	// below sets it (maintainer ruling, §6) — the docked quadrant and the
-	// 2/4-seat centered inset are full-size panes and stay 1:1.
-	// (Two-seat ruling: the two-seat blocks are second minimaps too, so they
-	// take the same zoom; the docked quadrant and the 4-seat centered inset
-	// are the panes that stay 1:1.)
+	// Projection is resolved with geometry: the one- and two-seat minimaps use
+	// denominator 4; the docked quadrant and four-seat centered inset use 1.
 	camera_minimap_zoom_ = false;
+	camera_view_->set_render_denominator(1);
 	if (camera_docked_)
 	{
 		const int ui_w = gameplay_ui_canvas_w();
@@ -1353,20 +1339,19 @@ void screen::relayout_camera_view()
 			    camera_minimap_block_for_seat(seat, ui_w, ui_h));
 		// A radar-sized pane at 1:1 is too zoomed-in to be useful
 		// (maintainer ruling, §6): draw it at 0.25 zoom — the same rect, a
-		// kCameraMinimapZoomDenominator-times world window, integer-
-		// downsampled by draw_camera_view_ui through the camera_scale layer.
+		// kCameraMinimapZoomDenominator-times world window projected directly
+		// into the unchanged final pane raster.
 		camera_minimap_zoom_ = true;
+		camera_view_->set_render_denominator(kCameraMinimapZoomDenominator);
 		break;
 	}
 	default:
 	{
-		// Inset at 2 and 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
+		// Inset at 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
 		// min 96x60, centered — the canvas centre is a pane boundary there, and
 		// the bottom-right corner belongs to another seat's radar.
 		// GameplayUI coordinates; the World canvas and the seat layout
 		// never see it, so layout_pane_count() stays == numviews.
-		// (Two-seat ruling: 4 seats only now — 2 seats take the per-seat
-		// blocks above.)
 		int w = ui_w * 3 / 10;
 		int h = ui_h * 3 / 10;
 		if (w < 96)
@@ -1572,9 +1557,8 @@ void screen::draw_camera_view_ui()
 	if (canvas_w() != gameplay_ui_canvas_w() ||
 	    canvas_h() != gameplay_ui_canvas_h())
 		return;
-	// The widened resize is draw-scoped geometry, not a relayout:
-	// leave redrawme as the frame found it. (So is every per-block
-	// placement below, hence the save spans the whole draw.)
+	// Per-block placement is draw-scoped geometry, not a relayout; leave
+	// redrawme as the frame found it.
 	const short saved_redrawme = redrawme;
 	// Draw-scoped placement: the camera viewscreen rests on the first rect
 	// (relayout_camera_view); walking a second block at 2 seats moves it
@@ -1587,78 +1571,17 @@ void screen::draw_camera_view_ui()
 		    static_cast<short>(r.x), static_cast<short>(r.y),
 		    static_cast<short>(r.w), static_cast<short>(r.h));
 	};
-	// The plain 1:1 pane draw, at a rect.
-	const auto draw_one_to_one = [&](const CameraPaneRect& r) {
+	const auto draw_pane = [&](const CameraPaneRect& r) {
 		place(r);
 		(void)camera_view_->redraw(&level_runtime_data_,
 		                           /*draw_radar=*/false);
 	};
-	bool drew_scaled = false;
-	if (camera_minimap_zoom_)
-	{
-		// One-seat 0.25 zoom (maintainer ruling, §6): same pane rect, a
-		// kCameraMinimapZoomDenominator-times world window. Render the
-		// widened window 1:1 into the off-screen camera_scale layer through
-		// the SAME viewscreen redraw as above — the viewscreen is simply
-		// four times as large for this draw, so the seat centering and the
-		// world-edge behavior are inherited, not re-implemented — then
-		// integer-downsample the layer onto the pane rect. A failed layer
-		// allocation yields to the 1:1 draw below: the pane stays live,
-		// merely zoomed in for the frame (the R2 degrade-don't-corrupt
-		// shape). Still zero game-rng calls: the layer path draws exactly
-		// what a (larger) seat pane draws.
-		// Two seats (maintainer ruling): both blocks show the same target
-		// at the same zoom, so when they share extents (they do for the
-		// symmetric side-by-side split) the layer is rendered ONCE and
-		// sampled into every block — camera_scale_end per rect, the first
-		// call restoring the target and each call sampling the held layer.
-		// Blocks of differing extents (a seat in a different PREF_VIEW
-		// mode is still the same grid clamp, but keep the fallback honest)
-		// render per block instead.
-		const auto render_layer_for = [&](const CameraPaneRect& r) {
-			const short zoomed_w =
-			    static_cast<short>(r.w * kCameraMinimapZoomDenominator);
-			const short zoomed_h =
-			    static_cast<short>(r.h * kCameraMinimapZoomDenominator);
-			if (!camera_scale_begin(zoomed_w, zoomed_h))
-				return false;
-			camera_view_->resize(static_cast<short>(0),
-			                     static_cast<short>(0), zoomed_w, zoomed_h);
-			(void)camera_view_->redraw(&level_runtime_data_,
-			                           /*draw_radar=*/false);
-			return true;
-		};
-		const CameraPaneRect& first = camera_pane_rects_.front();
-		bool uniform = true;
-		for (const CameraPaneRect& r : camera_pane_rects_)
-			if (r.w != first.w || r.h != first.h)
-				uniform = false;
-		if (uniform)
-		{
-			if (render_layer_for(first))
-			{
-				for (const CameraPaneRect& r : camera_pane_rects_)
-					camera_scale_end(r.x, r.y, r.w, r.h,
-					                 kCameraMinimapZoomDenominator);
-				drew_scaled = true;
-			}
-		}
-		else
-		{
-			for (const CameraPaneRect& r : camera_pane_rects_)
-			{
-				if (render_layer_for(r))
-					camera_scale_end(r.x, r.y, r.w, r.h,
-					                 kCameraMinimapZoomDenominator);
-				else
-					draw_one_to_one(r);
-			}
-			drew_scaled = true;
-		}
-	}
-	if (!drew_scaled)
-		for (const CameraPaneRect& r : camera_pane_rects_)
-			draw_one_to_one(r);
+	// One/two-seat panes retain their final rectangle and carry denominator 4
+	// on the viewscreen. Every tile, entity, and effect is therefore projected
+	// into the target raster as it is drawn. Two-seat mode redraws each final
+	// pane independently; there is no reusable scene image to copy.
+	for (const CameraPaneRect& r : camera_pane_rects_)
+		draw_pane(r);
 	// Back on the first rect — the rect the geometry pins and the scrubs
 	// read.
 	place(camera_pane_rects_.front());

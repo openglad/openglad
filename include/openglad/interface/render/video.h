@@ -88,6 +88,36 @@ struct WorldPresentSlice
     int dst_h = 0;
 };
 
+// One indexed image rasterized straight into its final destination rectangle.
+// This is deliberately a primitive blit, not a scene-scale operation: callers
+// project the world rectangle first, then the backend visits each destination
+// pixel exactly once. It is used by reduced-resolution views so they never
+// allocate or paint a larger scene and sample it afterwards.
+enum class IndexedBlitTreatment
+{
+    Opaque,
+    Transparent,
+    Flash
+};
+
+struct IndexedBlit
+{
+    Sint32 x = 0;
+    Sint32 y = 0;
+    Sint32 w = 0;
+    Sint32 h = 0;
+    Sint32 source_w = 0;
+    Sint32 source_h = 0;
+    Sint32 clip_x = 0;
+    Sint32 clip_y = 0;
+    Sint32 clip_end_x = 0;
+    Sint32 clip_end_y = 0;
+    std::span<const unsigned char> source;
+    IndexedBlitTreatment treatment = IndexedBlitTreatment::Opaque;
+    unsigned char team_color = 0;
+    unsigned char alpha = 255;
+};
+
 // Abstract interface-layer rendering surface.
 // Platform backends implement this contract (SDL in Phase 10).
 class video
@@ -150,6 +180,7 @@ public:
                                    Sint32 portstartx, Sint32 portstarty,
                                    Sint32 portendx, Sint32 portendy,
                                    void* sourceptr) = 0;
+    virtual void putbuffer_projected(const IndexedBlit& blit) = 0;
     virtual void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                        Sint32 width, Sint32 height) = 0;
     virtual void destroy_accel_surface(void* surface) = 0;
@@ -199,28 +230,6 @@ public:
     {
         return false;
     }
-    // Off-screen camera-pane downscale (the one-seat second-minimap 0.25 zoom,
-    // docs/camera-views-design.md §6). camera_scale_begin redirects subsequent
-    // tile/sprite blits to a black-cleared off-screen layer of exactly w x h
-    // pixels anchored at (0,0) — the floor_layer redirect shape on its OWN
-    // surface, so a multi-floor camera redraw can still begin/end floor
-    // layers inside the redirect. camera_scale_end restores the real target
-    // and copies the layer onto the (x,y,w,h) pane rect with an integer
-    // nearest-neighbour sample — dst(i,j) = layer(i*denominator,
-    // j*denominator), whole-pixel copies, no floats, no filtering. Default
-    // no-ops for backends without an off-screen surface: a false begin tells
-    // the caller to draw 1:1 instead (the allocation-fallback yield).
-    // camera_scale_end may follow one begin once PER PANE RECT: the first
-    // call restores the target, and every call samples the still-held layer
-    // — the two-seat near-minimap renders one layer and lands it in both
-    // seats' blocks that way.
-    virtual bool camera_scale_begin(Sint32 /*w*/, Sint32 /*h*/)
-    {
-        return false;
-    }
-    virtual void camera_scale_end(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/,
-                                  Sint32 /*h*/, Sint32 /*denominator*/) {}
-    virtual void fail_next_camera_scale_allocation_for_testing() {}
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,

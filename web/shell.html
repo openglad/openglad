@@ -1129,7 +1129,7 @@
                     if (!p.inside) {
                         return;
                     }
-                    if (textEntryFocusRedirect && textEntryFocusRedirect()) {
+                    if (textEntryFocusRedirect && textEntryFocusRedirect(p)) {
                         // Gesture consumed: it focused the text-entry input
                         // (which opens the iOS keyboard). No mouse injection —
                         // the blocked prompt ignores clicks anyway.
@@ -1656,8 +1656,9 @@
             // show the DOM input; desktop browsers keep typing into the
             // canvas. The prompt-opening C++ code runs outside the trusted
             // gesture, so real iOS needs one of two explicit affordances:
-            // the pulsing TAP HERE TO TYPE input itself, and any canvas tap
-            // while the prompt is up (textEntryFocusRedirect above).
+            // the pulsing TAP HERE TO TYPE input itself, and canvas taps
+            // outside the shared ACCEPT/CANCEL footer
+            // (textEntryFocusRedirect above).
             (function initTextEntry() {
                 var wrap = document.getElementById('og-text-entry-wrap');
                 var input = document.getElementById('og-text-entry');
@@ -1754,8 +1755,33 @@
 
                 // Canvas taps while the prompt is up focus the input from the
                 // user's gesture (see ownCanvasTouch).
-                textEntryFocusRedirect = function() {
+                textEntryFocusRedirect = function(canvasPoint) {
                     if (wrap.classList.contains('hidden')) {
+                        return false;
+                    }
+                    // The shared C++ prompt owns its footer on the canvas.
+                    // Let taps in that footer reach SDL; all other canvas
+                    // taps retain the iOS keyboard-focus redirect. The UI is
+                    // aspect-fitted inside the full-viewport canvas, so map
+                    // the pointer back to the 320x200 reference grid first.
+                    var rect = canvas.getBoundingClientRect();
+                    var uiWidth = rect.width;
+                    var uiHeight = rect.height;
+                    var uiX = 0;
+                    var uiY = 0;
+                    if (uiWidth * 200 > uiHeight * 320) {
+                        uiWidth = uiHeight * 320 / 200;
+                        uiX = (rect.width - uiWidth) / 2;
+                    } else {
+                        uiHeight = uiWidth * 200 / 320;
+                        uiY = (rect.height - uiHeight) / 2;
+                    }
+                    var gameX = (canvasPoint.x - uiX) * 320 / uiWidth;
+                    var gameY = (canvasPoint.y - uiY) * 200 / uiHeight;
+                    var footerTap = gameY >= 74 && gameY < 88 &&
+                        ((gameX >= 128 && gameX < 178) ||
+                         (gameX >= 180 && gameX < 230));
+                    if (footerTap) {
                         return false;
                     }
                     focusInput();

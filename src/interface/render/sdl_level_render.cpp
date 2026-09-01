@@ -93,6 +93,26 @@ void LevelRender::draw_decor(int decor_index, int x, int y, viewscreen* view,
     // Faded/ghosted floor: full-color alpha sprite blit, same clipping as
     // pixie::drawMix. No decor pixel reaches the >=248 team-recolor range
     // (generator self-check), so the teamcolor argument is inert.
+    if (view->render_denominator() > 1)
+    {
+        IndexedBlit blit;
+        blit.x = view->project_world_x(static_cast<float>(x));
+        blit.y = view->project_world_y(static_cast<float>(y));
+        blit.w = view->project_world_width(p.sizex);
+        blit.h = view->project_world_height(p.sizey);
+        blit.source_w = p.sizex;
+        blit.source_h = p.sizey;
+        blit.clip_x = view->xloc;
+        blit.clip_y = view->yloc;
+        blit.clip_end_x = view->endx;
+        blit.clip_end_y = view->endy;
+        blit.source = {p.bmp_data(), static_cast<size_t>(p.sizex * p.sizey)};
+        blit.treatment = IndexedBlitTreatment::Transparent;
+        blit.team_color = RED;
+        blit.alpha = alpha;
+        og::runtime::current_session->myscreen_->putbuffer_projected(blit);
+        return;
+    }
     const Sint32 xscreen = static_cast<Sint32>(x - view->topx + view->xloc);
     const Sint32 yscreen = static_cast<Sint32>(y - view->topy + view->yloc);
     og::runtime::current_session->myscreen_->walkputbuffer_alpha(

@@ -299,9 +299,9 @@ void apply_screen_shake(viewscreen& view, GameWorld& world,
 			if (static_cast<Sint32>(fx->floor()) != camera_floor)
 				continue;
 			if (fx->xpos() + fx->sizex() <= view.topx ||
-			    fx->xpos() >= view.topx + view.xview ||
+			    fx->xpos() >= view.topx + view.world_view_width() ||
 			    fx->ypos() + fx->sizey() <= view.topy ||
-			    fx->ypos() >= view.topy + view.yview)
+			    fx->ypos() >= view.topy + view.world_view_height())
 				continue; // outside this viewport: too far away to feel
 			++booms;
 		}
@@ -448,6 +448,55 @@ std::unique_ptr<viewscreen> viewscreen::make_camera(screen* screenp)
 
 // Destruct the viewscreen and its variables
 viewscreen::~viewscreen() = default;
+
+namespace
+{
+Sint32 floor_div(Sint32 value, Sint32 denominator)
+{
+	const Sint32 quotient = value / denominator;
+	const Sint32 remainder = value % denominator;
+	return quotient - (remainder < 0 ? 1 : 0);
+}
+}
+
+void viewscreen::set_render_denominator(Sint32 denominator)
+{
+	render_denominator_ = std::max<Sint32>(1, denominator);
+}
+
+Sint32 viewscreen::project_world_x(float world_x) const
+{
+	const Sint32 relative = static_cast<Sint32>(std::floor(world_x)) - topx;
+	return xloc + floor_div(relative, render_denominator_);
+}
+
+Sint32 viewscreen::project_world_y(float world_y) const
+{
+	const Sint32 relative = static_cast<Sint32>(std::floor(world_y)) - topy;
+	return yloc + floor_div(relative, render_denominator_);
+}
+
+Sint32 viewscreen::world_x_at_screen(Sint32 screen_x) const
+{
+	return topx + (screen_x - xloc) * render_denominator_;
+}
+
+Sint32 viewscreen::world_y_at_screen(Sint32 screen_y) const
+{
+	return topy + (screen_y - yloc) * render_denominator_;
+}
+
+Sint32 viewscreen::project_world_width(Sint32 world_w) const
+{
+	return std::max<Sint32>(1, (world_w + render_denominator_ - 1) /
+	                                render_denominator_);
+}
+
+Sint32 viewscreen::project_world_height(Sint32 world_h) const
+{
+	return std::max<Sint32>(1, (world_h + render_denominator_ - 1) /
+	                                render_denominator_);
+}
 
 void viewscreen::clear()
 {
@@ -752,10 +801,10 @@ bool viewscreen::redraw()
             respawn_focus.has_value() ? respawn_focus->y : control_pos.ypos;
         camera_topx_float =
             camera_x -
-            static_cast<float>(xview - controlob->sizex()) / 2.0f;
+            static_cast<float>(world_view_width() - controlob->sizex()) / 2.0f;
         camera_topy_float =
             camera_y -
-            static_cast<float>(yview - controlob->sizey()) / 2.0f;
+            static_cast<float>(world_view_height() - controlob->sizey()) / 2.0f;
 		topx = static_cast<Sint32>(camera_topx_float);
 		topy = static_cast<Sint32>(camera_topy_float);
 	}
@@ -881,7 +930,8 @@ bool viewscreen::redraw()
 				// OOB wall border, decor and draw_floor_entities naturally
 				// cover the padded window; restored after the pass below
 				// (topx/topy come back via the par_topx/par_topy restore).
-				topx -= pad_x;      topy -= pad_y;
+				topx -= pad_x * render_denominator_;
+				topy -= pad_y * render_denominator_;
 				xview += 2 * pad_x; yview += 2 * pad_y;
 				endx += 2 * pad_x;  endy += 2 * pad_y;
 			}
@@ -902,8 +952,8 @@ bool viewscreen::redraw()
 				const bool has_decor = decorp.valid()
 				    && static_cast<unsigned short>(decorp.w) == maxx
 				    && static_cast<unsigned short>(decorp.h) == maxy;
-				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
-					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+world_view_height())/GRID_SIZE) +1; j++)
+					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+world_view_width())/GRID_SIZE) +1; i++)
 					{
 						// NOTE: back is a PIXIEN.
 						// background graphic [grid(x,y)] -> put in buffer
@@ -1055,10 +1105,10 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
             respawn_focus.has_value() ? respawn_focus->y : control_pos.ypos;
         camera_topx_float =
             camera_x -
-            static_cast<float>(xview - controlob->sizex()) / 2.0f;
+            static_cast<float>(world_view_width() - controlob->sizex()) / 2.0f;
         camera_topy_float =
             camera_y -
-            static_cast<float>(yview - controlob->sizey()) / 2.0f;
+            static_cast<float>(world_view_height() - controlob->sizey()) / 2.0f;
 		topx = static_cast<Sint32>(camera_topx_float);
 		topy = static_cast<Sint32>(camera_topy_float);
 	}
@@ -1172,7 +1222,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 				// OOB wall border, decor and draw_floor_entities naturally
 				// cover the padded window; restored after the pass below
 				// (topx/topy come back via the par_topx/par_topy restore).
-				topx -= pad_x;      topy -= pad_y;
+				topx -= pad_x * render_denominator_;
+				topy -= pad_y * render_denominator_;
 				xview += 2 * pad_x; yview += 2 * pad_y;
 				endx += 2 * pad_x;  endy += 2 * pad_y;
 			}
@@ -1193,8 +1244,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 				const bool has_decor = decorp.valid()
 				    && static_cast<unsigned short>(decorp.w) == maxx
 				    && static_cast<unsigned short>(decorp.h) == maxy;
-				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
-					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+world_view_height())/GRID_SIZE) +1; j++)
+					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+world_view_width())/GRID_SIZE) +1; i++)
 					{
 						// NOTE: back is a PIXIEN.
 						// background graphic [grid(x,y)] -> put in buffer

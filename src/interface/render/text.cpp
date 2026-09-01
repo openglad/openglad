@@ -32,6 +32,14 @@
 static PixieData letters1;
 static PixieData letters_big;
 
+struct PromptButtonRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+
 static void erase_last_utf8_codepoint(char* value, std::size_t length)
 {
     if (value == nullptr || length == 0)
@@ -657,6 +665,14 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	const char* temptext;
 	short has_typed = 0; // hasn't typed yet
 	bool return_null = false;
+	const int field_width = maxlength * (sizex + 1);
+	// The shared one-line prompt is used by hiring, networking, and the level
+	// editor. Keep its touch affordances in the same canvas surface as the
+	// field so a phone never has to discover that Return is the only way out.
+	const PromptButtonRect accept_button{x + field_width - 52,
+	                                     y + sizey + 4, 50, 14};
+	const PromptButtonRect cancel_button{x + field_width - 104,
+	                                     y + sizey + 4, 50, 14};
 
 	for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
 		editstring[i] = 0; // clear the string ...
@@ -667,17 +683,30 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	}
 	snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
 	current_length = static_cast<short>(strlen(editstring));
-	og::runtime::current_session->myscreen_->draw_box(x, y, x + maxlength*(sizex+1), y + sizey, backcolor, 1, 1);
-	og::runtime::current_session->myscreen_->draw_button(x, y, x + maxlength*(sizex+1), y + sizey, 1);
+	og::runtime::current_session->myscreen_->draw_box(x, y, x + field_width, y + sizey, backcolor, 1, 1);
+	og::runtime::current_session->myscreen_->draw_button(x, y, x + field_width, y + sizey, 1);
 	if (begin && begin[0] != '\0')
 		og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
 	write_xy(x, y - 10, message, DARK_GREEN, 1);
 	write_xy(x, y, editstring, WHITE, 1);
+	og::runtime::current_session->myscreen_->draw_button(
+	    accept_button.x, accept_button.y,
+	    accept_button.x + accept_button.w, accept_button.y + accept_button.h, 1);
+	write_xy(accept_button.x + 7, accept_button.y + 3, "ACCEPT", DARK_BLUE, 1);
+	og::runtime::current_session->myscreen_->draw_button(
+	    cancel_button.x, cancel_button.y,
+	    cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
+	write_xy(cancel_button.x + 7, cancel_button.y + 3, "CANCEL", DARK_BLUE, 1);
 	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 
 	clear_keyboard();
 	clear_key_press_event();
 	clear_text_input_event();
+	// A prompt entered from a button can inherit that button's held pointer.
+	// Establish a clean baseline before accepting a new prompt click.
+	reset_mouse_click_tracking();
+	MouseState& prompt_mouse = query_mouse_no_poll();
+	prompt_mouse.left = 0;
 	
     og::input_native::start_text_input(
         editstring, std::max(0, static_cast<int>(maxlength) - 1), message);
@@ -689,7 +718,8 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
         temptext = nullptr;
         
 		// Wait for a key to be pressed ..
-		while (!query_key_press_event() && !query_text_input_event())
+		while (!query_key_press_event() && !query_text_input_event() &&
+		       !prompt_mouse.left)
 			//dumbcount++;
 			get_input_events(WAIT);
         
@@ -773,8 +803,27 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
             has_typed = 1;
             current_length = static_cast<short>(strlen(editstring));
         }
+
+		if (prompt_mouse.left)
+		{
+			const int click_x = static_cast<int>(prompt_mouse.x);
+			const int click_y = static_cast<int>(prompt_mouse.y);
+			prompt_mouse.left = 0;
+			const auto inside = [click_x, click_y](const PromptButtonRect& rect) {
+				return click_x >= rect.x && click_x < rect.x + rect.w &&
+				       click_y >= rect.y && click_y < rect.y + rect.h;
+			};
+			if (inside(accept_button))
+				string_done = 1;
+			else if (inside(cancel_button))
+			{
+				snprintf(editstring, sizeof(editstring), "%s", firststring);
+				string_done = 1;
+				return_null = true;
+			}
+		}
 		
-		og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1), y+sizey+1, 1);
+		og::runtime::current_session->myscreen_->draw_button(x, y, x + field_width, y + sizey + 1, 1);
         write_xy(x, y - 10, message, DARK_GREEN, 1);
         if(!has_typed && strlen(editstring) > 0)
         {
@@ -783,10 +832,19 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
         }
 		else
             write_xy(x, y, editstring, forecolor, 1);
+		og::runtime::current_session->myscreen_->draw_button(
+		    accept_button.x, accept_button.y,
+		    accept_button.x + accept_button.w, accept_button.y + accept_button.h, 1);
+		write_xy(accept_button.x + 7, accept_button.y + 3, "ACCEPT", DARK_BLUE, 1);
+		og::runtime::current_session->myscreen_->draw_button(
+		    cancel_button.x, cancel_button.y,
+		    cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
+		write_xy(cancel_button.x + 7, cancel_button.y + 3, "CANCEL", DARK_BLUE, 1);
 		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 	}
 
     og::input_native::stop_text_input();
+	reset_mouse_click_tracking();
     
 	clear_keyboard();
 	if(return_null)
