@@ -7466,21 +7466,16 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
         const RadarBlock block = radar_block_for_pane(
             pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
             /*force_lower=*/false);
-        EXPECT_EQ(block.x + block.w,
-                  display->camera_view_->xloc +
-                      display->camera_view_->xview);
-        EXPECT_EQ(block.y - block.margin - kCameraMinimapHeight,
+        EXPECT_EQ(block.x, display->camera_view_->xloc);
+        EXPECT_EQ(block.y - block.margin - block.h,
                   display->camera_view_->yloc);
-        EXPECT_EQ(kCameraMinimapWidth, display->camera_view_->xview);
-        EXPECT_EQ(kCameraMinimapHeight, display->camera_view_->yview);
+        EXPECT_EQ(block.w, display->camera_view_->xview);
+        EXPECT_EQ(block.h, display->camera_view_->yview);
         EXPECT_EQ(block.y, display->camera_view_->yloc +
                                display->camera_view_->yview + block.margin)
             << "the pane must sit one radar margin above the radar block";
-        // The larger live-art pane draws at half scale: it shows the
-        // kCameraMinimapZoomDenominator-times world window through direct
-        // final-pane projection, so the ball remains legible with context.
-        EXPECT_TRUE(display->camera_minimap_zoom_)
-            << "the one-seat second minimap must resolve to half scale";
+        EXPECT_EQ(1, display->camera_view_->render_denominator())
+            << "the compact camera must render at full sprite scale";
         // The seat is byte-identical to its pre-camera geometry.
         EXPECT_EQ(seat_before.xloc, display->viewob[0]->xloc);
         EXPECT_EQ(seat_before.yloc, display->viewob[0]->yloc);
@@ -7491,11 +7486,12 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
     camera_ball_mode_teardown(display);
 }
 
-// Reporter regression (#277): CENTER COURT is only 45x25 radar cells. The
-// live-art camera must spend its full 96x60 viewport on the ball;
-// clamping its raster to the radar's one-pixel-per-cell data block produced a
-// postage-stamp 45x25 picture even though the surrounding UI space was free.
-TEST(GameLoop, host_and_join_basketball_camera_uses_the_full_minimap_viewport)
+// Reporter regression (#277): CENTER COURT's auxiliary camera is a minimap,
+// not a second gameplay viewport. It must keep the radar's compact 45x25
+// footprint while rendering the followed ball at full sprite scale inside
+// that footprint. Expanding the HUD block to 96x60 obscured the court; using
+// a projection denominator above 1 turned the ball back into a speck.
+TEST(GameLoop, host_and_join_basketball_camera_is_compact_and_full_scale)
 {
     screen* const display = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, display);
@@ -7515,10 +7511,26 @@ TEST(GameLoop, host_and_join_basketball_camera_uses_the_full_minimap_viewport)
     if (!::testing::Test::HasFatalFailure())
     {
         ASSERT_NE(nullptr, display->camera_view_.get());
-        EXPECT_EQ(kCameraMinimapWidth, display->camera_view_->xview);
-        EXPECT_EQ(kCameraMinimapHeight, display->camera_view_->yview);
-        EXPECT_EQ(kCameraMinimapZoomDenominator,
-                  display->camera_view_->render_denominator());
+        const int ui_w = display->gameplay_ui_canvas_w();
+        const int ui_h = display->gameplay_ui_canvas_h();
+        const og::view_layout::ViewLayout pane =
+            og::view_layout::compute_view_layout(
+                display->layout_pane_count(), 0,
+                static_cast<int>(display->viewob[0]->prefs[PREF_VIEW]),
+                ui_w, ui_h);
+        ASSERT_TRUE(pane.applies);
+        const auto [block_w, block_h] = radar_block_extents(
+            display->world().grid.w, display->world().grid.h);
+        const RadarBlock radar = radar_block_for_pane(
+            pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
+            /*force_lower=*/false);
+        EXPECT_EQ(radar.x, display->camera_view_->xloc);
+        EXPECT_EQ(radar.y - radar.margin - radar.h,
+                  display->camera_view_->yloc);
+        EXPECT_EQ(radar.w, display->camera_view_->xview);
+        EXPECT_EQ(radar.h, display->camera_view_->yview);
+        EXPECT_EQ(1, display->camera_view_->render_denominator())
+            << "the compact camera must zoom the art in, not the HUD out";
         capture_ball_camera_if_requested(display);
     }
 

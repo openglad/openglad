@@ -396,7 +396,9 @@ TEST_F(RenderEffects, projected_camera_effects_change_final_pane_pixels)
     w->setxy(160, 120);
     vs->control = w;
     ASSERT_TRUE(do_redraw(vs));
-    vs->set_render_denominator(kCameraMinimapZoomDenominator);
+    // Exercise the direct projected renderer independently of the production
+    // camera's chosen scale.
+    vs->set_render_denominator(2);
 
     ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
     const auto fill_pane = [&](unsigned char color) {

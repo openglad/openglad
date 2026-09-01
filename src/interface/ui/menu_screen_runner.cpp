@@ -36,6 +36,7 @@
 #include "picker_sdl_defs.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
@@ -74,6 +75,17 @@ std::mutex& get_allbuttons_mutex();
 #endif
 
 namespace og::ui {
+
+#ifdef TESTING
+namespace {
+std::atomic<std::uint64_t> g_menu_screen_completed_frames{0};
+}
+
+std::uint64_t menu_screen_testing_completed_frames()
+{
+    return g_menu_screen_completed_frames.load(std::memory_order_acquire);
+}
+#endif
 
 namespace {
 
@@ -857,6 +869,12 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         ++frame;
         if (spec.frame_tick != nullptr && !spec.frame_tick(screen_state, frame))
             break;
+#ifdef TESTING
+        // This is after input dispatch, action completion/reset, and the
+        // screen's frame tick. Injector tests can therefore prove a queued
+        // press/release belongs to a finished frame before sending another.
+        g_menu_screen_completed_frames.fetch_add(1, std::memory_order_release);
+#endif
 
         // Labels re-derive from a FRESH context: a click this frame (or a
         // lobby poll rewriting the save under the open screen) must show on

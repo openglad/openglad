@@ -241,6 +241,14 @@ std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
 // spec.exit_value (or propagates a remote-start MENU_EXIT).
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr);
 
+#ifdef TESTING
+// Monotonic completion edge for injector tests. Incremented only after one
+// engine-menu iteration has consumed input, dispatched/reset its action, and
+// run the screen's frame tick; waiting on it avoids timing guesses about
+// synchronous autosaves.
+std::uint64_t menu_screen_testing_completed_frames();
+#endif
+
 // #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").
 //
 // THE RULE: whoever fades a screen IN fades it OUT, at its own exit, while

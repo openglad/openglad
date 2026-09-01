@@ -1290,9 +1290,9 @@ void screen::relayout_camera_view()
 	camera_pane_rects_.clear();
 	if (camera_view_ == nullptr)
 		return;
-	// Projection is resolved with geometry: the one- and two-seat minimaps use
-	// denominator 2; the docked quadrant and four-seat centered inset use 1.
-	camera_minimap_zoom_ = false;
+	// Every camera draws directly at the scale of its final pane. In particular,
+	// the compact one/two-seat minimaps zoom their content at 1:1 instead of
+	// enlarging the HUD rectangle or shrinking the followed ball.
 	camera_view_->set_render_denominator(1);
 	if (camera_docked_)
 	{
@@ -1325,8 +1325,8 @@ void screen::relayout_camera_view()
 		// One seat, the SECOND MINIMAP (maintainer ruling, §6): the lone seat
 		// camera keeps its own hero at the canvas centre, so a centered inset
 		// would sit exactly on top of him. The pane becomes a second minimap
-		// instead — a 96x60 live-art raster sharing the radar's right edge,
-		// stacked directly above it with the radar's own pane margin. Derived
+		// instead — the radar's compact footprint mirrored directly above it
+		// with the radar's own pane margin. Derived
 		// from the COMPUTED radar position (radar_block_for_pane, the one
 		// placement rule), so
 		// PREF_RADAR off anchors it identically.
@@ -1337,12 +1337,6 @@ void screen::relayout_camera_view()
 		for (int seat = 0; seat < numviews; ++seat)
 			camera_pane_rects_.push_back(
 			    camera_minimap_block_for_seat(seat, ui_w, ui_h));
-		// Draw the larger pane at half scale: a
-		// kCameraMinimapZoomDenominator-times world window projected directly
-		// into its final raster. This keeps the tracked ball readable while
-		// retaining nearby court context.
-		camera_minimap_zoom_ = true;
-		camera_view_->set_render_denominator(kCameraMinimapZoomDenominator);
 		break;
 	}
 	default:
@@ -1398,23 +1392,8 @@ CameraPaneRect screen::camera_minimap_block_for_seat(int seat, int ui_w,
 	const RadarBlock block = radar_block_for_pane(
 	    pane.y, pane.x + pane.w, pane.y + pane.h, radar_w, radar_h,
 	    /*force_lower=*/false);
-	// A radar may shrink to one pixel per cell on a small level. Live world
-	// art must not inherit that data-density clamp: CENTER COURT's 45x25 grid,
-	// for example, still has room for the camera's 96x60 live-art viewport.
-	// Preserve the radar's right edge and vertical gutter while spending the
-	// same minimum raster budget as the four-seat camera inset.
-	const int camera_bottom = block.y - block.margin;
-	// A short synthetic/test grid can lift the radar toward the middle of a
-	// two-seat pane. Keep the live camera strictly below that seat's hero
-	// centre in that degenerate case; shipped ball courts have the full 60px.
-	const int max_height_below_centre =
-	    camera_bottom - (pane.y + pane.h / 2 + 1);
-	const int camera_h = (layout_pane_count() == 2)
-	    ? std::clamp(max_height_below_centre, 1, kCameraMinimapHeight)
-	    : kCameraMinimapHeight;
-	return CameraPaneRect{block.x + block.w - kCameraMinimapWidth,
-	                      camera_bottom - camera_h,
-	                      kCameraMinimapWidth, camera_h};
+	return CameraPaneRect{block.x, block.y - block.margin - block.h,
+	                      block.w, block.h};
 }
 
 // Camera-view lifecycle (docs/camera-views-design.md §5). One idempotent,
@@ -1452,7 +1431,6 @@ void screen::sync_camera_views()
 			camera_entity_id_ = 0;
 			camera_style_ = og::sim::kCameraStyleAuto;
 			camera_docked_ = false;
-			camera_minimap_zoom_ = false;
 			TRACE("camera", "destroy docked=%d", was_docked ? 1 : 0);
 			if (was_docked)
 				relayout_views(); // seats fall back to the 3-view layout
@@ -1585,10 +1563,9 @@ void screen::draw_camera_view_ui()
 		(void)camera_view_->redraw(&level_runtime_data_,
 		                           /*draw_radar=*/false);
 	};
-	// One/two-seat panes retain their final rectangle and carry denominator 2
-	// on the viewscreen. Every tile, entity, and effect is therefore projected
-	// into the target raster as it is drawn. Two-seat mode redraws each final
-	// pane independently; there is no reusable scene image to copy.
+	// One/two-seat panes render directly at their final compact geometry.
+	// Two-seat mode redraws each pane independently; there is no reusable scene
+	// image to scale or copy.
 	for (const CameraPaneRect& r : camera_pane_rects_)
 		draw_pane(r);
 	// Back on the first rect — the rect the geometry pins and the scrubs
@@ -1646,7 +1623,6 @@ void screen::cleanup(short howmany)
     camera_view_.reset();
     camera_pane_rects_.clear();
     camera_docked_ = false;
-    camera_minimap_zoom_ = false;
     // §7.1: destroyed views leave no windows to present; a later World
     // present must not replay their canvas-space slices.
     video_impl_->set_world_present_slices({});
