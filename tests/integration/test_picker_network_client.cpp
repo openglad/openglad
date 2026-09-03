@@ -284,6 +284,19 @@ bool wait_until(Predicate&& predicate,
     return predicate();
 }
 
+// Same-process direct-lobby fixtures own both ends of the connection. Stop
+// the host (and therefore its server) before joining a client WebSocket
+// thread; otherwise the still-live server can broadcast during the client's
+// synchronous close handshake and leave teardown waiting indefinitely.
+void shutdown_owning_host_before_join(
+    og::ui::IPickerLobbyClient*& host_client)
+{
+    if (host_client == nullptr)
+        return;
+    host_client->shutdown();
+    host_client = nullptr;
+}
+
 bool status_lines_contain_prefix(const std::vector<std::string>& lines,
                                  std::string_view prefix)
 {
@@ -1808,6 +1821,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -2626,6 +2640,7 @@ TEST(PickerNetworkClient, joiner_preview_mirror_heals_byte_identical_pair)
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -3792,6 +3807,9 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -4056,6 +4074,9 @@ TEST(PickerNetworkClient, host_and_join_real_win_returns_both_peers_to_menu)
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -4323,6 +4344,9 @@ TEST(PickerNetworkClient, host_and_join_real_exit_returns_both_peers_to_menu)
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -4602,6 +4626,9 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -5313,6 +5340,7 @@ TEST(PickerNetworkClient, host_go_denied_until_joiner_ready_and_resend_preserves
         og::ui::IPickerLobbyClient* join_client = nullptr;
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr && join_client != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -5426,6 +5454,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr && join_client != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -5545,6 +5574,9 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -5783,6 +5815,7 @@ TEST(PickerNetworkClient, overflow_join_reconciles_echoed_bench_flags_and_preser
         og::ui::IPickerLobbyClient* join_client = nullptr;
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr && join_client != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -5914,6 +5947,9 @@ TEST(PickerNetworkClient, host_and_join_join_disconnect_between_levels_reconcile
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -6133,8 +6169,11 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
-            teardown_join(join_b_session, join_b_client);
-            teardown_join(join_a_session, join_a_client);
+            // Stop the owning server before joining either IXWebSocket client
+            // thread. A live host can still be broadcasting the resumed
+            // lobby while WebSocket::stop() waits synchronously for its close
+            // handshake; closing the server first gives both clients the
+            // remote-close edge before their teardown joins.
             if (host_session != nullptr)
             {
                 og::runtime::clear_local_transport_shadow(*host_session);
@@ -6148,6 +6187,8 @@ TEST(PickerNetworkClient,
                     host_session->myscreen_->world().delete_objects();
                 }
             }
+            teardown_join(join_b_session, join_b_client);
+            teardown_join(join_a_session, join_a_client);
         }
     } cleanup;
 
@@ -6794,6 +6835,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -6899,6 +6941,9 @@ TEST(PickerNetworkClient, host_and_join_client_quit_mission_withdraws_both_peers
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -7135,6 +7180,9 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -8280,6 +8328,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -8507,12 +8556,11 @@ TEST(PickerNetworkClient,
         return join_sees_host_ready;
     })) << "joiner should see the host's ready tag";
 
+    shutdown_owning_host_before_join(cleanup.host_client);
     {
         auto join_scope = join_session.activate();
         join_client->shutdown();
     }
-    host_client->shutdown();
-    cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
 }
 
@@ -8601,6 +8649,9 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            if (host_session != nullptr)
+                og::runtime::clear_local_transport_shadow(*host_session);
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -9024,6 +9075,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -9275,6 +9327,7 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -9389,12 +9442,11 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
     EXPECT_EQ(1, static_cast<int>(host_save.keep_fallen_heroes));
     EXPECT_EQ(1, static_cast<int>(host_save.infinite_gold));
 
+    shutdown_owning_host_before_join(cleanup.host_client);
     {
         auto join_scope = join_session.activate();
         join_client->shutdown();
     }
-    host_client->shutdown();
-    cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
 }
 
@@ -9452,6 +9504,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -9552,12 +9605,11 @@ TEST(PickerNetworkClient,
         EXPECT_EQ(0, session.current_slot());
     }
 
+    shutdown_owning_host_before_join(cleanup.host_client);
     {
         auto join_scope = join_session.activate();
         join_client->shutdown();
     }
-    host_client->shutdown();
-    cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
 }
 
@@ -9615,6 +9667,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -9739,12 +9792,11 @@ TEST(PickerNetworkClient,
            "replicate the benched flag";
 
     host_save.save_name = old_host_company;
+    shutdown_owning_host_before_join(cleanup.host_client);
     {
         auto join_scope = join_session.activate();
         join_client->shutdown();
     }
-    host_client->shutdown();
-    cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
 }
 
@@ -9804,6 +9856,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -9932,12 +9985,11 @@ TEST(PickerNetworkClient,
 
     host_save.save_name = old_host_company;
     host_save.cross_control = 0;
+    shutdown_owning_host_before_join(cleanup.host_client);
     {
         auto join_scope = join_session.activate();
         join_client->shutdown();
     }
-    host_client->shutdown();
-    cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
 }
 
@@ -10022,6 +10074,7 @@ TEST(PickerNetworkClient,
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();
@@ -10139,12 +10192,11 @@ TEST(PickerNetworkClient,
     })) << "the train mutation must clear the joiner's ready on the server";
 
     host_save.save_name = old_host_company;
+    shutdown_owning_host_before_join(cleanup.host_client);
     {
         auto join_scope = join_session.activate();
         join_client->shutdown();
     }
-    host_client->shutdown();
-    cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
 }
 
@@ -10281,6 +10333,7 @@ TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
 
         ~CleanupGuard()
         {
+            shutdown_owning_host_before_join(host_client);
             if (join_session != nullptr)
             {
                 auto join_scope = join_session->activate();

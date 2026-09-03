@@ -28,8 +28,6 @@
 #include <SDL3/SDL.h>
 
 #include <array>
-#include <cstdio>
-#include <cstdlib>
 #include <cstdint>
 #include <format>
 #include <memory>
@@ -100,6 +98,8 @@ protected:
         // The geometry pins below were authored against the classic canvas.
         game_->set_world_canvas_pinned_classic(true);
         game_->relayout_views();
+		ASSERT_NE(nullptr, E_Screen);
+		E_Screen->discard_native_world_views_for_testing();
     }
 
     void TearDown() override
@@ -117,6 +117,8 @@ protected:
         game_->ready_for_battle(saved_numviews_);
         game_->set_world_canvas_pinned_classic(false);
         game_->relayout_views();
+		if (E_Screen != nullptr)
+			E_Screen->discard_native_world_views_for_testing();
     }
 
     // Seats at a known geometry baseline: FULL view mode, no per-view zoom.
@@ -410,8 +412,6 @@ TEST_F(CameraView, docked_geometry_comes_from_the_four_pane_pipeline)
             << "seat " << i << " is not in its 4-pane quadrant";
     EXPECT_EQ(four_pane_rect(3), capture_rect(*game_->camera_view_))
         << "camera is not in quadrant 3";
-    EXPECT_EQ(1, game_->camera_view_->render_denominator())
-        << "the docked quadrant stays 1:1";
     // Direct geometry: slot == window, so the camera publishes no present
     // slice and the presentation partition never sees it.
     EXPECT_EQ(game_->camera_view_->xloc, game_->camera_view_->slot_x_);
@@ -540,8 +540,6 @@ TEST_F(CameraView, two_seats_get_a_near_minimap_each)
     EXPECT_EQ(inset_rect(), capture_rect(*game_->camera_view_));
     EXPECT_NE(centered_inset_rect(), capture_rect(*game_->camera_view_))
         << "2 seats must not take the old centered inset";
-    EXPECT_EQ(1, game_->camera_view_->render_denominator())
-        << "the two-seat blocks must render at full scale";
     // The seam draw leaves the resting geometry where the pins read it.
     {
         ScopedGameplayUiCanvas gameplay_ui(*game_);
@@ -573,8 +571,6 @@ TEST_F(CameraView, four_seats_keep_the_centered_inset)
         EXPECT_NE(second_minimap_rect(seat),
                   capture_rect(*game_->camera_view_))
             << "4 seats must not take the near-minimap placement";
-    EXPECT_EQ(1, game_->camera_view_->render_denominator())
-        << "the centered inset stays 1:1";
 }
 
 // H5: seat add 3->4 flips docked->inset with no intermediate 5-pane layout
@@ -702,8 +698,10 @@ TEST_F(CameraView, off_state_changes_nothing)
     }
 }
 
-// H9: a staged/preview draw of a camera-declaring world goes through
-// viewscreen::redraw on a borrowed view — never screen::redraw on the
+bool pixel_matches_index(screen* scr, int x, int y, unsigned char index);
+
+// H9: a staged/preview draw of a camera-declaring world goes through the
+// native-world plane on a borrowed view — never screen::redraw on the
 // gameplay session — and must not materialize a camera or move geometry.
 TEST_F(CameraView, staged_preview_never_materializes)
 {
@@ -722,17 +720,30 @@ TEST_F(CameraView, staged_preview_never_materializes)
     viewscreen* const view = game_->viewob[0].get();
     ASSERT_NE(nullptr, view);
     // The picker's borrowed-view composition: null control (free camera),
-    // direct-geometry resize into a band, draw the staged data.
+    // camera identity (no chrome), then one physical-density UI destination.
     walker* const saved_control = view->control;
     const SeatRect saved_rect = capture_rect(*view);
+    const bool saved_camera_view = view->camera_view_;
     view->control = nullptr;
-    view->resize(static_cast<short>(8), static_cast<short>(8),
-                 static_cast<short>(160), static_cast<short>(100));
-    (void)view->redraw(&staged, /*draw_radar=*/false);
+    view->camera_view_ = true;
+    {
+        ScopedUiCanvas ui_canvas(*game_);
+        const std::array<NativeWorldViewDestination, 1> destinations = {
+            NativeWorldViewDestination{CanvasTarget::UI, 8, 8, 160, 100}};
+        const NativeWorldViewSource source =
+            game_->begin_native_world_view(destinations);
+        ASSERT_TRUE(source);
+        EXPECT_TRUE(game_->native_world_view_active());
+        view->resize(0, 0, static_cast<short>(source.w),
+                     static_cast<short>(source.h));
+        (void)view->redraw(&staged, /*draw_radar=*/false);
+        EXPECT_TRUE(game_->end_native_world_view());
+    }
     EXPECT_EQ(nullptr, game_->camera_view_.get())
         << "a staged preview draw materialized a camera";
     EXPECT_EQ(game_->numviews, game_->layout_pane_count());
     view->control = saved_control;
+    view->camera_view_ = saved_camera_view;
     view->resize(static_cast<short>(saved_rect.xloc),
                  static_cast<short>(saved_rect.yloc),
                  static_cast<short>(saved_rect.xview),
@@ -740,6 +751,26 @@ TEST_F(CameraView, staged_preview_never_materializes)
     view->resize(view->prefs[PREF_VIEW]);
     EXPECT_EQ(seat_before, capture_rect(*game_->viewob[0]));
     EXPECT_EQ(nullptr, game_->camera_view_.get());
+}
+
+// The global invariant has teeth at the world renderer itself: a future
+// caller cannot accidentally aim a viewscreen at either fixed UI canvas.
+TEST_F(CameraView, viewscreen_refuses_a_fixed_ui_raster_without_a_native_plane)
+{
+    game_->ready_for_battle(1);
+    arm_seats();
+    LevelRuntimeData staged(1);
+    staged.create_new_grid();
+    viewscreen* const view = game_->viewob[0].get();
+    ASSERT_NE(nullptr, view);
+
+    ScopedUiCanvas ui_canvas(*game_);
+    game_->fastbox(0, 0, game_->canvas_w(), game_->canvas_h(), ORANGE_START);
+    EXPECT_FALSE(view->redraw(&staged, /*draw_radar=*/false));
+    for (int y = 0; y < game_->canvas_h(); y += 17)
+        for (int x = 0; x < game_->canvas_w(); x += 19)
+            EXPECT_TRUE(pixel_matches_index(game_, x, y, ORANGE_START));
+    EXPECT_EQ(0u, E_Screen->native_world_view_ready_count_for_testing());
 }
 
 // WP4 pixel probes. All three tests read the GameplayUI canvas under the
@@ -763,12 +794,10 @@ bool pixel_matches_index(screen* scr, int x, int y, unsigned char index)
     return r / 4 == pr && g / 4 == pg && b / 4 == pb;
 }
 
-// H10 prototype gate (risk #1, the least-proven render path): the inset draw
-// — the staged-preview composition aimed at the live level data under the
-// GameplayUI canvas scope — must actually land world pixels inside the inset
-// rect, frame them with the 1px GREY border, and keep direct geometry
-// (slot == window, so no present slice can ever exist for the camera).
-TEST_F(CameraView, inset_draw_lands_world_pixels_and_border)
+// H10 prototype gate: the inset draw must queue world pixels outside the
+// GameplayUI raster, frame their destination with the 1px GREY border, and
+// keep direct logical geometry (slot == window).
+TEST_F(CameraView, inset_draw_queues_native_world_pixels_and_border)
 {
     game_->ready_for_battle(1);
     arm_seats();
@@ -784,9 +813,8 @@ TEST_F(CameraView, inset_draw_lands_world_pixels_and_border)
     const SeatRect r = inset_rect();
     ASSERT_EQ(r, capture_rect(*game_->camera_view_));
 
-    // Scrub the rect + border ring first, and prove the probe sees black:
-    // any pixel found after the draw below was drawn by the inset pass, not
-    // left over from the seat's world redraw underneath.
+    // Scrub the rect + border ring first. The interior must remain black even
+    // after drawing because live world pixels belong to the native plane.
     {
         ScopedGameplayUiCanvas gameplay_ui(*game_);
         game_->clearbuffer(r.xloc - 1, r.yloc - 1, r.xview + 2, r.yview + 2);
@@ -804,18 +832,11 @@ TEST_F(CameraView, inset_draw_lands_world_pixels_and_border)
 
     {
         ScopedGameplayUiCanvas gameplay_ui(*game_);
-        int samples = 0;
-        int lit = 0;
         for (int y = r.yloc; y < r.yloc + r.yview; y += 4)
             for (int x = r.xloc; x < r.xloc + r.xview; x += 4)
-            {
-                ++samples;
-                if (!pixel_is_black(game_, x, y))
-                    ++lit;
-            }
-        EXPECT_GT(lit, samples / 4)
-            << "the inset world draw landed too few pixels (" << lit << "/"
-            << samples << ") — the GameplayUI-canvas world draw is broken";
+                EXPECT_TRUE(pixel_is_black(game_, x, y))
+                    << "live world pixels leaked into GameplayUI at "
+                    << x << "," << y;
         // The 1px GREY frame, all four corners (draw_box is inclusive).
         const int x2 = r.xloc + r.xview;
         const int y2 = r.yloc + r.yview;
@@ -824,6 +845,12 @@ TEST_F(CameraView, inset_draw_lands_world_pixels_and_border)
         EXPECT_TRUE(pixel_matches_index(game_, r.xloc - 1, y2, GREY));
         EXPECT_TRUE(pixel_matches_index(game_, x2, y2, GREY));
     }
+    ASSERT_EQ(1u, E_Screen->native_world_view_ready_count_for_testing());
+    SDL_Surface* const source =
+        E_Screen->native_world_view_surface_for_testing();
+    ASSERT_NE(nullptr, source);
+    EXPECT_GT(source->w, r.xview);
+    EXPECT_GT(source->h, r.yview);
 
     // Direct geometry: no present slice can exist for the camera.
     EXPECT_EQ(game_->camera_view_->xloc, game_->camera_view_->slot_x_);
@@ -1128,54 +1155,33 @@ TEST_F(CameraView, inset_to_docked_flip_scrubs_the_inset_rect)
 }
 
 // ---------------------------------------------------------------------------
-// One-seat final-resolution rendering.
+// Resolution-independent native-world rendering.
 // ---------------------------------------------------------------------------
 
-// The RGB content of the camera pane rect, row-major, read under the
-// production GameplayUI canvas scope.
-std::vector<Uint32> capture_rect_pixels(screen* scr, const SeatRect& r)
+bool surface_has_colored_pixel(SDL_Surface* surface)
 {
-    std::vector<Uint32> pixels;
-    pixels.reserve(static_cast<std::size_t>(r.xview * r.yview));
-    ScopedGameplayUiCanvas gameplay_ui(*scr);
-    for (int y = r.yloc; y < r.yloc + r.yview; ++y)
-        for (int x = r.xloc; x < r.xloc + r.xview; ++x)
-        {
-            Uint8 pr = 0, pg = 0, pb = 0;
-            scr->get_pixel(x, y, &pr, &pg, &pb);
-            pixels.push_back((static_cast<Uint32>(pr) << 16) |
-                             (static_cast<Uint32>(pg) << 8) |
-                             static_cast<Uint32>(pb));
-        }
-    return pixels;
-}
-
-void capture_camera_canvas_if_requested(screen* scr)
-{
-    const char* const path = std::getenv("OG_CAMERA_CAPTURE_PATH");
-    if (path == nullptr || path[0] == '\0')
-        return;
-    FILE* const output = std::fopen(path, "wb");
-    if (output == nullptr)
-        return;
-    std::fprintf(output, "P6\n320 200\n255\n");
-    ScopedGameplayUiCanvas gameplay_ui(*scr);
-    for (int y = 0; y < 200; ++y)
-        for (int x = 0; x < 320; ++x)
+    if (surface == nullptr)
+        return false;
+    const SDL_PixelFormatDetails* const details =
+        SDL_GetPixelFormatDetails(surface->format);
+    for (int y = 0; y < surface->h; ++y)
+    {
+        const auto* const row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(surface->pixels) + y * surface->pitch);
+        for (int x = 0; x < surface->w; ++x)
         {
             Uint8 r = 0, g = 0, b = 0;
-            scr->get_pixel(x, y, &r, &g, &b);
-            std::fputc(r, output);
-            std::fputc(g, output);
-            std::fputc(b, output);
+            SDL_GetRGB(row[x], details, nullptr, &r, &g, &b);
+            if (r != 0 || g != 0 || b != 0)
+                return true;
         }
-    std::fclose(output);
+    }
+    return false;
 }
 
-// The compact camera zooms the CONTENT to 1:1 without growing the HUD block:
-// one world pixel advances one final-pane pixel on both axes. A denominator
-// of 2 or 4 reds this mapping even if the surrounding rect stays compact.
-TEST_F(CameraView, one_seat_minimap_renders_world_pixels_one_to_one)
+// The logical second-minimap block stays compact, but its live world matches
+// the physical output density and never touches the fixed GameplayUI raster.
+TEST_F(CameraView, one_seat_minimap_uses_a_physical_density_world_plane)
 {
     game_->ready_for_battle(1);
     arm_seats();
@@ -1188,72 +1194,70 @@ TEST_F(CameraView, one_seat_minimap_renders_world_pixels_one_to_one)
     ASSERT_FALSE(game_->camera_docked_);
     const SeatRect r = inset_rect();
     ASSERT_EQ(r, capture_rect(*game_->camera_view_));
-    ASSERT_EQ(1, game_->camera_view_->render_denominator());
 
-    walker* const target =
-        game_->world().find_by_id(static_cast<std::uint32_t>(target_id));
-    ASSERT_NE(nullptr, target);
-    const Sint32 world_x = target->xpos();
-    const Sint32 world_y = target->ypos();
-    EXPECT_EQ(game_->camera_view_->project_world_x(
-                  static_cast<float>(world_x)) + 1,
-              game_->camera_view_->project_world_x(
-                  static_cast<float>(world_x + 1)));
-    EXPECT_EQ(game_->camera_view_->project_world_y(
-                  static_cast<float>(world_y)) + 1,
-              game_->camera_view_->project_world_y(
-                  static_cast<float>(world_y + 1)));
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        game_->clearbuffer(r.xloc, r.yloc, r.xview, r.yview);
+        game_->draw_camera_view_ui();
+        for (int y = r.yloc; y < r.yloc + r.yview; ++y)
+            for (int x = r.xloc; x < r.xloc + r.xview; ++x)
+                ASSERT_TRUE(pixel_is_black(game_, x, y))
+                    << "live world pixels leaked into GameplayUI at "
+                    << x << "," << y;
+    }
+
+    ASSERT_EQ(1u, E_Screen->native_world_view_ready_count_for_testing());
+    SDL_Surface* const source =
+        E_Screen->native_world_view_surface_for_testing();
+    ASSERT_NE(nullptr, source);
+    EXPECT_EQ(r.xview * 2, source->w);
+    EXPECT_EQ(r.yview * 2, source->h);
+    EXPECT_TRUE(surface_has_colored_pixel(source))
+        << "the physical-density source did not render a live world";
+    const auto destinations =
+        E_Screen->native_world_view_destinations_for_testing();
+    ASSERT_EQ(1u, destinations.size());
+    EXPECT_EQ(CanvasTarget::GameplayUI, destinations[0].canvas);
+    EXPECT_EQ(r.xloc, destinations[0].x);
+    EXPECT_EQ(r.yloc, destinations[0].y);
+    EXPECT_EQ(r.xview, destinations[0].w);
+    EXPECT_EQ(r.yview, destinations[0].h);
+    EXPECT_EQ(r, capture_rect(*game_->camera_view_))
+        << "off-screen rendering must restore logical camera geometry";
 }
 
-// The projected renderer still renders at its FINAL resolution when used by
-// an explicitly scaled view. Moving its followed target by less than one
-// output pixel keeps the raster stable; crossing a projected pixel advances
-// it. This guards the render-directly-at-scale path independently from the
-// production camera's full-scale choice.
-TEST_F(CameraView, one_seat_minimap_renders_at_final_resolution)
+TEST_F(CameraView, native_plane_allocation_failure_never_falls_back_to_ui)
 {
     game_->ready_for_battle(1);
     arm_seats();
     game_->world().create_new_grid();
-    // Exercise a quarter-scale stress case. The +1 move stays inside one
-    // projected output pixel; +4 crosses one.
-    const std::int32_t target_id = spawn_target(121, 100);
+    const std::int32_t target_id = spawn_target();
     ASSERT_NE(0, target_id);
     declare_camera(target_id);
     ASSERT_TRUE(game_->redraw());
     ASSERT_NE(nullptr, game_->camera_view_.get());
-    ASSERT_FALSE(game_->camera_docked_);
     const SeatRect r = inset_rect();
-    ASSERT_EQ(r, capture_rect(*game_->camera_view_));
-    game_->camera_view_->set_render_denominator(4);
 
-    walker* const target =
-        game_->world().find_by_id(static_cast<std::uint32_t>(target_id));
-    ASSERT_NE(nullptr, target);
-    const auto draw_and_capture = [&]() {
+    {
         ScopedGameplayUiCanvas gameplay_ui(*game_);
-        game_->clearbuffer(r.xloc, r.yloc, r.xview, r.yview);
-        game_->draw_camera_view_ui();
-        return capture_rect_pixels(game_, r);
-    };
-
-    const std::vector<Uint32> at_121 = draw_and_capture();
-    capture_camera_canvas_if_requested(game_);
-    target->setxy(122, 100);
-    const std::vector<Uint32> at_122 = draw_and_capture();
-    EXPECT_EQ(at_121, at_122)
-        << "a sub-output-pixel ball move changed the camera raster; the pane "
-           "was rendered large and sampled afterwards";
-
-    target->setxy(125, 100);
-    const std::vector<Uint32> at_125 = draw_and_capture();
-    EXPECT_NE(at_121, at_125)
-        << "a full output-pixel camera move changed nothing; the final-size "
-           "renderer did not draw a live world";
+        game_->fastbox(r.xloc - 1, r.yloc - 1, r.xview + 2, r.yview + 2,
+                       ORANGE_START);
+    }
+    E_Screen->fail_next_native_world_view_allocation_for_testing();
+    game_->draw_camera_view_ui();
+    EXPECT_EQ(0u, E_Screen->native_world_view_ready_count_for_testing());
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*game_);
+        for (int y = r.yloc - 1; y <= r.yloc + r.yview; ++y)
+            for (int x = r.xloc - 1; x <= r.xloc + r.xview; ++x)
+                ASSERT_TRUE(pixel_matches_index(game_, x, y, ORANGE_START))
+                    << "allocation failure rasterized the world into UI at "
+                    << x << "," << y;
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Two-seat near-minimap ×2: both final-resolution projections and scrub.
+// Two-seat near-minimap ×2: one native source, two destinations, and scrub.
 // ---------------------------------------------------------------------------
 
 TEST_F(CameraView, two_seat_minimap_blocks_render_the_same_final_raster)
@@ -1267,7 +1271,6 @@ TEST_F(CameraView, two_seat_minimap_blocks_render_the_same_final_raster)
     ASSERT_TRUE(game_->redraw());
     ASSERT_NE(nullptr, game_->camera_view_.get());
     ASSERT_FALSE(game_->camera_docked_);
-    ASSERT_EQ(1, game_->camera_view_->render_denominator());
     ASSERT_EQ(2u, game_->camera_pane_rects_.size());
     const SeatRect r0 = to_seat_rect(game_->camera_pane_rects_[0]);
     const SeatRect r1 = to_seat_rect(game_->camera_pane_rects_[1]);
@@ -1284,11 +1287,28 @@ TEST_F(CameraView, two_seat_minimap_blocks_render_the_same_final_raster)
                            r1.yview + 2);
         game_->draw_camera_view_ui();
     }
-    const std::vector<Uint32> pane0 = capture_rect_pixels(game_, r0);
-    const std::vector<Uint32> pane1 = capture_rect_pixels(game_, r1);
-    ASSERT_EQ(pane0.size(), pane1.size());
-    // Both borders, all four corners each — read now, before the comparison
-    // render below repaints the canvas origin (it can reach block 0).
+    ASSERT_EQ(1u, E_Screen->native_world_view_ready_count_for_testing());
+    SDL_Surface* const source =
+        E_Screen->native_world_view_surface_for_testing();
+    ASSERT_NE(nullptr, source);
+    EXPECT_EQ(r0.xview * 2, source->w);
+    EXPECT_EQ(r0.yview * 2, source->h);
+    EXPECT_TRUE(surface_has_colored_pixel(source));
+    const auto destinations =
+        E_Screen->native_world_view_destinations_for_testing();
+    ASSERT_EQ(2u, destinations.size());
+    for (std::size_t i = 0; i < destinations.size(); ++i)
+    {
+        const SeatRect expected = i == 0 ? r0 : r1;
+        EXPECT_EQ(CanvasTarget::GameplayUI, destinations[i].canvas);
+        EXPECT_EQ(expected.xloc, destinations[i].x);
+        EXPECT_EQ(expected.yloc, destinations[i].y);
+        EXPECT_EQ(expected.xview, destinations[i].w);
+        EXPECT_EQ(expected.yview, destinations[i].h);
+    }
+    // Both borders, all four corners each. The interiors remain black in the
+    // fixed UI surface because their shared scene exists only in the native
+    // plane until physical presentation.
     {
         ScopedGameplayUiCanvas gameplay_ui(*game_);
         for (const SeatRect& r : {r0, r1})
@@ -1300,22 +1320,10 @@ TEST_F(CameraView, two_seat_minimap_blocks_render_the_same_final_raster)
             EXPECT_TRUE(pixel_matches_index(game_, x2, r.yloc - 1, GREY));
             EXPECT_TRUE(pixel_matches_index(game_, r.xloc - 1, y2, GREY));
             EXPECT_TRUE(pixel_matches_index(game_, x2, y2, GREY));
+            EXPECT_TRUE(pixel_is_black(game_, r.xloc + r.xview / 2,
+                                       r.yloc + r.yview / 2));
         }
     }
-
-    int lit = 0;
-    int block_diffs = 0;
-    for (std::size_t i = 0; i < pane0.size(); ++i)
-    {
-        if (pane0[i] != 0u)
-            ++lit;
-        if (pane0[i] != pane1[i])
-            ++block_diffs;
-    }
-    EXPECT_GT(lit, 0) << "the final camera rasters are entirely black";
-    EXPECT_EQ(0, block_diffs)
-        << block_diffs << " pixels differ between the two blocks: they must "
-        << "show the same camera window";
 }
 
 // After a nil-clear at 2 seats BOTH blocks (rect + border ring) are scrubbed

@@ -136,10 +136,17 @@ public:
                            Sint32 portstartx, Sint32 portstarty,
                            Sint32 portendx, Sint32 portendy,
                            void* sourceptr) override;
-    void putbuffer_projected(const IndexedBlit& blit) override;
     void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                Sint32 width, Sint32 height) override;
     void destroy_accel_surface(void* surface) override;
+    NativeWorldViewSource begin_native_world_view(
+        std::span<const NativeWorldViewDestination> destinations) override;
+    bool end_native_world_view() override;
+    void cancel_native_world_view() override;
+    bool native_world_view_active() const override
+    {
+        return video_impl_->native_world_view_active();
+    }
     bool floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
     void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                          float scale, Sint32 cx, Sint32 cy,

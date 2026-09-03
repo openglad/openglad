@@ -116,24 +116,6 @@ short pixie::draw(short x, short y, viewscreen  * view_buf)
 short pixie::draw(viewscreen * view_buf)
 {
 	Sint32 xscreen, yscreen;
-	if (view_buf->render_denominator() > 1)
-	{
-		IndexedBlit blit;
-		blit.x = view_buf->project_world_x(static_cast<float>(xpos));
-		blit.y = view_buf->project_world_y(static_cast<float>(ypos));
-		blit.w = view_buf->project_world_width(sizex);
-		blit.h = view_buf->project_world_height(sizey);
-		blit.source_w = sizex;
-		blit.source_h = sizey;
-		blit.clip_x = view_buf->xloc;
-		blit.clip_y = view_buf->yloc;
-		blit.clip_end_x = view_buf->endx;
-		blit.clip_end_y = view_buf->endy;
-		blit.source = {bmp, static_cast<size_t>(sizex * sizey)};
-		blit.treatment = IndexedBlitTreatment::Opaque;
-		og::runtime::current_session->myscreen_->putbuffer_projected(blit);
-		return 1;
-	}
 
 	//  if (!on_screen(view_buf))
 	//         return 0;
@@ -167,25 +149,6 @@ short pixie::draw(short x, short y, viewscreen* view_buf, unsigned char alpha)
 	if (alpha >= 255)
 		return draw(x, y, view_buf); // opaque path, byte-identical to before
 	setxy(x, y);
-	if (view_buf->render_denominator() > 1)
-	{
-		IndexedBlit blit;
-		blit.x = view_buf->project_world_x(static_cast<float>(xpos));
-		blit.y = view_buf->project_world_y(static_cast<float>(ypos));
-		blit.w = view_buf->project_world_width(sizex);
-		blit.h = view_buf->project_world_height(sizey);
-		blit.source_w = sizex;
-		blit.source_h = sizey;
-		blit.clip_x = view_buf->xloc;
-		blit.clip_y = view_buf->yloc;
-		blit.clip_end_x = view_buf->endx;
-		blit.clip_end_y = view_buf->endy;
-		blit.source = {bmp, static_cast<size_t>(sizex * sizey)};
-		blit.treatment = IndexedBlitTreatment::Opaque;
-		blit.alpha = alpha;
-		og::runtime::current_session->myscreen_->putbuffer_projected(blit);
-		return 1;
-	}
 	Sint32 xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
 	Sint32 yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
 	og::runtime::current_session->myscreen_->putbuffer_alpha(
@@ -205,25 +168,6 @@ short pixie::drawMix(short x, short y, viewscreen  * view_buf)
 short pixie::drawMix(viewscreen * view_buf)
 {
 	Sint32 xscreen, yscreen;
-	if (view_buf->render_denominator() > 1)
-	{
-		IndexedBlit blit;
-		blit.x = view_buf->project_world_x(static_cast<float>(xpos));
-		blit.y = view_buf->project_world_y(static_cast<float>(ypos));
-		blit.w = view_buf->project_world_width(sizex);
-		blit.h = view_buf->project_world_height(sizey);
-		blit.source_w = sizex;
-		blit.source_h = sizey;
-		blit.clip_x = view_buf->xloc;
-		blit.clip_y = view_buf->yloc;
-		blit.clip_end_x = view_buf->endx;
-		blit.clip_end_y = view_buf->endy;
-		blit.source = {bmp, static_cast<size_t>(sizex * sizey)};
-		blit.treatment = IndexedBlitTreatment::Transparent;
-		blit.team_color = RED;
-		og::runtime::current_session->myscreen_->putbuffer_projected(blit);
-		return 1;
-	}
 
 	//  if (!on_screen(view_buf))
 	//         return 0;

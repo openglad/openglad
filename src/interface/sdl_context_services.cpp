@@ -145,6 +145,7 @@ void sdl_clear_stale_view_controls(LevelRuntimeData* level)
 
 void sdl_level_data_draw(LevelRuntimeData* level, screen* screenp)
 {
+	ScopedCanvasTarget world_canvas(*screenp, CanvasTarget::World);
     for (short i = 0; i < screenp->numviews; i++)
         screenp->viewob[i]->redraw(level, false);
 }

@@ -180,19 +180,6 @@ class viewscreen
 		static constexpr unsigned char kFloorGhostAlpha = 48;
 		void resize(short x, short y, short length, short height);
 		void resize(char whatmode); // set according to preferences ..
-		// Reduced-resolution world projection. xview/yview always remain the
-		// FINAL raster dimensions; the world window is enlarged by this integer
-		// denominator. Denominator 1 preserves every classic coordinate exactly.
-		void set_render_denominator(Sint32 denominator);
-		[[nodiscard]] Sint32 render_denominator() const { return render_denominator_; }
-		[[nodiscard]] Sint32 world_view_width() const { return xview * render_denominator_; }
-		[[nodiscard]] Sint32 world_view_height() const { return yview * render_denominator_; }
-		[[nodiscard]] Sint32 project_world_x(float world_x) const;
-		[[nodiscard]] Sint32 project_world_y(float world_y) const;
-		[[nodiscard]] Sint32 world_x_at_screen(Sint32 screen_x) const;
-		[[nodiscard]] Sint32 world_y_at_screen(Sint32 screen_y) const;
-		[[nodiscard]] Sint32 project_world_width(Sint32 world_w) const;
-		[[nodiscard]] Sint32 project_world_height(Sint32 world_h) const;
 		// Stable zoom-1.0 pane geometry used by HUD, radar and text. The World
 		// pane is a projection of this rectangle at reduced zoom.
 		[[nodiscard]] std::pair<Sint32, Sint32>
@@ -315,7 +302,6 @@ class viewscreen
 		// clamps mynum -1 onto quadrant 3 (design-review ruling). Also the
 		// greppable handle for TESTING asserts.
 		bool camera_view_ = false;
-		Sint32 render_denominator_ = 1;
 
 		// ---- Floor-glide transition (render-only; per-viewport => mirror-safe and
 		// split-screen-independent, exactly like current_floor_). Inactive whenever

@@ -1449,52 +1449,6 @@ void sdl_video::putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
 	}
 }
 
-void sdl_video::putbuffer_projected(const IndexedBlit& blit)
-{
-	if (blit.w <= 0 || blit.h <= 0 || blit.source_w <= 0 ||
-	    blit.source_h <= 0 ||
-	    blit.source.size() <
-	        static_cast<std::size_t>(blit.source_w * blit.source_h))
-		return;
-	const Sint32 x0 = std::max(blit.x, blit.clip_x);
-	const Sint32 y0 = std::max(blit.y, blit.clip_y);
-	const Sint32 x1 = std::min(blit.x + blit.w, blit.clip_end_x);
-	const Sint32 y1 = std::min(blit.y + blit.h, blit.clip_end_y);
-	if (x0 >= x1 || y0 >= y1)
-		return;
-	for (Sint32 y = y0; y < y1; ++y)
-	{
-		const Sint32 sy = std::min(
-		    blit.source_h - 1,
-		    (y - blit.y) * blit.source_h / blit.h);
-		for (Sint32 x = x0; x < x1; ++x)
-		{
-			const Sint32 sx = std::min(
-			    blit.source_w - 1,
-			    (x - blit.x) * blit.source_w / blit.w);
-			unsigned char color = blit.source[static_cast<std::size_t>(
-			    sx + sy * blit.source_w)];
-			if (blit.treatment != IndexedBlitTreatment::Opaque && color == 0)
-				continue;
-			if (blit.treatment != IndexedBlitTreatment::Opaque && color > 247)
-				color = static_cast<unsigned char>(blit.team_color + (255 - color));
-			if (blit.treatment == IndexedBlitTreatment::Flash)
-			{
-				int r, g, b;
-				query_palette_reg(color, &r, &g, &b);
-				r = r > 155 ? 255 : r + 100;
-				g = g > 155 ? 255 : g + 100;
-				b = b > 155 ? 255 : b + 100;
-				pointb(x, y, r, g, b);
-			}
-			else if (blit.alpha < 255)
-				pointb(x, y, color, blit.alpha);
-			else
-				pointb(x, y, color);
-		}
-	}
-}
-
 //buffers: this is the SDL_Surface accelerated version of putbuffer
 void sdl_video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                       Sint32 tilewidth, Sint32 tileheight,
@@ -1608,6 +1562,30 @@ void sdl_video::destroy_accel_surface(void* surface)
     if (!surface)
         return;
     SDL_DestroySurface(static_cast<SDL_Surface*>(surface));
+}
+
+NativeWorldViewSource sdl_video::begin_native_world_view(
+    std::span<const NativeWorldViewDestination> destinations)
+{
+    return E_Screen != nullptr
+        ? E_Screen->begin_native_world_view(destinations)
+        : NativeWorldViewSource{};
+}
+
+bool sdl_video::end_native_world_view()
+{
+    return E_Screen != nullptr && E_Screen->end_native_world_view();
+}
+
+void sdl_video::cancel_native_world_view()
+{
+    if (E_Screen != nullptr)
+        E_Screen->cancel_native_world_view();
+}
+
+bool sdl_video::native_world_view_active() const
+{
+    return E_Screen != nullptr && E_Screen->native_world_view_active();
 }
 
 // ---- Multi-floor vertical-parallax off-screen layer compositing ----
@@ -3655,6 +3633,13 @@ bool sdl_video::save_screenshot()
 			surf = composed_frame;
 		else if (overlay != nullptr)
 			return false;
+	}
+	else if (E_Screen->active_canvas() == CanvasTarget::UI)
+	{
+		composed_frame = E_Screen->compose_native_world_views_for_capture(
+			surf, CanvasTarget::UI);
+		if (composed_frame != nullptr)
+			surf = composed_frame;
 	}
 	
 	static int i = 1;

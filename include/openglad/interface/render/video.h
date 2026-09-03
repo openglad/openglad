@@ -88,34 +88,26 @@ struct WorldPresentSlice
     int dst_h = 0;
 };
 
-// One indexed image rasterized straight into its final destination rectangle.
-// This is deliberately a primitive blit, not a scene-scale operation: callers
-// project the world rectangle first, then the backend visits each destination
-// pixel exactly once. It is used by reduced-resolution views so they never
-// allocate or paint a larger scene and sample it afterwards.
-enum class IndexedBlitTreatment
+// A live world image is never rasterized into UI or GameplayUI. Instead it
+// renders at its own world-pixel resolution and is composited into one or more
+// logical canvas rectangles at the physical-display present seam. The canvas
+// selects only the destination coordinate space; it never limits the source
+// raster's resolution.
+struct NativeWorldViewDestination
 {
-    Opaque,
-    Transparent,
-    Flash
+    CanvasTarget canvas = CanvasTarget::UI;
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
 };
 
-struct IndexedBlit
+struct NativeWorldViewSource
 {
-    Sint32 x = 0;
-    Sint32 y = 0;
-    Sint32 w = 0;
-    Sint32 h = 0;
-    Sint32 source_w = 0;
-    Sint32 source_h = 0;
-    Sint32 clip_x = 0;
-    Sint32 clip_y = 0;
-    Sint32 clip_end_x = 0;
-    Sint32 clip_end_y = 0;
-    std::span<const unsigned char> source;
-    IndexedBlitTreatment treatment = IndexedBlitTreatment::Opaque;
-    unsigned char team_color = 0;
-    unsigned char alpha = 255;
+    int w = 0;
+    int h = 0;
+
+    constexpr explicit operator bool() const { return w > 0 && h > 0; }
 };
 
 // Abstract interface-layer rendering surface.
@@ -180,10 +172,29 @@ public:
                                    Sint32 portstartx, Sint32 portstarty,
                                    Sint32 portendx, Sint32 portendy,
                                    void* sourceptr) = 0;
-    virtual void putbuffer_projected(const IndexedBlit& blit) = 0;
     virtual void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                        Sint32 width, Sint32 height) = 0;
     virtual void destroy_accel_surface(void* surface) = 0;
+
+    // Resolution-independent live-world plane. The backend derives the source
+    // raster from the destinations' actual physical-output pixel dimensions,
+    // then redirects all ordinary world draw primitives into it. Callers use
+    // the returned dimensions as their camera window; they cannot choose a
+    // DOS-sized or wastefully oversampled intermediate. end restores the prior
+    // canvas and queues that raster for the next physical present.
+    // Unsupported/allocation-failed backends return an empty source and must
+    // not fall back to drawing live world pixels into a UI canvas.
+    virtual NativeWorldViewSource begin_native_world_view(
+        std::span<const NativeWorldViewDestination> /*destinations*/)
+    {
+        return {};
+    }
+    virtual bool end_native_world_view() { return false; }
+    virtual void cancel_native_world_view() {}
+    // True only while draw primitives are redirected to a native world
+    // plane. World renderers use this with active_canvas() to reject any
+    // attempt to rasterize a live scene into UI or GameplayUI.
+    virtual bool native_world_view_active() const { return false; }
 
     // Off-screen floor-layer compositing for the multi-floor vertical parallax.
     // floor_layer_begin redirects subsequent tile/sprite blits (which target the

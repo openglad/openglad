@@ -346,22 +346,23 @@ static bool start_game_from_view_menu(
     int timeout_ms,
     const std::function<bool(const Interactable&)>& is_view_menu_go)
 {
+    // Start from a menu-thread-acknowledged pointer baseline, then send GO
+    // exactly once. Repeating the click on a wall-clock cadence can enqueue a
+    // storm while synchronous save/stage work is still handling the original
+    // press, preventing the menu from ever completing its handoff under load.
+    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }) ||
+        !interact_match("go", is_view_menu_go)) {
+        return false;
+    }
+
     int elapsed = 0;
-    int since_last_click = 250;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
         if (g_test_game_epoch.load(std::memory_order_acquire) > epoch_before)
             return true;
 
-        if (since_last_click >= 250 &&
-            has_interactable_match("go", is_view_menu_go)) {
-            interact_match("go", is_view_menu_go);
-            since_last_click = 0;
-        }
-
         SDL_Delay(poll_interval);
         elapsed += poll_interval;
-        since_last_click += poll_interval;
     }
 
     return g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
@@ -372,15 +373,13 @@ static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
     if (!wait_for_interactable("continue_game", 5000))
         return false;
 
+    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }))
+        return false;
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
     int elapsed = 0;
     while (elapsed < timeout_ms && !has_interactable("hire_troops")) {
-        if (has_interactable("continue_game")) {
-            fprintf(stderr, "  [test] retry clicking continue_game\n");
-            interact("continue_game");
-        }
         SDL_Delay(50);
         elapsed += 50;
     }

@@ -15,6 +15,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
@@ -143,10 +144,18 @@ bool capture_frame(const char *name, FrameCheck check = nullptr) {
     if (!frame_pause.acquired())
       return false;
 
+    SDL_Surface *const composed = E_Screen != nullptr
+        ? E_Screen->compose_native_world_views_for_capture(
+              E_Screen->render, CanvasTarget::UI)
+        : nullptr;
+
     for (int y = 0; y < 200; ++y) {
       for (int x = 0; x < 320; ++x) {
         Uint8 r = 0, g = 0, b = 0;
-        scr->get_pixel(x, y, &r, &g, &b);
+        if (composed != nullptr)
+          SDL_ReadSurfacePixel(composed, x, y, &r, &g, &b, nullptr);
+        else
+          scr->get_pixel(x, y, &r, &g, &b);
         if (r != 0 || g != 0 || b != 0)
           ++nonblack_pixels;
         if (keep_pixels) {
@@ -156,6 +165,7 @@ bool capture_frame(const char *name, FrameCheck check = nullptr) {
         }
       }
     }
+    SDL_DestroySurface(composed);
   }
 
   if (check != nullptr && !check(rgb)) {
@@ -1451,19 +1461,31 @@ bool wait_for_preview_band_pan(const FramePixels &reference, int timeout_ms) {
     PresentedFramePause frame_pause;
     if (!frame_pause.acquired())
       return false;
+    SDL_Surface *const composed = E_Screen != nullptr
+        ? E_Screen->compose_native_world_views_for_capture(
+              E_Screen->render, CanvasTarget::UI)
+        : nullptr;
+    bool moved = false;
     for (int y = kViewScenarioPreviewBandY;
          y < kViewScenarioPreviewBandY + kViewScenarioPreviewBandH; ++y) {
       for (int x = kViewScenarioPreviewBandX;
            x < kViewScenarioPreviewBandX + kViewScenarioPreviewBandW; ++x) {
         Uint8 r = 0, g = 0, b = 0;
-        scr->get_pixel(x, y, &r, &g, &b);
+        if (composed != nullptr)
+          SDL_ReadSurfacePixel(composed, x, y, &r, &g, &b, nullptr);
+        else
+          scr->get_pixel(x, y, &r, &g, &b);
         const std::size_t i = (static_cast<std::size_t>(y) * 320 +
                                static_cast<std::size_t>(x)) *
                               3;
-        if (reference[i] != r || reference[i + 1] != g || reference[i + 2] != b)
-          return true;
+        if (reference[i] != r || reference[i + 1] != g ||
+            reference[i + 2] != b)
+          moved = true;
       }
     }
+    SDL_DestroySurface(composed);
+    if (moved)
+      return true;
   }
   fprintf(stderr, "  [uxshot] preview band never moved within %d ms\n",
           timeout_ms);

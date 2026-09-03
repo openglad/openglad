@@ -7338,24 +7338,35 @@ void capture_ball_camera_if_requested(screen* display)
     const char* const path = std::getenv("OG_BASKETBALL_CAMERA_CAPTURE_PATH");
     if (path == nullptr || path[0] == '\0')
         return;
+    // Proof must read the physical renderer output. The fixed 320x200 canvas
+    // intentionally contains no camera pixels now; reading it would erase the
+    // very sample density this capture is meant to demonstrate.
+    display->draw_camera_view_ui();
+    display->buffer_to_screen(0, 0, display->canvas_w(), display->canvas_h());
+    SDL_Surface* const presented = SDL_RenderReadPixels(E_Screen->renderer,
+                                                        nullptr);
+    if (presented == nullptr)
+        return;
     FILE* const output = std::fopen(path, "wb");
     if (output == nullptr)
+    {
+        SDL_DestroySurface(presented);
         return;
-    display->draw_camera_view_ui();
-    std::fprintf(output, "P6\n320 200\n255\n");
-    ScopedGameplayUiCanvas gameplay_ui(*display);
-    for (int y = 0; y < 200; ++y)
-        for (int x = 0; x < 320; ++x)
+    }
+    std::fprintf(output, "P6\n%d %d\n255\n", presented->w, presented->h);
+    for (int y = 0; y < presented->h; ++y)
+        for (int x = 0; x < presented->w; ++x)
         {
             Uint8 r = 0;
             Uint8 g = 0;
             Uint8 b = 0;
-            display->get_pixel(x, y, &r, &g, &b);
+            SDL_ReadSurfacePixel(presented, x, y, &r, &g, &b, nullptr);
             std::fputc(r, output);
             std::fputc(g, output);
             std::fputc(b, output);
         }
     std::fclose(output);
+    SDL_DestroySurface(presented);
 }
 
 } // namespace
@@ -7474,8 +7485,6 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
         EXPECT_EQ(block.y, display->camera_view_->yloc +
                                display->camera_view_->yview + block.margin)
             << "the pane must sit one radar margin above the radar block";
-        EXPECT_EQ(1, display->camera_view_->render_denominator())
-            << "the compact camera must render at full sprite scale";
         // The seat is byte-identical to its pre-camera geometry.
         EXPECT_EQ(seat_before.xloc, display->viewob[0]->xloc);
         EXPECT_EQ(seat_before.yloc, display->viewob[0]->yloc);
@@ -7488,10 +7497,9 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
 
 // Reporter regression (#277): CENTER COURT's auxiliary camera is a minimap,
 // not a second gameplay viewport. It must keep the radar's compact 45x25
-// footprint while rendering the followed ball at full sprite scale inside
-// that footprint. Expanding the HUD block to 96x60 obscured the court; using
-// a projection denominator above 1 turned the ball back into a speck.
-TEST(GameLoop, host_and_join_basketball_camera_is_compact_and_full_scale)
+// footprint while its expanded native-world source provides the wide court
+// view. Expanding the HUD block to 96x60 obscured the court.
+TEST(GameLoop, host_and_join_basketball_camera_is_compact)
 {
     screen* const display = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, display);
@@ -7529,8 +7537,6 @@ TEST(GameLoop, host_and_join_basketball_camera_is_compact_and_full_scale)
                   display->camera_view_->yloc);
         EXPECT_EQ(radar.w, display->camera_view_->xview);
         EXPECT_EQ(radar.h, display->camera_view_->yview);
-        EXPECT_EQ(1, display->camera_view_->render_denominator())
-            << "the compact camera must zoom the art in, not the HUD out";
         capture_ball_camera_if_requested(display);
     }
 

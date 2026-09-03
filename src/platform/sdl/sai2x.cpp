@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <format>
 #include <limits>
@@ -862,6 +863,7 @@ Screen::~Screen()
 	presented_snapshots_.clear();
 #endif
 	destroy_render2();
+	destroy_native_world_view_planes();
 	destroy_gameplay_ui_overlay();
 	if (world_tex_ != ui_tex_)
 		SDL_DestroyTexture(world_tex_);
@@ -876,6 +878,14 @@ Screen::~Screen()
 
 int Screen::canvas_w() const
 {
+	if (native_world_view_active_index_ >= 0)
+	{
+		const std::size_t index = static_cast<std::size_t>(
+			native_world_view_active_index_);
+		if (index < native_world_view_planes_.size() &&
+		    native_world_view_planes_[index].surface != nullptr)
+			return native_world_view_planes_[index].surface->w;
+	}
 	if (active_ == CanvasTarget::UI)
 		return kUiCanvasW;
 	if (active_ == CanvasTarget::GameplayUI && gameplay_ui_frame_active_ &&
@@ -888,6 +898,14 @@ int Screen::canvas_w() const
 
 int Screen::canvas_h() const
 {
+	if (native_world_view_active_index_ >= 0)
+	{
+		const std::size_t index = static_cast<std::size_t>(
+			native_world_view_active_index_);
+		if (index < native_world_view_planes_.size() &&
+		    native_world_view_planes_[index].surface != nullptr)
+			return native_world_view_planes_[index].surface->h;
+	}
 	if (active_ == CanvasTarget::UI)
 		return kUiCanvasH;
 	if (active_ == CanvasTarget::GameplayUI && gameplay_ui_frame_active_ &&
@@ -911,7 +929,8 @@ void Screen::set_active_canvas(CanvasTarget target)
 	// out of it several times per frame, so leave the cached gameplay pointer in
 	// World coordinates instead of repeatedly quantizing it through the much
 	// smaller fixed overlay. Real interactive UI transitions still remap.
-	const bool remap_pointer = target != CanvasTarget::GameplayUI &&
+	const bool remap_pointer = native_world_view_active_index_ < 0 &&
+		target != CanvasTarget::GameplayUI &&
 		active_ != CanvasTarget::GameplayUI &&
 		og::runtime::current_session != nullptr &&
 		og::runtime::current_session->myscreen_ != nullptr &&
@@ -940,6 +959,21 @@ void Screen::set_active_canvas(CanvasTarget target)
 	{
 		render = world_surf_;
 		render_tex = world_tex_;
+	}
+	// Canvas scopes remain legal inside a native-world draw (effects use them
+	// for optional HUD annotations). They may update the remembered logical
+	// target, but the live world raster must keep ownership of the draw aliases
+	// until end_native_world_view restores the original pair.
+	if (native_world_view_active_index_ >= 0)
+	{
+		const std::size_t index = static_cast<std::size_t>(
+			native_world_view_active_index_);
+		if (index < native_world_view_planes_.size() &&
+		    native_world_view_planes_[index].surface != nullptr)
+		{
+			render = native_world_view_planes_[index].surface;
+			render_tex = native_world_view_planes_[index].texture;
+		}
 	}
 	if (remap_pointer)
 	{
@@ -1419,11 +1453,198 @@ void Screen::destroy_gameplay_ui_overlay()
 	last_world_present_used_render2_ = false;
 }
 
+bool Screen::ensure_native_world_view_plane(std::size_t index, int source_w,
+                                            int source_h)
+{
+	if (source_w <= 0 || source_h <= 0 ||
+	    static_cast<Sint64>(source_w) * source_h >
+	        og::kWorldCanvasPixelBudget)
+		return false;
+	const int max_dimension = renderer_max_texture_dimension();
+	if (max_dimension > 0 &&
+	    (source_w > max_dimension || source_h > max_dimension))
+		return false;
+	const bool force_failure = fail_next_native_world_view_allocation_;
+	fail_next_native_world_view_allocation_ = false;
+	if (index >= native_world_view_planes_.size())
+		native_world_view_planes_.resize(index + 1);
+	NativeWorldViewPlane& plane = native_world_view_planes_[index];
+	if (!force_failure && plane.surface != nullptr && plane.texture != nullptr &&
+	    plane.surface->w == source_w && plane.surface->h == source_h &&
+	    plane.texture->w == source_w && plane.texture->h == source_h)
+		return true;
+	if (!force_failure && plane.failed_w == source_w && plane.failed_h == source_h)
+		return false;
+
+	SDL_Surface* const next_surface = force_failure ? nullptr : SDL_CreateSurface(
+		source_w, source_h, SDL_PIXELFORMAT_XRGB8888);
+	SDL_Texture* const next_texture = next_surface != nullptr
+		? SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+		                    SDL_TEXTUREACCESS_STREAMING, source_w, source_h)
+		: nullptr;
+	if (next_surface == nullptr || next_texture == nullptr)
+	{
+		LogError("Native world view allocation failed for {}x{}: {}\n",
+		         source_w, source_h, SDL_GetError());
+		SDL_DestroyTexture(next_texture);
+		SDL_DestroySurface(next_surface);
+		plane.failed_w = source_w;
+		plane.failed_h = source_h;
+		return false;
+	}
+	SDL_SetTextureBlendMode(next_texture, SDL_BLENDMODE_NONE);
+	// The source is already a full-resolution world raster. Linear sampling is
+	// used only for its final reduction into the physical output rectangle;
+	// no 320x200-era intermediate ever exists.
+	SDL_SetTextureScaleMode(next_texture, SDL_SCALEMODE_LINEAR);
+	SDL_DestroyTexture(plane.texture);
+	SDL_DestroySurface(plane.surface);
+	plane.surface = next_surface;
+	plane.texture = next_texture;
+	plane.failed_w = 0;
+	plane.failed_h = 0;
+	return true;
+}
+
+NativeWorldViewSource Screen::begin_native_world_view(
+	std::span<const NativeWorldViewDestination> destinations)
+{
+	if (native_world_view_active_index_ >= 0 || renderer == nullptr)
+		return {};
+
+	std::vector<NativeWorldViewDestination> valid;
+	valid.reserve(destinations.size());
+	int source_w = 0;
+	int source_h = 0;
+	for (const NativeWorldViewDestination& destination : destinations)
+	{
+		if (destination.w <= 0 || destination.h <= 0)
+			continue;
+		const int coordinate_w = destination.canvas == CanvasTarget::UI
+			? kUiCanvasW : (destination.canvas == CanvasTarget::GameplayUI
+				? gameplay_ui_w() : world_w_);
+		const int coordinate_h = destination.canvas == CanvasTarget::UI
+			? kUiCanvasH : (destination.canvas == CanvasTarget::GameplayUI
+				? gameplay_ui_h() : world_h_);
+		if (coordinate_w <= 0 || coordinate_h <= 0)
+			continue;
+
+		og::CanvasViewport viewport{0, 0, coordinate_w, coordinate_h};
+		if (og::runtime::current_session != nullptr)
+		{
+			const auto* const session = og::runtime::current_session;
+			viewport = og::fit_canvas_in_viewport(
+				coordinate_w, coordinate_h,
+				static_cast<int>(session->viewport_offset_x_),
+				static_cast<int>(session->viewport_offset_y_),
+				static_cast<int>(session->viewport_w_),
+				static_cast<int>(session->viewport_h_));
+		}
+		const float logical_w = static_cast<float>(destination.w) *
+			static_cast<float>(viewport.w) / static_cast<float>(coordinate_w);
+		const float logical_h = static_cast<float>(destination.h) *
+			static_cast<float>(viewport.h) / static_cast<float>(coordinate_h);
+		const SDL_FRect physical = renderer_output_rect(
+			renderer, 0.0f, 0.0f, logical_w, logical_h);
+		if (!std::isfinite(physical.w) || !std::isfinite(physical.h) ||
+		    physical.w <= 0.0f || physical.h <= 0.0f)
+			continue;
+		const float max_int = static_cast<float>(
+			std::numeric_limits<int>::max());
+		const int destination_source_w = physical.w >= max_int
+			? std::numeric_limits<int>::max()
+			: std::max(1, static_cast<int>(std::ceil(physical.w)));
+		const int destination_source_h = physical.h >= max_int
+			? std::numeric_limits<int>::max()
+			: std::max(1, static_cast<int>(std::ceil(physical.h)));
+		source_w = std::max(source_w, destination_source_w);
+		source_h = std::max(source_h, destination_source_h);
+		valid.push_back(destination);
+	}
+	if (valid.empty())
+		return {};
+	// A new native frame supersedes the preceding capture. Resources remain
+	// cached, but old pixels can never replay after a caller starts repainting.
+	native_world_view_capture_count_ = 0;
+	const std::size_t index = native_world_view_ready_count_;
+	if (!ensure_native_world_view_plane(index, source_w, source_h))
+		return {};
+	NativeWorldViewPlane& plane = native_world_view_planes_[index];
+	if (!SDL_FillSurfaceRect(plane.surface, nullptr, 0x00000000u))
+		return {};
+	plane.destinations = std::move(valid);
+	native_world_view_saved_render_ = render;
+	native_world_view_saved_texture_ = render_tex;
+	native_world_view_saved_canvas_ = active_;
+	native_world_view_active_index_ = static_cast<int>(index);
+	render = plane.surface;
+	render_tex = plane.texture;
+	return {source_w, source_h};
+}
+
+bool Screen::end_native_world_view()
+{
+	if (native_world_view_active_index_ < 0)
+		return false;
+	const std::size_t index = static_cast<std::size_t>(
+		native_world_view_active_index_);
+	render = native_world_view_saved_render_;
+	render_tex = native_world_view_saved_texture_;
+	active_ = native_world_view_saved_canvas_;
+	native_world_view_saved_render_ = nullptr;
+	native_world_view_saved_texture_ = nullptr;
+	native_world_view_active_index_ = -1;
+	native_world_view_ready_count_ = index + 1;
+	return true;
+}
+
+void Screen::cancel_native_world_view()
+{
+	if (native_world_view_active_index_ < 0)
+		return;
+	render = native_world_view_saved_render_;
+	render_tex = native_world_view_saved_texture_;
+	active_ = native_world_view_saved_canvas_;
+	native_world_view_saved_render_ = nullptr;
+	native_world_view_saved_texture_ = nullptr;
+	native_world_view_active_index_ = -1;
+}
+
+#ifdef TESTING
+SDL_Surface* Screen::native_world_view_surface_for_testing(
+	std::size_t index) const
+{
+	return index < native_world_view_planes_.size()
+		? native_world_view_planes_[index].surface : nullptr;
+}
+#endif
+
+void Screen::discard_native_world_views()
+{
+	cancel_native_world_view();
+	native_world_view_ready_count_ = 0;
+	native_world_view_capture_count_ = 0;
+}
+
+void Screen::destroy_native_world_view_planes()
+{
+	discard_native_world_views();
+	for (NativeWorldViewPlane& plane : native_world_view_planes_)
+	{
+		SDL_DestroyTexture(plane.texture);
+		SDL_DestroySurface(plane.surface);
+		plane.texture = nullptr;
+		plane.surface = nullptr;
+	}
+	native_world_view_planes_.clear();
+}
+
 bool Screen::recreate_render_backend()
 {
 	// Free every GPU-side object owned by this Screen. The render2 scratch
 	// and gameplay-UI overlay are lazy caches that self-recreate on demand.
 	destroy_render2();
+	destroy_native_world_view_planes();
 	destroy_gameplay_ui_overlay();
 	if (world_tex_ != ui_tex_)
 		SDL_DestroyTexture(world_tex_);
@@ -1570,6 +1791,78 @@ void Screen::fail_next_gameplay_ui_allocation_for_testing()
 	fail_next_gameplay_ui_allocation_ = true;
 }
 
+SDL_Surface* Screen::compose_native_world_views_for_capture(
+	SDL_Surface* base, CanvasTarget base_canvas) const
+{
+	if (base == nullptr)
+		return nullptr;
+	const std::size_t plane_count = native_world_view_ready_count_ > 0
+		? native_world_view_ready_count_ : native_world_view_capture_count_;
+	bool has_matching_destination = false;
+	for (std::size_t i = 0; i < plane_count &&
+	                         i < native_world_view_planes_.size(); ++i)
+	{
+		for (const NativeWorldViewDestination& destination :
+		     native_world_view_planes_[i].destinations)
+		{
+			const bool matches = base_canvas == CanvasTarget::UI
+				? destination.canvas == CanvasTarget::UI
+				: destination.canvas != CanvasTarget::UI;
+			if (matches)
+				has_matching_destination = true;
+		}
+	}
+	if (!has_matching_destination)
+		return nullptr;
+
+	SDL_Surface* const composed = SDL_CreateSurface(
+		base->w, base->h, SDL_PIXELFORMAT_XRGB8888);
+	if (composed == nullptr ||
+	    !SDL_BlitSurface(base, nullptr, composed, nullptr))
+	{
+		LogError("Failed to create native-world capture composition: {}\n",
+		         SDL_GetError());
+		SDL_DestroySurface(composed);
+		return nullptr;
+	}
+	for (std::size_t i = 0; i < plane_count &&
+	                         i < native_world_view_planes_.size(); ++i)
+	{
+		const NativeWorldViewPlane& plane = native_world_view_planes_[i];
+		if (plane.surface == nullptr)
+			continue;
+		for (const NativeWorldViewDestination& destination : plane.destinations)
+		{
+			const bool matches = base_canvas == CanvasTarget::UI
+				? destination.canvas == CanvasTarget::UI
+				: destination.canvas != CanvasTarget::UI;
+			if (!matches)
+				continue;
+			const int coordinate_w = destination.canvas == CanvasTarget::GameplayUI
+				? gameplay_ui_w() : (destination.canvas == CanvasTarget::World
+					? world_w_ : kUiCanvasW);
+			const int coordinate_h = destination.canvas == CanvasTarget::GameplayUI
+				? gameplay_ui_h() : (destination.canvas == CanvasTarget::World
+					? world_h_ : kUiCanvasH);
+			const int x0 = destination.x * base->w / coordinate_w;
+			const int y0 = destination.y * base->h / coordinate_h;
+			const int x1 = (destination.x + destination.w) * base->w /
+				coordinate_w;
+			const int y1 = (destination.y + destination.h) * base->h /
+				coordinate_h;
+			SDL_Rect dst{x0, y0, std::max(1, x1 - x0),
+			             std::max(1, y1 - y0)};
+			if (!SDL_BlitSurfaceScaled(plane.surface, nullptr, composed, &dst,
+			                           SDL_SCALEMODE_LINEAR))
+			{
+				LogError("Failed to composite native world capture: {}\n",
+				         SDL_GetError());
+			}
+		}
+	}
+	return composed;
+}
+
 SDL_Surface* Screen::compose_gameplay_ui_for_capture(SDL_Surface* scenery) const
 {
 	const bool overlay_available =
@@ -1581,7 +1874,21 @@ SDL_Surface* Screen::compose_gameplay_ui_for_capture(SDL_Surface* scenery) const
 	const bool apply_slices = !world_present_slices_.empty() &&
 		!world_pinned_classic_ && scenery != nullptr && scenery != ui_surf_ &&
 		world_w_ > 0 && scenery->w % world_w_ == 0;
-	if (scenery == nullptr || (!overlay_available && !apply_slices))
+	const std::size_t plane_count = native_world_view_ready_count_ > 0
+		? native_world_view_ready_count_ : native_world_view_capture_count_;
+	bool native_world_available = false;
+	for (std::size_t i = 0; i < plane_count &&
+	                         i < native_world_view_planes_.size(); ++i)
+	{
+		for (const NativeWorldViewDestination& destination :
+		     native_world_view_planes_[i].destinations)
+		{
+			if (destination.canvas != CanvasTarget::UI)
+				native_world_available = true;
+		}
+	}
+	if (scenery == nullptr ||
+	    (!overlay_available && !apply_slices && !native_world_available))
 		return nullptr;
 	SDL_Surface* composed = SDL_CreateSurface(
 		scenery->w, scenery->h, SDL_PIXELFORMAT_XRGB8888);
@@ -1614,6 +1921,13 @@ SDL_Surface* Screen::compose_gameplay_ui_for_capture(SDL_Surface* scenery) const
 		LogError("Failed to composite gameplay capture: {}\n", SDL_GetError());
 		SDL_DestroySurface(composed);
 		return nullptr;
+	}
+	SDL_Surface* const with_native = compose_native_world_views_for_capture(
+		composed, CanvasTarget::World);
+	if (with_native != nullptr)
+	{
+		SDL_DestroySurface(composed);
+		return with_native;
 	}
 	return composed;
 }
@@ -1727,11 +2041,15 @@ void Screen::clear(int x, int y, int w, int h)
 
 void Screen::swap(int x, int y, int w, int h)
 {
-    // When suppress_present is set, rendering still goes to the surface
-    // (E_Screen->render) but we skip presentation to the physical display.
-    // This is used by multi-session demos that composite multiple session
-    // surfaces before presenting once.
-    if (suppress_present) return;
+	// When suppress_present is set, rendering still goes to the surface
+	// (E_Screen->render) but we skip presentation to the physical display.
+	// This is used by multi-session demos that composite multiple session
+	// surfaces before presenting once.
+	if (suppress_present)
+	{
+		discard_native_world_views();
+		return;
+	}
 
 	// A lost rendering device (web WebGL context loss) is repaired here, at
 	// the single production present site — never inside the browser event
@@ -1911,7 +2229,62 @@ void Screen::swap(int x, int y, int w, int h)
 			LogError("Unable to composite gameplay UI overlay: {}\n", SDL_GetError());
 		}
     }
+
+	// Native world planes are the final content layer: their source rasters
+	// never entered UI/GameplayUI, and their logical rectangles are mapped
+	// straight to renderer output pixels here. This is shared by every inset
+	// camera and every menu world preview; no mode-specific presentation path
+	// exists. UI chrome was already composited, so a plane may cover the inside
+	// of a framed panel without being filtered or enlarged with the DOS canvas.
+	for (std::size_t i = 0; i < native_world_view_ready_count_ &&
+	                         i < native_world_view_planes_.size(); ++i)
+	{
+		NativeWorldViewPlane& plane = native_world_view_planes_[i];
+		if (plane.surface == nullptr || plane.texture == nullptr ||
+		    !SDL_UpdateTexture(plane.texture, nullptr, plane.surface->pixels,
+		                       plane.surface->pitch))
+		{
+			LogError("Unable to upload native world view: {}\n", SDL_GetError());
+			continue;
+		}
+		for (const NativeWorldViewDestination& destination : plane.destinations)
+		{
+			const bool matches_present = destination.canvas == CanvasTarget::UI
+				? active_ == CanvasTarget::UI
+				: active_ == CanvasTarget::World;
+			if (!matches_present)
+				continue;
+			const og::CanvasViewport viewport =
+				destination.canvas == CanvasTarget::GameplayUI
+					? gameplay_ui_canvas_viewport()
+					: active_canvas_viewport();
+			const int coordinate_w = destination.canvas == CanvasTarget::GameplayUI
+				? gameplay_ui_w() : (destination.canvas == CanvasTarget::World
+					? world_w_ : kUiCanvasW);
+			const int coordinate_h = destination.canvas == CanvasTarget::GameplayUI
+				? gameplay_ui_h() : (destination.canvas == CanvasTarget::World
+					? world_h_ : kUiCanvasH);
+			const SDL_FRect logical{
+				static_cast<float>(viewport.x) +
+					static_cast<float>(destination.x * viewport.w) /
+					static_cast<float>(coordinate_w),
+				static_cast<float>(viewport.y) +
+					static_cast<float>(destination.y * viewport.h) /
+					static_cast<float>(coordinate_h),
+				static_cast<float>(destination.w * viewport.w) /
+					static_cast<float>(coordinate_w),
+				static_cast<float>(destination.h * viewport.h) /
+					static_cast<float>(coordinate_h)};
+			const SDL_FRect physical = renderer_output_rect(
+				renderer, logical.x, logical.y, logical.w, logical.h);
+			if (!SDL_RenderTexture(renderer, plane.texture, nullptr, &physical))
+				LogError("Unable to composite native world view: {}\n",
+				         SDL_GetError());
+		}
+	}
     SDL_RenderPresent(renderer);
+	native_world_view_capture_count_ = native_world_view_ready_count_;
+	native_world_view_ready_count_ = 0;
 	// The single present site: whatever the window showed before, it now
 	// shows this canvas. Only a completed fadeblack(false) sets the flag back.
 	window_is_black_ = false;

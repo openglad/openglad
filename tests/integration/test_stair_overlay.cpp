@@ -203,6 +203,7 @@ protected:
     {
         scr()->set_world_canvas_pinned_classic(true);
         scr()->relayout_views();
+        scr()->set_active_canvas(CanvasTarget::World);
     }
 
     void TearDown() override

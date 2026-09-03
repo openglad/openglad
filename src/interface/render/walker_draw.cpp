@@ -33,67 +33,6 @@
 namespace
 {
 
-void draw_projected_walker(walker& w, viewscreen& view, Sint32 x, Sint32 y,
-                           IndexedBlitTreatment treatment,
-                           unsigned char alpha = 255)
-{
-    const unsigned char* const pixels = w.bmp_data();
-    if (pixels == nullptr)
-        return;
-    IndexedBlit blit;
-    blit.x = x;
-    blit.y = y;
-    blit.w = view.project_world_width(w.sizex());
-    blit.h = view.project_world_height(w.sizey());
-    blit.source_w = w.sizex();
-    blit.source_h = w.sizey();
-    blit.clip_x = view.xloc;
-    blit.clip_y = view.yloc;
-    blit.clip_end_x = view.endx;
-    blit.clip_end_y = view.endy;
-    blit.source = {pixels, static_cast<std::size_t>(w.sizex() * w.sizey())};
-    blit.treatment = treatment;
-    blit.team_color = w.query_team_color();
-    blit.alpha = alpha;
-    og::runtime::current_session->myscreen_->putbuffer_projected(blit);
-}
-
-void draw_projected_shadow(walker& w, viewscreen& view, Sint32 x, Sint32 y,
-                           unsigned char alpha, Sint32 height_divisor,
-                           Sint32 inset)
-{
-    const unsigned char* const source = w.bmp_data();
-    if (source == nullptr)
-        return;
-    const Sint32 source_w = w.sizex();
-    const Sint32 source_h = w.sizey();
-    const Sint32 trimmed_w = std::max<Sint32>(1, source_w - 2 * inset);
-    const Sint32 dest_w = view.project_world_width(trimmed_w);
-    const Sint32 shadow_world_h =
-        (source_h + height_divisor - 1) / height_divisor;
-    const Sint32 dest_h = view.project_world_height(shadow_world_h);
-    const Sint32 dest_x = x + inset / view.render_denominator();
-    const Sint32 feet_y = y + view.project_world_height(source_h);
-    screen* const output = og::runtime::current_session->myscreen_;
-    for (Sint32 dy = 0; dy < dest_h; ++dy)
-    {
-        const Sint32 screen_y = feet_y - dy;
-        if (screen_y < view.yloc || screen_y >= view.endy)
-            continue;
-        const Sint32 source_y = std::max<Sint32>(
-            0, source_h - 1 - dy * shadow_world_h / dest_h * height_divisor);
-        for (Sint32 dx = 0; dx < dest_w; ++dx)
-        {
-            const Sint32 screen_x = dest_x + dx;
-            if (screen_x < view.xloc || screen_x >= view.endx)
-                continue;
-            const Sint32 source_x = inset + dx * trimmed_w / dest_w;
-            if (source[static_cast<std::size_t>(source_x + source_y * source_w)] != 0)
-                output->pointb(screen_x, screen_y, PURE_BLACK, alpha);
-        }
-    }
-}
-
 bool damage_number_snapshot_matches(const DamageNumberRenderSnapshot& lhs,
                                     const DamageNumberRenderSnapshot& rhs)
 {
@@ -602,8 +541,6 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	// Z-axis: draw the entity raised by its height above the floor plane (a
 	// thrown rock arcing, a fireball drifting). worldz==0 leaves output unchanged.
 	yscreen -= static_cast<Sint32>(w.worldz());
-	float projected_world_x = draw_pos.worldx;
-	float projected_world_y = draw_pos.worldy - w.worldz();
 
 		if(w.attack_lunge() > 0.0f && cfg.is_on("effects", "attack_lunge"))
 	    {
@@ -611,8 +548,6 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	        const float dy = w.attack_lunge() * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle());
 	        xscreen += static_cast<Sint32>(dx);
 	        yscreen += static_cast<Sint32>(dy);
-	        projected_world_x += dx;
-	        projected_world_y += dy;
 	    }
 
 		if(w.hit_recoil() > 0.0f && cfg.is_on("effects", "hit_recoil"))
@@ -621,14 +556,7 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	        const float dy = w.hit_recoil() * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle());
 	        xscreen += static_cast<Sint32>(dx);
 	        yscreen += static_cast<Sint32>(dy);
-	        projected_world_x += dx;
-	        projected_world_y += dy;
 	    }
-	if (view_buf->render_denominator() > 1)
-	{
-		xscreen = view_buf->project_world_x(projected_world_x);
-		yscreen = view_buf->project_world_y(projected_world_y);
-	}
 
 	// Faded (lower) / ghosted (upper) non-camera floor: draw just the sprite,
 	// skipping flash/outline/mode and the HP bar / damage numbers. The caller has
@@ -644,12 +572,7 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 		{
 			const std::span<const unsigned char> pixels{
 			    bmp, static_cast<size_t>(w.sizex() * w.sizey())};
-			if (view_buf->render_denominator() > 1)
-				draw_projected_walker(
-				    w, *view_buf, xscreen, yscreen,
-				    IndexedBlitTreatment::Transparent,
-				    layer_active ? 255 : alpha);
-			else if (layer_active)
+			if (layer_active)
 				og::runtime::current_session->myscreen_->walkputbuffer(
 				    xscreen, yscreen, w.sizex(), w.sizey(),
 				    view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
@@ -709,16 +632,6 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	}
 
 	// Draw me
-	if (view_buf->render_denominator() > 1)
-	{
-		draw_projected_walker(
-		    w, *view_buf, xscreen, yscreen,
-		    (w.hurt_flash() && cfg.is_on("effects", "hit_flash"))
-		        ? IndexedBlitTreatment::Flash
-		        : IndexedBlitTreatment::Transparent);
-	}
-	else
-	{
 		if(w.hurt_flash() && cfg.is_on("effects", "hit_flash"))
 	    {
         auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
@@ -749,7 +662,6 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	                                    static_cast<unsigned char>(phantom_mode)); //type of phantom
 	        }
 	    }
-	}
 
     if(should_draw_hp)
         draw_small_health_bar(&w, view_buf);
@@ -892,8 +804,6 @@ void ground_plane_anchor(walker& w, viewscreen* view_buf,
     yscreen = static_cast<Sint32>(
         draw_pos.worldy - static_cast<float>(view_buf->topy) +
         static_cast<float>(view_buf->yloc));
-	float projected_world_x = draw_pos.worldx;
-	float projected_world_y = draw_pos.worldy;
 
     if(w.attack_lunge() > 0.0f && cfg.is_on("effects", "attack_lunge"))
     {
@@ -901,8 +811,6 @@ void ground_plane_anchor(walker& w, viewscreen* view_buf,
         const float dy = w.attack_lunge() * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle());
         xscreen += static_cast<Sint32>(dx);
         yscreen += static_cast<Sint32>(dy);
-		projected_world_x += dx;
-		projected_world_y += dy;
     }
 
     if(w.hit_recoil() > 0.0f && cfg.is_on("effects", "hit_recoil"))
@@ -911,14 +819,7 @@ void ground_plane_anchor(walker& w, viewscreen* view_buf,
         const float dy = w.hit_recoil() * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle());
         xscreen += static_cast<Sint32>(dx);
         yscreen += static_cast<Sint32>(dy);
-		projected_world_x += dx;
-		projected_world_y += dy;
     }
-	if (view_buf->render_denominator() > 1)
-	{
-		xscreen = view_buf->project_world_x(projected_world_x);
-		yscreen = view_buf->project_world_y(projected_world_y);
-	}
 }
 
 bool draw_walker_shadow(walker& w, viewscreen* view_buf)
@@ -928,14 +829,6 @@ bool draw_walker_shadow(walker& w, viewscreen* view_buf)
 
     Sint32 xscreen, yscreen;
     ground_plane_anchor(w, view_buf, xscreen, yscreen);
-	if (view_buf->render_denominator() > 1)
-	{
-		draw_projected_shadow(w, *view_buf,
-		                      xscreen + SHADOW_NUDGE_X /
-		                          view_buf->render_denominator(),
-		                      yscreen, SHADOW_ALPHA, 2, 0);
-		return true;
-	}
 
     og::runtime::current_session->myscreen_->walkputbuffer_shadow(
         xscreen + SHADOW_NUDGE_X, yscreen, w.sizex(), w.sizey(),
@@ -967,15 +860,6 @@ bool draw_walker_blob_shadow(walker& w, viewscreen* view_buf, Sint32 stories)
     const Sint32 offset = stories * BLOB_SHADOW_OFFSET_PER_STORY;
     const Sint32 capped = stories > BLOB_SHADOW_STORY_CAP
         ? BLOB_SHADOW_STORY_CAP : stories;
-	if (view_buf->render_denominator() > 1)
-	{
-		draw_projected_shadow(
-		    w, *view_buf,
-		    xscreen + offset / view_buf->render_denominator(),
-		    yscreen + offset / view_buf->render_denominator(),
-		    BLOB_SHADOW_ALPHA[capped - 1], 2 + capped, 2 * capped);
-		return true;
-	}
     og::runtime::current_session->myscreen_->walkputbuffer_shadow(
         xscreen + offset, yscreen + offset, w.sizex(), w.sizey(),
         view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
@@ -997,46 +881,7 @@ bool draw_walker_reflection(walker& w, viewscreen* view_buf,
     // row below the feet, pushed further down by the height above the floor.
     const Sint32 spritew = w.sizex();
     const Sint32 spriteh = w.sizey();
-	const Sint32 refly = yscreen +
-	    (view_buf->render_denominator() > 1
-	         ? view_buf->project_world_height(spriteh) +
-	               static_cast<Sint32>(w.worldz()) /
-	                   view_buf->render_denominator()
-	         : spriteh + static_cast<Sint32>(w.worldz()));
-	if (view_buf->render_denominator() > 1)
-	{
-		const Sint32 dest_w = view_buf->project_world_width(spritew);
-		const Sint32 dest_h = view_buf->project_world_height(spriteh);
-		const auto& mask = reflective_tiles();
-		screen* const output = og::runtime::current_session->myscreen_;
-		bool drew = false;
-		for (Sint32 dy = 0; dy < dest_h; ++dy)
-			for (Sint32 dx = 0; dx < dest_w; ++dx)
-			{
-				const Sint32 px = xscreen + dx;
-				const Sint32 py = refly + dy;
-				if (px < view_buf->xloc || px >= view_buf->endx ||
-				    py < view_buf->yloc || py >= view_buf->endy)
-					continue;
-				const Sint32 gx = view_buf->world_x_at_screen(px) / GRID_SIZE;
-				const Sint32 gy = view_buf->world_y_at_screen(py) / GRID_SIZE;
-				if (gx < 0 || gx >= camera_grid.w || gy < 0 || gy >= camera_grid.h ||
-				    !mask[camera_grid.data[static_cast<std::size_t>(gx + camera_grid.w * gy)]])
-					continue;
-				const Sint32 sx = dx * spritew / dest_w;
-				const Sint32 sy = spriteh - 1 - dy * spriteh / dest_h;
-				unsigned char color = w.bmp_data()[static_cast<std::size_t>(
-				    sx + sy * spritew)];
-				if (color == 0)
-					continue;
-				if (color > 247)
-					color = static_cast<unsigned char>(
-					    w.query_team_color() + (255 - color));
-				output->pointb(px, py, color, REFLECTION_ALPHA);
-				drew = true;
-			}
-		return drew;
-	}
+    const Sint32 refly = yscreen + spriteh + static_cast<Sint32>(w.worldz());
 
     // Cheap pre-check: skip the per-pixel blit unless the (port-clipped)
     // reflection rect covers at least one reflective camera-floor tile

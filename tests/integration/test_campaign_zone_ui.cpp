@@ -127,29 +127,13 @@ int count_trace_containing(const char* category, const char* substring)
     return count;
 }
 
-bool wait_for_completed_menu_frame(int timeout_ms = 5000)
-{
-    const std::uint64_t completed_before =
-        og::ui::menu_screen_testing_completed_frames();
-    int elapsed = 0;
-    while (elapsed < timeout_ms &&
-           og::ui::menu_screen_testing_completed_frames() <= completed_before) {
-        SDL_Delay(50);
-        elapsed += 50;
-    }
-    const bool completed =
-        og::ui::menu_screen_testing_completed_frames() > completed_before;
-    if (!completed)
-        fprintf(stderr,
-                "  [interact] TIMEOUT waiting for a completed menu frame\n");
-    return completed;
-}
-
 // Roster cyclers do not always change their face (the DEPLOY column is an X
 // both ways), but every accepted or refused transition emits a named trace.
-// Wait for a NEW matching trace, then consume the full press/release on the
-// menu thread before another press is allowed. This covers repeated traces
-// too: the final BURDEN -> WAR assignment waits for count 2, not stale count 1.
+// Start from a pointer baseline, wait for a NEW matching trace, then reset on
+// the menu thread after the click was observed. That reset is the
+// acknowledgement that the full press/release is consumed before another
+// press is allowed. This covers repeated traces too: the final BURDEN -> WAR
+// assignment waits for count 2, not stale count 1.
 bool click_and_acknowledge_trace(const std::string& id, const char* category,
                                  const char* trace_substring,
                                  bool waits_for_autosave = true,
@@ -157,6 +141,8 @@ bool click_and_acknowledge_trace(const std::string& id, const char* category,
 {
     const int before = count_trace_containing(category, trace_substring);
     const int saves_before = trace_count("save");
+    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms))
+        return false;
     interact(id);
     int elapsed = 0;
     while (elapsed < timeout_ms &&
@@ -176,7 +162,8 @@ bool click_and_acknowledge_trace(const std::string& id, const char* category,
         !waits_for_autosave || trace_count("save") > saves_before;
     if (!autosaved)
         fprintf(stderr, "  [interact] TIMEOUT waiting for cycler autosave\n");
-    const bool acknowledged = wait_for_completed_menu_frame(timeout_ms);
+    const bool acknowledged =
+        run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms);
     return traced && autosaved && acknowledged;
 }
 
@@ -670,7 +657,8 @@ int zone_flow_injector(void* data)
     interact("back");
     state->returned_from_submenu =
         wait_for_interactable_label("zone_action_0", "STORES  >", 10000);
-    state->cycler_edges_acknowledged &= wait_for_completed_menu_frame();
+    state->cycler_edges_acknowledged &=
+        run_on_main_thread([] { reset_mouse_click_tracking(); });
     SDL_Delay(150);
     capture_zone_frame("uxr_back_at_root");
     SDL_Delay(300);

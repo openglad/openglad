@@ -565,8 +565,7 @@ struct UpperFloorCoverageMask
 	std::vector<unsigned char> pixels;
 
 	void build(const PixieData& grid, Sint32 topx, Sint32 topy,
-	           Sint32 width, Sint32 height, Sint32 offset,
-	           Sint32 denominator = 1)
+	           Sint32 width, Sint32 height, Sint32 offset)
 	{
 		view_width = width;
 		view_height = height;
@@ -578,29 +577,6 @@ struct UpperFloorCoverageMask
 #ifdef TESTING
 		upper_floor_shadow_mask_stats.expanded_mask_pixels += pixels.size();
 #endif
-		if (denominator > 1)
-		{
-			const Sint32 gw = static_cast<Sint32>(grid.w);
-			const Sint32 gh = static_cast<Sint32>(grid.h);
-			for (Sint32 my = 0;
-			     my < height + 2 * kOverhangShadowEdgeBand; ++my)
-				for (Sint32 mx = 0;
-				     mx < width + 2 * kOverhangShadowEdgeBand; ++mx)
-				{
-					const Sint32 vx = mx - kOverhangShadowEdgeBand;
-					const Sint32 vy = my - kOverhangShadowEdgeBand;
-					const Sint32 wx = topx + vx * denominator - offset;
-					const Sint32 wy = topy + vy * denominator - offset;
-					const Sint32 gx = wx / GRID_SIZE;
-					const Sint32 gy = wy / GRID_SIZE;
-					if (wx >= 0 && wy >= 0 && gx < gw && gy < gh &&
-					    grid.data[static_cast<std::size_t>(gx + gw * gy)] !=
-					        static_cast<unsigned char>(PIX_AIR))
-						pixels[static_cast<std::size_t>(my) * pitch +
-						       static_cast<std::size_t>(mx)] = 1;
-				}
-			return;
-		}
 
 		const std::int64_t mask_world_left =
 		    static_cast<std::int64_t>(topx) - kOverhangShadowEdgeBand;
@@ -747,13 +723,13 @@ bool draw_walker_ripples(walker& w, viewscreen* vs,
 
 	Sint32 xscreen = 0, yscreen = 0;
 	ground_plane_anchor(w, vs, xscreen, yscreen);
-	const Sint32 cx = xscreen + vs->project_world_width(w.sizex()) / 2;
-	const Sint32 cy = yscreen + vs->project_world_height(w.sizey());
+	const Sint32 cx = xscreen + w.sizex() / 2;
+	const Sint32 cy = yscreen + w.sizey(); // ground line just below the feet
 
 	// Rings only where the feet stand on PURE water of the camera floor (edge
 	// tiles would put rings on their grass pixels).
-	const Sint32 gx = vs->world_x_at_screen(cx) / GRID_SIZE;
-	const Sint32 gy = vs->world_y_at_screen(cy) / GRID_SIZE;
+	const Sint32 gx = (cx + vs->topx - vs->xloc) / GRID_SIZE;
+	const Sint32 gy = (cy + vs->topy - vs->yloc) / GRID_SIZE;
 	if (gx < 0 || gx >= camera_grid.w || gy < 0 || gy >= camera_grid.h)
 		return false;
 	const unsigned char tile = camera_grid.data[static_cast<std::size_t>(gx + camera_grid.w * gy)];
@@ -791,8 +767,8 @@ bool draw_walker_ripples(walker& w, viewscreen* vs,
 		    ripple_rings[static_cast<std::size_t>(rx - kRippleMinRx)];
 		for (const auto& [dx, dy] : points)
 		{
-			const Sint32 x = cx + dx / vs->render_denominator();
-			const Sint32 y = cy + dy / vs->render_denominator();
+			const Sint32 x = cx + dx;
+			const Sint32 y = cy + dy;
 			if (x < vs->xloc || x >= vs->endx || y < vs->yloc || y >= vs->endy)
 				continue;
 			dest->pointb(x, y, PURE_WHITE, a);
@@ -822,8 +798,8 @@ bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid)
 	// redraw tile loop, clamped to the grid).
 	Sint32 gx0 = vs->topx / GRID_SIZE - (vs->topx < 0 ? 1 : 0);
 	Sint32 gy0 = vs->topy / GRID_SIZE - (vs->topy < 0 ? 1 : 0);
-	Sint32 gx1 = (vs->topx + vs->world_view_width()) / GRID_SIZE + 1;
-	Sint32 gy1 = (vs->topy + vs->world_view_height()) / GRID_SIZE + 1;
+	Sint32 gx1 = (vs->topx + vs->xview) / GRID_SIZE + 1;
+	Sint32 gy1 = (vs->topy + vs->yview) / GRID_SIZE + 1;
 	gx0 = std::max<Sint32>(gx0, 0);
 	gy0 = std::max<Sint32>(gy0, 0);
 	gx1 = std::min<Sint32>(gx1, camera_grid.w - 1);
@@ -848,10 +824,8 @@ bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid)
 				continue;
 			const bool up = (tile == PIX_ZSTAIR_UP);
 			// Tile's top-left corner in screen space.
-			const Sint32 tx = vs->project_world_x(
-			    static_cast<float>(gi * GRID_SIZE));
-			const Sint32 ty = vs->project_world_y(
-			    static_cast<float>(gj * GRID_SIZE));
+			const Sint32 tx = gi * GRID_SIZE - vs->topx + vs->xloc;
+			const Sint32 ty = gj * GRID_SIZE - vs->topy + vs->yloc;
 			// Double chevron, 2px-thick 45-degree strokes, centered in the
 			// 16x16 tile: apexes at rows 3/8 (up) or 12/7 (down). Pass 0
 			// lays every (+1,+1) drop-shadow pixel, pass 1 the white
@@ -860,22 +834,19 @@ bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid)
 				for (const Sint32 apex : {up ? 3 : 12, up ? 8 : 7})
 					for (Sint32 dx = -4; dx <= 4; ++dx)
 					{
-						const Sint32 den = vs->render_denominator();
-						const Sint32 ax = tx + (8 + dx) / den;
+						const Sint32 ax = tx + 8 + dx;
 						const Sint32 ay = ty +
 						    (up ? apex + (dx < 0 ? -dx : dx)
-						        : apex - (dx < 0 ? -dx : dx)) / den;
+						        : apex - (dx < 0 ? -dx : dx));
 						if (pass == 0)
 						{
 							plot(ax + 1, ay + 1, PURE_BLACK, shadow_alpha, false);
-							if (den == 1)
-								plot(ax + 1, ay + 2, PURE_BLACK, shadow_alpha, false);
+							plot(ax + 1, ay + 2, PURE_BLACK, shadow_alpha, false);
 						}
 						else
 						{
 							plot(ax, ay, PURE_WHITE, pulse_alpha, true);
-							if (den == 1)
-								plot(ax, ay + 1, PURE_WHITE, pulse_alpha, true);
+							plot(ax, ay + 1, PURE_WHITE, pulse_alpha, true);
 						}
 					}
 		}
@@ -911,7 +882,7 @@ bool draw_upper_floor_shadows(viewscreen* vs, GameWorld& world)
 			// within a floor never double-darken) and turns the hot center/rim/
 			// band predicates into byte-mask lookups.
 			coverage.build(grid, vs->topx, vs->topy, view_width, view_height,
-			               offset, vs->render_denominator());
+			               offset);
 			bool floor_drew = false;
 			for (Sint32 vy = 0; vy < view_height; ++vy)
 			{
@@ -1127,12 +1098,14 @@ bool draw_walker_trail(walker& w, viewscreen* vs)
 			continue; // closer than 1px to its successor: skip the dot
 		const unsigned char a = static_cast<unsigned char>(
 		    kTrailAlphaNewest - static_cast<int>(i - 1) * kTrailAlphaStep);
-		const Sint32 sx = vs->project_world_x(h.pos[i].first + half_w);
-		const Sint32 sy = vs->project_world_y(h.pos[i].second + half_h);
-		const Sint32 dot_w = vs->project_world_width(2);
-		const Sint32 dot_h = vs->project_world_height(2);
-		for (Sint32 y = sy; y < sy + dot_h; y++)
-			for (Sint32 x = sx; x < sx + dot_w; x++)
+		const Sint32 sx = static_cast<Sint32>(
+		    h.pos[i].first + half_w - static_cast<float>(vs->topx) +
+		    static_cast<float>(vs->xloc));
+		const Sint32 sy = static_cast<Sint32>(
+		    h.pos[i].second + half_h - static_cast<float>(vs->topy) +
+		    static_cast<float>(vs->yloc));
+		for (Sint32 y = sy; y < sy + 2; y++)
+			for (Sint32 x = sx; x < sx + 2; x++)
 			{
 				if (x < vs->xloc || x >= vs->endx ||
 				    y < vs->yloc || y >= vs->endy)
@@ -1161,7 +1134,12 @@ bool draw_walker_dust(walker& w, viewscreen* vs)
 	screen* dest = og::runtime::current_session->myscreen_;
 	const std::uint32_t id = w.entity_id();
 	const std::uint32_t seed = hash_u32(id);
-	const float center_wx = vx + static_cast<float>(w.sizex()) / 2.0f;
+	const Sint32 cx = static_cast<Sint32>(
+	    vx + static_cast<float>(w.sizex()) / 2.0f -
+	    static_cast<float>(vs->topx) + static_cast<float>(vs->xloc));
+	const Sint32 top = static_cast<Sint32>(
+	    vy - static_cast<float>(vs->topy) + static_cast<float>(vs->yloc)) -
+	    kDustDropStart;
 	bool drew = false;
 	for (std::uint32_t i = 0; i < kDustSpecks; i++)
 	{
@@ -1174,13 +1152,12 @@ bool draw_walker_dust(walker& w, viewscreen* vs)
 		const Sint32 jx =
 		    static_cast<Sint32>(jh % (2 * kDustJitter + 1)) -
 		    static_cast<Sint32>(kDustJitter);
-		const Sint32 sx = vs->project_world_x(center_wx + static_cast<float>(jx));
-		const Sint32 sy = vs->project_world_y(
-		    vy - static_cast<float>(kDustDropStart) + static_cast<float>(k));
+		const Sint32 sx = cx + jx;
+		const Sint32 sy = top + static_cast<Sint32>(k);
 		const unsigned char a = static_cast<unsigned char>(
 		    kDustAlphaTop - static_cast<int>(k) * kDustAlphaStep);
-		for (Sint32 y = sy; y < sy + vs->project_world_height(2); y++)
-			for (Sint32 x = sx; x < sx + vs->project_world_width(2); x++)
+		for (Sint32 y = sy; y < sy + 2; y++)
+			for (Sint32 x = sx; x < sx + 2; x++)
 			{
 				if (x < vs->xloc || x >= vs->endx ||
 				    y < vs->yloc || y >= vs->endy)
@@ -1313,12 +1290,10 @@ bool draw_fall_cues(viewscreen* vs, int floor)
 		if (age >= kFallCueFrames)
 			continue; // expired; effects_advance_frame prunes it
 
-		auto plot2 = [&](Sint32 world_x, Sint32 world_y, unsigned char alpha)
+		auto plot2 = [&](Sint32 sx, Sint32 sy, unsigned char alpha)
 		{
-			const Sint32 sx = vs->project_world_x(static_cast<float>(world_x));
-			const Sint32 sy = vs->project_world_y(static_cast<float>(world_y));
-			for (Sint32 y = sy; y < sy + vs->project_world_height(2); y++)
-				for (Sint32 x = sx; x < sx + vs->project_world_width(2); x++)
+			for (Sint32 y = sy; y < sy + 2; y++)
+				for (Sint32 x = sx; x < sx + 2; x++)
 				{
 					if (x < vs->xloc || x >= vs->endx ||
 					    y < vs->yloc || y >= vs->endy)
@@ -1350,7 +1325,8 @@ bool draw_fall_cues(viewscreen* vs, int floor)
 			    kFallCueAlphaStep;
 			if (a <= 0)
 				break;
-			plot2(head_wx - 1, head_wy - t,
+			plot2(head_wx - 1 - vs->topx + vs->xloc,
+			      head_wy - t - vs->topy + vs->yloc,
 			      static_cast<unsigned char>(a));
 		}
 
@@ -1363,8 +1339,9 @@ bool draw_fall_cues(viewscreen* vs, int floor)
 			const int ridx = static_cast<int>(age - kFallPuffStartAge); // 0..2
 			const int rx = 4 + 2 * ridx; // 4, 6, 8: inside the ring tables
 			const int a = kFallPuffAlphaTop - ridx * kFallPuffAlphaStep;
-			const Sint32 pcx = static_cast<Sint32>(land_cx);
-			const Sint32 pcy = feet_wy;
+			const Sint32 pcx = static_cast<Sint32>(land_cx) - vs->topx +
+			    vs->xloc;
+			const Sint32 pcy = feet_wy - vs->topy + vs->yloc;
 			const auto& points =
 			    ripple_rings[static_cast<std::size_t>(rx - kRippleMinRx)];
 			for (const auto& [dx, dy] : points)
@@ -1385,9 +1362,9 @@ bool draw_walker_fire_glow(walker& w, viewscreen* vs)
 	// the worldz raise (an arcing fireball lights its own height).
 	Sint32 xs = 0, ys = 0;
 	ground_plane_anchor(w, vs, xs, ys);
-	ys -= static_cast<Sint32>(w.worldz()) / vs->render_denominator();
-	const Sint32 cx = xs + vs->project_world_width(w.sizex()) / 2;
-	const Sint32 cy = ys + vs->project_world_height(w.sizey()) / 2;
+	ys -= static_cast<Sint32>(w.worldz());
+	const Sint32 cx = xs + w.sizex() / 2;
+	const Sint32 cy = ys + w.sizey() / 2;
 
 	// Deterministic organic pulse: fast triangle + slow swell + jitter
 	// lerped across the fast cycle, each phase-offset per entity so nearby
@@ -1419,23 +1396,16 @@ bool draw_walker_fire_glow(walker& w, viewscreen* vs)
 	    jitter;
 
 	screen* dest = og::runtime::current_session->myscreen_;
-	const Sint32 glow_radius = vs->project_world_width(kGlowRadius);
-	const Sint32 x0 = std::max(cx - glow_radius, vs->xloc);
-	const Sint32 x1 = std::min(cx + glow_radius, vs->endx - 1);
-	const Sint32 y0 = std::max(cy - glow_radius, vs->yloc);
-	const Sint32 y1 = std::min(cy + glow_radius, vs->endy - 1);
+	const Sint32 x0 = std::max(cx - kGlowRadius, vs->xloc);
+	const Sint32 x1 = std::min(cx + kGlowRadius, vs->endx - 1);
+	const Sint32 y0 = std::max(cy - kGlowRadius, vs->yloc);
+	const Sint32 y1 = std::min(cy + kGlowRadius, vs->endy - 1);
 	bool drew = false;
 	for (Sint32 y = y0; y <= y1; y++)
 		for (Sint32 x = x0; x <= x1; x++)
 		{
-			const Sint32 kernel_x = (x - cx) * vs->render_denominator();
-			const Sint32 kernel_y = (y - cy) * vs->render_denominator();
-			if (std::abs(kernel_x) > kGlowRadius ||
-			    std::abs(kernel_y) > kGlowRadius)
-				continue;
 			const std::size_t idx = static_cast<std::size_t>(
-			    (kernel_y + kGlowRadius) * kGlowSize +
-			    (kernel_x + kGlowRadius));
+			    (y - cy + kGlowRadius) * kGlowSize + (x - cx + kGlowRadius));
 			const int a = glow_kernel[idx] * flicker / 100;
 			if (a <= 0)
 				continue;
@@ -1560,8 +1530,8 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 	{
 		for (Sint32 y = vs->yloc; y < vs->endy; y++)
 		{
-			const int wy = vs->world_y_at_screen(y);
-			const int wx0 = vs->world_x_at_screen(vs->xloc);
+			const int wy = static_cast<int>(y - vs->yloc + vs->topy);
+			const int wx0 = static_cast<int>(vs->topx);
 			CloudRow shadow(wx0 + kCloudShadowOffsetX, wy + kCloudShadowOffsetY,
 			                frame_tick);
 			CloudRow bank(wx0, wy, frame_tick);
@@ -1579,11 +1549,8 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 				if (a > 0)
 					dest->pointb(x, y, PURE_WHITE,
 					             static_cast<unsigned char>(a));
-				for (Sint32 step = 0; step < vs->render_denominator(); ++step)
-				{
-					shadow.step();
-					bank.step();
-				}
+				shadow.step();
+				bank.step();
 			}
 		}
 	}
@@ -1600,18 +1567,17 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 		// band.
 		for (Sint32 y = vs->yloc; y < vs->endy; y++)
 		{
-			const int wy = vs->world_y_at_screen(y);
+			const int wy = static_cast<int>(y - vs->yloc + vs->topy);
 			const std::uint32_t vbase =
 			    static_cast<std::uint32_t>(wy) - frame_tick * fall;
-			const int wx0 = vs->world_x_at_screen(vs->xloc);
+			const int wx0 = static_cast<int>(vs->topx);
 			// q is a multiple of the rail divisor in wx (4 and >>2 for rain,
 			// 8 and >>3 for snow), so the hashed rail key is wx plus a row
 			// constant — one step per pixel along the row. Snow re-bases at
 			// each 32px band edge, where the lean flips.
 			int rail = rain_on ? wx0 + ((-wy) >> 2) : 0;
 			int wx = wx0;
-			for (Sint32 x = vs->xloc; x < vs->endx;
-			     x++, wx += vs->render_denominator())
+			for (Sint32 x = vs->xloc; x < vs->endx; x++, wx++)
 			{
 				if (snow_on && (wx == wx0 || (wx & 31) == 0))
 				{
@@ -1635,7 +1601,7 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 					                 static_cast<int>(pos) * alpha_step));
 					rained = true;
 				}
-				rail += vs->render_denominator();
+				rail++;
 			}
 		}
 	}

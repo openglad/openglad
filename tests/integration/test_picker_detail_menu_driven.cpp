@@ -271,12 +271,41 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_promote_orc_to_captain_branch)
 
 namespace
 {
+static bool reset_pointer_on_menu_thread()
+{
+    return run_on_main_thread([] { reset_mouse_click_tracking(); });
+}
+
+template <typename Predicate>
+static bool wait_for_menu_thread_condition(Predicate&& predicate,
+                                           int timeout_ms = 10000)
+{
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        bool matched = false;
+        if (!run_on_main_thread(
+                [&] {
+                    matched = predicate();
+                    if (matched)
+                        reset_mouse_click_tracking();
+                },
+                timeout_ms - elapsed))
+            return false;
+        if (matched)
+            return true;
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    return false;
+}
+
 struct TrainPromoteFlowState
 {
     std::atomic<bool> finished{false};
     bool saw_train_menu = false;
     bool saw_promote = false;
     bool back_in_train_menu = false;
+    bool pointer_edges_acknowledged = true;
 };
 
 // Drives the REAL nesting: train menu -> DETAILS -> promote -> back in the
@@ -294,6 +323,7 @@ static int train_menu_promote_injector(void* data)
     }
     state->saw_train_menu = true;
     SDL_Delay(300);
+    state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("details");
 
     if (!wait_for_interactable("promote", 10000)) {
@@ -312,8 +342,33 @@ static int train_menu_promote_injector(void* data)
     }
     state->back_in_train_menu = true;
     SDL_Delay(300);
+
+    short strength_before = 0;
+    state->pointer_edges_acknowledged &= run_on_main_thread([&] {
+        reset_mouse_click_tracking();
+        if (og::runtime::current_session->current_guy_ != nullptr)
+            strength_before =
+                og::runtime::current_session->current_guy_->strength;
+    });
+    interact("inc_str");
+    state->pointer_edges_acknowledged &= wait_for_menu_thread_condition(
+        [strength_before] {
+            const auto& current =
+                og::runtime::current_session->current_guy_;
+            return current != nullptr && current->strength != strength_before;
+        });
+
+    state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("accept"); // must NOT revert the promotion (bug A9)
-    SDL_Delay(300);
+    state->pointer_edges_acknowledged &= wait_for_menu_thread_condition([] {
+        const auto& current = og::runtime::current_session->current_guy_;
+        const auto& saved = og::runtime::current_session->myscreen_
+                                ->save_data.team_list[0];
+        return current != nullptr && saved != nullptr &&
+            saved->strength == current->strength;
+    });
+
+    state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("back");
     state->finished.store(true, std::memory_order_relaxed);
     return 0;
@@ -356,6 +411,7 @@ TEST(PickerDetailMenuDriven, train_menu_details_promote_survives_redraw_and_acce
     ASSERT_TRUE(state.saw_promote) << "details menu should offer promote";
     ASSERT_TRUE(state.back_in_train_menu)
         << "promotion should return to the train menu";
+    ASSERT_TRUE(state.pointer_edges_acknowledged);
     ASSERT_EQ(2, (int)r) << "train menu BACK should return REDRAW";
 
     // The real team member is an Archmage and ACCEPT did not revert it.
@@ -377,6 +433,7 @@ struct TrainPromoteScriptState
     bool saw_train_menu = false;
     bool saw_promote = false;
     bool back_in_train_menu = false;
+    bool pointer_edges_acknowledged = true;
     // Optional extra steps performed back in the train menu after the
     // promotion, before BACK.
     bool do_stat_edit = false;
@@ -399,6 +456,7 @@ static int train_menu_promote_script_injector(void* data)
     }
     state->saw_train_menu = true;
     SDL_Delay(300);
+    state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("details");
 
     if (!wait_for_interactable("promote", 10000)) {
@@ -407,6 +465,9 @@ static int train_menu_promote_script_injector(void* data)
     }
     state->saw_promote = true;
     SDL_Delay(300);
+    // The legacy detail loop runs synchronously inside the train menu's
+    // button callback, so it cannot drain the menu-screen task queue. Its
+    // query_mouse() loop has already consumed the DETAILS release here.
     interact("promote");
 
     // "accept" only exists in the train menu, so this waits out the return
@@ -419,13 +480,35 @@ static int train_menu_promote_script_injector(void* data)
     SDL_Delay(500); // several poll iterations — the pre-fix revert window
 
     if (state->do_stat_edit) {
+        short strength_before = 0;
+        state->pointer_edges_acknowledged &= run_on_main_thread([&] {
+            reset_mouse_click_tracking();
+            if (og::runtime::current_session->current_guy_ != nullptr)
+                strength_before =
+                    og::runtime::current_session->current_guy_->strength;
+        });
         interact("inc_str");
-        SDL_Delay(300);
+        state->pointer_edges_acknowledged &= wait_for_menu_thread_condition(
+            [strength_before] {
+                const auto& current =
+                    og::runtime::current_session->current_guy_;
+                return current != nullptr &&
+                    current->strength != strength_before;
+            });
     }
     if (state->do_accept) {
+        state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
         interact("accept");
-        SDL_Delay(300);
+        state->pointer_edges_acknowledged &= wait_for_menu_thread_condition([] {
+            const auto& current =
+                og::runtime::current_session->current_guy_;
+            const auto& saved = og::runtime::current_session->myscreen_
+                                    ->save_data.team_list[0];
+            return current != nullptr && saved != nullptr &&
+                saved->strength == current->strength;
+        });
     }
+    state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("back");
     state->finished.store(true, std::memory_order_relaxed);
     return 0;
@@ -439,6 +522,7 @@ static int train_menu_exit_injector(void* data)
     if (wait_for_interactable("details", 10000)) {
         state->saw_train_menu = true;
         SDL_Delay(300);
+        state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
         interact("back");
     }
     state->finished.store(true, std::memory_order_relaxed);
@@ -497,6 +581,7 @@ TEST(PickerDetailMenuDriven, train_menu_promote_alone_persists_on_exit_and_reent
     ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
     ASSERT_TRUE(state.saw_promote) << "details menu should offer promote";
     ASSERT_TRUE(state.back_in_train_menu);
+    ASSERT_TRUE(state.pointer_edges_acknowledged);
 
     // Family AND the promotion's stats survived the exit.
     ASSERT_TRUE(save.team_list[0] != nullptr);
@@ -517,6 +602,7 @@ TEST(PickerDetailMenuDriven, train_menu_promote_alone_persists_on_exit_and_reent
     clear_events();
 
     ASSERT_TRUE(reenter_state.saw_train_menu);
+    ASSERT_TRUE(reenter_state.pointer_edges_acknowledged);
     ASSERT_TRUE(og::runtime::current_session->current_guy_ != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE,
               (int)og::runtime::current_session->current_guy_->family);
@@ -552,6 +638,7 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_stat_edit_keeps_both)
     ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
     ASSERT_TRUE(state.saw_promote);
     ASSERT_TRUE(state.back_in_train_menu);
+    ASSERT_TRUE(state.pointer_edges_acknowledged);
 
     ASSERT_TRUE(save.team_list[0] != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)
@@ -590,6 +677,7 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_cancel_discards_pending_edi
     ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
     ASSERT_TRUE(state.saw_promote);
     ASSERT_TRUE(state.back_in_train_menu);
+    ASSERT_TRUE(state.pointer_edges_acknowledged);
 
     ASSERT_TRUE(save.team_list[0] != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)
