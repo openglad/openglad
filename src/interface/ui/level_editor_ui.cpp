@@ -55,6 +55,9 @@ std::atomic<int> s_prompt_block_held_key{-1};
 std::atomic<int> s_prompt_block_click_x{0};
 std::atomic<int> s_prompt_block_click_y{0};
 std::atomic<bool> s_prompt_block_click_pending{false};
+std::atomic<bool> s_prompt_force_real{false};
+std::atomic<bool> s_prompt_real_active{false};
+std::atomic<std::uint64_t> s_prompt_real_entered_count{0};
 
 void prompt_block_testing_input_observed()
 {
@@ -102,6 +105,21 @@ std::uint64_t level_editor_testing_prompt_block_input_observed_count()
 std::uint64_t level_editor_testing_prompt_block_input_completed_count()
 {
     return s_prompt_block_input_completed_count.load(std::memory_order_acquire);
+}
+
+void level_editor_testing_prompt_force_real(bool enabled)
+{
+    s_prompt_force_real.store(enabled, std::memory_order_release);
+}
+
+bool level_editor_testing_prompt_real_active()
+{
+    return s_prompt_real_active.load(std::memory_order_acquire);
+}
+
+std::uint64_t level_editor_testing_prompt_real_entered_count()
+{
+    return s_prompt_real_entered_count.load(std::memory_order_acquire);
 }
 #endif
 
@@ -539,29 +557,34 @@ bool prompt_for_string(const std::string& message, std::string& result)
 {
 #ifdef TESTING
     // Tests can optionally queue deterministic inputs for prompt_for_string().
-    // If the queue is empty, accept the existing value without blocking.
-    (void)message;
-    auto& q = level_editor_testing_prompt_queue_ref();
-    if (!q.empty()) {
-        result = q.front();
-        q.erase(q.begin());
+    // If the queue is empty, accept the existing value without blocking. A
+    // visual-flow test can explicitly opt into the production modal below.
+    if (!s_prompt_force_real.load(std::memory_order_acquire)) {
+        (void)message;
+        auto& q = level_editor_testing_prompt_queue_ref();
+        if (!q.empty()) {
+            result = q.front();
+            q.erase(q.begin());
+        }
+        return true;
     }
-    return true;
 #endif
-	    screen* screen_ctx = active_screen();
-	    ScopedUiCanvas ui_canvas(*screen_ctx);
-	    screen_ctx->darken_screen();
-	    
-	    const short max_chars = 29;
-	    
-	    int x = 58;
-	    int y = 60;
-	    int w = static_cast<int>(max_chars) * 6;
-	    int h = 10;
-    
-    screen_ctx->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
-    
+    screen* screen_ctx = active_screen();
+    ScopedUiCanvas ui_canvas(*screen_ctx);
+    screen_ctx->darken_screen();
+
+    const short max_chars = 29;
+    int x = 58;
+    int y = 60;
+
+#ifdef TESTING
+    s_prompt_real_active.store(true, std::memory_order_release);
+    s_prompt_real_entered_count.fetch_add(1, std::memory_order_release);
+#endif
     auto str_opt = screen_ctx->text_normal.input_string_ex_value(x, y, max_chars, message.c_str(), result.c_str());
+#ifdef TESTING
+    s_prompt_real_active.store(false, std::memory_order_release);
+#endif
 
     if(!str_opt)
         return false;

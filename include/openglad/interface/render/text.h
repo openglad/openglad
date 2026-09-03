@@ -43,6 +43,13 @@ struct PromptActionLayout
 	PromptButtonRect accept;
 };
 
+struct PromptDialogLayout
+{
+	PromptButtonRect frame;
+	PromptButtonRect field;
+	PromptActionLayout actions;
+};
+
 inline constexpr int kPromptActionGap = 12;
 
 // The new-company naming screen establishes the prompt grid: equal-width
@@ -59,6 +66,26 @@ inline constexpr int kPromptActionGap = 12;
 	    .cancel = {x, action_y, button_width, 14},
 	    .accept = {x + button_width + kPromptActionGap,
 	               action_y, button_width, 14},
+	};
+}
+
+// The frame is part of the same geometry contract as the field and action
+// row. Keeping it here prevents a caller from sizing a dialog around the
+// field alone and cutting through the buttons below it.
+[[nodiscard]] constexpr PromptDialogLayout prompt_dialog_layout(
+    int x, int y, int field_width, int field_height)
+{
+	const PromptActionLayout actions =
+	    prompt_action_layout(x, y, field_width, field_height);
+	const int frame_x = x - 5;
+	const int frame_y = y - 20;
+	const int frame_right = x + field_width + 5;
+	const int frame_bottom = actions.accept.y + actions.accept.h + 5;
+	return PromptDialogLayout{
+	    .frame = {frame_x, frame_y,
+	              frame_right - frame_x, frame_bottom - frame_y},
+	    .field = {x, y, field_width, field_height},
+	    .actions = actions,
 	};
 }
 } // namespace og::ui

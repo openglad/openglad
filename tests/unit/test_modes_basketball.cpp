@@ -11,7 +11,7 @@
 // the D20 scatter curve with the pressure term, rim resolution (basket /
 // clang / airball), backboard banks (z-gated reflection + crossing scores),
 // dunks with the D23b DUNK_OK gate, fumbles with the D21 damage floor and
-// possession grace, the D27 dead-weapon release + D28 mana-neutral refund
+// possession grace, the D27 dead-weapon release + D28 launch-resource refund
 // (and its engine-gated drained-carrier residual, edge #28),
 // the D7/D25 shot-clock lifecycle (persistence across
 // loose balls, late-regain turnovers, the 120-tick team grace), D24
@@ -4137,6 +4137,81 @@ TEST_F(ModesBasketball, throw_refund_is_mana_neutral)
     }
 }
 
+// A ball release borrows the normal-fire input, but the consumed knife never
+// reaches core:knife's death/return path. A fresh level-1 soldier has exactly
+// one returning blade, so failing to restore that launch credit disables the
+// soldier's ranged attack for the rest of the match.
+TEST_F(ModesBasketball, consumed_throw_restores_soldiers_returning_knife)
+{
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.give_ball(fx.red, 450, 480);
+
+    fx.red->set_weapons_left(1);
+    fx.red->stats()->set_magicpoints(20.0f);
+    fx.red->set_lastx(8.0f);
+    fx.red->set_lasty(0.0f);
+    walker* throw_token = fx.red->fire();
+    ASSERT_NE(nullptr, throw_token);
+    EXPECT_EQ(0, fx.red->weapons_left())
+        << "the real soldier fire hook must spend its only knife first";
+
+    fx.tick(1);
+
+    EXPECT_NE(kStateCarried, fx.var(kBbBallState))
+        << "the fired knife must release the basketball";
+    EXPECT_EQ(1, fx.red->weapons_left())
+        << "consuming the throw token must restore the returning knife";
+    walker* combat_knife = fx.red->fire();
+    EXPECT_NE(nullptr, combat_knife)
+        << "the fresh soldier must still be able to throw a combat knife";
+}
+
+TEST_F(ModesBasketball, consumed_dead_knife_keeps_its_single_return_credit)
+{
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.give_ball(fx.red, 450, 480);
+
+    fx.red->set_weapons_left(1);
+    fx.red->stats()->set_magicpoints(20.0f);
+    fx.red->set_lastx(8.0f);
+    fx.red->set_lasty(0.0f);
+    walker* throw_token = fx.red->fire();
+    ASSERT_NE(nullptr, throw_token);
+    EXPECT_EQ(0, fx.red->weapons_left());
+
+    // Model the D27 contact-death arm before the mode tick. death() has
+    // already spawned the normal knife_back, so consume_throw must not mint
+    // a second immediate credit. Keep the returner far enough away that it
+    // cannot naturally reach its owner during this assertion tick.
+    throw_token->setxy(static_cast<std::int32_t>(fx.red->xpos()) + 100,
+                       static_cast<std::int32_t>(fx.red->ypos()));
+    throw_token->set_dead(1);
+    ASSERT_TRUE(throw_token->death());
+    int returners = 0;
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* candidate = uptr.get();
+        if (candidate != nullptr && !candidate->dead() &&
+            candidate->query_order() == Order::FX &&
+            candidate->family() == FAMILY_KNIFE_BACK &&
+            candidate->owner() == fx.red)
+        {
+            ++returners;
+        }
+    }
+    ASSERT_EQ(1, returners) << "knife death must own the eventual refund";
+
+    fx.tick(1);
+
+    EXPECT_NE(kStateCarried, fx.var(kBbBallState));
+    EXPECT_EQ(0, fx.red->weapons_left())
+        << "the existing knife_back must remain the only return credit";
+}
+
 // ===========================================================================
 // §11.2 #40 — edge #28 pin: a carrier below weapon_cost cannot release
 // (engine-gated pre-spawn; the accepted residual of D28)
@@ -4736,11 +4811,11 @@ struct RealCourtBotGamePin
 
 inline constexpr std::uint32_t kRealCourtBotGameSeed = 0x9E3779B9u;
 inline constexpr RealCourtBotGamePin kRealCourtBotGamePins[] = {
-    {824, 7200, 2787, {0, 2, 0, 0}, true, 7200, {2, 6, 0, 0}, 1, true, 0},
+    {824, 7200, 1174, {2, 0, 0, 0}, true, 7200, {7, 4, 0, 0}, 0, true, 0},
     {825, 5400, 142, {0, 2, 0, 0}, false, 142, {0, 2, 0, 0}, -1, false, 0},
-    {826, 7200, 946, {0, 0, 2, 0}, false, 946, {0, 0, 2, 0}, -1, false, 0},
+    {826, 7200, 886, {0, 2, 0, 0}, false, 886, {0, 2, 0, 0}, -1, false, 0},
     {827, 7200, 363, {0, 2, 0, 0}, false, 363, {0, 2, 0, 0}, -1, false, 0},
-    {828, 7200, 865, {0, 2, 0, 0}, false, 865, {0, 2, 0, 0}, -1, false, 0},
+    {828, 7200, 3255, {0, 2, 0, 0}, false, 3255, {0, 2, 0, 0}, -1, false, 0},
     {829, 7200, 460, {2, 0, 0, 0}, false, 460, {2, 0, 0, 0}, -1, false, 0},
 };
 

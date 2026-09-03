@@ -12,9 +12,11 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/platform/sai2x.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
@@ -41,6 +43,9 @@ extern std::atomic_bool g_test_present_pause_requested;
 extern std::atomic_bool g_test_present_paused;
 // Engine keyboard-nav hook (picker_input.cpp, TESTING only).
 extern int g_test_menu_nav_key;
+void level_editor_testing_prompt_force_real(bool enabled);
+bool level_editor_testing_prompt_real_active();
+std::uint64_t level_editor_testing_prompt_real_entered_count();
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState &pks() {
@@ -56,9 +61,11 @@ constexpr int kTeamMenuTimeoutMs = 20000;
 // frame; the enclosing CTest timeout remains the final 420-second backstop.
 constexpr Uint64 kFramePauseTimeoutMs = 30000;
 
+using FrameWake = void (*)();
+
 class PresentedFramePause {
 public:
-  PresentedFramePause() {
+  explicit PresentedFramePause(FrameWake wake = nullptr) {
     bool expected = false;
     if (!g_test_present_pause_requested.compare_exchange_strong(
             expected, true, std::memory_order_acq_rel)) {
@@ -67,6 +74,9 @@ public:
       fflush(stderr);
       abort();
     }
+
+    if (wake != nullptr)
+      wake();
 
     const Uint64 deadline = SDL_GetTicks() + kFramePauseTimeoutMs;
     while (!g_test_present_paused.load(std::memory_order_acquire)) {
@@ -119,7 +129,8 @@ using FrameCheck = bool (*)(const FramePixels &);
 // the injector thread. The presenter handshake freezes exactly one completed
 // frame while its pixels are copied, so a blank-frame assertion cannot pass or
 // fail based on overlap with the menu loop's next clear/redraw pass.
-bool capture_frame(const char *name, FrameCheck check = nullptr) {
+bool capture_frame(const char *name, FrameCheck check = nullptr,
+                   FrameWake wake = nullptr) {
   screen *scr = og::runtime::current_session->myscreen_;
   const char *output_dir = std::getenv("UXSHOTS_DIR");
   std::string path;
@@ -140,7 +151,7 @@ bool capture_frame(const char *name, FrameCheck check = nullptr) {
 
   std::size_t nonblack_pixels = 0;
   {
-    PresentedFramePause frame_pause;
+    PresentedFramePause frame_pause(wake);
     if (!frame_pause.acquired())
       return false;
 
@@ -1635,6 +1646,121 @@ bool check_hire_portrait(const FramePixels &rgb) {
   return true;
 }
 
+bool check_hiring_name_prompt(const FramePixels &rgb) {
+  if (rgb.size() != static_cast<std::size_t>(320 * 200 * 3))
+    return false;
+  const auto color_at = [&rgb](int x, int y) {
+    const std::size_t i =
+        (static_cast<std::size_t>(y) * 320 + static_cast<std::size_t>(x)) * 3;
+    return (static_cast<std::uint32_t>(rgb[i]) << 16) |
+           (static_cast<std::uint32_t>(rgb[i + 1]) << 8) |
+           static_cast<std::uint32_t>(rgb[i + 2]);
+  };
+
+  // The real 5x6 prompt font puts equal action faces at x=58..139 and
+  // x=151..232, ending at y=84. Their complete bottom bevels must both be
+  // visible and identical; the old caller-owned frame ended at y=80 and cut
+  // directly through this row.
+  const std::uint32_t action_bottom = color_at(59, 84);
+  if (action_bottom == 0) {
+    fprintf(stderr, "  [uxshot] hiring action bottom bevel is black\n");
+    return false;
+  }
+  for (int offset = 1; offset <= 80; ++offset) {
+    if (color_at(58 + offset, 84) != action_bottom ||
+        color_at(151 + offset, 84) != action_bottom) {
+      fprintf(stderr,
+              "  [uxshot] CANCEL/ACCEPT bottom bevels are not equal tiles\n");
+      return false;
+    }
+  }
+
+  // The shared prompt owns its panel and leaves five logical pixels below the
+  // action row. A solid bottom bevel at y=89 proves the panel contains the
+  // buttons instead of merely painting them over the HIRE backdrop.
+  const std::uint32_t frame_bottom = color_at(54, 89);
+  if (frame_bottom == 0) {
+    fprintf(stderr, "  [uxshot] hiring prompt frame bottom is black\n");
+    return false;
+  }
+  for (int x = 54; x <= 236; ++x) {
+    if (color_at(x, 89) != frame_bottom) {
+      fprintf(stderr, "  [uxshot] hiring prompt frame bottom is interrupted\n");
+      return false;
+    }
+  }
+
+  // Keep this a whole-screen proof. An isolated widget on black (the earlier
+  // misleading capture) cannot satisfy the amount of live HIRE UI outside
+  // the prompt rectangle.
+  std::size_t outside_nonblack = 0;
+  for (int y = 0; y < 200; ++y) {
+    for (int x = 0; x < 320; ++x) {
+      if (x >= 53 && x <= 237 && y >= 40 && y <= 89)
+        continue;
+      if (color_at(x, y) != 0)
+        ++outside_nonblack;
+    }
+  }
+  if (outside_nonblack < 20000) {
+    fprintf(stderr,
+            "  [uxshot] hiring prompt lacks full-screen HIRE context: %zu "
+            "outside pixels\n",
+            outside_nonblack);
+    return false;
+  }
+  return true;
+}
+
+class RealPromptGuard {
+public:
+  RealPromptGuard() { level_editor_testing_prompt_force_real(true); }
+  ~RealPromptGuard() { level_editor_testing_prompt_force_real(false); }
+
+  RealPromptGuard(const RealPromptGuard &) = delete;
+  RealPromptGuard &operator=(const RealPromptGuard &) = delete;
+};
+
+bool wait_for_real_prompt(std::uint64_t entered_before, int timeout_ms) {
+  for (int waited = 0; waited < timeout_ms; waited += 10) {
+    if (level_editor_testing_prompt_real_entered_count() > entered_before &&
+        level_editor_testing_prompt_real_active())
+      return true;
+    SDL_Delay(10);
+  }
+  fprintf(stderr, "  [uxshot] real hiring name prompt never opened\n");
+  return false;
+}
+
+bool wait_for_real_prompt_closed(int timeout_ms) {
+  for (int waited = 0; waited < timeout_ms; waited += 10) {
+    if (!level_editor_testing_prompt_real_active())
+      return true;
+    SDL_Delay(10);
+  }
+  fprintf(stderr, "  [uxshot] real hiring name prompt never closed\n");
+  return false;
+}
+
+bool wait_for_menu_frame_after(std::uint64_t completed_before,
+                               int timeout_ms) {
+  for (int waited = 0; waited < timeout_ms; waited += 10) {
+    if (og::ui::menu_screen_testing_completed_frames() > completed_before)
+      return true;
+    SDL_Delay(10);
+  }
+  fprintf(stderr, "  [uxshot] picker menu did not complete another frame\n");
+  return false;
+}
+
+// A live text prompt is blocked waiting for input after its first present.
+// Nudge its cursor so it redraws while the capture handshake is armed; the
+// frozen frame is therefore the actual modal composed over the HIRE screen.
+void wake_real_prompt_for_capture() {
+  inject_key_down(SDLK_LEFT);
+  inject_key_up(SDLK_LEFT);
+}
+
 int view_level_staged_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
@@ -1709,8 +1835,37 @@ int view_level_staged_injector(void *data) {
         SDL_Delay(800);
         state->captures +=
             capture_frame("hire_after_view_level", &check_hire_portrait);
+        const std::uint64_t prompt_before =
+            level_editor_testing_prompt_real_entered_count();
         SDL_Delay(200);
-        interact("back");
+        interact("hire_me");
+        if (wait_for_real_prompt(prompt_before, 5000)) {
+          state->captures += capture_frame(
+              "hiring_name_prompt", &check_hiring_name_prompt,
+              &wake_real_prompt_for_capture);
+          const std::uint64_t menu_frame_before_cancel =
+              og::ui::menu_screen_testing_completed_frames();
+          // Close through the prompt's native CANCEL semantic. The button's
+          // pointer hitbox is covered by TextInputExValue; using the native
+          // cancel here keeps no mouse-down transition alive across the
+          // blocking modal's return into the HIRE menu.
+          og::input_native::push_text_cancel_key();
+          if (!wait_for_real_prompt_closed(5000)) {
+            og::input_native::push_text_cancel_key();
+            (void)wait_for_real_prompt_closed(5000);
+          }
+          // The modal closes before add_guy's synchronous roster save and
+          // the HIRE runner's reset complete. Wait on the runner's finished
+          // frame instead of racing that tail with a fixed delay.
+          (void)wait_for_menu_frame_after(menu_frame_before_cancel, 10000);
+        }
+        if (wait_for_interactable("hire_me", 5000)) {
+          const std::uint64_t hire_frame_before_back =
+              og::ui::menu_screen_testing_completed_frames();
+          SDL_Delay(200);
+          interact("back");
+          (void)wait_for_menu_frame_after(hire_frame_before_back, 10000);
+        }
       }
     }
     if (wait_for_team_menu(5000)) {
@@ -1730,6 +1885,7 @@ int view_level_staged_injector(void *data) {
 // dormant staged soccer pitch above the census rows. Doubles as proof media
 // (UXSHOTS_DIR) and the blank-frame guard for the pane.
 TEST(UxShots, n_view_level_staged) {
+  RealPromptGuard real_prompt;
   trace_clear();
   g_view_level_first_frame.clear();
   g_menu_before_viewer_frame.clear();
@@ -1772,12 +1928,12 @@ TEST(UxShots, n_view_level_staged) {
   // the #251 comparison with nothing to catch.
   ASSERT_TRUE(trace_contains("picker", "view_scenario pane gen="))
       << "the staged pane never healed: the camera pin below has no teeth";
-  // All four shots: the reshaped SCENARIO screen (#218 match-settings band),
+  // All five shots: the reshaped SCENARIO screen (#218 match-settings band),
   // two staged frames a pan apart (#251), then the HIRE portrait drawn in the
-  // same menu session right after the viewer closed. A shot whose pixel
-  // oracle failed is not counted, so this equality is the pass/fail line for
-  // every check above.
-  ASSERT_EQ(4, state.captures);
+  // same menu session right after the viewer closed, and the live name prompt
+  // composed over that full HIRE screen. A failed capture is not counted, so
+  // this equality is the pass/fail line for every check above.
+  ASSERT_EQ(5, state.captures);
 
   // The save0 load mounted the modes campaign; restore the default.
   (void)unmount_campaign_package_with_error(get_mounted_campaign());

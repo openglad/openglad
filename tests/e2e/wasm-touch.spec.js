@@ -44,7 +44,7 @@ const ROOM_VALUE_REGION = { x: 110, y: 40, w: 160, h: 15 };
 const ROOM_VALUE_CENTER = { x: 190, y: 47 };
 
 // prompt_for_string draws its input line at (58, 60), 29 chars * 6px wide,
-// with the shared ACCEPT/CANCEL footer below y=80 (text::input_string_ex).
+// with the shared ACCEPT/CANCEL footer at y=70..84 (text::input_string_ex).
 // Keep the capture frame tall enough to include that footer as well as text.
 const PROMPT_INPUT_REGION = { x: 56, y: 56, w: 184, h: 36 };
 const PROMPT_ACCEPT_BUTTON = { x: 191, y: 79 };

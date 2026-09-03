@@ -110,18 +110,19 @@ static int injector_thread_cancel_click(void* data)
 }
 } // namespace
 
-TEST(TextInputExValue, prompt_action_grid_matches_new_company_naming)
+TEST(TextInputExValue, prompt_dialog_grid_matches_new_company_naming)
 {
     constexpr int kFieldX = 58;
     constexpr int kFieldY = 60;
     constexpr int kFieldWidth = 29 * 6;
-    constexpr int kFieldHeight = 10;
-    constexpr og::ui::PromptActionLayout actions =
-        og::ui::prompt_action_layout(
+    constexpr int kFieldHeight = 6;
+    constexpr og::ui::PromptDialogLayout layout =
+        og::ui::prompt_dialog_layout(
             kFieldX, kFieldY, kFieldWidth, kFieldHeight);
+    constexpr og::ui::PromptActionLayout actions = layout.actions;
 
     EXPECT_EQ(kFieldX, actions.cancel.x);
-    EXPECT_EQ(74, actions.cancel.y);
+    EXPECT_EQ(70, actions.cancel.y);
     EXPECT_EQ(81, actions.cancel.w);
     EXPECT_EQ(14, actions.cancel.h);
     EXPECT_EQ(151, actions.accept.x);
@@ -132,6 +133,12 @@ TEST(TextInputExValue, prompt_action_grid_matches_new_company_naming)
               actions.accept.x - (actions.cancel.x + actions.cancel.w));
     EXPECT_EQ(kFieldX + kFieldWidth,
               actions.accept.x + actions.accept.w);
+    EXPECT_EQ(5, layout.field.x - layout.frame.x);
+    EXPECT_EQ(5, layout.frame.x + layout.frame.w -
+                     (layout.field.x + layout.field.w));
+    EXPECT_EQ(5, layout.frame.y + layout.frame.h -
+                     (actions.accept.y + actions.accept.h))
+        << "the prompt frame must contain the complete action row";
 }
 
 TEST(TextInputExValue, text_input_string_ex_value_accepts_backspace_then_text_and_return)

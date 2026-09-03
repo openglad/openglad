@@ -644,6 +644,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin,
                           unsigned char forecolor, unsigned char backcolor)
 {
+	sync_geometry();
 	short current_length, i;
 	short string_done = 0;
 	static char editstring[100], firststring[100];
@@ -662,8 +663,9 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	// editor. Keep its touch affordances in the same canvas surface as the
 	// field so a phone never has to discover that Return is the only way out.
 	// Its equal columns and 12px gutter deliberately repeat new-company naming.
-	const og::ui::PromptActionLayout actions =
-	    og::ui::prompt_action_layout(x, y, field_width, sizey);
+	const og::ui::PromptDialogLayout layout =
+	    og::ui::prompt_dialog_layout(x, y, field_width, sizey);
+	const og::ui::PromptActionLayout& actions = layout.actions;
 	const og::ui::PromptButtonRect& cancel_button = actions.cancel;
 	const og::ui::PromptButtonRect& accept_button = actions.accept;
 
@@ -676,6 +678,13 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	}
 	snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
 	current_length = static_cast<short>(strlen(editstring));
+	// Own the complete modal geometry here, where the real font height is
+	// known. Callers must not size a frame around a guessed text metric: that
+	// was how the action row escaped the hiring dialog in the first place.
+	og::runtime::current_session->myscreen_->draw_button(
+	    layout.frame.x, layout.frame.y,
+	    layout.frame.x + layout.frame.w,
+	    layout.frame.y + layout.frame.h, 1);
 	og::runtime::current_session->myscreen_->draw_box(x, y, x + field_width, y + sizey, backcolor, 1, 1);
 	og::runtime::current_session->myscreen_->draw_button(x, y, x + field_width, y + sizey, 1);
 	if (begin && begin[0] != '\0')
