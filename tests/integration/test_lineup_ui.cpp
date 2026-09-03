@@ -28,6 +28,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_input_helpers.h"
@@ -705,6 +706,38 @@ bool wait_for_trace(const char* category, const char* substring,
     return false;
 }
 
+// A knob callback reaches the local lobby through an in-process message and
+// the owner restages on a trailing-edge debounce.  Waiting for merely *a*
+// restage can therefore observe the preceding knob's world when an
+// instrumented build makes that handoff slow.  Read the staged save on the
+// menu thread and wait for the generation that actually contains the two
+// requested lineup inputs.
+bool wait_for_staged_lineup(std::size_t team, short fill, short map_units,
+                            int timeout_ms)
+{
+    for (int elapsed = 0; elapsed < timeout_ms; elapsed += 50) {
+        bool current = false;
+        const bool read = run_on_main_thread([&] {
+            og::ui::IPickerLobbyClient* const lobby =
+                og::ui::active_picker_lobby_client();
+            og::server::MatchStage* const stage =
+                lobby != nullptr ? lobby->take_match_stage() : nullptr;
+            current = stage != nullptr &&
+                stage->status() == og::server::StageStatus::Staged &&
+                stage->staged_save().fill[team] == fill &&
+                stage->staged_save().map_units[team] == map_units;
+        });
+        if (read && current)
+            return true;
+        SDL_Delay(50);
+    }
+    fprintf(stderr,
+            "  [lineup] TIMEOUT waiting for staged team %zu fill=%d "
+            "map_units=%d\n",
+            team, static_cast<int>(fill), static_cast<int>(map_units));
+    return false;
+}
+
 std::string first_picker_trace_line_containing(const char* needle)
 {
     std::lock_guard<std::mutex> lock(g_trace_mutex);
@@ -818,7 +851,8 @@ int lineup_fill_flow_injector(void* data)
             wait_for_interactable_at("back", 10, 170, 10000);
         if (state->viewer_opened_after) {
             (void)wait_for_trace(
-                "picker", "view_scenario line   RED TEAM  ACTIVE - BOT SQUAD",
+                "picker",
+                "view_scenario line   RED TEAM  ACTIVE - MATCHED BOTS",
                 10000);
             (void)wait_for_trace("picker", "view_scenario lines=", 5000);
             state->troops_line_after =
@@ -1471,7 +1505,8 @@ int lineup_classic_viewer_injector(void* data)
     state->map_units_green_off = click_and_acknowledge_trace(
         "lineup_map_units_1", "lineup", "map_units team=1 value=1", 5000);
     state->map_units_green_off = state->map_units_green_off &&
-        wait_for_trace("stage", "restaged gen=", 10000);
+        wait_for_staged_lineup(1, og::sim::kFillStrong,
+                               og::sim::kMapUnitsOff, 10000);
     (void)click_and_wait_for_interactable(
         "back", "view_scenario", 10000);  // LINEUP -> SCENARIO
 
