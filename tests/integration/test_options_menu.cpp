@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <vector>
 #include "test_input_helpers.h"
@@ -162,6 +163,11 @@ struct OptionsState {
     int minimum_zoom_steps;
     bool exited_display;
     bool used_options_back;
+    // Main/test thread handshake: options BACK is structural, so its live
+    // button array intentionally remains published after picker_main returns.
+    // The injector therefore proves the click by waiting on the caller that
+    // observed that return, not by guessing from stale surface geometry.
+    std::atomic<bool> picker_returned{false};
     // SPEED (GAME SETTINGS) and BRIGHTNESS (DISPLAY): the two migrated rows
     // that must reach the live game, not just cfg.
     bool cycled_game_speed;
@@ -802,26 +808,43 @@ static int options_injector(void* data)
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking options_back\n");
         if (wait_for_interactable("options_back", 5000)) {
+            // RESTORE SETTINGS performs synchronous load/save work after its
+            // press edge.  Under load its release can still be queued when
+            // the injector sends BACK, making both taps look like one held
+            // pointer to the menu loop.  Establish the next-frame baseline
+            // on the menu thread, then prove BACK landed by waiting for the
+            // test caller to observe picker_main return. This test caps it at
+            // one main-menu call, so a replacement QUIT door is deliberately
+            // never built and the outgoing button array remains published.
+            state->main_thread_tasks_all_ran &=
+                run_on_main_thread([] { reset_mouse_click_tracking(); });
             interact("options_back");
-            state->used_options_back = true;
-            SDL_Delay(500);
+            const Uint64 back_deadline = SDL_GetTicks() + 5000;
+            while (!state->picker_returned.load(std::memory_order_acquire) &&
+                   SDL_GetTicks() < back_deadline)
+                SDL_Delay(50);
+            state->used_options_back =
+                state->picker_returned.load(std::memory_order_acquire);
         }
     }
 
     // Ensure mainmenu() returns so picker_main() can complete. Coverage builds
     // can redraw the main menu slowly after leaving options, so use Escape to
-    // unwind whichever menu is currently active.
-    const Uint64 quit_deadline = SDL_GetTicks() + 3000;
-    while (SDL_GetTicks() < quit_deadline) {
-        if (has_interactable("quit")) {
-            SDL_Delay(80);
-            fprintf(stderr, "  [test] clicking quit\n");
-            interact("quit");
-            break;
-        }
+    // unwind whichever menu is currently active. A successful BACK already
+    // returned picker_main under this test's one-call cap and needs no input.
+    if (!state->used_options_back) {
+        const Uint64 quit_deadline = SDL_GetTicks() + 3000;
+        while (SDL_GetTicks() < quit_deadline) {
+            if (has_interactable("quit")) {
+                SDL_Delay(80);
+                fprintf(stderr, "  [test] clicking quit\n");
+                interact("quit");
+                break;
+            }
 
-        inject_key_press(SDLK_ESCAPE, 20);
-        SDL_Delay(150);
+            inject_key_press(SDLK_ESCAPE, 20);
+            SDL_Delay(150);
+        }
     }
 
     state->finished = true;
@@ -1097,6 +1120,7 @@ TEST(OptionsMenu, options_menu) {
     g_picker_max_mainmenu_calls = 1;  // options REDRAW is handled within same mainmenu() call
 
     picker_main(0, nullptr);
+    state.picker_returned.store(true, std::memory_order_release);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);

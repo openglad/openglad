@@ -155,6 +155,11 @@ class Screen
 		// Build the same scenery + nearest gameplay-UI composition used for
 		// presentation into a newly owned surface (screenshots/tests).
 		SDL_Surface* compose_gameplay_ui_for_capture(SDL_Surface* scenery) const;
+		// UI-menu counterpart: copies `base` and composites any queued or
+		// just-presented native world planes whose destinations use UI coords.
+		// Returns nullptr when no such plane exists.
+		SDL_Surface* compose_native_world_views_for_capture(
+			SDL_Surface* base, CanvasTarget base_canvas) const;
 		// Cancel a prepared overlay without presenting it (fades/transitions).
 		// The owned resources stay cached for the next gameplay frame.
 		void discard_gameplay_ui_frame();
@@ -227,6 +232,44 @@ class Screen
 			return world_present_slices_;
 		}
 
+		// Live-world overlays (camera insets and menu scenario previews) own a
+		// source raster independent of the fixed UI canvases. The raster survives
+		// until swap(), which maps its logical destination rectangles directly to
+		// physical renderer pixels after the base canvas and HUD are composed.
+		NativeWorldViewSource begin_native_world_view(
+			std::span<const NativeWorldViewDestination> destinations);
+		bool end_native_world_view();
+		void cancel_native_world_view();
+		bool native_world_view_active() const
+		{
+			return native_world_view_active_index_ >= 0;
+		}
+#ifdef TESTING
+		std::size_t native_world_view_ready_count_for_testing() const
+		{
+			return native_world_view_ready_count_;
+		}
+		SDL_Surface* native_world_view_surface_for_testing(
+			std::size_t index = 0) const;
+		std::span<const NativeWorldViewDestination>
+		native_world_view_destinations_for_testing(
+			std::size_t index = 0) const
+		{
+			return index < native_world_view_planes_.size()
+				? std::span<const NativeWorldViewDestination>(
+					native_world_view_planes_[index].destinations)
+				: std::span<const NativeWorldViewDestination>{};
+		}
+		void discard_native_world_views_for_testing()
+		{
+			discard_native_world_views();
+		}
+		void fail_next_native_world_view_allocation_for_testing()
+		{
+			fail_next_native_world_view_allocation_ = true;
+		}
+#endif
+
 		// Screen owns SDL handles (window/renderer/surfaces/textures) freed in
 		// the destructor; a shallow copy or move would double-free. It is owned
 		// via std::unique_ptr<Screen>, so make non-copyable/non-movable explicit.
@@ -281,6 +324,18 @@ class Screen
 		void destroy_render2();
 		bool ensure_gameplay_ui_overlay();
 		void destroy_gameplay_ui_overlay();
+		struct NativeWorldViewPlane
+		{
+			SDL_Surface* surface = nullptr;
+			SDL_Texture* texture = nullptr;
+			int failed_w = 0;
+			int failed_h = 0;
+			std::vector<NativeWorldViewDestination> destinations;
+		};
+		bool ensure_native_world_view_plane(std::size_t index, int source_w,
+		                                    int source_h);
+		void destroy_native_world_view_planes();
+		void discard_native_world_views();
 
 		CanvasTarget active_ = CanvasTarget::UI;
 		CanvasTarget last_presented_ = CanvasTarget::UI;
@@ -314,6 +369,13 @@ class Screen
 		// global-only) + the presentation partition (empty = single blit).
 		int world_view_scale_num_ = og::kViewScaleNumMax;
 		std::vector<WorldPresentSlice> world_present_slices_;
+		std::vector<NativeWorldViewPlane> native_world_view_planes_;
+		std::size_t native_world_view_ready_count_ = 0;
+		std::size_t native_world_view_capture_count_ = 0;
+		int native_world_view_active_index_ = -1;
+		CanvasTarget native_world_view_saved_canvas_ = CanvasTarget::UI;
+		SDL_Surface* native_world_view_saved_render_ = nullptr;
+		SDL_Texture* native_world_view_saved_texture_ = nullptr;
 		// A failed SDL allocation is not retried every frame for the same
 		// target dimensions. A canvas/config change clears the latch.
 		int render2_failed_w_ = 0;
@@ -346,6 +408,7 @@ class Screen
 		bool last_world_present_used_render2_ = false;
 		bool fail_next_gameplay_ui_allocation_ = false;
 		bool fail_next_world_canvas_allocation_ = false;
+		bool fail_next_native_world_view_allocation_ = false;
 		bool vsync_enabled_ = true;
 };
 

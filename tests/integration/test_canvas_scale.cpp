@@ -30,6 +30,7 @@
 
 #include <array>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -169,6 +170,117 @@ TEST(CanvasScale, zoom_half_doubles_the_classic_density_world_canvas_and_present
     s->get_pixel(s->canvas_w() - 1, s->canvas_h() - 1, &idx);
     EXPECT_EQ(47, idx);
     s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+}
+
+TEST(CanvasScale, native_world_plane_bypasses_the_fixed_ui_raster)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, nullptr, 0));
+    SDL_Surface* const fixed_ui = E_Screen->render;
+
+    // Four logical UI columns occupy eight physical pixels in the fixture's
+    // 640x400 output. A native world plane supplies all eight samples; routing
+    // through the 320x200 UI could supply only four samples doubled in pairs.
+    const std::array<NativeWorldViewDestination, 1> destinations = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 4, .h = 2}}};
+    const NativeWorldViewSource source =
+        s->begin_native_world_view(destinations);
+    ASSERT_TRUE(source);
+    EXPECT_EQ(8, source.w);
+    EXPECT_EQ(4, source.h);
+    EXPECT_EQ(8, s->canvas_w());
+    EXPECT_EQ(4, s->canvas_h());
+    EXPECT_NE(fixed_ui, E_Screen->render);
+    for (int x = 0; x < 8; ++x)
+    {
+        const Uint32 color = SDL_MapSurfaceRGB(
+            E_Screen->render, static_cast<Uint8>(20 + x * 20),
+            static_cast<Uint8>(240 - x * 20), static_cast<Uint8>(40 + x));
+        const SDL_Rect column{x, 0, 1, 4};
+        ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, &column, color));
+    }
+    ASSERT_TRUE(s->end_native_world_view());
+    EXPECT_EQ(fixed_ui, E_Screen->render);
+
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    SDL_Surface* const presented = SDL_RenderReadPixels(E_Screen->renderer,
+                                                        nullptr);
+    ASSERT_NE(nullptr, presented);
+    ASSERT_GE(presented->w, 8);
+    ASSERT_GE(presented->h, 4);
+    std::array<Uint8, 8> reds{};
+    for (int x = 0; x < 8; ++x)
+    {
+        const auto* const row = reinterpret_cast<const Uint32*>(presented->pixels);
+        Uint8 g = 0;
+        Uint8 b = 0;
+        SDL_GetRGB(row[x], SDL_GetPixelFormatDetails(presented->format),
+                   SDL_GetSurfacePalette(presented),
+                   &reds[static_cast<std::size_t>(x)], &g, &b);
+    }
+    SDL_DestroySurface(presented);
+    for (std::size_t x = 1; x < reds.size(); ++x)
+        EXPECT_NE(reds[x - 1], reds[x])
+            << "native output sample " << x
+            << " was duplicated through the UI raster";
+
+    // Cancellation is transactional even if a nested world draw changed the
+    // remembered logical target while the native plane owned the aliases.
+    ASSERT_TRUE(s->begin_native_world_view(destinations));
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    EXPECT_EQ(CanvasTarget::World, E_Screen->active_canvas());
+    EXPECT_NE(fixed_ui, E_Screen->render);
+    s->cancel_native_world_view();
+    EXPECT_EQ(CanvasTarget::UI, E_Screen->active_canvas());
+    EXPECT_EQ(fixed_ui, E_Screen->render);
+    EXPECT_FALSE(s->native_world_view_active());
+}
+
+TEST(CanvasScale, native_world_plane_rejects_invalid_and_over_budget_transactions)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+
+    const std::array<NativeWorldViewDestination, 2> invalid = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 0, .h = 8},
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 8, .h = -1}}};
+    EXPECT_FALSE(s->begin_native_world_view(invalid));
+    EXPECT_FALSE(s->native_world_view_active());
+
+    // Destination-driven sizing must still pass through the shared world
+    // pixel budget. Hostile dimensions saturate instead of overflowing or
+    // creating an unbounded texture.
+    const std::array<NativeWorldViewDestination, 1> over_budget = {{
+        {.canvas = CanvasTarget::UI,
+         .x = 0,
+         .y = 0,
+         .w = std::numeric_limits<int>::max(),
+         .h = std::numeric_limits<int>::max()}}};
+    EXPECT_FALSE(s->begin_native_world_view(over_budget));
+    EXPECT_FALSE(s->native_world_view_active());
+
+    const std::array<NativeWorldViewDestination, 1> valid = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 4, .h = 2}}};
+    ASSERT_TRUE(s->begin_native_world_view(valid));
+    SDL_Surface* const active_plane = E_Screen->render;
+    EXPECT_FALSE(s->begin_native_world_view(valid))
+        << "a nested begin must not replace the active transaction";
+    EXPECT_EQ(active_plane, E_Screen->render);
+    EXPECT_TRUE(s->end_native_world_view());
+    EXPECT_FALSE(s->end_native_world_view());
 }
 
 TEST(CanvasScale, zoom_steps_keep_nearest_gameplay_ui_at_classic_pixel_density)

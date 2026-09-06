@@ -12,6 +12,28 @@ OpenGlad renders three logical layers:
   It retains classic pixel density, matches the zoom-1 world aspect, and is
   composited with nearest-neighbor sampling after the zoomed scenery.
 
+Live world images embedded inside either UI layer use a separate **native
+world plane**. The plane owns a normal world raster; the backend composites
+that raster directly into its logical UI destination at the physical present
+seam. It never passes through the 320x200 UI surface. The backend derives the
+source dimensions from the destination's actual physical-output dimensions,
+so every available display pixel contributes a distinct world sample without
+rendering unused oversampling. The whole image is scaled only at that seam, so
+tiles, sprites, shadows, weather, and every other world effect retain the same
+transform.
+
+This is a renderer invariant, not a basketball special case. The gameplay
+camera inset and the picker's staged VIEW LEVEL preview are the current
+embedded-world consumers and both use the same `begin_native_world_view` /
+`end_native_world_view` path. Callers provide destinations, not source sizes;
+this prevents a future inset from silently returning to a DOS-sized raster or
+choosing an arbitrarily oversized one. Docked cameras, player views, and the
+level editor already render on the scalable World canvas. A new live preview
+or inset must use one of those two world paths; it must never call a world
+redraw into UI or GameplayUI. If a native-plane allocation is unavailable, the
+live image is omitted and the surrounding UI remains intact. There is
+deliberately no reduced-resolution sprite/effect fallback.
+
 At a 16:10 aspect, `zoom: 1.0` with smoothing off can share the historical
 320x200 surface and texture at any window size. Other aspects expand the
 needed axis instead of stretching it; zoomed-out worlds use a separate canvas.
@@ -226,8 +248,8 @@ reproduce the historical tables exactly.
 The level editor still uses absolute 320x200 coordinates for its panel
 chrome, so it temporarily pins the world canvas to 320x200 and restores the
 aspect-relative zoom dimensions on exit. Its map follows the selected world
-smoothing, while its minimap, authoring guides, picker previews, menus, and
-controller cursor use the nearest gameplay-UI layer. Other fixed-coordinate
+smoothing, while its minimap, authoring guides, menus, and controller cursor
+use the nearest gameplay-UI layer. Other fixed-coordinate
 in-game screens temporarily switch to the UI canvas. When the world canvas is
 separate, they seed that UI canvas from a nearest-scaled copy of the current
 world frame and restore world routing when they close.

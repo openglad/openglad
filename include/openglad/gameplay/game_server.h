@@ -257,6 +257,16 @@ public:
         return disconnected_players_;
     }
 
+#ifdef TESTING
+    // Transport receipt edge for real-socket integration tests. Poll and
+    // classify inbound messages without advancing the authoritative world;
+    // callers can then wait until a named player's input tick is queued before
+    // asking step() to consume it.
+    void testing_poll_transport_without_step();
+    [[nodiscard]] std::uint32_t testing_last_received_input_tick(
+        std::size_t player_index) const noexcept;
+#endif
+
     std::function<bool(int level_id)> on_level_transition;
     std::function<void()> on_save_sync;
     std::function<bool(int destination)> on_exit_accepted;

@@ -111,6 +111,71 @@ static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
     return false;
 }
 
+static bool click_hire_and_wait_for_roster_growth(int timeout_ms = 5000)
+{
+    short team_size_before = -1;
+    if (!run_on_main_thread([&team_size_before] {
+            team_size_before =
+                og::runtime::current_session->myscreen_->save_data.team_size;
+        })) {
+        return false;
+    }
+
+    interact("hire_me");
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        bool grew = false;
+        if (!run_on_main_thread([team_size_before, &grew] {
+                grew = og::runtime::current_session->myscreen_->save_data.team_size >
+                    team_size_before;
+                if (grew)
+                    reset_mouse_click_tracking();
+            })) {
+            return false;
+        }
+        if (grew)
+            return true;
+        SDL_Delay(kCycleStepMs);
+        elapsed += static_cast<int>(kCycleStepMs);
+    }
+    return false;
+}
+
+static bool click_next_and_wait_for_family_change(int timeout_ms = 5000)
+{
+    char family_before = 0;
+    bool had_current_guy = false;
+    if (!run_on_main_thread([&family_before, &had_current_guy] {
+            const guy* const current =
+                og::runtime::current_session->current_guy_.get();
+            had_current_guy = current != nullptr;
+            if (current != nullptr)
+                family_before = current->family;
+        }) || !had_current_guy) {
+        return false;
+    }
+
+    interact("next");
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        bool changed = false;
+        if (!run_on_main_thread([family_before, &changed] {
+                const guy* const current =
+                    og::runtime::current_session->current_guy_.get();
+                changed = current != nullptr && current->family != family_before;
+                if (changed)
+                    reset_mouse_click_tracking();
+            })) {
+            return false;
+        }
+        if (changed)
+            return true;
+        SDL_Delay(kCycleStepMs);
+        elapsed += static_cast<int>(kCycleStepMs);
+    }
+    return false;
+}
+
 // Hire one of each character type via the actual UI, crank stats to absurd
 // levels (programmatically), run level 1 at max speed, and confirm that we win.
 //
@@ -141,6 +206,11 @@ static int fail_op_run(OpState* state, const char* message)
     // Leave the team screen so picker_main can return and the owning test can
     // report the setup failure instead of hanging in SDL_WaitThread.
     if (wait_for_interactable("back", 2000)) {
+        SDL_Delay(kUiSettleMs);
+        interact("back");
+    }
+    if (wait_for_interactable("hire_troops", 5000) &&
+        wait_for_interactable("back", 2000)) {
         SDL_Delay(kUiSettleMs);
         interact("back");
     }
@@ -182,19 +252,19 @@ static int op_injector(void* data)
     // then click NEXT to cycle to the next type.
     fprintf(stderr, "  [test] hiring characters through UI...\n");
     for (int i = 0; i < NUM_HIRE_TYPES; i++) {
-        interact("hire_me");
-        SDL_Delay(kCycleStepMs);
+        if (!click_hire_and_wait_for_roster_growth())
+            return fail_op_run(state, "hire click did not grow the roster");
 
         if (i < NUM_HIRE_TYPES - 1) {
-            interact("next");
-            SDL_Delay(kCycleStepMs);
+            if (!click_next_and_wait_for_family_change())
+                return fail_op_run(state,
+                                   "next click did not change hire family");
         }
     }
 
-    // The final roster update becomes visible before add_guy's main-thread
-    // callback finishes its input reset, recruit sync, and autosave tail.
-    // Do not let BACK overlap that callback.
-    SDL_Delay(750);
+    // Every click above is acknowledged on the menu thread after its roster or
+    // family edge. BACK therefore starts from a clean pointer baseline even
+    // when autosave work makes one menu frame unusually long.
     fprintf(stderr, "  [test] done hiring, clicking back\n");
     interact("back");
 
@@ -352,6 +422,9 @@ TEST(OverpoweredTeam, overpowered_team) {
     // with every map-authored unit still enabled.
     save.fill.fill(og::sim::kFillNone);
     save.map_units.fill(og::sim::kMapUnitsOn);
+    // Hiring every family is the UI path under test; random recruit stats
+    // must not make the later families unaffordable in only some runs.
+    save.infinite_gold = 1;
     ASSERT_TRUE(save.save("save0"));
 
     OpState state = {

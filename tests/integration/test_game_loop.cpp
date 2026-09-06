@@ -7158,11 +7158,16 @@ constexpr short kCameraSoccerLevel = 820;
 // the mode-var slot the ball's id is banked in, right beside the camera
 // declaration in on_mode_init. A silent re-map in the Lua turns this pin.
 constexpr std::size_t kCameraSoccerBallEntityVar = 14;
+// campaigns/modes CENTER COURT (mode_levels.lua [824] = basketball, 2 teams).
+constexpr short kCameraBasketballLevel = 824;
+// S.SHADOW_ENTITY in mode_basketball_impl.lua: the ground marker is the
+// camera target because it stays underneath the ball's fake-z flight.
+constexpr std::size_t kCameraBasketballShadowEntityVar = 15;
 
-// A soccer save the picker could have written: this machine's crew on team 0,
-// one seat per fighter, and a FAIR bot squad on team 1 (the LINEUP FILL code
-// — save_data.fill[team] — which sync_world_from_save_data hands the sim).
-void camera_soccer_boot(screen* game_screen, int seats)
+// A ball-mode save the picker could have written: this machine's crew on team
+// 0, one seat per fighter, and a FAIR bot squad on team 1 (the LINEUP FILL
+// code handed to the sim through save_data.fill[team]).
+void camera_ball_mode_boot(screen* game_screen, int seats, short level)
 {
     reset_default_player_controls();
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -7171,8 +7176,8 @@ void camera_soccer_boot(screen* game_screen, int seats)
     SaveData& save = game_screen->save_data;
     save.reset();
     save.current_campaign = "modes";
-    save.current_levels[save.current_campaign] = kCameraSoccerLevel;
-    save.scen_num = kCameraSoccerLevel;
+    save.current_levels[save.current_campaign] = level;
+    save.scen_num = level;
     save.numplayers = static_cast<unsigned char>(seats);
     save.my_team = 0;
     // SaveData::reset deliberately preserves lobby match settings. Establish
@@ -7201,8 +7206,8 @@ void camera_soccer_boot(screen* game_screen, int seats)
 // Pump the shadow until the declaration has crossed the wire (or give up):
 // the authority declares on its first mode tick, the mirror learns it on the
 // snapshot that follows.
-void camera_soccer_pump_until_declared(og::runtime::GameSession& session,
-                                       screen* game_screen, int max_frames)
+void camera_ball_mode_pump_until_declared(og::runtime::GameSession& session,
+                                          screen* game_screen, int max_frames)
 {
     std::uint32_t tick = 0;
     for (int i = 0; i < max_frames; ++i)
@@ -7213,7 +7218,7 @@ void camera_soccer_pump_until_declared(og::runtime::GameSession& session,
     }
 }
 
-void camera_soccer_teardown(screen* game_screen)
+void camera_ball_mode_teardown(screen* game_screen)
 {
     // Retire the declaration through the real destroy branch so no camera
     // pane (or docked pane count) leaks into the next test in this binary.
@@ -7249,8 +7254,9 @@ void camera_soccer_teardown(screen* game_screen)
 // declares, the display mirror learns it only over the wire, the display
 // materializes the pane on its next redraw, and the authority's own screen
 // stays camera-free.
-void camera_soccer_expect_replicated(screen* display, screen* server,
-                                     og::runtime::GameSession& session)
+void camera_ball_mode_expect_replicated(
+    screen* display, screen* server, og::runtime::GameSession& session,
+    std::size_t target_var, const char* mode_name)
 {
     // Before the first snapshot carrying the declaration: mirrors never run
     // mode Lua (§5 "Mirrors, first frame"), so the display's slot is empty
@@ -7262,16 +7268,18 @@ void camera_soccer_expect_replicated(screen* display, screen* server,
     ASSERT_EQ(nullptr, display->camera_view_.get())
         << "a mirror materialized a camera before its first apply";
 
-    camera_soccer_pump_until_declared(session, display, 400);
+    camera_ball_mode_pump_until_declared(session, display, 400);
 
     const std::int32_t declared = server->world().mode.cameras[0].entity_id;
     ASSERT_NE(0, declared)
         << "the authority never declared the ball camera (mode Lua is "
-           "host-only: no declaration means soccer never inited)";
+           "host-only: no declaration means " << mode_name
+        << " never inited)";
     EXPECT_EQ(declared,
               static_cast<std::int32_t>(
-                  server->world().mode.vars[kCameraSoccerBallEntityVar]))
-        << "the declaration must point at the banked ball (S.BALL_ENTITY)";
+                  server->world().mode.vars[target_var]))
+        << "the declaration must point at " << mode_name
+        << "'s banked camera target";
     EXPECT_EQ(og::sim::kCameraStyleAuto,
               server->world().mode.cameras[0].style);
 
@@ -7325,6 +7333,42 @@ void camera_soccer_expect_replicated(screen* display, screen* server,
     EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"));
 }
 
+void capture_ball_camera_if_requested(screen* display)
+{
+    const char* const path = std::getenv("OG_BASKETBALL_CAMERA_CAPTURE_PATH");
+    if (path == nullptr || path[0] == '\0')
+        return;
+    // Proof must read the physical renderer output. The fixed 320x200 canvas
+    // intentionally contains no camera pixels now; reading it would erase the
+    // very sample density this capture is meant to demonstrate.
+    display->draw_camera_view_ui();
+    display->buffer_to_screen(0, 0, display->canvas_w(), display->canvas_h());
+    SDL_Surface* const presented = SDL_RenderReadPixels(E_Screen->renderer,
+                                                        nullptr);
+    if (presented == nullptr)
+        return;
+    FILE* const output = std::fopen(path, "wb");
+    if (output == nullptr)
+    {
+        SDL_DestroySurface(presented);
+        return;
+    }
+    std::fprintf(output, "P6\n%d %d\n255\n", presented->w, presented->h);
+    for (int y = 0; y < presented->h; ++y)
+        for (int x = 0; x < presented->w; ++x)
+        {
+            Uint8 r = 0;
+            Uint8 g = 0;
+            Uint8 b = 0;
+            SDL_ReadSurfacePixel(presented, x, y, &r, &g, &b, nullptr);
+            std::fputc(r, output);
+            std::fputc(g, output);
+            std::fputc(b, output);
+        }
+    std::fclose(output);
+    SDL_DestroySurface(presented);
+}
+
 } // namespace
 
 // Three local seats: style "auto" resolves DOCKED here — the camera takes the
@@ -7335,7 +7379,7 @@ TEST(GameLoop, host_and_join_soccer_camera_docks_on_a_three_seat_machine)
     screen* const display = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, display);
     trace_clear();
-    camera_soccer_boot(display, 3);
+    camera_ball_mode_boot(display, 3, kCameraSoccerLevel);
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
 
     ASSERT_NE(nullptr, og::runtime::current_game_session);
@@ -7349,7 +7393,8 @@ TEST(GameLoop, host_and_join_soccer_camera_docks_on_a_three_seat_machine)
     ASSERT_NE(nullptr, server);
     ASSERT_NE(display, server);
 
-    camera_soccer_expect_replicated(display, server, session);
+    camera_ball_mode_expect_replicated(
+        display, server, session, kCameraSoccerBallEntityVar, "soccer");
     if (!::testing::Test::HasFatalFailure())
     {
         EXPECT_TRUE(display->camera_docked_)
@@ -7375,7 +7420,7 @@ TEST(GameLoop, host_and_join_soccer_camera_docks_on_a_three_seat_machine)
         EXPECT_EQ(quadrant.h, display->camera_view_->yview);
     }
 
-    camera_soccer_teardown(display);
+    camera_ball_mode_teardown(display);
 }
 
 // One local seat, the same replicated declaration: style "auto" resolves
@@ -7388,7 +7433,7 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
     screen* const display = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, display);
     trace_clear();
-    camera_soccer_boot(display, 1);
+    camera_ball_mode_boot(display, 1, kCameraSoccerLevel);
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
 
     ASSERT_NE(nullptr, og::runtime::current_game_session);
@@ -7407,7 +7452,8 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
                                   display->viewob[0]->xview,
                                   display->viewob[0]->yview};
 
-    camera_soccer_expect_replicated(display, server, session);
+    camera_ball_mode_expect_replicated(
+        display, server, session, kCameraSoccerBallEntityVar, "soccer");
     if (!::testing::Test::HasFatalFailure())
     {
         EXPECT_FALSE(display->camera_docked_)
@@ -7439,11 +7485,6 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
         EXPECT_EQ(block.y, display->camera_view_->yloc +
                                display->camera_view_->yview + block.margin)
             << "the pane must sit one radar margin above the radar block";
-        // And it draws at 0.25 zoom (maintainer ruling): the radar-sized rect
-        // shows the kCameraMinimapZoomDenominator-times world window through
-        // the camera_scale layer, so the ball arrives with its surroundings.
-        EXPECT_TRUE(display->camera_minimap_zoom_)
-            << "the one-seat second minimap must resolve to the 0.25 zoom";
         // The seat is byte-identical to its pre-camera geometry.
         EXPECT_EQ(seat_before.xloc, display->viewob[0]->xloc);
         EXPECT_EQ(seat_before.yloc, display->viewob[0]->yloc);
@@ -7451,5 +7492,53 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
         EXPECT_EQ(seat_before.yview, display->viewob[0]->yview);
     }
 
-    camera_soccer_teardown(display);
+    camera_ball_mode_teardown(display);
+}
+
+// Reporter regression (#277): CENTER COURT's auxiliary camera is a minimap,
+// not a second gameplay viewport. It must keep the radar's compact 45x25
+// footprint while its expanded native-world source provides the wide court
+// view. Expanding the HUD block to 96x60 obscured the court.
+TEST(GameLoop, host_and_join_basketball_camera_is_compact)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, display);
+    trace_clear();
+    camera_ball_mode_boot(display, 1, kCameraBasketballLevel);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server);
+
+    camera_ball_mode_expect_replicated(
+        display, server, session, kCameraBasketballShadowEntityVar,
+        "basketball");
+    if (!::testing::Test::HasFatalFailure())
+    {
+        ASSERT_NE(nullptr, display->camera_view_.get());
+        const int ui_w = display->gameplay_ui_canvas_w();
+        const int ui_h = display->gameplay_ui_canvas_h();
+        const og::view_layout::ViewLayout pane =
+            og::view_layout::compute_view_layout(
+                display->layout_pane_count(), 0,
+                static_cast<int>(display->viewob[0]->prefs[PREF_VIEW]),
+                ui_w, ui_h);
+        ASSERT_TRUE(pane.applies);
+        const auto [block_w, block_h] = radar_block_extents(
+            display->world().grid.w, display->world().grid.h);
+        const RadarBlock radar = radar_block_for_pane(
+            pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
+            /*force_lower=*/false);
+        EXPECT_EQ(radar.x, display->camera_view_->xloc);
+        EXPECT_EQ(radar.y - radar.margin - radar.h,
+                  display->camera_view_->yloc);
+        EXPECT_EQ(radar.w, display->camera_view_->xview);
+        EXPECT_EQ(radar.h, display->camera_view_->yview);
+        capture_ball_camera_if_requested(display);
+    }
+
+    camera_ball_mode_teardown(display);
 }

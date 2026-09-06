@@ -718,6 +718,12 @@ viewscreen::FloorPassParams viewscreen::compute_floor_pass(
 
 bool viewscreen::redraw()
 {
+	if (active_screen()->active_canvas() != CanvasTarget::World &&
+	    !active_screen()->native_world_view_active())
+	{
+		LogError("Refusing to rasterize a live world into a fixed UI canvas.\n");
+		return false;
+	}
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
@@ -750,12 +756,10 @@ bool viewscreen::redraw()
             respawn_focus.has_value() ? respawn_focus->x : control_pos.xpos;
         const float camera_y =
             respawn_focus.has_value() ? respawn_focus->y : control_pos.ypos;
-        camera_topx_float =
-            camera_x -
-            static_cast<float>(xview - controlob->sizex()) / 2.0f;
-        camera_topy_float =
-            camera_y -
-            static_cast<float>(yview - controlob->sizey()) / 2.0f;
+		camera_topx_float =
+		    camera_x - static_cast<float>(xview - controlob->sizex()) / 2.0f;
+		camera_topy_float =
+		    camera_y - static_cast<float>(yview - controlob->sizey()) / 2.0f;
 		topx = static_cast<Sint32>(camera_topx_float);
 		topy = static_cast<Sint32>(camera_topy_float);
 	}
@@ -1022,6 +1026,12 @@ bool viewscreen::redraw()
 bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 {
     if (!data) return false;
+	if (active_screen()->active_canvas() != CanvasTarget::World &&
+	    !active_screen()->native_world_view_active())
+	{
+		LogError("Refusing to rasterize a live world into a fixed UI canvas.\n");
+		return false;
+	}
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
@@ -1053,12 +1063,10 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
             respawn_focus.has_value() ? respawn_focus->x : control_pos.xpos;
         const float camera_y =
             respawn_focus.has_value() ? respawn_focus->y : control_pos.ypos;
-        camera_topx_float =
-            camera_x -
-            static_cast<float>(xview - controlob->sizex()) / 2.0f;
-        camera_topy_float =
-            camera_y -
-            static_cast<float>(yview - controlob->sizey()) / 2.0f;
+		camera_topx_float =
+		    camera_x - static_cast<float>(xview - controlob->sizex()) / 2.0f;
+		camera_topy_float =
+		    camera_y - static_cast<float>(yview - controlob->sizey()) / 2.0f;
 		topx = static_cast<Sint32>(camera_topx_float);
 		topy = static_cast<Sint32>(camera_topy_float);
 	}

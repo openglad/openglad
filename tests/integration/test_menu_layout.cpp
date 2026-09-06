@@ -676,14 +676,17 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_team_5", "", 61, 115, 10, 10, MenuNav{.up = 20, .down = 22, .left = 5, .right = 13}, false, true},
         {"roster_team_6", "", 61, 129, 10, 10, MenuNav{.up = 21, .down = 23, .left = 6, .right = 14}, false, true},
         {"roster_team_7", "", 61, 143, 10, 10, MenuNav{.up = 22, .down = 31, .left = 7, .right = 15}, false, true},
-        {"roster_page_prev", "<", 258, 15, 14, 10, MenuNav{.down = 8, .right = 25}, true},
-        {"roster_page_next", ">", 298, 15, 14, 10, MenuNav{.down = 8, .left = 24}, true},
+        {"roster_page_prev", "<", 258, 15, 14, 10,
+         MenuNav{.down = 8, .left = 28, .right = 25}, false},
+        {"roster_page_next", ">", 298, 15, 14, 10,
+         MenuNav{.down = 8, .left = 24}, false},
         {"scenario_line", "", 8, 14, 206, 12, MenuNav{.down = 29, .right = 28}, false, true},
         {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 7, .right = 72}, false},
         // The roster band header's HIRE (docs/basecamp-zones-design.md):
         // same id/ordinal, relocated beside the pager cluster; the slot it
         // left on the strip is the DIFFICULTY door at ordinal 72.
-        {"hire_troops", "HIRE", 220, 14, 34, 12, MenuNav{.down = 0, .left = 26}, false},
+        {"hire_troops", "HIRE", 220, 14, 34, 12,
+         MenuNav{.down = 0, .left = 26, .right = 24}, false},
         {"scenario", "SCENARIO", 132, 178, 62, 18, MenuNav{.up = 26, .left = 72, .right = 30}, false},
         {"networking", "NETWORK", 200, 178, 56, 18, MenuNav{.up = 15, .left = 29, .right = 31}, false},
         {"go", "GO", 262, 178, 50, 18, MenuNav{.up = 15, .left = 30}, false},
@@ -2276,10 +2279,12 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                         << variant << " team chip row " << r;
                 }
                 EXPECT_EQ(expected_visible, visible_rows) << variant;
-                // Pagers show exactly when the roster spans pages.
-                EXPECT_EQ(roster_size <= kBaseCampRosterRowsPerPage,
-                          buttons[kBaseCampPagePrevIndex].hidden)
-                    << variant;
+                // The fixed pager cluster remains visible on one-page
+                // rosters as inert placeholders, preserving HIRE's alignment.
+                EXPECT_FALSE(buttons[kBaseCampPagePrevIndex].hidden)
+                    << variant << " previous-page placeholder";
+                EXPECT_FALSE(buttons[kBaseCampPageNextIndex].hidden)
+                    << variant << " next-page placeholder";
             }
         }
 

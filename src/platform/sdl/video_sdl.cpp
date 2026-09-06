@@ -374,7 +374,6 @@ sdl_video::~sdl_video()
 	// display) before any SDL_Quit below.
 	if (floor_layer_) { SDL_DestroySurface(floor_layer_); floor_layer_ = nullptr; }
 	if (floor_layer_scaled_) { SDL_DestroySurface(floor_layer_scaled_); floor_layer_scaled_ = nullptr; }
-	if (camera_scale_layer_) { SDL_DestroySurface(camera_scale_layer_); camera_scale_layer_ = nullptr; }
 
 	// Only the display-owning video instance tears down SDL.
 	// IMPORTANT: All non-owning video instances (sub-sessions with
@@ -1565,6 +1564,30 @@ void sdl_video::destroy_accel_surface(void* surface)
     SDL_DestroySurface(static_cast<SDL_Surface*>(surface));
 }
 
+NativeWorldViewSource sdl_video::begin_native_world_view(
+    std::span<const NativeWorldViewDestination> destinations)
+{
+    return E_Screen != nullptr
+        ? E_Screen->begin_native_world_view(destinations)
+        : NativeWorldViewSource{};
+}
+
+bool sdl_video::end_native_world_view()
+{
+    return E_Screen != nullptr && E_Screen->end_native_world_view();
+}
+
+void sdl_video::cancel_native_world_view()
+{
+    if (E_Screen != nullptr)
+        E_Screen->cancel_native_world_view();
+}
+
+bool sdl_video::native_world_view_active() const
+{
+    return E_Screen != nullptr && E_Screen->native_world_view_active();
+}
+
 // ---- Multi-floor vertical-parallax off-screen layer compositing ----
 //
 // A non-camera floor that is faded/ghosted is drawn 1:1 onto a transparent
@@ -1940,118 +1963,6 @@ bool sdl_video::floor_layer_redirect_active_for_testing() const
 {
     return floor_layer_saved_render_ != nullptr;
 }
-
-// Camera-pane downscale (video::camera_scale_begin contract): redirect the
-// world draw to a black-cleared off-screen layer of exactly w x h at (0,0).
-// Same redirect shape as floor_layer_begin, on its own surface + saved slot,
-// so a multi-floor camera redraw can still begin/end floor layers inside it
-// (their end composites onto E_Screen->render — this layer — as intended).
-bool sdl_video::camera_scale_begin(Sint32 w, Sint32 h)
-{
-    if (!E_Screen || !E_Screen->render || w <= 0 || h <= 0)
-        return false;
-#ifdef TESTING
-    if (fail_next_camera_scale_allocation_)
-    {
-        fail_next_camera_scale_allocation_ = false;
-        return false;
-    }
-#endif
-    if (!camera_scale_layer_ || camera_scale_layer_->w < w ||
-        camera_scale_layer_->h < h ||
-        camera_scale_layer_->format != E_Screen->render->format)
-    {
-        // Transactional growth, the floor-layer shape: a failed allocation
-        // keeps any smaller cached layer and yields to the caller's 1:1 draw.
-        SDL_Surface* const next =
-            SDL_CreateSurface(w, h, E_Screen->render->format);
-        if (!next)
-            return false;
-        SDL_DestroySurface(camera_scale_layer_);
-        camera_scale_layer_ = next;
-    }
-    // Black base — the background a seat pane composites against.
-    SDL_Rect r{0, 0, w, h};
-    if (!SDL_FillSurfaceRect(camera_scale_layer_, &r, 0x00000000u))
-        return false;
-    camera_scale_saved_render_ = E_Screen->render;
-    E_Screen->render = camera_scale_layer_;
-    return true;
-}
-
-// Restore the real target, then copy the layer down onto the (x,y,w,h) pane
-// rect with the integer nearest sample dst(i,j) = layer(i*den, j*den) —
-// whole-pixel copies, no floats, no filtering (the 4:1 mapping the one-seat
-// minimap tests pin). Re-entrant per pane rect after a single begin: a second
-// call finds no saved target to restore and simply samples the held layer
-// again (the two-seat near-minimap's second block).
-void sdl_video::camera_scale_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
-                                 Sint32 denominator)
-{
-    if (!E_Screen)
-        return;
-    if (camera_scale_saved_render_)
-    {
-        E_Screen->render = camera_scale_saved_render_;
-        camera_scale_saved_render_ = nullptr;
-    }
-    SDL_Surface* const target = E_Screen->render;
-    SDL_Surface* const layer = camera_scale_layer_;
-    if (!target || !layer || w <= 0 || h <= 0 || denominator <= 0)
-        return;
-    const SDL_PixelFormatDetails* const det =
-        cached_format_details(target->format);
-    if (layer->format != target->format || det == nullptr ||
-        det->bytes_per_pixel != 4)
-    {
-        // Unreached with the XRGB8888 canvases (begin allocates in the
-        // render's own format); kept as a safe nearest scaled blit rather
-        // than a silent skip.
-        SDL_Rect src{0, 0, w * denominator, h * denominator};
-        SDL_Rect dst{x, y, w, h};
-        SDL_BlitSurfaceScaled(layer, &src, target, &dst,
-                              SDL_SCALEMODE_NEAREST);
-        return;
-    }
-    for (Sint32 j = 0; j < h; ++j)
-    {
-        const Sint32 dy = y + j;
-        const Sint32 sy = j * denominator;
-        if (dy < 0 || dy >= target->h || sy >= layer->h)
-            continue;
-        const Uint32* const src_row = reinterpret_cast<const Uint32*>(
-            static_cast<const Uint8*>(layer->pixels) +
-            static_cast<std::size_t>(sy) *
-                static_cast<std::size_t>(layer->pitch));
-        Uint32* const dst_row = reinterpret_cast<Uint32*>(
-            static_cast<Uint8*>(target->pixels) +
-            static_cast<std::size_t>(dy) *
-                static_cast<std::size_t>(target->pitch));
-        for (Sint32 i = 0; i < w; ++i)
-        {
-            const Sint32 dx = x + i;
-            const Sint32 sx = i * denominator;
-            if (dx < 0 || dx >= target->w || sx >= layer->w)
-                continue;
-            dst_row[dx] = src_row[sx];
-        }
-    }
-}
-
-void sdl_video::fail_next_camera_scale_allocation_for_testing()
-{
-    // Mirror fail_next_floor_layer_allocation_for_testing: restore
-    // defensively so an aborted pass never leaves the redirect dangling.
-    if (camera_scale_saved_render_ && E_Screen)
-        E_Screen->render = camera_scale_saved_render_;
-    camera_scale_saved_render_ = nullptr;
-    SDL_DestroySurface(camera_scale_layer_);
-    camera_scale_layer_ = nullptr;
-#ifdef TESTING
-    fail_next_camera_scale_allocation_ = true;
-#endif
-}
-
 
 // walkputbuffer draws active guys to the screen (basically all non-tiles
 // c-only since it isn't used that often (despite what you might think)
@@ -3722,6 +3633,13 @@ bool sdl_video::save_screenshot()
 			surf = composed_frame;
 		else if (overlay != nullptr)
 			return false;
+	}
+	else if (E_Screen->active_canvas() == CanvasTarget::UI)
+	{
+		composed_frame = E_Screen->compose_native_world_views_for_capture(
+			surf, CanvasTarget::UI);
+		if (composed_frame != nullptr)
+			surf = composed_frame;
 	}
 	
 	static int i = 1;

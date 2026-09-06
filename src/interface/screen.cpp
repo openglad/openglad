@@ -652,6 +652,22 @@ void screen::destroy_accel_surface(void* surface)
     video_impl_->destroy_accel_surface(surface);
 }
 
+NativeWorldViewSource screen::begin_native_world_view(
+    std::span<const NativeWorldViewDestination> destinations)
+{
+    return video_impl_->begin_native_world_view(destinations);
+}
+
+bool screen::end_native_world_view()
+{
+    return video_impl_->end_native_world_view();
+}
+
+void screen::cancel_native_world_view()
+{
+    video_impl_->cancel_native_world_view();
+}
+
 bool screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 {
     return video_impl_->floor_layer_begin(x, y, w, h);
@@ -690,22 +706,6 @@ std::int64_t screen::floor_layer_scaled_pixels_for_testing() const
 bool screen::floor_layer_redirect_active_for_testing() const
 {
     return video_impl_->floor_layer_redirect_active_for_testing();
-}
-
-bool screen::camera_scale_begin(Sint32 w, Sint32 h)
-{
-    return video_impl_->camera_scale_begin(w, h);
-}
-
-void screen::camera_scale_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
-                              Sint32 denominator)
-{
-    video_impl_->camera_scale_end(x, y, w, h, denominator);
-}
-
-void screen::fail_next_camera_scale_allocation_for_testing()
-{
-    video_impl_->fail_next_camera_scale_allocation_for_testing();
 }
 
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
@@ -1293,21 +1293,14 @@ void screen::relayout_views()
 // Derived camera geometry (docs/camera-views-design.md §6): docked = the
 // fourth quadrant through the SAME pure pipeline the seats use
 // (compute_view_layout + project_view_layout — no parallel layout math);
-// inset = the centered GameplayUI-canvas rect (fixed classic density, immune
-// to world-canvas zoom recomposition) at 2 and 4 seats, and the second
-// minimap above the radar block at 1 seat. Always derived, never accumulated.
+// inset = a live-art pane above each radar at 1/2 seats, or the centered
+// GameplayUI-canvas rect (fixed classic density, immune to world-canvas zoom
+// recomposition) at 4 seats. Always derived, never accumulated.
 void screen::relayout_camera_view()
 {
 	camera_pane_rects_.clear();
 	if (camera_view_ == nullptr)
 		return;
-	// Zoom is resolved WITH the geometry: only the one-seat second minimap
-	// below sets it (maintainer ruling, §6) — the docked quadrant and the
-	// 2/4-seat centered inset are full-size panes and stay 1:1.
-	// (Two-seat ruling: the two-seat blocks are second minimaps too, so they
-	// take the same zoom; the docked quadrant and the 4-seat centered inset
-	// are the panes that stay 1:1.)
-	camera_minimap_zoom_ = false;
 	if (camera_docked_)
 	{
 		const int ui_w = gameplay_ui_canvas_w();
@@ -1339,10 +1332,10 @@ void screen::relayout_camera_view()
 		// One seat, the SECOND MINIMAP (maintainer ruling, §6): the lone seat
 		// camera keeps its own hero at the canvas centre, so a centered inset
 		// would sit exactly on top of him. The pane becomes a second minimap
-		// instead — the radar block mirrored: the same size, the same right
-		// edge, stacked directly above the radar's rect with the radar's own
-		// pane margin between the two. Derived from the COMPUTED radar
-		// position (radar_block_for_pane, the one placement rule), so
+		// instead — the radar's compact footprint mirrored directly above it
+		// with the radar's own pane margin. Derived
+		// from the COMPUTED radar position (radar_block_for_pane, the one
+		// placement rule), so
 		// PREF_RADAR off anchors it identically.
 		// Two seats (maintainer ruling): EACH seat gets that block, stacked
 		// above its own radar inside its own side-by-side pane, both showing
@@ -1351,22 +1344,15 @@ void screen::relayout_camera_view()
 		for (int seat = 0; seat < numviews; ++seat)
 			camera_pane_rects_.push_back(
 			    camera_minimap_block_for_seat(seat, ui_w, ui_h));
-		// A radar-sized pane at 1:1 is too zoomed-in to be useful
-		// (maintainer ruling, §6): draw it at 0.25 zoom — the same rect, a
-		// kCameraMinimapZoomDenominator-times world window, integer-
-		// downsampled by draw_camera_view_ui through the camera_scale layer.
-		camera_minimap_zoom_ = true;
 		break;
 	}
 	default:
 	{
-		// Inset at 2 and 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
+		// Inset at 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
 		// min 96x60, centered — the canvas centre is a pane boundary there, and
 		// the bottom-right corner belongs to another seat's radar.
 		// GameplayUI coordinates; the World canvas and the seat layout
 		// never see it, so layout_pane_count() stays == numviews.
-		// (Two-seat ruling: 4 seats only now — 2 seats take the per-seat
-		// blocks above.)
 		int w = ui_w * 3 / 10;
 		int h = ui_h * 3 / 10;
 		if (w < 96)
@@ -1378,8 +1364,8 @@ void screen::relayout_camera_view()
 		break;
 	}
 	}
-	// The camera viewscreen rests on the first rect; draw_camera_view_ui
-	// walks the rest with draw-scoped resizes.
+	// The camera viewscreen rests on the first logical rect; the inset draw
+	// temporarily gives it native source geometry and restores this home.
 	const CameraPaneRect& home = camera_pane_rects_.front();
 	camera_view_->resize(
 	    static_cast<short>(home.x), static_cast<short>(home.y),
@@ -1389,9 +1375,9 @@ void screen::relayout_camera_view()
 // The near-minimap block for one seat (docs/camera-views-design.md §6): the
 // seat's UI pane through compute_view_layout — the rectangle the radar
 // anchors to, the same projection ScopedGameplayUiViewLayout applies before
-// it draws — then the radar block on it through the shared placement rule,
-// mirrored one radar margin above the block. Shared by the one-seat and the
-// two-seat arms of relayout_camera_view.
+// it draws — then the radar block on it through the shared placement rule.
+// The camera shares the radar's right edge and sits one radar margin above
+// it. Shared by the one-seat and the two-seat arms of relayout_camera_view.
 CameraPaneRect screen::camera_minimap_block_for_seat(int seat, int ui_w,
                                                      int ui_h) const
 {
@@ -1407,17 +1393,11 @@ CameraPaneRect screen::camera_minimap_block_for_seat(int seat, int ui_w,
 	        layout_pane_count(), seat, mode, ui_w, ui_h);
 	if (!pane.applies)
 		pane = og::view_layout::ViewLayout{true, 0, 0, ui_w, ui_h};
-	auto [block_w, block_h] = radar_block_extents(
+	const auto [radar_w, radar_h] = radar_block_extents(
 	    level_runtime_data_.world().grid.w,
 	    level_runtime_data_.world().grid.h);
-	// No level grid (a declared camera always has one): keep the
-	// unclamped block rather than a degenerate pane.
-	if (block_w <= 0)
-		block_w = RADAR_X;
-	if (block_h <= 0)
-		block_h = RADAR_Y;
 	const RadarBlock block = radar_block_for_pane(
-	    pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
+	    pane.y, pane.x + pane.w, pane.y + pane.h, radar_w, radar_h,
 	    /*force_lower=*/false);
 	return CameraPaneRect{block.x, block.y - block.margin - block.h,
 	                      block.w, block.h};
@@ -1458,7 +1438,6 @@ void screen::sync_camera_views()
 			camera_entity_id_ = 0;
 			camera_style_ = og::sim::kCameraStyleAuto;
 			camera_docked_ = false;
-			camera_minimap_zoom_ = false;
 			TRACE("camera", "destroy docked=%d", was_docked ? 1 : 0);
 			if (was_docked)
 				relayout_views(); // seats fall back to the 3-view layout
@@ -1548,15 +1527,12 @@ void screen::draw_camera_view_world()
 	draw_box(r.x + 1, r.y + 1, r.x + r.w - 2, r.y + r.h - 2, 0, 0, 1);
 }
 
-// Inset camera draw (docs/camera-views-design.md §6): renders the camera's
-// world content onto the GameplayUI canvas at the inset geometry via the
-// staged-preview draw mechanism, called at the two game_loop seams (after
-// score_panel, before the present). The camera's rect IS the inset geometry
-// — set by relayout_camera_view, never re-derived here (no rule twins). The
-// data overload composes exactly the picker staged-preview shape: direct
-// geometry + redraw(data, draw_radar=false) under a GameplayUI canvas scope
-// (the seams provide the scope too; nesting the target scope is the normal
-// HUD idiom and keeps direct calls correct).
+// Inset camera draw (docs/camera-views-design.md §6): renders one expanded
+// world raster into the backend's resolution-independent native-world plane,
+// then queues that raster for every logical GameplayUI destination. No live
+// world pixel ever enters the fixed UI surface. The single final composite is
+// also the single scale operation, so tiles, sprites, and effects cannot use
+// disagreeing projection rules.
 void screen::draw_camera_view_ui()
 {
 	if (camera_view_ == nullptr || camera_docked_ || camera_pane_rects_.empty())
@@ -1572,97 +1548,37 @@ void screen::draw_camera_view_ui()
 	if (canvas_w() != gameplay_ui_canvas_w() ||
 	    canvas_h() != gameplay_ui_canvas_h())
 		return;
-	// The widened resize is draw-scoped geometry, not a relayout:
-	// leave redrawme as the frame found it. (So is every per-block
-	// placement below, hence the save spans the whole draw.)
+	const CameraPaneRect& home = camera_pane_rects_.front();
+	std::vector<NativeWorldViewDestination> destinations;
+	destinations.reserve(camera_pane_rects_.size());
+	for (const CameraPaneRect& r : camera_pane_rects_)
+		destinations.push_back(NativeWorldViewDestination{
+		    CanvasTarget::GameplayUI, r.x, r.y, r.w, r.h});
+	const NativeWorldViewSource source =
+		begin_native_world_view(destinations);
+	if (!source)
+		return;
+
+	// Source placement is draw-scoped geometry, not a relayout; leave
+	// redrawme as the frame found it and restore the pinned logical pane after
+	// the off-screen draw.
 	const short saved_redrawme = redrawme;
-	// Draw-scoped placement: the camera viewscreen rests on the first rect
-	// (relayout_camera_view); walking a second block at 2 seats moves it
-	// for the draw and the tail puts it back. A no-op when already there.
-	const auto place = [&](const CameraPaneRect& r) {
-		if (camera_view_->xloc == r.x && camera_view_->yloc == r.y &&
-		    camera_view_->xview == r.w && camera_view_->yview == r.h)
-			return;
-		camera_view_->resize(
-		    static_cast<short>(r.x), static_cast<short>(r.y),
-		    static_cast<short>(r.w), static_cast<short>(r.h));
-	};
-	// The plain 1:1 pane draw, at a rect.
-	const auto draw_one_to_one = [&](const CameraPaneRect& r) {
-		place(r);
-		(void)camera_view_->redraw(&level_runtime_data_,
-		                           /*draw_radar=*/false);
-	};
-	bool drew_scaled = false;
-	if (camera_minimap_zoom_)
-	{
-		// One-seat 0.25 zoom (maintainer ruling, §6): same pane rect, a
-		// kCameraMinimapZoomDenominator-times world window. Render the
-		// widened window 1:1 into the off-screen camera_scale layer through
-		// the SAME viewscreen redraw as above — the viewscreen is simply
-		// four times as large for this draw, so the seat centering and the
-		// world-edge behavior are inherited, not re-implemented — then
-		// integer-downsample the layer onto the pane rect. A failed layer
-		// allocation yields to the 1:1 draw below: the pane stays live,
-		// merely zoomed in for the frame (the R2 degrade-don't-corrupt
-		// shape). Still zero game-rng calls: the layer path draws exactly
-		// what a (larger) seat pane draws.
-		// Two seats (maintainer ruling): both blocks show the same target
-		// at the same zoom, so when they share extents (they do for the
-		// symmetric side-by-side split) the layer is rendered ONCE and
-		// sampled into every block — camera_scale_end per rect, the first
-		// call restoring the target and each call sampling the held layer.
-		// Blocks of differing extents (a seat in a different PREF_VIEW
-		// mode is still the same grid clamp, but keep the fallback honest)
-		// render per block instead.
-		const auto render_layer_for = [&](const CameraPaneRect& r) {
-			const short zoomed_w =
-			    static_cast<short>(r.w * kCameraMinimapZoomDenominator);
-			const short zoomed_h =
-			    static_cast<short>(r.h * kCameraMinimapZoomDenominator);
-			if (!camera_scale_begin(zoomed_w, zoomed_h))
-				return false;
-			camera_view_->resize(static_cast<short>(0),
-			                     static_cast<short>(0), zoomed_w, zoomed_h);
-			(void)camera_view_->redraw(&level_runtime_data_,
-			                           /*draw_radar=*/false);
-			return true;
-		};
-		const CameraPaneRect& first = camera_pane_rects_.front();
-		bool uniform = true;
-		for (const CameraPaneRect& r : camera_pane_rects_)
-			if (r.w != first.w || r.h != first.h)
-				uniform = false;
-		if (uniform)
-		{
-			if (render_layer_for(first))
-			{
-				for (const CameraPaneRect& r : camera_pane_rects_)
-					camera_scale_end(r.x, r.y, r.w, r.h,
-					                 kCameraMinimapZoomDenominator);
-				drew_scaled = true;
-			}
-		}
-		else
-		{
-			for (const CameraPaneRect& r : camera_pane_rects_)
-			{
-				if (render_layer_for(r))
-					camera_scale_end(r.x, r.y, r.w, r.h,
-					                 kCameraMinimapZoomDenominator);
-				else
-					draw_one_to_one(r);
-			}
-			drew_scaled = true;
-		}
-	}
-	if (!drew_scaled)
-		for (const CameraPaneRect& r : camera_pane_rects_)
-			draw_one_to_one(r);
-	// Back on the first rect — the rect the geometry pins and the scrubs
-	// read.
-	place(camera_pane_rects_.front());
+	camera_view_->resize(0, 0, static_cast<short>(source.w),
+	                     static_cast<short>(source.h));
+	const bool rendered =
+		camera_view_->redraw(&level_runtime_data_, /*draw_radar=*/false);
+	camera_view_->resize(
+	    static_cast<short>(home.x), static_cast<short>(home.y),
+	    static_cast<short>(home.w), static_cast<short>(home.h));
 	redrawme = saved_redrawme;
+	if (!rendered)
+	{
+		cancel_native_world_view();
+		return;
+	}
+
+	if (!end_native_world_view())
+		return;
 	// 1px border framing the world content (corners inclusive).
 	// (One per block.)
 	for (const CameraPaneRect& r : camera_pane_rects_)
@@ -1714,7 +1630,6 @@ void screen::cleanup(short howmany)
     camera_view_.reset();
     camera_pane_rects_.clear();
     camera_docked_ = false;
-    camera_minimap_zoom_ = false;
     // §7.1: destroyed views leave no windows to present; a later World
     // present must not replay their canvas-space slices.
     video_impl_->set_world_present_slices({});
@@ -1949,6 +1864,9 @@ bool screen::redraw()
 	// and direct test calls all pass through here; the authoritative server
 	// never calls redraw()).
 	sync_camera_views();
+	// A gameplay redraw is always world content. Make that routing explicit so
+	// no caller can inherit a menu/UI target and rasterize scenery into it.
+	set_active_canvas(CanvasTarget::World);
 	// Reserve the stable classic-density gameplay-chrome layer before any view
 	// draws. At exact classic dimensions with nearest rendering, and on an
 	// allocation fallback, the HUD scopes safely alias World.

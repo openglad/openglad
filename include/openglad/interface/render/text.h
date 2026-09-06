@@ -27,6 +27,69 @@
 class screen;
 class viewscreen;
 
+namespace og::ui
+{
+struct PromptButtonRect
+{
+	int x = 0;
+	int y = 0;
+	int w = 0;
+	int h = 0;
+};
+
+struct PromptActionLayout
+{
+	PromptButtonRect cancel;
+	PromptButtonRect accept;
+};
+
+struct PromptDialogLayout
+{
+	PromptButtonRect frame;
+	PromptButtonRect field;
+	PromptActionLayout actions;
+};
+
+inline constexpr int kPromptActionGap = 12;
+
+// The new-company naming screen establishes the prompt grid: equal-width
+// CANCEL/ACCEPT faces, a 12px gutter, and outer edges aligned to the field.
+[[nodiscard]] constexpr PromptActionLayout prompt_action_layout(
+    int x, int y, int field_width, int field_height)
+{
+	const int usable_width = field_width > kPromptActionGap
+	    ? field_width - kPromptActionGap
+	    : 0;
+	const int button_width = usable_width / 2;
+	const int action_y = y + field_height + 4;
+	return PromptActionLayout{
+	    .cancel = {x, action_y, button_width, 14},
+	    .accept = {x + button_width + kPromptActionGap,
+	               action_y, button_width, 14},
+	};
+}
+
+// The frame is part of the same geometry contract as the field and action
+// row. Keeping it here prevents a caller from sizing a dialog around the
+// field alone and cutting through the buttons below it.
+[[nodiscard]] constexpr PromptDialogLayout prompt_dialog_layout(
+    int x, int y, int field_width, int field_height)
+{
+	const PromptActionLayout actions =
+	    prompt_action_layout(x, y, field_width, field_height);
+	const int frame_x = x - 5;
+	const int frame_y = y - 20;
+	const int frame_right = x + field_width + 5;
+	const int frame_bottom = actions.accept.y + actions.accept.h + 5;
+	return PromptDialogLayout{
+	    .frame = {frame_x, frame_y,
+	              frame_right - frame_x, frame_bottom - frame_y},
+	    .field = {x, y, field_width, field_height},
+	    .actions = actions,
+	};
+}
+} // namespace og::ui
+
 class text
 {
 	public:

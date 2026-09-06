@@ -88,6 +88,28 @@ struct WorldPresentSlice
     int dst_h = 0;
 };
 
+// A live world image is never rasterized into UI or GameplayUI. Instead it
+// renders at its own world-pixel resolution and is composited into one or more
+// logical canvas rectangles at the physical-display present seam. The canvas
+// selects only the destination coordinate space; it never limits the source
+// raster's resolution.
+struct NativeWorldViewDestination
+{
+    CanvasTarget canvas = CanvasTarget::UI;
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+
+struct NativeWorldViewSource
+{
+    int w = 0;
+    int h = 0;
+
+    constexpr explicit operator bool() const { return w > 0 && h > 0; }
+};
+
 // Abstract interface-layer rendering surface.
 // Platform backends implement this contract (SDL in Phase 10).
 class video
@@ -154,6 +176,26 @@ public:
                                        Sint32 width, Sint32 height) = 0;
     virtual void destroy_accel_surface(void* surface) = 0;
 
+    // Resolution-independent live-world plane. The backend derives the source
+    // raster from the destinations' actual physical-output pixel dimensions,
+    // then redirects all ordinary world draw primitives into it. Callers use
+    // the returned dimensions as their camera window; they cannot choose a
+    // DOS-sized or wastefully oversampled intermediate. end restores the prior
+    // canvas and queues that raster for the next physical present.
+    // Unsupported/allocation-failed backends return an empty source and must
+    // not fall back to drawing live world pixels into a UI canvas.
+    virtual NativeWorldViewSource begin_native_world_view(
+        std::span<const NativeWorldViewDestination> /*destinations*/)
+    {
+        return {};
+    }
+    virtual bool end_native_world_view() { return false; }
+    virtual void cancel_native_world_view() {}
+    // True only while draw primitives are redirected to a native world
+    // plane. World renderers use this with active_canvas() to reject any
+    // attempt to rasterize a live scene into UI or GameplayUI.
+    virtual bool native_world_view_active() const { return false; }
+
     // Off-screen floor-layer compositing for the multi-floor vertical parallax.
     // floor_layer_begin redirects subsequent tile/sprite blits (which target the
     // backend's render surface) to a transparent off-screen layer covering
@@ -199,28 +241,6 @@ public:
     {
         return false;
     }
-    // Off-screen camera-pane downscale (the one-seat second-minimap 0.25 zoom,
-    // docs/camera-views-design.md §6). camera_scale_begin redirects subsequent
-    // tile/sprite blits to a black-cleared off-screen layer of exactly w x h
-    // pixels anchored at (0,0) — the floor_layer redirect shape on its OWN
-    // surface, so a multi-floor camera redraw can still begin/end floor
-    // layers inside the redirect. camera_scale_end restores the real target
-    // and copies the layer onto the (x,y,w,h) pane rect with an integer
-    // nearest-neighbour sample — dst(i,j) = layer(i*denominator,
-    // j*denominator), whole-pixel copies, no floats, no filtering. Default
-    // no-ops for backends without an off-screen surface: a false begin tells
-    // the caller to draw 1:1 instead (the allocation-fallback yield).
-    // camera_scale_end may follow one begin once PER PANE RECT: the first
-    // call restores the target, and every call samples the still-held layer
-    // — the two-seat near-minimap renders one layer and lands it in both
-    // seats' blocks that way.
-    virtual bool camera_scale_begin(Sint32 /*w*/, Sint32 /*h*/)
-    {
-        return false;
-    }
-    virtual void camera_scale_end(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/,
-                                  Sint32 /*h*/, Sint32 /*denominator*/) {}
-    virtual void fail_next_camera_scale_allocation_for_testing() {}
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,

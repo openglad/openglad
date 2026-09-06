@@ -115,6 +115,58 @@ bool wait_for_interactable_at(const std::string& id, int x, int y,
     return false;
 }
 
+int count_trace_containing(const char* category, const char* substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int count = 0;
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == category &&
+            entry.message.find(substring) != std::string::npos)
+            ++count;
+    }
+    return count;
+}
+
+// Roster cyclers do not always change their face (the DEPLOY column is an X
+// both ways), but every accepted or refused transition emits a named trace.
+// Start from a pointer baseline, wait for a NEW matching trace, then reset on
+// the menu thread after the click was observed. That reset is the
+// acknowledgement that the full press/release is consumed before another
+// press is allowed. This covers repeated traces too: the final BURDEN -> WAR
+// assignment waits for count 2, not stale count 1.
+bool click_and_acknowledge_trace(const std::string& id, const char* category,
+                                 const char* trace_substring,
+                                 bool waits_for_autosave = true,
+                                 int timeout_ms = 5000)
+{
+    const int before = count_trace_containing(category, trace_substring);
+    const int saves_before = trace_count("save");
+    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms))
+        return false;
+    interact(id);
+    int elapsed = 0;
+    while (elapsed < timeout_ms &&
+           (count_trace_containing(category, trace_substring) <= before ||
+            (waits_for_autosave && trace_count("save") <= saves_before))) {
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    const bool traced =
+        count_trace_containing(category, trace_substring) > before;
+    if (!traced) {
+        fprintf(stderr,
+                "  [interact] TIMEOUT waiting for new %s trace '%s'\n",
+                category, trace_substring);
+    }
+    const bool autosaved =
+        !waits_for_autosave || trace_count("save") > saves_before;
+    if (!autosaved)
+        fprintf(stderr, "  [interact] TIMEOUT waiting for cycler autosave\n");
+    const bool acknowledged =
+        run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms);
+    return traced && autosaved && acknowledged;
+}
+
 // Stash/restore the picker save across an injector flow (the test_ctf_ui
 // pattern, plus the campaign-state book and the v16 campaign_tag bytes the
 // zone flows write into).
@@ -459,6 +511,7 @@ struct ZoneFlowState
     bool nested_page_opened = false;
     bool nested_page_popped = false;
     bool returned_from_submenu = false;
+    bool cycler_edges_acknowledged = true;
 };
 
 int zone_flow_injector(void* data)
@@ -482,28 +535,36 @@ int zone_flow_injector(void* data)
     // Deploy-lock refusal: Alpha starts DEPLOYED, so bench first (allowed —
     // locks gate the toggle-ON only), then the re-deploy refuses with the
     // toast while the hero is unassigned.
-    interact("roster_dep_0");
-    SDL_Delay(300);
+    state->cycler_edges_acknowledged &=
+        click_and_acknowledge_trace("roster_dep_0", "basecamp",
+                                    "deploy slot=0 off");
     capture_zone_frame("uxr_after_bench");
-    interact("roster_dep_0");
+    state->cycler_edges_acknowledged &= click_and_acknowledge_trace(
+        "roster_dep_0", "zone", "deploy_locked slot=0",
+        /*waits_for_autosave=*/false);
     SDL_Delay(150);
     capture_zone_frame("uxr_lock_toast");
     SDL_Delay(300);
 
     // The assign chip: unset -> WAR (undeployed cycle rides the autosave
     // tail), then WAR -> BURDEN.
-    interact("roster_team_0");
+    state->cycler_edges_acknowledged &=
+        click_and_acknowledge_trace("roster_team_0", "zone",
+                                    "assign slot=0 tag=1");
     SDL_Delay(150);
     capture_zone_frame("uxr_assign_war");
     SDL_Delay(300);
-    interact("roster_team_0");
+    state->cycler_edges_acknowledged &=
+        click_and_acknowledge_trace("roster_team_0", "zone",
+                                    "assign slot=0 tag=2");
     SDL_Delay(150);
     capture_zone_frame("uxr_assign_burden");
     SDL_Delay(300);
 
     // Assigned heroes clear the unset-lock: the deploy sticks now.
-    interact("roster_dep_0");
-    SDL_Delay(300);
+    state->cycler_edges_acknowledged &=
+        click_and_acknowledge_trace("roster_dep_0", "basecamp",
+                                    "deploy slot=0 on");
 
     // Without the kit the road row points at a level that is not there:
     // the load-with-rollback failure arm toasts and restores the cursor.
@@ -596,6 +657,8 @@ int zone_flow_injector(void* data)
     interact("back");
     state->returned_from_submenu =
         wait_for_interactable_label("zone_action_0", "STORES  >", 10000);
+    state->cycler_edges_acknowledged &=
+        run_on_main_thread([] { reset_mouse_click_tracking(); });
     SDL_Delay(150);
     capture_zone_frame("uxr_back_at_root");
     SDL_Delay(300);
@@ -603,8 +666,9 @@ int zone_flow_injector(void* data)
     // Cycling a DEPLOYED hero first un-deploys through the full roster
     // tail (ready clears — correct), then the tag applies: Alpha is
     // deployed with tag BURDEN, so this cycle benches her and swears WAR.
-    interact("roster_team_0");
-    SDL_Delay(300);
+    state->cycler_edges_acknowledged &=
+        click_and_acknowledge_trace("roster_team_0", "zone",
+                                    "assign slot=0 tag=1");
 
     // Base Camp -> main menu.
     wait_for_interactable("go", 10000);
@@ -665,6 +729,8 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
         << "BACK below the root pops ONE page, not the whole submenu";
     EXPECT_TRUE(state.returned_from_submenu)
         << "BACK at the submenu root resumes the Base Camp";
+    EXPECT_TRUE(state.cycler_edges_acknowledged)
+        << "every roster cycler must finish its press/release before the next";
     EXPECT_TRUE(trace_contains("zone", "submenu_back_to STORES"))
         << "the depth>1 BACK arm names the page it popped back to";
     EXPECT_TRUE(trace_contains("zone", "submenu_closed"))
@@ -769,6 +835,7 @@ struct DefaultZoneFlowState
     bool hire_seen = false;
     bool hire_opened = false;
     bool train_opened = false;
+    bool deploy_edges_acknowledged = true;
 };
 
 int default_zone_injector(void* data)
@@ -786,10 +853,16 @@ int default_zone_injector(void* data)
     capture_zone_frame("zone_default_camp");
 
     // Deploy toggle by id (the classic flow).
-    interact("roster_dep_0");
+    state->deploy_edges_acknowledged &=
+        click_and_acknowledge_trace("roster_dep_0", "basecamp",
+                                    "deploy slot=0 off");
+    // The production row deliberately debounces the same deploy slot for
+    // 250 ms after an accepted toggle; wait past that rule before toggling it
+    // back on. This is product behavior, not an injector-settle delay.
     SDL_Delay(300);
-    interact("roster_dep_0");
-    SDL_Delay(300);
+    state->deploy_edges_acknowledged &=
+        click_and_acknowledge_trace("roster_dep_0", "basecamp",
+                                    "deploy slot=0 on");
 
     // Row-body train door.
     interact("roster_row_0");
@@ -848,6 +921,8 @@ TEST(CampaignZoneUi, default_zone_keeps_the_classic_roster_flows)
         << "the row-body train door survives the zone split";
     EXPECT_TRUE(state.hire_opened)
         << "HIRE still opens the hire screen from its header-band rect";
+    EXPECT_TRUE(state.deploy_edges_acknowledged)
+        << "both deploy toggles must finish before the train-door click";
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
 }

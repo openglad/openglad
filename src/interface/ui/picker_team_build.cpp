@@ -1002,7 +1002,7 @@ public:
           yview_(view.yview), endx_(view.endx), endy_(view.endy),
           slot_x_(view.slot_x_), slot_y_(view.slot_y_), slot_w_(view.slot_w_),
           slot_h_(view.slot_h_), control_(view.control),
-          following_(view.following_)
+          following_(view.following_), camera_view_(view.camera_view_)
     {
     }
 
@@ -1022,6 +1022,7 @@ public:
         view_.slot_h_ = slot_h_;
         view_.control = control_;
         view_.following_ = following_;
+        view_.camera_view_ = camera_view_;
     }
 
     ScopedBorrowedView(const ScopedBorrowedView&) = delete;
@@ -1043,16 +1044,16 @@ private:
     Sint32 slot_h_;
     walker* control_;
     bool following_;
+    bool camera_view_;
 };
 }  // namespace
 
 // The staged-preview background pass (#218): the classic backdrop, then the
-// STAGED world rendered into the preview band through the borrowed viewob[0]
-// (the demo Center-camera shape: direct-geometry resize, control-less free
-// camera from the level's own LevelVisuals — TRAP B dangling-control never
-// applies because the pane never points control at a staged walker). Slow
-// horizontal pan surveys pitches wider than the band (direct-geometry views
-// have no zoom); ScopedBorrowedView restores the camera and the geometry.
+// STAGED world rendered through the same resolution-independent native-world
+// plane as gameplay camera insets. The borrowed view is a control-less free
+// camera over the level's own LevelVisuals; its source rectangle is expanded
+// before one final composite into the classic preview band. Slow horizontal
+// pan surveys pitches wider than that expanded field of view.
 // Degradation states render text into the band — never a crash, never a
 // stale world presented as the stage; the census fallback lines still render
 // below through the content pass.
@@ -1075,31 +1076,43 @@ void picker_view_scenario_staged_draw_background(void* screen_state)
         const ScopedBorrowedView borrowed(*view);
         view->control = nullptr;
         view->following_ = false;
+		view->camera_view_ = true;
         // TRAP C: redraw(data,...) draws the view's message strip
         // unconditionally; staging never writes it, and this clears any
         // gameplay residue.
         view->clear_text();
         GameWorld& staged_world = state->scenario->world();
         LevelVisuals& visuals = state->scenario->level_visuals();
-        const Sint32 span_x = std::max(
-            0, static_cast<int>(staged_world.pixmaxx) -
-                   kViewScenarioPreviewBandW);
-        const Sint32 span_y = std::max(
-            0, static_cast<int>(staged_world.pixmaxy) -
-                   kViewScenarioPreviewBandH);
-        // ~4 timer ticks (~55 ms) per pixel horizontally; the vertical
-        // wave is 4x slower and centered, so the pan surveys the whole
-        // staged world without racing it.
-        visuals.topx = preview_pan_offset(span_x, 4);
-        visuals.topy = span_y / 2 +
-            (span_y > 0 ? preview_pan_offset(span_y, 16) - span_y / 2 : 0);
-        {
-            ScopedUiCanvas ui_canvas(*scr);
-            view->resize(kViewScenarioPreviewBandX, kViewScenarioPreviewBandY,
-                         kViewScenarioPreviewBandW, kViewScenarioPreviewBandH);
-            (void)view->redraw(state->scenario.get(), /*draw_radar=*/false);
-        }
-        return;
+		const std::array<NativeWorldViewDestination, 1> destinations = {
+			NativeWorldViewDestination{
+				CanvasTarget::UI, kViewScenarioPreviewBandX,
+				kViewScenarioPreviewBandY, kViewScenarioPreviewBandW,
+				kViewScenarioPreviewBandH}};
+		const NativeWorldViewSource source =
+			scr->begin_native_world_view(destinations);
+		if (source)
+		{
+			const Sint32 span_x = std::max(
+				0, static_cast<int>(staged_world.pixmaxx) - source.w);
+			const Sint32 span_y = std::max(
+				0, static_cast<int>(staged_world.pixmaxy) - source.h);
+            // ~4 timer ticks (~55 ms) per pixel horizontally; the vertical
+            // wave is 4x slower and centered, so the pan surveys the whole
+            // staged world without racing it.
+            visuals.topx = preview_pan_offset(span_x, 4);
+            visuals.topy = span_y / 2 +
+                (span_y > 0
+                     ? preview_pan_offset(span_y, 16) - span_y / 2
+                     : 0);
+			view->resize(0, 0, static_cast<short>(source.w),
+			             static_cast<short>(source.h));
+			const bool rendered =
+				view->redraw(state->scenario.get(), /*draw_radar=*/false);
+			if (!rendered)
+				scr->cancel_native_world_view();
+			if (rendered && scr->end_native_world_view())
+				return;
+		}
     }
 
     // Degradation text centered in the band (6 px font, 6 px per char).

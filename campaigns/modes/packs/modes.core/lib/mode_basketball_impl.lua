@@ -1004,8 +1004,10 @@ end
 -- phantom throws and minted the D28 refund (see D27 and edge #29); such
 -- a weapon does not stop the scan. set_dead(1) (a no-op on an
 -- already-dead weapon), the carrier's weapon_cost refunds to its
--- magicpoints clamped at max (D28: throwing is mana-neutral; ammo still
--- stands — every qualifying arm implies fire() paid the cost this tick),
+-- magicpoints clamped at max. Returning-weapon families also recover the
+-- launch credit that their consumed weapon can no longer return through its
+-- normal death effect (D28: throwing is launch-resource-neutral; every
+-- qualifying arm implies fire() paid the cost this tick),
 -- and its per-tick step is the aim vector — a (0,0) step aims along the
 -- carrier's facing (soccer's dead-center rule). One weapon per
 -- possession (D27): the release clears CARRIER, so a later same-tick
@@ -1031,6 +1033,10 @@ local function consume_throw(ball, livings, carrier)
             local ax = og.trunc(shot:lastx())
             local ay = og.trunc(shot:lasty())
             shot:set_dead(1)
+            if shot:death_called() == 0 and
+                og.family_flag("living", carrier:family(), "has_returning_weapon") then
+              carrier.weapons_left = carrier:weapons_left() + 1
+            end
             local cost = carrier:s_weapon_cost()
             if cost > 0 then
               carrier.magicpoints = og.min(og.fadd(carrier.magicpoints, cost), carrier.max_magicpoints)

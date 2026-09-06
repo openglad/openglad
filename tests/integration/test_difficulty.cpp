@@ -75,14 +75,25 @@ struct DifficultyState {
     bool returned_to_base_camp;
 };
 
-// Click `id` `times` times, spacing the clicks so each press/release pair is
-// consumed before the next (a second press without a release is dropped).
+// Click `id` `times` times, waiting for the bound label to prove each action
+// was consumed before queueing the next. A fixed delay races the synchronous
+// autosave behind these rows: under I/O load several complete clicks can pile
+// up before the menu polls SDL, collapsing them into one mouse state.
 static void interact_times(const std::string& id, int times)
 {
     for (int i = 0; i < times; ++i) {
         fprintf(stderr, "  [test] clicking %s (%d/%d)\n", id.c_str(), i + 1, times);
+        const std::string old_label = interactable_label(id);
+        ASSERT_FALSE(old_label.empty())
+            << id << " disappeared before click " << (i + 1);
         interact(id);
-        SDL_Delay(300);
+        ASSERT_TRUE(wait_for_interactable_label_change(id, old_label, 5000))
+            << id << " did not consume click " << (i + 1);
+        // The label changes on the press edge. Establish the next frame's
+        // pointer baseline on the menu thread so its event poll consumes the
+        // already-queued release before this injector sends another press.
+        ASSERT_TRUE(run_on_main_thread([] { reset_mouse_click_tracking(); }))
+            << id << " did not acknowledge click " << (i + 1);
     }
 }
 

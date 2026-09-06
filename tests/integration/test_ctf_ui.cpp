@@ -16,6 +16,7 @@
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/view_sizes.h>
@@ -325,22 +326,46 @@ bool wait_for_interactable_label(const std::string& id, const std::string& want,
     return false;
 }
 
-// Click `id` until its label reads `want`. A press and release that both
-// land inside one stretched picker frame are swallowed whole (no
-// down-transition to poll — the same race the settle delays guard), and
-// under ASan's slowdown a single blind click can lose that race outright.
-// Bounded retries keep the teeth: a cycler that genuinely skips or breaks
-// the target label still fails every attempt, and the save-value pins at
-// the end of each flow back this up.
+// Click `id` until its label reads `want`. The label edge proves the press was
+// consumed, but synchronous save/stage work can leave that click's release
+// queued after the edge. A completed menu-frame edge acknowledges the full
+// click before this injector can send another press. Bounded retries retain
+// teeth: a cycler that genuinely skips or breaks the target still fails every
+// attempt, and the save-value pins at the end of each flow back this up.
 bool click_until_label(const std::string& id, const std::string& want,
                        int attempts = 3, int wait_ms = 2500)
 {
     for (int i = 0; i < attempts; ++i) {
+        const int saves_before = trace_count("save");
         interact(id);
-        if (wait_for_interactable_label(id, want, wait_ms))
-            return true;
+        if (wait_for_interactable_label(id, want, wait_ms)) {
+            int elapsed = 0;
+            while (elapsed < wait_ms && trace_count("save") <= saves_before) {
+                SDL_Delay(50);
+                elapsed += 50;
+            }
+            const bool autosaved = trace_count("save") > saves_before;
+            if (!autosaved)
+                fprintf(stderr,
+                        "  [interact] TIMEOUT waiting for '%s' autosave\n",
+                        id.c_str());
+            const std::uint64_t completed_before =
+                og::ui::menu_screen_testing_completed_frames();
+            elapsed = 0;
+            while (elapsed < wait_ms &&
+                   og::ui::menu_screen_testing_completed_frames() <=
+                       completed_before) {
+                SDL_Delay(50);
+                elapsed += 50;
+            }
+            const bool acknowledged =
+                og::ui::menu_screen_testing_completed_frames() >
+                completed_before;
+            return autosaved && acknowledged;
+        }
         fprintf(stderr, "  [interact] retry %d: '%s' has not reached '%s'\n",
                 i + 1, id.c_str(), want.c_str());
+        (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
     }
     return false;
 }

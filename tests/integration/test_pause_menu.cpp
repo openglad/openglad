@@ -33,6 +33,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/input_cycler.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/pause_menu.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
@@ -2942,6 +2943,19 @@ struct HostilePadFlow
     std::atomic<bool> menu_returned{false};
 };
 
+bool wait_for_completed_pause_menu_frame(int timeout_ms = 5'000)
+{
+    const std::uint64_t completed_before =
+        og::ui::menu_screen_testing_completed_frames();
+    for (int waited = 0; waited < timeout_ms; waited += 50)
+    {
+        if (og::ui::menu_screen_testing_completed_frames() > completed_before)
+            return true;
+        SDL_Delay(50);
+    }
+    return false;
+}
+
 int pause_hostile_pad_injector(void* data)
 {
     auto* const flow = static_cast<HostilePadFlow*>(data);
@@ -2954,40 +2968,66 @@ int pause_hostile_pad_injector(void* data)
     interact("pause_player_0");
     if (!wait_for_interactable("pause_input", 10'000))
         return 2;
-    SDL_Delay(300);
+    int failure = 0;
+    if (!wait_for_interactable_label("pause_input", "INPUT: WASD", 5'000))
+        failure = 3;
+    else if (!wait_for_completed_pause_menu_frame())
+        failure = 4;
 
     // WASD -> ARROWS -> IJKL -> TFGH -> JOY1: the fourth cycle assigns the
     // hostile pad to seat 0 (the reporter's "past TFGH" step).
-    for (int i = 0; i < 4; ++i)
+    const std::array<std::string, 4> expected_input_labels = {
+        "INPUT: " + og::input::mapping_short_name("ARROWS"),
+        "INPUT: " + og::input::mapping_short_name("IJKL"),
+        "INPUT: " + og::input::mapping_short_name("TFGH"),
+        "INPUT: " + og::input::mapping_short_name("JOY1")};
+    for (std::size_t i = 0; i < expected_input_labels.size() && failure == 0;
+         ++i)
     {
         interact("pause_input");
-        SDL_Delay(400);
+        if (!wait_for_interactable_label(
+                "pause_input", expected_input_labels[i], 5'000))
+            failure = 10 + static_cast<int>(i);
+        else if (!wait_for_completed_pause_menu_frame())
+            failure = 20 + static_cast<int>(i);
     }
 
     // The reported hang struck on the frame after the assignment. A live
     // menu still consumes BACK, re-materializes the PAUSED screen, and
     // consumes RESUME.
-    interact("pause_player_back");
-    if (wait_for_interactable("pause_resume", 5'000))
+    if (failure == 0)
     {
-        SDL_Delay(300);
-        interact("pause_resume");
-        for (int waited = 0; waited < 5'000; waited += 50)
+        interact("pause_player_back");
+        if (wait_for_interactable("pause_resume", 5'000) &&
+            wait_for_completed_pause_menu_frame())
         {
-            if (flow->menu_returned.load())
-                return 0;
-            SDL_Delay(50);
+            interact("pause_resume");
+            for (int waited = 0; waited < 5'000; waited += 50)
+            {
+                if (flow->menu_returned.load())
+                    return 0;
+                SDL_Delay(50);
+            }
+            failure = 31;
         }
+        else
+            failure = 30;
     }
 
     // Wedged (the pre-fix behavior). Neutralize the resting axis so the
     // spin can exit and the suite stays bounded, then flush the queued
     // clicks until the menu finally closes.
     SDL_SetJoystickVirtualAxis(flow->pad, 1, 0);
+    if (has_interactable("pause_player_back"))
+    {
+        interact("pause_player_back");
+        if (wait_for_interactable("pause_resume", 5'000))
+            (void)wait_for_completed_pause_menu_frame();
+    }
     for (int waited = 0; waited < 10'000; waited += 250)
     {
         if (flow->menu_returned.load())
-            return 7;
+            return failure != 0 ? failure : 7;
         if (has_interactable("pause_resume"))
             interact("pause_resume");
         SDL_Delay(250);
@@ -3002,6 +3042,7 @@ TEST(PauseMenuFlow, input_cycler_onto_hostile_resting_pad_does_not_hang_menu)
     screen* const scr = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, scr);
     ControlStateGuard controls;
+    reset_default_player_controls();
     NumplayersGuard numplayers(1);
     JoystickSubsystemGuard subsystem_guard;
     BackgroundJoystickEventsGuard background_events_guard;

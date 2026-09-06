@@ -116,6 +116,7 @@ void prepare_view_world()
 {
     screen* const active = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, active);
+    active->set_active_canvas(CanvasTarget::World);
     active->world().create_new_grid();
     active->world().delete_objects();
     active->world().clear_removed_entity_ids();
@@ -156,11 +157,10 @@ static walker* make_guy(char family, unsigned char team = 0)
 
 TEST(ViewRedraw, with_level_data)
 {
+    prepare_view_world();
+
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
-
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
     ASSERT_TRUE(result) << "redraw with level data should succeed";
@@ -169,11 +169,10 @@ TEST(ViewRedraw, with_level_data)
 
 TEST(ViewRedraw, with_control)
 {
+    prepare_view_world();
+
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
-
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -191,6 +190,8 @@ TEST(ViewRedraw, with_control)
 // ghost above — i.e. per-floor alpha tiles + alpha entity sprites + air holes.
 TEST(ViewRedraw, multifloor_renders_faded_below_and_ghost_above)
 {
+    prepare_view_world();
+
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
@@ -653,11 +654,11 @@ TEST(ViewRedrawJitter, no_control_render_sample_reports_zero_control_coordinates
 
 TEST(ViewRedraw, no_control)
 {
+    prepare_view_world();
+
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
     og::runtime::current_session->myscreen_->level_visuals_.topx = 50;
     og::runtime::current_session->myscreen_->level_visuals_.topy = 50;
 
@@ -672,11 +673,10 @@ TEST(ViewRedraw, no_control)
 
 TEST(ViewRedraw, negative_pos)
 {
+    prepare_view_world();
+
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
-
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     // Force negative topx/topy by positioning control near edge
     walker* w = make_guy(FAMILY_SOLDIER, 0);
