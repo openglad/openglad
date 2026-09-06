@@ -3683,6 +3683,15 @@ public:
         update_server_peer_id();
         if (transport_->connected_peers().empty())
         {
+            // #278: a link that carried lobby state and is now Lost is a
+            // dead session (Failed = never connected = not a session;
+            // Connecting is a first dial still in flight). Latched for the
+            // picker's per-frame revert, like a kick.
+            if (lobby_states_received_ > 0 &&
+                transport_->link_state() == og::sim::TransportLinkState::Lost)
+            {
+                session_lost_ = true;
+            }
             join_message_sent_ = false;
             join_confirmation_pending_ = false;
             pending_join_request_id_ = 0;
@@ -4214,6 +4223,11 @@ public:
         return was_kicked_;
     }
 
+    [[nodiscard]] bool session_lost() const noexcept override
+    {
+        return session_lost_;
+    }
+
     bool set_ready(bool ready) override
     {
         if (!transport_ || transport_->connected_peers().empty())
@@ -4463,6 +4477,24 @@ public:
             transport_->link_state() == og::sim::TransportLinkState::Failed ||
             transport_->link_state() == og::sim::TransportLinkState::Lost ||
             transport_->connected_peers().empty();
+        // #278: the previous round HAD a session and its link died. Do not
+        // dial the dead host again from behind the post-game black window:
+        // latch the loss, discard the stale round's lobby cache (the roster
+        // and staged preview of a session that no longer exists), and keep
+        // the Lost transport so the status keeps saying "connection lost".
+        // The picker's per-frame revert swaps in a local client on the next
+        // frame and that swap's shutdown() tears the socket down.
+        if (transport_unusable && transport_ != nullptr &&
+            lobby_states_received_ > 0 &&
+            transport_->link_state() == og::sim::TransportLinkState::Lost)
+        {
+            session_lost_ = true;
+            state_.reset();
+            pending_local_seats_.clear();
+            preview_mirror_.dispose();
+            rebuild_status_lines();
+            return;
+        }
         if (transport_unusable)
         {
             const std::vector<short> preserved_teams = local_seat_teams_;
@@ -5032,6 +5064,10 @@ private:
     // shutdown() — the kick is followed immediately by the disconnect, and the
     // UI reads this after tearing the client down to explain the drop.
     bool was_kicked_ = false;
+    // #278: latched when a link that carried lobby state turns Lost (in the
+    // lobby poll or on the post-level resume). Same lifetime rule as
+    // was_kicked_: shutdown() leaves it alone.
+    bool session_lost_ = false;
 };
 
 } // namespace

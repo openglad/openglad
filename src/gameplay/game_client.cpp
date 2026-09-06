@@ -556,6 +556,18 @@ void GameClient::send_exit_prompt_response(bool accepted)
 void GameClient::request_level_abort()
 {
     update_transport_connection_state();
+    // A withdraw round-trips through the server: the display keeps running
+    // until the server's terminal broadcast ends it. On a dead link that
+    // broadcast can never arrive, so the player's QUIT would sit behind a
+    // frozen mirror until CLIENT_CONNECTION_LOST_TIMEOUT_MS expired (#278).
+    // The abort IS the connection-lost transition then — fire the seam every
+    // embedder (SDL, curses, text) already ends the session on.
+    if (!transport_connected_ && transport_ever_connected_)
+    {
+        TRACE("net", "abort_on_dead_link");
+        notify_connection_lost_once();
+        return;
+    }
     maybe_send_hello_if_needed();
     ExitPromptResponseMessage message;
     message.accepted = true;
@@ -704,6 +716,13 @@ void GameClient::maybe_notify_connection_lost()
     if (InterpolationClock::now() - *transport_disconnect_time_ < timeout)
         return;
 
+    notify_connection_lost_once();
+}
+
+void GameClient::notify_connection_lost_once()
+{
+    if (connection_lost_notified_)
+        return;
     connection_lost_notified_ = true;
     if (connection_lost_callback_)
         connection_lost_callback_();
@@ -737,12 +756,7 @@ void GameClient::note_keyframe_apply_result(bool applied_cleanly)
         rejected_keyframe_strikes_);
     TRACE("net", "client_fatal_desync strikes=%u",
           static_cast<unsigned>(rejected_keyframe_strikes_));
-    if (!connection_lost_notified_)
-    {
-        connection_lost_notified_ = true;
-        if (connection_lost_callback_)
-            connection_lost_callback_();
-    }
+    notify_connection_lost_once();
 }
 
 void GameClient::note_outbound_activity()

@@ -84,6 +84,11 @@ void ready_screen_for_game_start(
     const og::ui::PickerLobbyGameStartConfig* lobby_config);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+// The owned-client slot SdlPickerClient installs, exposed for tests
+// (tests/coverage_internal/picker_sdl_client_factory.inc): the per-frame
+// lost/kicked revert only ever retires the client it owns.
+void picker_testing_set_lobby_client_owner(
+    std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
 
 namespace og::ui {
 
@@ -9188,8 +9193,10 @@ TEST(PickerNetworkClient,
            "next-round roster refresh";
 
     // A transport object can outlive its socket. Once the host disappears,
-    // resume must discard that Lost object and its stale two-player cache,
-    // then start a fresh connection attempt from the private save.
+    // resume must discard the stale two-player cache — and (#278) NOT dial
+    // the dead host again from behind the post-game black window: the loss
+    // is latched for the picker's per-frame revert, and the Lost transport
+    // stays so the status keeps saying why until that swap tears it down.
     host_client->shutdown();
     cleanup.host_client = nullptr;
     ASSERT_TRUE(wait_until([&] {
@@ -9200,11 +9207,18 @@ TEST(PickerNetworkClient,
     })) << "the surviving join transport must observe the closed host socket";
     {
         auto join_scope = join_session.activate();
+        EXPECT_TRUE(join_client->session_lost())
+            << "the lobby poll that saw the link Lost latched the loss";
         join_client->resume_after_level();
         EXPECT_TRUE(join_client->lobby_players().empty())
             << "dead-socket resume must not retain the old lobby roster";
         EXPECT_FALSE(status_lines_contain_exact(join_client->status_lines(),
                                                 "Lobby: 2 players"));
+        EXPECT_TRUE(status_lines_contain_exact(join_client->status_lines(),
+                                               "Status: connection lost"))
+            << "no re-dial: the dead link is reported, not retried";
+        EXPECT_TRUE(join_client->session_lost());
+        EXPECT_FALSE(join_client->session_established());
     }
 }
 
@@ -10457,4 +10471,346 @@ TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
     EXPECT_FALSE(host_client->disconnect_session());
     EXPECT_FALSE(host_client->session_established())
         << "no server, no lobby, no session";
+}
+
+// #278 ("Weird hang after lost connection then new game"), the reporter's
+// sequence on the JOINER side: a networked game, the host vanishes ("the plane
+// took off"), the player backs out to Base Camp and presses GO on a new game.
+// Pre-fix the mirror froze, silent and inert, for the whole 30 s
+// CLIENT_CONNECTION_LOST_TIMEOUT_MS (QUIT sent a withdraw into the dead link
+// and waited for a broadcast that could never arrive), and afterwards the
+// stale networked lobby client — its LobbyState wiped — made go_menu consult an
+// EMPTY roster instead of the save and refuse with "NEED A TEAM!".
+TEST(PickerNetworkClient,
+     joiner_whose_host_vanished_midgame_quits_now_and_starts_a_local_game)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    GameplayRunGuard gameplay_run_guard;
+    prepare_allied_host_network_save(host_save);
+    g_start_game_requested = false;
+    set_game_speed(0.0f);
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}));
+    ASSERT_TRUE(host_client->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_has_handoff = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_has_handoff = join_client->has_game_start_config();
+        }
+        return host_client->has_game_start_config() && join_has_handoff;
+    })) << "both peers should receive the gameplay handoff";
+
+    og::runtime::GameSession* const host_session = active_game_session();
+    ASSERT_NE(nullptr, host_session);
+
+    const auto host_start_config = host_client->consume_game_start_config();
+    ASSERT_TRUE(host_start_config.has_value());
+    {
+        auto host_scope = host_session->activate();
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        ready_screen_for_game_start(
+            *host_session->myscreen_, &*host_start_config);
+        glad_init(false, &*host_start_config);
+    }
+    {
+        auto join_scope = join_session.activate();
+        auto join_start_config = join_client->consume_game_start_config();
+        ASSERT_TRUE(join_start_config.has_value());
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        ready_screen_for_game_start(*join_session.myscreen_,
+                                    &*join_start_config);
+        glad_init(false, &*join_start_config);
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        bool host_ready = false;
+        {
+            auto host_scope = host_session->activate();
+            og::runtime::local_transport_shadow_finish_tick(*host_session);
+            const og::sim::GameClient* const dc =
+                host_session->myscreen_->render_interpolation_client();
+            host_ready = dc != nullptr && dc->baseline().has_value();
+        }
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            og::runtime::local_transport_shadow_finish_tick(join_session);
+            const og::sim::GameClient* const dc =
+                join_session.myscreen_->render_interpolation_client();
+            join_ready = dc != nullptr && dc->baseline().has_value();
+        }
+        return host_ready && join_ready;
+    })) << "both runtimes should receive their initial gameplay snapshots";
+
+    // "Lost connection (plane took off)": the host vanishes for good.
+    {
+        auto host_scope = host_session->activate();
+        og::runtime::clear_local_transport_shadow(*host_session);
+    }
+    host_client->shutdown();
+
+    // A1: the joiner's game loop keeps running; its link dies, its mirror
+    // stays in-game (frozen — no snapshots can arrive).
+    const InputState neutral{};
+    std::uint32_t tick = 1;
+    const auto pump_joiner = [&] {
+        auto join_scope = join_session.activate();
+        og::runtime::local_transport_shadow_send_input(
+            join_session, neutral, tick++);
+        og::runtime::local_transport_shadow_finish_tick(join_session);
+    };
+    ASSERT_TRUE(wait_until([&] {
+        pump_joiner();
+        auto join_scope = join_session.activate();
+        const og::sim::GameClient* const dc =
+            join_session.myscreen_->render_interpolation_client();
+        return !join_client->session_established() && dc != nullptr &&
+            !dc->transport_connected();
+    }, 5s)) << "the joiner's transport must notice the host is gone";
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(0, static_cast<int>(join_session.myscreen_->world().end))
+            << "still in-game: nothing has ended the frozen mirror";
+        const og::sim::GameClient* const dc =
+            join_session.myscreen_->render_interpolation_client();
+        ASSERT_NE(nullptr, dc);
+        EXPECT_TRUE(dc->transport_ever_connected());
+        EXPECT_TRUE(trace_contains("net", "link_lost_overlay"))
+            << "the frozen frame carries the stall banner from the first "
+               "dropped poll";
+    }
+
+    // A2: "backed out to menu" = pause-menu QUIT. A networked client's abort
+    // is a round trip through the server (returns false by contract) — on a
+    // dead link the terminal broadcast can never arrive, so the abort IS the
+    // connection-lost transition and the session must end NOW, not after the
+    // 30 s CLIENT_CONNECTION_LOST_TIMEOUT_MS backstop.
+    trace_clear();
+    bool joiner_ended = false;
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_FALSE(og::runtime::local_transport_shadow_abort_level(join_session))
+            << "a networked client never ends the level locally";
+    }
+    const auto quit_at = std::chrono::steady_clock::now();
+    (void)wait_until([&] {
+        pump_joiner();
+        auto join_scope = join_session.activate();
+        joiner_ended = join_session.myscreen_->world().end != 0;
+        return joiner_ended;
+    }, 2000ms);
+    const auto quit_to_end_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - quit_at).count();
+    EXPECT_TRUE(joiner_ended)
+        << "QUIT on a dead link must end the session now, not after the 30 s "
+           "timer (#278); waited " << quit_to_end_ms << " ms";
+    EXPECT_TRUE(trace_contains("popup", "Connection Lost"))
+        << "the player is told why the mission ended";
+    EXPECT_TRUE(trace_contains("net", "abort_on_dead_link"));
+
+    // A3: "back in Base Camp" — glad_main's tail tears the shadow down and
+    // go_menu's tail re-initializes the lobby client. A dead session must
+    // revert the picker to a LOCAL lobby client exactly like a kick does.
+    Sint32 go_result = -1;
+    {
+        auto join_scope = join_session.activate();
+        og::runtime::clear_local_transport_shadow(join_session);
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        picker_testing_set_lobby_client_owner(&join_client);
+        picker_reinitialize_lobby_after_game();
+        EXPECT_TRUE(join_client->session_lost())
+            << "the post-level resume latches the dead session instead of "
+               "dialing the dead host again";
+        EXPECT_FALSE(join_client->was_kicked());
+        EXPECT_TRUE(picker_lobby_session_lost());
+        trace_clear();
+        EXPECT_TRUE(picker_revert_lobby_client_if_kicked())
+            << "a session whose link died reverts like a kick";
+        EXPECT_FALSE(picker_lobby_is_networked())
+            << "Base Camp is local again after the revert";
+        EXPECT_FALSE(join_client->is_networked_session())
+            << "the owned slot now holds the local client";
+        EXPECT_TRUE(trace_contains(
+            "networking", "connection lost: reverting to local lobby client"));
+        EXPECT_TRUE(trace_contains("popup", "CONNECTION LOST"));
+        EXPECT_FALSE(trace_contains("popup", "KICKED BY HOST"));
+
+        // A4: "started a new game" — GO launches a LOCAL mission from the
+        // player's own save (the joiner still owns a deployed team) instead
+        // of consulting an empty lobby roster and refusing.
+#ifdef TESTING
+        og::sim::g_test_level_tick_limit_override = 15;
+        g_test_remove_exits = true;
+#endif
+        g_start_game_requested = false;
+        trace_clear();
+        go_result = go_menu(0);
+        EXPECT_FALSE(trace_contains("popup", "NEED A TEAM!"))
+            << "the player's own deployed team must count";
+        EXPECT_TRUE(trace_contains("basecamp", "go_launched"))
+            << "GO must launch a local mission, not bounce back to the menu";
+        EXPECT_EQ(button_action_id(ButtonAction::CreateTeamMenu), go_result);
+        picker_testing_set_lobby_client_owner(nullptr);
+    }
+
+    {
+        auto join_scope = join_session.activate();
+        og::runtime::clear_local_transport_shadow(join_session);
+        join_client->shutdown();
+        for (auto& view : join_session.myscreen_->viewob)
+            if (view != nullptr)
+                view->control = nullptr;
+        join_session.myscreen_->world().delete_objects();
+    }
+    {
+        auto host_scope = host_session->activate();
+        og::runtime::clear_local_transport_shadow(*host_session);
+        for (auto& view : host_session->myscreen_->viewob)
+            if (view != nullptr)
+                view->control = nullptr;
+        host_session->myscreen_->world().delete_objects();
+    }
+}
+
+// #278 (the lobby half of the latch): a joiner parked in the LOBBY whose
+// host disappears latches session_lost() on the poll that sees the link
+// Lost — the branch the mid-game test cannot reach, because the lobby is
+// dormant during gameplay. Control: a join whose FIRST dial never connects
+// (nothing listening) has no session to lose.
+TEST(PickerNetworkClient, joiner_lobby_link_death_latches_session_lost)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(join_client->status_lines(),
+                                          "Lobby: 2 players");
+    })) << "the joiner should see the two-player lobby";
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_TRUE(join_client->session_established());
+        EXPECT_FALSE(join_client->session_lost())
+            << "a live session is not lost";
+    }
+
+    // The host vanishes.
+    host_client->shutdown();
+    ASSERT_TRUE(wait_until([&] {
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_client->session_lost();
+    })) << "the lobby poll that sees the link Lost latches the loss";
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_FALSE(join_client->session_established());
+        EXPECT_FALSE(join_client->was_kicked());
+        EXPECT_TRUE(status_lines_contain_exact(join_client->status_lines(),
+                                               "Status: connection lost"));
+        // Latched: the resume seam and shutdown() leave it alone.
+        join_client->resume_after_level();
+        EXPECT_TRUE(join_client->session_lost());
+        join_client->shutdown();
+        EXPECT_TRUE(join_client->session_lost());
+    }
+
+    // Control: nothing listening — the first dial fails, no session existed.
+    og::ui::PickerJoinGameOptions dead_options;
+    dead_options.mode = og::ui::PickerJoinMode::Direct;
+    dead_options.direct_endpoint =
+        std::format("127.0.0.1:{}", ix::getFreePort());
+    std::unique_ptr<og::ui::IPickerLobbyClient> dead_client;
+    {
+        auto join_scope = join_session.activate();
+        dead_client = og::ui::create_join_picker_lobby_client(dead_options);
+        dead_client->initialize_from_save();
+    }
+    ASSERT_TRUE(wait_until([&] {
+        auto join_scope = join_session.activate();
+        dead_client->poll_and_apply();
+        return status_lines_contain_exact(dead_client->status_lines(),
+                                          "Status: connection failed");
+    })) << "a refused dial reports a failed connection";
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_FALSE(dead_client->session_lost())
+            << "never established, so nothing was lost";
+        dead_client->shutdown();
+    }
 }

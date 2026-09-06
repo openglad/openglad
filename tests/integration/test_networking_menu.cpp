@@ -2096,8 +2096,11 @@ namespace {
 class FakeKickedJoinClient final : public og::ui::IPickerLobbyClient
 {
 public:
-    explicit FakeKickedJoinClient(std::atomic<bool>* kicked_flag)
-        : kicked_flag_(kicked_flag)
+    // `lost_flag` (#278) models the session_lost() latch of a joiner whose
+    // link died; nullptr = never lost.
+    explicit FakeKickedJoinClient(std::atomic<bool>* kicked_flag,
+                                  std::atomic<bool>* lost_flag = nullptr)
+        : kicked_flag_(kicked_flag), lost_flag_(lost_flag)
     {
     }
     void initialize_from_save() override {}
@@ -2128,6 +2131,10 @@ public:
     {
         return kicked_flag_->load();
     }
+    [[nodiscard]] bool session_lost() const noexcept override
+    {
+        return lost_flag_ != nullptr && lost_flag_->load();
+    }
     [[nodiscard]] std::optional<std::string> connection_alert() const override
     {
         if (kicked_flag_->load())
@@ -2137,6 +2144,7 @@ public:
 
 private:
     std::atomic<bool>* kicked_flag_;
+    std::atomic<bool>* lost_flag_;
 };
 
 struct KickedJoinerRevertState
@@ -2365,6 +2373,72 @@ TEST(NetworkingMenu, kick_revert_waits_for_a_held_click_to_finish)
     EXPECT_NE(raw, og::ui::active_picker_lobby_client());
     EXPECT_TRUE(trace_contains("networking", "kicked by host"));
     EXPECT_TRUE(trace_contains("popup", "KICKED BY HOST"));
+
+    picker_testing_set_lobby_client_owner(nullptr);
+}
+
+// #278: a joiner whose session died (link Lost after lobby state landed)
+// reverts through the SAME per-frame check as a kick — deferred behind a
+// held click, landing at the next top-of-frame, naming its own reason.
+TEST(NetworkingMenu, lost_session_revert_waits_for_a_held_click_to_finish)
+{
+    trace_clear();
+    std::atomic<bool> kicked{false};
+    std::atomic<bool> lost{true};
+    std::unique_ptr<og::ui::IPickerLobbyClient> owned =
+        std::make_unique<FakeKickedJoinClient>(&kicked, &lost);
+    og::ui::IPickerLobbyClient* const raw = owned.get();
+    ActiveLobbyClientGuard guard(raw);
+    picker_testing_set_lobby_client_owner(&owned);
+
+    EXPECT_TRUE(picker_lobby_session_lost());
+    EXPECT_FALSE(picker_lobby_was_kicked());
+    {
+        PickerHeldClickScope held_click;
+        EXPECT_FALSE(picker_revert_lobby_client_if_kicked())
+            << "no swap while a click is being held/dispatched";
+        EXPECT_EQ(raw, og::ui::active_picker_lobby_client());
+        EXPECT_FALSE(trace_contains("popup", "CONNECTION LOST"));
+    }
+
+    EXPECT_TRUE(picker_revert_lobby_client_if_kicked())
+        << "the latched loss lands on the next top-of-frame check";
+    EXPECT_NE(raw, og::ui::active_picker_lobby_client());
+    EXPECT_FALSE(picker_lobby_is_networked())
+        << "the swap-in is a local client";
+    EXPECT_TRUE(trace_contains("networking",
+                               "connection lost: reverting to local lobby client"));
+    EXPECT_TRUE(trace_contains("popup", "CONNECTION LOST"));
+    EXPECT_FALSE(trace_contains("popup", "KICKED BY HOST"))
+        << "a plain link death is not blamed on the host";
+    EXPECT_FALSE(picker_revert_lobby_client_if_kicked())
+        << "the local client has nothing to revert";
+
+    picker_testing_set_lobby_client_owner(nullptr);
+}
+
+// #278: the server sends the kick notice and then drops the peer, so a
+// kicked client reads as lost too — the kick is the reason that survives.
+TEST(NetworkingMenu, kick_outranks_a_lost_session_in_the_revert)
+{
+    trace_clear();
+    std::atomic<bool> kicked{true};
+    std::atomic<bool> lost{true};
+    std::unique_ptr<og::ui::IPickerLobbyClient> owned =
+        std::make_unique<FakeKickedJoinClient>(&kicked, &lost);
+    og::ui::IPickerLobbyClient* const raw = owned.get();
+    ActiveLobbyClientGuard guard(raw);
+    picker_testing_set_lobby_client_owner(&owned);
+
+    EXPECT_TRUE(picker_lobby_session_lost());
+    EXPECT_TRUE(picker_lobby_was_kicked());
+    EXPECT_TRUE(picker_revert_lobby_client_if_kicked());
+    EXPECT_NE(raw, og::ui::active_picker_lobby_client());
+    EXPECT_TRUE(trace_contains("networking",
+                               "kicked by host: reverting to local lobby client"));
+    EXPECT_TRUE(trace_contains("popup", "KICKED BY HOST"));
+    EXPECT_FALSE(trace_contains("popup", "CONNECTION LOST"));
+    EXPECT_FALSE(trace_contains("networking", "connection lost: reverting"));
 
     picker_testing_set_lobby_client_owner(nullptr);
 }

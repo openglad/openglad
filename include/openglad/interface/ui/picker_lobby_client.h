@@ -192,6 +192,17 @@ public:
     {
         return false;
     }
+    // LINEUP §6 companion to was_kicked() (#278): this client WAS in an
+    // established session and its link has since died for good. Latched;
+    // survives shutdown() and resume_after_level(); never cleared in this
+    // client's lifetime. The picker reverts to a local client on it exactly
+    // as on a kick (the kick outranks it when both are set). Only a joiner
+    // ever reports it — a host's lobby is in-process and a dead relay is
+    // just its line-B alert.
+    [[nodiscard]] virtual bool session_lost() const noexcept
+    {
+        return false;
+    }
     // Networked-only informational ready flag (LobbyReadyMessage).
     virtual bool set_ready(bool ready)
     {
@@ -354,6 +365,7 @@ bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
 bool picker_lobby_kick_machine(og::sim::LobbyMachineId machine_id);
 bool picker_lobby_disconnect_session();
 bool picker_lobby_was_kicked();
+bool picker_lobby_session_lost();
 bool picker_lobby_set_ready(bool ready);
 bool picker_lobby_local_ready();
 og::sim::StartDenialReason picker_lobby_last_start_denial();

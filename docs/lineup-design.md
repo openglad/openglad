@@ -319,6 +319,13 @@ gate, then the existing `disconnect_client` path after sending a
 `LobbyKickedMessage` (kind 9, server→peer) so the kicked client shows
 `KICKED BY HOST` in the connection alert and reverts to a local client
 via `picker_replace_lobby_client(create_local_picker_lobby_client())`.
+A joiner whose link dies for good after the lobby state landed
+(`session_lost()`, latched like `was_kicked()`, #278) takes the SAME
+per-frame revert with the popup `CONNECTION LOST`; the kick outranks it
+when both are set. In-game, that joiner's display shows
+`CONNECTION LOST - RECONNECTING` from the first dropped poll and its
+pause-menu QUIT ends the session at once instead of waiting out
+`CLIENT_CONNECTION_LOST_TIMEOUT_MS`.
 **DISCONNECT**: same replace on both roles; a host's server teardown
 disconnects every peer through the transport as today. Base Camp's
 line-B census and the LINEUP bands read the same `picker_lobby_players()`.

@@ -42,6 +42,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/resources/gparser.h>
@@ -60,7 +61,9 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <format>
 #include <memory>
@@ -107,6 +110,9 @@ void picker_request_start_game();
 #ifdef TESTING
 void picker_testing_mark_game_start();
 void picker_testing_mark_game_end();
+// #278: tests shorten go_menu's bounded start-request wait (0 = the
+// production START_REQUEST_TIMEOUT_MS).
+std::uint64_t g_picker_start_wait_timeout_ms_override = 0;
 #endif
 
 
@@ -2730,10 +2736,45 @@ Sint32 go_menu(Sint32 arg1)
         g_start_game_requested = false;
     if (!start_already_requested && !picker_lobby_request_start())
     {
+        // Bounded (#278): the host's StartGame handoff or denial echo is the
+        // only thing that releases this wait, and a host whose uplink went
+        // dark answers neither. The loop has no event pump and no present,
+        // so past the deadline it says so and hands the menu back.
+        const auto wait_started = std::chrono::steady_clock::now();
+        std::uint64_t wait_timeout_ms = og::sim::START_REQUEST_TIMEOUT_MS;
+#ifdef TESTING
+        if (g_picker_start_wait_timeout_ms_override != 0)
+            wait_timeout_ms = g_picker_start_wait_timeout_ms_override;
+#endif
+        const auto deadline =
+            wait_started + std::chrono::milliseconds(wait_timeout_ms);
+        std::uint64_t wait_iterations = 0;
+        bool wait_timed_out = false;
         while (!g_start_game_requested && picker_lobby_start_request_pending())
         {
+            if (std::chrono::steady_clock::now() >= deadline)
+            {
+                wait_timed_out = true;
+                break;
+            }
             picker_lobby_poll();
             og::input_native::sleep_ms(10);
+            ++wait_iterations;
+        }
+        Log("go_wait iterations={} elapsed_ms={} requested={} timed_out={}\n",
+            wait_iterations,
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - wait_started)
+                .count(),
+            g_start_game_requested,
+            wait_timed_out);
+        if (wait_timed_out)
+        {
+            TRACE("basecamp", "go_wait_timeout iterations=%llu",
+                  static_cast<unsigned long long>(wait_iterations));
+            popup_dialog("NO ANSWER FROM HOST",
+                         "The host did not\nanswer the start\nrequest");
+            return MENU_REDRAW;
         }
     }
 
@@ -2794,6 +2835,7 @@ Sint32 go_menu(Sint32 arg1)
         }
 
 #ifdef TESTING
+        TRACE("basecamp", "go_launched");
         picker_testing_mark_game_start();
 #endif
         glad_main(og::runtime::current_session->myscreen_->save_data.numplayers);

@@ -53,6 +53,20 @@ public:
     // mission" — a deliberate party-wide retreat, distinct from a disconnect
     // (which only converts the leaving player's character to AI).
     void request_level_abort();
+    // Link state as of the last transport poll. `transport_connected()` is
+    // false both before the first connection and after a drop;
+    // `transport_ever_connected()` tells the two apart — together they say
+    // "this client HAD a server and lost it", which is what a display
+    // shows a stall banner for and what request_level_abort() treats as
+    // the connection-lost transition (#278).
+    [[nodiscard]] bool transport_connected() const noexcept
+    {
+        return transport_connected_;
+    }
+    [[nodiscard]] bool transport_ever_connected() const noexcept
+    {
+        return transport_ever_connected_;
+    }
     void send_pause_request();
     void send_pause_response();
     void send_snapshot_hash_check();
@@ -218,6 +232,10 @@ private:
     void maybe_send_hello_if_needed();
     void maybe_send_heartbeat_if_needed();
     void maybe_notify_connection_lost();
+    // The ONE place the connection-lost callback fires: latched, so the
+    // timeout, the fatal-desync path and a QUIT on a dead link all end the
+    // session exactly once through the same seam.
+    void notify_connection_lost_once();
     void note_keyframe_apply_result(bool applied_cleanly);
     void note_outbound_activity();
     void maybe_send_client_ready();

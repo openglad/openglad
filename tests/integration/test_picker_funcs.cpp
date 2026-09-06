@@ -85,7 +85,9 @@ void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
 std::vector<std::string>& level_editor_testing_prompt_queue_ref();
 extern bool g_start_game_requested;
+Sint32 go_menu(Sint32 arg1);
 #ifdef TESTING
+extern std::uint64_t g_picker_start_wait_timeout_ms_override;
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
@@ -129,7 +131,7 @@ public:
     }
     [[nodiscard]] bool start_request_pending() const noexcept override
     {
-        return false;
+        return start_request_pending_result;
     }
     [[nodiscard]] bool has_game_start_config() const noexcept override
     {
@@ -165,6 +167,7 @@ public:
     int consume_calls = 0;
     int request_start_calls = 0;
     bool request_start_result = false;
+    bool start_request_pending_result = false;
     bool host_controls_visible_result = true;
     bool networked_result = false;
     og::sim::StartDenialReason denial_result =
@@ -188,12 +191,17 @@ public:
     {
         return was_kicked_result;
     }
+    [[nodiscard]] bool session_lost() const noexcept override
+    {
+        return session_lost_result;
+    }
 
     std::vector<og::sim::LobbyMachineId> kicked_machines;
     bool kick_result = true;
     int disconnect_calls = 0;
     bool disconnect_result = true;
     bool was_kicked_result = false;
+    bool session_lost_result = false;
 };
 
 // A client that overrides NOTHING past the pure virtuals, so the
@@ -965,12 +973,54 @@ TEST(PickerFuncs, picker_lobby_kick_and_disconnect_forward_to_the_active_client)
         EXPECT_FALSE(picker_lobby_kick_machine(1u));
         EXPECT_FALSE(picker_lobby_disconnect_session());
         EXPECT_FALSE(picker_lobby_was_kicked());
+        EXPECT_FALSE(picker_lobby_session_lost())
+            << "a client with no link behind it never lost one (#278)";
+    }
+    {
+        ContractPickerLobbyClient lost_client;
+        lost_client.session_lost_result = true;
+        ActivePickerLobbyClientGuard guard(&lost_client);
+        EXPECT_TRUE(picker_lobby_session_lost());
     }
 
     picker_lobby_shutdown();
     EXPECT_FALSE(picker_lobby_kick_machine(7u));
     EXPECT_FALSE(picker_lobby_disconnect_session());
     EXPECT_FALSE(picker_lobby_was_kicked());
+    EXPECT_FALSE(picker_lobby_session_lost());
+}
+
+// #278: go_menu's wait for the host's StartGame handoff / denial echo is
+// bounded. A host whose uplink went dark answers neither; past the deadline
+// the menu says so and comes back instead of spinning behind a black window.
+TEST(PickerFuncs, go_menu_start_wait_is_bounded_when_the_host_never_answers)
+{
+    ContractPickerLobbyClient client;
+    client.networked_result = true;
+    client.host_controls_visible_result = false; // joiner: no ready gate
+    client.request_start_result = false;         // the request went out...
+    client.start_request_pending_result = true;  // ...and never resolves
+    og::sim::LobbyPlayer player;
+    player.player_index = 1;
+    player.name = "Joiner";
+    og::sim::LobbyCharacterSlot slot;
+    slot.deployed = true;
+    player.character_slots.push_back(slot);
+    client.players.push_back(player);
+    ActivePickerLobbyClientGuard guard(&client);
+
+    g_start_game_requested = false;
+    g_picker_start_wait_timeout_ms_override = 200;
+    trace_clear();
+    const Sint32 result = go_menu(0);
+    g_picker_start_wait_timeout_ms_override = 0;
+
+    EXPECT_EQ(MENU_REDRAW, result);
+    EXPECT_EQ(1, client.request_start_calls);
+    EXPECT_FALSE(g_start_game_requested);
+    EXPECT_TRUE(trace_contains("basecamp", "go_wait_timeout"));
+    EXPECT_TRUE(trace_contains("popup", "NO ANSWER FROM HOST"));
+    EXPECT_FALSE(trace_contains("basecamp", "go_launched"));
 }
 
 TEST(PickerFuncs, picker_replace_lobby_client_is_transactional_on_initialize_failure)
