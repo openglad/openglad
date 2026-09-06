@@ -422,7 +422,7 @@ Every knob is opt-in: unset, the demo takes its production path.
 | `OPENGLAD_DEMO_COMPOSITE_DUMP` | BMP path for the final presented composite, written when the run ends via `OPENGLAD_DEMO_MAX_FRAMES` |
 | `OPENGLAD_DEMO_CAPTURE_DIR` | Enables showcase frame capture into this directory (indexed BMPs) |
 | `OPENGLAD_DEMO_CAPTURE_SESSION` | Cell index to capture, or `-1` for the whole grid at native cell resolution |
-| `OPENGLAD_DEMO_CAPTURE_FOCUS` | Capture camera: `player`, `boss` or `center` |
+| `OPENGLAD_DEMO_CAPTURE_FOCUS` | Capture camera: `player`, `boss` or `center`. `boss` follows the named hostile living (strongest first), falling back to the strongest unnamed hostile when the level names nobody |
 | `OPENGLAD_DEMO_CAPTURE_EVERY` / `_START` / `_LIMIT` | Capture frame stride, first frame, and frame count cap |
 
 ### Spectator Mode (0-Player)
