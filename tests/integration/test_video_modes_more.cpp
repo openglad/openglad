@@ -15,6 +15,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -158,6 +159,29 @@ TEST(VideoModesMore, exclusive_mode_switch_rejects_only_multi_display_x11)
 	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("wayland", 2));
 	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("windows", 2));
 	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("offscreen", 2));
+}
+
+// Issue #248: the boot renderer fallback decision. Only an unpinned Wayland
+// boot with this process's sole window may reinitialize video on XWayland.
+TEST(VideoModesMore, renderer_fallback_only_reboots_an_unpinned_sole_wayland_window)
+{
+	using OptDriver = std::optional<std::string_view>;
+	EXPECT_EQ(OptDriver("x11"),
+	          og::platform::renderer_fallback_video_driver("wayland", false, 1));
+	EXPECT_EQ(OptDriver(std::nullopt),
+	          og::platform::renderer_fallback_video_driver("wayland", true, 1));
+	EXPECT_EQ(OptDriver(std::nullopt),
+	          og::platform::renderer_fallback_video_driver("x11", false, 1));
+	EXPECT_EQ(OptDriver(std::nullopt),
+	          og::platform::renderer_fallback_video_driver("dummy", false, 1));
+	EXPECT_EQ(OptDriver(std::nullopt),
+	          og::platform::renderer_fallback_video_driver("offscreen", false, 1));
+	EXPECT_EQ(OptDriver(std::nullopt),
+	          og::platform::renderer_fallback_video_driver("emscripten", false, 1));
+	EXPECT_EQ(OptDriver(std::nullopt),
+	          og::platform::renderer_fallback_video_driver("wayland", false, 2));
+	EXPECT_EQ(OptDriver(std::nullopt),
+	          og::platform::renderer_fallback_video_driver("wayland", false, 0));
 }
 
 TEST(VideoModesMore, native_window_requests_a_physical_hidpi_backbuffer)

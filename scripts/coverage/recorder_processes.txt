@@ -37,6 +37,7 @@ og_test_picker_network
 og_test_rendering
 og_test_runtime_bootstrap_lifecycle
 og_test_screen
+og_test_sdl_renderer_fallback
 og_test_sdl_video_lifecycle
 og_test_smooth
 og_test_snapshot_benchmark

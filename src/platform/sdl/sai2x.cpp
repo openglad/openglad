@@ -20,6 +20,7 @@
 #include <cstring>
 #include <format>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #ifdef __EMSCRIPTEN__
@@ -743,6 +744,129 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 
 
 
+#ifdef TESTING
+namespace og::video_testing
+{
+std::optional<RendererFallbackProbe> g_renderer_fallback_probe_override;
+int g_renderer_create_failures_to_inject = 0;
+} // namespace og::video_testing
+#endif
+
+SDL_Window* Screen::create_boot_window(int w, int h, SDL_WindowFlags window_flags)
+{
+	SDL_Window* created = SDL_CreateWindow("Gladiator", w, h, window_flags);
+	if (created == nullptr)
+		return nullptr;
+	SDL_SetWindowPosition(created, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+
+	// SDL3 defaults SDL_GL_ALPHA_SIZE to 8 (SDL2: 0). On Emscripten that
+	// creates a translucent WebGL canvas (alpha:true, premultiplied), and the
+	// XRGB canvas pixels carry alpha=0, so the browser composites the whole
+	// game away to black. Request the SDL2-default opaque context everywhere.
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+	return created;
+}
+
+SDL_Renderer* Screen::create_presenting_renderer(std::string& failure_reason)
+{
+	SDL_Renderer* created = nullptr;
+	#ifdef TESTING
+	if (og::video_testing::g_renderer_create_failures_to_inject > 0)
+	{
+		--og::video_testing::g_renderer_create_failures_to_inject;
+		SDL_SetError("injected renderer failure");
+	}
+	else
+	#endif
+		created = SDL_CreateRenderer(window, nullptr);
+	if (created == nullptr)
+	{
+		const char* const driver = SDL_GetCurrentVideoDriver();
+		failure_reason = SDL_GetError();
+		LogError("SDL_CreateRenderer failed on video driver '{}': {}\n",
+		         driver != nullptr ? driver : "(none)", failure_reason);
+		return nullptr;
+	}
+	failure_reason.clear();
+	#ifndef TESTING
+	SDL_SetRenderVSync(created, vsync_enabled_ ? 1 : 0);
+	#endif
+	return created;
+}
+
+void Screen::log_render_driver_diagnostics()
+{
+	if (window == nullptr)
+		return;
+	// SDL only reports the winning driver's error. Name every render driver's
+	// own reason so a user who cannot start the game (issue #248) can hand
+	// back the diagnosis without setting SDL_LOGGING.
+	const int driver_count = SDL_GetNumRenderDrivers();
+	for (int i = 0; i < driver_count; ++i)
+	{
+		const char* const name = SDL_GetRenderDriver(i);
+		if (name == nullptr)
+			continue;
+		SDL_Renderer* const probe = SDL_CreateRenderer(window, name);
+		LogError("  render driver '{}': {}\n", name,
+		         probe != nullptr ? "available" : SDL_GetError());
+		if (probe != nullptr)
+			SDL_DestroyRenderer(probe);
+	}
+}
+
+bool Screen::switch_boot_video_driver(const char* driver, int w, int h,
+                                      SDL_WindowFlags window_flags,
+                                      std::string& error)
+{
+	const char* const current = SDL_GetCurrentVideoDriver();
+	const std::string previous = current != nullptr ? current : "";
+	// SDL folds the legacy SDL_VIDEODRIVER environment variable into
+	// SDL_HINT_VIDEO_DRIVER, and an environment value outranks a normal
+	// SDL_SetHint, so the switch needs the override priority. It stays in
+	// force for the rest of the process: any later SDL video (re)init lands
+	// on the same driver as the window the player is looking at.
+	const auto restore_previous = [&previous]() {
+		if (previous.empty())
+			SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+		else
+			SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, previous.c_str(),
+			                        SDL_HINT_OVERRIDE);
+		(void)SDL_InitSubSystem(SDL_INIT_VIDEO);
+	};
+
+	SDL_DestroyWindow(window);
+	window = nullptr;
+	SDL_QuitSubSystem(SDL_INIT_VIDEO);
+	if (SDL_WasInit(SDL_INIT_VIDEO) != 0)
+	{
+		// Someone else holds an SDL_INIT_VIDEO reference (a sub-session, or a
+		// harness): the driver cannot be reselected without pulling the
+		// subsystem out from under that owner.
+		error = "the video subsystem is held by another initializer";
+		restore_previous();
+		return false;
+	}
+	(void)SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, driver,
+	                              SDL_HINT_OVERRIDE);
+	if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
+	{
+		error = SDL_GetError();
+		restore_previous();
+		return false;
+	}
+	window = create_boot_window(w, h, window_flags);
+	if (window == nullptr)
+	{
+		error = SDL_GetError();
+		SDL_QuitSubSystem(SDL_INIT_VIDEO);
+		restore_previous();
+		return false;
+	}
+	TRACE("video", "renderer fallback: reinitialized video on '%s'", driver);
+	return true;
+}
+
 /////////////////////////////////
 //
 Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
@@ -794,23 +918,80 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     window_flags |= SDL_WINDOW_BORDERLESS;
     #endif
 
-    window = SDL_CreateWindow("Gladiator", w, h, window_flags);
+    window = create_boot_window(w, h, window_flags);
     if(window == nullptr)
         throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());
-    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 
-    // SDL3 defaults SDL_GL_ALPHA_SIZE to 8 (SDL2: 0). On Emscripten that
-    // creates a translucent WebGL canvas (alpha:true, premultiplied), and the
-    // XRGB canvas pixels carry alpha=0, so the browser composites the whole
-    // game away to black. Request the SDL2-default opaque context everywhere.
-    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
-
-    renderer = SDL_CreateRenderer(window, nullptr);
+    std::string renderer_failure;
+    renderer = create_presenting_renderer(renderer_failure);
     if (renderer == nullptr)
-        LogError("SDL_CreateRenderer failed: {}\n", SDL_GetError());
-    #ifndef TESTING
-    SDL_SetRenderVSync(renderer, vsync_enabled_ ? 1 : 0);
-    #endif
+    {
+        // Issue #248: SDL's Wayland backend has no window framebuffer, so a
+        // machine that cannot give this process an accelerated renderer gets
+        // no renderer at all there and the surface is never mapped — the game
+        // looks like it refuses to start. Reboot SDL video on XWayland instead
+        // of running invisibly, and if that is impossible, say so and stop.
+        log_render_driver_diagnostics();
+        const char* const live_driver = SDL_GetCurrentVideoDriver();
+        const char* const pinned_driver = SDL_GetHint(SDL_HINT_VIDEO_DRIVER);
+        int window_count = 0;
+        SDL_free(SDL_GetWindows(&window_count));
+        std::string current_driver = live_driver != nullptr ? live_driver : "";
+        bool driver_pinned = pinned_driver != nullptr && *pinned_driver != '\0';
+        std::string fallback_driver{og::platform::kRendererFallbackVideoDriver};
+        #ifdef TESTING
+        if (og::video_testing::g_renderer_fallback_probe_override)
+        {
+            current_driver =
+                og::video_testing::g_renderer_fallback_probe_override->current_driver;
+            driver_pinned =
+                og::video_testing::g_renderer_fallback_probe_override->driver_pinned;
+            fallback_driver =
+                og::video_testing::g_renderer_fallback_probe_override->fallback_driver;
+        }
+        #endif
+        std::string message =
+            std::string("Fatal: SDL_CreateRenderer failed on video driver '") +
+            (live_driver != nullptr ? live_driver : "(none)") + "': " +
+            renderer_failure;
+        if (og::platform::renderer_fallback_video_driver(
+                current_driver, driver_pinned, window_count))
+        {
+            LogWarn("No renderer on video driver '{}' ({}); falling back to "
+                    "video driver '{}'. Pin SDL_VIDEODRIVER to disable this "
+                    "fallback.\n",
+                    current_driver, renderer_failure, fallback_driver);
+            std::string switch_error;
+            if (switch_boot_video_driver(fallback_driver.c_str(), w, h,
+                                         window_flags, switch_error))
+            {
+                renderer = create_presenting_renderer(renderer_failure);
+                if (renderer == nullptr)
+                    message += "; fallback to '" + fallback_driver +
+                               "' has no renderer either: " + renderer_failure;
+                else
+                    TRACE("video", "renderer fallback succeeded on '%s'",
+                          SDL_GetCurrentVideoDriver());
+            }
+            else
+            {
+                message += "; fallback to '" + fallback_driver +
+                           "' failed: " + switch_error;
+            }
+        }
+        if (renderer == nullptr)
+        {
+            if (window != nullptr)
+            {
+                SDL_DestroyWindow(window);
+                window = nullptr;
+            }
+            throw std::runtime_error(
+                message +
+                " (set SDL_VIDEODRIVER=x11 to force XWayland; "
+                "SDL_LOGGING='*=verbose' prints SDL's own renderer log)");
+        }
+    }
 
 	SDL_GetWindowSize(window, &w, &h);
 	og::runtime::current_session->window_w_ = static_cast<float>(w);
@@ -1654,18 +1835,17 @@ bool Screen::recreate_render_backend()
 	SDL_DestroyRenderer(renderer);
 	renderer = nullptr;
 
-	// Constructor parity for the renderer (see Screen::Screen).
-	renderer = SDL_CreateRenderer(window, nullptr);
+	// Constructor parity for the renderer (see Screen::Screen). The device is
+	// expected to come back on the driver the window already lives on, so this
+	// retry never switches drivers and never throws: swap() calls it again at
+	// the next present until it succeeds.
+	std::string renderer_failure;
+	renderer = create_presenting_renderer(renderer_failure);
 	if (renderer == nullptr)
 	{
-		LogError("recreate_render_backend: SDL_CreateRenderer failed: {}\n",
-		         SDL_GetError());
 		set_active_canvas(active_);
 		return false;
 	}
-	#ifndef TESTING
-	SDL_SetRenderVSync(renderer, vsync_enabled_ ? 1 : 0);
-	#endif
 
 	// Constructor parity for the fixed 320x200 UI texture: opaque present,
 	// chunky-crisp nearest upscale (see the notes in Screen::Screen).

@@ -319,6 +319,35 @@ if(OG_SANITIZER_TEST_ENVIRONMENT)
     )
 endif()
 
+# Issue #248: the startup renderer fallback quits and re-initializes the SDL
+# video subsystem, which would pull the window out from under a shared
+# integration runner. Its transitions get their own process (and, unlike
+# og_test_sdl_video_lifecycle, the TESTING build, for the fault-injection
+# seams in og::video_testing).
+add_executable(og_test_sdl_renderer_fallback
+    ${CMAKE_SOURCE_DIR}/tests/integration/sdl_renderer_fallback_lifecycle.cpp
+)
+configure_openglad_library(og_test_sdl_renderer_fallback)
+configure_openglad_sdl_target(og_test_sdl_renderer_fallback)
+target_compile_definitions(og_test_sdl_renderer_fallback PRIVATE
+    TESTING
+)
+target_link_libraries(og_test_sdl_renderer_fallback PRIVATE og_game_test)
+configure_openglad_runtime_target(og_test_sdl_renderer_fallback)
+add_runtime_assets_dependency(og_test_sdl_renderer_fallback)
+add_test(NAME og_test_sdl_renderer_fallback
+    COMMAND og_test_sdl_renderer_fallback
+)
+set_tests_properties(og_test_sdl_renderer_fallback PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 60
+)
+if(OG_SANITIZER_TEST_ENVIRONMENT)
+    set_tests_properties(og_test_sdl_renderer_fallback PROPERTIES
+        ENVIRONMENT "${OG_SANITIZER_TEST_ENVIRONMENT}"
+    )
+endif()
+
 # Run initialize -> owning session -> bootstrap exactly once in a
 # dedicated process. This keeps process-global RNG, input, config, and
 # SDL lifecycle mutations out of the shared integration-test runner.
@@ -1469,6 +1498,19 @@ add_test(NAME openglad_sdl_startup_error
 set_tests_properties(openglad_sdl_startup_error PROPERTIES
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     TIMEOUT 60
+)
+
+# Issue #248: a boot that cannot create a renderer (SDL's Wayland backend has
+# no software fallback) must fail loudly instead of running invisibly forever.
+add_test(NAME openglad_sdl_renderer_failure
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_sdl_renderer_failure.sh
+        $<TARGET_FILE:openglad>
+)
+set_tests_properties(openglad_sdl_renderer_failure PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 90
 )
 
 # openglad_demo is the only process that writes an openglad_demo Lua dump, and

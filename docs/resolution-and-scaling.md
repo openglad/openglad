@@ -84,6 +84,22 @@ Borderless there, including when a saved configuration requests Exclusive.
 Single-display X11, Wayland, Windows, and other backends retain the normal
 Exclusive choices.
 
+### Wayland and the XWayland fallback
+
+SDL's Wayland backend has no software framebuffer, so its software renderer is
+unreachable: when a Wayland session cannot give OpenGlad an accelerated
+renderer (EGL/GLES/Vulkan/GPU), SDL has no renderer left to fall back on, and a
+Wayland window stays invisible until something draws into it. OpenGlad
+therefore reinitializes SDL video on X11 (XWayland) when the presenting
+renderer cannot be created at startup, logging the Wayland reason and every
+render driver's own error first.
+
+Pinning a driver disables the fallback: `SDL_VIDEODRIVER=wayland` keeps Wayland
+(a missing renderer is then a fatal, logged startup error rather than an
+invisible window), and `SDL_VIDEODRIVER=x11` forces XWayland directly.
+`SDL_LOGGING='*=verbose'` adds SDL's own renderer log on top of the per-driver
+reasons OpenGlad prints.
+
 ## Zoom and canvas size
 
 `zoom: 1.0` restores the shipped/default behavior on `master`: a 320x200

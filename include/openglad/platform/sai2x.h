@@ -296,13 +296,31 @@ class Screen
 		void clear_window();
 
 		// Vsync for the presenting renderer. The choice is remembered and
-		// replayed at every renderer creation (construction and
+		// replayed at every renderer creation (create_presenting_renderer is
+		// the single replay site, used by construction and by
 		// recreate_render_backend), so a lost device cannot restore the
 		// display-rate cap that an uncapped frame rate turned off.
 		void set_vsync(bool on);
 		[[nodiscard]] bool vsync_enabled() const { return vsync_enabled_; }
 
 	private:
+		// The one renderer-creation path: creates the presenting renderer for
+		// the current window and replays the remembered vsync choice. On
+		// failure it logs the error with the live video driver and reports the
+		// SDL reason through failure_reason.
+		SDL_Renderer* create_presenting_renderer(std::string& failure_reason);
+		// Per-render-driver reasons for a boot failure, so a user who cannot
+		// start the game has SDL's own diagnosis without SDL_LOGGING.
+		void log_render_driver_diagnostics();
+		// The boot window (create, center, request an opaque GL context). The
+		// GL attribute is per video init, so the fallback reboot reuses this.
+		SDL_Window* create_boot_window(int w, int h, SDL_WindowFlags flags);
+		// Reinitializes SDL video on `driver` and recreates the boot window
+		// there (issue #248: XWayland when Wayland has no renderer). On any
+		// failure the previous driver is restored, no window exists, and the
+		// SDL reason lands in `error`.
+		bool switch_boot_video_driver(const char* driver, int w, int h,
+		                              SDL_WindowFlags flags, std::string& error);
 		// Ensures an atomic surface/texture pair exists at 2x source size.
 		// Rejects overflow, the renderer's maximum texture dimension and the
 		// bounded CPU/pixel budget before allocating either resource.
