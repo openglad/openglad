@@ -290,6 +290,28 @@ public:
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].floor_smoother
                    : mysmoother;
     }
+    // The grid/smoother sync invariant, in one place (issue #12). Every
+    // smoother holds a NON-OWNING view of its floor's grid buffer, so each
+    // site that frees or replaces a grid -- delete_grid, create_new_grid,
+    // resize_grid, the .fss reader, the world handoff in LevelRuntimeData,
+    // the mapgen builders and the editor's add_floor -- must re-target that
+    // floor's smoother, or reset it when the grid is gone. A stranded
+    // smoother reads AND writes freed memory the next time a terrain-brush
+    // stroke smooths; that is the 2013 editor crash the reporter of issue #12
+    // hit after resizing a new level to 30x30 and painting a wall. Nothing in
+    // the type system enforces this, so tests assert it here.
+    [[nodiscard]] bool smoothers_in_sync() const noexcept
+    {
+        if (grid.valid() ? !mysmoother.targets(grid) : mysmoother.has_target())
+            return false;
+        for (const ExtraFloor& floor : extra_floors_)
+        {
+            if (floor.grid.valid() ? !floor.floor_smoother.targets(floor.grid)
+                                   : floor.floor_smoother.has_target())
+                return false;
+        }
+        return true;
+    }
     // Single floor-keyed obmap (the floor arg is accepted for symmetry but the
     // one obmap buckets all floors via ob->floor()).
     [[nodiscard]] obmap* obmap_for_floor(int /*floor*/) noexcept

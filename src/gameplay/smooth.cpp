@@ -684,3 +684,24 @@ void smoother::set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue)
 
 	mygrid_span_[static_cast<std::size_t>(x+y*maxx)] = static_cast<unsigned char>(whatvalue);
 }
+
+// Grid/smoother sync invariant (issue #12). mygrid_span_ is a NON-OWNING view
+// of a PixieData's buffer: whoever frees or replaces that buffer must call
+// set_target() (or reset()) or the smoother is left reading -- and, through
+// set_x_y(), WRITING -- memory the grid no longer owns. That was the 2013
+// level-editor crash: "make the level 30x30" replaced the grid, the terrain
+// brush kept smoothing through the old pointer, and the bytes landed in the
+// walkers allocated afterwards.
+bool smoother::has_target() const noexcept
+{
+	return !mygrid_span_.empty();
+}
+
+bool smoother::targets(const PixieData& data) const noexcept
+{
+	return data.valid()
+	    && mygrid_span_.data() == data.data.get()
+	    && mygrid_span_.size() == static_cast<std::size_t>(data.w) * data.h
+	    && maxx == data.w
+	    && maxy == data.h;
+}

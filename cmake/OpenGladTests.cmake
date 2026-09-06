@@ -113,6 +113,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_save_data_versions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_company_io.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_editor_smoke.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_level_editor_issue12_wall_crash.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_external_zlib.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_external_libzip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_lifecycle.cpp
@@ -587,6 +588,7 @@ og_add_test_group(og_test_level FILES
     test_level_editor_interactions.cpp
     test_level_editor_prompt_block.cpp
     test_level_editor_smoke.cpp
+    test_level_editor_issue12_wall_crash.cpp
     test_level_data_coverage.cpp
     test_png_conversion.cpp
     test_aseprite_round_trip.cpp

@@ -683,6 +683,14 @@ bool are_objects_outside_area(LevelRuntimeData* level, int x, int y, int w, int 
 enum class EventType;
 EventType handle_basic_editor_event(const void* native_event);
 
+#ifdef TESTING
+// The editor's LevelEditorData is a function-local static with its own
+// LevelRuntimeData (and therefore its own GameWorld), so a test driving the
+// real event loop has no other handle on the level it just edited. Published
+// only under TESTING, and only safe to read after level_editor() returns.
+static LevelEditorData* g_level_editor_testing_data = nullptr;
+#endif
+
 #define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20
 
 #ifdef REDUCE_OVERSCAN
@@ -3545,6 +3553,9 @@ Sint32 level_editor()
     og::ui::LegacyMenuFade entry_fade("level editor");
 
     static LevelEditorData data;
+#ifdef TESTING
+    g_level_editor_testing_data = &data;
+#endif
     // Refresh radar pointers in case the session's viewscreen was rebuilt
     // since this static was first constructed (avoids a dangling viewscreen*).
     data.myradar.viewscreenp = og::runtime::current_session->myscreen_->viewob[0].get();

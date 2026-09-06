@@ -39,6 +39,13 @@ class smoother
 		std::int32_t query_x_y(std::int32_t x, std::int32_t y);       // return target type, ie PIX_GRASS1
 		std::int32_t query_genre_x_y(std::int32_t x, std::int32_t y); // returns target genre, ie TYPE_GRASS
 
+        // Grid/smoother sync queries (issue #12). The target below is a
+        // NON-OWNING view, so callers that free or replace a grid buffer have
+        // to re-target (or reset) the smoother; these expose that state so the
+        // invariant can be asserted instead of only commented on.
+        [[nodiscard]] bool has_target() const noexcept;
+        [[nodiscard]] bool targets(const PixieData& data) const noexcept;
+
     protected:
         std::uint32_t next_random(std::uint32_t max_exclusive) const;
 		std::int32_t surrounds(std::int32_t x, std::int32_t y, std::int32_t whatgenre); // returns 0-15 of 4 surroundings
