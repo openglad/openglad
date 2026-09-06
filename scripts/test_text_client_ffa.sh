@@ -15,7 +15,10 @@
 # two-member crew alone, which is still a live FFA match (two fighters is
 # the floor), so everything this harness measures about the band survives;
 # only the population moved. Filling the arena's other six seats is a host
-# decision now, and the CLI has no way to make it.
+# decision now, and the CLI has no way to make it. Amendment 7 (#276) deals
+# FILL: FAIR onto an arena's defined teams in the PICKERS (SDL, text,
+# curses) and the demo; this knob-less CLI shape is deliberately left as
+# the headless baseline, so the count below still holds.
 #
 # Exit code: 0 on success, 1 on any failure.
 

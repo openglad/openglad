@@ -15,9 +15,11 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -27,6 +29,7 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
 
@@ -400,6 +403,9 @@ struct SavedPickerSave
             save.ctf_strip_scenario_troops;
         snapshot_fields.fill = save.fill;
         snapshot_fields.map_units = save.map_units;
+        snapshot_fields.arena_lineup_dealt_campaign =
+            save.arena_lineup_dealt_campaign;
+        snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
     }
 
     ~SavedPickerSave()
@@ -421,6 +427,9 @@ struct SavedPickerSave
             snapshot_fields.ctf_strip_scenario_troops;
         save.fill = snapshot_fields.fill;
         save.map_units = snapshot_fields.map_units;
+        save.arena_lineup_dealt_campaign =
+            snapshot_fields.arena_lineup_dealt_campaign;
+        save.arena_lineup_dealt_scen = snapshot_fields.arena_lineup_dealt_scen;
     }
 };
 
@@ -462,6 +471,11 @@ void write_save0_with_fighters(const std::string& campaign, short scen_num,
     save.ctf_strip_scenario_troops = 0;
     save.fill = {};
     save.map_units = {};
+    // The arena deal memo (amendment 7) is part of the resting state: a
+    // memo left by an earlier flow on the same cursor would mark these
+    // fresh bands as already dealt.
+    save.arena_lineup_dealt_campaign.clear();
+    save.arena_lineup_dealt_scen = 0;
     ASSERT_TRUE(save.save("save0"));
 }
 
@@ -768,14 +782,17 @@ int lineup_fill_flow_injector(void* data)
     state->captures += capture_frame("scenario_score_only");
     SDL_Delay(200);
 
-    // VIEW LEVEL first: with every knob at its default the staged census
-    // fields RED's five authored map units.
+    // VIEW LEVEL first: with every knob as the arena dealt it (amendment
+    // 7 — RED and GREEN are the authored teams, both FAIR at rest) the
+    // staged census fields RED's five authored map units AND the FAIR
+    // squad the deal put beside them (D3: troops and squad stand together).
     interact("view_scenario");
     state->viewer_opened_before =
         wait_for_interactable_at("back", 10, 170, 10000);
     if (state->viewer_opened_before) {
         state->troops_line_before = wait_for_trace(
-            "picker", "view_scenario line   RED TEAM  ACTIVE - MAP TROOPS (5)",
+            "picker",
+            "view_scenario line   RED TEAM  ACTIVE - MAP TROOPS+BOTS (5+",
             10000);
         SDL_Delay(300);
         interact("back");
@@ -795,12 +812,14 @@ int lineup_fill_flow_injector(void* data)
         SDL_Delay(300);
 
         // The FILL wheel on RED, all five labels with the save pinned at
-        // every stop. E1: every band rests on the stored 0 -- NONE -- so
-        // the wheel walks WEAK, FAIR, STRONG, BRUTAL and back to NONE, and
-        // the display order is now the storage order.
+        // every stop. Amendment 7: RED is an authored team on a versus
+        // campaign, so its band rests on the DEALT FAIR (stored 2) and the
+        // wheel walks STRONG, BRUTAL, NONE, WEAK and back to FAIR — the
+        // display order is still the storage order (E1), entered one stop
+        // further along.
         const std::array<const char*, 5> wheel_labels = {
-            "FILL: WEAK", "FILL: FAIR", "FILL: STRONG", "FILL: BRUTAL",
-            "FILL: NONE"};
+            "FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK",
+            "FILL: FAIR"};
         state->wheel_walked = true;
         for (std::size_t step = 0; step < wheel_labels.size(); ++step) {
             if (!click_until_label("lineup_fill_0", wheel_labels[step], 3,
@@ -814,15 +833,15 @@ int lineup_fill_flow_injector(void* data)
                 og::runtime::current_session->myscreen_->save_data.fill[0];
         }
         // Land RED on STRONG for the end-to-end staged read (the wheel
-        // closed on NONE, so it is three stops away).
+        // closed on FAIR, so it is one stop away).
         state->fill_red_strong = click_through_labels(
-            "lineup_fill_0",
-            {"FILL: WEAK", "FILL: FAIR", "FILL: STRONG"});
+            "lineup_fill_0", {"FILL: STRONG"});
         SDL_Delay(300);
-        // BLUE takes WEAK (the capture shows two different fill words) --
-        // one click off its resting NONE.
-        state->fill_blue_weak =
-            click_until_label("lineup_fill_1", "FILL: WEAK");
+        // GREEN takes WEAK (the capture shows two different fill words) --
+        // four clicks round from its dealt FAIR.
+        state->fill_blue_weak = click_through_labels(
+            "lineup_fill_1",
+            {"FILL: STRONG", "FILL: BRUTAL", "FILL: NONE", "FILL: WEAK"});
         SDL_Delay(300);
 
         // The MAP UNITS box: RED's is live (5 authored units) and flips
@@ -906,19 +925,20 @@ TEST(LineupUi, fill_wheel_map_units_box_and_staged_labels_end_to_end)
         << "SCORE: MAP alone at (30,140) (B5)";
     EXPECT_TRUE(state.viewer_opened_before);
     EXPECT_TRUE(state.troops_line_before)
-        << "with MAP UNITS on, RED fields its five authored units";
+        << "with MAP UNITS on, RED fields its five authored units beside "
+           "the FAIR squad the arena dealt it (amendment 7 + D3)";
     EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
     EXPECT_TRUE(state.wheel_walked)
-        << "the FILL wheel walks WEAK, FAIR, STRONG, BRUTAL, NONE from "
-           "NONE (E1: one band, one order, one stored code)";
+        << "the FILL wheel walks STRONG, BRUTAL, NONE, WEAK, FAIR from the "
+           "dealt FAIR (E1: one band, one order, one stored code)";
     // The save value at every stop of the wheel — each write survived every
     // later per-frame picker_lobby_poll() only because change_lineup_fill
     // pushed it into the lobby first.
-    EXPECT_EQ(og::sim::kFillWeak, state.wheel_values[0]);
-    EXPECT_EQ(og::sim::kFillFair, state.wheel_values[1]);
-    EXPECT_EQ(og::sim::kFillStrong, state.wheel_values[2]);
-    EXPECT_EQ(og::sim::kFillBrutal, state.wheel_values[3]);
-    EXPECT_EQ(og::sim::kFillNone, state.wheel_values[4]);
+    EXPECT_EQ(og::sim::kFillStrong, state.wheel_values[0]);
+    EXPECT_EQ(og::sim::kFillBrutal, state.wheel_values[1]);
+    EXPECT_EQ(og::sim::kFillNone, state.wheel_values[2]);
+    EXPECT_EQ(og::sim::kFillWeak, state.wheel_values[3]);
+    EXPECT_EQ(og::sim::kFillFair, state.wheel_values[4]);
     EXPECT_TRUE(state.fill_red_strong);
     EXPECT_TRUE(state.fill_blue_weak);
     EXPECT_EQ(og::sim::kFillStrong, save.fill[0]);
@@ -1787,19 +1807,23 @@ TEST(LineupUi, fill_wheel_full_cycle_on_authored_and_unauthored_bands)
 }
 
 // ---------------------------------------------------------------------------
-// E3 flow pin: nothing fields anywhere until the host turns a wheel — on a
-// modes map too. THE CROSSING (scen 500) is a CTF map that authors no units
-// of its own, so a solo company leaves exactly ONE team standing on it, and
-// with every band resting on NONE the mode has nobody to match. VIEW LEVEL
-// must say that in the honest sentence rather than quietly matching a FAIR
-// opponent into the empty half — the "matched teams" default E3 retires.
-// One band turned to FILL: FAIR fields the squad that clears the refusal,
-// and the staged census names it.
+// Amendment 7 flow pin (#276), the re-aim of the E3 pin this test used to
+// be: on a versus campaign the arena DEALS FILL: FAIR to the teams the map
+// authors, and an explicit NONE still refuses. CTF: FIRST BLOOD (scen 500)
+// authors RED and GREEN start markers and no units of its own, so a solo
+// company on RED used to leave exactly ONE team standing with every band at
+// its stored NONE, and VIEW LEVEL said so — the honest E3 refusal. The
+// maintainer reported that refusal (and the instant win behind it) as the
+// bug: an arena at its defaults is supposed to be a match.
 //
-// The two halves are the whole ruling: the refusal is what "no squad fields
-// anywhere unless the host sets FILL" COSTS on a mode map, and the cleared
-// census is what it buys back the moment the host asks. Pinning only the
-// second half would pass just as well under the old default.
+// Three halves make the whole ruling: (a) at rest the two authored bands
+// read FAIR and nothing else does, and VIEW LEVEL censuses a two-team match
+// with GREEN's squad wearing its fill word; (b) the wheel still reaches
+// NONE on the authored band, and with it turned there the refusal is back —
+// NONE remains a real choice, not a default the deal papers over; (c) the
+// page's re-entry (a level reload through the very seam the deal lives in)
+// leaves that choice standing. Pinning only (a) would pass under a
+// resolver that lied on the face; pinning only (b) passed under E3.
 
 namespace {
 
@@ -1809,12 +1833,14 @@ struct LineupE3FlowState
     bool page_opened = false;
     std::array<std::string, 4> rest_labels;
     bool viewer_opened_at_rest = false;
-    bool refusal_at_rest = false;
+    bool refusal_at_rest = true;
+    std::string green_line_at_rest;
     bool second_page_opened = false;
-    bool green_fair = false;
+    bool green_none = false;
     bool viewer_opened_after = false;
-    bool refusal_after = true;
-    std::string green_line_after;
+    bool refusal_after = false;
+    bool third_page_opened = false;
+    std::string green_label_after;
     int captures = 0;
 };
 
@@ -1827,7 +1853,7 @@ int lineup_e3_flow_injector(void* data)
         return 0;
     }
 
-    // (a) At rest: read all four faces, then go and read the refusal.
+    // (a) At rest: read all four faces, then go and read the census.
     interact("lineup");
     state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
     if (!state->page_opened) {
@@ -1850,12 +1876,16 @@ int lineup_e3_flow_injector(void* data)
         state->viewer_opened_at_rest =
             wait_for_interactable_at("back", 10, 170, 10000);
         if (state->viewer_opened_at_rest) {
-            state->refusal_at_rest = wait_for_trace(
-                "picker",
-                "view_scenario line MATCH WILL NOT START: FEWER THAN 2 "
-                "TEAMS",
-                10000);
+            (void)wait_for_trace(
+                "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
+            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
+            state->refusal_at_rest =
+                trace_contains("picker", "FEWER THAN 2 TEAMS");
+            state->green_line_at_rest =
+                first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
             SDL_Delay(300);
+            // The capture keeps its E3-era name: the same frame, filmed
+            // under the new rule (the AFTER shot of #276's media).
             state->captures +=
                 capture_frame("lineup_modes_all_none_refusal");
             SDL_Delay(300);
@@ -1866,14 +1896,14 @@ int lineup_e3_flow_injector(void* data)
         }
     }
 
-    // (b) FILL: FAIR on TEAM 2 — two stops off its resting NONE.
+    // (b) FILL: NONE on TEAM 2 — three stops on from the dealt FAIR.
     interact("lineup");
     state->second_page_opened =
         wait_for_interactable_at("back", 8, 176, 10000);
     if (state->second_page_opened) {
         SDL_Delay(750);
-        state->green_fair = click_through_labels(
-            "lineup_fill_1", {"FILL: WEAK", "FILL: FAIR"});
+        state->green_none = click_through_labels(
+            "lineup_fill_1", {"FILL: STRONG", "FILL: BRUTAL", "FILL: NONE"});
         SDL_Delay(300);
         interact("back");  // LINEUP -> SCENARIO
         SDL_Delay(300);
@@ -1886,19 +1916,28 @@ int lineup_e3_flow_injector(void* data)
         state->viewer_opened_after =
             wait_for_interactable_at("back", 10, 170, 10000);
         if (state->viewer_opened_after) {
-            (void)wait_for_trace(
-                "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
-            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
-            state->refusal_after =
-                trace_contains("picker", "FEWER THAN 2 TEAMS");
-            state->green_line_after =
-                first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
+            state->refusal_after = wait_for_trace(
+                "picker",
+                "view_scenario line MATCH WILL NOT START: FEWER THAN 2 "
+                "TEAMS",
+                10000);
             SDL_Delay(300);
             interact("back");
             SDL_Delay(300);
             (void)wait_for_interactable("progress", 10000);
             SDL_Delay(300);
         }
+    }
+
+    // (c) The page again: the entry reload must not re-deal the choice.
+    interact("lineup");
+    state->third_page_opened =
+        wait_for_interactable_at("back", 8, 176, 10000);
+    if (state->third_page_opened) {
+        SDL_Delay(750);
+        state->green_label_after = interactable_label("lineup_fill_1");
+        interact("back");
+        SDL_Delay(300);
     }
 
     injector_unwind_from_scenario();
@@ -1908,7 +1947,7 @@ int lineup_e3_flow_injector(void* data)
 
 } // namespace
 
-TEST(LineupUi, modes_all_none_refuses_until_a_wheel_turns)
+TEST(LineupUi, arena_rest_deals_fair_and_an_explicit_none_still_refuses)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -1930,28 +1969,35 @@ TEST(LineupUi, modes_all_none_refuses_until_a_wheel_turns)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     ASSERT_TRUE(state.page_opened) << "the LINEUP page should open";
-    for (int t = 0; t < 4; ++t) {
-        EXPECT_EQ("FILL: NONE",
-                  state.rest_labels[static_cast<std::size_t>(t)])
-            << "band " << t << " rests on NONE on a modes map too (E1)";
-    }
+    EXPECT_EQ("FILL: FAIR", state.rest_labels[0])
+        << "RED is an authored team: the arena deals it FAIR at rest";
+    EXPECT_EQ("FILL: FAIR", state.rest_labels[1])
+        << "GREEN is the authored opponent: dealt FAIR at rest";
+    EXPECT_EQ("FILL: NONE", state.rest_labels[2])
+        << "BLUE is not defined on this map: its band keeps the stored NONE";
+    EXPECT_EQ("FILL: NONE", state.rest_labels[3]);
     EXPECT_TRUE(state.viewer_opened_at_rest) << "VIEW LEVEL should open";
-    EXPECT_TRUE(state.refusal_at_rest)
-        << "E3: with every wheel at NONE a solo company is the only team "
-           "standing, and the pane says so — no FAIR opponent matched in "
-           "on the player's behalf";
-    EXPECT_TRUE(state.second_page_opened);
-    EXPECT_TRUE(state.green_fair) << "FILL: FAIR on TEAM 2";
-    EXPECT_EQ(og::sim::kFillFair, save.fill[1]);
-    EXPECT_TRUE(state.viewer_opened_after);
-    EXPECT_FALSE(state.refusal_after)
-        << "the one explicit fill gives the match its second team";
-    EXPECT_FALSE(state.green_line_after.empty())
-        << "the staged census must carry the squad the wheel fielded";
-    EXPECT_TRUE(state.green_line_after.ends_with("FAIR"))
+    EXPECT_FALSE(state.refusal_at_rest)
+        << "Amendment 7: at rest a solo company on an arena faces the dealt "
+           "squad — the E3 refusal is no longer the resting face";
+    EXPECT_FALSE(state.green_line_at_rest.empty())
+        << "the staged census must carry the squad the deal fielded";
+    EXPECT_TRUE(state.green_line_at_rest.ends_with("FAIR"))
         << "the row closes with the applied fill word (B7): '"
-        << state.green_line_after << "'";
-    EXPECT_EQ(1, state.captures) << "the refusal capture should land";
+        << state.green_line_at_rest << "'";
+    EXPECT_TRUE(state.second_page_opened);
+    EXPECT_TRUE(state.green_none) << "FILL: NONE on TEAM 2 is still a stop";
+    EXPECT_EQ(og::sim::kFillNone, save.fill[1]);
+    EXPECT_TRUE(state.viewer_opened_after);
+    EXPECT_TRUE(state.refusal_after)
+        << "an explicit NONE on the only authored opponent leaves one team "
+           "standing, and the pane still says so (E3's honest sentence)";
+    EXPECT_TRUE(state.third_page_opened);
+    EXPECT_EQ("FILL: NONE", state.green_label_after)
+        << "the page's re-entry reload does not re-deal an explicit NONE";
+    EXPECT_EQ(og::sim::kFillFair, save.fill[0])
+        << "the own band keeps its dealt FAIR";
+    EXPECT_EQ(1, state.captures) << "the census capture should land";
 
     restore_gladiator_mount();
 }
@@ -1960,10 +2006,14 @@ TEST(LineupUi, modes_all_none_refuses_until_a_wheel_turns)
 // Amendment 5 (G5): the MATCH SETUP macros round-trip with LINEUP. The
 // camp page's TEAMS/FILL rows are macros over the ONE per-team fill array
 // (G1), so what a macro deals must read back band by band on the LINEUP
-// page, a band tweaked there must read back on the camp face as MIXED,
-// and one TEAMS: 2 click must clear the E3 refusal the all-NONE rest
-// leaves on a solo mode map — the same refusal
-// modes_all_none_refuses_until_a_wheel_turns pins from the LINEUP side.
+// page, and a band tweaked there must read back on the camp face as
+// MIXED. Since amendment 7 the arena's rest is already a two-side deal
+// (RED and GREEN, the authored teams, FAIR — the same rest
+// arena_rest_deals_fair_and_an_explicit_none_still_refuses pins from the
+// LINEUP side), so the macro's first click deals the THIRD side: the
+// TEAMS wheel counts opponents in ascending order and knows nothing about
+// authorship (G2), which is exactly why it stays a macro and the deal
+// stays a default.
 
 namespace {
 
@@ -1973,12 +2023,12 @@ struct MacroRoundTripState
     bool page_opened = false;
     std::string rest_teams_label;
     std::string rest_fill_label;
-    bool teams_two = false;
-    bool viewer_opened_after_two = false;
-    bool refusal_after_two = true;
-    std::string green_line_after_two;
-    bool second_page_opened = false;
     bool teams_three = false;
+    bool viewer_opened_after_three = false;
+    bool refusal_after_three = true;
+    std::string green_line_after_three;
+    bool second_page_opened = false;
+    bool teams_four = false;
     bool fill_strong = false;
     bool lineup_opened = false;
     std::array<std::string, 4> band_labels;
@@ -2016,10 +2066,10 @@ int macro_round_trip_injector(void* data)
     state->rest_teams_label = interactable_label("zone_row_0");
     state->rest_fill_label = interactable_label("zone_row_1");
 
-    // (b) TEAMS: 2 — the one click that gives the solo map its second
-    // side — then out to VIEW LEVEL: the E3 refusal must be gone.
-    state->teams_two =
-        click_until_label_containing("zone_row_0", "TEAMS: 2");
+    // (b) TEAMS: 3 — one click on from the dealt two-side rest — then out
+    // to VIEW LEVEL: a three-side match, no refusal anywhere.
+    state->teams_three =
+        click_until_label_containing("zone_row_0", "TEAMS: 3");
     SDL_Delay(400);
     interact("back");  // zone submenu -> Base Camp
     (void)wait_for_team_menu(10000);
@@ -2029,15 +2079,15 @@ int macro_round_trip_injector(void* data)
         SDL_Delay(750);
         trace_clear();
         interact("view_scenario");
-        state->viewer_opened_after_two =
+        state->viewer_opened_after_three =
             wait_for_interactable_at("back", 10, 170, 10000);
-        if (state->viewer_opened_after_two) {
+        if (state->viewer_opened_after_three) {
             (void)wait_for_trace(
                 "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
             (void)wait_for_trace("picker", "view_scenario lines=", 5000);
-            state->refusal_after_two =
+            state->refusal_after_three =
                 trace_contains("picker", "FEWER THAN 2 TEAMS");
-            state->green_line_after_two =
+            state->green_line_after_three =
                 first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
             SDL_Delay(300);
             interact("back");
@@ -2054,16 +2104,16 @@ int macro_round_trip_injector(void* data)
     SDL_Delay(300);
 
     // (c) Back at the page: TEAMS persisted, one more click deals the
-    // third side, and one FILL click steps the FAIR face to STRONG.
+    // fourth side, and one FILL click steps the FAIR face to STRONG.
     interact("zone_action_3");
     state->second_page_opened =
         wait_for_interactable_at("back", 10, 169, 10000);
     if (state->second_page_opened) {
         (void)wait_for_interactable_label_containing("zone_row_0",
-                                                     "TEAMS: 2", 10000);
+                                                     "TEAMS: 3", 10000);
         SDL_Delay(400);
-        state->teams_three =
-            click_until_label_containing("zone_row_0", "TEAMS: 3");
+        state->teams_four =
+            click_until_label_containing("zone_row_0", "TEAMS: 4");
         SDL_Delay(400);
         state->fill_strong =
             click_until_label_containing("zone_row_1", "FILL: STRONG");
@@ -2074,8 +2124,8 @@ int macro_round_trip_injector(void* data)
     }
 
     // (d) LINEUP reads the same array band by band: STRONG on the human
-    // team's own band too (H1), STRONG, STRONG, NONE. Then the tweak
-    // that diverges them: TEAM 2's wheel walked on to WEAK.
+    // team's own band too (H1) and STRONG on all three sides. Then the
+    // tweak that diverges them: TEAM 2's wheel walked on to WEAK.
     interact("scenario");
     if (!wait_for_interactable("lineup", 10000)) {
         state->finished = true;
@@ -2140,8 +2190,9 @@ TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
 {
     trace_clear();
     SavedPickerSave save_guard;
-    // The E3 fixture: THE CROSSING (scen 500) authors no units, the
-    // company is solo on RED — the all-NONE rest refuses in VIEW LEVEL.
+    // The arena fixture: CTF: FIRST BLOOD (scen 500) authors RED and GREEN
+    // markers and no units; the company is solo on RED — the rest is the
+    // amendment 7 deal, FAIR on both authored bands.
     write_save0_with_fighters("modes", 500, 1, {{"Solo", 3, true, 0}});
 
     MacroRoundTripState state;
@@ -2158,33 +2209,34 @@ TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     ASSERT_TRUE(state.page_opened) << "the MATCH SETUP submenu should open";
-    EXPECT_NE(std::string::npos, state.rest_teams_label.find("TEAMS: 1"))
-        << "the all-NONE rest reads the local side alone: '"
+    EXPECT_NE(std::string::npos, state.rest_teams_label.find("TEAMS: 2"))
+        << "amendment 7: the arena's rest is the dealt two-side match: '"
         << state.rest_teams_label << "'";
-    EXPECT_NE(std::string::npos, state.rest_fill_label.find("FILL: NONE"))
+    EXPECT_NE(std::string::npos, state.rest_fill_label.find("FILL: FAIR"))
+        << "both dealt bands hold FAIR, so the face reads it: "
         << state.rest_fill_label;
-    EXPECT_TRUE(state.teams_two) << "one click deals the second side";
-    EXPECT_TRUE(state.viewer_opened_after_two);
-    EXPECT_FALSE(state.refusal_after_two)
-        << "TEAMS: 2 clears the E3 refusal — the macro IS a wheel turn";
-    EXPECT_TRUE(state.green_line_after_two.ends_with("FAIR"))
+    EXPECT_TRUE(state.teams_three) << "one click deals the third side";
+    EXPECT_TRUE(state.viewer_opened_after_three);
+    EXPECT_FALSE(state.refusal_after_three)
+        << "three sides stand; nothing refuses";
+    EXPECT_TRUE(state.green_line_after_three.ends_with("FAIR"))
         << "the dealt side censuses at the effective FAIR (G2): '"
-        << state.green_line_after_two << "'";
+        << state.green_line_after_three << "'";
     EXPECT_TRUE(state.second_page_opened);
-    EXPECT_TRUE(state.teams_three);
+    EXPECT_TRUE(state.teams_four);
     EXPECT_TRUE(state.fill_strong)
-        << "one FILL click steps the FAIR face to STRONG on both sides";
+        << "one FILL click steps the FAIR face to STRONG on every side";
     ASSERT_TRUE(state.lineup_opened) << "the LINEUP page should open";
     EXPECT_EQ("FILL: STRONG", state.band_labels[0])
         << "the FILL macro deals the human team's own band too (H1)";
     EXPECT_EQ("FILL: STRONG", state.band_labels[1]);
     EXPECT_EQ("FILL: STRONG", state.band_labels[2]);
-    EXPECT_EQ("FILL: NONE", state.band_labels[3])
-        << "TEAMS: 3 turned the fourth side NONE";
+    EXPECT_EQ("FILL: STRONG", state.band_labels[3])
+        << "TEAMS: 4 dealt the fourth side, and FILL stepped it with the rest";
     EXPECT_TRUE(state.band_two_weak)
         << "LINEUP keeps per-team authority over the same array";
     EXPECT_TRUE(state.third_page_opened);
-    EXPECT_NE(std::string::npos, state.mixed_teams_label.find("TEAMS: 3"))
+    EXPECT_NE(std::string::npos, state.mixed_teams_label.find("TEAMS: 4"))
         << "the sides count survives the divergence: '"
         << state.mixed_teams_label << "'";
     EXPECT_NE(std::string::npos, state.mixed_fill_label.find("FILL: MIXED"))
@@ -2195,7 +2247,7 @@ TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
         << "the own band keeps the macro's STRONG through the LINEUP tweak";
     EXPECT_EQ(og::sim::kFillWeak, save.fill[1]);
     EXPECT_EQ(og::sim::kFillStrong, save.fill[2]);
-    EXPECT_EQ(og::sim::kFillNone, save.fill[3]);
+    EXPECT_EQ(og::sim::kFillStrong, save.fill[3]);
     EXPECT_EQ(1, state.captures) << "the LINEUP-after-macro capture lands";
 
     restore_gladiator_mount();
@@ -3237,6 +3289,194 @@ TEST(LineupUi, explicit_fill_fields_a_solved_squad_in_the_launched_world)
         << "WEAK must field strictly less power than BRUTAL: " 
         << weak_elves.squad_f << " vs " << elves.squad_f;
     EXPECT_EQ(2, state.captures) << "both VIEW LEVEL captures should land";
+
+    restore_gladiator_mount();
+}
+
+// ---------------------------------------------------------------------------
+// #276 (docs/lineup-design.md Amendment 7): a versus campaign's arena deals
+// FILL: FAIR to the teams the map authors, so an arena at its shipped
+// defaults is a MATCH and not an instant, unearned win. This is the
+// reporter's own shape driven through the real path — Base Camp, GO — and
+// censused in the world the launch adopted: CTF: FIRST BLOOD (scen 500)
+// authors RED and GREEN start markers and no units of any kind, and the
+// company is one solo fighter on RED. Before the deal every band rested on
+// NONE, the mode refused for want of a second team, classic rules found no
+// foes and scored the level a win on its second tick.
+//
+// The second half is the rule's other edge: FILL: NONE chosen on an
+// authored arena team is a CHOICE, and the deal never lifts it — not on the
+// LINEUP page's re-entry (every screen entry reloads the level through the
+// same seam the deal lives in), and not on the disk copy the launch reads.
+
+namespace {
+
+// The FAIR squad the D34 headcount rule fields against a solo roster: one
+// opponent per roster member, measured once on the fixed tree and pinned
+// exactly (a GE here would pass an empty field with one stray bot).
+constexpr int kArenaSoloFairSquad = 1;
+
+struct ArenaDefaultsState
+{
+    bool finished = false;
+    bool rest_launched = false;
+    LaunchedCensus rest;
+    bool page_opened = false;
+    std::array<std::string, 4> rest_labels;
+    bool green_none = false;
+    bool second_page_opened = false;
+    std::string green_label_on_reentry;
+};
+
+int arena_defaults_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<ArenaDefaultsState*>(data);
+
+    // Base Camp, then GO with every knob exactly as the company found it.
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+    if (!wait_for_team_menu(15000)) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(750);
+    state->rest_launched = go_and_census(state->rest);
+    if (!wait_for_team_menu(20000)) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(500);
+
+    // The faces the launch read: SCENARIO -> LINEUP.
+    interact("scenario");
+    if (!wait_for_interactable("lineup", 15000)) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("lineup");
+    state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    if (!state->page_opened) {
+        injector_unwind_from_scenario();
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(750);
+    for (int t = 0; t < 4; ++t) {
+        state->rest_labels[static_cast<std::size_t>(t)] =
+            interactable_label("lineup_fill_" + std::to_string(t));
+    }
+
+    // An explicit NONE on GREEN, the authored opponent: three stops on
+    // from the dealt FAIR.
+    state->green_none = click_through_labels(
+        "lineup_fill_1", {"FILL: STRONG", "FILL: BRUTAL", "FILL: NONE"});
+    SDL_Delay(300);
+    interact("back");  // LINEUP -> SCENARIO
+    SDL_Delay(300);
+
+    // Re-enter the page: the entry reload runs the deal seam again, and the
+    // memo must keep it from lifting the choice.
+    if (wait_for_interactable("lineup", 10000)) {
+        SDL_Delay(300);
+        interact("lineup");
+        state->second_page_opened =
+            wait_for_interactable_at("back", 8, 176, 10000);
+        if (state->second_page_opened) {
+            SDL_Delay(750);
+            state->green_label_on_reentry = interactable_label("lineup_fill_1");
+            interact("back");
+            SDL_Delay(300);
+        }
+    }
+
+    injector_unwind_from_scenario();
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, arena_defaults_field_a_fair_match_in_the_launched_world)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // The reporter's shape: a solo company on an arena, nothing touched.
+    write_save0_with_fighters("modes", 500, 1, {{"Solo", 3, true, 0}});
+
+    ArenaDefaultsState state;
+    SDL_Thread* thread = SDL_CreateThread(arena_defaults_injector,
+                                          "arena_defaults", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    // The teams the map defines, read off the level itself rather than
+    // assumed: scen 500 authors start markers for RED and GREEN only.
+    std::uint8_t authored = 0;
+    {
+        LevelRuntimeData scenario(500, false, &sdl_level_data_hooks());
+        ASSERT_TRUE(scenario.load()) << "scen 500 must load off the mount";
+        authored = og::sim::authored_team_mask(scenario.world());
+    }
+    ASSERT_EQ(0b0011u, static_cast<unsigned>(authored))
+        << "CTF: FIRST BLOOD authors RED and GREEN";
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.finished);
+    ASSERT_TRUE(state.rest_launched)
+        << "GO on an arena at its defaults must launch a world that outlives "
+           "its first frame (an empty field is scored a win on tick 2)";
+    const LaunchedTeamCensus& red = state.rest.teams[0];
+    const LaunchedTeamCensus& green = state.rest.teams[1];
+    EXPECT_EQ(1, red.guys) << "the solo fighter stands on RED";
+    EXPECT_EQ(0, red.bots)
+        << "FAIR on the company's own band fields no allies at a solo "
+           "table (the allies gap is <= 0)";
+    EXPECT_EQ(kArenaSoloFairSquad, green.livings)
+        << "the dealt FAIR fields GREEN's squad";
+    EXPECT_EQ(kArenaSoloFairSquad, green.bots);
+    EXPECT_EQ(0, green.guys) << "nobody's company stands on GREEN";
+    EXPECT_EQ(green.livings, state.rest.foes_of_hero)
+        << "the dealt squad is a hostile opponent, not scenery";
+    EXPECT_EQ(0, state.rest.teams[2].livings)
+        << "BLUE is not a defined team on this map: nothing fields there";
+    EXPECT_EQ(0, state.rest.teams[3].livings);
+
+    ASSERT_TRUE(state.page_opened) << "the LINEUP page should open";
+    EXPECT_EQ("FILL: FAIR", state.rest_labels[0])
+        << "the own band is an authored team: dealt FAIR";
+    EXPECT_EQ("FILL: FAIR", state.rest_labels[1])
+        << "the authored opponent band: dealt FAIR";
+    EXPECT_EQ("FILL: NONE", state.rest_labels[2])
+        << "an unauthored band stays at its stored NONE";
+    EXPECT_EQ("FILL: NONE", state.rest_labels[3]);
+    EXPECT_TRUE(state.green_none) << "FAIR -> STRONG -> BRUTAL -> NONE";
+    EXPECT_TRUE(state.second_page_opened);
+    EXPECT_EQ("FILL: NONE", state.green_label_on_reentry)
+        << "an explicit NONE on an authored arena team survives the page's "
+           "re-entry reload: the deal is once per scenario selection";
+    EXPECT_EQ(og::sim::kFillNone, save.fill[1]);
+    EXPECT_EQ(og::sim::kFillFair, save.fill[0]);
+    EXPECT_EQ(og::sim::kFillNone, save.fill[2]);
+
+    // The disk copy the legacy launch path and a restart read: the choice
+    // and the memo behind it both round-trip.
+    {
+        SaveData reloaded;
+        ASSERT_TRUE(reloaded.load("save0"));
+        EXPECT_EQ(og::sim::kFillNone, reloaded.fill[1])
+            << "the explicit NONE is on disk";
+        EXPECT_EQ(og::sim::kFillFair, reloaded.fill[0])
+            << "so is the dealt FAIR";
+    }
 
     restore_gladiator_mount();
 }

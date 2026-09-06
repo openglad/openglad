@@ -379,6 +379,12 @@ void copy_headless_server_save_data(SaveData& destination,
     // would silently restore the map's own fills across the staged handoff.
     destination.fill = source.fill;
     destination.map_units = source.map_units;
+    // The arena FILL deal memo (GTL v19, amendment 7): same rule — a copy
+    // that dropped it would let the next picker reload re-deal FAIR over an
+    // explicit NONE.
+    destination.arena_lineup_dealt_campaign =
+        source.arena_lineup_dealt_campaign;
+    destination.arena_lineup_dealt_scen = source.arena_lineup_dealt_scen;
     // Difficulty submenu (protocol v6): same lobby-negotiated rule — the
     // staged-lobby adoption copies the staged save through here, and a copy
     // that dropped these would launch with default respawns/permadeath.

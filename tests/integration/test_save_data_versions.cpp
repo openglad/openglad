@@ -128,7 +128,9 @@ static void write_save_file(const std::string& filename_no_ext,
                             int64_t last_played_unix_s = 0,
                             short time_limit = 0,
                             const std::array<short, 4>* fill = nullptr,
-                            const std::array<short, 4>* map_units = nullptr)
+                            const std::array<short, 4>* map_units = nullptr,
+                            const std::string& arena_dealt_campaign = "",
+                            short arena_dealt_scen = 0)
 {
     std::string fname = filename_no_ext + ".gtl";
     SDL_IOStream* out = open_write_file("save/", fname.c_str());
@@ -281,6 +283,16 @@ static void write_save_file(const std::string& filename_no_ext,
             short value = map_units != nullptr ? (*map_units)[team] : 0;
             rw_write_val(out, value);
         }
+    }
+
+    // Version 19+ appends the arena FILL deal memo: u8 campaign-id length,
+    // the id bytes, then the i16 scenario (lineup amendment 7, #276).
+    if (version >= 19) {
+        const uint8_t dealt_len =
+            static_cast<uint8_t>(arena_dealt_campaign.size());
+        rw_write_val(out, dealt_len);
+        rw_write(out, arena_dealt_campaign.data(), dealt_len);
+        rw_write_val(out, arena_dealt_scen);
     }
 
     SDL_CloseIO(out);
@@ -594,7 +606,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
               static_cast<int>(src.save_with_error("typed_save_strip_roundtrip")))
         << "v11 writer should succeed";
 
-    // The writer must stamp version 18 in the GTL header.
+    // The writer must stamp version 19 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_strip_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -603,7 +615,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(18, (int)version_byte) << "writer should stamp version 18";
+    ASSERT_EQ(19, (int)version_byte) << "writer should stamp version 19";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -790,7 +802,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
               static_cast<int>(src.save_with_error("typed_save_tower_roundtrip")))
         << "v13 writer should succeed";
 
-    // The writer must stamp version 18 in the GTL header.
+    // The writer must stamp version 19 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_tower_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -799,7 +811,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(18, (int)version_byte) << "writer should stamp version 18";
+    ASSERT_EQ(19, (int)version_byte) << "writer should stamp version 19";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -898,7 +910,7 @@ TEST(SaveDataVersions, save_data_v17_roundtrip_preserves_time_limit)
               static_cast<int>(src.save_with_error("typed_save_time_limit")))
         << "v17 writer should succeed";
 
-    // The writer must stamp version 18 in the GTL header.
+    // The writer must stamp version 19 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_time_limit.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -907,7 +919,7 @@ TEST(SaveDataVersions, save_data_v17_roundtrip_preserves_time_limit)
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(18, (int)version_byte) << "writer should stamp version 18";
+    ASSERT_EQ(19, (int)version_byte) << "writer should stamp version 19";
 
     SaveData loaded;
     loaded.time_limit = 999; // poisoned; the load must overwrite it
@@ -1039,7 +1051,7 @@ TEST(SaveDataVersions, save_data_v18_roundtrip_preserves_the_bot_knobs)
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(18, (int)version_byte) << "writer should stamp version 18";
+    ASSERT_EQ(19, (int)version_byte) << "writer should stamp version 19";
 
     SaveData loaded;
     loaded.fill.fill(99); // poisoned; the load must overwrite it
@@ -1057,6 +1069,136 @@ TEST(SaveDataVersions, save_data_v18_roundtrip_preserves_the_bot_knobs)
         << "the v17 time limit still round-trips";
     ASSERT_EQ(5, loaded.campaign_state_get("gladiator", "alpha"))
         << "the v15 state block must survive the appended v18 tail";
+}
+
+// GTL v19 (lineup amendment 7, #276): the arena FILL deal memo — the
+// (campaign, scenario) cursor the versus-campaign FAIR default was last
+// dealt for — rides the tail after the v18 band knobs.
+TEST(SaveDataVersions, save_data_load_v19_reads_the_arena_deal_memo)
+{
+    const std::array<short, 4> squad = {2, 2, 0, 0};
+    const std::array<short, 4> level = {0, 0, 0, 0};
+    write_save_file("ver19_arena_memo",
+                    /*version=*/19,
+                    /*campaign_id=*/"gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/0,
+                    /*respawn_mode=*/0,
+                    /*generator_rate=*/0,
+                    /*keep_fallen_heroes=*/0,
+                    /*tower_best_floor=*/0,
+                    /*tower_run_seed=*/0u,
+                    /*last_played_unix_s=*/0,
+                    /*time_limit=*/0,
+                    /*fill=*/&squad,
+                    /*map_units=*/&level,
+                    /*arena_dealt_campaign=*/"modes",
+                    /*arena_dealt_scen=*/500);
+
+    SaveData tmp;
+    tmp.arena_lineup_dealt_campaign = "poison"; // the load must overwrite it
+    tmp.arena_lineup_dealt_scen = 77;
+    ASSERT_TRUE(tmp.load("ver19_arena_memo")) << "v19 load should succeed";
+    ASSERT_EQ("modes", tmp.arena_lineup_dealt_campaign);
+    ASSERT_EQ(500, (int)tmp.arena_lineup_dealt_scen);
+    for (std::size_t team = 0; team < 4; ++team) {
+        ASSERT_EQ((int)squad[team], (int)tmp.fill[team])
+            << "the v18 knobs still read ahead of the v19 tail, team "
+            << team;
+    }
+}
+
+TEST(SaveDataVersions, save_data_load_v18_payload_reads_the_memo_as_pending)
+{
+    const std::array<short, 4> squad = {0, 0, 0, 0};
+    write_save_file("ver18_no_arena_memo",
+                    /*version=*/18,
+                    /*campaign_id=*/"gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/0,
+                    /*respawn_mode=*/0,
+                    /*generator_rate=*/0,
+                    /*keep_fallen_heroes=*/0,
+                    /*tower_best_floor=*/0,
+                    /*tower_run_seed=*/0u,
+                    /*last_played_unix_s=*/0,
+                    /*time_limit=*/0,
+                    /*fill=*/&squad);
+
+    SaveData tmp;
+    // Poison the in-memory memo: a v18 payload must restore "never dealt",
+    // so the file's first arena visit deals exactly once.
+    tmp.arena_lineup_dealt_campaign = "modes";
+    tmp.arena_lineup_dealt_scen = 500;
+    ASSERT_TRUE(tmp.load("ver18_no_arena_memo")) << "v18 load should succeed";
+    ASSERT_TRUE(tmp.arena_lineup_dealt_campaign.empty())
+        << "a pre-v19 save has dealt no arena";
+    ASSERT_EQ(0, (int)tmp.arena_lineup_dealt_scen);
+}
+
+TEST(SaveDataVersions, save_data_v19_roundtrip_preserves_the_arena_deal_memo)
+{
+    SaveData src;
+    src.current_campaign = "gladiator";
+    src.fill = {2, 2, 0, 0};
+    src.arena_lineup_dealt_campaign = "modes";
+    src.arena_lineup_dealt_scen = 501;
+    ASSERT_TRUE(src.campaign_state_set("gladiator", "alpha", 5));
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_arena_memo")))
+        << "v19 writer should succeed";
+
+    SaveData loaded;
+    loaded.arena_lineup_dealt_campaign = "poison";
+    loaded.arena_lineup_dealt_scen = 9;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_arena_memo")))
+        << "v19 reader should succeed";
+    ASSERT_EQ("modes", loaded.arena_lineup_dealt_campaign);
+    ASSERT_EQ(501, (int)loaded.arena_lineup_dealt_scen);
+    ASSERT_EQ(2, (int)loaded.fill[1]) << "the v18 knobs still round-trip";
+    ASSERT_EQ(5, loaded.campaign_state_get("gladiator", "alpha"))
+        << "the v15 state block must survive the appended v19 tail";
+
+    // An empty memo (a fresh company) writes a zero length and reads back
+    // empty, not as a one-byte id.
+    SaveData fresh;
+    fresh.current_campaign = "gladiator";
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(fresh.save_with_error("typed_save_arena_fresh")));
+    SaveData fresh_loaded;
+    fresh_loaded.arena_lineup_dealt_campaign = "poison";
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(fresh_loaded.load_with_error("typed_save_arena_fresh")));
+    ASSERT_TRUE(fresh_loaded.arena_lineup_dealt_campaign.empty());
+    ASSERT_EQ(0, (int)fresh_loaded.arena_lineup_dealt_scen);
 }
 
 
@@ -1652,7 +1794,7 @@ TEST(SaveDataVersions,
     const std::vector<uint8_t> canonical =
         read_save_bytes("typed_save_v14_boundary_seed.gtl");
     ASSERT_GT(canonical.size(), kFirstLevelCountOffset + sizeof(std::int16_t));
-    ASSERT_EQ(18, static_cast<int>(canonical[3]));
+    ASSERT_EQ(19, static_cast<int>(canonical[3]));
 
     const auto expect_read_failure =
         [&](const char* slot, std::vector<uint8_t> bytes) {
@@ -1778,7 +1920,7 @@ TEST(SaveDataVersions,
             in.read(reinterpret_cast<char*>(header.data()),
                     static_cast<std::streamsize>(header.size()));
             ASSERT_TRUE(in.good());
-            EXPECT_EQ((std::array<unsigned char, 4>{'G', 'T', 'L', 18}),
+            EXPECT_EQ((std::array<unsigned char, 4>{'G', 'T', 'L', 19}),
                       header);
         };
 
@@ -1847,7 +1989,7 @@ TEST(SaveDataVersions, save_data_v14_writer_retires_company_player_count)
         const std::vector<uint8_t> bytes =
             read_save_bytes((slot + ".gtl").c_str());
         ASSERT_GT(bytes.size(), 132u) << "complete GTL header expected";
-        EXPECT_EQ(18, static_cast<int>(bytes[3]))
+        EXPECT_EQ(19, static_cast<int>(bytes[3]))
             << "retiring the field does not change the GTL layout version";
         EXPECT_EQ(1, static_cast<int>(bytes[132]))
             << "old readers still need the canonical one-player marker";
@@ -1933,7 +2075,7 @@ TEST(SaveDataVersions, save_data_v14_roundtrip_preserves_timestamp_and_deploy_fl
     constexpr size_t kHeaderSize = 164;
     constexpr size_t kGuySize = 58;
     ASSERT_GE(bytes.size(), kHeaderSize + 2 * kGuySize) << "file too small";
-    ASSERT_EQ(18, (int)bytes[3]) << "version byte at offset 3";
+    ASSERT_EQ(19, (int)bytes[3]) << "version byte at offset 3";
 
     std::int64_t raw_ts = 0;
     std::memcpy(&raw_ts, bytes.data() + 133, 8);
@@ -2062,7 +2204,7 @@ TEST(SaveDataVersions, save_data_v13_shaped_reader_tolerance_proxy)
 
     std::vector<uint8_t> bytes = read_save_bytes("typed_save_v14_as_v13.gtl");
     ASSERT_GT(bytes.size(), (size_t)164) << "readable v14 file expected";
-    ASSERT_EQ(18, (int)bytes[3]);
+    ASSERT_EQ(19, (int)bytes[3]);
     bytes[3] = 13; // re-label: v13-shaped reader sees reserved filler
 
     SDL_IOStream* out = open_write_file("save/", "typed_save_v14_as_v13.gtl");
@@ -2191,7 +2333,7 @@ TEST(SaveDataVersions, save_data_v13_gtl_filler_first_autosave_upgrades_in_place
     const std::vector<uint8_t> upgraded =
         read_save_bytes("ver13_upgrade_company.gtl");
     ASSERT_GE(upgraded.size(), kHeaderSize + kGuySize);
-    ASSERT_EQ(18, (int)upgraded[3]) << "in-place upgrade rewrites version 18";
+    ASSERT_EQ(19, (int)upgraded[3]) << "in-place upgrade rewrites version 19";
     std::int64_t raw_ts = 0;
     std::memcpy(&raw_ts, upgraded.data() + 133, 8);
     ASSERT_EQ(1700000123LL, raw_ts) << "upgrade stamps the pinned clock";
@@ -2208,7 +2350,7 @@ TEST(SaveDataVersions, save_data_v13_gtl_filler_first_autosave_upgrades_in_place
         og::data::read_company_header("ver13_upgrade_company");
     ASSERT_TRUE(header.has_value() && header->valid)
         << "upgraded file must header-scan clean";
-    ASSERT_EQ(18, (int)header->version);
+    ASSERT_EQ(19, (int)header->version);
     ASSERT_EQ(1700000123LL, header->last_played_unix_s);
     ASSERT_TRUE(og::data::list_company_backups("ver13_upgrade_company").empty())
         << "a mutation autosave must not snapshot a backup";
@@ -2321,7 +2463,7 @@ TEST(SaveDataVersions, save_data_v15_roundtrip_preserves_campaign_state)
     const std::vector<uint8_t> second =
         read_save_bytes("typed_save_v15_resave.gtl");
     ASSERT_FALSE(first.empty());
-    ASSERT_EQ(18, (int)first[3]) << "version byte at offset 3";
+    ASSERT_EQ(19, (int)first[3]) << "version byte at offset 3";
     ASSERT_EQ(first, second)
         << "sorted-by-key storage must make a re-save byte-identical";
 }
@@ -2381,11 +2523,13 @@ TEST(SaveDataVersions, save_data_v15_rejects_invalid_campaign_state_boundaries)
     const std::vector<uint8_t> canonical =
         read_save_bytes("typed_save_v15_boundary_seed.gtl");
     constexpr std::size_t kStateBlockSize = 2 + 40 + 2 + (1 + 5 + 4) + (1 + 4 + 4);
-    // GTL v17 writes the match time-limit i16 after the state block, and v18
-    // the eight per-team bot i16s after that.
-    constexpr std::size_t kPostStateTailSize = 2 + (8 * 2);
+    // GTL v17 writes the match time-limit i16 after the state block, v18
+    // the eight per-team bot i16s after that, and v19 the arena deal memo
+    // (u8 length + id bytes + i16 scenario; the seed has dealt nothing, so
+    // the id is empty and the memo is three bytes).
+    constexpr std::size_t kPostStateTailSize = 2 + (8 * 2) + (1 + 0 + 2);
     ASSERT_GT(canonical.size(), kStateBlockSize + kPostStateTailSize);
-    ASSERT_EQ(18, static_cast<int>(canonical[3]));
+    ASSERT_EQ(19, static_cast<int>(canonical[3]));
     const std::size_t state_start =
         canonical.size() - kStateBlockSize - kPostStateTailSize;
 
@@ -2618,7 +2762,7 @@ TEST(SaveDataVersions, save_data_v16_roundtrip_preserves_campaign_tags)
     constexpr size_t kHeaderSize = 164;
     constexpr size_t kGuySize = 58;
     ASSERT_GE(bytes.size(), kHeaderSize + 3 * kGuySize) << "file too small";
-    ASSERT_EQ(18, (int)bytes[3]) << "version byte at offset 3";
+    ASSERT_EQ(19, (int)bytes[3]) << "version byte at offset 3";
     const size_t guy0 = kHeaderSize;
     const size_t guy1 = kHeaderSize + kGuySize;
     const size_t guy2 = kHeaderSize + 2 * kGuySize;
@@ -2710,7 +2854,7 @@ TEST(SaveDataVersions, save_data_v15_shaped_reader_never_sniffs_the_tag_byte)
     std::vector<uint8_t> bytes = read_save_bytes("typed_save_v16_as_v15.gtl");
     constexpr size_t kHeaderSize = 164;
     ASSERT_GT(bytes.size(), kHeaderSize + 58u);
-    ASSERT_EQ(18, (int)bytes[3]);
+    ASSERT_EQ(19, (int)bytes[3]);
     ASSERT_EQ(7, (int)bytes[kHeaderSize + 51]) << "tag really on disk";
     bytes[3] = 15; // re-label: v15-shaped reader sees reserved filler
 

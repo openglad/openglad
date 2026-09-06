@@ -99,6 +99,9 @@ void SaveData::reset()
 	my_team = 0;
 	// #207: a reset company has no excursion in flight.
 	clear_replay_arm();
+	// Amendment 7 (#276): a reset company has dealt no arena yet.
+	arena_lineup_dealt_campaign.clear();
+	arena_lineup_dealt_scen = 0;
     //numplayers = 1;
 	//allied_mode = 1;
 }
@@ -783,8 +786,31 @@ bool SaveData::load(const std::string& filename)
     }
     else
     {
-        fill.fill(0);      // FAIR
+        fill.fill(0);      // NONE (amendment 4 E1)
         map_units.fill(0); // the map's own units are fielded
+    }
+
+    // Versions 19+ append the arena FILL deal memo (amendment 7, #276): the
+    // (campaign, scenario) cursor the versus-campaign FILL: FAIR default was
+    // last dealt for — u8 id length, the id bytes, then the i16 scenario.
+    // Read-side default only: a pre-v19 file reads as never dealt, so its
+    // next arena visit deals exactly once; the writer is unconditional.
+    if (temp_version >= 19)
+    {
+        std::uint8_t dealt_len = 0;
+        READ_OR_FAIL(&dealt_len, 1, 1);
+        std::array<char, 256> dealt_id{};
+        if (dealt_len > 0)
+            READ_OR_FAIL(dealt_id.data(), 1, dealt_len);
+        arena_lineup_dealt_campaign.assign(dealt_id.data(), dealt_len);
+        std::int16_t dealt_scen = 0;
+        READ_OR_FAIL(&dealt_scen, 2, 1);
+        arena_lineup_dealt_scen = dealt_scen;
+    }
+    else
+    {
+        arena_lineup_dealt_campaign.clear();
+        arena_lineup_dealt_scen = 0;
     }
 
 	Log("Loading campaign: {}\n", current_campaign);
@@ -1050,7 +1076,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 18;
+	std::uint8_t temp_version = 19;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -1462,6 +1488,20 @@ bool SaveData::save(const std::string& filename)
 	{
 	    std::int16_t temp_map_units = value;
 	    WRITE_OR_FAIL(&temp_map_units, 2, 1);
+	}
+
+	// Versions 19+ append the arena FILL deal memo after the v18 band knobs
+	// (amendment 7, #276): u8 id length, the id bytes, the i16 scenario. A
+	// campaign id is at most the header's 40 bytes; the cap only bounds a
+	// crafted in-memory value so the length byte can never lie.
+	{
+	    const std::uint8_t dealt_len = static_cast<std::uint8_t>(
+	        std::min<std::size_t>(arena_lineup_dealt_campaign.size(), 255));
+	    WRITE_OR_FAIL(&dealt_len, 1, 1);
+	    if (dealt_len > 0)
+	        WRITE_OR_FAIL(arena_lineup_dealt_campaign.data(), 1, dealt_len);
+	    const std::int16_t dealt_scen = arena_lineup_dealt_scen;
+	    WRITE_OR_FAIL(&dealt_scen, 2, 1);
 	}
 
     // unique_ptr auto-closes outfile

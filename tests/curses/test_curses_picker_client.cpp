@@ -41,6 +41,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <array>
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -2296,6 +2297,51 @@ TEST(CursesPickerClient, lineup_knob_cycles_on_a_classic_campaign)
     EXPECT_NE(dump.find("TEAM 1  FILL: WEAK"), std::string::npos)
         << "the redraw re-reads the wheel out of the save:\n" << dump;
     EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// Amendment 7 (#276): presenting any menu on a versus campaign deals the
+// arena's FILL: FAIR onto the teams the map authors, once per cursor, and
+// the LINEUP page then reads the dealt code like any other stored one. A
+// NONE turned afterwards survives the next presentation.
+TEST(CursesPickerClient, present_menu_deals_the_arena_fill_once)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "modes";
+    f.save().scen_num = 500;  // CTF: FIRST BLOOD authors RED and GREEN
+    f.config.campaign = "modes";
+    f.save().fill = {};
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    f.t().push_special(KeyCode::Escape);
+    const auto* item = f.client.present_menu(PickerMenuId::TeamBuild);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->command, PickerMenuCommand::Back);
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillFair, og::sim::kFillFair,
+                                    0, 0}),
+              f.save().fill)
+        << "the two authored bands are dealt FAIR before the first row draws";
+    EXPECT_EQ("modes", f.save().arena_lineup_dealt_campaign);
+    EXPECT_EQ(500, f.save().arena_lineup_dealt_scen);
+
+    f.save().fill[1] = og::sim::kFillNone;
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("TEAM 1  FILL: FAIR"), std::string::npos)
+        << "the page reads the dealt code off the save:\n" << dump;
+    EXPECT_NE(dump.find("TEAM 2  FILL: NONE"), std::string::npos)
+        << "...and an explicit NONE as itself:\n" << dump;
+
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    EXPECT_EQ(og::sim::kFillNone, f.save().fill[1])
+        << "the deal is once per cursor: re-presenting the menu does not "
+           "lift the choice";
+    EXPECT_TRUE(f.t().input_exhausted());
+    (void)unmount_campaign_package_with_error("modes");
+    (void)mount_campaign_package_with_error("gladiator");
 }
 
 // E1/E2: at rest every band reads its STORED code, and a fresh company

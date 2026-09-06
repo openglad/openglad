@@ -1218,6 +1218,15 @@ const PickerMenuItem* CursesPickerClient::present_menu(PickerMenuId menu_id)
         config_.team_families.push_back(FAMILY_SOLDIER);
     og::ui::initialize_starting_team(save_data_, config_.team_families);
 
+    // Amendment 7 (#276): the arena FILL deal, once per cursor, on the host
+    // only — the same seam and the same rule as the text picker above.
+    if (label_context(config_, options_, save_data_).is_host &&
+        og::ui::deal_arena_lineup_for_cursor(save_data_,
+                                             headless_level_data_hooks()))
+    {
+        autosave_company_after_mutation(save_data_);  // §3.8 settings tail
+    }
+
     const og::ui::TerminalMenuModel model = og::ui::build_terminal_menu_model(
         menu_id, label_context(config_, options_, save_data_));
 

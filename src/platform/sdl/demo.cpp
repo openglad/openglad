@@ -48,6 +48,8 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/interface/guy_create.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/screen.h>
 #include <SDL3/SDL.h>
 
@@ -563,6 +565,18 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
         throw std::runtime_error(
             "OPENGLAD_DEMO_MATCH_TIME_LIMIT could not be applied");
     }
+
+    // Amendment 7 (#276): a versus campaign's arena deals FILL: FAIR to the
+    // teams it authors — the ONE rule the pickers apply at selection, run
+    // here off a scratch load of the cursor BEFORE the bootstrap save,
+    // because both the display load below and the local transport shadow's
+    // authoritative load read this slot back off disk. The mount leads, as
+    // the save's own load would make it (the mask rule reads the mounted
+    // package); a classic campaign never pends, so its bootstrap is
+    // untouched.
+    (void)og::ui::sync_campaign_mount_to_save(s->save_data);
+    (void)og::ui::deal_arena_lineup_for_cursor(s->save_data,
+                                               sdl_level_data_hooks());
 
     // The demo never selects a company, so this is the default "save0" slot
     // and the bootstrap stays byte-identical (§3.9).

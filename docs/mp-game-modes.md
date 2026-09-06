@@ -53,45 +53,50 @@ clients, the dedicated server, and the web build.
 
 ## Match setup
 
-Two match settings appear on the **SCENARIO** screen
-(Base Camp → SCENARIO) when a versus campaign (one whose campaign.yaml
-carries `matchup: versus`) is active. In networked play, only the host can
-change them — a joiner sees the current values as read-only labels — and the
-lobby synchronizes them to every client:
+Match rules live on two pages, both host-only in networked play (a joiner
+sees the current values as read-only labels) and both synchronized to
+every client by the lobby:
 
-- **Match Teams** — `Auto` fields every team the map authors (2, 3, or 4);
-  or force 2/3/4. Teams without human players get AI squads. Under
-  `TROOPS: OWN`/`FAIR` the count works the same way — `Auto` means the
-  map's own team count, an explicit count fields that many sides — with
-  your deployed company's teams always staying and the rest backfilling in
-  team order (TROOPS only decides what the AI squads are made of).
-- **Score Limit** — `Map default` uses the map's authored limit (each mode
-  reads it as its own win threshold: captures, frags, goals), or force
-  1–10.
+- **MATCH SETUP** (Base Camp → the Gamesmaster's fourth row, on the modes
+  campaign) — four rows: **TEAMS** and **FILL** are macros over the
+  per-team LINEUP bands below, **TARGET SCORE** is the map's authored
+  limit or a forced 1/3/5/10 (each mode reads it as its own win threshold:
+  captures, frags, goals), and **TIME LIMIT** is the map's own clock or a
+  forced 5–20 minutes.
+- **LINEUP** (Base Camp → SCENARIO → LINEUP) — one band per team, each
+  with a **FILL** wheel (`NONE`, `WEAK`, `FAIR`, `STRONG`, `BRUTAL`) and a
+  **MAP UNITS** box. FILL fields a bot squad on that team, sized against
+  the human companies at the table (see "Matched squads" below); NONE
+  fields nothing. MAP UNITS decides whether the fighters the map itself
+  ships on that team take the field.
 
-**TROOPS** sits between them on the same band, and shows for every campaign
-rather than only the versus ones. It is host-only and lobby-synced like the
-pair above, and has three states:
+### The arena default
 
-- **TROOPS: ALL** — keep the level exactly as authored (the default).
-- **TROOPS: OWN** — remove every fighter and generator the level ships, on
-  every team, wildlife included; only the players' companies (and the AI
-  squads the modes field for empty teams) remain. Onslaught keeps its
-  generators, which are the board rather than troops. On a classic campaign
-  this makes the level a sandbox: a kill-everything level is already won,
-  and its named quest NPCs are gone — except characters the level marks
-  protected, which survive either setting.
-- **TROOPS: FAIR** — strip exactly as `OWN` does, and size the AI squads the
-  modes field to the players (see "Matched squads" below). On a classic
-  campaign — where no mode fields squads — it plays exactly as `OWN`.
+On a versus campaign — one whose campaign.yaml carries `matchup: versus`,
+which is the modes campaign — selecting an arena deals **FILL: FAIR** to
+every team the map defines (the teams it authors start markers for) whose
+band still reads NONE. Teams the map does not define stay NONE. So a solo
+player who opens a two-team CTF map and presses GO faces a FAIR squad on
+the other side; on a four-team deathmatch arena three squads take the
+field. The deal happens once per scenario selection, and it never lifts a
+choice: turn a defined team's band to NONE and it stays NONE through VIEW
+LEVEL, GO, the return to Base Camp and a restart. Picking a scenario again
+(SET LEVEL, the camp's RANDOM SCENARIO, SET CAMPAIGN into the modes
+campaign, or the advance after a match) deals FAIR back onto any defined
+team that is sitting at NONE. Classic campaigns never deal anything: a
+gladiator level at its defaults is exactly the level as authored.
 
-Every state applies on every campaign, so the control reads the same
-everywhere. An older save may carry a retired in-between state that stripped
-only the roster teams' canned troops; it now behaves as **OWN**, and cycling
-the control from it returns to **ALL**.
+The macros read the same bands: after the deal MATCH SETUP shows `TEAMS:
+2` / `FILL: FAIR` on a two-team map and `TEAMS: 4` / `FILL: FAIR` on a
+four-team one. One TEAMS click steps the side count along its 2 → 3 → 4
+wheel (dealing the lowest opponents in team order, whatever the map
+authors); one FILL click steps every fielded band, your own included, one
+stop along the wheel.
 
-VIEW LEVEL previews the result: entries the setting will remove are flagged
-in the scenario report.
+VIEW LEVEL previews the result: the staged census lists every team that
+will stand, with its company, its map units and its bot squad, each squad
+closing its line with the fill word it was dealt; a map with only one team
+standing says `MATCH WILL NOT START: FEWER THAN 2 TEAMS` instead.
 
 Assign player teams with the seat rail in Base Camp. The rail is this
 machine's four seats: tap a slot reading **ADD PLAYER** to claim one, then
@@ -113,38 +118,34 @@ player-seat assignment does not recolor the company roster. The assignments
 work locally, in split-screen and networked games, and through the dedicated
 server.
 
-### Matched squads (TROOPS: FAIR)
+### Matched squads (FILL)
 
-**TROOPS: FAIR** is the third state of the SCENARIO screen's TROOPS control.
-It clears the board exactly as `OWN` does — the deployed companies are the
-match — and then any AI squad a mode fields is sized to the players instead
-of to the difficulty formula.
+A band's FILL wheel sizes the bot squad it fields to the players instead
+of to the difficulty formula:
 
 - The mode weighs every player's fighters on the field — health, armor,
-  damage, firing rate, footspeed — and averages that across the human teams.
-  Each AI squad is then fielded at whichever level lands closest to that
-  number, with the first few of its members promoted one level further to
-  fine-tune the fit.
-- Squad size never moves: five fighters as usual, one per seat in Mutant.
-  Only levels move, and only between 1 and 9. A lone level-1 soldier still
-  faces a full squad — matching gets you as close as five bodies allow, not
-  level with you.
-- The match announces itself once at the start: **TEAMS MATCHED**, or
-  **TEAMS MATCHED (LIMIT)** when a squad hit the level floor or ceiling and
-  the fit is as close as it can get.
+  damage, firing rate, footspeed — and takes the weakest human team as the
+  reference. `FAIR` solves the squad to that number; `WEAK` to three
+  quarters of it, `STRONG` to one and a quarter, `BRUTAL` to one and a
+  half. Each squad is fielded at whichever level lands closest, with the
+  first few of its members promoted one level further to fine-tune the
+  fit.
+- Squad size follows the roster: a solo fighter faces one opponent, a
+  full company a full squad. Only levels move, and only between 1 and 9.
+- A band on a team that already holds a human company is the allies knob:
+  it fields the gap up to the strongest other human team, so an
+  outnumbered host can ask for help; at a solo table the gap is nothing
+  and the band fields nobody.
+- A band beside the map's own units fields its squad next to them; turn
+  MAP UNITS off to trade the authored troops for the squad alone.
 - DIFFICULTY still applies on top, and it bites harder than it looks: it
   scales health and damage together, so Easy leaves a matched squad far
   under your strength and Hard far over it. Normal is the fair fight.
-- Teams with players on them are never filled or altered, and a squad wiped
-  out and re-fielded comes back at the strength it was matched to. Who gets
-  a squad follows `OWN`'s rule: a lone company gets one AI opponent; two or
-  more companies fight each other and no squad is fielded at all.
-- Onslaught ignores the sizing: its fighters come out of generators rather
-  than squads, so FAIR strips there like `OWN` and the armies are unchanged.
-- On a classic campaign no mode fields squads, so FAIR is simply `OWN`.
+- Onslaught's armies come out of generators rather than squads, so a band
+  there adds a squad beside the generators' output.
 
-With several human teams the target is their average, so an even match for
-one side can still be a hard one for a weaker ally.
+With several human teams the weakest is the reference, so an even match for
+one side can still be a hard one for a stronger ally.
 
 ## The CTF maps
 
@@ -275,14 +276,16 @@ with no rim standing on it, so the live baskets are obvious at a glance.
   lobby: at the gate every deployed character — yours, your ally's, and the
   second one you seated on your own team — is put on a color of its own,
   and from there everyone is hostile to everyone. The hero you drive fights
-  the rest of your own company, and Match Teams has nothing to say about
-  it.
+  the rest of your own company, and the TEAMS macro has nothing to say
+  about it.
 - **Sixteen fighters, controlled heroes first.** Every seat's controlled
   hero takes a slot before any benchwarmer does, so a full lobby never
   loses a player to the cap; anyone past sixteen is turned away at the gate
-  with a toast counting them. Bots fill the field out to the arena's
-  fighter count — eight on THE MELEE, sixteen on the last three — cycling
-  through soldier, archer, elf, mage and thief.
+  with a toast counting them. Bots join from the LINEUP bands: every FFA
+  arena defines all four teams, so the arena default deals FAIR onto each
+  of them and the field fills out with matched squads, cycling through
+  soldier, archer, elf, mage and thief; turn a band to NONE to keep that
+  slot empty.
 - **Sixteen colors, drawn fresh every match**: RED, GREEN, BLUE, YELLOW,
   MAGENTA, CYAN, TAN, ROSE, LAVENDER, SALMON, ORANGE, PINK, VIOLET, and
   three mixed for this mode — TEAL, GOLD and SLATE. Who wears which is
@@ -323,12 +326,12 @@ with no rim standing on it, so the live baskets are obvious at a glance.
   start to finish.
 - **The arena is cleared at the gate.** Whatever garrison, squad or
   generator the map ships is retired before the first tick; wildlife stays
-  as arena furniture unless TROOPS clears it too. Food and speed potions
+  as arena furniture unless its team's MAP UNITS box clears it too. Food and speed potions
   come back at their pads every 15 seconds — sixteen fighters eat a map
   bare.
-- **TROOPS: FAIR plays as OWN here.** FFA retires the map's own fighters on
-  every setting, and FAIR's matching never reaches its bots: they come in
-  at the level DIFFICULTY implies rather than sized to your company.
+- **The bands size the bots.** FFA retires the map's own fighters on every
+  setting; the squads the FILL bands field are matched to your company
+  like any other mode's, with DIFFICULTY on top.
 - **The terminal clients only have eight colors**, so two fighters can
   share one in the curses and text views; the HUD names are what tell them
   apart.
@@ -374,8 +377,9 @@ than the number above and they all play, up to sixteen.
 - **Mutant** (840-843): a true free-for-all until the first kill crowns
   the Mutant. Every deployed character enters as its own competitor in a
   color of its own — up to sixteen of them, whatever teams the lobby put
-  their seats on, two players sharing a team included — with bots filling
-  the field out to four on the shipped arenas. The crown then works as it
+  their seats on, two players sharing a team included — with the LINEUP
+  bands' squads (FAIR on every defined team by the arena default) filling
+  the field out on the shipped arenas. The crown then works as it
   always did: the Mutant is buffed, marked on every HUD, its health always
   decaying and healed only by kills. Non-mutants cannot hurt each other;
   kill the Mutant to become it. Teleports are range-clamped so nobody

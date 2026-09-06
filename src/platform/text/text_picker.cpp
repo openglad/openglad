@@ -151,6 +151,16 @@ public:
     {
         for (;;) {
             ensure_team_initialized();
+            // Amendment 7 (#276): the arena FILL deal, once per cursor.
+            // Every menu presents through here, so a SET LEVEL, SET
+            // CAMPAIGN or camp roll is dealt before the next row renders
+            // and before any stage is built (the text picker is always the
+            // host of its own table); free when nothing is pending.
+            if (og::ui::deal_arena_lineup_for_cursor(
+                    save_data_, headless_level_data_hooks()))
+            {
+                autosave_company_after_mutation();  // §3.8 settings tail
+            }
             const TerminalMenuModel menu =
                 build_terminal_menu_model(menu_id, label_context());
             print_menu_context(menu);

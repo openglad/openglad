@@ -273,7 +273,13 @@ inline constexpr std::int16_t kTroopsMatched = 3;
 //                 no percent twin here. Wheel order on the band is the five
 //                 codes in storage order — NONE, WEAK, FAIR, STRONG,
 //                 BRUTAL, weakest to strongest — and a fresh band enters
-//                 the wheel at NONE's own slot.
+//                 the wheel at NONE's own slot. Amendment 7 (#276) adds the
+//                 one default ABOVE the sim: when a versus campaign's
+//                 scenario is selected, the picker deals FAIR onto the
+//                 teams the map authors that still read NONE, once per
+//                 cursor (og::ui::deal_arena_lineup_fill, memoed on the
+//                 save) — the stored code stays the only thing the engine
+//                 reads, and a NONE turned afterwards stays NONE.
 //   map_units[t]: whether the map's OWN authored units on this team are
 //                 fielded (B4). 0 = on (the default and the classic
 //                 behaviour), 1 = off. The retired TROOPS knob asked this

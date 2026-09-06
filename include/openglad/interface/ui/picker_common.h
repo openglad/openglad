@@ -25,6 +25,7 @@
 
 class guy;
 class GameWorld;
+struct LevelDataHooks;
 class IRandom;
 
 namespace og::ui {
@@ -384,6 +385,48 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     const SaveData& save,
     const GameWorld& world,
     std::string_view mounted_campaign);
+
+// The same mask off a scratch headless load of the save's own cursor — the
+// one implementation the curses lobby's settings message and the arena
+// deal below share. Zero unless the save's campaign is versus AND mounted
+// AND its scenario loads (the guards of the loaded-level form apply).
+std::uint8_t ctf_authored_team_mask_for_save(const SaveData& save,
+                                             const LevelDataHooks& hooks);
+
+// --- The arena FILL default (docs/lineup-design.md Amendment 7, #276) ---
+//
+// A versus campaign's arena deals FILL: FAIR to the teams the map DEFINES
+// (its authored start markers, dead ones included) when a scenario is
+// selected: every authored team whose band still reads NONE becomes FAIR;
+// unauthored teams and every non-NONE value are untouched. The deal is
+// memoed on the save by (campaign, scenario) so it fires ONCE per cursor —
+// re-entering a page, VIEW LEVEL, GO, the return to the lobby and a restart
+// all reload the level through the seams that call this, and none of them
+// lifts an explicit NONE turned afterwards. Re-selecting a scenario (SET
+// LEVEL, SET CAMPAIGN, the camp docket, a post-match advance) deals again.
+// Classic campaigns never pend, so the C3 all-default byte no-op stands.
+// One rule, one home: the SDL reload seam, both terminal pickers and the
+// demo bootstrap call these; nothing else writes FAIR on its own.
+
+// True when the save sits on a versus campaign at a cursor the deal has
+// not stamped yet.
+bool arena_lineup_deal_pending(const SaveData& save);
+
+// The pure core. Returns true when at least one band changed; stamps the
+// memo whenever the mask names a team (a mask of 0 — nothing authored, or
+// metadata not yet synchronized — neither deals nor stamps, so the next
+// synchronized reload gets its turn).
+bool deal_arena_lineup_fill(SaveData& save, std::uint8_t authored_mask);
+
+// The deal over a level already loaded to match the save (the SDL picker
+// world, the demo's display world).
+bool deal_arena_lineup_for_loaded_level(SaveData& save,
+                                        const GameWorld& world,
+                                        std::string_view mounted_campaign);
+
+// The deal off a scratch headless load of the save's cursor (the terminal
+// pickers); free when nothing is pending.
+bool deal_arena_lineup_for_cursor(SaveData& save, const LevelDataHooks& hooks);
 
 // The scenario-troops knob is RETIRED (amendment B5). It asked once, for the
 // whole map, whether the authored cast fights; the LINEUP band's per-team

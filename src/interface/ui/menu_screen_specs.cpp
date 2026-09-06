@@ -1199,6 +1199,24 @@ bool reload_picker_level_and_sync_settings(screen& myscreen, short level_id)
     if (!myscreen.load_level())
         return false;
 
+    // Amendment 7 (#276): on a versus campaign the freshly selected arena
+    // deals FILL: FAIR to the teams it authors — once per cursor (the memo
+    // on the save keeps every later reload through this seam, page
+    // re-entries included, from lifting an explicit NONE), and only on the
+    // host: a joiner adopts the host's fills from the lobby settings. It
+    // runs BEFORE the publish below so the lobby carries the dealt fills
+    // and its echo into the save agrees; the autosave is the §3.8 settings
+    // tail every knob write takes, gated like picker_settings_autosave on
+    // the company file existing.
+    if (picker_lobby_host_controls_visible() &&
+        og::ui::deal_arena_lineup_for_loaded_level(
+            myscreen.save_data, myscreen.world(), get_mounted_campaign()) &&
+        user_file_exists("save/" + og::data::active_company_slot() + ".gtl"))
+    {
+        (void)company_autosave_after_mutation(myscreen.save_data,
+                                              picker_lobby_is_networked());
+    }
+
     // CTF's selectable team domain comes from the loaded map's authored
     // flags. Campaign and PROGRESS callbacks publish the new cursor before
     // this deferred reload, so publish once more now that the lobby can carry

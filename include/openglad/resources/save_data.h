@@ -105,6 +105,16 @@ public:
     // fielded, 1 = they are not.
     std::array<short, 4> fill = {};
     std::array<short, 4> map_units = {};
+    // The arena FILL deal memo (lineup-design Amendment 7, #276; GTL v19
+    // tail): the last (campaign, scenario) cursor the versus-campaign
+    // FILL: FAIR default was dealt for. A versus campaign's arena deals FAIR
+    // onto the teams it authors ONCE per scenario selection — an explicit
+    // NONE turned afterwards is a choice the deal never lifts, and this pair
+    // is what remembers that across page re-entries, launches and restarts.
+    // Empty/0 = never dealt (a fresh company, or a pre-v19 file), so the
+    // next arena visit deals exactly once. Host-local: never rides the wire.
+    std::string arena_lineup_dealt_campaign;
+    short arena_lineup_dealt_scen = 0;
     // Difficulty submenu settings (0 = legacy default behavior for all three).
     // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.
     short respawn_mode = 0;

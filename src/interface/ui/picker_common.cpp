@@ -26,6 +26,9 @@
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -788,6 +791,76 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
         return 0;
     }
     return og::sim::authored_team_mask(world);
+}
+
+std::uint8_t ctf_authored_team_mask_for_save(const SaveData& save,
+                                             const LevelDataHooks& hooks)
+{
+    if (!is_versus_campaign(save) ||
+        get_mounted_campaign() != save.current_campaign)
+    {
+        return 0;
+    }
+
+    LevelRuntimeData scenario(save.scen_num, false, &hooks);
+    if (!scenario.load())
+        return 0;
+    return ctf_authored_team_mask_for_loaded_level(
+        save, scenario.world(), get_mounted_campaign());
+}
+
+// --- The arena FILL default (Amendment 7, #276) ---
+
+bool arena_lineup_deal_pending(const SaveData& save)
+{
+    return is_versus_campaign(save) &&
+           (save.arena_lineup_dealt_campaign != save.current_campaign ||
+            save.arena_lineup_dealt_scen != save.scen_num);
+}
+
+bool deal_arena_lineup_fill(SaveData& save, std::uint8_t authored_mask)
+{
+    if (!arena_lineup_deal_pending(save) || authored_mask == 0)
+        return false;
+    save.arena_lineup_dealt_campaign = save.current_campaign;
+    save.arena_lineup_dealt_scen = save.scen_num;
+    bool changed = false;
+    for (std::size_t team = 0; team < save.fill.size(); ++team)
+    {
+        const bool authored = (authored_mask & (1u << team)) != 0;
+        if (authored && save.fill[team] == og::sim::kFillNone)
+        {
+            save.fill[team] = og::sim::kFillFair;
+            changed = true;
+        }
+    }
+    if (changed)
+    {
+        TRACE("lineup", "arena_deal campaign=%s scen=%d fill=%d,%d,%d,%d",
+              save.current_campaign.c_str(), static_cast<int>(save.scen_num),
+              static_cast<int>(save.fill[0]), static_cast<int>(save.fill[1]),
+              static_cast<int>(save.fill[2]), static_cast<int>(save.fill[3]));
+    }
+    return changed;
+}
+
+bool deal_arena_lineup_for_loaded_level(SaveData& save,
+                                        const GameWorld& world,
+                                        std::string_view mounted_campaign)
+{
+    if (!arena_lineup_deal_pending(save))
+        return false;
+    return deal_arena_lineup_fill(
+        save, ctf_authored_team_mask_for_loaded_level(save, world,
+                                                      mounted_campaign));
+}
+
+bool deal_arena_lineup_for_cursor(SaveData& save, const LevelDataHooks& hooks)
+{
+    if (!arena_lineup_deal_pending(save))
+        return false;
+    return deal_arena_lineup_fill(save,
+                                  ctf_authored_team_mask_for_save(save, hooks));
 }
 
 // --- Difficulty submenu match rules ---
