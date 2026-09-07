@@ -6,24 +6,27 @@
 // that a hand edit to a scenN.fss must keep honoring.
 //
 // Issue #266 ("There is a CRAZY powerful thief in Nurtham"): scen17,
-// "THE CITY OF NUTHRAM", shipped an unnamed level-8 thief on team 3 at
-// world (1168,1152). Two things were wrong with it:
+// "THE CITY OF NUTHRAM", ships a level-8 thief on team 3 at world
+// (1168,1152). Two things were wrong with him:
 //
 //   1. Nothing on screen said he was the boss. The 12-byte name field in
 //      his object record was all zeros, so BIT_NAMED never got set, he
 //      drew without the OUTLINE_NAMED highlight, and his taunt/kill text
-//      read as the generic family name.
-//   2. He was effectively invulnerable. living::set_difficulty scales
-//      armor QUADRATICALLY (armor += 2*level^2) while
-//      compute_damage_reduction subtracts a LINEAR armor/2 and floors the
-//      result at "always do at least 1 damage". A level-8 thief carries
-//      128 armor, so the 64-point reduction exceeds the 45 base melee of
-//      a level-12 player soldier and every single hit lands for exactly 1
-//      against 779 hitpoints plus fast regeneration.
+//      read as the generic family name. He is now named (the level data
+//      edit; see campaigns/gladiator/README.md).
+//   2. He was effectively invulnerable -- but that was the ENGINE, not the
+//      level. living::set_difficulty scales armor quadratically
+//      (armor += 2*level^2), and the 2013 port's damage reduction was a
+//      flat armor/2 floored at "always do at least 1 damage": at 128
+//      armor every hit from a level-12 party landed for exactly 1. The
+//      2002 game rolled random(armor) instead, which averaged ~8 per hit
+//      on him. compute_damage_reduction now returns that roll's exact
+//      expectation (src/core/combat_math.cpp), so his authored level 8
+//      stands: he is the level's boss, not a one-point sponge.
 //
-// The two tests below pin both halves: the boss carries a name, and no
-// placed enemy in the level sits on the wrong side of the 1-damage clamp
-// against a mid-campaign party.
+// The tests below pin both halves: the boss carries a name and keeps his
+// authored level, and no placed enemy in the level is a sponge against a
+// mid-campaign party under the restored formula.
 
 #include <gtest/gtest.h>
 
@@ -63,6 +66,14 @@ constexpr const char* kMasterName = "Saffron";
 // The reference party the nerf is measured against: a level-12 soldier,
 // roughly where a crew stands when the campaign reaches Nuthram.
 constexpr short kReferencePartyLevel = 12;
+
+// The authored boss level and what a 45-point blow is worth against his
+// 2*8^2 = 128 armor under the 2002 roll: (45*45 - 45*44/2) / 128 = 8.09.
+constexpr int kMasterLevel = 8;
+constexpr float kMasterArmor = 128.0f;
+constexpr float kMasterExpectedDamagePerHit = 8.09f;
+// Floor for every enemy in the level against that same blow.
+constexpr float kMinExpectedDamagePerHit = 7.0f;
 
 // ---------------------------------------------------------------------------
 // Entity wiring: one shared loader for every level load (mirrors the
@@ -237,17 +248,18 @@ TEST_F(GladiatorCampaignTest, nuthram_has_no_enemy_immune_to_a_mid_campaign_part
         if (w->query_order() != Order::Living || w->team_num() == 0)
             continue;
 
-        // compute_damage_reduction floors damage at 1: once the reduction
-        // clamps to (melee - 1) the target takes exactly one point per hit
-        // no matter how hard it is struck.
-        EXPECT_LT(compute_damage_reduction(melee, w->stats()->armor()),
-                  melee - 1.0f)
+        // Under the 2013 armor/2 clamp every enemy from level 7 up took
+        // exactly 1 per hit. With the 2002 roll's expectation restored, the
+        // toughest thing the level places (the level-8 boss, 128 armor)
+        // still takes ~8 of a 45-point blow; nothing may fall under 7.
+        EXPECT_GE(compute_post_reduction_damage(melee, w->stats()->armor()),
+                  kMinExpectedDamagePerHit)
             << "family " << static_cast<int>(w->family()) << " team "
             << static_cast<int>(w->team_num())
             << " level " << w->stats()->level() << " at (" << w->xpos() << ","
             << w->ypos() << ") armor " << w->stats()->armor()
-            << ": every hit from a level-" << kReferencePartyLevel
-            << " party lands for exactly 1 (#266)";
+            << ": a level-" << kReferencePartyLevel
+            << " party barely scratches this enemy (#266)";
     }
 
     // The boss is located by his AUTHORED placement rather than by "whoever
@@ -283,3 +295,29 @@ TEST_F(GladiatorCampaignTest, nuthram_has_no_enemy_immune_to_a_mid_campaign_part
 }
 
 } // namespace
+
+TEST_F(GladiatorCampaignTest, nuthram_guild_master_keeps_his_authored_level_and_is_killable)
+{
+    LoadedGladiatorLevel fx(kNuthramLevel);
+    ASSERT_TRUE(fx.loaded) << "gladiator scenario 17 should load";
+    GameWorld& world = fx.world();
+    apply_authored_levels(world);
+
+    walker* master = find_placed_living(world, FAMILY_THIEF, kMasterTeam,
+                                        kMasterX, kMasterY);
+    ASSERT_NE(nullptr, master);
+
+    // The 2002 author placed him at level 8; the #266 nerf to level 6 was
+    // reverted once the damage formula, not the level byte, turned out to
+    // be what made him unkillable.
+    EXPECT_EQ(kMasterLevel, master->stats()->level());
+    EXPECT_FLOAT_EQ(kMasterArmor, master->stats()->armor())
+        << "2*level^2 on the default curve";
+
+    // What a level-12 soldier's 45 base melee is worth against him: the
+    // 2002 roll's expectation, ~8 -- a boss fight, not a wall.
+    EXPECT_NEAR(kMasterExpectedDamagePerHit,
+                compute_post_reduction_damage(45.0f, master->stats()->armor()),
+                0.02f)
+        << "the 2013 clamp read exactly 1 here (#266)";
+}
