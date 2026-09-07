@@ -3649,7 +3649,7 @@ public:
         start_request_pending_ = false;
         pending_start_request_id_ = 0;
         deferred_start_requested_ = false;
-        start_request_timed_out_ = false;
+        start_request_outcome_ = og::ui::StartRequestOutcome::None;
         start_request_sent_at_ = {};
         join_message_sent_ = false;
         join_confirmation_pending_ = false;
@@ -3725,10 +3725,12 @@ public:
                 pack_client_->reset();
             // A pending start request can never resolve on a dead connection
             // (neither the StartGame handoff nor the denial echo will arrive);
-            // release it so go_menu's wait loop gives up instead of spinning
-            // forever, and the user can retry after the reconnect.
-            start_request_pending_ = false;
-            deferred_start_requested_ = false;
+            // abandon it through the SAME seam the silent-host expiry uses so
+            // go_menu's wait loop gives up WITH a verdict — this was the third,
+            // unreported exit of the pending flag, and it bounced the menu back
+            // with no popup at all (#278 review fixup). The user retries after
+            // the reconnect.
+            abandon_start_request(og::ui::StartRequestOutcome::LinkLost);
             rebuild_status_lines();
             return;
         }
@@ -4006,9 +4008,9 @@ public:
 
     bool request_start_game() override
     {
-        // Every GO press starts fresh: a previous press's expiry is not this
-        // one's verdict.
-        start_request_timed_out_ = false;
+        // Every GO press starts fresh: a previous press's verdict is not
+        // this one's.
+        start_request_outcome_ = og::ui::StartRequestOutcome::None;
         if (start_request_pending_ || !transport_ || !local_player_is_host() ||
             pending_game_start_config_.has_value() ||
             g_start_game_requested)
@@ -4095,9 +4097,10 @@ public:
         return start_request_pending_;
     }
 
-    [[nodiscard]] bool start_request_timed_out() const noexcept override
+    [[nodiscard]] og::ui::StartRequestOutcome start_request_outcome()
+        const noexcept override
     {
-        return start_request_timed_out_;
+        return start_request_outcome_;
     }
 
     [[nodiscard]] bool has_game_start_config() const noexcept override
@@ -4499,7 +4502,7 @@ public:
         start_request_pending_ = false;
         pending_start_request_id_ = 0;
         deferred_start_requested_ = false;
-        start_request_timed_out_ = false;
+        start_request_outcome_ = og::ui::StartRequestOutcome::None;
         pending_game_start_config_.reset();
 
         // If the socket object survived but its upstream did not, it is no
@@ -4783,7 +4786,7 @@ private:
         if (!start_request_pending_)
             start_request_sent_at_ = std::chrono::steady_clock::now();
         start_request_pending_ = true;
-        start_request_timed_out_ = false;
+        start_request_outcome_ = og::ui::StartRequestOutcome::None;
     }
 
     [[nodiscard]] static std::uint64_t start_request_timeout_ms() noexcept
@@ -4795,15 +4798,32 @@ private:
         return og::sim::START_REQUEST_TIMEOUT_MS;
     }
 
-    // #278: the one owner of start_request_pending_ bounds it. A host whose
-    // uplink went dark (socket open, nobody answering) sends neither the
-    // StartGame handoff nor a denial echo; past START_REQUEST_TIMEOUT_MS the
-    // request is abandoned — pending drops so a `while (pending) poll` wait
-    // returns, the verdict is reported through start_request_timed_out(),
-    // and the NEXT GO opens a fresh request instead of re-waiting on this
-    // one. A late handoff for the abandoned id still starts the game (the
-    // confirmation matcher accepts any id once nothing is pending, exactly
-    // as it does for a plain joiner).
+    // #278: the one owner of start_request_pending_ is the one that drops
+    // it, and every drop that is not the host's own verdict names itself
+    // here. Pending falls so a `while (pending) poll` wait returns, the
+    // reason is reported through start_request_outcome(), and the NEXT GO
+    // opens a fresh request instead of re-waiting on this one. A late
+    // handoff for the abandoned id still starts the game (the confirmation
+    // matcher accepts any id once nothing is pending, exactly as it does for
+    // a plain joiner).
+    void abandon_start_request(og::ui::StartRequestOutcome reason)
+    {
+        if (!start_request_pending_)
+            return;
+        TRACE("networking", "%s id=%u",
+              reason == og::ui::StartRequestOutcome::LinkLost
+                  ? "start_request_link_lost"
+                  : "start_request_expired",
+              static_cast<unsigned>(pending_start_request_id_));
+        start_request_pending_ = false;
+        pending_start_request_id_ = 0;
+        deferred_start_requested_ = false;
+        start_request_outcome_ = reason;
+    }
+
+    // A host whose uplink went dark (socket open, nobody answering) sends
+    // neither the StartGame handoff nor a denial echo; past
+    // START_REQUEST_TIMEOUT_MS the request is abandoned.
     void expire_stale_start_request(std::chrono::steady_clock::time_point now)
     {
         if (!start_request_pending_)
@@ -4813,12 +4833,7 @@ private:
         {
             return;
         }
-        TRACE("networking", "start_request_expired id=%u",
-              static_cast<unsigned>(pending_start_request_id_));
-        start_request_pending_ = false;
-        pending_start_request_id_ = 0;
-        deferred_start_requested_ = false;
-        start_request_timed_out_ = true;
+        abandon_start_request(og::ui::StartRequestOutcome::NoAnswer);
     }
 
     void maybe_dispatch_deferred_start()
@@ -5159,7 +5174,8 @@ private:
     // #278: when the pending request's GO was pressed, and whether the last
     // GO's request expired unanswered (cleared by the next GO).
     std::chrono::steady_clock::time_point start_request_sent_at_{};
-    bool start_request_timed_out_ = false;
+    og::ui::StartRequestOutcome start_request_outcome_ =
+        og::ui::StartRequestOutcome::None;
     std::uint32_t next_start_request_id_ = 1;
     std::uint32_t pending_start_request_id_ = 0;
     bool join_message_sent_ = false;

@@ -1290,11 +1290,11 @@ bool picker_lobby_start_request_pending()
     return false;
 }
 
-bool picker_lobby_start_request_timed_out()
+og::ui::StartRequestOutcome picker_lobby_start_request_outcome()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
-        return client->start_request_timed_out();
-    return false;
+        return client->start_request_outcome();
+    return og::ui::StartRequestOutcome::None;
 }
 
 bool picker_lobby_has_game_start_config()

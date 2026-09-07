@@ -11361,7 +11361,8 @@ TEST(PickerNetworkClient,
         pump_all();
         return !elected_host->start_request_pending();
     })) << "the live server's denial echo must release the warm-up request";
-    EXPECT_FALSE(elected_host->start_request_timed_out())
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              elected_host->start_request_outcome())
         << "answered (denied), not abandoned";
     EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
               elected_host->last_start_denial());
@@ -11374,7 +11375,8 @@ TEST(PickerNetworkClient,
     EXPECT_FALSE(elected_host->request_start_game());
     EXPECT_TRUE(elected_host->start_request_pending())
         << "the request went out";
-    EXPECT_FALSE(elected_host->start_request_timed_out());
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              elected_host->start_request_outcome());
     EXPECT_TRUE(elected_host->session_established())
         << "the socket is open: this is a silent host, not a dead link";
     const auto pressed_at = std::chrono::steady_clock::now();
@@ -11388,9 +11390,12 @@ TEST(PickerNetworkClient,
     EXPECT_GE(expired_after_ms, 300)
         << "the expiry cannot precede the timeout (it fired after "
         << expired_after_ms << " ms)";
-    EXPECT_TRUE(elected_host->start_request_timed_out())
+    EXPECT_EQ(og::ui::StartRequestOutcome::NoAnswer,
+              elected_host->start_request_outcome())
         << "the verdict of an abandoned request";
     EXPECT_TRUE(trace_contains("networking", "start_request_expired id=2"));
+    EXPECT_FALSE(trace_contains("networking", "start_request_link_lost"))
+        << "a silent host is not a dead link";
     EXPECT_TRUE(elected_host->session_established())
         << "a silent host is not a lost session";
     EXPECT_FALSE(g_start_game_requested);
@@ -11400,7 +11405,8 @@ TEST(PickerNetworkClient,
     EXPECT_FALSE(elected_host->request_start_game());
     EXPECT_TRUE(elected_host->start_request_pending())
         << "a GO after an expired request sends a new one";
-    EXPECT_FALSE(elected_host->start_request_timed_out())
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              elected_host->start_request_outcome())
         << "the new press starts with a clean verdict";
 
     // (3) The host wakes up: the server answers the SECOND request (denied —
@@ -11409,7 +11415,8 @@ TEST(PickerNetworkClient,
         pump_all();
         return !elected_host->start_request_pending();
     }, 5s)) << "the answered second request must release the wait";
-    EXPECT_FALSE(elected_host->start_request_timed_out())
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              elected_host->start_request_outcome())
         << "answered, not abandoned";
     EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
               elected_host->last_start_denial());
@@ -11418,4 +11425,153 @@ TEST(PickerNetworkClient,
            "the abandoned one (id 2)";
     EXPECT_FALSE(g_start_game_requested);
     EXPECT_FALSE(lobby_server.consume_start_game_requested());
+}
+
+// #278 review fixup (the third exit): start_request_pending() drops in three
+// places, and before this fixup only two of them said why. An elected host on
+// a dedicated server presses GO and the socket dies while it waits: the
+// request can never be answered, so poll_and_apply releases the flag — and it
+// used to release it with no verdict at all, which bounced go_menu straight
+// back to the menu with no popup, leaving the player staring at Base Camp
+// wondering whether GO had done anything. The link death is now a verdict of
+// its own, reported through the same seam the silent-host expiry uses.
+TEST(PickerNetworkClient,
+     elected_host_start_request_abandoned_with_a_verdict_when_the_link_dies)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Elected Host");
+    g_start_game_requested = false;
+
+    // server_main's exact transport + lobby shape (no local session).
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options transport_options;
+    transport_options.host = "127.0.0.1";
+    auto server_transport =
+        std::make_unique<og::sim::WebSocketServerTransport>(port,
+                                                            transport_options);
+    server_transport->accept_connections();
+    auto lobby_server =
+        std::make_unique<og::sim::LobbyServer>(*server_transport);
+
+    og::ui::PickerJoinGameOptions host_options;
+    host_options.mode = og::ui::PickerJoinMode::Direct;
+    host_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto elected_host = og::ui::create_join_picker_lobby_client(host_options);
+    elected_host->initialize_from_save();
+
+    ASSERT_TRUE(wait_until([&] {
+        lobby_server->poll_incoming_messages();
+        elected_host->poll_and_apply();
+        return elected_host->host_controls_visible();
+    })) << "the first-connected peer must be elected host";
+
+    og::runtime::GameSession::Config guest_cfg;
+    guest_cfg.create_display = false;
+    guest_cfg.install_legacy_globals = false;
+    og::runtime::GameSession guest_session(guest_cfg);
+    prepare_single_member_network_save(
+        guest_session.myscreen_->save_data, 1, "Dedicated Guest");
+    og::ui::PickerJoinGameOptions guest_options;
+    guest_options.mode = og::ui::PickerJoinMode::Direct;
+    guest_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> guest_client;
+    {
+        auto guest_scope = guest_session.activate();
+        guest_client = og::ui::create_join_picker_lobby_client(guest_options);
+        guest_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* guest_session = nullptr;
+        og::ui::IPickerLobbyClient* elected_host = nullptr;
+        og::ui::IPickerLobbyClient* guest_client = nullptr;
+        ~CleanupGuard()
+        {
+            if (guest_session != nullptr && guest_client != nullptr)
+            {
+                auto guest_scope = guest_session->activate();
+                guest_client->shutdown();
+            }
+            if (elected_host != nullptr)
+                elected_host->shutdown();
+        }
+    } cleanup{&guest_session, elected_host.get(), guest_client.get()};
+
+    const auto pump_clients = [&] {
+        elected_host->poll_and_apply();
+        auto guest_scope = guest_session.activate();
+        guest_client->poll_and_apply();
+    };
+    const auto pump_all = [&] {
+        if (lobby_server != nullptr)
+            lobby_server->poll_incoming_messages();
+        pump_clients();
+    };
+
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return lobby_server->state().players.size() == 2u &&
+            status_lines_contain_exact(elected_host->status_lines(),
+                                       "Lobby: 2 players");
+    })) << "both machines should join the dedicated lobby";
+
+    // Warm-up GO with the server LIVE: denied (the guest is unready) through
+    // the async echo. This is the settle point — a request only goes out once
+    // the Join echo confirmed our seats, and the denial of request 1 proves
+    // that happened, so the GO below is request id 2 and dispatches
+    // immediately rather than sitting deferred.
+    EXPECT_FALSE(elected_host->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return !elected_host->start_request_pending();
+    })) << "the live server's denial echo must release the warm-up request";
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              elected_host->start_request_outcome())
+        << "answered (denied), not abandoned";
+    EXPECT_EQ(1u, lobby_server->state().last_start_request_id);
+
+    // GO, then the link dies mid-wait: the server process goes away with the
+    // request in flight (this is `go_menu`'s `while (pending) poll` loop).
+    trace_clear();
+    EXPECT_FALSE(elected_host->request_start_game());
+    ASSERT_TRUE(elected_host->start_request_pending())
+        << "the request went out";
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              elected_host->start_request_outcome())
+        << "still waiting: no verdict yet";
+    lobby_server.reset();
+    server_transport.reset();
+    ASSERT_TRUE(wait_until([&] {
+        pump_clients();
+        return !elected_host->start_request_pending();
+    }, 5s)) << "a request that can never be answered must not pin the wait";
+
+    EXPECT_EQ(og::ui::StartRequestOutcome::LinkLost,
+              elected_host->start_request_outcome())
+        << "the link death is a verdict, not a silent release";
+    EXPECT_TRUE(trace_contains("networking", "start_request_link_lost id=2"))
+        << "the abandoned request names itself and its id";
+    EXPECT_FALSE(trace_contains("networking", "start_request_expired"))
+        << "this is not the silent-host expiry: the socket is gone";
+    EXPECT_FALSE(elected_host->session_established());
+    EXPECT_FALSE(g_start_game_requested);
+
+    // A GO pressed on the dead link gets the same verdict rather than
+    // hanging: the fresh request is abandoned on its first poll.
+    trace_clear();
+    EXPECT_FALSE(elected_host->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        pump_clients();
+        return !elected_host->start_request_pending();
+    }, 5s)) << "a GO on a dead link must come back, not hang";
+    EXPECT_EQ(og::ui::StartRequestOutcome::LinkLost,
+              elected_host->start_request_outcome());
+    EXPECT_TRUE(trace_contains("networking", "start_request_link_lost id=3"))
+        << "the retry opened a FRESH request (id 3), not a re-wait on the "
+           "abandoned one";
 }

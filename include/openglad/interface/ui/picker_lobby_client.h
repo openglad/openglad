@@ -40,6 +40,20 @@ struct PickerLobbyGameStartConfig
     std::vector<short> local_seat_teams = {};
 };
 
+// #278 review fixup: how a GO's start request ENDED when it ended without
+// the host's verdict. start_request_pending() has exactly three exits and
+// every one of them is reported: the host answered (handoff or denial echo —
+// None, read last_start_denial()), the host stayed silent past
+// START_REQUEST_TIMEOUT_MS (NoAnswer), or the link carrying the request died
+// before any answer could arrive (LinkLost). The silent third exit — pending
+// dropped with no verdict at all, which bounced go_menu back to the menu
+// with no popup — is what this enum closes.
+enum class StartRequestOutcome : std::uint8_t {
+    None = 0,
+    NoAnswer,
+    LinkLost,
+};
+
 class IPickerLobbyClient
 {
 public:
@@ -98,16 +112,18 @@ public:
     // True while a StartGame request this client sent awaits the host's
     // handoff or denial echo. BOUNDED by contract (#278): a networked client
     // expires an unanswered request START_REQUEST_TIMEOUT_MS after the GO
-    // that sent it (pending drops, start_request_timed_out() rises), so a
-    // `while (pending) poll` wait never needs a deadline of its own — and
-    // the NEXT GO sends a fresh request instead of re-waiting on the stale
-    // one.
+    // that sent it, and abandons it outright if the link dies first (pending
+    // drops, start_request_outcome() names which), so a `while (pending)
+    // poll` wait never needs a deadline of its own — and the NEXT GO sends a
+    // fresh request instead of re-waiting on the stale one.
     [[nodiscard]] virtual bool start_request_pending() const noexcept = 0;
-    // The most recent GO's request expired unanswered. Cleared by the next
+    // Why the most recent GO's request ended without the host's verdict, or
+    // None when it was answered (or never sent). Cleared by the next
     // request_start_game() call; never set by a local client.
-    [[nodiscard]] virtual bool start_request_timed_out() const noexcept
+    [[nodiscard]] virtual StartRequestOutcome start_request_outcome()
+        const noexcept
     {
-        return false;
+        return StartRequestOutcome::None;
     }
     [[nodiscard]] virtual bool has_game_start_config() const noexcept
     {
@@ -379,7 +395,7 @@ bool picker_lobby_request_start();
 std::optional<og::ui::PickerLobbyGameStartConfig>
 picker_lobby_consume_game_start_config();
 bool picker_lobby_start_request_pending();
-bool picker_lobby_start_request_timed_out();
+og::ui::StartRequestOutcome picker_lobby_start_request_outcome();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
 std::optional<std::string> picker_lobby_connection_alert();

@@ -340,11 +340,14 @@ of its window and is left to the lobby poll to heal or expire.
 In-game, that joiner's display shows
 `CONNECTION LOST - RECONNECTING` from the first dropped poll and its
 pause-menu QUIT ends the session at once instead of waiting out
-`CLIENT_CONNECTION_LOST_TIMEOUT_MS`. A GO whose host never answers
-(socket open, nobody home) is bounded by the joiner client itself:
-`START_REQUEST_TIMEOUT_MS` after the press the request is abandoned
-(`start_request_timed_out()`, popup `NO ANSWER FROM HOST`) and the next
-GO sends a fresh one.
+`CLIENT_CONNECTION_LOST_TIMEOUT_MS`. A GO's wait is bounded by the joiner
+client itself, and every exit of it other than the host's own verdict is
+named through `start_request_outcome()`: a host that never answers
+(socket open, nobody home) abandons the request `START_REQUEST_TIMEOUT_MS`
+after the press (`NoAnswer`, popup `NO ANSWER FROM HOST`), and a link that
+dies mid-wait abandons it at once (`LinkLost`, popup `CONNECTION LOST`).
+Either way the next GO sends a fresh request rather than re-waiting on the
+abandoned one.
 **DISCONNECT**: same replace on both roles; a host's server teardown
 disconnects every peer through the transport as today. Base Camp's
 line-B census and the LINEUP bands read the same `picker_lobby_players()`.
