@@ -1699,7 +1699,14 @@ only. Rulings I1–I5 supersede E3 there and nowhere else.
   default the map states, the macro is a host's hand.
 - **The parity pin `kMut_save_corrupt` repinned** from `save_data.cpp:132`
   to `:135` — three lines went into `SaveData::reset()` above it (the memo
-  clears); `check_mutation_pins.py` and the canary flip re-verified.
+  clears). `check_mutation_pins.py` re-validated the anchor (217 valid),
+  but there was no canary flip to re-verify: no `ScenarioSpec` row names
+  `kMut_save_corrupt` (the `save_roundtrip_scen99` row has carried
+  `kMut_combat_damage` since 9dac53d6, which orphaned the pin), and hand
+  canary runs of the mutation at `:135` and at the writer's `:1079` both
+  left `Parity.save_roundtrip_scen99` green. The pin is toothless on
+  master too; giving it teeth (a row that round-trips a `.gtl`, plus a
+  companion capture) is parity-harness work this amendment does not do.
 - `docs/mp-game-modes.md`'s "Match setup" section, which still described
   the pre-Amendment-4 auto-fill and the retired TROOPS control, is
   rewritten to the LINEUP/FILL vocabulary and this default.
