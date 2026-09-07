@@ -944,8 +944,11 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
         {
             current_driver =
                 og::video_testing::g_renderer_fallback_probe_override->current_driver;
-            driver_pinned =
-                og::video_testing::g_renderer_fallback_probe_override->driver_pinned;
+            if (og::video_testing::g_renderer_fallback_probe_override
+                    ->driver_pinned)
+                driver_pinned =
+                    *og::video_testing::g_renderer_fallback_probe_override
+                         ->driver_pinned;
             fallback_driver =
                 og::video_testing::g_renderer_fallback_probe_override->fallback_driver;
         }
@@ -986,10 +989,16 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
                 SDL_DestroyWindow(window);
                 window = nullptr;
             }
-            throw std::runtime_error(
-                message +
-                " (set SDL_VIDEODRIVER=x11 to force XWayland; "
-                "SDL_LOGGING='*=verbose' prints SDL's own renderer log)");
+            // XWayland is only an escape hatch for someone stuck on Wayland;
+            // naming it on any other driver sends the reader after a driver
+            // their platform does not have.
+            std::string advice = " (";
+            if (current_driver == og::platform::kRendererFallbackSourceVideoDriver)
+                advice += "set SDL_VIDEODRIVER=" +
+                          std::string(og::platform::kRendererFallbackVideoDriver) +
+                          " to force XWayland; ";
+            advice += "SDL_LOGGING='*=verbose' prints SDL's own renderer log)";
+            throw std::runtime_error(message + advice);
         }
     }
 

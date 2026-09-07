@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unistd.h>
 
@@ -125,6 +126,9 @@ int main(int argc, char* argv[])
             pinned_error.find("openglad-intentionally-invalid not available") !=
                 std::string::npos,
             "the unrecoverable error carries SDL's own reason");
+        ok &= require(
+            pinned_error.find("SDL_VIDEODRIVER=x11") == std::string::npos,
+            "a non-Wayland failure never advertises the XWayland escape hatch");
         ok &= require(E_Screen == nullptr,
                       "a failed boot publishes no global Screen");
         ok &= require(live_window_count() == 0,
@@ -143,7 +147,9 @@ int main(int argc, char* argv[])
         //    driver is restored and the boot fails with both reasons.
         og::video_testing::g_renderer_fallback_probe_override =
             og::video_testing::RendererFallbackProbe{
-                "wayland", false, "openglad-intentionally-invalid"};
+                .current_driver = "wayland",
+                .driver_pinned = false,
+                .fallback_driver = "openglad-intentionally-invalid"};
         og::video_testing::g_renderer_create_failures_to_inject = 1;
         const std::string fallback_error = boot_display_expecting_failure(ok);
         ok &= require(
@@ -180,7 +186,9 @@ int main(int argc, char* argv[])
         //    driver, with a real renderer.
         trace_clear();
         og::video_testing::g_renderer_fallback_probe_override =
-            og::video_testing::RendererFallbackProbe{"wayland", false, "dummy"};
+            og::video_testing::RendererFallbackProbe{.current_driver = "wayland",
+                                                     .driver_pinned = false,
+                                                     .fallback_driver = "dummy"};
         og::video_testing::g_renderer_create_failures_to_inject = 1;
         std::unique_ptr<sdl_video> recovered =
             std::make_unique<sdl_video>(true);
@@ -217,6 +225,39 @@ int main(int argc, char* argv[])
         ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
                       "the fallback boot balances the SDL lifecycle");
         SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+
+        // 4. The same unpinned-Wayland shape as 3, except that the pin is read
+        //    where production reads it (SDL_HINT_VIDEO_DRIVER, which SDL3
+        //    folds SDL_VIDEODRIVER into) instead of being substituted. This
+        //    process pins SDL_VIDEODRIVER=dummy, so the user's choice stands:
+        //    no reboot onto the fallback driver, and a loud failure instead.
+        og::video_testing::g_renderer_fallback_probe_override =
+            og::video_testing::RendererFallbackProbe{
+                .current_driver = "wayland",
+                .driver_pinned = std::nullopt,
+                .fallback_driver = "dummy"};
+        og::video_testing::g_renderer_create_failures_to_inject = 1;
+        const std::string derived_pin_error = boot_display_expecting_failure(ok);
+        ok &= require(
+            derived_pin_error.find("injected renderer failure") !=
+                std::string::npos,
+            "the pinned Wayland boot fails with SDL's own renderer reason");
+        ok &= require(derived_pin_error.find("fallback to") == std::string::npos,
+                      "an environment-pinned driver is never rebooted");
+        ok &= require(
+            derived_pin_error.find("set SDL_VIDEODRIVER=x11") !=
+                std::string::npos,
+            "a Wayland failure names the XWayland escape hatch");
+        ok &= require(og::video_testing::g_renderer_create_failures_to_inject == 0,
+                      "the pinned boot creates exactly one renderer");
+        ok &= require(current_video_driver() == "dummy",
+                      "the pinned boot leaves the live video driver alone");
+        ok &= require(live_window_count() == 0,
+                      "the pinned failure leaves no window behind");
+        og::video_testing::g_renderer_fallback_probe_override.reset();
+        SDL_Quit();
+        ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
+                      "the pinned failure leaves a quiescent SDL");
 
         io_exit();
     }

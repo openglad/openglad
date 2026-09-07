@@ -61,7 +61,9 @@ void report_fade_violation(const char* what);
 struct RendererFallbackProbe
 {
     std::string current_driver;
-    bool driver_pinned = false;
+    // Unset leaves the boot's own SDL_HINT_VIDEO_DRIVER read in charge, so a
+    // test can cover the production pin derivation instead of replacing it.
+    std::optional<bool> driver_pinned;
     std::string fallback_driver;
 };
 extern std::optional<RendererFallbackProbe> g_renderer_fallback_probe_override;
@@ -85,8 +87,9 @@ inline bool exclusive_mode_switch_is_safe(std::string_view video_driver,
 }
 
 // The video driver OpenGlad reboots on when the presenting renderer cannot be
-// created at startup (issue #248).
+// created at startup, and the only driver it reboots away from (issue #248).
 inline constexpr std::string_view kRendererFallbackVideoDriver = "x11";
+inline constexpr std::string_view kRendererFallbackSourceVideoDriver = "wayland";
 
 // SDL's Wayland backend implements no window framebuffer, so SDL's software
 // renderer is unreachable there: without an accelerated renderer
@@ -99,7 +102,8 @@ inline constexpr std::string_view kRendererFallbackVideoDriver = "x11";
 inline std::optional<std::string_view> renderer_fallback_video_driver(
     std::string_view current_driver, bool driver_pinned, int window_count)
 {
-    if (current_driver != "wayland" || driver_pinned || window_count != 1)
+    if (current_driver != kRendererFallbackSourceVideoDriver || driver_pinned ||
+        window_count != 1)
         return std::nullopt;
     return kRendererFallbackVideoDriver;
 }
