@@ -837,6 +837,12 @@ bool Screen::switch_boot_video_driver(const char* driver, int w, int h,
 
 	SDL_DestroyWindow(window);
 	window = nullptr;
+	// SDL quits the events subsystem together with video, so anything already
+	// registered on events — an event filter or watcher, a registered event
+	// type — would be dropped here and not come back with the re-init. The
+	// boot order is what makes that safe: init_input() runs from
+	// bootstrap_runtime(), after the GameSession that constructs this Screen,
+	// so at this point nothing has touched events yet. Keep it that way.
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 	if (SDL_WasInit(SDL_INIT_VIDEO) != 0)
 	{

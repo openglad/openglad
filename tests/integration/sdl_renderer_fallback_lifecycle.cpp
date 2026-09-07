@@ -218,6 +218,11 @@ int main(int argc, char* argv[])
                       "the fallback boot runs on the fallback driver");
         ok &= require(live_window_count() == 1,
                       "the fallback boot leaves exactly its own window");
+        // The switch quits SDL video, and SDL quits events along with it. The
+        // re-init has to bring events back, or every later SDL_PollEvent in
+        // the game loop reads a dead queue and the recovered window is inert.
+        ok &= require(SDL_WasInit(SDL_INIT_EVENTS) == SDL_INIT_EVENTS,
+                      "the fallback boot restores the SDL events subsystem");
         og::video_testing::g_renderer_fallback_probe_override.reset();
         recovered.reset();
         ok &= require(E_Screen == nullptr,
