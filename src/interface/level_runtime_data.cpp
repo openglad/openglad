@@ -311,16 +311,19 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.myobmap = std::move(loaded_world.myobmap);
     if (!dst.myobmap)
         dst.myobmap = std::make_unique<obmap>();
-    if (dst.grid.valid())
-        dst.mysmoother.set_target(dst.grid);
-    else
-        dst.mysmoother.reset();
-    // Z-axis: carry the loaded stacked floors across too, re-targeting each
-    // floor smoother at its moved-in grid (the span must follow the buffer).
+    // Z-axis: carry the loaded stacked floors across too.
     dst.extra_floors_ = std::move(loaded_world.extra_floors_);
-    for (auto& fl : dst.extra_floors_)
-        if (fl.grid.valid())
-            fl.floor_smoother.set_target(fl.grid);
+    // Re-bind BOTH borrowed pointers of every smoother, floor 0 and stacked,
+    // to dst. The span must follow the moved buffer, and the RNG must follow
+    // the OWNER: set_floor_count bound the stacked smoothers to
+    // loaded_world.rng_, and loaded_world is a stack local of
+    // LevelRuntimeData::load that dies the moment this returns. Leaving that
+    // binding in place strands every stacked floor on a destroyed world's
+    // RNG, so the next grass/carpet stroke on floor >= 1 -- terrain brush,
+    // "Resmooth terrain", any autotile branch that draws a variant -- reads
+    // through a dangling pointer. Same borrowed-pointer bug as the stale grid
+    // target in issue #12, one member over.
+    dst.rebind_smoothers();
 }
 
 
@@ -659,10 +662,9 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->pixmaxx = old_world->pixmaxx;
         next_world->pixmaxy = old_world->pixmaxy;
         next_world->myobmap = std::move(old_world->myobmap);
-        if (next_world->grid.valid())
-            next_world->mysmoother.set_target(next_world->grid);
-        else
-            next_world->mysmoother.reset();
+        // Same one implementation of the rebind as the level-load handoff
+        // above: next_world's smoothers borrow next_world's buffers and RNG.
+        next_world->rebind_smoothers();
 
         old_world->living_count = 0;
         old_world->pixmaxx = 0;

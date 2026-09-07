@@ -300,17 +300,47 @@ public:
     // stroke smooths; that is the 2013 editor crash the reporter of issue #12
     // hit after resizing a new level to 30x30 and painting a wall. Nothing in
     // the type system enforces this, so tests assert it here.
+    //
+    // A smoother borrows TWO pointers and both are checked here: the grid view
+    // above, and the RNG its autotile variants are drawn from, which must be
+    // this world's own rng_. Floors moved in from another GameWorld -- the
+    // stack-local one LevelRuntimeData::load builds a level in -- keep the
+    // lender's RNG unless whoever moves them rebinds it.
     [[nodiscard]] bool smoothers_in_sync() const noexcept
     {
         if (grid.valid() ? !mysmoother.targets(grid) : mysmoother.has_target())
+            return false;
+        if (!mysmoother.uses_rng(&rng_))
             return false;
         for (const ExtraFloor& floor : extra_floors_)
         {
             if (floor.grid.valid() ? !floor.floor_smoother.targets(floor.grid)
                                    : floor.floor_smoother.has_target())
                 return false;
+            if (!floor.floor_smoother.uses_rng(&rng_))
+                return false;
         }
         return true;
+    }
+    // The restore side of that invariant, in ONE place: point every smoother
+    // -- floor 0 and each stacked floor -- back at this world's own grid
+    // buffers and RNG. Any caller that moves grids or floors INTO a GameWorld
+    // calls this afterwards; smoothers_in_sync() above is its oracle.
+    void rebind_smoothers() noexcept
+    {
+        mysmoother.set_rng(&rng_);
+        if (grid.valid())
+            mysmoother.set_target(grid);
+        else
+            mysmoother.reset();
+        for (ExtraFloor& floor : extra_floors_)
+        {
+            floor.floor_smoother.set_rng(&rng_);
+            if (floor.grid.valid())
+                floor.floor_smoother.set_target(floor.grid);
+            else
+                floor.floor_smoother.reset();
+        }
     }
     // Single floor-keyed obmap (the floor arg is accepted for symmetry but the
     // one obmap buckets all floors via ob->floor()).

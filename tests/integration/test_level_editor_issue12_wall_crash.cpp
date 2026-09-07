@@ -26,11 +26,19 @@
 // bounds-checked. These tests pin that invariant (GameWorld::smoothers_in_sync)
 // and replay the reporter's scenario twice: once against the draw path
 // directly, once through the editor's own event loop.
+//
+// A smoother borrows TWO pointers, and the same discipline covers both: the
+// grid view above, and the RNG its autotile variants are drawn from. The last
+// test in this file pins the second one -- LevelRuntimeData::load builds a
+// level in a STACK-LOCAL GameWorld and moves its stacked floors out, and until
+// this file's commit only the grid span followed them, leaving every loaded
+// floor's smoother pointing at a destroyed world's RNG.
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/terrain_types.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/statistics.h>
@@ -44,6 +52,8 @@
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/level_file_io.h>
 
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -233,12 +243,21 @@ TEST(Issue12EditorWallCrash, wall_box_on_bottom_row_with_hundreds_of_clerics)
         draw_editor_frame(s, myradar);
     }
 
-    // Every stroked cell must be wall in the LIVE grid. A stranded smoother
-    // smooths a buffer the grid no longer owns, so the box never lands.
-    for (const auto& [gx, gy] : stroke)
+    // Every stroked cell must be wall in the LIVE grid. Read it through a
+    // PROBE smoother pointed straight at the grid buffer, not through the
+    // world's own smoother: the brush writes the tile itself and only SMOOTHS
+    // through the world smoother, so a stranded one would not stop the wall
+    // from landing -- and reading through it would be the very use-after-free
+    // this test exists to catch. Staleness is pinned separately, by
+    // smoothers_in_sync() below.
     {
-        EXPECT_EQ(TYPE_WALL, s->world().mysmoother.query_genre_x_y(gx, gy))
-            << "cell " << gx << "," << gy << " is not wall after the stroke";
+        smoother probe;
+        probe.set_target(s->world().grid_for_floor(0));
+        for (const auto& [gx, gy] : stroke)
+        {
+            EXPECT_EQ(TYPE_WALL, probe.query_genre_x_y(gx, gy))
+                << "cell " << gx << "," << gy << " is not wall in the live grid";
+        }
     }
 
     // Scroll to the bottom of the map (the reporter was working there) and
@@ -438,6 +457,128 @@ TEST(Issue12EditorWallCrash, radar_update_resyncs_after_map_shrink)
     restore_shared_level();
 }
 
+namespace {
+
+constexpr int kFloorLoadLevelId = 9430;
+constexpr const char* kFloorLoadGridName = "issue12z";
+
+// save_level_to_user_dir() drops the fixture straight into user_path, where
+// the editor's own level list finds it. Sweep it back out however this test
+// leaves -- a stray scenario there shifts list_levels() for every later test
+// in this binary (it broke LevelEditorHelpers' validate-campaign counts once).
+struct FloorLoadFixtureCleanup
+{
+    ~FloorLoadFixtureCleanup()
+    {
+        const std::string user = get_user_path();
+        std::error_code ec;
+        std::filesystem::remove(
+            user + std::string("scen/scen") + std::to_string(kFloorLoadLevelId) + ".fss", ec);
+        std::filesystem::remove(user + "pix/" + kFloorLoadGridName + ".png", ec);
+        for (int f = 1; f < 4; ++f)
+        {
+            std::filesystem::remove(
+                user + "pix/" + kFloorLoadGridName + "_f" + std::to_string(f) + ".png", ec);
+            std::filesystem::remove(
+                user + "pix/" + kFloorLoadGridName + "_d" + std::to_string(f) + ".png", ec);
+        }
+    }
+};
+
+// smooth()'s grass variant table (src/gameplay/smooth.cpp): a plain grass cell
+// with plain grass all round is repainted grass_variants[next_random(4)] --
+// exactly one RNG draw, which is what makes the borrowed RNG observable.
+constexpr int kGrassVariants[4] = {PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4};
+
+void fill_grid(PixieData& g, int value)
+{
+    std::fill_n(g.data.get(),
+                static_cast<std::size_t>(g.w) * static_cast<std::size_t>(g.h),
+                static_cast<unsigned char>(value));
+}
+
+} // namespace
+
+// The OTHER borrowed pointer, found reviewing the pin above and live on this
+// tree until this commit. `smoother` borrows a grid view AND an RNG.
+// GameWorld::set_floor_count binds every stacked floor's smoother to that
+// world's rng_, but LevelRuntimeData::load builds the level in a STACK-LOCAL
+// GameWorld and then moves extra_floors_ out of it (replace_loaded_world_state).
+// Only the span was re-pointed, so each moved floor smoother kept the address
+// of a GameWorld that dies when load() returns: the first autotile stroke on
+// floor >= 1 of any loaded multi-floor level -- terrain brush or "Resmooth
+// terrain" -- drew through a dangling pointer. The shipped SDL client installs
+// no gameplay RNG override, so nothing masked it there. Same failure family as
+// the 2013 crash this file pins, one member over.
+TEST(Issue12EditorWallCrash, floor_smoothers_follow_the_live_world_rng_across_a_level_load)
+{
+    FloorLoadFixtureCleanup fixture_cleanup;
+
+    // A two-floor level on disk, both floors plain grass.
+    {
+        GameWorld src_world(1);
+        src_world.create_new_grid();
+        ASSERT_TRUE(src_world.grid.valid());
+        fill_grid(src_world.grid, PIX_GRASS1);
+
+        // Exactly what the editor's add_floor() does: grow the stack, then
+        // size, fill and re-target the new floor's grid.
+        const int gw = src_world.grid.w;
+        const int gh = src_world.grid.h;
+        src_world.set_floor_count(2);
+        const std::size_t cells =
+            static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh);
+        auto* buf = new unsigned char[cells];
+        std::fill_n(buf, cells, static_cast<unsigned char>(PIX_GRASS1));
+        src_world.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                                static_cast<unsigned char>(gh), buf);
+        src_world.smoother_for_floor(1).set_target(src_world.grid_for_floor(1));
+        ASSERT_TRUE(src_world.smoothers_in_sync())
+            << "add_floor's own wiring must satisfy the invariant";
+
+        og::data::LevelFileMetadata md;
+        md.grid_file = kFloorLoadGridName;
+        og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
+        ASSERT_TRUE(og::data::save_level_to_user_dir(src_world, kFloorLoadLevelId,
+                                                     md, &io_error))
+            << "could not write the two-floor fixture level";
+    }
+
+    LevelRuntimeData dst(kFloorLoadLevelId, true);
+    ASSERT_TRUE(dst.load()) << "could not read the two-floor fixture level back";
+    GameWorld& w = dst.world();
+    ASSERT_EQ(2, w.floor_count()) << "the stacked floor did not survive the round trip";
+    ASSERT_TRUE(w.grid_for_floor(1).valid());
+
+    // The pin: both of every smoother's borrowed pointers belong to THIS world.
+    // Pointer comparison only -- nothing is dereferenced, so this discriminates
+    // without any undefined behaviour of its own.
+    ASSERT_TRUE(w.smoothers_in_sync())
+        << "a loaded floor smoother is still bound to the loader's throwaway world";
+
+    // ... and the consequence, observed: smoothing a grass cell on floor 1 must
+    // draw from THIS world's RNG. Both overrides must be absent, or the draw
+    // would be routed away from rng_ and prove nothing.
+    ASSERT_EQ(nullptr, gameplay_rng_override())
+        << "an earlier test left a gameplay RNG override installed";
+    ASSERT_EQ(nullptr, og::sim::sim_random_override())
+        << "an earlier test left a sim RNG override installed";
+
+    constexpr std::uint32_t kSeed = 0x1234567u;
+    og::sim::SimRandom reference(kSeed);
+    const std::uint32_t roll = reference.next(4);
+
+    w.rng_.state_ = kSeed;
+    w.smoother_for_floor(1).smooth(5, 5);
+
+    EXPECT_EQ(reference.state_, w.rng_.state_)
+        << "the floor smoother drew its grass variant from some other world's RNG";
+    const PixieData& upper = w.grid_for_floor(1);
+    EXPECT_EQ(kGrassVariants[roll],
+              static_cast<int>(upper.data[static_cast<std::size_t>(5 * upper.w + 5)]))
+        << "the autotiled grass variant does not match this world's RNG stream";
+}
+
 // ---------------------------------------------------------------------------
 // The same scenario through the editor's REAL event loop: the reporter drove
 // menus and a mouse, and frame 6 of the 2013 stack is LevelEditorData::draw.
@@ -488,11 +629,29 @@ constexpr int kEditorWallCells = 6;
 constexpr int kEditorWallX0 = 100;
 constexpr int kEditorWallY = 160;
 
+// Wait for a traced state change instead of sleeping past it. Returns false
+// on timeout, which the caller turns into a loud test failure -- never a
+// longer sleep.
+bool wait_for_trace(const char* category, const char* needle, Uint32 timeout_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + timeout_ms;
+    while (!trace_contains(category, needle))
+    {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        SDL_Delay(2);
+    }
+    return true;
+}
+
 struct EditorIssue12ThreadState
 {
     bool started = false;
     bool finished = false;
     bool smoothing_was_on = false;
+    // Set when a wait_for_trace() gave up; reported by the test body so a
+    // timeout names the step it stalled on.
+    std::string stalled_on;
 };
 
 int editor_issue12_injector(void* opaque)
@@ -503,15 +662,11 @@ int editor_issue12_injector(void* opaque)
 
     // Wait for the editor to pin the classic canvas, i.e. to be inside its
     // main loop, rather than guessing with a flat delay.
-    const Uint64 entry_deadline = SDL_GetTicks() + 10000u;
-    while (!trace_contains("canvas", "editor_pin_classic"))
+    if (!wait_for_trace("canvas", "editor_pin_classic", 10000))
     {
-        if (SDL_GetTicks() >= entry_deadline)
-        {
-            og::runtime::current_session->myscreen_->world().end = 1;
-            return 1;
-        }
-        SDL_Delay(1);
+        st->stalled_on = "editor entry";
+        og::runtime::current_session->myscreen_->world().end = 1;
+        return 1;
     }
     SDL_Delay(200);
 
@@ -534,9 +689,27 @@ int editor_issue12_injector(void* opaque)
     inject_click_game(90, 65);    // Details >
     SDL_Delay(40);
     inject_click_game(200, 65);   // Map size...
-    // The resize ends in timed_dialog("Resized map to 30x30"), which blocks
-    // for up to three seconds unless a click or key press interrupts it.
-    SDL_Delay(3300);
+    // The resize ends in timed_dialog("Resized map to 30x30"), a blocking
+    // three-second poll loop that only a click or key press interrupts.
+    // Sleeping past it would race the editor under load (a late dialog eats
+    // the mode-switch keys that follow), so wait for the dialog to announce
+    // itself -- traced after it clears pending input, so a key sent from here
+    // is still pending when it polls -- dismiss it, and wait for it to close.
+    // The message also pins WHICH dialog: a failed resize says "Resize
+    // canceled." and times out here instead of silently continuing.
+    if (!wait_for_trace("dialog", "timed_dialog_open Resized map to 30x30", 15000))
+    {
+        st->stalled_on = "Map size... dialog never opened";
+        og::runtime::current_session->myscreen_->world().end = 1;
+        return 1;
+    }
+    inject_key_press(SDLK_RETURN, 10);   // dismiss it now, don't wait it out
+    if (!wait_for_trace("dialog", "timed_dialog_closed Resized map to 30x30", 15000))
+    {
+        st->stalled_on = "Map size... dialog never closed";
+        og::runtime::current_session->myscreen_->world().end = 1;
+        return 1;
+    }
     picker_testing_yes_or_no_queue_clear();
     level_editor_testing_prompt_queue_clear();
 
@@ -623,6 +796,7 @@ TEST(Issue12EditorWallCrash, editor_event_loop_new_resize_clerics_and_wall_box)
     level_editor_testing_prompt_queue_clear();
 
     ASSERT_TRUE(st.started) << "injector thread should have started";
+    ASSERT_EQ("", st.stalled_on) << "injector timed out waiting for the editor";
     ASSERT_TRUE(st.finished) << "injector never reached the end of the script";
     ASSERT_EQ(0, thread_result);
     EXPECT_TRUE(st.smoothing_was_on)
@@ -648,7 +822,12 @@ TEST(Issue12EditorWallCrash, editor_event_loop_new_resize_clerics_and_wall_box)
 
     // The wall really landed on the map, in the cells the pointer walked.
     // (Same arithmetic the editor's paint path uses: game coords -> level
-    // pixels -> grid cell, snapped to the grid.)
+    // pixels -> grid cell, snapped to the grid.) Read through a probe
+    // smoother aimed at the grid buffer, so this says "the tile is in the
+    // live grid" and nothing about the editor smoother's target -- that is
+    // smoothers_in_sync()'s job, below.
+    smoother probe;
+    probe.set_target(w.grid_for_floor(0));
     const int topx = level->level_visuals().topx;
     const int topy = level->level_visuals().topy;
     const int xloc = og::runtime::current_session->myscreen_->viewob[0]->xloc;
@@ -659,7 +838,7 @@ TEST(Issue12EditorWallCrash, editor_event_loop_new_resize_clerics_and_wall_box)
     {
         const int px = kEditorWallX0 + i * GRID_SIZE + topx - xloc;
         const int cell_x = (px - (px % GRID_SIZE)) / GRID_SIZE;
-        EXPECT_EQ(TYPE_WALL, w.mysmoother.query_genre_x_y(cell_x, cell_y))
+        EXPECT_EQ(TYPE_WALL, probe.query_genre_x_y(cell_x, cell_y))
             << "grid cell " << cell_x << "," << cell_y << " is not wall";
     }
 

@@ -705,3 +705,15 @@ bool smoother::targets(const PixieData& data) const noexcept
 	    && maxx == data.w
 	    && maxy == data.h;
 }
+
+// The second half of that invariant: rng_ is borrowed from the GameWorld that
+// owns the smoother (GameWorld's constructor for floor 0, set_floor_count for
+// the stacked floors). Moving a floor between worlds therefore has to rebind
+// it -- LevelRuntimeData::load builds the level in a stack-local GameWorld and
+// moves the floors out of it, and a floor smoother left pointing at that dead
+// world's rng_ crashes on the first grass/carpet stroke, exactly the way the
+// stale grid pointer did in 2013.
+bool smoother::uses_rng(const IRandom* rng) const noexcept
+{
+	return rng_ == rng;
+}

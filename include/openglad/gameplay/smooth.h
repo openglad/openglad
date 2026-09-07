@@ -45,6 +45,11 @@ class smoother
         // invariant can be asserted instead of only commented on.
         [[nodiscard]] bool has_target() const noexcept;
         [[nodiscard]] bool targets(const PixieData& data) const noexcept;
+        // The OTHER borrowed pointer: the RNG the autotile variants are drawn
+        // from. A smoother that outlives (or is moved away from) the world
+        // that lent it one dereferences a dead object the next time a stroke
+        // hits a random branch, so this is part of the same invariant.
+        [[nodiscard]] bool uses_rng(const IRandom* rng) const noexcept;
 
     protected:
         std::uint32_t next_random(std::uint32_t max_exclusive) const;
