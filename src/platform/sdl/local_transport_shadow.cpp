@@ -1785,6 +1785,13 @@ og::sim::GameServer* local_transport_shadow_testing_server(GameSession& session)
     return runtime->server.get();
 }
 
+og::sim::GameClient* local_transport_shadow_testing_display_client(
+    GameSession& session) noexcept
+{
+    const auto runtime = session.local_transport_runtime_;
+    return runtime != nullptr ? runtime->display_client() : nullptr;
+}
+
 #include "../../../tests/coverage_internal/local_transport_shadow_exit_prompt.inc"
 
 bool local_transport_shadow_testing_server_pending_exit_prompt(
@@ -3018,6 +3025,38 @@ void reset_network_client_transport_shadow(
 
 void clear_local_transport_shadow(GameSession& session) noexcept
 {
+    // #278 review fixup: hand the finished round's reconnect window to the
+    // session before the client that owns it dies. The picker's
+    // resume_after_level adopts it so the lobby continues the SAME
+    // LinkLossWindow timeline the level ran — a link down for the whole
+    // window in-game is dead on arrival, a blip that began during the
+    // post-game fade still has its window. A round with no display client
+    // (or a local one that never had a server) carries a reset window,
+    // which reads as "no history".
+    {
+        const og::sim::GameClient* const finished_client =
+            session.local_transport_runtime_ != nullptr
+                ? session.local_transport_runtime_->display_client()
+                : nullptr;
+        og::sim::LinkLossWindow carried = finished_client != nullptr
+            ? finished_client->link_window()
+            : og::sim::LinkLossWindow{};
+        if (finished_client != nullptr &&
+            finished_client->connection_lost_declared())
+        {
+            // The round did not merely lose the link — it ENDED on it: the
+            // in-game backstop fired, or the player's QUIT on a dead link
+            // took the same transition. Either way the session was declared
+            // over before this teardown, so the picker inherits an exhausted
+            // window and latches at once instead of waiting out a second
+            // copy of the same 30 s.
+            carried.backdate_loss(
+                static_cast<float>(og::sim::LinkLossWindow::window_ms()) +
+                    1000.0f,
+                og::sim::LinkLossWindow::Clock::now());
+        }
+        session.network_link_window_ = carried;
+    }
     if (session.myscreen_ != nullptr)
         session.myscreen_->set_render_interpolation_client(nullptr);
     if (session.local_transport_runtime_ != nullptr)

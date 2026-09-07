@@ -207,16 +207,20 @@ public:
     }
     // LINEUP §6 companion to was_kicked() (#278): this client WAS in an
     // established session and its link has since died for good. "For good"
-    // is decided in two places by ONE rule each way:
-    //  - parked in the lobby: the link stayed down for the whole reconnect
-    //    window (og::sim::LinkLossWindow, CLIENT_CONNECTION_LOST_TIMEOUT_MS
-    //    — the same window the in-game backstop runs). A blip that the
-    //    transport's auto-reconnect heals inside it is NOT a loss: the
-    //    client re-joins and the lobby re-converges, as before #278.
-    //  - back from a level with the link down (resume_after_level): the
-    //    round is over, so the in-game window already ran or the player
-    //    QUIT the dead session; nothing is left to wait for and the dead
-    //    host is not re-dialed from behind the post-game black window.
+    // is ONE rule, in ONE window, across every phase a joiner can be in: the
+    // link stayed down for the whole og::sim::LinkLossWindow
+    // (CLIENT_CONNECTION_LOST_TIMEOUT_MS). A blip that the transport's
+    // auto-reconnect heals inside it is NOT a loss — the client re-joins and
+    // the lobby re-converges, as before #278 — whether it happens while the
+    // joiner is parked in the lobby, in the level, or in the post-game
+    // moment between them. The three phases hand the window on rather than
+    // restarting it: the level's GameClient window is carried to the session
+    // by the runtime teardown and adopted by resume_after_level(), and a
+    // round that ENDED on the dead link (the in-game backstop, or the
+    // player's QUIT taking the same transition) hands on an exhausted one.
+    // So a session already declared over in-game is dead the instant the
+    // picker gets it back, while a drop that began during the post-game fade
+    // still has the rest of its window and is left to the lobby poll.
     // Latched; survives shutdown() and resume_after_level(); never cleared
     // in this client's lifetime. The picker reverts to a local client on it
     // exactly as on a kick (the kick outranks it when both are set). Only a

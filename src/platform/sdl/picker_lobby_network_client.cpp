@@ -3588,6 +3588,9 @@ public:
         awaiting_round_ready_reset_ = false;
         relay_room_code_.clear();
         direct_url_.clear();
+        // A fresh dial is a fresh link timeline, exactly as in shutdown()
+        // (session_lost_ is latched and deliberately not touched).
+        link_.reset();
 
         if (options_.mode == og::ui::PickerJoinMode::Direct)
         {
@@ -4507,23 +4510,38 @@ public:
             transport_->link_state() == og::sim::TransportLinkState::Failed ||
             transport_->link_state() == og::sim::TransportLinkState::Lost ||
             transport_->connected_peers().empty();
-        // #278: the previous round HAD a session and its link is down now
-        // that the round is over. There is no reconnect window left to run
-        // here: the in-game GameClient already ran it (its 30 s backstop)
-        // or the player QUIT the dead session — either way the session was
-        // declared over before this resume, and the lobby poll's window
-        // cannot see the round the link died in (the picker never polls the
-        // lobby during gameplay). So: do not dial the dead host again from
-        // behind the post-game black window; latch the loss, discard the
-        // stale round's lobby cache (the roster and staged preview of a
-        // session that no longer exists), and keep the Lost transport so the
-        // status keeps saying "connection lost". The picker's per-frame
-        // revert swaps in a local client on the next frame and that swap's
-        // shutdown() tears the socket down.
-        if (transport_unusable && transport_ != nullptr &&
+        // #278 review fixup: the post-game moment runs the SAME window as
+        // the two phases around it. The round that just ended owned the link,
+        // so its GameClient's window is carried here by the runtime teardown
+        // (clear_local_transport_shadow -> SessionState::network_link_window_)
+        // and adopted below: a link that was already down for the whole
+        // CLIENT_CONNECTION_LOST_TIMEOUT_MS in-game is dead on arrival, and a
+        // blip that started during the post-game fade still has the rest of
+        // its window to reconnect in. Consumed here — the next round starts
+        // its own timeline.
+        adopt_carried_link_window();
+        const auto now = std::chrono::steady_clock::now();
+        if (transport_ != nullptr)
+            link_.observe(!transport_->connected_peers().empty(), now);
+        // The previous round HAD a session and its link is down now that the
+        // round is over. Only when that link has been down for the whole
+        // window is the session over: latch the loss, discard the stale
+        // round's lobby cache (the roster and staged preview of a session
+        // that no longer exists), and keep the Lost transport so the status
+        // keeps saying "connection lost". The picker's per-frame revert swaps
+        // in a local client on the next frame and that swap's shutdown()
+        // tears the socket down. Inside the window we fall through to the
+        // ordinary resume instead: the transport's auto-reconnect is still
+        // the recovery path, the resume Join goes out when the socket comes
+        // back, and if it never does the lobby poll's expiry — the same
+        // window, still running — latches the loss there.
+        const bool link_down_for_good = transport_ != nullptr &&
             lobby_states_received_ > 0 &&
-            transport_->link_state() == og::sim::TransportLinkState::Lost)
+            transport_->link_state() == og::sim::TransportLinkState::Lost &&
+            link_.expired(now);
+        if (link_down_for_good)
         {
+            TRACE("networking", "resume_link_lost_for_good");
             session_lost_ = true;
             state_.reset();
             pending_local_seats_.clear();
@@ -4531,7 +4549,10 @@ public:
             rebuild_status_lines();
             return;
         }
-        if (transport_unusable)
+        const bool reconnecting_inside_window = transport_ != nullptr &&
+            lobby_states_received_ > 0 &&
+            transport_->link_state() == og::sim::TransportLinkState::Lost;
+        if (transport_unusable && !reconnecting_inside_window)
         {
             const std::vector<short> preserved_teams = local_seat_teams_;
             initialize_from_save();
@@ -4576,6 +4597,22 @@ public:
     }
 
 private:
+    // #278 review fixup: continue the finished round's reconnect window
+    // instead of starting a fresh one. clear_local_transport_shadow parked
+    // the in-game GameClient's window on the session as the level's runtime
+    // was torn down; take it (a round with no network client left it reset,
+    // which carries nothing) and consume it so the next round starts clean.
+    void adopt_carried_link_window()
+    {
+        if (og::runtime::current_session == nullptr)
+            return;
+        og::sim::LinkLossWindow& carried =
+            og::runtime::current_session->network_link_window_;
+        if (carried.ever_connected())
+            link_ = carried;
+        carried.reset();
+    }
+
     [[nodiscard]] bool local_player_is_host() const
     {
         if (!state_.has_value())

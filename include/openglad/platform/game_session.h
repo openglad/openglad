@@ -17,6 +17,7 @@ class cfg_store;
 struct InputState;
 
 namespace og::sim {
+class GameClient;
 class GameServer;
 class ITransport;
 class InProcessTransport;
@@ -135,6 +136,8 @@ private:
         GameSession& session);
     friend og::sim::GameServer* local_transport_shadow_testing_server(
         GameSession& session);
+    friend og::sim::GameClient* local_transport_shadow_testing_display_client(
+        GameSession& session) noexcept;
     friend bool local_transport_shadow_testing_open_exit_prompt(
         GameSession& session,
         std::size_t player_index,

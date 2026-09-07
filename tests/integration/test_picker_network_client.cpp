@@ -9218,10 +9218,17 @@ TEST(PickerNetworkClient,
         EXPECT_FALSE(join_client->session_lost())
             << "the lobby poll that saw the link Lost opened the reconnect "
                "window (production length here) — nothing is latched yet";
+        // The round this resume returns from is the one whose link died: its
+        // exhausted window is what clear_local_transport_shadow parks on the
+        // session (#278 review fixup), and the resume continues it rather
+        // than starting a fresh one.
+        join_session.network_link_window_.backdate_loss(
+            static_cast<float>(og::sim::LinkLossWindow::window_ms()) + 5000.0f,
+            std::chrono::steady_clock::now());
         join_client->resume_after_level();
         EXPECT_TRUE(join_client->session_lost())
-            << "the post-level resume on a down link latches at once: the "
-               "round is over, there is no window left to run";
+            << "the post-level resume on a link that was already down for "
+               "the whole window in-game latches at once";
         EXPECT_TRUE(join_client->lobby_players().empty())
             << "dead-socket resume must not retain the old lobby roster";
         EXPECT_FALSE(status_lines_contain_exact(join_client->status_lines(),
@@ -10679,8 +10686,10 @@ TEST(PickerNetworkClient,
         picker_testing_set_lobby_client_owner(&join_client);
         picker_reinitialize_lobby_after_game();
         EXPECT_TRUE(join_client->session_lost())
-            << "the post-level resume latches the dead session instead of "
-               "dialing the dead host again";
+            << "the round ENDED on the dead link (QUIT took the "
+               "connection-lost transition), so the resume inherits an "
+               "exhausted window and latches at once instead of dialing the "
+               "dead host again";
         EXPECT_FALSE(join_client->was_kicked());
         EXPECT_TRUE(picker_lobby_session_lost());
         trace_clear();
@@ -11000,6 +11009,257 @@ TEST(PickerNetworkClient, joiner_lobby_link_blip_reconnects_inside_the_window)
         join_client->shutdown();
     }
     host_client->shutdown();
+}
+
+// #278 review fixup (the post-game blip): the moment between the level's end
+// and the team-build menu is the THIRD phase of the same reconnect window,
+// not a zero-length one. A joiner that finished a level normally and whose
+// wifi blips during the ~750 ms post-game fade reaches resume_after_level()
+// with link_state() == Lost while IXWebSocket is still mid-reconnect. The
+// identical blip one second earlier (in the level) or one second later (in
+// the lobby poll) is survived, so this one is too: the resume must NOT latch
+// session_lost(), and the reconnect must re-send the Join and re-converge
+// the lobby exactly as the lobby-parked blip does.
+TEST(PickerNetworkClient,
+     joiner_post_level_resume_survives_a_blip_inside_the_window)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    const auto converge = [&](const char* phase) {
+        ASSERT_TRUE(wait_until([&] {
+            host_client->poll_and_apply();
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            return status_lines_contain_exact(join_client->status_lines(),
+                                              "Lobby: 2 players") &&
+                status_lines_contain_exact(host_client->status_lines(),
+                                           "Lobby: 2 players");
+        }, 10s)) << phase << ": host and joiner should converge on a "
+                    "two-player lobby";
+    };
+    converge("before the blip");
+
+    // The blip, timed on the post-game moment: the host's listener drops,
+    // the joiner SEES the close, and the picker returns from the level into
+    // resume_after_level() while the reconnect is still in flight.
+    trace_clear();
+    host_client->shutdown();
+    ASSERT_TRUE(wait_until([&] {
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(join_client->status_lines(),
+                                          "Status: connection lost");
+    }, 5s)) << "the joiner's transport must see the link drop";
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_FALSE(join_client->session_lost())
+            << "the lobby poll that saw the drop opened the window; nothing "
+               "is latched yet";
+        join_client->resume_after_level();
+        EXPECT_FALSE(join_client->session_lost())
+            << "the post-level resume runs the SAME window: a link that has "
+               "been down for a moment is not a dead session";
+        EXPECT_FALSE(trace_contains("networking", "resume_link_lost_for_good"));
+    }
+
+    host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    // Recovery: the reconnect lands, the resume Join goes out, the lobby
+    // re-converges and the session was never declared lost.
+    converge("after the blip");
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_TRUE(join_client->session_established());
+        EXPECT_FALSE(join_client->session_lost())
+            << "a healed post-level blip must not revert the picker to a "
+               "local client";
+        EXPECT_FALSE(join_client->was_kicked());
+        EXPECT_FALSE(trace_contains("networking", "resume_link_lost_for_good"));
+        EXPECT_FALSE(trace_contains("networking", "lobby_link_lost_for_good"));
+        EXPECT_FALSE(status_lines_contain_exact(join_client->status_lines(),
+                                                "Status: connection lost"));
+        join_client->shutdown();
+    }
+    host_client->shutdown();
+}
+
+// #278 review fixup (the other leg): the window is HANDED ON, not restarted.
+// A joiner whose link died early in the level and stayed down for the whole
+// CLIENT_CONNECTION_LOST_TIMEOUT_MS comes back to the picker with a session
+// that is already over — and the lobby poll cannot know that, because it
+// never ran during the round. clear_local_transport_shadow parks the level
+// GameClient's window on the session and resume_after_level adopts it, so
+// this resume latches AT ONCE (no re-dial of a dead host from behind the
+// post-game black window) even though the lobby's own polls saw the drop
+// only seconds ago.
+TEST(PickerNetworkClient,
+     joiner_post_level_resume_latches_when_the_in_game_window_already_ran)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Joiner");
+    save.allied_mode = 0;
+    g_start_game_requested = false;
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    og::sim::LobbyMessage join_message;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+            join_peer_id = peer_id;
+            join_message = std::move(message);
+            return true;
+        }
+        return false;
+    })) << "join client should connect and send its join message";
+
+    const std::uint32_t join_request_id =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).request_id;
+    og::sim::LobbyPlayer join_player =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).player;
+    join_player.player_index = 1u;
+    join_player.seat_id = 502u;
+    join_player.machine_id = 2u;
+    join_player.is_host = false;
+
+    og::sim::LobbyState state;
+    state.settings.campaign_id = save.current_campaign;
+    state.settings.scenario_id = save.scen_num;
+    state.settings.difficulty = 2;
+    state.settings.allied_mode = 0;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .seat_id = 501u,
+        .machine_id = 1u,
+        .name = "Remote Host",
+        .company = "Remote Host Company",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(join_player);
+    state.local_seat_ids = {join_player.seat_id};
+    state.last_join_request_id = join_request_id;
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(join_client->status_lines(),
+                                          "Lobby: 2 players");
+    })) << "the joiner must be in an established session before the level";
+
+    // The round: the host hands off, the joiner installs the per-level
+    // runtime over the SAME socket, and its GameClient owns the link window
+    // for the duration.
+    send_start_game_message(*server_transport, join_peer_id, 0u);
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return join_client->has_game_start_config();
+    })) << "join client should receive the host start-game handoff";
+    ASSERT_NE(nullptr, active_game_session());
+    og::runtime::GameSession& session = *active_game_session();
+    ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+
+    // The link dies IN THE LEVEL: the host is gone and the round's own
+    // GameClient — not the dormant lobby client — is what observes it.
+    og::sim::GameClient* const display_client =
+        og::runtime::local_transport_shadow_testing_display_client(session);
+    ASSERT_NE(nullptr, display_client);
+    ASSERT_TRUE(display_client->transport_connected())
+        << "the level starts on a live link";
+    server_transport.reset();
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return display_client->transport_lost();
+    }, 5s)) << "the level's client must be the one that saw the link die";
+    // ...early in the round, so by the time it ends the in-game window has
+    // run out (the state the mid-game backstop acts on).
+    display_client->testing_set_transport_disconnect_elapsed_ms(
+        static_cast<float>(og::sim::LinkLossWindow::window_ms()) + 5000.0f);
+
+    // End of round: the runtime is torn down and hands its window to the
+    // session for the picker to continue.
+    og::runtime::clear_local_transport_shadow(session);
+    EXPECT_TRUE(session.network_link_window_.expired(
+        std::chrono::steady_clock::now()))
+        << "the finished round's exhausted window must survive the teardown";
+
+    // The lobby client sees the dead socket for the FIRST time here — its
+    // own window would have another 30 s to run.
+    trace_clear();
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(join_client->status_lines(),
+                                          "Status: connection lost");
+    }, 5s)) << "the surviving join transport must observe the closed socket";
+    ASSERT_FALSE(join_client->session_lost())
+        << "the lobby's own window is fresh: nothing latched by polling";
+    ASSERT_FALSE(trace_contains("networking", "lobby_link_lost_for_good"));
+
+    // Back at the team-build menu: the carried window is already exhausted,
+    // so the session is declared over immediately.
+    join_client->resume_after_level();
+    EXPECT_TRUE(join_client->session_lost())
+        << "a link down for the whole window in-game is dead on arrival";
+    EXPECT_TRUE(trace_contains("networking", "resume_link_lost_for_good"));
+    EXPECT_TRUE(join_client->lobby_players().empty())
+        << "the dead round's roster must not survive the resume";
+    EXPECT_FALSE(join_client->session_established());
+    EXPECT_TRUE(status_lines_contain_exact(join_client->status_lines(),
+                                           "Status: connection lost"));
+    EXPECT_FALSE(session.network_link_window_.ever_connected())
+        << "the carried window is consumed by the resume that read it";
+
+    join_client->shutdown();
 }
 
 // #278 (the reviewer's silent-host GO): an ELECTED host on a dedicated

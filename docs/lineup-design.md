@@ -322,16 +322,22 @@ via `picker_replace_lobby_client(create_local_picker_lobby_client())`.
 A joiner whose link dies for good after the lobby state landed
 (`session_lost()`, latched like `was_kicked()`, #278) takes the SAME
 per-frame revert with the popup `CONNECTION LOST`; the kick outranks it
-when both are set. "For good" is one rule per phase: parked in the
-lobby, the link must stay down for the whole reconnect window
+when both are set. "For good" is ONE rule in ONE window across all three
+phases: the link must stay down for the whole reconnect window
 (`og::sim::LinkLossWindow` over `CLIENT_CONNECTION_LOST_TIMEOUT_MS`, the
 same window the in-game backstop runs) — a blip the transport's
 auto-reconnect heals inside it re-sends the Join and the lobby
-re-converges, line B reading `Status: connection lost` meanwhile; back
-from a level with the link down, the round is over (the in-game window
-already ran or the player QUIT the dead session), so the resume latches
-at once and never re-dials the dead host from behind the post-game black
-window. In-game, that joiner's display shows
+re-converges, line B reading `Status: connection lost` meanwhile. The
+phases hand the window on instead of restarting it: the level's
+`GameClient` window is parked on the session by the runtime teardown
+(`clear_local_transport_shadow`) and adopted by `resume_after_level`, and
+a round that ENDED on the dead link — the in-game backstop, or the
+player's QUIT taking the same transition — parks an exhausted one. So a
+session already declared over in-game is dead the instant the picker gets
+it back (no re-dial of a dead host from behind the post-game black
+window), while a drop that began during the post-game fade keeps the rest
+of its window and is left to the lobby poll to heal or expire.
+In-game, that joiner's display shows
 `CONNECTION LOST - RECONNECTING` from the first dropped poll and its
 pause-menu QUIT ends the session at once instead of waiting out
 `CLIENT_CONNECTION_LOST_TIMEOUT_MS`. A GO whose host never answers

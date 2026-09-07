@@ -67,6 +67,23 @@ public:
     {
         return link_.lost();
     }
+    // The window itself, so the phase that follows this one can continue the
+    // SAME timeline instead of starting a fresh one (#278 review fixup): the
+    // runtime teardown carries it to the session, and the lobby's
+    // resume_after_level adopts it, so a link that has already been down for
+    // the whole window in-game is dead the moment the picker gets it back.
+    [[nodiscard]] const LinkLossWindow& link_window() const noexcept
+    {
+        return link_;
+    }
+    // This round already ENDED its session on a dead link — the backstop's
+    // expiry fired, or the player's QUIT on a dead link took the same
+    // transition (request_level_abort). Cleared by a reconnect. The teardown
+    // reads it to tell the picker there is nothing left to wait for.
+    [[nodiscard]] bool connection_lost_declared() const noexcept
+    {
+        return connection_lost_notified_;
+    }
     void send_pause_request();
     void send_pause_response();
     void send_snapshot_hash_check();
