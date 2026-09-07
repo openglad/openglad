@@ -229,7 +229,6 @@ TEST_F(GladiatorCampaignTest, nuthram_has_no_enemy_immune_to_a_mid_campaign_part
         << "level-12 soldier melee is 20 + strength/4; re-pin this and the "
            "boss level together if the soldier curve moves";
 
-    walker* strongest = nullptr;
     for (auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
@@ -249,16 +248,38 @@ TEST_F(GladiatorCampaignTest, nuthram_has_no_enemy_immune_to_a_mid_campaign_part
             << w->ypos() << ") armor " << w->stats()->armor()
             << ": every hit from a level-" << kReferencePartyLevel
             << " party lands for exactly 1 (#266)";
-
-        if (strongest == nullptr ||
-            w->stats()->max_hitpoints() > strongest->stats()->max_hitpoints())
-            strongest = w;
     }
 
-    ASSERT_NE(nullptr, strongest);
-    EXPECT_TRUE(strongest->stats()->query_bit_flags(BIT_NAMED))
-        << "the toughest enemy in Nuthram (" << strongest->stats()->max_hitpoints()
-        << " hp) must be the named boss, not an anonymous mook (#266)";
+    // The boss is located by his AUTHORED placement rather than by "whoever
+    // has the most hitpoints": he ties on max_hitpoints with Lord Jakarta's
+    // own level-6 master of assassins at (1504,160), and a max-accumulator
+    // would resolve that tie purely on oblist insertion order (add_to_list
+    // appends, so it follows record order) — a false red the day a record is
+    // reordered. The invariant that actually matters is order-independent:
+    // no other enemy placed in the level may outrank the named boss.
+    walker* master = find_placed_living(world, FAMILY_THIEF, kMasterTeam,
+                                        kMasterX, kMasterY);
+    ASSERT_NE(nullptr, master)
+        << "the team-3 thief authored at (1168,1152) in THE CITY OF NUTHRAM";
+    EXPECT_TRUE(master->stats()->query_bit_flags(BIT_NAMED))
+        << "Nuthram's toughest unit must be the named boss (#266)";
+
+    for (auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w == nullptr || w == reference || w == master)
+            continue;
+        if (w->query_order() != Order::Living || w->team_num() == 0)
+            continue;
+
+        EXPECT_LE(w->stats()->max_hitpoints(), master->stats()->max_hitpoints())
+            << "family " << static_cast<int>(w->family()) << " team "
+            << static_cast<int>(w->team_num())
+            << " level " << w->stats()->level() << " at (" << w->xpos() << ","
+            << w->ypos() << ") carries " << w->stats()->max_hitpoints()
+            << " hp: this enemy outranks the level's named boss ("
+            << master->stats()->max_hitpoints() << " hp) (#266)";
+    }
 }
 
 } // namespace
