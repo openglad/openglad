@@ -14,11 +14,62 @@ TEST(CombatMath, compute_damage_reduction)
     ASSERT_EQ(0, (int)compute_damage_reduction(0.0f, 100.0f)) << "no damage -> no reduction";
     ASSERT_EQ(0, (int)compute_damage_reduction(-5.0f, 100.0f)) << "negative damage -> no reduction";
 
-    // armor/2
-    ASSERT_EQ(3, (int)compute_damage_reduction(10.0f, 6.0f)) << "armor should reduce damage by armor/2";
+    // Expected value of the 2002 roll random(6) on 0..5 against 10 damage:
+    // mean reduction (0+1+2+3+4+5)/6 = 2.5 (the 2013 armor/2 said 3).
+    ASSERT_FLOAT_EQ(2.5f, compute_damage_reduction(10.0f, 6.0f))
+        << "reduction is the mean of the 0..armor-1 roll";
 
-    // Clamp so at least 1 damage gets through.
-    ASSERT_EQ(9, (int)compute_damage_reduction(10.0f, 1000.0f)) << "reduction should clamp to damage-1";
+    // Armor far above the damage: no "at least 1" clamp any more. Of the
+    // 1000 roll values only 0..9 leave damage, so the expected damage is
+    // (10+9+...+1)/1000 = 0.055 and the reduction 9.945.
+    ASSERT_NEAR(9.945f, compute_damage_reduction(10.0f, 1000.0f), 1e-4f)
+        << "reduction is the exact expectation, not damage-1";
+
+    // random(0) and random(1) both return 0: no reduction.
+    ASSERT_FLOAT_EQ(0.0f, compute_damage_reduction(10.0f, 0.0f));
+    ASSERT_FLOAT_EQ(0.0f, compute_damage_reduction(10.0f, 1.0f));
+    ASSERT_FLOAT_EQ(0.0f, compute_damage_reduction(10.0f, -3.0f))
+        << "negative armor rolls nothing, like random(<=0)";
+}
+
+// The 2002 formula, brute-forced: average of max(0, d - r) over every roll
+// value r in 0..armor-1. compute_post_reduction_damage must equal it for
+// every (damage, armor) pair -- that is the whole contract of the port.
+TEST(CombatMath, damage_reduction_matches_the_2002_roll_expectation)
+{
+    const float damages[] = {0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 5.0f, 7.25f, 10.0f,
+                             12.5f, 20.0f, 31.0f, 44.0f, 45.0f, 60.0f, 99.5f, 120.0f};
+    for (int armor = 0; armor <= 300; ++armor)
+    {
+        for (float d : damages)
+        {
+            double brute = d;
+            if (armor > 0)
+            {
+                double sum = 0.0;
+                for (int r = 0; r < armor; ++r)
+                    sum += (static_cast<double>(d) > r) ? (static_cast<double>(d) - r) : 0.0;
+                brute = sum / armor;
+            }
+            const float post = compute_post_reduction_damage(d, static_cast<float>(armor));
+            ASSERT_NEAR(brute, post, 1e-3)
+                << "damage " << d << " armor " << armor
+                << ": expected damage must match the mean of the 2002 roll";
+        }
+    }
+}
+
+// The pairs issue #266 was measured on: a level-12 soldier's 45 base melee
+// (44 after the base-damage roll) against the 2*level^2 armor curve. Under
+// the 2013 clamp every row from level 7 up read exactly 1.
+TEST(CombatMath, high_armor_targets_are_no_longer_one_point_sponges)
+{
+    EXPECT_NEAR(28.5f, compute_post_reduction_damage(44.0f, 32.0f), 0.01f);  // level 4
+    EXPECT_NEAR(19.8f, compute_post_reduction_damage(44.0f, 50.0f), 0.01f);  // level 5
+    EXPECT_NEAR(13.75f, compute_post_reduction_damage(44.0f, 72.0f), 0.01f); // level 6
+    EXPECT_NEAR(10.10f, compute_post_reduction_damage(44.0f, 98.0f), 0.01f); // level 7
+    EXPECT_NEAR(7.73f, compute_post_reduction_damage(44.0f, 128.0f), 0.01f); // level 8
+    EXPECT_NEAR(4.95f, compute_post_reduction_damage(44.0f, 200.0f), 0.01f); // level 10
 }
 
 
@@ -50,9 +101,12 @@ TEST(CombatMath, compute_base_damage_null_rng_and_irandom_overload)
 TEST(CombatMath, compute_post_reduction_damage_clamps)
 {
     ASSERT_EQ(0, (int)compute_post_reduction_damage(-1.0f, 0.0f)) << "negative incoming damage clamps to 0";
-    // At least 1 damage should get through when incoming_damage > 0.
-    ASSERT_EQ(1, (int)compute_post_reduction_damage(1.0f, 1000.0f)) << "at least 1 damage should remain for positive incoming damage";
-    ASSERT_EQ(1, (int)compute_post_reduction_damage(10.0f, 18.0f)) << "at least 1 damage should remain";
+    // Positive incoming damage always leaves the 2002 roll's positive
+    // expectation -- tiny against huge armor, but never clamped up to 1.
+    ASSERT_NEAR(0.001f, compute_post_reduction_damage(1.0f, 1000.0f), 1e-5f)
+        << "1 damage lands only on the roll of 0: 1/1000 expected";
+    ASSERT_NEAR(3.0556f, compute_post_reduction_damage(10.0f, 18.0f), 1e-3f)
+        << "(10+9+...+1)/18 expected, not the 2013 clamp's 1";
 }
 
 
@@ -409,11 +463,12 @@ TEST(CombatMath, hp_regen_no_delay)
 
 TEST(CombatMath, round11_edge_branches)
 {
-    // incoming < 1 with huge armor: reduction clamps to incoming-1 (negative), post-reduction still non-negative.
+    // incoming < 1 with huge armor: only the roll of 0 lands, so the
+    // expected damage is 0.5/999 and the reduction sits just under 0.5.
     const float reduction = compute_damage_reduction(0.5f, 999.0f);
-    ASSERT_TRUE(reduction < 0.0f) << "tiny incoming damage should hit incoming-1 clamp branch";
+    ASSERT_TRUE(reduction > 0.499f && reduction < 0.5f) << "reduction is d - d/armor for d <= 1";
     const float post = compute_post_reduction_damage(0.5f, 999.0f);
-    ASSERT_TRUE(post > 0.49f) << "post reduction should remain positive for tiny incoming values";
+    ASSERT_TRUE(post > 0.0f && post < 0.001f) << "post reduction stays positive and tiny";
 
     // Null RNG path with non-perfect-square base to exercise floor(sqrt()) argument.
     RandomU32 null_rng = nullptr;

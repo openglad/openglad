@@ -16,8 +16,12 @@ using RandomU32 = std::uint32_t(*)(std::uint32_t);
 //   d - sqrt(d)/2 + random(floor(sqrt(d)))
 [[nodiscard]] float compute_base_damage(float base_damage, RandomU32 rng);
 
-// Original behavior from walker.cpp:
-//   reduction = armor/2, clamped to at most (damage - 1) so at least 1 gets through.
+// Deterministic port of the 2002 armor roll `tempdamage -= random(armor)`:
+// returns the exact expected reduction of that uniform 0..armor-1 roll,
+// (k*d - k(k-1)/2)/armor with k = min(armor, ceil(d)) -- so a target's
+// expected damage taken matches the original at every armor value. The 2013
+// "armor/2, at least 1 damage" form is gone: it only matched the original
+// average below the clamp and made high-armor targets one-point sponges.
 [[nodiscard]] float compute_damage_reduction(float incoming_damage, float target_armor);
 
 // Convenience helper.
