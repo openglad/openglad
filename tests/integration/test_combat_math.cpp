@@ -62,6 +62,20 @@ TEST(CombatMath, damage_reduction_matches_the_2002_roll_expectation)
 // The pairs issue #266 was measured on: a level-12 soldier's 45 base melee
 // (44 after the base-damage roll) against the 2*level^2 armor curve. Under
 // the 2013 clamp every row from level 7 up read exactly 1.
+// The hit site rounds to the nearest point (halves up) instead of truncating:
+// a damage-1 attacker's 0.5 roll lands 1 as it did in 2002, a 7.73 expectation
+// lands 8, and a sub-half expectation lands nothing.
+TEST(CombatMath, damage_to_hit_points_rounds_to_nearest)
+{
+    EXPECT_EQ(0, damage_to_hit_points(0.0f));
+    EXPECT_EQ(0, damage_to_hit_points(-2.0f));
+    EXPECT_EQ(0, damage_to_hit_points(0.4995f));
+    EXPECT_EQ(1, damage_to_hit_points(0.5f));
+    EXPECT_EQ(1, damage_to_hit_points(1.49f));
+    EXPECT_EQ(8, damage_to_hit_points(7.73f));
+    EXPECT_EQ(44, damage_to_hit_points(43.5f));
+}
+
 TEST(CombatMath, high_armor_targets_are_no_longer_one_point_sponges)
 {
     EXPECT_NEAR(28.5f, compute_post_reduction_damage(44.0f, 32.0f), 0.01f);  // level 4

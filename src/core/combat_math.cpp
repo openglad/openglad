@@ -53,6 +53,13 @@ float compute_post_reduction_damage(float incoming_damage, float target_armor)
     return result;
 }
 
+short damage_to_hit_points(float damage)
+{
+    if (damage <= 0)
+        return 0;
+    return static_cast<short>(floorf(damage + 0.5f));
+}
+
 float compute_base_damage(float base_damage, IRandom& rng)
 {
     float d = base_damage;

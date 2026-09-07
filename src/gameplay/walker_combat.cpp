@@ -317,7 +317,7 @@ bool walker::attack(walker  *target)
     // byte-identical. `attacker` is the resolved local (owner for
     // projectiles), matching the score semantics above.
     const short gated_damage = og::script::hooks::level_damage_gate(
-        target, attacker, static_cast<short>(tempdamage));
+        target, attacker, damage_to_hit_points(tempdamage));
     if (gated_damage < 0)
         return 0;
     const short tempdamage_i = gated_damage;
