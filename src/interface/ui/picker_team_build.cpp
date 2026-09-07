@@ -42,7 +42,6 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/resources/gparser.h>
@@ -110,9 +109,6 @@ void picker_request_start_game();
 #ifdef TESTING
 void picker_testing_mark_game_start();
 void picker_testing_mark_game_end();
-// #278: tests shorten go_menu's bounded start-request wait (0 = the
-// production START_REQUEST_TIMEOUT_MS).
-std::uint64_t g_picker_start_wait_timeout_ms_override = 0;
 #endif
 
 
@@ -2736,31 +2732,22 @@ Sint32 go_menu(Sint32 arg1)
         g_start_game_requested = false;
     if (!start_already_requested && !picker_lobby_request_start())
     {
-        // Bounded (#278): the host's StartGame handoff or denial echo is the
-        // only thing that releases this wait, and a host whose uplink went
-        // dark answers neither. The loop has no event pump and no present,
-        // so past the deadline it says so and hands the menu back.
+        // The host's StartGame handoff or denial echo releases this wait,
+        // and a host whose uplink went dark answers neither. The bound is
+        // the CLIENT's (#278): it expires its own unanswered request after
+        // START_REQUEST_TIMEOUT_MS and drops pending, so this loop — no
+        // event pump, no present — never owns a second deadline and the
+        // next GO sends a fresh request instead of re-waiting on the stale
+        // one. Past the expiry the menu says so and hands itself back.
         const auto wait_started = std::chrono::steady_clock::now();
-        std::uint64_t wait_timeout_ms = og::sim::START_REQUEST_TIMEOUT_MS;
-#ifdef TESTING
-        if (g_picker_start_wait_timeout_ms_override != 0)
-            wait_timeout_ms = g_picker_start_wait_timeout_ms_override;
-#endif
-        const auto deadline =
-            wait_started + std::chrono::milliseconds(wait_timeout_ms);
         std::uint64_t wait_iterations = 0;
-        bool wait_timed_out = false;
         while (!g_start_game_requested && picker_lobby_start_request_pending())
         {
-            if (std::chrono::steady_clock::now() >= deadline)
-            {
-                wait_timed_out = true;
-                break;
-            }
             picker_lobby_poll();
             og::input_native::sleep_ms(10);
             ++wait_iterations;
         }
+        const bool wait_timed_out = picker_lobby_start_request_timed_out();
         Log("go_wait iterations={} elapsed_ms={} requested={} timed_out={}\n",
             wait_iterations,
             std::chrono::duration_cast<std::chrono::milliseconds>(

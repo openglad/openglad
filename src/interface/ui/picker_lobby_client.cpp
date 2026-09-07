@@ -1290,6 +1290,13 @@ bool picker_lobby_start_request_pending()
     return false;
 }
 
+bool picker_lobby_start_request_timed_out()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->start_request_timed_out();
+    return false;
+}
+
 bool picker_lobby_has_game_start_config()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())

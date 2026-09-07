@@ -790,6 +790,7 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer_errors.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_link_loss_window.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_relay_ws.cpp

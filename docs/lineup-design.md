@@ -322,10 +322,23 @@ via `picker_replace_lobby_client(create_local_picker_lobby_client())`.
 A joiner whose link dies for good after the lobby state landed
 (`session_lost()`, latched like `was_kicked()`, #278) takes the SAME
 per-frame revert with the popup `CONNECTION LOST`; the kick outranks it
-when both are set. In-game, that joiner's display shows
+when both are set. "For good" is one rule per phase: parked in the
+lobby, the link must stay down for the whole reconnect window
+(`og::sim::LinkLossWindow` over `CLIENT_CONNECTION_LOST_TIMEOUT_MS`, the
+same window the in-game backstop runs) — a blip the transport's
+auto-reconnect heals inside it re-sends the Join and the lobby
+re-converges, line B reading `Status: connection lost` meanwhile; back
+from a level with the link down, the round is over (the in-game window
+already ran or the player QUIT the dead session), so the resume latches
+at once and never re-dials the dead host from behind the post-game black
+window. In-game, that joiner's display shows
 `CONNECTION LOST - RECONNECTING` from the first dropped poll and its
 pause-menu QUIT ends the session at once instead of waiting out
-`CLIENT_CONNECTION_LOST_TIMEOUT_MS`.
+`CLIENT_CONNECTION_LOST_TIMEOUT_MS`. A GO whose host never answers
+(socket open, nobody home) is bounded by the joiner client itself:
+`START_REQUEST_TIMEOUT_MS` after the press the request is abandoned
+(`start_request_timed_out()`, popup `NO ANSWER FROM HOST`) and the next
+GO sends a fresh one.
 **DISCONNECT**: same replace on both roles; a host's server teardown
 disconnects every peer through the transport as today. Base Camp's
 line-B census and the LINEUP bands read the same `picker_lobby_players()`.

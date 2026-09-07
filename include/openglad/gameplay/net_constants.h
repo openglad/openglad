@@ -17,18 +17,23 @@ inline constexpr int MAX_LATE_PRESS_TICKS = 2;
 // but the seat itself is kept for PAUSE_TIMEOUT_MS and rebinds on a Hello
 // carrying the session token — the window an auto-reconnecting transport
 // gets to come back. CLIENT_CONNECTION_LOST_TIMEOUT_MS is the client's
-// backstop inside that window for a link that is nominally up but silent;
-// it is deliberately NOT the only exit: the display shows the stall from
-// the first dropped poll and a QUIT on a dead link ends the session at once
-// (GameClient::request_level_abort, #278).
+// reconnect window inside that grace, read through ONE rule
+// (og::sim::LinkLossWindow) by both phases a joiner can be in: in-game it
+// is the backstop for a link that is nominally up but silent, and in the
+// lobby it is how long a parked joiner keeps its seat before the picker
+// reverts to a local client (#278). It is deliberately NOT the only in-game
+// exit: the display shows the stall from the first dropped poll and a QUIT
+// on a dead link ends the session at once (GameClient::request_level_abort).
 inline constexpr std::uint64_t DISCONNECT_TIMEOUT_MS = 10'000;
 inline constexpr std::uint64_t CLIENT_CONNECTION_LOST_TIMEOUT_MS = 30'000;
 inline constexpr std::uint64_t EXIT_PROMPT_TIMEOUT_MS = 15'000;
 inline constexpr std::uint64_t PAUSE_TIMEOUT_MS = 60'000;
 // Base Camp GO on a networked lobby waits for the host's StartGame handoff
-// or denial echo. The wait is bounded so a host whose uplink went dark
-// (socket open, nobody answering) cannot pin the menu behind a black
-// window forever (#278).
+// or denial echo. The CLIENT that sent the request expires it after this
+// long (JoinPickerLobbyClient, the one owner of the pending flag), so a host
+// whose uplink went dark (socket open, nobody answering) cannot pin the menu
+// behind a black window, and the next GO sends a fresh request instead of
+// re-waiting on the abandoned one (#278).
 inline constexpr std::uint64_t START_REQUEST_TIMEOUT_MS = 15'000;
 inline constexpr std::uint64_t PAUSE_RATE_LIMIT_MS = 5'000;
 inline constexpr std::size_t MAX_GRID_DIRTY_TILES = 64;

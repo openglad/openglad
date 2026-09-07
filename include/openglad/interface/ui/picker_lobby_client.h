@@ -95,7 +95,20 @@ public:
     build_game_start_config() const = 0;
     [[nodiscard]] virtual std::optional<PickerLobbyGameStartConfig>
     consume_game_start_config() = 0;
+    // True while a StartGame request this client sent awaits the host's
+    // handoff or denial echo. BOUNDED by contract (#278): a networked client
+    // expires an unanswered request START_REQUEST_TIMEOUT_MS after the GO
+    // that sent it (pending drops, start_request_timed_out() rises), so a
+    // `while (pending) poll` wait never needs a deadline of its own — and
+    // the NEXT GO sends a fresh request instead of re-waiting on the stale
+    // one.
     [[nodiscard]] virtual bool start_request_pending() const noexcept = 0;
+    // The most recent GO's request expired unanswered. Cleared by the next
+    // request_start_game() call; never set by a local client.
+    [[nodiscard]] virtual bool start_request_timed_out() const noexcept
+    {
+        return false;
+    }
     [[nodiscard]] virtual bool has_game_start_config() const noexcept
     {
         return false;
@@ -193,12 +206,22 @@ public:
         return false;
     }
     // LINEUP §6 companion to was_kicked() (#278): this client WAS in an
-    // established session and its link has since died for good. Latched;
-    // survives shutdown() and resume_after_level(); never cleared in this
-    // client's lifetime. The picker reverts to a local client on it exactly
-    // as on a kick (the kick outranks it when both are set). Only a joiner
-    // ever reports it — a host's lobby is in-process and a dead relay is
-    // just its line-B alert.
+    // established session and its link has since died for good. "For good"
+    // is decided in two places by ONE rule each way:
+    //  - parked in the lobby: the link stayed down for the whole reconnect
+    //    window (og::sim::LinkLossWindow, CLIENT_CONNECTION_LOST_TIMEOUT_MS
+    //    — the same window the in-game backstop runs). A blip that the
+    //    transport's auto-reconnect heals inside it is NOT a loss: the
+    //    client re-joins and the lobby re-converges, as before #278.
+    //  - back from a level with the link down (resume_after_level): the
+    //    round is over, so the in-game window already ran or the player
+    //    QUIT the dead session; nothing is left to wait for and the dead
+    //    host is not re-dialed from behind the post-game black window.
+    // Latched; survives shutdown() and resume_after_level(); never cleared
+    // in this client's lifetime. The picker reverts to a local client on it
+    // exactly as on a kick (the kick outranks it when both are set). Only a
+    // joiner ever reports it — a host's lobby is in-process and a dead relay
+    // is just its line-B alert.
     [[nodiscard]] virtual bool session_lost() const noexcept
     {
         return false;
@@ -352,6 +375,7 @@ bool picker_lobby_request_start();
 std::optional<og::ui::PickerLobbyGameStartConfig>
 picker_lobby_consume_game_start_config();
 bool picker_lobby_start_request_pending();
+bool picker_lobby_start_request_timed_out();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
 std::optional<std::string> picker_lobby_connection_alert();

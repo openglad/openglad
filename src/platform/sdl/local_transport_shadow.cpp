@@ -1114,9 +1114,7 @@ void render_link_lost_overlay(screen& gameplay_screen,
                               og::runtime::LocalTransportRuntime& runtime,
                               const og::sim::GameClient& game_client)
 {
-    const bool link_down = !game_client.transport_connected() &&
-        game_client.transport_ever_connected();
-    if (link_down)
+    if (game_client.transport_lost())
     {
         if (!runtime.link_lost_overlay)
             TRACE("net", "link_lost_overlay");

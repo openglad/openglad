@@ -1,5 +1,6 @@
 #pragma once
 
+#include <openglad/gameplay/link_loss_window.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
 
@@ -53,19 +54,18 @@ public:
     // mission" — a deliberate party-wide retreat, distinct from a disconnect
     // (which only converts the leaving player's character to AI).
     void request_level_abort();
-    // Link state as of the last transport poll. `transport_connected()` is
-    // false both before the first connection and after a drop;
-    // `transport_ever_connected()` tells the two apart — together they say
-    // "this client HAD a server and lost it", which is what a display
-    // shows a stall banner for and what request_level_abort() treats as
-    // the connection-lost transition (#278).
+    // Link state as of the last transport poll (#278). `transport_lost()` is
+    // the one predicate for "this client HAD a server and lost it" — what a
+    // display shows its stall banner for and what request_level_abort()
+    // treats as the connection-lost transition; both read it here rather
+    // than re-deriving it (LinkLossWindow owns the rule).
     [[nodiscard]] bool transport_connected() const noexcept
     {
-        return transport_connected_;
+        return link_.connected();
     }
-    [[nodiscard]] bool transport_ever_connected() const noexcept
+    [[nodiscard]] bool transport_lost() const noexcept
     {
-        return transport_ever_connected_;
+        return link_.lost();
     }
     void send_pause_request();
     void send_pause_response();
@@ -261,16 +261,14 @@ private:
     mutable float last_render_speed_factor_ = 1.0f;
     std::optional<InterpolationClock::time_point>
         last_outbound_activity_time_ = std::nullopt;
-    std::optional<InterpolationClock::time_point>
-        transport_disconnect_time_ = std::nullopt;
     std::uint32_t last_seen_server_tick_ = 0;
     std::uint32_t last_sim_event_sequence_ = 0;
     std::uint32_t last_game_flow_event_sequence_ = 0;
     bool has_sim_event_sequence_ = false;
     bool has_game_flow_event_sequence_ = false;
     SessionToken session_token_ = kZeroSessionToken;
-    bool transport_connected_ = false;
-    bool transport_ever_connected_ = false;
+    // The link timeline: connected / lost / reconnect-window expiry.
+    LinkLossWindow link_;
     bool hello_sent_for_connection_ = false;
     bool hello_acknowledged_ = false;
     bool connection_lost_notified_ = false;
