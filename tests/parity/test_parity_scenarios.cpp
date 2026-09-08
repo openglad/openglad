@@ -1,5 +1,6 @@
 #include "coverage_targets.h"
 #include "fact_predicate.h"
+#include "golden_compare.h"
 #include "parity_runner.h"
 #include "scenario_table.h"
 #include "state_dump.h"
@@ -136,38 +137,19 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
                 << "semantic-parity master golden failed for " << spec.id
                 << ": " << master.message;
 
-            // EXACT weapon-trajectory parity. The WeaponSpeed / WeaponNetTravel
-            // band predicates above only bound trajectory approximately
-            // (~1px/tick + a coarse path class). This asserts the full per-tick
-            // weapon_tracks (every weapon's xpos/ypos at every sampled tick)
-            // byte-matches the master golden, locking speed AND path exactly to
-            // master rather than to a tolerance band.
-            const auto& bt = outcome.dump.weapon_tracks;
-            const auto& mt = parsed->weapon_tracks;
-            EXPECT_EQ(bt.size(), mt.size())
-                << "weapon_tracks sample count diverges from master for "
-                << spec.id << " (branch " << bt.size() << " vs master "
-                << mt.size() << ")";
-            const std::size_t track_n = bt.size() < mt.size() ? bt.size()
-                                                              : mt.size();
-            for (std::size_t i = 0; i < track_n; ++i)
-            {
-                if (bt[i].tick != mt[i].tick || bt[i].family != mt[i].family ||
-                    bt[i].seq != mt[i].seq || bt[i].xpos != mt[i].xpos ||
-                    bt[i].ypos != mt[i].ypos)
-                {
-                    ADD_FAILURE()
-                        << "weapon trajectory diverges from master for "
-                        << spec.id << " at weapon_tracks[" << i
-                        << "]: branch {tick=" << bt[i].tick << ",family="
-                        << bt[i].family << ",seq=" << bt[i].seq << ",x="
-                        << bt[i].xpos << ",y=" << bt[i].ypos
-                        << "} vs master {tick=" << mt[i].tick << ",family="
-                        << mt[i].family << ",seq=" << mt[i].seq << ",x="
-                        << mt[i].xpos << ",y=" << mt[i].ypos << "}";
-                    break; // first divergence is enough to fail the scenario
-                }
-            }
+            // THE golden rule (#283): the canonical branch dump must equal
+            // the committed golden byte for byte. This subsumes the
+            // hand-rolled weapon_tracks loop it replaces (which locked every
+            // projectile's speed AND path to master exactly rather than to the
+            // WeaponSpeed / WeaponNetTravel tolerance bands) and every other
+            // key of the schema with it, including keys a parsed compare would
+            // silently ignore. The facts above stay the semantic reading; the
+            // bytes are the gate.
+            const auto div =
+                og::parity::first_golden_divergence(actual, expected);
+            EXPECT_FALSE(div.has_value())
+                << (div ? og::parity::format_golden_divergence(spec.id, *div)
+                        : std::string());
         }
         else
         {
@@ -186,9 +168,10 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
         return;
     }
 
-    EXPECT_EQ(expected, actual)
-        << "parity mismatch for scenario " << spec.id
-        << "; see scripts/parity/diff_dumps.py for a structured diff";
+    const auto div = og::parity::first_golden_divergence(actual, expected);
+    EXPECT_FALSE(div.has_value())
+        << (div ? og::parity::format_golden_divergence(spec.id, *div)
+                : std::string());
 }
 
 } // namespace

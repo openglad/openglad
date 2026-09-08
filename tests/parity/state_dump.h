@@ -4,7 +4,8 @@
 // suitable for byte-comparison against a master-side companion dump. The
 // emitter sorts keys lexicographically, formats floats with "%.6f", and
 // normalises negative zero. scripts/parity/validate_schema.py asserts the
-// promised shape.
+// promised shape; tests/parity/golden_compare.h is the gate reader that holds
+// the branch dump to the committed golden byte for byte.
 
 #pragma once
 

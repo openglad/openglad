@@ -28,8 +28,10 @@ against a non-deterministic reference.
   from the main tree when setting up a worktree.
 - `./build/ci-test/parity_runner_smoke --scenario <id> --out <file>`
   prints the canonical branch StateDump JSON; `--evaluate-facts` runs the
-  predicates. `scripts/parity/diff_dumps.py <dump> tests/parity/golden/<id>.json`
-  (exit 0 = semantic match) is the authoritative branch-vs-golden check.
+  predicates. The gate's own byte compare (`tests/parity/golden_compare.h`) is
+  authoritative; `scripts/parity/diff_dumps.py <dump>
+  tests/parity/golden/<id>.json` (exit 0 = no field differs) is the triage tool
+  that categorises the first divergence for a human and decides nothing.
   The smoke tool exits **3 and writes nothing** when the level did not load
   (broken campaign mount / PhysFS search path) — it used to exit 0 with a
   valid-looking empty-arena dump that disagreed with every golden. It also
@@ -73,6 +75,10 @@ PKG_CONFIG_PATH, and the `.pc` files live in the `.dev` outputs).
   companion change moves nothing.
 
 ## Goldens and the drift ledger
+
+The SemanticParity arm byte-compares the canonical branch dump against the
+golden; there is no waiver — a row that cannot match is re-blessed with a
+ledger row or the branch is fixed.
 
 `tests/parity/golden/DRIFT_LEDGER.md` is the authoritative record of every
 golden that deliberately diverges from the raw companion capture:

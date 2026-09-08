@@ -8,6 +8,14 @@ tests/parity/state_dump.cpp (branch) and tools/parity_dump_state.cpp
 (master companion). The script reports the first three categorised
 differences and writes a machine-readable summary on stdout line 1.
 
+The categories are: cadence_mismatch, rng_drift, hp_drift, position_drift,
+walker_field, effect_field, event_field, scoring, track_field, weapon_field
+and schema (the catch-all).
+
+The og_test_parity gate is a byte compare of the canonical dump
+(tests/parity/golden_compare.h); this script categorises the first divergence
+for a human and never decides pass/fail.
+
 Exit code: 0 on match, 1 on mismatch, 2 on harness/usage error.
 """
 
@@ -48,6 +56,10 @@ def categorise(field: str) -> str:
         return "event_field"
     if field.startswith("score_per_team"):
         return "scoring"
+    if field.startswith("weapon_tracks["):
+        return "track_field"
+    if field.startswith("weapons["):
+        return "weapon_field"
     return "schema"
 
 

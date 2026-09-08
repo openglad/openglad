@@ -53,9 +53,9 @@ struct InputEvent
 // Mode of comparison applied after the dump is captured.
 enum class CompareMode : std::uint8_t
 {
-    ByteEqual,      // canonical JSON dump must match the golden byte-for-byte
+    ByteEqual,      // canonical JSON dump must match the golden byte-for-byte (SemanticParity minus facts)
     Invariant,      // run-time predicate over the dump; no golden compare
-    SemanticParity, // golden + branch dump must each satisfy the same fact predicates
+    SemanticParity, // facts hold on BOTH dumps, AND the canonical branch dump matches the golden byte-for-byte
 };
 
 // Bit set of per-(family, special_index) special-ability invocations a
@@ -651,7 +651,10 @@ inline constexpr SpawnSpec kFamilySpawns_complete_tower1[] = {
 // array. The runner evaluates them on both the parsed master golden
 // (`parse_state_dump`) and the freshly captured branch dump and asserts
 // every predicate holds on both sides. The mode-dispatch sits in
-// tests/parity/test_parity_scenarios.cpp::run_one_scenario.
+// tests/parity/test_parity_scenarios.cpp::run_one_scenario. Since #283 the
+// SemanticParity arm also byte-compares the canonical branch dump against the
+// golden (tests/parity/golden_compare.h); the facts are the semantic reading,
+// the bytes are the gate.
 //
 // The predicate set deliberately spans the FactKind enum so the contract
 // is exercised end-to-end: `TickReached`, `LevelDoneEquals`,
