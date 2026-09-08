@@ -1190,3 +1190,85 @@ TEST(Parity, mutation_canary_discriminating_power_gate)
     ASSERT_TRUE(failures.empty())
         << format_missing("mutation canary discriminating power", failures);
 }
+
+// Every table row must own a per-name `Parity.<id>` test, and every
+// OG_PARITY_TEST must name a row. The per-name test is where the #283 golden
+// byte compare lives: the all-rows gates above run each row once for coverage
+// and evaluate facts against the golden, but neither compares bytes, so a row
+// added to kScenarios without its OG_PARITY_TEST line would be facts-gated
+// only and silently never byte-compared. The reverse direction catches the
+// other half: OG_PARITY_TEST expands to a GTEST_SKIP for an id that is not in
+// the table (deliberately, so deleting a row stays compile-clean), and that
+// skip is silent — this gate is the "Parity.coverage_gate* is the responsible
+// gate" the macro's skip message promises.
+TEST(Parity, every_table_row_has_a_named_parity_test)
+{
+    // Registered test names in the Parity suite, from GoogleTest itself.
+    std::set<std::string> registered;
+    {
+        const testing::UnitTest& ut = *testing::UnitTest::GetInstance();
+        for (int i = 0; i < ut.total_test_suite_count(); ++i)
+        {
+            const testing::TestSuite& suite = *ut.GetTestSuite(i);
+            if (std::string_view(suite.name()) != "Parity") continue;
+            for (int j = 0; j < suite.total_test_count(); ++j)
+                registered.insert(suite.GetTestInfo(j)->name());
+        }
+    }
+    ASSERT_FALSE(registered.empty())
+        << "no tests registered in the Parity suite — GoogleTest introspection "
+           "is not seeing test_parity_scenarios.cpp";
+
+    std::set<std::string> table_ids;
+    for (const auto& spec : og::parity::kScenarios)
+        table_ids.insert(std::string(spec.id));
+
+    std::vector<std::string> missing;
+    for (const auto& id : table_ids)
+        if (registered.count(id) == 0)
+            missing.push_back(id + ": no TEST(Parity, " + id + ") — add "
+                              "OG_PARITY_TEST(" + id + ") to "
+                              "tests/parity/test_parity_scenarios.cpp, or the "
+                              "row is never byte-compared against its golden");
+    std::ostringstream missing_report;
+    missing_report << "table rows without a per-name Parity test ("
+                   << missing.size() << "):\n";
+    for (const auto& m : missing) missing_report << "  - " << m << "\n";
+    EXPECT_TRUE(missing.empty()) << missing_report.str();
+
+    // Reverse: an OG_PARITY_TEST naming an id the table no longer has. Read
+    // the macro invocations out of the source (the same repo-root-relative
+    // read the mutation gate above does) — a stale one only GTEST_SKIPs at
+    // runtime, so nothing else can see it.
+    std::ifstream in("tests/parity/test_parity_scenarios.cpp");
+    ASSERT_TRUE(in.good())
+        << "cannot open tests/parity/test_parity_scenarios.cpp — run "
+           "og_test_parity from the repo root (goldens are cwd-relative too)";
+
+    constexpr std::string_view kMacro = "OG_PARITY_TEST(";
+    std::vector<std::string> orphans;
+    std::size_t invocations = 0;
+    std::string line;
+    while (std::getline(in, line))
+    {
+        if (line.rfind(kMacro, 0) != 0) continue; // definition/uses are indented
+        const std::size_t close = line.find(')', kMacro.size());
+        if (close == std::string::npos) continue;
+        const std::string id =
+            line.substr(kMacro.size(), close - kMacro.size());
+        ++invocations;
+        if (table_ids.count(id) == 0)
+            orphans.push_back(id + ": OG_PARITY_TEST(" + id + ") names no row "
+                              "in kScenarios; the test GTEST_SKIPs silently");
+    }
+    EXPECT_EQ(table_ids.size(), invocations)
+        << "OG_PARITY_TEST invocations (" << invocations << ") != table rows ("
+        << table_ids.size() << ")";
+    std::ostringstream orphan_report;
+    orphan_report << "OG_PARITY_TEST names with no table row ("
+                  << orphans.size() << "):\n";
+    for (const auto& o : orphans) orphan_report << "  - " << o << "\n";
+    orphan_report << "  Delete the macro line, or restore the row in "
+                     "tests/parity/scenario_table.h.";
+    EXPECT_TRUE(orphans.empty()) << orphan_report.str();
+}

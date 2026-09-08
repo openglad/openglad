@@ -41,7 +41,7 @@ the caller is the *explosion*, which is `set_dead` before `death()` runs, and
 `is_friendly` answers 0 for a dead caller (`walker.cpp:2510-2511`); the ½ test
 on `:85` is evaluated on the owner, who is alive. The same mechanism lands the
 owner's ¼ tier (thief 75→55 in `effect_bomb_bystander_scen99`;
-`DRIFT_LEDGER.md:34` records the earlier wrong claim and its correction). The
+`DRIFT_LEDGER.md:35` records the earlier wrong claim and its correction). The
 friendly-fire cost is therefore real: **a level-10 player thief bombing at its
 own feet takes 32..37 of its 229 HP, and a level-9 cleric ally inside 55 px
 takes 71..79** (half tier 82.5 → window 78.1..86.1 → minus armor 7 → 71..79).
@@ -98,25 +98,34 @@ or level 23 (guaranteed). The reported kill is not one explosion from full HP.
 | 2 | 304–326 | **survives from full, 14–36 left** — dies if it had already lost ≥ 36 HP (any earlier hit does that) |
 | 3 | 456–489 | dies from full, every roll |
 
-Three candidates, in order of simplicity:
+Three candidates. Which one is even *available* depends on what the thief was,
+so they are ordered by the reading of the report rather than by mechanism —
+"a level 10 thief blows away my level 9 cleric" in campaign play means an enemy
+bot, and a bot never takes the input path of candidate 2:
 
-1. **A human thief tapped Special once.** One tap arms **two** bombs on the same
-   tick (§3.4): 304–326 on the cleric. A cleric missing 36 HP — one enemy knife,
-   one earlier bomb tick, anything — dies, and the two sprites overlap and
-   detonate on the same tick, so it reads as one bomb. Holding the key for half
-   a second arms seven.
-2. **An AI thief being meleed.** Every hit it takes while its current special is
-   DROP BOMB is a 1-in-3 bomb (`stats.cpp:669-670`), and the flee it queues
+1. **An AI thief being meleed.** Every hit it takes while its current special is
+   DROP BOMB is a 1-in-3 bomb (`stats.cpp:670`), and the flee it queues
    after each drop does not suppress this (`hit_response` is exempt only for
    `ACT_CONTROL`, `stats.cpp:651`). A cleric hitting every 8 ticks arms ~2 bombs
    per 50-tick fuse; a three-hero party ~6. The golden
    `thief_ai_bomb_flee_scen99` shows three live `FAMILY_BOMB` from one caster by
-   tick 35 under three meleeing soldiers.
+   tick 35 under three meleeing soldiers. This is the only stacker available in
+   campaign play.
+2. **A human thief tapped Special once — and that thief was HOSTILE to the
+   cleric**, i.e. a versus/FFA mode, not your own party. One tap arms **two**
+   bombs on the same tick (§3.4): 304–326 at the full tier on the cleric. A
+   cleric missing 36 HP — one enemy knife, one earlier bomb tick, anything —
+   dies, and the two sprites overlap and detonate on the same tick, so it reads
+   as one bomb. Holding the key for half a second arms seven. The precondition
+   matters: your *own* thief's bombs hit allies at the ½ tier (§1, 71–79 on a
+   340/15 cleric), so two of those are 142–158 and five are needed for a kill.
 3. **The cleric was not at full HP** and 157 off the bar read as "blown away".
 
 Distinguishing them needs the save, the kill feed, or the answer to one
 question: **was the thief a player or a bot?** The arithmetic supports only
-these three.
+these three. The input quirk of candidate 2 is worth fixing whatever the
+answer — it is a bug in its own right (§3.4) — but it explains this report only
+in the hostile-player reading.
 
 ### 2.4 Every family at level 9 vs one level-10 bomb
 
@@ -337,8 +346,10 @@ thief. This is a hypothesis consistent with the numbers, not a measurement.
 ## 5. Verdict
 
 **The single bomb is reasonable: faithful to 2002 to within one point and
-balanced by the game's own curve. What is not reasonable is that one keypress
-arms two of them.** Evidence, ranked:
+balanced by the game's own curve. The reported kill needs two bombs in one
+fuse — from the 2002 `hit_response` stack if the thief was a bot, from the 2013
+one-tap-arms-two input quirk if it was a hostile player. The quirk is not
+reasonable either way.** Evidence, ranked:
 
 1. **One explosion cannot do it.** A 340/15 cleric keeps 177–188 HP from one
    level-10 bomb; no level-9 walker of any family dies to one; the soft cap
@@ -354,8 +365,10 @@ arms two of them.** Evidence, ranked:
 5. **Provenance**: the only value change ever made to bomb damage is a nerf
    above L13; AI cadence is byte-for-byte 2002 (§4.4).
 6. **The stack is where the kill lives**, and two of its three sources are
-   inherited quirks rather than design: the 2013 press+held double cast (§3.4,
-   not in 2002) and the 2002 `hit_response` stack (§4.4, faithful).
+   inherited quirks rather than design: the 2002 `hit_response` stack (§4.4,
+   faithful, and the only one a campaign bot can use) and the 2013 press+held
+   double cast (§3.4, not in 2002, and reachable against your cleric only when
+   the thief is a hostile player — an allied thief's bombs land at the ½ tier).
 
 ### Options, ranked
 
@@ -365,9 +378,20 @@ questions on #228.** Add the parity scenario of §6, post the §2 table, and ask
 would change the verdict: a dump showing a full-HP (≥ 340) level-9 cleric losing
 ≥ 340 HP between one `SOUND_EXPLODE` and the next tick, i.e. a single explosion
 FX doing more than 170 — nothing in the code can produce that, so if it is
-observed it is a bug, not balance. Optional parity-invisible polish for the
-perceptual half of §4.1: a drop sound and/or a radar blip for armed bombs
-(presentation is not in the state dump; zero goldens move).
+observed it is a bug, not balance. Optional polish for the perceptual half of §4.1, with its
+parity cost separated: a **radar blip** for armed bombs is render-only and moves
+zero goldens, but a **drop sound** is not free — every `og.emit_sound` is
+serialised into the dump's `events[]` (the bomb's own `SOUND_EXPLODE` is
+`{"kind":"play_sound","a":11,"tick":70}` in
+`tests/parity/golden/bomb_l10_vs_cleric_l9_scen99.json`, emitted by
+`packs/core/lib/effect_bomb.lua:27`), so one `og.emit_sound` in `drop_bomb`
+adds an event and shifts every later `sequence` in each of the 8 goldens that
+contain a `FAMILY_BOMB` (`effect_bomb_bystander`, `effect_explosion_range`,
+`bomb_l10_vs_cleric_l9`, `effect_explosion_ally_tier`, `effect_bomb_timer`,
+`effect_bomb_emission`, `special_thief_scen789`, `thief_ai_bomb_flee`). Under
+the #283 byte compare all eight go red: 8 ledger rows with branch-sourced
+goldens plus a `GAMEPLAY_FIXES_FROM_CLASSIC.md` row, since 2002 dropped the
+bomb silently.
 
 **Option 2 (measure, then decide): a 1-tick `busy` on `drop_bomb`.** The
 one-line fix for §3.4 — `drop_bomb` refuses while `lc.is_busy(self)` and sets
@@ -416,8 +440,13 @@ Independent of the verdict:
   armor for Saffron where the code path gives 128 (`statistics.h:220` starts
   placed walkers at 0; `set_derived_stats` never writes armor); the 128..133 pin
   hides the discrepancy.
-- The comment on `kFacts_effect_bomb_emission_scen99` ("Two bombs detonate")
-  misdescribes its golden, which has one detonation.
+- ~~The comment on `kFacts_effect_bomb_emission_scen99` ("Two bombs detonate")
+  misdescribes its golden, which has one detonation.~~ **Fixed** in the same
+  table pass as this document's review: the golden has one detonation and 13
+  play_sounds, and the row's `EventKindAtLeast(play_sound, 12)` floor was dead
+  under its own mutation (which reads 14) — it is now an exact count of 13. See
+  `tests/parity/golden/DRIFT_LEDGER.md`, "Predicate teeth after the byte
+  compare".
 - The `effect_explosion_range_scen99` comments quote the pre-rounding window
   "158..169" where the landed values on an armor-0 target are 159..170 —
   cosmetic; no fact reads it.
@@ -459,7 +488,7 @@ untouched at 130/130 holding `level_done = 0` so both corpses are reaped, and
 `tick` 80 as the stale-table canary.
 
 The row's mutation arms a level-1 bomb from a level-10 thief
-(`bomb_damage(self.level)` → `bomb_damage(1)`, raw 30 instead of 165). Two of
+(`bomb_damage(self.level)` → `bomb_damage(1)`, raw 30 instead of 165). Three of
 the facts flip under it, alongside the byte compare:
 
 | fact | what it reads |
@@ -467,11 +496,13 @@ the facts flip under it, alongside the byte compare:
 | `WalkerDiedByFinal(FAMILY_CLERIC)` | 165 raw rolls 158.58..169.58 and lands 159..170 on an armor-0 body, killing 120 HP. The mutated raw 30 lands 27..31 and the cleric walks away with ~90. **Flips.** |
 | `ScoreDelta(0, 439, 439)` | the cleric kill is the arena's only scoring event; a surviving cleric leaves hit XP alone. **Flips.** |
 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000)` | the far hostile bounds the blast: reach, not damage, if it ever moves. |
-| `EventKindAtLeast(play_sound, 1)` | the detonation fires under every damage mutation, separating "no blast" from "a weaker blast". |
+| `EventKindExactly(play_sound, 4)` | CLANG at tick 10 (the cleric's melee), `SOUND_EXPLODE` at 70, two DIE2 at 73. **Flips** — the mutated run has three, the cleric's death sound missing. The floor of 1 this replaced was vacuous: the tick-10 CLANG predates the tick-20 cast, so it held with no bomb at all. |
 
-The caster's own fate is deliberately *not* a fact. The quarter tier kills the
-thief here, but so does the cleric: under the mutation the cleric survives the
-blast and its next seven ticks of melee finish the thief anyway, so a
+The caster's own fate is deliberately *not* a fact, because the thief dies at
+tick 73 on both arms. The cleric lands six melee hits by tick 58 (the
+`FAMILY_HIT` tracks are the same twelve samples in both dumps, and nothing
+lands after 58), which leaves the thief under even the level-1 bomb's own
+quarter tier — raw 7.5, 6..7 landed — so the mutated blast kills it too and a
 "the thief died" predicate is inert. The owner tier at this same caster level is
 pinned discriminatingly by `effect_explosion_range_scen99`, which parks a
 stationary tower instead of a live melee foe.

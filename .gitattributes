@@ -17,3 +17,9 @@ package-lock.json linguist-generated
 
 # Sprite metadata emitted alongside the PNG assets (data, not source code).
 pix/*.json linguist-generated
+
+# Parity goldens are byte artifacts, not text: og_test_parity compares the
+# canonical dump to these files byte for byte (tests/parity/golden_compare.h),
+# trailing newline included. A checkout that rewrote them to CRLF would red
+# every SemanticParity row at the first line ending, so no eol conversion here.
+tests/parity/golden/*.json -text

@@ -105,9 +105,11 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
     {
         // Phase 01 semantic-parity contract: evaluate the row's predicates
         // on both the master golden (parsed) and the freshly captured
-        // branch dump. The two dumps may differ byte-for-byte (RNG drift,
-        // intended branch behavioural diffs) but every predicate must hold
-        // on both.
+        // branch dump. The facts are the semantic reading of the row,
+        // evaluated on the two dumps independently; since #283 the arm also
+        // requires the canonical branch dump to equal the golden byte for
+        // byte (below), so a row that cannot match is re-blessed via
+        // tests/parity/golden/DRIFT_LEDGER.md or the branch is fixed.
         ASSERT_NE(spec.expected_facts, nullptr)
             << "SemanticParity row " << spec.id
             << " has no expected_facts[]";
