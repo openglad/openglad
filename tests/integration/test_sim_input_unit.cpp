@@ -1001,11 +1001,14 @@ TEST(SimInputUnit, sim_input_enemy_freeze_cue_marks_a_stranded_command_queue)
     ASSERT_EQ(0, count_seat_lines(clean.events, 0));
 }
 
-// #222 A1: a cast that WORKED must never be reported as a failure. The press
-// arm and the held arm both run on the frame the key goes down, so a working
-// special is immediately re-cast into the cooldown it just set; that second
-// refusal used to print "SPECIAL FAILED" over every successful whirlwind, and
-// again on every later frame of the cooldown.
+// #222 A1: a cast that WORKED must never be reported as a failure. Until #228
+// the press arm and the held arm both ran on the frame the key goes down, so a
+// working special was immediately re-cast into the cooldown it just set; that
+// second refusal used to print "SPECIAL FAILED" over every successful
+// whirlwind, and again on every later frame of the cooldown. The held arm now
+// skips the press tick, so the same-tick re-cast is gone; the one-verdict latch
+// still guards the touch build's shifter-press cast, and the held-frame half
+// of this test is unchanged.
 TEST(SimInputUnit, sim_input_successful_cast_is_never_called_a_failure)
 {
     SimInputFixture fx;
@@ -1078,6 +1081,67 @@ TEST(SimInputUnit, sim_input_declined_cast_says_special_failed_on_a_press)
     ASSERT_EQ(1, count_clang(fx.events, 0));
     ASSERT_EQ(0, count_clang(fx.events, -1))
         << "the clang belongs to the seat that pressed, not to the room";
+}
+
+int count_live_fx(const GameWorld& world, int family)
+{
+    int found = 0;
+    for (const auto& ob : world.oblist)
+    {
+        if (ob && ob->query_order() == Order::FX && ob->family() == family &&
+            !ob->dead())
+            found++;
+    }
+    return found;
+}
+
+// #228: one tap of Special is one cast. The press arm and the held arm both
+// see the key on the frame it goes down (pressed = held && !was_held), and a
+// special with no busy latch of its own — the thief's bomb, the elf's rock
+// volleys, the elemental's starburst, the ghost's scare — used to fire on
+// both, so a single tap armed two bombs on one tile. The 2002 game polled the
+// held key only, once per cycle. The held arm now yields the press tick to
+// the press arm and resumes on the next tick, so holding still fires once
+// per tick, as it always did.
+TEST(SimInputUnit, sim_input_one_press_is_one_cast_for_an_unlatched_special)
+{
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 0, FAMILY_THIEF);
+    control->set_act_type(ACT_CONTROL);
+    control->set_current_special(1); // DROP BOMB: no busy latch, MP-gated only
+    control->stats()->set_special_cost(1, 35);
+    control->stats()->set_magicpoints(300.0f); // eight casts' worth: MP is not the limiter here
+    ASSERT_EQ(0, count_live_fx(fx.world(), FAMILY_BOMB));
+
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    // A real press frame: the key is pressed AND held.
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Special)] = true;
+
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(1, count_live_fx(fx.world(), FAMILY_BOMB))
+        << "one tap must arm exactly one bomb";
+    ASSERT_EQ(265.0f, control->stats()->magicpoints())
+        << "and charge exactly one cast";
+    ASSERT_EQ(0, count_seat_lines(fx.events, 0))
+        << "a working cast is not a failure";
+
+    // The next tick with the key still down is the held arm's: one more.
+    InputState held;
+    held.clear();
+    held.players[0].held[static_cast<int>(InputAction::Special)] = true;
+    process(fx, held, control, 0, debounce);
+    ASSERT_EQ(2, count_live_fx(fx.world(), FAMILY_BOMB))
+        << "holding fires once per tick, as in 2002";
+    ASSERT_EQ(230.0f, control->stats()->magicpoints());
+
+    // Release and tap again: one more, not two.
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(3, count_live_fx(fx.world(), FAMILY_BOMB))
+        << "a second tap is again exactly one cast";
+    ASSERT_EQ(195.0f, control->stats()->magicpoints());
 }
 
 // --- #223 path 2: the cheat team-hop cycle. handle_cheat_keys itself is

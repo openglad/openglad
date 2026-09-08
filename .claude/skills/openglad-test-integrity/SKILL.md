@@ -119,7 +119,8 @@ commits. Verify: `git -C <companion> log --oneline <baseline>..HEAD` and
 confirm every entry touches only tools/parity_*. A matching
 `git merge-base` is NOT sufficient proof — never quote it as such.
 `tests/parity/scenario_table.h` and the companion copy must be
-byte-identical (`cmp`) before any recapture. "All N goldens matched
+byte-identical (`cmp`) before any recapture. A hand-edited golden fails the
+byte compare; an edited golden is never a way to green. "All N goldens matched
 after rebasing to a different baseline" is a red flag to investigate,
 never a success report.
 

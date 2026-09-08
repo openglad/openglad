@@ -2,8 +2,14 @@
 # Phase 02 mutation canary — for each scenario, apply the spec's
 # discriminating_mutation, rebuild og_test_parity / parity_runner_smoke,
 # diff per-predicate evaluation pre vs post, and assert at least one
-# predicate (or the scenario's gtest pass/fail) flipped. Restore the
-# worktree on every exit path.
+# PREDICATE flipped. Restore the worktree on every exit path.
+#
+# Predicate flips and the gtest verdict are counted SEPARATELY, and the
+# predicates are the oracle. Since #283 the SemanticParity gtest byte-compares
+# the canonical dump against the golden, so any mutation that moves a single
+# byte of the dump reds the row for free — a row whose own facts are inert
+# would otherwise read as guarded. Such a row is reported as
+# PREDICATE-TOOTHLESS and fails the run exactly like a row that flips nothing.
 #
 # Usage:
 #   run_mutation_canary.sh --scenario <id>
@@ -12,7 +18,8 @@
 #
 # Modes are mutually exclusive. The script refuses to start with a dirty
 # worktree, refuses to mutate files under ../openglad-master/ or
-# tests/parity/, and exits non-zero if any scenario records zero flips.
+# tests/parity/, and exits non-zero if any scenario records zero PREDICATE
+# flips — whether or not its gtest flipped.
 #
 # A pin whose from-text repeats in its file carries a context_before, which
 # travels with the other fields to _apply_mutation.py: the applier exits 8
@@ -236,9 +243,12 @@ capture_gtest() {
     fi
 }
 
-# Diff two --evaluate-facts JSON dumps and the two gtest verdicts; count
-# any flip (per-predicate ok delta or gtest delta) and print
-# "<flips>\t<details>" so the caller can decide pass/fail.
+# Diff two --evaluate-facts JSON dumps and the two gtest verdicts, and print
+# "<predicate_flips>\t<gtest_flip 0|1>\t<details>" so the caller can decide
+# pass/fail. The two counts stay apart on purpose: the gtest verdict of a
+# SemanticParity row includes the #283 golden byte compare, which flips on any
+# perturbation of the dump and therefore says nothing about the row's own
+# facts.
 diff_eval() {
     local pre_eval="$1"
     local post_eval="$2"
@@ -263,10 +273,12 @@ for i in indexes:
         continue
     if a["ok"] != b["ok"]:
         flips.append(f"#{i}={a['kind']}({a['ok']}->{b['ok']})")
+pred_flips = len(flips)
 gtest_flip = pre_gtest != post_gtest
 if gtest_flip:
     flips.append(f"gtest({pre_gtest}->{post_gtest})")
-print(f"{len(flips)}\t{','.join(flips) if flips else '-'}")
+print(f"{pred_flips}\t{1 if gtest_flip else 0}\t"
+      f"{','.join(flips) if flips else '-'}")
 PY
 }
 
@@ -327,6 +339,11 @@ TMPDIR_CANARY="$(mktemp -d -t parity_canary.XXXXXX)"
 declare -i total_processed=0
 declare -i total_zero_flips=0
 declare -a zero_flip_log=()
+# Rows whose facts did not move but whose gtest did: since #283 that gtest is a
+# byte compare against the golden, so these rows are red-under-mutation for
+# free and their own predicates guard nothing.
+declare -i total_pred_toothless=0
+declare -a pred_toothless_log=()
 
 echo "canary: processing ${#scenarios[@]} scenarios under preset=${PRESET}"
 
@@ -402,24 +419,40 @@ for sid in "${scenarios[@]}"; do
     rebuild_targets
 
     diff_line="$(diff_eval "${pre_eval}" "${post_eval}" "${pre_gtest}" "${post_gtest}")"
-    flips="${diff_line%%$'\t'*}"
-    detail="${diff_line#*$'\t'}"
-    echo "  flips=${flips}  detail=${detail}"
-    if (( flips == 0 )); then
+    IFS=$'\t' read -r pred_flips gtest_flip detail <<< "${diff_line}"
+    echo "  predicate_flips=${pred_flips}  gtest_flip=${gtest_flip}  detail=${detail}"
+    if (( pred_flips == 0 && gtest_flip == 0 )); then
         total_zero_flips+=1
         zero_flip_log+=("${sid}: 0 flips (mutation = ${mut_file}:${mut_line})")
+    elif (( pred_flips == 0 )); then
+        total_pred_toothless+=1
+        pred_toothless_log+=("${sid}: 0 predicate flips, gtest only (mutation = ${mut_file}:${mut_line})")
     fi
 done
 
 echo
-echo "canary: processed ${total_processed} scenarios, ${total_zero_flips} with zero flips"
+echo "canary: processed ${total_processed} scenarios, ${total_zero_flips} with zero flips, ${total_pred_toothless} predicate-toothless"
+
+declare -i canary_rc=0
 
 if (( total_zero_flips > 0 )); then
-    echo "canary: FAIL — scenarios with zero flips:" >&2
+    echo "canary: FAIL — scenarios with zero flips (nothing moved at all):" >&2
     for entry in "${zero_flip_log[@]}"; do
         echo "  - ${entry}" >&2
     done
-    exit 1
+    canary_rc=1
 fi
 
-echo "canary: OK — every scenario flipped at least one predicate"
+if (( total_pred_toothless > 0 )); then
+    echo "canary: PREDICATE-TOOTHLESS (carried by the byte compare only) — the mutation moves the dump, so the #283 golden byte compare reds the row, but not one of the row's own facts changed verdict. Retune a fact to read the consequence (an exact ScoreDelta / count / hp is usually the cheapest discriminator):" >&2
+    for entry in "${pred_toothless_log[@]}"; do
+        echo "  - ${entry}" >&2
+    done
+    canary_rc=1
+fi
+
+if (( canary_rc != 0 )); then
+    exit "${canary_rc}"
+fi
+
+echo "canary: OK — every scenario flipped at least one predicate of its own"

@@ -14,7 +14,8 @@ WHICH merge base is per-row, and every row's last cell names the one it was
 actually judged against: `05eaaa23` for the wave adjudicated before this branch
 was rebased, `18adcafd` for the rows added after the rebase. The two are
 different trees and a verdict from one is not a verdict from the other, so a
-re-adjudication has to say which it used.
+re-adjudication has to say which it used. The golden byte-compare wave below
+was judged against `81bd6036`.
 
 | id | fields differing from the companion capture | suspected master-era cause |
 |---|---|---|
@@ -214,6 +215,10 @@ row. The old golden is kept (the row stays green: its facts hold on both
 sides and the tracks are equal) and the row is reported for adjudication
 rather than blessed from either arm.
 
+**→ Resolved 2026-09-08**, see "Golden byte-compare (2026-09-08)" below: the
+residual was a port regression in `packs/core/lib/effect_chain.lua`, fixed on the
+branch; the golden is now a plain companion capture.
+
 **Redesigned facts.** `weapon_bone_emission_scen99`: the caster SKELETON used
 to end on exactly 1 hp (the old clamp's one-point floor kept it alive); under
 the expectation it dies at tick 130, so `WalkerFamilyCount(FAMILY_SKELETON,
@@ -246,7 +251,7 @@ the skeleton dies at tick 52 instead of 60, one CLANG fewer, so the
 | `effect_bomb_emission_scen99` | companion capture (`268097e1`) | gate-red | pos: SOLDIER; events 15->13; rng_state; weapon_tracks | — |
 | `effect_boomerang_contact_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 103->98, TOWER1 41->37; score [93, 0, 0, 0]->[97, 0, 0, 0]; events 17->16; rng_state; weapon_tracks; weapons 3->2 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4000, 4200)` -> `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3600, 3800)`; label text updated |
 | `effect_boomerang_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SOLDIER 111->109 | — |
-| `effect_chain_emission_scen99` | **not blessed** — old golden kept | gate-green (hp not pinned) | hp: ARCHMAGE 73->66, SOLDIER 37->36; score [496, 0, 0, 0]->[500, 0, 0, 0]; events: score_change.bx2 | — |
+| `effect_chain_emission_scen99` | **not blessed** — old golden kept → resolved 2026-09-08, see "Golden byte-compare" | gate-green (hp not pinned) | hp: ARCHMAGE 73->66, SOLDIER 37->36; score [496, 0, 0, 0]->[500, 0, 0, 0]; events: score_change.bx2 | — |
 | `effect_chain_fork_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: ARCHMAGE 116->113; score [281, 0, 0, 0]->[282, 0, 0, 0]; events: score_change.bx1 | — |
 | `effect_chain_scen9410` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: MAGE 87->86 | — |
 | `effect_cloud_emission_scen99` | companion capture (`268097e1`) | gate-red | hp: THIEF 60->57 | `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6000, 6000)` -> `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5700, 5700)` |
@@ -365,6 +370,91 @@ the skeleton dies at tick 52 instead of 60, one CLANG fewer, so the
 | `weapon_wave2_emission_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 51->36 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 9000)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7500)` |
 | `weapon_wave_promote_wave2_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: MAGE 85->84 | — |
 
+## Golden byte-compare (2026-09-08)
+
+**The change.** Issue #283. `og_test_parity`'s SemanticParity contract now requires
+the canonical branch dump to equal the committed golden byte for byte
+(`tests/parity/golden_compare.h`, the one compare both `CompareMode` arms call), in
+addition to the facts holding on both dumps. The hand-rolled `weapon_tracks` loop is
+gone (subsumed). There is no waiver: a row that cannot match is re-blessed from the
+branch with a row in this file, or the branch is fixed. `scripts/parity/diff_dumps.py`
+is the triage tool (categorised first divergence); it decides nothing.
+
+**Procedure.** (1) Compare landed with `effect_chain.lua` and every golden
+untouched: red on exactly one row, `effect_chain_emission_scen99` (byte 756,
+`events[9].b`, branch 114 vs golden 113), green on the other 219 — the corpus was
+already byte-clean (`cmp` on all 220 recon dumps). (2) Bisect: the chain fork's
+damage cut is `Sint32 generic = (damage)/2` in classic (`effect.cpp:429`, unchanged
+since the import); the branch's `og.fmul` kept the fraction (from `dc1a2a89`, carried
+into Lua), so third-generation bolts carried 27.5 vs 27 — invisible under the old
+truncating hit, exposed by #282's nearest-point rounding. Fixed on the branch with
+`og.trunc`; `docs/GAMEPLAY_FIXES_FROM_CLASSIC.md` row "Chain lightning fork damage
+kept a fractional half point". With the Lua fixed and the golden still old the row was
+still red with the identical message (same byte 756, same two 96-byte windows) — the
+residual was the stale golden; `diff_dumps.py`'s count dropped from 5 fields to 3.
+(3) Blast radius on all 220 rows: one moved. (4) Table consistency: the companion
+table was re-synced byte-identical to `tests/parity/scenario_table.h` (companion
+commit `e9e1f051`, recorder-only — `tools/parity_scenario_table.h` and nothing else),
+the dumper's stale objects deleted and the dumper rebuilt; `--list` still prints 221
+ids and every SemanticParity non-internal id in the branch manifest is present. (The
+`bomb_l10_vs_cleric_l9_scen99` row landed after this paragraph was written and was
+mirrored the same way in a second recorder-only companion commit, `d49b16c9`; the
+companion `--list` prints 222 from there on.) Four
+control captures (`combat_attack_scen99`, `weapon_knife_emission_scen99`,
+`effect_chain_fork_scen99`, `effect_chain_emission_scen99`) taken before and after
+the sync are `diff -rq`-identical, so the sync moved nothing. (5) Source rule as in
+the armor-roll wave; merge base `81bd6036`. Companion HEAD before the sync `8d98597e`
+(= `268097e1` + one comment-only commit).
+
+**Counts.** 1 golden from the companion capture, 0 re-blessed from the branch dump.
+Plus, later on the same branch, 1 NEW golden for the `bomb_l10_vs_cleric_l9_scen99`
+scenario (#228): a raw companion capture at `d49b16c9`, byte-identical to the branch
+dump, blessing nothing — a new row, not a moved one.
+
+| id | new golden source | gate | what moved (old golden -> new) | facts retuned |
+|---|---|---|---|---|
+| `effect_chain_emission_scen99` | companion capture (`e9e1f051`) | gate-red (byte 756, `events[9].b`) | hp: ARCHMAGE 73->66, SOLDIER 37->37 (branch read 36 before the Lua fix); score [496, 0, 0, 0]->[497, 0, 0, 0]; events: score_change.b x2 (113->114, 202->202; branch read 205 before the fix) | yes, afterwards — see "Predicate teeth after the byte compare" |
+
+## Predicate teeth after the byte compare (2026-09-08)
+
+Byte-comparing the canonical dump (above) has a side effect on the mutation
+canary: the per-name `Parity.<id>` gtest now reds whenever a mutation moves ANY
+byte of the dump, so a row whose own facts are inert still shows a gtest flip
+and used to be counted as guarded. `scripts/parity/run_mutation_canary.sh` now
+counts predicate flips and the gtest verdict separately and fails a row with
+zero PREDICATE flips (`canary: PREDICATE-TOOTHLESS`), so the debt is visible
+instead of hidden behind the bytes.
+
+Measured on the full `--all` run of 222 rows: **11 rows** flipped the gtest and
+nothing else. Retuned here, each verified by staging the pin into
+`build/ci-test/packs` and re-running `parity_runner_smoke --evaluate-facts`.
+No golden moved — facts and comments are not in the dump — and the companion
+table was re-synced byte-identically in recorder-only commit `3f6e3cbd`, with
+five control captures identical before and after:
+
+| row | dead fact | replaced by (measured golden -> mutated) |
+|---|---|---|
+| `effect_chain_emission_scen99` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 11900)` — the archmage's own melee leaves a soldier at 11500 cents under the mutation, inside the window | exact survivor hp 3700; exact `ScoreDelta(0, 497, 497)` -> 0; exact `EventKindExactly(play_sound, 13)` -> 6 |
+| `effect_bomb_emission_scen99` | `EventKindAtLeast(play_sound, 12)` — the mutated run has 14, above the floor (the comment claiming 11 and "two bombs detonate" was wrong on both counts; the golden has one detonation) | `EventKindExactly(play_sound, 13)` -> 14 |
+| `bomb_l10_vs_cleric_l9_scen99` | `EventKindAtLeast(play_sound, 1)` — the tick-10 melee CLANG predates the cast, so the floor held with no blast at all | `EventKindExactly(play_sound, 4)` -> 3 (this row already had two flipping facts; the floor was the vacuous one) |
+
+The remaining **9** are open debt, listed here so the follow-up wave has the
+measurement rather than a re-run: `treasure_stain_pickup_scen99`,
+`treasure_life_gem_pickup_scen99`, `effect_flash_emission_scen99`,
+`effect_magic_shield_emission_scen99`, `effect_knife_back_emission_scen99`,
+`effect_boomerang_emission_scen99`, `special_skeleton_1_scen99`,
+`special_barbarian_2_scen99`, `weapon_rock_slot2_emit_scen99`. Each moves its
+dump (so the gate does hold them) but not one of its own facts; the cheapest
+discriminators visible in the measured pairs are an exact hp pin
+(`treasure_stain_pickup_scen99`: FAERIE 1700 cents vs 7494200 under the pin), an
+exact event count, and the trajectory predicates for the three
+position-only movers (`effect_magic_shield_emission_scen99`,
+`effect_boomerang_emission_scen99`, `weapon_rock_slot2_emit_scen99`, whose
+mutations move only track coordinates and `rng_state`). Until they are retuned,
+`run_mutation_canary.sh --all` exits 1 with those nine under the
+PREDICATE-TOOTHLESS heading; the number that must stay at zero unconditionally
+is the "zero flips" tally above it.
+
 ## Removed goldens
 
 `snapshot_dirty_bits_scen9301.json` — deleted. Nothing read it. The row is
@@ -375,5 +465,18 @@ captures `SemanticParity && !is_branch_internal` only), and the other four
 branch-internal rows carry no golden at all — that is the contract, and this
 file was the exception nobody chose. It had not changed since #106
 (`de9d02b2`), and the merge base reproduces the branch byte-for-byte, so
-nothing was blessed away by removing it. The every-golden sweep is now
-221 files against the 221 master-comparable rows, with no leftover to explain.
+nothing was blessed away by removing it.
+
+`smoke_empty_scen99.json` — deleted 2026-09-08, under the same rule. The row is
+`CompareMode::Invariant` (though not branch-internal), so `run_one_scenario`
+returns after the two-captures-agree check and its facts, without ever reading a
+golden, and `capture_master_golden.sh` skips it as SemanticParity-only. The file
+on disk was byte-identical to both the branch dump and a fresh companion capture,
+so nothing was blessed away; it simply had no reader. Promoting the row to a
+byte-compared mode instead was not available: `lint_scenario_facts.py` rule (b)
+requires a non-`TickReached` fact on every `ByteEqual` / `SemanticParity` row, and
+an arena with no walkers, effects, events or score has nothing else to assert.
+
+The every-golden sweep is now 221 files against the 221 SemanticParity rows that
+byte-compare against them (222 master-comparable rows, the 222nd being the
+Invariant `smoke_empty_scen99`), with no leftover to explain.

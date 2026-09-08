@@ -66,11 +66,11 @@ void emit_throttled_cue(SimInputDebounce& debounce, short player_num,
 // player never pressed again, so ScriptDeclined stays silent there — the
 // running special IS the answer.
 //
-// cast_succeeded latches a success for this seat's tick. The press and the
-// held arm both run on the frame the key goes down, so a working cast is
-// immediately followed by a second one into the cooldown it just set; that
-// second refusal may not call the first cast a failure. Every failure cue
-// below the latch is dropped for the rest of the tick.
+// cast_succeeded latches a success for this seat's tick. More than one cast
+// arm can run in a tick (the touch build's shifter-press cast beside the
+// press arm; until #228 the held arm ran on the press frame too), and a
+// refusal that follows a working cast may not call that cast a failure.
+// Every failure cue below the latch is dropped for the rest of the tick.
 bool player_cast_special(walker* control, SimInputDebounce& debounce,
                          short player_num, og::sim::SimEventLog* sim_events,
                          bool press_edge, bool& cast_succeeded)
@@ -470,7 +470,14 @@ SimInputResult sim_process_player_input(
             control->init_fire();
 
         // Holding Special key for rapid use (MP cost naturally rate-limits)
-        if (pi.is_held(InputAction::Special))
+        // #228: the held arm yields the tick the press arm ran on. pressed is
+        // held && !was_held, so both were true on the key-down frame and a
+        // special with no busy latch of its own (the thief's bomb, the elf's
+        // volleys, starburst, scare) fired twice per tap. The 2002 game polled
+        // the held key alone, once per cycle; one tap is one cast, and holding
+        // fires once per tick from the next tick on.
+        if (pi.is_held(InputAction::Special) &&
+            !pi.was_pressed(InputAction::Special))
             player_cast_special(control, debounce, player_num, sim_events, false,
                                 cast_succeeded);
 

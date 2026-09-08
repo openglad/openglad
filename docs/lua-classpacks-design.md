@@ -110,7 +110,9 @@ returns the widened result. Chains keep per-op float rounding this way.
 `og.i32(x)` to reproduce the wrap at exactly the sites the C++ narrowed, and
 `og.trunc(x)` for `static_cast<int32>(float)` (truncation toward zero).
 Field setters additionally clamp/wrap to the underlying field type, matching
-the C++ member types.
+the C++ member types. The chain fork (`effect_chain.lua`) is the worked
+example: `og.fmul` reproduces master's *arithmetic*, and because master then
+stores the result in a `Sint32`, the port needs `og.trunc` at that site.
 
 The walker property layer inherits this rule for free: `self.hp = v`,
 `self.team = v`, `self.busy = v`, … route through the SAME registered

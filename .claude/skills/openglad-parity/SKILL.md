@@ -28,8 +28,10 @@ against a non-deterministic reference.
   from the main tree when setting up a worktree.
 - `./build/ci-test/parity_runner_smoke --scenario <id> --out <file>`
   prints the canonical branch StateDump JSON; `--evaluate-facts` runs the
-  predicates. `scripts/parity/diff_dumps.py <dump> tests/parity/golden/<id>.json`
-  (exit 0 = semantic match) is the authoritative branch-vs-golden check.
+  predicates. The gate's own byte compare (`tests/parity/golden_compare.h`) is
+  authoritative; `scripts/parity/diff_dumps.py <dump>
+  tests/parity/golden/<id>.json` (exit 0 = no field differs) is the triage tool
+  that categorises the first divergence for a human and decides nothing.
   The smoke tool exits **3 and writes nothing** when the level did not load
   (broken campaign mount / PhysFS search path) — it used to exit 0 with a
   valid-looking empty-arena dump that disagreed with every golden. It also
@@ -71,8 +73,24 @@ PKG_CONFIG_PATH, and the `.pc` files live in the `.dev` outputs).
 - Capturing the same ids into two directories before and after a
   companion edit and `diff -rq`-ing them is the cheap proof that a
   companion change moves nothing.
+- Sync status: the two tables were made byte-identical again on
+  2026-09-08 in three recorder-only companion commits — `e9e1f051` for the
+  #283 golden byte-compare wave (`--list` 221, four control captures
+  `diff -rq`-identical before and after), `d49b16c9` for the #228
+  `bomb_l10_vs_cleric_l9_scen99` row, after which `--list` prints **222**,
+  and `3f6e3cbd` for the review pass's fact retunes (five control captures
+  identical before and after; facts and comments never reach the dumper).
+  The branch table compiles in the companion unchanged.
+- `pkg-config` is not on the bare PATH here: run the companion build
+  inside `nix develop /home/yans/code/openglad -c bash -c '...'` with the
+  SDL2 `PKG_CONFIG_PATH` exported inside that shell, or the script exits
+  with "Missing dependencies. Install libsdl2-dev".
 
 ## Goldens and the drift ledger
+
+The SemanticParity arm byte-compares the canonical branch dump against the
+golden; there is no waiver — a row that cannot match is re-blessed with a
+ledger row or the branch is fixed.
 
 `tests/parity/golden/DRIFT_LEDGER.md` is the authoritative record of every
 golden that deliberately diverges from the raw companion capture:
@@ -118,10 +136,21 @@ hostile TOWER1 to hold `level_done=0`).
 from/to swap to real source, rebuilds, and requires ≥1 predicate flip.
 It is NOT in CI — CI only validates that pin files/lines exist. Facts:
 
-- `--all` exits 1 by design: the `CompareMode::Invariant` rows
-  (`smoke_empty_scen99`, `snapshot_dirty_bits_scen9301`) have no
-  discriminating mutation. The number that matters is GENUINE toothless
-  (`grep -c '0 flips'`), which must be 0.
+- Predicate flips and the gtest verdict are counted SEPARATELY, and the
+  predicates are the oracle. Since #283 the SemanticParity gtest
+  byte-compares the dump against the golden, so every mutation that moves
+  a byte reds the row for free; counting that as a flip would mark a row
+  guarded when its own facts are inert. The run prints
+  `predicate_flips=N gtest_flip=0|1` per row and two tallies: rows with
+  ZERO flips of any kind (`0 flips`, which must be 0, always) and rows
+  with zero PREDICATE flips (`PREDICATE-TOOTHLESS`, carried by the byte
+  compare only). Both fail the run.
+- `--all` exits 1 today on the nine PREDICATE-TOOTHLESS rows measured on
+  2026-09-08 and listed in `tests/parity/golden/DRIFT_LEDGER.md`
+  ("Predicate teeth after the byte compare") — open debt, and that list
+  may only shrink. Every row flips something, `smoke_empty_scen99`
+  included (its `TickReached(1)` is evaluated inside the Invariant arm's
+  gtest as well as by `--evaluate-facts`).
 - The canary restores files via `git checkout --` and will DESTROY
   uncommitted changes in mutated files. On a dirty tree, drive mutations
   by hand: back up bytes → `_apply_mutation.py` → rebuild → gtest filter
