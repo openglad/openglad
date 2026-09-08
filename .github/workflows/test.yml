@@ -22,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-node@v7
@@ -60,7 +61,16 @@ jobs:
         # step against the ../openglad-master companion; see
         # .claude/skills/openglad-parity/SKILL.md `## Running it` and
         # scripts/parity/capture_master_golden.sh.
-        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 420 --repeat until-pass:3
+        #
+        # OG_EXPECT_VERSION_MINOR arms og_unit_core's Version.minor_matches_history:
+        # it asserts the version stamped into the binary equals the commit count of
+        # this checkout, so a checkout that ever loses its full history (a
+        # shallow clone stamps the "unknown history" version 2.0) fails here
+        # instead of shipping a build whose menu lies about which commit it is.
+        run: |
+          OG_EXPECT_VERSION_MINOR="$(git rev-list --count HEAD)"
+          export OG_EXPECT_VERSION_MINOR
+          ctest --test-dir build/ci-test --parallel "$(nproc)" --output-on-failure --timeout 420 --repeat until-pass:3
 
       - name: Verify ncurses client built and its tests ran
         # The curses targets are gated on finding ncurses at configure time, so a
@@ -91,6 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Install dependencies
         run: |
@@ -117,6 +128,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Install dependencies
         run: |
@@ -154,6 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Install dependencies
         run: |
@@ -210,6 +223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Install dependencies
         run: |
@@ -239,6 +253,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Install dependencies
         run: |

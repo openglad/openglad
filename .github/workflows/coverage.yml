@@ -23,12 +23,14 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout PR head ref
         if: ${{ github.event_name == 'pull_request' }}
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v7

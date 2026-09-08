@@ -1,59 +1,96 @@
-name: Nightly Release
+name: Release
+
+# One GitHub release per master commit, named for the version the build stamps
+# on its own main menu: 2.<commit count> (see cmake/OpenGladVersion.cmake).
+#
+# Trigger chain: a push to master runs "WASM E2E Tests" (wasm-e2e.yml), which
+# validates the web build, archives it at https://v2-<count>.openglad.pages.dev
+# and deploys production. Only when that run concludes successfully does this
+# file wake up (workflow_run) and cut the release, so a release tag never names
+# a commit whose web build failed. Because workflow_run always runs the copy of
+# this file that is on master, edits here take effect after they merge — a pull
+# request can only validate the three-platform build matrix (the `pull_request`
+# trigger below), never cut a release.
+#
+# History: this file was .github/workflows/nightly.yml, a 2am cron that
+# rewrote a rolling prerelease tag and ran its own relay/web deploys as a
+# backstop. Per-commit releases replaced the cadence (#253) and wasm-e2e.yml
+# is now the single deployer (one deployer, one /versions generator).
 
 on:
-  schedule:
-    - cron: '0 2 * * *'   # Daily at 2am UTC
-  workflow_dispatch:        # Allow manual trigger
+  workflow_run:
+    workflows: ["WASM E2E Tests"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:        # Manual re-release of the current master tip
   pull_request:             # Validate multi-platform builds on PRs
 
 permissions:
   contents: read
 
+# Releases are cut in commit order, never cancelled: a burst of master pushes
+# queues instead of dropping the middle commits' releases.
+concurrency:
+  group: release-master
+  cancel-in-progress: false
+
 jobs:
-  # ── Check whether there are new commits since last successful nightly ──
-  check-new-commits:
-    if: github.event_name != 'pull_request'
+  # ── Resolve the commit being released and its version ─────────────────
+  meta:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     outputs:
-      has_new_commits: ${{ steps.check.outputs.has_new_commits }}
-      sha_short: ${{ steps.check.outputs.sha_short }}
+      sha: ${{ steps.v.outputs.sha }}
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      alias: ${{ steps.v.outputs.alias }}
+      already_released: ${{ steps.v.outputs.already_released }}
     steps:
       - uses: actions/checkout@v7
         with:
+          # The commit whose web build just passed — not the master tip, which
+          # may already have moved on while this run was queued.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Get current HEAD SHA
-        id: sha
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore last successful nightly SHA
-        id: cache
-        uses: actions/cache/restore@v6
-        with:
-          path: .nightly-last-sha
-          key: nightly-last-sha-${{ steps.sha.outputs.sha }}
-          restore-keys: nightly-last-sha-
-
-      - name: Compare commits
-        id: check
+      - name: Resolve version
+        id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sha_short="$(git rev-parse --short HEAD)"
-          echo "sha_short=$sha_short" >> "$GITHUB_OUTPUT"
-          if [ -f .nightly-last-sha ] && [ "$(cat .nightly-last-sha)" = "${{ steps.sha.outputs.sha }}" ]; then
-            echo "No new commits since last nightly – skipping."
-            echo "has_new_commits=false" >> "$GITHUB_OUTPUT"
+          sha="$(git rev-parse HEAD)"
+          count="$(git rev-list --count HEAD)"
+          # A shallow checkout would compute a small, wrong commit count and
+          # tag a release that no build could ever match. Refuse instead.
+          [ "$(git rev-parse --is-shallow-repository)" = "false" ] || { echo "::error::shallow checkout"; exit 1; }
+          {
+            echo "sha=$sha"
+            echo "version=2.$count"
+            echo "tag=v2.$count"
+            echo "alias=v2-$count"
+          } >> "$GITHUB_OUTPUT"
+          # Idempotent: a re-run (or a manual dispatch on an already released
+          # commit) must not try to recreate an existing tag.
+          if gh release view "v2.$count" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v2.$count is already released."
+            echo "already_released=true" >> "$GITHUB_OUTPUT"
           else
-            echo "New commits detected – proceeding with nightly build."
-            echo "has_new_commits=true" >> "$GITHUB_OUTPUT"
+            echo "already_released=false" >> "$GITHUB_OUTPUT"
           fi
 
   # ── Multi-platform native builds ──────────────────────────────────────
   build:
-    needs: check-new-commits
+    needs: [meta]
     if: >-
       always() &&
       (github.event_name == 'pull_request' ||
-       needs.check-new-commits.outputs.has_new_commits == 'true')
+       (needs.meta.result == 'success' &&
+        needs.meta.outputs.already_released == 'false'))
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +112,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.meta.outputs.sha || github.sha }}
+          # Full history: the build stamps 2.$(git rev-list --count HEAD) into
+          # the binaries, and the Linux package step asserts that stamp.
+          fetch-depth: 0
           persist-credentials: false
       # ── Install dependencies ──
 
@@ -96,7 +137,7 @@ jobs:
       - uses: hendrikmuhs/ccache-action@v1.2.23
         if: matrix.platform == 'linux'
         with:
-          key: nightly-linux
+          key: release-linux
 
       - name: Install dependencies (macOS)
         if: matrix.platform == 'macos'
@@ -165,6 +206,15 @@ jobs:
           cp build/openglad build/openscen staging/openglad/
           cp -r pix cfg sound staging/openglad/
           # builtin/*.glad are BUILD outputs composed from campaigns/
+          # What lands in build/builtin is exactly what ships, so assert both
+          # sides of that here rather than trusting the compose step: the
+          # dev-only concept campaign must be absent (#240) and a real campaign
+          # must be present (so an empty builtin/ cannot pass the first test).
+          test ! -e build/builtin/concept.glad
+          test -e build/builtin/gladiator.glad
+          # And the binaries must carry this checkout's version, not the "2.0"
+          # of a history-less build — the release is tagged with that number.
+          grep -q "OPENGLAD_VERSION_STRING \"2.$(git rev-list --count HEAD)\"" build/og_git_hash.h
           cp -r build/builtin staging/openglad/
           tar czf "${{ matrix.artifact_name }}.tar.gz" -C staging openglad
 
@@ -200,99 +250,20 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_name }}.${{ matrix.archive_ext }}
 
-  # ── Relay worker deploy ───────────────────────────────────────────────
-  # Deploys relay/ (rooms + cloud-save vault) BEFORE the Pages deploy so a
-  # Durable Object migration is always live before any client that needs
-  # it. Idempotent when nothing changed. Requires CLOUDFLARE_API_TOKEN to
-  # carry the "Workers Scripts: Edit" permission (not just Pages).
-  relay-deploy:
-    needs: check-new-commits
-    if: >-
-      github.event_name != 'pull_request' &&
-      needs.check-new-commits.outputs.has_new_commits == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: relay/package-lock.json
-      - name: Install relay npm dependencies
-        working-directory: relay
-        run: npm ci
-      - name: Deploy relay worker
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: relay
-          command: deploy
-
-  # ── Web build + Cloudflare Pages deploy ───────────────────────────────
-  web-deploy:
-    needs: [check-new-commits, relay-deploy]
-    if: >-
-      github.event_name != 'pull_request' &&
-      needs.check-new-commits.outputs.has_new_commits == 'true' &&
-      needs.relay-deploy.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Setup Emscripten
-        uses: emscripten-core/setup-emsdk@v16
-        with:
-          version: 6.0.3
-
-      - name: Build web target
-        run: |
-          cmake --preset web-emscripten
-          for attempt in 1 2 3; do
-            echo "WASM build attempt ${attempt}/3"
-            if cmake --build --preset web-emscripten --target play -j"$(nproc)"; then
-              exit 0
-            fi
-            if [ "${attempt}" -lt 3 ]; then
-              echo "Build failed. Clearing Emscripten ports cache and retrying..."
-              emcc --clear-ports
-              sleep 10
-            fi
-          done
-          echo "WASM build failed after 3 attempts."
-          exit 1
-
-      - name: Prepare deploy directory
-        run: |
-          cp web/index.html web/help.html web/_worker.js dist/
-
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=openglad
-
-  # ── Create / update the nightly GitHub Release ────────────────────────
+  # ── Create the GitHub Release for this master commit ──────────────────
   release:
-    needs: [build, web-deploy, check-new-commits]
+    needs: [meta, build]
     if: >-
-      always() &&
       github.event_name != 'pull_request' &&
-      needs.build.result == 'success' &&
-      needs.web-deploy.result == 'success' &&
-      needs.check-new-commits.outputs.has_new_commits == 'true'
+      needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.meta.outputs.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Download all build artifacts
@@ -300,52 +271,37 @@ jobs:
         with:
           path: artifacts
 
-      - name: Delete previous nightly release
-        run: gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+      - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create nightly release
         run: |
-          DATE="$(date -u '+%Y-%m-%d')"
-          SHA_SHORT="${{ needs.check-new-commits.outputs.sha_short }}"
-          gh release create nightly \
-            artifacts/**/* \
-            --prerelease \
-            --title "Nightly Build (${DATE} @ ${SHA_SHORT})" \
-            --notes "$(cat <<EOF
-          Automated nightly build from \`master\` at \`${{ github.sha }}\`.
+          TAG="${{ needs.meta.outputs.tag }}"
+          VERSION="${{ needs.meta.outputs.version }}"
+          SHA="${{ needs.meta.outputs.sha }}"
+          ALIAS="${{ needs.meta.outputs.alias }}"
+          # The previous full release, so --generate-notes lists only the
+          # commits since it. Empty on the very first run (or if the lookup
+          # fails), which makes --generate-notes fall back to its own default.
+          PREV="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 1 --json tagName -q '.[0].tagName' || true)"
+          cat > notes.md <<EOF
+          Openglad **${VERSION}** — automated release of \`master\` at \`${SHA}\`.
 
-          **Download for your platform:**
           | Platform | File |
-          |----------|------|
+          |---|---|
           | Linux x86_64 | \`openglad-linux-x86_64.tar.gz\` |
           | Windows x86_64 | \`openglad-windows-x86_64.zip\` |
           | macOS ARM64 | \`openglad-macos-arm64.zip\` |
 
-          **Play in your browser:** https://openglad.pages.dev
+          **Play this version in your browser:** https://${ALIAS}.openglad.pages.dev
+          **Latest:** https://openglad.pages.dev · **all versions:** https://openglad.pages.dev/versions/
+
+          The main menu stamps \`v${VERSION}\` and the commit, so a running build can always be matched to this release.
           EOF
-          )"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ── Record successful SHA so we can skip no-change runs ───────────────
-  save-sha:
-    needs: release
-    if: >-
-      always() &&
-      github.event_name != 'pull_request' &&
-      needs.release.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Save successful nightly SHA
-        run: echo "${{ github.sha }}" > .nightly-last-sha
-
-      - uses: actions/cache/save@v6
-        with:
-          path: .nightly-last-sha
-          key: nightly-last-sha-${{ github.sha }}
+          gh release create "$TAG" \
+            artifacts/**/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --latest \
+            --title "Openglad ${VERSION}" \
+            --notes-file notes.md \
+            --generate-notes ${PREV:+--notes-start-tag "$PREV"}
