@@ -6671,6 +6671,67 @@ inline constexpr Mutation kMut_effect_bomb_bystander_scen99 = {
     "Severs the bomb -> explosion damage inheritance. The FAMILY_EXPLOSION still spawns, still emits SOUND_EXPLODE and still shoves, but carries no damage, so get_base_damage(0) leaves the bystander at its full 13000 cents and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 0, ...) fails."
 };
 
+// bomb_l10_vs_cleric_l9_scen99 (#228): a level-10 thief's DROP BOMB against a
+// level-9 cleric standing in melee range. Pins the CASTER LEVEL -> BOMB DAMAGE
+// mapping, which nothing else in the corpus does: bomb_damage(10) = 165 (raw
+// 15*11, below the 210 soften knee so branch == master) lands the full
+// non-friendly tier on the cleric. Every other bomb row fixes the caster level
+// and perturbs the range clamp (effect_explosion_range) or the damage
+// inheritance (effect_bomb_bystander) instead. Analysis: docs/thief-bomb-analysis.md.
+//
+// Harness limits, measured rather than assumed. SpawnSpec carries level and MP
+// but no hitpoints or armor, and apply_post_load_spawns never runs
+// set_difficulty or the `guy` path, so the spawned cleric is the LOADER body:
+// 120 hp and armor 0 (statistics.h:220 never writes armor for a placed
+// walker). It is NOT harmless -- it is an AI with a foe, it closes and melees
+// the thief every ~9 ticks from tick 11 (the FAMILY_HIT tracks at 204,202),
+// and at longer range it fires GLOW. That melee plus the bomb's own quarter
+// tier at tick 73 is what kills the 75-hp loader thief here; a PLAYER level-10
+// thief (229 hp, armor 14) would keep 192..197, and a PLAYER level-9 cleric
+// (340 hp, armor 15) would survive the bomb with 177..188. Neither body is
+// reachable from this harness, which is exactly why the analysis had to be done
+// on paper and this row only pins the level -> damage step of it.
+inline constexpr SpawnSpec kFamilySpawns_bomb_l10_vs_cleric_l9_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },          // far hostile: holds level_done = 0 after the cleric dies so both corpses are reaped. Manhattan 380 from the blast, never fires, never moves
+    { FAMILY_CLERIC, 1, kOrderLiving, 222, 196, 0, 0, 9, 0 },    // level-9 victim on effect_bomb_bystander's tile: Manhattan |222-196|+|196-194| = 28 from the explosion's top-left (196,194), inside reach 55 before it even moves; loader body 120 hp, armor 0
+    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 }, // player-controlled bomb owner LAST; level 10 -> bomb_damage 165 and explosion range clamp(40,16,96) = 40; 300 MP covers the 35-MP cast
+};
+
+inline constexpr FactPredicate kFacts_bomb_l10_vs_cleric_l9_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    // FLIPPING PREDICATE: the caster level -> bomb damage mapping. The cleric
+    // takes no other damage in this arena (the player thief holds only
+    // K_SPECIAL and never fires a weapon), so its death is entirely the blast.
+    pred::WalkerDiedByFinal(FAMILY_CLERIC,
+        "consequence: bomb_damage(10) = 165 rolls 158.58..169.58 through compute_base_damage and lands 159..170 (armor 0, round-half-up) as the full non-friendly tier on the level-9 cleric beside the thief, killing the 120-hp loader body at the tick-73 detonation; the level-1 mutation drops the raw to 30 -> 27..31 landed and the same cleric walks away with ~90 of its 120"),
+    // The caster's own quarter tier (fdiv(165,4) = 41.25 -> 38..43 rolled ->
+    // 32..37 landed) does finish the melee-chipped 75-hp thief at tick 73, but
+    // no fact asserts it: the canary measured a level-1 bomb leaving the cleric
+    // alive to keep meleeing, and its 7 extra ticks of melee kill the thief
+    // anyway, so a WalkerDiedByFinal(FAMILY_THIEF) here is inert. The owner
+    // tier at this exact caster level is pinned, discriminatingly, by
+    // effect_explosion_range_scen99's WalkerHpRangeAtFinalTick(FAMILY_THIEF).
+    // FLIPPING PREDICATE: exact score. The cleric kill is the only scoring
+    // event in the arena (one score_change, tick 73), so a mutated bomb that
+    // leaves the cleric alive yields hit XP only and misses this value.
+    pred::ScoreDelta(/*team*/0, 439, 439,
+        "consequence: team 0's only score event is the tick-73 cleric kill credited to the bomb's owner; the mutation leaves the cleric alive, so the score is the hit XP alone"),
+    // Anchor: the detonation itself fires under every mutation of the damage
+    // number (bomb_on_death emits SOUND_EXPLODE before the blast resolves), so
+    // a play_sound floor separates "no blast" from "a weaker blast".
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "structural: the far hostile at Manhattan 380 bounds the blast -- it must finish at its full 13000 cents, or the reach, not the damage, has moved"),
+};
+
+inline constexpr Mutation kMut_bomb_l10_vs_cleric_l9_scen99 = {
+    "packs/core/families/living-11-thief.lua", 54,
+    "  bomb.damage = og.combat.bomb_damage(self.level)",
+    "  bomb.damage = og.combat.bomb_damage(1)",
+    "Severs the caster-level -> bomb-damage mapping: a level-10 thief arms a level-1 bomb (raw 30, rolled 27..31 landed). The blast still fires, still shoves and still emits SOUND_EXPLODE, but the level-9 cleric survives it, so WalkerDiedByFinal(FAMILY_CLERIC) fails and the exact ScoreDelta fails with it (the surviving cleric yields hit XP only). Measured: 3 flips (both of those predicates plus the gtest byte compare)."
+};
+
 // effect_shield_absorb_scen99: guard_tail's foe arm
 // (packs/core/lib/effect_shield.lua:36-44, master effect.cpp:155-168)
 // attacks every foe within the guard's sizex and drains the guard by that foe's
@@ -9508,6 +9569,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_effect_bomb_bystander_scen99, std::size(kFacts_effect_bomb_bystander_scen99),
       kMut_effect_bomb_bystander_scen99 },
+
+    { "bomb_l10_vs_cleric_l9_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_bomb_l10_vs_cleric_l9_scen99, std::size(kFamilySpawns_bomb_l10_vs_cleric_l9_scen99),
+      0, false, true, Exercises::None,
+      kFacts_bomb_l10_vs_cleric_l9_scen99, std::size(kFacts_bomb_l10_vs_cleric_l9_scen99),
+      kMut_bomb_l10_vs_cleric_l9_scen99 },
 
     { "effect_shield_absorb_scen99", "scen/scen1.fss", 0x00000042u,
       kInputsMagicShieldNoFire, std::size(kInputsMagicShieldNoFire), 45,
