@@ -579,15 +579,22 @@ endif()
 # --------------------------------------------------------------------------
 # Built-in campaign archives (.glad): deterministic build outputs
 # --------------------------------------------------------------------------
-# The eight shipped campaigns are committed as SOURCE TREES under
-# campaigns/<id>/ (campaign.yaml, scen/, pix/, and — for pack-bearing
-# campaigns — packs/<pack-id>/). The .glad zip the game mounts is composed
-# here, at build time, by scripts/make_glad.py — a deterministic writer
-# (stored members, bytewise-sorted paths, fixed timestamps), so two builds
-# of the same tree produce byte-identical archives and every campaign
-# change reviews as a plain file diff. The tree mirrors the archive 1:1:
-# one root per campaign, no path remapping (the per-campaign README.md is
-# repo documentation and is the one file make_glad.py excludes).
+# The campaigns are committed as SOURCE TREES under campaigns/<id>/
+# (campaign.yaml, scen/, pix/, and — for pack-bearing campaigns —
+# packs/<pack-id>/). The .glad zip the game mounts is composed here, at
+# build time, by scripts/make_glad.py — a deterministic writer (stored
+# members, bytewise-sorted paths, fixed timestamps), so two builds of the
+# same tree produce byte-identical archives and every campaign change
+# reviews as a plain file diff. The tree mirrors the archive 1:1: one root
+# per campaign, no path remapping (the per-campaign README.md is repo
+# documentation and is the one file make_glad.py excludes).
+#
+# The seven SHIPPED campaigns compose into ${CMAKE_BINARY_DIR}/builtin/,
+# which is what gets installed, packaged and preloaded — whatever is in
+# builtin/ ships, and that stays `ls`-auditable. Dev-only campaigns compose
+# into ${CMAKE_BINARY_DIR}/builtin-dev/, which restore_default_campaigns()
+# also scans from a build tree (so tests, media capture and the demo keep
+# working) but nothing installs, packages or preloads (#240).
 #
 # Consumers: stage_runtime_assets hangs off og_builtin_campaigns (native),
 # the emscripten `play` target preloads ${CMAKE_BINARY_DIR}/builtin, and
@@ -612,8 +619,7 @@ add_custom_target(og_git_hash_gen
     COMMENT "Stamping git hash and version"
 )
 
-set(OG_BUILTIN_CAMPAIGN_IDS
-    concept
+set(OG_SHIPPED_CAMPAIGN_IDS
     gladiator
     imaginations
     longseason
@@ -622,15 +628,26 @@ set(OG_BUILTIN_CAMPAIGN_IDS
     tryxian
     westlands
 )
+# tools/concept_mapgen showcase: tests, media capture, demo smoke (#240).
+set(OG_DEV_CAMPAIGN_IDS
+    concept
+)
 # Stamp files decouple ninja's up-to-date tracking from the archive mtime:
 # make_glad.py leaves a byte-identical archive untouched, so an edit that
 # does not change composed bytes never re-triggers the consumers that
 # depend on the archive file (the emscripten preload link, packaging).
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/campaign_stamps")
 set(OG_BUILTIN_CAMPAIGN_STAMPS "")
+# Shipped only: feeds the play target's LINK_DEPENDS.
 set(OG_BUILTIN_CAMPAIGN_ARCHIVES "")
-foreach(og_campaign IN LISTS OG_BUILTIN_CAMPAIGN_IDS)
-    set(og_campaign_glad "${CMAKE_BINARY_DIR}/builtin/${og_campaign}.glad")
+foreach(og_campaign IN LISTS OG_SHIPPED_CAMPAIGN_IDS OG_DEV_CAMPAIGN_IDS)
+    if(og_campaign IN_LIST OG_SHIPPED_CAMPAIGN_IDS)
+        set(og_campaign_dir "builtin")
+    else()
+        set(og_campaign_dir "builtin-dev")
+    endif()
+    set(og_campaign_glad
+        "${CMAKE_BINARY_DIR}/${og_campaign_dir}/${og_campaign}.glad")
     set(og_campaign_stamp
         "${CMAKE_BINARY_DIR}/campaign_stamps/${og_campaign}.stamp")
     set(og_campaign_root "${CMAKE_SOURCE_DIR}/campaigns/${og_campaign}")
@@ -644,12 +661,16 @@ foreach(og_campaign IN LISTS OG_BUILTIN_CAMPAIGN_IDS)
         COMMAND ${CMAKE_COMMAND} -E touch "${og_campaign_stamp}"
         DEPENDS "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
                 ${og_campaign_inputs}
-        COMMENT "Composing builtin/${og_campaign}.glad from campaign sources"
+        COMMENT
+            "Composing ${og_campaign_dir}/${og_campaign}.glad from campaign sources"
         VERBATIM
     )
     list(APPEND OG_BUILTIN_CAMPAIGN_STAMPS "${og_campaign_stamp}")
-    list(APPEND OG_BUILTIN_CAMPAIGN_ARCHIVES "${og_campaign_glad}")
+    if(og_campaign IN_LIST OG_SHIPPED_CAMPAIGN_IDS)
+        list(APPEND OG_BUILTIN_CAMPAIGN_ARCHIVES "${og_campaign_glad}")
+    endif()
 endforeach()
+# Depends on every stamp, dev campaigns included: a build tree holds both.
 add_custom_target(og_builtin_campaigns DEPENDS ${OG_BUILTIN_CAMPAIGN_STAMPS})
 
 include(${CMAKE_SOURCE_DIR}/cmake/OpenGladDependencies.cmake)

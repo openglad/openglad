@@ -38,7 +38,9 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 std::string get_asset_path();
@@ -97,16 +99,26 @@ void collect_archive_members(const std::string& vdir, const std::string& rel,
     }
 }
 
+// Which build directory each composed campaign lands in. builtin/ is the
+// shipped set — whatever is in it is installed, packaged and preloaded —
+// and concept is dev-only, composed into builtin-dev/ for tests, media
+// capture and the demo but never shipped (#240).
+struct ComposedCampaign
+{
+    std::string_view id;
+    std::string_view dir;
+};
+
+constexpr ComposedCampaign kComposedCampaigns[] = {
+    {"gladiator", "builtin"},    {"imaginations", "builtin"},
+    {"longseason", "builtin"},   {"modes", "builtin"},
+    {"tower", "builtin"},        {"tryxian", "builtin"},
+    {"westlands", "builtin"},    {"concept", "builtin-dev"},
+};
+
 TEST(BuiltinArchives, every_member_matches_its_committed_source)
 {
-    const std::vector<std::string> campaign_ids = {
-        "concept",   "gladiator",
-        "imaginations", "longseason",
-        "modes",     "tower",
-        "tryxian",   "westlands",
-    };
-
-    for (const std::string& id : campaign_ids)
+    for (const auto& [id, dir] : kComposedCampaigns)
     {
         SCOPED_TRACE(id);
 
@@ -118,13 +130,13 @@ TEST(BuiltinArchives, every_member_matches_its_committed_source)
         ASSERT_FALSE(expected.empty());
 
         const fs::path archive =
-            fs::path(get_asset_path()) / "builtin" / (id + ".glad");
+            fs::path(get_asset_path()) / dir / (std::string(id) + ".glad");
         ASSERT_TRUE(fs::exists(archive))
             << archive << " missing — the build did not compose it "
             << "(og_builtin_campaigns)";
 
         const std::string mountpoint =
-            std::string("builtin_src_check_") + id;
+            std::string("builtin_src_check_") + std::string(id);
         ASSERT_TRUE(og::resources::mount(archive.string().c_str(),
                                          mountpoint.c_str(), 1))
             << og::resources::filesystem_last_error();
@@ -157,6 +169,41 @@ TEST(BuiltinArchives, every_member_matches_its_committed_source)
 
         EXPECT_TRUE(og::resources::unmount(archive.string().c_str()));
     }
+}
+
+// The shipping invariant, `ls`-auditable in a build tree: builtin/ holds
+// exactly the seven shipped archives and nothing else, and the dev-only
+// campaign sits next door in builtin-dev/ where no install rule, package
+// step or emscripten preload can reach it (#240). A campaign added to
+// OG_SHIPPED_CAMPAIGN_IDS without a decision to ship it fails here.
+TEST(BuiltinArchives, builtin_holds_exactly_the_shipped_campaigns)
+{
+    std::set<std::string> expected;
+    for (const auto& [id, dir] : kComposedCampaigns)
+    {
+        if (dir == "builtin")
+            expected.insert(std::string(id) + ".glad");
+    }
+    ASSERT_EQ(7u, expected.size());
+
+    const fs::path builtin = fs::path(get_asset_path()) / "builtin";
+    ASSERT_TRUE(fs::is_directory(builtin))
+        << builtin << " missing — the build did not compose the campaigns "
+        << "(og_builtin_campaigns)";
+
+    std::set<std::string> actual;
+    for (const auto& entry : fs::directory_iterator(builtin))
+    {
+        if (entry.path().extension() == ".glad")
+            actual.insert(entry.path().filename().string());
+    }
+    EXPECT_EQ(expected, actual)
+        << "builtin/ is what ships; every archive in it reaches players";
+
+    EXPECT_TRUE(fs::exists(fs::path(get_asset_path()) / "builtin-dev" /
+                           "concept.glad"))
+        << "the dev-only concept campaign must still be composed for tests, "
+        << "media capture and the demo";
 }
 
 } // namespace
