@@ -73,6 +73,15 @@ PKG_CONFIG_PATH, and the `.pc` files live in the `.dev` outputs).
 - Capturing the same ids into two directories before and after a
   companion edit and `diff -rq`-ing them is the cheap proof that a
   companion change moves nothing.
+- Sync status: the two tables were made byte-identical again on
+  2026-09-08 (companion commit `e9e1f051`, recorder-only) for the #283
+  golden byte-compare wave; the branch table compiles in the companion
+  unchanged, `--list` prints 221, and four control captures before and
+  after the sync were `diff -rq`-identical.
+- `pkg-config` is not on the bare PATH here: run the companion build
+  inside `nix develop /home/yans/code/openglad -c bash -c '...'` with the
+  SDL2 `PKG_CONFIG_PATH` exported inside that shell, or the script exits
+  with "Missing dependencies. Install libsdl2-dev".
 
 ## Goldens and the drift ledger
 

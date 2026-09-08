@@ -14,7 +14,8 @@ WHICH merge base is per-row, and every row's last cell names the one it was
 actually judged against: `05eaaa23` for the wave adjudicated before this branch
 was rebased, `18adcafd` for the rows added after the rebase. The two are
 different trees and a verdict from one is not a verdict from the other, so a
-re-adjudication has to say which it used.
+re-adjudication has to say which it used. The golden byte-compare wave below
+was judged against `81bd6036`.
 
 | id | fields differing from the companion capture | suspected master-era cause |
 |---|---|---|
@@ -214,6 +215,10 @@ row. The old golden is kept (the row stays green: its facts hold on both
 sides and the tracks are equal) and the row is reported for adjudication
 rather than blessed from either arm.
 
+**→ Resolved 2026-09-08**, see "Golden byte-compare (2026-09-08)" below: the
+residual was a port regression in `packs/core/lib/effect_chain.lua`, fixed on the
+branch; the golden is now a plain companion capture.
+
 **Redesigned facts.** `weapon_bone_emission_scen99`: the caster SKELETON used
 to end on exactly 1 hp (the old clamp's one-point floor kept it alive); under
 the expectation it dies at tick 130, so `WalkerFamilyCount(FAMILY_SKELETON,
@@ -246,7 +251,7 @@ the skeleton dies at tick 52 instead of 60, one CLANG fewer, so the
 | `effect_bomb_emission_scen99` | companion capture (`268097e1`) | gate-red | pos: SOLDIER; events 15->13; rng_state; weapon_tracks | — |
 | `effect_boomerang_contact_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 103->98, TOWER1 41->37; score [93, 0, 0, 0]->[97, 0, 0, 0]; events 17->16; rng_state; weapon_tracks; weapons 3->2 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4000, 4200)` -> `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3600, 3800)`; label text updated |
 | `effect_boomerang_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SOLDIER 111->109 | — |
-| `effect_chain_emission_scen99` | **not blessed** — old golden kept | gate-green (hp not pinned) | hp: ARCHMAGE 73->66, SOLDIER 37->36; score [496, 0, 0, 0]->[500, 0, 0, 0]; events: score_change.bx2 | — |
+| `effect_chain_emission_scen99` | **not blessed** — old golden kept → resolved 2026-09-08, see "Golden byte-compare" | gate-green (hp not pinned) | hp: ARCHMAGE 73->66, SOLDIER 37->36; score [496, 0, 0, 0]->[500, 0, 0, 0]; events: score_change.bx2 | — |
 | `effect_chain_fork_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: ARCHMAGE 116->113; score [281, 0, 0, 0]->[282, 0, 0, 0]; events: score_change.bx1 | — |
 | `effect_chain_scen9410` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: MAGE 87->86 | — |
 | `effect_cloud_emission_scen99` | companion capture (`268097e1`) | gate-red | hp: THIEF 60->57 | `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6000, 6000)` -> `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5700, 5700)` |
@@ -364,6 +369,45 @@ the skeleton dies at tick 52 instead of 60, one CLANG fewer, so the
 | `weapon_tree_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SOLDIER 51->36 | — |
 | `weapon_wave2_emission_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 51->36 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 9000)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7500)` |
 | `weapon_wave_promote_wave2_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: MAGE 85->84 | — |
+
+## Golden byte-compare (2026-09-08)
+
+**The change.** Issue #283. `og_test_parity`'s SemanticParity contract now requires
+the canonical branch dump to equal the committed golden byte for byte
+(`tests/parity/golden_compare.h`, the one compare both `CompareMode` arms call), in
+addition to the facts holding on both dumps. The hand-rolled `weapon_tracks` loop is
+gone (subsumed). There is no waiver: a row that cannot match is re-blessed from the
+branch with a row in this file, or the branch is fixed. `scripts/parity/diff_dumps.py`
+is the triage tool (categorised first divergence); it decides nothing.
+
+**Procedure.** (1) Compare landed with `effect_chain.lua` and every golden
+untouched: red on exactly one row, `effect_chain_emission_scen99` (byte 756,
+`events[9].b`, branch 114 vs golden 113), green on the other 219 — the corpus was
+already byte-clean (`cmp` on all 220 recon dumps). (2) Bisect: the chain fork's
+damage cut is `Sint32 generic = (damage)/2` in classic (`effect.cpp:429`, unchanged
+since the import); the branch's `og.fmul` kept the fraction (from `dc1a2a89`, carried
+into Lua), so third-generation bolts carried 27.5 vs 27 — invisible under the old
+truncating hit, exposed by #282's nearest-point rounding. Fixed on the branch with
+`og.trunc`; `docs/GAMEPLAY_FIXES_FROM_CLASSIC.md` row "Chain lightning fork damage
+kept a fractional half point". With the Lua fixed and the golden still old the row was
+still red with the identical message (same byte 756, same two 96-byte windows) — the
+residual was the stale golden; `diff_dumps.py`'s count dropped from 5 fields to 3.
+(3) Blast radius on all 220 rows: one moved. (4) Table consistency: the companion
+table was re-synced byte-identical to `tests/parity/scenario_table.h` (companion
+commit `e9e1f051`, recorder-only — `tools/parity_scenario_table.h` and nothing else),
+the dumper's stale objects deleted and the dumper rebuilt; `--list` still prints 221
+ids and every SemanticParity non-internal id in the branch manifest is present. Four
+control captures (`combat_attack_scen99`, `weapon_knife_emission_scen99`,
+`effect_chain_fork_scen99`, `effect_chain_emission_scen99`) taken before and after
+the sync are `diff -rq`-identical, so the sync moved nothing. (5) Source rule as in
+the armor-roll wave; merge base `81bd6036`. Companion HEAD before the sync `8d98597e`
+(= `268097e1` + one comment-only commit).
+
+**Counts.** 1 golden from the companion capture, 0 re-blessed from the branch dump.
+
+| id | new golden source | gate | what moved (old golden -> new) | facts retuned |
+|---|---|---|---|---|
+| `effect_chain_emission_scen99` | companion capture (`e9e1f051`) | gate-red (byte 756, `events[9].b`) | hp: ARCHMAGE 73->66, SOLDIER 37->37 (branch read 36 before the Lua fix); score [496, 0, 0, 0]->[497, 0, 0, 0]; events: score_change.b x2 (113->114, 202->202; branch read 205 before the fix) | — |
 
 ## Removed goldens
 

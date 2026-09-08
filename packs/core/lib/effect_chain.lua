@@ -45,9 +45,12 @@ local function on_act(self)
     og.emit_sound(C.SOUND_EXPLODE)
     -- Now make new objects to seek out foes ..
     local t = og.tuning(self)
-    -- shim kept: damage is a C++ float: the fork's damage cut (a tuning
-    -- float, 0.5) rounds through float.
-    local fork_damage = og.fmul(self:damage(), t.fork_damage_mult)
+    -- shim kept: damage is a C++ float, but master STORES the cut in a
+    -- Sint32 (`generic = (damage)/2`, master effect.cpp:429), so the float
+    -- product truncates toward zero before it gates the fork or arms the
+    -- successor bolt. Keeping the fraction made third-generation bolts
+    -- carry 27.5 where classic carries 27.
+    local fork_damage = og.trunc(og.fmul(self:damage(), t.fork_damage_mult))
     local foes, foe_count
     if self:owner():has_guy() then
       -- Int/2 stays a formula: a guy-stat conversion, not a tuning knob.
