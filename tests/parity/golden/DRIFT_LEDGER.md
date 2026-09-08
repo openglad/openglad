@@ -138,10 +138,232 @@ that the golden moved.
 | id | what changed | why | golden captured from |
 |---|---|---|---|
 | `druid_protection_refresh_scen99` | Recasting the druid's slot-4 PROTECTION on a friend who already carries a circle now tops that circle up (50 → 100 hp, one ring in weaplist) instead of summoning a second one (two rings). | `protection_circle`'s top-up arm selected the existing circle by walking `og.oblist()`, mirroring `openglad-master/src/walker.cpp:3813`; summoned weapons live in `weaplist`, so the scan never matched and the arm never ran between the 2002 FSGames import and 2026. Fixed on the user's order: the scan now uses `og.find_in_range("weap", 100, friend)`. | Branch, commit `be57275f6b8e47979c9e278539b15570085c7a2d` ("Fix the druid's protection top-up, dead since the 2002 import"). The companion still stacks, so a companion capture would read `WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1)` = 2 and turn the row's discriminating predicate into a permanent red. |
-| `enemy_freeze_mage_scen99` | The frozen team-1 archer now holds the level open. `level_done` 2 → 0, and the 130 `end_game` + one `set_end` events the old golden carried from tick 20 onward are gone (`events` 140 → 9; the eight `play_sound` and the `set_palette` that make up those nine are unchanged, value for value). Because `GameWorld::tick` no longer short-circuits at `if (game_ended) return;` from tick 20 on, the stale-pointer and dead sweeps keep running: `walkers[]` loses the reaped `FAMILY_HIT` husk (3 → 2) and `weapons[]` loses five spent `FAMILY_FIRE_ARROW` (5 → 0). `rng_state` (`0xA8102E2C`), `score_per_team`, the archer's pinned (200,120) and all 93 `weapon_tracks` samples are byte-identical to the old golden. | `GameWorld::tick`'s freeze branch folded the `level_done` census inside the act gate, so a frozen enemy Living was never counted and the level read as clear for the whole freeze window (#231 — exit prompt mid-fight, kill-all levels completing themselves). The census is hoisted out of the gate; the act gate is unchanged, which is why every trajectory still matches. The companion has the same bug, so a companion capture would restore `level_done` 2. | Branch, commit `8726bbfb` ("Count frozen foes: freeze-time no longer clears the level (#231)"; first landed pre-rebase as `2032b852`). The pre-fix branch dump was a byte-for-byte MATCH with the old companion-captured golden, so this row's divergence is entirely the fix. The row's master side is now BRANCH-SOURCED and is no longer an independent reference: the comparison it supports is branch-vs-itself until a companion carrying the #231 fix recaptures it. To keep the recapture from being pure bookkeeping, `kFacts_enemy_freeze_mage_scen99` gained `LevelDoneEquals(0)` — the row's only fact that reads the field that moved. It fails against the pre-rebaseline golden (`level_done` 2) and against any regression that folds the census back inside the act gate. |
-| `input_special_switch_wrap_scen99` | Same fix, same signature, on a second freeze arena: the special-switch wrap lands on FREEZE TIME and the frozen team-1 soldier now holds the level open. `level_done` 2 → 0, and the 134 `end_game` + one `set_end` the old golden carried from tick 16 onward are gone (`events` 138 → 3; the two `play_sound` and the `set_palette` that remain are unchanged, value for value). With `GameWorld::tick` no longer short-circuiting, the sweeps keep running: `walkers[]` loses a `FAMILY_KNIFE_BACK` and a `FAMILY_HIT` husk (4 → 2) and `weapons[]` loses five spent `FAMILY_KNIFE` (5 → 0). `rng_state` (`0x9563F676`), `score_per_team`, both live walkers' hp and positions and all 13 `weapon_tracks` samples are byte-identical to the old golden. | `GameWorld::tick`'s freeze branch folded the `level_done` census inside the act gate (#231). Fixed by hoisting the census out of the gate; the act gate itself is unchanged, which is why every trajectory still matches. | Branch, commit `8726bbfb` ("Count frozen foes: freeze-time no longer clears the level (#231)"). Adjudicated against this PR's merge base `18adcafd`: the row's dump there matches the old golden, and the branch diverges from it by exactly the #231 signature above, so the divergence is the fix and nothing else. The row's master side is now BRANCH-SOURCED and is no longer an independent reference. `kFacts_input_special_switch_wrap_scen99` gained `LevelDoneEquals(0)`, the only fact here that reads the value that moved; it fails against the pre-rebaseline golden (`level_done` 2). |
-| `special_mage_3_scen99` | Same fix, third freeze arena, but the level_done half of the signature is invisible here: the mage is level 7, so the freeze bank is 20+11*7 = 97 ticks and expires at tick 117, and the census re-counts the team-1 soldier long before the 150-tick budget ends. `level_done` reads 0 at the final tick with the bug as well as without it. What the bug left behind is the tail: the 96 `end_game` + one `set_end` from ticks 20-115 are gone (`events` 104 → 7; the five `play_sound` and two `set_palette` that remain are unchanged, value for value). The resumed sweeps drop three `FAMILY_KNIFE_BACK` and three `FAMILY_HIT` husks (`walkers[]` 8 → 2) and 38 spent `FAMILY_KNIFE` (`weapons[]` 39 → 1). Note that ids RENUMBER as well as the count dropping: the surviving knife is the same knife — team 1 at (157,125), where the old golden had two, ids 40 and 47 — but it now carries id 3, because a sweep that runs again frees ids again and the arena stops burning a fresh one per spent weapon. A diff that reads `id 47 → id 3` here is looking at one knife, not two. `rng_state` (`0x7AA815BE`), `score_per_team`, both live walkers and all 38 `weapon_tracks` samples are byte-identical to the old golden. | `GameWorld::tick`'s freeze branch folded the `level_done` census inside the act gate (#231). Fixed by hoisting the census out of the gate. | Branch, commit `8726bbfb`. Adjudicated against merge base `18adcafd` exactly as the row above. The row's master side is now BRANCH-SOURCED. `LevelDoneEquals(0)` would be a dead fact here — it holds against the pre-rebaseline golden too — so the teeth are `EventKindExactly(end_game, 0)` instead: it reads the half of the signature this arena does show, and fails against the old golden's 96 `end_game`. |
-| `treasure_magic_potion_overfill_scen99` | Same fix, fourth freeze arena — the overfilled mage's 152-tick FREEZE TIME pins a team-1 archer, and the archer now holds the level open. `level_done` 2 → 0, and the 130 `end_game` + one `set_end` from tick 20 onward are gone (`events` 141 → 10; the eight `play_sound`, the `notification` and the `set_palette` that remain are unchanged, value for value). The resumed sweeps drop the reaped `FAMILY_HIT` husk (`walkers[]` 3 → 2) and five spent `FAMILY_FIRE_ARROW` (`weapons[]` 5 → 0). `rng_state` (`0xA8102E2C`), `score_per_team`, the archer's pinned (200,120) and all 93 `weapon_tracks` samples are byte-identical to the old golden. | `GameWorld::tick`'s freeze branch folded the `level_done` census inside the act gate (#231). Fixed by hoisting the census out of the gate. | Branch, commit `8726bbfb`. Adjudicated against merge base `18adcafd` exactly as the two rows above. The row's master side is now BRANCH-SOURCED. `kFacts_treasure_magic_potion_overfill_scen99` gained `LevelDoneEquals(0)`, which fails against the pre-rebaseline golden (`level_done` 2). |
+| `enemy_freeze_mage_scen99` | The frozen team-1 archer now holds the level open. `level_done` 2 → 0, and the 130 `end_game` + one `set_end` events the old golden carried from tick 20 onward are gone (`events` 140 → 9; the eight `play_sound` and the `set_palette` that make up those nine are unchanged, value for value). Because `GameWorld::tick` no longer short-circuits at `if (game_ended) return;` from tick 20 on, the stale-pointer and dead sweeps keep running: `walkers[]` loses the reaped `FAMILY_HIT` husk (3 → 2) and `weapons[]` loses five spent `FAMILY_FIRE_ARROW` (5 → 0). `rng_state` (`0xA8102E2C`), `score_per_team`, the archer's pinned (200,120) and all 93 `weapon_tracks` samples are byte-identical to the old golden. | `GameWorld::tick`'s freeze branch folded the `level_done` census inside the act gate, so a frozen enemy Living was never counted and the level read as clear for the whole freeze window (#231 — exit prompt mid-fight, kill-all levels completing themselves). The census is hoisted out of the gate; the act gate is unchanged, which is why every trajectory still matches. The companion has the same bug, so a companion capture would restore `level_done` 2. | Branch, commit `8726bbfb` ("Count frozen foes: freeze-time no longer clears the level (#231)"; first landed pre-rebase as `2032b852`). The pre-fix branch dump was a byte-for-byte MATCH with the old companion-captured golden, so this row's divergence is entirely the fix. The row's master side is now BRANCH-SOURCED and is no longer an independent reference: the comparison it supports is branch-vs-itself until a companion carrying the #231 fix recaptures it. To keep the recapture from being pure bookkeeping, `kFacts_enemy_freeze_mage_scen99` gained `LevelDoneEquals(0)` — the row's only fact that reads the field that moved. It fails against the pre-rebaseline golden (`level_done` 2) and against any regression that folds the census back inside the act gate. Recaptured from the branch at `21f2606a` on 2026-09-08 for the armor-roll expectation (see that section below). |
+| `input_special_switch_wrap_scen99` | Same fix, same signature, on a second freeze arena: the special-switch wrap lands on FREEZE TIME and the frozen team-1 soldier now holds the level open. `level_done` 2 → 0, and the 134 `end_game` + one `set_end` the old golden carried from tick 16 onward are gone (`events` 138 → 3; the two `play_sound` and the `set_palette` that remain are unchanged, value for value). With `GameWorld::tick` no longer short-circuiting, the sweeps keep running: `walkers[]` loses a `FAMILY_KNIFE_BACK` and a `FAMILY_HIT` husk (4 → 2) and `weapons[]` loses five spent `FAMILY_KNIFE` (5 → 0). `rng_state` (`0x9563F676`), `score_per_team`, both live walkers' hp and positions and all 13 `weapon_tracks` samples are byte-identical to the old golden. | `GameWorld::tick`'s freeze branch folded the `level_done` census inside the act gate (#231). Fixed by hoisting the census out of the gate; the act gate itself is unchanged, which is why every trajectory still matches. | Branch, commit `8726bbfb` ("Count frozen foes: freeze-time no longer clears the level (#231)"). Adjudicated against this PR's merge base `18adcafd`: the row's dump there matches the old golden, and the branch diverges from it by exactly the #231 signature above, so the divergence is the fix and nothing else. The row's master side is now BRANCH-SOURCED and is no longer an independent reference. `kFacts_input_special_switch_wrap_scen99` gained `LevelDoneEquals(0)`, the only fact here that reads the value that moved; it fails against the pre-rebaseline golden (`level_done` 2). Recaptured from the branch at `21f2606a` on 2026-09-08 for the armor-roll expectation (see that section below). |
+| `special_mage_3_scen99` | Same fix, third freeze arena, but the level_done half of the signature is invisible here: the mage is level 7, so the freeze bank is 20+11*7 = 97 ticks and expires at tick 117, and the census re-counts the team-1 soldier long before the 150-tick budget ends. `level_done` reads 0 at the final tick with the bug as well as without it. What the bug left behind is the tail: the 96 `end_game` + one `set_end` from ticks 20-115 are gone (`events` 104 → 7; the five `play_sound` and two `set_palette` that remain are unchanged, value for value). The resumed sweeps drop three `FAMILY_KNIFE_BACK` and three `FAMILY_HIT` husks (`walkers[]` 8 → 2) and 38 spent `FAMILY_KNIFE` (`weapons[]` 39 → 1). Note that ids RENUMBER as well as the count dropping: the surviving knife is the same knife — team 1 at (157,125), where the old golden had two, ids 40 and 47 — but it now carries id 3, because a sweep that runs again frees ids again and the arena stops burning a fresh one per spent weapon. A diff that reads `id 47 → id 3` here is looking at one knife, not two. `rng_state` (`0x7AA815BE`), `score_per_team`, both live walkers and all 38 `weapon_tracks` samples are byte-identical to the old golden. | `GameWorld::tick`'s freeze branch folded the `level_done` census inside the act gate (#231). Fixed by hoisting the census out of the gate. | Branch, commit `8726bbfb`. Adjudicated against merge base `18adcafd` exactly as the row above. The row's master side is now BRANCH-SOURCED. `LevelDoneEquals(0)` would be a dead fact here — it holds against the pre-rebaseline golden too — so the teeth are `EventKindExactly(end_game, 0)` instead: it reads the half of the signature this arena does show, and fails against the old golden's 96 `end_game`. Recaptured from the branch at `21f2606a` on 2026-09-08 for the armor-roll expectation (see that section below). |
+| `treasure_magic_potion_overfill_scen99` | Same fix, fourth freeze arena — the overfilled mage's 152-tick FREEZE TIME pins a team-1 archer, and the archer now holds the level open. `level_done` 2 → 0, and the 130 `end_game` + one `set_end` from tick 20 onward are gone (`events` 141 → 10; the eight `play_sound`, the `notification` and the `set_palette` that remain are unchanged, value for value). The resumed sweeps drop the reaped `FAMILY_HIT` husk (`walkers[]` 3 → 2) and five spent `FAMILY_FIRE_ARROW` (`weapons[]` 5 → 0). `rng_state` (`0xA8102E2C`), `score_per_team`, the archer's pinned (200,120) and all 93 `weapon_tracks` samples are byte-identical to the old golden. | `GameWorld::tick`'s freeze branch folded the `level_done` census inside the act gate (#231). Fixed by hoisting the census out of the gate. | Branch, commit `8726bbfb`. Adjudicated against merge base `18adcafd` exactly as the two rows above. The row's master side is now BRANCH-SOURCED. `kFacts_treasure_magic_potion_overfill_scen99` gained `LevelDoneEquals(0)`, which fails against the pre-rebaseline golden (`level_done` 2). Recaptured from the branch at `21f2606a` on 2026-09-08 for the armor-roll expectation (see that section below). |
+
+## Armor-roll expectation recapture (2026-09-08)
+
+**The change.** `docs/GAMEPLAY_FIXES_FROM_CLASSIC.md`, row "Damage reduction
+clamped high-armor targets to 1 damage per hit (#266)": branch commits
+`7d33bf3f` (damage reduction is the exact expectation of the 2002
+`random(armor)` roll, `src/core/combat_math.cpp` `compute_damage_reduction`)
+and `21f2606a` (the float hit becomes hitpoints as the nearest point, halves
+up — `damage_to_hit_points`, used once at `src/gameplay/walker_combat.cpp:320`;
+that one `tempdamage_i` then feeds the hit, the attack exp, every score award
+and a weapon's self-damage). `5561272c` (the Nuthram thief back to level 8)
+is level data and parity-invisible. Companion (`parity-companion`) mirror:
+`a6ee4b08` (`get_damage_reduction`, operation for operation), `15faf83e`
+(nearest-point rounding at the `do_combat_damage` call) and `268097e1` (the
+same rounded short into `exp_from_action`, the three `m_score +=` sites and
+`stats->hitpoints -= ...` for weapons — the first rounding mirror had left the
+float flowing into those, so weapon hits scored one point short of the branch
+and `special_archmage_3_scen99`'s elemental weapon died on a different hit).
+Blast radius of each companion step was measured by capturing all 220
+comparable rows before and after: `15faf83e` → `268097e1`-score-sites moved
+33 rows, the self-damage integer moved exactly one, and every row either step
+moved is a row the branch's own change had already moved.
+
+**Procedure.** (1) Table consistency: the branch `tests/parity/scenario_table.h`
+and the companion `tools/parity_scenario_table.h` are not byte-identical (the
+branch has added rows and retuned facts since the last mirror), so for every
+moved id the sim-relevant blocks — the `ScenarioSpec` row minus its
+`kFacts_`/`kMut_` pointers, `kInputs*`, `kFamilySpawns*` — were compared
+comment-stripped: identical for all 133 ids (the dumper reads only
+`scenario_file`/`rng_seed`/`inputs`/`spawns`/`player_team`/`fresh_arena`/
+`tick_budget`; nine ids differ in facts *bodies*, which the companion never
+evaluates). (2) Branch `parity_runner_smoke` dumps of all 220 rows at
+`21f2606a`; companion `parity_dump_master` captures of all 220 at `268097e1`;
+staleness canary (`tick` == budget) clean on every dump. (3) **Pre-change
+adjudication**: a worktree at `6f361230` (the commit before the change) was
+built and dumped for all 133 rows below; every one of them matches its
+committed golden semantically (`diff_dumps.py`), so none of these moves
+pre-dates the change. (4) Source rule: a row with its own ledger row (drift
+table, M1–M7 list, intentional-changes table) is re-blessed from the branch
+dump; every other row takes the companion capture, and only if the branch
+dump matches it semantically. (5) Facts: every predicate the change broke was
+shifted by the measured delta with its width and shape kept (exact pins stay
+exact); two count facts whose subject now dies were redesigned (below). Every
+retune is an in-place line edit, so no `kMut_*` pin moved (217 anchors valid).
+
+**The gate saw 65, the change moved 133.** `og_test_parity`'s SemanticParity
+contract evaluates the row's predicates on both dumps and byte-compares
+`weapon_tracks`; it never compares raw `walkers[].hp` or `score_per_team`.
+So the pre-recapture run flagged only the 65 rows whose facts pin the moved
+value or whose tracks moved; 68 more goldens moved by the `diff_dumps.py`
+standard (an hp or score the facts leave unpinned) and were green. All 133
+are listed; the column "gate" says which kind each was. Recapturing the
+gate-green 68 changes no verdict today, but leaves the goldens describing
+what the companion actually captures instead of a state neither arm produces.
+
+**Counts.** 92 goldens from the companion capture, 40 re-blessed from the
+branch dump (ledger rows), 1 not blessed.
+
+**Not blessed — `effect_chain_emission_scen99`.** Branch and companion
+disagree after the change on the third chain kill at tick 27 only:
+`score_change` 205 (branch) vs 202 (companion), `score_per_team[0]` 500 vs
+497, and the surviving SOLDIER on 36 vs 37 of 120; walkers, tracks and every
+other event are identical, and both arms moved off the old golden by the same
+damage signature (ARCHMAGE 73 → 66). Before the change the arms agreed
+byte-for-byte on this row. The residual is the chain fork's damage arithmetic
+(`packs/core/lib/effect_chain.lua` computes `fork_damage` as a float product
+of the parent's damage; the companion's `effect.cpp` chain does its own),
+which this wave did not bisect and which the ledger documents for no other
+row. The old golden is kept (the row stays green: its facts hold on both
+sides and the tracks are equal) and the row is reported for adjudication
+rather than blessed from either arm.
+
+**Redesigned facts.** `weapon_bone_emission_scen99`: the caster SKELETON used
+to end on exactly 1 hp (the old clamp's one-point floor kept it alive); under
+the expectation it dies at tick 130, so `WalkerFamilyCount(FAMILY_SKELETON,
+1, 1)` became `WalkerDiedByFinal(FAMILY_SKELETON)` — non-vacuous because the
+row's `WeaponFamilyEmitted(FAMILY_BONE)` proves the caster existed and fired —
+and the `play_sound` floor moved 35 → 31 (observed 36 → 32, floor kept one
+below). `weapon_boulder_emission_scen99` (an M3 ledger row): the GIANT_SKELETON
+used to end on 5 hp and now dies at tick 145; `WalkerFamilyCount(...GIANT_SKELETON,
+1, 1)` became `WalkerDiedByFinal(FAMILY_GIANT_SKELETON)` on the same
+argument (`WeaponFamilyEmitted(FAMILY_BOULDER)` holds). `special_skeleton_1_scen99`:
+the skeleton dies at tick 52 instead of 60, one CLANG fewer, so the
+`play_sound` floor moved 7 → 6 (exact count both times).
+
+**Mutation canary (teeth) on retuned rows.** `scripts/parity/run_mutation_canary.sh --scenario <id>` on eight retuned rows after the recapture, each restoring the tree cleanly: `combat_attack_scen99` 2 flips (#3 WalkerHpRangeAtFinalTick, gtest); `archer_hit_response_backpedal_scen99` 3 (#3 WalkerPositionMoved, #4 WalkerHpRangeAtFinalTick, gtest); `cleric_turn_undead_scen99` 5 (#3 WalkerDiedByFinal, #4 WalkerOfTeamAlive, #5 LevelDoneEquals, #6 WalkerHpRangeAtFinalTick, gtest); `effect_explosion_ally_tier_scen99` 2 (#2 WalkerHpRangeAtFinalTick, gtest); `weapon_bone_emission_scen99` 4 (#2 EventKindAtLeast, #5 WeaponSpeed, #6 WeaponNetTravel, gtest); `special_skeleton_1_scen99` 1 (gtest only — the mutation keeps the skeleton alive, which the row reads through its golden-side comparison rather than a branch-side predicate flip in this run); `weapon_ranged_impact_hp_scen99` 2 (#2 WalkerHpRangeAtFinalTick, gtest); `orc_yell_stun_hold_scen99` 5 (#1 WalkerFamilyCount, #3 WalkerPositionMoved, #4 WalkerHpRangeAtFinalTick, #5 EventKindExactly, gtest). Zero rows with zero flips. The other retuned rows were not canaried in this wave; their pins are anchor-valid (217/217) and their bounds moved by measured deltas with the same width, which is not a substitute for a flip run.
+
+| id | new golden source | gate | what moved (old golden → new) | facts retuned |
+|---|---|---|---|---|
+| `ai_idle_wander_scen9301` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 46->29 | — |
+| `archer_fire_arrows_ring_scen99` | companion capture (`268097e1`) | gate-red | hp: ELF 69->68; score [7, 0, 0, 0]->[8, 0, 0, 0]; events: score_change.bx1 | `WalkerHpRangeAtFinalTick(FAMILY_ELF, 6900, 6900)` -> `WalkerHpRangeAtFinalTick(FAMILY_ELF, 6800, 6800)`; label text updated; `ScoreDelta(0, 7, 7)` -> `ScoreDelta(0, 8, 8)` |
+| `archer_hit_response_backpedal_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | hp: SOLDIER 109->107, ARCHER 30->26; score [6, 0, 0, 0]->[7, 0, 0, 0]; events: score_change.bx1 | `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3000, 3000)` -> `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 2600, 2600)`; label text updated |
+| `archmage_mind_control_team_flip_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ARCHMAGE 147->146 | — |
+| `archmage_summon_elemental_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ARCHMAGE 147->146; score [339, 0, 0, 0]->[341, 0, 0, 0]; events: score_change.bx1 | — |
+| `cleric_raise_ghost_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: CLERIC 117->116, BIG_ORC 174->173; score [44, 0, 0, 0]->[45, 0, 0, 0]; events: score_change.bx1 | — |
+| `cleric_raise_skeleton_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: CLERIC 117->116, BIG_ORC 174->173; score [44, 0, 0, 0]->[45, 0, 0, 0]; events: score_change.bx1 | — |
+| `cleric_resurrect_friendly_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | hp: BIG_ORC 79->70, CLERIC 91->84; score [7, 23, 0, 0]->[8, 27, 0, 0]; events: score_change.bx5 | `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 9000, 9200)` -> `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 8300, 8500)`; label text updated |
+| `cleric_turn_undead_scen99` | companion capture (`268097e1`) | gate-red | hp: CLERIC 108->105 | `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 10700, 10900)` -> `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 10400, 10600)`; label text updated |
+| `combat_attack_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 63->50 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000)` |
+| `consumable_inventory_state_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 47->46, ARCHER 70->69 | — |
+| `coverage_catchall_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: GOLEM 217->199 | — |
+| `effect_bomb_emission_scen99` | companion capture (`268097e1`) | gate-red | pos: SOLDIER; events 15->13; rng_state; weapon_tracks | — |
+| `effect_boomerang_contact_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 103->98, TOWER1 41->37; score [93, 0, 0, 0]->[97, 0, 0, 0]; events 17->16; rng_state; weapon_tracks; weapons 3->2 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4000, 4200)` -> `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3600, 3800)`; label text updated |
+| `effect_boomerang_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SOLDIER 111->109 | — |
+| `effect_chain_emission_scen99` | **not blessed** — old golden kept | gate-green (hp not pinned) | hp: ARCHMAGE 73->66, SOLDIER 37->36; score [496, 0, 0, 0]->[500, 0, 0, 0]; events: score_change.bx2 | — |
+| `effect_chain_fork_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: ARCHMAGE 116->113; score [281, 0, 0, 0]->[282, 0, 0, 0]; events: score_change.bx1 | — |
+| `effect_chain_scen9410` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: MAGE 87->86 | — |
+| `effect_cloud_emission_scen99` | companion capture (`268097e1`) | gate-red | hp: THIEF 60->57 | `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6000, 6000)` -> `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5700, 5700)` |
+| `effect_door_open_emission_scen99` | companion capture (`268097e1`) | gate-red | pos: SOLDIER; events 10->9; rng_state; weapon_tracks | — |
+| `effect_expand_emission_scen99` | companion capture (`268097e1`) | gate-red | pos: SOLDIER; events 10->9; rng_state; weapon_tracks | — |
+| `effect_explosion_ally_tier_scen99` | companion capture (`268097e1`) | gate-red | hp: TOWER1 85->84 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8500, 8500)` -> `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8400, 8400)`; label text updated |
+| `effect_explosion_emission_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: ARCHMAGE 138->135 | — |
+| `effect_explosion_range_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | score [333, 0, 0, 0]->[335, 0, 0, 0]; events: score_change.bx1 | — |
+| `effect_ghost_scare_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: GHOST 46->45 | — |
+| `effect_heartburst_multitarget_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: ARCHMAGE 138->135 | — |
+| `effect_hit_emission_scen99` | companion capture (`268097e1`) | gate-red | pos: SOLDIER; events 10->9; rng_state; weapon_tracks | — |
+| `effect_knife_back_catch_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | hp: SOLDIER 75->62, TOWER1 93->85; score [45, 0, 0, 0]->[53, 0, 0, 0]; events: score_change.bx8 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9200, 9400)` -> `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8400, 8600)`; label text updated |
+| `effect_knife_back_emission_scen99` | companion capture (`268097e1`) | gate-red | pos: SOLDIER; events 10->9; rng_state; weapon_tracks | — |
+| `effect_magic_shield_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: CLERIC 115->114 | — |
+| `effect_poison_cloud_emit_scen99` | companion capture (`268097e1`) | gate-red | hp: THIEF 60->57 | `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6000, 6000)` -> `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5700, 5700)` |
+| `effect_shield_absorb_scen99` | companion capture (`268097e1`) | gate-red | hp: TOWER1 53->49; score [81, 0, 0, 0]->[85, 0, 0, 0]; events: score_change.bx4 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 5200, 5400)` -> `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4800, 5000)`; label text updated |
+| `elemental_death_starburst_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: FIREELEMENTAL -23->-26; score [44, 0, 0, 0]->[45, 0, 0, 0]; events: score_change.bx1 | — |
+| `enemy_freeze_mage_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: MAGE 24->23 | — |
+| `event_end_game_emission_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 60->56, ORC 67->63; score [5, 0, 0, 0]->[6, 0, 0, 0]; events: score_change.bx1 | — |
+| `event_notification_emission_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 60->56, ORC 67->63; score [5, 0, 0, 0]->[6, 0, 0, 0]; events: score_change.bx1 | — |
+| `event_request_redraw_emission_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 60->56, ORC 67->63; score [5, 0, 0, 0]->[6, 0, 0, 0]; events: score_change.bx1 | — |
+| `event_set_end_emission_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 60->56, ORC 67->63; score [5, 0, 0, 0]->[6, 0, 0, 0]; events: score_change.bx1 | — |
+| `event_set_palette_emission_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 60->56, ORC 67->63; score [5, 0, 0, 0]->[6, 0, 0, 0]; events: score_change.bx1 | — |
+| `family_archer_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 117->116 | — |
+| `family_barbarian_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 96->95 | — |
+| `family_big_orc_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 116->115 | — |
+| `family_medium_slime_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 10->4 | — |
+| `family_orc_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 99->98 | — |
+| `family_soldier_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: ELF 58->57 | — |
+| `generator_owner_cascade_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | walkers 20->18; hp: BIG_ORC 92->98, TENT -97->-92, SKELETON 14->32; pos: BIG_ORC,EXPLOSION,SKELETON; score [199, 0, 0, 0]->[194, 0, 0, 0]; events 175->183; rng_state; weapon_tracks; weapons 86->79 | `WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 9100, 9300)` -> `WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 9700, 9900)`; label text updated |
+| `input_special_switch_wrap_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: MAGE 85->84 | — |
+| `invisibility_thief_scen99` | companion capture (`268097e1`) | gate-red | hp: THIEF 15->2 | `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1500, 1500)` -> `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 200, 200)` |
+| `invulnerable_potion_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | hp: SOLDIER 77->64, ARCHER 52->51 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7700, 7700)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6400, 6400)` |
+| `mage_starburst_ring_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: MAGE 77->73; score [649, 0, 0, 0]->[655, 0, 0, 0]; events: score_change.bx2 | — |
+| `magic_damage_slime_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SLIME 126->125; score [36, 0, 0, 0]->[37, 0, 0, 0]; events: score_change.bx1 | — |
+| `midcombat_partial_hp_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SOLDIER 85->77 | — |
+| `multiplayer_two_teams_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: THIEF 68->67 | — |
+| `orc_yell_stun_hold_scen99` | companion capture (`268097e1`) | gate-red | hp: ORC 74->73 | `WalkerHpRangeAtFinalTick(FAMILY_ORC, 7400, 7400)` -> `WalkerHpRangeAtFinalTick(FAMILY_ORC, 7300, 7300)`; label text updated |
+| `rng_seed_stable_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 46->29 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4600, 4600)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2900, 2900)` |
+| `save_roundtrip_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 61->48 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6100, 6100)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4800, 4800)` |
+| `scoring_after_combat_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 63->50 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000)` |
+| `slime_death_split_scen99` | companion capture (`268097e1`) | gate-red | hp: MEDIUM_SLIME 72->70 | `WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 7100, 7300)` -> `WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 6900, 7100)`; label text updated |
+| `soldier_whirlwind_ring_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: FAERIE 56->55, FAERIE 58->57, FAERIE 55->54 | — |
+| `special_archer_1_scen99` | companion capture (`268097e1`) | gate-red | hp: ARCHER 42->31, SOLDIER 116->115; score [6, 0, 0, 0]->[7, 0, 0, 0]; events: score_change.bx1 | `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 4000, 7000)` -> `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 2900, 5900)` |
+| `special_archer_2_scen99` | companion capture (`268097e1`) | gate-red | hp: ARCHER 35->22 | `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3500)` -> `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 2200, 2200)` |
+| `special_archer_3_scen99` | companion capture (`268097e1`) | gate-red | hp: ARCHER 34->21 | `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3400, 3400)` -> `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 2100, 2100)` |
+| `special_archmage_2_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ARCHMAGE 147->146; score [513, 0, 0, 0]->[515, 0, 0, 0]; events: score_change.bx1 | — |
+| `special_archmage_3_scen99` | companion capture (`268097e1`) | gate-red | hp: ARCHMAGE 92->79; events: play_sound.ax1; rng_state | `WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 9200, 9200)` -> `WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 7900, 7900)` |
+| `special_archmage_4_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ARCHMAGE 147->146 | — |
+| `special_archmage_scen123` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: ARCHMAGE 147->146 | — |
+| `special_barbarian_1_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: BARBARIAN 90->77 | — |
+| `special_barbarian_2_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: BARBARIAN 95->83 | — |
+| `special_cleric_2_scen99` | companion capture (`268097e1`) | gate-red | hp: CLERIC 58->46 | `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 5800, 5800)` -> `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 4600, 4600)` |
+| `special_cleric_3_scen99` | companion capture (`268097e1`) | gate-red | hp: CLERIC 58->46 | `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 5800, 5800)` -> `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 4600, 4600)` |
+| `special_cleric_4_scen99` | companion capture (`268097e1`) | gate-red | hp: CLERIC 58->46 | `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 5800, 5800)` -> `WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 4600, 4600)` |
+| `special_cleric_heal_ally_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: CLERIC 116->115, BIG_ORC 413->412, FAERIE 6->3; score [17, 0, 0, 0]->[20, 0, 0, 0]; events: score_change.bx3 | — |
+| `special_druid_1_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: DRUID 47->35 | — |
+| `special_druid_2_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: DRUID 101->99, FAERIE 18->15, SOLDIER 102->99; score [27, 0, 0, 0]->[30, 0, 0, 0]; events: score_change.bx3 | — |
+| `special_druid_3_scen99` | companion capture (`268097e1`) | gate-red | hp: DRUID 48->36 | `WalkerHpRangeAtFinalTick(FAMILY_DRUID, 4800, 4800)` -> `WalkerHpRangeAtFinalTick(FAMILY_DRUID, 3600, 3600)` |
+| `special_druid_4_scen99` | companion capture (`268097e1`) | gate-red | hp: DRUID 48->36 | `WalkerHpRangeAtFinalTick(FAMILY_DRUID, 4800, 4800)` -> `WalkerHpRangeAtFinalTick(FAMILY_DRUID, 3600, 3600)` |
+| `special_elf_1_scen99` | companion capture (`268097e1`) | gate-red | hp: ELF 17->4 | `WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700)` -> `WalkerHpRangeAtFinalTick(FAMILY_ELF, 400, 400)` |
+| `special_elf_2_scen99` | companion capture (`268097e1`) | gate-red | hp: ELF 18->5 | `WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800)` -> `WalkerHpRangeAtFinalTick(FAMILY_ELF, 500, 500)` |
+| `special_elf_3_scen99` | companion capture (`268097e1`) | gate-red | hp: ELF 17->4 | `WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700)` -> `WalkerHpRangeAtFinalTick(FAMILY_ELF, 400, 400)` |
+| `special_elf_4_scen99` | companion capture (`268097e1`) | gate-red | hp: ELF 18->5 | `WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800)` -> `WalkerHpRangeAtFinalTick(FAMILY_ELF, 500, 500)` |
+| `special_fireelemental_1_scen99` | companion capture (`268097e1`) | gate-red | hp: FIREELEMENTAL 41->28 | `WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 4100, 4100)` -> `WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 2800, 2800)` |
+| `special_ghost_1_scen99` | companion capture (`268097e1`) | gate-red | hp: GHOST 21->16 | `WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100)` -> `WalkerHpRangeAtFinalTick(FAMILY_GHOST, 1600, 1600)` |
+| `special_mage_2_scen99` | companion capture (`268097e1`) | gate-red | hp: MAGE 31->18 | `WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3100, 3100)` -> `WalkerHpRangeAtFinalTick(FAMILY_MAGE, 1800, 1800)` |
+| `special_mage_3_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | hp: MAGE 78->75 | `WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800)` -> `WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7300, 7500)` |
+| `special_mage_4_scen99` | companion capture (`268097e1`) | gate-red | hp: MAGE 34->21 | `WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400)` -> `WalkerHpRangeAtFinalTick(FAMILY_MAGE, 2100, 2100)` |
+| `special_mage_5_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: MAGE 87->86 | — |
+| `special_mage_scen126` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: MAGE 86->85 | — |
+| `special_medium_slime_1_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SLIME 54->41 | — |
+| `special_orc_1_scen99` | companion capture (`268097e1`) | gate-red | hp: ORC 82->69 | `WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200)` -> `WalkerHpRangeAtFinalTick(FAMILY_ORC, 6900, 6900)` |
+| `special_orc_2_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ORC 83->70 | — |
+| `special_skeleton_1_scen99` | companion capture (`268097e1`) | gate-red | pos: SOLDIER; events 7->6; rng_state; weapon_tracks | `EventKindAtLeast(/*play_sound*/1, 7)` -> `EventKindAtLeast(/*play_sound*/1, 6)` |
+| `special_slime_1_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | hp: SMALL_SLIME 141->139, SMALL_SLIME 82->70 | `WalkerHpRangeAtFinalTick(FAMILY_SMALL_SLIME, 14100, 14100)` -> `WalkerHpRangeAtFinalTick(FAMILY_SMALL_SLIME, 13900, 13900)` |
+| `special_soldier_1_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 63->50 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000)` |
+| `special_soldier_2_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 65->52, SOLDIER 98->97; score [24, 0, 0, 0]->[25, 0, 0, 0]; events: score_change.bx1 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6500, 6500)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5200, 5200)` |
+| `special_soldier_3_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 63->50 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000)` |
+| `special_soldier_4_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 63->50 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000)` |
+| `special_thief_2_scen99` | companion capture (`268097e1`) | gate-red | hp: THIEF 36->27 | `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3600, 3600)` -> `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2700, 2700)` |
+| `special_thief_3_scen99` | companion capture (`268097e1`) | gate-red | hp: THIEF 38->30 | `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3800, 3800)` -> `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3000, 3000)` |
+| `special_thief_4_scen99` | companion capture (`268097e1`) | gate-red | hp: THIEF 16->3 | `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600)` -> `WalkerHpRangeAtFinalTick(FAMILY_THIEF, 300, 300)` |
+| `summon_druid_pet_scen950` | companion capture (`268097e1`) | gate-red | hp: DRUID 55->43, SOLDIER 77->67; score [53, 0, 0, 0]->[63, 0, 0, 0]; events: score_change.bx10 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7700, 7700)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6700, 6700)` |
+| `thief_ai_bomb_flee_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | score [64, 0, 0, 0]->[67, 0, 0, 0]; events: score_change.bx3 | — |
+| `thief_charm_opponent_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: THIEF 70->69 | — |
+| `thief_taunt_matched_levels_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | hp: TOWER1 111->110 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11100, 11100)` -> `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11000, 11000)`; label text updated |
+| `tick_cadence_scen9301` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 46->29 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4600, 4600)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2900, 2900)` |
+| `treasure_drumstick_pickup_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 47->46, ARCHER 70->69 | — |
+| `treasure_magic_potion_overfill_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: MAGE 24->23 | — |
+| `treasure_stain_pickup_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: SOLDIER 106->104, FAERIE 20->17 | — |
+| `treasure_teleporter_pickup_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 45->61; pos: SOLDIER; events 14->12; rng_state; weapon_tracks | — |
+| `weapon_arrow_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ARCHER 33->20 | — |
+| `weapon_blob_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SLIME 140->138 | — |
+| `weapon_blood_emission_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 74->61 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7400, 7400)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6100, 6100)` |
+| `weapon_bone_emission_scen99` | companion capture (`268097e1`) | gate-red | walkers 2->1; pos: SOLDIER; events 36->32; rng_state; weapon_tracks; weapons 2->0 | `WalkerFamilyCount(FAMILY_SKELETON, 1, 1)` -> `WalkerDiedByFinal(FAMILY_SKELETON)`; `EventKindAtLeast(/*play_sound*/1, 35)` -> `EventKindAtLeast(/*play_sound*/1, 31)` |
+| `weapon_boomerang_return_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 101->95, ARCHER 68->67; score [23, 0, 0, 0]->[24, 0, 0, 0]; events: score_change.bx1 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10100, 10100)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9500, 9500)` |
+| `weapon_boulder_emission_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | walkers 2->1; events 31->32; rng_state; weapon_tracks | `WalkerFamilyCount(FAMILY_GIANT_SKELETON, 1, 1)` -> `WalkerDiedByFinal(FAMILY_GIANT_SKELETON)` |
+| `weapon_boulder_explode_damage_scen99` | branch dump (ledger row; `21f2606a`) | gate-red | hp: BARBARIAN 122->120, ORC 23->21, SOLDIER 46->45; score [194, 0, 0, 0]->[197, 0, 0, 0]; events: score_change.bx2 | `WalkerHpRangeAtFinalTick(FAMILY_ORC, 2200, 2400)` -> `WalkerHpRangeAtFinalTick(FAMILY_ORC, 2000, 2200)`; label text updated |
+| `weapon_circle_protection_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SOLDIER 51->36 | — |
+| `weapon_door_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SOLDIER 51->36 | — |
+| `weapon_exploding_boulder_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: BARBARIAN 110->107 | — |
+| `weapon_fire_arrow_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ARCHER 34->21 | — |
+| `weapon_fire_arrow_explode_damage_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | score [2708, 0, 0, 0]->[2710, 0, 0, 0]; events: score_change.bx1 | — |
+| `weapon_fireball_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: MAGE 31->18 | — |
+| `weapon_glow_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: CLERIC 60->47 | — |
+| `weapon_hammer_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: BARBARIAN 94->81 | — |
+| `weapon_knife_emission_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 64->51 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6400, 6400)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5100, 5100)` |
+| `weapon_lightning_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: DRUID 53->40 | — |
+| `weapon_meteor_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: FIREELEMENTAL 43->30 | — |
+| `weapon_ranged_impact_hp_scen99` | companion capture (`268097e1`) | gate-red | hp: TOWER1 103->96; score [34, 0, 0, 0]->[41, 0, 0, 0]; events: score_change.bx7 | `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10200, 10400)` -> `WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9500, 9700)`; label text updated |
+| `weapon_rock_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ELF 17->4 | — |
+| `weapon_rock_slot2_emit_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: ELF 70->69 | — |
+| `weapon_sprinkle_freeze_scen99` | branch dump (ledger row; `21f2606a`) | gate-green (hp not pinned) | hp: ORC 29->28; score [113, 0, 0, 0]->[114, 0, 0, 0]; events: score_change.bx1 | — |
+| `weapon_tree_emission_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: SOLDIER 51->36 | — |
+| `weapon_wave2_emission_scen99` | companion capture (`268097e1`) | gate-red | hp: SOLDIER 51->36 | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 9000)` -> `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7500)` |
+| `weapon_wave_promote_wave2_scen99` | companion capture (`268097e1`) | gate-green (hp not pinned) | hp: MAGE 85->84 | — |
 
 ## Removed goldens
 
