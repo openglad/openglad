@@ -877,10 +877,18 @@ inline constexpr FactPredicate kFacts_smoke_empty_scen99[] = {
     // The empty arena has no walkers by design; the only sim observable
     // its schema-v1 dump records is the world tick counter, which reads
     // tick=1 after the single budgeted tick. kMut_smoke_tick_freeze stops
-    // the counter (tick stays 0), flipping this predicate through the
-    // canary's --evaluate-facts channel — the row's Invariant gtest is a
-    // dumper-determinism check that no deterministic mutation can flip,
-    // so this fact is the row's only mutation channel.
+    // the counter (tick stays 0) and this predicate flips — on the canary's
+    // --evaluate-facts channel and inside the gtest, which evaluates the
+    // facts of an Invariant row after its two dumps have been compared to
+    // each other. The byte-compare half of the gtest cannot flip here: a
+    // deterministic mutation moves both captures identically, and an
+    // Invariant row reads no golden (this row carries none — the orphan file
+    // it used to have is recorded under "Removed goldens" in
+    // tests/parity/golden/DRIFT_LEDGER.md). Rule (b) of
+    // scripts/parity/lint_scenario_facts.py is why the row stays Invariant
+    // rather than being promoted to a byte-compared mode: a ByteEqual /
+    // SemanticParity row needs a non-TickReached fact, and an arena with no
+    // walkers, no effects, no events and no score has nothing else to assert.
     pred::TickReached(1),
 };
 
@@ -2756,22 +2764,23 @@ inline constexpr FactPredicate kFacts_effect_bomb_emission_scen99[] = {
     // (which it melees down by ~tick 56) on both arms. Exactly one SOLDIER
     // remains and it doubles as the EffectFamilyCount source qualifier below.
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    // TEETH: the thief's DROP BOMB drops a FAMILY_BOMB FX at tick 20. Its
+    // TEETH: the thief's DROP BOMB drops ONE FAMILY_BOMB FX at tick 20. Its
     // ANI_BOMB animation completes ~tick 71, at which point effect::death()
     // dispatches core:bomb's on_death hook (bomb_on_death in
-    // packs/core/lib/effect_bomb.lua), which emits SOUND_EXPLODE (sound
-    // id 11) and spawns a
-    // FAMILY_EXPLOSION. Two bombs detonate, contributing exactly two
-    // SOUND_EXPLODE play_sound events, so the total play_sound count is 13 on
-    // branch and 15 on master (the difference is melee-RNG drift, both well
-    // above the floor). kMut_effect_bomb_emission replaces that hook binding
-    // (effect_bomb.lua:96) with `function() return false end` — false = "not
-    // handled", the no-registered-hook path — so neither
-    // SOUND_EXPLODE fires and no FAMILY_EXPLOSION spawns. The branch play_sound
-    // count drops to 11, below the floor of 12, flipping this predicate
-    // pass->fail. (Verified: mutated branch emits 0 SOUND_EXPLODE events.)
-    pred::EventKindAtLeast(/*play_sound*/1, 12,
-        "consequence: the two FAMILY_BOMB detonations each emit a SOUND_EXPLODE play_sound (total 13 on branch, 15 on master); the hook-neutering mutation in packs/core/lib/effect_bomb.lua strips bomb_on_death so neither explosion sound fires and the branch count drops to 11, below the floor"),
+    // packs/core/lib/effect_bomb.lua), which emits SOUND_EXPLODE (sound id 11)
+    // and spawns the FAMILY_EXPLOSION that leaves the FAMILY_STAIN in the
+    // golden. The golden's sound track is exactly 13 play_sounds: the
+    // soldier's SOUND_CHARGE (id 9) at tick 0, eleven weapon-fire SOUND_FWIPs
+    // (id 10) and that single SOUND_EXPLODE.
+    // kMut_effect_bomb_emission replaces the hook binding with
+    // `function() return false end` — false = "not handled", the
+    // no-registered-hook path — so the bomb expires silently and the thief it
+    // would have caught survives to throw two more knives: measured 14
+    // play_sounds (13 FWIP + the CHARGE, no SOUND_EXPLODE) and a live 7-hp
+    // THIEF in the dump. An "at least 12" floor could not see that, which is
+    // why this is an exact count.
+    pred::EventKindExactly(/*play_sound*/1, 13,
+        "consequence: the lone FAMILY_BOMB detonation adds its SOUND_EXPLODE to the soldier's CHARGE and eleven weapon-fire FWIPs for exactly 13 play_sounds; the hook-neutering mutation in packs/core/lib/effect_bomb.lua strips bomb_on_death, so no explosion sound fires, the thief lives longer and throws two more knives, and the count reads 14"),
     // FAMILY_BOMB is a kRequiredEffectFamilies entry and this is the ONLY
     // EffectFamilyCount(FAMILY_BOMB, ...) binding in the table, so it must
     // stay for behavioural_coverage_gate_effects. FX spawned via
@@ -2787,7 +2796,7 @@ inline constexpr Mutation kMut_effect_bomb_emission = {
     "packs/core/families/effect-02-bomb.lua", 21,
     "  on_death = bomb.bomb_on_death,",
     "  on_death = function() return false end,",
-    "Neuters core:bomb's on_death hook (false = \"not handled\", the no-registered-hook path), so the thief's dropped bomb expires without detonating: no EXPLOSION effect is spawned and no blast damage lands, flipping the scenario's effect-count and surviving-HP predicates."
+    "Neuters core:bomb's on_death hook (false = \"not handled\", the no-registered-hook path), so the thief's dropped bomb expires without detonating: no EXPLOSION effect is spawned, no blast damage lands and the thief survives the fuse at 7 hp. Measured: the exact play_sound count flips (13 -> 14, the explosion sound gone and two extra knife throws in its place)."
 };
 
 inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
@@ -3035,16 +3044,24 @@ inline constexpr SpawnSpec kFamilySpawns_effect_chain_caster[] = {
 inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
     pred::TickReached(40),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
-    // CONSEQUENCE of FAMILY_CHAIN's on_act: the summoned chain travels to its
-    // nearest-foe leader and on contact spawns a FAMILY_EXPLOSION that
-    // blast-attacks that soldier, leaving one SOLDIER at 11200 cents and the
-    // other two at full 12000. Under kMut_effect_chain_emission the chain loses
-    // its on_act, never explodes, and every SOLDIER stays at full HP, so no
-    // soldier remains in [0,11900] and the predicate flips.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 11900,
-        "consequence: chain lightning's FAMILY_CHAIN on_act detonates an explosion on the nearest enemy SOLDIER, leaving at least one below full 12000-cent HP (observed 11200 on both arms); the hook-neutering mutation in packs/core/lib/effect_chain.lua strips on_act so the chain is inert and every SOLDIER stays at full 12000-cent HP, above the ceiling"),
-    // rng_drift: chain targeting may vary while the inert mutation leaves every soldier at full HP; commit 244d4bcf
-    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    // CONSEQUENCE of FAMILY_CHAIN's on_act, all three numbers read off the
+    // golden: the summoned chain travels to its nearest-foe leader, detonates
+    // on it and forks, killing TWO of the three soldiers (reaped by the tick-40
+    // dump) and leaving the third on exactly 3700 cents. Under
+    // kMut_effect_chain_emission the chain is inert: all three soldiers survive
+    // at 11500 / 12000 / 12000 cents (the 11500 is the archmage's OWN melee,
+    // which is why the old [0,11900] window did not flip and the row rode on
+    // the byte compare alone), the score stays [0,0,0,0] and only 6 play_sounds
+    // fire instead of 13. Measured 2026-09-08 by staging the pin into
+    // build/ci-test/packs and re-running parity_runner_smoke.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3700, 3700,
+        "consequence: the chain kills two of the three SOLDIERs outright and leaves the survivor on exactly 3700 cents; with on_act neutered nothing detonates and the only damaged soldier is the one the archmage meleed, at 11500 cents, so no SOLDIER sits on this pin"),
+    pred::ScoreDelta(/*team*/0, 497, 497,
+        "consequence: the chain's damage and its two kills are team 0's only scoring events (114 + 181 + 202 = 497 on the golden); with on_act neutered no score_change is emitted at all and the team finishes on 0"),
+    // The blast, the two deaths and the fork all speak through the sound
+    // track: 13 play_sounds on the golden against 6 when the chain never acts.
+    pred::EventKindExactly(/*play_sound*/1, 13,
+        "consequence: the chain's flight, detonation, fork and two kills raise the play_sound count to exactly 13; the inert chain leaves only the 6 sounds of the archmage's own melee exchange"),
     // Structural coverage anchor: binds FAMILY_CHAIN to EffectFamilyCount arg0
     // for behavioural_coverage_gate_effects. The summoned FAMILY_CHAIN is a
     // short-lived FX that has already expired by the tick-40 dump, so zero live
@@ -3057,7 +3074,7 @@ inline constexpr Mutation kMut_effect_chain_emission = {
     "packs/core/families/effect-10-chain.lua", 31,
     "  on_act = chain.on_act,",
     "  on_act = function() return false end,",
-    "Neuters core:chain's on_act hook (false = \"not handled\", the no-registered-hook path), so chain lightning never seeks its nearest foe or explodes on it, flipping the chain-emission predicates."
+    "Neuters core:chain's on_act hook (false = \"not handled\", the no-registered-hook path), so chain lightning never seeks its nearest foe and never explodes on it. Measured: three predicate flips -- the surviving-soldier hp pin (3700 -> soldiers at 11500/12000/12000), the exact ScoreDelta (497 -> 0) and the play_sound count (13 -> 6)."
 };
 
 inline constexpr FactPredicate kFacts_effect_door_open_emission_scen99[] = {
@@ -6692,7 +6709,7 @@ inline constexpr Mutation kMut_effect_bomb_bystander_scen99 = {
 // reachable from this harness, which is exactly why the analysis had to be done
 // on paper and this row only pins the level -> damage step of it.
 inline constexpr SpawnSpec kFamilySpawns_bomb_l10_vs_cleric_l9_scen99[] = {
-    { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },          // far hostile: holds level_done = 0 after the cleric dies so both corpses are reaped. Manhattan 380 from the blast, never fires, never moves
+    { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },          // far hostile: holds level_done = 0 after the cleric dies so both corpses are reaped. Manhattan |400-196| + |400-194| = 410 from the blast, never fires, never moves
     { FAMILY_CLERIC, 1, kOrderLiving, 222, 196, 0, 0, 9, 0 },    // level-9 victim on effect_bomb_bystander's tile: Manhattan |222-196|+|196-194| = 28 from the explosion's top-left (196,194), inside reach 55 before it even moves; loader body 120 hp, armor 0
     { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 }, // player-controlled bomb owner LAST; level 10 -> bomb_damage 165 and explosion range clamp(40,16,96) = 40; 300 MP covers the 35-MP cast
 };
@@ -6707,29 +6724,36 @@ inline constexpr FactPredicate kFacts_bomb_l10_vs_cleric_l9_scen99[] = {
         "consequence: bomb_damage(10) = 165 rolls 158.58..169.58 through compute_base_damage and lands 159..170 (armor 0, round-half-up) as the full non-friendly tier on the level-9 cleric beside the thief, killing the 120-hp loader body at the tick-73 detonation; the level-1 mutation drops the raw to 30 -> 27..31 landed and the same cleric walks away with ~90 of its 120"),
     // The caster's own quarter tier (fdiv(165,4) = 41.25 -> 38..43 rolled ->
     // 32..37 landed) does finish the melee-chipped 75-hp thief at tick 73, but
-    // no fact asserts it: the canary measured a level-1 bomb leaving the cleric
-    // alive to keep meleeing, and its 7 extra ticks of melee kill the thief
-    // anyway, so a WalkerDiedByFinal(FAMILY_THIEF) here is inert. The owner
-    // tier at this exact caster level is pinned, discriminatingly, by
+    // no fact asserts it, because the thief dies at tick 73 on BOTH arms: the
+    // cleric lands six melee hits by tick 58 (the FAMILY_HIT tracks are the
+    // same 12 samples in both dumps and nothing lands after 58), which leaves
+    // the thief under even the level-1 bomb's own quarter tier -- raw 7.5, 6..7
+    // landed -- so the mutated blast kills it too and a
+    // WalkerDiedByFinal(FAMILY_THIEF) here is inert. The owner tier at this
+    // exact caster level is pinned, discriminatingly, by
     // effect_explosion_range_scen99's WalkerHpRangeAtFinalTick(FAMILY_THIEF).
     // FLIPPING PREDICATE: exact score. The cleric kill is the only scoring
     // event in the arena (one score_change, tick 73), so a mutated bomb that
     // leaves the cleric alive yields hit XP only and misses this value.
     pred::ScoreDelta(/*team*/0, 439, 439,
         "consequence: team 0's only score event is the tick-73 cleric kill credited to the bomb's owner; the mutation leaves the cleric alive, so the score is the hit XP alone"),
-    // Anchor: the detonation itself fires under every mutation of the damage
-    // number (bomb_on_death emits SOUND_EXPLODE before the blast resolves), so
-    // a play_sound floor separates "no blast" from "a weaker blast".
-    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    // FLIPPING PREDICATE: the exact sound track. The golden's four play_sounds
+    // are the cleric's first melee CLANG (id 1) at tick 10, SOUND_EXPLODE (11)
+    // at 70 and the two DIE2 (12) at 73 -- cleric and thief die on the same
+    // tick. A floor of 1 would have been vacuous here: the tick-10 CLANG
+    // predates the cast, so it holds with no bomb at all. Under the mutation
+    // the cleric survives and only three fire (measured).
+    pred::EventKindExactly(/*play_sound*/1, 4,
+        "consequence: CLANG at tick 10 (the cleric's melee), SOUND_EXPLODE at 70 and two DIE2 at 73 -- the blast kills the cleric and the melee-chipped thief on the same tick; the level-1 mutation leaves the cleric alive, so only three sounds fire"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
-        "structural: the far hostile at Manhattan 380 bounds the blast -- it must finish at its full 13000 cents, or the reach, not the damage, has moved"),
+        "structural: the far hostile at Manhattan 410 bounds the blast -- it must finish at its full 13000 cents, or the reach, not the damage, has moved"),
 };
 
 inline constexpr Mutation kMut_bomb_l10_vs_cleric_l9_scen99 = {
     "packs/core/families/living-11-thief.lua", 54,
     "  bomb.damage = og.combat.bomb_damage(self.level)",
     "  bomb.damage = og.combat.bomb_damage(1)",
-    "Severs the caster-level -> bomb-damage mapping: a level-10 thief arms a level-1 bomb (raw 30, rolled 27..31 landed). The blast still fires, still shoves and still emits SOUND_EXPLODE, but the level-9 cleric survives it, so WalkerDiedByFinal(FAMILY_CLERIC) fails and the exact ScoreDelta fails with it (the surviving cleric yields hit XP only). Measured: 3 flips (both of those predicates plus the gtest byte compare)."
+    "Severs the caster-level -> bomb-damage mapping: a level-10 thief arms a level-1 bomb (raw 30, rolled 27..31 landed). The blast still fires, still shoves and still emits SOUND_EXPLODE, but the level-9 cleric survives it at 91 of 120, so WalkerDiedByFinal(FAMILY_CLERIC) fails, the exact ScoreDelta fails with it (439 -> 38, the hit XP alone) and the sound track drops from four play_sounds to three (the cleric's DIE2 never fires). Measured: 3 predicate flips."
 };
 
 // effect_shield_absorb_scen99: guard_tail's foe arm
@@ -7798,7 +7822,7 @@ inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
 // team-0 tower loses exactly 45 here.
 //
 // The distant team-1 TOWER1 at (400,400) is scaffolding, not a control. It is far
-// outside the blast (Manhattan 380 against a reach of 35) and outside every firing
+// outside the blast (Manhattan 410 against a reach of 35) and outside every firing
 // gate, and it exists only so the arena still has a live enemy: with no team-1
 // walker at all the level completes on the first tick and buries the dump in
 // end_game events. An in-blast foe cannot serve as an in-row full-tier control --
@@ -7814,7 +7838,7 @@ inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
 // explosion is set_dead before death() runs. So the halved damage lands. True
 // since the 2002 import; gdb-verified at HEAD.
 inline constexpr SpawnSpec kFamilySpawns_effect_explosion_ally_tier_scen99[] = {
-    { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },           // distant team-1 tower: keeps the level from completing, Manhattan 380 from the blast and out of everything's reach, so it never fires and is never touched
+    { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },           // distant team-1 tower: keeps the level from completing, Manhattan |400-196| + |400-194| = 410 from the blast and out of everything's reach, so it never fires and is never touched
     { FAMILY_TOWER1, 0, kOrderLiving, 222, 196, 0, 0 },           // ALLY half-tier victim on effect_bomb_bystander_scen99's exact tile: Manhattan |222-196|+|196-194| = 28 from the explosion's top-left (196,194), inside the level-5 reach 15+20 = 35
     { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // player-controlled bomb owner LAST (spawns prepend and find_player_walker binds the first team-0 Living in oblist); level 5 -> bomb_damage 90 and range clamp(20,16,96) = 20
 };
@@ -7833,7 +7857,7 @@ inline constexpr FactPredicate kFacts_effect_explosion_ally_tier_scen99[] = {
     // nothing, shoved by nothing and shot by nothing on either arm, so it holds
     // its full 13000 cents under every mutation of the tier divisors.
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
-        "anchor: the team-1 TOWER1 parked at Manhattan 380 is outside the 35px reach and outside every firing gate, so it ends untouched at 13000 cents -- a drift here means the blast reach or the AI acquisition moved, not the tier"),
+        "anchor: the team-1 TOWER1 parked at Manhattan 410 is outside the 35px reach and outside every firing gate, so it ends untouched at 13000 cents -- a drift here means the blast reach or the AI acquisition moved, not the tier"),
     // The owner's quarter tier keeps the thief alive, which the ally arm's
     // `self:owner():dead() == 0` guard requires: a dead owner would send the
     // allied victim down the full-damage else branch and erase this tier.
