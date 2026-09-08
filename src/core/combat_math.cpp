@@ -29,8 +29,9 @@ float compute_damage_reduction(float incoming_damage, float target_armor)
     // 0..armor-1 (random(0) and random(1) both give 0), floored at zero
     // damage. The 2013 port replaced the roll with a flat armor/2 as "the
     // same average value" -- true only while armor/2 stays below damage-1;
-    // past that its "always do at least 1 damage" clamp turned every
-    // high-armor target into a one-point sponge (a level-8 thief on the
+    // past that its clamp, "// Always do at least 1 damage" in Jonathan
+    // Dearborn's 2013 words, turned every high-armor target into a
+    // one-point sponge (a level-8 thief on the
     // 2*level^2 curve took exactly 1 from a 45-damage blow instead of the
     // original's ~8). This is the exact expectation of the 2002 roll for
     // every armor value: with k = min(armor, ceil(damage)) roll values that
