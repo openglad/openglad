@@ -235,7 +235,7 @@ Maintainer setup for `.github/workflows/wasm-e2e.yml`:
 - Configure the `CLOUDFLARE_API_TOKEN` Actions secret with Account /
   Cloudflare Pages / Edit permission. The production relay deploy additionally
   needs Workers Scripts / Edit on the same token (already required by
-  `nightly.yml`).
+  `release.yml`).
 - Configure the `CLOUDFLARE_ACCOUNT_ID` Actions secret for the account that
   owns the `openglad` Pages project.
 - Keep preview deployments enabled for that project. CI deploys the synthetic

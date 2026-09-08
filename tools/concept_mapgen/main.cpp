@@ -1,7 +1,7 @@
 /* Concept Playground campaign generator.
  *
  * Produces campaigns/concept/ (the source tree the build
- * composes into builtin/concept.glad): five small multi-floor scenarios
+ * composes into the dev-only builtin-dev/concept.glad): five small multi-floor scenarios
  * that show off the Z-axis feature (levels 600-604 — stacked floors joined by
  * Z-stairs, "air" holes you fall through, see-through "glass" floors, and
  * projectile arcs) plus one scripted boss arena, "The Ninefold Court" (605),

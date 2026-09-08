@@ -1,5 +1,6 @@
-// Shipped Concept Playground campaign validation. The five Z-axis demo
-// levels (600-604 in builtin/concept.glad) plus the scripted
+// Concept Playground campaign validation (dev-only, not shipped to players:
+// composed into builtin-dev/). The five Z-axis demo
+// levels (600-604 in builtin-dev/concept.glad) plus the scripted
 // boss arena "The Ninefold Court" (605) are loaded through the production
 // campaign-mount path and pinned against the authoring invariants
 // tools/concept_mapgen promises: floor counts and grid geometry, the start
@@ -97,7 +98,7 @@ protected:
         previous_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
                   mount_campaign_package_with_error("concept"))
-            << "builtin/concept.glad should restore and mount";
+            << "builtin-dev/concept.glad should restore and mount";
     }
 
     void TearDown() override
