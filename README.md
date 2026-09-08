@@ -2,10 +2,11 @@
 
 # <img src="https://avatars.githubusercontent.com/u/4483637?s=200&v=4" align="right" alt="logo" width="40" /> Openglad
 
-Openglad is a port of Gladiator, the DOS game FSGames open-sourced in 2002
-(http://fsgames.com/glad/): a top-down, gauntlet-style action RPG with up to
-four players on one screen, networked multiplayer, seven campaigns, a
-scenario editor, and a modding API in Lua.
+Openglad is a port of the open-sourced dos game known as Gladiator
+(http://fsgames.com/glad/). It is a top-view gauntlet style RPG that
+features fast paced multiplayer action, several different classes, and
+a scenario editor. This port adds networked multiplayer, five more
+campaigns, seven versus modes, a browser build and a modding API in Lua.
 
 **Play in your browser:** https://openglad.pages.dev · **Download:**
 [latest release](https://github.com/openglad/openglad/releases/latest)
@@ -32,12 +33,12 @@ commit of the build you are running.
 <td align="center"><sub>Hosting a networked room</sub></td>
 </tr>
 <tr>
-<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/PINSHA/readme/mode-ctf.png" width="400" alt="A Capture the Flag arena with both flags and the score HUD"></td>
-<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/PINSHA/readme/multi-floor.png" width="400" alt="A multi-floor arena driven by a Lua level script"></td>
+<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/PINSHA/readme/mode-ctf.png" width="400" alt="A Capture the Flag match: both squads on the arena plaza under the mode's announcement stack"></td>
+<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/PINSHA/readme/ninefold-court.png" width="400" alt="The Ninefold Court: a Lua level script firing the ninefold judgment pulse"></td>
 </tr>
 <tr>
 <td align="center"><sub>Capture the Flag</sub></td>
-<td align="center"><sub>A multi-floor level with a Lua level script</sub></td>
+<td align="center"><sub>A Lua level script passing judgment (the Ninefold Court)</sub></td>
 </tr>
 </table>
 
@@ -45,9 +46,9 @@ commit of the build you are running.
 
 **Playing**
 
-- **Seven campaigns.** The original *Gladiator* (37 scenarios) and *The Tryxian Chronicles* (13) as released in 2002, plus five written for this port: *War of the Westlands* (25), *The Long Season* (19), *Imaginations* (kid-submitted dream levels), *The Endless Tower* (floors generated as you climb) and the *Multiplayer Game Modes* package. Each campaign is a plain source tree under [`campaigns/`](campaigns/), composed into a `.glad` archive at build time.
+- **Seven campaigns.** The original *Gladiator* (37 scenarios) and *The Tryxian Chronicles* (13) as released in 2002, plus five written for this port: *War of the Westlands* (25), *The Long Season* (19), *Imaginations* (a kid-submitted dream level), *The Endless Tower* (floors generated as you climb) and the *Multiplayer Game Modes* package. Each campaign is a plain source tree under [`campaigns/`](campaigns/), composed into a `.glad` archive at build time.
 - **Seven versus modes, 40 arenas** — Team Deathmatch, Capture the Flag, Onslaught, Soccer, Basketball, Mutant and Free-for-All. Rules, scoring and bot behaviour are campaign Lua, and every mode works split-screen, online, in the terminal client and in the browser ([docs/mp-game-modes.md](docs/mp-game-modes.md)).
-- **Multi-floor levels** — stairs, drops, per-floor weather and lighting, and a camera that glides between floors ([docs/z-axis-design.md](docs/z-axis-design.md)).
+- **Multi-floor levels** — stairs, drops, and a camera that glides between floors ([docs/z-axis-design.md](docs/z-axis-design.md), [docs/floor-glide-design.md](docs/floor-glide-design.md)).
 - **Difficulty, respawns and a real pause menu** — respawn rules (off / heroes / everyone) and permadeath per match, a PAUSED menu with per-player settings, named keyboard layouts and joystick support ([docs/game-modes.md](docs/game-modes.md), [docs/pause-menu-design.md](docs/pause-menu-design.md)).
 
 **Multiplayer**
@@ -64,7 +65,7 @@ commit of the build you are running.
 
 **Ways to run it**
 
-- **Browser** — the WebAssembly build at [openglad.pages.dev](https://openglad.pages.dev) runs on desktop and phone and installs as a PWA; every version deployed stays playable from [openglad.pages.dev/versions](https://openglad.pages.dev/versions/) ([docs/INSTALL.md § Web Build](docs/INSTALL.md#web-build-emscripten)).
+- **Browser** — the WebAssembly build at [openglad.pages.dev](https://openglad.pages.dev) runs on desktop and phone and can be added to a phone's home screen (it ships a [web app manifest](web/manifest.webmanifest)); every version deployed stays playable from [openglad.pages.dev/versions](https://openglad.pages.dev/versions/) ([docs/INSTALL.md § Web Build](docs/INSTALL.md#web-build-emscripten)).
 - **Terminal** — `openglad_curses`, a zero-SDL roguelike-style client with the same menus, saves and online play ([docs/ncurses-client.md](docs/ncurses-client.md)).
 - **Headless** — `openglad_server` hosts dedicated matches and `openglad_text` drives the game from a script, for servers and CI ([docs/INSTALL.md § Build Targets](docs/INSTALL.md#build-targets)).
 - **Native** — Linux, Windows and macOS builds on every [release](https://github.com/openglad/openglad/releases), and a Nix flake.

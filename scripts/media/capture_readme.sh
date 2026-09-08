@@ -37,16 +37,18 @@ OUT_DIR="${OPENGLAD_README_MEDIA_DIR:-$REPO_ROOT/build/media/readme}"
 
 # Pinned frames. Each demo run is seeded, so these name specific moments:
 # the hedge-line melee outside the keep, arrows in flight and a gold pile on
-# the flank; the Capture the Flag arena with both squads on screen under the
-# announcement stack the mode narrates itself with (there is no separate
-# score HUD -- those yellow lines ARE the scoreboard); the ninefold judgment
-# pulse on the multi-floor court (the frame capture_showcase.sh uses for the
-# same level).
+# the flank; the Capture the Flag arena with both squads on the plaza under
+# the announcement stack the mode narrates itself with (there is no separate
+# score HUD -- those yellow lines ARE the scoreboard, and no flag sprite is
+# on screen in this run); the ninefold judgment pulse on the Ninefold Court
+# (the frame capture_showcase.sh uses for the same level -- scen 605 is a
+# single-floor Lua-scripted court, so the still is a level-script shot, not
+# a multi-floor one).
 README_GAMEPLAY_FRAME=396
-README_CTF_FRAME=96
-README_MULTIFLOOR_FRAME=301
+README_CTF_FRAME=120
+README_NINEFOLD_FRAME=301
 
-RECIPES=(mainmenu gameplay basecamp-four-seats networking-lobby mode-ctf multi-floor)
+RECIPES=(mainmenu gameplay basecamp-four-seats networking-lobby mode-ctf ninefold-court)
 
 usage() {
     sed -n '/^# Usage:/,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
@@ -123,7 +125,7 @@ if wanted mainmenu || wanted basecamp-four-seats || wanted networking-lobby \
     || [ "$PROOF" -eq 1 ]; then
     need_bin "$BASECAMP_BIN"
 fi
-if wanted gameplay || wanted mode-ctf || wanted multi-floor; then
+if wanted gameplay || wanted mode-ctf || wanted ninefold-court; then
     need_bin "$DEMO_BIN"
 fi
 for tool in ffmpeg ffprobe; do
@@ -271,13 +273,13 @@ if wanted mode-ctf; then
     verify_png "$OUT_DIR/mode-ctf.png" 640 400 pal8
 fi
 
-if wanted multi-floor; then
+if wanted ninefold-court; then
     # concept is a dev-only campaign: it composes into builtin-dev/ and is
     # reachable from a build tree, never from an installed or web build.
-    run_demo multifloor concept 605 6 center 7 310
-    still2x "$(frame_path "$FRAME_DIR" "$README_MULTIFLOOR_FRAME")" \
-        "$OUT_DIR/multi-floor.png"
-    verify_png "$OUT_DIR/multi-floor.png" 640 400 pal8
+    run_demo ninefold concept 605 6 center 7 310
+    still2x "$(frame_path "$FRAME_DIR" "$README_NINEFOLD_FRAME")" \
+        "$OUT_DIR/ninefold-court.png"
+    verify_png "$OUT_DIR/ninefold-court.png" 640 400 pal8
 fi
 
 # --- proof extras -----------------------------------------------------------
