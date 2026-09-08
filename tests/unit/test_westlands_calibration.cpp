@@ -116,8 +116,21 @@ struct CurvePin
 // below-knee identity construction guarantees. Tower and Long Season
 // floors did not move (Long Season scen11's seed-1337 measure healed
 // 3->5, back at its pin).)
+// (Recalibrated 2026-09-08 for the armor-roll expectation fix,
+// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md: damage reduction is the exact
+// expectation of the 2002 random(armor) roll instead of the 2013 armor/2
+// clamp, and hits round to the nearest point instead of truncating, so
+// every hit on BOTH sides lands ~0.5 harder and armored foes stop being
+// one-point sponges. Deliberate re-measure across seeds {42, 1337, 2025}:
+// 1: 8->7 (7 8 8), 4: 8->7 (7 8 8), 5: 7->6 (7 6 7) and 6: 7->3 (7 7 3 —
+// The Hay War's seed-2025 run now loses five of the fresh crew, the
+// largest single dip of this pass and a balance signal for the next
+// Westlands pass) are re-pinned to the new minima; 3/11/16/17/19/21/23/
+// 24/25/26 held or moved up (slack kept, floors not raised); the 0-floor
+// levels stayed 0. Tower f5 moved 3->0 in the same pass, see
+// test_tower_calibration.cpp.)
 constexpr CurvePin kCurve[] = {
-    {1, 1, 8},  {2, 2, 8},  {3, 2, 6},  {4, 3, 8},  {5, 3, 7},  {6, 4, 7},
+    {1, 1, 7},  {2, 2, 8},  {3, 2, 6},  {4, 3, 7},  {5, 3, 6},  {6, 4, 3},
     {7, 4, 0},  {8, 5, 0},  {9, 6, 0},  {10, 5, 0}, {11, 6, 4}, {12, 6, 0},
     {13, 6, 0}, {14, 7, 0}, {15, 7, 0}, {16, 8, 2}, {17, 8, 2}, {19, 6, 4},
     {20, 7, 0}, {21, 7, 7}, {22, 8, 0}, {23, 8, 5}, {24, 8, 2}, {25, 9, 5},

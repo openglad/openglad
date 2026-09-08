@@ -1658,8 +1658,9 @@ TEST(CoverageMisc, final_r16_combat_math_edges)
 
     ASSERT_TRUE(compute_base_damage(25.0f, static_cast<RandomU32>(nullptr)) >= 22.0f);
     ASSERT_TRUE(compute_damage_reduction(0.0f, 100.0f) == 0.0f);
-    ASSERT_TRUE(compute_damage_reduction(5.0f, 99.0f) == 4.0f);
-    ASSERT_TRUE(compute_post_reduction_damage(3.0f, 99.0f) == 1.0f);
+    // 2002 roll expectation: 5 damage vs 99 armor lands (5+4+3+2+1)/99.
+    ASSERT_NEAR(5.0f - 15.0f / 99.0f, compute_damage_reduction(5.0f, 99.0f), 1e-4f);
+    ASSERT_NEAR(6.0f / 99.0f, compute_post_reduction_damage(3.0f, 99.0f), 1e-4f);
 
     ASSERT_TRUE(compute_freeze_duration(2, 9999, rng) == 0);
     ASSERT_TRUE(compute_freeze_duration(5, 0, rng) >= 0);
