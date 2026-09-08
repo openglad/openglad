@@ -37,10 +37,13 @@ OUT_DIR="${OPENGLAD_README_MEDIA_DIR:-$REPO_ROOT/build/media/readme}"
 
 # Pinned frames. Each demo run is seeded, so these name specific moments:
 # the hedge-line melee outside the keep, arrows in flight and a gold pile on
-# the flank; the Capture the Flag arena with both squads on the plaza under
-# the announcement stack the mode narrates itself with (there is no separate
-# score HUD -- those yellow lines ARE the scoreboard, and no flag sprite is
-# on screen in this run); the ninefold judgment pulse on the Ninefold Court
+# the flank; the Capture the Flag arena with the red squad holding the plaza
+# and green closing in from the field, under the announcement stack the mode
+# narrates itself with (there is no separate score HUD -- those yellow lines
+# ARE the scoreboard, and no flag sprite is on screen in this run; the denser
+# melees later in the run have scrolled the flag lines off the stack, which
+# is what makes this the readable frame); the ninefold judgment pulse on the
+# Ninefold Court
 # (the frame capture_showcase.sh uses for the same level -- scen 605 is a
 # single-floor Lua-scripted court, so the still is a level-script shot, not
 # a multi-floor one).
