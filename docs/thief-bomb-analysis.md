@@ -112,13 +112,14 @@ bot, and a bot never takes the input path of candidate 2:
    tick 35 under three meleeing soldiers. This is the only stacker available in
    campaign play.
 2. **A human thief tapped Special once — and that thief was HOSTILE to the
-   cleric**, i.e. a versus/FFA mode, not your own party. One tap arms **two**
-   bombs on the same tick (§3.4): 304–326 at the full tier on the cleric. A
-   cleric missing 36 HP — one enemy knife, one earlier bomb tick, anything —
-   dies, and the two sprites overlap and detonate on the same tick, so it reads
-   as one bomb. Holding the key for half a second arms seven. The precondition
-   matters: your *own* thief's bombs hit allies at the ½ tier (§1, 71–79 on a
-   340/15 cleric), so two of those are 142–158 and five are needed for a kill.
+   cleric**, i.e. a versus/FFA mode, not your own party. Until this branch,
+   one tap armed **two** bombs on the same tick (§3.4): 304–326 at the full
+   tier on the cleric. A cleric missing 36 HP — one enemy knife, one earlier
+   bomb tick, anything — died, and the two sprites overlapped and detonated on
+   the same tick, so it read as one bomb. Holding the key for half a second
+   armed seven. The precondition matters: your *own* thief's bombs hit allies
+   at the ½ tier (§1, 71–79 on a 340/15 cleric), so two of those are 142–158
+   and five are needed for a kill. This path is closed on this branch (§3.4).
 3. **The cleric was not at full HP** and 157 off the bar read as "blown away".
 
 Distinguishing them needs the save, the kill feed, or the answer to one
@@ -241,18 +242,17 @@ every level, and it is the **slowest-scaling attack an enemy owns** — the knif
 overtakes it at level 8. It is the norm for the curve, not an outlier; the
 outliers are the quadratic NPC primaries.
 
-### 3.4 One tap, two bombs: the player input path
+### 3.4 One tap, two bombs: the player input path (fixed on this branch)
 
 `sim_process_player_input` (`src/gameplay/sim_input_handler.cpp`) calls
-`player_cast_special` on `was_pressed(Special)` (`:446-449`) **and again** on
-`is_held(Special)` (`:471-473`) in the same tick. `input_state_from_sdl` derives
+`player_cast_special` on `was_pressed(Special)` **and again** on
+`is_held(Special)` in the same tick. `input_state_from_sdl` derives
 `pressed = held && !was_held` (`src/interface/sdl_context_services.cpp:87-89`),
-so both are true on the key-down frame. `player_cast_special` (`:74-90`)
-returns on the first success without any debounce (`SimInputDebounce` only
-throttles the failure cues), `walker::special`
-(`src/gameplay/walker_specials.cpp:127-190`) has no cooldown gate, and
-`drop_bomb` sets no `busy`. Both calls run in production
-(`game_server.cpp:1690`, `:2688`). Result:
+so both were true on the key-down frame. `player_cast_special` returns on the
+first success without any debounce (`SimInputDebounce` only throttles the
+failure cues), `walker::special` (`src/gameplay/walker_specials.cpp`) has no
+cooldown gate, and `drop_bomb` sets no `busy`. Both calls run in production
+(`game_server.cpp`). Before the fix:
 
 | input | bombs armed | MP | on the 340/15 cleric |
 |---|---|---|---|
@@ -261,10 +261,38 @@ throttles the failure cues), `walker::special`
 
 Provenance: the 2013 companion has the same pair (`view.cpp:866` press event +
 `view.cpp:1019` held poll in `continuous_input`), so this is 2013-faithful; the
-2002 import (`9990ec7d` `view.cpp:853`) polled only the held state and had no
-press-edge cast. **No parity golden can see this**: the harness driver
-(`tests/parity/scenario_runtime.cpp:324`) casts once per held tick with no press
-arm, and every bomb golden shows exactly one owner-tier hit.
+2002 import (`9990ec7d` `view.cpp:853`) polled only the held state, once per
+game cycle (`timer_wait` 6 × 13.6 ms ≈ 82 ms, the same ~12 Hz the sim ticks
+at today), and had no press-edge cast at all. In 2002 a tap armed one bomb per
+cycle it spanned — usually one, two across a cycle boundary, none if the whole
+tap fell between two polls; 2013 added the press-edge cast so a tap is never
+missed, but left the held poll running on the same frame.
+
+**The fix, on this branch: the held arm yields the press tick.** `is_held` casts
+only when `was_pressed` did not run this tick, so a tap is exactly one cast and
+holding fires once per tick from the next tick on — the 2002 rhythm without the
+missed taps. It is one guard at the input site rather than a `busy` latch in
+each unlatched special, because the special bodies are shared with the AI:
+`busy > 0` blocks `init_fire`, so a latch would cost every AI elf, elemental,
+ghost, slime and bombing thief a fire tick per cast, move their parity rows,
+and deviate from 2002 (which had no `busy` there). The guard is player-only by
+construction. Regression pin:
+`tests/integration/test_sim_input_unit.cpp`
+`sim_input_one_press_is_one_cast_for_an_unlatched_special` (red on the old
+handler: two bombs and 70 MP from one press frame).
+
+The same double fire applied to every special without a same-tick latch of
+its own — thief CLOAK, the elf's four rock volleys, elemental STARBURST, mage
+WARP SPACE / ENERGY WAVE / FREEZE TIME / HEARTBURST, ghost SCARE, slime SPLIT
+and GROW, and the corpse-consuming cleric RAISE GHOST / RESURRECT and orc EAT
+CORPSE when a second corpse is in range. The soldier, archer, druid,
+barbarian, archmage and skeleton specials, orc HOWL, thief TAUNT / CHARM /
+POISON CLOUD, cleric HEAL / RAISE UNDEAD / TURN UNDEAD and the mage teleports
+already declined the second call (a `busy` check or a teleport animation
+state). **No parity golden can see any of this**: the harness driver
+(`tests/parity/scenario_runtime.cpp`) casts once per held tick with no press
+arm, so the fix moves zero goldens, and every bomb golden shows exactly one
+owner-tier hit before and after.
 
 ## 4. Counterplay and cost
 
@@ -348,8 +376,8 @@ thief. This is a hypothesis consistent with the numbers, not a measurement.
 **The single bomb is reasonable: faithful to 2002 to within one point and
 balanced by the game's own curve. The reported kill needs two bombs in one
 fuse — from the 2002 `hit_response` stack if the thief was a bot, from the 2013
-one-tap-arms-two input quirk if it was a hostile player. The quirk is not
-reasonable either way.** Evidence, ranked:
+one-tap-arms-two input quirk if it was a hostile player. The quirk was not
+reasonable either way, and this branch fixes it (§3.4).** Evidence, ranked:
 
 1. **One explosion cannot do it.** A 340/15 cleric keeps 177–188 HP from one
    level-10 bomb; no level-9 walker of any family dies to one; the soft cap
@@ -367,8 +395,9 @@ reasonable either way.** Evidence, ranked:
 6. **The stack is where the kill lives**, and two of its three sources are
    inherited quirks rather than design: the 2002 `hit_response` stack (§4.4,
    faithful, and the only one a campaign bot can use) and the 2013 press+held
-   double cast (§3.4, not in 2002, and reachable against your cleric only when
-   the thief is a hostile player — an allied thief's bombs land at the ½ tier).
+   double cast (§3.4, not in 2002, reachable against your cleric only when
+   the thief is a hostile player — an allied thief's bombs land at the ½ tier —
+   and closed on this branch).
 
 ### Options, ranked
 
@@ -393,30 +422,24 @@ the #283 byte compare all eight go red: 8 ledger rows with branch-sourced
 goldens plus a `GAMEPLAY_FIXES_FROM_CLASSIC.md` row, since 2002 dropped the
 bomb silently.
 
-**Option 2 (measure, then decide): a 1-tick `busy` on `drop_bomb`.** The
-one-line fix for §3.4 — `drop_bomb` refuses while `lc.is_busy(self)` and sets
-`busy = 1` on success, the pattern `cloak`/`taunt` already use
-(`living-11-thief.lua:85`, `:175`). The held cast on the key-down tick is
-declined (the press cast set `busy`), `living::act` decrements it next tick
-(`living.cpp:310-311`), and holding still fires once per tick after that. A
-longer `busy` (5, as poison cloud) would also throttle the hold to one per six
-ticks. It does not touch AI cadence unless the AI double-drops in one tick.
-Golden cost on paper: the eight player-cast bomb rows hold `K_SPECIAL` for a
-single tick and never fire a weapon in the window, so nothing should move; the
-AI row `thief_ai_bomb_flee_scen99` is the likely mover — two of its three bombs
-share the tile (142,130), which is consistent with a same-tick double drop via
-`hit_response` that a `busy` gate would block. That is an assertion, not a
-measurement: run the suite under the change, and if the flee row moves it needs
-a ledger row and a branch-sourced golden, plus a `GAMEPLAY_FIXES_FROM_CLASSIC.md`
-row either way ("Visible gameplay", restores the 2002 one-cast-per-poll input
-rhythm). Only worth doing after Option 1's question (a) comes back "player".
+**Option 2 (done on this branch): one cast per tap, fixed at the input site.**
+§3.4's double cast is closed by making the held arm yield the tick on which the
+press arm ran. The alternative considered — a 1-tick `busy` on `drop_bomb`
+(refuse while `lc.is_busy(self)`, set `busy = 1` on success, the pattern
+`cloak`/`taunt` already use) — would have worked for the player, since
+`living::act` decrements `busy` before the next tick's input, but the cast body
+is shared with the AI: `busy > 0` blocks `init_fire`, so every AI thief would
+lose a fire tick per bomb, `thief_ai_bomb_flee_scen99` (two of whose three
+bombs share the tile (142,130)) would move, the same latch would be owed to
+ten other unlatched specials with their own AI rows, and all of it deviates
+from 2002, where none of them had a `busy`. The input-site guard moves zero
+goldens and needs no ledger row; its `GAMEPLAY_FIXES_FROM_CLASSIC.md` row is
+"One Special tap cast twice".
 
 **Option 3: cap simultaneous armed bombs per caster.** `drop_bomb` returns
 `false` (no MP spent) while the caster already owns ≥ N live `core:bomb` FX.
 N = 2 keeps a player's two-per-fuse rhythm and stops the AI's 3–6 stack (max
-per fuse 304–326: never a kill from full, still a kill of a wounded cleric) —
-but it leaves the tap-double of §3.4 intact; only N = 1 stops that, at the cost
-of the rhythm. Parity: `thief_ai_bomb_flee_scen99` has three live bombs from one
+per fuse 304–326: never a kill from full, still a kill of a wounded cleric). Parity: `thief_ai_bomb_flee_scen99` has three live bombs from one
 caster and **moves at N = 2** (ledger row + branch golden);
 `effect_bomb_emission_scen99` drops exactly one bomb (its golden has one
 `SOUND_EXPLODE`, at tick 70) and does not move at any N; the other seven bomb
