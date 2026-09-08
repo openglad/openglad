@@ -643,8 +643,16 @@ set(OG_BUILTIN_CAMPAIGN_ARCHIVES "")
 foreach(og_campaign IN LISTS OG_SHIPPED_CAMPAIGN_IDS OG_DEV_CAMPAIGN_IDS)
     if(og_campaign IN_LIST OG_SHIPPED_CAMPAIGN_IDS)
         set(og_campaign_dir "builtin")
+        set(og_campaign_evict "")
     else()
         set(og_campaign_dir "builtin-dev")
+        # A build tree configured before #240 still holds this archive under
+        # builtin/, where nothing rewrites it any more -- and builtin/ is
+        # what ships. Evict the stale copy on every compose so an
+        # incremental tree packages the same seven campaigns a fresh one does.
+        set(og_campaign_evict
+            COMMAND ${CMAKE_COMMAND} -E rm -f
+                    "${CMAKE_BINARY_DIR}/builtin/${og_campaign}.glad")
     endif()
     set(og_campaign_glad
         "${CMAKE_BINARY_DIR}/${og_campaign_dir}/${og_campaign}.glad")
@@ -658,6 +666,7 @@ foreach(og_campaign IN LISTS OG_SHIPPED_CAMPAIGN_IDS OG_DEV_CAMPAIGN_IDS)
         BYPRODUCTS "${og_campaign_glad}"
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
                 "${og_campaign_glad}" --root "${og_campaign_root}"
+        ${og_campaign_evict}
         COMMAND ${CMAKE_COMMAND} -E touch "${og_campaign_stamp}"
         DEPENDS "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
                 ${og_campaign_inputs}
