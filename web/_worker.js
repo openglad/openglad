@@ -25,6 +25,17 @@ export default {
       return env.RELAY.fetch(new Request(target, request));
     }
 
+    // Archived v2-<n> builds each ship the version list as it stood on their
+    // own deploy day. They refresh it by fetching production's index.json
+    // cross-origin, so that one file — and nothing else — is readable from
+    // any origin.
+    if (url.pathname === '/versions/index.json') {
+      const res = await env.ASSETS.fetch(request);
+      const headers = new Headers(res.headers);
+      headers.set('Access-Control-Allow-Origin', '*');
+      return new Response(res.body, { status: res.status, headers });
+    }
+
     return env.ASSETS.fetch(request);
   },
 };

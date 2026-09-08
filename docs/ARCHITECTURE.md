@@ -688,7 +688,7 @@ tags carried on the snapshot wire), advanced as if it had played solo — see
 
 ### Structure
 
-- **Campaign** — A collection of levels with a progression order. Shipped as `.glad` packages (zip archives). The seven built-in campaigns are committed as plain source trees under `campaigns/<id>/` (campaign.yaml, scen/, pix/, icon.png); the build composes each tree into `build/<preset>/builtin/<id>.glad` with `scripts/make_glad.py` — a deterministic writer (stored members, bytewise-sorted paths, fixed timestamps), so identical trees always produce byte-identical archives. Pack-bearing campaigns (modes, concept) keep their pack Lua single-sourced under `tools/<tool>/pack/`, mapped to `packs/<pack-id>/` in the archive at composition time. `tests/unit/test_builtin_archives.cpp` pins the staged archives against the source trees byte-for-byte.
+- **Campaign** — A collection of levels with a progression order. Shipped as `.glad` packages (zip archives). The seven shipped campaigns are committed as plain source trees under `campaigns/<id>/` (campaign.yaml, scen/, pix/, icon.png); the build composes each tree into `build/<preset>/builtin/<id>.glad` with `scripts/make_glad.py` — a deterministic writer (stored members, bytewise-sorted paths, fixed timestamps), so identical trees always produce byte-identical archives. Pack-bearing campaigns (modes, concept) keep their pack Lua single-sourced under `tools/<tool>/pack/`, mapped to `packs/<pack-id>/` in the archive at composition time. The dev-only `concept` playground composes into `build/<preset>/builtin-dev/concept.glad` instead — tests, tooling and media capture load it from a build tree, but nothing installs, packages or preloads it, so it never reaches players (#240). `tests/unit/test_builtin_archives.cpp` pins the staged archives against the source trees byte-for-byte.
 - **Level** — A single scenario file defining a tile grid, entity placements, objectives, and intro text.
 - **Scenario** — The in-game term for a level. Each has a numeric ID; the player progresses through them sequentially.
 
@@ -1020,10 +1020,13 @@ The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 5. **tsan** — ThreadSanitizer build and test
 
 Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
-`nightly.yml` (nightly native builds + release, plus a backstop Cloudflare
-Pages production deploy), and `wasm-e2e.yml` (Playwright WebAssembly
-end-to-end tests + PR preview deploys, and the production deploy — relay
-worker then Pages — on every push to master).
+`release.yml` (one versioned GitHub release per master commit, triggered by
+`workflow_run` when that commit's `wasm-e2e.yml` finishes successfully; on pull
+requests it only validates the three-platform build matrix), and `wasm-e2e.yml`
+(Playwright WebAssembly end-to-end tests, PR preview deploys with a sticky
+preview comment, and on every push to master: relay worker → the permanent
+`v2-<n>` archive alias → the production Pages deploy, with `/versions/`
+regenerated from the Cloudflare Pages deployment list).
 
 ---
 
@@ -1068,3 +1071,19 @@ worker then Pages — on every push to master).
 | `CMakePresets.json` | Build presets for dev, CI, and web |
 | `tests/integration/integration_main.cpp` | Integration test runner entry point |
 | `tests/unit/unit_main.cpp` | Unit test runner entry point |
+
+### Versioning
+
+The build's identity is `<major>.<commit count>`. `cmake/OpenGladVersion.cmake`
+holds the only hand-edited number (`OPENGLAD_VERSION_MAJOR`) and the only
+implementation of "count the commits, read the hash" (`og_version_compute`),
+which both the configure-time `project(VERSION …)` and the build-time
+`cmake/GitHash.cmake` call. `GitHash.cmake` writes the generated
+`og_git_hash.h`, and `src/core/version.cpp` is the single translation unit that
+includes it; every other caller goes through `include/openglad/core/version.h`
+(`og::version::string()`, `git_hash()`, `stamp()`, `cli_line()`).
+
+This number is display-only — the main-menu stamp, `-v`, the help footer, the
+release tag and the web archive alias. No save, replay, snapshot or wire format
+reads it: each of those carries its own integer format version and is bumped
+deliberately.
