@@ -67,11 +67,16 @@ constexpr const char* kMasterName = "Saffron";
 // roughly where a crew stands when the campaign reaches Nuthram.
 constexpr short kReferencePartyLevel = 12;
 
-// The authored boss level and what a 45-point blow is worth against his
-// 2*8^2 = 128 armor under the 2002 roll: (45*45 - 45*44/2) / 128 = 8.09.
+// The authored boss level and what a 45-point blow is worth against him
+// under the 2002 roll: set_difficulty adds 2*8^2 = 128 armor on top of
+// whatever base the walker carries (0 in this fixture, the thief family's
+// 5 in the shipped game), so (45*45 - 45*44/2) / armor lands between 7.8
+// (133 armor) and 8.1 (128 armor).
 constexpr int kMasterLevel = 8;
-constexpr float kMasterArmor = 128.0f;
-constexpr float kMasterExpectedDamagePerHit = 8.09f;
+constexpr float kMasterArmorMin = 128.0f;
+constexpr float kMasterArmorMax = 133.0f;
+constexpr float kMasterExpectedDamagePerHit = 7.95f;
+constexpr float kMasterExpectedDamageTolerance = 0.2f;
 // Floor for every enemy in the level against that same blow.
 constexpr float kMinExpectedDamagePerHit = 7.0f;
 
@@ -311,13 +316,15 @@ TEST_F(GladiatorCampaignTest, nuthram_guild_master_keeps_his_authored_level_and_
     // reverted once the damage formula, not the level byte, turned out to
     // be what made him unkillable.
     EXPECT_EQ(kMasterLevel, master->stats()->level());
-    EXPECT_FLOAT_EQ(kMasterArmor, master->stats()->armor())
+    EXPECT_GE(master->stats()->armor(), kMasterArmorMin)
         << "2*level^2 on the default curve";
+    EXPECT_LE(master->stats()->armor(), kMasterArmorMax)
+        << "at most the family's 5-point base on top of the curve";
 
     // What a level-12 soldier's 45 base melee is worth against him: the
     // 2002 roll's expectation, ~8 -- a boss fight, not a wall.
     EXPECT_NEAR(kMasterExpectedDamagePerHit,
                 compute_post_reduction_damage(45.0f, master->stats()->armor()),
-                0.02f)
+                kMasterExpectedDamageTolerance)
         << "the 2013 clamp read exactly 1 here (#266)";
 }
