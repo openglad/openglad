@@ -121,6 +121,30 @@ PickerRect campaign_picker_row_rect(int row);
 // glyph height), given the layout above.
 PickerRect campaign_title_rect(int chars);
 
+// --- Main-menu build stamp geometry ---
+//
+// The 5x6 menu font advances 6 px per glyph; the line is centred on the
+// button column (HELP x80..147, QUIT x152..219 -> centre 150) at y=193, the
+// black band below the button row (rows 178..192) and between the column
+// bases (x <= 50 and x >= 251 down there). Measured on the rendered menu;
+// the MenuLayout tests pin the button side.
+struct BuildStampRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+
+inline constexpr int kBuildStampY = 193;
+inline constexpr int kBuildStampCentreX = 150;
+inline constexpr int kBuildStampGlyphAdvance = 6;
+inline constexpr int kBuildStampHeight = 6;
+
+// Rect the stamp line occupies: w = len*6 - 1 (the last glyph's trailing
+// spacing column is not ink), centred on kBuildStampCentreX.
+BuildStampRect build_stamp_rect(std::string_view text);
+
 // Text cut to a glyph budget: unchanged when it fits, otherwise clipped with
 // a trailing "..." (budgets of <= 3 just clip).
 std::string fit_text_to_chars(std::string_view text, int budget);

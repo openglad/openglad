@@ -28,7 +28,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/util.h>
-#include <openglad/core/version.h>
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>

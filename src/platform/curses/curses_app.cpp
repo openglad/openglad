@@ -14,6 +14,7 @@
 
 #include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
+#include <openglad/core/version.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/game_context.h>
@@ -87,6 +88,11 @@ bool parse_app_options(int argc, char* argv[], AppOptions& out, bool* should_exi
             out.allow_unicode = false;
         } else if (arg == "--no-color") {
             out.allow_color = false;
+        } else if (arg == "--version") {
+            std::printf("%s\n", og::version::cli_line().c_str());
+            if (should_exit)
+                *should_exit = true;
+            return false;
         } else if (arg == "--help" || arg == "-h") {
             std::printf(
                 "Usage: openglad_curses [options]\n"
@@ -99,7 +105,8 @@ bool parse_app_options(int argc, char* argv[], AppOptions& out, bool* should_exi
                 "  --join <url>      Join a networked game (ws:// or wss:// URL)\n"
                 "  --relay <url>     Use a relay server for host/join\n"
                 "  --no-unicode      ASCII-only glyphs\n"
-                "  --no-color        Monochrome output\n");
+                "  --no-color        Monochrome output\n"
+                "  --version         Print the version and exit\n");
             if (should_exit)
                 *should_exit = true;
             return false;

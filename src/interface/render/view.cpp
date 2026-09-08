@@ -29,7 +29,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/decordefs.h>
 #include <openglad/core/runtime_trace.h>
-#include <openglad/core/version.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>

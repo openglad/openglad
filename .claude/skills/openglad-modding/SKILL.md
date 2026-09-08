@@ -27,7 +27,8 @@ canonical shape — behavior first, then the `og.family` block that names it),
 `packs/core/lib/living_common.lua` + `ai.lua` + `effect_common.lua` (what
 `og.use` modules look like), and the Ninefold Court's `court.lua` at
 `campaigns/concept/packs/concept.showcase/scripts/`
-(level hooks, per-entity hooks, generator `customize_spawn`).
+(level hooks, per-entity hooks, generator `customize_spawn`) — a dev-only
+campaign; it composes into `builtin-dev/`, not the shipped set.
 
 ## The declaration, in one screen
 

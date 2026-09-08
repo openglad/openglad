@@ -1,3 +1,4 @@
+#include <openglad/core/version.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
@@ -4117,5 +4118,40 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
         EXPECT_EQ(s[su].y, p[pu].y) << p[pu].id;
         EXPECT_EQ(s[su].sizex, p[pu].sizex) << p[pu].id;
         EXPECT_EQ(s[su].sizey, p[pu].sizey) << p[pu].id;
+    }
+}
+
+TEST(MenuLayout, mainmenu_build_stamp_clear_of_buttons)
+{
+    // The build stamp is drawn last on the main menu, so a rect that
+    // overlaps a button repaints black over its face — which is exactly
+    // what the old right-aligned version box did to QUIT's bottom-right
+    // corner. Pin it against the real button table, for the stamp this
+    // build actually draws and for a 22-character worst case (the widest
+    // "v2.<count> <hash>" line the scheme can produce for a long time).
+    button* buttons = picker_mainmenu_buttons();
+    const int count = picker_mainmenu_button_count();
+    ASSERT_GT(count, 0);
+
+    const std::string stamp = og::version::stamp();
+    const std::string widest(22, 'W');
+    for (const std::string& line : {stamp, widest})
+    {
+        SCOPED_TRACE(line);
+        const og::ui::BuildStampRect r = og::ui::build_stamp_rect(line);
+        EXPECT_GE(r.x, 0);
+        EXPECT_GE(r.y, 0);
+        EXPECT_LE(r.x + r.w, SCREEN_W) << "stamp runs off the screen";
+        EXPECT_LE(r.y + r.h, SCREEN_H) << "stamp runs off the screen";
+        for (int i = 0; i < count; ++i)
+        {
+            if (buttons[i].hidden)
+                continue;
+            EXPECT_FALSE(rects_overlap(r.x, r.y, r.w, r.h, buttons[i].x,
+                                       buttons[i].y, buttons[i].sizex,
+                                       buttons[i].sizey))
+                << "the build stamp overlaps main-menu button '"
+                << buttons[i].id << "'";
+        }
     }
 }
