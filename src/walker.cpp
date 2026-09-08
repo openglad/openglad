@@ -1962,11 +1962,11 @@ short walker::attack(walker  *target)
 	if (tempdamage < 0)
 		tempdamage = 0;
     
-    do_combat_damage(attacker, target, (tempdamage <= 0) ? (short)0 : (short)floorf(tempdamage + 0.5f));
-
+    const short tempdamage_i = (tempdamage <= 0) ? (short)0 : (short)floorf(tempdamage + 0.5f);
+    do_combat_damage(attacker, target, tempdamage_i);
 
     // Base exp from attack damage
-	short newexp = exp_from_action(EXP_ATTACK, this, target, tempdamage);
+	short newexp = exp_from_action(EXP_ATTACK, this, target, tempdamage_i);
 
 	// Set our target to fighting our owner
 	//in the case of our weapon hit something
@@ -1987,14 +1987,14 @@ short walker::attack(walker  *target)
             myguy->exp += newexp;
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += tempdamage + target->stats->level;
+                myscreen->save_data.m_score[team_num] += tempdamage_i + target->stats->level;
             }
 		}
 	}
 
 	if (order == ORDER_WEAPON)
 	{
-		stats->hitpoints -= tempdamage;
+		stats->hitpoints -= tempdamage_i;
 		damage--;
 		if (stats->hitpoints <= 0)
 		{
@@ -2035,7 +2035,7 @@ short walker::attack(walker  *target)
 		{
 			if (getscore)
 			{
-				myscreen->save_data.m_score[team_num] += tempdamage + target->stats->level; // / 2;
+				myscreen->save_data.m_score[team_num] += tempdamage_i + target->stats->level; // / 2;
 			}
 			if (order != ORDER_WEAPON && headguy->myguy)
 				headguy->myguy->exp += newexp;
@@ -2065,7 +2065,7 @@ short walker::attack(walker  *target)
 					//}
 					if (getscore)
 					{
-						myscreen->save_data.m_score[team_num] += tempdamage + (10 * target->stats->level);
+						myscreen->save_data.m_score[team_num] += tempdamage_i + (10 * target->stats->level);
 					}
 					// If named, alert us of the enemy's death
 					if (strlen(target->stats->name) && !(target->lifetime)
