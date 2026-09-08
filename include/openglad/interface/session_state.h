@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/link_loss_window.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/game_loop_state.h>
@@ -102,6 +103,16 @@ struct SessionState {
     std::int8_t pending_timer_wait_request_ = kNoTimerWaitRequest;
     bool relay_transport_active_ = false;
     bool relay_speed_warning_shown_ = false;
+    // #278 review fixup: the reconnect window of the networked round that
+    // just ended, carried out of clear_local_transport_shadow (the display
+    // GameClient's own og::sim::LinkLossWindow) so the lobby's
+    // resume_after_level continues that ONE timeline instead of restarting
+    // it. A link already down for the whole window in-game is therefore dead
+    // the moment the picker gets it back, while a blip that started during
+    // the post-game fade still has its window to run. Consumed (reset) by
+    // the resume that reads it; a round with no network client leaves it
+    // reset, which reads as "no history to carry".
+    og::sim::LinkLossWindow network_link_window_ = {};
     // True for a genuine networked multiplayer session (host with clients, or a
     // join client). Gates save isolation: the live combined roster is written to
     // a transient slot instead of the player's real save0, and each player

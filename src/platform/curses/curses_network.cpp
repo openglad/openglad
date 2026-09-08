@@ -249,18 +249,11 @@ og::sim::LobbyMessage make_join_message(const SaveData& save,
 
 std::uint8_t ctf_authored_team_mask_for_save(const SaveData& save)
 {
-    if (!og::ui::is_versus_campaign(save) ||
-        get_mounted_campaign() != save.current_campaign)
-    {
-        return 0;
-    }
-
-    LevelRuntimeData scenario(save.scen_num, false,
-                              &headless_level_data_hooks());
-    if (!scenario.load())
-        return 0;
-    return og::ui::ctf_authored_team_mask_for_loaded_level(
-        save, scenario.world(), get_mounted_campaign());
+    // One implementation (og::ui): the arena FILL deal reads the same
+    // scratch-load mask, so the lobby's settings and the deal can never
+    // disagree about which teams a map defines.
+    return og::ui::ctf_authored_team_mask_for_save(
+        save, headless_level_data_hooks());
 }
 
 og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty)

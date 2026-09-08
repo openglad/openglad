@@ -24,6 +24,7 @@
 
 #include <array>
 #include <atomic>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -50,6 +51,23 @@ extern std::atomic<int> g_fade_violations;
 std::vector<std::string> fade_violation_messages();
 void reset_fade_violations();
 void report_fade_violation(const char* what);
+
+// Fault injection for the startup renderer fallback (issue #248). The probe
+// override substitutes the environment the boot path reads (the live video
+// driver, whether the user pinned one, and the driver to fall back to) so the
+// Wayland-without-a-renderer transition can be exercised on the dummy driver;
+// the failure counter makes SDL_CreateRenderer report a failure that many
+// times.
+struct RendererFallbackProbe
+{
+    std::string current_driver;
+    // Unset leaves the boot's own SDL_HINT_VIDEO_DRIVER read in charge, so a
+    // test can cover the production pin derivation instead of replacing it.
+    std::optional<bool> driver_pinned;
+    std::string fallback_driver;
+};
+extern std::optional<RendererFallbackProbe> g_renderer_fallback_probe_override;
+extern int g_renderer_create_failures_to_inject;
 } // namespace og::video_testing
 #endif
 
@@ -66,6 +84,28 @@ inline bool exclusive_mode_switch_is_safe(std::string_view video_driver,
                                           int display_count)
 {
     return video_driver != "x11" || display_count <= 1;
+}
+
+// The video driver OpenGlad reboots on when the presenting renderer cannot be
+// created at startup, and the only driver it reboots away from (issue #248).
+inline constexpr std::string_view kRendererFallbackVideoDriver = "x11";
+inline constexpr std::string_view kRendererFallbackSourceVideoDriver = "wayland";
+
+// SDL's Wayland backend implements no window framebuffer, so SDL's software
+// renderer is unreachable there: without an accelerated renderer
+// (EGL/GLES/Vulkan/GPU) SDL_CreateRenderer has no fallback at all, and the
+// Wayland surface is never mapped because it never receives a first buffer.
+// X11 always has the software renderer, so booting on XWayland instead is the
+// difference between "the game won't start" and the game running. Never
+// override an explicit driver choice (SDL_VIDEODRIVER / the SDL_VIDEO_DRIVER
+// hint), and never tear down a video subsystem another window still lives on.
+inline std::optional<std::string_view> renderer_fallback_video_driver(
+    std::string_view current_driver, bool driver_pinned, int window_count)
+{
+    if (current_driver != kRendererFallbackSourceVideoDriver || driver_pinned ||
+        window_count != 1)
+        return std::nullopt;
+    return kRendererFallbackVideoDriver;
 }
 }
 

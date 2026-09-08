@@ -40,6 +40,20 @@ struct PickerLobbyGameStartConfig
     std::vector<short> local_seat_teams = {};
 };
 
+// #278 review fixup: how a GO's start request ENDED when it ended without
+// the host's verdict. start_request_pending() has exactly three exits and
+// every one of them is reported: the host answered (handoff or denial echo —
+// None, read last_start_denial()), the host stayed silent past
+// START_REQUEST_TIMEOUT_MS (NoAnswer), or the link carrying the request died
+// before any answer could arrive (LinkLost). The silent third exit — pending
+// dropped with no verdict at all, which bounced go_menu back to the menu
+// with no popup — is what this enum closes.
+enum class StartRequestOutcome : std::uint8_t {
+    None = 0,
+    NoAnswer,
+    LinkLost,
+};
+
 class IPickerLobbyClient
 {
 public:
@@ -95,7 +109,22 @@ public:
     build_game_start_config() const = 0;
     [[nodiscard]] virtual std::optional<PickerLobbyGameStartConfig>
     consume_game_start_config() = 0;
+    // True while a StartGame request this client sent awaits the host's
+    // handoff or denial echo. BOUNDED by contract (#278): a networked client
+    // expires an unanswered request START_REQUEST_TIMEOUT_MS after the GO
+    // that sent it, and abandons it outright if the link dies first (pending
+    // drops, start_request_outcome() names which), so a `while (pending)
+    // poll` wait never needs a deadline of its own — and the NEXT GO sends a
+    // fresh request instead of re-waiting on the stale one.
     [[nodiscard]] virtual bool start_request_pending() const noexcept = 0;
+    // Why the most recent GO's request ended without the host's verdict, or
+    // None when it was answered (or never sent). Cleared by the next
+    // request_start_game() call; never set by a local client.
+    [[nodiscard]] virtual StartRequestOutcome start_request_outcome()
+        const noexcept
+    {
+        return StartRequestOutcome::None;
+    }
     [[nodiscard]] virtual bool has_game_start_config() const noexcept
     {
         return false;
@@ -189,6 +218,31 @@ public:
     // connection dies immediately afterwards, so the flag is the only
     // surviving evidence of WHY.
     [[nodiscard]] virtual bool was_kicked() const noexcept
+    {
+        return false;
+    }
+    // LINEUP §6 companion to was_kicked() (#278): this client WAS in an
+    // established session and its link has since died for good. "For good"
+    // is ONE rule, in ONE window, across every phase a joiner can be in: the
+    // link stayed down for the whole og::sim::LinkLossWindow
+    // (CLIENT_CONNECTION_LOST_TIMEOUT_MS). A blip that the transport's
+    // auto-reconnect heals inside it is NOT a loss — the client re-joins and
+    // the lobby re-converges, as before #278 — whether it happens while the
+    // joiner is parked in the lobby, in the level, or in the post-game
+    // moment between them. The three phases hand the window on rather than
+    // restarting it: the level's GameClient window is carried to the session
+    // by the runtime teardown and adopted by resume_after_level(), and a
+    // round that ENDED on the dead link (the in-game backstop, or the
+    // player's QUIT taking the same transition) hands on an exhausted one.
+    // So a session already declared over in-game is dead the instant the
+    // picker gets it back, while a drop that began during the post-game fade
+    // still has the rest of its window and is left to the lobby poll.
+    // Latched; survives shutdown() and resume_after_level(); never cleared
+    // in this client's lifetime. The picker reverts to a local client on it
+    // exactly as on a kick (the kick outranks it when both are set). Only a
+    // joiner ever reports it — a host's lobby is in-process and a dead relay
+    // is just its line-B alert.
+    [[nodiscard]] virtual bool session_lost() const noexcept
     {
         return false;
     }
@@ -341,6 +395,7 @@ bool picker_lobby_request_start();
 std::optional<og::ui::PickerLobbyGameStartConfig>
 picker_lobby_consume_game_start_config();
 bool picker_lobby_start_request_pending();
+og::ui::StartRequestOutcome picker_lobby_start_request_outcome();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
 std::optional<std::string> picker_lobby_connection_alert();
@@ -354,6 +409,7 @@ bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
 bool picker_lobby_kick_machine(og::sim::LobbyMachineId machine_id);
 bool picker_lobby_disconnect_session();
 bool picker_lobby_was_kicked();
+bool picker_lobby_session_lost();
 bool picker_lobby_set_ready(bool ready);
 bool picker_lobby_local_ready();
 og::sim::StartDenialReason picker_lobby_last_start_denial();

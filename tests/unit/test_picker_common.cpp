@@ -19,6 +19,8 @@
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/interface/level_runtime_data.h>
 #include "test_game_world_fixture.h"
 #include <array>
 #include <cstdlib>
@@ -1352,6 +1354,141 @@ TEST(PickerCommon, is_versus_campaign_reads_matchup_key)
     fs::remove(archive, ec);
     fs::remove_all(fs::path(get_user_path()) / "pc_versus_staging", ec);
     og::data::clear_campaign_metadata_cache();
+}
+
+// --- The arena FILL default (docs/lineup-design.md Amendment 7, #276) ---
+
+TEST(PickerCommon, deal_arena_lineup_fill_lifts_none_on_authored_teams_once)
+{
+    restore_default_campaigns();  // the versus predicate reads modes' yaml
+    SaveData save;
+    save.current_campaign = "modes";
+    save.scen_num = 500;
+    save.fill = {};
+    ASSERT_TRUE(og::ui::arena_lineup_deal_pending(save))
+        << "a fresh company on a versus campaign has dealt nothing";
+
+    // A mask that names nothing (metadata not synchronized, or a map with
+    // no markers) neither deals nor stamps: the next synchronized reload
+    // gets its turn.
+    EXPECT_FALSE(og::ui::deal_arena_lineup_fill(save, 0));
+    EXPECT_TRUE(og::ui::arena_lineup_deal_pending(save));
+    EXPECT_EQ((std::array<short, 4>{0, 0, 0, 0}), save.fill);
+
+    // RED and GREEN authored: both lift from NONE to FAIR, the rest stay.
+    EXPECT_TRUE(og::ui::deal_arena_lineup_fill(save, 0b0011));
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillFair, og::sim::kFillFair,
+                                    0, 0}),
+              save.fill);
+    EXPECT_EQ("modes", save.arena_lineup_dealt_campaign);
+    EXPECT_EQ(500, save.arena_lineup_dealt_scen);
+    EXPECT_FALSE(og::ui::arena_lineup_deal_pending(save));
+
+    // Once per cursor: an explicit NONE turned afterwards stays NONE.
+    save.fill[1] = og::sim::kFillNone;
+    EXPECT_FALSE(og::ui::deal_arena_lineup_fill(save, 0b0011));
+    EXPECT_EQ(og::sim::kFillNone, save.fill[1]);
+
+    // A new scenario re-deals: only the NONE bands the map authors move,
+    // every non-NONE value is left exactly where the host put it.
+    save.scen_num = 850;
+    save.fill = {0, og::sim::kFillWeak, 0, og::sim::kFillBrutal};
+    ASSERT_TRUE(og::ui::arena_lineup_deal_pending(save));
+    EXPECT_TRUE(og::ui::deal_arena_lineup_fill(save, 0b1111));
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillFair, og::sim::kFillWeak,
+                                    og::sim::kFillFair, og::sim::kFillBrutal}),
+              save.fill);
+    EXPECT_EQ(850, save.arena_lineup_dealt_scen);
+
+    // A stamped cursor whose authored bands are all non-NONE already: the
+    // stamp lands, nothing changes, and the call says so.
+    save.scen_num = 851;
+    save.fill = {og::sim::kFillStrong, og::sim::kFillStrong,
+                 og::sim::kFillStrong, og::sim::kFillStrong};
+    EXPECT_FALSE(og::ui::deal_arena_lineup_fill(save, 0b1111));
+    EXPECT_EQ(851, save.arena_lineup_dealt_scen)
+        << "the cursor is dealt even when no band had to move";
+
+    // A classic campaign never pends: the C3 all-default byte no-op stands.
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.fill = {};
+    EXPECT_FALSE(og::ui::arena_lineup_deal_pending(save));
+    EXPECT_FALSE(og::ui::deal_arena_lineup_fill(save, 0b0011));
+    EXPECT_EQ((std::array<short, 4>{0, 0, 0, 0}), save.fill);
+    EXPECT_EQ("modes", save.arena_lineup_dealt_campaign)
+        << "a classic cursor leaves the memo alone";
+}
+
+TEST(PickerCommon, deal_arena_lineup_for_cursor_reads_the_mounted_arena)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    // The scratch-load mask rule the curses lobby and the deal share:
+    // FIRST BLOOD authors RED and GREEN; a level the package does not
+    // carry authors nothing.
+    SaveData save;
+    save.current_campaign = "modes";
+    save.scen_num = 500;
+    EXPECT_EQ(0b0011u,
+              static_cast<unsigned>(og::ui::ctf_authored_team_mask_for_save(
+                  save, headless_level_data_hooks())));
+    save.scen_num = 32000;
+    EXPECT_EQ(0u,
+              static_cast<unsigned>(og::ui::ctf_authored_team_mask_for_save(
+                  save, headless_level_data_hooks())));
+
+    // The terminal pickers' entry point: pending + mounted + loadable deals.
+    save.scen_num = 500;
+    save.fill = {};
+    EXPECT_TRUE(og::ui::deal_arena_lineup_for_cursor(
+        save, headless_level_data_hooks()));
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillFair, og::sim::kFillFair,
+                                    0, 0}),
+              save.fill);
+    EXPECT_EQ(500, save.arena_lineup_dealt_scen);
+    EXPECT_FALSE(og::ui::deal_arena_lineup_for_cursor(
+        save, headless_level_data_hooks()))
+        << "dealt cursors are free";
+
+    // An unloadable cursor neither deals nor stamps.
+    save.scen_num = 32000;
+    EXPECT_FALSE(og::ui::deal_arena_lineup_for_cursor(
+        save, headless_level_data_hooks()));
+    EXPECT_EQ(500, save.arena_lineup_dealt_scen);
+
+    // The loaded-level form guards the same way: a world of another id
+    // is not this cursor's map.
+    save.scen_num = 501;
+    {
+        LevelRuntimeData scenario(500, false, &headless_level_data_hooks());
+        ASSERT_TRUE(scenario.load());
+        EXPECT_FALSE(og::ui::deal_arena_lineup_for_loaded_level(
+            save, scenario.world(), get_mounted_campaign()));
+        EXPECT_EQ(500, save.arena_lineup_dealt_scen);
+    }
+    save.fill = {};  // the 500 deal's FAIRs would leave nothing to lift
+    {
+        LevelRuntimeData scenario(501, false, &headless_level_data_hooks());
+        ASSERT_TRUE(scenario.load());
+        EXPECT_TRUE(og::ui::deal_arena_lineup_for_loaded_level(
+            save, scenario.world(), get_mounted_campaign()));
+        EXPECT_EQ(501, save.arena_lineup_dealt_scen);
+        EXPECT_EQ((std::array<short, 4>{og::sim::kFillFair,
+                                        og::sim::kFillFair, 0, 0}),
+                  save.fill);
+    }
+
+    // The mount guard: a save naming a campaign that is not mounted deals
+    // nothing (the lobby's mask rule says 0 there too).
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.scen_num = 502;
+    EXPECT_FALSE(og::ui::deal_arena_lineup_for_cursor(
+        save, headless_level_data_hooks()));
+    EXPECT_EQ(501, save.arena_lineup_dealt_scen);
 }
 
 // --- set_player_count ---

@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -3163,4 +3164,162 @@ TEST(PlatformHeadless, text_picker_camp_without_a_zone_prints_the_guard)
         << "a campaign that composed no camp must print the guard line";
     EXPECT_EQ(std::string::npos, out.find("Camp # "))
         << "the guard path must never open the camp prompt";
+}
+
+// ---------------------------------------------------------------------------
+// #276 (docs/lineup-design.md Amendment 7): the text picker's GO on an
+// arena at rest launches a MATCH. The company is a solo fighter on a versus
+// campaign scenario with every knob at its stored default; the picker's
+// team-build loop deals FILL: FAIR to the teams the map authors, and the
+// staged launch (the one pipeline VIEW LEVEL previews with, #247) fields
+// them. One scenario per mode family the probe found broken — CTF, TDM,
+// Soccer, Basketball — because each map's other teams were start markers
+// and nothing else, so the mode refused for want of a second team and the
+// classic rules scored the empty field a win on its second tick.
+
+namespace {
+
+bool seed_arena_company(const std::string& slot, short scen_num)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = "ARENA SOLO";
+    sd.current_campaign = "modes";
+    sd.current_levels.clear();
+    sd.current_levels["modes"] = scen_num;
+    sd.scen_num = scen_num;
+    sd.my_team = 0;
+    sd.numplayers = 1;
+    sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    sd.team_list[0]->name = "Solo";
+    sd.team_list[0]->teamnum = 0;
+    sd.team_list[0]->deployed = true;
+    sd.team_list[0]->upgrade_to_level(3, true);
+    sd.team_size = 1;
+    sd.fill = {};
+    sd.map_units = {};
+    return sd.save_with_error(slot) == SaveDataIoError::None;
+}
+
+// The live Living entities on one team in a protocol `state` line.
+int state_livings_on_team(const std::string& state_line, int team)
+{
+    const std::size_t begin = state_line.find("\"entities\":[");
+    if (begin == std::string::npos)
+        return -1;
+    const std::size_t end = state_line.find(']', begin);
+    if (end == std::string::npos)
+        return -1;
+    const std::string entities = state_line.substr(begin, end - begin);
+    const std::string team_key = "\"team\":" + std::to_string(team) + ",";
+    int count = 0;
+    std::size_t pos = 0;
+    while ((pos = entities.find('{', pos)) != std::string::npos) {
+        const std::size_t close = entities.find('}', pos);
+        if (close == std::string::npos)
+            break;
+        const std::string entity = entities.substr(pos, close - pos);
+        if (entity.find("\"order\":0,") != std::string::npos &&
+            entity.find(team_key) != std::string::npos &&
+            entity.find("\"dead\":false") != std::string::npos)
+        {
+            ++count;
+        }
+        pos = close + 1;
+    }
+    return count;
+}
+
+} // namespace
+
+TEST(PlatformHeadless, text_picker_go_on_an_arena_at_rest_fields_the_match)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+
+    struct Arena
+    {
+        short scen;
+        int opponents;  // live opponents on GREEN at tick 3, pinned exactly
+    };
+    // The D34 headcount rule sizes a solo roster's opponent squad to the
+    // roster headcount: one fighter, one opponent, on every map.
+    const Arena arenas[] = {
+        {500, 1},  // CTF
+        {300, 1},  // TDM
+        {820, 1},  // Soccer
+        {824, 1},  // Basketball
+    };
+    for (const Arena& arena : arenas) {
+        ASSERT_TRUE(seed_arena_company("arenad", arena.scen));
+        std::string text;
+        og::ui::TextPickerError error;
+        {
+            // The redirects live only around the drive: gtest's own failure
+            // output goes to stdout too, and a silencer still standing at
+            // the assertions below would eat it.
+            StdinRedirect input(
+                "7\n"       // main: load company -> the company list
+                "1\n"       //   list: open company...
+                "1\n"       //     #1 = arenad -> team build
+                "6\n"       // team build: GO! -> the staged protocol session
+                "tick 3\n"
+                "state\n"
+                "quit\n"
+                "8\n"       // team build: back -> main
+                "6\n");     // main: quit
+            CoutRedirect json;
+            StdoutSilencer menus;
+
+            og::ui::TextPickerConfig config;
+            config.campaign = "modes";
+            config.team_families = {FAMILY_SOLDIER};
+            config.seed = 42;
+            og::ui::run_text_picker(config, &error);
+            text = json.str();
+        }
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code)
+            << "scen " << arena.scen << ": " << error.detail;
+
+        EXPECT_NE(std::string::npos,
+                  text.find(std::format("\"status\":\"ready\",\"level\":{},",
+                                        arena.scen)))
+            << "scen " << arena.scen << " should launch";
+        // The whole window runs: nothing latched a win on tick 2.
+        EXPECT_NE(std::string::npos,
+                  text.find("{\"tick\":3,\"level_done\":0,"
+                            "\"game_ended\":false,"))
+            << "scen " << arena.scen
+            << ": an arena at rest must still be a live match on tick 3: "
+            << text.substr(0, 400);
+        std::string state_line;
+        {
+            std::size_t pos = text.find("\"cmd\":\"state\"");
+            if (pos != std::string::npos) {
+                const std::size_t start = text.rfind('\n', pos);
+                const std::size_t stop = text.find('\n', pos);
+                state_line = text.substr(
+                    start == std::string::npos ? 0 : start + 1,
+                    stop == std::string::npos ? std::string::npos
+                                              : stop - start - 1);
+            }
+        }
+        ASSERT_FALSE(state_line.empty())
+            << "scen " << arena.scen << ": no state line";
+        EXPECT_NE(std::string::npos,
+                  state_line.find("\"mode\":{\"active\":true,"))
+            << "scen " << arena.scen
+            << ": the mode must activate -- two defined teams stand: "
+            << state_line.substr(0, 300);
+        EXPECT_EQ(1, state_livings_on_team(state_line, 0))
+            << "scen " << arena.scen << ": the solo fighter on RED";
+        EXPECT_EQ(arena.opponents, state_livings_on_team(state_line, 1))
+            << "scen " << arena.scen
+            << ": GREEN's dealt FAIR squad stands on the field";
+    }
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
 }

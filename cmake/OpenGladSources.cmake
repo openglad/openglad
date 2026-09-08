@@ -57,6 +57,7 @@ set(OG_GAMEPLAY_SIM_SOURCES
     ${SRC_DIR}/gameplay/game_server.cpp
     ${SRC_DIR}/gameplay/lobby_server.cpp
     ${SRC_DIR}/gameplay/game_client.cpp
+    ${SRC_DIR}/gameplay/link_loss_window.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
     ${SRC_DIR}/gameplay/pack_transfer.cpp

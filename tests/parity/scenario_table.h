@@ -686,7 +686,7 @@ inline constexpr FactPredicate kFacts_ai_idle_wander_scen9301[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4600, 4600),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2900, 2900),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
 };
 
@@ -694,7 +694,7 @@ inline constexpr FactPredicate kFacts_combat_attack_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000),
     pred::EventKindAtLeast(/*play_sound*/1, 8),
 };
 
@@ -789,7 +789,7 @@ inline constexpr FactPredicate kFacts_summon_druid_pet_scen950[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7700, 7700),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6700, 6700),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
 };
 
@@ -797,7 +797,7 @@ inline constexpr FactPredicate kFacts_scoring_after_combat_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000),
     pred::EventKindExactly(/*score_change*/9, 0),
 };
 
@@ -805,7 +805,7 @@ inline constexpr FactPredicate kFacts_save_roundtrip_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6100, 6100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4800, 4800),
     pred::EventKindAtLeast(/*play_sound*/1, 10),
 };
 
@@ -828,7 +828,7 @@ inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4600, 4600),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2900, 2900),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
 };
 
@@ -836,7 +836,7 @@ inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4600, 4600),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2900, 2900),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
 };
 
@@ -1168,7 +1168,7 @@ inline constexpr Mutation kMut_effect_lifetime = {
 };
 
 inline constexpr Mutation kMut_save_corrupt = {
-    "src/resources/save_data.cpp", 132,
+    "src/resources/save_data.cpp", 135,
     "std::uint8_t temp_version = 9;",
     "std::uint8_t temp_version = 0;",
     "Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2)."
@@ -1950,7 +1950,7 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::EventKindAtLeast(/*play_sound*/1, 7),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6400, 6400),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5100, 5100),
     pred::WeaponFamilyEmitted(FAMILY_KNIFE),
     pred::WeaponSpeed(FAMILY_KNIFE, 600, 800,
         "trajectory: FAMILY_KNIFE outbound flight steps a constant dx=7,dy=waver per tick (stepsize 5 * 362/256 ~=1.414 on cardinal facing, walker.cpp:1190), giving max consecutive-tick step = hypot(7,1)*100 = 707 centi-px/tick on both arms. Tight [600,800] brackets the observed 707 (margin ~13%) yet excludes the mutated 1005 (kMut multiplier 362->512 -> stepsize 10 -> step ~1005) so the predicate flips."),
@@ -2151,8 +2151,8 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_bone_emission[] = {
 
 inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1),
-    pred::EventKindAtLeast(/*play_sound*/1, 35),
+    pred::WalkerDiedByFinal(FAMILY_SKELETON),
+    pred::EventKindAtLeast(/*play_sound*/1, 31),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
     // rng_drift: projectile contact timing permits minor variation in soldier HP; commit 244d4bcf
     pred::WeaponFamilyEmitted(FAMILY_BONE),
@@ -2184,7 +2184,7 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     // signal.
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 19),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7400, 7400),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6100, 6100),
 };
 
 // This row shares kMut_walker_ai_wander: zeroing melee damage leaves the
@@ -2399,7 +2399,7 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 9000),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7500),
     // rng_drift: the observer HP window brackets timing variation in this emission arena; commit 244d4bcf
     // FAMILY_WAVE2 is not emitted by K_FIRE in this arena:
     //   MAGE WAVE2 is a K_SPECIAL slot; K_FIRE alone fires the default FAMILY_FIREBALL.
@@ -2654,7 +2654,7 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_boulder_emission[] = {
 
 inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_GIANT_SKELETON, 1, 1),
+    pred::WalkerDiedByFinal(FAMILY_GIANT_SKELETON),
     pred::EventKindAtLeast(/*play_sound*/1, 20),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::WeaponFamilyEmitted(FAMILY_BOULDER),
@@ -2959,7 +2959,7 @@ inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
         "consequence: POISON CLOUD slot 4 summons a FAMILY_CLOUD FX walker onto the thief's team (team 0), so team 0 holds thief+cloud=2; the cloud is core:cloud, whose on_act hook (packs/core/lib/effect_cloud.lua) keeps it alive across the run window. Under the kMut_effect_cloud_emission hook neuter (effect_cloud.lua:58, false = \"not handled\", the no-registered-hook path) the cloud runs no on_act, so it animates one cycle then set_dead/death (effect.cpp:79-94) and is gone well before tick 45 -> team 0 collapses to the lone thief=1 and the lower bound fails. The cloud's random-walk path, and whether it ever poisons the lone soldier, is RNG-sensitive, so the cloud's *existence on team 0* is the robust observable rather than soldier HP"),
     pred::EventKindAtLeast(/*play_sound*/1, 1,
         "consequence: the live cloud's spin/animation and the special cast both emit play_sound events; the floor stays >0 in the unmutated arm"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6000, 6000),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5700, 5700),
     // Structural coverage anchor: binds FAMILY_CLOUD to EffectFamilyCount arg0
     // for behavioural_coverage_gate_effects. The FAMILY_CLOUD walker rides the
     // walkers[] array (add_ob(Order::FX) -> oblist), not fxlist, so zero live
@@ -3286,7 +3286,7 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
     pred::EventKindExactly(/*score_change*/9, 0),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000),
 };
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
@@ -3305,7 +3305,7 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::EventKindAtLeast(/*play_sound*/1, 8),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6500, 6500),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5200, 5200),
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
@@ -3324,7 +3324,7 @@ inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::EventKindAtLeast(/*play_sound*/1, 8),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000),
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
@@ -3343,7 +3343,7 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::EventKindAtLeast(/*play_sound*/1, 8),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 5000),
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
@@ -3362,7 +3362,7 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 400, 400),
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
@@ -3383,7 +3383,7 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
     pred::EventKindExactly(/*score_change*/9, 0),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 500, 500),
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
@@ -3403,7 +3403,7 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 6),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 400, 400),
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
@@ -3423,7 +3423,7 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 6),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 500, 500),
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
@@ -3443,7 +3443,7 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 21),
     pred::EventKindAtLeast(/*score_change*/9, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 4000, 7000),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 2900, 5900),
     // rng_drift: archer self-damage timing spans this HP band while the init-HP mutation exits it; commit 244d4bcf
 };
 
@@ -3464,7 +3464,7 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 11),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3500),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 2200, 2200),
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
@@ -3487,7 +3487,7 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
     pred::EventKindExactly(/*notification*/2, 0),
     // The archer ends the dance at exactly 34 HP. The +9000 init-HP mutation
     // is observable only here because the caster remains alive either way.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3400, 3400),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 2100, 2100),
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
@@ -3512,7 +3512,7 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
     // The mage ends at exactly 31 HP. This field is the +9000 init-HP
     // mutation's only observable.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3100, 3100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 1800, 1800),
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
@@ -3532,7 +3532,7 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
     pred::EventKindExactly(/*notification*/2, 0),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7300, 7500),
     // #231, same mechanism as kFacts_enemy_freeze_mage_scen99 — but read
     // through the events rather than through level_done. The freeze here is
     // 20+11*7 = 97 ticks and expires at tick 117, so the census re-counts
@@ -3562,7 +3562,7 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 11),
     pred::EventKindExactly(/*score_change*/9, 0),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 2100, 2100),
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
@@ -3604,7 +3604,7 @@ inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
     // zero and WalkerDiedByFinal holds.
     pred::WalkerFamilyCount(FAMILY_SKELETON, 0, 0),
     // negative_assertion: BONE SHIELD should consume/replace the skeleton caster, leaving no live skeleton body.
-    pred::EventKindAtLeast(/*play_sound*/1, 7),
+    pred::EventKindAtLeast(/*play_sound*/1, 6),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 12000),
     // rng_drift: bone-shield combat may leave the soldier anywhere in this broad high-HP band; commit 244d4bcf
     pred::WalkerDiedByFinal(FAMILY_SKELETON),
@@ -3626,7 +3626,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 14),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 5800, 5800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 4600, 4600),
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
@@ -3645,7 +3645,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 14),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 5800, 5800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 4600, 4600),
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
@@ -3664,7 +3664,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 14),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 5800, 5800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 4600, 4600),
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
@@ -3684,7 +3684,7 @@ inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 22),
     pred::EventKindAtLeast(/*score_change*/9, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 4100, 4100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 2800, 2800),
 };
 
 inline constexpr Mutation kMut_special_fireelemental_1_scen99 = {
@@ -3708,7 +3708,7 @@ inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 16),
     pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 2, 2,
         "consequence: SPLIT produces exactly 2 SMALL_SLIME offspring on both arms"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SMALL_SLIME, 14100, 14100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SMALL_SLIME, 13900, 13900),
 };
 
 inline constexpr Mutation kMut_special_slime_1_scen99 = {
@@ -3767,7 +3767,7 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3600, 3600),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2700, 2700),
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
@@ -3787,7 +3787,7 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
     // The per-slot taunt/fire dance leaves the lone thief alive at exactly
     // 38 HP, emits the taunt notification, and produces a play_sound stream.
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3800, 3800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3000, 3000),
     pred::EventKindAtLeast(/*play_sound*/1, 9),
     pred::EventKindAtLeast(/*notification*/2, 1),
 };
@@ -3812,7 +3812,7 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
     pred::WalkerAliveAtFinal(FAMILY_THIEF, 1),
     // The thief ends at exactly 16 HP. This field is the +9000 init-HP
     // mutation's only observable.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 300, 300),
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
@@ -3835,7 +3835,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
     pred::EventKindExactly(/*score_change*/9, 0),
     // The ghost ends at exactly 21 HP. This field is the +9000 init-HP
     // mutation's only observable.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_GHOST, 1600, 1600),
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
@@ -3897,7 +3897,7 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 14),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 4800, 4800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 3600, 3600),
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
@@ -3916,7 +3916,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 14),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 4800, 4800),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 3600, 3600),
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
@@ -3938,7 +3938,7 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
     pred::EventKindExactly(/*score_change*/9, 0),
     // The orc ends at exactly 82 HP. This field is the +9000 init-HP
     // mutation's only observable.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 6900, 6900),
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
@@ -4041,7 +4041,7 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 9200, 9200),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 7900, 7900),
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
@@ -4137,7 +4137,7 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
     // Thief finishes at hp 15 on both branch and master (the cloak window is
     // shorter than the 150-tick budget so it takes a deterministic amount of
     // partial-window engagement damage; branch and master agree exactly).
-    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1500, 1500),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 200, 200),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 135, 128),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
 };
@@ -4180,7 +4180,7 @@ inline constexpr FactPredicate kFacts_invulnerable_potion_scen99[] = {
     pred::TickReached(250),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVULNERABLE_POTION, kOrderTreasure),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7700, 7700),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6400, 6400),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
 };
 
@@ -4368,7 +4368,7 @@ inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
         "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0)"),
     // rng_drift: boomerang return timing may leave two to four team-0 bodies while the mutation removes extras; commit 244d4bcf
     pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10100, 10100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9500, 9500),
 };
 
 inline constexpr Mutation kMut_weapon_boomerang_return_scen99 = {
@@ -4477,7 +4477,7 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
         "consequence: POISON CLOUD slot 4 adds a FAMILY_CLOUD FX walker to the thief's team (team 0) — schema-v1 only exposes it by team since the FX-order family string aliases onto FAMILY_SLIME under WalkerFamilyCount; the mutation bypasses the spawn so only the lone thief remains alive on team 0 (the cloud's random-walk path, and hence whether it ever poisons the soldier, diverges by RNG between branch and master, so the spawn's *existence* is the robust observable)"),
     pred::EventKindAtLeast(/*play_sound*/1, 1,
         "consequence: the live cloud and the approaching soldier's melee both emit play_sound events; the floor stays >0 in both arms"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6000, 6000),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5700, 5700),
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
@@ -5053,8 +5053,8 @@ inline constexpr FactPredicate kFacts_cleric_turn_undead_scen99[] = {
         "consequence: team 1 is wiped by the turn, not by melee -- without the turn both skeletons are still alive at tick 60"),
     pred::LevelDoneEquals(2,
         "consequence: turning both undead ends the level; the un-turned control run finishes with level_done 0"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 10700, 10900,
-        "consequence: the caster ends at 108/120 (10800 cents) because the skeletons stop hitting it the moment they are turned; leave them alive and they grind it to 67/120 (6700), far below this floor"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 10400, 10600,
+        "consequence: the caster ends at 105/120 (10500 cents) because the skeletons stop hitting it the moment they are turned; leave them alive and they grind it far below this floor (67/120 under the old armor clamp)"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr Mutation kMut_cleric_turn_undead_scen99 = {
@@ -5096,8 +5096,8 @@ inline constexpr FactPredicate kFacts_cleric_resurrect_friendly_scen99[] = {
         "consequence: the friendly branch sets alive.hp = max_hp/2, i.e. 60 of 120, and one regen tick lands before the dump for a final 61 (6100 cents); quartering that divisor puts the revived soldier at 31 HP (3100), far below this floor"),
     pred::WalkerOfTeamAlive(/*team=*/1, 2, 2,
         "consequence: caster + resurrected ally = 2 alive on the player team; without the resurrect only the caster survives"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 9000, 9200,
-        "invariant: the executioner stalls 12 px clear of the caster, so the cleric finishes at 91/120 (9100 cents) -- proof the cast landed while the caster was un-shoved. The 200-cent window is the one-regen-tick spread between the branch dump (9100) and a companion recapture (9000)."),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 8300, 8500,
+        "invariant: the executioner stalls 12 px clear of the caster, so the cleric finishes at 84/120 (8400 cents) -- proof the cast landed while the caster was un-shoved. The 200-cent window is the one-regen-tick spread between the branch dump (8400) and a companion recapture (8300)."),
 };
 inline constexpr Mutation kMut_cleric_resurrect_friendly_scen99 = {
     "packs/core/families/living-05-cleric.lua", 235,
@@ -6009,8 +6009,8 @@ inline constexpr FactPredicate kFacts_orc_yell_stun_hold_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
     pred::WalkerPositionMoved(FAMILY_ARCHER, 200, 120,
         "consequence: HOWL banks frozen_delay on the archer at tick 20; a frozen walker never acts, so it is still standing on its spawn (200,120) at tick 50. With no stun banked it steps west toward the orc and its xpos drops below 200 (same construction as enemy_freeze_mage_scen99)"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7400, 7400,
-        "consequence: EXACT pin at 74 of 140. The archer's pre-cast FIRE ARROWS volley is the orc's only damage source and the last of those bolts expires at tick 28; a stunned archer starts nothing new, so the figure is frozen from the cast to the tick-50 capture. Bank a zero stun and the archer keeps firing, which moves this pin. (Regen cannot reach it either: regen_delay is re-armed to 50 on every hit and the budget ends 22 ticks after the last one.)"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7300, 7300,
+        "consequence: EXACT pin at 73 of 140. The archer's pre-cast FIRE ARROWS volley is the orc's only damage source and the last of those bolts expires at tick 28; a stunned archer starts nothing new, so the figure is frozen from the cast to the tick-50 capture. Bank a zero stun and the archer keeps firing, which moves this pin. (Regen cannot reach it either: regen_delay is re-armed to 50 on every hit and the budget ends 22 ticks after the last one.)"),
     pred::EventKindExactly(/*play_sound*/1, 9,
         "consequence: nine sounds — the archer's pre-cast volley plus SOUND_ROAR on the completed yell. A yell that banks no stun leaves the archer firing for the remaining 30 ticks, so the count rises above nine"),
 };
@@ -6120,10 +6120,10 @@ inline constexpr FactPredicate kFacts_archer_fire_arrows_ring_scen99[] = {
         "consequence: slot 1 swaps the archer's weapon to core:fire_arrow for the eight queued QUICK_FIREs, so the ring is FAMILY_FIRE_ARROW and not the archer's default FAMILY_ARROW"),
     pred::WeaponNetTravel(FAMILY_FIRE_ARROW, kWeaponPathStraight, 12542,
         "trajectory: a QUICK_FIRE arrow flies one fixed heading for its whole life, so net == pathlen. The seq-0 bolt of the ring runs (110,137) -> (33,236) over ticks 25..36, a net 12542 centi-px on the down-left diagonal"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 6900, 6900,
-        "consequence: EXACT pin. One ring arrow reaches the west elf and takes it to 69 of 75; the east elf is untouched at 75, so only a landed fire arrow can satisfy this"),
-    pred::ScoreDelta(0, 7, 7,
-        "consequence: weapon hits award team-0 score (tempdamage + target level, walker_combat.cpp owner() branch). The single ring hit is worth 6 + level 1 = 7 and nothing else in the arena scores"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 6800, 6800,
+        "consequence: EXACT pin. One ring arrow reaches the west elf and takes it to 68 of 75; the east elf is untouched at 75, so only a landed fire arrow can satisfy this"),
+    pred::ScoreDelta(0, 8, 8,
+        "consequence: weapon hits award team-0 score (tempdamage + target level, walker_combat.cpp owner() branch). The single ring hit is worth 7 + level 1 = 8 and nothing else in the arena scores"),
 };
 
 inline constexpr Mutation kMut_archer_fire_arrows_ring_scen99 = {
@@ -6346,8 +6346,8 @@ inline constexpr FactPredicate kFacts_slime_death_split_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 0, 0),
     // negative_assertion: core:#8's on_death yields the NEXT size down (MEDIUM_SLIME); any SMALL_SLIME here means the wrong offspring family was created.
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 7100, 7300,
-        "consequence: the offspring inherits the parent's level and takes set_difficulty(1) (110 base + 11 = 121 max), then eats the executioner's remaining swings down to 72"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 6900, 7100,
+        "consequence: the offspring inherits the parent's level and takes set_difficulty(1) (110 base + 11 = 121 max), then eats the executioner's remaining swings down to 70"),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
@@ -6502,8 +6502,8 @@ inline constexpr FactPredicate kFacts_generator_owner_cascade_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
         "consequence: the tent's level-2 cadence puts exactly one skeleton on the field before the demolisher arrives, and the corpse is still in oblist at the final tick because the sweep is frozen"),
     pred::WalkerAliveAtFinal(FAMILY_BIG_ORC, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 9100, 9300,
-        "consequence: the owner-linked escort is free to fight, and it grinds the demolisher from 180 down to 92 before the tent falls; with clear_owner flipped the escort dies on its own first act, never lands a hit, and the orc finishes at its full 18000 cents"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 9700, 9900,
+        "consequence: the owner-linked escort is free to fight, and it grinds the demolisher from 180 down to 98 before the tent falls; with clear_owner flipped the escort dies on its own first act, never lands a hit, and the orc finishes at its full 18000 cents"),
     pred::EventKindAtLeast(/*play_sound*/1, 6,
         "consequence: escort combat plus the tent's four death explosions"),
 };
@@ -6706,8 +6706,8 @@ inline constexpr FactPredicate kFacts_effect_shield_absorb_scen99[] = {
     // can hurt it (the cleric never fires). kMut_effect_shield_absorb_scen99
     // collapses guard_tail's foe radius to 0 so the mace orbits harmlessly and
     // TOWER1 ends at its full 13000 cents.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 5200, 5400,
-        "consequence: core:magic_shield's guard tail attacks every foe inside its 8px guard radius, and the stationary TOWER1 is parked on two of the sixteen orbit stops, so four mace strikes take it from 13000 cents to 5300; the mutation zeroes that radius and the victim finishes untouched"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4800, 5000,
+        "consequence: core:magic_shield's guard tail attacks every foe inside its 8px guard radius, and the stationary TOWER1 is parked on two of the sixteen orbit stops, so four mace strikes take it from 13000 cents to 4900; the mutation zeroes that radius and the victim finishes untouched"),
     pred::WalkerOfTeamAlive(0, 2, 2,
         "consequence: MYSTIC MACE puts the FAMILY_MAGIC_SHIELD FX on the cleric's team; its lifetime (139) and the zero-damage victim keep it alive through the 45-tick budget"),
     // This arena emits NO sound at all -- the cleric never fires and a mace
@@ -6751,8 +6751,8 @@ inline constexpr FactPredicate kFacts_effect_boomerang_contact_scen99[] = {
     // orbit's x component by 480 instead of 48, so the blade's horizontal
     // excursion never exceeds ~3px, the victim at Manhattan 21+ is never inside
     // the 11px contact radius, and it finishes at its full 13000 cents.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4000, 4200,
-        "consequence: core:boomerang's guard tail strikes the stationary TOWER1 each time the widening orbit sweeps across it, taking it from 13000 cents to 4100; the mutation shrinks the orbit's x excursion tenfold so the blade never reaches the victim and it ends untouched"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3600, 3800,
+        "consequence: core:boomerang's guard tail strikes the stationary TOWER1 each time the widening orbit sweeps across it, taking it from 13000 cents to 3700; the mutation shrinks the orbit's x excursion tenfold so the blade never reaches the victim and it ends untouched"),
     pred::WalkerOfTeamAlive(0, 2, 2,
         "consequence: BOOMERANG adds the FAMILY_BOOMERANG FX to the caster's team; the zero-damage victim never drains it, so it survives its 78-act lifetime through the 85-tick budget"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
@@ -6907,8 +6907,8 @@ inline constexpr FactPredicate kFacts_effect_knife_back_catch_scen99[] = {
     // kMut_effect_knife_back_catch_scen99 turns that credit into a no-op: the
     // soldier throws exactly once, soldier.lua's on_fire_weapon refuses every
     // later release, and the target keeps almost all of its 13000 cents.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9200, 9400,
-        "consequence: the returning blade credits weapons_left back to its thrower on arrival, so the soldier keeps throwing for the whole run and the ten accepted releases grind the stationary target from 13000 cents to 9300; dropping the credit starves the thrower after one throw and the target finishes near full"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8400, 8600,
+        "consequence: the returning blade credits weapons_left back to its thrower on arrival, so the soldier keeps throwing for the whole run and the ten accepted releases grind the stationary target from 13000 cents to 8500; dropping the credit starves the thrower after one throw and the target finishes near full"),
     // Throw volume shows up as score awards, one per knife that connects with
     // the target: eight when the thrower keeps re-arming, one when it does not.
     // A play_sound floor would NOT discriminate here -- the TOWER1's own arrow
@@ -7016,8 +7016,8 @@ inline constexpr FactPredicate kFacts_weapon_boulder_explode_damage_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1,
         "consequence: the doubled blast is well under the ORC's 14000-cent pool, so it survives to be measured"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 2200, 2400,
-        "consequence: explode_on_death's doubled FAMILY_EXPLOSION is the ONLY damage source that can reach the laterally offset ORC -- the boulder body dies on the flight line two tiles away, the input-only-special barbarian never melees, and the orc's BIT_NO_RANGED means it cannot trade at range. Measured 2300 cents; the ceiling sits an order of magnitude under a boulder-only direct hit, let alone the untouched 14000 the mutation produces. A fresh companion recapture reads 2700 off the same blast (a two-tick cadence difference), which is why this row's golden is the blessed branch dump -- see tests/parity/golden/DRIFT_LEDGER.md"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 2000, 2200,
+        "consequence: explode_on_death's doubled FAMILY_EXPLOSION is the ONLY damage source that can reach the laterally offset ORC -- the boulder body dies on the flight line two tiles away, the input-only-special barbarian never melees, and the orc's BIT_NO_RANGED means it cannot trade at range. Measured 2100 cents; the ceiling sits an order of magnitude under a boulder-only direct hit, let alone the untouched 14000 the mutation produces. A fresh companion recapture reads 2500 off the same blast (a two-tick cadence difference), which is why this row's golden is the blessed branch dump -- see tests/parity/golden/DRIFT_LEDGER.md"),
     pred::WeaponFamilyEmitted(FAMILY_BOULDER),
     pred::EventKindAtLeast(/*play_sound*/1, 2,
         "consequence: SOUND_FWIP on the throw plus SOUND_EXPLODE from explode_on_death"),
@@ -7332,8 +7332,8 @@ inline constexpr FactPredicate kFacts_weapon_ranged_impact_hp_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
         "the 13000-cent stationary tower outlasts the barrage, so there is always an entry for the HP window to measure"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10200, 10400,
-        "consequence: FAMILY_ARROW's damage column is the TOWER1's only damage source in this arena (the tower is stationary, deals 0 damage and cannot leave the flight line; the archer's only act is firing). Seven arrows take it from 13000 to a measured 10300 cents. The ceiling is strictly below the untouched 13000 the damage-column mutation leaves behind"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9500, 9700,
+        "consequence: FAMILY_ARROW's damage column is the TOWER1's only damage source in this arena (the tower is stationary, deals 0 damage and cannot leave the flight line; the archer's only act is firing). Seven arrows take it from 13000 to a measured 9600 cents. The ceiling is strictly below the untouched 13000 the damage-column mutation leaves behind"),
     pred::WeaponFamilyEmitted(FAMILY_ARROW),
     pred::EventKindAtLeast(/*play_sound*/1, 5,
         "anchor: the archer's bow fires nine times inside the budget; zeroing the damage column does not silence it, so this stays green and the HP window carries the flip"),
@@ -7371,8 +7371,8 @@ inline constexpr FactPredicate kFacts_archer_hit_response_backpedal_scen99[] = {
     pred::WalkerAliveAtFinal(FAMILY_ARCHER, 1),
     pred::WalkerPositionMoved(FAMILY_ARCHER, 220, 0,
         "consequence: each landed melee swing force-commands COMMAND_WALK 8 steps directly away from the attacker, so the archer is driven from its 150 spawn out to xpos 220 ahead of the advancing soldier; with the backpedal disabled it stands its ground and its own approach leaves it at 202, short of this bound"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3000, 3000,
-        "consequence: the backpedal pulls the archer out of the soldier's swing arc for 8 ticks after every hit, so it ends on exactly 3000 cents; disabling it re-times the whole exchange and the archer ends on 3100 instead"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 2600, 2600,
+        "consequence: the backpedal pulls the archer out of the soldier's swing arc for 8 ticks after every hit, so it ends on exactly 2600 cents; disabling it re-times the whole exchange and the archer ends off this pin (3100 against 3000 under the old armor clamp; the canary re-proves the flip)"),
     pred::EventKindAtLeast(/*play_sound*/1, 4,
         "anchor: SOUND_CLANG per landed melee swing plus the archer's SOUND_BOW volleys; the backpedal mutation makes the exchange noisier, not quieter, so this stays green and the position/HP pins carry the flip"),
 };
@@ -7508,8 +7508,8 @@ inline constexpr FactPredicate kFacts_thief_taunt_matched_levels_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::EventKindAtLeast(/*notification*/2, 1,
         "anchor: the taunt arm emits \"THIEF: 'Nyah Nyah!'\" unconditionally once the loop finishes, on either adjudication order"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11100, 11100,
-        "consequence: the taunted foe's FOLLOW-duration draw sits at a different position in the stream under the two adjudication orders, so every later combat roll shifts; the decoy tower reads out that shift as exactly 11100 cents against 11300 under the inverted comparison"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11000, 11000,
+        "consequence: the taunted foe's FOLLOW-duration draw sits at a different position in the stream under the two adjudication orders, so every later combat roll shifts; the decoy tower reads out that shift as exactly 11000 cents (11100 against 11300 under the inverted comparison before the armor-roll expectation)"),
     pred::WalkerPositionMoved(FAMILY_ORC, 156, 132,
         "consequence: the same one-position stream shift re-times the orc's approach; it ends at exactly (156,132) here and at (153,129) under the inverted comparison, short of this bound on both axes"),
 };
@@ -7763,8 +7763,8 @@ inline constexpr FactPredicate kFacts_effect_explosion_ally_tier_scen99[] = {
     // kMut_effect_explosion_ally_tier_scen99 widens the divisor to 8, which
     // moves the ally to exactly 120 hp; the far tower is at its full 130, so no
     // walker of the family is left inside this window.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8500, 8500,
-        "consequence: the team-0 TOWER1 takes the ally arm of explosion_on_death -- fdiv(90,2) rolled to 45 -- and finishes on exactly 8500 cents of 13000, against the 3900 the SAME TILE reads in effect_bomb_bystander_scen99 with the tower on team 1; dividing by 8 instead leaves it on 12000 and no TOWER1 sits in this window"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8400, 8400,
+        "consequence: the team-0 TOWER1 takes the ally arm of explosion_on_death -- fdiv(90,2) rolled to 45 -- and finishes on exactly 8400 cents of 13000, against the 3900 the SAME TILE reads in effect_bomb_bystander_scen99 with the tower on team 1; dividing by 8 instead leaves it near full (12000 under the old armor clamp) and no TOWER1 sits in this window"),
     // Anchor: the far tower proves the blast is bounded. It is enumerated by
     // nothing, shoved by nothing and shot by nothing on either arm, so it holds
     // its full 13000 cents under every mutation of the tier divisors.

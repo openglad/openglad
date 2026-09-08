@@ -23,6 +23,7 @@ class viewscreen;
 class walker;
 
 namespace og::sim {
+class GameClient;
 class GameServer;
 }
 
@@ -253,6 +254,13 @@ screen* local_transport_shadow_testing_server_screen(GameSession& session);
 // mid-game seat add never drives the display mirror into the snapshot-hash
 // strike-out that disconnects the display peer.
 og::sim::GameServer* local_transport_shadow_testing_server(GameSession& session);
+
+// Test-only: this session's display GameClient (nullptr when no runtime is
+// installed). Lets a test model the in-game half of the shared reconnect
+// window (#278) — backdate the client's link loss, tear the runtime down and
+// pin what the picker's resume_after_level inherits.
+og::sim::GameClient* local_transport_shadow_testing_display_client(
+    GameSession& session) noexcept;
 
 // Test-only: attribute an exit/withdraw request to a given player and emit it on
 // the authoritative server, as if that player had touched an exit treasure.

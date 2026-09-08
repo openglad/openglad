@@ -44,6 +44,7 @@
 #include <openglad/resources/packs.h>
 #include <openglad/resources/save_data.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <charconv>
@@ -1568,7 +1569,43 @@ TEST_F(ModesBookTest, an_off_menu_value_rejoins_the_cycle_at_its_head)
 // The TEAMS/FILL macros (lineup amendment 5, G1-G3)
 // ---------------------------------------------------------------------------
 
-// G2 round the wheel from rest: TEAMS: 1 is the derived all-NONE face, off
+// Amendment 7 (#276): the array the arena deals at selection — FAIR on the
+// teams the map authors — reads back through the macro faces and the camp
+// digest like any other fill array (G1: one array, no invention). THE
+// CIRCLE (scen 300) authors all four; a two-team map deals two.
+TEST_F(ModesBookTest, dealt_arena_rest_reads_through_the_macro_faces)
+{
+    const short fair = og::sim::kFillFair;
+    save_.fill = {fair, fair, 0, 0};
+    {
+        CampaignPickerSession session(save_);
+        ASSERT_TRUE(session.open_at("setup"));
+        EXPECT_EQ("TEAMS: 2", session.page().rows[kTeamsRow].label)
+            << "the own band and one dealt opponent: two sides";
+        EXPECT_EQ("FILL: FAIR", session.page().rows[kFillRow].label)
+            << "every non-NONE band holds FAIR, own included (H2)";
+        CampaignZoneSession zone(save_);
+        zone.fetch();
+        ASSERT_TRUE(zone.scripted());
+        EXPECT_EQ("2-way, fair, map", camp_rows(zone)[kCampSetupRow].note);
+    }
+    save_.fill = {fair, fair, fair, fair};
+    {
+        CampaignPickerSession session(save_);
+        ASSERT_TRUE(session.open_at("setup"));
+        EXPECT_EQ("TEAMS: 4", session.page().rows[kTeamsRow].label);
+        EXPECT_EQ("FILL: FAIR", session.page().rows[kFillRow].label);
+        CampaignZoneSession zone(save_);
+        zone.fetch();
+        ASSERT_TRUE(zone.scripted());
+        EXPECT_EQ("4-way, fair, map", camp_rows(zone)[kCampSetupRow].note);
+    }
+    save_.fill = {};
+}
+
+// G2 round the wheel from rest: TEAMS: 1 is the derived all-NONE face (the
+// fixture holds a bare array — the arena's own deal is the picker's, above
+// this session, and is pinned in the flow suites), off
 // the 2 -> 3 -> 4 wheel, so the first click rejoins at the head and each
 // later one steps on — dealing FAIR (the effective value while FILL reads
 // NONE) to the lowest opponents in ascending order and turning the rest

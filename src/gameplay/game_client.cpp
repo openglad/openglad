@@ -430,13 +430,8 @@ void GameClient::testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms)
 
 void GameClient::testing_set_transport_disconnect_elapsed_ms(float elapsed_ms)
 {
-    transport_ever_connected_ = true;
     connection_lost_notified_ = false;
-    transport_disconnect_time_ =
-        InterpolationClock::now() -
-        std::chrono::duration_cast<InterpolationClock::duration>(
-            std::chrono::duration<float, std::milli>(
-                std::max(elapsed_ms, 0.0f)));
+    link_.backdate_loss(elapsed_ms, InterpolationClock::now());
 }
 
 GameClient::GameClient(ITransport& transport,
@@ -556,6 +551,20 @@ void GameClient::send_exit_prompt_response(bool accepted)
 void GameClient::request_level_abort()
 {
     update_transport_connection_state();
+    // A withdraw round-trips through the server: the display keeps running
+    // until the server's terminal broadcast ends it. On a dead link that
+    // broadcast can never arrive, so the player's QUIT would sit behind a
+    // frozen mirror until CLIENT_CONNECTION_LOST_TIMEOUT_MS expired (#278).
+    // The abort IS the connection-lost transition then — fire the seam the
+    // SDL display ends its session on (local_transport_shadow's callback).
+    // The curses runtime registers no callback and leaves its loop on QUIT
+    // regardless; openglad_text has no GameClient at all.
+    if (link_.lost())
+    {
+        TRACE("net", "abort_on_dead_link");
+        notify_connection_lost_once();
+        return;
+    }
     maybe_send_hello_if_needed();
     ExitPromptResponseMessage message;
     message.accepted = true;
@@ -623,29 +632,23 @@ void GameClient::update_transport_connection_state()
     const std::vector<PeerId> peers = transport_.connected_peers();
     const bool connected = std::find(peers.begin(), peers.end(), server_peer_id_) !=
         peers.end();
+    const bool was_connected = link_.connected();
+    link_.observe(connected, InterpolationClock::now());
     if (connected)
     {
-        transport_ever_connected_ = true;
-        transport_disconnect_time_.reset();
         connection_lost_notified_ = false;
     }
-    else if (transport_connected_)
+    else if (was_connected)
     {
         waiting_for_keyframe_ = true;
         hello_sent_for_connection_ = false;
         hello_acknowledged_ = false;
-        transport_disconnect_time_ = InterpolationClock::now();
     }
-    else if (transport_ever_connected_ && !transport_disconnect_time_.has_value())
-    {
-        transport_disconnect_time_ = InterpolationClock::now();
-    }
-    transport_connected_ = connected;
 }
 
 void GameClient::maybe_send_hello_if_needed()
 {
-    if (!transport_connected_ || hello_sent_for_connection_)
+    if (!link_.connected() || hello_sent_for_connection_)
         return;
 
     HelloMessage message;
@@ -659,7 +662,7 @@ void GameClient::maybe_send_hello_if_needed()
 
 void GameClient::maybe_send_heartbeat_if_needed()
 {
-    if (!transport_connected_)
+    if (!link_.connected())
     {
         og::runtime::emit_runtime_trace(
             og::runtime::make_runtime_trace_record(
@@ -693,17 +696,18 @@ void GameClient::maybe_send_heartbeat_if_needed()
 
 void GameClient::maybe_notify_connection_lost()
 {
-    if (transport_connected_ || !transport_ever_connected_ ||
-        connection_lost_notified_ || !transport_disconnect_time_.has_value())
-    {
-        return;
-    }
-
-    const auto timeout =
-        std::chrono::milliseconds(CLIENT_CONNECTION_LOST_TIMEOUT_MS);
-    if (InterpolationClock::now() - *transport_disconnect_time_ < timeout)
+    // The backstop for a link that is nominally up but silent: the shared
+    // reconnect window (LinkLossWindow) says when the session is over.
+    if (connection_lost_notified_ || !link_.expired(InterpolationClock::now()))
         return;
 
+    notify_connection_lost_once();
+}
+
+void GameClient::notify_connection_lost_once()
+{
+    if (connection_lost_notified_)
+        return;
     connection_lost_notified_ = true;
     if (connection_lost_callback_)
         connection_lost_callback_();
@@ -737,12 +741,7 @@ void GameClient::note_keyframe_apply_result(bool applied_cleanly)
         rejected_keyframe_strikes_);
     TRACE("net", "client_fatal_desync strikes=%u",
           static_cast<unsigned>(rejected_keyframe_strikes_));
-    if (!connection_lost_notified_)
-    {
-        connection_lost_notified_ = true;
-        if (connection_lost_callback_)
-            connection_lost_callback_();
-    }
+    notify_connection_lost_once();
 }
 
 void GameClient::note_outbound_activity()

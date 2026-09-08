@@ -3189,6 +3189,141 @@ TEST(GameLoop, network_client_shadow_ends_session_after_connection_loss_timeout)
     game_screen->world().delete_objects();
 }
 
+// #278 helpers: the link-lost overlay is written to the views' text feed.
+static bool view_feed_carries(const screen& game_screen, std::string_view text)
+{
+    for (int index = 0; index < game_screen.numviews; ++index)
+    {
+        const viewscreen* const view = game_screen.viewob[index].get();
+        if (view == nullptr)
+            continue;
+        for (const std::string& line : view->textlist)
+            if (line == text)
+                return true;
+    }
+    return false;
+}
+
+static void install_network_client_shadow_for_link_tests(
+    screen& game_screen,
+    og::runtime::GameSession& gameplay_session,
+    const std::shared_ptr<ToggleConnectedTransport>& transport)
+{
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    og::runtime::reset_network_client_transport_shadow(
+        gameplay_session,
+        game_screen,
+        transport,
+        7u,
+        0u);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+    game_screen.world().end = 0;
+}
+
+// #278: a networked client's QUIT is a withdraw round trip through the
+// server (returns false, the display waits for the terminal broadcast). On a
+// DEAD link that broadcast can never arrive, so the abort has to end the
+// session at once instead of waiting out CLIENT_CONNECTION_LOST_TIMEOUT_MS.
+TEST(GameLoop, network_client_quit_on_dead_link_ends_session_without_the_timeout)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session = *og::runtime::current_game_session;
+
+    auto transport = std::make_shared<ToggleConnectedTransport>();
+    install_network_client_shadow_for_link_tests(
+        *game_screen, gameplay_session, transport);
+
+    // Control — LIVE link: QUIT is the withdraw round trip and ends nothing
+    // locally.
+    trace_clear();
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_FALSE(og::runtime::local_transport_shadow_abort_level(gameplay_session));
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+    EXPECT_FALSE(trace_contains("net", "abort_on_dead_link"));
+    EXPECT_FALSE(trace_contains("popup", "Connection Lost"));
+
+    // The link drops: the display says so the same frame, and nothing has
+    // ended the session (the 30 s backstop has not run).
+    transport->set_connected(false);
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+    EXPECT_TRUE(trace_contains("net", "link_lost_overlay"));
+    EXPECT_TRUE(view_feed_carries(*game_screen, "CONNECTION LOST - RECONNECTING"));
+
+    // QUIT on the dead link: still "false" (a networked client never ends the
+    // level locally), but the abort IS the connection-lost transition now.
+    trace_clear();
+    EXPECT_FALSE(og::runtime::local_transport_shadow_abort_level(gameplay_session));
+    EXPECT_TRUE(trace_contains("net", "abort_on_dead_link"));
+    EXPECT_TRUE(trace_contains("popup", "Connection Lost"));
+    EXPECT_FALSE(view_feed_carries(*game_screen, "CONNECTION LOST - RECONNECTING"))
+        << "the banner is retired before the popup";
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_EQ(1, static_cast<int>(game_screen->world().end));
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}
+
+// #278: the overlay follows the transport — a reconnect inside the server's
+// seat-rebind window takes the banner down again.
+TEST(GameLoop, network_client_link_lost_overlay_clears_on_reconnect)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session = *og::runtime::current_game_session;
+
+    auto transport = std::make_shared<ToggleConnectedTransport>();
+    install_network_client_shadow_for_link_tests(
+        *game_screen, gameplay_session, transport);
+
+    trace_clear();
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_FALSE(trace_contains("net", "link_lost_overlay"))
+        << "a live link carries no banner";
+    EXPECT_FALSE(view_feed_carries(*game_screen, "CONNECTION LOST - RECONNECTING"));
+
+    transport->set_connected(false);
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_TRUE(trace_contains("net", "link_lost_overlay"));
+    EXPECT_TRUE(view_feed_carries(*game_screen, "CONNECTION LOST - RECONNECTING"));
+    EXPECT_FALSE(trace_contains("net", "link_lost_overlay_cleared"));
+
+    transport->set_connected(true);
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_TRUE(trace_contains("net", "link_lost_overlay_cleared"));
+    EXPECT_FALSE(view_feed_carries(*game_screen, "CONNECTION LOST - RECONNECTING"));
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "a reconnect is not an end";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, game_frame_with_result_runs_at_most_one_tick_per_call)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;

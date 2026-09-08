@@ -411,6 +411,12 @@ struct SavedPickerSave
         snapshot_fields.ctf_respawn_ticks = save.ctf_respawn_ticks;
         snapshot_fields.ctf_strip_scenario_troops =
             save.ctf_strip_scenario_troops;
+        // The arena deal memo (lineup amendment 7): a flow that dealt a
+        // cursor must not leave the next fixture on the same cursor
+        // reading as already dealt.
+        snapshot_fields.arena_lineup_dealt_campaign =
+            save.arena_lineup_dealt_campaign;
+        snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
     }
 
     ~SavedPickerSave()
@@ -418,6 +424,9 @@ struct SavedPickerSave
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             save.team_list[static_cast<std::size_t>(i)] = std::move(team_list[static_cast<std::size_t>(i)]);
+        save.arena_lineup_dealt_campaign =
+            snapshot_fields.arena_lineup_dealt_campaign;
+        save.arena_lineup_dealt_scen = snapshot_fields.arena_lineup_dealt_scen;
         save.team_size = snapshot_fields.team_size;
         save.my_team = snapshot_fields.my_team;
         save.numplayers = snapshot_fields.numplayers;
@@ -456,6 +465,11 @@ void write_save0_with_soldiers(const std::string& campaign, short scen_num,
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 0;
     save.ctf_strip_scenario_troops = 0;
+    // A defined resting state includes the arena deal memo (amendment 7):
+    // a memo left on this cursor by an earlier flow would mark the fresh
+    // bands as already dealt.
+    save.arena_lineup_dealt_campaign.clear();
+    save.arena_lineup_dealt_scen = 0;
     ASSERT_TRUE(save.save("save0"));
 }
 
@@ -1311,7 +1325,8 @@ struct StagedPaneFlowState
     bool finished = false;
     bool viewer_opened = false;
     bool pane_trace_seen = false;
-    bool refusal_at_rest = false;
+    bool fair_line_at_rest = false;
+    bool refusal_at_rest = true;
     bool company_line_seen = false;
     bool seats_block_seen = false;
     bool seat_identity_seen = false;
@@ -1340,16 +1355,18 @@ int view_scenario_staged_pane_injector(void* data)
     SDL_Delay(300);
 
     // The render copy heals from the owner's serialized pair (the heal
-    // trace) — and what that pair says at rest is E3's own sentence. Scen
-    // 500 authors no units of its own, so with every band on its stored
-    // NONE (E1) the deployed company is the only team standing and CTF
-    // refuses rather than matching an opponent in unasked. The census rows
-    // come back below, once a wheel buys the match.
+    // trace) — and what that pair says at rest is the arena's own deal
+    // (lineup amendment 7, #276). Scen 500 authors RED and GREEN markers
+    // and no units, so with the deal on both bands the deployed company
+    // faces GREEN's FAIR squad — sized to the roster headcount, two — and
+    // the census says so instead of E3's refusal.
     state->pane_trace_seen =
         wait_for_picker_trace("view_scenario pane gen=", 1, 5000);
-    state->refusal_at_rest = wait_for_picker_trace(
-        "view_scenario line MATCH WILL NOT START: FEWER THAN 2 TEAMS", 1,
+    state->fair_line_at_rest = wait_for_picker_trace(
+        "view_scenario line   GREEN TEAM  ACTIVE - MATCHED BOTS (2) FAIR", 1,
         5000);
+    state->refusal_at_rest = trace_contains(
+        "picker", "view_scenario line MATCH WILL NOT START");
 
     // Seat block (#218): the solo session's one seat, directly after the
     // match block — inside the first-block trace seam. The seats are a
@@ -1362,9 +1379,7 @@ int view_scenario_staged_pane_injector(void* data)
     // Turn a band knob through the lobby (the sync path a host click
     // takes): FILL: STRONG on team 2 (GREEN) — the owner's change key
     // moves, ONE debounced restage lands, and the refreshed report shows
-    // the solved squad wearing its fill word (B7). That one wheel is also
-    // what gives the match its second team, so the company census the
-    // refusal was standing in place of arrives with it.
+    // the solved squad wearing its new fill word (B7).
     (void)run_on_main_thread([] {
         og::runtime::current_session->myscreen_->save_data
             .fill[1] = og::sim::kFillStrong;
@@ -1393,11 +1408,11 @@ int view_scenario_staged_pane_injector(void* data)
 }
 
 // The staged pane shows the world GO adopts, refreshed once per debounced
-// restage: the heal trace fires, the pane carries E3's refusal while every
-// band still rests on NONE, and a FILL: STRONG flip under the OPEN viewer
-// re-heals into a match — the solved squad wearing its fill word, and the
-// save's deployed company censused beside it (the restage-trigger contract,
-// made visible — B2/B7).
+// restage: the heal trace fires, the pane carries the arena's dealt FAIR
+// match at rest (amendment 7), and a FILL: STRONG flip under the OPEN
+// viewer re-heals into the squad wearing its new fill word, with the
+// save's deployed company censused beside it (the restage-trigger
+// contract, made visible — B2/B7).
 TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
 {
     trace_clear();
@@ -1420,9 +1435,12 @@ TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
     EXPECT_TRUE(state.pane_trace_seen)
         << "the render copy must heal from the staged pair bytes";
-    EXPECT_TRUE(state.refusal_at_rest)
-        << "E3: with every wheel at NONE the CTF map has one team, and the "
-           "pane says so instead of showing a match nobody asked for";
+    EXPECT_TRUE(state.fair_line_at_rest)
+        << "amendment 7: the arena dealt GREEN FAIR, and the pane censuses "
+           "the two-member squad the deal fields against a two-member "
+           "company";
+    EXPECT_FALSE(state.refusal_at_rest)
+        << "the E3 refusal is no longer the resting face of an arena";
     EXPECT_TRUE(state.company_line_seen)
         << "the staged census must list the deployed company exactly";
     EXPECT_TRUE(state.seats_block_seen)

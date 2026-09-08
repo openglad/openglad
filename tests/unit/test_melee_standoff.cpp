@@ -248,7 +248,18 @@ TEST(MeleeStandoff, adjacent_soldier_vs_guard_orc_resolves)
 TEST_F(WestlandsStandoffTest, l2_forest_road_crew_fights_past_mid_road)
 {
     constexpr float kMidRoadX = 720.0f;   // 45 of 90 tiles
-    constexpr int kMidRoadDeadline = 1200; // post-fix: 538-673 across seeds
+    // Post-fix: 538-673 across seeds under the 2013 damage clamp. Re-pinned
+    // 2026-09-08 for the armor-roll expectation fix
+    // (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): seeds 42/1337 now cross at
+    // 1510/1412. A per-100-tick probe of the seed-42 run shows why, and why
+    // it is NOT the wedge: the picket is dead by t=200, the crew then holds
+    // a melee at x=718 (two pixels short of this line) from t=500 to
+    // t=1500 against the waking road guards while the foe count falls
+    // steadily 17 -> 7 and the crew heals back to full between exchanges,
+    // then advances and sweeps the road by t~2200 with all four alive. A
+    // parked crew leaves the picket alive and the foe count flat; this pin
+    // keeps the deadline at ~2x the slowest measured crossing, as before.
+    constexpr int kMidRoadDeadline = 3000;
     constexpr int kSweepDeadline = 8000;   // post-fix: full road swept
 
     for (std::uint32_t seed : {42u, 1337u, 2025u})

@@ -161,12 +161,14 @@ NetworkingMenuModeState picker_current_networking_menu_mode();
 void picker_apply_networking_menu_mode(button* buttons, int count,
                                        const NetworkingMenuModeState& mode);
 
-// LINEUP §6: the per-frame kicked-joiner revert. When the OWNED lobby client
-// (the one SdlPickerClient registered) is the active client and has latched
-// was_kicked(), swap in a fresh local client re-initialized from the save
-// (the picker_replace_lobby_client teardown/install order) and say why
-// (popup "KICKED BY HOST"; trace "networking"). Inert when a test stub is
-// installed as the active client. Returns true when a swap happened.
+// LINEUP §6: the per-frame kicked-or-lost joiner revert. When the OWNED
+// lobby client (the one SdlPickerClient registered) is the active client and
+// has latched was_kicked() or session_lost() (#278), swap in a fresh local
+// client re-initialized from the save (the picker_replace_lobby_client
+// teardown/install order) and say why (popup "KICKED BY HOST" or
+// "CONNECTION LOST" — the kick outranks; trace "networking"). Inert when a
+// test stub is installed as the active client. Returns true when a swap
+// happened.
 bool picker_revert_lobby_client_if_kicked();
 
 // LINEUP §6: the kicked-revert is DEFERRED for the lifetime of this scope.

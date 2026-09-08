@@ -85,6 +85,7 @@ void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
 std::vector<std::string>& level_editor_testing_prompt_queue_ref();
 extern bool g_start_game_requested;
+Sint32 go_menu(Sint32 arg1);
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
@@ -106,11 +107,32 @@ public:
     void sync_from_save() override {}
     void sync_roster_from_save() override {}
     void sync_settings_from_save() override {}
-    void poll_and_apply() override {}
+    // #278 contract model: a request that goes out (arm_pending_on_request)
+    // stays pending for `start_request_expires_after_polls` polls and is then
+    // abandoned the way the networked client abandons one — pending drops and
+    // start_request_outcome() names why (`abandon_outcome`: the silent host's
+    // NoAnswer, or the LinkLost of a socket that died mid-wait) — so go_menu's
+    // wait is bounded by the client, every exit is reported, and every GO
+    // opens a fresh request.
+    void poll_and_apply() override
+    {
+        ++poll_calls;
+        if (start_request_pending_result &&
+            start_request_expires_after_polls >= 0 &&
+            ++polls_while_pending >= start_request_expires_after_polls)
+        {
+            start_request_pending_result = false;
+            start_request_outcome_result = abandon_outcome;
+        }
+    }
     void set_player_mode(int) override {}
     bool request_start_game() override
     {
         ++request_start_calls;
+        start_request_outcome_result = og::ui::StartRequestOutcome::None;
+        polls_while_pending = 0;
+        if (arm_pending_on_request)
+            start_request_pending_result = true;
         return request_start_result;
     }
     [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
@@ -129,7 +151,12 @@ public:
     }
     [[nodiscard]] bool start_request_pending() const noexcept override
     {
-        return false;
+        return start_request_pending_result;
+    }
+    [[nodiscard]] og::ui::StartRequestOutcome start_request_outcome()
+        const noexcept override
+    {
+        return start_request_outcome_result;
     }
     [[nodiscard]] bool has_game_start_config() const noexcept override
     {
@@ -164,7 +191,16 @@ public:
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_config;
     int consume_calls = 0;
     int request_start_calls = 0;
+    int poll_calls = 0;
     bool request_start_result = false;
+    bool start_request_pending_result = false;
+    og::ui::StartRequestOutcome start_request_outcome_result =
+        og::ui::StartRequestOutcome::None;
+    og::ui::StartRequestOutcome abandon_outcome =
+        og::ui::StartRequestOutcome::NoAnswer;
+    bool arm_pending_on_request = false;
+    int start_request_expires_after_polls = -1;
+    int polls_while_pending = 0;
     bool host_controls_visible_result = true;
     bool networked_result = false;
     og::sim::StartDenialReason denial_result =
@@ -188,12 +224,17 @@ public:
     {
         return was_kicked_result;
     }
+    [[nodiscard]] bool session_lost() const noexcept override
+    {
+        return session_lost_result;
+    }
 
     std::vector<og::sim::LobbyMachineId> kicked_machines;
     bool kick_result = true;
     int disconnect_calls = 0;
     bool disconnect_result = true;
     bool was_kicked_result = false;
+    bool session_lost_result = false;
 };
 
 // A client that overrides NOTHING past the pure virtuals, so the
@@ -965,12 +1006,140 @@ TEST(PickerFuncs, picker_lobby_kick_and_disconnect_forward_to_the_active_client)
         EXPECT_FALSE(picker_lobby_kick_machine(1u));
         EXPECT_FALSE(picker_lobby_disconnect_session());
         EXPECT_FALSE(picker_lobby_was_kicked());
+        EXPECT_FALSE(picker_lobby_session_lost())
+            << "a client with no link behind it never lost one (#278)";
+        EXPECT_EQ(og::ui::StartRequestOutcome::None,
+                  picker_lobby_start_request_outcome())
+            << "a client that sends no request has no verdict (#278)";
+    }
+    {
+        ContractPickerLobbyClient lost_client;
+        lost_client.session_lost_result = true;
+        ActivePickerLobbyClientGuard guard(&lost_client);
+        EXPECT_TRUE(picker_lobby_session_lost());
     }
 
     picker_lobby_shutdown();
     EXPECT_FALSE(picker_lobby_kick_machine(7u));
     EXPECT_FALSE(picker_lobby_disconnect_session());
     EXPECT_FALSE(picker_lobby_was_kicked());
+    EXPECT_FALSE(picker_lobby_session_lost());
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              picker_lobby_start_request_outcome());
+}
+
+// #278: go_menu's wait for the host's StartGame handoff / denial echo is
+// bounded by the CLIENT that sent the request (the one owner of the pending
+// flag): a host whose uplink went dark answers neither, the client expires
+// the request, the menu says so and comes back instead of spinning behind a
+// black window — and the NEXT GO sends a fresh request rather than
+// re-waiting on the abandoned one (the pre-fixup latch left every later GO a
+// full wait with nothing sent).
+TEST(PickerFuncs, go_menu_start_wait_is_bounded_when_the_host_never_answers)
+{
+    ContractPickerLobbyClient client;
+    client.networked_result = true;
+    client.host_controls_visible_result = false; // joiner: no ready gate
+    client.request_start_result = false;         // the request went out...
+    client.arm_pending_on_request = true;        // ...and is pending...
+    client.start_request_expires_after_polls = 20; // ...until the client
+                                                   // gives up on it
+    og::sim::LobbyPlayer player;
+    player.player_index = 1;
+    player.name = "Joiner";
+    og::sim::LobbyCharacterSlot slot;
+    slot.deployed = true;
+    player.character_slots.push_back(slot);
+    client.players.push_back(player);
+    ActivePickerLobbyClientGuard guard(&client);
+
+    g_start_game_requested = false;
+    trace_clear();
+    const Sint32 result = go_menu(0);
+
+    EXPECT_EQ(MENU_REDRAW, result);
+    EXPECT_EQ(1, client.request_start_calls);
+    EXPECT_EQ(20, client.poll_calls)
+        << "the wait polls exactly until the client expires the request";
+    EXPECT_FALSE(client.start_request_pending());
+    EXPECT_EQ(og::ui::StartRequestOutcome::NoAnswer,
+              client.start_request_outcome());
+    EXPECT_FALSE(g_start_game_requested);
+    EXPECT_TRUE(trace_contains("basecamp", "go_wait_timeout"));
+    EXPECT_TRUE(trace_contains("popup", "NO ANSWER FROM HOST"));
+    EXPECT_FALSE(trace_contains("popup", "CONNECTION LOST"))
+        << "a silent host is not a dead link";
+    EXPECT_FALSE(trace_contains("basecamp", "go_launched"));
+
+    // The second GO is a NEW request (the client cleared the stale one), and
+    // it gets its own full wait and its own verdict.
+    trace_clear();
+    const Sint32 second = go_menu(0);
+    EXPECT_EQ(MENU_REDRAW, second);
+    EXPECT_EQ(2, client.request_start_calls)
+        << "a GO after an expired request sends a fresh request";
+    EXPECT_EQ(40, client.poll_calls);
+    EXPECT_EQ(og::ui::StartRequestOutcome::NoAnswer,
+              client.start_request_outcome());
+    EXPECT_TRUE(trace_contains("popup", "NO ANSWER FROM HOST"));
+    EXPECT_FALSE(trace_contains("basecamp", "go_launched"));
+
+    // Control: a request the host DOES answer (pending never armed) neither
+    // waits nor reports a timeout.
+    client.arm_pending_on_request = false;
+    client.start_request_expires_after_polls = -1;
+    trace_clear();
+    const Sint32 answered = go_menu(0);
+    EXPECT_EQ(MENU_REDRAW, answered);
+    EXPECT_EQ(3, client.request_start_calls);
+    EXPECT_EQ(40, client.poll_calls) << "nothing pending, nothing polled";
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              client.start_request_outcome());
+    EXPECT_FALSE(trace_contains("basecamp", "go_wait_timeout"));
+    EXPECT_FALSE(trace_contains("popup", "NO ANSWER FROM HOST"));
+}
+
+// #278 review fixup: the THIRD exit of the pending flag. A GO whose link
+// dies mid-wait is released by the client with the LinkLost verdict, and
+// go_menu must say so — before this fixup that exit carried no verdict at
+// all, so go_menu returned to Base Camp with no popup and the player had no
+// idea whether GO had done anything.
+TEST(PickerFuncs, go_menu_reports_a_link_death_as_a_connection_lost_popup)
+{
+    ContractPickerLobbyClient client;
+    client.networked_result = true;
+    client.host_controls_visible_result = false; // joiner: no ready gate
+    client.request_start_result = false;         // the request went out...
+    client.arm_pending_on_request = true;        // ...and is pending...
+    client.start_request_expires_after_polls = 12; // ...until the socket dies
+    client.abandon_outcome = og::ui::StartRequestOutcome::LinkLost;
+    og::sim::LobbyPlayer player;
+    player.player_index = 1;
+    player.name = "Joiner";
+    og::sim::LobbyCharacterSlot slot;
+    slot.deployed = true;
+    player.character_slots.push_back(slot);
+    client.players.push_back(player);
+    ActivePickerLobbyClientGuard guard(&client);
+
+    g_start_game_requested = false;
+    trace_clear();
+    const Sint32 result = go_menu(0);
+
+    EXPECT_EQ(MENU_REDRAW, result);
+    EXPECT_EQ(1, client.request_start_calls);
+    EXPECT_EQ(12, client.poll_calls)
+        << "the wait polls exactly until the client abandons the request";
+    EXPECT_FALSE(client.start_request_pending());
+    EXPECT_EQ(og::ui::StartRequestOutcome::LinkLost,
+              client.start_request_outcome());
+    EXPECT_FALSE(g_start_game_requested);
+    EXPECT_TRUE(trace_contains("basecamp", "go_wait_link_lost"));
+    EXPECT_TRUE(trace_contains("popup", "CONNECTION LOST"))
+        << "the dropped link is reported, not swallowed";
+    EXPECT_FALSE(trace_contains("popup", "NO ANSWER FROM HOST"))
+        << "a dead link is not a silent host";
+    EXPECT_FALSE(trace_contains("basecamp", "go_launched"));
 }
 
 TEST(PickerFuncs, picker_replace_lobby_client_is_transactional_on_initialize_failure)

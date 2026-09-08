@@ -1,5 +1,6 @@
 #pragma once
 
+#include <openglad/gameplay/link_loss_window.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
 
@@ -53,6 +54,36 @@ public:
     // mission" — a deliberate party-wide retreat, distinct from a disconnect
     // (which only converts the leaving player's character to AI).
     void request_level_abort();
+    // Link state as of the last transport poll (#278). `transport_lost()` is
+    // the one predicate for "this client HAD a server and lost it" — what a
+    // display shows its stall banner for and what request_level_abort()
+    // treats as the connection-lost transition; both read it here rather
+    // than re-deriving it (LinkLossWindow owns the rule).
+    [[nodiscard]] bool transport_connected() const noexcept
+    {
+        return link_.connected();
+    }
+    [[nodiscard]] bool transport_lost() const noexcept
+    {
+        return link_.lost();
+    }
+    // The window itself, so the phase that follows this one can continue the
+    // SAME timeline instead of starting a fresh one (#278 review fixup): the
+    // runtime teardown carries it to the session, and the lobby's
+    // resume_after_level adopts it, so a link that has already been down for
+    // the whole window in-game is dead the moment the picker gets it back.
+    [[nodiscard]] const LinkLossWindow& link_window() const noexcept
+    {
+        return link_;
+    }
+    // This round already ENDED its session on a dead link — the backstop's
+    // expiry fired, or the player's QUIT on a dead link took the same
+    // transition (request_level_abort). Cleared by a reconnect. The teardown
+    // reads it to tell the picker there is nothing left to wait for.
+    [[nodiscard]] bool connection_lost_declared() const noexcept
+    {
+        return connection_lost_notified_;
+    }
     void send_pause_request();
     void send_pause_response();
     void send_snapshot_hash_check();
@@ -218,6 +249,10 @@ private:
     void maybe_send_hello_if_needed();
     void maybe_send_heartbeat_if_needed();
     void maybe_notify_connection_lost();
+    // The ONE place the connection-lost callback fires: latched, so the
+    // timeout, the fatal-desync path and a QUIT on a dead link all end the
+    // session exactly once through the same seam.
+    void notify_connection_lost_once();
     void note_keyframe_apply_result(bool applied_cleanly);
     void note_outbound_activity();
     void maybe_send_client_ready();
@@ -243,16 +278,14 @@ private:
     mutable float last_render_speed_factor_ = 1.0f;
     std::optional<InterpolationClock::time_point>
         last_outbound_activity_time_ = std::nullopt;
-    std::optional<InterpolationClock::time_point>
-        transport_disconnect_time_ = std::nullopt;
     std::uint32_t last_seen_server_tick_ = 0;
     std::uint32_t last_sim_event_sequence_ = 0;
     std::uint32_t last_game_flow_event_sequence_ = 0;
     bool has_sim_event_sequence_ = false;
     bool has_game_flow_event_sequence_ = false;
     SessionToken session_token_ = kZeroSessionToken;
-    bool transport_connected_ = false;
-    bool transport_ever_connected_ = false;
+    // The link timeline: connected / lost / reconnect-window expiry.
+    LinkLossWindow link_;
     bool hello_sent_for_connection_ = false;
     bool hello_acknowledged_ = false;
     bool connection_lost_notified_ = false;

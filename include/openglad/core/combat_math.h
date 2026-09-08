@@ -16,12 +16,24 @@ using RandomU32 = std::uint32_t(*)(std::uint32_t);
 //   d - sqrt(d)/2 + random(floor(sqrt(d)))
 [[nodiscard]] float compute_base_damage(float base_damage, RandomU32 rng);
 
-// Original behavior from walker.cpp:
-//   reduction = armor/2, clamped to at most (damage - 1) so at least 1 gets through.
+// Deterministic port of the 2002 armor roll `tempdamage -= random(armor)`:
+// returns the exact expected reduction of that uniform 0..armor-1 roll,
+// (k*d - k(k-1)/2)/armor with k = min(armor, ceil(d)) -- so a target's
+// expected damage taken matches the original at every armor value. The 2013
+// "armor/2, at least 1 damage" form is gone: it only matched the original
+// average below the clamp and made high-armor targets one-point sponges.
 [[nodiscard]] float compute_damage_reduction(float incoming_damage, float target_armor);
 
 // Convenience helper.
 [[nodiscard]] float compute_post_reduction_damage(float incoming_damage, float target_armor);
+
+// The one place a float hit becomes the integer hitpoint loss: the nearest
+// point, halves up. The 2002 game carried damage as an integer end to end;
+// the 2013 base-damage jitter made it fractional (a damage-1 attacker rolls
+// exactly 0.5) and the old armor clamp happened to lift every sub-point hit
+// to 1. Truncation would floor those to 0 and bias every hit half a point
+// low; rounding keeps the reduction's expectation within +-0.5 of the roll.
+[[nodiscard]] short damage_to_hit_points(float damage);
 
 // IRandom-based overload: allows injection via GameContext's RNG
 [[nodiscard]] float compute_base_damage(float base_damage, IRandom& rng);

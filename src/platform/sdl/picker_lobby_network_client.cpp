@@ -1,5 +1,7 @@
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/link_loss_window.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
 #include <openglad/gameplay/pack_transfer.h>
@@ -64,6 +66,12 @@ extern bool g_start_game_requested;
 
 // picker_dialogs.cpp (trace-only under TESTING): the §4.2 reconcile popup.
 void popup_dialog(const char* title, const char* message);
+
+#ifdef TESTING
+// #278: shortens the joiner's start-request expiry (0 = the production
+// START_REQUEST_TIMEOUT_MS) for tests that drive a real, silent host.
+std::uint64_t g_picker_start_request_timeout_ms_override = 0;
+#endif
 
 namespace {
 
@@ -3580,6 +3588,9 @@ public:
         awaiting_round_ready_reset_ = false;
         relay_room_code_.clear();
         direct_url_.clear();
+        // A fresh dial is a fresh link timeline, exactly as in shutdown()
+        // (session_lost_ is latched and deliberately not touched).
+        link_.reset();
 
         if (options_.mode == og::ui::PickerJoinMode::Direct)
         {
@@ -3638,6 +3649,8 @@ public:
         start_request_pending_ = false;
         pending_start_request_id_ = 0;
         deferred_start_requested_ = false;
+        start_request_outcome_ = og::ui::StartRequestOutcome::None;
+        start_request_sent_at_ = {};
         join_message_sent_ = false;
         join_confirmation_pending_ = false;
         pending_join_request_id_ = 0;
@@ -3650,6 +3663,9 @@ public:
         awaiting_round_ready_reset_ = false;
         pending_local_seats_.clear();
         preview_mirror_.dispose();
+        // A fresh dial is a fresh link timeline (session_lost_ is latched and
+        // deliberately NOT touched here).
+        link_.reset();
     }
 
     void sync_from_save() override
@@ -3681,8 +3697,25 @@ public:
 
         drain_messages();
         update_server_peer_id();
+        const auto now = std::chrono::steady_clock::now();
+        link_.observe(!transport_->connected_peers().empty(), now);
+        expire_stale_start_request(now);
         if (transport_->connected_peers().empty())
         {
+            // #278: a link that carried lobby state and has stayed down for
+            // the whole reconnect window is a dead session — the ONE window
+            // rule (LinkLossWindow) the in-game backstop runs too. Inside
+            // the window the transport's auto-reconnect is still the
+            // recovery path: the reset below re-sends the Join when the
+            // socket comes back and the lobby re-converges. (A first dial
+            // that never connected has no session to lose.) Latched for the
+            // picker's per-frame revert, like a kick.
+            if (lobby_states_received_ > 0 && link_.expired(now))
+            {
+                if (!session_lost_)
+                    TRACE("networking", "lobby_link_lost_for_good");
+                session_lost_ = true;
+            }
             join_message_sent_ = false;
             join_confirmation_pending_ = false;
             pending_join_request_id_ = 0;
@@ -3692,10 +3725,12 @@ public:
                 pack_client_->reset();
             // A pending start request can never resolve on a dead connection
             // (neither the StartGame handoff nor the denial echo will arrive);
-            // release it so go_menu's wait loop gives up instead of spinning
-            // forever, and the user can retry after the reconnect.
-            start_request_pending_ = false;
-            deferred_start_requested_ = false;
+            // abandon it through the SAME seam the silent-host expiry uses so
+            // go_menu's wait loop gives up WITH a verdict — this was the third,
+            // unreported exit of the pending flag, and it bounced the menu back
+            // with no popup at all (#278 review fixup). The user retries after
+            // the reconnect.
+            abandon_start_request(og::ui::StartRequestOutcome::LinkLost);
             rebuild_status_lines();
             return;
         }
@@ -3973,6 +4008,9 @@ public:
 
     bool request_start_game() override
     {
+        // Every GO press starts fresh: a previous press's verdict is not
+        // this one's.
+        start_request_outcome_ = og::ui::StartRequestOutcome::None;
         if (start_request_pending_ || !transport_ || !local_player_is_host() ||
             pending_game_start_config_.has_value() ||
             g_start_game_requested)
@@ -3984,7 +4022,7 @@ public:
             // silent no-op. The poll loop dispatches it only after every
             // authoritative mutation/redistribution echo has settled.
             deferred_start_requested_ = true;
-            start_request_pending_ = true;
+            open_start_request_wait();
             return false;
         }
 
@@ -4057,6 +4095,12 @@ public:
     [[nodiscard]] bool start_request_pending() const noexcept override
     {
         return start_request_pending_;
+    }
+
+    [[nodiscard]] og::ui::StartRequestOutcome start_request_outcome()
+        const noexcept override
+    {
+        return start_request_outcome_;
     }
 
     [[nodiscard]] bool has_game_start_config() const noexcept override
@@ -4212,6 +4256,11 @@ public:
     [[nodiscard]] bool was_kicked() const noexcept override
     {
         return was_kicked_;
+    }
+
+    [[nodiscard]] bool session_lost() const noexcept override
+    {
+        return session_lost_;
     }
 
     bool set_ready(bool ready) override
@@ -4453,6 +4502,7 @@ public:
         start_request_pending_ = false;
         pending_start_request_id_ = 0;
         deferred_start_requested_ = false;
+        start_request_outcome_ = og::ui::StartRequestOutcome::None;
         pending_game_start_config_.reset();
 
         // If the socket object survived but its upstream did not, it is no
@@ -4463,7 +4513,49 @@ public:
             transport_->link_state() == og::sim::TransportLinkState::Failed ||
             transport_->link_state() == og::sim::TransportLinkState::Lost ||
             transport_->connected_peers().empty();
-        if (transport_unusable)
+        // #278 review fixup: the post-game moment runs the SAME window as
+        // the two phases around it. The round that just ended owned the link,
+        // so its GameClient's window is carried here by the runtime teardown
+        // (clear_local_transport_shadow -> SessionState::network_link_window_)
+        // and adopted below: a link that was already down for the whole
+        // CLIENT_CONNECTION_LOST_TIMEOUT_MS in-game is dead on arrival, and a
+        // blip that started during the post-game fade still has the rest of
+        // its window to reconnect in. Consumed here — the next round starts
+        // its own timeline.
+        adopt_carried_link_window();
+        const auto now = std::chrono::steady_clock::now();
+        if (transport_ != nullptr)
+            link_.observe(!transport_->connected_peers().empty(), now);
+        // The previous round HAD a session and its link is down now that the
+        // round is over. Only when that link has been down for the whole
+        // window is the session over: latch the loss, discard the stale
+        // round's lobby cache (the roster and staged preview of a session
+        // that no longer exists), and keep the Lost transport so the status
+        // keeps saying "connection lost". The picker's per-frame revert swaps
+        // in a local client on the next frame and that swap's shutdown()
+        // tears the socket down. Inside the window we fall through to the
+        // ordinary resume instead: the transport's auto-reconnect is still
+        // the recovery path, the resume Join goes out when the socket comes
+        // back, and if it never does the lobby poll's expiry — the same
+        // window, still running — latches the loss there.
+        const bool link_down_for_good = transport_ != nullptr &&
+            lobby_states_received_ > 0 &&
+            transport_->link_state() == og::sim::TransportLinkState::Lost &&
+            link_.expired(now);
+        if (link_down_for_good)
+        {
+            TRACE("networking", "resume_link_lost_for_good");
+            session_lost_ = true;
+            state_.reset();
+            pending_local_seats_.clear();
+            preview_mirror_.dispose();
+            rebuild_status_lines();
+            return;
+        }
+        const bool reconnecting_inside_window = transport_ != nullptr &&
+            lobby_states_received_ > 0 &&
+            transport_->link_state() == og::sim::TransportLinkState::Lost;
+        if (transport_unusable && !reconnecting_inside_window)
         {
             const std::vector<short> preserved_teams = local_seat_teams_;
             initialize_from_save();
@@ -4508,6 +4600,22 @@ public:
     }
 
 private:
+    // #278 review fixup: continue the finished round's reconnect window
+    // instead of starting a fresh one. clear_local_transport_shadow parked
+    // the in-game GameClient's window on the session as the level's runtime
+    // was torn down; take it (a round with no network client left it reset,
+    // which carries nothing) and consume it so the next round starts clean.
+    void adopt_carried_link_window()
+    {
+        if (og::runtime::current_session == nullptr)
+            return;
+        og::sim::LinkLossWindow& carried =
+            og::runtime::current_session->network_link_window_;
+        if (carried.ever_connected())
+            link_ = carried;
+        carried.reset();
+    }
+
     [[nodiscard]] bool local_player_is_host() const
     {
         if (!state_.has_value())
@@ -4647,7 +4755,7 @@ private:
             og::ui::detail::find_local_player(*state_);
         pending_game_start_config_.reset();
         deferred_start_requested_ = false;
-        start_request_pending_ = true;
+        open_start_request_wait();
         pending_start_request_id_ = next_start_request_id_++;
         if (next_start_request_id_ == 0)
             next_start_request_id_ = 1;
@@ -4668,6 +4776,64 @@ private:
         og::ui::detail::send_lobby_message(
             *transport_, server_peer_id_, std::move(message));
         return true;
+    }
+
+    // #278: the wait for the host's answer is timed from the GO that opened
+    // it — a request deferred behind a roster echo keeps its press's stamp
+    // rather than restarting the clock when it finally goes out.
+    void open_start_request_wait()
+    {
+        if (!start_request_pending_)
+            start_request_sent_at_ = std::chrono::steady_clock::now();
+        start_request_pending_ = true;
+        start_request_outcome_ = og::ui::StartRequestOutcome::None;
+    }
+
+    [[nodiscard]] static std::uint64_t start_request_timeout_ms() noexcept
+    {
+#ifdef TESTING
+        if (g_picker_start_request_timeout_ms_override != 0)
+            return g_picker_start_request_timeout_ms_override;
+#endif
+        return og::sim::START_REQUEST_TIMEOUT_MS;
+    }
+
+    // #278: the one owner of start_request_pending_ is the one that drops
+    // it, and every drop that is not the host's own verdict names itself
+    // here. Pending falls so a `while (pending) poll` wait returns, the
+    // reason is reported through start_request_outcome(), and the NEXT GO
+    // opens a fresh request instead of re-waiting on this one. A late
+    // handoff for the abandoned id still starts the game (the confirmation
+    // matcher accepts any id once nothing is pending, exactly as it does for
+    // a plain joiner).
+    void abandon_start_request(og::ui::StartRequestOutcome reason)
+    {
+        if (!start_request_pending_)
+            return;
+        TRACE("networking", "%s id=%u",
+              reason == og::ui::StartRequestOutcome::LinkLost
+                  ? "start_request_link_lost"
+                  : "start_request_expired",
+              static_cast<unsigned>(pending_start_request_id_));
+        start_request_pending_ = false;
+        pending_start_request_id_ = 0;
+        deferred_start_requested_ = false;
+        start_request_outcome_ = reason;
+    }
+
+    // A host whose uplink went dark (socket open, nobody answering) sends
+    // neither the StartGame handoff nor a denial echo; past
+    // START_REQUEST_TIMEOUT_MS the request is abandoned.
+    void expire_stale_start_request(std::chrono::steady_clock::time_point now)
+    {
+        if (!start_request_pending_)
+            return;
+        if (now - start_request_sent_at_ <
+            std::chrono::milliseconds(start_request_timeout_ms()))
+        {
+            return;
+        }
+        abandon_start_request(og::ui::StartRequestOutcome::NoAnswer);
     }
 
     void maybe_dispatch_deferred_start()
@@ -5005,6 +5171,11 @@ private:
     std::vector<short> local_seat_teams_;
     bool start_request_pending_ = false;
     bool deferred_start_requested_ = false;
+    // #278: when the pending request's GO was pressed, and whether the last
+    // GO's request expired unanswered (cleared by the next GO).
+    std::chrono::steady_clock::time_point start_request_sent_at_{};
+    og::ui::StartRequestOutcome start_request_outcome_ =
+        og::ui::StartRequestOutcome::None;
     std::uint32_t next_start_request_id_ = 1;
     std::uint32_t pending_start_request_id_ = 0;
     bool join_message_sent_ = false;
@@ -5032,6 +5203,14 @@ private:
     // shutdown() — the kick is followed immediately by the disconnect, and the
     // UI reads this after tearing the client down to explain the drop.
     bool was_kicked_ = false;
+    // #278: the lobby-parked link timeline; the ONE reconnect-window rule
+    // shared with the in-game GameClient. Reset by shutdown() (a new dial).
+    og::sim::LinkLossWindow link_;
+    // #278: latched when a link that carried lobby state is dead for good
+    // (the window expired in the lobby poll, or the post-level resume found
+    // it down). Same lifetime rule as was_kicked_: shutdown() leaves it
+    // alone.
+    bool session_lost_ = false;
 };
 
 } // namespace

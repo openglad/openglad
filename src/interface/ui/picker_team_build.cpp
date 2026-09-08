@@ -60,7 +60,9 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <format>
 #include <memory>
@@ -2730,10 +2732,52 @@ Sint32 go_menu(Sint32 arg1)
         g_start_game_requested = false;
     if (!start_already_requested && !picker_lobby_request_start())
     {
+        // The host's StartGame handoff or denial echo releases this wait,
+        // and a host whose uplink went dark answers neither. The bound is
+        // the CLIENT's (#278): it expires its own unanswered request after
+        // START_REQUEST_TIMEOUT_MS — and abandons it at once if the link
+        // dies first — so this loop, with no event pump and no present,
+        // never owns a deadline of its own and the next GO sends a fresh
+        // request instead of re-waiting on the stale one. EVERY exit of the
+        // pending flag other than the host's own verdict is named by
+        // start_request_outcome(); the menu says which and hands itself
+        // back, instead of bouncing to a redraw with no popup at all.
+        const auto wait_started = std::chrono::steady_clock::now();
+        std::uint64_t wait_iterations = 0;
         while (!g_start_game_requested && picker_lobby_start_request_pending())
         {
             picker_lobby_poll();
             og::input_native::sleep_ms(10);
+            ++wait_iterations;
+        }
+        const og::ui::StartRequestOutcome wait_outcome =
+            picker_lobby_start_request_outcome();
+        Log("go_wait iterations={} elapsed_ms={} requested={} outcome={}\n",
+            wait_iterations,
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - wait_started)
+                .count(),
+            g_start_game_requested,
+            static_cast<int>(wait_outcome));
+        if (wait_outcome == og::ui::StartRequestOutcome::NoAnswer)
+        {
+            TRACE("basecamp", "go_wait_timeout iterations=%llu",
+                  static_cast<unsigned long long>(wait_iterations));
+            popup_dialog("NO ANSWER FROM HOST",
+                         "The host did not\nanswer the start\nrequest");
+            return MENU_REDRAW;
+        }
+        if (wait_outcome == og::ui::StartRequestOutcome::LinkLost)
+        {
+            // Same notice the per-frame revert shows when the session is
+            // declared over, said here because the GO is what the player is
+            // waiting on. The link may still come back inside the reconnect
+            // window; the request cannot, so the retry is the player's.
+            TRACE("basecamp", "go_wait_link_lost iterations=%llu",
+                  static_cast<unsigned long long>(wait_iterations));
+            popup_dialog("CONNECTION LOST",
+                         "The link dropped\nbefore the host\nanswered");
+            return MENU_REDRAW;
         }
     }
 
@@ -2794,6 +2838,7 @@ Sint32 go_menu(Sint32 arg1)
         }
 
 #ifdef TESTING
+        TRACE("basecamp", "go_launched");
         picker_testing_mark_game_start();
 #endif
         glad_main(og::runtime::current_session->myscreen_->save_data.numplayers);

@@ -4810,13 +4810,19 @@ struct RealCourtBotGamePin
 };
 
 inline constexpr std::uint32_t kRealCourtBotGameSeed = 0x9E3779B9u;
+// Re-pinned 2026-09-08 for the armor-roll expectation fix
+// (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): every hit lands ~0.5 harder and
+// rounds to the nearest point, so the bot melees around the ball resolve
+// differently and every court's first basket moved (824 now finishes 2-0
+// instead of 7-4, 829's opener is a 3-pointer). 825 was unchanged. These are
+// exact-replay pins, re-measured from the same seed, not tuned.
 inline constexpr RealCourtBotGamePin kRealCourtBotGamePins[] = {
-    {824, 7200, 1174, {2, 0, 0, 0}, true, 7200, {7, 4, 0, 0}, 0, true, 0},
+    {824, 7200, 1182, {2, 0, 0, 0}, true, 7200, {2, 0, 0, 0}, 0, true, 0},
     {825, 5400, 142, {0, 2, 0, 0}, false, 142, {0, 2, 0, 0}, -1, false, 0},
-    {826, 7200, 886, {0, 2, 0, 0}, false, 886, {0, 2, 0, 0}, -1, false, 0},
-    {827, 7200, 363, {0, 2, 0, 0}, false, 363, {0, 2, 0, 0}, -1, false, 0},
-    {828, 7200, 3255, {0, 2, 0, 0}, false, 3255, {0, 2, 0, 0}, -1, false, 0},
-    {829, 7200, 460, {2, 0, 0, 0}, false, 460, {2, 0, 0, 0}, -1, false, 0},
+    {826, 7200, 950, {2, 0, 0, 0}, false, 950, {2, 0, 0, 0}, -1, false, 0},
+    {827, 7200, 1646, {2, 0, 0, 0}, false, 1646, {2, 0, 0, 0}, -1, false, 0},
+    {828, 7200, 1037, {2, 0, 0, 0}, false, 1037, {2, 0, 0, 0}, -1, false, 0},
+    {829, 7200, 1333, {0, 3, 0, 0}, false, 1333, {0, 3, 0, 0}, -1, false, 0},
 };
 
 }  // namespace

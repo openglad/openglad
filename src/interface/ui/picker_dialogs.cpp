@@ -121,6 +121,12 @@ void timed_dialog(const char* message, float delay_seconds)
 
     clear_key_press_event();
 
+    // Announced AFTER clear_key_press_event() and BEFORE the wait loop, so a
+    // test driving the UI from an injector thread can wait on this instead of
+    // sleeping out the full delay: any input it sends once this is traced is
+    // still pending when the loop below polls. No-op outside TESTING.
+    TRACE("dialog", "timed_dialog_open %s", message);
+
     Uint32 start_time = og::input_native::ticks_ms();
     while (static_cast<float>(og::input_native::ticks_ms() - start_time)/1000.0f < delay_seconds)
     {
@@ -131,6 +137,8 @@ void timed_dialog(const char* message, float delay_seconds)
 
         og::input_native::sleep_ms(10);
     }
+
+    TRACE("dialog", "timed_dialog_closed %s", message);
 }
 
 #ifdef TESTING

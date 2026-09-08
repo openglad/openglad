@@ -34,6 +34,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/fps_overlay.h>
 #include <openglad/interface/input.h>
@@ -47,6 +48,8 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/interface/guy_create.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/screen.h>
 #include <SDL3/SDL.h>
 
@@ -73,6 +76,7 @@
 #include <thread>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 // External declarations
@@ -246,15 +250,22 @@ static void apply_capture_focus(screen& s, CaptureFocus focus)
         return;
     }
 
-    // Boss: the highest-level live hostile living, re-derived every frame so
-    // the camera hands off cleanly when one dies.
+    // Boss: the NAMED live hostile living, highest level first — a campaign
+    // says which walker is its boss by giving him a name (BIT_NAMED), and a
+    // higher-level anonymous escort should not steal the camera from him.
+    // Falls back to the strongest unnamed hostile when nothing is named.
+    // Re-derived every frame so the camera hands off cleanly when one dies.
+    const auto boss_rank = [](const walker* w) {
+        return std::pair{w->stats()->query_bit_flags(BIT_NAMED) ? 1 : 0,
+                         static_cast<int>(w->stats()->level())};
+    };
     walker* boss = nullptr;
     for (auto& uptr : s.world().oblist) {
         walker* w = uptr.get();
         if (w == nullptr || w->dead() || w->order() != Order::Living ||
             w->team_num() == 0)
             continue;
-        if (boss == nullptr || w->stats()->level() > boss->stats()->level())
+        if (boss == nullptr || boss_rank(w) > boss_rank(boss))
             boss = w;
     }
     if (boss != nullptr) {
@@ -554,6 +565,18 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
         throw std::runtime_error(
             "OPENGLAD_DEMO_MATCH_TIME_LIMIT could not be applied");
     }
+
+    // Amendment 7 (#276): a versus campaign's arena deals FILL: FAIR to the
+    // teams it authors — the ONE rule the pickers apply at selection, run
+    // here off a scratch load of the cursor BEFORE the bootstrap save,
+    // because both the display load below and the local transport shadow's
+    // authoritative load read this slot back off disk. The mount leads, as
+    // the save's own load would make it (the mask rule reads the mounted
+    // package); a classic campaign never pends, so its bootstrap is
+    // untouched.
+    (void)og::ui::sync_campaign_mount_to_save(s->save_data);
+    (void)og::ui::deal_arena_lineup_for_cursor(s->save_data,
+                                               sdl_level_data_hooks());
 
     // The demo never selects a company, so this is the default "save0" slot
     // and the bootstrap stays byte-identical (§3.9).

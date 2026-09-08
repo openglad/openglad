@@ -75,6 +75,15 @@ struct LocalTransportClient {
 constexpr std::string_view kPauseOverlayMenuHint =
     og::input::kWebBackKeyMode ? "BKSP: Menu" : "ESC: Menu";
 
+// #278: what a networked display shows while its link to the server is
+// down. The mirror cannot advance (no snapshots arrive) and the transport
+// may still auto-reconnect inside the server's seat-rebind window, so the
+// frame stays up with this banner over it and the menu hint that leads to
+// QUIT — the one action that ends the session without waiting out
+// CLIENT_CONNECTION_LOST_TIMEOUT_MS.
+constexpr std::string_view kLinkLostOverlayText =
+    "CONNECTION LOST - RECONNECTING";
+
 walker* resolve_control_from_entity_id(GameWorld& world, std::uint32_t entity_id);
 
 } // namespace
@@ -128,6 +137,10 @@ struct LocalTransportRuntime {
     // whole pause, so a superseded line can never tick-expire.
     std::string pause_overlay_banner;
     bool pause_overlay_hint = false;
+    // #278: the link-lost banner is on this machine's views. Set when the
+    // display client's transport drops after having connected, cleared (and
+    // the lines retired) on reconnect or when the session ends.
+    bool link_lost_overlay = false;
 
     [[nodiscard]] screen* server_screen() const
     {
@@ -481,6 +494,23 @@ void clear_pause_overlay_text(viewscreen& view,
     if (text != "PAUSED")
         view.expire_display_text("PAUSED");
     view.expire_display_text(kPauseOverlayMenuHint);
+}
+
+// #278: retire the link-lost banner (and its menu hint) from every view.
+// The hint is shared with the pause overlay; a pause cannot be in flight on
+// a dead link, so retiring it here never takes a live pause's hint away.
+void clear_link_lost_overlay_text(screen& gameplay_screen,
+                                  og::runtime::LocalTransportRuntime& runtime)
+{
+    for (int index = 0; index < gameplay_screen.numviews; ++index)
+    {
+        viewscreen* const view = gameplay_screen.viewob[index].get();
+        if (view == nullptr)
+            continue;
+        view->expire_display_text(kLinkLostOverlayText);
+        view->expire_display_text(kPauseOverlayMenuHint);
+    }
+    runtime.link_lost_overlay = false;
 }
 
 } // namespace og::runtime::detail
@@ -1077,6 +1107,39 @@ void render_pause_overlay(screen& gameplay_screen,
     gameplay_screen.redrawme = 1;
 }
 
+// #278: the one place the link-lost overlay is written or retired. Called
+// once per display frame for the display client only. Render-only: it
+// touches the views' text feed, never a sim field.
+void render_link_lost_overlay(screen& gameplay_screen,
+                              og::runtime::LocalTransportRuntime& runtime,
+                              const og::sim::GameClient& game_client)
+{
+    if (game_client.transport_lost())
+    {
+        if (!runtime.link_lost_overlay)
+            TRACE("net", "link_lost_overlay");
+        // Re-stamped every frame like the pause overlay: the sim tick is
+        // frozen while no snapshots arrive, so a one-cycle line never
+        // tick-expires and never needs to.
+        for (int index = 0; index < gameplay_screen.numviews; ++index)
+        {
+            viewscreen* const view = gameplay_screen.viewob[index].get();
+            if (view == nullptr)
+                continue;
+            view->refresh_display_text(kLinkLostOverlayText, 1);
+            view->refresh_display_text(kPauseOverlayMenuHint, 1);
+        }
+        runtime.link_lost_overlay = true;
+        gameplay_screen.redrawme = 1;
+        return;
+    }
+    if (!runtime.link_lost_overlay)
+        return;
+    TRACE("net", "link_lost_overlay_cleared");
+    og::runtime::detail::clear_link_lost_overlay_text(gameplay_screen, runtime);
+    gameplay_screen.redrawme = 1;
+}
+
 void configure_background_game_client(screen& gameplay_screen,
                                       og::sim::GameClient& game_client)
 {
@@ -1428,6 +1491,9 @@ void configure_display_game_client(
         });
     display_client.set_connection_lost_callback(
         [&gameplay_screen, runtime_ptr = &runtime]() {
+            if (runtime_ptr != nullptr && runtime_ptr->link_lost_overlay)
+                og::runtime::detail::clear_link_lost_overlay_text(
+                    gameplay_screen, *runtime_ptr);
             popup_dialog("Connection Lost",
                          "Lost connection to the server.");
             gameplay_screen.redrawme = 1;
@@ -1719,6 +1785,13 @@ og::sim::GameServer* local_transport_shadow_testing_server(GameSession& session)
     return runtime->server.get();
 }
 
+og::sim::GameClient* local_transport_shadow_testing_display_client(
+    GameSession& session) noexcept
+{
+    const auto runtime = session.local_transport_runtime_;
+    return runtime != nullptr ? runtime->display_client() : nullptr;
+}
+
 #include "../../../tests/coverage_internal/local_transport_shadow_exit_prompt.inc"
 
 bool local_transport_shadow_testing_server_pending_exit_prompt(
@@ -1874,6 +1947,9 @@ bool local_transport_shadow_abort_level(GameSession& session)
     // server's terminal broadcast ends it, so this peer's character is NOT left
     // behind as AI. Return false so the caller waits for that broadcast instead
     // of tearing down locally (which would just disconnect this one player).
+    // On a DEAD link no broadcast can come: request_level_abort fires the
+    // connection-lost seam instead, and the next finish_tick ends the
+    // session through display_session_finished (#278).
     if (runtime->display_client_index < runtime->clients.size() &&
         runtime->clients[runtime->display_client_index].game_client != nullptr)
     {
@@ -2949,6 +3025,38 @@ void reset_network_client_transport_shadow(
 
 void clear_local_transport_shadow(GameSession& session) noexcept
 {
+    // #278 review fixup: hand the finished round's reconnect window to the
+    // session before the client that owns it dies. The picker's
+    // resume_after_level adopts it so the lobby continues the SAME
+    // LinkLossWindow timeline the level ran — a link down for the whole
+    // window in-game is dead on arrival, a blip that began during the
+    // post-game fade still has its window. A round with no display client
+    // (or a local one that never had a server) carries a reset window,
+    // which reads as "no history".
+    {
+        const og::sim::GameClient* const finished_client =
+            session.local_transport_runtime_ != nullptr
+                ? session.local_transport_runtime_->display_client()
+                : nullptr;
+        og::sim::LinkLossWindow carried = finished_client != nullptr
+            ? finished_client->link_window()
+            : og::sim::LinkLossWindow{};
+        if (finished_client != nullptr &&
+            finished_client->connection_lost_declared())
+        {
+            // The round did not merely lose the link — it ENDED on it: the
+            // in-game backstop fired, or the player's QUIT on a dead link
+            // took the same transition. Either way the session was declared
+            // over before this teardown, so the picker inherits an exhausted
+            // window and latches at once instead of waiting out a second
+            // copy of the same 30 s.
+            carried.backdate_loss(
+                static_cast<float>(og::sim::LinkLossWindow::window_ms()) +
+                    1000.0f,
+                og::sim::LinkLossWindow::Clock::now());
+        }
+        session.network_link_window_ = carried;
+    }
     if (session.myscreen_ != nullptr)
         session.myscreen_->set_render_interpolation_client(nullptr);
     if (session.local_transport_runtime_ != nullptr)
@@ -3118,6 +3226,7 @@ bool local_transport_shadow_step_and_drain(
                 *runtime,
                 display_client,
                 pause_owned_by_remote_peer(*runtime, display_client));
+            render_link_lost_overlay(*session.myscreen_, *runtime, display_client);
         }
         og::runtime::emit_runtime_trace(
             og::runtime::make_runtime_trace_record(

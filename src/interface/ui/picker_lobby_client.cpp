@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -1207,13 +1208,26 @@ void picker_lobby_sync_settings_from_save()
 void picker_reinitialize_lobby_after_game()
 {
     g_start_game_requested = false;
+    // This runs behind the post-game fadeblack, before Base Camp's first
+    // draw: anything that blocks here is a black window. Logged with its
+    // cost so a field report of a black freeze names the culprit (#278).
+    const auto started = std::chrono::steady_clock::now();
+    og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client();
+    const bool networked = client != nullptr && client->is_networked_session();
     // Networked clients reuse the live connection that survived gameplay and
     // re-sync the advanced campaign cursor; local/single-player rebuilds from
     // the save (the default resume_after_level()).
-    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+    if (client != nullptr)
         client->resume_after_level();
     else
         picker_lobby_initialize_from_save();
+    Log("picker_reinit_lobby_after_game elapsed_ms={} networked={} "
+        "session_lost={}\n",
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started)
+            .count(),
+        networked,
+        client != nullptr && client->session_lost());
 }
 
 void picker_lobby_poll()
@@ -1274,6 +1288,13 @@ bool picker_lobby_start_request_pending()
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->start_request_pending();
     return false;
+}
+
+og::ui::StartRequestOutcome picker_lobby_start_request_outcome()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->start_request_outcome();
+    return og::ui::StartRequestOutcome::None;
 }
 
 bool picker_lobby_has_game_start_config()
@@ -1344,6 +1365,13 @@ bool picker_lobby_was_kicked()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->was_kicked();
+    return false;
+}
+
+bool picker_lobby_session_lost()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->session_lost();
     return false;
 }
 

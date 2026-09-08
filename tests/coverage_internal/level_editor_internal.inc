@@ -1868,3 +1868,23 @@ int level_editor_test_decor_migrated_roundtrip()
 
     return failed_check == 0 ? 0 : -failed_check;
 }
+
+// Issue #12 seams. The editor's LevelEditorData is a function-local static
+// inside level_editor() with its own LevelRuntimeData (and therefore its own
+// GameWorld), so a test that drives the real event loop has no other handle on
+// the level it just edited. Read the level only AFTER level_editor() has
+// returned -- never from an injector thread, which would race the editor's own
+// writes. The brush flag is a plain bool the editor writes only when a click
+// toggles it, so the injector (the sole source of clicks) may read it too.
+LevelRuntimeData* level_editor_testing_level()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return nullptr;
+    return g_level_editor_testing_data->level.get();
+}
+
+bool level_editor_testing_terrain_smoothing()
+{
+    return g_level_editor_testing_data != nullptr &&
+           g_level_editor_testing_data->terrain_brush.use_smoothing;
+}

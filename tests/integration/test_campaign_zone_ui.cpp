@@ -196,6 +196,11 @@ struct SavedPickerSave
         for (int t = 0; t < 4; ++t)
             snapshot_fields.m_totalcash[t] = save.m_totalcash[t];
         campaign_state = save.campaign_state;
+        // The arena deal memo (lineup amendment 7) must not leak a dealt
+        // cursor into the next fixture either.
+        snapshot_fields.arena_lineup_dealt_campaign =
+            save.arena_lineup_dealt_campaign;
+        snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
     }
 
     ~SavedPickerSave()
@@ -212,6 +217,9 @@ struct SavedPickerSave
         save.current_campaign = snapshot_fields.current_campaign;
         save.ctf_capture_limit = snapshot_fields.ctf_capture_limit;
         save.ctf_team_count = snapshot_fields.ctf_team_count;
+        save.arena_lineup_dealt_campaign =
+            snapshot_fields.arena_lineup_dealt_campaign;
+        save.arena_lineup_dealt_scen = snapshot_fields.arena_lineup_dealt_scen;
         for (int t = 0; t < 4; ++t)
             save.m_totalcash[t] = snapshot_fields.m_totalcash[t];
         save.campaign_state = campaign_state;
@@ -392,6 +400,10 @@ void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
     // rest (caught by the ordered og_test_matchup run, invisible alone).
     save.fill = {};
     save.map_units = {};
+    // ...and the arena deal memo (amendment 7): a memo left by an earlier
+    // flow on the same cursor would mark the fresh bands as already dealt.
+    save.arena_lineup_dealt_campaign.clear();
+    save.arena_lineup_dealt_scen = 0;
     save.scen_num = scen_num;
     save.current_campaign = campaign;
     save.current_levels.clear();
@@ -2155,17 +2167,19 @@ bool wait_for_interactable_label_containing(const std::string& id,
 // same from a screenshot. TEAMS retired with lineup amendment A1/A3 and
 // TROOPS with B5, and amendment 5 (G2/G3) seats TEAMS and FILL back on
 // top as MACROS over the per-team fill array: the page is now TEAMS and
-// FILL over TARGET SCORE and the clock (#241). The macro shot steps TEAMS
-// to 2 (dealing the lowest opponent FAIR) and FILL one stop past that
-// FAIR face to STRONG; the clock still gets its own shot — MAP is the
-// map's own limit, 5M is a host overriding it.
+// FILL over TARGET SCORE and the clock (#241). Since lineup amendment 7
+// (#276) the arena's rest is already dealt: THE CIRCLE (scen 300) authors
+// all four teams, so the page opens on TEAMS: 4 / FILL: FAIR. The macro
+// shot steps TEAMS once — off the wheel's end and back to its head, 2 —
+// and FILL one stop past that FAIR face to STRONG; the clock still gets
+// its own shot — MAP is the map's own limit, 5M is a host overriding it.
 struct MatchSetupShotState
 {
     bool camp_seen = false;
     bool setup_row_seen = false;
     bool page_opened = false;
-    bool teams_row_read_one = false;
-    bool fill_row_read_none = false;
+    bool teams_row_read_four = false;
+    bool fill_row_read_fair = false;
     bool teams_stepped_to_two = false;
     bool fill_stepped_to_strong = false;
     bool score_row_read_map = false;
@@ -2192,13 +2206,14 @@ int match_setup_injector(void* data)
     interact("zone_action_3");
 
     // The zone submenu's own BACK owns the unique (10,169) rect. At rest
-    // the two macro rows lead the page (amendment 5): TEAMS: 1 — the
-    // derived all-NONE face — over FILL: NONE, then the two knobs at MAP.
+    // the two macro rows lead the page (amendment 5): TEAMS: 4 — the face
+    // derived from the arena's deal on its four authored teams (amendment
+    // 7) — over FILL: FAIR, then the two knobs at MAP.
     state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
-    state->teams_row_read_one = wait_for_interactable_label_containing(
-        "zone_row_0", "TEAMS: 1", 10000);
-    state->fill_row_read_none = wait_for_interactable_label_containing(
-        "zone_row_1", "FILL: NONE", 10000);
+    state->teams_row_read_four = wait_for_interactable_label_containing(
+        "zone_row_0", "TEAMS: 4", 10000);
+    state->fill_row_read_fair = wait_for_interactable_label_containing(
+        "zone_row_1", "FILL: FAIR", 10000);
     state->score_row_read_map = wait_for_interactable_label_containing(
         "zone_row_2", "TARGET SCORE: MAP", 10000);
     state->time_row_read_map = wait_for_interactable_label_containing(
@@ -2206,9 +2221,10 @@ int match_setup_injector(void* data)
     SDL_Delay(500);
     capture_zone_frame("zone_submenu_match_setup");
 
-    // The macros move: one TEAMS click deals the lowest opponent FAIR
-    // (both faces re-derive from the one fill array), and one FILL click
-    // steps that FAIR face to STRONG.
+    // The macros move: one TEAMS click wraps the four-side deal back to
+    // two — the lowest opponent keeps FAIR, the other two turn NONE (both
+    // faces re-derive from the one fill array) — and one FILL click steps
+    // that FAIR face to STRONG.
     interact("zone_row_0");
     state->teams_stepped_to_two = wait_for_interactable_label_containing(
         "zone_row_0", "TEAMS: 2", 10000);
@@ -2274,13 +2290,13 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
         << "the Gamesmaster's fourth row is the MATCH SETUP door";
     EXPECT_TRUE(state.page_opened)
         << "the MATCH SETUP row must open the zone submenu";
-    EXPECT_TRUE(state.teams_row_read_one)
-        << "the macro rows lead the page (amendment 5), and the all-NONE "
-           "rest derives TEAMS: 1";
-    EXPECT_TRUE(state.fill_row_read_none)
-        << "FILL: NONE is the resting face of the second macro row";
+    EXPECT_TRUE(state.teams_row_read_four)
+        << "the macro rows lead the page (amendment 5), and on a map that "
+           "authors four teams the arena's deal derives TEAMS: 4 (#276)";
+    EXPECT_TRUE(state.fill_row_read_fair)
+        << "FILL: FAIR is the resting face of the second macro row";
     EXPECT_TRUE(state.teams_stepped_to_two)
-        << "one TEAMS click deals the lowest opponent and re-derives the "
+        << "one TEAMS click wraps the wheel to two sides and re-derives the "
            "face";
     EXPECT_TRUE(state.fill_stepped_to_strong)
         << "one FILL click steps the dealt FAIR face to STRONG";

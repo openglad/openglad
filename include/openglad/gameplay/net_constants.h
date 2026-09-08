@@ -13,10 +13,28 @@ inline constexpr signed char MIN_TIMER_WAIT = 1;
 inline constexpr signed char MAX_TIMER_WAIT = 20;
 inline constexpr int KEYFRAME_INTERVAL_TICKS = DEFAULT_SIM_TICKS_PER_SEC * 5;
 inline constexpr int MAX_LATE_PRESS_TICKS = 2;
+// Server side: a silent peer's seat goes to AI after DISCONNECT_TIMEOUT_MS,
+// but the seat itself is kept for PAUSE_TIMEOUT_MS and rebinds on a Hello
+// carrying the session token — the window an auto-reconnecting transport
+// gets to come back. CLIENT_CONNECTION_LOST_TIMEOUT_MS is the client's
+// reconnect window inside that grace, read through ONE rule
+// (og::sim::LinkLossWindow) by both phases a joiner can be in: in-game it
+// is the backstop for a link that is nominally up but silent, and in the
+// lobby it is how long a parked joiner keeps its seat before the picker
+// reverts to a local client (#278). It is deliberately NOT the only in-game
+// exit: the display shows the stall from the first dropped poll and a QUIT
+// on a dead link ends the session at once (GameClient::request_level_abort).
 inline constexpr std::uint64_t DISCONNECT_TIMEOUT_MS = 10'000;
 inline constexpr std::uint64_t CLIENT_CONNECTION_LOST_TIMEOUT_MS = 30'000;
 inline constexpr std::uint64_t EXIT_PROMPT_TIMEOUT_MS = 15'000;
 inline constexpr std::uint64_t PAUSE_TIMEOUT_MS = 60'000;
+// Base Camp GO on a networked lobby waits for the host's StartGame handoff
+// or denial echo. The CLIENT that sent the request expires it after this
+// long (JoinPickerLobbyClient, the one owner of the pending flag), so a host
+// whose uplink went dark (socket open, nobody answering) cannot pin the menu
+// behind a black window, and the next GO sends a fresh request instead of
+// re-waiting on the abandoned one (#278).
+inline constexpr std::uint64_t START_REQUEST_TIMEOUT_MS = 15'000;
 inline constexpr std::uint64_t PAUSE_RATE_LIMIT_MS = 5'000;
 inline constexpr std::size_t MAX_GRID_DIRTY_TILES = 64;
 inline constexpr int MAX_INBOUND_MESSAGES_PER_TICK = 64;

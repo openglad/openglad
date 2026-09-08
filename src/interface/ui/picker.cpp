@@ -696,7 +696,11 @@ bool picker_revert_lobby_client_if_kicked()
     // the swap below must only ever retire the client it owns.
     if (!owner || og::ui::active_picker_lobby_client() != owner.get())
         return false;
-    if (!owner->was_kicked())
+    // The kick outranks the link state: the server sends the notice and
+    // then drops us, so a kicked client reads as lost too (#278).
+    const bool kicked = owner->was_kicked();
+    const bool lost = !kicked && owner->session_lost();
+    if (!kicked && !lost)
         return false;
 
     // From here on a modal may open, and a modal pumps input: latch against
@@ -707,7 +711,9 @@ bool picker_revert_lobby_client_if_kicked()
         ~RevertLatch() noexcept { g_picker_kick_revert_running = false; }
     } latch;
 
-    TRACE("networking", "kicked by host: reverting to local lobby client");
+    TRACE("networking", kicked
+              ? "kicked by host: reverting to local lobby client"
+              : "connection lost: reverting to local lobby client");
     try
     {
         if (!picker_replace_lobby_client(
@@ -724,9 +730,10 @@ bool picker_revert_lobby_client_if_kicked()
         return false;
     }
     // Why everything just reverted. connection_alert() carried the same
-    // "KICKED BY HOST" line-B banner between the kick landing and this
-    // frame; the modal is safe here — there is no lobby left to strand.
-    popup_dialog("NETWORKING", "KICKED BY HOST");
+    // "KICKED BY HOST" / "connection lost" line-B banner between the drop
+    // landing and this frame; the modal is safe here — there is no lobby
+    // left to strand.
+    popup_dialog("NETWORKING", kicked ? "KICKED BY HOST" : "CONNECTION LOST");
     return true;
 }
 

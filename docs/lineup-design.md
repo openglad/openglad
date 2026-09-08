@@ -319,6 +319,35 @@ gate, then the existing `disconnect_client` path after sending a
 `LobbyKickedMessage` (kind 9, server→peer) so the kicked client shows
 `KICKED BY HOST` in the connection alert and reverts to a local client
 via `picker_replace_lobby_client(create_local_picker_lobby_client())`.
+A joiner whose link dies for good after the lobby state landed
+(`session_lost()`, latched like `was_kicked()`, #278) takes the SAME
+per-frame revert with the popup `CONNECTION LOST`; the kick outranks it
+when both are set. "For good" is ONE rule in ONE window across all three
+phases: the link must stay down for the whole reconnect window
+(`og::sim::LinkLossWindow` over `CLIENT_CONNECTION_LOST_TIMEOUT_MS`, the
+same window the in-game backstop runs) — a blip the transport's
+auto-reconnect heals inside it re-sends the Join and the lobby
+re-converges, line B reading `Status: connection lost` meanwhile. The
+phases hand the window on instead of restarting it: the level's
+`GameClient` window is parked on the session by the runtime teardown
+(`clear_local_transport_shadow`) and adopted by `resume_after_level`, and
+a round that ENDED on the dead link — the in-game backstop, or the
+player's QUIT taking the same transition — parks an exhausted one. So a
+session already declared over in-game is dead the instant the picker gets
+it back (no re-dial of a dead host from behind the post-game black
+window), while a drop that began during the post-game fade keeps the rest
+of its window and is left to the lobby poll to heal or expire.
+In-game, that joiner's display shows
+`CONNECTION LOST - RECONNECTING` from the first dropped poll and its
+pause-menu QUIT ends the session at once instead of waiting out
+`CLIENT_CONNECTION_LOST_TIMEOUT_MS`. A GO's wait is bounded by the joiner
+client itself, and every exit of it other than the host's own verdict is
+named through `start_request_outcome()`: a host that never answers
+(socket open, nobody home) abandons the request `START_REQUEST_TIMEOUT_MS`
+after the press (`NoAnswer`, popup `NO ANSWER FROM HOST`), and a link that
+dies mid-wait abandons it at once (`LinkLost`, popup `CONNECTION LOST`).
+Either way the next GO sends a fresh request rather than re-waiting on the
+abandoned one.
 **DISCONNECT**: same replace on both roles; a host's server teardown
 disconnects every peer through the transport as today. Base Camp's
 line-B census and the LINEUP bands read the same `picker_lobby_players()`.
@@ -1652,3 +1681,54 @@ Rulings (H1–H3), superseding G's "count opponents only" for FILL:
   Yours too."` — the two-word tail because the own band is a KNOB write,
   not a promised squad (solo tables field no allies). The wrap keeps
   `"No squads."`: nothing fielded anywhere covers the cleared own band.
+
+# Amendment 7 (2026-09-06): versus campaigns deal FILL: FAIR to their defined teams (#276)
+
+Maintainer report: "Multiplayer Arena scenarios should default to
+FILL:FAIR defined teams." The cost of E3, measured: with every band at its
+stored NONE, 23 of the 40 shipped modes arenas — every CTF map, TDM
+300–304, three Soccer and five Basketball courts — put a solo company on
+the field with nobody to fight. The mode refused for want of a second
+team, classic rules found no foes, and the level was scored a WIN on its
+second tick (openglad_text and openglad_demo both). The 17 that survived
+are exactly the maps that ship their own units on other teams. E3 was
+argued from the classic side (a gladiator level's unauthored sides must
+not sprout bots) and its consequence for versus maps was accepted in
+advance; this amendment reverses that consequence for versus campaigns
+only. Rulings I1–I5 supersede E3 there and nowhere else.
+
+| # | Ruling |
+|--|--|
+| I1 | **The deal**: on a campaign whose yaml carries `matchup: versus`, selecting a scenario deals `FILL: FAIR` onto every team the map DEFINES — `og::sim::authored_team_mask`, the start markers, dead ones included, the same mask the lobby already publishes as `ctf_authored_team_mask` — whose band still reads NONE. Unauthored teams and every non-NONE value are untouched (WEAK/STRONG/BRUTAL stay sticky exactly as today). The own band is a defined team like any other: on a solo table its FAIR fields nobody (the allies gap is ≤ 0, H1's own argument); on an outnumbered host it fields allies. |
+| I2 | **Once per cursor, memoed on the save**: `SaveData::arena_lineup_dealt_campaign` + `arena_lineup_dealt_scen` (GTL v19 tail: u8 id length, id bytes, i16 scenario) record the last cursor dealt. Re-entering a page, VIEW LEVEL, GO, the return to the lobby and a process restart all reload the level through the seams that deal — and none of them lifts an explicit NONE turned after the deal. Re-selecting a scenario (SET LEVEL, SET CAMPAIGN into a versus campaign, the camp docket/roll, a post-match cursor advance) deals FAIR back onto defined teams still at NONE: FILL: NONE on a defined arena team is a per-scenario choice. A pre-v19 file reads as never dealt and is dealt exactly once. |
+| I3 | **One rule, one home, above the sim**: `og::ui::deal_arena_lineup_fill` (pure core over a mask) with `deal_arena_lineup_for_loaded_level` (a world already loaded to match the save) and `deal_arena_lineup_for_cursor` (a scratch headless load — the curses lobby's `ctf_authored_team_mask_for_save` is hoisted into `og::ui` so the lobby's mask and the deal's are the same function). The stored code stays the only thing the engine reads: `packs/core/lib/lineup.lua`, `lineup_stage.lua`, `mode_match.lua` and `game_world.cpp` are untouched, the face reads the stored code (E1 stands), and the C3 all-default byte no-op stands on every classic campaign because a classic cursor never pends. No wire change: `LobbySettings` and the equivalent carry the dealt fills exactly as they carry a wheel turn; the memo is host-local and never rides the wire. |
+| I4 | **Host only, before the publish**: the SDL seam is `reload_picker_level_and_sync_settings` (the one reload every team-build screen, SCENARIO/VIEW LEVEL, LINEUP, SET LEVEL/SET CAMPAIGN and the camp defer to), gated on `picker_lobby_host_controls_visible()` and run BEFORE `picker_lobby_sync_settings_from_save()` so the lobby's echo agrees; a joiner adopts the host's fills from settings and never deals. The terminals deal at the top of `present_menu` (the text picker is always its own host; curses gates on the label context's `is_host`); the demo deals off a scratch load before its bootstrap save because both its display load and the transport shadow's authoritative load read that slot back off disk. The §3.8 settings-tail autosave follows every change. |
+| I5 | **Pins move, not weaken**: the E3 flow pin becomes `arena_rest_deals_fair_and_an_explicit_none_still_refuses` (rest FAIR/FAIR/NONE/NONE on FIRST BLOOD, a two-team census with GREEN's row closing FAIR, the refusal back the moment GREEN is turned to NONE, and the choice standing through the page's re-entry); `arena_defaults_field_a_fair_match_in_the_launched_world` is the reporter's own shape through Base Camp → GO with the ADOPTED world censused (one FAIR opponent against a solo roster — the D34 headcount rule); the text picker's `text_picker_go_on_an_arena_at_rest_fields_the_match` drives GO on 500/300/820/824 and pins the mode live at tick 3 with one opponent on GREEN. The MATCH SETUP rest faces move to `TEAMS: 2 / FILL: FAIR` (500) and `TEAMS: 4 / FILL: FAIR` (300); the 501 wheel walk starts at the dealt FAIR; the `.gtl` version pins move to 19. |
+
+## As built (2026-09-06)
+
+- **The CLI shape is deliberately not dealt.** `openglad_text --protocol`
+  carries no match knobs at all — there is no save behind it and no
+  `sync_world_from_save_data` in that path, so the deal would have needed
+  a third fill→world twin. It stays the knob-less headless baseline its
+  header documents (`scripts/test_text_client_ffa.sh` keeps its E3-era
+  headcount); the headless tooth for this amendment drives the text
+  PICKER's GO instead, which stages through the one launch pipeline.
+- **The macro wheel knows nothing about authorship, on purpose.** After
+  the deal a two-team map reads `TEAMS: 2`; the first TEAMS click deals
+  the THIRD side (BLUE, unauthored) because G2's wheel walks opponents in
+  team order. That is the macro's contract, not the deal's: the deal is a
+  default the map states, the macro is a host's hand.
+- **The parity pin `kMut_save_corrupt` repinned** from `save_data.cpp:132`
+  to `:135` — three lines went into `SaveData::reset()` above it (the memo
+  clears). `check_mutation_pins.py` re-validated the anchor (217 valid),
+  but there was no canary flip to re-verify: no `ScenarioSpec` row names
+  `kMut_save_corrupt` (the `save_roundtrip_scen99` row has carried
+  `kMut_combat_damage` since 9dac53d6, which orphaned the pin), and hand
+  canary runs of the mutation at `:135` and at the writer's `:1079` both
+  left `Parity.save_roundtrip_scen99` green. The pin is toothless on
+  master too; giving it teeth (a row that round-trips a `.gtl`, plus a
+  companion capture) is parity-harness work this amendment does not do.
+- `docs/mp-game-modes.md`'s "Match setup" section, which still described
+  the pre-Amendment-4 auto-fill and the retired TROOPS control, is
+  rewritten to the LINEUP/FILL vocabulary and this default.

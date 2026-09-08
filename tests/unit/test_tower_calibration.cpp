@@ -80,8 +80,19 @@ struct FloorPin
 // f5 3 5 8 (pin 1 -> 3; the openers thin the crew before the balcony
 // crossfire, and the worst seed now survives it better), f10/f15/f20
 // all 0 0 0 unchanged. WP-7 bracket sweeps still pending as before.)
+// (Recalibrated 2026-09-08 for the armor-roll expectation fix,
+// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md: damage reduction is the exact
+// expectation of the 2002 random(armor) roll instead of the 2013 armor/2
+// clamp, and hits round to the nearest point instead of truncating, so
+// every hit on BOTH sides lands ~0.5 harder and armored posts are no
+// longer one-point sponges. Re-measured: f1 8 8 7 (pin 6 -> 7), f5 0 3 6
+// (pin 3 -> 0: run seed 42 now wipes the pessimistic stand-in on the
+// balcony floor; the other two seeds hold 3 and 6), f10 0 0 0, f15 0 2 0,
+// f20 0 0 0. Floor 5 joining the 0-floor class for one seed is a balance
+// signal for the next tower pass, not a contract this pin enforces —
+// WP-7's bracket sweeps are still the clearability gate.)
 constexpr FloorPin kPins[] = {
-    {1, 1, 6}, {5, 2, 3}, {10, 3, 0}, {15, 4, 0}, {20, 6, 0},
+    {1, 1, 7}, {5, 2, 0}, {10, 3, 0}, {15, 4, 0}, {20, 6, 0},
 };
 
 void prune_all_floors()

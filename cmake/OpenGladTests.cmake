@@ -113,6 +113,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_save_data_versions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_company_io.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_editor_smoke.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_level_editor_issue12_wall_crash.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_external_zlib.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_external_libzip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_lifecycle.cpp
@@ -315,6 +316,35 @@ set_tests_properties(og_test_sdl_video_lifecycle PROPERTIES
 )
 if(OG_SANITIZER_TEST_ENVIRONMENT)
     set_tests_properties(og_test_sdl_video_lifecycle PROPERTIES
+        ENVIRONMENT "${OG_SANITIZER_TEST_ENVIRONMENT}"
+    )
+endif()
+
+# Issue #248: the startup renderer fallback quits and re-initializes the SDL
+# video subsystem, which would pull the window out from under a shared
+# integration runner. Its transitions get their own process (and, unlike
+# og_test_sdl_video_lifecycle, the TESTING build, for the fault-injection
+# seams in og::video_testing).
+add_executable(og_test_sdl_renderer_fallback
+    ${CMAKE_SOURCE_DIR}/tests/integration/sdl_renderer_fallback_lifecycle.cpp
+)
+configure_openglad_library(og_test_sdl_renderer_fallback)
+configure_openglad_sdl_target(og_test_sdl_renderer_fallback)
+target_compile_definitions(og_test_sdl_renderer_fallback PRIVATE
+    TESTING
+)
+target_link_libraries(og_test_sdl_renderer_fallback PRIVATE og_game_test)
+configure_openglad_runtime_target(og_test_sdl_renderer_fallback)
+add_runtime_assets_dependency(og_test_sdl_renderer_fallback)
+add_test(NAME og_test_sdl_renderer_fallback
+    COMMAND og_test_sdl_renderer_fallback
+)
+set_tests_properties(og_test_sdl_renderer_fallback PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 60
+)
+if(OG_SANITIZER_TEST_ENVIRONMENT)
+    set_tests_properties(og_test_sdl_renderer_fallback PROPERTIES
         ENVIRONMENT "${OG_SANITIZER_TEST_ENVIRONMENT}"
     )
 endif()
@@ -558,6 +588,7 @@ og_add_test_group(og_test_level FILES
     test_level_editor_interactions.cpp
     test_level_editor_prompt_block.cpp
     test_level_editor_smoke.cpp
+    test_level_editor_issue12_wall_crash.cpp
     test_level_data_coverage.cpp
     test_png_conversion.cpp
     test_aseprite_round_trip.cpp
@@ -759,6 +790,7 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer_errors.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_link_loss_window.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_relay_ws.cpp
@@ -886,6 +918,7 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gladiator_levels.cpp
 )
 
 # test_builtin_archives byte-compares every staged-archive member
@@ -1468,6 +1501,19 @@ add_test(NAME openglad_sdl_startup_error
 set_tests_properties(openglad_sdl_startup_error PROPERTIES
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     TIMEOUT 60
+)
+
+# Issue #248: a boot that cannot create a renderer (SDL's Wayland backend has
+# no software fallback) must fail loudly instead of running invisibly forever.
+add_test(NAME openglad_sdl_renderer_failure
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_sdl_renderer_failure.sh
+        $<TARGET_FILE:openglad>
+)
+set_tests_properties(openglad_sdl_renderer_failure PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 90
 )
 
 # openglad_demo is the only process that writes an openglad_demo Lua dump, and
