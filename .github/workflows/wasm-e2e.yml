@@ -184,8 +184,7 @@ jobs:
 
       # pull_request workflows do not receive repository secrets for forks.
       # Keep the privileged deploy in this same-repository-only path rather
-      # than handing a fork's code or artifacts to a `..._target` trigger that
-      # would run them against the base branch with secrets in scope.
+      # than using pull_request_target with untrusted PR code or artifacts.
       - name: Deploy PR preview to Cloudflare Pages
         id: preview
         if: >-
