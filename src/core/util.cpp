@@ -21,7 +21,6 @@
 //
 #include <openglad/core/util.h>
 
-#include <openglad/core/version.h>
 #include <charconv>
 #include <chrono>
 #include <cstdio>

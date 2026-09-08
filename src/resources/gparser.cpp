@@ -408,7 +408,7 @@ void cfg_store::commandline(int &argc, char **&argv)
 "  -v		Print the version number\n"
 "  --show-fps   Overlay render FPS in the top-right corner\n";
 
-	static constexpr std::string_view versmsg = "openglad version " OPENGLAD_VERSION_STRING "\n";
+	const std::string versmsg = og::version::cli_line() + "\n";
 
 	// Begin changes by David Storey (Deathifier)
 	// FIX: Handle mutually exclusive arguments being used at the same time?
@@ -439,7 +439,7 @@ void cfg_store::commandline(int &argc, char **&argv)
                     std::fflush(nullptr);
                     std::_Exit(0);
 				case 'v':
-					Log(versmsg);
+					Log(std::string_view{versmsg});
                     std::fflush(nullptr);
                     std::_Exit(0);
 				case 's':

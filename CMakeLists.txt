@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/OpenGladVersion.cmake)
+og_version_compute("${CMAKE_CURRENT_SOURCE_DIR}"
+    OG_CONFIGURE_VERSION_MINOR OG_CONFIGURE_GIT_HASH)
+# Configure-time value: feeds OpenGladConfigVersion.cmake only. The binary's
+# stamp is regenerated every build (og_git_hash_gen); this one may trail it
+# until the next reconfigure, which nothing player-facing reads.
+project(OpenGlad VERSION ${OPENGLAD_VERSION_MAJOR}.${OG_CONFIGURE_VERSION_MINOR}
+    LANGUAGES C CXX)
 
 # In-source builds are refused, before a single file is generated.
 #
@@ -281,8 +288,8 @@ endif()
 # --------------------------------------------------------------------------
 
 function(configure_openglad_library target)
-    # Every target that can compile src/interface/ui/picker.cpp needs the
-    # generated og_git_hash.h (main-menu commit stamp) — wire the include
+    # Every target that can compile src/core/version.cpp needs the generated
+    # og_git_hash.h (the build stamp og::version reads) — wire the include
     # dir and the generator dependency centrally, not per-target.
     target_include_directories(${target} PRIVATE ${CMAKE_BINARY_DIR})
     if(TARGET og_git_hash_gen)
@@ -598,9 +605,11 @@ add_custom_target(og_git_hash_gen
     COMMAND ${CMAKE_COMMAND}
         -DSRC_ROOT=${CMAKE_SOURCE_DIR}
         -DOUT_FILE=${CMAKE_BINARY_DIR}/og_git_hash.h
+        -DOPENGLAD_COMMIT_COUNT=${OPENGLAD_COMMIT_COUNT}
+        -DOPENGLAD_GIT_HASH=${OPENGLAD_GIT_HASH}
         -P ${CMAKE_SOURCE_DIR}/cmake/GitHash.cmake
     BYPRODUCTS ${CMAKE_BINARY_DIR}/og_git_hash.h
-    COMMENT "Stamping git hash"
+    COMMENT "Stamping git hash and version"
 )
 
 set(OG_BUILTIN_CAMPAIGN_IDS
@@ -664,6 +673,10 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_core STATIC ${OG_CORE_SOURCES})
     configure_component_library(og_core "${OG_CORE_INCLUDE_ROOT}")
+    # src/core/version.cpp is the one TU that includes the generated
+    # og_git_hash.h; everything else asks og::version.
+    target_include_directories(og_core PRIVATE ${CMAKE_BINARY_DIR})
+    add_dependencies(og_core og_git_hash_gen)
 
     add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
     configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
@@ -699,8 +712,7 @@ if(NOT EMSCRIPTEN)
     # on synced entity state (the drawcycle-class guard).
     # The fade call sites straddle src/interface/ui/ and src/platform/sdl/, so
     # the allowlist guard hangs off both components.
-    add_dependencies(og_interface check_render_no_sim_writes check_fadeblack_sites og_git_hash_gen)
-    target_include_directories(og_interface PRIVATE ${CMAKE_BINARY_DIR})
+    add_dependencies(og_interface check_render_no_sim_writes check_fadeblack_sites)
     target_link_libraries(og_interface PUBLIC
         og_core
         og_gameplay
@@ -913,6 +925,10 @@ if(NOT EMSCRIPTEN)
     target_include_directories(openglad_text PUBLIC
         $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
     )
+    # Compiles ${OG_CORE_SOURCES} itself, so it needs the generated stamp
+    # header the same way the component libraries do.
+    target_include_directories(openglad_text PRIVATE ${CMAKE_BINARY_DIR})
+    add_dependencies(openglad_text og_git_hash_gen)
     target_compile_definitions(openglad_text PRIVATE
         ${COMMON_DEFINITIONS}
     )

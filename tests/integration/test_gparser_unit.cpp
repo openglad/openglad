@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <regex>
 #include <fstream>
 #include <string>
 #include <utility>
@@ -448,10 +449,20 @@ TEST(GparserUnit, gparser_save_settings_writes_only_persisted_data_and_reports_o
 
 TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)
 {
-    auto run_child = [](const char* flag) -> int {
+    // Both flags print and _Exit(0) from inside commandline(), so the child
+    // process is the only way to exercise them. Log() writes to stderr, so
+    // the pipe takes over both standard streams; the parent reads what the
+    // child said and holds -v to its documented wording.
+    auto run_child = [](const char* flag, std::string* out) -> int {
+        int fds[2] = {-1, -1};
+        EXPECT_EQ(0, pipe(fds));
         pid_t pid = fork();
         if (pid == 0)
         {
+            close(fds[0]);
+            dup2(fds[1], 1);
+            dup2(fds[1], 2);
+            close(fds[1]);
             cfg_store local_cfg;
             std::vector<std::string> args = {"openglad", flag};
             std::vector<char*> argv_buf;
@@ -463,16 +474,28 @@ TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)
             local_cfg.commandline(argc, argv); // expected to call exit(0)
             _exit(7);
         }
+        close(fds[1]);
+        char buf[512];
+        ssize_t n = 0;
+        while ((n = read(fds[0], buf, sizeof(buf))) > 0)
+            out->append(buf, static_cast<std::size_t>(n));
+        close(fds[0]);
         int status = 0;
         waitpid(pid, &status, 0);
         return status;
     };
 
-    const int help_status = run_child("-h");
+    std::string help_out;
+    const int help_status = run_child("-h", &help_out);
     ASSERT_TRUE(WIFEXITED(help_status));
     ASSERT_TRUE(WEXITSTATUS(help_status) == 0);
 
-    const int version_status = run_child("-v");
+    std::string version_out;
+    const int version_status = run_child("-v", &version_out);
     ASSERT_TRUE(WIFEXITED(version_status));
     ASSERT_TRUE(WEXITSTATUS(version_status) == 0);
+    EXPECT_TRUE(std::regex_search(
+        version_out,
+        std::regex(R"(openglad version 2\.[0-9]+ \(([0-9a-f]{8}\+?|nogit)\))")))
+        << "-v printed: " << version_out;
 }

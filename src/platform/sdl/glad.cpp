@@ -18,7 +18,6 @@
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
-#include <openglad/core/version.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>

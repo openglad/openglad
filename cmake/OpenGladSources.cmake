@@ -47,6 +47,7 @@ set(OG_CORE_SOURCES
     ${SRC_DIR}/core/runtime_trace.cpp
     ${SRC_DIR}/core/text_wrap.cpp
     ${SRC_DIR}/core/util.cpp
+    ${SRC_DIR}/core/version.cpp
     ${SRC_DIR}/core/weather.cpp
 )
 
