@@ -22,23 +22,29 @@ on:
     workflows: ["WASM E2E Tests"]
     types: [completed]
     branches: [master]
-  workflow_dispatch:        # Manual re-release of the current master tip
+  workflow_dispatch:        # Manual re-release of the current master tip (master only)
   pull_request:             # Validate multi-platform builds on PRs
 
 permissions:
   contents: read
 
-# Releases are cut in commit order, never cancelled: a burst of master pushes
-# queues instead of dropping the middle commits' releases.
+# Releases are cut in commit order, never cancelled: `queue: max` lets up to
+# 100 runs sit pending in the group, so a burst of master pushes queues
+# instead of dropping the middle commits' releases (the default, `queue:
+# single`, keeps only ONE pending run and cancels the older pending one).
+# Pull requests get their own per-PR group so a validation build can never
+# evict a pending master release, nor another PR's build.
 concurrency:
-  group: release-master
+  group: release-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'master' }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   # ── Resolve the commit being released and its version ─────────────────
   meta:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/master') ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
