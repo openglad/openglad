@@ -35,13 +35,15 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD_DIR="${OPENGLAD_BUILD_DIR:-$REPO_ROOT/build/ci-test}"
 OUT_DIR="${OPENGLAD_README_MEDIA_DIR:-$REPO_ROOT/build/media/readme}"
 
-# Pinned frames. Each demo run is seeded, so these name specific moments: a
-# melee with several combatants and a projectile in flight; a Capture the
-# Flag arena with both flags and the score HUD on screen; the ninefold
-# judgment pulse on the multi-floor court (the frame capture_showcase.sh
-# uses for the same level).
-README_GAMEPLAY_FRAME=250
-README_CTF_FRAME=300
+# Pinned frames. Each demo run is seeded, so these name specific moments:
+# the hedge-line melee outside the keep, arrows in flight and a gold pile on
+# the flank; the Capture the Flag arena with both squads on screen under the
+# announcement stack the mode narrates itself with (there is no separate
+# score HUD -- those yellow lines ARE the scoreboard); the ninefold judgment
+# pulse on the multi-floor court (the frame capture_showcase.sh uses for the
+# same level).
+README_GAMEPLAY_FRAME=396
+README_CTF_FRAME=96
 README_MULTIFLOOR_FRAME=301
 
 RECIPES=(mainmenu gameplay basecamp-four-seats networking-lobby mode-ctf multi-floor)
