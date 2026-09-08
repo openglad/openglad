@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   deployments: write
+  pull-requests: write
 
 # Only the newest revision of a PR should be able to update its stable preview
 # alias, and only the newest master push should be able to update production —
@@ -24,9 +25,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      # Build the PR's own head commit, not the synthetic merge commit: the
+      # version stamped into the binary is `git rev-list --count HEAD`, and the
+      # preview comment quotes it, so it has to name a commit a human can find
+      # with `git log`. Full history for the same reason — a depth-1 clone
+      # would stamp the honest-but-useless 2.1.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Versions index unit test
+        run: python3 -m unittest discover -s scripts/web -p 'test_*.py' -v
+
       - name: Set up Emscripten
         uses: emscripten-core/setup-emsdk@v16
         with:
@@ -54,8 +66,55 @@ jobs:
           echo "WASM build failed after 3 attempts."
           exit 1
 
+      # Read the version out of the artifact rather than recomputing it, so the
+      # preview comment, the archive alias and the main-menu stamp can never
+      # disagree. The equality check catches a checkout that lost its history:
+      # a shallow clone stamps 2.1 and would archive the build at v2-1.
+      - name: Read the build stamp
+        id: stamp
+        run: |
+          h=build/web-emscripten/og_git_hash.h
+          minor="$(sed -n 's/^#define OPENGLAD_VERSION_MINOR \([0-9]*\)$/\1/p' "$h")"
+          hash="$(sed -n 's/^#define OPENGLAD_GIT_HASH "\([^"]*\)"$/\1/p' "$h")"
+          if [ -z "$minor" ] || [ -z "$hash" ]; then
+            echo "::error::${h} has no version stamp"
+            exit 1
+          fi
+          if [ "$minor" != "$(git rev-list --count HEAD)" ]; then
+            echo "::error::stamp 2.${minor} != git rev-list --count HEAD (shallow checkout?)"
+            exit 1
+          fi
+          {
+            echo "version=2.${minor}"
+            echo "minor=${minor}"
+            echo "hash=${hash}"
+            echo "alias=v2-${minor}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Copy web assets to dist
         run: cp web/index.html web/help.html web/_worker.js dist/
+
+      # /versions is generated on EVERY run so the page always exists and a PR
+      # preview says honestly which build it is. Only the production gate reads
+      # the Cloudflare deployment list (the token is a repository secret and
+      # forks never see it); everywhere else --offline emits a current-only
+      # page. The generator warns and exits 0 on API trouble by design: a
+      # missing index must never block a deploy.
+      - name: Generate /versions index
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OG_VERSIONS_LIVE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && '1' || '0' }}
+        run: |
+          mode=--offline
+          if [ "$OG_VERSIONS_LIVE" = "1" ]; then
+            mode=--live
+          fi
+          python3 scripts/web/versions_index.py "$mode" --project openglad \
+            --repo-root . --current-version "${{ steps.stamp.outputs.version }}" \
+            --current-commit "$(git rev-parse HEAD)" \
+            --current-alias "${{ steps.stamp.outputs.alias }}" \
+            --out dist/versions
 
       - name: Verify deploy assets
         run: |
@@ -72,6 +131,8 @@ jobs:
             play.js
             play.wasm
             play.data
+            versions/index.html
+            versions/index.json
           )
           for asset in "${required_assets[@]}"; do
             if [[ ! -s "dist/${asset}" ]]; then
@@ -79,6 +140,18 @@ jobs:
               exit 1
             fi
           done
+          # #240: the concept campaign is dev-only (tests, tooling, screenshot
+          # fodder) and must not reach players. gladiator.glad is the positive
+          # control — without it, the negative grep would pass on an empty
+          # manifest and prove nothing.
+          if ! grep -q 'builtin/gladiator.glad' dist/play.js; then
+            echo "::error::gladiator.glad missing from the preload manifest"
+            exit 1
+          fi
+          if grep -q 'builtin/concept.glad' dist/play.js; then
+            echo "::error::concept.glad leaked into the web preload (#240)"
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -111,7 +184,8 @@ jobs:
 
       # pull_request workflows do not receive repository secrets for forks.
       # Keep the privileged deploy in this same-repository-only path rather
-      # than using pull_request_target with untrusted PR code or artifacts.
+      # than handing a fork's code or artifacts to a `..._target` trigger that
+      # would run them against the base branch with secrets in scope.
       - name: Deploy PR preview to Cloudflare Pages
         id: preview
         if: >-
@@ -144,12 +218,66 @@ jobs:
             echo "Immutable deployment: ${IMMUTABLE_URL}"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # One sticky comment per PR, updated in place on every push, so the link
+      # is where a reviewer looks instead of buried in a job summary (#275).
+      # The version and hash come from the built artifact's stamp, so the
+      # comment cannot claim a build the main menu disagrees with.
+      - name: Comment the preview link on the pull request
+        if: steps.preview.outcome == 'success'
+        uses: actions/github-script@v9
+        env:
+          PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.openglad.pages.dev
+          IMMUTABLE_URL: ${{ steps.preview.outputs.deployment-url }}
+          STAMP_VERSION: ${{ steps.stamp.outputs.version }}
+          STAMP_HASH: ${{ steps.stamp.outputs.hash }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const marker = '<!-- wasm-preview-link -->';
+            if (!context.payload.pull_request) {
+              core.info('Not a pull request event; skipping the preview comment.');
+              return;
+            }
+            const body = [
+              marker,
+              '### Play this PR in your browser',
+              '',
+              `**${process.env.PREVIEW_URL}** — tracks the newest passing WASM build of this PR.`,
+              '',
+              `Currently serving \`${process.env.STAMP_HASH}\` (version \`${process.env.STAMP_VERSION}\`) — the main menu stamps both bottom-centre; quote them in bug reports. Immutable link for this exact build: ${process.env.IMMUTABLE_URL}`,
+              '',
+              `Run: ${process.env.RUN_URL}`,
+            ].join('\n');
+            try {
+              const { owner, repo } = context.repo;
+              const issue_number = context.payload.pull_request.number;
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number, per_page: 100,
+              });
+              const existing = comments.find(
+                (c) => c.user?.type === 'Bot' && c.body?.includes(marker),
+              );
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner, repo, comment_id: existing.id, body,
+                });
+                core.info(`Updated preview comment ${existing.id}`);
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body });
+                core.info('Created preview comment');
+              }
+            } catch (error) {
+              core.warning(`Unable to create/update the preview comment: ${error.message}`);
+            }
+
       # Production deploy: every same-repository push to master ships the
-      # exact dist/ the Playwright suite above just validated. The relay
-      # worker (rooms + cloud-save vault) deploys first so a Durable Object
-      # migration is always live before any client that needs it — the same
-      # ordering nightly.yml uses. The nightly workflow's own web deploy
-      # stays as an idempotent backstop. The relay requires Node >= 22
+      # exact dist/ the Playwright suite above just validated, and this
+      # workflow is the only thing that deploys production. The relay worker
+      # (rooms + cloud-save vault) deploys first so a Durable Object migration
+      # is always live before any client that needs it. The same dist/ then
+      # goes to the permanent v2-<count> alias BEFORE production: a failed
+      # archive leaves production untouched, and /versions can never advertise
+      # a version whose alias does not exist. The relay requires Node >= 22
       # (relay/package.json engines), hence the second setup-node.
       - name: Set up Node.js for relay deploy
         if: >-
@@ -181,6 +309,20 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: relay
           command: deploy
+
+      - name: Archive this version at a stable alias
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/master' &&
+          github.repository == 'openglad/openglad'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy dist
+            --project-name=openglad
+            --branch=${{ steps.stamp.outputs.alias }}
 
       - name: Deploy production to Cloudflare Pages
         if: >-
