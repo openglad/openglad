@@ -1192,6 +1192,17 @@ TEST(CursesPickerClient, replay_level_arms_only_cleared_levels)
     EXPECT_EQ(3, static_cast<int>(f.save().replay_origin));
     EXPECT_NE(f.t().dump().find("Replaying"), std::string::npos);
     f.save().clear_replay_arm();
+
+    // A level number below 1 is a typo, not a road: it is named as invalid
+    // rather than run through the campaign's road/cleared vocabulary, and it
+    // leaves the cursor the cleared arm above moved.
+    f.t().push_char(U'0');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_NE(f.t().dump().find("Invalid level."), std::string::npos);
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level));
+    EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
 }
 
 // #207 arm lifecycle: a plain Set Level after Replay Level abandons the
@@ -3894,4 +3905,51 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
         << "the server revision persists for the next optimistic upload";
     EXPECT_TRUE(cleanup.cleanup());
     cfg.data.erase("cloud");
+}
+
+// Every destructive door in the company list opens with a row prompt, and
+// backing out of that prompt has to be free: no company deleted, no backup
+// deleted, no company opened, no slot repointed. The accepted delete at the
+// end is the paired control — the same door, answered instead of cancelled,
+// really does remove the snapshot.
+TEST(CursesPickerClient, company_list_cancelled_prompts_destroy_nothing)
+{
+    CursesSlotCleanup cleanup{{"wp9ccan"}};
+    ASSERT_TRUE(seed_curses_company("wp9ccan", "CANCEL BAND", 8100));
+    ASSERT_TRUE(og::data::backup_company_now("wp9ccan"));
+    const std::size_t companies_before = og::data::list_companies().size();
+    ASSERT_EQ(1u, og::data::list_company_backups("wp9ccan").size());
+
+    PickerFixture f;
+    const std::string slot_before = f.config.save_name;
+    const std::string active_before = og::data::active_company_slot();
+
+    pick(f.t(), 0);                       // chrome: Open Company...
+    f.t().push_special(KeyCode::Escape);  //   cancelled: nothing opens
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Escape);  //   cancelled: no sub-view
+    pick(f.t(), 2);                       // chrome: Delete Company...
+    f.t().push_special(KeyCode::Escape);  //   cancelled: nothing deleted
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   //   accept the pre-filled company
+    pick(f.t(), 1);                       // backups chrome: Delete Backup...
+    f.t().push_special(KeyCode::Escape);  //   cancelled: the snapshot stays
+    // The control: the same door, answered.
+    pick(f.t(), 1);                       // backups chrome: Delete Backup...
+    f.t().push_special(KeyCode::Enter);   //   accept the pre-filled backup
+    f.t().push_char(U'2');                //   digit-jump to Yes
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Escape);  // back out of the emptied list
+
+    EXPECT_FALSE(f.client.show_company_list())
+        << "no cancelled prompt may report a company was opened";
+    EXPECT_EQ(slot_before, f.config.save_name)
+        << "[SAVE-R2] a cancelled prompt must not repoint the slot";
+    EXPECT_EQ(active_before, og::data::active_company_slot());
+    EXPECT_EQ(companies_before, og::data::list_companies().size())
+        << "a cancelled Delete Company must delete nobody";
+    EXPECT_TRUE(user_file_exists("save/wp9ccan.gtl"));
+    EXPECT_EQ(0u, og::data::list_company_backups("wp9ccan").size())
+        << "the ANSWERED delete must remove the snapshot the cancel kept";
+    EXPECT_TRUE(f.t().input_exhausted());
 }
