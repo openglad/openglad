@@ -3577,7 +3577,6 @@ TEST(LineupUi, split_without_a_local_seat_says_so_and_moves_nobody)
     // Paired control: give this machine one seat and the same UNITE call
     // marches the company.
     save.numplayers = 1;
-    picker_lobby_shutdown();
     picker_lobby_set_player_mode(1);
     trace_clear();
     EXPECT_EQ(MENU_OK, lineup_split_action(2));
@@ -3588,6 +3587,11 @@ TEST(LineupUi, split_without_a_local_seat_says_so_and_moves_nobody)
     EXPECT_EQ(1, save.team_list[2]->teamnum);
     EXPECT_TRUE(trace_contains("lineup", "toast ALL FIGHTERS TO TEAM 2"));
 
+    // Hand the next test a lobby with no seats rather than one holding THIS
+    // roster's teams: picker_lobby_set_player_mode resizes an existing
+    // client instead of re-deriving it, so a live client would leak these
+    // seat teams into whoever runs next.
+    picker_lobby_shutdown();
     restore_gladiator_mount();
 }
 
@@ -3675,8 +3679,9 @@ TEST(LineupUi, split_toasts_count_the_slots_that_stayed_put)
     EXPECT_FALSE(trace_contains("lineup", "LOCKED"))
         << "nothing stayed behind, so nothing is counted";
 
+    // Leave no client behind (see the seatless test): a resized one would
+    // carry these seat teams into the next test's SPLIT.
     picker_lobby_shutdown();
-    picker_lobby_set_player_mode(1);
     restore_gladiator_mount();
 }
 
