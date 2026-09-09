@@ -4532,6 +4532,67 @@ TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
     og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
+// A seat editor can outlive its seat: the poll that removes a player lands
+// under the open screen. Every row must then refuse rather than resolve to
+// whoever else is in the roster — a screen that fell through to another
+// seat would silently rebind a stranger's controller profile.
+TEST(MenuEngine, seat_settings_rows_refuse_a_seat_that_has_left_the_roster)
+{
+    EngineTestGuard engine_guard;
+    MenuCallbackStateGuard callback_guard;
+    SavedControlState saved_controls;
+    ASSERT_TRUE(saved_controls.config_file.ready())
+        << saved_controls.config_file.error().message();
+
+    FakeLobbyClient lobby;
+    lobby.networked = true;
+    lobby.remove_seat_result = true;
+    lobby.players = {make_menu_lobby_player(0, "LOCAL COMPANY")};
+    lobby.local_indices = {0};
+    lobby.local_seats = 1;
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // Control: the state naming a seat that IS in the roster resolves, and
+    // the MODE row flips that profile's control mode.
+    og::ui::SeatSettingsScreenState live{
+        .seat_id = lobby.players.front().seat_id,
+        .player_index = lobby.players.front().player_index,
+        .local_slot = -1,
+    };
+    og::ui::install_seat_settings_state_for_screen(&live);
+    const int before = get_player_control_mode(0);
+    const int flipped =
+        before == static_cast<int>(ControlDirectionMode::FourDirection)
+        ? static_cast<int>(ControlDirectionMode::EightDirection)
+        : static_cast<int>(ControlDirectionMode::FourDirection);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsModeIndex, &live));
+    EXPECT_EQ(0, live.local_slot) << "the live seat resolves to profile one";
+    ASSERT_EQ(flipped, get_player_control_mode(0));
+
+    // The same screen one poll later: its seat is no longer in the roster.
+    og::ui::SeatSettingsScreenState gone{
+        .seat_id = static_cast<og::sim::LobbySeatId>(
+            lobby.players.front().seat_id + 1000u),
+        .player_index = 9,
+        .local_slot = -1,
+    };
+    og::ui::install_seat_settings_state_for_screen(&gone);
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(kSeatSettingsModeIndex, &gone));
+    EXPECT_EQ(-1, gone.local_slot)
+        << "an unresolved seat claims no controller profile";
+    EXPECT_EQ(flipped, get_player_control_mode(0))
+        << "and must not flip the profile that is still seated";
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(kSeatSettingsRemoveIndex, &gone));
+    EXPECT_TRUE(lobby.removed_seats.empty())
+        << "nor ask authority to drop anybody on its behalf";
+
+    og::ui::install_seat_settings_state_for_screen(nullptr);
+}
+
 TEST(MenuEngine, networked_seat_editor_and_scenario_propagate_remote_start)
 {
     EngineTestGuard engine_guard;
