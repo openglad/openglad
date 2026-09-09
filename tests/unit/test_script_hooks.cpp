@@ -476,6 +476,36 @@ TEST_F(SpecialsDispatchTest, cross_chunk_collision_reports_and_last_wins)
               vm_errors().back().message.find("duplicate hook registration"));
 }
 
+// The mirror of cross_chunk_collision_reports_and_last_wins: the SPECIALS
+// table arriving second onto a do_special slot an earlier chunk already
+// filled. Same rule (report it, last registration wins), and it has to be
+// reported from this side too — a pack whose two chunks fight over one
+// family's special must not resolve silently in filename order.
+TEST_F(SpecialsDispatchTest, a_specials_table_over_a_taken_slot_reports_and_wins)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  do_special = function(self) og.log('function form') return true "
+        "end,\n"
+        "})\n"
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    charge = function(self) og.log('table form') return true end,\n"
+        "  },\n"
+        "})\n");
+    ASSERT_TRUE(dispatch(1).has_value());
+    ASSERT_FALSE(vm_log().empty());
+    EXPECT_EQ("table form", vm_log().back())
+        << "the later specials table must win the shared do_special slot";
+    ASSERT_FALSE(vm_errors().empty())
+        << "the collision must be reported, not silent";
+    EXPECT_NE(std::string::npos,
+              vm_errors().back().message.find(
+                  "duplicate hook registration: living 'core:soldier' hook "
+                  "'specials'"))
+        << vm_errors().back().message;
+}
+
 TEST_F(SpecialsDispatchTest, both_forms_in_one_call_is_a_load_error)
 {
     register_chunk(
