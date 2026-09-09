@@ -647,3 +647,273 @@ TEST(Replay, campaign_vars_stamp_at_record_and_apply_at_playback)
     game_screen.world().delete_objects();
     og::runtime::current_session->replay_playback_active_ = false;
 }
+
+// A replay whose recording bound nobody to view 0 (a headless host's
+// recording, a controller that was never seated) must still hand the view a
+// walker to follow, on the recorded team, acting under player control — a
+// replay that opens on an unbound camera shows the viewer nothing at all.
+TEST(Replay, unbound_recording_still_gives_view_zero_a_controlled_walker)
+{
+    ASSERT_TRUE(prepare_default_level_load())
+        << "default campaign should be restored before replay test";
+
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    configure_replay_team(game_screen.save_data, 1);
+
+    const std::string save_name = "test_replay_unbound_control";
+    ASSERT_TRUE(game_screen.save_data.save(save_name));
+    game_screen.world().rng_.state_ = kReplayLoadSeedBase;
+    ASSERT_TRUE(load_saved_game(save_name.c_str(), &game_screen) != 0);
+    reset_loaded_world_for_replay(game_screen.world());
+
+    og::sim::WorldSnapshot unbound =
+        og::sim::peek_keyframe_snapshot(game_screen.world());
+    int rebound = 0;
+    for (og::sim::EntitySnapshot& entity : unbound.oblist)
+    {
+        if (entity.user >= 0)
+        {
+            entity.user = -1;
+            ++rebound;
+        }
+    }
+    ASSERT_EQ(1, rebound)
+        << "the one-player recording must have had exactly one bound walker "
+           "to unbind";
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_replay(
+        {
+            .version = og::sim::kReplayFormatVersion,
+            .initial_rng_state = game_screen.world().rng_.state_,
+            .level_id = game_screen.world().id,
+            .player_count = 1,
+            .timer_wait = game_screen.world().timer_wait,
+            .my_team = game_screen.save_data.my_team,
+            .allied_mode = game_screen.save_data.allied_mode,
+            .difficulty = game_screen.world().difficulty,
+            .campaign_id = "gladiator",
+            .campaign_vars = {},
+        },
+        unbound,
+        {});
+
+    og::sim::ReplayPlayer player;
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    ASSERT_TRUE(player.load_bytes(bytes, &io_error));
+    ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
+
+    ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player));
+
+    ASSERT_TRUE(game_screen.viewob[0] != nullptr);
+    walker* const control = game_screen.viewob[0]->control;
+    ASSERT_NE(nullptr, control)
+        << "view 0 must be given a walker even when the recording bound none";
+    EXPECT_EQ(0, static_cast<int>(control->user()))
+        << "the adopted walker is bound to view 0";
+    EXPECT_EQ(ACT_CONTROL, static_cast<int>(control->act_type()))
+        << "the adopted walker acts under the player, not the AI";
+    EXPECT_EQ(game_screen.world().my_team, game_screen.viewob[0]->my_team)
+        << "with no recorded team for the view, the world's own team stands";
+    EXPECT_EQ(control->stats()->hitpoints(), game_screen.world().control_hp)
+        << "the HUD's hit-point readout seeds from the adopted walker";
+
+    game_screen.world().delete_objects();
+    og::runtime::current_session->replay_playback_active_ = false;
+    ASSERT_TRUE(prepare_default_level_load());
+}
+
+// A spectator recording (nobody seated) follows a walker without ever
+// taking it over: the AI keeps acting it, and the HUD still gets its
+// hit-point readout. Taking control here would make a spectator's replay
+// diverge from the run it recorded.
+TEST(Replay, spectator_playback_seeds_the_hud_without_binding_the_walker)
+{
+    ASSERT_TRUE(prepare_default_level_load())
+        << "default campaign should be restored before replay test";
+
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    configure_replay_team(game_screen.save_data, 1);
+
+    const std::string save_name = "test_replay_spectator_seed";
+    ASSERT_TRUE(game_screen.save_data.save(save_name));
+    game_screen.world().rng_.state_ = kReplayLoadSeedBase;
+    ASSERT_TRUE(load_saved_game(save_name.c_str(), &game_screen) != 0);
+    reset_loaded_world_for_replay(game_screen.world());
+
+    og::sim::WorldSnapshot unbound =
+        og::sim::peek_keyframe_snapshot(game_screen.world());
+    for (og::sim::EntitySnapshot& entity : unbound.oblist)
+        entity.user = -1;
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_replay(
+        {
+            .version = og::sim::kReplayFormatVersion,
+            .initial_rng_state = game_screen.world().rng_.state_,
+            .level_id = game_screen.world().id,
+            .player_count = 0,  // spectator: no seats
+            .timer_wait = game_screen.world().timer_wait,
+            .my_team = game_screen.save_data.my_team,
+            .allied_mode = game_screen.save_data.allied_mode,
+            .difficulty = game_screen.world().difficulty,
+            .campaign_id = "gladiator",
+            .campaign_vars = {},
+        },
+        unbound,
+        {});
+
+    og::sim::ReplayPlayer player;
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    ASSERT_TRUE(player.load_bytes(bytes, &io_error));
+    ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
+    ASSERT_EQ(0, static_cast<int>(player.header().player_count));
+
+    ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player));
+    EXPECT_EQ(0, static_cast<int>(game_screen.save_data.numplayers))
+        << "the recorded seat count is what makes this a spectator replay";
+
+    ASSERT_TRUE(game_screen.viewob[0] != nullptr);
+    walker* const control = game_screen.viewob[0]->control;
+    ASSERT_NE(nullptr, control) << "a spectator still follows somebody";
+    EXPECT_EQ(-1, static_cast<int>(control->user()))
+        << "a spectator never takes the walker over";
+    EXPECT_EQ(control->stats()->hitpoints(), game_screen.world().control_hp)
+        << "the HUD readout is still seeded from the followed walker";
+
+    game_screen.world().delete_objects();
+    og::runtime::current_session->replay_playback_active_ = false;
+    ASSERT_TRUE(prepare_default_level_load());
+}
+
+// Two refusals that must leave the machine exactly where they found it: a
+// well-formed campaign id for a campaign this machine does not have
+// installed, and a level the mounted campaign does not carry. Neither may
+// swap the mount or move the player's level cursor — a failed replay that
+// left a half-applied campaign behind would send the next real game to the
+// wrong scenario.
+TEST(Replay, uninstalled_campaign_and_missing_level_refuse_without_side_effects)
+{
+    ASSERT_TRUE(prepare_default_level_load())
+        << "default campaign should be restored before replay test";
+
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    configure_replay_team(game_screen.save_data, 1);
+
+    const std::string save_name = "test_replay_refusals";
+    ASSERT_TRUE(game_screen.save_data.save(save_name));
+    game_screen.world().rng_.state_ = kReplayLoadSeedBase;
+    ASSERT_TRUE(load_saved_game(save_name.c_str(), &game_screen) != 0);
+    reset_loaded_world_for_replay(game_screen.world());
+
+    const og::sim::WorldSnapshot initial_snapshot =
+        og::sim::peek_keyframe_snapshot(game_screen.world());
+    const short level_before = game_screen.save_data.scen_num;
+
+    auto crafted = [&](std::string_view campaign_id, short level_id) {
+        return og::sim::serialize_replay(
+            {
+                .version = og::sim::kReplayFormatVersion,
+                .initial_rng_state = game_screen.world().rng_.state_,
+                .level_id = level_id,
+                .player_count = 1,
+                .timer_wait = game_screen.world().timer_wait,
+                .my_team = game_screen.save_data.my_team,
+                .allied_mode = game_screen.save_data.allied_mode,
+                .difficulty = game_screen.world().difficulty,
+                .campaign_id = std::string(campaign_id),
+                .campaign_vars = {},
+            },
+            initial_snapshot,
+            {});
+    };
+
+    // 1. A safe id (it passes the traversal check) for a campaign that is
+    // not installed: the mount refuses and so does the runtime.
+    {
+        og::sim::ReplayPlayer player;
+        og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+        const std::vector<std::uint8_t> bytes =
+            crafted("nosuchcampaign", kReplayLevel);
+        ASSERT_TRUE(player.load_bytes(bytes, &io_error));
+        ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
+        ASSERT_EQ("nosuchcampaign", player.header().campaign_id);
+
+        EXPECT_FALSE(og::runtime::initialize_replay_screen(game_screen, player))
+            << "a campaign this machine does not have cannot be replayed";
+        EXPECT_EQ("", get_mounted_campaign())
+            << "a mount that failed leaves nothing mounted";
+        EXPECT_EQ(level_before, game_screen.save_data.scen_num)
+            << "the refusal returns before the save is rewritten, so the "
+               "player's level cursor is untouched";
+        EXPECT_EQ("gladiator", game_screen.save_data.current_campaign)
+            << "and so is the player's campaign selection";
+        ASSERT_TRUE(prepare_default_level_load())
+            << "remount for the control arm below";
+    }
+
+    // 2. The paired control, then the second refusal: the SAME crafted
+    // replay on the installed campaign loads, and the same replay pointed at
+    // a level the campaign does not carry is refused by the loader.
+    {
+        og::sim::ReplayPlayer player;
+        og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+        const std::vector<std::uint8_t> bytes =
+            crafted("gladiator", kReplayLevel);
+        ASSERT_TRUE(player.load_bytes(bytes, &io_error));
+        EXPECT_TRUE(og::runtime::initialize_replay_screen(game_screen, player))
+            << "the same crafted replay on an installed campaign DOES load";
+        EXPECT_EQ(kReplayLevel, game_screen.save_data.scen_num);
+        game_screen.world().delete_objects();
+        og::runtime::current_session->replay_playback_active_ = false;
+    }
+
+    ASSERT_TRUE(prepare_default_level_load());
+    {
+        og::sim::ReplayPlayer player;
+        og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+        const std::vector<std::uint8_t> bytes = crafted("gladiator", 9999);
+        ASSERT_TRUE(player.load_bytes(bytes, &io_error));
+        ASSERT_EQ(9999, static_cast<int>(player.header().level_id));
+
+        EXPECT_FALSE(og::runtime::initialize_replay_screen(game_screen, player))
+            << "a level the campaign does not carry cannot be replayed";
+        EXPECT_FALSE(og::runtime::current_session->replay_playback_active_)
+            << "a refused load never arms playback";
+    }
+
+    game_screen.world().delete_objects();
+    og::runtime::current_session->replay_playback_active_ = false;
+    ASSERT_TRUE(prepare_default_level_load());
+}
+
+// The recorder is armed from the LIVE save's campaign id, so it has to run
+// the same traversal check the playback side does: an unsafe id must leave
+// the recorder disarmed and no output path claimed, or a recording would be
+// written for a campaign that can never be mounted back.
+TEST(Replay, unsafe_current_campaign_never_arms_the_recorder)
+{
+    ASSERT_TRUE(prepare_default_level_load())
+        << "default campaign should be restored before replay test";
+
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    configure_replay_team(game_screen.save_data, 1);
+    game_screen.save_data.current_campaign = "../escape";
+
+    og::runtime::begin_replay_recording(game_screen);
+    EXPECT_FALSE(og::runtime::current_session->replay_recorder_.has_value())
+        << "an unsafe campaign id must not arm the recorder";
+    EXPECT_TRUE(og::runtime::current_session->replay_output_path_.empty())
+        << "and must not claim an output path either";
+
+    // Paired control: the same call on the installed campaign DOES arm.
+    game_screen.save_data.current_campaign = "gladiator";
+    og::runtime::begin_replay_recording(game_screen);
+    ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value())
+        << "a safe campaign id arms the recorder";
+    EXPECT_EQ("gladiator",
+              og::runtime::current_session->replay_recorder_->header()
+                  .campaign_id);
+    EXPECT_FALSE(og::runtime::current_session->replay_output_path_.empty());
+
+    og::runtime::current_session->replay_recorder_.reset();
+    og::runtime::current_session->replay_output_path_.clear();
+}
