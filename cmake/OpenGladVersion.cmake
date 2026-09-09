@@ -25,6 +25,15 @@ set(OPENGLAD_GIT_HASH "" CACHE STRING
 # "non-empty", never DEFINED.
 function(og_version_compute src_root out_minor out_hash)
     if(NOT "${OPENGLAD_COMMIT_COUNT}" STREQUAL "")
+        # Validated here rather than left to project(VERSION 2.abc): the
+        # override lands in a cache entry and in the generated header, so a
+        # typo would otherwise surface as a cryptic configure error or as a
+        # #define that does not compile.
+        if(NOT "${OPENGLAD_COMMIT_COUNT}" MATCHES "^[0-9]+$")
+            message(FATAL_ERROR
+                "OPENGLAD_COMMIT_COUNT must be a non-negative integer, got "
+                "'${OPENGLAD_COMMIT_COUNT}'")
+        endif()
         set(minor "${OPENGLAD_COMMIT_COUNT}")
     else()
         execute_process(
