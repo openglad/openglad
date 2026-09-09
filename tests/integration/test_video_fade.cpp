@@ -21,6 +21,30 @@ struct SurfaceDeleter {
 };
 using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 
+// The zoom/canvas restore has to hold on EVERY exit path: a fatal ASSERT_
+// in the middle of a fade test would otherwise leave the whole binary on a
+// 640x400 World canvas with a stale violation count.
+struct FadeCanvasRestore
+{
+    int zoom_steps = 0;
+    int win_w = 0;
+    int win_h = 0;
+    FadeCanvasRestore()
+        : zoom_steps(E_Screen->world_zoom_steps())
+    {
+        SDL_GetWindowSize(E_Screen->window, &win_w, &win_h);
+    }
+    ~FadeCanvasRestore()
+    {
+        E_Screen->set_active_canvas(CanvasTarget::UI);
+        E_Screen->set_world_zoom(zoom_steps, og::WorldScaleMode::Integer,
+                                 win_w, win_h);
+        og::video_testing::reset_fade_violations();
+    }
+    FadeCanvasRestore(const FadeCanvasRestore&) = delete;
+    FadeCanvasRestore& operator=(const FadeCanvasRestore&) = delete;
+};
+
 static SurfacePtr make_surface(int w, int h)
 {
     SDL_Surface* s = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_XRGB8888);
@@ -340,7 +364,7 @@ TEST(VideoFade, video_fade_out_of_a_never_presented_canvas_is_a_violation)
     screen* const scr = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(E_Screen);
     ASSERT_EQ(0, og::video_testing::g_fade_violations.load());
-    const int old_zoom_steps = E_Screen->world_zoom_steps();
+    FadeCanvasRestore restore;
 
     // A presented UI frame, so the window is not black and the fade runs.
     scr->clearbuffer();
@@ -370,10 +394,6 @@ TEST(VideoFade, video_fade_out_of_a_never_presented_canvas_is_a_violation)
     ASSERT_EQ(1, scr->fadeblack(false));
     EXPECT_EQ(0, og::video_testing::g_fade_violations.load())
         << "a canvas the window has shown may be faded out";
-
-    E_Screen->set_active_canvas(CanvasTarget::UI);
-    E_Screen->set_world_zoom(old_zoom_steps, og::WorldScaleMode::Integer,
-                             640, 400);
 }
 
 // "fade-in without a fade-out": a fade-in dissolves FROM black, so the screen

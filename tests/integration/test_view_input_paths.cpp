@@ -569,6 +569,13 @@ TEST(ViewInputPaths, view_input_spectator_switch_acquires_a_target_from_none)
 // KNOWN BUG, deliberately not exercised here: within the first 72 ticks of a
 // level `totaltime` is 0 and the division faults. This test seeds a ten-second
 // timer so it measures the rule, not the crash.
+//
+// TIMING MARGIN: the divisor is the REAL clock (query_timer_control is
+// ticks_ms / 13.6) truncated by an integer /72, so the seeded ten seconds
+// only reads back as ten while this test body runs inside ~0.98 s of wall
+// clock. That is the whole margin the rule allows; a box stalled longer than
+// that between seeding timerstart and the input would read "22" instead of
+// "25". Widening the seed does not help — the quotient is what is asserted.
 TEST(ViewInputPaths, view_input_f3_posts_the_measured_frame_rate)
 {
     TeamListSwap swap;

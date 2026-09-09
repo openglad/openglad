@@ -32,6 +32,7 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 // Implemented in src/interface/ui/level_editor.cpp
@@ -72,6 +73,22 @@ struct ClassicCanvasRestore
         if (screen* s = test_screen())
             s->relayout_views();
     }
+};
+
+// Same rule as ClassicCanvasRestore, for the one cfg setting these tests
+// change: a fatal ASSERT_ must not leave the graphics zoom rewritten for
+// every later test in the binary.
+struct CfgZoomRestore
+{
+    std::string previous;
+    explicit CfgZoomRestore(const char* value)
+        : previous(cfg.get_setting("graphics", "zoom"))
+    {
+        cfg.apply_setting("graphics", "zoom", value);
+    }
+    ~CfgZoomRestore() { cfg.apply_setting("graphics", "zoom", previous); }
+    CfgZoomRestore(const CfgZoomRestore&) = delete;
+    CfgZoomRestore& operator=(const CfgZoomRestore&) = delete;
 };
 
 void query_texture_dims(SDL_Texture* tex, int* w, int* h)
@@ -2374,10 +2391,25 @@ TEST(CanvasScale, view_scale_selection_refuses_and_rolls_back_together)
     ASSERT_EQ(320, E_Screen->world_w());
 
     {
+        // A GPU that cannot hold even the 320x200 GAME canvas. The budget
+        // check answers "no" for every percentage at this limit (it refuses
+        // any limit below the 320x200 minimum), so the only thing that can
+        // still call GAME selectable is the early `num == kViewScaleNumMax`
+        // arm — which is exactly the rule: the player can never be locked
+        // out of the game's own scale.
+        RendererTextureLimit tiny(256);
+        EXPECT_TRUE(E_Screen->world_view_scale_fits(og::kViewScaleNumMax))
+            << "GAME is always selectable, whatever the GPU reports";
+        EXPECT_FALSE(E_Screen->world_view_scale_fits(og::kViewScaleNumMin))
+            << "every deeper override is refused on that GPU";
+    }
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(320, E_Screen->world_w());
+
+    {
         // 0.5x at zoom 1.0 wants a 640x400 canvas: over this GPU's limit.
         RendererTextureLimit limit(512);
-        EXPECT_TRUE(E_Screen->world_view_scale_fits(og::kViewScaleNumMax))
-            << "GAME is always selectable";
         EXPECT_FALSE(E_Screen->world_view_scale_fits(og::kViewScaleNumMin))
             << "an override needing a canvas over the texture limit is not";
     }
@@ -2472,8 +2504,7 @@ TEST(CanvasScale, reapply_world_scale_measures_the_window_when_metrics_are_unpub
 {
     ASSERT_TRUE(E_Screen);
     ClassicCanvasRestore restore;
-    const std::string old_zoom = cfg.get_setting("graphics", "zoom");
-    cfg.apply_setting("graphics", "zoom", "0.5");
+    CfgZoomRestore zoom_restore("0.5");
     ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 640, 400));
     ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
     og::runtime::current_session->window_w_ = 640.0f;
@@ -2484,16 +2515,19 @@ TEST(CanvasScale, reapply_world_scale_measures_the_window_when_metrics_are_unpub
     EXPECT_EQ(640, published_w);
     EXPECT_EQ(400, published_h);
 
-    // Same window, no published metrics: the canvas must not move.
+    // Park the REMEMBERED zoom window at a different aspect than the real
+    // one. set_world_zoom keeps the last window it was handed when it is
+    // given 0x0, so with the same 640x400 remembered there would be nothing
+    // to tell "measured the window" apart from "reused the stale metrics":
+    // a 16:9 memory derives a 712-wide canvas, the real window a 640-wide one.
     E_Screen->set_world_zoom(og::kZoomStepsMax,
-                             og::WorldScaleMode::Integer, 640, 400);
-    ASSERT_EQ(320, E_Screen->world_w()) << "the canvas really was reset";
+                             og::WorldScaleMode::Integer, 1280, 720);
+    ASSERT_EQ(356, E_Screen->world_w()) << "the canvas really was reset";
+    ASSERT_EQ(200, E_Screen->world_h());
     og::runtime::current_session->window_w_ = 0.0f;
     og::runtime::current_session->window_h_ = 0.0f;
     test_screen()->reapply_world_scale();
     EXPECT_EQ(published_w, E_Screen->world_w())
         << "an unpublished window must be measured, not treated as 0x0";
     EXPECT_EQ(published_h, E_Screen->world_h());
-
-    cfg.apply_setting("graphics", "zoom", old_zoom);
 }
