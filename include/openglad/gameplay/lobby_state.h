@@ -440,21 +440,12 @@ inline std::int16_t lobby_next_selectable_team(
     return lobby_first_selectable_team(settings);
 }
 
-// Compatibility query retained for callers that still carry the legacy
-// allied_mode setting. Explicit per-seat assignments make every in-range team
-// shareable: seats on the same or different machines may intentionally choose
-// the same team (for example 1,1 versus 2,2). CTF's authored-map domain
-// remains a separate validity rule in lobby_effective_team_mask().
-//
 // Historically CTF and allied lobbies shared teams only across peers, while
 // non-allied classic lobbies kept one seat per team and sibling seats always
-// stayed distinct. Keep that old rule recorded here even though the picker now
-// expresses the player's intent directly.
-inline bool lobby_teams_shareable(const LobbySettings& settings) noexcept
-{
-    (void)settings;
-    return true;
-}
+// stayed distinct. That rule is retired: explicit per-seat assignments make
+// every in-range team shareable, so seats on the same or different machines
+// may intentionally choose the same team (1,1 versus 2,2). CTF's authored-map
+// domain remains a separate validity rule in lobby_effective_team_mask().
 
 struct LobbyState {
     LobbySettings settings;
