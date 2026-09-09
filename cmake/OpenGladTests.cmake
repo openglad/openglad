@@ -1537,6 +1537,20 @@ set_tests_properties(openglad_demo_smoke PROPERTIES
     TIMEOUT 120
 )
 
+# The knob contract (uncapped GPU overlay path, parse/clamp rules, the fatal
+# vs non-fatal failure modes). Kept separate from openglad_demo_smoke so
+# neither script's boot budget squeezes the other out of its TIMEOUT.
+add_test(NAME openglad_demo_knobs
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_demo_knobs.sh
+        $<TARGET_FILE:openglad_demo>
+)
+set_tests_properties(openglad_demo_knobs PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 120
+)
+
 # parity_runner_smoke is the harness's only non-gtest binary: the goldens are
 # captured through it and the mutation canary reads its exit code. Nothing
 # else exercises its CLI, which is how it shipped happily writing stub dumps

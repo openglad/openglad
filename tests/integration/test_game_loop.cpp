@@ -697,6 +697,73 @@ TEST(GameLoop, game_frame_with_result_done_when_end_is_set)
     og::runtime::current_session->myscreen_->world().end = old_end;
 }
 
+namespace {
+// Restores og::runtime::current_game_session, so a test can stand the loop up
+// in the state the process is in between missions (GameSession's destructor
+// clears this pointer).
+struct NoGameplaySessionGuard
+{
+    og::runtime::GameSession* saved = og::runtime::current_game_session;
+
+    NoGameplaySessionGuard() { og::runtime::current_game_session = nullptr; }
+    ~NoGameplaySessionGuard() { og::runtime::current_game_session = saved; }
+};
+} // namespace
+
+// The sim only advances through the local transport shadow. If the shadow is
+// gone — cleared at the end of a mission, or never installed because there is
+// no gameplay session — the frame must END the mission rather than run a
+// half-wired tick that no server would ever see.
+TEST(GameLoop, game_frame_ends_the_mission_without_a_transport_runtime)
+{
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_no_runtime"));
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed_guard(0.0f);
+
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+
+    // Control: with the shadow installed the same frame advances the sim.
+    GameLoopFrameState live;
+    const std::uint32_t before_tick = game_screen->world().tick_count_;
+    ASSERT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, live, deps));
+    ASSERT_EQ(before_tick + 1u, game_screen->world().tick_count_);
+
+    // The shadow is gone.
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    ASSERT_FALSE(og::runtime::local_transport_active(
+        *og::runtime::current_game_session));
+    const std::uint32_t after_clear = game_screen->world().tick_count_;
+    GameLoopFrameState no_runtime;
+    EXPECT_EQ(GameFrameResult::Done,
+              game_frame_with_result(*game_screen, no_runtime, deps));
+    EXPECT_TRUE(no_runtime.done);
+    EXPECT_FALSE(no_runtime.has_pending_input);
+    EXPECT_EQ(after_clear, game_screen->world().tick_count_)
+        << "a frame with no transport runtime must not step the sim";
+
+    // No gameplay session at all (between missions).
+    {
+        NoGameplaySessionGuard no_session;
+        const std::uint32_t before_sessionless =
+            game_screen->world().tick_count_;
+        GameLoopFrameState sessionless;
+        EXPECT_EQ(GameFrameResult::Done,
+                  game_frame_with_result(*game_screen, sessionless, deps));
+        EXPECT_TRUE(sessionless.done);
+        EXPECT_FALSE(sessionless.has_pending_input);
+        EXPECT_EQ(before_sessionless, game_screen->world().tick_count_)
+            << "a frame with no gameplay session must not step the sim";
+    }
+
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
@@ -831,6 +898,11 @@ TEST(GameLoop, glad_init_clears_stale_view_text_when_tick_count_restarts)
 
     viewscreen* const view = game_screen->viewob[0].get();
     ASSERT_TRUE(view != nullptr);
+    // set_display_text appends into the first EMPTY slot, so this test owns
+    // the feed before it stages its message: a seat removal earlier in the
+    // run posts "Player N left" for 40 cycles and would hold slot 0.
+    for (std::string& line : view->textlist)
+        line.clear();
     view->set_display_text("stale pause text", 10);
     ASSERT_EQ(std::string("stale pause text"), view->textlist[0]);
 
@@ -1226,6 +1298,106 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
 
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
+}
+
+// A lobby start config is assembled from what other machines sent, so glad_init
+// treats it as untrusted: a roster slot that names a team_list index this
+// build does not have is dropped rather than written past the array, and a
+// producer that filled only the legacy single-seat field still gets its seat.
+// The seat map is then authoritative even where it names a team with nobody in
+// it — that view is a spectator camera, not an error.
+TEST(GameLoop, glad_init_drops_out_of_range_lobby_slots_and_upgrades_legacy_seat)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    // apply_lobby_game_start_config writes session-wide seat state; this test
+    // deliberately drives it to values local play never uses, so put them
+    // back for whatever runs next.
+    struct SessionSeatStateGuard
+    {
+        std::vector<std::uint8_t> own_indices =
+            og::runtime::current_session->own_player_indices_;
+        bool networked = og::runtime::current_session->networked_session_;
+        bool isolated =
+            og::runtime::current_session->isolated_company_session_;
+        std::int32_t difficulty =
+            og::runtime::current_session->current_difficulty_;
+
+        ~SessionSeatStateGuard()
+        {
+            og::runtime::current_session->own_player_indices_ = own_indices;
+            og::runtime::current_session->networked_session_ = networked;
+            og::runtime::current_session->isolated_company_session_ = isolated;
+            og::runtime::current_session->current_difficulty_ = difficulty;
+        }
+    } seat_state_guard;
+
+    og::ui::PickerLobbyGameStartConfig lobby_config;
+    lobby_config.save_data.current_campaign = "gladiator";
+    lobby_config.save_data.scen_num = 1;
+    lobby_config.save_data.numplayers = 2;
+    lobby_config.save_data.allied_mode = 0;
+    lobby_config.difficulty = 1;
+    lobby_config.my_team = 0;
+    lobby_config.is_networked = false;
+    // Only the legacy single-seat field is filled: local_player_indices is
+    // empty, exactly as an older config producer leaves it.
+    lobby_config.local_player_index = 1u;
+    lobby_config.local_player_indices.clear();
+    // Seat 1 renders team 3, which no roster member joins.
+    lobby_config.local_seat_teams = {0, 3};
+
+    og::sim::LobbyCharacterSlot good_slot;
+    good_slot.slot_index = 0u;
+    good_slot.deployed = true;
+    good_slot.owner_player_index = 0u;
+    good_slot.owner_save_slot = 0u;
+    good_slot.character.guy_id = 1;
+    good_slot.character.name = "Leader";
+    good_slot.character.family = FAMILY_SOLDIER;
+    good_slot.character.teamnum = 0;
+    good_slot.character.level = 1;
+
+    og::sim::LobbyCharacterSlot out_of_range = good_slot;
+    out_of_range.slot_index =
+        static_cast<std::uint8_t>(MAX_TEAM_SIZE + 1);
+    out_of_range.character.guy_id = 2;
+    out_of_range.character.name = "Nowhere";
+
+    lobby_config.save_data.team_list = {good_slot, out_of_range};
+
+    ready_screen_for_game_start(*game_screen, &lobby_config);
+    ASSERT_EQ(2, game_screen->numviews);
+    glad_init(false, &lobby_config);
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+
+    SaveData& save = game_screen->save_data;
+    EXPECT_EQ(1, static_cast<int>(save.team_size))
+        << "the unaddressable slot must not be counted into the roster";
+    ASSERT_NE(nullptr, save.team_list[0]);
+    EXPECT_EQ("Leader", save.team_list[0]->name);
+    EXPECT_EQ(nullptr, save.team_list[1].get())
+        << "the unaddressable slot must not land anywhere else either";
+
+    EXPECT_EQ((std::vector<std::uint8_t>{1u}),
+              og::runtime::current_session->own_player_indices_)
+        << "a legacy single-seat config must upgrade to the seat vector";
+
+    ASSERT_NE(nullptr, game_screen->viewob[0].get());
+    ASSERT_NE(nullptr, game_screen->viewob[1].get());
+    EXPECT_EQ(0, static_cast<int>(game_screen->viewob[0]->my_team));
+    EXPECT_EQ(3, static_cast<int>(game_screen->viewob[1]->my_team));
+    ASSERT_NE(nullptr, game_screen->viewob[0]->control);
+    EXPECT_EQ(0, static_cast<int>(game_screen->viewob[0]->control->user()));
+    EXPECT_EQ(nullptr, game_screen->viewob[1]->control)
+        << "an empty-team seat is a spectator view, not a stolen hero";
+
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    // This test drives the save into a two-seat mission roster with one
+    // member; leave the shared SaveData neutral for whatever runs next.
+    game_screen->save_data.reset();
 }
 
 TEST(GameLoop, local_lobby_spawns_every_deployed_team_and_abort_preserves_company)
@@ -2204,6 +2376,81 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
                   view, ids, &world, 3u, &follow));
     EXPECT_EQ(3, static_cast<int>(troop->user()))
         << "a genuinely mapped seat keeps today's authoritative tag stamp";
+
+    view->control = saved_control;
+    world.mode = og::sim::ModeState{};
+    world.type = saved_type;
+    world.delete_objects();
+}
+
+// §4.5 engagement gate: a dead hero with a pending revive keeps the camera on
+// its own body for the RESPAWN IN countdown. The follow camera must not
+// engage over that — the player would watch a stranger while their own
+// respawn timer runs — and must engage the moment nothing is retained.
+TEST(GameLoop, display_view_follow_waits_while_a_respawning_corpse_holds_it)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+
+    GameWorld& world = game_screen->world();
+    world.delete_objects();
+    const char saved_type = world.type;
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    world.mode = og::sim::ModeState{};
+    world.mode.active = true;
+    world.mode.init_attempted = true;
+
+    walker* const corpse = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const watchable = world.add_ob(Order::Living, FAMILY_ARCHER);
+    ASSERT_NE(nullptr, corpse);
+    ASSERT_NE(nullptr, watchable);
+    corpse->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    corpse->set_team_num(0);
+    corpse->set_user(0);
+    corpse->set_dead(1);
+    watchable->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
+    watchable->set_team_num(0);
+    watchable->set_user(-1);
+    watchable->set_dead(0);
+
+    og::sim::RespawnEntry entry;
+    entry.kind = 0;
+    entry.team = 0;
+    entry.ticks_left = 60;
+    entry.walker_entity_id = corpse->entity_id();
+    world.respawn.respawn_queue.push_back(entry);
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    walker* const saved_control = view->control;
+    view->my_team = 0;
+    view->control = corpse;
+
+    // The seat's mapped entity is 0 (the server nulled the control on death),
+    // so nothing but the retained corpse can hold the camera.
+    og::sim::ControlledEntityIds ids = {};
+    og::runtime::DisplayFollowState follow;
+    og::runtime::detail::update_display_view_follow(follow, view, 0u, ids,
+                                                    &world);
+    EXPECT_FALSE(follow.engaged)
+        << "the follow camera must not engage over a pending respawn";
+    EXPECT_EQ(0u, follow.target_entity_id);
+    EXPECT_EQ(corpse,
+              og::runtime::detail::select_control_for_view(
+                  view, ids, &world, 0u, &follow))
+        << "the countdown view stays on the player's own body";
+
+    // The revive entry disappears without a revive (the corpse was dropped
+    // for good): now there is nothing to hold the camera and follow engages
+    // on the remaining watchable hero.
+    world.respawn.respawn_queue.clear();
+    og::runtime::detail::update_display_view_follow(follow, view, 0u, ids,
+                                                    &world);
+    EXPECT_TRUE(follow.engaged);
+    EXPECT_EQ(watchable->entity_id(), follow.target_entity_id);
+    EXPECT_EQ(watchable,
+              og::runtime::detail::select_control_for_view(
+                  view, ids, &world, 0u, &follow));
 
     view->control = saved_control;
     world.mode = og::sim::ModeState{};
@@ -3318,6 +3565,48 @@ TEST(GameLoop, network_client_link_lost_overlay_clears_on_reconnect)
     EXPECT_FALSE(view_feed_carries(*game_screen, "CONNECTION LOST - RECONNECTING"));
     EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
         << "a reconnect is not an end";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}
+
+// A joined client has no authoritative server to spawn into: mid-game seat
+// surgery is a host/local-only feature, and the client-side doors must be
+// shut even though the shadow itself is live.
+TEST(GameLoop, midgame_seat_doors_are_shut_on_a_network_client_shadow)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels
+        [game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+
+    // Control: the local authoritative shadow glad_init installed opens the
+    // add door, so the refusal below is about the runtime's MODE.
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_can_add_player(gameplay_session));
+
+    auto transport = std::make_shared<ToggleConnectedTransport>();
+    install_network_client_shadow_for_link_tests(
+        *game_screen, gameplay_session, transport);
+
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_add_player(gameplay_session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(
+        gameplay_session));
+    EXPECT_EQ(1u,
+              og::runtime::local_transport_client_count(gameplay_session));
 
     og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().end = 0;
@@ -6693,6 +6982,81 @@ TEST(GameLoop, midgame_remove_middle_player_of_three)
 
     reset_default_player_controls();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+// Mid-game seat surgery is for a plain local session that is still being
+// played. Every other state closes BOTH doors — a seat added after the level
+// ended, during a replay, or into a spectator autoplay would either vanish at
+// the results screen or hand a watcher a hero.
+TEST(GameLoop, midgame_seat_gating_closes_after_end_replay_and_spectator)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    // Control: mid-level, one seat, the add door is open.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+    ASSERT_EQ(1u, og::runtime::local_transport_client_count(session));
+
+    // Only the ADD door is asserted here: with one seat the remove door is
+    // already shut by the seat count, so a refusal there would prove nothing.
+    const auto expect_the_add_door_shut = [&session](const char* why) {
+        EXPECT_FALSE(og::runtime::local_transport_shadow_can_add_player(session))
+            << why;
+        EXPECT_FALSE(
+            og::runtime::local_transport_shadow_add_local_player(session))
+            << why;
+        EXPECT_EQ(1u, og::runtime::local_transport_client_count(session))
+            << why;
+    };
+
+    // The mission is over: the results screen owns the session now.
+    game_screen->world().end = 1;
+    expect_the_add_door_shut("a finished mission must not take a new seat");
+    game_screen->world().end = 0;
+    ASSERT_TRUE(og::runtime::local_transport_shadow_can_add_player(session))
+        << "clearing world.end must reopen the door";
+
+    // Replay playback: the inputs are a recording, not a player.
+    og::runtime::current_session->replay_playback_active_ = true;
+    expect_the_add_door_shut("replay playback must not take a new seat");
+    og::runtime::current_session->replay_playback_active_ = false;
+    ASSERT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+
+    // Spectator autoplay (numplayers == 0): nobody is holding a controller.
+    const auto saved_numplayers = game_screen->save_data.numplayers;
+    game_screen->save_data.numplayers = 0;
+    expect_the_add_door_shut("a spectator session must not take a new seat");
+    game_screen->save_data.numplayers = saved_numplayers;
+    EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session))
+        << "restoring the seat count must reopen the door";
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(session);
     game_screen->world().delete_objects();
 }
 

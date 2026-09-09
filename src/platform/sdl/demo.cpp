@@ -490,31 +490,18 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng, int forced_si
         walker* w = guy_create_and_add_walker(g, s);
         if (w) {
             w->set_team_num(0);
-            // Deploy onto the level's authored team-0 start markers exactly
-            // like the real game (game.cpp), consuming one marker per member
-            // and scattering only the overflow. Levels that stage the player
-            // team somewhere specific — a boss arena's petitioners' floor,
-            // say — then read the way the author meant them to.
-            walker* marker = s->first_of(Order::Special, FAMILY_RESERVED_TEAM, 0);
-            if (marker) {
-                // set_floor MUST precede setxy: setxy re-buckets the
-                // floor-keyed obmap at the walker's current floor.
-                w->set_floor(marker->floor());
-                w->setxy(marker->xpos(), marker->ypos());
-                marker->set_dead(1);
-            } else {
-                w->teleport();
-            }
+            // Marker deploy is not a choice here: init_session_game loads
+            // save0 immediately before this call, and load_saved_game runs
+            // og::server::spawn_team_from_save, which ends by killing every
+            // FAMILY_RESERVED_TEAM marker in the world. So this squad always
+            // takes the same scatter fallback the real game gives a team
+            // whose start markers are exhausted.
+            w->teleport();
             // Record the level-entry spawn point (mirrors the game.cpp deploy
             // loop; read it back so the teleport fallback is captured exactly).
             w->set_spawn_point(w->xpos(), w->ypos(),
                                static_cast<std::uint8_t>(w->floor()));
         }
-    }
-
-    // Retire the unused markers, as the deploy loop does.
-    while (walker* marker = s->first_of(Order::Special, FAMILY_RESERVED_TEAM)) {
-        marker->set_dead(1);
     }
 }
 

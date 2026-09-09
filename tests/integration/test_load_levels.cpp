@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <filesystem>
 #include <memory>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
@@ -192,6 +193,187 @@ TEST(LoadLevels, completed_non_ctf_level_purges_only_replayable_hostiles)
 }
 
 
+
+// A save slot that is not there at all is the one load failure the player
+// sees as a dialog: the mission must not start, and the world must be left
+// empty rather than half-built from the previous session.
+TEST(LoadLevels, missing_company_slot_reports_the_error_and_builds_no_world)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    ASSERT_TRUE(prepare_default_level_load());
+
+    og::runtime::GameSession::Config session_config;
+    session_config.allocate_screen = true;
+    session_config.create_display = false;
+    session_config.allocate_prefs = true;
+    session_config.install_legacy_globals = false;
+    og::runtime::GameSession isolated_session(session_config);
+    auto isolated_scope = isolated_session.activate();
+    screen* const scr = isolated_session.screen_ptr();
+    ASSERT_NE(nullptr, scr);
+
+    // A sentinel the loader would overwrite the moment it started building a
+    // level, so "no world" is checkable rather than assumed.
+    scr->world().id = 42;
+
+    trace_clear();
+    EXPECT_EQ(LoadSavedGameError::SaveDataLoadFailed,
+              load_saved_game_with_error("openglad_no_such_slot", scr));
+    EXPECT_FALSE(trace_contains("popup", "Could not load the saved game"))
+        << "the error-returning entry point reports, it does not prompt";
+    EXPECT_EQ(42, scr->world().id) << "no level may be loaded for a bad slot";
+    EXPECT_TRUE(scr->world().oblist.empty());
+
+    // The compatibility wrapper turns that error into the 0 its callers test,
+    // and it is the wrapper that puts the dialog up.
+    trace_clear();
+    EXPECT_EQ(0, load_saved_game("openglad_no_such_slot", scr));
+    EXPECT_TRUE(trace_contains("popup", "Could not load the saved game"));
+    EXPECT_EQ(42, scr->world().id);
+
+    // Paired control: a slot that exists loads, and returns 1.
+    trace_clear();
+    scr->save_data.reset();
+    scr->save_data.current_campaign = "gladiator";
+    scr->save_data.scen_num = 1;
+    scr->save_data.numplayers = 0;
+    ASSERT_TRUE(scr->save_data.save("openglad_wp10_present_slot"));
+    EXPECT_EQ(1, load_saved_game("openglad_wp10_present_slot", scr));
+    EXPECT_FALSE(trace_contains("popup", "Could not load the saved game"));
+    EXPECT_EQ(1, scr->world().id);
+    scr->world().delete_objects();
+}
+
+// Replaying a level already finished is the campaign's empty walk-through:
+// the census is stripped so the player can walk back to an exit or a
+// teleporter, and their own team walks with them. Anything else — hostiles,
+// dropped loot, loose weapons — must be gone, or a "completed" level pays out
+// its treasure again on every visit.
+TEST(LoadLevels, completed_level_purge_spares_exits_teleporters_and_team_zero)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    ASSERT_TRUE(prepare_default_level_load());
+
+    namespace fs = std::filesystem;
+    constexpr int kFixtureLevel = 995;
+    std::error_code ec;
+    const fs::path fss =
+        fs::path(get_user_path()) / "scen" / "scen995.fss";
+    const fs::path grid_png =
+        fs::path(get_user_path()) / "pix" / "wp10p995.png";
+    fs::remove(fss, ec);
+    fs::remove(grid_png, ec);
+
+    {
+        GameWorld authored(kFixtureLevel);
+        sdl_level_data_hooks().wire_world_entity_services(&authored, nullptr);
+        authored.create_new_grid();
+        authored.title = "WP10 PURGE";
+
+        const auto place = [&authored](Order order, int family, int team,
+                                       int x, int y) {
+            walker* const entity = authored.add_ob(order, family);
+            EXPECT_NE(nullptr, entity);
+            if (entity != nullptr)
+            {
+                entity->set_team_num(static_cast<unsigned char>(team));
+                entity->setxy(x, y);
+            }
+        };
+        place(Order::Living, FAMILY_SOLDIER, 0, 60, 60);   // the player's own
+        place(Order::Living, FAMILY_ORC, 1, 90, 60);       // a hostile
+        place(Order::Treasure, FAMILY_EXIT, 0, 120, 60);   // the way out
+        place(Order::Treasure, FAMILY_TELEPORTER, 0, 150, 60);
+        place(Order::Treasure, FAMILY_GOLD_BAR, 0, 180, 60); // loot
+        place(Order::Weapon, FAMILY_KNIFE, 1, 210, 60);     // a loose weapon
+
+        og::data::LevelFileMetadata metadata;
+        metadata.grid_file = "wp10p995";
+        og::data::LevelFileIoError error = og::data::LevelFileIoError::None;
+        ASSERT_TRUE(og::data::save_level_to_user_dir(authored, kFixtureLevel,
+                                                     metadata, &error))
+            << "authoring the purge fixture level should succeed";
+        authored.delete_objects();
+    }
+
+    og::runtime::GameSession::Config session_config;
+    session_config.allocate_screen = true;
+    session_config.create_display = false;
+    session_config.allocate_prefs = true;
+    session_config.install_legacy_globals = false;
+    og::runtime::GameSession isolated_session(session_config);
+    auto isolated_scope = isolated_session.activate();
+    screen* const scr = isolated_session.screen_ptr();
+    ASSERT_NE(nullptr, scr);
+
+    SaveData& save = scr->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.scen_num = static_cast<short>(kFixtureLevel);
+    save.numplayers = 0; // spectator: no roster spawn obscures the census
+    save.completed_levels[save.current_campaign].insert(kFixtureLevel);
+
+    ASSERT_EQ(LoadSavedGameError::None,
+              load_saved_game_with_error(nullptr, scr));
+    ASSERT_EQ(kFixtureLevel, scr->world().id);
+
+    // Exactly one of each authored object survives the load, wherever the
+    // loader filed it (living -> oblist, treasure -> fxlist, weapon ->
+    // weaplist); each verdict below is that object's, not a count.
+    const auto find_one = [scr](Order order, int family) -> walker* {
+        walker* found = nullptr;
+        int matches = 0;
+        const auto scan = [&](const auto& objects) {
+            for (const auto& uptr : objects)
+            {
+                walker* const entity = uptr.get();
+                if (entity != nullptr && entity->query_order() == order &&
+                    entity->family() == family)
+                {
+                    found = entity;
+                    ++matches;
+                }
+            }
+        };
+        scan(scr->world().oblist);
+        scan(scr->world().fxlist);
+        scan(scr->world().weaplist);
+        EXPECT_EQ(1, matches)
+            << "authored object order=" << static_cast<int>(order)
+            << " family=" << family << " must load exactly once";
+        return found;
+    };
+
+    walker* const own = find_one(Order::Living, FAMILY_SOLDIER);
+    walker* const hostile = find_one(Order::Living, FAMILY_ORC);
+    walker* const exit_ob = find_one(Order::Treasure, FAMILY_EXIT);
+    walker* const teleporter = find_one(Order::Treasure, FAMILY_TELEPORTER);
+    walker* const gold = find_one(Order::Treasure, FAMILY_GOLD_BAR);
+    walker* const knife = find_one(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, own);
+    ASSERT_NE(nullptr, hostile);
+    ASSERT_NE(nullptr, exit_ob);
+    ASSERT_NE(nullptr, teleporter);
+    ASSERT_NE(nullptr, gold);
+    ASSERT_NE(nullptr, knife);
+
+    EXPECT_EQ(0, static_cast<int>(own->dead()))
+        << "the player's own team must survive a replay";
+    EXPECT_EQ(0, static_cast<int>(exit_ob->dead()))
+        << "the exit must survive, or the replay cannot be left";
+    EXPECT_EQ(0, static_cast<int>(teleporter->dead()))
+        << "teleporters must survive a replay";
+    EXPECT_EQ(1, static_cast<int>(hostile->dead()))
+        << "a completed level must not re-fight its hostiles";
+    EXPECT_EQ(1, static_cast<int>(gold->dead()))
+        << "a completed level must not pay out its treasure again";
+    EXPECT_EQ(1, static_cast<int>(knife->dead()))
+        << "loose weapons must not replay either";
+
+    scr->world().delete_objects();
+    fs::remove(fss, ec);
+    fs::remove(grid_png, ec);
+}
 
 // Test: Loading a nonexistent level falls back to level 1
 TEST(LoadLevels, level_fallback) {

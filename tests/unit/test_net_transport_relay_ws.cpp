@@ -616,6 +616,13 @@ TEST(NetTransportRelayWs,
     ASSERT_TRUE(server.send_control_message(1u, R"({"type":"joined"})"));
     ASSERT_TRUE(server.send_control_message(
         1u, R"({"type":"joined","peer_id":1,"host":17})"));
+    // A non-numeric element ENDS the peer array scan instead of wedging the
+    // reader on a character it cannot consume. Without that exit the relay
+    // reader spins forever on 'x' and no later frame — including the
+    // well-formed list below and the binary payload — is ever delivered.
+    ASSERT_TRUE(server.send_control_message(
+        1u,
+        R"({"type":"peer_list","peers":[ 17 , x21 ],"host":17})"));
     ASSERT_TRUE(server.send_control_message(
         1u,
         R"({"type":"peer_list","peers":[ 0 , 1 , 17 , 20 ],"host":17})"));
