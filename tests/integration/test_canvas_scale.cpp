@@ -2283,3 +2283,194 @@ TEST(CanvasScale, gameplay_overlay_texture_failure_latches_until_the_canvas_chan
     E_Screen->discard_gameplay_ui_frame();
     E_Screen->set_active_canvas(CanvasTarget::UI);
 }
+
+// A camera inset declared in WORLD coordinates (docked camera panes) has to
+// reach the screen through the same two paths a UI-coordinate plane does: the
+// present, and the CPU capture a screenshot or a modal backdrop is built from.
+// If the World arm were dropped, a docked camera would show the map instead of
+// its subject in one of the two — and the two would disagree.
+TEST(CanvasScale, native_world_destination_reaches_present_and_capture)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    SDL_Surface* const world = E_Screen->render;
+    ASSERT_EQ(320, world->w);
+    ASSERT_EQ(200, world->h);
+    const Uint32 map_pixel = SDL_MapSurfaceRGB(world, 20, 180, 20);
+    ASSERT_TRUE(SDL_FillSurfaceRect(world, nullptr, map_pixel));
+    const std::array<int, 3> map_rgb = surface_rgb(world, 5, 5);
+
+    // The inset covers the middle half of the world canvas.
+    const std::array<NativeWorldViewDestination, 1> destinations = {{
+        {.canvas = CanvasTarget::World, .x = 80, .y = 50, .w = 160,
+         .h = 100}}};
+    const NativeWorldViewSource source = s->begin_native_world_view(destinations);
+    ASSERT_TRUE(source);
+    EXPECT_EQ(320, source.w) << "the plane is sized in physical output pixels";
+    EXPECT_EQ(200, source.h);
+    SDL_Surface* const plane = E_Screen->render;
+    ASSERT_NE(world, plane);
+    const Uint32 inset_pixel = SDL_MapSurfaceRGB(plane, 220, 40, 220);
+    ASSERT_TRUE(SDL_FillSurfaceRect(plane, nullptr, inset_pixel));
+    const std::array<int, 3> inset_rgb = surface_rgb(plane, 5, 5);
+    ASSERT_NE(map_rgb, inset_rgb);
+    ASSERT_TRUE(s->end_native_world_view());
+    EXPECT_EQ(world, E_Screen->render);
+
+    // Present: the plane lands on the middle half of the output.
+    E_Screen->swap(0, 0, 320, 200);
+    SDL_Surface* const presented = SDL_RenderReadPixels(E_Screen->renderer,
+                                                        nullptr);
+    ASSERT_NE(nullptr, presented);
+    EXPECT_EQ(inset_rgb, surface_rgb(presented, presented->w / 2,
+                                     presented->h / 2))
+        << "a World-coordinate plane must present at its destination";
+    EXPECT_EQ(map_rgb, surface_rgb(presented, presented->w / 16,
+                                   presented->h / 16))
+        << "and must not spill outside it";
+    SDL_DestroySurface(presented);
+
+    // Capture: the same plane over caller-supplied scenery, in world-canvas
+    // coordinates.
+    SDL_Surface* const scenery =
+        SDL_CreateSurface(320, 200, SDL_PIXELFORMAT_XRGB8888);
+    ASSERT_NE(nullptr, scenery);
+    ASSERT_TRUE(SDL_FillSurfaceRect(scenery, nullptr,
+                                    SDL_MapSurfaceRGB(scenery, 20, 180, 20)));
+    const std::array<int, 3> scenery_rgb = surface_rgb(scenery, 5, 5);
+    SDL_Surface* const composed =
+        E_Screen->compose_gameplay_ui_for_capture(scenery);
+    ASSERT_NE(nullptr, composed);
+    EXPECT_NE(scenery, composed) << "the capture is a new surface";
+    EXPECT_EQ(inset_rgb, surface_rgb(composed, 160, 100))
+        << "the capture must show the plane where the present did";
+    EXPECT_EQ(scenery_rgb, surface_rgb(composed, 20, 20));
+    EXPECT_EQ(scenery_rgb, surface_rgb(composed, 300, 180));
+    SDL_DestroySurface(composed);
+    SDL_DestroySurface(scenery);
+
+    E_Screen->discard_native_world_views_for_testing();
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+}
+
+// The per-view zoom selector. GAME (1.0x) is the baseline every machine can
+// show, so it must stay selectable whatever the GPU says; a deeper override
+// that needs a canvas the GPU cannot hold must not be offered. And if the
+// canvas replacement fails after the selector already moved, the selection
+// has to roll back — a view window sized for a canvas that does not exist
+// would render the wrong slice of the world.
+TEST(CanvasScale, view_scale_selection_refuses_and_rolls_back_together)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(og::kViewScaleNumMax, E_Screen->world_view_scale_num());
+    ASSERT_EQ(320, E_Screen->world_w());
+
+    {
+        // 0.5x at zoom 1.0 wants a 640x400 canvas: over this GPU's limit.
+        RendererTextureLimit limit(512);
+        EXPECT_TRUE(E_Screen->world_view_scale_fits(og::kViewScaleNumMax))
+            << "GAME is always selectable";
+        EXPECT_FALSE(E_Screen->world_view_scale_fits(og::kViewScaleNumMin))
+            << "an override needing a canvas over the texture limit is not";
+    }
+    EXPECT_TRUE(E_Screen->world_view_scale_fits(og::kViewScaleNumMin))
+        << "the same override fits on the real renderer";
+
+    // Positive arm: the selection really does re-derive the canvas.
+    E_Screen->set_world_view_scale_num(og::kViewScaleNumMin);
+    EXPECT_EQ(og::kViewScaleNumMin, E_Screen->world_view_scale_num());
+    EXPECT_EQ(640, E_Screen->world_w());
+    EXPECT_EQ(400, E_Screen->world_h());
+    E_Screen->set_world_view_scale_num(og::kViewScaleNumMax);
+    ASSERT_EQ(320, E_Screen->world_w());
+
+    // Same selection, but the canvas allocation fails: both the canvas and
+    // the selector stay where they were.
+    E_Screen->fail_next_world_canvas_allocation_for_testing();
+    E_Screen->set_world_view_scale_num(og::kViewScaleNumMin);
+    EXPECT_EQ(og::kViewScaleNumMax, E_Screen->world_view_scale_num())
+        << "a failed canvas replacement must roll the selection back";
+    EXPECT_EQ(320, E_Screen->world_w());
+    EXPECT_EQ(200, E_Screen->world_h());
+}
+
+// A native plane whose allocation failed remembers THAT SIZE so a redraw loop
+// does not retry it every frame. The memory must be scoped to the size: a
+// camera pane that shrinks (a seat leaving, a window resize) has to get its
+// plane back instead of staying blank for the rest of the session.
+TEST(CanvasScale, native_plane_failed_size_latch_is_scoped_to_that_size)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->discard_native_world_views_for_testing();
+
+    const std::array<NativeWorldViewDestination, 1> big = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 40, .h = 25}}};
+    const std::array<NativeWorldViewDestination, 1> small = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 20, .h = 12}}};
+
+    E_Screen->fail_next_native_world_view_allocation_for_testing();
+    EXPECT_FALSE(s->begin_native_world_view(big))
+        << "the injected allocation failure declines the plane";
+    EXPECT_FALSE(s->begin_native_world_view(big))
+        << "and the size stays latched without a second allocation attempt";
+    EXPECT_FALSE(s->native_world_view_active());
+    EXPECT_EQ(0u, E_Screen->native_world_view_ready_count_for_testing());
+
+    // A different source size is not the latched one.
+    const NativeWorldViewSource other = s->begin_native_world_view(small);
+    EXPECT_TRUE(other) << "a differently sized plane is still allocated";
+    EXPECT_EQ(40, other.w);
+    EXPECT_EQ(24, other.h);
+    s->cancel_native_world_view();
+    EXPECT_FALSE(s->native_world_view_active());
+    E_Screen->discard_native_world_views_for_testing();
+}
+
+// The zoom canvas is derived from the WINDOW. A live-apply that arrives
+// before the session has published its window metrics (boot, and the frame
+// after a resize event) must measure the real window instead of treating the
+// missing metrics as a 0x0 window — otherwise the DISPLAY screen's first
+// apply would collapse the world canvas to the 320x200 minimum and the player
+// would watch the view snap in and out.
+TEST(CanvasScale, reapply_world_scale_measures_the_window_when_metrics_are_unpublished)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    const std::string old_zoom = cfg.get_setting("graphics", "zoom");
+    cfg.apply_setting("graphics", "zoom", "0.5");
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 640, 400));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
+    og::runtime::current_session->window_w_ = 640.0f;
+    og::runtime::current_session->window_h_ = 400.0f;
+    test_screen()->reapply_world_scale();
+    const int published_w = E_Screen->world_w();
+    const int published_h = E_Screen->world_h();
+    EXPECT_EQ(640, published_w);
+    EXPECT_EQ(400, published_h);
+
+    // Same window, no published metrics: the canvas must not move.
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(320, E_Screen->world_w()) << "the canvas really was reset";
+    og::runtime::current_session->window_w_ = 0.0f;
+    og::runtime::current_session->window_h_ = 0.0f;
+    test_screen()->reapply_world_scale();
+    EXPECT_EQ(published_w, E_Screen->world_w())
+        << "an unpublished window must be measured, not treated as 0x0";
+    EXPECT_EQ(published_h, E_Screen->world_h());
+
+    cfg.apply_setting("graphics", "zoom", old_zoom);
+}

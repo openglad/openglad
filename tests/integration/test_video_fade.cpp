@@ -2,6 +2,8 @@
 #include <openglad/interface/input.h>
 #include "test_input_helpers.h"
 #include <openglad/platform/video_sdl.h>
+#include <openglad/platform/sai2x.h>
+#include <openglad/core/scale_mode.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -324,4 +326,83 @@ TEST(VideoFade, video_fadebetween24_smoke)
     std::vector<Uint8> to(size, 255);
 
     og::runtime::current_session->myscreen_->fade_between24(s.get(), from.data(), to.data(), 1);
+}
+
+// The fade-ownership oracle's two remaining verdicts.
+//
+// "never presented": a fade-out is a cross-dissolve FROM the frame the window
+// is showing. A canvas the window has never shown has no such frame, so a
+// fade-out of it would dissolve from whatever the previous screen left —
+// exactly the flash a fade exists to prevent. Switching zoom builds a brand
+// new world canvas, and fading it out before its first present is that bug.
+TEST(VideoFade, video_fade_out_of_a_never_presented_canvas_is_a_violation)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(E_Screen);
+    ASSERT_EQ(0, og::video_testing::g_fade_violations.load());
+    const int old_zoom_steps = E_Screen->world_zoom_steps();
+
+    // A presented UI frame, so the window is not black and the fade runs.
+    scr->clearbuffer();
+    scr->fastbox(0, 0, 320, 200, 40);
+    scr->buffer_to_screen(0, 0, 320, 200);
+    ASSERT_FALSE(scr->window_is_black());
+
+    // Zoom 0.5 splits off a fresh 640x400 world surface. Nothing has ever
+    // presented it.
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(640, E_Screen->world_w());
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(1, scr->fadeblack(false))
+        << "production still fades — the violation is a TESTING report";
+    EXPECT_EQ(1, og::video_testing::g_fade_violations.load());
+    const std::vector<std::string> violations =
+        og::video_testing::fade_violation_messages();
+    ASSERT_EQ(1u, violations.size());
+    EXPECT_NE(std::string::npos, violations.front().find("never presented"))
+        << violations.front();
+    og::video_testing::reset_fade_violations();
+
+    // Control: present that same canvas, then fade it out. No violation.
+    ASSERT_EQ(1, scr->fadeblack(true));
+    scr->fastbox(0, 0, E_Screen->world_w(), E_Screen->world_h(), 90);
+    scr->buffer_to_screen(0, 0, E_Screen->world_w(), E_Screen->world_h());
+    ASSERT_EQ(1, scr->fadeblack(false));
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load())
+        << "a canvas the window has shown may be faded out";
+
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    E_Screen->set_world_zoom(old_zoom_steps, og::WorldScaleMode::Integer,
+                             640, 400);
+}
+
+// "fade-in without a fade-out": a fade-in dissolves FROM black, so the screen
+// that just left owed the window a fade-out. Fading in over a window that
+// still shows the previous screen hard-cuts that screen away mid-dissolve.
+TEST(VideoFade, video_fade_in_over_an_unfaded_window_is_a_violation)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_EQ(0, og::video_testing::g_fade_violations.load());
+
+    scr->clearbuffer();
+    scr->fastbox(0, 0, 320, 200, 40);
+    scr->buffer_to_screen(0, 0, 320, 200);
+    ASSERT_FALSE(scr->window_is_black())
+        << "the previous screen left its frame on the window";
+
+    ASSERT_EQ(1, scr->fadeblack(true)) << "the fade-in still runs";
+    EXPECT_EQ(1, og::video_testing::g_fade_violations.load());
+    const std::vector<std::string> violations =
+        og::video_testing::fade_violation_messages();
+    ASSERT_EQ(1u, violations.size());
+    EXPECT_NE(std::string::npos,
+              violations.front().find("fade-in without a fade-out"))
+        << violations.front();
+    og::video_testing::reset_fade_violations();
+
+    // Control: the owed fade-out first, then the same fade-in is clean.
+    ASSERT_EQ(1, scr->fadeblack(false));
+    ASSERT_TRUE(scr->window_is_black());
+    ASSERT_EQ(1, scr->fadeblack(true));
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load());
 }
