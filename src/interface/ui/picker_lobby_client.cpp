@@ -176,10 +176,7 @@ void restore_preserved_save_slots(
 {
     for (PreservedSaveSlot& preserved_slot : preserved)
     {
-        if (!preserved_slot.member)
-            continue;
-
-        std::size_t restore_index = preserved_slot.slot_index;
+        const std::size_t restore_index = preserved_slot.slot_index;
         if (restore_index < save.team_list.size() && save.team_list[restore_index])
         {
             // The echoed lobby now carries every private company slot, even
@@ -189,21 +186,6 @@ void restore_preserved_save_slots(
             // fighter.
             continue;
         }
-        if (restore_index >= save.team_list.size())
-        {
-            restore_index = save.team_list.size();
-            for (std::size_t candidate = 0; candidate < save.team_list.size(); ++candidate)
-            {
-                if (!save.team_list[candidate])
-                {
-                    restore_index = candidate;
-                    break;
-                }
-            }
-        }
-
-        if (restore_index >= save.team_list.size())
-            continue;
 
         save.team_list[restore_index] = std::move(preserved_slot.member);
         if (save.team_size < static_cast<unsigned char>(save.team_list.size()))

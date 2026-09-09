@@ -11575,3 +11575,308 @@ TEST(PickerNetworkClient,
         << "the retry opened a FRESH request (id 3), not a re-wait on the "
            "abandoned one";
 }
+
+// A class-pack file whose bytes do not match the manifest hash is a tampered
+// or corrupted pack: the joiner must refuse it by name, keep saying so on the
+// base-camp alert line, and write nothing to the pack cache. (The host serves
+// the Lua the deterministic sim runs; installing bytes that fail verification
+// would desync the two peers on the first tick, or worse.)
+TEST(PickerNetworkClient, join_pack_transfer_rejects_a_tampered_file)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Tamper Joiner");
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    ASSERT_NE(nullptr, join_client);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+
+            join_peer_id = peer_id;
+            return true;
+        }
+        return false;
+    })) << "the join client should connect and announce itself";
+
+    constexpr const char* kPackId = "org.wp4.tampered";
+    constexpr const char* kFilePath = "scripts/ghost.lua";
+    constexpr std::uint32_t kFileBytes = 64u;
+    auto manifest = std::make_shared<og::sim::PackManifestMessage>();
+    manifest->pack_index = 0;
+    manifest->pack_count = 1;
+    manifest->pack_id = kPackId;
+    manifest->version = "1";
+    manifest->files.push_back(
+        og::sim::PackManifestFileEntry{.path = kFilePath,
+                                       .size_bytes = kFileBytes,
+                                       // Not the hash of the bytes below.
+                                       .hash64 = 0x0123456789abcdefull});
+    server_transport->send_pack_manifest(join_peer_id, manifest);
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_prefix(
+            join_client->status_lines(),
+            std::format("Receiving pack {}", kPackId));
+    })) << "the announced pack should start transferring";
+    // The paired arm: mid-transfer the link is healthy and the alert line is
+    // clear. Only the verification below may fill it.
+    EXPECT_FALSE(join_client->connection_alert().has_value())
+        << "a transfer in flight is not an alert";
+
+    // Serve the whole file — the right length, the wrong bytes — and close
+    // the transfer.
+    auto chunk = std::make_shared<og::sim::PackFileChunkMessage>();
+    chunk->pack_id = kPackId;
+    chunk->file_index = 0;
+    chunk->offset = 0;
+    chunk->data.assign(kFileBytes, std::uint8_t{0xAB});
+    server_transport->send_pack_file_chunk(join_peer_id, chunk);
+    server_transport->send_pack_transfer_done(
+        join_peer_id,
+        std::make_shared<og::sim::PackTransferDoneMessage>(
+            og::sim::PackTransferDoneMessage{.pack_id = kPackId}));
+
+    const std::string expected_failure = std::format(
+        "Pack transfer failed: pack '{}' failed verification at '{}'",
+        kPackId, kFilePath);
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return join_client->connection_alert().has_value();
+    })) << "the failed verification should reach the alert line";
+    EXPECT_EQ(expected_failure, *join_client->connection_alert());
+    EXPECT_TRUE(status_lines_contain_exact(join_client->status_lines(),
+                                           expected_failure))
+        << "the failure names the pack and the file it broke on";
+
+    // Nothing may reach the pack cache: this pack was never installed.
+    int cached_dirs = 0;
+    std::error_code ec;
+    const std::filesystem::path cache_root =
+        std::filesystem::path(get_user_path()) / "packs_cache";
+    for (const auto& entry :
+         std::filesystem::directory_iterator(cache_root, ec))
+    {
+        if (entry.path().filename().string().rfind(
+                std::string(kPackId) + "@", 0) == 0)
+        {
+            ++cached_dirs;
+        }
+    }
+    EXPECT_EQ(0, cached_dirs)
+        << "a pack that failed verification must not be written to the cache";
+
+    join_client->shutdown();
+}
+
+// [+] on a joiner is a request, not a local fact: if the link dies before
+// authority answers, the seat must NOT appear. The whole local projection
+// (seat count, seat identities, the save's player count and team) has to go
+// back exactly where it was, or Base Camp draws a control profile for a seat
+// the host never granted.
+TEST(PickerNetworkClient, joiner_add_seat_restores_its_projection_on_a_dead_link)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    SaveData& join_save = join_session.myscreen_->save_data;
+    prepare_single_member_network_save(join_save, 1, "Joiner");
+    join_save.numplayers = 2;
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return host_client->lobby_players().size() == 3u &&
+            join_client->local_player_indices().size() == 2u;
+    }));
+
+    // Control arm: the same call, answered by a live host, DOES add the seat
+    // and does move the save.
+    std::atomic<bool> live_add_done = false;
+    bool live_add_result = false;
+    {
+        std::jthread worker([&] {
+            auto join_scope = join_session.activate();
+            live_add_result = join_client->add_local_seat();
+            live_add_done.store(true);
+        });
+        EXPECT_TRUE(wait_until([&] {
+            host_client->poll_and_apply();
+            return live_add_done.load();
+        }));
+    }
+    EXPECT_TRUE(live_add_result);
+    unsigned char numplayers_before = 0;
+    short my_team_before = 0;
+    std::vector<og::sim::LobbySeatId> seats_before;
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_EQ(3u, join_client->local_seat_count());
+        ASSERT_EQ(3u, join_client->local_player_indices().size());
+        numplayers_before = join_save.numplayers;
+        my_team_before = join_save.my_team;
+        EXPECT_EQ(3, static_cast<int>(numplayers_before));
+        const auto players = join_client->lobby_players();
+        for (const std::uint8_t index : join_client->local_player_indices())
+            seats_before.push_back(players[index].seat_id);
+    }
+
+    // Refusal arm: request a fourth seat, never pump the host, then take the
+    // link away. This is definitive, not a retry.
+    std::atomic<bool> add_done = false;
+    bool add_result = true;
+    std::jthread worker([&] {
+        auto join_scope = join_session.activate();
+        add_result = join_client->add_local_seat();
+        add_done.store(true);
+    });
+    std::this_thread::sleep_for(100ms);
+    host_client->shutdown();
+    EXPECT_TRUE(wait_until([&] { return add_done.load(); }, 8s));
+    worker.join();
+
+    EXPECT_FALSE(add_result)
+        << "a seat authority never granted must not be reported as added";
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(3u, join_client->local_seat_count());
+        ASSERT_EQ(3u, join_client->local_player_indices().size());
+        EXPECT_EQ(numplayers_before, join_save.numplayers)
+            << "the refused add must put the save's player count back";
+        EXPECT_EQ(my_team_before, join_save.my_team);
+        const auto players = join_client->lobby_players();
+        std::vector<og::sim::LobbySeatId> seats_after;
+        for (const std::uint8_t index : join_client->local_player_indices())
+            seats_after.push_back(players[index].seat_id);
+        EXPECT_EQ(seats_before, seats_after)
+            << "the surviving seats keep their identities";
+        join_client->shutdown();
+    }
+}
+
+// Resuming between levels with no link left rebuilds the lobby from the save,
+// but the seat COLOURS the player chose are not part of that save any more —
+// a naive re-seed would repaint every seat from whatever the roster happens
+// to say now. The explicit per-seat choices must survive the rebuild.
+TEST(PickerNetworkClient, joiner_resume_without_a_link_keeps_its_seat_teams)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Seat One");
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Seat Two";
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+    save.numplayers = 2;
+    save.my_team = 0;
+
+    // Nothing is listening on this port: the join never establishes.
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", ix::getFreePort());
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    ASSERT_NE(nullptr, join_client);
+    join_client->initialize_from_save();
+    ASSERT_FALSE(join_client->session_established());
+    ASSERT_EQ(0, save.my_team) << "the seeded seats follow the roster";
+
+    // Between levels the roster is recoloured (a team change in Base Camp),
+    // and the save's own cursor follows it. The seats the player chose for
+    // THIS session must not follow.
+    save.team_list[0]->teamnum = 2;
+    save.team_list[1]->teamnum = 3;
+    save.my_team = 2;
+
+    join_client->resume_after_level();
+
+    EXPECT_EQ(0, save.my_team)
+        << "the resume rebuild must keep the session's own seat teams, not "
+           "re-seed them from the recoloured roster";
+    EXPECT_EQ(2, static_cast<int>(save.numplayers))
+        << "and must keep both seats";
+    EXPECT_FALSE(join_client->session_established())
+        << "no link came back: the rebuild is local only";
+
+    join_client->shutdown();
+}
+
+// A host that comes back from a level with its lobby torn down (the session
+// was shut down rather than carried across gameplay) must rebuild one from
+// the save instead of leaving Base Camp with a dead lobby.
+TEST(PickerNetworkClient, host_resume_after_a_torn_down_lobby_rebuilds_it)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Rebuilt Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->session_established());
+    ASSERT_EQ(1u, host_client->lobby_players().size());
+
+    host_client->shutdown();
+    ASSERT_FALSE(host_client->session_established());
+    ASSERT_TRUE(host_client->lobby_players().empty());
+
+    host_client->resume_after_level();
+
+    EXPECT_TRUE(host_client->session_established())
+        << "the resume must rebuild the lobby it no longer has";
+    EXPECT_EQ(1u, host_client->lobby_players().size());
+    EXPECT_EQ(1u, host_client->local_seat_count());
+    EXPECT_EQ(0, host_client->lobby_players().front().team);
+    EXPECT_FALSE(host_client->start_request_pending());
+
+    host_client->shutdown();
+}
