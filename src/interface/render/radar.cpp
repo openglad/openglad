@@ -367,19 +367,13 @@ short radar::draw(LevelRuntimeData* data)
 	// Now determine what objects are visible on the radar ..
 	while (listtype <= 1)
 	{
-			const GameWorld::EntityList* ls;
-			if (listtype == 0) // do oblist, standard
-			{
-				ls = &data->world().oblist;
-				listtype++;
-			}
-			else if (listtype == 1) // do weapons
-			{
-				ls = &data->world().weaplist;
-				listtype++;
-			}
-		else
-			continue;
+			// listtype is 0 or 1 here: the loop condition admits nothing
+			// else and both arms advance it.
+			const GameWorld::EntityList* ls =
+				listtype == 0 // do oblist, standard
+					? &data->world().oblist
+					: &data->world().weaplist; // do weapons
+			listtype++;
 
         for(auto e = ls->begin(); e != ls->end(); e++)
 		{
@@ -707,9 +701,6 @@ short radar::draw(LevelRuntimeData* data)
 					xloc + ((target->xpos() + 1) / GRID_SIZE - radarx);
 				const Sint32 by =
 					yloc + ((target->ypos() + 1) / GRID_SIZE - radary);
-				if (bx < xloc || bx > (xloc + xview) ||
-				    by < yloc || by > (yloc + yview))
-					continue;
 				// An FX landmark can deliberately use its beacon as a ground
 				// proxy (basketball's shadow): honour the proxy descriptor's
 				// colour, jitter and pulse. Other beacon orders retain the exact
