@@ -3357,6 +3357,26 @@ public:
     }
 };
 
+// Opening a company repoints the process-wide active slot ([SAVE-R2]). The
+// sandbox then deletes the file that slot names, so every test that drives an
+// open puts the previous slot back before it leaves.
+class ActiveCompanySlotGuard
+{
+public:
+    ActiveCompanySlotGuard()
+        : previous_(og::data::active_company_slot())
+    {
+    }
+
+    ~ActiveCompanySlotGuard()
+    {
+        (void)og::data::set_active_company_slot(previous_);
+    }
+
+private:
+    std::string previous_;
+};
+
 } // namespace
 
 // Opening a company whose campaign package is gone must refuse in the file's
@@ -3368,6 +3388,7 @@ TEST(PlatformHeadless, text_picker_open_refuses_a_company_whose_campaign_is_gone
     restore_default_campaigns();
     HeadlessSaveDirSandbox sandbox;
     RemountGladiatorGuard remount;
+    ActiveCompanySlotGuard slot_guard;
     ASSERT_TRUE(seed_headless_company_for_campaign(
         "wp9ghost", "GHOST BAND", "wp9nosuchcampaign", 7000));
 
@@ -3463,6 +3484,7 @@ TEST(PlatformHeadless, text_picker_failed_backup_restore_rolls_back_and_keeps_th
     restore_default_campaigns();
     HeadlessSaveDirSandbox sandbox;
     RemountGladiatorGuard remount;
+    ActiveCompanySlotGuard slot_guard;
     // Snapshot seq 1 holds a company whose campaign package is missing: its
     // header reads fine (so the row is not marked damaged and the restore
     // runs), but step 3's reload cannot load the campaign.
@@ -3543,14 +3565,15 @@ bool first_hire_quote(const std::string& out, long& cost, long& gold)
 } // namespace
 
 // The HIRE row has to refuse for the two reasons a player actually meets, in
-// different words: a purse that cannot cover the recruit, and a roster that is
-// already at the 24-slot cap. Between them sits the accepted hire that proves
-// the row works at all — it debits exactly the quoted cost, once.
+// different words: a roster already at the 24-slot cap, and a purse that
+// cannot cover the recruit. Between them sits the accepted hire that proves
+// the row works at all — it lands, and it debits exactly the quoted cost once.
 TEST(PlatformHeadless, text_picker_hire_refuses_a_full_team_and_an_empty_purse)
 {
     restore_default_campaigns();
     HeadlessSaveDirSandbox sandbox;
     RemountGladiatorGuard remount;
+    ActiveCompanySlotGuard slot_guard;
     ASSERT_TRUE(seed_headless_company_with_team("wp9broke", "BROKE BAND", 1, 0u,
                                                 7300));
     ASSERT_TRUE(seed_headless_company_with_team("wp9full", "FULL BAND", 23,
@@ -3602,7 +3625,7 @@ TEST(PlatformHeadless, text_picker_hire_refuses_a_full_team_and_an_empty_purse)
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("wp9full"));
     EXPECT_EQ(24, reloaded.team_size);
     EXPECT_EQ(static_cast<std::uint32_t>(100000L - cost), reloaded.m_totalcash[0])
-        << "§3.8 autosave must persist exactly one debit of the quoted cost";
+        << "\u00a73.8 autosave must persist exactly one debit of the quoted cost";
     // The blank deploy row is a back-out, not a toggle: every member of the
     // roster keeps the deploy flag it had.
     for (int i = 0; i < reloaded.team_size; ++i) {
