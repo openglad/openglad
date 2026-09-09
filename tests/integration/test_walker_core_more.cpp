@@ -73,7 +73,8 @@ TEST(WalkerCoreMore, walker_compute_outline_state_transitions)
     subject->stats()->set_bit_flags(BIT_NAMED, 1);
 
     subject->compute_outline(viewer.get());
-    ASSERT_TRUE(subject->outline() != 0) << "outline should remain non-zero with active flags";
+    ASSERT_EQ(OUTLINE_FLYING, (int)subject->outline())
+        << "invulnerable + flying: flight wins the invulnerable branch";
 
     subject->set_outline(subject->query_team_color()); // OUTLINE_INVISIBLE expands to query_team_color()
     subject->set_flight_left(0);
@@ -90,6 +91,34 @@ TEST(WalkerCoreMore, walker_compute_outline_state_transitions)
     subject->stats()->set_bit_flags(BIT_NAMED, 0);
     subject->compute_outline(viewer.get());
     ASSERT_TRUE(subject->outline() == subject->query_team_color()) << "flying should transition to invisible when invisibility_left set";
+
+    // Flying, no longer invisible, but under an invulnerability potion: the
+    // potion is the outline a player must be able to read at a glance.
+    subject->set_outline(OUTLINE_FLYING);
+    subject->set_invisibility_left(0);
+    subject->set_invulnerable_left(5);
+    subject->compute_outline(viewer.get());
+    ASSERT_EQ(OUTLINE_INVULNERABLE, (int)subject->outline())
+        << "flying + invulnerable, not invisible: the potion outline shows";
+
+    // Plain team colour, no potion of any kind, but a NAMED enemy: a boss on
+    // the other team is outlined for the viewer who has to fight it.
+    subject->set_outline(subject->query_team_color());
+    subject->set_invulnerable_left(0);
+    subject->set_flight_left(0);
+    subject->set_invisibility_left(0);
+    subject->stats()->set_bit_flags(BIT_NAMED, 1);
+    ASSERT_NE(subject->team_num(), viewer->team_num());
+    subject->compute_outline(viewer.get());
+    ASSERT_EQ(OUTLINE_NAMED, (int)subject->outline())
+        << "a named enemy is outlined as named for an enemy viewer";
+
+    // The same walker seen by one of its OWN team is not outlined as named.
+    subject->set_outline(subject->query_team_color());
+    viewer->set_team_num(subject->team_num());
+    subject->compute_outline(viewer.get());
+    ASSERT_EQ((int)subject->query_team_color(), (int)subject->outline())
+        << "a named ally keeps its team colour";
 }
 
 
@@ -637,6 +666,27 @@ TEST(WalkerCoreMore, walker_animate_rejects_ani_type_beyond_family_table)
     w->set_curdir(static_cast<char>(100));
     w->set_cycle(static_cast<signed char>(120));
     (void)w->animate(); // must not crash / read OOB (verified under sanitizers)
+
+    // A NEGATIVE cycle on a valid animation clamps to the start of the
+    // sequence, not to the frame before it: `cycle` is a signed char that
+    // walk() can wrap and that a save or a snapshot can carry, and reading
+    // seq[-5] is an out-of-bounds read whose frame lands somewhere else
+    // entirely on screen.
+    w->set_ani_type(static_cast<char>(ANI_WALK));
+    w->set_curdir(static_cast<char>(FACE_DOWN));
+    w->set_cycle(0);
+    (void)w->animate();
+    const short frame_from_zero = w->frame();
+    const int cycle_from_zero = static_cast<int>(w->cycle());
+
+    w->set_ani_type(static_cast<char>(ANI_WALK));
+    w->set_curdir(static_cast<char>(FACE_DOWN));
+    w->set_cycle(static_cast<signed char>(-5));
+    (void)w->animate();
+    ASSERT_EQ(cycle_from_zero, static_cast<int>(w->cycle()))
+        << "a negative cycle must animate exactly as cycle 0 does";
+    ASSERT_EQ(frame_from_zero, w->frame())
+        << "the clamp lands on the sequence's first frame";
 }
 
 

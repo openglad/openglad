@@ -672,3 +672,125 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_firstf
     ASSERT_TRUE(walked) << "walk_to_foe should still succeed when using firstfoe fallback path";
     ASSERT_TRUE(actor->foe() != nullptr) << "walk_to_foe should restore foe from firstfoe fallback";
 }
+
+// A GOTO order that has already arrived must issue no step. The engine calls
+// this every tick a position goal is live, so a step at zero distance is a
+// unit that jitters on its mark forever instead of standing on it.
+TEST(StatsMorePaths, direct_walk_to_point_at_the_destination_issues_no_step)
+{
+    GameWorld world(0u);
+    sdl_level_data_hooks().wire_world_entity_services(&world, nullptr);
+    world.clear();
+    world.create_new_grid();
+    ScopedGameplayWorld gameplay_world(world);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(actor != nullptr);
+    if (actor == nullptr)
+        return;
+    actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
+    // Already facing the way it will walk: walkstep spends a call TURNING
+    // when it does not, which would hide the step under a facing change.
+    actor->set_curdir(static_cast<char>(FACE_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_RIGHT));
+    const std::int32_t x0 = actor->xpos();
+    const std::int32_t y0 = actor->ypos();
+    const float step = actor->stepsize();
+    ASSERT_GT(step, 0.0f);
+
+    EXPECT_FALSE(actor->stats()->direct_walk_to_point(
+        static_cast<short>(x0), static_cast<short>(y0)))
+        << "already at the point: no step to take";
+    EXPECT_EQ(x0, actor->xpos());
+    EXPECT_EQ(y0, actor->ypos());
+
+    // Control: a point one full step east is walked to, one step per call.
+    EXPECT_TRUE(actor->stats()->direct_walk_to_point(
+        static_cast<short>(x0 + static_cast<std::int32_t>(step) * 3),
+        static_cast<short>(y0)));
+    EXPECT_EQ(x0 + static_cast<std::int32_t>(step), actor->xpos());
+    EXPECT_EQ(y0, actor->ypos());
+}
+
+// COMMAND_MULTIDO is how a script or a special buys extra actions in one
+// round: it consumes itself and then runs the next `com1` queued commands
+// immediately. Two queued walks under a MULTIDO(2) must both happen on the
+// same tick and leave the queue empty.
+TEST(StatsMorePaths, multido_runs_the_next_two_queued_commands_in_one_round)
+{
+    GameWorld world(0u);
+    sdl_level_data_hooks().wire_world_entity_services(&world, nullptr);
+    world.clear();
+    world.create_new_grid();
+    ScopedGameplayWorld gameplay_world(world);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(actor != nullptr);
+    if (actor == nullptr)
+        return;
+    actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
+    actor->set_curdir(static_cast<char>(FACE_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_RIGHT));
+    const std::int32_t x0 = actor->xpos();
+    const float step = actor->stepsize();
+    ASSERT_GT(step, 0.0f);
+
+    // Baseline: one queued walk, one do_command, one step.
+    actor->stats()->clear_command();
+    actor->stats()->add_command(COMMAND_WALK, 1, 1, 0);
+    ASSERT_EQ(1, actor->stats()->do_command());
+    EXPECT_EQ(x0 + static_cast<std::int32_t>(step), actor->xpos());
+    EXPECT_FALSE(actor->stats()->has_commands());
+
+    // Two queued walks behind a MULTIDO(2): one do_command call, two steps.
+    actor->setxy(static_cast<std::int32_t>(x0),
+                 static_cast<std::int32_t>(actor->ypos()));
+    actor->stats()->clear_command();
+    actor->stats()->add_command(COMMAND_WALK, 1, 1, 0);
+    actor->stats()->add_command(COMMAND_WALK, 1, 1, 0);
+    actor->stats()->force_command(COMMAND_MULTIDO, 1, 2, 0);
+    ASSERT_EQ(3u, actor->stats()->commands.size());
+
+    ASSERT_EQ(1, actor->stats()->do_command());
+    EXPECT_EQ(x0 + 2 * static_cast<std::int32_t>(step), actor->xpos())
+        << "MULTIDO(2) must run both queued walks in the one round";
+    EXPECT_FALSE(actor->stats()->has_commands())
+        << "the MULTIDO and both walks are consumed";
+}
+
+// A ghost's scare landing on a fighter already under a forced walk merges
+// into that walk instead of stacking behind it — and the direction it merges
+// in is clamped to the unit square, whatever the pixel delta between the two
+// bodies was. Without the clamp the fighter teleports the raw delta.
+TEST(StatsMorePaths, force_fright_clamps_a_merged_direction_to_the_unit_square)
+{
+    auto w = make_walker(FAMILY_SOLDIER);
+    ASSERT_TRUE(w != nullptr);
+    if (!w)
+        return;
+
+    // A far south-west scare source: dx -7, dy +9.
+    w->stats()->clear_command();
+    w->stats()->force_command(COMMAND_WALK, 5, 1, 0);
+    ASSERT_EQ(1u, w->stats()->commands.size());
+    w->stats()->force_fright(40, -7, 9);
+
+    ASSERT_EQ(1u, w->stats()->commands.size()) << "fright merges, never stacks";
+    const command& front = w->stats()->commands.front();
+    EXPECT_EQ(COMMAND_WALK, front.commandtype);
+    EXPECT_EQ(40, front.commandcount) << "the longer scare wins the count";
+    EXPECT_EQ(-1, static_cast<int>(front.com1)) << "-7 clamps to -1";
+    EXPECT_EQ(1, static_cast<int>(front.com2)) << "+9 clamps to +1";
+    EXPECT_TRUE(front.forced);
+
+    // Control: with no forced walk at the front there is nothing to merge
+    // into, so the scare is prepended as its own command — same clamp.
+    w->stats()->clear_command();
+    w->stats()->force_fright(12, 5, -8);
+    ASSERT_EQ(1u, w->stats()->commands.size());
+    const command& fresh = w->stats()->commands.front();
+    EXPECT_EQ(COMMAND_WALK, fresh.commandtype);
+    EXPECT_EQ(12, fresh.commandcount);
+    EXPECT_EQ(1, static_cast<int>(fresh.com1));
+    EXPECT_EQ(-1, static_cast<int>(fresh.com2));
+}
