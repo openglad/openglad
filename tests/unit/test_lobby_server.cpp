@@ -1,6 +1,8 @@
 #include <openglad/core/constants.h>
+#include <openglad/core/fnv1a.h>
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/pack_transfer.h>
 
 #include <gtest/gtest.h>
 
@@ -1418,6 +1420,26 @@ og::sim::LobbySettings make_ctf_lobby_settings(
     // derives it from the campaign's matchup: yaml key).
     settings.shared_teams = 1;
     return settings;
+}
+
+og::sim::HostedPack make_hosted_pack(
+    const std::string& pack_id,
+    std::vector<std::pair<std::string, std::string>> files)
+{
+    og::sim::HostedPack pack;
+    pack.manifest.pack_id = pack_id;
+    for (auto& [path, content] : files)
+    {
+        og::sim::PackManifestFileEntry entry;
+        entry.path = path;
+        entry.size_bytes = static_cast<std::uint32_t>(content.size());
+        entry.hash64 = og::core::fnv1a64(
+            reinterpret_cast<const std::uint8_t*>(content.data()),
+            content.size());
+        pack.manifest.files.push_back(std::move(entry));
+        pack.file_contents.emplace_back(content.begin(), content.end());
+    }
+    return pack;
 }
 
 og::sim::LobbyMessage make_team_change_message(
@@ -4553,4 +4575,285 @@ TEST(LobbyServer, a_kicked_message_reaching_the_server_is_ignored)
 
     EXPECT_EQ(2u, server.state().players.size());
     EXPECT_TRUE(transport.disconnected_peers().empty());
+}
+
+// Rule (src/gameplay/lobby_server.cpp:1378-1395): the class-pack host serves a
+// PackRequest only for a peer that is still on the live connection list. A
+// request from a peer that vanished (or never announced itself) would stream
+// chunks into a dead link, which the in-process transport reports as a send to
+// an unknown destination; a malformed request is a protocol violation and
+// still drops its sender.
+TEST(LobbyServer, pack_requests_are_served_only_for_live_peers)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+
+    std::vector<og::sim::HostedPack> packs;
+    packs.push_back(
+        make_hosted_pack("mods", {{"scripts/mods.lua", "print(1)"}}));
+    server.set_hosted_packs(std::move(packs));
+
+    transport.set_connected_peers({11u});
+    server.poll_incoming_messages();
+    transport.clear_sent_messages();
+
+    // Live peer 11 is served; never-announced peer 22 is not addressed at all.
+    transport.queue_raw_message(
+        11u, og::sim::serialize_pack_request_message({.pack_id = "mods"}));
+    transport.queue_raw_message(
+        22u, og::sim::serialize_pack_request_message({.pack_id = "mods"}));
+    server.poll_incoming_messages();
+
+    std::vector<og::sim::PackFileChunkMessage> chunks_to_11;
+    std::size_t done_to_11 = 0;
+    std::size_t messages_to_22 = 0;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id == 22u)
+        {
+            ++messages_to_22;
+            continue;
+        }
+        if (sent.peer_id != 11u)
+            continue;
+        if (const auto chunk =
+                og::sim::deserialize_pack_file_chunk_message(sent.data))
+        {
+            chunks_to_11.push_back(*chunk);
+        }
+        else if (og::sim::deserialize_pack_transfer_done_message(sent.data))
+        {
+            ++done_to_11;
+        }
+    }
+
+    ASSERT_EQ(1u, chunks_to_11.size());
+    EXPECT_EQ("mods", chunks_to_11[0].pack_id);
+    EXPECT_EQ(0u, chunks_to_11[0].file_index);
+    EXPECT_EQ(0u, chunks_to_11[0].offset);
+    const std::string served(chunks_to_11[0].data.begin(),
+                             chunks_to_11[0].data.end());
+    EXPECT_EQ("print(1)", served);
+    EXPECT_EQ(1u, done_to_11);
+    EXPECT_EQ(0u, messages_to_22)
+        << "a request from a peer that never announced must be dropped";
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+
+    // A truncated request from the same live peer is a protocol violation.
+    std::vector<std::uint8_t> truncated =
+        og::sim::serialize_pack_request_message({.pack_id = "mods"});
+    ASSERT_FALSE(truncated.empty());
+    truncated.pop_back();
+    ASSERT_FALSE(
+        og::sim::deserialize_pack_request_message(truncated).has_value());
+    transport.queue_raw_message(11u, std::move(truncated));
+    server.poll_incoming_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u}),
+              transport.disconnected_peers());
+}
+
+// Rule (src/gameplay/lobby_server.cpp:613-624): a Join asking for a team the
+// match does not field is healed to the FIRST SELECTABLE team, not to the
+// constant 0 — on a sparse authored CTF map (teams 2 and 3 only) a joiner
+// asking for team 7 must land on team 2, or it would be seated on a colour the
+// level never authored and start the match with no flag base.
+TEST(LobbyServer, out_of_domain_join_team_heals_to_the_first_fielded_team)
+{
+    MockLobbyTransport transport(/*typed_messages=*/true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 7,
+                          {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.state().players.size());
+    EXPECT_EQ(0, server.state().players[0].team)
+        << "every team is fielded by default, so the scan stops at 0";
+
+    // Sparse authored domain: only teams 2 and 3 exist on this map.
+    constexpr std::uint8_t kTeamsTwoAndThree = 0b1100u;
+    transport.queue_lobby_message(
+        11u,
+        make_settings_change_message(
+            make_ctf_lobby_settings(0, kTeamsTwoAndThree)));
+    server.poll_incoming_messages();
+    ASSERT_EQ(kTeamsTwoAndThree,
+              server.state().settings.ctf_authored_team_mask);
+
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest", 7,
+                          {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(2, server.state().players[1].team)
+        << "the scan must stop at the first AUTHORED team, not at 0";
+}
+
+// Rule (src/gameplay/lobby_server.cpp:824-826): a lobby message from a peer the
+// server never registered is ignored outright. A connection that was dropped
+// (or was never announced by the transport) must not be able to add itself to
+// the roster or make the authority answer it.
+TEST(LobbyServer, lobby_message_from_an_unannounced_peer_is_ignored)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.state().players.size());
+
+    const og::sim::LobbyState before = server.state();
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(
+        77u,
+        make_join_message("Ghost", 1,
+                          {make_slot(0u, 200, "Ghost Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(before, server.state());
+    EXPECT_EQ(1u, server.state().players.size());
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+        EXPECT_NE(77u, sent.peer_id) << "an unannounced peer gets no echo";
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+}
+
+// Rule (src/gameplay/lobby_server.cpp:856-860): one machine may declare at most
+// MAX_PLAYERS seats. A client that asks for more is truncated to the first four
+// (the extras are simply dropped), so a crafted or buggy joiner cannot claim
+// the whole lobby from a single connection.
+TEST(LobbyServer, per_machine_seat_cap_truncates_a_join_to_max_players)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+
+    transport.queue_lobby_message(
+        11u, make_multi_seat_join_message("P", {0, 1, 2, 3, 0, 1}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState& state = server.state();
+    ASSERT_EQ(static_cast<std::size_t>(MAX_PLAYERS), state.players.size());
+    EXPECT_EQ("P", state.players[0].name);
+    EXPECT_EQ("P#1", state.players[1].name);
+    EXPECT_EQ("P#2", state.players[2].name);
+    EXPECT_EQ("P#3", state.players[3].name);
+    EXPECT_EQ((std::vector<std::int16_t>{0, 1, 2, 3}),
+              (std::vector<std::int16_t>{state.players[0].team,
+                                         state.players[1].team,
+                                         state.players[2].team,
+                                         state.players[3].team}));
+}
+
+// Rule (src/gameplay/lobby_server.cpp:158-160): a declared roster is capped at
+// kMaxLobbyTeamSize (24) characters. A machine that sends thirty keeps its
+// first twenty-four in order; the rest never reach the merged save data.
+TEST(LobbyServer, oversize_roster_is_capped_at_the_team_size_bound)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          make_slots(0u, 30u, 100, FAMILY_SOLDIER)));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.state().players.size());
+    const std::vector<og::sim::LobbyCharacterSlot>& slots =
+        server.state().players[0].character_slots;
+    ASSERT_EQ(24u, slots.size());
+    EXPECT_EQ(0u, slots.front().slot_index);
+    EXPECT_EQ(100, slots.front().character.guy_id);
+    EXPECT_EQ(23u, slots.back().slot_index);
+    EXPECT_EQ(123, slots.back().character.guy_id)
+        << "the 24th declared character is the last one kept";
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    EXPECT_EQ(24u, equivalent.team_list.size());
+}
+
+// Rule (src/gameplay/lobby_server.cpp:69-71): allied_mode is a two-valued
+// setting. A settings frame carrying anything else is healed back to the value
+// the lobby already held rather than being stored — a crafted 7 must not become
+// a third alliance rule that the sim then has to interpret.
+TEST(LobbyServer, out_of_range_allied_mode_heals_to_the_previous_value)
+{
+    MockLobbyTransport transport(/*typed_messages=*/true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(1, server.state().settings.allied_mode);
+
+    // Positive arm: a legal value is stored.
+    og::sim::LobbySettings legal = server.state().settings;
+    legal.allied_mode = 0;
+    transport.queue_lobby_message(11u, make_settings_change_message(legal));
+    server.poll_incoming_messages();
+    ASSERT_EQ(0, server.state().settings.allied_mode);
+
+    og::sim::LobbySettings bogus = server.state().settings;
+    bogus.allied_mode = 7;
+    transport.queue_lobby_message(11u, make_settings_change_message(bogus));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.allied_mode)
+        << "an out-of-range allied_mode must heal to the previous value";
+}
+
+// Rule (src/gameplay/lobby_server.cpp:1112-1115): a RemoveSeat from a machine
+// that holds no seats changes nothing but still owes the sender one
+// authoritative state echo, so a client whose last seat is already gone sees
+// the refusal immediately instead of waiting out a timeout.
+TEST(LobbyServer, seatless_remove_seat_still_echoes_the_authoritative_state)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_multi_seat_join_message("Host", {0, 1}));
+    transport.queue_lobby_message(
+        22u, make_multi_seat_join_message("Guest", {2}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(3u, server.state().players.size());
+
+    // Positive arm: the guest's only seat is removed for real.
+    const og::sim::LobbyState before = server.state();
+    og::sim::LobbyMessage remove;
+    remove.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = before.players[2].player_index,
+        .seat_id = before.players[2].seat_id,
+    };
+    transport.queue_lobby_message(22u, remove);
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+
+    // Repeat from the now-seatless machine: no roster change, one echo.
+    const og::sim::LobbyState seatless = server.state();
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(22u, remove);
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(seatless, server.state());
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(22u, transport.sent_messages().front().peer_id);
+    og::sim::LobbyState echoed =
+        decode_lobby_state(transport.sent_messages().front());
+    EXPECT_TRUE(echoed.local_seat_ids.empty());
+    echoed.local_seat_ids.clear();
+    echoed.local_peer_is_host = false;
+    EXPECT_EQ(seatless, echoed);
 }
