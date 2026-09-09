@@ -936,6 +936,11 @@ TEST(GameLoop, glad_init_clears_stale_view_text_when_tick_count_restarts)
 
     viewscreen* const view = game_screen->viewob[0].get();
     ASSERT_TRUE(view != nullptr);
+    // set_display_text appends into the first EMPTY slot, so this test owns
+    // the feed before it stages its message: a seat removal earlier in the
+    // run posts "Player N left" for 40 cycles and would hold slot 0.
+    for (std::string& line : view->textlist)
+        line.clear();
     view->set_display_text("stale pause text", 10);
     ASSERT_EQ(std::string("stale pause text"), view->textlist[0]);
 
