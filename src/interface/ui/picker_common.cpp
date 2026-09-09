@@ -2583,24 +2583,10 @@ bool HireSession::team_full() const
 void HireSession::make_recruit()
 {
     int family = kAllowableGuys[static_cast<std::size_t>(current_type_)];
+    // A fresh recruit already carries the family's base stats: create_recruit
+    // constructs guy(family), whose constructor seeds strength..level from
+    // the same FamilyDescriptor. There is nothing left to clamp up.
     recruit_ = create_recruit(family, team_num_, save_);
-
-    // Clamp stats up to family base values
-    const auto* fd = get_family_descriptor(family);
-    if (fd) {
-        if (recruit_->strength < fd->base_stats[StatAxis::Strength])
-            recruit_->strength = static_cast<short>(fd->base_stats[StatAxis::Strength]);
-        if (recruit_->dexterity < fd->base_stats[StatAxis::Dexterity])
-            recruit_->dexterity = static_cast<short>(fd->base_stats[StatAxis::Dexterity]);
-        if (recruit_->constitution < fd->base_stats[StatAxis::Constitution])
-            recruit_->constitution = static_cast<short>(fd->base_stats[StatAxis::Constitution]);
-        if (recruit_->intelligence < fd->base_stats[StatAxis::Intelligence])
-            recruit_->intelligence = static_cast<short>(fd->base_stats[StatAxis::Intelligence]);
-        if (recruit_->armor < fd->base_stats[StatAxis::Armor])
-            recruit_->armor = static_cast<short>(fd->base_stats[StatAxis::Armor]);
-        if (recruit_->level < fd->base_stats[StatAxis::Level])
-            recruit_->upgrade_to_level(static_cast<short>(fd->base_stats[StatAxis::Level]));
-    }
 }
 
 // --- TrainSession ---

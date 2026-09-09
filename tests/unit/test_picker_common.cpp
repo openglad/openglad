@@ -5808,3 +5808,310 @@ TEST(PickerCommon, build_stamp_rect_is_centred)
             << "stamp is not centred on the button column";
     }
 }
+
+// --- WP5: cost overflow, geometry clamps, ownership loss, the family
+//     fallback and the empty company shelf ---------------------------------
+
+// A level whose XP price does not fit a signed 32-bit purse must read as
+// UNPRICED (0) instead of wrapping to a bargain. Save bytes carry the level
+// unchecked (see the untrusted-level note on calculate_exp), so HIRE and
+// TRAIN both have to survive one.
+TEST(PickerCommon, costs_refuse_a_level_whose_price_does_not_fit)
+{
+    init_family_registry();
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+
+    // 845 is the last level whose accumulated XP still fits INT32_MAX.
+    guy priced(FAMILY_SOLDIER);
+    priced.level = 845;
+    EXPECT_EQ(2142916000u + static_cast<std::uint32_t>(fd->hiring_cost),
+              og::ui::calculate_hire_cost(priced));
+
+    guy overflowed(FAMILY_SOLDIER);
+    overflowed.level = 846;
+    EXPECT_EQ(0u, og::ui::calculate_hire_cost(overflowed));
+
+    // TRAIN prices the same climb, and refuses it at the same step.
+    guy original(FAMILY_SOLDIER);
+    original.level = 1;
+    original.exp = 0;
+    guy trained(original);
+    trained.level = 845;
+    EXPECT_EQ(2142916000u, og::ui::calculate_train_cost(trained, original));
+    trained.level = 846;
+    EXPECT_EQ(0u, og::ui::calculate_train_cost(trained, original));
+}
+
+// The campaign list's geometry helpers are handed a cursor by the keyboard
+// and by the mouse; a row index off either end must land on a real row
+// rather than off the shelf.
+TEST(CampaignPickerLayout, row_and_title_rects_clamp_out_of_range_arguments)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+    ASSERT_GT(layout.list_rows, 1);
+
+    const og::ui::PickerRect first = og::ui::campaign_picker_row_rect(0);
+    const og::ui::PickerRect last =
+        og::ui::campaign_picker_row_rect(layout.list_rows - 1);
+    const og::ui::PickerRect below = og::ui::campaign_picker_row_rect(-3);
+    const og::ui::PickerRect above =
+        og::ui::campaign_picker_row_rect(layout.list_rows + 7);
+    EXPECT_EQ(first.y, below.y) << "a negative row draws as the first row";
+    EXPECT_EQ(last.y, above.y) << "a row past the end draws as the last row";
+    EXPECT_NE(first.y, last.y) << "the two ends really are different rows";
+
+    // A negative title length is an empty title band, not a negative width.
+    EXPECT_EQ(0, og::ui::campaign_title_rect(-1).w);
+    EXPECT_EQ(og::ui::campaign_title_rect(0).x,
+              og::ui::campaign_title_rect(-1).x);
+    EXPECT_EQ(60, og::ui::campaign_title_rect(10).w)
+        << "a real title is still ten glyphs wide";
+}
+
+// Arrowing UP past the top of the visible window scrolls the shelf back,
+// and a shelf with nothing on it never scrolls at all.
+TEST(CampaignPickerLayout, offset_for_cursor_scrolls_up_and_ignores_a_bare_shelf)
+{
+    using og::ui::campaign_list_offset_for_cursor;
+
+    EXPECT_EQ(0, campaign_list_offset_for_cursor(0, 2, 8, 6))
+        << "a cursor above the window pulls the window up to it";
+    EXPECT_EQ(1, campaign_list_offset_for_cursor(1, 2, 8, 6));
+    // Paired control: a cursor already inside the window leaves it alone.
+    EXPECT_EQ(2, campaign_list_offset_for_cursor(4, 2, 8, 6));
+
+    EXPECT_EQ(0, campaign_list_offset_for_cursor(3, 1, 0, 6))
+        << "no campaigns: no window";
+    EXPECT_EQ(0, campaign_list_offset_for_cursor(3, 1, 8, 0))
+        << "no rows on screen: no window";
+}
+
+// A cut that lands on whitespace must not leave a dangling space in front of
+// the ellipsis ("TALWOO ..") — the marker has to read as one token.
+TEST(BaseCampRoster, clip_with_ellipsis_never_leaves_a_dangling_space)
+{
+    // Paired control: an ordinary cut keeps its last letter.
+    EXPECT_EQ("SOUTH OF..",
+              og::ui::clip_with_ellipsis("SOUTH OF TALWOOD", 12));
+    // A double space at the cut: both spaces come off before the marker.
+    EXPECT_EQ("TALWOO..",
+              og::ui::clip_with_ellipsis("TALWOO  D FOREST", 10));
+    // A budget too narrow for a word cut still drops the trailing space.
+    EXPECT_EQ("A..", og::ui::clip_with_ellipsis("A BCDEF", 4));
+}
+
+// A .gtl family byte the registry does not carry (an unmounted pack class)
+// must price and fight as a SOLDIER, not as a fighter with no combat bases
+// at all.
+TEST(PickerCommon, derived_stats_fall_back_to_the_soldier_bases)
+{
+    init_family_registry();
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    const FamilyDescriptor* mage = get_family_descriptor(FAMILY_MAGE);
+    ASSERT_NE(nullptr, soldier);
+    ASSERT_NE(nullptr, mage);
+    ASSERT_EQ(nullptr, get_family_descriptor(99))
+        << "family 99 must really be unknown for this test to mean anything";
+
+    guy stranger(FAMILY_MAGE);
+    stranger.family = 99;
+    const og::ui::DerivedStats fallback =
+        og::ui::compute_derived_stats(stranger);
+    const og::ui::DerivedStats as_soldier = og::ui::compute_derived_stats(
+        stranger, soldier->combat.hp, soldier->combat.melee_damage,
+        soldier->combat.stepsize, soldier->combat.fire_delay);
+    EXPECT_EQ(as_soldier.hp, fallback.hp);
+    EXPECT_EQ(as_soldier.mp, fallback.mp);
+    EXPECT_EQ(as_soldier.atk, fallback.atk);
+    EXPECT_EQ(as_soldier.def, fallback.def);
+    EXPECT_EQ(as_soldier.spd, fallback.spd);
+    EXPECT_EQ(as_soldier.atk_spd, fallback.atk_spd);
+    EXPECT_EQ(soldier->combat.fire_delay - stranger.get_fire_frequency_bonus(),
+              og::ui::derived_fire_delay(stranger))
+        << "an unknown family fires on the soldier's clock";
+
+    // Paired control: a family the registry DOES carry keeps its own bases,
+    // so the fallback is not simply "everybody is a soldier".
+    guy real_mage(FAMILY_MAGE);
+    const og::ui::DerivedStats mage_stats =
+        og::ui::compute_derived_stats(real_mage);
+    const og::ui::DerivedStats as_mage = og::ui::compute_derived_stats(
+        real_mage, mage->combat.hp, mage->combat.melee_damage,
+        mage->combat.stepsize, mage->combat.fire_delay);
+    EXPECT_EQ(as_mage.hp, mage_stats.hp);
+    EXPECT_EQ(as_mage.spd, mage_stats.spd);
+    EXPECT_NE(soldier->combat.hp, mage->combat.hp)
+        << "soldier 120 vs mage 90: the two bases are distinguishable";
+}
+
+// Selling the last row this machine OWNS still pays out and still compacts
+// the roster, but TRAIN must not then seat the player on somebody else's
+// fighter — the screen goes empty instead, and a second SELL is refused.
+TEST(PickerCommon, train_session_sell_goes_empty_when_only_foreign_rows_remain)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->name = "Theirs";
+    save.team_list[0]->teamnum = 1;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->name = "Mine";
+    save.team_list[1]->teamnum = 0;
+    save.team_size = 2;
+    save.m_totalcash[0] = 0;
+
+    EditableSlotPickerLobbyClient client;
+    client.editable_slots.fill(false);
+    client.editable_slots[1] = true;
+    ActivePickerLobbyClientGuard guard(&client);
+
+    og::ui::TrainSession session(save);
+    ASSERT_FALSE(session.empty());
+    ASSERT_EQ(1, session.current_slot());
+    EXPECT_EQ(187u, session.current_sell_value())
+        << "a base soldier sells for 75% of its 250-gold heart value";
+
+    EXPECT_EQ(og::ui::TrainSession::SellResult::Sold,
+              session.sell_current([] { return true; }));
+    EXPECT_EQ(187u, save.m_totalcash[0]) << "the sale still pays the seller";
+    EXPECT_EQ(1, save.team_size);
+    ASSERT_NE(nullptr, save.team_list[0]);
+    EXPECT_EQ("Theirs", save.team_list[0]->name)
+        << "the foreign row survives and compacts into slot 0";
+    EXPECT_EQ(nullptr, save.team_list[1]);
+    EXPECT_TRUE(session.empty())
+        << "no owned row is left, so TRAIN seats nobody";
+
+    // With nobody seated the sale verb refuses instead of selling the
+    // foreign row out from under its owner.
+    EXPECT_EQ(og::ui::TrainSession::SellResult::NoMember,
+              session.sell_current([] { return true; }));
+    EXPECT_EQ(187u, save.m_totalcash[0]) << "no second payout";
+    EXPECT_EQ(1, save.team_size);
+    EXPECT_EQ("Theirs", save.team_list[0]->name);
+}
+
+// The lobby can revoke a row while TRAIN is open on it. Pending edits are
+// then orphaned: they still move on screen, but nothing reaches the roster
+// and neither ACCEPT nor SELL will bank them.
+TEST(PickerCommon, train_session_edits_after_revocation_never_reach_the_roster)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Mine";
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+    const short roster_strength = save.team_list[0]->strength;
+
+    EditableSlotPickerLobbyClient client;
+    client.editable_slots.fill(false);
+    client.editable_slots[0] = true;
+    ActivePickerLobbyClientGuard guard(&client);
+
+    og::ui::TrainSession session(save);
+    ASSERT_FALSE(session.empty());
+
+    // Paired control: while the row is owned, the clamp holds the working
+    // copy at or above the roster's stats.
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 3);
+    EXPECT_EQ(roster_strength + 3, session.working_copy().strength);
+    session.decrease_stat(og::ui::TrainSession::Stat::Strength, 10);
+    EXPECT_EQ(roster_strength, session.working_copy().strength)
+        << "an owned row never trains below what it already has";
+
+    client.editable_slots[0] = false;
+
+    // The orphaned copy still takes the keystroke (there is no owner left to
+    // clamp it against) but the roster row and the wallet do not move.
+    session.decrease_stat(og::ui::TrainSession::Stat::Strength, 5);
+    EXPECT_EQ(roster_strength - 5, session.working_copy().strength);
+    EXPECT_EQ(roster_strength, save.team_list[0]->strength)
+        << "the real member is untouched by an orphaned edit";
+    EXPECT_TRUE(session.empty());
+    EXPECT_EQ(0u, session.current_cost());
+    EXPECT_FALSE(session.accept());
+    EXPECT_EQ(roster_strength, save.team_list[0]->strength);
+    EXPECT_EQ(og::ui::TrainSession::SellResult::NoMember,
+              session.sell_current([] { return true; }));
+    EXPECT_EQ(999999u, save.m_totalcash[0]) << "a revoked row cannot be sold";
+    EXPECT_EQ(1, save.team_size);
+}
+
+namespace {
+
+// Empties the save shelf for one test and puts every company back after,
+// however the test exits. Companies are the shared per-binary sandbox state
+// (unit_main points OPENGLAD_CONFIG_DIR at a temp dir), so CONTINUE's
+// "nothing on the shelf" case has to be arranged, not assumed.
+struct ParkedSaveShelf
+{
+    std::filesystem::path save_dir;
+    std::filesystem::path parked;
+
+    ParkedSaveShelf()
+        : save_dir(std::filesystem::path(get_user_path()) / "save"),
+          parked(std::filesystem::path(get_user_path()) / "wp5-parked-saves")
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(save_dir, ec);
+        std::filesystem::remove_all(parked, ec);
+        std::filesystem::create_directories(parked, ec);
+        for (const auto& entry : std::filesystem::directory_iterator(save_dir, ec))
+        {
+            if (entry.path().extension() != ".gtl")
+                continue;
+            std::error_code move_ec;
+            std::filesystem::rename(entry.path(),
+                                    parked / entry.path().filename(), move_ec);
+        }
+    }
+
+    ~ParkedSaveShelf()
+    {
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(parked, ec))
+        {
+            std::error_code move_ec;
+            std::filesystem::rename(entry.path(),
+                                    save_dir / entry.path().filename(), move_ec);
+        }
+        std::filesystem::remove_all(parked, ec);
+    }
+};
+
+} // namespace
+
+// CONTINUE on a device with no company at all must say NoCompany and leave
+// the loaded save alone — the button is hidden in that state, so anything
+// else would be a silent load of nothing.
+TEST(PickerCommon, open_most_recent_company_reports_an_empty_shelf)
+{
+    ParkedSaveShelf shelf;
+
+    SaveData save;
+    save.save_name = "UNTOUCHED";
+    SaveDataIoError io = SaveDataIoError::None;
+    EXPECT_EQ(og::ui::ContinueResult::NoCompany,
+              og::ui::open_most_recent_company(save, &io));
+    EXPECT_EQ("UNTOUCHED", save.save_name);
+    EXPECT_EQ(SaveDataIoError::None, io) << "no read was attempted";
+
+    // Paired control: one file on the shelf and CONTINUE reaches it. A
+    // damaged one is refused by name (Corrupt), which an unconditional
+    // NoCompany could never produce.
+    {
+        std::ofstream out(shelf.save_dir / "wp5damaged.gtl",
+                          std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.good());
+        out << "NOT A GTL FILE AT ALL";
+    }
+    EXPECT_EQ(og::ui::ContinueResult::Corrupt,
+              og::ui::open_most_recent_company(save, &io));
+    EXPECT_EQ("UNTOUCHED", save.save_name)
+        << "a corrupt company is never silently opened";
+
+    std::error_code ec;
+    std::filesystem::remove(shelf.save_dir / "wp5damaged.gtl", ec);
+}
