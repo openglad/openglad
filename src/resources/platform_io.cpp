@@ -104,15 +104,15 @@ std::string get_user_path()
         while (path.size() > 1 && path.back() == '/') {
             path.pop_back();
         }
-        if (path.empty()) {
-            return std::string("./");
-        }
         if (path.back() != '/') {
             path.push_back('/');
         }
         return path;
     };
 
+    // Every normalize_dir() call site below hands it a non-empty string, and
+    // the trim loop stops at one character, so the lambda never sees an empty
+    // path.
     if (const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR")) {
         if (config_dir[0] != '\0') {
             return normalize_dir(config_dir);

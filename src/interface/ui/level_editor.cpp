@@ -1677,8 +1677,6 @@ Sint32 LevelEditorData::display_panel(screen* s)
                 scentext.write_xy(lm, L_D(curline++), ("\"" + sel.name + "\"").c_str(), DARK_BLUE, 1);
                 showing_name = true;
             }
-            else if(selection.size() == 0)
-                curline++;  // Skip name line for guy with no name
 
             if(selection.size() == 1 || !showing_name)
             {
@@ -3767,8 +3765,11 @@ Sint32 level_editor()
         while((native_event = og::input_native::poll_event()) != nullptr)
         {
             og::input_native::EventData event_data{};
-            if (!og::input_native::decode_event(native_event, event_data))
-                continue;
+            // decode_event only fails on a null pointer (native_input.cpp
+            // 177-178) and this loop's condition already excludes that, so
+            // there is nothing here to guard against. The null arm stays
+            // exercised through handle_basic_editor_event(nullptr).
+            (void)og::input_native::decode_event(native_event, event_data);
 
             #ifdef USE_CONTROLLER_INPUT
 			// Inverse of handle_mouse_event's aspect-fitted mapping.

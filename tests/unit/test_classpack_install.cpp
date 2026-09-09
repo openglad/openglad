@@ -2146,3 +2146,150 @@ TEST(ClasspackInstallErrors, an_entry_without_a_declared_id_keeps_the_slot_id)
     EXPECT_EQ(after->declared_id, declared_before)
         << "an id-less entry must not clear the slot's string id";
 }
+
+// `hp` is the one tuning number every non-living order shares: it is what a
+// pack-declared door, mine, chest or spawner can take before it breaks. Each
+// order copies it out of its own entry struct, so a missing assignment in any
+// one of the four leaves that order's mod families on the core row's value
+// (0) and makes them indestructible. The sibling field checked beside each hp
+// is what proves the copy is a field-by-field patch, not a wholesale
+// overwrite.
+TEST(ClasspackInstall, declared_hp_reaches_every_non_living_order)
+{
+    ModSlotGuard guard;
+
+    ClasspackData data;
+    declare_or_die(
+        "og.family('weapon', { id = 'mod:plank', wire_id = 'auto',\n"
+        "                      hp = 7, init_lifetime = 33 })\n"
+        "og.family('weapon', { id = 'mod:twig', wire_id = 'auto',\n"
+        "                      init_lifetime = 44 })\n"
+        "og.family('effect', { id = 'mod:ember', wire_id = 'auto',\n"
+        "                      hp = 9, loops_animation = true })\n"
+        "og.family('treasure', { id = 'mod:urn', wire_id = 'auto',\n"
+        "                        hp = 11, init_frame = 2 })\n"
+        "og.family('generator', { id = 'mod:kiln', wire_id = 'auto',\n"
+        "                         hp = 13, editor_label = 'KILN' })\n",
+        data);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 5);
+
+    const WeaponFamilyDescriptor* w = get_weapon_family_descriptor(21);
+    ASSERT_NE(w, nullptr);
+    EXPECT_EQ(7.0f, w->hp);
+    EXPECT_EQ(33, w->init_lifetime) << "the sibling field lands too";
+
+    const EffectFamilyDescriptor* e = get_effect_family_descriptor(21);
+    ASSERT_NE(e, nullptr);
+    EXPECT_EQ(9.0f, e->hp);
+    EXPECT_TRUE(e->loops_animation);
+
+    const TreasureFamilyDescriptor* t = get_treasure_family_descriptor(21);
+    ASSERT_NE(t, nullptr);
+    EXPECT_EQ(11.0f, t->hp);
+    EXPECT_EQ(2, t->init_frame);
+
+    const GeneratorFamilyDescriptor* g = get_generator_family_descriptor(21);
+    ASSERT_NE(g, nullptr);
+    EXPECT_EQ(13.0f, g->hp);
+    EXPECT_STREQ("KILN", g->editor_label);
+
+    // Paired control: the sibling weapon declares no hp and keeps the core
+    // row's value instead of being zeroed by the patch.
+    const WeaponFamilyDescriptor* quiet = get_weapon_family_descriptor(22);
+    ASSERT_NE(quiet, nullptr);
+    EXPECT_EQ(0.0f, quiet->hp) << "absent hp keeps the copied core row";
+    EXPECT_EQ(44, quiet->init_lifetime);
+}
+
+namespace {
+
+// A pack whose families/ and scripts/ directories each hold one zero-byte
+// .lua beside one real one. A zero-byte file is what a truncated download or
+// an interrupted editor save leaves behind.
+std::filesystem::path make_scratch_empty_chunk_pack()
+{
+    std::string templ =
+        (std::filesystem::temp_directory_path() / "og_emptychunk_XXXXXX")
+            .string();
+    char* made = ::mkdtemp(templ.data());
+    if (made == nullptr)
+        return {};
+    const std::filesystem::path root(made);
+    std::error_code ec;
+    std::filesystem::create_directories(root / "families", ec);
+    std::filesystem::create_directories(root / "scripts", ec);
+    if (ec)
+        return {};
+    const auto put = [&](const std::filesystem::path& p,
+                         const std::string& bytes) {
+        std::ofstream out(p, std::ios::binary);
+        out << bytes;
+    };
+    // "aaa" sorts before "good": the walk meets the empty file FIRST, so a
+    // missing skip would abort or mis-register before the good one is seen.
+    put(root / "families" / "aaa.lua", "");
+    put(root / "families" / "good.lua",
+        "og.pack{ id = 'org.test.emptychunk' }\n"
+        "og.family('living', { id = 'emptychunk:sole', wire_id = 31,\n"
+        "                      name = 'SOLE' })\n");
+    put(root / "scripts" / "aaa.lua", "");
+    put(root / "scripts" / "good.lua", "-- intentionally inert\n");
+    return root;
+}
+
+}  // namespace
+
+// A zero-byte pack chunk is skipped, not registered: registering it would put
+// an empty source into the coverage inventory (a chunk with no lines that can
+// never be covered) and, for families/, hand the declaration pass a file that
+// declares nothing. The good neighbour behind it must still install — that is
+// what makes this a skip rather than an abort.
+TEST(ClasspackSplitLayout, zero_byte_chunks_are_skipped_and_the_rest_installs)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+    const std::filesystem::path root = make_scratch_empty_chunk_pack();
+    ASSERT_FALSE(root.empty());
+
+    struct Mount {
+        std::filesystem::path root;
+        bool ok = false;
+        ~Mount()
+        {
+            if (ok) {
+                (void)og::resources::unmount(root.string().c_str());
+                og::resources::refresh_pack_scripts();
+            }
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
+    } mount{root,
+            og::resources::mount(root.string().c_str(),
+                                 "packs/org.test.emptychunk", 1)};
+    ASSERT_TRUE(mount.ok);
+    og::resources::refresh_pack_scripts();
+
+    std::vector<std::string> family_chunks;
+    for (const og::script::PackScript& c : og::script::pack_family_chunks())
+        if (c.pack_id == "org.test.emptychunk")
+            family_chunks.push_back(c.chunk_name);
+    ASSERT_EQ(1u, family_chunks.size())
+        << "families/aaa.lua is empty and must not be registered";
+    EXPECT_EQ("packs/org.test.emptychunk/families/good.lua",
+              family_chunks[0]);
+
+    std::vector<std::string> scripts;
+    for (const og::script::PackScript& c : og::script::pack_scripts())
+        if (c.pack_id == "org.test.emptychunk")
+            scripts.push_back(c.chunk_name);
+    ASSERT_EQ(1u, scripts.size())
+        << "scripts/aaa.lua is empty and must not be registered";
+    EXPECT_EQ("packs/org.test.emptychunk/scripts/good.lua", scripts[0]);
+
+    // The skip is a skip: the family declared behind the empty file is live.
+    const int sole = og::families::resolve_family_string_id(
+        Order::Living, "emptychunk:sole");
+    EXPECT_EQ(31, sole);
+    ASSERT_NE(nullptr, get_family_descriptor(31));
+    EXPECT_STREQ("SOLE", get_family_descriptor(31)->name);
+}

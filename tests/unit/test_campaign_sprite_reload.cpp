@@ -336,3 +336,61 @@ TEST_F(CampaignSpriteReloadTest,
     ASSERT_TRUE(apply_sprite_sheet_setting());
     EXPECT_NE(gen_mounted, og::resources::sprite_source_generation());
 }
+
+// The editor-save remount re-prepends the user's sheet, and it can fail two
+// ways that must NOT be reported the same. A PhysFS unmount it cannot
+// perform means the search order is whatever it already was — no loader is
+// stale, so no generation bump. A sheet directory that has vanished really
+// leaves the search path, and every live loader IS stale — so that one bumps
+// and clears the tracker. Getting these backwards either strands loaders on
+// bytes that are gone or re-decodes every sprite on a harmless refusal.
+TEST_F(CampaignSpriteReloadTest, reassert_reports_its_two_failure_shapes_apart)
+{
+    install_sheet_fixture();
+    cfg.apply_setting("graphics", "sprite_sheet", kSheetName);
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    const std::string dir = sheet_dir().string();
+    ASSERT_EQ(sheet_footman_bytes(),
+              og::resources::read_file("pix/footman.png"));
+
+    // (1) The sheet left the search path behind the tracker's back.
+    ASSERT_TRUE(og::resources::unmount(dir.c_str()));
+    const std::vector<std::uint8_t> stock_footman =
+        og::resources::read_file("pix/footman.png");
+    ASSERT_FALSE(stock_footman.empty()) << "the shipped pix/ tree is mounted";
+    ASSERT_NE(sheet_footman_bytes(), stock_footman);
+
+    const unsigned gen_before_refusal =
+        og::resources::sprite_source_generation();
+    EXPECT_FALSE(reassert_sprite_sheet_mount())
+        << "an unmount PhysFS refuses is a failed re-assert";
+    EXPECT_EQ(gen_before_refusal, og::resources::sprite_source_generation())
+        << "keeping the current search order is not a source change";
+    EXPECT_EQ(stock_footman, og::resources::read_file("pix/footman.png"))
+        << "and the search order really is unchanged";
+
+    // Control: put PhysFS and the tracker back in agreement and the same
+    // call succeeds, which is what makes the refusal above a refusal.
+    ASSERT_TRUE(og::resources::mount(dir.c_str(), "pix/", 0));
+    EXPECT_TRUE(reassert_sprite_sheet_mount());
+    EXPECT_EQ(sheet_footman_bytes(),
+              og::resources::read_file("pix/footman.png"));
+
+    // (2) The sheet directory itself is gone: the unmount succeeds, the
+    // re-mount cannot, so the sheet is dropped for real.
+    remove_sheet_fixture();
+    const unsigned gen_before_drop =
+        og::resources::sprite_source_generation();
+    EXPECT_FALSE(reassert_sprite_sheet_mount());
+    EXPECT_NE(gen_before_drop, og::resources::sprite_source_generation())
+        << "the sheet really left the search path: loaders are stale";
+    EXPECT_EQ(stock_footman, og::resources::read_file("pix/footman.png"))
+        << "pix/ falls back to the shipped art";
+
+    // The tracker was cleared, so the next re-assert is the silent no-op
+    // rather than a third failure.
+    const unsigned gen_after_drop =
+        og::resources::sprite_source_generation();
+    EXPECT_TRUE(reassert_sprite_sheet_mount());
+    EXPECT_EQ(gen_after_drop, og::resources::sprite_source_generation());
+}
