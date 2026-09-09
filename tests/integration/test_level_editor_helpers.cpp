@@ -42,6 +42,7 @@ bool prompt_for_string(const std::string& message, std::string& result);
 int level_editor_test_exercise_internal_helpers();
 int level_editor_test_decor_migrated_roundtrip();
 int level_editor_test_mouse_release_workflows();
+int level_editor_test_save_failure_reporting();
 enum class EventType;
 EventType handle_basic_editor_event(const void* native_event);
 
@@ -212,6 +213,16 @@ TEST(LevelEditorHelpers, level_editor_decor_migrated_gladiator_roundtrip)
         << "migrated-decor editor round-trip failed at the negated check index";
 }
 
+// A save the editor could not finish must report the failure and leave the
+// dirty flag standing, so the next exit still offers to save. Each refusal in
+// the exerciser sits beside the same click succeeding while the package is
+// mounted.
+TEST(LevelEditorHelpers, failed_saves_report_and_keep_the_level_dirty)
+{
+    ASSERT_EQ(0, level_editor_test_save_failure_reporting())
+        << "save-failure reporting failed at the negated check index";
+}
+
 TEST(LevelEditorHelpers, mouse_release_workflows_preserve_exact_editor_state)
 {
     ASSERT_EQ(0, level_editor_test_mouse_release_workflows())
@@ -263,6 +274,46 @@ TEST(LevelEditorHelpers, basic_event_outcomes_report_exact_release_and_quit_stat
         5, static_cast<int>(handle_basic_editor_event(&mouse_up)));
     EXPECT_EQ(0, editor.mouse_up_button)
         << "an already-released button reports no synthetic release";
+
+    // A release the editor DID hold names the button it let go of: the
+    // editor's click handlers dispatch on mouse_up_button, so mislabelling a
+    // release would fire the right-click (delete) action on a left click.
+    mouse.left = true;
+    mouse.right = false;
+    editor.mouse_up_button = -1;
+    EXPECT_EQ(
+        5, static_cast<int>(handle_basic_editor_event(&mouse_up)));
+    EXPECT_EQ(MOUSE_LEFT, editor.mouse_up_button)
+        << "a held left button reports a left release";
+    EXPECT_FALSE(mouse.left) << "the release clears the held left button";
+
+    SDL_Event right_up{};
+    right_up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    right_up.button.button = SDL_BUTTON_RIGHT;
+    right_up.button.down = false;
+    mouse.left = false;
+    mouse.right = true;
+    editor.mouse_up_button = -1;
+    EXPECT_EQ(
+        5, static_cast<int>(handle_basic_editor_event(&right_up)));
+    EXPECT_EQ(MOUSE_RIGHT, editor.mouse_up_button)
+        << "a held right button reports a right release";
+    EXPECT_FALSE(mouse.right) << "the release clears the held right button";
+
+    // An event type the editor has no case for is swallowed: it must not be
+    // mistaken for a release (that would replay the last click's action) and
+    // must not end the editor session.
+    SDL_Event unhandled{};
+    unhandled.type = SDL_EVENT_CLIPBOARD_UPDATE;
+    editor.mouse_up_button = MOUSE_RIGHT;
+    EXPECT_EQ(
+        0, static_cast<int>(handle_basic_editor_event(&unhandled)));
+    EXPECT_EQ(MOUSE_RIGHT, editor.mouse_up_button)
+        << "an unhandled event leaves the recorded release alone";
+    EXPECT_EQ(
+        saved_world_end,
+        og::runtime::current_session->myscreen_->world().end)
+        << "an unhandled event does not end the editor session";
 
     trace_clear();
     SDL_Event quit_event{};
