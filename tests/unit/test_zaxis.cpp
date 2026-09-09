@@ -1676,3 +1676,145 @@ TEST(ZAxis, pit_death_unchanged)
         << "pit death is byte-for-byte the pre-fall-damage branch: no "
            "damage number";
 }
+
+// ---------------------------------------------------------------------------
+// Projectiles over air, the fall-damage floor, and the AI's stair fallback.
+// ---------------------------------------------------------------------------
+
+// A thrown knife that flies out over a hole drops a storey like the thrower
+// would — and when there is no storey left below it, it lands and is gone.
+// Before the floor-0 arm existed a knife over a ground-floor hole simply kept
+// flying across the pit.
+TEST(ZAxis, a_projectile_over_air_drops_a_floor_and_dies_on_the_lowest_one)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+    set_upper_floor_fill(w, 1, static_cast<unsigned char>(PIX_GRASS1));
+
+    // Two ground-floor holes, one under the faller and one under the diver.
+    const int hole_x = 5;
+    const int diver_x = 9;
+    const int row = 6;
+    w.grid.data[static_cast<std::size_t>(hole_x + row * w.grid.w)] =
+        static_cast<unsigned char>(PIX_AIR);
+    w.grid.data[static_cast<std::size_t>(diver_x + row * w.grid.w)] =
+        static_cast<unsigned char>(PIX_AIR);
+    // Punch the upper floor above the faller so it has air to fall through.
+    w.grid_for_floor(1).data.get()[
+        static_cast<std::size_t>(hole_x + row * w.grid.w)] =
+        static_cast<unsigned char>(PIX_AIR);
+
+    const auto place = [&](int floor, int gx) {
+        walker* k = w.add_ob(Order::Weapon, FAMILY_KNIFE);
+        EXPECT_NE(nullptr, k);
+        if (k == nullptr)
+            return k;
+        k->set_floor(static_cast<short>(floor));
+        k->setxy(gx * GRID_SIZE + GRID_SIZE / 2 - k->sizex() / 2,
+                 row * GRID_SIZE + GRID_SIZE / 2 - k->sizey() / 2);
+        k->set_act_type(ACT_FIRE);
+        k->set_lineofsight(30);
+        k->set_lastx(0.0f);
+        k->set_lasty(0.0f);
+        return k;
+    };
+
+    // Upper floor, over the hole: descends one storey and keeps flying.
+    walker* faller = place(1, hole_x);
+    ASSERT_NE(nullptr, faller);
+    faller->act();
+    EXPECT_EQ(0, faller->floor()) << "air under a projectile drops it a floor";
+    EXPECT_EQ(0, faller->dead());
+
+    // Ground floor, over the hole: nothing below, so it is spent.
+    walker* diver = place(0, diver_x);
+    ASSERT_NE(nullptr, diver);
+    diver->act();
+    EXPECT_EQ(0, diver->floor());
+    EXPECT_EQ(1, diver->dead())
+        << "a projectile over ground-floor air has nowhere left to fall";
+
+    // Control: the same knife over ordinary ground survives the same act().
+    walker* flier = place(0, diver_x + 3);
+    ASSERT_NE(nullptr, flier);
+    flier->act();
+    EXPECT_EQ(0, flier->floor());
+    EXPECT_EQ(0, flier->dead())
+        << "a projectile over solid ground must be untouched by the air rule";
+}
+
+// Fall damage is a percentage of max HP, so a 5 HP straggler would take 0.75
+// of a hit point from a two-storey drop and round away to nothing. The floor
+// keeps every real fall visible: one hit point, one damage number.
+TEST(ZAxis, a_fall_that_would_round_to_nothing_still_costs_one_hitpoint)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    walker* a = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(nullptr, a);
+    a->stats()->set_max_hitpoints(5.0f);
+    a->stats()->set_hitpoints(5.0f);
+
+    run_z(a);
+    EXPECT_EQ(0, a->floor());
+    EXPECT_FLOAT_EQ(4.0f, a->stats()->hitpoints())
+        << "0.15 x 5 = 0.75 must not round away: the floor is one hit point";
+    ASSERT_EQ(1u, a->damage_numbers.size());
+    EXPECT_FLOAT_EQ(1.0f, a->damage_numbers.back().value);
+    EXPECT_EQ(RED, a->damage_numbers.back().color);
+
+    // Control: the same drop on a walker whose 15% exceeds a hit point is
+    // charged its percentage, not the floor.
+    walker* b = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(nullptr, b);
+    b->stats()->set_max_hitpoints(100.0f);
+    b->stats()->set_hitpoints(100.0f);
+    run_z(b);
+    EXPECT_EQ(0, b->floor());
+    EXPECT_FLOAT_EQ(85.0f, b->stats()->hitpoints());
+    ASSERT_EQ(1u, b->damage_numbers.size());
+    EXPECT_FLOAT_EQ(15.0f, b->damage_numbers.back().value);
+}
+
+// When a foe is on another floor and no path leads to it, the bot routes to
+// the stair that leads that way instead of mirroring the foe's position on
+// its own floor. Two answers are "no route": the foe is not on another floor
+// at all, and this floor has no stair going that way.
+TEST(ZAxis, path_toward_stair_answers_only_when_a_stair_leads_that_way)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+    set_upper_floor_fill(w, 1, static_cast<unsigned char>(PIX_GRASS1));
+
+    walker* a = spawn_on_cell(w, 0, 4, 4);
+    ASSERT_NE(nullptr, a);
+    ASSERT_EQ(0, a->floor());
+
+    EXPECT_FALSE(a->stats()->path_toward_stair(0))
+        << "a foe on our own floor is not a stair problem";
+    EXPECT_TRUE(a->path_to_foe.empty());
+
+    EXPECT_FALSE(a->stats()->path_toward_stair(1))
+        << "no up-stair on this floor: there is no route to give";
+    EXPECT_TRUE(a->path_to_foe.empty());
+
+    // One up-stair, a few cells away: now there is a route.
+    const int stair_x = 9;
+    const int stair_y = 4;
+    w.grid.data[static_cast<std::size_t>(stair_x + stair_y * w.grid.w)] =
+        static_cast<unsigned char>(PIX_ZSTAIR_UP);
+    EXPECT_TRUE(a->stats()->path_toward_stair(1));
+    EXPECT_FALSE(a->path_to_foe.empty())
+        << "an answered stair route must leave a path behind it";
+
+    // A foe BELOW still finds nothing: the up-stair leads the wrong way.
+    a->path_to_foe.clear();
+    a->set_floor(1);
+    EXPECT_FALSE(a->stats()->path_toward_stair(2))
+        << "floor 1 has no up-stair painted on it";
+    EXPECT_TRUE(a->path_to_foe.empty());
+}
