@@ -800,6 +800,10 @@ TEST(PickerFuncs, how_many_with_team)
     // Additional picker utility/state coverage without registering new tests.
     ASSERT_EQ(-1, get_scen_num_from_filename(nullptr)) << "null input should return -1";
     ASSERT_EQ(-1, get_scen_num_from_filename("scen")) << "no numeric suffix should return -1";
+    // A tail that is present but not a number is refused too: the scenario
+    // list must not read "scen." or "scen_" as scenario 0.
+    ASSERT_EQ(-1, get_scen_num_from_filename("scen.")) << "a non-numeric tail should return -1";
+    ASSERT_EQ(-1, get_scen_num_from_filename("scen_")) << "a non-numeric tail should return -1";
     ASSERT_EQ(123, get_scen_num_from_filename("scen123")) << "numeric suffix should parse";
     ASSERT_EQ(42, get_scen_num_from_filename("file42")) << "mixed prefix should parse trailing number";
 
@@ -3961,15 +3965,19 @@ TEST(PickerFuncs, local_lobby_closes_the_seat_door_after_a_confirmed_start)
 
     for (auto& member : save.team_list)
         member.reset();
-    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->name = "Starter";
-    save.team_list[0]->teamnum = 0;
-    // The second seat needs a fighter of its own colour, or the start is
-    // denied for an uncontrollable seat before the lock is ever taken.
-    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
-    save.team_list[1]->name = "Second";
-    save.team_list[1]->teamnum = 1;
-    save.team_size = 2;
+    // One fighter per colour: every seat added below needs a fighter of its
+    // own colour, or the start is denied for an uncontrollable seat before
+    // the lock is ever taken.
+    for (int index = 0; index < MAX_PLAYERS; ++index)
+    {
+        save.team_list[static_cast<std::size_t>(index)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(index)]->name =
+            std::format("Seat {}", index + 1);
+        save.team_list[static_cast<std::size_t>(index)]->teamnum =
+            static_cast<short>(index);
+    }
+    save.team_size = static_cast<unsigned char>(MAX_PLAYERS);
     save.my_team = 0;
     save.numplayers = 1;
     save.allied_mode = 0;
@@ -3978,16 +3986,27 @@ TEST(PickerFuncs, local_lobby_closes_the_seat_door_after_a_confirmed_start)
     picker_lobby_initialize_from_save();
     ASSERT_EQ(1u, picker_lobby_local_seat_count());
 
-    // Control arm: before the start the same door opens.
-    EXPECT_TRUE(picker_lobby_add_local_seat());
-    EXPECT_EQ(2u, picker_lobby_local_seat_count());
+    // Control arm: before the start, and below the build limit, the same
+    // door opens every time.
+    for (std::size_t expected = 2u;
+         expected <= static_cast<std::size_t>(MAX_PLAYERS); ++expected)
+    {
+        EXPECT_TRUE(picker_lobby_add_local_seat());
+        EXPECT_EQ(expected, picker_lobby_local_seat_count());
+    }
+
+    EXPECT_FALSE(picker_lobby_add_local_seat())
+        << "the build limit is MAX_PLAYERS seats on one machine";
+    EXPECT_EQ(static_cast<std::size_t>(MAX_PLAYERS),
+              picker_lobby_local_seat_count());
 
     ASSERT_TRUE(picker_lobby_request_start());
     ASSERT_TRUE(g_start_game_requested);
 
     EXPECT_FALSE(picker_lobby_add_local_seat())
         << "a locked lobby must not accept another seat";
-    EXPECT_EQ(2u, picker_lobby_local_seat_count());
+    EXPECT_EQ(static_cast<std::size_t>(MAX_PLAYERS),
+              picker_lobby_local_seat_count());
 
     // Slot-editable range guard: own slots stay editable, indexes outside
     // the private roster array are never editable.
