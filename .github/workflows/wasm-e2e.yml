@@ -96,14 +96,15 @@ jobs:
 
       # /versions is generated on EVERY run so the page always exists and a PR
       # preview says honestly which build it is. Only the production gate reads
-      # the Cloudflare deployment list (the token is a repository secret and
-      # forks never see it); everywhere else --offline emits a current-only
-      # page. The generator warns and exits 0 on API trouble by design: a
-      # missing index must never block a deploy.
+      # the Cloudflare deployment list, so the credentials are handed to the
+      # step only on that gate — off master this is Python over PR-authored
+      # code and it gets empty strings instead of the deploy token. Everywhere
+      # else --offline emits a current-only page. The generator warns and exits
+      # 0 on API trouble by design: a missing index must never block a deploy.
       - name: Generate /versions index
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && secrets.CLOUDFLARE_API_TOKEN || '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && secrets.CLOUDFLARE_ACCOUNT_ID || '' }}
           OG_VERSIONS_LIVE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && '1' || '0' }}
         run: |
           mode=--offline
@@ -323,6 +324,12 @@ jobs:
             --project-name=openglad
             --branch=${{ steps.stamp.outputs.alias }}
 
+      # --branch=master is passed explicitly, exactly as the alias and preview
+      # steps pass theirs. The checkout above is a bare SHA, so the runner sits
+      # on a detached HEAD; left to infer the branch, wrangler would read
+      # `git rev-parse --abbrev-ref HEAD` = "HEAD" and Cloudflare would file
+      # this as a PREVIEW deployment on a branch called "head" — production
+      # would silently stop updating while the run stayed green.
       - name: Deploy production to Cloudflare Pages
         if: >-
           github.event_name == 'push' &&
@@ -332,7 +339,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=openglad
+          command: pages deploy dist --project-name=openglad --branch=master
 
       - name: Upload test results
         if: ${{ !cancelled() }}
