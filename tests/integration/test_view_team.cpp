@@ -103,6 +103,7 @@ Sint32 create_train_menu(Sint32 arg1);
 extern bool g_start_game_requested;
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
@@ -3670,6 +3671,19 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     EXPECT_EQ("REMOVE PLAYER",
               buttons[kSeatSettingsRemoveIndex].label);
 
+    // A NO answer is a full stop. The prompt is deliberately NO-first
+    // BECAUSE this branch throws a seat (and its key bindings) away: a
+    // declined REMOVE must ask authority for nothing at all.
+    picker_testing_yes_or_no_queue_push(false);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsRemoveIndex, &state));
+    EXPECT_TRUE(lobby.remove_seat_calls.empty())
+        << "a declined REMOVE must not ask authority to drop the seat";
+    EXPECT_FALSE(state.removed) << "and the editor stays open on its seat";
+    EXPECT_EQ(2u, lobby.local_indices.size())
+        << "both seats are still seated";
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "the prompt WAS put to the player; only the answer was no";
+
     // REMOVE is deliberately NO-first; the queued affirmative drives the
     // destructive branch without weakening the live confirmation contract.
     picker_testing_yes_or_no_queue_push(true);
@@ -3682,6 +3696,8 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
         lobby.remove_seat_calls.front())
         << "the dense P# and authority token must name the same live seat";
     EXPECT_TRUE(state.removed);
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "the accepted answer is consumed too";
     EXPECT_FALSE(spec.frame_tick(&state, 0))
         << "the editor exits immediately after its selected seat leaves";
     ASSERT_TRUE(lobby.active_local_count.has_value());
@@ -3779,6 +3795,67 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
             replacement_state.local_slot,
             static_cast<int>(ControlDirectionMode::FourDirection),
             KEY_RIGHT));
+
+    picker_testing_yes_or_no_queue_clear();
+    reset_default_player_controls();
+    og::ui::install_seat_settings_state_for_screen(nullptr);
+#endif
+}
+
+// Offline, the LAST seat cannot leave: there is nobody left to hand the
+// game to, so the row is a no-op that never even puts the question. Asking
+// and then refusing would be worse than not asking — the player answers YES
+// and watches nothing happen. (Networked, the same row IS offered: leaving
+// the last local seat there means spectating, which is a real thing to do.)
+TEST(ViewTeam, seat_settings_remove_never_asks_the_last_offline_seat)
+{
+#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
+    GTEST_SKIP() << "remove/spectate is not compiled into single-seat builds";
+#else
+    InputHardwareSnapshotGuard input_guard;
+    picker_testing_yes_or_no_queue_clear();
+    reset_default_player_controls();
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.networked = false;
+    lobby.local_indices = {0};
+    lobby.active_local_count = 1;
+    lobby.players.push_back(
+        make_foreign_lobby_player(0, "solo", "MY COMPANY", 0, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = lobby.players.front().seat_id,
+        .player_index = lobby.players.front().player_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // A YES is queued: if the row asked, it would remove the seat.
+    picker_testing_yes_or_no_queue_push(true);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsRemoveIndex, &state));
+    EXPECT_TRUE(lobby.remove_seat_calls.empty())
+        << "the last offline seat is never dropped";
+    EXPECT_FALSE(state.removed);
+    EXPECT_EQ(1u, lobby.local_indices.size());
+    EXPECT_EQ(1, picker_testing_yes_or_no_queue_remaining())
+        << "the question was never put to the player";
+
+    // The paired control: with a SECOND offline seat the same row does ask,
+    // and the queued YES drops the seat.
+    lobby.local_indices.push_back(1);
+    lobby.active_local_count = 2;
+    lobby.players.push_back(
+        make_foreign_lobby_player(1, "duo", "MY COMPANY", 0, 0));
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kSeatSettingsRemoveIndex, &state));
+    ASSERT_EQ(1u, lobby.remove_seat_calls.size());
+    EXPECT_TRUE(state.removed);
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "this time the answer was consumed";
 
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();

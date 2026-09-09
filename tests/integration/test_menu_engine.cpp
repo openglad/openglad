@@ -53,6 +53,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -4477,6 +4478,39 @@ TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
     EXPECT_EQ("1", cfg.get_setting("controls", "player1_view_zoom"));
     spec.nav.rewire(buttons, count, highlighted);
     EXPECT_EQ("ZOOM: 0.9X", buttons[kSeatSettingsZoomRowMP].label);
+
+    // FOES and SCORE, the two rows the HUD dispatcher's tail arms select.
+    // A ternary that landed one row short would toggle SCORE when the
+    // player asked for FOES — both faces would still relabel, so only
+    // reading each row's OWN carrier catches it.
+    for (const auto& [row_index, row_label, cfg_key, on_text, off_text] :
+         {std::tuple<int, int, const char*, const char*, const char*>{
+              kSeatSettingsHudFoesIndex, kSeatSettingsHudFoesRowMP,
+              "player1_hud_foes", "FOES: ON", "FOES: OFF"},
+          std::tuple<int, int, const char*, const char*, const char*>{
+              kSeatSettingsHudScoreIndex, kSeatSettingsHudScoreRowMP,
+              "player1_hud_score", "SCORE: ON", "SCORE: OFF"}})
+    {
+        cfg.apply_setting("controls", cfg_key, "1");
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_EQ(on_text, buttons[row_label].label);
+
+        EXPECT_EQ(MENU_OK, spec.on_spec_row(row_index, &state));
+        EXPECT_EQ("0", cfg.get_setting("controls", cfg_key));
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_EQ(off_text, buttons[row_label].label);
+
+        EXPECT_EQ(MENU_OK, spec.on_spec_row(row_index, &state));
+        EXPECT_EQ("1", cfg.get_setting("controls", cfg_key))
+            << "the row toggles back through its own carrier";
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_EQ(on_text, buttons[row_label].label);
+    }
+    // ...and neither row touched the other's carrier, or the RADAR/HP ones.
+    EXPECT_EQ("1", cfg.get_setting("controls", "player1_hud_foes"));
+    EXPECT_EQ("1", cfg.get_setting("controls", "player1_hud_score"));
+    EXPECT_EQ("0", cfg.get_setting("controls", "player1_hud_radar"))
+        << "the RADAR row above left it off; the HUD rows are independent";
 
     // A seat WITHOUT a live viewscreen (Base Camp slot beyond numviews):
     // cfg is the carrier, and the label reads it back.
