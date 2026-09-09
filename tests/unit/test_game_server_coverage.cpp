@@ -4,6 +4,7 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -268,6 +269,25 @@ std::optional<og::sim::PauseBroadcastMessage> find_pause_broadcast(
             continue;
         if (auto pause = og::sim::deserialize_pause_broadcast_message(sent.data))
             return pause;
+    }
+    return std::nullopt;
+}
+
+std::optional<og::sim::ControlChangeMessage> find_control_change(
+    const CoverageTransport& transport,
+    og::sim::PeerId peer_id)
+{
+    for (const auto& sent : transport.sent())
+    {
+        if (sent.peer_id != peer_id)
+            continue;
+        og::sim::TransportEnvelope envelope;
+        if (!og::sim::decode_transport_envelope(sent.data, envelope))
+            continue;
+        if (envelope.message_type != og::sim::kControlChangeMessageType)
+            continue;
+        if (auto change = og::sim::deserialize_control_change_message(sent.data))
+            return change;
     }
     return std::nullopt;
 }
@@ -1466,6 +1486,92 @@ TEST(GameServerCoverage, input_tick_past_the_future_window_is_dropped)
     ASSERT_EQ(expected_tick + kBound + 1u, fixture.world().tick_count_);
     EXPECT_EQ(0, control->yo_delay())
         << "an input one tick past the bound must have been dropped";
+}
+
+// Rule (src/gameplay/game_server.cpp:1665-1678, 2676-2685, 2833-2851): while a
+// respawn mode is running, the engine puts a dead hero back with its user tag
+// intact but the seat is holding a null control. The seat must adopt that
+// walker again — for a connected seat and for one still inside its disconnect
+// grace window — or the reviving player comes back as a statue: a body on
+// screen that nobody drives and a HUD reading someone else's health.
+TEST(GameServerCoverage, revived_walker_is_reclaimed_for_connected_and_grace_seats)
+{
+    {
+        TestGameWorld fixture;
+        fixture.world().respawn_mode = og::sim::kRespawnModeHeroes;
+        CoverageTransport transport;
+        og::sim::GameServer server(fixture.world(), fixture.events, transport);
+        transport.set_connected({96u});
+        server.poll_incoming_messages();
+        server.connect_client(96u);
+
+        walker* const revived =
+            fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, revived);
+        revived->setxy(64, 64);
+        revived->set_user(0);
+        revived->set_act_type(ACT_CONTROL);
+        ASSERT_NE(nullptr, revived->stats());
+        const std::uint32_t revived_id = revived->entity_id();
+        const float revived_hp = revived->stats()->hitpoints();
+
+        // The seat is bound with no control at all: this is the state a hero
+        // leaves behind when it dies into the respawn engine.
+        server.bind_player(96u, 0u, fixture.world().my_team, nullptr);
+        ASSERT_EQ(nullptr, server.player_control(0));
+
+        server.step();
+        transport.queue_raw(
+            96u,
+            og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
+        server.step();
+
+        ASSERT_NE(nullptr, server.player_control(0));
+        EXPECT_EQ(revived_id, server.player_control(0)->entity_id());
+        EXPECT_EQ(revived_hp, fixture.world().control_hp);
+        const auto change = find_control_change(transport, 96u);
+        ASSERT_TRUE(change.has_value())
+            << "the mirror must be told which entity it now drives";
+        EXPECT_EQ(0u, change->player_index);
+        EXPECT_EQ(revived_id, change->entity_id);
+    }
+
+    {
+        TestGameWorld fixture;
+        fixture.world().respawn_mode = og::sim::kRespawnModeHeroes;
+        CoverageTransport transport;
+        og::sim::GameServer server(fixture.world(), fixture.events, transport);
+        transport.set_connected({97u});
+        server.poll_incoming_messages();
+        server.bind_player(97u, 0u, fixture.world().my_team, nullptr);
+
+        transport.set_connected({});
+        server.poll_incoming_messages();
+        ASSERT_EQ(1u, server.disconnected_players().size());
+        ASSERT_EQ(nullptr, server.disconnected_players().front().control);
+        ASSERT_EQ(nullptr, server.player_control(0));
+
+        walker* const revived =
+            fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, revived);
+        revived->setxy(64, 64);
+        revived->set_user(0);
+        revived->set_act_type(ACT_CONTROL);
+        ASSERT_NE(nullptr, revived->stats());
+        const std::uint32_t revived_id = revived->entity_id();
+        const float revived_hp = revived->stats()->hitpoints();
+
+        server.step();
+
+        ASSERT_NE(nullptr, server.player_control(0));
+        EXPECT_EQ(revived_id, server.player_control(0)->entity_id());
+        EXPECT_EQ(revived_hp, fixture.world().control_hp);
+        ASSERT_EQ(1u, server.disconnected_players().size());
+        ASSERT_NE(nullptr, server.disconnected_players().front().control);
+        EXPECT_EQ(revived_id,
+                  server.disconnected_players().front().control->entity_id())
+            << "a grace-window seat must adopt its revived hero too";
+    }
 }
 
 } // namespace
