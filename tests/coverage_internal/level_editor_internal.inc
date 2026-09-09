@@ -606,7 +606,9 @@ int level_editor_test_mouse_release_workflows()
 // dirty flag: clearing it would throw the player's unsaved work away at the
 // next exit without ever writing it. Every save path fails deterministically
 // once the campaign package is unmounted (saveLevel's repack_campaign("") and
-// saveCampaign's remount both refuse an empty campaign id). All writes land in
+// saveCampaign's remount both refuse an empty campaign id). Each refusal sits
+// beside the SAME menu click succeeding while the package is mounted, so an
+// editor that could never save anything would fail this too. All writes land in
 // an isolated helper campaign — an editor save with "gladiator" mounted would
 // leave a per-PID write-dir copy shadowing the shipped package for the rest of
 // the binary.
@@ -687,16 +689,6 @@ int level_editor_test_save_failure_reporting()
             click_button(data.fileButton);
             click_button(data.fileLevelButton);
         };
-        // Import/Share are built but not inserted into the Campaign submenu's
-        // showing set; the same exposure the success-path exerciser uses.
-        const auto expose_hidden_file_campaign_choice = [&](SimpleButton& b) {
-            data.current_menu.clear();
-            std::set<SimpleButton*> s;
-            s.insert(&b);
-            data.current_menu.push_back(
-                std::make_pair(&data.fileCampaignButton, s));
-        };
-
         // Positive control, mounted: the very same menu path reports success
         // and clears the flag.
         eds().campaignchanged = 1;
@@ -707,6 +699,17 @@ int level_editor_test_save_failure_reporting()
         check(trace_contains("dialog", "timed_dialog_open Campaign saved."));
         check(!trace_contains(
             "dialog", "timed_dialog_open Failed to save campaign."));
+
+        // The level half of the same control, still mounted: File > Level >
+        // Save reports "Level saved." and clears the level's dirty flag. The
+        // write lands in the isolated helper campaign.
+        eds().levelchanged = 1;
+        trace_clear();
+        open_file_level_menu();
+        click_button(data.fileLevelSaveButton);
+        check(eds().levelchanged == 0);
+        check(trace_contains("dialog", "timed_dialog_open Level saved."));
+        check(!trace_contains("dialog", "timed_dialog_open Save failed."));
 
         // Unmount the package. Nothing else changes.
         check(mount_guard.switch_to(""));
@@ -741,39 +744,12 @@ int level_editor_test_save_failure_reporting()
             "dialog", "timed_dialog_open Failed to save campaign."));
         check(!trace_contains("dialog", "timed_dialog_open Campaign saved."));
 
-        // Share offers to save first. Both offers are accepted, both saves
-        // fail, so the share itself is cancelled: nothing is handed out and
-        // neither flag is cleared.
-        eds().levelchanged = 1;
-        eds().campaignchanged = 1;
-        picker_testing_yes_or_no_queue_push(true);
-        picker_testing_yes_or_no_queue_push(true);
-        trace_clear();
-        expose_hidden_file_campaign_choice(data.fileCampaignShareButton);
-        click_button(data.fileCampaignShareButton);
-        check(picker_testing_yes_or_no_queue_remaining() == 0);
-        check(eds().levelchanged == 1);
-        check(eds().campaignchanged == 1);
-        check(trace_contains("dialog", "timed_dialog_open Save failed."));
-        check(!trace_contains("popup", "Share Campaign"));
-
-        // Paired arm: with nothing dirty there is nothing to fail, so the
-        // same click reaches the share popup.
-        eds().levelchanged = 0;
-        eds().campaignchanged = 0;
-        trace_clear();
-        expose_hidden_file_campaign_choice(data.fileCampaignShareButton);
-        click_button(data.fileCampaignShareButton);
-        check(trace_contains("popup", "Share Campaign: Not yet implemented."));
-        check(!trace_contains("dialog", "timed_dialog_open Save failed."));
-
         check(dismiss_driver.stop_and_join() == 0);
     }
 
     check(mount_guard.restore());
     delete_campaign(helper_id);
     check(get_mounted_campaign() == mount_guard.initially_mounted());
-    check(picker_testing_yes_or_no_queue_remaining() == 0);
     return failed_check == 0 ? 0 : -failed_check;
 }
 

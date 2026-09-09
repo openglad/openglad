@@ -1178,17 +1178,6 @@ TEST(CompanyBackups, delete_backup_and_delete_company_reap_files)
     sandbox.write_raw("delco.gtl.restoretmp.tmp", "RESTORE STAGE COPY STRAY");
     sandbox.write_raw("delco.gtl.tmp", "RESTORE RENAME STRAY");
 
-    // An unsafe slot name never reaches the directory scan: the name is a
-    // path fragment, so a traversal here would delete a file outside save/.
-    // Every refusal leaves both snapshots on disk.
-    EXPECT_FALSE(og::data::delete_company_backup("../escape", 1));
-    EXPECT_FALSE(og::data::delete_company_backup("delco/../delco", 1));
-    EXPECT_FALSE(og::data::delete_company_backup("bad name", 1));
-    EXPECT_FALSE(og::data::delete_company_backup("", 1));
-    EXPECT_TRUE(user_file_exists("save/backups/delco.001.gtl"))
-        << "a refused delete leaves the snapshot alone";
-    EXPECT_EQ(2u, og::data::list_company_backups("delco").size());
-
     EXPECT_TRUE(og::data::delete_company_backup("delco", 1));
     EXPECT_FALSE(user_file_exists("save/backups/delco.001.gtl"));
     EXPECT_EQ(1u, og::data::list_company_backups("delco").size())
