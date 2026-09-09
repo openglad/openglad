@@ -905,6 +905,24 @@ constexpr const char* kParsePages = R"LUA(og.register_campaign_hooks({
     if page_id == "badreplay" then
       return { title = "X", entries = { { id = "a", kind = "level", level = 1, replay = 1 } } }
     end
+    if page_id == "badlabel" then
+      return { title = "X", entries = { { id = "a", kind = "page", label = 5 } } }
+    end
+    if page_id == "badnote" then
+      return { title = "X", entries = { { id = "a", kind = "page", note = {} } } }
+    end
+    if page_id == "badcost" then
+      return { title = "X", entries = { { id = "a", kind = "action", cost = "sixty" } } }
+    end
+    if page_id == "baddone" then
+      return { title = "X", entries = { { id = "a", kind = "action", done = "yes" } } }
+    end
+    if page_id == "badlines" then
+      return { title = "X", lines = "one long line" }
+    end
+    if page_id == "badentries" then
+      return { title = "X", entries = 5 }
+    end
     if page_id == "boom" then
       error("boom")
     end
@@ -976,6 +994,17 @@ TEST_F(CampaignHooksTest, malformed_pages_answer_no_scripted_picker)
         {"badline", "lines[1] is not a string"},
         {"badlevel", ".level is not an integer"},
         {"badreplay", ".replay is not a boolean"},
+        // The optional-field readers. Each defaults cleanly when the key is
+        // absent (page_parse_happy_path's "bare" row), so a MISTYPED one must
+        // not read as absence: a label the author wrote and the picker
+        // silently dropped is the failure these catch.
+        {"badlabel", "entries[1].label is not a string"},
+        {"badnote", "entries[1].note is not a string"},
+        {"badcost", "entries[1].cost is not an integer"},
+        {"baddone", "entries[1].done is not a boolean"},
+        // The two containers themselves, as opposed to their elements.
+        {"badlines", "'lines' is not an array"},
+        {"badentries", "'entries' is not an array"},
     };
     for (const auto& c : cases) {
         EXPECT_FALSE(hooks::campaign_picker_page(c.page_id, page))
@@ -2059,4 +2088,218 @@ TEST_F(CampaignHooksTest, lineup_power_non_integer_answers)
             EXPECT_EQ(12345, power) << "refused: the caller's value stands";
     }
     EXPECT_TRUE(errors_contain("not a finite integer"));
+}
+
+// ---------------------------------------------------------------------------
+// Registrar shapes the key walk refuses
+// ---------------------------------------------------------------------------
+
+// A book is a table of NAMED hooks, and the walk that checks that has to
+// answer for the shapes a typo actually produces: a positional entry
+// (`{ fn }` instead of `{ picker_menu = fn }`), a hook key holding something
+// that is not a function, and the same two mistakes one level down inside
+// `lineup`. Each must stop the registration outright — a book that half
+// registered would serve a picker its author never wrote.
+TEST_F(CampaignHooksTest, the_registrar_refuses_mis_shaped_books_by_name)
+{
+    // A positional entry: the author wrote the function without its key.
+    register_script(R"LUA(og.register_campaign_hooks({
+  function(page_id) return { title = "X" } end,
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(errors_contain(
+        "keys are 'vars', 'picker_menu', 'picker_action', 'base_camp' and "
+        "'lineup' (got a number key)"));
+
+    // A hook key that is not a function. 'picker_action' has its own message
+    // so the author is not sent looking at 'picker_menu'.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id) return { title = "X" } end,
+  picker_action = 5,
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(errors_contain("'picker_action' must be a function"));
+
+    // The same positional mistake inside `lineup`, which has a key
+    // vocabulary of exactly one.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id) return { title = "X" } end,
+  lineup = { function(row) return 1 end },
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(errors_contain(
+        "the only 'lineup' key is 'power' (got a number key)"));
+
+    // The control: every one of those spelled correctly registers, so the
+    // three refusals above are the checks talking and not a dead registrar.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id) return { title = "X" } end,
+  picker_action = function(entry_id) return nil end,
+  lineup = { power = function(row) return 1 end },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+// ---------------------------------------------------------------------------
+// The declaration pass bows out of the BEHAVIOUR registrars
+// ---------------------------------------------------------------------------
+
+// The declaration pass is what CREATES families, so a chunk may legally
+// register hooks for a family that does not exist yet — its own, declared
+// three lines up. Resolving those ids during the declaration would fail on a
+// perfectly correct pack and take the whole pack down with it, so both
+// behaviour registrars bow out of that pass and land in the bind replay.
+TEST_F(CampaignHooksTest, the_declaration_pass_bows_out_of_behaviour_registrars)
+{
+    og::data::ClasspackData data;
+    register_pack_family_chunk(
+        {kPack, "campaigntest/families/a.lua",
+         R"LUA(og.family("living", { id = "test.campaign:newguy", name = "NEWGUY" })
+og.register_hooks("living", "test.campaign:newguy", {
+  on_death = function() return true end,
+})
+og.register_default_lineup({ power = function(row) return 7 end }))LUA"});
+    const DeclareResult result = declare_pack_families(kPack, data);
+    ASSERT_TRUE(result.ok) << result.error;
+    // The pass ran ON PAST both registrars: the family after them harvested.
+    ASSERT_EQ(1u, data.living.size());
+    EXPECT_EQ("test.campaign:newguy", data.living[0].id);
+    EXPECT_EQ("NEWGUY", *data.living[0].name);
+    clear_pack_family_chunks();
+
+    // The control: in an ordinary VM the same two calls are not no-ops at
+    // all. og.register_default_lineup installs a pricing function the bands
+    // read back, which is what the declaration pass must NOT have done.
+    EXPECT_FALSE(hooks::campaign_lineup_registered())
+        << "a declaration must install no behaviour";
+    register_script(R"LUA(og.register_default_lineup({
+  power = function(row) return row.level * 10 end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+    hooks::LineupPowerRow row;
+    row.level = 4;
+    long long power = -1;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(40, power);
+}
+
+// ---------------------------------------------------------------------------
+// The gold bindings refuse before the provider, not after
+// ---------------------------------------------------------------------------
+
+// A negative spend is a grant and a negative grant is a fine, so the sign
+// check has to happen in the binding — a campaign that wrote
+// `og.campaign_spend_gold(-500)` must not reach the wallet at all. "Refused"
+// is only worth asserting next to what the provider actually saw.
+TEST_F(CampaignHooksTest, negative_gold_amounts_never_reach_the_provider)
+{
+    std::int64_t gold = 100;
+    std::vector<std::int64_t> spends;
+    std::vector<std::int64_t> grants;
+    hooks::CampaignProviders providers;
+    providers.gold_get = [&]() { return gold; };
+    providers.gold_spend = [&](std::int64_t amount) {
+        spends.push_back(amount);
+        if (amount > gold)
+            return false;
+        gold -= amount;
+        return true;
+    };
+    providers.gold_grant = [&](std::int64_t amount) {
+        grants.push_back(amount);
+        gold += amount;
+    };
+    hooks::install_campaign_providers(std::move(providers));
+
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    local ok, err = pcall(og.campaign_spend_gold, -1)
+    og.log("spend " .. tostring(ok))
+    og.log("msg " .. err)
+    local ok2, err2 = pcall(og.campaign_grant_gold, -1)
+    og.log("grant " .. tostring(ok2))
+    og.log("msg2 " .. err2)
+    og.log("legal " .. tostring(og.campaign_spend_gold(40)))
+    og.campaign_grant_gold(10)
+    og.log("gold " .. og.campaign_gold())
+    return nil
+  end,
+}))LUA");
+
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    const std::vector<std::string>& log = vm_log();
+    ASSERT_EQ(6u, log.size());
+    EXPECT_EQ("spend false", log[0]);
+    EXPECT_NE(std::string::npos,
+              log[1].find("og.campaign_spend_gold: negative amount"))
+        << log[1];
+    EXPECT_EQ("grant false", log[2]);
+    EXPECT_NE(std::string::npos,
+              log[3].find("og.campaign_grant_gold: negative amount"))
+        << log[3];
+    // The paired positive: the same two bindings, spelled legally, DO move
+    // the wallet — so the refusals above are the sign check and not a dead
+    // binding.
+    EXPECT_EQ("legal true", log[4]);
+    EXPECT_EQ("gold 70", log[5]);
+    EXPECT_EQ(70, gold);
+    ASSERT_EQ(1u, spends.size());
+    EXPECT_EQ(40, spends[0]) << "the -1 spend never reached the wallet";
+    ASSERT_EQ(1u, grants.size());
+    EXPECT_EQ(10, grants[0]) << "the -1 grant never reached the wallet";
+}
+
+// Lua integers are 64-bit and a match knob is 32. The binding has to refuse
+// the wide value itself: handed on, it would arrive at the provider wrapped
+// into a small (or negative) number and quietly set a knob nobody asked for.
+TEST_F(CampaignHooksTest, a_match_value_past_int32_never_reaches_the_provider)
+{
+    std::map<std::string, std::int32_t> knobs = {{"score_limit", 5}};
+    std::vector<std::pair<std::string, std::int32_t>> writes;
+    hooks::CampaignProviders providers;
+    providers.match_get = [&](const std::string& name) -> std::int32_t {
+        const auto it = knobs.find(name);
+        return it == knobs.end() ? 0 : it->second;
+    };
+    providers.match_set = [&](const std::string& name, std::int32_t value) {
+        writes.emplace_back(name, value);
+        const auto it = knobs.find(name);
+        if (it == knobs.end())
+            return false;
+        it->second = value;
+        return true;
+    };
+    hooks::install_campaign_providers(std::move(providers));
+
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    local ok, err = pcall(og.campaign_match_set, "score_limit", 3000000000)
+    og.log("wide " .. tostring(ok))
+    og.log("msg " .. err)
+    og.log("legal " .. tostring(og.campaign_match_set("score_limit", 7)))
+    og.log("read " .. og.campaign_match_get("score_limit"))
+    return nil
+  end,
+}))LUA");
+
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    const std::vector<std::string>& log = vm_log();
+    ASSERT_EQ(4u, log.size());
+    EXPECT_EQ("wide false", log[0]);
+    EXPECT_NE(std::string::npos,
+              log[1].find("og.campaign_match_set: value out of int32 range"))
+        << log[1];
+    EXPECT_EQ("legal true", log[2]);
+    EXPECT_EQ("read 7", log[3]);
+    EXPECT_EQ(7, knobs.at("score_limit"));
+    ASSERT_EQ(1u, writes.size()) << "the wide write reached the provider";
+    EXPECT_EQ("score_limit", writes[0].first);
+    EXPECT_EQ(7, writes[0].second);
 }
