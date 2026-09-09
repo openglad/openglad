@@ -6881,10 +6881,10 @@ const MenuScreenSpec& difficulty_menu_screen_spec()
         .remote_start = RemoteStartScope::TeamBuildScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
         .polls_lobby = true,
-        // The match-rule callbacks keep their own
-        // picker_lobby_sync_settings_from_save() tails (Layer E: byte-for-
-        // byte legacy behavior), so the G12 single-point flag stays off.
-        .sync_settings_after_mutation = false,
+        // The match-rule callbacks each carry their own
+        // picker_lobby_sync_settings_from_save() tail (Layer E: byte-for-
+        // byte legacy behavior), so this screen needs no republish tail of
+        // its own after a handled row click.
         .draw_background = &options_panel_draw_background,
         .draw_content = &difficulty_draw_content,
         .exit_value = MENU_REDRAW,

@@ -11,6 +11,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/cloud_save_client.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
@@ -38,6 +39,8 @@ void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 void picker_testing_cloud_passphrase_queue_clear();
 void picker_testing_cloud_passphrase_queue_push(const char* value);
+
+#include "../../src/interface/ui/picker_sdl_defs.h"
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -353,5 +356,76 @@ TEST(CloudUi, upload_then_download_through_the_cloud_screen)
               og::runtime::current_session->myscreen_->save_data.save_name);
     ASSERT_TRUE(trace_contains("cloud_save", "opened cloudflow"));
 
+    cfg.data.erase("cloud");
+}
+
+// D9 (the passphrase IS the vault address): a refused passphrase must leave
+// the stored key exactly as it was. Overwriting it on a cancel or on a
+// too-short entry would silently repoint the player's cloud slot at an empty
+// vault — their band would still be up there, at an address nothing on the
+// machine remembers any more. Direct row dispatch (no picker_main flow):
+// og_test_menu_ui is the slowest group in the gate.
+TEST(CloudUi, passphrase_refusals_never_overwrite_the_stored_key)
+{
+    trace_clear();
+    cfg.data.erase("cloud");
+    picker_testing_cloud_passphrase_queue_clear();
+
+    // A key already in the vault-address slot: what the refusals must keep.
+    // Seeded straight into cfg (store_cloud_key would also rewrite the
+    // settings file, and this test's cost belongs to the row dispatch).
+    constexpr const char* kExistingKey = "deadbeefdeadbeef";
+    cfg.apply_setting("cloud", "key", kExistingKey);
+    ASSERT_EQ(kExistingKey, og::ui::cloud::stored_cloud_key());
+
+    const og::ui::MenuScreenSpec& spec = og::ui::cloud_save_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    Sint32 passphrase_row = -1;
+    for (int i = 0; i < spec.row_count; ++i) {
+        if (std::string(spec.rows[i].id) == "cloud_passphrase")
+            passphrase_row = spec.rows[i].arg;
+    }
+    ASSERT_NE(-1, passphrase_row) << "the CLOUD screen must carry a "
+                                     "PASSPHRASE row";
+
+    og::ui::CloudSaveScreenState state;
+    og::ui::install_cloud_save_state_for_screen(&state);
+
+    // 1. Cancelled prompt (the TESTING queue is empty — the prompt said no).
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(passphrase_row, &state));
+    EXPECT_EQ(kExistingKey, og::ui::cloud::stored_cloud_key())
+        << "a cancelled prompt must not repoint the vault";
+    EXPECT_EQ("", state.status_line)
+        << "a cancel is not an action and reports nothing";
+    EXPECT_FALSE(trace_contains("cloud_save", "passphrase_set"))
+        << "nothing was set, so nothing may be announced";
+    EXPECT_FALSE(state.key_set)
+        << "a cancel runs no state refresh at all";
+
+    // 2. A passphrase below the 8-character floor: refused in words, and the
+    // stored key is still the old one.
+    picker_testing_cloud_passphrase_queue_push("short");
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(passphrase_row, &state));
+    EXPECT_TRUE(trace_contains("popup", "CLOUD SAVE: Passphrase must be"))
+        << "a too-short passphrase says so";
+    EXPECT_EQ(kExistingKey, og::ui::cloud::stored_cloud_key())
+        << "a refused passphrase must not repoint the vault";
+    EXPECT_EQ("", state.status_line)
+        << "a refusal is not a result line";
+    EXPECT_FALSE(trace_contains("cloud_save", "passphrase_set"));
+
+    // 3. The paired positive arm: an accepted passphrase DOES replace the
+    // key, with the D2 pinned derivation, and says so on the status line.
+    picker_testing_cloud_passphrase_queue_push("correct horse battery");
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(passphrase_row, &state));
+    EXPECT_EQ("73270125791ba273", og::ui::cloud::stored_cloud_key())
+        << "an accepted passphrase derives and stores its own key";
+    EXPECT_EQ("Passphrase set.", state.status_line);
+    EXPECT_TRUE(state.key_set)
+        << "the refreshed screen state knows a key is present";
+    EXPECT_TRUE(trace_contains("cloud_save", "passphrase_set"));
+
+    og::ui::install_cloud_save_state_for_screen(nullptr);
+    picker_testing_cloud_passphrase_queue_clear();
     cfg.data.erase("cloud");
 }

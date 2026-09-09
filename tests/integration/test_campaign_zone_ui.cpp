@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <initializer_list>
 #include <map>
 #include <memory>
@@ -487,6 +488,31 @@ constexpr const char* kZoneScript = R"LUA(og.register_campaign_hooks({
           { id = "sip", label = "SIP", kind = "action" },
         },
       }
+    end
+    -- Direct-drive fixtures below; no interactive flow opens these pages,
+    -- so no existing row index moves. "long" overflows the 8-row window
+    -- for the pager tests, "roads" carries one deliberately over-budget
+    -- level label for the host-marker tests, and "void" is the page the
+    -- book refuses to hand back at all.
+    if page_id == "long" then
+      local entries = {}
+      for i = 1, 12 do
+        entries[i] = { id = "shelf" .. i, label = "SHELF " .. i,
+                       kind = "action" }
+      end
+      return { title = "LONG SHELF", entries = entries }
+    end
+    if page_id == "roads" then
+      return {
+        title = "ROADS",
+        entries = {
+          { id = "milestone", kind = "level", level = 1,
+            label = "ROADROADROADROADROADROADROADROADROADROADROADRO" },
+        },
+      }
+    end
+    if page_id == "void" then
+      return nil
     end
     return { title = "EMPTY" }
   end,
@@ -1401,6 +1427,449 @@ TEST(CampaignZoneUi, submenu_action_result_level_routes_the_gated_set_tail)
     og::ui::install_zone_submenu_state_for_screen(nullptr);
 }
 
+// Every refusal the submenu's shared level-set tail can give, on the same
+// page and through the same dispatch a click takes. Each one is one line on
+// the message strip and NO cursor movement — a book that quietly moved the
+// level under a refused click would launch the wrong arena at GO.
+TEST(CampaignZoneUi, zone_submenu_level_refusals_speak_and_move_no_cursor)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.my_team = 0;
+    save.scen_num = 1;
+    save.completed_levels.clear();
+    save.add_level_completed("gladiator", 2);
+    screen* const game = test_screen();
+    game->world().id = 1;
+    ASSERT_TRUE(game->load_level());
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_EQ(5u, session.page().rows.size());
+    ASSERT_EQ("ghost", session.page().rows[2].id);
+    ASSERT_EQ(9999, session.page().rows[2].level);
+    ASSERT_EQ("dice", session.page().rows[3].id);
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // 1. HOST GATE. A joiner's click on a level row is refused before the
+    // loader is ever consulted: the GHOST row points at a level that does
+    // not exist, and the joiner is still told the HOST line, not the
+    // closed-road one. The gate is the first thing in the tail for a
+    // reason — a joiner must never learn about the host's level list by
+    // watching which rows fail differently.
+    {
+        JoinerZoneLobbyClient lobby;
+        og::ui::IPickerLobbyClient* const saved_client =
+            og::ui::active_picker_lobby_client();
+        og::ui::install_active_picker_lobby_client(&lobby);
+        EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(2, &st));
+        og::ui::install_active_picker_lobby_client(saved_client);
+
+        EXPECT_EQ(1, save.scen_num)
+            << "a joiner's level click must not move the cursor";
+        EXPECT_EQ(1, game->world().id)
+            << "and must not load anything either";
+        EXPECT_TRUE(trace_contains("zone", "level_denied_nonhost 9999"));
+        EXPECT_EQ(std::string(og::ui::kCampaignPickerHostGuardMessage),
+                  st.toast);
+    }
+
+    // The paired control: the SAME row as HOST gets the campaign's own
+    // closed-road voice from the load-with-rollback arm instead.
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(2, &st));
+    EXPECT_EQ(1, save.scen_num);
+    EXPECT_EQ(std::string(og::ui::kCampaignLevelClosedMessage), st.toast)
+        << "as host the same row answers with the loader's refusal, in the "
+           "campaign's voice";
+
+    // 2. ALREADY THERE. DICE answers with level 2, which is earned, so the
+    // first click commits...
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(3, &st));
+    EXPECT_EQ(2, save.scen_num);
+    ASSERT_EQ(2, game->world().id);
+
+    // ...and the second click on the same row is refused as unchanged. The
+    // refusal owns the line: "Already on that level. GO when ready." plus
+    // the roll's own "The dice land." is 52 glyphs against a 41-glyph
+    // strip, so the pack's flavour is dropped whole rather than cut, and
+    // never in the refusal's place.
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(3, &st));
+    EXPECT_EQ(2, save.scen_num) << "an unchanged set moves nothing";
+    EXPECT_TRUE(trace_contains("zone", "level_unchanged 2"));
+    EXPECT_EQ(std::string(og::ui::kCampaignLevelUnchangedMessage), st.toast);
+    EXPECT_FALSE(trace_contains("zone", "toast The dice land."))
+        << "the pack's line must never speak in the refusal's place";
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+}
+
+// A purchase the company cannot afford must cost it nothing and must not
+// run the persistence tail: a refused BREAD that still debited (or still
+// autosaved a half-applied state) is a shop that charges for nothing.
+TEST(CampaignZoneUi, zone_submenu_refused_purchase_debits_nothing)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.my_team = 0;
+    save.scen_num = 1;
+    save.m_totalcash[0] = 0;
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_EQ("bread", session.page().rows[0].id);
+    ASSERT_EQ(10, session.page().rows[0].cost);
+    ASSERT_FALSE(session.page().rows[0].affordable);
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(0, &st));
+    EXPECT_EQ(0u, save.m_totalcash[0]) << "a refused purchase debits nothing";
+    EXPECT_EQ("Not enough gold.", st.toast);
+    EXPECT_TRUE(trace_contains("zone", "refused Not enough gold."));
+    EXPECT_FALSE(trace_contains("zone", "acted_autosave"))
+        << "a refusal never runs the Acted persistence tail";
+    EXPECT_FALSE(trace_contains("zone", "toast Bread eaten."))
+        << "and the book's own line never speaks for a purchase that did "
+           "not happen";
+
+    // The paired control: with coin in the purse the same row buys.
+    trace_clear();
+    save.m_totalcash[0] = 100;
+    session.refresh();
+    ASSERT_TRUE(session.page().rows[0].affordable);
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(0, &st));
+    EXPECT_EQ(90u, save.m_totalcash[0]) << "the accepted purchase debits 10";
+    EXPECT_EQ("Bread eaten.", st.toast);
+    EXPECT_TRUE(trace_contains("zone", "acted_autosave"));
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+}
+
+// The submenu pagers step the 8-row window and SATURATE at both ends: a
+// PREV at page 0 (or a NEXT on the last page) is not a page change, so it
+// must not trace one and must not move the window. A pager that wrapped —
+// or that traced a flip it never made — makes a long shelf unreadable.
+TEST(CampaignZoneUi, zone_submenu_pagers_step_and_saturate)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("long"));
+    ASSERT_EQ(12u, session.page().rows.size());
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+    ASSERT_TRUE(st.page.multi_page());
+    ASSERT_EQ(0, st.page.first_index());
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // PREV on the first page: no move, no flip trace.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuPrevIndex, &st));
+    EXPECT_EQ(0, st.page.first_index());
+    EXPECT_EQ(0, count_trace_containing("zone", "submenu_page"));
+
+    // NEXT: the window moves to rows 8..11 and the flip is announced.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuNextIndex, &st));
+    EXPECT_EQ(8, st.page.first_index());
+    EXPECT_EQ(12, st.page.end_index());
+    EXPECT_EQ(1, count_trace_containing("zone", "submenu_page"));
+    EXPECT_TRUE(trace_contains("zone", "submenu_page 2/2"));
+
+    // NEXT on the last page: saturated, same silence as PREV at the top.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuNextIndex, &st));
+    EXPECT_EQ(8, st.page.first_index());
+    EXPECT_EQ(1, count_trace_containing("zone", "submenu_page"));
+
+    // PREV comes home.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuPrevIndex, &st));
+    EXPECT_EQ(0, st.page.first_index());
+    EXPECT_EQ(2, count_trace_containing("zone", "submenu_page"));
+    EXPECT_TRUE(trace_contains("zone", "submenu_page 1/2"));
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+}
+
+namespace {
+
+// A camp whose only docket row is a door to a page the book will not hand
+// back: the Base Camp half of the unreadable-page rule.
+constexpr const char* kVoidPageZoneScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "void", label = "THE VOID", kind = "page" },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+  picker_menu = function(page_id)
+    if page_id == "void" then
+      return nil
+    end
+    return { title = "SOMEWHERE", entries = {} }
+  end,
+}))LUA";
+
+} // namespace
+
+// A page door the book refuses to open must say so on the message line and
+// build no screen at all. The refusal is deliberately NOT a modal: a modal
+// here strands a networked joiner mid-GO behind an OK button nobody else
+// can see.
+TEST(CampaignZoneUi, unreadable_page_speaks_and_opens_no_screen)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+
+    // The fixture's own control: only "void" is unreadable — "stores" on
+    // the same book opens fine, so the refusal below is the page, not the
+    // registration.
+    {
+        og::ui::CampaignPickerSession probe(save);
+        EXPECT_TRUE(probe.open_at("stores"));
+        EXPECT_FALSE(probe.open_at("void"));
+    }
+
+    // The blocking wrapper never reaches its screen: `opened` starts true
+    // (what the real caller passes), and nothing is installed in the
+    // engine's live button table.
+    clear_allbuttons();
+    bool opened = true;
+    EXPECT_EQ(MENU_REDRAW, og::ui::run_campaign_zone_submenu("void", &opened));
+    EXPECT_FALSE(opened) << "the wrapper must report the failed open";
+    EXPECT_TRUE(trace_contains("zone", "submenu_unreadable void"));
+    EXPECT_EQ(nullptr, og::runtime::current_session->allbuttons_[0])
+        << "a page that cannot be read builds no screen";
+
+    // ...and the Base Camp caller turns that report into the message-line
+    // toast the player actually reads.
+    SyntheticCampaignScriptGuard::install(kVoidPageZoneScript);
+    trace_clear();
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(1u, zone.actions()[0].rows.size());
+    ASSERT_EQ("void", zone.actions()[0].rows[0].id);
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& camp =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, camp.on_spec_row);
+    EXPECT_EQ(MENU_REDRAW,
+              camp.on_spec_row(kBaseCampZoneActionBase + 0, &state));
+    EXPECT_EQ(std::string(og::ui::kCampaignPageUnreadableMessage),
+              state.toast);
+    EXPECT_TRUE(trace_contains("zone", "page_row void"));
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
+// A camp docket whose single row is a level with a deliberately over-budget
+// label, for the Base Camp half of the host-marker rule.
+constexpr const char* kLongRoadZoneScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "milestone", kind = "level", level = 1,
+            label = "ROADROADROADROADROADROADROADROADROADROADROADRO" },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA";
+
+} // namespace
+
+// A joiner cannot set the level, so every level row it can see says so —
+// and the marker is paid for out of the row's OWN label budget, never added
+// past the face. A marker bolted on top would push the last glyphs of every
+// long road name outside the bevel on both sides (labels are drawn centered
+// and unclipped). Both surfaces that draw level rows answer the same way.
+TEST(CampaignZoneUi, joiner_level_rows_pay_for_the_host_marker_out_of_the_label)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.completed_levels.clear();
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("roads"));
+    ASSERT_EQ(1u, session.page().rows.size());
+    ASSERT_EQ(46u, session.page().rows[0].label.size())
+        << "the fixture label must overrun both budgets";
+    ASSERT_TRUE(session.page().rows[0].available);
+    ASSERT_TRUE(session.page().rows[0].current)
+        << "the [CURRENT] tail is part of the budget being measured";
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    button* const buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    int highlighted = kZoneSubmenuBackIndex;
+
+    // JOINER first, from a freshly initialized live surface.
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, count);
+    ASSERT_NE(nullptr, og::runtime::current_session->allbuttons_[0]);
+    const unsigned char resting_face =
+        og::runtime::current_session->allbuttons_[0]->color;
+    {
+        JoinerZoneLobbyClient lobby;
+        og::ui::IPickerLobbyClient* const saved_client =
+            og::ui::active_picker_lobby_client();
+        og::ui::install_active_picker_lobby_client(&lobby);
+        spec.nav.rewire(buttons, count, highlighted);
+        og::ui::install_active_picker_lobby_client(saved_client);
+    }
+    EXPECT_EQ("ROADROADROADROADROADROADROAD..  [CURRENT] (HOST)",
+              buttons[0].label);
+    EXPECT_EQ(kZoneSubmenuRowLabelChars, buttons[0].label.size())
+        << "the marked label still fits the face exactly";
+    EXPECT_EQ(buttons[0].label,
+              og::runtime::current_session->allbuttons_[0]->label)
+        << "both label surfaces carry the marker";
+    EXPECT_EQ(resting_face,
+              og::runtime::current_session->allbuttons_[0]->color)
+        << "a row the joiner cannot activate never wears the GO face";
+
+    // HOST: the same row, same face width, seven more glyphs of road name.
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, count);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ROADROADROADROADROADROADROADROADROA..  [CURRENT]",
+              buttons[0].label);
+    EXPECT_EQ(kZoneSubmenuRowLabelChars, buttons[0].label.size());
+    EXPECT_EQ(buttons[0].label,
+              og::runtime::current_session->allbuttons_[0]->label);
+    EXPECT_EQ(og::ui::kReadyGoFaceGo,
+              og::runtime::current_session->allbuttons_[0]->color)
+        << "an actionable level row wears the green launch face";
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+
+    // The Base Camp docket band is the same rule at its own 42-glyph face.
+    SyntheticCampaignScriptGuard::install(kLongRoadZoneScript);
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(1u, zone.actions()[0].rows.size());
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& camp =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, camp.nav.rewire);
+    button* const camp_buttons = camp.buttons_accessor();
+    const int camp_count = camp.count_accessor();
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ =
+        init_buttons(camp_buttons, camp_count);
+    int camp_highlight = camp.default_highlight;
+
+    {
+        JoinerZoneLobbyClient lobby;
+        og::ui::IPickerLobbyClient* const saved_client =
+            og::ui::active_picker_lobby_client();
+        og::ui::install_active_picker_lobby_client(&lobby);
+        camp.nav.rewire(camp_buttons, camp_count, camp_highlight);
+        og::ui::install_active_picker_lobby_client(saved_client);
+    }
+    EXPECT_EQ("ROADROADROADROADROADRO..  [CURRENT] (HOST)",
+              camp_buttons[kBaseCampZoneActionBase].label);
+
+    camp.nav.rewire(camp_buttons, camp_count, camp_highlight);
+    EXPECT_EQ("ROADROADROADROADROADROADROADR..  [CURRENT]",
+              camp_buttons[kBaseCampZoneActionBase].label)
+        << "the host reads seven more glyphs of the same road name";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+}
+
 // Fetch triggers 3 and 4 through the REAL frame hook: the level-reload
 // guard firing (any scen_num source — a host SET LEVEL landing on a
 // joiner) and an applied lobby-settings change both refetch the zone;
@@ -1636,6 +2105,118 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     spec.on_reset(&state);
     EXPECT_TRUE(trace_contains("zone", "refetch"))
         << "the reset site must refetch the composition";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
+// The same LEAD echo, over a roster whose reorder/deploy controls the
+// composition may retire. The two flags are the ONLY difference between
+// the locked and unlocked fixtures below.
+std::string roster_lock_script(const char* controls_live)
+{
+    return std::string(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local team = og.campaign_team()
+    local lead = "-"
+    if #team > 0 then lead = team[1].name end
+    return {
+      widgets = {
+        { kind = "text", lines = { "LEAD " .. lead } },
+        { kind = "roster", can_reorder = )LUA") +
+        controls_live + ", can_deploy = " + controls_live + R"LUA( },
+      },
+    }
+  end,
+}))LUA";
+}
+
+} // namespace
+
+// A composition that retires the reorder or deploy control hides its face —
+// but the click that was already in flight when the composition changed
+// (a lobby poll can swap the book under the open Base Camp) still reaches
+// the dispatcher. That stale click must be INERT: a retired control that
+// still reordered the company, or still stood a hero up, would undo the
+// state the book just took away, silently and without a trace.
+TEST(CampaignZoneUi, retired_roster_controls_are_inert_for_a_stale_click)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // --- Locked composition: both controls retired. ---
+    SyntheticCampaignScriptGuard::install(
+        roster_lock_script("false").c_str());
+    og::ui::CampaignZoneSession locked(save);
+    locked.fetch();
+    ASSERT_TRUE(locked.scripted());
+    ASSERT_FALSE(locked.roster().can_reorder);
+    ASSERT_FALSE(locked.roster().can_deploy);
+    ASSERT_EQ("LEAD Alpha", locked.texts()[0].lines[0]);
+
+    og::ui::BaseCampScreenState locked_state;
+    locked_state.zone = &locked;
+    og::ui::base_camp_refresh_rows(locked_state);
+    og::ui::install_base_camp_state_for_screen(&locked_state);
+
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampMoveUpBase + 1, &locked_state));
+    EXPECT_EQ("Alpha", save.team_list[0]->name)
+        << "a retired MOVE UP must not reorder the company";
+    EXPECT_EQ("Beta", save.team_list[1]->name);
+    EXPECT_FALSE(trace_contains("basecamp", "move_up"))
+        << "and must not announce a move it did not make";
+    EXPECT_EQ("LEAD Alpha", locked.texts()[0].lines[0]);
+
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(0, &locked_state));
+    EXPECT_FALSE(save.team_list[0]->deployed)
+        << "a retired deploy toggle must not stand a hero up";
+    EXPECT_FALSE(trace_contains("basecamp", "deploy"))
+        << "and must not announce a toggle it did not make";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+
+    // --- The paired control: the SAME two dispatches on a composition
+    // that keeps both controls do exactly what the player asked. ---
+    SyntheticCampaignScriptGuard::install(
+        roster_lock_script("true").c_str());
+    og::ui::CampaignZoneSession open_roster(save);
+    open_roster.fetch();
+    ASSERT_TRUE(open_roster.scripted());
+    ASSERT_TRUE(open_roster.roster().can_reorder);
+    ASSERT_TRUE(open_roster.roster().can_deploy);
+
+    og::ui::BaseCampScreenState open_state;
+    open_state.zone = &open_roster;
+    og::ui::base_camp_refresh_rows(open_state);
+    og::ui::install_base_camp_state_for_screen(&open_state);
+
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampMoveUpBase + 1, &open_state));
+    EXPECT_EQ("Beta", save.team_list[0]->name)
+        << "the live MOVE UP reorders the company";
+    EXPECT_EQ("Alpha", save.team_list[1]->name);
+    EXPECT_TRUE(trace_contains("basecamp", "move_up slot=1 to=0"));
+    EXPECT_EQ("LEAD Beta", open_roster.texts()[0].lines[0]);
+
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(0, &open_state));
+    EXPECT_TRUE(save.team_list[0]->deployed)
+        << "the live deploy toggle stands the hero up";
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
 
     og::ui::install_base_camp_state_for_screen(nullptr);
 }

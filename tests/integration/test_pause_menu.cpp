@@ -352,7 +352,6 @@ TEST(PauseMenuPins, pause_menu_exact_table)
 
     EXPECT_EQ(og::ui::kPauseMenuResumeIndex, spec.default_highlight);
     EXPECT_FALSE(spec.polls_lobby);
-    EXPECT_FALSE(spec.backdrop);
     EXPECT_EQ(og::ui::RemoteStartScope::None, spec.remote_start);
     // #237: the pause family are the only Overlay screens — true modals over
     // the live world, never faded even at depth 1.
@@ -983,6 +982,110 @@ TEST(PausePlayerDraw, menushots_player_screen_keyboard_and_joystick)
     og::ui::install_pause_player_state_for_screen(nullptr);
 }
 
+// A pause that cannot be established never shows a menu. The pause request
+// goes out first and is confirmed by a pump; if that pump says the session
+// is gone (#246: the host vanished between the Esc and the request landing),
+// the caller must be told the session ended right there — showing a PAUSED
+// overlay over a dead session strands the player behind chrome nothing can
+// clear.
+TEST(PauseMenuHandlers, dead_session_at_open_never_shows_the_menu)
+{
+    g_stub = StubHostState{};
+    g_stub.pump_result = false;
+    PauseMenuHost host = make_stub_host(true, false);
+
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(PauseMenuResult::Quit,
+                                             /*release_pause=*/false);
+    ASSERT_EQ(1, og::ui::pause_menu_testing_queue_remaining());
+
+    trace_clear();
+    EXPECT_EQ(PauseMenuResult::SessionEnded, og::ui::run_pause_menu(host));
+    EXPECT_EQ(1, g_stub.request_calls)
+        << "the pause is requested before it is confirmed";
+    EXPECT_EQ(1, g_stub.pump_calls)
+        << "exactly one pump answers the request, and it answered no";
+    EXPECT_EQ(1, og::ui::pause_menu_testing_queue_remaining())
+        << "the menu never opened, so it consumed no outcome";
+    EXPECT_FALSE(trace_contains("pause_menu", "scripted_outcome"))
+        << "the menu body was never reached";
+
+    // Paired control: the same call with a live session DOES open the menu
+    // and consume the queued outcome.
+    g_stub = StubHostState{};
+    trace_clear();
+    EXPECT_EQ(PauseMenuResult::Quit, og::ui::run_pause_menu(host));
+    EXPECT_EQ(1, g_stub.request_calls);
+    EXPECT_EQ(0, og::ui::pause_menu_testing_queue_remaining())
+        << "a live session opens the menu, which consumes the outcome";
+    EXPECT_TRUE(trace_contains("pause_menu", "scripted_outcome"));
+
+    og::ui::pause_menu_testing_clear_queue();
+}
+
+// The state-less (engine sweep / pin) shape of the pause backdrop must show
+// the SAME darkened world the real menu's first frame shows. A bare sweep
+// that skipped the darkening would render the menu's text straight over a
+// bright, unreadable world.
+TEST(PauseMenuDraw, bare_backdrop_darkens_the_world_like_the_real_first_frame)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    const og::ui::MenuScreenSpec& spec = og::ui::pause_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.draw_background);
+
+    // A flat, bright ground well below the y=3..31 title strip (which the
+    // real menu dims a second time) so the two paths are comparable there.
+    constexpr int kProbeX = 160;
+    constexpr int kProbeY = 120;
+    constexpr int kGroundColor = 15;  // brightest grey in the picker ramp
+
+    const auto paint_ground = [&] {
+        scr->fastbox(0, 100, kUiCanvasW, 50, kGroundColor);
+    };
+    const auto probe = [&] {
+        Uint8 r = 0;
+        Uint8 g = 0;
+        Uint8 b = 0;
+        scr->get_pixel(kProbeX, kProbeY, &r, &g, &b);
+        return std::array<int, 3>{r, g, b};
+    };
+
+    og::ui::install_pause_menu_state_for_screen(nullptr);
+    std::array<int, 3> bright{};
+    std::array<int, 3> bare{};
+    std::array<int, 3> first_frame{};
+    {
+        // The menu's fixed modal canvas, as run_pause_menu establishes it.
+        ScopedUiCanvas ui_canvas(*scr);
+
+        paint_ground();
+        bright = probe();
+
+        // Bare shape: no installed state at all.
+        spec.draw_background(nullptr);
+        bare = probe();
+
+        // The real menu's FIRST frame, from the same bright ground.
+        paint_ground();
+        ASSERT_EQ(bright, probe())
+            << "the ground must be repainted identically";
+        g_stub = StubHostState{};
+        PauseMenuHost host = make_stub_host(false, true);
+        og::ui::PauseMenuScreenState state;
+        state.host = &host;
+        ASSERT_TRUE(state.backdrop.empty());
+        og::ui::install_pause_menu_state_for_screen(&state);
+        spec.draw_background(&state);
+        first_frame = probe();
+        og::ui::install_pause_menu_state_for_screen(nullptr);
+    }
+
+    EXPECT_NE(bright, bare) << "the bare shape must still darken the world";
+    EXPECT_EQ(first_frame, bare)
+        << "the state-less shape paints the same darkened world";
+}
+
 // ---------------------------------------------------------------------------
 // PAUSED-screen row handlers (on_spec_row driven directly).
 
@@ -1016,13 +1119,31 @@ TEST(PauseMenuHandlers, resume_quit_restart_and_add_rows)
     EXPECT_EQ(MENU_EXIT, spec.on_spec_row(og::ui::kPauseMenuQuitIndex, &state));
     EXPECT_EQ(PauseMenuResult::Quit, state.outcome);
 
+    // RESTART declined: the mission is NOT thrown away. A confirm the
+    // player answered NO to must leave the menu standing on its default
+    // outcome — the arm that would lose a mission in progress.
+    state = og::ui::PauseMenuScreenState{};
+    state.host = &host;
+    trace_clear();
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPauseMenuRestartIndex, &state));
+    EXPECT_EQ(PauseMenuResult::Resumed, state.outcome)
+        << "a declined restart keeps the mission";
+    EXPECT_FALSE(trace_contains("pause_menu", "restart_confirmed"))
+        << "nothing was confirmed, so nothing may be announced";
+
     // RESTART confirmed.
     state = og::ui::PauseMenuScreenState{};
     state.host = &host;
+    trace_clear();
     picker_testing_yes_or_no_queue_push(true);
     EXPECT_EQ(MENU_EXIT,
               spec.on_spec_row(og::ui::kPauseMenuRestartIndex, &state));
     EXPECT_EQ(PauseMenuResult::Restart, state.outcome);
+    EXPECT_TRUE(trace_contains("pause_menu", "restart_confirmed"))
+        << "and a confirmed restart says so";
 
     // ADD PLAYER success refreshes rows in place (no exit).
     state = og::ui::PauseMenuScreenState{};

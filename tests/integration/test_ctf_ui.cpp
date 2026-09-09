@@ -641,6 +641,9 @@ struct PagerFlowState
     bool finished = false;
     bool viewer_opened = false;
     bool pager_visible = false;
+    // The keyboard close of the SCENARIO submenu (runner MENU_EXIT path).
+    bool go_absent_inside_submenu = false;
+    bool keyboard_back_reached_base_camp = false;
 };
 
 // handle_menu_nav reads SDL_GetKeyboardState (not the event queue), so the
@@ -698,14 +701,32 @@ int view_scenario_pager_injector(void* data)
     press_nav_key(SDLK_SPACE, 120);
     SDL_Delay(500);
 
-    // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
+    // Viewer back -> SCENARIO submenu.
     interact("back");
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
 
-    SDL_Delay(300);
+    // Keyboard close of the SCENARIO submenu. Its highlight rests on BACK
+    // (the screen's declared default) and BACK carries MENU_EXIT, so FIRE
+    // must take the same structural exit a mouse activation does. GO
+    // belongs to Base Camp, so its absence here and its presence after is
+    // the whole claim. The first FIRE may only ARM menu-nav (picker_input's
+    // rule), so the press is retried a bounded number of times.
+    state->go_absent_inside_submenu = !has_interactable("go");
+    for (int attempt = 0; attempt < 4 && !has_interactable("go"); ++attempt) {
+        press_nav_key(SDLK_SPACE, 120);
+        SDL_Delay(400);
+    }
+    state->keyboard_back_reached_base_camp =
+        has_interactable("go") && has_interactable("scenario");
+
+    // Fallback so a failed keyboard close cannot strand the flow; the test
+    // reports the miss through the flags above either way.
+    if (!has_interactable("go")) {
+        interact("back");
+        SDL_Delay(300);
+    }
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
     interact("back");
@@ -889,6 +910,12 @@ TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
         << "mouse click on NEXT must flip to page 1";
     EXPECT_GE(count_picker_trace_containing("page=0"), 2)
         << "keyboard FIRE on PREV must flip back (entry trace + flip trace)";
+    EXPECT_TRUE(state.go_absent_inside_submenu)
+        << "GO belongs to Base Camp and must not be reachable from inside "
+           "the SCENARIO submenu";
+    EXPECT_TRUE(state.keyboard_back_reached_base_camp)
+        << "keyboard FIRE on the MENU_EXIT-bearing BACK row must close the "
+           "submenu, exactly like a mouse activation";
 }
 
 // The MATCHUP screen retired with #218 — its seat/team overview is VIEW

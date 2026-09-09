@@ -600,6 +600,14 @@ static int scroll_controls_injector_thread(void* data)
     inject_click(layout.track.x + layout.track.w / 2, 60, 50);
     probe_step(state, 14, 8);
 
+    // The BOTTOM clamp, sandwiched by a step that DOES move so "nothing
+    // happened" cannot pass for "clamped": at the last line one more
+    // line-down must stay put, and the line-up after it must land on 200.
+    // Without the clamp the pair would read 216 then 208.
+    tap_jump_key(false, true);   probe_step(state, 15, 208);
+    tap_line_key(false, true);   // already at the end: clamped, not 216
+    tap_line_key(true, false);   probe_step(state, 16, 200);
+
     // A tap in the text area still dismisses (the wasm-touch e2e contract:
     // (160,100) must keep working).
     SDL_Delay(80);
