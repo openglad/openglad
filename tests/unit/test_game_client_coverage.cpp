@@ -79,6 +79,22 @@ std::vector<std::uint8_t> with_wrong_payload_length(
     return malformed;
 }
 
+og::sim::PackManifestMessage make_pack_manifest()
+{
+    og::sim::PackManifestFileEntry entry;
+    entry.path = "scripts/mods.lua";
+    entry.size_bytes = 2u;
+    entry.hash64 = 0x1122334455667788ull;
+
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0u;
+    manifest.pack_count = 1u;
+    manifest.pack_id = "mods";
+    manifest.version = "1";
+    manifest.files.push_back(entry);
+    return manifest;
+}
+
 } // namespace
 
 TEST(GameClientCoverage, raw_transport_decodes_input_and_heartbeat_payloads)
@@ -138,13 +154,23 @@ TEST(GameClientCoverage,
     const og::sim::ControlChangeMessage control_change;
     const InputState input{};
     const og::sim::WorldSnapshot snapshot;
+    const og::sim::PackManifestMessage pack_manifest = make_pack_manifest();
+    const og::sim::PackFileChunkMessage pack_file_chunk = {
+        .pack_id = "mods",
+        .file_index = 0u,
+        .offset = 7u,
+        .data = {0xABu, 0xCDu},
+    };
+    const og::sim::PackTransferDoneMessage pack_transfer_done = {
+        .pack_id = "mods",
+    };
 
     struct MalformedCase
     {
         std::string name;
         std::vector<std::uint8_t> bytes;
     };
-    const std::array<MalformedCase, 10> malformed_cases = {{
+    const std::array<MalformedCase, 13> malformed_cases = {{
         {"lobby", with_wrong_payload_length(
                       og::sim::serialize_lobby_message(lobby_message))},
         {"lobby_state", with_wrong_payload_length(
@@ -167,6 +193,16 @@ TEST(GameClientCoverage,
                                   control_change))},
         {"snapshot_exception", with_wrong_payload_length(
                                    og::sim::serialize_snapshot(snapshot))},
+        {"pack_manifest", with_wrong_payload_length(
+                              og::sim::serialize_pack_manifest_message(
+                                  pack_manifest))},
+        {"pack_file_chunk", with_wrong_payload_length(
+                                og::sim::serialize_pack_file_chunk_message(
+                                    pack_file_chunk))},
+        {"pack_transfer_done",
+         with_wrong_payload_length(
+             og::sim::serialize_pack_transfer_done_message(
+                 pack_transfer_done))},
     }};
 
     for (const MalformedCase& malformed : malformed_cases)
@@ -258,4 +294,123 @@ TEST(GameClientCoverage, snapshot_hash_without_world_or_baseline_is_noop)
 
     EXPECT_TRUE(transport.sent().empty());
     EXPECT_EQ(0u, client.snapshot_hash_check_count());
+}
+
+// Rule (src/gameplay/game_client.cpp:249-301, and the comment there): pack
+// transfers are a lobby-phase concern, but a manifest/chunk/done triple that
+// trails into the gameplay stream is legal traffic. It must decode into typed
+// messages the dispatcher ignores — never a malformed-server verdict, which
+// would drop a player out of a live match over a late lobby frame.
+TEST(GameClientCoverage,
+     trailing_pack_transfer_messages_decode_without_dropping_the_server)
+{
+    constexpr og::sim::PeerId kServerPeer = 7u;
+    RawTransport transport;
+
+    const og::sim::PackManifestMessage manifest = make_pack_manifest();
+    const og::sim::PackFileChunkMessage chunk{
+        .pack_id = "mods",
+        .file_index = 0u,
+        .offset = 7u,
+        .data = {0xABu, 0xCDu},
+    };
+    const og::sim::PackTransferDoneMessage done{.pack_id = "mods"};
+
+    transport.queue(kServerPeer,
+                    og::sim::serialize_pack_manifest_message(manifest));
+    transport.queue(kServerPeer,
+                    og::sim::serialize_pack_file_chunk_message(chunk));
+    transport.queue(kServerPeer,
+                    og::sim::serialize_pack_transfer_done_message(done));
+
+    og::sim::GameClient client(transport, kServerPeer);
+    client.poll_messages();
+
+    ASSERT_EQ(3u, client.last_polled_messages().size());
+
+    const og::sim::TypedReceivedMessage& decoded_manifest =
+        client.last_polled_messages()[0];
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::PackManifest,
+              decoded_manifest.kind);
+    ASSERT_NE(nullptr, decoded_manifest.pack_manifest);
+    EXPECT_EQ("mods", decoded_manifest.pack_manifest->pack_id);
+    EXPECT_EQ(1u, decoded_manifest.pack_manifest->pack_count);
+    ASSERT_EQ(1u, decoded_manifest.pack_manifest->files.size());
+    EXPECT_EQ("scripts/mods.lua",
+              decoded_manifest.pack_manifest->files[0].path);
+    EXPECT_EQ(2u, decoded_manifest.pack_manifest->files[0].size_bytes);
+
+    const og::sim::TypedReceivedMessage& decoded_chunk =
+        client.last_polled_messages()[1];
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::PackFileChunk,
+              decoded_chunk.kind);
+    ASSERT_NE(nullptr, decoded_chunk.pack_file_chunk);
+    EXPECT_EQ("mods", decoded_chunk.pack_file_chunk->pack_id);
+    EXPECT_EQ(7u, decoded_chunk.pack_file_chunk->offset);
+    EXPECT_EQ((std::vector<std::uint8_t>{0xABu, 0xCDu}),
+              decoded_chunk.pack_file_chunk->data);
+
+    const og::sim::TypedReceivedMessage& decoded_done =
+        client.last_polled_messages()[2];
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::PackTransferDone,
+              decoded_done.kind);
+    ASSERT_NE(nullptr, decoded_done.pack_transfer_done);
+    EXPECT_EQ("mods", decoded_done.pack_transfer_done->pack_id);
+
+    EXPECT_EQ(3, client.messages_drained_last_call());
+    EXPECT_TRUE(transport.disconnected().empty());
+    EXPECT_TRUE(transport.sent().empty());
+}
+
+// Rule (src/gameplay/game_client.cpp:922-993): a client that has taken the
+// InitialSetup but no keyframe yet has no baseline to hash, so it must stay
+// silent; the hash check is owed only once a keyframe lands. If this broke,
+// every joining display would send the server a hash of nothing and be scored
+// as divergent before the level had started.
+TEST(GameClientCoverage, hash_check_waits_for_the_keyframe_after_setup)
+{
+    constexpr og::sim::PeerId kServerPeer = 7u;
+    RawTransport transport;
+
+    og::sim::InitialSetupMessage setup;
+    setup.level_id = 3;
+    transport.queue(kServerPeer,
+                    og::sim::serialize_initial_setup_message(setup));
+
+    og::sim::GameClient client(transport, kServerPeer);
+    client.poll_messages();
+
+    ASSERT_TRUE(client.initial_setup().has_value());
+    EXPECT_EQ(3, client.initial_setup()->level_id);
+    EXPECT_FALSE(client.baseline().has_value());
+    EXPECT_EQ(0u, client.snapshot_hash_check_count());
+    for (const og::sim::ReceivedMessage& sent : transport.sent())
+    {
+        EXPECT_FALSE(
+            og::sim::deserialize_snapshot_hash_check_message(sent.data)
+                .has_value())
+            << "a setup-only client must not send a hash check";
+    }
+
+    // Positive arm: the keyframe supplies the baseline and the very same code
+    // path now owes the server exactly one forced hash check.
+    og::sim::WorldSnapshot keyframe;
+    keyframe.tick_count = 41u;
+    transport.queue(kServerPeer, og::sim::serialize_snapshot(keyframe));
+    client.poll_messages();
+
+    ASSERT_TRUE(client.baseline().has_value());
+    EXPECT_EQ(41u, client.baseline()->tick_count);
+    EXPECT_EQ(1u, client.snapshot_hash_check_count());
+
+    std::vector<std::uint32_t> hash_check_ticks;
+    for (const og::sim::ReceivedMessage& sent : transport.sent())
+    {
+        if (const auto check =
+                og::sim::deserialize_snapshot_hash_check_message(sent.data))
+        {
+            hash_check_ticks.push_back(check->tick);
+        }
+    }
+    EXPECT_EQ((std::vector<std::uint32_t>{41u}), hash_check_ticks);
 }
