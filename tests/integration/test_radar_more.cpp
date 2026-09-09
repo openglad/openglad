@@ -1518,3 +1518,338 @@ TEST_F(RadarMore, a_pack_can_give_any_treasure_family_a_radar_blip)
     EXPECT_EQ(calls_before, calls_after)
         << "jitter 0 must not add an rng draw";
 }
+
+// The control blip is the only 2x2 blip on the minimap, and the three special
+// arms exist so it stays INSIDE the radar box when the player walks into the
+// map's right column or bottom row. If the wrong arm ran, the second pixel of
+// the pair would be painted past the box border, over the HUD next to it.
+//
+// The exact bottom-right CORNER is deliberately not asserted: with tempx at
+// the right column and tempy on the last row the first arm wins (its
+// `tempy < yloc+yview` is still true there) and paints tempy+1, one pixel
+// below the box. That is a real latent 1px escape, reported rather than
+// pinned; fixing it is a rendering change of its own.
+TEST_F(RadarMore, control_blip_stays_inside_the_box_at_the_right_column_and_bottom_row)
+{
+    FixedRandom fixed_rng(200); // the control blip's rng(256) colour
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    ASSERT_EQ(40, d.world().grid.w);
+    ASSERT_EQ(60, d.world().grid.h);
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->set_team_num(0);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* const saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    ASSERT_EQ(40, r.xview) << "the radar box is the whole map width here";
+    ASSERT_EQ(44, r.yview);
+
+    const std::array<int, 3> blip = palette_rgb(200);
+    const std::array<int, 3> cleared = palette_rgb(0);
+
+    // Right column: the map's last column, halfway down.
+    control->setxy(GRID_SIZE * 39, GRID_SIZE * 30);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    ASSERT_EQ(1, r.draw(&d));
+    ASSERT_EQ(0, r.radarx);
+    const int right_gy = r.radary + 22;
+    const std::array<int, 3> terrain = blip_rgb_at(r, 10, 10);
+    ASSERT_NE(terrain, blip);
+    ASSERT_NE(terrain, cleared) << "the baked terrain must be visible";
+    EXPECT_EQ(blip, blip_rgb_at(r, 38, right_gy));
+    EXPECT_EQ(blip, blip_rgb_at(r, 39, right_gy));
+    EXPECT_EQ(blip, blip_rgb_at(r, 38, right_gy + 1));
+    EXPECT_EQ(blip, blip_rgb_at(r, 39, right_gy + 1));
+    EXPECT_EQ(terrain, blip_rgb_at(r, 37, right_gy))
+        << "the pair must be exactly two cells wide";
+    EXPECT_EQ(cleared, blip_rgb_at(r, 40, right_gy))
+        << "nothing may be painted past the box's right border";
+    EXPECT_EQ(cleared, blip_rgb_at(r, 40, right_gy + 1));
+
+    // Bottom row: the map's last row, well inside the columns.
+    control->setxy(GRID_SIZE * 20, GRID_SIZE * 59);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    ASSERT_EQ(1, r.draw(&d));
+    ASSERT_EQ(16, r.radary) << "the radar is scrolled to the map's bottom";
+    EXPECT_EQ(blip, blip_rgb_at(r, 20, 59));
+    EXPECT_EQ(blip, blip_rgb_at(r, 21, 59));
+    EXPECT_EQ(blip, blip_rgb_at(r, 20, 58));
+    EXPECT_EQ(blip, blip_rgb_at(r, 21, 58));
+    EXPECT_EQ(terrain, blip_rgb_at(r, 20, 57))
+        << "the pair must be exactly two cells tall";
+    EXPECT_EQ(cleared, blip_rgb_at(r, 20, 60))
+        << "nothing may be painted past the box's bottom border";
+    EXPECT_EQ(cleared, blip_rgb_at(r, 21, 60));
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// A viewscreen's control pointer outlives the level it came from (level
+// transitions rebuild every list). Drawing the radar through a dangling
+// control would read freed memory, so the radar drops a control that is no
+// longer in THIS level's lists — and must not drop one that is, whichever
+// list it lives in.
+TEST_F(RadarMore, radar_drops_a_control_from_another_level_and_keeps_live_ones)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+    walker* const live_ob = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const live_fx = d.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* const live_weapon = d.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, live_ob);
+    ASSERT_NE(nullptr, live_fx);
+    ASSERT_NE(nullptr, live_weapon);
+    for (walker* w : {live_ob, live_fx, live_weapon})
+        w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
+
+    // A different level, with its own lists.
+    LevelRuntimeData other(1);
+    other.create_new_grid();
+    walker* const stale = other.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, stale);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* const saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+
+    vs->control = stale;
+    EXPECT_EQ(1, r.draw(&d)) << "the radar still draws without a control";
+    EXPECT_EQ(nullptr, vs->control)
+        << "a control from another level must be dropped";
+
+    // The positive arms: each of the three live lists keeps its control.
+    vs->control = live_ob;
+    EXPECT_EQ(1, r.draw(&d));
+    EXPECT_EQ(live_ob, vs->control);
+    vs->control = live_fx;
+    EXPECT_EQ(1, r.draw(&d));
+    EXPECT_EQ(live_fx, vs->control) << "an fxlist control is live";
+    vs->control = live_weapon;
+    EXPECT_EQ(1, r.draw(&d));
+    EXPECT_EQ(live_weapon, vs->control) << "a weaplist control is live";
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// Tiles this build has no radar colour for (a level authored against another
+// tile set, or a corrupt grid byte) must bake BLACK, not whatever the previous
+// bake left in that cell — otherwise an unknown tile reads as a wall, a tree,
+// or water depending on what the player looked at last.
+TEST_F(RadarMore, unknown_tile_ids_bake_black_beside_a_known_tile)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    // Known tile everywhere first, so the bake has a non-black value to
+    // overwrite in the cells that go unknown.
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+    // PIX ids stop at 150; 200..209 name tiles this build does not have.
+    for (int i = 0; i < 10; ++i)
+        set_tile(d, i, 0, static_cast<unsigned char>(200 + i));
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* const saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    ASSERT_EQ(1, r.draw(&d));
+
+    const std::array<int, 3> known = blip_rgb_at(r, 20, 5);
+    const std::array<int, 3> black = palette_rgb(0);
+    ASSERT_NE(known, black) << "PIX_COBBLE_1 has a radar colour";
+    for (int i = 0; i < 10; ++i)
+        EXPECT_EQ(black, blip_rgb_at(r, i, 0))
+            << "unknown tile id " << (200 + i) << " must bake black";
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// A delayed spawn is not in the world yet. Blipping it would show the player
+// exactly where an ambush is about to appear, seconds before it does.
+TEST_F(RadarMore, dormant_walkers_do_not_blip_until_they_wake)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    walker* const ambush = d.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, ambush);
+    ambush->setxy(GRID_SIZE * 12, GRID_SIZE * 8);
+    ambush->set_team_num(2);
+    ambush->set_dormant(true);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* const saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    ASSERT_EQ(1, r.draw(&d));
+    const std::array<int, 3> terrain = blip_rgb_at(r, 20, 20);
+    EXPECT_EQ(terrain, blip_rgb_at(r, 12, 8))
+        << "a dormant walker must leave the terrain colour alone";
+
+    ambush->set_dormant(false);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(palette_rgb(ambush->query_team_color()), blip_rgb_at(r, 12, 8))
+        << "the same walker blips in its team colour once awake";
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// Two single-dot rules in the object-list pass that the fxlist tests above do
+// not reach, because these entities live in the OBJECT list:
+//   * the two treasure families levels park there (a life gem, a level exit)
+//     blip a fixed COLOR_FIRE, not their descriptor colour — an "is this worth
+//     a dot" rule with no colour to read;
+//   * a declared landmark whose descriptor does NOT ask to pulse paints
+//     exactly ONE cell, so a quiet objective marker cannot be mistaken for a
+//     pinged one.
+TEST_F(RadarMore, oblist_treasures_burn_and_a_quiet_landmark_paints_one_dot)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    const int ball_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:ball");
+    ASSERT_GE(ball_family, 0);
+    const EffectFamilyDescriptor* ball_d =
+        get_effect_family_descriptor(ball_family);
+    ASSERT_NE(nullptr, ball_d);
+    ASSERT_TRUE(ball_d->radar.landmark);
+    ASSERT_TRUE(ball_d->radar.ping) << "the shipped ball pulses";
+    ASSERT_EQ(COLOR_WHITE, ball_d->radar.color);
+    ASSERT_EQ(0, ball_d->radar.jitter);
+
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    walker* const gem = d.add_ob(Order::Treasure, FAMILY_LIFE_GEM);
+    walker* const exit_marker = d.add_ob(Order::Treasure, FAMILY_EXIT);
+    ASSERT_NE(nullptr, gem);
+    ASSERT_NE(nullptr, exit_marker);
+    gem->setxy(GRID_SIZE * 6, GRID_SIZE * 6);
+    exit_marker->setxy(GRID_SIZE * 10, GRID_SIZE * 6);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* const saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+
+    // A ball placed in the object list, with its pulse turned off by the
+    // pack author — the quiet-landmark shape.
+    const EffectFamilyDescriptor saved_ball = *ball_d;
+    ScopedEffectDescriptorRestore ball_restore(ball_family, saved_ball);
+    EffectFamilyDescriptor quiet_ball = saved_ball;
+    quiet_ball.radar.ping = false;
+    ASSERT_TRUE(set_effect_family_descriptor(ball_family, quiet_ball));
+    walker* const landmark = d.add_ob(Order::FX, ball_family);
+    ASSERT_NE(nullptr, landmark);
+    landmark->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    counter.calls = 0;
+    ASSERT_EQ(1, r.draw(&d));
+
+    const std::array<int, 3> terrain = blip_rgb_at(r, 30, 30);
+    const std::array<int, 3> fire = palette_rgb(COLOR_FIRE);
+    ASSERT_NE(terrain, fire);
+    EXPECT_EQ(fire, blip_rgb_at(r, 6, 6)) << "a life gem in the object list";
+    EXPECT_EQ(fire, blip_rgb_at(r, 10, 6)) << "a level exit in the object list";
+    EXPECT_EQ(terrain, blip_rgb_at(r, 7, 6))
+        << "each treasure is a single cell";
+
+    const std::array<int, 3> white = palette_rgb(COLOR_WHITE);
+    ASSERT_NE(terrain, white);
+    int painted = 0;
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            const std::array<int, 3> pixel = blip_rgb_at(r, 20 + dx, 20 + dy);
+            if (pixel != terrain)
+            {
+                painted++;
+                EXPECT_EQ(white, pixel);
+            }
+        }
+    EXPECT_EQ(1, painted) << "a landmark that does not ping paints one dot";
+    EXPECT_EQ(0, counter.calls) << "jitter 0 must not touch the game RNG";
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}

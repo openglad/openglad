@@ -207,12 +207,45 @@ TEST(VideoExtra, video_walkputbuffer_clipped_top)
 }
 
 
-TEST(VideoExtra, video_walkputbuffer_clipped_bottom)
+// A sprite that hangs off the bottom of a viewport must be cut at the port
+// edge, not drawn over the pane below it (the classic split-screen bug: the
+// lower seat's view gains a stripe of the upper seat's sprites). The clip
+// belongs to the port rectangle, so the SAME sprite at the SAME place draws
+// its remaining rows once the port extends far enough to hold them.
+TEST(VideoExtra, video_walkputbuffer_clips_at_the_port_bottom_edge)
 {
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    constexpr int kSpriteColor = 47;
+    constexpr int kSpriteX = 50;
+    constexpr int kSpriteY = 112;
+    constexpr int kPortBottom = 120;
     unsigned char testbmp[16*16];
-    memset(testbmp, 100, sizeof(testbmp));
-    auto span = std::span<const unsigned char>(testbmp, 256);
-    og::runtime::current_session->myscreen_->walkputbuffer(50, 192, 16, 16, 0, 0, 319, 199, span, 40);
+    memset(testbmp, kSpriteColor, sizeof(testbmp));
+    const auto span = std::span<const unsigned char>(testbmp, 256);
+
+    scr->clearbuffer();
+    scr->walkputbuffer(kSpriteX, kSpriteY, 16, 16, 0, 0, 319, kPortBottom,
+                       span, 40, NORMAL_MODE, 0, 0, 0);
+    int index = 0;
+    EXPECT_EQ(kSpriteColor, scr->get_pixel(kSpriteX, kSpriteY, &index))
+        << "the sprite's first row is inside the port and must be drawn";
+    EXPECT_EQ(kSpriteColor,
+              scr->get_pixel(kSpriteX, kPortBottom - 1, &index))
+        << "the last row inside the port must be drawn";
+    EXPECT_EQ(0, scr->get_pixel(kSpriteX, kPortBottom, &index))
+        << "the first row past the port edge must be untouched";
+    EXPECT_EQ(0, scr->get_pixel(kSpriteX, kSpriteY + 15, &index))
+        << "and so must the sprite's own last row";
+
+    // Same sprite, taller port: the rows the clip removed come back, so the
+    // zeros above are the clip and not a sprite that never drew.
+    scr->clearbuffer();
+    scr->walkputbuffer(kSpriteX, kSpriteY, 16, 16, 0, 0, 319, 199,
+                       span, 40, NORMAL_MODE, 0, 0, 0);
+    EXPECT_EQ(kSpriteColor, scr->get_pixel(kSpriteX, kPortBottom, &index));
+    EXPECT_EQ(kSpriteColor, scr->get_pixel(kSpriteX, kSpriteY + 15, &index));
+    scr->clearbuffer();
 }
 
 

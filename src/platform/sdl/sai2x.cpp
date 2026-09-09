@@ -2611,14 +2611,12 @@ void Screen::testing_forget_presented(SDL_Surface* surface)
 	}
 }
 
-bool Screen::testing_render_matches_presented(std::string* detail) const
+bool Screen::testing_render_matches_presented(std::string& detail) const
 {
-	if (detail != nullptr)
-		detail->clear();
+	detail.clear();
 	if (render == nullptr)
 	{
-		if (detail != nullptr)
-			*detail = "no render surface";
+		detail = "no render surface";
 		return false;
 	}
 	for (const PresentedSnapshot& snapshot : presented_snapshots_)
@@ -2629,8 +2627,7 @@ bool Screen::testing_render_matches_presented(std::string* detail) const
 		    snapshot.pixels->h != render->h ||
 		    snapshot.pixels->format != render->format)
 		{
-			if (detail != nullptr)
-				*detail = "presented at different dimensions";
+			detail = "presented at different dimensions";
 			return false;
 		}
 		const std::size_t row_bytes = surface_row_bytes(render);
@@ -2647,8 +2644,6 @@ bool Screen::testing_render_matches_presented(std::string* detail) const
 			const Uint8* crow = current + static_cast<std::size_t>(y) * static_cast<std::size_t>(render->pitch);
 			if (memcmp(prow, crow, row_bytes) == 0)
 				continue;
-			if (detail == nullptr)
-				return false;
 			for (int x = 0; x < render->w; ++x)
 			{
 				if (memcmp(prow + x * bpp, crow + x * bpp, static_cast<std::size_t>(bpp)) == 0)
@@ -2661,12 +2656,11 @@ bool Screen::testing_render_matches_presented(std::string* detail) const
 		}
 		if (max_x < 0)
 			return true;
-		*detail = std::format("render differs from the presented frame in x {}..{}, y {}..{} of {}x{}",
-		                      min_x, max_x, min_y, max_y, render->w, render->h);
+		detail = std::format("render differs from the presented frame in x {}..{}, y {}..{} of {}x{}",
+		                     min_x, max_x, min_y, max_y, render->w, render->h);
 		return false;
 	}
-	if (detail != nullptr)
-		*detail = "never presented";
+	detail = "never presented";
 	return false;
 }
 

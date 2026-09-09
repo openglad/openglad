@@ -756,3 +756,93 @@ TEST(VideoModesMore, video_save_screenshot_matches_active_canvas_smoothing)
     ASSERT_EQ(1u, files.size());
     EXPECT_EQ(std::make_pair(320, 200), saved_image_dimensions(files.front()));
 }
+
+// The exclusive-fullscreen mode picker's ranking rule. A player who asks the
+// resolution menu for a physical size must get the smallest mode that still
+// contains it, and among equally sized modes the one the desktop actually
+// runs (its own logical layout and density), then the least scaled, then the
+// refresh closest to the desktop's — never an arbitrary one, or the monitor
+// switches to a stretched/HiDPI-doubled mode the menu never offered.
+TEST(VideoModesMore, exclusive_mode_ranking_prefers_exact_desktop_then_density_then_refresh)
+{
+	// SDL owns the mode list, so the picker consumes borrowed pointers.
+	const auto rank = [](const std::vector<SDL_DisplayMode>& storage,
+	                     const SDL_DisplayMode* desktop, int w, int h) {
+		std::vector<const SDL_DisplayMode*> modes;
+		modes.reserve(storage.size());
+		for (const SDL_DisplayMode& mode : storage)
+			modes.push_back(&mode);
+		return og::platform::best_fullscreen_mode_index(
+			std::span<const SDL_DisplayMode* const>(modes.data(), modes.size()),
+			desktop, w, h);
+	};
+	const auto mode = [](int w, int h, float density, float refresh) {
+		SDL_DisplayMode m{};
+		m.w = w;
+		m.h = h;
+		m.pixel_density = density;
+		m.refresh_rate = refresh;
+		return m;
+	};
+
+	// No mode is large enough in BOTH axes: refuse rather than attach a
+	// smaller one (the caller then leaves the window where it is).
+	const std::vector<SDL_DisplayMode> too_small{
+		mode(1280, 720, 1.0f, 60.0f),   // short on both
+		mode(1920, 1079, 1.0f, 60.0f),  // one pixel short on height
+		mode(1919, 1080, 1.0f, 60.0f),  // one pixel short on width
+	};
+	EXPECT_EQ(-1, rank(too_small, nullptr, 1920, 1080));
+	EXPECT_EQ(-1, rank({}, nullptr, 1920, 1080));
+	// The same list satisfies a smaller request: the refusal above is the
+	// size rule, not a broken loop.
+	EXPECT_EQ(0, rank(too_small, nullptr, 1280, 720));
+
+	// Smallest squared pixel error wins outright, even from the back.
+	const std::vector<SDL_DisplayMode> by_error{
+		mode(2560, 1440, 1.0f, 60.0f),  // error 640^2 + 360^2
+		mode(1920, 1200, 1.0f, 60.0f),  // error 0 + 120^2
+		mode(1920, 1080, 1.0f, 60.0f),  // error 0
+	};
+	EXPECT_EQ(2, rank(by_error, nullptr, 1920, 1080));
+
+	// A request that equals the desktop's PHYSICAL size takes the desktop's
+	// own logical layout, not the equally sized 1x mode: on a 2x display the
+	// 1x entry would leave every window at half the size the user sees.
+	const SDL_DisplayMode retina_desktop = mode(1920, 1080, 2.0f, 60.0f);
+	const std::vector<SDL_DisplayMode> tie_on_pixels{
+		mode(3840, 2160, 1.0f, 60.0f),  // same 3840x2160, density 1.0
+		mode(1920, 1080, 2.0f, 60.0f),  // the desktop's own layout
+	};
+	EXPECT_EQ(1, rank(tie_on_pixels, &retina_desktop, 3840, 2160));
+	// Ask for anything else and the desktop-layout tie-break is off, so the
+	// density rule takes over and the 1x mode wins the same list.
+	EXPECT_EQ(0, rank(tie_on_pixels, &retina_desktop, 3000, 1000));
+
+	// Equal pixels, no desktop-layout claim: nearest density to 1.0.
+	const SDL_DisplayMode plain_desktop = mode(1920, 1080, 1.0f, 60.0f);
+	const std::vector<SDL_DisplayMode> tie_on_density{
+		mode(640, 360, 2.0f, 60.0f),
+		mode(1280, 720, 1.0f, 60.0f),
+	};
+	EXPECT_EQ(1, rank(tie_on_density, &plain_desktop, 1280, 720));
+
+	// Equal pixels and density: nearest refresh to the desktop's 60 Hz.
+	const std::vector<SDL_DisplayMode> tie_on_refresh{
+		mode(1280, 720, 1.0f, 144.0f),
+		mode(1280, 720, 1.0f, 60.0f),
+	};
+	EXPECT_EQ(1, rank(tie_on_refresh, &plain_desktop, 1280, 720));
+	// With an unknown desktop refresh nothing separates them, so the list
+	// order decides.
+	const SDL_DisplayMode refreshless_desktop = mode(1920, 1080, 1.0f, 0.0f);
+	EXPECT_EQ(0, rank(tie_on_refresh, &refreshless_desktop, 1280, 720));
+
+	// Everything equal: lowest index, so the pick is stable across calls.
+	const std::vector<SDL_DisplayMode> all_equal{
+		mode(1280, 720, 1.0f, 60.0f),
+		mode(1280, 720, 1.0f, 60.0f),
+		mode(1280, 720, 1.0f, 60.0f),
+	};
+	EXPECT_EQ(0, rank(all_equal, &plain_desktop, 1280, 720));
+}

@@ -53,8 +53,6 @@ static std::span<const unsigned char> safe_glyph_span(const PixieData* font, uns
 
     const std::size_t stride = static_cast<std::size_t>(font->w) * static_cast<std::size_t>(font->h);
     const std::size_t total = stride * static_cast<std::size_t>(font->frames);
-    if (stride == 0 || total == 0)
-        return {};
 
     auto idx = static_cast<std::size_t>(letter);
     if ((idx + 1) * stride > total)
@@ -66,9 +64,6 @@ static std::span<const unsigned char> safe_glyph_span(const PixieData* font, uns
     }
 
     const std::size_t off = idx * stride;
-    if (off + stride > total)
-        return {};
-
     return {font->data.get() + off, stride};
 }
 

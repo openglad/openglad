@@ -367,19 +367,13 @@ short radar::draw(LevelRuntimeData* data)
 	// Now determine what objects are visible on the radar ..
 	while (listtype <= 1)
 	{
-			const GameWorld::EntityList* ls;
-			if (listtype == 0) // do oblist, standard
-			{
-				ls = &data->world().oblist;
-				listtype++;
-			}
-			else if (listtype == 1) // do weapons
-			{
-				ls = &data->world().weaplist;
-				listtype++;
-			}
-		else
-			continue;
+			// listtype is 0 or 1 here: the loop condition admits nothing
+			// else and both arms advance it.
+			const GameWorld::EntityList* ls =
+				listtype == 0 // do oblist, standard
+					? &data->world().oblist
+					: &data->world().weaplist; // do weapons
+			listtype++;
 
         for(auto e = ls->begin(); e != ls->end(); e++)
 		{
@@ -707,52 +701,20 @@ short radar::draw(LevelRuntimeData* data)
 					xloc + ((target->xpos() + 1) / GRID_SIZE - radarx);
 				const Sint32 by =
 					yloc + ((target->ypos() + 1) / GRID_SIZE - radary);
-				if (bx < xloc || bx > (xloc + xview) ||
-				    by < yloc || by > (yloc + yview))
-					continue;
 				// An FX landmark can deliberately use its beacon as a ground
-				// proxy (basketball's shadow): honour the proxy descriptor's
-				// colour, jitter and pulse. Other beacon orders retain the exact
-				// historical team-coloured single-point path below.
-				const og::RadarBlip* descriptor_blip =
-					target->query_order() == Order::FX
-						? radar_blip_for(target->query_order(), target->family())
-						: nullptr;
-				const bool descriptor_fx_landmark =
-					descriptor_blip != nullptr && descriptor_blip->landmark &&
-					(descriptor_blip->color > 0 ||
-					 descriptor_blip->color == og::kRadarColorTeam);
-				unsigned char beacon_color;
-				if (descriptor_fx_landmark)
-				{
-					const Uint32 base =
-						descriptor_blip->color == og::kRadarColorTeam
-							? static_cast<Uint32>(target->query_team_color())
-							: static_cast<Uint32>(descriptor_blip->color);
-					beacon_color = static_cast<unsigned char>(
-						descriptor_blip->jitter > 0
-							? base + rng(static_cast<Uint32>(descriptor_blip->jitter))
-							: base);
-					if (descriptor_blip->ping)
-						plot_ping_blip(static_cast<short>(bx),
-						               static_cast<short>(by), beacon_color,
-						               alpha, xloc, yloc, xview, yview);
-					else
-						og::runtime::current_session->myscreen_->pointb(
-							bx, by, beacon_color, alpha);
-				}
-				else
-				{
-					// Score teams and FFA band bytes both name a ramp; anything
-					// else (255) falls back to the target's own team color.
-					beacon_color =
-						og::sim::is_scoring_identity(static_cast<int>(beacon.team))
-							? og::sim::team_ramp_base(
-								  static_cast<int>(beacon.team))
-							: target->query_team_color();
-					og::runtime::current_session->myscreen_->pointb(
-						bx, by, beacon_color, alpha);
-				}
+				// proxy (basketball's shadow) — but such a target painted its
+				// descriptor colour, jitter and pulse in the fxlist/oblist
+				// pass above and reserved this slot in beacon_target_drawn,
+				// so it never reaches here. Every beacon that does keeps the
+				// historical team-coloured single point:
+				// score teams and FFA band bytes both name a ramp; anything
+				// else (255) falls back to the target's own team color.
+				const unsigned char beacon_color =
+					og::sim::is_scoring_identity(static_cast<int>(beacon.team))
+						? og::sim::team_ramp_base(static_cast<int>(beacon.team))
+						: target->query_team_color();
+				og::runtime::current_session->myscreen_->pointb(
+					bx, by, beacon_color, alpha);
 				TRACE("radar", "beacon_blip id=%d x=%d y=%d color=%d",
 				      static_cast<int>(beacon.entity_id),
 				      static_cast<int>(bx), static_cast<int>(by),
