@@ -1111,6 +1111,200 @@ TEST(SaveLoadTeam, networked_persist_banks_baseline_plus_owned_team_share)
     scr->save_data.reset();
 }
 
+// The three network-persist entry points all write the player's real company
+// file. Each has a refusal that must leave that file exactly as it found it —
+// a mission that ends in one of these states must not cost the player their
+// roster, wallet or campaign cursor.
+TEST(SaveLoadTeam, network_persist_refusals_leave_the_private_company_alone)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    SaveData disk;
+    disk.reset();
+    disk.current_campaign = "gladiator";
+    disk.scen_num = 6;
+    disk.current_levels[disk.current_campaign] = 6;
+    disk.m_totalcash[0] = 4321u;
+    disk.m_totalscore[0] = 1234u;
+    disk.totalcash = 4321u;
+    disk.totalscore = 1234u;
+    auto private_member = std::make_unique<guy>(FAMILY_ARCHER);
+    private_member->name = "PRIVATE";
+    private_member->exp = 777u;
+    disk.team_list[0] = std::move(private_member);
+    disk.team_size = 1;
+    ASSERT_TRUE(disk.save("save0"));
+
+    const auto expect_company_untouched = [](const char* why) {
+        SaveData after;
+        ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0")) << why;
+        EXPECT_EQ(6, static_cast<int>(after.scen_num)) << why;
+        EXPECT_EQ(4321u, after.totalcash) << why;
+        EXPECT_EQ(1234u, after.totalscore) << why;
+        ASSERT_EQ(1, static_cast<int>(after.team_size)) << why;
+        ASSERT_NE(nullptr, after.team_list[0]) << why;
+        EXPECT_EQ("PRIVATE", after.team_list[0]->name) << why;
+        EXPECT_EQ(777u, after.team_list[0]->exp) << why;
+    };
+
+    // The live session deliberately disagrees with the private company on
+    // every field checked above.
+    scr->save_data.reset();
+    scr->save_data.current_campaign = disk.current_campaign;
+    scr->save_data.scen_num = 9;
+    scr->save_data.my_team = 0;
+    scr->save_data.m_totalcash[0] = 99999u;
+    scr->world().id = 1;
+
+    // 1. A machine whose seats carry no owner tag has nothing of its own in
+    // the session, so the roster merge never runs.
+    const std::array<std::uint8_t, 1> untagged = {guy::kNoOwner};
+    og::runtime::detail::persist_owned_characters_to_save0(
+        *scr, std::span<const std::uint8_t>(untagged));
+    expect_company_untouched("an untagged seat list must not rewrite save0");
+
+    // 2. A negative cursor destination is refused before the load.
+    EXPECT_FALSE(og::runtime::detail::persist_private_campaign_cursor_to_save0(
+        *scr, -1));
+    expect_company_untouched("a negative destination must not move the cursor");
+
+    // Paired control: the same call with a real destination DOES move it, and
+    // moves only it.
+    ASSERT_TRUE(og::runtime::detail::persist_private_campaign_cursor_to_save0(
+        *scr, 7));
+    {
+        SaveData after;
+        ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
+        EXPECT_EQ(7, static_cast<int>(after.scen_num));
+        EXPECT_EQ(7, after.current_levels.at(disk.current_campaign));
+        EXPECT_EQ(4321u, after.totalcash);
+        ASSERT_NE(nullptr, after.team_list[0]);
+        EXPECT_EQ("PRIVATE", after.team_list[0]->name);
+    }
+
+    // 3. A company slot with no file on disk: the cursor write is refused and
+    // no file is invented for it.
+    {
+        og::data::ScopedActiveCompany missing("wp10nocompany");
+        ASSERT_TRUE(missing.applied());
+        // Nothing has ever written this slot; make sure of it either way.
+        (void)og::data::delete_company(og::data::active_company_slot());
+        SaveData probe;
+        ASSERT_NE(SaveDataIoError::None,
+                  probe.load_with_error(og::data::active_company_slot()))
+            << "the probe slot must start with no company file";
+
+        EXPECT_FALSE(
+            og::runtime::detail::persist_private_campaign_cursor_to_save0(
+                *scr, 3));
+
+        SaveData still_missing;
+        EXPECT_NE(SaveDataIoError::None,
+                  still_missing.load_with_error(
+                      og::data::active_company_slot()))
+            << "a refused cursor write must not create the company file";
+    }
+
+    scr->world().id = 0;
+    scr->save_data.reset();
+}
+
+// A combined roster's seat list is assembled from what every machine reported.
+// Entries that name no real player must be dropped, not banked: an unowned or
+// out-of-range seat that reached the wallet fold would either double-count a
+// team or bind the primary wallet to a team that does not exist.
+TEST(SaveLoadTeam, network_win_ignores_seats_that_name_no_real_player)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    const auto stage_disk_company = [] {
+        SaveData disk;
+        disk.reset();
+        disk.current_campaign = "gladiator";
+        disk.scen_num = 1;
+        disk.current_levels[disk.current_campaign] = 1;
+        for (std::size_t team = 0; team < std::size(disk.m_totalcash); ++team)
+        {
+            disk.m_totalcash[team] =
+                5000u + static_cast<std::uint32_t>(team) * 100u;
+            disk.m_totalscore[team] =
+                6000u + static_cast<std::uint32_t>(team) * 100u;
+        }
+        disk.totalcash = disk.m_totalcash[0];
+        disk.totalscore = disk.m_totalscore[0];
+        EXPECT_TRUE(disk.save("save0"));
+    };
+
+    og::progression::NetWinFoldCapture capture;
+    capture.cash_delta[2] = 300u;
+    capture.score_delta[2] = 120u;
+    capture.deployed.push_back({.owner = 6, .team = 2});
+
+    const auto persist_and_read =
+        [&](std::span<const og::runtime::LocalSeatBinding> seats,
+            SaveData& out) {
+            stage_disk_company();
+            scr->save_data.reset();
+            scr->save_data.current_campaign = "gladiator";
+            scr->save_data.scen_num = 2;
+            scr->world().id = 1;
+            EXPECT_TRUE(og::runtime::detail::persist_network_win_to_save0(
+                *scr, seats, /*completed_level=*/1, capture));
+            EXPECT_EQ(SaveDataIoError::None, out.load_with_error("save0"));
+        };
+
+    // The seats this machine really owns: one player on gameplay team 2.
+    const std::array<og::runtime::LocalSeatBinding, 1> valid_only = {{
+        {.player_index = 6, .team = 2},
+    }};
+    SaveData expected;
+    persist_and_read(
+        std::span<const og::runtime::LocalSeatBinding>(valid_only), expected);
+
+    // The same list with two junk entries around it: an untagged seat and one
+    // whose player index is past the session's player cap. The first also
+    // names gameplay team 0, so a seat that slipped through would drag the
+    // primary wallet off team 2.
+    const std::array<og::runtime::LocalSeatBinding, 3> mixed = {{
+        {.player_index = guy::kNoOwner, .team = 0},
+        {.player_index = static_cast<std::uint8_t>(og::sim::kMaxGlobalPlayers),
+         .team = 0},
+        {.player_index = 6, .team = 2},
+    }};
+    SaveData mixed_result;
+    persist_and_read(std::span<const og::runtime::LocalSeatBinding>(mixed),
+                     mixed_result);
+
+    for (std::size_t team = 0; team < std::size(expected.m_totalcash); ++team)
+    {
+        EXPECT_EQ(expected.m_totalcash[team], mixed_result.m_totalcash[team])
+            << "team " << team << " cash must ignore the junk seats";
+        EXPECT_EQ(expected.m_totalscore[team], mixed_result.m_totalscore[team])
+            << "team " << team << " score must ignore the junk seats";
+    }
+    EXPECT_EQ(expected.totalcash, mixed_result.totalcash)
+        << "the primary wallet must still follow the one real seat's team";
+    EXPECT_EQ(5200u + 300u, mixed_result.totalcash)
+        << "team 2's baseline plus this machine's share, banked once";
+
+    // A real seat whose gameplay team is out of range still contributes its
+    // owner, but must not become the primary wallet team: the first seat with
+    // a team inside the board is the one the wallet follows.
+    const std::array<og::runtime::LocalSeatBinding, 2> bad_team_first = {{
+        {.player_index = 7, .team = -1},
+        {.player_index = 6, .team = 2},
+    }};
+    SaveData bad_team_result;
+    persist_and_read(
+        std::span<const og::runtime::LocalSeatBinding>(bad_team_first),
+        bad_team_result);
+    EXPECT_EQ(expected.totalcash, bad_team_result.totalcash)
+        << "an out-of-range team must be skipped, not claim the wallet";
+
+    scr->world().id = 0;
+    scr->save_data.reset();
+}
+
 TEST(SaveLoadTeam, network_client_withdraw_persists_private_cursor_only)
 {
     screen* const scr = og::runtime::current_session->myscreen_;
