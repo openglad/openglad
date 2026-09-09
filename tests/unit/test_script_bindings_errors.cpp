@@ -35,6 +35,7 @@
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 
 #include <optional>
@@ -304,4 +305,93 @@ TEST_F(ScriptBindingErrorTest, a_hook_failing_every_tick_records_one_error)
     ASSERT_EQ(1u, errors().size())
         << "50 identical failures must collapse to one record";
     EXPECT_GE(errors()[0].count, 50u);
+}
+
+// The living-only bindings. `living` is where levels, stat scaling and the
+// AI distance test live; a weapon has none of it. Handing one over must be a
+// script error rather than a dynamic_cast result nobody checked.
+TEST_F(ScriptBindingErrorTest, living_only_bindings_refuse_a_weapon_handle)
+{
+    TestGameWorld tw;
+    walker* soldier = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+
+    const std::string spawn_knife =
+        "    local wp = og.add_weap_ob('weapon', " +
+        std::to_string(FAMILY_KNIFE) + ")\n";
+
+    EXPECT_FALSE(
+        run_do_special(spawn_knife +
+                       "    og.check_special_ai_distance(wp, 100)",
+                       soldier)
+            .has_value());
+    expect_error_naming("entity is not a living");
+
+    EXPECT_FALSE(
+        run_do_special(spawn_knife +
+                       "    og.apply_difficulty_scaling(wp, 3, 1, 1, 1, 1)",
+                       soldier)
+            .has_value());
+    expect_error_naming("entity is not a living");
+
+    // The control: the very same calls on the living they were written for
+    // run clean, so the two refusals above are the cast talking.
+    const std::optional<bool> ok = run_do_special(
+        "    og.check_special_ai_distance(self, 100)\n"
+        "    og.apply_difficulty_scaling(self, 3, 1, 1, 1, 1)", soldier);
+    ASSERT_TRUE(ok.has_value())
+        << (errors().empty() ? std::string("no error")
+                             : errors().back().message);
+    EXPECT_TRUE(*ok);
+}
+
+// The sim event channel, called with no gameplay context at all — the shape
+// a pack takes when a hook fires outside a session. Each of the four must
+// refuse rather than write through a null log, and each must be shown doing
+// its job with a context so the refusal is not a dead binding.
+TEST_F(ScriptBindingErrorTest, the_sim_event_bindings_refuse_with_no_context)
+{
+    {
+        ScopedContextOverride scope(nullptr);
+        EXPECT_FALSE(run_do_special("    og.emit_sound(9)", nullptr)
+                         .has_value());
+        expect_error_naming("no active context");
+        EXPECT_FALSE(
+            run_do_special("    og.emit_positional_sound(self, 9)", nullptr)
+                .has_value());
+        expect_error_naming("no active context");
+        EXPECT_FALSE(run_do_special("    og.emit_notification('HI')", nullptr)
+                         .has_value());
+        expect_error_naming("no active context");
+        EXPECT_FALSE(run_do_special("    og.emit_event(18, 1, 3)", nullptr)
+                         .has_value());
+        expect_error_naming("no active context");
+    }
+
+    // With a context, the same four calls land in the event log the runtime
+    // drains — and land as the exact records their callers read back.
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    tw.events.clear();
+    const std::optional<bool> ran = run_do_special(
+        "    og.emit_sound(9)\n"
+        "    og.emit_positional_sound(self, 10)\n"
+        "    og.emit_notification('HI', 5)\n"
+        "    og.emit_event(18, 1, 3)", self);
+    ASSERT_TRUE(ran.has_value())
+        << (errors().empty() ? std::string("no error")
+                             : errors().back().message);
+    const std::vector<og::sim::Event>& log = tw.events.events();
+    ASSERT_EQ(4u, log.size());
+    EXPECT_EQ(og::sim::EventKind::PlaySound, log[0].kind);
+    EXPECT_EQ(9u, log[0].a);
+    EXPECT_EQ(og::sim::EventKind::PlaySound, log[1].kind);
+    EXPECT_EQ(10u, log[1].a);
+    EXPECT_EQ(og::sim::EventKind::Notification, log[2].kind);
+    EXPECT_EQ("HI", log[2].text);
+    EXPECT_EQ(5u, log[2].a);
+    EXPECT_EQ(og::sim::EventKind::ScoreChange, log[3].kind);
+    EXPECT_EQ(1u, log[3].a);
+    EXPECT_EQ(3u, log[3].b);
 }

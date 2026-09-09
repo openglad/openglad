@@ -28,6 +28,7 @@
 #include "../test_game_world_fixture.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
@@ -40,6 +41,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
@@ -866,4 +868,153 @@ TEST_F(ScriptBindingPropsTest, tuning_requires_a_valid_handle)
     expect_ran_clean(dispatch(victim));
     ASSERT_EQ(1, tw.world().remove_ob(victim));
     expect_errored_with(dispatch(self), "stale or dead entity handle");
+}
+
+// ---------------------------------------------------------------------------
+// og.family_flag — the read-only descriptor view
+// ---------------------------------------------------------------------------
+
+// Three of the four flags a script may ask about, each read back for two
+// families that DISAGREE on it. Reading the C++ descriptor in the same test
+// is what makes this a join and not a transcription: if the binding's
+// if-chain ever answered one flag with another's bit, the skeleton/soldier
+// pair below would swap and the test would go red.
+TEST_F(ScriptBindingPropsTest, family_flag_answers_each_flag_from_the_descriptor)
+{
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    const FamilyDescriptor* skeleton = get_family_descriptor(FAMILY_SKELETON);
+    const FamilyDescriptor* tower = get_family_descriptor(FAMILY_TOWER1);
+    ASSERT_NE(nullptr, soldier);
+    ASSERT_NE(nullptr, skeleton);
+    ASSERT_NE(nullptr, tower);
+    // The pairs really do disagree — otherwise the join below proves nothing.
+    ASSERT_NE(soldier->is_undead, skeleton->is_undead);
+    ASSERT_NE(soldier->leaves_bloodspot, skeleton->leaves_bloodspot);
+    ASSERT_NE(soldier->is_stationary, tower->is_stationary);
+
+    expect_ran_clean(run_do_special(
+        "    local function flag(fam, name)\n"
+        "      return og.family_flag('living', fam, name) and 1 or 0\n"
+        "    end\n"
+        "    og.log('undead', flag(" + std::to_string(FAMILY_SOLDIER) +
+            ", 'is_undead'), flag(" + std::to_string(FAMILY_SKELETON) +
+            ", 'is_undead'))\n"
+        "    og.log('blood', flag(" + std::to_string(FAMILY_SOLDIER) +
+            ", 'leaves_bloodspot'), flag(" + std::to_string(FAMILY_SKELETON) +
+            ", 'leaves_bloodspot'))\n"
+        "    og.log('still', flag(" + std::to_string(FAMILY_SOLDIER) +
+            ", 'is_stationary'), flag(" + std::to_string(FAMILY_TOWER1) +
+            ", 'is_stationary'))\n",
+        self));
+
+    const std::vector<std::string>& log =
+        og::script::active_world_scripts().host().log();
+    ASSERT_EQ(3u, log.size());
+    const auto pair = [](bool a, bool b) {
+        return std::string(a ? "1" : "0") + "\t" + (b ? "1" : "0");
+    };
+    EXPECT_EQ("undead\t" + pair(soldier->is_undead, skeleton->is_undead),
+              log[0]);
+    EXPECT_EQ("blood\t" + pair(soldier->leaves_bloodspot,
+                               skeleton->leaves_bloodspot),
+              log[1]);
+    EXPECT_EQ("still\t" + pair(soldier->is_stationary, tower->is_stationary),
+              log[2]);
+}
+
+// ---------------------------------------------------------------------------
+// The floor-explicit passability probes
+// ---------------------------------------------------------------------------
+
+// A pack that plans a jump or a summon onto ANOTHER floor has to be able to
+// ask about that floor without moving anything there first. The optional
+// fourth argument is that ask, and the point is that it does not answer for
+// the prober's own floor: floor 1 below carries a wall where floor 0 is open,
+// so a probe that dropped the argument would report "clear" for a spot that
+// would wall the summon in.
+//
+// The OBJECT probe is the documented exception (game_world.cpp: obmap's floor
+// band keys off ob->floor(), not the argument), so its arm pins what it
+// really promises — the 4-arg form answers its own floor's occupancy, open
+// spot against blocked spot.
+TEST_F(ScriptBindingPropsTest, an_explicit_floor_probes_that_floor_not_the_probers)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+    ASSERT_EQ(2, w.floor_count());
+
+    // Floor 1: grass everywhere but one wall cell, at the grid cell the
+    // prober's own floor leaves open.
+    constexpr int kTileX = 6;
+    constexpr int kTileY = 6;
+    const int gw = w.grid.w;
+    const int gh = w.grid.h;
+    ASSERT_GT(gw, kTileX);
+    ASSERT_GT(gh, kTileY);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) *
+                                  static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) *
+                             static_cast<std::size_t>(gh),
+              static_cast<unsigned char>(PIX_GRASS1));
+    buf[kTileX + kTileY * gw] = static_cast<unsigned char>(PIX_H_WALL1);
+    w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                    static_cast<unsigned char>(gh), buf);
+    w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+
+    constexpr int kProbeX = kTileX * GRID_SIZE;
+    constexpr int kProbeY = kTileY * GRID_SIZE;
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    self->set_floor(0);
+    self->setxy(16, 16);
+
+    // A blocker on the prober's OWN floor, well away from the wall cell, for
+    // the object arm's blocked half.
+    constexpr int kBlockedX = 10 * GRID_SIZE;
+    constexpr int kBlockedY = 10 * GRID_SIZE;
+    walker* blocker = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, blocker);
+    blocker->set_floor(0);
+    blocker->setxy(kBlockedX, kBlockedY);
+
+    // The C++ answers this test's Lua must reproduce exactly.
+    ASSERT_TRUE(w.query_grid_passable(kProbeX, kProbeY, self));
+    ASSERT_FALSE(w.query_grid_passable(kProbeX, kProbeY, self, 1));
+    ASSERT_TRUE(w.query_grid_passable(kProbeX, kProbeY, self, 0));
+    ASSERT_TRUE(w.query_passable(kProbeX, kProbeY, self));
+    ASSERT_FALSE(w.query_passable(kProbeX, kProbeY, self, 1));
+    ASSERT_TRUE(w.query_passable(kProbeX, kProbeY, self, 0));
+    ASSERT_TRUE(w.query_object_passable(kProbeX, kProbeY, self, 0));
+    ASSERT_FALSE(w.query_object_passable(kBlockedX, kBlockedY, self, 0));
+
+    const std::string probe = std::to_string(kProbeX) + ", " +
+                              std::to_string(kProbeY) + ", self";
+    const std::string blocked = std::to_string(kBlockedX) + ", " +
+                                std::to_string(kBlockedY) + ", self";
+    expect_ran_clean(run_do_special(
+        "    local function b(v) return v and 1 or 0 end\n"
+        "    og.log('grid', b(og.query_grid_passable(" + probe + ")),\n"
+        "           b(og.query_grid_passable(" + probe + ", 1)),\n"
+        "           b(og.query_grid_passable(" + probe + ", 0)))\n"
+        "    og.log('both', b(og.query_passable(" + probe + ")),\n"
+        "           b(og.query_passable(" + probe + ", 1)),\n"
+        "           b(og.query_passable(" + probe + ", 0)))\n"
+        "    og.log('object', b(og.query_object_passable(" + probe + ", 0)),\n"
+        "           b(og.query_object_passable(" + blocked + ", 0)))\n",
+        self));
+
+    // Each triple is: the prober's own floor (open), floor 1 (walled), floor 0
+    // named explicitly (open again — so the middle answer is the argument
+    // talking and not a probe that simply broke).
+    const std::vector<std::string>& log =
+        og::script::active_world_scripts().host().log();
+    ASSERT_EQ(3u, log.size());
+    EXPECT_EQ("grid\t1\t0\t1", log[0]);
+    EXPECT_EQ("both\t1\t0\t1", log[1]);
+    EXPECT_EQ("object\t1\t0", log[2]);
 }
