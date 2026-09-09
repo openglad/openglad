@@ -17,24 +17,24 @@ commit of the build you are running.
 
 <table>
 <tr>
-<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/854e7c3345b58a523602f3d25d5ab4e74ec71ba4/readme/mainmenu.png" width="400" alt="Main menu: Begin New Game, Continue, Load, Level Editor, Game Settings, Cloud Saves, Help, Quit, with the build version and commit stamped at the bottom"></td>
-<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/854e7c3345b58a523602f3d25d5ab4e74ec71ba4/readme/gameplay.png" width="400" alt="A magenta warband closing a ring on one red fighter in open grassland, health bars up and a thrown bone in flight"></td>
+<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/d67d38e4e35d9c151856bda68048116441410194/readme/mainmenu.png" width="400" alt="Main menu: Begin New Game, Continue, Load, Level Editor, Game Settings, Cloud Saves, Help, Quit, with the build version and commit stamped at the bottom"></td>
+<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/d67d38e4e35d9c151856bda68048116441410194/readme/gameplay.png" width="400" alt="A magenta warband closing a ring on one red fighter in open grassland, health bars up and a thrown bone in flight"></td>
 </tr>
 <tr>
 <td align="center"><sub>Main menu, stamped with its version and commit</sub></td>
 <td align="center"><sub>The original Gladiator campaign</sub></td>
 </tr>
 <tr>
-<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/854e7c3345b58a523602f3d25d5ab4e74ec71ba4/readme/basecamp-four-seats.png" width="400" alt="Base Camp: a roster of eight gladiators above a rail of four local seats bound to WASD, the arrows, IJKL and TFGH"></td>
-<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/854e7c3345b58a523602f3d25d5ab4e74ec71ba4/readme/networking-lobby.png" width="400" alt="The NETWORKING screen hosting a room with two machines connected"></td>
+<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/d67d38e4e35d9c151856bda68048116441410194/readme/basecamp-four-seats.png" width="400" alt="Base Camp: a roster of eight gladiators above a rail of four local seats bound to WASD, the arrows, IJKL and TFGH"></td>
+<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/d67d38e4e35d9c151856bda68048116441410194/readme/networking-lobby.png" width="400" alt="The NETWORKING screen hosting a room: four machines listed, two of them ready, one sharing a machine between two seats"></td>
 </tr>
 <tr>
 <td align="center"><sub>Base Camp with four local seats</sub></td>
 <td align="center"><sub>Hosting a networked room</sub></td>
 </tr>
 <tr>
-<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/854e7c3345b58a523602f3d25d5ab4e74ec71ba4/readme/mode-ctf.png" width="400" alt="A Capture the Flag brawl at a walled courtyard crossroads: both squads knotted on the corridor above the red waypoint ring, a fire blast in the middle"></td>
-<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/854e7c3345b58a523602f3d25d5ab4e74ec71ba4/readme/ninefold-court.png" width="400" alt="The Ninefold Court: a Lua level script firing the ninefold judgment pulse"></td>
+<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/d67d38e4e35d9c151856bda68048116441410194/readme/mode-ctf.png" width="400" alt="A Capture the Flag brawl at a walled courtyard crossroads: both squads knotted on the corridor above the red waypoint ring, a fire blast in the middle"></td>
+<td><img src="https://raw.githubusercontent.com/openglad/openglad-screenshots/d67d38e4e35d9c151856bda68048116441410194/readme/ninefold-court.png" width="400" alt="The Ninefold Court: a Lua level script firing the ninefold judgment pulse"></td>
 </tr>
 <tr>
 <td align="center"><sub>Capture the Flag</sub></td>
