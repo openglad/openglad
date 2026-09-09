@@ -273,7 +273,7 @@ if wanted networking-lobby; then
     # loaded box one of them can time out, so give it two more tries before
     # calling the shot lost.
     run_shots networking 'NetworkingUxShots.session_views_and_kick_confirm' 3
-    ppm_still "$SHOT_DIR/networking_hosting_two_machines.ppm" \
+    ppm_still "$SHOT_DIR/networking_hosting_four_machines.ppm" \
         "$OUT_DIR/networking-lobby.png"
     verify_png "$OUT_DIR/networking-lobby.png" 640 400
 fi
