@@ -1329,3 +1329,34 @@ TEST(SimWorldHeadless, freeze_still_counts_a_dormant_hostile)
         << "a dormant hostile counts as alive during freeze too";
     EXPECT_FALSE(w.game_ended);
 }
+
+// The session layer asks a level to stop by setting world.end (the exit
+// prompt's "yes", a withdraw, the host tearing a match down). A SCRIPTED
+// level takes a different arm of the tick than a classic one, and it must
+// stop the same way: the run is over, and no next level is invented — the
+// session layer owns where the party goes.
+TEST(SimWorldHeadless, world_end_stops_a_scripted_level_without_choosing_a_level)
+{
+    TestGameWorld t;
+    GameWorld& w = t.world();
+    w.my_team = 0;
+    w.type = GameWorld::TYPE_SCRIPTED;  // no mode script: init refuses
+
+    walker* hero = freeze_census::player_hero(t, 120, 120);
+    ASSERT_NE(nullptr, hero);
+    walker* foe = freeze_census::hostile_living(t, 200, 200);
+    ASSERT_NE(nullptr, foe);
+
+    // Control: the same world with no end request keeps running.
+    w.tick();
+    ASSERT_FALSE(w.game_ended) << "a scripted level runs until it is told to stop";
+    ASSERT_FALSE(foe->dead());
+
+    w.end = 1;
+    w.tick();
+    EXPECT_TRUE(w.game_ended) << "world.end must latch game_ended";
+    EXPECT_EQ(-1, w.next_level)
+        << "an end request is not a level completion: nothing picks a next level";
+    EXPECT_EQ(0, w.ending);
+    EXPECT_FALSE(foe->dead()) << "the tick is abandoned, not resolved";
+}
