@@ -2445,6 +2445,20 @@ TEST(CanvasScale, native_plane_failed_size_latch_is_scoped_to_that_size)
     EXPECT_EQ(24, other.h);
     s->cancel_native_world_view();
     EXPECT_FALSE(s->native_world_view_active());
+
+    // And the latch is not permanent: the next allocation this plane really
+    // performs forgets the size that failed, so a pane that shrank and grew
+    // again gets its raster back.
+    const std::array<NativeWorldViewDestination, 1> medium = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 30, .h = 18}}};
+    ASSERT_TRUE(s->begin_native_world_view(medium));
+    s->cancel_native_world_view();
+    const NativeWorldViewSource retried = s->begin_native_world_view(big);
+    EXPECT_TRUE(retried)
+        << "a completed allocation clears the remembered failed size";
+    EXPECT_EQ(80, retried.w);
+    EXPECT_EQ(50, retried.h);
+    s->cancel_native_world_view();
     E_Screen->discard_native_world_views_for_testing();
 }
 
