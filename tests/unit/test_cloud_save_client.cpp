@@ -979,11 +979,9 @@ TEST(CloudSaveFlows, an_install_failure_leaves_the_local_company_alone)
         << "a failed install never touches the company on disk";
     EXPECT_EQ(0, stored_cloud_revision())
         << "nothing installed, nothing stamped";
-    bool named = false;
-    for (const std::string& notice : blocked.notifies)
-        named = named ||
-                notice == "CLOUD SAVE|Could not install the\ndownloaded company.";
-    EXPECT_TRUE(named);
+    ASSERT_EQ(1u, blocked.notifies.size());
+    EXPECT_EQ("CLOUD SAVE|Could not install the\ndownloaded company.",
+              blocked.notifies[0]);
 
     std::filesystem::remove_all(staging, ec);
 
@@ -997,5 +995,12 @@ TEST(CloudSaveFlows, an_install_failure_leaves_the_local_company_alone)
     EXPECT_EQ(remote, read_save_file("cloudco").value_or(""));
     EXPECT_EQ(6, stored_cloud_revision());
 
+    // The successful install took a pre-swap backup ([SAVE-R6]); clear it so
+    // the sandbox shelf looks the way this test found it.
+    for (const og::data::CompanyBackupInfo& backup :
+         og::data::list_company_backups("cloudco"))
+    {
+        (void)remove_user_file("save/backups/" + backup.filename);
+    }
     remove_save_file("cloudco");
 }
