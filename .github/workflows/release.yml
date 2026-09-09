@@ -1,16 +1,21 @@
 name: Release
 
-# One GitHub release per master commit, named for the version the build stamps
-# on its own main menu: 2.<commit count> (see cmake/OpenGladVersion.cmake).
+# One GitHub release per master commit whose WASM E2E run completed
+# successfully, named for the version the build stamps on its own main menu:
+# 2.<commit count> (see cmake/OpenGladVersion.cmake).
 #
 # Trigger chain: a push to master runs "WASM E2E Tests" (wasm-e2e.yml), which
 # validates the web build, archives it at https://v2-<count>.openglad.pages.dev
 # and deploys production. Only when that run concludes successfully does this
 # file wake up (workflow_run) and cut the release, so a release tag never names
-# a commit whose web build failed. Because workflow_run always runs the copy of
-# this file that is on master, edits here take effect after they merge — a pull
-# request can only validate the three-platform build matrix (the `pull_request`
-# trigger below), never cut a release.
+# a commit whose web build failed. The converse is the deliberate cost: a burst
+# of master pushes cancels the older WASM runs (wasm-e2e.yml shares one master
+# concurrency group with cancel-in-progress: true), and a cancelled run is not
+# a successful one — those middle commits get no alias, no release, and the
+# next commit's release notes cover their changes. Because workflow_run always
+# runs the copy of this file that is on master, edits here take effect after
+# they merge — a pull request can only validate the three-platform build matrix
+# (the `pull_request` trigger below), never cut a release.
 #
 # History: this file was .github/workflows/nightly.yml, a 2am cron that
 # rewrote a rolling prerelease tag and ran its own relay/web deploys as a
@@ -29,11 +34,13 @@ permissions:
   contents: read
 
 # Releases are cut in commit order, never cancelled: `queue: max` lets up to
-# 100 runs sit pending in the group, so a burst of master pushes queues
-# instead of dropping the middle commits' releases (the default, `queue:
-# single`, keeps only ONE pending run and cancels the older pending one).
-# Pull requests get their own per-PR group so a validation build can never
-# evict a pending master release, nor another PR's build.
+# 100 runs sit pending in the group, so every release run that IS triggered
+# survives its wait (the default, `queue: single`, keeps only ONE pending run
+# and cancels the older pending one). It cannot resurrect a commit whose WASM
+# run was cancelled upstream — see the header — it only stops a backlog here
+# from eating already-triggered releases. Pull requests get their own per-PR
+# group so a validation build can never evict a pending master release, nor
+# another PR's build.
 concurrency:
   group: release-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'master' }}
   cancel-in-progress: false
