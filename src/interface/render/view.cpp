@@ -660,8 +660,6 @@ viewscreen::FloorPassParams viewscreen::compute_floor_pass(
 		    255.0f + dz * static_cast<float>(kFloorBelowAlphaStep)));
 		if (falpha < static_cast<int>(kFloorBelowAlphaMin))
 			falpha = static_cast<int>(kFloorBelowAlphaMin);
-		if (falpha > 255)
-			falpha = 255;
 	}
 	else
 	{
