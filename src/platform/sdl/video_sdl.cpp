@@ -3973,7 +3973,7 @@ int sdl_video::fadeblack(bool fade_in)
     if (!fade_in)
     {
         std::string detail;
-        if (!E_Screen->testing_render_matches_presented(&detail))
+        if (!E_Screen->testing_render_matches_presented(detail))
             og::video_testing::report_fade_violation(
                 ("fade-out from a frame that was never presented (the render "
                  "buffer was cleared or redrawn after its last present: " +
