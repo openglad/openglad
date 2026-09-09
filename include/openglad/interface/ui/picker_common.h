@@ -124,10 +124,11 @@ PickerRect campaign_title_rect(int chars);
 // --- Main-menu build stamp geometry ---
 //
 // The 5x6 menu font advances 6 px per glyph; the line is centred on the
-// button column (HELP x80..147, QUIT x152..219 -> centre 150) at y=193, the
-// black band below the button row (rows 178..192) and between the column
-// bases (x <= 50 and x >= 251 down there). Measured on the rendered menu;
-// the MenuLayout tests pin the button side.
+// button column (HELP x80..147, QUIT x152..219 -> centre 150) at y=193, in
+// the black band below the button row and between the column bases (x <= 50
+// and x >= 251 down there). The footer was lifted to y=172 so that band is
+// the stamp's alone: its faces end at row 186, six black rows above the ink.
+// Measured on the rendered menu; the MenuLayout tests pin the button side.
 struct BuildStampRect
 {
     int x = 0;

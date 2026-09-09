@@ -5759,11 +5759,12 @@ namespace {
 
 // The two main-menu buttons the stamp shares the bottom of the screen with,
 // copied from their specs in src/interface/ui/menu_screen_specs.cpp (HELP
-// and QUIT, both {.,178,68,15}). MenuLayout.mainmenu_build_stamp_clear_of_
-// buttons checks the same property against the real button table; this
-// unit-level copy keeps the geometry helper testable without SDL.
-constexpr og::ui::PickerRect kMainMenuHelp{80, 178, 68, 15};
-constexpr og::ui::PickerRect kMainMenuQuit{152, 178, 68, 15};
+// and QUIT, both {.,172,68,15} since the footer was lifted off the stamp).
+// MenuLayout.mainmenu_build_stamp_clear_of_buttons checks the same property
+// against the real button table, and pins the gutter width; this unit-level
+// copy keeps the geometry helper testable without SDL.
+constexpr og::ui::PickerRect kMainMenuHelp{80, 172, 68, 15};
+constexpr og::ui::PickerRect kMainMenuQuit{152, 172, 68, 15};
 
 og::ui::PickerRect as_picker_rect(const og::ui::BuildStampRect& r)
 {
@@ -5776,7 +5777,7 @@ TEST(PickerCommon, build_stamp_rect_stays_in_the_band)
 {
     // The band measured on the rendered menu: rows 193..199 are black for
     // x in [51,250] (the column bases own x <= 50 and x >= 251 down there,
-    // and the button row ends at row 192).
+    // and the lifted HELP/QUIT footer ends at row 186).
     for (int len = 8; len <= 22; ++len)
     {
         const std::string line(static_cast<std::size_t>(len), 'W');

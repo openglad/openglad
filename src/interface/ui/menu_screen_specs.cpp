@@ -963,6 +963,46 @@ void main_menu_nav_rewire(button* buttons, int count, int& /*highlighted*/)
     }
 }
 
+// --- Main-menu vertical grid (§2.1) ---
+//
+// One block feeds BOTH tables below: the MP and no-MP variants are meant to
+// be geometrically identical, and hand-typed twins drift the moment one of
+// them is edited alone. The primary action group (BEGIN, the CONTINUE|LOAD
+// row, LEVEL EDITOR) is fixed at the top on the classic 4px gutter;
+// everything under it is derived from the footer, and the footer is placed
+// off the build stamp.
+constexpr int kMainMenuDoorH = 15;       // every full-width door below the pair
+constexpr int kMainMenuGroupGutter = 4;  // the classic within-group gutter
+constexpr int kMainMenuLevelEditY = 103; // last row of the primary group
+constexpr int kMainMenuLevelEditBottom = kMainMenuLevelEditY + kMainMenuDoorH;
+
+// The footer keeps a black gutter between its faces and the build stamp
+// (kBuildStampY, 6 rows of ink centred on the button column). Flush against
+// the stamp — which is where the footer sat at y=178 — the version line read
+// as a caption glued to QUIT's underside rather than its own band.
+constexpr int kMainMenuStampGutter = 6;
+constexpr int kMainMenuFooterY =
+    kBuildStampY - kMainMenuStampGutter - kMainMenuDoorH;
+static_assert(kMainMenuFooterY == 172);
+static_assert(kBuildStampY - (kMainMenuFooterY + kMainMenuDoorH) >= 5,
+              "the build stamp needs a band of its own under the footer");
+
+// The settings pair (GAME SETTINGS over CLOUD SAVES) floats in the slack
+// between the primary group and that footer, with equal breaks above and
+// below: move either neighbour and the pair re-centres itself instead of
+// drifting toward one of them.
+constexpr int kMainMenuSettingsGroupH =
+    2 * kMainMenuDoorH + kMainMenuGroupGutter;
+constexpr int kMainMenuSettingsBreak =
+    (kMainMenuFooterY - kMainMenuLevelEditBottom - kMainMenuSettingsGroupH) / 2;
+constexpr int kMainMenuOptionsY =
+    kMainMenuLevelEditBottom + kMainMenuSettingsBreak;
+constexpr int kMainMenuCloudY =
+    kMainMenuOptionsY + kMainMenuDoorH + kMainMenuGroupGutter;
+static_assert(kMainMenuFooterY - (kMainMenuCloudY + kMainMenuDoorH) ==
+                  kMainMenuSettingsBreak,
+              "the settings pair must sit centred in its slack");
+
 constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     {.id = "begin_new_game", .label = "",
      .x = 80, .y = 55, .w = 140, .h = 20,
@@ -976,7 +1016,7 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .nav = {.up = 0, .down = 2, .right = 6},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "level_edit", .label = "Level Editor",
-     .x = 80, .y = 103, .w = 140, .h = 15,
+     .x = 80, .y = kMainMenuLevelEditY, .w = 140, .h = kMainMenuDoorH,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
      .nav = {.up = 1, .down = 3}},
     // Seat lifecycle moved beside the live lobby in Base Camp, and
@@ -987,28 +1027,30 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     // the cloud slot. The grey SETTINGS heading that grouped the old narrow
     // pair went with them; two spelled-out rows need no caption.
     //
-    // The pair floats in the 60px of canvas between LEVEL EDITOR's bottom
-    // (y=118) and the HELP/QUIT footer (y=178). Its own height is 34
-    // (15 + the group's 4px gutter + 15), so the 26px of slack splits evenly:
-    // 13 above GAME SETTINGS and 13 below CLOUD SAVES. Move either row and
-    // the settings group visibly drifts toward one neighbour.
+    // The pair floats in the 54px of canvas between LEVEL EDITOR's bottom
+    // (y=118) and the HELP/QUIT footer (y=172, lifted to leave the build
+    // stamp a band of its own). Its own height is 34 (15 + the group's 4px
+    // gutter + 15), so the 20px of slack splits evenly: 10 above GAME
+    // SETTINGS (y=128) and 10 below CLOUD SAVES (y=147). The grid block
+    // above derives all three, so moving a neighbour re-centres the pair
+    // instead of letting it drift toward one of them.
     {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = 131, .w = 140, .h = 15,
+     .x = 80, .y = kMainMenuOptionsY, .w = 140, .h = kMainMenuDoorH,
      .action = ButtonAction::MainOptions, .arg = -1,
      .nav = {.up = 2, .down = 8}},
     {.id = "help", .label = "HELP",
-     .x = 80, .y = 178, .w = 68, .h = 15,
+     .x = 80, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
      .action = ButtonAction::ShowHelp, .arg = -1,
      .nav = {.up = 8, .down = 0, .right = 5}},
     // The web/native fork (§1.6): exactly one QUIT row survives at
     // materialized index 5. Native activation quits; web is visibly disabled.
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 152, .y = 178, .w = 68, .h = 15,
+     .x = 152, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
      .action = ButtonAction::QuitMenu, .arg = 0,
      .nav = {.up = 8, .down = 0, .left = 4},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
-     .x = 152, .y = 178, .w = 68, .h = 15,
+     .x = 152, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
      .action = ButtonAction::QuitMenu, .arg = 0,
      .nav = {.up = 8, .down = 0, .left = 4},
      .state_override = &main_menu_web_quit_state,
@@ -1030,7 +1072,7 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     // so its materialized ordinal is 8 on every variant (exactly one QUIT
     // row survives materialization).
     {.id = "cloud", .label = "CLOUD SAVES",
-     .x = 80, .y = 150, .w = 140, .h = 15,
+     .x = 80, .y = kMainMenuCloudY, .w = 140, .h = kMainMenuDoorH,
      .action = ButtonAction::MenuSpecRow, .arg = 8,
      .nav = {.up = 3, .down = 4}},
 };
@@ -1047,28 +1089,28 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .nav = {.up = 0, .down = 2, .right = 6},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "level_edit", .label = "Level Editor",
-     .x = 80, .y = 103, .w = 140, .h = 15,
+     .x = 80, .y = kMainMenuLevelEditY, .w = 140, .h = kMainMenuDoorH,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
      .nav = {.up = 1, .down = 3}},
     // Two full-width doors named in full; DIFFICULTY went to the Base Camp
     // command strip and the grey SETTINGS caption went with it. The pair is
-    // centered in the 60px between LEVEL EDITOR (bottom y=118) and the footer
-    // (y=178): 13px of canvas above and below the 34px group.
+    // centered in the 54px between LEVEL EDITOR (bottom y=118) and the footer
+    // (y=172): 10px of canvas above and below the 34px group.
     {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = 131, .w = 140, .h = 15,
+     .x = 80, .y = kMainMenuOptionsY, .w = 140, .h = kMainMenuDoorH,
      .action = ButtonAction::MainOptions, .arg = -1,
      .nav = {.up = 2, .down = 8}},
     {.id = "help", .label = "HELP",
-     .x = 80, .y = 178, .w = 68, .h = 15,
+     .x = 80, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
      .action = ButtonAction::ShowHelp, .arg = -1,
      .nav = {.up = 8, .down = 0, .right = 5}},
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 152, .y = 178, .w = 68, .h = 15,
+     .x = 152, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
      .action = ButtonAction::QuitMenu, .arg = 0,
      .nav = {.up = 8, .down = 0, .left = 4},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
-     .x = 152, .y = 178, .w = 68, .h = 15,
+     .x = 152, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
      .action = ButtonAction::QuitMenu, .arg = 0,
      .nav = {.up = 8, .down = 0, .left = 4},
      .state_override = &main_menu_web_quit_state,
@@ -1089,7 +1131,7 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     // so its materialized ordinal is 8 on every variant (exactly one QUIT
     // row survives materialization).
     {.id = "cloud", .label = "CLOUD SAVES",
-     .x = 80, .y = 150, .w = 140, .h = 15,
+     .x = 80, .y = kMainMenuCloudY, .w = 140, .h = kMainMenuDoorH,
      .action = ButtonAction::MenuSpecRow, .arg = 8,
      .nav = {.up = 3, .down = 4}},
 };

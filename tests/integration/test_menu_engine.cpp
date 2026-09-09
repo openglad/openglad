@@ -3265,19 +3265,21 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
      ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 3}},
     // DIFFICULTY left for the Base Camp command strip
     // (docs/camp-controls-design.md); the settings group is two full-width
-    // doors named in full, with no grey caption over them.
-    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 131, 140, 15,
+    // doors named in full, with no grey caption over them. HELP/QUIT then
+    // moved up to y=172 so the build stamp gets its own band, and the pair
+    // re-centred in the slack that left.
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 128, 140, 15,
      ButtonAction::MainOptions, -1, MenuNav{.up = 2, .down = 8}},
-    {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
+    {"help", "HELP", KEYSTATE_UNKNOWN, 80, 172, 68, 15,
      ButtonAction::ShowHelp, -1, MenuNav{.up = 8, .down = 0, .right = 5}},
 };
 
 // The trailing space in "QUIT " is part of the shipped label.
 constexpr ExpectedSpecRow kMainMenuMPQuitNative = {
-    "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 178, 68, 15,
+    "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 172, 68, 15,
     ButtonAction::QuitMenu, 0, MenuNav{.up = 8, .down = 0, .left = 4}};
 constexpr ExpectedSpecRow kMainMenuMPQuitWeb = {
-    "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 178, 68, 15,
+    "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 172, 68, 15,
     ButtonAction::QuitMenu, 0, MenuNav{.up = 8, .down = 0, .left = 4}};
 constexpr ExpectedSpecRow kMainMenuMPLoad = {
     "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
@@ -3289,7 +3291,7 @@ constexpr ExpectedSpecRow kMainMenuMPNote = {
 // ordinal 8 on every variant — exactly one QUIT row survives), the second
 // full-width settings row under GAME SETTINGS.
 constexpr ExpectedSpecRow kMainMenuMPCloud = {
-    "cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 150, 140, 15,
+    "cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 147, 140, 15,
     ButtonAction::MenuSpecRow, 8, MenuNav{.up = 3, .down = 4}};
 
 // Main geometry no longer changes with multiplayer support: every build

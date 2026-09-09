@@ -270,8 +270,9 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     // settings pair is centered in the canvas the caption left behind: the
     // break above it equals the footer break below it (checked at the CLOUD
     // row), so the group reads as floating between the two neighbours rather
-    // than clinging to either.
-    constexpr int kCategoryBreak = 13;
+    // than clinging to either. The footer's lift off the build stamp shrank
+    // that slack from 26px to 20px, so the break is 10 now.
+    constexpr int kCategoryBreak = 10;
     EXPECT_EQ(kCategoryBreak, buttons[3].y - (buttons[2].y + buttons[2].sizey));
 
     // HELP and QUIT are a stable, aligned footer pair.
@@ -294,8 +295,13 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
               buttons[8].y - (buttons[3].y + buttons[3].sizey));
     // Footer break measured from CLOUD SAVES, the settings group's last row,
     // and equal to the break above GAME SETTINGS — that equality is what
-    // centers the pair.
-    EXPECT_EQ(kCategoryBreak, buttons[4].y - (buttons[8].y + buttons[8].sizey));
+    // centers the pair. Asserted as a RELATION first: whatever the two
+    // neighbours are, the pair floats halfway between them.
+    const int break_above = buttons[3].y - (buttons[2].y + buttons[2].sizey);
+    const int break_below = buttons[4].y - (buttons[8].y + buttons[8].sizey);
+    EXPECT_EQ(break_above, break_below)
+        << "the settings pair is not centred in its slack";
+    EXPECT_EQ(kCategoryBreak, break_below);
     EXPECT_EQ(3, buttons[8].nav.up) << "cloud links up to GAME SETTINGS";
     EXPECT_EQ(4, buttons[8].nav.down) << "cloud links down to HELP";
     EXPECT_EQ(8, buttons[3].nav.down) << "GAME SETTINGS links down to CLOUD";
@@ -4143,6 +4149,15 @@ TEST(MenuLayout, mainmenu_build_stamp_clear_of_buttons)
         EXPECT_GE(r.y, 0);
         EXPECT_LE(r.x + r.w, SCREEN_W) << "stamp runs off the screen";
         EXPECT_LE(r.y + r.h, SCREEN_H) << "stamp runs off the screen";
+        // Clearance is not enough: a stamp that merely fails to overlap
+        // still reads as a caption stuck to the button above it. The footer
+        // must leave the stamp a band of black to sit in. Measured against
+        // the nearest visible button that shares any of the stamp's columns
+        // — the HELP/QUIT footer, which sat at y=178 and ended on row 192,
+        // flush against the stamp's first ink row.
+        constexpr int kMinStampGutter = 5;
+        int nearest_bottom = -1;
+        const char* nearest_id = "";
         for (int i = 0; i < count; ++i)
         {
             if (buttons[i].hidden)
@@ -4152,6 +4167,20 @@ TEST(MenuLayout, mainmenu_build_stamp_clear_of_buttons)
                                        buttons[i].sizey))
                 << "the build stamp overlaps main-menu button '"
                 << buttons[i].id << "'";
+
+            const bool shares_columns = buttons[i].x < r.x + r.w &&
+                                        r.x < buttons[i].x + buttons[i].sizex;
+            const int bottom = buttons[i].y + buttons[i].sizey;
+            if (shares_columns && bottom <= r.y && bottom > nearest_bottom)
+            {
+                nearest_bottom = bottom;
+                nearest_id = buttons[i].id.c_str();
+            }
         }
+        ASSERT_GE(nearest_bottom, 0)
+            << "no main-menu button sits above the build stamp";
+        EXPECT_GE(r.y - nearest_bottom, kMinStampGutter)
+            << "the build stamp crowds main-menu button '" << nearest_id
+            << "' (gap " << (r.y - nearest_bottom) << "px)";
     }
 }

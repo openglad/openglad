@@ -91,11 +91,13 @@ static const ExpectedButton kExpectedMainMenu[] = {
      MenuNav{.up = 1, .down = 3}},
     // DIFFICULTY left for the Base Camp command strip
     // (docs/camp-controls-design.md), and the narrow GAME | CLOUD pair it
-    // sat under became two full-width rows named in full.
-    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 131, 140, 15,
+    // sat under became two full-width rows named in full. The footer then
+    // moved up to y=172 to leave the build stamp its own black band, and
+    // the settings pair re-centred in the 54px of slack above it.
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 128, 140, 15,
      button_action_id(ButtonAction::MainOptions), -1,
      MenuNav{.up = 2, .down = 8}},
-    {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
+    {"help", "HELP", KEYSTATE_UNKNOWN, 80, 172, 68, 15,
      button_action_id(ButtonAction::ShowHelp), -1,
      MenuNav{.up = 8, .down = 0, .right = 5}},
     {"quit", "QUIT ",
@@ -104,7 +106,7 @@ static const ExpectedButton kExpectedMainMenu[] = {
 #else
      KEYSTATE_ESCAPE,
 #endif
-     152, 178, 68, 15, button_action_id(ButtonAction::QuitMenu), 0,
+     152, 172, 68, 15, button_action_id(ButtonAction::QuitMenu), 0,
      MenuNav{.up = 8, .down = 0, .left = 4}},
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
@@ -113,7 +115,7 @@ static const ExpectedButton kExpectedMainMenu[] = {
      button_action_id(ButtonAction::MenuSpecRow), 7, MenuNav{}, true},
     // #155: the always-visible CLOUD door, the second full-width settings
     // row; MenuSpecRow arg == its materialized ordinal.
-    {"cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 150, 140, 15,
+    {"cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 147, 140, 15,
      button_action_id(ButtonAction::MenuSpecRow), 8,
      MenuNav{.up = 3, .down = 4}},
 };
