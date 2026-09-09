@@ -3480,3 +3480,229 @@ TEST(LineupUi, arena_defaults_field_a_fair_match_in_the_launched_world)
 
     restore_gladiator_mount();
 }
+
+
+// --- WP5: seatless SPLIT, partial-lock toasts, the title-band clip -------
+
+namespace {
+
+// A per-slot ownership veto for the SPLIT tests. The real callback is a
+// plain function pointer installed by the lobby client, so the guard swaps
+// it the way tests/unit/test_lineup_common.cpp does.
+std::array<bool, MAX_TEAM_SIZE> g_wp5_locked_slots{};
+
+bool wp5_slot_editable(int slot)
+{
+    return slot >= 0 && slot < MAX_TEAM_SIZE &&
+        !g_wp5_locked_slots[static_cast<std::size_t>(slot)];
+}
+
+struct Wp5LockedSlotsGuard
+{
+    og::ui::PickerSaveSlotEditableCallback saved =
+        og::ui::g_picker_save_slot_editable_callback;
+
+    Wp5LockedSlotsGuard()
+    {
+        g_wp5_locked_slots.fill(false);
+        og::ui::g_picker_save_slot_editable_callback = &wp5_slot_editable;
+    }
+
+    ~Wp5LockedSlotsGuard()
+    {
+        og::ui::g_picker_save_slot_editable_callback = saved;
+        g_wp5_locked_slots.fill(false);
+    }
+};
+
+void seed_lineup_roster(SaveData& save,
+                        const std::vector<FighterSeed>& roster)
+{
+    for (auto& slot : save.team_list)
+        slot.reset();
+    for (std::size_t i = 0; i < roster.size(); ++i)
+    {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = roster[i].name;
+        member->upgrade_to_level(roster[i].level, true);
+        member->deployed = roster[i].deployed;
+        member->teamnum = roster[i].team;
+        save.team_list[i] = std::move(member);
+    }
+    save.team_size = static_cast<unsigned char>(roster.size());
+}
+
+} // namespace
+
+// §5: a spectator/autoplay company has no seat at this machine, so there is
+// no seat picture to split ACROSS. The three buttons must say so and touch
+// nothing — before the fix a seatless SPLIT silently did nothing at all.
+TEST(LineupUi, split_without_a_local_seat_says_so_and_moves_nobody)
+{
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    seed_lineup_roster(save, {{"A", 3, true, 1},
+                              {"B", 3, true, 2},
+                              {"C", 3, true, 1}});
+    save.my_team = 1;
+    save.allied_mode = 0;
+    save.current_campaign = "gladiator";
+    // Nobody is sitting at this machine: no lobby client, and a save that
+    // synthesizes no seats either.
+    save.numplayers = 0;
+    picker_lobby_shutdown();
+
+    const std::array<short, 3> before = {save.team_list[0]->teamnum,
+                                         save.team_list[1]->teamnum,
+                                         save.team_list[2]->teamnum};
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        trace_clear();
+        EXPECT_EQ(MENU_OK, lineup_split_action(mode)) << "mode " << mode;
+        EXPECT_TRUE(trace_contains(
+            "lineup", std::format("split_no_seat mode={}", mode).c_str()))
+            << "mode " << mode;
+        EXPECT_TRUE(trace_contains("lineup", "toast NO LOCAL SEAT"))
+            << "mode " << mode;
+        EXPECT_FALSE(trace_contains("lineup", "split mode="))
+            << "mode " << mode << ": no plan may be drawn without a seat";
+        for (int i = 0; i < 3; ++i)
+        {
+            EXPECT_EQ(before[static_cast<std::size_t>(i)],
+                      save.team_list[static_cast<std::size_t>(i)]->teamnum)
+                << "mode " << mode << " slot " << i;
+        }
+    }
+
+    // Paired control: give this machine one seat and the same UNITE call
+    // marches the company.
+    save.numplayers = 1;
+    picker_lobby_shutdown();
+    picker_lobby_set_player_mode(1);
+    trace_clear();
+    EXPECT_EQ(MENU_OK, lineup_split_action(2));
+    EXPECT_FALSE(trace_contains("lineup", "split_no_seat"));
+    EXPECT_EQ(1, save.team_list[0]->teamnum);
+    EXPECT_EQ(1, save.team_list[1]->teamnum)
+        << "the seated team collects everybody";
+    EXPECT_EQ(1, save.team_list[2]->teamnum);
+    EXPECT_TRUE(trace_contains("lineup", "toast ALL FIGHTERS TO TEAM 2"));
+
+    restore_gladiator_mount();
+}
+
+// §5 + §2.2: when a SPLIT moves some fighters and the ownership rule keeps
+// others, the toast has to report BOTH — the march and the count that stayed
+// — through the real button dispatch the strip uses.
+TEST(LineupUi, split_toasts_count_the_slots_that_stayed_put)
+{
+    SavedPickerSave save_guard;
+    Wp5LockedSlotsGuard lock_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    seed_lineup_roster(save, {{"A", 3, true, 1},
+                              {"B", 3, true, 1},
+                              {"C", 3, true, 0},
+                              {"D", 3, true, 0}});
+    save.my_team = 0;
+    save.allied_mode = 0;
+    save.numplayers = 2;
+    save.current_campaign = "gladiator";
+    // Rebuild the lobby from THIS roster: resize keeps a previous test's
+    // seat teams, and the toasts below name the seated teams.
+    picker_lobby_shutdown();
+    picker_lobby_set_player_mode(2);
+    restore_gladiator_mount();
+    ASSERT_TRUE(og::ui::lineup_zone_can_team(save))
+        << "gladiator must leave the team rule alone for this test";
+
+    // The lobby's two seats really are teams 1 and 2 in player-facing terms.
+    g_wp5_locked_slots[2] = true;
+    g_wp5_locked_slots[3] = true;
+
+    vbutton dispatcher;
+
+    // UNITE moves the two free fighters and names the count that could not
+    // come along.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              dispatcher.do_call(button_action_id(ButtonAction::LineupUnite), 0));
+    EXPECT_TRUE(trace_contains("lineup", "split mode=2 moved=2 locked=2"));
+    EXPECT_TRUE(trace_contains("lineup",
+                               "toast ALL FIGHTERS TO TEAM 1 (2 LOCKED)"));
+    EXPECT_EQ(0, save.team_list[0]->teamnum);
+    EXPECT_EQ(0, save.team_list[1]->teamnum);
+    EXPECT_EQ(0, save.team_list[2]->teamnum) << "locked slot 2 never moved";
+    EXPECT_EQ(0, save.team_list[3]->teamnum) << "locked slot 3 never moved";
+
+    // EVEN deals across both seats, so the toast drops the march sentence
+    // and reports only what stayed.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              dispatcher.do_call(
+                  button_action_id(ButtonAction::LineupSplitEven), 0));
+    EXPECT_TRUE(trace_contains("lineup", "split mode=0 moved=1 locked=2"));
+    EXPECT_TRUE(trace_contains("lineup", "toast 2 LOCKED SLOTS KEPT"));
+    EXPECT_FALSE(trace_contains("lineup", "ALL FIGHTERS"))
+        << "two seated teams is not an ALL TO 1";
+    EXPECT_EQ(0, save.team_list[0]->teamnum);
+    EXPECT_EQ(1, save.team_list[1]->teamnum);
+    EXPECT_EQ(0, save.team_list[2]->teamnum);
+    EXPECT_EQ(0, save.team_list[3]->teamnum);
+
+    // FAIR routes through its own dispatch case and reaches the same rule.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              dispatcher.do_call(
+                  button_action_id(ButtonAction::LineupSplitFair), 0));
+    EXPECT_TRUE(trace_contains("lineup", "locked=2"));
+
+    // Paired control: unlock the two rows and the count disappears from the
+    // toast entirely.
+    g_wp5_locked_slots.fill(false);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[1]->teamnum = 1;
+    save.team_list[2]->teamnum = 1;
+    save.team_list[3]->teamnum = 1;
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              dispatcher.do_call(button_action_id(ButtonAction::LineupUnite), 0));
+    EXPECT_TRUE(trace_contains("lineup", "split mode=2 moved=4 locked=0"));
+    EXPECT_TRUE(trace_contains("lineup", "toast ALL FIGHTERS TO TEAM 1"));
+    EXPECT_FALSE(trace_contains("lineup", "LOCKED"))
+        << "nothing stayed behind, so nothing is counted";
+
+    picker_lobby_shutdown();
+    picker_lobby_set_player_mode(1);
+    restore_gladiator_mount();
+}
+
+// §2.2: the toast shares the title band's 40-character census slot, so an
+// over-long one is clipped before it is shown OR logged — an unclipped
+// toast painted over the band's own text.
+TEST(LineupUi, a_long_toast_clips_to_the_title_band)
+{
+    og::ui::LineupScreenState state;
+    og::ui::install_lineup_state_for_screen(&state);
+
+    const std::string fits(static_cast<std::size_t>(kLineupTitleCensusChars),
+                           'A');
+    trace_clear();
+    og::ui::lineup_show_toast(fits);
+    EXPECT_EQ(fits, state.toast) << "exactly the budget survives whole";
+    EXPECT_TRUE(trace_contains("lineup", ("toast " + fits).c_str()));
+
+    const std::string overlong =
+        std::string(static_cast<std::size_t>(kLineupTitleCensusChars), 'B') +
+        "OVERRUN";
+    trace_clear();
+    og::ui::lineup_show_toast(overlong);
+    EXPECT_EQ(static_cast<std::size_t>(kLineupTitleCensusChars),
+              state.toast.size());
+    EXPECT_EQ(overlong.substr(0,
+                              static_cast<std::size_t>(kLineupTitleCensusChars)),
+              state.toast);
+    EXPECT_FALSE(trace_contains("lineup", "OVERRUN"))
+        << "the trace carries the clipped text, not the raw one";
+
+    og::ui::install_lineup_state_for_screen(nullptr);
+}
