@@ -4,6 +4,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <gtest/gtest.h>
@@ -398,10 +400,15 @@ TEST(PickerUncovered, add_guy_distinguishes_a_full_team_from_an_empty_purse)
     // Broke, with room to hire: the screen stays open.
     save.team_size = 0;
     save.m_totalcash[0] = 0;
+    const FamilyDescriptor* const soldier =
+        get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
     og::ui::HireSession broke(save, 0);
     ASSERT_TRUE(broke.current_recruit() != nullptr);
-    ASSERT_TRUE(broke.current_cost() > save.m_totalcash[0])
-        << "the fixture must really be unaffordable";
+    ASSERT_EQ(static_cast<std::uint32_t>(soldier->hiring_cost),
+              broke.current_cost())
+        << "a base soldier costs its family's hiring price, and the purse "
+           "holds nothing";
     {
         HireSessionSlotGuard installed(&broke);
         EXPECT_EQ(4, static_cast<int>(add_guy(0)))

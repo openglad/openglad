@@ -3615,7 +3615,7 @@ TEST(LineupUi, split_toasts_count_the_slots_that_stayed_put)
     ASSERT_TRUE(og::ui::lineup_zone_can_team(save))
         << "gladiator must leave the team rule alone for this test";
 
-    // The lobby's two seats really are teams 1 and 2 in player-facing terms.
+    // The back half of the roster belongs to somebody else.
     g_wp5_locked_slots[2] = true;
     g_wp5_locked_slots[3] = true;
 
@@ -3649,12 +3649,16 @@ TEST(LineupUi, split_toasts_count_the_slots_that_stayed_put)
     EXPECT_EQ(0, save.team_list[2]->teamnum);
     EXPECT_EQ(0, save.team_list[3]->teamnum);
 
-    // FAIR routes through its own dispatch case and reaches the same rule.
+    // FAIR routes through its own dispatch case: the free pair is already
+    // one per seat, so nothing moves and only the locked count is reported.
     trace_clear();
     EXPECT_EQ(MENU_OK,
               dispatcher.do_call(
                   button_action_id(ButtonAction::LineupSplitFair), 0));
-    EXPECT_TRUE(trace_contains("lineup", "locked=2"));
+    EXPECT_TRUE(trace_contains("lineup", "split mode=1 moved=0 locked=2"));
+    EXPECT_TRUE(trace_contains("lineup", "toast 2 LOCKED SLOTS KEPT"));
+    EXPECT_EQ(0, save.team_list[0]->teamnum);
+    EXPECT_EQ(1, save.team_list[1]->teamnum);
 
     // Paired control: unlock the two rows and the count disappears from the
     // toast entirely.
