@@ -1654,9 +1654,16 @@ void GameServer::update_disconnected_players(std::uint64_t now)
     }
 }
 
-bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
+// Keep a grace-window seat playing itself out of its last known input. Unlike
+// the connected-seat path this one can neither switch character nor request the
+// endgame: repeated_input has every pressed flag cleared when the seat is
+// parked (see handle_transport_disconnect), and the guard below skips a null or
+// dead control, so the two branches of sim_process_player_input that rewrite
+// `control` or set control_hp_changed / endgame_requested are both out of
+// reach. The live copy of those rules is the connected-seat path in
+// apply_polled_inputs.
+void GameServer::process_disconnected_players(std::uint32_t expected_tick)
 {
-    bool should_tick_world = true;
     (void)expected_tick;
 
     for (auto& disconnected : disconnected_players_)
@@ -1686,8 +1693,7 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
             continue;
         }
 
-        walker* const previous_control = disconnected.control;
-        const SimInputResult result = sim_process_player_input(
+        sim_process_player_input(
             disconnected.repeated_input,
             disconnected.control,
             world_,
@@ -1698,29 +1704,7 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
             &events_);
 
         player_controls_[disconnected.player_index] = disconnected.control;
-        if (disconnected.control != previous_control)
-            maybe_send_control_change(disconnected.player_index, disconnected.control);
-        if (result.control_hp_changed)
-            world_.control_hp = result.control_hp;
-        if (result.endgame_requested &&
-            !og::sim::respawn_suppress_team_wipe_endgame(
-                world_, disconnected.team_num))
-        {
-            if (has_living_member_for_any_bound_team(
-                    world_, clients_, disconnected_players_))
-            {
-                continue;
-            }
-
-            world_.ending = result.endgame_type;
-            emit_event(&events_, EventKind::EndGame,
-                       static_cast<std::uint32_t>(result.endgame_type),
-                       static_cast<std::uint32_t>(-1));
-            should_tick_world = false;
-        }
     }
-
-    return should_tick_world;
 }
 
 void GameServer::synchronize_transport_peers()
@@ -3371,7 +3355,7 @@ void GameServer::step()
     if (should_tick_world)
         should_tick_world = apply_polled_inputs(next_tick);
     if (should_tick_world)
-        should_tick_world = process_disconnected_players(next_tick);
+        process_disconnected_players(next_tick);
     if (should_tick_world)
         world_.tick();
 
