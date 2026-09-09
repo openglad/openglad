@@ -624,3 +624,64 @@ TEST(GloaderFuncs, custom_spritesheet_rejects_path_traversal)
     cfg.apply_setting("graphics", "sprite_sheet", orig);
     ASSERT_TRUE(apply_sprite_sheet_setting());
 }
+
+// A family byte above 127 that reaches the loader through a signed char
+// arrives NEGATIVE (the same narrowing that once walked the editor's team
+// brush out of range). All three of the loader's family->slot readers must
+// land on the order's family-0 row: without the clamp they index the
+// graphics/stats arrays out of bounds, which is a read of arbitrary heap as
+// a sprite. The family-1 arm beside each is what proves the clamp is a
+// clamp and not "every family reads row 0".
+TEST(GloaderFuncs, an_out_of_range_family_reads_the_orders_first_row)
+{
+    loader* l = og::runtime::current_session->myscreen_->myloader;
+    ASSERT_TRUE(l != nullptr) << "loader exists";
+    if (!l)
+        return;
+
+    const PixieData* living_zero = l->graphics_for(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(living_zero != nullptr) << "the soldier row is loaded";
+    const PixieData* living_one = l->graphics_for(Order::Living, FAMILY_ELF);
+    ASSERT_TRUE(living_one != nullptr) << "the elf row is loaded";
+    ASSERT_TRUE(living_zero != living_one) << "distinct families, distinct rows";
+
+    EXPECT_EQ(living_zero, l->graphics_for(Order::Living, -3))
+        << "a negative family reads the family-0 row";
+    EXPECT_EQ(living_zero, l->graphics_for(Order::Living, NUM_FAMILY_SLOTS + 4))
+        << "a family past the slot table reads the family-0 row";
+
+    // set_derived_stats: the same clamp, over the stat arrays.
+    auto probe = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(probe != nullptr);
+    auto reference = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(reference != nullptr);
+
+    l->set_derived_stats(reference.get(), Order::Living, FAMILY_SOLDIER);
+    l->set_derived_stats(probe.get(), Order::Living, -3);
+    EXPECT_EQ(reference->normal_stepsize(), probe->normal_stepsize());
+    EXPECT_EQ(reference->lineofsight(), probe->lineofsight());
+    EXPECT_EQ(reference->damage(), probe->damage());
+    EXPECT_EQ(reference->fire_frequency(), probe->fire_frequency());
+
+    l->set_derived_stats(probe.get(), Order::Living, FAMILY_ELF);
+    EXPECT_NE(reference->lineofsight(), probe->lineofsight())
+        << "an in-range family really reads its own stat row";
+
+    // set_walker: the clamp rewrites the walker's own family byte, so the
+    // entity that survives a corrupt level byte is family 0 and not a
+    // walker claiming a family the loader has no row for.
+    l->set_derived_stats(probe.get(), Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(l->set_walker(probe.get(), Order::Living, FAMILY_ELF) != nullptr);
+    ASSERT_EQ(FAMILY_ELF, static_cast<int>(probe->family()))
+        << "an in-range family really lands on the walker";
+
+    ASSERT_TRUE(l->set_walker(probe.get(), Order::Living, -3) != nullptr);
+    EXPECT_EQ(FAMILY_SOLDIER, static_cast<int>(probe->family()))
+        << "the out-of-range family byte is rewritten to family 0";
+
+    ASSERT_TRUE(
+        l->set_walker(reference.get(), Order::Living, FAMILY_SOLDIER) != nullptr);
+    EXPECT_EQ(reference->ani_count, probe->ani_count)
+        << "and the clamped walker got the family-0 animation table";
+    EXPECT_EQ(reference->act_type(), probe->act_type());
+}
