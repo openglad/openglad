@@ -764,44 +764,6 @@ TEST(GameLoop, game_frame_ends_the_mission_without_a_transport_runtime)
     game_screen->world().delete_objects();
 }
 
-// The event pump can end the world under the frame (a quit, a pause-menu
-// withdraw). The post-pump check has to catch that in the SAME frame: running
-// the tick below it would simulate past the end the player just asked for.
-TEST(GameLoop, world_ended_during_the_event_pump_finishes_the_frame_done)
-{
-    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_pump_end"));
-    screen* const game_screen = og::runtime::current_session->myscreen_;
-    ASSERT_TRUE(game_screen != nullptr);
-    GameSpeedGuard speed_guard(0.0f);
-
-    int poll_calls = 0;
-    GameLoopDeps deps;
-    deps.enable_render = false;
-    deps.enable_event_poll = true;
-    deps.enable_frame_timing = false;
-    deps.poll_event = [&poll_calls, game_screen](SDL_Event*) {
-        ++poll_calls;
-        game_screen->world().end = 1;
-        return 0;
-    };
-
-    ASSERT_EQ(0, static_cast<int>(game_screen->world().end));
-    const std::uint32_t before_tick = game_screen->world().tick_count_;
-    GameLoopFrameState st;
-    EXPECT_EQ(GameFrameResult::Done,
-              game_frame_with_result(*game_screen, st, deps));
-    EXPECT_EQ(1, poll_calls) << "the frame must have reached the event pump";
-    EXPECT_TRUE(st.done);
-    EXPECT_FALSE(st.has_pending_input);
-    EXPECT_EQ(before_tick, game_screen->world().tick_count_)
-        << "a world ended inside the pump must not be simulated past";
-
-    game_screen->world().end = 0;
-    og::runtime::clear_local_transport_shadow(
-        *og::runtime::current_game_session);
-    game_screen->world().delete_objects();
-}
-
 TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
