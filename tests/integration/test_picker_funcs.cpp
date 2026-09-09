@@ -4133,3 +4133,302 @@ TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
     ASSERT_TRUE(apply_sprite_sheet_setting());
     fs::remove_all(pack_dir, ec);
 }
+
+namespace {
+
+// The sprite-sheet list geometry, mirrored from pick_spritesheet so the
+// injector can aim at a row, at the scrollbar trough above the thumb, and at
+// the trough below it. These are CLICK TARGETS, not oracles: every test below
+// judges the pack that was actually selected.
+constexpr int kSheetRowH = 16;
+constexpr int kSheetListX = 60;
+constexpr int kSheetListW = 200;
+constexpr int kSheetListY = 32;
+constexpr int kSheetBackY = 178;
+constexpr int kSheetVisibleRows = (kSheetBackY - kSheetListY) / kSheetRowH;
+constexpr int kSheetScrollH = kSheetVisibleRows * kSheetRowH;
+constexpr int kSheetScrollX = kSheetListX + kSheetListW + 2;
+
+std::vector<std::string> spritesheet_pack_list()
+{
+    std::vector<std::string> packs;
+    std::error_code ec;
+    const std::filesystem::path extra_dir =
+        std::filesystem::path(get_user_path()) / "extra_pix";
+    for (const auto& entry : std::filesystem::directory_iterator(extra_dir, ec))
+    {
+        if (entry.is_directory())
+            packs.push_back(entry.path().filename().string());
+    }
+    std::sort(packs.begin(), packs.end());
+    return packs;
+}
+
+// Thumb top and height for a given list length and scroll position — the same
+// arithmetic pick_spritesheet draws with, used to aim trough clicks.
+std::pair<int, int> spritesheet_thumb(int total_items, int scroll_top)
+{
+    const int thumb_h =
+        std::max(kSheetRowH, kSheetScrollH * kSheetVisibleRows / total_items);
+    const int thumb_range = kSheetScrollH - thumb_h;
+    const int thumb_y = kSheetListY +
+        scroll_top * thumb_range / (total_items - kSheetVisibleRows);
+    return {thumb_y, thumb_h};
+}
+
+struct SpriteSheetStep
+{
+    enum class Kind { Click, Wheel, RemoveDir };
+    Kind kind = Kind::Click;
+    int x = 0;
+    int y = 0;
+    int wheel = 0;
+    std::string path;
+};
+
+SpriteSheetStep sheet_click(int x, int y)
+{
+    return SpriteSheetStep{
+        .kind = SpriteSheetStep::Kind::Click, .x = x, .y = y, .wheel = 0,
+        .path = {}};
+}
+
+SpriteSheetStep sheet_row_click(int row)
+{
+    return sheet_click(kSheetListX + kSheetListW / 2,
+                       kSheetListY + row * kSheetRowH + 4);
+}
+
+SpriteSheetStep sheet_wheel(int ticks)
+{
+    return SpriteSheetStep{.kind = SpriteSheetStep::Kind::Wheel,
+                           .x = 0,
+                           .y = 0,
+                           .wheel = ticks,
+                           .path = {}};
+}
+
+std::vector<SpriteSheetStep> g_spritesheet_steps;
+
+void inject_mouse_wheel(int integer_y)
+{
+    SDL_Event event;
+    std::memset(&event, 0, sizeof(event));
+    event.type = SDL_EVENT_MOUSE_WHEEL;
+    event.wheel.integer_y = integer_y;
+    event.wheel.y = static_cast<float>(integer_y);
+    SDL_PushEvent(&event);
+}
+
+int picker_spritesheet_step_injector(void*)
+{
+    og::runtime::ensure_thread_session();
+    SDL_Delay(100);
+    for (const SpriteSheetStep& step : g_spritesheet_steps)
+    {
+        switch (step.kind)
+        {
+        case SpriteSheetStep::Kind::Click:
+            // A 60 ms hold spans several 10 ms picker frames, so the press is
+            // observed before the release collapses it; each list/trough
+            // click is then consumed exactly once (the picker waits for the
+            // release before looking at the mouse again).
+            inject_mouse_click(step.x, step.y, 60);
+            break;
+        case SpriteSheetStep::Kind::Wheel:
+            inject_mouse_wheel(step.wheel);
+            break;
+        case SpriteSheetStep::Kind::RemoveDir:
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(step.path, ec);
+            break;
+        }
+        }
+        SDL_Delay(60);
+    }
+    // BACK closes the picker and applies whatever is selected.
+    inject_mouse_click(25, 185, 60);
+    return 0;
+}
+
+// Runs one whole PickSpriteSheet dispatch driven by `steps`, returning the
+// dispatcher's result.
+Sint32 run_spritesheet_picker(std::vector<SpriteSheetStep> steps)
+{
+    g_spritesheet_steps = std::move(steps);
+    prepare_picker_mouse();
+    SDL_Thread* thread = SDL_CreateThread(
+        picker_spritesheet_step_injector, "picker_sheet_steps", nullptr);
+    EXPECT_TRUE(thread != nullptr);
+
+    vbutton dispatcher;
+    const Sint32 result = dispatcher.do_call(
+        button_action_id(ButtonAction::PickSpriteSheet), 0);
+
+    if (thread != nullptr)
+        SDL_WaitThread(thread, nullptr);
+    clear_events();
+    g_spritesheet_steps.clear();
+    return result;
+}
+
+// Creates (and, through its destructor, removes) a run of pack directories
+// under extra_pix/, leaving the sprite-sheet setting unmounted on the way out
+// so no removed directory stays mounted.
+class SpriteSheetPackDirs
+{
+public:
+    SpriteSheetPackDirs(const std::string& prefix, int count)
+    {
+        std::error_code ec;
+        for (int index = 0; index < count; ++index)
+        {
+            const std::filesystem::path dir =
+                std::filesystem::path(get_user_path()) / "extra_pix" /
+                std::format("{}{:02d}", prefix, index);
+            std::filesystem::create_directories(dir, ec);
+            dirs_.push_back(dir);
+        }
+    }
+
+    ~SpriteSheetPackDirs()
+    {
+        cfg.apply_setting("graphics", "sprite_sheet", "");
+        (void)apply_sprite_sheet_setting();
+        std::error_code ec;
+        for (const std::filesystem::path& dir : dirs_)
+            std::filesystem::remove_all(dir, ec);
+    }
+
+    SpriteSheetPackDirs(const SpriteSheetPackDirs&) = delete;
+    SpriteSheetPackDirs& operator=(const SpriteSheetPackDirs&) = delete;
+
+    [[nodiscard]] const std::filesystem::path& dir(std::size_t index) const
+    {
+        return dirs_[index];
+    }
+
+private:
+    std::vector<std::filesystem::path> dirs_;
+};
+
+void reset_sprite_sheet_selection()
+{
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+}
+
+} // namespace
+
+// Scrolling the list moves which pack sits under a given row. The same click
+// at the top row picks "Standard" on an unscrolled list and the first pack
+// after one wheel notch — a scroll that silently did nothing (or moved two)
+// would land on a different pack and fail.
+TEST_F(SpriteSheetPicker, wheel_scroll_changes_the_pack_under_the_top_row)
+{
+    SpriteSheetPackDirs packs_dirs("zz_wp4_sheet_", 13);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    ASSERT_GE(packs.size(), 13u) << "the pack directories should be listed";
+    const int total_items = 1 + static_cast<int>(packs.size());
+    ASSERT_GT(total_items, kSheetVisibleRows)
+        << "the list must overflow or there is nothing to scroll";
+
+    // Control arm: no scroll, so the top row is "Standard" and the setting
+    // goes back to the stock sheet.
+    reset_sprite_sheet_selection();
+    cfg.apply_setting("graphics", "sprite_sheet", packs[2]);
+    ASSERT_EQ(MENU_REDRAW, run_spritesheet_picker({sheet_row_click(0)}));
+    EXPECT_EQ("", cfg.get_setting("graphics", "sprite_sheet"))
+        << "row 0 is Standard: it clears the pack selection";
+    EXPECT_TRUE(apply_sprite_sheet_setting());
+
+    // One wheel notch down: the same row now holds the first pack.
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker({sheet_wheel(-1), sheet_row_click(0)}));
+    EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"));
+}
+
+// The scrollbar trough is the other way down the list: clicking below the
+// thumb pages down one row, clicking above it pages back up one row. Two runs
+// of the same clicks minus the page-up land on different packs.
+TEST_F(SpriteSheetPicker, scrollbar_trough_pages_the_list_both_ways)
+{
+    SpriteSheetPackDirs packs_dirs("zz_wp4_trough_", 13);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    ASSERT_GE(packs.size(), 13u);
+    const int total_items = 1 + static_cast<int>(packs.size());
+    ASSERT_GE(total_items - kSheetVisibleRows, 2)
+        << "the list must be able to scroll at least two rows";
+
+    const auto [thumb0_y, thumb0_h] = spritesheet_thumb(total_items, 0);
+    const auto [thumb1_y, thumb1_h] = spritesheet_thumb(total_items, 1);
+    const auto [thumb2_y, thumb2_h] = spritesheet_thumb(total_items, 2);
+    const SpriteSheetStep page_down_0 =
+        sheet_click(kSheetScrollX + 2, thumb0_y + thumb0_h + 1);
+    const SpriteSheetStep page_down_1 =
+        sheet_click(kSheetScrollX + 2, thumb1_y + thumb1_h + 1);
+    const SpriteSheetStep page_up_2 =
+        sheet_click(kSheetScrollX + 2, thumb2_y - 1);
+    ASSERT_LT(page_down_0.y, kSheetListY + kSheetScrollH);
+    ASSERT_LT(page_down_1.y, kSheetListY + kSheetScrollH);
+    ASSERT_GE(page_up_2.y, kSheetListY);
+
+    // Two pages down: the top row holds the SECOND pack.
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker(
+                  {page_down_0, page_down_1, sheet_row_click(0)}));
+    EXPECT_EQ(packs[1], cfg.get_setting("graphics", "sprite_sheet"));
+
+    // The same two pages down plus one page up: the first pack instead.
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker(
+                  {page_down_0, page_down_1, page_up_2, sheet_row_click(0)}));
+    EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"))
+        << "a trough click above the thumb must page back exactly one row";
+}
+
+// A pack that disappears between the click and the BACK cannot be mounted, so
+// the picker must roll the selection back to the sheet that was working and
+// say so — otherwise the player leaves the menu with a broken sprite mount.
+TEST_F(SpriteSheetPicker, a_pack_that_vanishes_rolls_back_to_the_previous_sheet)
+{
+    SpriteSheetPackDirs pack_dirs("000_wp4_roll_", 2);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    const auto first = std::find(packs.begin(), packs.end(), "000_wp4_roll_00");
+    const auto second = std::find(packs.begin(), packs.end(), "000_wp4_roll_01");
+    ASSERT_NE(packs.end(), first);
+    ASSERT_NE(packs.end(), second);
+    const int first_row = 1 + static_cast<int>(first - packs.begin());
+    const int second_row = 1 + static_cast<int>(second - packs.begin());
+    ASSERT_LT(second_row, kSheetVisibleRows)
+        << "both rows must be visible without scrolling";
+
+    ScopedTraceBuffer trace_scope;
+    reset_sprite_sheet_selection();
+
+    // Control arm: a pack that is still there is applied and kept.
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker({sheet_row_click(first_row)}));
+    EXPECT_EQ("000_wp4_roll_00", cfg.get_setting("graphics", "sprite_sheet"));
+    EXPECT_FALSE(trace_contains("popup", "Could not load"))
+        << "a pack that mounts must not warn";
+
+    // Rollback arm: pick the second pack, then delete it before BACK.
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker(
+                  {sheet_row_click(second_row),
+                   SpriteSheetStep{
+                       .kind = SpriteSheetStep::Kind::RemoveDir,
+                       .x = 0,
+                       .y = 0,
+                       .wheel = 0,
+                       .path = pack_dirs.dir(1).string()}}));
+    EXPECT_EQ("000_wp4_roll_00", cfg.get_setting("graphics", "sprite_sheet"))
+        << "the unmountable pick must roll back to the working sheet";
+    EXPECT_TRUE(trace_contains("popup",
+                               "Sprite Sheet: Could not load"))
+        << "and the player must be told why";
+}
