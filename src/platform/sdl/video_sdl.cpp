@@ -34,6 +34,7 @@
 #include <utility>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <format>
 #include <cstring>
 #include <openglad/interface/game_context.h>
@@ -3009,9 +3010,10 @@ int og::platform::best_fullscreen_mode_index(
 	               std::numeric_limits<int>::max()};
 	for (int i = 0; i < static_cast<int>(modes.size()); ++i)
 	{
-		if (modes[i] == nullptr)
+		const SDL_DisplayMode* const entry = modes[static_cast<std::size_t>(i)];
+		if (entry == nullptr)
 			continue;
-		const SDL_DisplayMode& candidate = *modes[i];
+		const SDL_DisplayMode& candidate = *entry;
 		const auto pixels = og::platform::display_mode_pixel_size(candidate);
 		if (pixels.first < w || pixels.second < h)
 			continue;
