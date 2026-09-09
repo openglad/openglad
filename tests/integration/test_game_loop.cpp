@@ -3611,8 +3611,6 @@ TEST(GameLoop, midgame_seat_doors_are_shut_on_a_network_client_shadow)
 
     EXPECT_FALSE(
         og::runtime::local_transport_shadow_can_add_player(gameplay_session));
-    EXPECT_FALSE(og::runtime::local_transport_shadow_can_remove_player(
-        gameplay_session, 0));
     EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(
         gameplay_session));
     EXPECT_EQ(1u,
@@ -7028,15 +7026,14 @@ TEST(GameLoop, midgame_seat_gating_closes_after_end_replay_and_spectator)
     std::uint32_t tick = 0;
     midgame_pump(session, 8, tick);
 
-    // Control: mid-level, one seat, both doors behave normally.
+    // Control: mid-level, one seat, the add door is open.
     ASSERT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
     ASSERT_EQ(1u, og::runtime::local_transport_client_count(session));
 
-    const auto expect_both_doors_shut = [&session](const char* why) {
+    // Only the ADD door is asserted here: with one seat the remove door is
+    // already shut by the seat count, so a refusal there would prove nothing.
+    const auto expect_the_add_door_shut = [&session](const char* why) {
         EXPECT_FALSE(og::runtime::local_transport_shadow_can_add_player(session))
-            << why;
-        EXPECT_FALSE(
-            og::runtime::local_transport_shadow_can_remove_player(session, 0))
             << why;
         EXPECT_FALSE(
             og::runtime::local_transport_shadow_add_local_player(session))
@@ -7047,21 +7044,21 @@ TEST(GameLoop, midgame_seat_gating_closes_after_end_replay_and_spectator)
 
     // The mission is over: the results screen owns the session now.
     game_screen->world().end = 1;
-    expect_both_doors_shut("a finished mission must not take a new seat");
+    expect_the_add_door_shut("a finished mission must not take a new seat");
     game_screen->world().end = 0;
     ASSERT_TRUE(og::runtime::local_transport_shadow_can_add_player(session))
         << "clearing world.end must reopen the door";
 
     // Replay playback: the inputs are a recording, not a player.
     og::runtime::current_session->replay_playback_active_ = true;
-    expect_both_doors_shut("replay playback must not take a new seat");
+    expect_the_add_door_shut("replay playback must not take a new seat");
     og::runtime::current_session->replay_playback_active_ = false;
     ASSERT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
 
     // Spectator autoplay (numplayers == 0): nobody is holding a controller.
     const auto saved_numplayers = game_screen->save_data.numplayers;
     game_screen->save_data.numplayers = 0;
-    expect_both_doors_shut("a spectator session must not take a new seat");
+    expect_the_add_door_shut("a spectator session must not take a new seat");
     game_screen->save_data.numplayers = saved_numplayers;
     EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session))
         << "restoring the seat count must reopen the door";
