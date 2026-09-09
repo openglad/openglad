@@ -31,11 +31,14 @@
 
 #include <gtest/gtest.h>
 
+#include "../test_game_world_fixture.h"
+
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/living.h>
 #include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -475,4 +478,217 @@ TEST_F(LuaFamilyBindTest, the_world_api_is_closed_during_the_bind_replay)
     const std::string errors = load_errors(active_world_scripts());
     EXPECT_TRUE(contains(errors, "the world API is dispatch-time only"))
         << errors;
+}
+
+// ---------------------------------------------------------------------------
+// Two declarations of one family
+// ---------------------------------------------------------------------------
+
+// og.register_hooks over a declaration is the supported override seam and
+// stays quiet (above). TWO declarations of the same family's same hook is the
+// other case: two authors editing one family, where the loser's code silently
+// never runs. That has to be reported, and the LATER one has to be the one
+// that survives — last-registration-wins is the rule everything else in the
+// loader follows.
+TEST_F(LuaFamilyBindTest, two_declarations_of_one_hook_report_and_the_later_wins)
+{
+    family_chunk("og.family('living', { id = 'core:soldier',\n"
+                 "  on_death = function() og.log('first') return true end })\n"
+                 "og.family('living', { id = 'core:soldier',\n"
+                 "  on_death = function() og.log('second') return true end })\n");
+
+    WorldScripts& ws = active_world_scripts();
+    const std::string errors = load_errors(ws);
+    EXPECT_TRUE(contains(errors, "duplicate hook registration")) << errors;
+    EXPECT_TRUE(contains(errors, "on_death")) << errors;
+
+    const FamilyDescriptor* fd = get_family_descriptor(kSoldier);
+    const auto result = hooks::on_death(fd, nullptr);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(*result);
+    ASSERT_EQ(1u, ws.host().log().size());
+    EXPECT_EQ("second", ws.host().log().back())
+        << "the later declaration must be the one that runs";
+}
+
+// ---------------------------------------------------------------------------
+// The id join, and what it refuses
+// ---------------------------------------------------------------------------
+
+// Casts join to slots by DECLARED ID against the installed descriptor, so an
+// id the family does not have cannot be silently dropped: the author would be
+// left with a special that never fires and no reason why. The message lists
+// the ids that DO exist, because "charge" against "chrage" is the whole class
+// of mistake this catches.
+TEST_F(LuaFamilyBindTest, a_special_id_the_family_lacks_names_the_ids_it_has)
+{
+    expect_soldier_special_ids();
+    family_chunk("og.family('living', { id = 'core:soldier', specials = {\n"
+                 "  { id = 'chrage', name = 'CHARGE', mp_cost = 25,\n"
+                 "    cast = function() og.log('bound') return true end },\n"
+                 "} })\n");
+
+    WorldScripts& ws = active_world_scripts();
+    const std::string errors = load_errors(ws);
+    EXPECT_TRUE(contains(errors, "special 'chrage' names no slot of living "
+                                 "family 'core:soldier'")) << errors;
+    EXPECT_TRUE(contains(errors, "declared ids: charge, boomerang, whirlwind, "
+                                 "disarm")) << errors;
+    // The chunk was abandoned at the bad id, so nothing it declared bound.
+    EXPECT_FALSE(ws.has_hook(Order::Living, kSoldier, FamilyHook::DoSpecial));
+    EXPECT_TRUE(ws.host().log().empty());
+}
+
+// A declaration with no id has nothing to join against and cannot name itself
+// in the error — the order is all the loader has, and it is what tells the
+// author which of a merged file's calls is the broken one.
+TEST_F(LuaFamilyBindTest, an_idless_declaration_names_the_order_it_was_binding)
+{
+    family_chunk("og.family('living', {})\n");
+    WorldScripts& ws = active_world_scripts();
+    EXPECT_TRUE(contains(load_errors(ws),
+                         "og.family living: a declaration needs an id"))
+        << load_errors(ws);
+    // Nothing bound: the raise happened before any hook reached the table.
+    EXPECT_FALSE(ws.has_hook(Order::Living, kSoldier, FamilyHook::OnDeath));
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch through the lowered forms
+//
+// These three drive a REAL living through the same funnel walker::special()
+// uses, because the slot the closure picks is read off the walker: a
+// nullptr self can only ever prove the no-opinion arm.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// core:soldier, alive, in a headless world — the caster every dispatch below
+// selects its slot on.
+living* spawn_soldier(TestGameWorld& tw)
+{
+    walker* w = tw.world().add_ob(Order::Living, kSoldier);
+    EXPECT_NE(nullptr, w) << "the shipped soldier must be spawnable";
+    return static_cast<living*>(w);
+}
+
+}  // namespace
+
+// The bind pass reads a chunk the declaration pass already accepted, so it
+// cannot re-report a malformed entry — but it must not let one cost the pack
+// the casts written AFTER it either. Skipping the junk and binding the rest
+// is what keeps a half-edited file from losing its whole specials list.
+TEST_F(LuaFamilyBindTest, a_malformed_specials_entry_is_skipped_not_fatal)
+{
+    family_chunk("og.family('living', { id = 'core:soldier', specials = {\n"
+                 "  7,\n"                                   // not a table
+                 "  { name = 'NAMELESS', mp_cost = 1 },\n"  // no id
+                 "  { id = 'charge', name = 'CHARGE', mp_cost = 25,\n"
+                 "    cast = function() og.log('charge cast') return true end },\n"
+                 "  default_cast = function() return true end,\n"
+                 "} })\n");
+    TestGameWorld tw;
+    living* self = spawn_soldier(tw);
+    ASSERT_NE(nullptr, self);
+
+    WorldScripts& ws = active_world_scripts();
+    EXPECT_TRUE(load_errors(ws).empty()) << load_errors(ws);
+    EXPECT_TRUE(ws.has_hook(Order::Living, kSoldier, FamilyHook::DoSpecial));
+
+    const FamilyDescriptor* fd = get_family_descriptor(kSoldier);
+    self->set_current_special(1);
+    const auto result = hooks::do_special(fd, self);
+    ASSERT_TRUE(result.has_value()) << "the surviving cast did not dispatch";
+    EXPECT_TRUE(*result);
+    ASSERT_EQ(1u, ws.host().log().size());
+    EXPECT_EQ("charge cast", ws.host().log().back());
+}
+
+// The `ai =` sugar lowers to ONE closure over a private slot → function
+// table, and the closure has to pick by the slot the walker is actually
+// casting. Forwarding the wrong entry would make a class refuse the spell its
+// own ai approved and cast the one it declined.
+TEST_F(LuaFamilyBindTest, per_slot_ai_answers_for_the_slot_being_cast)
+{
+    expect_soldier_special_ids();
+    family_chunk("og.family('living', { id = 'core:soldier', specials = {\n"
+                 "  { id = 'charge', name = 'CHARGE', mp_cost = 25,\n"
+                 "    cast = false,\n"
+                 "    ai = function(self) og.log('slot1 asked') return false end },\n"
+                 "  { id = 'boomerang', name = 'BOOMERANG', mp_cost = 100,\n"
+                 "    cast = false },\n"
+                 "} })\n");
+    TestGameWorld tw;
+    living* self = spawn_soldier(tw);
+    ASSERT_NE(nullptr, self);
+
+    WorldScripts& ws = active_world_scripts();
+    EXPECT_TRUE(load_errors(ws).empty()) << load_errors(ws);
+
+    const FamilyDescriptor* fd = get_family_descriptor(kSoldier);
+    self->set_current_special(1);
+    const auto slot1 = hooks::check_special_ai(fd, self);
+    ASSERT_TRUE(slot1.has_value());
+    EXPECT_FALSE(*slot1) << "slot 1's own ai said no";
+    ASSERT_EQ(1u, ws.host().log().size());
+    EXPECT_EQ("slot1 asked", ws.host().log().back());
+
+    // Slot 2 declared no ai. The closure answers "no opinion" — true, what
+    // the engine does with no hook at all — and slot 1's function must NOT
+    // have been asked on its behalf.
+    self->set_current_special(2);
+    const auto slot2 = hooks::check_special_ai(fd, self);
+    ASSERT_TRUE(slot2.has_value());
+    EXPECT_TRUE(*slot2);
+    EXPECT_EQ(1u, ws.host().log().size())
+        << "another slot's ai answered for slot 2";
+    EXPECT_EQ(0u, hooks::hook_failures().count);
+}
+
+// `cast = false` is stored as a value, not left absent, so it BEATS a
+// default_cast rather than falling through to it. The slot was written to
+// spend its MP and do nothing on purpose; a default that swallowed it would
+// make the spelling unusable in any family that also has a default.
+TEST_F(LuaFamilyBindTest, cast_false_beats_the_default_for_its_own_slot)
+{
+    expect_soldier_special_ids();
+    family_chunk("og.family('living', { id = 'core:soldier', specials = {\n"
+                 "  { id = 'charge', name = 'CHARGE', mp_cost = 25,\n"
+                 "    cast = function() og.log('charge ran') return true end },\n"
+                 "  { id = 'boomerang', name = 'BOOMERANG', mp_cost = 100,\n"
+                 "    cast = false },\n"
+                 "  default_cast = function() og.log('default ran') return true end,\n"
+                 "} })\n");
+    TestGameWorld tw;
+    living* self = spawn_soldier(tw);
+    ASSERT_NE(nullptr, self);
+
+    WorldScripts& ws = active_world_scripts();
+    EXPECT_TRUE(load_errors(ws).empty()) << load_errors(ws);
+
+    const FamilyDescriptor* fd = get_family_descriptor(kSoldier);
+    self->set_current_special(1);
+    const auto charged = hooks::do_special(fd, self);
+    ASSERT_TRUE(charged.has_value());
+    EXPECT_TRUE(*charged);
+    ASSERT_EQ(1u, ws.host().log().size());
+    EXPECT_EQ("charge ran", ws.host().log().back());
+
+    // Slot 2 is the charged no-op: consumed as a successful dispatch with
+    // nothing called, and the default left untouched.
+    self->set_current_special(2);
+    const auto noop = hooks::do_special(fd, self);
+    ASSERT_TRUE(noop.has_value()) << "the no-op is a handled dispatch";
+    EXPECT_TRUE(*noop);
+    EXPECT_EQ(1u, ws.host().log().size())
+        << "the default_cast swallowed the explicit no-op";
+
+    // Slot 3 declared nothing, so it is the default's to answer.
+    self->set_current_special(3);
+    const auto defaulted = hooks::do_special(fd, self);
+    ASSERT_TRUE(defaulted.has_value());
+    EXPECT_TRUE(*defaulted);
+    ASSERT_EQ(2u, ws.host().log().size());
+    EXPECT_EQ("default ran", ws.host().log().back());
+    EXPECT_EQ(0u, hooks::hook_failures().count);
 }
