@@ -548,12 +548,9 @@ TEST(NetTransportWebSocketServer,
     ASSERT_TRUE(flooder.wait_until_closed());
     ASSERT_TRUE(poll_until_peer_count(transport, 1u));
 
-    std::vector<og::sim::ReceivedMessage> after_flood = transport.poll();
-    for (const og::sim::ReceivedMessage& message : after_flood)
-    {
-        EXPECT_LE(message.data.size(), kServerMaxInboundFrameBytes)
-            << "an over-cap frame must never be delivered";
-    }
+    const std::vector<og::sim::ReceivedMessage> after_flood = transport.poll();
+    EXPECT_EQ(0u, after_flood.size())
+        << "an over-cap frame must never be delivered";
 
     // The well-behaved peer kept its seat and still talks.
     ASSERT_EQ(1u, transport.connected_peers().size());
