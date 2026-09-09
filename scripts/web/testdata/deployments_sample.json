@@ -19,6 +19,7 @@
       "environment": "production",
       "url": "https://e5f6a7b8.openglad.pages.dev",
       "created_on": "2026-09-05T10:02:00Z",
+      "latest_stage": { "name": "deploy", "status": "success" },
       "aliases": ["https://openglad.pages.dev"],
       "deployment_trigger": {
         "type": "github:push",
@@ -94,6 +95,21 @@
           "commit_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee5"
         }
       }
+    },
+    {
+      "id": "88888888-8888-8888-8888-888888888888",
+      "environment": "production",
+      "url": "https://f00dcafe.openglad.pages.dev",
+      "created_on": "2026-09-05T09:00:00Z",
+      "latest_stage": { "name": "deploy", "status": "failure" },
+      "aliases": ["https://openglad.pages.dev"],
+      "deployment_trigger": {
+        "type": "github:push",
+        "metadata": {
+          "branch": "master",
+          "commit_hash": "fffffffffffffffffffffffffffffffffffffff7"
+        }
+      }
     }
   ],
   "success": true,
@@ -102,7 +118,7 @@
   "result_info": {
     "page": 1,
     "per_page": 25,
-    "count": 7,
-    "total_count": 7
+    "count": 8,
+    "total_count": 8
   }
 }

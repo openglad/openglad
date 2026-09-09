@@ -106,8 +106,25 @@ def alias_url_of(deployment: dict[str, Any]) -> Optional[str]:
     return None
 
 
+def succeeded(deployment: dict[str, Any]) -> bool:
+    """False when the API says this deployment's last stage did not succeed.
+
+    Cloudflare lists failed and cancelled deployments alongside the good ones,
+    and their ``url`` serves nothing - indexing them would put dead "archived
+    build" links on the page. A listing with no ``latest_stage.status`` at all
+    is trusted (older API shapes), so a missing field never empties the index.
+    """
+    stage = deployment.get("latest_stage") or {}
+    status = stage.get("status")
+    if not isinstance(status, str) or not status:
+        return True
+    return status == "success"
+
+
 def is_indexable(deployment: dict[str, Any]) -> bool:
     """Production deployments and archive aliases only - pr-<n> previews out."""
+    if not succeeded(deployment):
+        return False
     if deployment.get("environment") == "production":
         return True
     return alias_url_of(deployment) is not None

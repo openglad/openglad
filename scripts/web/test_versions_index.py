@@ -25,6 +25,7 @@ COMMIT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"  # v2-1074 alias only
 COMMIT_C = "ccccccccccccccccccccccccccccccccccccccc3"  # pre-alias production
 COMMIT_D = "ddddddddddddddddddddddddddddddddddddddd4"  # not in the counts map
 COMMIT_PR = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee5"  # the pr-42 preview
+COMMIT_FAILED = "fffffffffffffffffffffffffffffffffffffff7"  # production, build failed
 COMMIT_CURRENT = "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f6"
 
 COUNTS = {COMMIT_A: 1075, COMMIT_B: 1074, COMMIT_C: 1050}
@@ -48,6 +49,18 @@ class GroupingTests(unittest.TestCase):
         self.assertFalse(
             any(row["alias_url"] and "pr-42" in row["alias_url"] for row in rows)
         )
+
+    def test_failed_deployments_are_excluded(self):
+        """A failed production deployment serves nothing: no dead link on the page."""
+        rows = rows_for()
+        self.assertNotIn(COMMIT_FAILED, [row["commit"] for row in rows])
+        self.assertFalse(
+            any(row["immutable_url"] and "f00dcafe" in row["immutable_url"]
+                for row in rows)
+        )
+        # A listing with no latest_stage at all is still trusted - the other
+        # fixture rows carry none and they are all indexed.
+        self.assertTrue(versions_index.succeeded({"environment": "production"}))
 
     def test_current_row_is_first_and_flagged(self):
         rows = rows_for()
