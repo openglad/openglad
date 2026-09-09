@@ -264,6 +264,36 @@ TEST(PackTransferWire, manifest_rejects_truncated_payload)
         og::sim::deserialize_pack_manifest_message(bytes).has_value());
 }
 
+// A manifest entry names a file the client will create on disk, so the
+// decoder — not the installer — is where a nameless or absurdly long path is
+// refused; a host cannot talk a joiner into writing one.
+TEST(PackTransferWire, manifest_rejects_empty_and_overlong_file_paths)
+{
+    og::sim::PackManifestMessage empty_path = make_test_manifest();
+    empty_path.files.front().path.clear();
+    EXPECT_FALSE(og::sim::deserialize_pack_manifest_message(
+                     og::sim::serialize_pack_manifest_message(empty_path))
+                     .has_value());
+
+    og::sim::PackManifestMessage overlong = make_test_manifest();
+    overlong.files.front().path =
+        std::string(og::sim::kMaxPackRelativePathLength + 1, 'a');
+    EXPECT_FALSE(og::sim::deserialize_pack_manifest_message(
+                     og::sim::serialize_pack_manifest_message(overlong))
+                     .has_value());
+
+    // The cap itself is legal: the refusals above are the length rule, not a
+    // blanket refusal of long names.
+    og::sim::PackManifestMessage at_cap = make_test_manifest();
+    at_cap.files.front().path =
+        std::string(og::sim::kMaxPackRelativePathLength, 'a');
+    const std::optional<og::sim::PackManifestMessage> decoded =
+        og::sim::deserialize_pack_manifest_message(
+            og::sim::serialize_pack_manifest_message(at_cap));
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(at_cap, *decoded);
+}
+
 TEST(PackTransferWire, chunk_rejects_data_over_cap)
 {
     og::sim::PackFileChunkMessage chunk;

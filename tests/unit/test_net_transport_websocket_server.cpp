@@ -114,6 +114,16 @@ public:
         return error_;
     }
 
+    bool send_text(const std::string& text)
+    {
+        return websocket_.sendText(text).success;
+    }
+
+    bool send_ping()
+    {
+        return websocket_.ping("probe").success;
+    }
+
     bool send_binary(std::span<const std::uint8_t> bytes)
     {
         const char* raw_bytes = reinterpret_cast<const char*>(bytes.data());
@@ -432,6 +442,127 @@ TEST(NetTransportWebSocketServer,
 
     ASSERT_TRUE(poll_until_peer_count(transport, 0u));
     EXPECT_TRUE(transport.connected_peers().empty());
+}
+
+// A null buffer with a nonzero length is a caller bug the game thread must
+// hear about; an address that names no peer is routine (a client that left
+// between two sends) and must stay silent.
+TEST(NetTransportWebSocketServer,
+     send_throws_on_a_null_buffer_and_ignores_addresses_with_no_peer)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options options;
+    options.host = "127.0.0.1";
+
+    og::sim::WebSocketServerTransport transport(port, options);
+    transport.accept_connections();
+
+    WebSocketClientProbe client(std::format("ws://127.0.0.1:{}", port));
+    client.start();
+    ASSERT_TRUE(client.wait_until_open()) << client.error();
+    ASSERT_TRUE(poll_until_peer_count(transport, 1u));
+    const std::vector<og::sim::PeerId> peers = transport.connected_peers();
+    ASSERT_EQ(1u, peers.size());
+    const og::sim::PeerId peer_id = peers.front();
+
+    // Positive arm: the same address delivers while the peer is connected.
+    const std::vector<std::uint8_t> frame =
+        og::sim::serialize_keyframe_request_message(
+            og::sim::KeyframeRequestMessage{.last_seen_tick = 51u});
+    transport.send(peer_id, frame.data(), frame.size());
+    ASSERT_TRUE(client.wait_for_binary_message_count(1u)) << client.error();
+    ASSERT_EQ(1u, client.binary_messages().size());
+    EXPECT_EQ(51u, decode_keyframe_request_tick(client.binary_messages().front()));
+
+    // The null-buffer guard runs before the peer lookup, so a LIVE peer still
+    // throws rather than sending whatever the pointer aliased.
+    EXPECT_THROW(transport.send(peer_id, nullptr, frame.size()),
+                 std::runtime_error);
+    // A zero-length send carries no buffer to be null about: it goes out as
+    // an empty binary frame rather than throwing.
+    EXPECT_NO_THROW(transport.send(peer_id, nullptr, 0u));
+    ASSERT_TRUE(client.wait_for_binary_message_count(2u)) << client.error();
+    ASSERT_EQ(2u, client.binary_messages().size());
+    EXPECT_TRUE(client.binary_messages().back().empty());
+
+    transport.disconnect(peer_id);
+    EXPECT_TRUE(transport.connected_peers().empty());
+    ASSERT_TRUE(client.wait_until_closed());
+
+    // Both addressed calls are no-ops now, and neither reaches the wire.
+    EXPECT_NO_THROW(transport.send(peer_id, frame.data(), frame.size()));
+    EXPECT_NO_THROW(transport.disconnect(peer_id));
+    EXPECT_TRUE(transport.connected_peers().empty());
+    EXPECT_TRUE(transport.poll().empty());
+    EXPECT_EQ(2u, client.binary_messages().size())
+        << "a send to a departed peer must not reach the wire";
+}
+
+// The room is shared: a peer that sends a frame the server will not accept
+// loses its own connection and nothing else. Text frames and control frames
+// (ping/pong) are not protocol at all and must produce no inbox entry.
+TEST(NetTransportWebSocketServer,
+     non_binary_frames_are_ignored_and_an_oversize_frame_drops_only_its_sender)
+{
+    // Mirrors kMaxInboundFrameBytes in
+    // src/platform/sdl/net_transport_websocket_server.cpp (file-local).
+    constexpr std::size_t kServerMaxInboundFrameBytes = 128u * 1024u;
+
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options options;
+    options.host = "127.0.0.1";
+
+    og::sim::WebSocketServerTransport transport(port, options);
+    transport.accept_connections();
+
+    WebSocketClientProbe good_client(std::format("ws://127.0.0.1:{}", port));
+    WebSocketClientProbe flooder(std::format("ws://127.0.0.1:{}", port));
+    good_client.start();
+    ASSERT_TRUE(good_client.wait_until_open()) << good_client.error();
+    ASSERT_TRUE(poll_until_peer_count(transport, 1u));
+    flooder.start();
+    ASSERT_TRUE(flooder.wait_until_open()) << flooder.error();
+    ASSERT_TRUE(poll_until_peer_count(transport, 2u));
+
+    // A text frame and a ping, then a real protocol frame from the same peer.
+    // Only the protocol frame may appear, so the inbox is exactly one message.
+    ASSERT_TRUE(good_client.send_text("hello server"));
+    ASSERT_TRUE(good_client.send_ping());
+    const std::vector<std::uint8_t> client_ready =
+        og::sim::serialize_client_ready_message(
+            og::sim::ClientReadyMessage{.last_applied_tick = 17u});
+    ASSERT_TRUE(good_client.send_binary(client_ready)) << good_client.error();
+
+    const auto received = poll_until_messages(transport, 1u);
+    ASSERT_EQ(1u, received.size())
+        << "a text or control frame must not enter the message queue";
+    EXPECT_EQ(17u, decode_client_ready_tick(received.front().data));
+
+    // One frame past the inbound cap: the sender is closed and its payload is
+    // never delivered.
+    const std::vector<std::uint8_t> oversize(
+        kServerMaxInboundFrameBytes + 1u, 0x5au);
+    ASSERT_TRUE(flooder.send_binary(oversize)) << flooder.error();
+    ASSERT_TRUE(flooder.wait_until_closed());
+    ASSERT_TRUE(poll_until_peer_count(transport, 1u));
+
+    std::vector<og::sim::ReceivedMessage> after_flood = transport.poll();
+    for (const og::sim::ReceivedMessage& message : after_flood)
+    {
+        EXPECT_LE(message.data.size(), kServerMaxInboundFrameBytes)
+            << "an over-cap frame must never be delivered";
+    }
+
+    // The well-behaved peer kept its seat and still talks.
+    ASSERT_EQ(1u, transport.connected_peers().size());
+    ASSERT_TRUE(good_client.send_binary(
+        og::sim::serialize_client_ready_message(
+            og::sim::ClientReadyMessage{.last_applied_tick = 18u})));
+    const auto after_drop = poll_until_messages(transport, 1u);
+    ASSERT_EQ(1u, after_drop.size());
+    EXPECT_EQ(18u, decode_client_ready_tick(after_drop.front().data));
 }
 
 TEST(NetTransportWebSocketServer,
