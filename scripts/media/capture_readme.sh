@@ -35,23 +35,36 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD_DIR="${OPENGLAD_BUILD_DIR:-$REPO_ROOT/build/ci-test}"
 OUT_DIR="${OPENGLAD_README_MEDIA_DIR:-$REPO_ROOT/build/media/readme}"
 
-# Pinned frames. Each demo run is seeded, so these name specific moments:
-# the hedge-line melee outside the keep, arrows in flight and a gold pile on
-# the flank; the Capture the Flag arena with the red squad holding the plaza
-# and green closing in from the field, under the announcement stack the mode
-# narrates itself with (there is no separate score HUD -- those yellow lines
-# ARE the scoreboard, and no flag sprite is on screen in this run; the denser
-# melees later in the run have scrolled the flag lines off the stack, which
-# is what makes this the readable frame; two alternatives were scanned frame
-# by frame and rejected -- CAPTURE_FOCUS=player follows one fighter across an
-# empty field, and seed 4242 keeps only a single flag line over an emptier
-# plaza, so this run stands); the ninefold judgment pulse on the
-# Ninefold Court
-# (the frame capture_showcase.sh uses for the same level -- scen 605 is a
-# single-floor Lua-scripted court, so the still is a level-script shot, not
-# a multi-floor one).
-README_GAMEPLAY_FRAME=396
-README_CTF_FRAME=120
+# Pinned frames. Each demo run is seeded, so these name specific moments.
+#
+# gameplay: the open-field brawl on scen 5, a dozen fighters closed around one
+# hostile with health bars up and bones in flight, the pond and the berry
+# thickets framing all four corners. The camera is mid-map here, which is the
+# whole point of this pin: the demo's follow camera chases the surviving hero
+# into the map's south-east corner from frame ~300 on, and past there the
+# right quarter of every frame is out-of-level border fill with the radar
+# tucked into it. Frames 230-296 are the window where the level itself fills
+# the frame; 265 is the busiest and best-centred of them.
+#
+# mode-ctf: the crossroads brawl on scen 501, the walled Capture the Flag
+# courtyard. TEAM_SIZE 20 (the mode matches the other side to it) is what
+# makes the fight a crowd instead of a skirmish, and CAPTURE_FOCUS=boss keeps
+# the camera on the strongest hostile, i.e. inside the melee, where the static
+# centre shot sat in an empty quarter of the map. Frame 396 has ~14 fighters
+# of both teams knotted on the corridor above the red waypoint ring, a fire
+# blast mid-frame, nothing clipped by an edge, and -- unlike the frames on
+# either side of it -- no announcement stack painted over the art. (Scanned
+# and rejected: every one of scen 500-509 on the static centre camera, which
+# frames an empty plaza or an empty field; CAPTURE_FOCUS=player, which pins
+# the camera to a map corner behind the radar; and scen 502's throne hall,
+# whose dithered floor reads as noise at 2x.)
+#
+# ninefold-court: the ninefold judgment pulse (the frame
+# capture_showcase.sh uses for the same level -- scen 605 is a single-floor
+# Lua-scripted court, so the still is a level-script shot, not a multi-floor
+# one).
+README_GAMEPLAY_FRAME=265
+README_CTF_FRAME=396
 README_NINEFOLD_FRAME=301
 
 RECIPES=(mainmenu gameplay basecamp-four-seats networking-lobby mode-ctf ninefold-court)
@@ -273,7 +286,7 @@ if wanted gameplay; then
 fi
 
 if wanted mode-ctf; then
-    run_demo ctf modes 500 8 center 1337 480
+    run_demo ctf modes 501 20 boss 1337 480
     still2x "$(frame_path "$FRAME_DIR" "$README_CTF_FRAME")" \
         "$OUT_DIR/mode-ctf.png"
     verify_png "$OUT_DIR/mode-ctf.png" 640 400 pal8
