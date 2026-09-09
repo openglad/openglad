@@ -870,6 +870,68 @@ int picker_team_build_testing_exercise_internal_paths()
         save.last_played_unix_s = saved_stamp;
     }
 
+    // picker_compute_guy_derived_stats: guy::family comes verbatim from the
+    // .gtl with no range check, so a byte the loader cannot address must
+    // price on the SOLDIER row instead of indexing the stat arrays out of
+    // bounds.
+    {
+        // guy::family is a signed char, so a .gtl byte of 0x80..0xff arrives
+        // negative — the one value loader::slot_for refuses outright.
+        guy stranger(FAMILY_MAGE);
+        stranger.family = static_cast<char>(-1);
+        guy stranger_as_soldier(stranger);
+        stranger_as_soldier.family = FAMILY_SOLDIER;
+        check(loader::slot_for(Order::Living, stranger.family) < 0);
+        const og::ui::DerivedStats fallback =
+            picker_compute_guy_derived_stats(stranger);
+        const og::ui::DerivedStats as_soldier =
+            picker_compute_guy_derived_stats(stranger_as_soldier);
+        check(fallback.hp == as_soldier.hp && fallback.mp == as_soldier.mp &&
+              fallback.atk == as_soldier.atk &&
+              fallback.def == as_soldier.def &&
+              fallback.spd == as_soldier.spd &&
+              fallback.atk_spd == as_soldier.atk_spd);
+        // Control: a family the loader DOES address reads its own row, so
+        // the fallback is not "everybody is a soldier".
+        guy mage(FAMILY_MAGE);
+        guy mage_as_soldier(mage);
+        mage_as_soldier.family = FAMILY_SOLDIER;
+        check(loader::slot_for(Order::Living, FAMILY_MAGE) >= 0);
+        check(picker_compute_guy_derived_stats(mage).hp !=
+              picker_compute_guy_derived_stats(mage_as_soldier).hp);
+    }
+
+    // view_scenario_seat_context: a session whose lobby lists no seats at
+    // all (solo, before a client has any) still shows the player their own
+    // seats — the shared synthesis from the save, every one of them local.
+    {
+        client.networked = false;
+        client.players.clear();
+        client.local_indices.clear();
+        save.numplayers = 2;
+        save.my_team = 0;
+        const og::ui::ScenarioSeatContext synthesized =
+            view_scenario_seat_context(save);
+        check(synthesized.players.size() == 2);
+        check(synthesized.players[0].player_index == 0 &&
+              synthesized.players[1].player_index == 1);
+        check(synthesized.local_player_indices ==
+              std::vector<std::uint8_t>{0, 1});
+        // Control: a lobby that DOES list seats is taken verbatim.
+        og::sim::LobbyPlayer listed;
+        listed.player_index = 3;
+        listed.team = 2;
+        client.players = {listed};
+        const og::ui::ScenarioSeatContext from_lobby =
+            view_scenario_seat_context(save);
+        check(from_lobby.players.size() == 1 &&
+              from_lobby.players[0].player_index == 3 &&
+              from_lobby.players[0].team == 2);
+        check(from_lobby.local_player_indices ==
+              std::vector<std::uint8_t>{3});
+        client.players.clear();
+    }
+
     g_start_game_requested = false;
     pks().selected_menu_item = nullptr;
     pks().train_session = nullptr;
