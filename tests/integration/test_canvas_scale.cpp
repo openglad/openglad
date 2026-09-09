@@ -2421,6 +2421,15 @@ TEST(CanvasScale, native_plane_failed_size_latch_is_scoped_to_that_size)
     const std::array<NativeWorldViewDestination, 1> small = {{
         {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 20, .h = 12}}};
 
+    // Put the cached plane at the SMALL size first, whatever the tests
+    // declared before this one left there: the latch under test is only
+    // visible while the cached plane is a different size.
+    const NativeWorldViewSource warm = s->begin_native_world_view(small);
+    ASSERT_TRUE(warm);
+    EXPECT_EQ(40, warm.w) << "the plane is sized in physical output pixels";
+    EXPECT_EQ(24, warm.h);
+    s->cancel_native_world_view();
+
     E_Screen->fail_next_native_world_view_allocation_for_testing();
     EXPECT_FALSE(s->begin_native_world_view(big))
         << "the injected allocation failure declines the plane";
@@ -2431,7 +2440,7 @@ TEST(CanvasScale, native_plane_failed_size_latch_is_scoped_to_that_size)
 
     // A different source size is not the latched one.
     const NativeWorldViewSource other = s->begin_native_world_view(small);
-    EXPECT_TRUE(other) << "a differently sized plane is still allocated";
+    EXPECT_TRUE(other) << "a differently sized plane is still granted";
     EXPECT_EQ(40, other.w);
     EXPECT_EQ(24, other.h);
     s->cancel_native_world_view();
