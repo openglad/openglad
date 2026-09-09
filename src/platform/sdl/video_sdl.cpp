@@ -2985,32 +2985,32 @@ bool sdl_video::world_smoothing_supported() const
 	return og::platform::exclusive_mode_switch_is_safe(driver, count);
 }
 
-// Attach the closest real video mode by PHYSICAL pixel size. SDL3's mode w/h
-// fields are logical coordinates, so SDL_GetClosestFullscreenDisplayMode()
-// cannot directly consume the values shown by this menu on Retina/HiDPI
-// displays. Select one of SDL's owned mode pointers while the list is alive,
-// then release the list after SDL has accepted it. Equal physical sizes favor
-// the desktop's exact density/layout for the desktop request, otherwise a
-// density nearest 1.0 and a refresh nearest the desktop.
-[[maybe_unused]] static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
+// Rank the display's real modes against a requested PHYSICAL pixel size.
+// SDL3's mode w/h fields are logical coordinates, so
+// SDL_GetClosestFullscreenDisplayMode() cannot directly consume the values
+// shown by the resolution menu on Retina/HiDPI displays. Equal physical sizes
+// favor the desktop's exact density/layout for the desktop request, otherwise
+// a density nearest 1.0 and a refresh nearest the desktop.
+int og::platform::best_fullscreen_mode_index(
+	std::span<const SDL_DisplayMode* const> modes,
+	const SDL_DisplayMode* desktop, int w, int h)
 {
-	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
 	const std::pair<int, int> desktop_pixels = desktop != nullptr
 		? og::platform::display_mode_pixel_size(*desktop)
 		: std::pair<int, int>{0, 0};
 	const bool requesting_desktop =
 		std::pair<int, int>{w, h} == desktop_pixels;
 
-	int count = 0;
-	SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(display, &count);
-	const SDL_DisplayMode* best = nullptr;
+	int best = -1;
 	using Rank = std::tuple<unsigned long long, int, double, double, int>;
 	Rank best_rank{std::numeric_limits<unsigned long long>::max(), 1,
 	               std::numeric_limits<double>::infinity(),
 	               std::numeric_limits<double>::infinity(),
 	               std::numeric_limits<int>::max()};
-	for (int i = 0; modes != nullptr && i < count; ++i)
+	for (int i = 0; i < static_cast<int>(modes.size()); ++i)
 	{
+		if (modes[i] == nullptr)
+			continue;
 		const SDL_DisplayMode& candidate = *modes[i];
 		const auto pixels = og::platform::display_mode_pixel_size(candidate);
 		if (pixels.first < w || pixels.second < h)
@@ -3039,13 +3039,29 @@ bool sdl_video::world_smoothing_supported() const
 		                refresh_distance, i};
 		if (rank < best_rank)
 		{
-			best = &candidate;
+			best = i;
 			best_rank = rank;
 		}
 	}
+	return best;
+}
 
-	const bool applied = best != nullptr &&
-		SDL_SetWindowFullscreenMode(E_Screen->window, best);
+// Attach the closest real video mode by physical pixel size. Select one of
+// SDL's owned mode pointers while the list is alive, then release the list
+// after SDL has accepted it.
+[[maybe_unused]] static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
+{
+	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
+	int count = 0;
+	SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(display, &count);
+	const int best = og::platform::best_fullscreen_mode_index(
+		std::span<const SDL_DisplayMode* const>(
+			const_cast<const SDL_DisplayMode* const*>(modes),
+			modes != nullptr && count > 0 ? static_cast<size_t>(count) : 0u),
+		desktop, w, h);
+
+	const bool applied = best >= 0 &&
+		SDL_SetWindowFullscreenMode(E_Screen->window, modes[best]);
 	SDL_free(modes);
 	return applied;
 }

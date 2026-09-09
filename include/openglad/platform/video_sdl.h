@@ -77,6 +77,16 @@ namespace og::platform
 // physical pixel pair users expect in a monitor-resolution selector.
 std::pair<int, int> display_mode_pixel_size(const SDL_DisplayMode& mode);
 
+// Pick the fullscreen mode the exclusive-mode switch should attach for a
+// requested PHYSICAL pixel size. Modes smaller than the request in either
+// axis are rejected outright; among the rest the winner has the smallest
+// squared pixel error, then (for a request that equals the desktop's own
+// pixel size) the desktop's exact logical layout and density, then the
+// density nearest 1.0, then the refresh rate nearest the desktop's, then the
+// lowest list index. Returns -1 when no mode is large enough.
+int best_fullscreen_mode_index(std::span<const SDL_DisplayMode* const> modes,
+                               const SDL_DisplayMode* desktop, int w, int h);
+
 // XRandR exclusive mode changes are unsafe when one X11 screen spans several
 // displays: SDL can leave the target CRTC disabled if the resized root no
 // longer contains the other outputs. Other backends do not use that path.
