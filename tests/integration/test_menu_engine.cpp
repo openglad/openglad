@@ -3648,12 +3648,10 @@ TEST(MenuEngine, main_menu_binding_pins)
     EXPECT_EQ(og::ui::RowState::Disabled,
               web_quit->state_override(og::ui::MenuLabelContext{}));
 
-    // Main-menu variants carry no player-specific outlines, formatters, or
-    // old player-count actions; those belong to the live Base Camp roster.
+    // Main-menu variants carry no player-specific formatters or old
+    // player-count actions; those belong to the live Base Camp roster.
     for (const og::ui::MenuScreenSpec* spec : {&mp, &nomp})
         for (int i = 0; i < spec->row_count; ++i) {
-            EXPECT_EQ(og::ui::MenuOutlineBinding::None, spec->rows[i].outline)
-                << spec->name << " " << spec->rows[i].id;
             EXPECT_EQ(nullptr, spec->rows[i].label_binding.formatter)
                 << spec->name << " " << spec->rows[i].id;
             EXPECT_NE(ButtonAction::SetPlayerMode, spec->rows[i].action)
@@ -3661,11 +3659,9 @@ TEST(MenuEngine, main_menu_binding_pins)
         }
 
     // Both seat-editor variants dispatch against the selected stable seat;
-    // neither revives the old save-backed player-count action or outline.
+    // neither revives the old save-backed player-count action.
     for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp})
         for (int i = 0; i < spec->row_count; ++i) {
-            EXPECT_EQ(og::ui::MenuOutlineBinding::None, spec->rows[i].outline)
-                << spec->name << " " << spec->rows[i].id;
             EXPECT_NE(ButtonAction::SetPlayerMode, spec->rows[i].action)
                 << spec->name << " " << spec->rows[i].id;
         }

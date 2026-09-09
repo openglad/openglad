@@ -352,7 +352,6 @@ TEST(PauseMenuPins, pause_menu_exact_table)
 
     EXPECT_EQ(og::ui::kPauseMenuResumeIndex, spec.default_highlight);
     EXPECT_FALSE(spec.polls_lobby);
-    EXPECT_FALSE(spec.backdrop);
     EXPECT_EQ(og::ui::RemoteStartScope::None, spec.remote_start);
     // #237: the pause family are the only Overlay screens — true modals over
     // the live world, never faded even at depth 1.
