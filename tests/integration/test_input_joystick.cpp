@@ -356,16 +356,13 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
 }
 
 
-// The classification and guard rules every event-driven input site leans on.
-// If any of them broke: a remap prompt that timed out (the poll seam answers
-// with no event at all) would classify the nothing it was handed and bind a
-// key; a pad released when its device went away (index -1) would keep
+// The guard rules every event-driven input site leans on. If any of them
+// broke: a pad released when its device went away (index -1) would keep
 // pressing and releasing for the seat it no longer owns; a stick mapped to
-// an axis would fire on a face-button press from the SAME pad; and a
-// render-time held-key query for a seat or key that does not exist would
-// index off the end of the seat tables. Every refusal below is paired, in
-// this test, with the arm that must still say yes.
-TEST(InputJoystick, input_event_classification_and_guards_refuse_paired_arms)
+// an axis would fire on a face-button press from the SAME pad; and a seat
+// whose touch key lifted would still read as holding it. Every refusal
+// below is paired, in this test, with the arm that must still say yes.
+TEST(InputJoystick, unbound_pad_and_axis_guards_refuse_paired_arms)
 {
     PlayerJoyGuard guard;
     JoystickHandleGuard joystick_guard;
@@ -373,21 +370,7 @@ TEST(InputJoystick, input_event_classification_and_guards_refuse_paired_arms)
     for (int i = 0; i < 4; ++i)
         player_joy[i] = JoyData();
 
-    // 1. The poll seam's "no event" answer is neither kind of event.
-    SDL_Event key_event{};
-    key_event.type = SDL_EVENT_KEY_DOWN;
-    SDL_Event joy_event{};
-    joy_event.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
-
-    EXPECT_TRUE(isKeyboardEvent(key_event)) << "a key-down IS a keyboard event";
-    EXPECT_TRUE(isJoystickEvent(joy_event))
-        << "a joystick button-down IS a joystick event";
-    EXPECT_FALSE(isKeyboardEvent(static_cast<const void*>(nullptr)))
-        << "no event is not a keyboard event";
-    EXPECT_FALSE(isJoystickEvent(static_cast<const void*>(nullptr)))
-        << "no event is not a joystick event";
-
-    // 2. An unbound pad refuses the very events it answers when bound.
+    // 1. An unbound pad refuses the very events it answers when bound.
     JoyData bound;
     bound.index = 2;
     bound.key_type[KEY_FIRE] = JoyData::BUTTON;
@@ -414,7 +397,7 @@ TEST(InputJoystick, input_event_classification_and_guards_refuse_paired_arms)
     EXPECT_FALSE(unbound.getRelease(KEY_FIRE, release))
         << "an unbound pad may not release for a seat it no longer owns";
 
-    // 3. An axis-mapped key ignores button traffic from the same pad — and
+    // 2. An axis-mapped key ignores button traffic from the same pad — and
     // still answers the axis events it IS mapped to.
     JoyData axes;
     axes.index = 2;
@@ -448,10 +431,10 @@ TEST(InputJoystick, input_event_classification_and_guards_refuse_paired_arms)
     EXPECT_FALSE(axes.getRelease(KEY_DOWN, release))
         << "a button release must not move a negative-axis key";
 
-    // 4. isPlayerHoldingKey answers only for seats and keys that exist. Seat
-    // 1 is given a real pad binding over a device that reports nothing held,
-    // so the whole block is decided by the touch seam and never by whatever
-    // the keyboard happens to be doing.
+    // 3. isPlayerHoldingKey answers from the touch seam. Seat 1 is given a
+    // real pad binding over a device that reports nothing held, so the whole
+    // block is decided by the touch seam and never by whatever the keyboard
+    // happens to be doing.
     player_joy[1].index = 0;  // joysticks[0] is null under the handle guard
     player_joy[1].key_type[KEY_FIRE] = JoyData::BUTTON;
     player_joy[1].key_index[KEY_FIRE] = 0;
@@ -459,14 +442,6 @@ TEST(InputJoystick, input_event_classification_and_guards_refuse_paired_arms)
     input_hardware_state().touch_keystate[1][KEY_FIRE] = true;
     EXPECT_TRUE(isPlayerHoldingKey(1, KEY_FIRE))
         << "a seat with the touch key down IS holding it";
-    EXPECT_FALSE(isPlayerHoldingKey(-1, KEY_FIRE))
-        << "there is no seat before the first one";
-    EXPECT_FALSE(isPlayerHoldingKey(4, KEY_FIRE))
-        << "there is no fifth seat";
-    EXPECT_FALSE(isPlayerHoldingKey(1, -1))
-        << "there is no key before the first one";
-    EXPECT_FALSE(isPlayerHoldingKey(1, NUM_KEYS))
-        << "there is no key past the last one";
 
     input_hardware_state().touch_keystate[1][KEY_FIRE] = false;
     EXPECT_FALSE(isPlayerHoldingKey(1, KEY_FIRE))

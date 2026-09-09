@@ -668,6 +668,10 @@ TEST(Replay, unbound_recording_still_gives_view_zero_a_controlled_walker)
 
     og::sim::WorldSnapshot unbound =
         og::sim::peek_keyframe_snapshot(game_screen.world());
+    // A recording made with nobody bound to view 0 carries no HUD readout
+    // either, so the seeding the view assignment does is the only thing that
+    // can put the walker's hit points on screen.
+    unbound.control_hp = 0.0f;
     int rebound = 0;
     for (og::sim::EntitySnapshot& entity : unbound.oblist)
     {
@@ -744,6 +748,10 @@ TEST(Replay, spectator_playback_seeds_the_hud_without_binding_the_walker)
         og::sim::peek_keyframe_snapshot(game_screen.world());
     for (og::sim::EntitySnapshot& entity : unbound.oblist)
         entity.user = -1;
+    // A seatless recording carries no HUD readout; the restored world starts
+    // at zero, so a non-zero readout afterwards can only come from the
+    // spectator seeding branch.
+    unbound.control_hp = 0.0f;
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_replay(
         {
