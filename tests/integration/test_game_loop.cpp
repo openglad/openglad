@@ -1349,6 +1349,28 @@ TEST(GameLoop, glad_init_drops_out_of_range_lobby_slots_and_upgrades_legacy_seat
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
 
+    // apply_lobby_game_start_config writes session-wide seat state; this test
+    // deliberately drives it to values local play never uses, so put them
+    // back for whatever runs next.
+    struct SessionSeatStateGuard
+    {
+        std::vector<std::uint8_t> own_indices =
+            og::runtime::current_session->own_player_indices_;
+        bool networked = og::runtime::current_session->networked_session_;
+        bool isolated =
+            og::runtime::current_session->isolated_company_session_;
+        std::int32_t difficulty =
+            og::runtime::current_session->current_difficulty_;
+
+        ~SessionSeatStateGuard()
+        {
+            og::runtime::current_session->own_player_indices_ = own_indices;
+            og::runtime::current_session->networked_session_ = networked;
+            og::runtime::current_session->isolated_company_session_ = isolated;
+            og::runtime::current_session->current_difficulty_ = difficulty;
+        }
+    } seat_state_guard;
+
     og::ui::PickerLobbyGameStartConfig lobby_config;
     lobby_config.save_data.current_campaign = "gladiator";
     lobby_config.save_data.scen_num = 1;
@@ -1411,6 +1433,9 @@ TEST(GameLoop, glad_init_drops_out_of_range_lobby_slots_and_upgrades_legacy_seat
 
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
+    // This test drives the save into a two-seat mission roster with one
+    // member; leave the shared SaveData neutral for whatever runs next.
+    game_screen->save_data.reset();
 }
 
 TEST(GameLoop, local_lobby_spawns_every_deployed_team_and_abort_preserves_company)
