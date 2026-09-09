@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <map>
 #include <string_view>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -427,6 +428,20 @@ struct TemporaryCampaignGuard
     }
 };
 
+// How many popup traces carry `substring` (the popup dialog is trace-only
+// under TESTING, and its text IS the product contract here).
+int count_popup_traces(const std::string& substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int count = 0;
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == "popup" &&
+            entry.message.find(substring) != std::string::npos)
+            ++count;
+    }
+    return count;
+}
+
 struct PromptQueueGuard
 {
     PromptQueueGuard() { level_editor_testing_prompt_queue_clear(); }
@@ -723,13 +738,16 @@ static int level_picker_scroll_back_then_choose_first_injector(void* data)
     return ok ? 0 : 1;
 }
 
+// `data`, when given, is how many times to click ENTER ID: the rejection
+// ladder below clicks three times (two refused ids, then the accepted one);
+// every other caller passes nullptr for a single click.
 static int level_picker_enter_id_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    (void)data;
+    const int clicks = data != nullptr ? *static_cast<const int*>(data) : 1;
     const og::ui::PickerRect id_button = og::ui::level_picker_layout().id_button;
     bool ok = wait_for_level_picker_ready();
-    if (ok)
+    for (int i = 0; ok && i < clicks; ++i)
         ok = click_level_picker_action(rect_center_x(id_button),
                                        rect_center_y(id_button)); // ENTER ID
     return ok ? 0 : 1;
@@ -1373,16 +1391,26 @@ TEST(CampaignAndLevelPicker, level_picker_enter_id_returns_valid_prompt_value)
     og::runtime::current_session->viewport_w_ = 320;
     og::runtime::current_session->viewport_h_ = 200;
 
+    // The rejection ladder before the accepted id: a level id is a POSITIVE
+    // INTEGER, and anything else must be refused in words and leave the
+    // browser standing. A picker that took "abc" (or 0) would hand the
+    // loader a scen id it cannot open and end the flow on the level-load
+    // error instead of on the player's mistake.
+    trace_clear();
     PromptQueueGuard prompt_queue;
-    prompt_queue.push("42");
+    prompt_queue.push("abc");  // not a number at all
+    prompt_queue.push("0");    // a number, but not a level id
+    prompt_queue.push("42");   // accepted
 
     char& end = og::runtime::current_session->myscreen_->world().end;
     WorldEndGuard end_guard(end);
     end = 0;
 
     level_picker_testing_input_reset();
+    int enter_id_clicks = 3;
     SDL_Thread* thread = SDL_CreateThread(
-        level_picker_enter_id_injector, "level_picker_enter_id", nullptr);
+        level_picker_enter_id_injector, "level_picker_enter_id",
+        &enter_id_clicks);
     ASSERT_TRUE(thread != nullptr);
     const int chosen = pick_level(
         og::runtime::current_session->myscreen_, 1, false);
@@ -1392,6 +1420,11 @@ TEST(CampaignAndLevelPicker, level_picker_enter_id_returns_valid_prompt_value)
     EXPECT_EQ(0, thread_result);
     EXPECT_EQ(42, chosen)
         << "ENTER ID must accept a positive integer even when it is not listed";
+    EXPECT_EQ(2, count_popup_traces(
+                     "Invalid input: Please enter a positive integer Level "
+                     "ID."))
+        << "both refused ids must say why, in those words, and neither may "
+           "end the browser";
 }
 
 // do_set_scen_level is the single choke for the browser click AND the
