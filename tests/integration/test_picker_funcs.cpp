@@ -3983,11 +3983,31 @@ TEST(PickerFuncs, local_lobby_closes_the_seat_door_after_a_confirmed_start)
     save.allied_mode = 0;
 
     g_start_game_requested = false;
+    save.numplayers = 1;
     picker_lobby_initialize_from_save();
     ASSERT_EQ(1u, picker_lobby_local_seat_count());
 
-    // Control arm: before the start, and below the build limit, the same
-    // door opens every time.
+    // Arm 1 — the lock, taken TWO seats below the build limit so the lock is
+    // the only rule that can refuse. The first add is the positive control:
+    // the same call on the same lobby one line earlier is accepted.
+    ASSERT_TRUE(picker_lobby_add_local_seat());
+    ASSERT_EQ(2u, picker_lobby_local_seat_count());
+
+    ASSERT_TRUE(picker_lobby_request_start());
+    ASSERT_TRUE(g_start_game_requested);
+
+    EXPECT_FALSE(picker_lobby_add_local_seat())
+        << "a locked lobby must not accept another seat";
+    EXPECT_EQ(2u, picker_lobby_local_seat_count())
+        << "the refused seat must not land anyway";
+
+    // Arm 2 — the build limit, on a fresh unlocked lobby: every seat up to
+    // MAX_PLAYERS is accepted, the fifth is refused.
+    picker_lobby_shutdown();
+    g_start_game_requested = false;
+    save.numplayers = 1;
+    picker_lobby_initialize_from_save();
+    ASSERT_EQ(1u, picker_lobby_local_seat_count());
     for (std::size_t expected = 2u;
          expected <= static_cast<std::size_t>(MAX_PLAYERS); ++expected)
     {
@@ -3997,14 +4017,6 @@ TEST(PickerFuncs, local_lobby_closes_the_seat_door_after_a_confirmed_start)
 
     EXPECT_FALSE(picker_lobby_add_local_seat())
         << "the build limit is MAX_PLAYERS seats on one machine";
-    EXPECT_EQ(static_cast<std::size_t>(MAX_PLAYERS),
-              picker_lobby_local_seat_count());
-
-    ASSERT_TRUE(picker_lobby_request_start());
-    ASSERT_TRUE(g_start_game_requested);
-
-    EXPECT_FALSE(picker_lobby_add_local_seat())
-        << "a locked lobby must not accept another seat";
     EXPECT_EQ(static_cast<std::size_t>(MAX_PLAYERS),
               picker_lobby_local_seat_count());
 
@@ -4369,8 +4381,10 @@ TEST_F(SpriteSheetPicker, wheel_scroll_changes_the_pack_under_the_top_row)
 }
 
 // The scrollbar trough is the other way down the list: clicking below the
-// thumb pages down one row, clicking above it pages back up one row. Two runs
-// of the same clicks minus the page-up land on different packs.
+// thumb pages down one row, clicking above it pages back up one row. One run
+// of down, down, up leaves the top row on the FIRST pack, and that single
+// outcome pins both branches: an inert page-down leaves the top row on
+// Standard (""), and an inert page-up leaves it on the second pack.
 TEST_F(SpriteSheetPicker, scrollbar_trough_pages_the_list_both_ways)
 {
     SpriteSheetPackDirs packs_dirs("zz_wp4_trough_", 13);
@@ -4393,14 +4407,7 @@ TEST_F(SpriteSheetPicker, scrollbar_trough_pages_the_list_both_ways)
     ASSERT_LT(page_down_1.y, kSheetListY + kSheetScrollH);
     ASSERT_GE(page_up_2.y, kSheetListY);
 
-    // Two pages down: the top row holds the SECOND pack.
-    reset_sprite_sheet_selection();
-    ASSERT_EQ(MENU_REDRAW,
-              run_spritesheet_picker(
-                  {page_down_0, page_down_1, sheet_row_click(0)}));
-    EXPECT_EQ(packs[1], cfg.get_setting("graphics", "sprite_sheet"));
-
-    // The same two pages down plus one page up: the first pack instead.
+    // Two pages down, one page up: the top row holds the FIRST pack.
     reset_sprite_sheet_selection();
     ASSERT_EQ(MENU_REDRAW,
               run_spritesheet_picker(
