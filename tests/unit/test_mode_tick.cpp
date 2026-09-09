@@ -633,6 +633,25 @@ TEST(ModeTick, damage_gate_error_keeps_authored_amount)
 // Kill attribution
 // ---------------------------------------------------------------------------
 
+// A replacement amount is carried to the engine as a `short`, so a level
+// script that returns a number bigger than a short can hold must be clamped
+// at the boundary rather than wrapped: 99999 narrowed by a raw cast is 
+// -31073, which would HEAL the target instead of killing it.
+TEST(ModeTick, damage_gate_huge_replacement_clamps_to_short_max)
+{
+    GateRig rig(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    return 99999\n"
+        "  end,\n"
+        "})\n");
+    rig.target->stats()->set_hitpoints(40000.0f);
+    rig.attacker->attack(rig.target);
+    EXPECT_EQ(7233.0f, rig.hp())
+        << "40000 - 32767: the replacement clamps to a short's maximum";
+    EXPECT_EQ(0, rig.target->dead()) << "a clamped hit is still survivable";
+}
+
 TEST(ModeTick, weapon_kill_attributes_to_owner_chain_root)
 {
     ModeWorld fx;

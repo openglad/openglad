@@ -399,3 +399,72 @@ TEST(DelayedSpawnWake, mirror_dormant_pending_drains_to_zero_after_wake)
     EXPECT_EQ(0, dormant_count(mirror))
         << "the mirror's pending (+n) copies must all wake with the server";
 }
+
+// A delayed spawn authored against the world's west edge has no full ring of
+// neighbours to be nudged into: every cell of every ring west of it is off
+// the map. Those must be skipped rather than probed (a negative grid index
+// reads off the end of the tile buffer), and a cell still holding a SLEEPER
+// must be skipped too — waking onto it would only make that sleeper relocate
+// in turn.
+TEST(DelayedSpawnWake, an_edge_wake_skips_off_grid_and_still_dormant_cells)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.rng_.state_ = 1u;
+    w.my_team = 0;
+
+    walker* hero = make_hero(w);
+    ASSERT_NE(nullptr, hero);
+
+    // Column 0, so the whole dx == -1 half of each ring is off the map.
+    const short spot_x = 0;
+    const short spot_y = 5 * GRID_SIZE;
+
+    // A live body already standing on the spot, so the waker must be
+    // relocated rather than woken in place.
+    walker* blocker = w.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, blocker);
+    blocker->setxy(spot_x, spot_y);
+    blocker->set_team_num(1);
+    blocker->set_real_team_num(1);
+    blocker->set_act_type(ACT_GUARD);
+    blocker->set_guard_hold_post(true);
+    ASSERT_NE(w.myobmap->walker_to_pos.end(),
+              w.myobmap->walker_to_pos.find(blocker))
+        << "the blocker must really be in the obmap, or nothing blocks";
+
+    // A still-dormant neighbour on the first on-map candidate the ring scan
+    // would otherwise take, the cell directly north.
+    walker* sleeper = make_dormant_orc(
+        w, spot_x, static_cast<short>(spot_y - GRID_SIZE), 60000);
+    ASSERT_NE(nullptr, sleeper);
+
+    walker* waker = make_dormant_orc(w, spot_x, spot_y, 2);
+    ASSERT_NE(nullptr, waker);
+
+    for (int t = 0; t < 2; ++t)
+        w.tick();
+    ASSERT_TRUE(waker->dormant());
+
+    w.tick(); // level tick 3 > delay 2: the wake tick
+
+    ASSERT_FALSE(waker->dormant()) << "the edge waker must still wake";
+    EXPECT_FALSE(waker->dead());
+    // Ring 1 row-major from the spot: (-1,-1) is off the map, (0,-1) holds
+    // the sleeper, (1,-1) is the first cell that is both on the map and free.
+    EXPECT_EQ(GRID_SIZE, waker->xpos());
+    EXPECT_EQ(spot_y - GRID_SIZE, waker->ypos());
+    EXPECT_NE(w.myobmap->walker_to_pos.end(),
+              w.myobmap->walker_to_pos.find(waker))
+        << "the relocated waker must be obmap-registered";
+
+    // Neither neighbour was disturbed: the blocker kept the spot and the
+    // sleeper is still asleep on its own cell.
+    EXPECT_EQ(spot_x, blocker->xpos());
+    EXPECT_EQ(spot_y, blocker->ypos());
+    EXPECT_TRUE(sleeper->dormant());
+    EXPECT_EQ(spot_x, sleeper->xpos());
+    EXPECT_EQ(spot_y - GRID_SIZE, sleeper->ypos());
+    EXPECT_FALSE(boxes_overlap(waker, blocker));
+    EXPECT_FALSE(boxes_overlap(waker, sleeper));
+}

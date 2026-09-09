@@ -2482,6 +2482,203 @@ TEST(ScriptCoverage, a_kill_during_publish_leaves_the_previous_complete_dump)
     std::filesystem::remove_all(dir);
 }
 
+// A dump whose destination cannot be published is a REPORTED failure that
+// leaves the directory exactly as it found it. The temp sibling matters: a
+// dump directory littered with orphan `.tmp-` files is indistinguishable
+// from a run still in flight, and the report walks that directory.
+TEST(ScriptCoverage, an_unpublishable_dump_reports_false_and_leaves_no_temp_file)
+{
+    cov::ScopedRecording recording;
+    ScriptHost host;
+    ASSERT_TRUE(host.run_chunk("testfixture/publish.lua", kProbeChunk));
+
+    const std::filesystem::path dir = make_unique_temp_dir("og_lua_cov_pub_");
+    ASSERT_FALSE(dir.empty());
+
+    // The arm that must work, so the failure below is about publication and
+    // nothing else.
+    const std::filesystem::path good = dir / "ok.luacov";
+    ASSERT_TRUE(cov::write_raw_report(good.string()));
+    EXPECT_NE(std::string::npos,
+              read_text_file(good).find("# openglad-lua-coverage 5\n"));
+
+    // A non-empty DIRECTORY sitting on the dump path: the stream writes its
+    // temp sibling happily and rename() is what fails.
+    const std::filesystem::path blocked = dir / "blocked.luacov";
+    ASSERT_TRUE(std::filesystem::create_directory(blocked));
+    write_text_file(blocked / "occupant", "keep me");
+
+    EXPECT_FALSE(cov::write_raw_report(blocked.string()));
+    EXPECT_TRUE(std::filesystem::is_directory(blocked))
+        << "a failed publish must not disturb what was in the way";
+    EXPECT_EQ("keep me", read_text_file(blocked / "occupant"));
+
+    int temp_siblings = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().filename().string().find(".tmp-") !=
+            std::string::npos)
+            temp_siblings++;
+    }
+    EXPECT_EQ(0, temp_siblings)
+        << "the temp sibling of a failed publish must be cleaned up";
+
+    // The successful dump is untouched by the failed one.
+    EXPECT_NE(std::string::npos,
+              read_text_file(good).find("# openglad-lua-coverage 5\n"));
+    std::filesystem::remove_all(dir);
+}
+
+// The sidecar is the bytes the report scores hits against, so a dump whose
+// sidecar could not be published must not be published either: half a report
+// reads as "this source has no code on the lines that were hit", which the
+// report treats as tampering.
+//
+// The sidecar's name is also pinned here: a readable stem (the chunk name
+// with everything outside [A-Za-z0-9.-] squashed, keeping only its LAST 60
+// characters) plus the digest that is the real identity.
+TEST(ScriptCoverage, a_sidecar_that_cannot_be_published_fails_the_whole_report)
+{
+    cov::ScopedRecording recording;
+
+    // A chunk name long enough to be truncated, and containing the
+    // characters the stem squashes.
+    // Not `packs/...`: that prefix declares the bytes to the pack-Lua
+    // inventory as content of a pack that does not exist.
+    const std::string chunk =
+        "sidecarfixture/scripts/deeply/nested/directory/"
+        "a_module_with_a_long_name.lua";
+    ASSERT_GT(chunk.size(), 60u);
+    const std::string body = "og.log('sidecar probe')\n";
+    cov::declare_pack_source(chunk, body, "/somewhere/long.glad");
+
+    std::string squashed;
+    for (const char c : chunk) {
+        const bool safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                          (c >= '0' && c <= '9') || c == '.' || c == '-';
+        squashed.push_back(safe ? c : '_');
+    }
+    const std::string expected_name =
+        squashed.substr(squashed.size() - 60) + "-" +
+        cov::sha256_hex(body) + ".lua";
+
+    const std::filesystem::path dir = make_unique_temp_dir("og_lua_cov_side_");
+    ASSERT_FALSE(dir.empty());
+    const std::filesystem::path dump = dir / "a.luacov";
+    ASSERT_TRUE(cov::write_raw_report(dump.string()));
+
+    const std::string text = read_text_file(dump);
+    const std::size_t s_record = text.find("S\t" + chunk + "\t");
+    ASSERT_NE(std::string::npos, s_record) << text;
+    const std::size_t s_end = text.find('\n', s_record);
+    ASSERT_NE(std::string::npos, s_end);
+    const std::vector<std::string> fields =
+        split_fields(text.substr(s_record, s_end - s_record));
+    ASSERT_EQ(5u, fields.size()) << text;
+    EXPECT_EQ(expected_name, fields[2]);
+    EXPECT_EQ(60u + 1u + 64u + 4u, fields[2].size())
+        << "60-char stem, '-', 64 hex digits, '.lua'";
+    EXPECT_EQ(body, read_text_file(dir / "sources" / expected_name));
+
+    // Now block that one sidecar in a fresh directory: the whole report must
+    // fail, and no dump may appear beside the sidecar that never landed.
+    const std::filesystem::path dir2 =
+        make_unique_temp_dir("og_lua_cov_side2_");
+    ASSERT_FALSE(dir2.empty());
+    ASSERT_TRUE(std::filesystem::create_directories(dir2 / "sources" /
+                                                    expected_name));
+    write_text_file(dir2 / "sources" / expected_name / "occupant", "blocked");
+
+    EXPECT_FALSE(cov::write_raw_report((dir2 / "b.luacov").string()));
+    EXPECT_FALSE(std::filesystem::exists(dir2 / "b.luacov"))
+        << "a report that lost a sidecar must not publish its dump";
+    int temp_siblings = 0;
+    for (const auto& entry :
+         std::filesystem::directory_iterator(dir2 / "sources")) {
+        if (entry.path().filename().string().find(".tmp-") !=
+            std::string::npos)
+            temp_siblings++;
+    }
+    EXPECT_EQ(0, temp_siblings)
+        << "the failed sidecar's temp file must be cleaned up";
+
+    std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(dir2);
+}
+
+namespace {
+int g_publish_seam_calls = 0;
+void count_publish_seam() { g_publish_seam_calls++; }
+
+// Puts the seam back whatever the test does — leaving it installed would
+// follow this binary into its own exit-time flush.
+class ScopedPublishSeam {
+public:
+    explicit ScopedPublishSeam(void (*fn)())
+        : previous_(cov::detail::g_between_dump_write_and_publish)
+    {
+        cov::detail::g_between_dump_write_and_publish = fn;
+    }
+    ~ScopedPublishSeam()
+    {
+        cov::detail::g_between_dump_write_and_publish = previous_;
+    }
+    ScopedPublishSeam(const ScopedPublishSeam&) = delete;
+    ScopedPublishSeam& operator=(const ScopedPublishSeam&) = delete;
+
+private:
+    void (*previous_)();
+};
+}  // namespace
+
+// The publish seam runs once per dump, on the ordinary path, between the
+// complete temp write and the rename. The atomicity test only ever observes
+// it through a SIGKILL, which proves it is reached but not that a dump
+// SURVIVES it: a seam that returned normally and then skipped the rename
+// would look identical there. Two flushes, two seam calls, two complete
+// dumps.
+TEST(ScriptCoverage, the_publish_seam_runs_once_per_dump_and_the_dump_lands)
+{
+    cov::ScopedRecording recording;
+    ScriptHost host;
+    ASSERT_TRUE(host.run_chunk("testfixture/seam_a.lua", kProbeChunk));
+
+    const std::filesystem::path dir = make_unique_temp_dir("og_lua_cov_seam_");
+    ASSERT_FALSE(dir.empty());
+    const std::filesystem::path dump = dir / "seam.luacov";
+
+    {
+        g_publish_seam_calls = 0;
+        ScopedPublishSeam seam(count_publish_seam);
+        ASSERT_TRUE(cov::write_raw_report(dump.string()));
+        EXPECT_EQ(1, g_publish_seam_calls);
+        const std::string first = read_text_file(dump);
+        EXPECT_NE(std::string::npos,
+                  first.find("# openglad-lua-coverage 5\n"));
+        EXPECT_NE(std::string::npos, first.find("seam_a.lua"));
+
+        ASSERT_TRUE(host.run_chunk("testfixture/seam_b.lua", kProbeChunk));
+        ASSERT_TRUE(cov::write_raw_report(dump.string()));
+        EXPECT_EQ(2, g_publish_seam_calls)
+            << "one seam call per dump, never per record";
+        const std::string second = read_text_file(dump);
+        EXPECT_NE(std::string::npos,
+                  second.find("# openglad-lua-coverage 5\n"));
+        EXPECT_NE(std::string::npos, second.find("seam_a.lua"));
+        EXPECT_NE(std::string::npos, second.find("seam_b.lua"))
+            << "the second publish replaces the first with a complete dump";
+    }
+
+    // Control: with the seam back to null the same call still publishes, so
+    // the two counts above measured the seam and not the flush.
+    EXPECT_EQ(nullptr, cov::detail::g_between_dump_write_and_publish);
+    ASSERT_TRUE(cov::write_raw_report(dump.string()));
+    EXPECT_EQ(2, g_publish_seam_calls);
+    EXPECT_NE(std::string::npos,
+              read_text_file(dump).find("# openglad-lua-coverage 5\n"));
+
+    std::filesystem::remove_all(dir);
+}
+
 // P6-B, at the report level: one dump carries a chunk's TWO generations —
 // the campaign-override shape, where a mount re-declares a core chunk while
 // a world compiled from the old bytes is alive — with hits under BOTH. Each
