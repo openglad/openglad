@@ -4783,9 +4783,12 @@ TEST(LobbyServer, oversize_roster_is_capped_at_the_team_size_bound)
 }
 
 // Rule (src/gameplay/lobby_server.cpp:69-71): allied_mode is a two-valued
-// setting. A settings frame carrying anything else is healed back to the value
-// the lobby already held rather than being stored — a crafted 7 must not become
-// a third alliance rule that the sim then has to interpret.
+// setting. A settings frame carrying anything else is HEALED — that one field
+// falls back to the value the lobby already held while the rest of the frame
+// still applies — rather than being stored or costing the sender its whole
+// frame. A crafted 7 must not become a third alliance rule that the sim then
+// has to interpret, and an honest client must not lose an unrelated setting
+// change because one field was out of range.
 TEST(LobbyServer, out_of_range_allied_mode_heals_to_the_previous_value)
 {
     MockLobbyTransport transport(/*typed_messages=*/true);
@@ -4805,12 +4808,20 @@ TEST(LobbyServer, out_of_range_allied_mode_heals_to_the_previous_value)
     server.poll_incoming_messages();
     ASSERT_EQ(0, server.state().settings.allied_mode);
 
+    ASSERT_EQ(0, server.state().settings.ctf_capture_limit);
+
+    // The bogus frame carries one out-of-range field and one legal change.
+    // Healing keeps the legal change; dropping the whole frame would lose it.
     og::sim::LobbySettings bogus = server.state().settings;
     bogus.allied_mode = 7;
+    bogus.ctf_capture_limit = 9;
     transport.queue_lobby_message(11u, make_settings_change_message(bogus));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().settings.allied_mode)
         << "an out-of-range allied_mode must heal to the previous value";
+    EXPECT_EQ(9, server.state().settings.ctf_capture_limit)
+        << "the rest of the frame still applies: this is a per-field heal, "
+           "not a rejection of the whole settings change";
 }
 
 // Rule (src/gameplay/lobby_server.cpp:1112-1115): a RemoveSeat from a machine

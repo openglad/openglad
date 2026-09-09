@@ -1394,6 +1394,7 @@ TEST(GameServerCoverage,
     control->set_user(1);
     control->set_act_type(ACT_CONTROL);
     control->set_yo_delay(0);
+    const std::uint32_t control_id = control->entity_id();
     // Global player index 1, but the peer only ever fills InputState slot 0.
     server.bind_player(96u, 1u, fixture.world().my_team, control);
 
@@ -1409,21 +1410,30 @@ TEST(GameServerCoverage,
             96u, std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
         server.step();
     };
+    // Re-find the hero by id after every tick rather than holding the pointer
+    // across step().
+    const auto yo_delay_now = [&]() -> int {
+        const walker* const found = fixture.world().find_by_id(control_id);
+        EXPECT_NE(nullptr, found) << "the bound hero must survive the tick";
+        return found != nullptr ? found->yo_delay() : -1;
+    };
 
-    // Ambiguous: two slots carry activity, so neither is adopted for seat 1
-    // and the seat's own (empty) slot 1 is used instead.
+    // Ambiguous: BOTH active slots carry a yell, so ANY adoption at all would
+    // fire the yo sound and set yo_delay to 30. Only the refusal leaves seat 1
+    // on its own (empty) slot 1, which yells nothing.
     InputState ambiguous;
     ambiguous.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    ambiguous.players[2].pressed[static_cast<int>(InputAction::Yell)] = true;
     ambiguous.players[2].held[static_cast<int>(InputAction::MoveLeft)] = true;
     send_input(ambiguous);
-    EXPECT_EQ(0, control->yo_delay())
+    EXPECT_EQ(0, yo_delay_now())
         << "two active slots are ambiguous for a single-seat peer";
 
     // Unambiguous: slot 0 is the only active slot, so it drives seat 1.
     InputState legacy;
     legacy.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     send_input(legacy);
-    EXPECT_EQ(30, control->yo_delay())
+    EXPECT_EQ(30, yo_delay_now())
         << "the one active slot must drive the single bound seat";
 }
 
@@ -1451,12 +1461,21 @@ TEST(GameServerCoverage, input_tick_past_the_future_window_is_dropped)
     control->set_user(0);
     control->set_act_type(ACT_CONTROL);
     control->set_yo_delay(0);
+    const std::uint32_t control_id = control->entity_id();
     server.bind_player(96u, 0u, fixture.world().my_team, control);
 
     server.step();
     transport.queue_raw(
         96u, og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
     server.step();
+
+    // Re-find the hero by id after every tick rather than holding the pointer
+    // across step().
+    const auto yo_delay_now = [&]() -> int {
+        const walker* const found = fixture.world().find_by_id(control_id);
+        EXPECT_NE(nullptr, found) << "the bound hero must survive the tick";
+        return found != nullptr ? found->yo_delay() : -1;
+    };
 
     const std::uint32_t expected_tick = fixture.world().tick_count_ + 1u;
     constexpr std::uint32_t kBound =
@@ -1474,17 +1493,30 @@ TEST(GameServerCoverage, input_tick_past_the_future_window_is_dropped)
 
     // The first step of the loop polls both frames against `expected_tick`.
     // Run the world up to the accepted tick; the at-the-bound yell applies.
-    while (fixture.world().tick_count_ < expected_tick + kBound)
+    // The step budget is a ceiling, not the oracle: if a future change ever
+    // stalls the world tick (launch gate, pause, ready deadline) this fails in
+    // milliseconds instead of spinning forever.
+    constexpr std::uint32_t kStepCeiling = 2u * kBound;
+    std::uint32_t steps = 0u;
+    while (fixture.world().tick_count_ < expected_tick + kBound &&
+           steps < kStepCeiling)
+    {
         server.step();
+        ++steps;
+    }
+    ASSERT_LT(steps, kStepCeiling)
+        << "the world stalled before reaching the future-window bound";
     ASSERT_EQ(expected_tick + kBound, fixture.world().tick_count_);
-    EXPECT_EQ(30, control->yo_delay())
+    EXPECT_EQ(30, yo_delay_now())
         << "an input exactly at the future-window bound must be kept";
 
     // One tick further: the over-bound yell was never stored, so nothing fires.
-    control->set_yo_delay(0);
+    walker* const before_last_tick = fixture.world().find_by_id(control_id);
+    ASSERT_NE(nullptr, before_last_tick);
+    before_last_tick->set_yo_delay(0);
     server.step();
     ASSERT_EQ(expected_tick + kBound + 1u, fixture.world().tick_count_);
-    EXPECT_EQ(0, control->yo_delay())
+    EXPECT_EQ(0, yo_delay_now())
         << "an input one tick past the bound must have been dropped";
 }
 
