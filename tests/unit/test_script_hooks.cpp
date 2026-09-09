@@ -1231,3 +1231,261 @@ TEST_F(ScriptBindingTest, host_is_reachable_through_a_const_world_scripts)
     ASSERT_EQ(1u, scripts.host().log().size());
     EXPECT_EQ("hello", scripts.host().log()[0]);
 }
+
+// ---------------------------------------------------------------------------
+// Unclaimed families, the register_hooks error vocabulary, and level_up's
+// guy argument.
+// ---------------------------------------------------------------------------
+
+// A walker can carry a family byte no installed pack claims — a level saved
+// against a mod that is no longer mounted is the ordinary way it happens, and
+// `family()` is a signed char so every wire id past 127 reads back negative
+// too. get_*_family_descriptor answers nullptr for all of those, and what a
+// player must see is an inert entity: it does nothing, and nothing reports a
+// SCRIPT failure for it (an absent mod is not a broken script).
+TEST_F(ScriptHooksTest, an_unclaimed_family_has_no_behavior)
+{
+    // Everything a pack could claim is installed by the binary's main();
+    // the top mod slot is claimed by nothing.
+    constexpr int kUnclaimed = NUM_FAMILY_SLOTS - 1;
+    const FamilyDescriptor* none = get_family_descriptor(kUnclaimed);
+    const WeaponFamilyDescriptor* no_weapon =
+        get_weapon_family_descriptor(kUnclaimed);
+    const EffectFamilyDescriptor* no_effect =
+        get_effect_family_descriptor(kUnclaimed);
+    const TreasureFamilyDescriptor* no_treasure =
+        get_treasure_family_descriptor(kUnclaimed);
+    ASSERT_EQ(nullptr, none);
+    ASSERT_EQ(nullptr, no_weapon);
+    ASSERT_EQ(nullptr, no_effect);
+    ASSERT_EQ(nullptr, no_treasure);
+
+    hooks::reset_hook_failures();
+
+    // The optional-returning half: "nothing answered", not "answered false".
+    EXPECT_FALSE(hooks::do_special(none, nullptr).has_value());
+    EXPECT_FALSE(hooks::check_special_ai(none, nullptr).has_value());
+    EXPECT_FALSE(hooks::on_death(none, nullptr).has_value());
+    EXPECT_FALSE(hooks::on_fire_weapon(none, nullptr, nullptr).has_value());
+    EXPECT_FALSE(hooks::handle_teleport(none, nullptr).has_value());
+    EXPECT_FALSE(hooks::on_ani_complete(none, nullptr).has_value());
+    EXPECT_FALSE(hooks::weapon_on_death(no_weapon, nullptr).has_value());
+    EXPECT_FALSE(hooks::weapon_on_animate(no_weapon, nullptr).has_value());
+    EXPECT_FALSE(hooks::effect_on_act(no_effect, nullptr).has_value());
+    EXPECT_FALSE(hooks::effect_on_death(no_effect, nullptr).has_value());
+    EXPECT_FALSE(
+        hooks::treasure_on_eat(no_treasure, nullptr, nullptr).has_value());
+
+    // The bool-returning half: "no handler ran".
+    EXPECT_FALSE(hooks::hit_response(none, nullptr, nullptr));
+    EXPECT_FALSE(hooks::set_difficulty(none, nullptr, 3));
+    EXPECT_FALSE(hooks::level_up(none, nullptr, 1));
+    EXPECT_FALSE(hooks::on_act_living(none, nullptr));
+    EXPECT_FALSE(hooks::on_act_override(none, nullptr));
+    EXPECT_FALSE(hooks::on_shoved(none, nullptr));
+    EXPECT_FALSE(hooks::on_create(none, nullptr));
+    EXPECT_FALSE(hooks::customize_weapon(none, nullptr, nullptr));
+    EXPECT_FALSE(hooks::on_melee_hit(none, nullptr, nullptr));
+    EXPECT_FALSE(hooks::weapon_on_hit_target(no_weapon, nullptr, nullptr,
+                                             nullptr));
+    EXPECT_FALSE(hooks::generator_customize_spawn(0, nullptr, nullptr));
+
+    // An unclaimed family is not a script failure: nothing is latched for a
+    // test or a log to blame a pack for.
+    EXPECT_EQ(0u, hooks::hook_failures().count);
+    EXPECT_TRUE(hooks::hook_failures().where.empty());
+
+    // Control: the SAME calls against a claimed family with a registered Lua
+    // hook are answered. Without this arm every expectation above is one an
+    // empty dispatcher would also satisfy.
+    register_pack_script(
+        {"test.pack", "claimed.lua",
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  do_special = function(self) return true end,\n"
+         "  on_shoved = function(self) end,\n"
+         "})\n"
+         "og.register_hooks('weapon', 'core:knife', {\n"
+         "  on_death = function(self) return true end,\n"
+         "})\n"
+         "og.register_hooks('fx', 'core:boomerang', {\n"
+         "  on_act = function(self) return true end,\n"
+         "})\n"});
+    WorldScripts& ws = active_world_scripts();
+    ASSERT_TRUE(ws.host().errors().empty()) << ws.host().errors().front().message;
+
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    const auto answered = hooks::do_special(soldier, nullptr);
+    ASSERT_TRUE(answered.has_value());
+    EXPECT_TRUE(*answered);
+    EXPECT_TRUE(hooks::on_shoved(soldier, nullptr));
+
+    const WeaponFamilyDescriptor* knife =
+        get_weapon_family_descriptor(FAMILY_KNIFE);
+    ASSERT_NE(nullptr, knife);
+    const auto knife_death = hooks::weapon_on_death(knife, nullptr);
+    ASSERT_TRUE(knife_death.has_value());
+    EXPECT_TRUE(*knife_death);
+
+    const EffectFamilyDescriptor* boomerang =
+        get_effect_family_descriptor(FAMILY_BOOMERANG);
+    ASSERT_NE(nullptr, boomerang);
+    const auto fx_act = hooks::effect_on_act(boomerang, nullptr);
+    ASSERT_TRUE(fx_act.has_value());
+    EXPECT_TRUE(*fx_act);
+
+    EXPECT_EQ(0u, hooks::hook_failures().count);
+}
+
+// Every way a pack can spell og.register_hooks wrong, and the exact sentence
+// the pack author reads for each. A refused call must register NOTHING: a
+// half-applied hook table is a family whose behavior depends on key order.
+TEST_F(ScriptHooksTest, register_hooks_load_error_vocabulary)
+{
+    register_pack_script({"test.pack", "a.lua",
+                          "og.register_hooks('lifing', 'core:soldier', "
+                          "{ on_death = function() return true end })\n"});
+    register_pack_script({"test.pack", "b.lua",
+                          "og.register_hooks('living', 'core:soldier', "
+                          "{ [7] = function() return true end })\n"});
+    register_pack_script({"test.pack", "c.lua",
+                          "og.register_hooks('living', 'core:soldier', "
+                          "{ do_special = 5 })\n"});
+    register_pack_script({"test.pack", "d.lua",
+                          "og.register_hooks('living', 'core:soldier', "
+                          "{ specials = 5 })\n"});
+    register_pack_script({"test.pack", "e.lua",
+                          "og.register_hooks('living', 'core:soldier', {})\n"});
+
+    WorldScripts& ws = active_world_scripts();
+    const std::vector<ScriptError>& errs = ws.host().errors();
+    ASSERT_EQ(5u, errs.size()) << "one load error per refused call";
+    EXPECT_NE(std::string::npos,
+              errs[0].message.find(
+                  "og.register_hooks: unknown order 'lifing'"))
+        << errs[0].message;
+    EXPECT_NE(std::string::npos,
+              errs[1].message.find(
+                  "a hook table's keys are hook names (got a number key for "
+                  "living 'core:soldier')"))
+        << errs[1].message;
+    EXPECT_NE(std::string::npos,
+              errs[2].message.find(
+                  "og.register_hooks: 'do_special' must be a function"))
+        << errs[2].message;
+    EXPECT_NE(std::string::npos,
+              errs[3].message.find(
+                  "og.register_hooks: 'specials' must be a table"))
+        << errs[3].message;
+    EXPECT_NE(std::string::npos,
+              errs[4].message.find(
+                  "og.register_hooks: no valid hooks for living "
+                  "'core:soldier' (check names)"))
+        << errs[4].message;
+
+    // Nothing survived any of the five: the family is exactly as unclaimed
+    // as it was before the pack loaded.
+    EXPECT_FALSE(ws.has_hook(Order::Living, FAMILY_SOLDIER,
+                             FamilyHook::DoSpecial));
+    EXPECT_FALSE(ws.has_hook(Order::Living, FAMILY_SOLDIER,
+                             FamilyHook::OnDeath));
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    EXPECT_FALSE(hooks::do_special(fd, nullptr).has_value());
+    EXPECT_FALSE(hooks::on_death(fd, nullptr).has_value());
+
+    // Control: the sixth spelling is the correct one, and it registers.
+    register_pack_script({"test.pack", "f.lua",
+                          "og.register_hooks('living', 'core:soldier', "
+                          "{ do_special = function() return true end })\n"});
+    WorldScripts& rebuilt = active_world_scripts();
+    EXPECT_TRUE(rebuilt.has_hook(Order::Living, FAMILY_SOLDIER,
+                                 FamilyHook::DoSpecial));
+    const auto answered =
+        hooks::do_special(get_family_descriptor(FAMILY_SOLDIER), nullptr);
+    ASSERT_TRUE(answered.has_value());
+    EXPECT_TRUE(*answered);
+}
+
+// on_melee_hit is dispatched from the melee path with (self, target). It
+// reports "a handler ran" — and when the handler errors it must report the
+// opposite, with the failure latched under this hook's own name so a test or
+// a log names the right hook.
+TEST_F(ScriptHooksTest, on_melee_hit_reports_ran_and_latches_its_own_failures)
+{
+    register_pack_script(
+        {"test.pack", "melee.lua",
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  on_melee_hit = function(self, target)\n"
+         "    og.log('melee', self == nil, target == nil)\n"
+         "  end,\n"
+         "})\n"
+         "og.register_hooks('living', 'core:orc', {\n"
+         "  on_melee_hit = function(self, target) error('claws') end,\n"
+         "})\n"});
+    WorldScripts& ws = active_world_scripts();
+    ASSERT_TRUE(ws.host().errors().empty())
+        << ws.host().errors().front().message;
+    hooks::reset_hook_failures();
+
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    EXPECT_TRUE(hooks::on_melee_hit(soldier, nullptr, nullptr));
+    ASSERT_FALSE(ws.host().log().empty());
+    EXPECT_EQ("melee\ttrue\ttrue", ws.host().log().back());
+    EXPECT_EQ(0u, hooks::hook_failures().count);
+
+    const FamilyDescriptor* orc = get_family_descriptor(FAMILY_ORC);
+    ASSERT_NE(nullptr, orc);
+    EXPECT_FALSE(hooks::on_melee_hit(orc, nullptr, nullptr))
+        << "an erroring hook counts as absent for that dispatch";
+    EXPECT_EQ(1u, hooks::hook_failures().count);
+    EXPECT_EQ("hook:on_melee_hit", hooks::hook_failures().where);
+    EXPECT_NE(std::string::npos,
+              hooks::hook_failures().message.find("claws"));
+}
+
+// A guy handle is dispatch-scoped: level_up hands the script the promoted
+// fighter's record for the duration of the call and no longer. A hook that
+// stashes it and reads it on the NEXT promotion must be told so by name
+// instead of reading a freed record, and level_up on a walker with no record
+// at all must reach the hook as nil rather than refusing to dispatch.
+TEST_F(ScriptHooksTest, level_up_guy_handle_is_dispatch_scoped)
+{
+    register_pack_script(
+        {"test.pack", "levelup.lua",
+         "local stashed = nil\n"
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  level_up = function(g, diff)\n"
+         "    og.log('guy', g == nil and 'nil' or 'live', diff)\n"
+         "    if stashed ~= nil then stashed:g_level() end\n"
+         "    stashed = g\n"
+         "  end,\n"
+         "})\n"});
+    WorldScripts& ws = active_world_scripts();
+    ASSERT_TRUE(ws.host().errors().empty())
+        << ws.host().errors().front().message;
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    hooks::reset_hook_failures();
+
+    // No record: the argument arrives as nil and the hook still runs.
+    EXPECT_TRUE(hooks::level_up(fd, nullptr, 4));
+    ASSERT_FALSE(ws.host().log().empty());
+    EXPECT_EQ("guy\tnil\t4", ws.host().log().back());
+    EXPECT_EQ(0u, hooks::hook_failures().count);
+
+    // A live record on the first dispatch; the second dispatch reads the
+    // stashed handle from the first and is refused by name.
+    guy promoted(FAMILY_SOLDIER);
+    EXPECT_TRUE(hooks::level_up(fd, &promoted, 1));
+    EXPECT_EQ("guy\tlive\t1", ws.host().log().back());
+    EXPECT_EQ(0u, hooks::hook_failures().count);
+
+    EXPECT_FALSE(hooks::level_up(fd, &promoted, 2))
+        << "reading a stale guy handle must fail the dispatch";
+    EXPECT_EQ(1u, hooks::hook_failures().count);
+    EXPECT_EQ("hook:level_up", hooks::hook_failures().where);
+    EXPECT_NE(std::string::npos,
+              hooks::hook_failures().message.find("stale guy handle"));
+}

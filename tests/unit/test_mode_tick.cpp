@@ -633,6 +633,54 @@ TEST(ModeTick, damage_gate_error_keeps_authored_amount)
 // Kill attribution
 // ---------------------------------------------------------------------------
 
+// A replacement amount is carried to the engine as a `short`, so a level
+// script that returns a number bigger than a short can hold must be clamped
+// at the boundary rather than wrapped: 99999 narrowed by a raw cast is 
+// -31073, which would HEAL the target instead of killing it.
+TEST(ModeTick, damage_gate_huge_replacement_clamps_to_short_max)
+{
+    GateRig rig(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    return 99999\n"
+        "  end,\n"
+        "})\n");
+    rig.target->stats()->set_hitpoints(40000.0f);
+    rig.attacker->attack(rig.target);
+    EXPECT_EQ(7233.0f, rig.hp())
+        << "40000 - 32767: the replacement clamps to a short's maximum";
+    EXPECT_EQ(0, rig.target->dead()) << "a clamped hit is still survivable";
+}
+
+// Not every hit has an attacker — a fall, a pit, a level script's own
+// og.damage. The gate hands the hook `nil` for those so a level rule can
+// tell environmental damage from a fighter's, and the hook's answer is
+// honoured either way.
+TEST(ModeTick, damage_gate_reports_an_unattributed_hit_as_nil)
+{
+    GateRig rig(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    og.log('att', attacker == nil and 'nil' or\n"
+        "                  tostring(og.entity_id(attacker)), amount)\n"
+        "    if attacker == nil then return 3 end\n"
+        "    return 9\n"
+        "  end,\n"
+        "})\n");
+
+    EXPECT_EQ(3, og::script::hooks::level_damage_gate(rig.target, nullptr, 7));
+    ASSERT_EQ(1u, rig.fx.vm_log().size());
+    EXPECT_EQ("att\tnil\t7", rig.fx.vm_log()[0]);
+
+    // Control: the same gate with a real attacker sees the attacker's id and
+    // answers its other arm.
+    EXPECT_EQ(9, og::script::hooks::level_damage_gate(rig.target,
+                                                      rig.attacker, 7));
+    ASSERT_EQ(2u, rig.fx.vm_log().size());
+    EXPECT_EQ("att\t" + std::to_string(rig.attacker->entity_id()) + "\t7",
+              rig.fx.vm_log()[1]);
+}
+
 TEST(ModeTick, weapon_kill_attributes_to_owner_chain_root)
 {
     ModeWorld fx;
