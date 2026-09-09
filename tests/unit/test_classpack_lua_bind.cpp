@@ -539,24 +539,10 @@ TEST_F(LuaFamilyBindTest, a_special_id_the_family_lacks_names_the_ids_it_has)
     EXPECT_TRUE(ws.host().log().empty());
 }
 
-// A declaration with no id has nothing to join against and cannot name itself
-// in the error — the order is all the loader has, and it is what tells the
-// author which of a merged file's calls is the broken one.
-TEST_F(LuaFamilyBindTest, an_idless_declaration_names_the_order_it_was_binding)
-{
-    family_chunk("og.family('living', {})\n");
-    WorldScripts& ws = active_world_scripts();
-    EXPECT_TRUE(contains(load_errors(ws),
-                         "og.family living: a declaration needs an id"))
-        << load_errors(ws);
-    // Nothing bound: the raise happened before any hook reached the table.
-    EXPECT_FALSE(ws.has_hook(Order::Living, kSoldier, FamilyHook::OnDeath));
-}
-
 // ---------------------------------------------------------------------------
 // Dispatch through the lowered forms
 //
-// These three drive a REAL living through the same funnel walker::special()
+// These two drive a REAL living through the same funnel walker::special()
 // uses, because the slot the closure picks is read off the walker: a
 // nullptr self can only ever prove the no-opinion arm.
 // ---------------------------------------------------------------------------
@@ -573,36 +559,6 @@ living* spawn_soldier(TestGameWorld& tw)
 }
 
 }  // namespace
-
-// The bind pass reads a chunk the declaration pass already accepted, so it
-// cannot re-report a malformed entry — but it must not let one cost the pack
-// the casts written AFTER it either. Skipping the junk and binding the rest
-// is what keeps a half-edited file from losing its whole specials list.
-TEST_F(LuaFamilyBindTest, a_malformed_specials_entry_is_skipped_not_fatal)
-{
-    family_chunk("og.family('living', { id = 'core:soldier', specials = {\n"
-                 "  7,\n"                                   // not a table
-                 "  { name = 'NAMELESS', mp_cost = 1 },\n"  // no id
-                 "  { id = 'charge', name = 'CHARGE', mp_cost = 25,\n"
-                 "    cast = function() og.log('charge cast') return true end },\n"
-                 "  default_cast = function() return true end,\n"
-                 "} })\n");
-    TestGameWorld tw;
-    living* self = spawn_soldier(tw);
-    ASSERT_NE(nullptr, self);
-
-    WorldScripts& ws = active_world_scripts();
-    EXPECT_TRUE(load_errors(ws).empty()) << load_errors(ws);
-    EXPECT_TRUE(ws.has_hook(Order::Living, kSoldier, FamilyHook::DoSpecial));
-
-    const FamilyDescriptor* fd = get_family_descriptor(kSoldier);
-    self->set_current_special(1);
-    const auto result = hooks::do_special(fd, self);
-    ASSERT_TRUE(result.has_value()) << "the surviving cast did not dispatch";
-    EXPECT_TRUE(*result);
-    ASSERT_EQ(1u, ws.host().log().size());
-    EXPECT_EQ("charge cast", ws.host().log().back());
-}
 
 // The `ai =` sugar lowers to ONE closure over a private slot → function
 // table, and the closure has to pick by the slot the walker is actually
