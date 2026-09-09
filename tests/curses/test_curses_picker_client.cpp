@@ -3953,3 +3953,41 @@ TEST(CursesPickerClient, company_list_cancelled_prompts_destroy_nothing)
         << "the ANSWERED delete must remove the snapshot the cancel kept";
     EXPECT_TRUE(f.t().input_exhausted());
 }
+
+// VIEW LEVEL stages the CURRENTLY MOUNTED package. If the save's campaign is
+// not the one on disk, the preview says so in the campaign's own name instead
+// of showing a scenario from the wrong campaign under the right title. The
+// matching-mount arm below is the control.
+TEST(CursesPickerClient, view_scenario_refuses_an_unmounted_campaign)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+    ASSERT_NE(item, nullptr);
+
+    {
+        PickerFixture f;
+        f.save().current_campaign = "tryxian";  // installed, but not mounted
+        f.t().push_special(KeyCode::Enter);     // dismiss the notice
+        f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+        EXPECT_NE(std::string::npos,
+                  f.t().dump().find("Campaign 'tryxian' is not mounted."))
+            << f.t().dump();
+        EXPECT_EQ(std::string::npos, f.t().dump().find("SCEN 1:"))
+            << "a refused preview must not stage anybody:\n" << f.t().dump();
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+    {
+        PickerFixture f;
+        f.save().current_campaign = "gladiator";  // the mounted one
+        f.t().push_special(KeyCode::Enter);
+        f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+        EXPECT_EQ(std::string::npos, f.t().dump().find("is not mounted."));
+        EXPECT_NE(std::string::npos, f.t().dump().find("SCEN 1:"))
+            << f.t().dump();
+    }
+}
