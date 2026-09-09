@@ -42,7 +42,10 @@ OUT_DIR="${OPENGLAD_README_MEDIA_DIR:-$REPO_ROOT/build/media/readme}"
 # narrates itself with (there is no separate score HUD -- those yellow lines
 # ARE the scoreboard, and no flag sprite is on screen in this run; the denser
 # melees later in the run have scrolled the flag lines off the stack, which
-# is what makes this the readable frame); the ninefold judgment pulse on the
+# is what makes this the readable frame; two alternatives were scanned frame
+# by frame and rejected -- CAPTURE_FOCUS=player follows one fighter across an
+# empty field, and seed 4242 keeps only a single flag line over an emptier
+# plaza, so this run stands); the ninefold judgment pulse on the
 # Ninefold Court
 # (the frame capture_showcase.sh uses for the same level -- scen 605 is a
 # single-floor Lua-scripted court, so the still is a level-script shot, not
