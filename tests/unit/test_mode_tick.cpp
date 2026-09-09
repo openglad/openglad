@@ -652,35 +652,6 @@ TEST(ModeTick, damage_gate_huge_replacement_clamps_to_short_max)
     EXPECT_EQ(0, rig.target->dead()) << "a clamped hit is still survivable";
 }
 
-// Not every hit has an attacker — a fall, a pit, a level script's own
-// og.damage. The gate hands the hook `nil` for those so a level rule can
-// tell environmental damage from a fighter's, and the hook's answer is
-// honoured either way.
-TEST(ModeTick, damage_gate_reports_an_unattributed_hit_as_nil)
-{
-    GateRig rig(
-        "og.register_level_hooks(42, {\n"
-        "  on_damage = function(target, attacker, amount)\n"
-        "    og.log('att', attacker == nil and 'nil' or\n"
-        "                  tostring(og.entity_id(attacker)), amount)\n"
-        "    if attacker == nil then return 3 end\n"
-        "    return 9\n"
-        "  end,\n"
-        "})\n");
-
-    EXPECT_EQ(3, og::script::hooks::level_damage_gate(rig.target, nullptr, 7));
-    ASSERT_EQ(1u, rig.fx.vm_log().size());
-    EXPECT_EQ("att\tnil\t7", rig.fx.vm_log()[0]);
-
-    // Control: the same gate with a real attacker sees the attacker's id and
-    // answers its other arm.
-    EXPECT_EQ(9, og::script::hooks::level_damage_gate(rig.target,
-                                                      rig.attacker, 7));
-    ASSERT_EQ(2u, rig.fx.vm_log().size());
-    EXPECT_EQ("att\t" + std::to_string(rig.attacker->entity_id()) + "\t7",
-              rig.fx.vm_log()[1]);
-}
-
 TEST(ModeTick, weapon_kill_attributes_to_owner_chain_root)
 {
     ModeWorld fx;

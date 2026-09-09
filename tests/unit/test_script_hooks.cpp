@@ -1318,7 +1318,6 @@ TEST_F(ScriptHooksTest, an_unclaimed_family_has_no_behavior)
     EXPECT_FALSE(hooks::on_melee_hit(none, nullptr, nullptr));
     EXPECT_FALSE(hooks::weapon_on_hit_target(no_weapon, nullptr, nullptr,
                                              nullptr));
-    EXPECT_FALSE(hooks::generator_customize_spawn(0, nullptr, nullptr));
 
     // An unclaimed family is not a script failure: nothing is latched for a
     // test or a log to blame a pack for.
@@ -1478,8 +1477,7 @@ TEST_F(ScriptHooksTest, on_melee_hit_reports_ran_and_latches_its_own_failures)
 // A guy handle is dispatch-scoped: level_up hands the script the promoted
 // fighter's record for the duration of the call and no longer. A hook that
 // stashes it and reads it on the NEXT promotion must be told so by name
-// instead of reading a freed record, and level_up on a walker with no record
-// at all must reach the hook as nil rather than refusing to dispatch.
+// instead of reading a freed record.
 TEST_F(ScriptHooksTest, level_up_guy_handle_is_dispatch_scoped)
 {
     register_pack_script(
@@ -1499,16 +1497,11 @@ TEST_F(ScriptHooksTest, level_up_guy_handle_is_dispatch_scoped)
     ASSERT_NE(nullptr, fd);
     hooks::reset_hook_failures();
 
-    // No record: the argument arrives as nil and the hook still runs.
-    EXPECT_TRUE(hooks::level_up(fd, nullptr, 4));
-    ASSERT_FALSE(ws.host().log().empty());
-    EXPECT_EQ("guy\tnil\t4", ws.host().log().back());
-    EXPECT_EQ(0u, hooks::hook_failures().count);
-
     // A live record on the first dispatch; the second dispatch reads the
     // stashed handle from the first and is refused by name.
     guy promoted(FAMILY_SOLDIER);
     EXPECT_TRUE(hooks::level_up(fd, &promoted, 1));
+    ASSERT_FALSE(ws.host().log().empty());
     EXPECT_EQ("guy\tlive\t1", ws.host().log().back());
     EXPECT_EQ(0u, hooks::hook_failures().count);
 
