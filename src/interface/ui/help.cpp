@@ -913,7 +913,7 @@ void help_engine_draw_content(void* /*screen_state*/)
 	                                           : "1/2/3:Tab  ESC:Exit",
 	                static_cast<unsigned char>(RED), 1);
 	const std::string version =
-	    std::format("GLADIATOR v{}", OPENGLAD_VERSION_STRING);
+	    std::format("OPENGLAD {}", og::version::string());
 	mytext.write_xy(kHelpFooterTextX, kHelpFooterVersionY, version.c_str(),
 	                static_cast<unsigned char>(RED), 1);
 	if (state->pager.multi_page())

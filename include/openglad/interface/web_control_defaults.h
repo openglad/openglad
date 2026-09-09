@@ -93,6 +93,7 @@ inline constexpr bool kWebControlDefaults =
 // controls/web_default_keys_version so the migration runs exactly once.
 // Still 1: the v1 migration never reached a released build, so the scheme it
 // migrates to can still be edited in place.
+// Unrelated to the app version (og::version): this is a migration counter.
 inline constexpr int kWebControlDefaultsVersion = 1;
 
 // Substitute a browser-safe key for profile 0's defaults in web mode;

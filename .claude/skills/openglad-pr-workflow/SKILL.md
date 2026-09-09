@@ -111,9 +111,17 @@ sign-off, quoted.
 |---|---|---|
 | openglad.pages.dev | wasm-e2e.yml (production deploy step) | master pushes only |
 | pr-<n>.openglad.pages.dev | wasm-e2e.yml (PR preview step) | every push to an open same-repo PR |
+| v2-<n>.openglad.pages.dev | wasm-e2e.yml (archive alias step) | every master push, permanent |
+| openglad.pages.dev/versions/ | versions_index.py in wasm-e2e.yml | regenerated on every production deploy |
 | local tunnel | scripts/refresh_web_preview.sh + cloudflared | manual |
+
+wasm-e2e.yml also posts the preview link as a sticky comment on the PR
+(marker `<!-- wasm-preview-link -->`, updated in place), quoting the
+version and commit hash read out of the built artifact — that comment is
+the delivery path for a preview, not the job summary.
 
 Before explaining why a user "sees the old build": read the git-hash
 stamp on the main menu of the build THEY named and compare to branch
 HEAD. Never reason about caching from first principles. Always hand back
-preview URLs with the commit SHA they serve.
+preview URLs with the commit SHA they serve and the version beside it
+(`v2.<count>`).

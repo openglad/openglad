@@ -397,7 +397,8 @@ byte-identical; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md for the full audit):
 
 ## Concept Playground campaign (lands last)
 
-- `builtin/concept.glad`, campaign id `concept`, level
+- `builtin-dev/concept.glad` (dev-only since #240 — it is not shipped to
+  players), campaign id `concept`, level
   ids **600–604** (the 600 range is free).
 - New tool `tools/concept_mapgen/{main.cpp,grid_painters.cpp}` mirroring
   `tools/ctf_mapgen` (SDL-free, EXCLUDE_FROM_ALL; links og_core/og_gameplay/
@@ -504,7 +505,7 @@ byte-identical; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md for the full audit):
   interaction hit-regions unchanged). Coverage exercised via the in-source TESTING helper.
   Z-stairs need no link UI (positional). 
 - [x] **P11** Concept Playground campaign — tools/concept_mapgen +
-  scripts/generate_concept_campaign.sh build builtin/concept.glad
+  scripts/generate_concept_campaign.sh build builtin-dev/concept.glad
   (levels 600-604: Stairs, Mind the Gap, Glasshouse, Drop Zone, Arc Range), each
   multi-floor; metadata-driven discovery needs no picker change. **Self-check
   passes**: every level reloads with floor_count 2 and all floor grids valid.

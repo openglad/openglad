@@ -336,7 +336,7 @@ int networking_shots_injector(void* data)
     interact("network_back");
     wait_for_interactable("networking", 10000);
 
-    // 2. Hosting, two machines.
+    // 2. Hosting: the room mid-fill, four machines deep.
     run_on_main_thread([state] {
         state->saved_client = og::ui::active_picker_lobby_client();
         og::ui::install_active_picker_lobby_client(state->lobby);
@@ -344,7 +344,7 @@ int networking_shots_injector(void* data)
     });
     if (open_networking_and_settle("network_disconnect"))
     {
-        state->captures += capture_frame("networking_hosting_two_machines");
+        state->captures += capture_frame("networking_hosting_four_machines");
 
         // 3. The real KICK confirm over the hosting view. Bounded retry:
         // under ASan frame-stretch a single click can be swallowed by the
@@ -425,10 +425,17 @@ TEST(NetworkingUxShots, session_views_and_kick_confirm)
     };
     set_platform_bridge(std::move(bridge));
 
+    // A room the way one actually fills: the host still deciding, two
+    // bands already READY (one of them a couch pair sharing a machine, so
+    // the row lists P3 P4), and a latecomer that has not readied yet.
+    // README's networking-lobby.png is this frame.
     ShotSessionLobbyClient lobby;
     lobby.players = {
         shot_seat(0, 1, "net-self", "IRON KETTLE BAND", true, false),
         shot_seat(1, 2, "net-far", "RIVER BAND", false, true),
+        shot_seat(2, 3, "net-marsh-a", "SALT MARSH BAND", false, true),
+        shot_seat(3, 3, "net-marsh-b", "SALT MARSH BAND", false, true),
+        shot_seat(4, 4, "net-pike", "COPPER PIKE BAND", false, false),
     };
     lobby.local_indices = {0};
 

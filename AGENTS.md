@@ -121,7 +121,7 @@ Everything a mod author needs is one hop from this table.
 | Level and per-entity scripting | [design doc §7](docs/lua-classpacks-design.md), [api-reference → Level scripts](docs/modding/api-reference.md#level-scripts) |
 | Where script errors and `og.log` output go, and how they are bounded | [api-reference → Script errors and logging](docs/modding/api-reference.md#script-errors-and-logging) |
 | How to override a core family from a mod pack | [SKILL.md](.claude/skills/openglad-modding/SKILL.md), "Shipping a family that replaces a core one" |
-| Real code to copy | `packs/core/families/living-00-soldier.lua` (behavior and declaration in one file), `tools/concept_mapgen/showcase_pack.cpp` (level scripting) |
+| Real code to copy | `packs/core/families/living-00-soldier.lua` (behavior and declaration in one file), `campaigns/concept/packs/concept.showcase/scripts/court.lua` (level scripting) |
 
 When documents disagree, the source wins:
 `src/gameplay/script/bindings_entity.cpp` and `world_scripts.cpp` for the

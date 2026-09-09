@@ -587,35 +587,42 @@ void delete_campaign(const std::string& id)
 void restore_default_campaigns()
 {
     namespace fs = std::filesystem;
-    const std::string src_dir = get_asset_path() + "builtin";
-    std::error_code iter_ec;
-    for (const auto& entry : fs::directory_iterator(src_dir, iter_ec))
+    // builtin/ is the shipped set and must always be there. builtin-dev/
+    // holds the dev-only campaigns the build composes for tests, media
+    // capture and the demo (#240); it is absent from every installed,
+    // packaged and web tree, so a missing directory is not a warning.
+    for (const char* dir : {"builtin", "builtin-dev"})
     {
-        if (entry.path().extension() != ".glad")
-            continue;
-        const std::string src = entry.path().string();
-        const std::string dst =
-            get_user_path() + "campaigns/" + entry.path().filename().string();
-        std::error_code ec;
-        fs::copy_file(src, dst, fs::copy_options::overwrite_existing, ec);
-        if (ec)
+        const std::string src_dir = get_asset_path() + dir;
+        std::error_code iter_ec;
+        for (const auto& entry : fs::directory_iterator(src_dir, iter_ec))
         {
-            LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
-            continue;
+            if (entry.path().extension() != ".glad")
+                continue;
+            const std::string src = entry.path().string();
+            const std::string dst =
+                get_user_path() + "campaigns/" + entry.path().filename().string();
+            std::error_code ec;
+            fs::copy_file(src, dst, fs::copy_options::overwrite_existing, ec);
+            if (ec)
+            {
+                LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
+                continue;
+            }
+            Log("Restored default campaign: {} -> {}\n", src, dst);
+            // Installs that predate the reverse-DNS purge left this campaign
+            // as "org.openglad.<filename>". Stock copies were overwritten from
+            // builtin/ on every restore, so the legacy twin holds no user
+            // edits; drop it rather than list the campaign twice.
+            const std::string legacy_twin = get_user_path() + "campaigns/" +
+                std::string(og::kLegacyIdPrefix) + entry.path().filename().string();
+            std::error_code twin_ec;
+            if (fs::remove(legacy_twin, twin_ec))
+                Log("Removed legacy campaign copy: {}\n", legacy_twin);
         }
-        Log("Restored default campaign: {} -> {}\n", src, dst);
-        // Installs that predate the reverse-DNS purge left this campaign
-        // as "org.openglad.<filename>". Stock copies were overwritten from
-        // builtin/ on every restore, so the legacy twin holds no user
-        // edits; drop it rather than list the campaign twice.
-        const std::string legacy_twin = get_user_path() + "campaigns/" +
-            std::string(og::kLegacyIdPrefix) + entry.path().filename().string();
-        std::error_code twin_ec;
-        if (fs::remove(legacy_twin, twin_ec))
-            Log("Removed legacy campaign copy: {}\n", legacy_twin);
+        if (iter_ec && std::string_view(dir) == "builtin")
+            LogWarn("restore_default_campaigns: {}: {}\n", src_dir, iter_ec.message());
     }
-    if (iter_ec)
-        LogWarn("restore_default_campaigns: {}: {}\n", src_dir, iter_ec.message());
 
     og::data::clear_campaign_metadata_cache();
 }

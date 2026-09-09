@@ -212,9 +212,12 @@ themselves.
 
 **The main menu.** The difficulty row is gone and the narrow `GAME | CLOUD`
 pair it sat under becomes two full-width rows that say what they are:
-`GAME SETTINGS` (80,131,140,15) over `CLOUD SAVES` (80,150,140,15), the pair
-centered between its neighbour groups (the 13px break above GAME SETTINGS
+`GAME SETTINGS` (80,128,140,15) over `CLOUD SAVES` (80,147,140,15), the pair
+centered between its neighbour groups (the 10px break above GAME SETTINGS
 equals the footer break below CLOUD SAVES — pinned in test_menu_layout).
+The breaks are 10 rather than 13 because the `HELP | QUIT` footer moved up to
+y=172, leaving the build stamp at y=193 a band of black of its own instead of
+starting on the row after QUIT's last.
 The grey `SETTINGS` caption at (150,125) is deleted with them — two
 spelled-out rows need no caption, so the band it reserved is ordinary
 canvas again. The `begin → continue → level_edit → options` chain is preserved

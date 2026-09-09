@@ -5752,3 +5752,59 @@ TEST(SeatRailSlots, claimability_answers_the_dimmed_face_question)
     EXPECT_EQ(0, seats_still_claimable(
                      SeatClaimability{.multiplayer_enabled = false}));
 }
+
+// --- Main-menu build stamp geometry ---
+
+namespace {
+
+// The two main-menu buttons the stamp shares the bottom of the screen with,
+// copied from their specs in src/interface/ui/menu_screen_specs.cpp (HELP
+// and QUIT, both {.,172,68,15} since the footer was lifted off the stamp).
+// MenuLayout.mainmenu_build_stamp_clear_of_buttons checks the same property
+// against the real button table, and pins the gutter width; this unit-level
+// copy keeps the geometry helper testable without SDL.
+constexpr og::ui::PickerRect kMainMenuHelp{80, 172, 68, 15};
+constexpr og::ui::PickerRect kMainMenuQuit{152, 172, 68, 15};
+
+og::ui::PickerRect as_picker_rect(const og::ui::BuildStampRect& r)
+{
+    return og::ui::PickerRect{r.x, r.y, r.w, r.h};
+}
+
+} // namespace
+
+TEST(PickerCommon, build_stamp_rect_stays_in_the_band)
+{
+    // The band measured on the rendered menu: rows 193..199 are black for
+    // x in [51,250] (the column bases own x <= 50 and x >= 251 down there,
+    // and the lifted HELP/QUIT footer ends at row 186).
+    for (int len = 8; len <= 22; ++len)
+    {
+        const std::string line(static_cast<std::size_t>(len), 'W');
+        const og::ui::BuildStampRect r = og::ui::build_stamp_rect(line);
+        SCOPED_TRACE("length " + std::to_string(len));
+        EXPECT_EQ(193, r.y);
+        EXPECT_LE(r.y + r.h, 200) << "stamp runs off the bottom of the screen";
+        EXPECT_GE(r.x, 51) << "stamp reaches the left column base";
+        EXPECT_LE(r.x + r.w - 1, 250) << "stamp reaches the right column base";
+        EXPECT_FALSE(og::ui::picker_rects_overlap(as_picker_rect(r),
+                                                  kMainMenuHelp))
+            << "stamp bites the HELP button";
+        EXPECT_FALSE(og::ui::picker_rects_overlap(as_picker_rect(r),
+                                                  kMainMenuQuit))
+            << "stamp bites the QUIT button";
+    }
+}
+
+TEST(PickerCommon, build_stamp_rect_is_centred)
+{
+    for (int len = 8; len <= 22; ++len)
+    {
+        const std::string line(static_cast<std::size_t>(len), 'W');
+        const og::ui::BuildStampRect r = og::ui::build_stamp_rect(line);
+        SCOPED_TRACE("length " + std::to_string(len));
+        // Integer halving leaves at most a pixel of slop on odd widths.
+        EXPECT_NEAR(150.0, r.x + r.w / 2.0, 1.0)
+            << "stamp is not centred on the button column";
+    }
+}

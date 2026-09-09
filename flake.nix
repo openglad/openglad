@@ -103,7 +103,9 @@
         in
         pkgs.stdenv.mkDerivation {
           pname = "openglad";
-          version = "1.1.1";
+          # Matches the in-game stamp: 2.<commit count>. A dirty or
+          # rev-less tree has no revCount, so it builds as 2.0.
+          version = "2.${toString (self.revCount or 0)}";
 
           src = self;
 
@@ -137,6 +139,10 @@
             "-DOPENGLAD_REQUIRE_SYSTEM_DEPS=ON"
             "-DOPENGLAD_FETCH_DEPS=OFF"
             "-DOPENGLAD_FETCH_IXWEBSOCKET=OFF"
+            # The build tree nix hands cmake has no .git, so the stamp comes
+            # from the flake's own view of the revision.
+            "-DOPENGLAD_COMMIT_COUNT=${toString (self.revCount or 0)}"
+            "-DOPENGLAD_GIT_HASH=${if self ? rev then builtins.substring 0 8 self.rev else "nogit"}"
           ];
 
           postPatch = ''

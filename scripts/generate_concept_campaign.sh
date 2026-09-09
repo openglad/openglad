@@ -30,7 +30,7 @@ cmake --build "${BUILD_DIR}" --target concept_mapgen -- -j8
 
 # Recompose the staged archive from the freshly written source tree. The
 # test binaries and the playtest harnesses read the STAGED archive under
-# build/ci-test/builtin/ (composed from campaigns/ by og_builtin_campaigns),
+# build/ci-test/builtin-dev/ (composed from campaigns/ by og_builtin_campaigns),
 # which the build system only refreshes on the next build -- without this,
 # every harness run after a regen exercised the PREVIOUS generation's
 # package (a one-generation-stale race).

@@ -171,6 +171,14 @@ PickerRect campaign_title_rect(int chars)
                       layout.title_y, width, kGlyphHeight};
 }
 
+BuildStampRect build_stamp_rect(std::string_view text)
+{
+    const int len = static_cast<int>(text.size());
+    const int w = len > 0 ? len * kBuildStampGlyphAdvance - 1 : 0;
+    return BuildStampRect{kBuildStampCentreX - w / 2, kBuildStampY, w,
+                          kBuildStampHeight};
+}
+
 std::string fit_text_to_chars(std::string_view text, int budget)
 {
     if (budget <= 0)

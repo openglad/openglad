@@ -16,7 +16,6 @@
  */
 
 #include <openglad/core/text_wrap.h>
-#include <openglad/core/version.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/families/family_descriptor.h>

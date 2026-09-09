@@ -173,7 +173,11 @@ https://pr-<number>.openglad.pages.dev
 ```
 
 Each update to the pull request replaces that alias with the newest successful
-build. The workflow also records the link as a GitHub Deployment and in its job
+build. The workflow posts one comment on the pull request — updated in place on
+every push, never duplicated — carrying that alias, the immutable deployment URL
+for the exact build, and the version and commit hash the build stamps on its main
+menu, so the comment and the running game can never disagree. It also records the
+link as a GitHub Deployment and in its job
 summary. Pull requests from forks and Dependabot pull requests still build and
 test, but are not deployed: repository Cloudflare credentials are never made
 available to their code, and their artifacts are not promoted by a privileged
@@ -185,16 +189,53 @@ Every push or merge to `master` deploys production from the same workflow,
 after the WASM Playwright tests pass: the relay Worker (rooms + cloud-save
 vault) first, then the exact `dist/` the tests validated goes to
 `https://openglad.pages.dev`. Rapid successive pushes cancel older in-flight
-master runs so the newest commit always deploys last. The Nightly Release
-workflow also redeploys production on its 2am UTC schedule as a backstop,
-alongside the nightly native binaries.
+master runs so the newest commit always deploys last.
+
+The same `dist/` is archived first at a permanent per-version address:
+
+```text
+https://v2-<n>.openglad.pages.dev
+```
+
+where `<n>` is the commit count of that master commit (see
+[Releases](#releases)). Nothing is ever rebuilt to keep an old build playable,
+so every version that shipped stays available for comparison:
+
+```text
+https://openglad.pages.dev/versions/
+```
+
+That index is regenerated on every production deploy by
+[`scripts/web/versions_index.py`](../scripts/web/versions_index.py), reading the
+Cloudflare Pages deployment list rather than guessing from git. Deployments made
+before per-version aliases existed have no `v2-<n>` address and are listed by
+their immutable deployment URL.
+
+### Releases
+
+Openglad versions are `2.<commit count>`: the major is hand-edited, the minor is
+`git rev-list --count HEAD` of the built commit, so `2.1073` names exactly one
+master commit. `openglad -v`, `openglad_curses --version` and the main-menu
+stamp all print the same number, next to the commit hash.
+
+`.github/workflows/release.yml` creates one GitHub release per master commit
+whose web build passed — tag `v2.<n>`, marked `latest`, with Linux, Windows and
+macOS archives named by platform, so
+`releases/latest/download/openglad-linux-x86_64.tar.gz` is a stable URL.
+
+A build without git history — a source tarball, a shallow clone — reports `2.0`,
+which can never be a real release. Packagers who need a real number pass it in:
+
+```bash
+cmake --preset dev-release -DOPENGLAD_COMMIT_COUNT=1073 -DOPENGLAD_GIT_HASH=7e7f4079
+```
 
 Maintainer setup for `.github/workflows/wasm-e2e.yml`:
 
 - Configure the `CLOUDFLARE_API_TOKEN` Actions secret with Account /
   Cloudflare Pages / Edit permission. The production relay deploy additionally
-  needs Workers Scripts / Edit on the same token (already required by
-  `nightly.yml`).
+  needs Workers Scripts / Edit on the same token (used by the relay deploy step
+  of this same workflow).
 - Configure the `CLOUDFLARE_ACCOUNT_ID` Actions secret for the account that
   owns the `openglad` Pages project.
 - Keep preview deployments enabled for that project. CI deploys the synthetic
@@ -205,6 +246,11 @@ Maintainer setup for `.github/workflows/wasm-e2e.yml`:
   environment's `RELAY` service binding to the `openglad-relay` Worker.
   Without that preview binding the static game still loads, but `/relay`
   requests return `503`.
+- That same preview binding is what makes multiplayer work on the archived
+  `v2-<n>` versions: Cloudflare treats every non-production branch as a
+  preview deployment, so an old version listed on `/versions/` is playable
+  either way, but can only host or join rooms when the preview `RELAY`
+  binding is configured.
 
 ---
 

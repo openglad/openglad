@@ -59,6 +59,7 @@ check_failure() {
 }
 
 check_success "long help" "Usage: openglad_curses [options]" --help
+check_success "version" "openglad version 2." --version
 check_success "short help" "Usage: openglad_curses [options]" -h
 check_success "option parsing before help" "Usage: openglad_curses [options]" \
     --campaign gladiator \
