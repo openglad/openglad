@@ -2890,6 +2890,12 @@ TEST(PickerFuncs, local_lobby_stage_failure_reports_honest_preview_health)
         auto client = og::ui::create_local_picker_lobby_client();
         client->initialize_from_save();
         using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+        // Before the first drive_stage the stage is Empty, and Empty is
+        // reported as None: the preview pane must show "not staged yet"
+        // rather than a stale or failed pair. (The Staged and Failed arms
+        // below are what make this one evidence.)
+        EXPECT_EQ(Health::None, client->staged_preview_health());
+        EXPECT_EQ(nullptr, client->staged_world());
         const auto poll_until = [&](Health wanted) {
             for (int i = 0; i < 200; ++i)
             {
@@ -3811,6 +3817,237 @@ TEST(PickerFuncs, local_lobby_roundtrip_preserves_benched_members)
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
     save.allied_mode = orig_allied;
+}
+
+// Mount/save coherence: whatever campaign the lobby settles on must also be
+// the MOUNTED campaign. A cursor the machine cannot mount has to be refused
+// and BOTH halves of the pair rolled back, or the display bootstraps levels
+// from one package while the authoritative sim loads another (the tower
+// ghost-session shape).
+TEST(PickerFuncs,
+     local_lobby_apply_keeps_mount_and_save_coherent_when_the_campaign_is_missing)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Cursor";
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(save.current_campaign));
+
+    auto client = og::ui::create_local_picker_lobby_client();
+    client->initialize_from_save();
+    ASSERT_EQ(1u, client->lobby_players().size());
+    EXPECT_EQ("gladiator", save.current_campaign);
+    EXPECT_EQ(3, save.scen_num);
+
+    // Control arm: a campaign that DOES mount moves the cursor AND the mount.
+    // Without this arm the refusal below would also pass on a client that
+    // never applies a campaign at all.
+    save.current_campaign = "modes";
+    save.scen_num = 2;
+    client->sync_settings_from_save();
+    EXPECT_EQ("modes", save.current_campaign);
+    EXPECT_EQ(2, save.scen_num);
+
+    // Refusal arm: the lobby settles on a package this machine does not have.
+    save.current_campaign = "org.wp4.missing";
+    save.scen_num = 9;
+    client->sync_settings_from_save();
+    EXPECT_EQ("modes", save.current_campaign)
+        << "a cursor that cannot be mounted must fall back to the package "
+           "that IS mounted";
+
+    // The scenario half of the pair: the lobby STATE still asks for 9, the
+    // live save has since moved to 5, and the refused apply must put 5 back
+    // rather than adopt the unreachable campaign's scenario.
+    save.scen_num = 5;
+    client->poll_and_apply();
+    EXPECT_EQ("modes", save.current_campaign);
+    EXPECT_EQ(5, save.scen_num)
+        << "the refused apply must restore the scenario cursor it captured";
+
+    // Mount == save, judged after the stage is disposed so no background
+    // restage can move the mount under the check: the cursor the refusal
+    // left behind is one this machine can actually mount (it would be false
+    // had "org.wp4.missing" been allowed to stand).
+    client->shutdown();
+    EXPECT_TRUE(og::ui::sync_campaign_mount_to_save(save));
+    EXPECT_EQ("modes", save.current_campaign);
+}
+
+// The echoed lobby only carries what the machine last synced. A company
+// member added between two syncs (the Base Camp hire tail) must survive the
+// next ordinary menu frame instead of being deleted by the roster rebuild —
+// and must come back in its own private slot, exactly once.
+TEST(PickerFuncs, local_lobby_poll_keeps_a_roster_member_the_echo_never_carried)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Alpha";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Bravo";
+    save.team_list[1]->teamnum = 0;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+
+    auto client = og::ui::create_local_picker_lobby_client();
+    client->initialize_from_save();
+    ASSERT_EQ(1u, client->lobby_players().size());
+
+    // The hire lands in the live save; no sync runs before the next frame's
+    // poll, so the lobby state this apply reads has never seen it.
+    save.team_list[2] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[2]->name = "Recruit";
+    save.team_list[2]->teamnum = 3;
+    save.team_size = 3;
+
+    client->poll_and_apply();
+
+    // The echo rebuilds slots 0 and 1 ...
+    ASSERT_NE(nullptr, save.team_list[0]);
+    ASSERT_NE(nullptr, save.team_list[1]);
+    EXPECT_EQ("Alpha", save.team_list[0]->name);
+    EXPECT_EQ("Bravo", save.team_list[1]->name);
+    // ... and the preservation pass carries the unseen member through.
+    ASSERT_NE(nullptr, save.team_list[2]);
+    EXPECT_EQ("Recruit", save.team_list[2]->name);
+    EXPECT_EQ(3, save.team_list[2]->teamnum);
+    EXPECT_EQ(3, static_cast<int>(save.team_size));
+
+    int recruits = 0;
+    for (const auto& member : save.team_list)
+    {
+        if (member != nullptr && member->name == "Recruit")
+            ++recruits;
+    }
+    EXPECT_EQ(1, recruits)
+        << "the preserved member must be restored to its own slot, not "
+           "duplicated into a free one";
+
+    client->shutdown();
+}
+
+// A confirmed GO locks the lobby: the machine cannot bolt another seat on
+// after the start it just agreed to. The out-of-range slot guard is pinned
+// beside it — both are the "this door is closed now" rules Base Camp reads
+// before it draws an editable row.
+TEST(PickerFuncs, local_lobby_closes_the_seat_door_after_a_confirmed_start)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Starter";
+    save.team_list[0]->teamnum = 0;
+    // The second seat needs a fighter of its own colour, or the start is
+    // denied for an uncontrollable seat before the lock is ever taken.
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Second";
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+
+    g_start_game_requested = false;
+    picker_lobby_initialize_from_save();
+    ASSERT_EQ(1u, picker_lobby_local_seat_count());
+
+    // Control arm: before the start the same door opens.
+    EXPECT_TRUE(picker_lobby_add_local_seat());
+    EXPECT_EQ(2u, picker_lobby_local_seat_count());
+
+    ASSERT_TRUE(picker_lobby_request_start());
+    ASSERT_TRUE(g_start_game_requested);
+
+    EXPECT_FALSE(picker_lobby_add_local_seat())
+        << "a locked lobby must not accept another seat";
+    EXPECT_EQ(2u, picker_lobby_local_seat_count());
+
+    // Slot-editable range guard: own slots stay editable, indexes outside
+    // the private roster array are never editable.
+    EXPECT_TRUE(picker_lobby_save_slot_editable(0));
+    EXPECT_FALSE(picker_lobby_save_slot_editable(MAX_TEAM_SIZE));
+    EXPECT_FALSE(picker_lobby_save_slot_editable(-1));
+
+    picker_lobby_shutdown();
+    g_start_game_requested = false;
+}
+
+// Coming back from a level with no lobby left (the local client was torn
+// down, or a fresh one was never initialized) must rebuild the lobby from the
+// company save instead of leaving Base Camp with no roster and no seats.
+TEST(PickerFuncs, lobby_resume_paths_rebuild_from_the_save_without_a_live_lobby)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Red";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Green";
+    save.team_list[1]->teamnum = 2;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    g_start_game_requested = false;
+
+    // Arm 1: the post-game reinitialize with no client at all.
+    ASSERT_TRUE(picker_lobby_players().empty())
+        << "the shutdown above must leave no lobby to resume";
+    picker_reinitialize_lobby_after_game();
+    std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
+    ASSERT_EQ(2u, players.size())
+        << "the rebuilt lobby seats every player the save asks for";
+    EXPECT_EQ(0, players[0].team);
+    EXPECT_EQ(2, players[1].team);
+    EXPECT_EQ(2u, picker_lobby_local_seat_count());
+    picker_lobby_shutdown();
+
+    // Arm 2: resume_after_level on a client that never initialized falls back
+    // to the same rebuild.
+    auto client = og::ui::create_local_picker_lobby_client();
+    ASSERT_TRUE(client->lobby_players().empty());
+    client->resume_after_level();
+    players = client->lobby_players();
+    ASSERT_EQ(2u, players.size());
+    EXPECT_EQ(0, players[0].team);
+    EXPECT_EQ(2, players[1].team);
+    EXPECT_EQ(2u, client->local_seat_count());
+    EXPECT_EQ(2, static_cast<int>(save.numplayers));
+    EXPECT_EQ(0, save.my_team);
+    client->shutdown();
 }
 
 // ---------------------------------------------------------------------------
