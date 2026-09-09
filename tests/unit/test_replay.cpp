@@ -145,6 +145,15 @@ void expect_snapshot_eq(const og::sim::WorldSnapshot& expected,
               og::sim::serialize_snapshot(actual));
 }
 
+std::uint32_t read_u32_le(const std::vector<std::uint8_t>& bytes,
+                          std::size_t offset)
+{
+    return static_cast<std::uint32_t>(bytes[offset]) |
+        (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
+        (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
+        (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+}
+
 void write_u32_le(std::vector<std::uint8_t>& bytes,
                   std::size_t offset,
                   std::uint32_t value)
@@ -413,11 +422,65 @@ TEST(Replay, deserialize_rejects_each_malformed_replay_section)
     write_u32_le(empty_snapshot, 28u, 0u);
     expect_rejection(empty_snapshot, og::sim::ReplayIoError::MalformedData);
 
-    auto corrupt_snapshot = bytes;
-    const std::size_t snapshot_offset =
+    // The v15 campaign-vars section sits between the campaign id and the
+    // initial snapshot: u32 count, then count * (u32 name length, name bytes,
+    // i32 value). This recording declares no vars, so the count is zero.
+    const std::size_t vars_offset =
         og::sim::kReplayHeaderSize + header.campaign_id.size();
-    ASSERT_LT(snapshot_offset, corrupt_snapshot.size());
-    corrupt_snapshot[snapshot_offset] = 0xffu;
+    ASSERT_LT(vars_offset + 4u, bytes.size());
+    ASSERT_EQ(0u, read_u32_le(bytes, vars_offset))
+        << "the fixture must record an empty campaign-vars section";
+
+    // Truncated before the vars count can even be read.
+    const std::vector<std::uint8_t> truncated_vars_header(
+        bytes.begin(),
+        bytes.begin() + static_cast<std::ptrdiff_t>(vars_offset) + 2);
+    expect_rejection(truncated_vars_header,
+                     og::sim::ReplayIoError::MalformedData);
+
+    // A var count past the registrar's bound is malformed, never a partially
+    // applied var list.
+    auto oversized_var_count = bytes;
+    write_u32_le(oversized_var_count,
+                 vars_offset,
+                 static_cast<std::uint32_t>(
+                     og::script::hooks::kCampaignVarsMax) + 1u);
+    expect_rejection(oversized_var_count,
+                     og::sim::ReplayIoError::MalformedData);
+
+    // One declared var whose name length runs off the end of the file.
+    std::vector<std::uint8_t> hostile_var_name(
+        bytes.begin(),
+        bytes.begin() + static_cast<std::ptrdiff_t>(vars_offset));
+    hostile_var_name.insert(hostile_var_name.end(), {1u, 0u, 0u, 0u});
+    hostile_var_name.insert(
+        hostile_var_name.end(), {0xffu, 0xffu, 0xffu, 0xffu});
+    hostile_var_name.insert(
+        hostile_var_name.end(),
+        bytes.begin() + static_cast<std::ptrdiff_t>(vars_offset) + 4,
+        bytes.end());
+    expect_rejection(hostile_var_name, og::sim::ReplayIoError::MalformedData);
+
+    // The initial snapshot follows the (empty) vars section. Pin its shape
+    // before corrupting it, so a future section inserted here fails loudly
+    // instead of quietly re-aiming these cases at the wrong bytes.
+    const std::size_t snapshot_offset = vars_offset + 4u;
+    ASSERT_LT(snapshot_offset + og::sim::kTransportHeaderSize, bytes.size());
+    ASSERT_EQ(og::sim::kNetworkProtocolVersion, bytes[snapshot_offset]);
+    ASSERT_EQ(og::sim::kSnapshotMessageType, bytes[snapshot_offset + 1u]);
+    // The snapshot payload is zlib-deflated, so its first byte is the zlib
+    // CMF header rather than kSnapshotFormatVersion.
+    ASSERT_EQ(0x78u, bytes[snapshot_offset + og::sim::kTransportHeaderSize]);
+
+    auto oversized_snapshot = bytes;
+    write_u32_le(oversized_snapshot, 28u, 0xffffffffu);
+    expect_rejection(oversized_snapshot, og::sim::ReplayIoError::MalformedData);
+
+    // A corrupted deflate stream throws inside deserialize_snapshot; the
+    // reader must convert that into a typed MalformedData rejection rather
+    // than letting a runtime_error escape to the caller.
+    auto corrupt_snapshot = bytes;
+    corrupt_snapshot[snapshot_offset + og::sim::kTransportHeaderSize] ^= 0xffu;
     expect_rejection(corrupt_snapshot, og::sim::ReplayIoError::MalformedData);
 
     auto invalid_input_frame = bytes;
@@ -995,4 +1058,71 @@ TEST(Replay, replay_player_verify_world_tracks_first_divergence)
     EXPECT_EQ("enemy_freeze", signed_failure->field);
     EXPECT_EQ("0", signed_failure->expected_value);
     EXPECT_EQ("-17", signed_failure->actual_value);
+}
+
+// Rule (src/gameplay/replay.cpp:313, 430, 525, 535): every top-level snapshot
+// field the comparator walks must name ITSELF when it diverges. A field the
+// comparator does not know surfaces only as an unexplained snapshot_hash
+// mismatch, which is what the replay verifier exists to avoid — a desync
+// report has to say which value moved.
+TEST(Replay, snapshot_difference_names_the_respawn_mode_and_band_fields)
+{
+    const auto expect_named_diff =
+        [](const og::sim::WorldSnapshot& expected,
+           const og::sim::WorldSnapshot& actual,
+           std::string_view field,
+           std::string_view expected_value,
+           std::string_view actual_value) {
+            const std::optional<og::sim::ReplayVerificationFailure> diff =
+                og::sim::find_first_snapshot_difference(7u, expected, actual);
+            ASSERT_TRUE(diff.has_value()) << "expected a difference for " << field;
+            EXPECT_EQ(7u, diff->tick);
+            EXPECT_EQ(field, diff->field);
+            EXPECT_EQ(expected_value, diff->expected_value);
+            EXPECT_EQ(actual_value, diff->actual_value);
+        };
+
+    // Control: with tick, rng and every field below held equal there is no
+    // divergence at all, so each case below is caused by its one edit.
+    {
+        const og::sim::WorldSnapshot expected;
+        const og::sim::WorldSnapshot actual = expected;
+        EXPECT_FALSE(
+            og::sim::find_first_snapshot_difference(7u, expected, actual)
+                .has_value());
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.respawn.respawn_serial = 4u;
+        actual.respawn.respawn_serial = 9u;
+        expect_named_diff(expected, actual, "respawn.respawn_serial", "4", "9");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.mode.beacons[0].entity_id = 31;
+        actual.mode.beacons[0].entity_id = 52;
+        expect_named_diff(
+            expected, actual, "mode.beacons[0].entity_id", "31", "52");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.ctf_requested_fill[1] = 3;
+        actual.ctf_requested_fill[1] = 5;
+        expect_named_diff(expected, actual, "ctf_requested_fill[1]", "3", "5");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.ctf_requested_map_units[2] = 6;
+        actual.ctf_requested_map_units[2] = 2;
+        expect_named_diff(
+            expected, actual, "ctf_requested_map_units[2]", "6", "2");
+    }
 }
