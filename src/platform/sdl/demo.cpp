@@ -1404,8 +1404,18 @@ int main(int argc, char* argv[])
             // grid exactly as shown on screen), for eyeballing the layout
             // without a screen recorder. Setting it implies lockstep, so the
             // composite surface always holds the presented frame here.
+            //
+            // Open the stream ourselves: SDL_SaveBMP(path) converts the
+            // surface BEFORE it opens the file and leaks that conversion
+            // when the open fails (SDL 3.4 SDL_bmp.c InitBMPSaveState), which
+            // LeakSanitizer turns into a non-zero exit — the opposite of the
+            // "a bad dump path is logged, never fatal" contract this run
+            // promises. With the stream opened first, a bad path never
+            // reaches the converter.
             if (!running && composite_dump != nullptr) {
-                if (!SDL_SaveBMP(composite_surface.get(), composite_dump)) {
+                SDL_IOStream* dump_io = SDL_IOFromFile(composite_dump, "wb");
+                if (dump_io == nullptr ||
+                    !SDL_SaveBMP_IO(composite_surface.get(), dump_io, true)) {
                     LogError("composite dump to '{}' failed: {}\n",
                              composite_dump, SDL_GetError());
                 }
