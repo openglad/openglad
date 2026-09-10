@@ -163,6 +163,40 @@ cd dist && python3 -m http.server 8080
 # Open http://localhost:8080/index.html
 ```
 
+### Embedding / hosting for multiple users
+
+The web build persists each player's companies, config and campaigns to the
+browser's IndexedDB, in a store scoped to the **page origin**. If you serve
+OpenGlad to more than one person from a single origin (an embed, a portal, a
+kiosk), they will share one set of companies unless you give each a separate
+persistence namespace.
+
+Set `window.__opengladPersistNamespace` to an opaque, caller-chosen token
+**before `play.js` loads** — for example, an inline `<script>` in the shell
+`<head>`:
+
+```html
+<script>
+  // One isolated persistence store per token.
+  window.__opengladPersistNamespace = "u_9f83c1a4e2b7";
+</script>
+```
+
+- **Allowed:** 1–64 characters of `A–Z a–z 0–9 _ -`. A hash or base64url digest
+  of your own user identifier is a good choice.
+- **Absent, empty, or invalid:** OpenGlad uses the default shared store — exactly
+  as with no embedding. An invalid value is ignored (with one console warning);
+  passing a valid token, or nothing, is the caller's responsibility.
+- The virtual filesystem layout (`save/`, `cfg/`, `campaigns/`, …) is identical
+  inside each namespace; only the browser-side backing store is separated.
+- The token is **not authentication and not a secret** — it is the name of a
+  persistence store, visible in browser dev-tools. It selects *where* data is
+  stored; it grants nothing. Deriving it from a stable per-user value keeps a
+  user's companies across their sessions on that browser.
+- A host that switches an existing shared deployment to namespaces starts each
+  user with a fresh per-namespace store; migrating prior shared data is out of
+  scope for OpenGlad.
+
 ### Pull Request Previews
 
 After the required WASM Playwright tests pass, CI deploys same-repository pull

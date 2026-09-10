@@ -98,6 +98,57 @@ int rwops_write_handler(void *data, unsigned char *buffer, size_t size)
     return 1;
 }
 
+#ifdef __EMSCRIPTEN__
+// stringToNewUTF8 is a JS library symbol; declare the dependency explicitly
+// (same as the relay test hook in picker_lobby_network_client.cpp).
+EM_JS_DEPS(og_persist_namespace_dep, "$stringToNewUTF8");
+
+namespace {
+
+// Web embedding hook, following the __openglad* window-var convention: a host
+// that serves the browser build to more than one person from a single origin
+// can set window.__opengladPersistNamespace to an opaque token before play.js
+// loads. Unset or empty keeps the single shared "/persist" store unchanged.
+EM_JS(char*, openglad_persist_namespace_js, (), {
+    const value = (typeof window !== 'undefined' &&
+                   typeof window.__opengladPersistNamespace === 'string')
+        ? window.__opengladPersistNamespace
+        : "";
+    return stringToNewUTF8(value);
+});
+
+// IDBFS mount point for the browser build: "/persist" by default, or
+// "/persist_<token>" when the embedding host supplied a namespace. A valid
+// token is 1..64 characters of [A-Za-z0-9_-]; empty, over-length or otherwise
+// invalid falls back to "/persist" (a non-empty invalid value also logs one
+// warning). The token only selects where data is stored -- it is not
+// authentication and not a secret. Resolved once per run.
+const std::string& web_persist_root()
+{
+    static const std::string root = [] {
+        const std::string fallback = "/persist";
+        const std::unique_ptr<char, decltype(&std::free)> raw(
+            openglad_persist_namespace_js(), &std::free);
+        const std::string token = raw ? std::string(raw.get()) : std::string();
+        if (token.empty())
+            return fallback;
+        if (token.size() > 64 ||
+            token.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                    "abcdefghijklmnopqrstuvwxyz"
+                                    "0123456789_-") != std::string::npos)
+        {
+            LogWarn("Ignoring window.__opengladPersistNamespace: expected 1-64 "
+                    "characters of [A-Za-z0-9_-]; using the default store\n");
+            return fallback;
+        }
+        return fallback + "_" + token;
+    }();
+    return root;
+}
+
+}  // namespace
+#endif // __EMSCRIPTEN__
+
 std::string get_user_path()
 {
     auto normalize_dir = [](std::string path) {
@@ -120,8 +171,9 @@ std::string get_user_path()
     }
 
 #ifdef __EMSCRIPTEN__
-    // Use IDBFS mount point for persistent storage in browser
-    return "/persist/";
+    // IDBFS mount point for browser persistence -- "/persist/" unless the
+    // embedding host selected a namespace (see web_persist_root()).
+    return web_persist_root() + "/";
 #elif defined(ANDROID)
     std::string path = SDL_GetAndroidInternalStoragePath();
     return path + "/";
@@ -287,16 +339,23 @@ void io_init(int argc, char* argv[])
     Log("Setting up IDBFS for persistent storage...\n");
     idbfs_sync_done.store(false, std::memory_order_release);
 
+    // web_persist_root() is "/persist" unless the embedding host selected a
+    // namespace via window.__opengladPersistNamespace.
+// EM_ASM's $-placeholders are lexed as C++ identifiers; silence that here.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
     EM_ASM({
+        const mount = UTF8ToString($0);
+
         // Create mount point
         try {
-            FS.mkdir('/persist');
+            FS.mkdir(mount);
         } catch(e) {
             // Directory may already exist
         }
 
         // Mount IDBFS
-        FS.mount(IDBFS, {}, '/persist');
+        FS.mount(IDBFS, {}, mount);
 
         // Sync FROM IndexedDB to populate the virtual filesystem
         FS.syncfs(true, function(err) {
@@ -308,7 +367,8 @@ void io_init(int argc, char* argv[])
             // Signal that sync is done
             Module._on_idbfs_sync_done();
         });
-    });
+    }, web_persist_root().c_str());
+#pragma clang diagnostic pop
 
     // Wait for sync to complete (ASYNCIFY allows this)
     Log("Waiting for IDBFS sync...\n");
