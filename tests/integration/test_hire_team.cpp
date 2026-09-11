@@ -8,11 +8,14 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/gameplay/guy.h>
+#include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,28 +44,23 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-// Removes scratch companies (and their backups) a test wrote into the shared
-// user dir. A company file left behind is not inert: CONTINUE opens the
-// MOST-RECENT company, so a stray slot with a fresher last_played silently
-// redirects the next flow's whole session. Same shape as
-// tests/integration/test_cloud_ui.cpp's guard.
-struct CompanySlotCleanup {
-    std::vector<std::string> slots;
-    ~CompanySlotCleanup()
-    {
-        for (const std::string& slot : slots) {
-            for (const og::data::CompanyBackupInfo& backup :
-                 og::data::list_company_backups(slot))
-                (void)og::data::delete_company_backup(slot, backup.seq);
-            (void)remove_user_file("save/" + slot + ".gtl");
-        }
-    }
-};
-
 // Restores whatever fixed clock (if any) the suite had installed.
 struct CompanyClockRestore {
     ~CompanyClockRestore() { og::data::set_company_clock_for_tests(std::nullopt); }
 };
+
+// Later than ANY company already on disk, not merely later than "now".
+// Another test in this binary can found a company under a FIXED future clock
+// (test_new_game.cpp pins 2100-01-01 for its player-count flow, and the flow
+// stamps save0 on the way through), so a now-relative stamp loses to it and
+// CONTINUE opens that company instead of the one under test.
+static std::int64_t newest_company_stamp()
+{
+    std::int64_t newest = og::data::company_clock_now_s();
+    for (const og::data::CompanyInfo& info : og::data::list_companies())
+        newest = std::max(newest, info.last_played_unix_s);
+    return newest;
+}
 
 // Write the in-memory save to `slot` the way the GAME writes a company: through
 // the autosave choke point, which stamps last_played_unix_s. A bare
@@ -240,6 +238,7 @@ TEST(HireTeam, hire_menu_browsing) {
     // This flow FOUNDS a company (BEGIN NEW GAME), which repoints the process
     // -wide active slot. Restore it on the way out so the next test starts
     // where it expects to.
+    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -340,6 +339,7 @@ static int hire_deployed_injector(void* data)
 TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     trace_clear();
 
+    ScopedCompanyFileCleanup founded_cleanup;
     CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
@@ -363,7 +363,7 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     // zero and the flow then belongs to whichever company some other test
     // stamped last.
     ASSERT_TRUE(seed_open_company(og::runtime::current_session->myscreen_->save_data,
-                                  "save0", og::data::company_clock_now_s()))
+                                  "save0", newest_company_stamp() + 1))
         << "the company under test must be written as the most recent one";
 
     HireDeployState state = { false, false, false, false, false };
@@ -423,12 +423,12 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
     // Both companies are scratch slots: save0 is left exactly as the rest of
     // the binary expects to find it (this test must not become the next
     // stray itself).
-    CompanySlotCleanup cleanup{{"straycompany", "hireopen"}};
+    ScopedCompanyFileCleanup founded_cleanup;
     CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin("hireopen");
     ASSERT_TRUE(pin.applied()) << "hireopen must be a valid company slot";
 
-    const std::int64_t now_s = og::data::company_clock_now_s();
+    const std::int64_t base_s = newest_company_stamp();
 
     // The stray: a real, loadable company stamped in the future — the shape a
     // sibling test leaves behind when its scratch slot gets autosaved.
@@ -444,7 +444,7 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
         stray.team_size = 1;
         stray.m_totalcash[0] = 100000;
         stray.totalcash = 100000;
-        ASSERT_TRUE(seed_open_company(stray, "straycompany", now_s + 1000000))
+        ASSERT_TRUE(seed_open_company(stray, "straycompany", base_s + 1000))
             << "the stray company fixture must be written";
     }
 
@@ -461,7 +461,7 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
         save_data.m_totalcash[0] = 100000;
         save_data.totalcash = 100000;
     }
-    ASSERT_TRUE(seed_open_company(save_data, "hireopen", now_s + 2000000))
+    ASSERT_TRUE(seed_open_company(save_data, "hireopen", base_s + 2000))
         << "the company under test must be written as the most recent one";
 
     HireDeployState state = { false, false, false, false, false };

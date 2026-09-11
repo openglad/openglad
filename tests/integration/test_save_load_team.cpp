@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include "test_save_state_guard.h"
 #include <openglad/resources/save_data.h>
@@ -34,24 +35,6 @@ extern int g_picker_max_mainmenu_calls;
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
-
-// Scratch company slots this file writes into the shared user dir are NOT
-// inert once the test that made them returns: CONTINUE opens the MOST RECENT
-// company (§2.1), so a leftover save/<slot>.gtl that anything later stamps
-// takes over the next injector flow's whole session. Remove them, the way
-// tests/integration/test_cloud_ui.cpp already does for its own slots.
-struct CompanySlotCleanup {
-    std::vector<std::string> slots;
-    ~CompanySlotCleanup()
-    {
-        for (const std::string& slot : slots) {
-            for (const og::data::CompanyBackupInfo& backup :
-                 og::data::list_company_backups(slot))
-                (void)og::data::delete_company_backup(slot, backup.seq);
-            (void)remove_user_file("save/" + slot + ".gtl");
-        }
-    }
-};
 
 static void cleanup_picker_state()
 {
@@ -113,7 +96,7 @@ static bool interact_match(
 TEST(SaveLoadTeam, save_team_then_load) {
     trace_clear();
 
-    CompanySlotCleanup cleanup{{"save5"}};
+    ScopedCompanyFileCleanup cleanup;
 
     // Build a team with specific guys
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -183,7 +166,7 @@ TEST(SaveLoadTeam, save_team_then_load) {
 // round-trip through the on-disk save format with the upgraded family AND the
 // post-promotion stats intact.
 TEST(SaveLoadTeam, promoted_archmage_round_trips_through_save) {
-    CompanySlotCleanup cleanup{{"save6"}};
+    ScopedCompanyFileCleanup cleanup;
     auto& save_data = og::runtime::current_session->myscreen_->save_data;
     save_data.reset();
     save_data.numplayers = 1;

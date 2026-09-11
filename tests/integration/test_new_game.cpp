@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include <openglad/resources/company.h>
 #include <openglad/resources/og_file.h>
@@ -181,6 +182,7 @@ static int new_game_injector(void* data)
 }
 
 TEST(NewGame, begin_new_game) {
+    ScopedCompanyFileCleanup founded_cleanup;
     trace_clear();
 
     // Pre-populate save data so we can verify it gets reset
@@ -439,6 +441,7 @@ static int name_entry_edit_injector(void* data)
 }
 
 TEST(NewGame, name_entry_edit_strip_sets_company_name) {
+    ScopedCompanyFileCleanup founded_cleanup;
     trace_clear();
 
     NewGameState state = { false, false, false, false, -1, -1, {} };
