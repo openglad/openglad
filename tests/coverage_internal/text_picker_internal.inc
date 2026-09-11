@@ -1405,3 +1405,100 @@ int text_picker_testing_launch_census_matches_the_preview()
     check(state_restore.restore());
     return failed ? -failed_check : 0;
 }
+
+// N7: founding a company is part of what --seed governs. The text client
+// latches ONE session seed and the VIEW LEVEL narration promises that the
+// same seed prints the same census, but the starting recruit's NAME was
+// drawn from the process-global std::rand() stream, which the latch never
+// reaches. Founding twice in one process at one seed therefore printed two
+// different censuses (the shipped binary at `--seed 777` prints
+// "Arthur - SOLDIER Lv 1" for the first company and "Hector - SOLDIER Lv 1"
+// for the second; recon's scratchpad/n7/twogames.txt).
+//
+// Two foundings at ONE seed, taken from two different positions of the
+// ambient stream, must print byte-identical censuses. srand rather than a
+// discarded rand() so the perturbation is deterministic instead of a
+// 1-in-15 coin flip, and the two positions are first proven visible at all
+// so the comparison cannot be vacuous. Returns 0, or the negated 1-based
+// index of the first failed check.
+int text_picker_testing_founding_is_reproducible_at_one_seed()
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+
+    int check_index = 0;
+    int failed_check = 0;
+    bool failed = false;
+    const auto check = [&check_index, &failed_check, &failed](bool condition) {
+        ++check_index;
+        if (!condition) {
+            failed = true;
+            if (failed_check == 0)
+                failed_check = check_index;
+        }
+    };
+
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.level = 1;
+    config.seed = 777u;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+
+    // One whole founding on this client, then the VIEW LEVEL census it
+    // produced. EOF on the name prompt keeps the generated company name
+    // (which never reaches the census; only the roster names do).
+    const auto found_and_census = [&client]() -> std::string {
+        {
+            ScopedTextPickerStdoutCapture founding;
+            if (!founding.ready())
+                return {};
+            ScopedCinRedirect input("");
+            (void)client.prepare_new_game();
+            (void)founding.finish();
+            if (!founding.finish_ok())
+                return {};
+        }
+
+        const PickerMenuItem* const item = find_picker_menu_item(
+            PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+        if (item == nullptr)
+            return {};
+        ScopedTextPickerStdoutCapture output;
+        if (!output.ready())
+            return {};
+        ScopedCinRedirect input("\n");
+        client.handle_menu_item(PickerMenuId::Scenario, *item);
+        std::string text = output.finish();
+        if (!output.finish_ok())
+            return {};
+        return text;
+    };
+
+    std::srand(1u);
+    const std::string ambient_name_a = get_random_name(FAMILY_SOLDIER);
+    std::srand(2u);
+    const std::string ambient_name_b = get_random_name(FAMILY_SOLDIER);
+    check(ambient_name_a != ambient_name_b);
+
+    std::srand(1u);
+    const std::string census_a = found_and_census();
+    std::srand(2u);
+    const std::string census_b = found_and_census();
+
+    check(!census_a.empty());
+    check(census_a.find("--- SCEN 1:") != std::string::npos);
+    // The founded recruit is actually listed, so the equality below is
+    // reading the name the founding drew and not an empty roster pane.
+    check(census_a.find(" - SOLDIER Lv 1") != std::string::npos);
+    check(census_a == census_b);
+
+    check(state_restore.restore());
+    return failed ? -failed_check : 0;
+}

@@ -256,6 +256,7 @@ int text_picker_testing_exercise_internal_paths();
 int text_picker_testing_staged_view_scenario();
 int text_picker_testing_launch_seed_matches_the_preview();
 int text_picker_testing_launch_census_matches_the_preview();
+int text_picker_testing_founding_is_reproducible_at_one_seed();
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -1256,6 +1257,22 @@ TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
     restore_default_campaigns();
     EXPECT_EQ(0,
               silenced(&og::ui::text_picker_testing_launch_seed_matches_the_preview))
+        << "negated 1-based index of the first failed check";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// N7: the session seed governs the company the session founds. The text
+// client latches one seed and VIEW LEVEL promises the same seed prints the
+// same census, but the starting recruit's name was drawn from the ambient
+// std::rand() stream — so two foundings in one process at one seed printed
+// two different rosters ("Arthur - SOLDIER Lv 1" vs "Hector - SOLDIER Lv 1"
+// on the shipped openglad_text at --seed 777).
+TEST(PlatformHeadless, text_picker_founding_is_reproducible_at_one_seed)
+{
+    restore_default_campaigns();
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_founding_is_reproducible_at_one_seed))
         << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
