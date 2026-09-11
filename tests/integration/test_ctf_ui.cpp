@@ -453,6 +453,9 @@ struct SavedPickerSave
         snapshot_fields.arena_lineup_dealt_campaign =
             save.arena_lineup_dealt_campaign;
         snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
+        // ...and the match knobs the macro rows write, for the same reason.
+        snapshot_fields.fill = save.fill;
+        snapshot_fields.map_units = save.map_units;
     }
 
     ~SavedPickerSave()
@@ -463,6 +466,8 @@ struct SavedPickerSave
         save.arena_lineup_dealt_campaign =
             snapshot_fields.arena_lineup_dealt_campaign;
         save.arena_lineup_dealt_scen = snapshot_fields.arena_lineup_dealt_scen;
+        save.fill = snapshot_fields.fill;
+        save.map_units = snapshot_fields.map_units;
         save.team_size = snapshot_fields.team_size;
         save.my_team = snapshot_fields.my_team;
         save.numplayers = snapshot_fields.numplayers;
@@ -501,9 +506,16 @@ void write_save0_with_soldiers(const std::string& campaign, short scen_num,
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 0;
     save.ctf_strip_scenario_troops = 0;
-    // A defined resting state includes the arena deal memo (amendment 7):
-    // a memo left on this cursor by an earlier flow would mark the fresh
-    // bands as already dealt.
+    // A defined resting state includes the match knobs: in binary order an
+    // earlier flow's fill/map_units would otherwise leak into this save and
+    // the amendment-5 macro faces (derived from fill[]) would not be at
+    // rest (caught by the ordered og_test_matchup run, invisible alone).
+    // The deal only fills a band that is still kFillNone, so a leaked
+    // STRONG survives it.
+    save.fill = {};
+    save.map_units = {};
+    // ...and the arena deal memo (amendment 7): a memo left on this cursor
+    // by an earlier flow would mark the fresh bands as already dealt.
     save.arena_lineup_dealt_campaign.clear();
     save.arena_lineup_dealt_scen = 0;
     ASSERT_TRUE(save.save("save0"));
