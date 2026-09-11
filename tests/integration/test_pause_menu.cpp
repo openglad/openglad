@@ -2261,6 +2261,9 @@ TEST(PauseMenuFlow, real_menu_resume_add_remove_player_and_quit_via_interact)
     EXPECT_EQ(1, static_cast<int>(game_screen->save_data.numplayers))
         << "the added seat must be gone again after REMOVE PLAYER";
 
+    // The escape tail spins until this is set: signal BEFORE the join, or a
+    // leg that gave up would wedge the wait it exists to free.
+    flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
     EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
@@ -2499,6 +2502,9 @@ TEST(PauseMenuFlow, blocking_menu_yields_to_the_browser_each_iteration)
            "per iteration — under Emscripten that is the only thing that hands "
            "control back to the browser";
 
+    // The escape tail spins until this is set: signal BEFORE the join, or a
+    // leg that gave up would wedge the wait it exists to free.
+    flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
     EXPECT_EQ(0, injector_result) << "injector timed out";
@@ -2693,6 +2699,9 @@ TEST(PauseMenuFlow, view_team_return_redraws_the_split_world_canvas)
     trace_clear();
     const PauseMenuResult outcome = og::ui::run_pause_menu(host);
 
+    // The escape tail spins until this is set: signal BEFORE the join, or a
+    // leg that gave up would wedge the wait it exists to free.
+    flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
     og::ui::pause_menu_testing_set_force_real(false);
