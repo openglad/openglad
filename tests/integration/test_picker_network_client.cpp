@@ -234,6 +234,30 @@ struct ActivePickerLobbyClientGuard
     }
 };
 
+// The display screen is process-wide, and its view count is a piece of it:
+// ready_for_battle(n) rebuilds the shared viewobs for n local seats and every
+// later test inherits whatever the last multi-seat round left behind. This
+// hands the ambient count back with the same production call the round used
+// to grow it (screen::reset() would additionally reset save_data and fight
+// PickerSaveStateGuard).
+struct DisplayViewCountGuard
+{
+    screen* display = nullptr;
+    short views = 0;
+
+    explicit DisplayViewCountGuard(screen* target)
+        : display(target)
+        , views(target != nullptr ? target->numviews : 0)
+    {
+    }
+
+    ~DisplayViewCountGuard()
+    {
+        if (display != nullptr && display->numviews != views)
+            display->ready_for_battle(views);
+    }
+};
+
 struct GameplayRunGuard
 {
     float speed = og::runtime::current_session != nullptr
@@ -6199,6 +6223,15 @@ TEST(PickerNetworkClient,
         join_b_client = og::ui::create_join_picker_lobby_client(join_options);
         join_b_client->initialize_from_save();
     }
+
+    // Declared BEFORE `cleanup` so it is destroyed AFTER it: ready_for_battle
+    // rebuilds the shared viewobs, which must happen once CleanupGuard has
+    // nulled every view->control and deleted the world objects (otherwise the
+    // fresh views would be built around freed walkers), and still before
+    // PickerSaveStateGuard restores the save.
+    DisplayViewCountGuard display_view_guard(
+        active_game_session() != nullptr ? active_game_session()->myscreen_
+                                         : nullptr);
 
     struct CleanupGuard
     {
