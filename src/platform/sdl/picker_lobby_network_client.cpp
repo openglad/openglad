@@ -3217,6 +3217,13 @@ public:
         return server_ != nullptr;
     }
 
+    // A host's own lobby is in-process and cannot be dropped, but a re-host
+    // between levels can fail to bind — and then the session really is over.
+    [[nodiscard]] bool session_lost() const noexcept override
+    {
+        return session_lost_;
+    }
+
     bool install_gameplay_runtime(og::runtime::GameSession& session,
                                   screen& gameplay_screen)
     {
@@ -3567,11 +3574,6 @@ private:
         og::server::deliver_staged_pair(*stage_,
                                         combined_transport_.get(),
                                         stage_broadcast_);
-    }
-
-    [[nodiscard]] bool session_lost() const noexcept override
-    {
-        return session_lost_;
     }
 
     og::ui::PickerHostGameOptions options_;
