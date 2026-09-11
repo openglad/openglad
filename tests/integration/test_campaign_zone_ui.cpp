@@ -2081,6 +2081,13 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &state));
     EXPECT_TRUE(trace_contains("zone", "assign slot=0 tag=1"));
     EXPECT_TRUE(trace_contains("zone", "refetch"));
+    // A refetch that lost the scripted book falls back to the DEFAULT
+    // composition, which carries no Text widget at all: read texts()[0]
+    // unguarded and the empty vector hands back freed TextLayout storage
+    // (the og_test_matchup SIGSEGV). Name the fallback instead.
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
     EXPECT_EQ("LEAD Alpha/0 SWORN 1", zone.texts()[0].lines[0])
         << "the assign site must refetch the composition";
 
@@ -2089,6 +2096,9 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
     EXPECT_TRUE(trace_contains("basecamp", "move_up slot=1 to=0"));
     EXPECT_TRUE(trace_contains("zone", "refetch"));
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
     EXPECT_EQ("LEAD Beta/0 SWORN 1", zone.texts()[0].lines[0])
         << "the move-up site must refetch the composition";
 
@@ -2105,6 +2115,72 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     spec.on_reset(&state);
     EXPECT_TRUE(trace_contains("zone", "refetch"))
         << "the reset site must refetch the composition";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+// The same roster mutation, run against a lobby whose cached settings still
+// name a DIFFERENT campaign. The standalone picker lobby client is a
+// process-wide singleton whose settings are stamped by
+// picker_lobby_sync_settings_from_save() — the tail of every settings
+// cycler (change_ctf_caps, set_difficulty, ...) — and nothing in a test
+// binary ever tears it down. A stamp left behind by an earlier flow reaches
+// this mutation through picker_base_camp_after_roster_mutation's lobby
+// sync, whose apply writes settings.campaign_id back over save.current_campaign
+// and REMOUNTS that package; the remount rebuilds the pack-script registry,
+// the scripted book vanishes, and the zone silently falls back to the
+// default composition. Pinning it here keeps the mutation tail honest
+// whatever the lobby is holding.
+TEST(CampaignZoneUi, roster_mutations_survive_a_stale_lobby_settings_stamp)
+{
+    trace_clear();
+
+    // Staged BEFORE the fixture, because that is where it comes from: an
+    // EARLIER test's settings cycle. This is the exact shape
+    // src/interface/ui/picker.cpp change_ctf_caps leaves behind — sync the
+    // lobby under a foreign campaign, then restore only the save FIELD.
+    {
+        SaveData& live = test_screen()->save_data;
+        const std::string before = live.current_campaign;
+        live.current_campaign = "modes";
+        picker_lobby_sync_settings_from_save();
+        live.current_campaign = before;
+    }
+
+    SaveData& save = test_screen()->save_data;
+    SavedPickerSave save_guard;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.current_campaign = "gladiator";
+    ASSERT_EQ("gladiator", get_mounted_campaign());
+
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kRosterEchoScript);
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
+    EXPECT_EQ("gladiator", get_mounted_campaign())
+        << "the mutation tail must not remount a stale lobby campaign";
+    ASSERT_EQ(1u, zone.texts()[0].lines.size());
+    EXPECT_EQ("LEAD Beta/0 SWORN 1", zone.texts()[0].lines[0]);
 
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
