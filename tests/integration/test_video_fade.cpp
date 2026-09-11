@@ -199,8 +199,6 @@ TEST(VideoFade, video_fadebetween_null_and_format_preconditions_are_handled)
         0, og::runtime::current_session->myscreen_->fade_between(
                old_ok.get(), new_ok.get(), nullptr));
     EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(nullptr, nullptr, dest.get()));
-    EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(nullptr, new_ok.get(), dest.get()));
-    EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(old_ok.get(), nullptr, dest.get()));
 
     SurfacePtr new_bad_h = make_surface(320, 201);
     ASSERT_TRUE(new_bad_h != nullptr) << "height mismatch surface created";
@@ -233,6 +231,43 @@ TEST(VideoFade, video_fadebetween_null_and_format_preconditions_are_handled)
     EXPECT_EQ(0,
               og::runtime::current_session->myscreen_->fade_between(
                   old_24.get(), new_24.get(), dest_24.get()));
+}
+
+// P6: the null-surface shortcut documented at video_sdl.cpp's FadeBetween
+// ("Set nullptr pointers to temporary black screens (for simple fade-in/out
+// effects)") has never worked: the stand-in was allocated as RGB24 at the
+// active canvas size, so the pitch/format/bpp preconditions rejected it and
+// the call returned 0 with the destination untouched.
+TEST(VideoFade, video_fadebetween_null_old_surface_runs_the_documented_simple_fade_in)
+{
+    SurfacePtr dest = make_surface(320, 200);
+    SurfacePtr new_ok = make_surface(320, 200);
+    ASSERT_TRUE(dest != nullptr && new_ok != nullptr) << "surfaces created";
+    ASSERT_TRUE(SDL_FillSurfaceRect(new_ok.get(), nullptr, 0x00336699u));
+    ASSERT_TRUE(SDL_FillSurfaceRect(dest.get(), nullptr, 0x00FFFFFFu));
+
+    EXPECT_EQ(1, og::runtime::current_session->myscreen_->fade_between(
+                     nullptr, new_ok.get(), dest.get()))
+        << "a null old surface must fade in from black, not fail a precondition";
+    EXPECT_EQ(0x00336699u, static_cast<const Uint32*>(dest->pixels)[0])
+        << "the destination must end on the new frame";
+}
+
+// The other half of the same 2002 sentence: a null NEW surface is the simple
+// fade-OUT, and must land the destination on black.
+TEST(VideoFade, video_fadebetween_null_new_surface_runs_the_documented_simple_fade_out)
+{
+    SurfacePtr dest = make_surface(320, 200);
+    SurfacePtr old_ok = make_surface(320, 200);
+    ASSERT_TRUE(dest != nullptr && old_ok != nullptr) << "surfaces created";
+    ASSERT_TRUE(SDL_FillSurfaceRect(old_ok.get(), nullptr, 0x00336699u));
+    ASSERT_TRUE(SDL_FillSurfaceRect(dest.get(), nullptr, 0x00FFFFFFu));
+
+    EXPECT_EQ(1, og::runtime::current_session->myscreen_->fade_between(
+                     old_ok.get(), nullptr, dest.get()))
+        << "a null new surface must fade out to black, not fail a precondition";
+    EXPECT_EQ(0x00000000u, static_cast<const Uint32*>(dest->pixels)[0])
+        << "the destination must end on black";
 }
 
 TEST(VideoFade, video_fadebetween_honors_surface_lock_requirements)
