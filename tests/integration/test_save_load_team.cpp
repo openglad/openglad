@@ -385,15 +385,14 @@ static int deploy_toggle_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
-    SDL_Delay(500);
     if (wait_for_interactable("roster_dep_1", 10000)) {
         state->saw_roster = true;
-        SDL_Delay(750);
+        wait_for_menu_frames(2);
 
         fprintf(stderr, "  [test] toggling roster_dep_1\n");
         interact("roster_dep_1");

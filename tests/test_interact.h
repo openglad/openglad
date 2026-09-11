@@ -234,18 +234,13 @@ inline bool wait_for_menu_frames(int n, int timeout_ms = 15000)
     return false;
 }
 
-// Click an interactable by ID. Finds the button, computes center in game coords,
-// converts to window coords, injects SDL click event.
-//
-// Returns whether the id was actually found and clicked. Deliberately NOT
-// [[nodiscard]]: the existing callers that click a button they have already
-// waited for stay unchanged, while a flow that fires blind can turn "the
-// button was not there" into a named failure at the click instead of a
-// 10-second timeout twenty lines later.
-inline bool interact(const std::string& id)
+// Locate an interactable by ID and compute its click point in window coords.
+// Returns false (with a warning) when the id is absent or hidden.
+inline bool interact_window_point(const std::string& id, int& win_x, int& win_y)
 {
     og::runtime::ensure_thread_session();
-    int win_x = -1, win_y = -1;
+    win_x = -1;
+    win_y = -1;
     bool found = false;
     {
         AllButtonsLock lock;
@@ -278,12 +273,46 @@ inline bool interact(const std::string& id)
             }
         }
     }
-    if (found) {
-        inject_click(win_x, win_y, 100);
-        return true;
-    }
-    fprintf(stderr, "  [interact] WARNING: '%s' not found in allbuttons\n", id.c_str());
-    return false;
+    if (!found)
+        fprintf(stderr, "  [interact] WARNING: '%s' not found in allbuttons\n",
+                id.c_str());
+    return found;
+}
+
+// Click an interactable by ID: finds the button, computes its center in game
+// coords, converts to window coords, injects an SDL click.
+//
+// Returns whether the id was actually found and clicked. Deliberately NOT
+// [[nodiscard]]: the existing callers that click a button they have already
+// waited for stay unchanged, while a flow that fires blind can turn "the
+// button was not there" into a named failure at the click instead of a
+// 10-second timeout twenty lines later.
+inline bool interact(const std::string& id)
+{
+    int win_x = -1, win_y = -1;
+    if (!interact_window_point(id, win_x, win_y))
+        return false;
+    inject_click(win_x, win_y, 100);
+    return true;
+}
+
+// The same click, but the press is held until the engine has COMPLETED a
+// frame with the button down instead of for a flat 100 ms. The flat hold is a
+// guess that the menu loop polled SDL in between; a completed frame proves it
+// did, and it is usually an order of magnitude cheaper. On a screen that is
+// NOT run_menu_screen-hosted no frame can ever complete, so the wait spends
+// its 100 ms budget and the flat hold still follows: such a press is never
+// shorter than inject_click's, only longer.
+inline bool interact_framed(const std::string& id)
+{
+    int win_x = -1, win_y = -1;
+    if (!interact_window_point(id, win_x, win_y))
+        return false;
+    inject_mouse_down(win_x, win_y);
+    if (!wait_for_menu_frames(1, 100))
+        SDL_Delay(100);
+    inject_mouse_up(win_x, win_y);
+    return true;
 }
 
 // §2.2: after clicking BEGIN NEW GAME, the flow opens the name-entry screen
