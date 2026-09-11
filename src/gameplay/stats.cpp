@@ -321,6 +321,14 @@ bool statistics::has_commands() const
 
 // try_command will only set a command if there is
 // none in the queue
+// ^ never true: the body has appended unconditionally and returned 0
+// since the 2002 initial revision (9990ec7d stats.cpp:184-189). The
+// invariant lives in the callers (living::act living.cpp:320,
+// walker::act walker.cpp:900 both consume do_command() first; the
+// stats.cpp:1285 site clear_command()s), and it is only approximate:
+// 560 of the 4509 try_command calls in the 267-scenario parity corpus
+// arrive with a non-empty queue. Making the body match this sentence is
+// a sim behaviour change that WOULD move goldens, not a cleanup.
 
 short statistics::try_command(Sint32 whatcommand, Sint32 iterations)
 {
