@@ -1374,6 +1374,13 @@ struct DegradeFlowState
 constexpr int kDegradeLedgerFirstLevel = 100000;
 constexpr int kDegradeLedgerLevels = 17000;
 
+// TESTING-only fault injection for the SCENARIO door, armed by the
+// dropped-press tooth alone: make the next N presses on that door evaporate
+// the way a starved frame does. It is its own counter rather than the shared
+// g_click_ladder_click_drops because the drop belongs to THIS door — an
+// earlier ladder in the same flow would otherwise eat it.
+int g_ctf_scenario_door_drops = 0;
+
 int view_scenario_degrade_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -1388,7 +1395,13 @@ int view_scenario_degrade_injector(void* data)
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("scenario");
+    if (g_ctf_scenario_door_drops > 0) {
+        --g_ctf_scenario_door_drops;
+        fprintf(stderr,
+                "  [ctf] dropping the press on 'scenario' (injected)\n");
+    } else {
+        interact("scenario");
+    }
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
     interact("view_scenario");
@@ -1517,6 +1530,43 @@ TEST(CtfUi, view_scenario_degrades_and_recovers_on_level_moves)
 
     // The save0 load remounted the versus campaign; restore the default
     // mount so later (or shuffled) tests load classic levels again.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// Teeth for the press half, on the door whose loss was reported: seed 1 of
+// og_test_matchup showed one press on 'scenario', then
+// "[interact] TIMEOUT waiting for 'view_scenario'", then every downstream
+// ceiling in turn — a 69.6 s cascade out of a single evaporated click, with
+// no diagnostic at the click itself. The SCENARIO door has no gate at all
+// (ButtonAction::CreateScenarioMenu opens unconditionally), so a landed press
+// always opens the submenu: a press that produced nothing was never received,
+// and must cost one retry rather than the whole flow.
+TEST(CtfUi, scenario_door_survives_a_dropped_press)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("modes", 500);
+
+    g_ctf_scenario_door_drops = 1;
+
+    DegradeFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        view_scenario_degrade_injector, "view_degrade_drop", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, g_ctf_scenario_door_drops)
+        << "the injected drop must be consumed";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");
 }
