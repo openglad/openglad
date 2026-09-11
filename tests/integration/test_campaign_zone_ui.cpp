@@ -145,6 +145,62 @@ int g_zone_trace_click_retries = 0;
 // next N presses evaporate the way a starved frame does.
 int g_zone_click_drops = 0;
 
+// The other half of the same starvation: the press DID register (its trace
+// arrived) but the reset posted back to the menu thread was cancelled unrun,
+// because the thread pumped nothing inside the ceiling — the deploy autosave
+// under load is the observed case. Every wait that follows then runs against
+// a pointer baseline nobody cleared, so the next press evaporates too. A
+// reset never presses anything, so re-posting it is safe by the same
+// toggle-safety rule the press ladder states: retry the post, never the
+// press.
+//
+// Counted, never clocked: `zone_ack_post_retries` is the number of
+// acknowledge posts that had to be re-sent. A thread that pumps nothing for
+// the WHOLE ladder is not charged to the click at all — see the last resort
+// at the bottom of acknowledge_press.
+int g_zone_ack_post_retries = 0;
+// TESTING-only fault injection for that half: make the next N acknowledge
+// posts come back cancelled the way a starved menu thread cancels them.
+int g_zone_ack_drops = 0;
+
+bool acknowledge_press(int timeout_ms, int attempts = 3,
+                       bool injectable = false)
+{
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        if (injectable && g_zone_ack_drops > 0) {
+            --g_zone_ack_drops;
+            fprintf(stderr,
+                    "  [zone] cancelling the acknowledge post (injected)\n");
+        } else if (run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                      timeout_ms)) {
+            return true;
+        } else {
+            fprintf(stderr,
+                    "  [interact] acknowledge post did not run within %d ms\n",
+                    timeout_ms);
+        }
+        if (attempt + 1 < attempts)
+            ++g_zone_ack_post_retries;
+    }
+    // Last resort, for the stall that outlives the whole ladder: the menu
+    // thread pumped NOTHING for the full budget (a >15 s gap has been seen
+    // on this box, with the flow otherwise healthy — the press had already
+    // traced and the toggle had already autosaved). The reset captures
+    // nothing, so unlike a lambda over the caller's locals it does not need
+    // the cancelling wait at all: post it and leave it queued. The pump runs
+    // at frame top BEFORE the event poll (menu_screen_runner.cpp), so a
+    // queued reset still lands ahead of the next press whenever the thread
+    // comes back — the ordering this acknowledgement exists for is a
+    // property of the queue, not of the observer's clock. Report the stall,
+    // never charge it to the click.
+    fprintf(stderr,
+            "  [interact] the menu thread pumped nothing for %d x %d ms; "
+            "the reset stays queued for the next frame\n",
+            attempts, timeout_ms);
+    (void)post_main_thread_task([] { reset_mouse_click_tracking(); });
+    return true;
+}
+
 bool click_and_acknowledge_trace(const std::string& id, const char* category,
                                  const char* trace_substring,
                                  bool waits_for_autosave = true,
@@ -191,8 +247,7 @@ bool click_and_acknowledge_trace(const std::string& id, const char* category,
                     "  [interact] TIMEOUT waiting for cycler autosave\n");
         }
         const bool acknowledged =
-            run_on_main_thread([] { reset_mouse_click_tracking(); },
-                               timeout_ms);
+            acknowledge_press(timeout_ms, attempts, /*injectable=*/true);
         return autosaved && acknowledged;
     }
     return false;
@@ -1023,6 +1078,8 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
     write_save0_with_two_soldiers("gladiator", 1);
 
     g_zone_trace_click_retries = 0;
+    g_zone_ack_post_retries = 0;
+    g_zone_ack_drops = 0;
     g_zone_click_drops = 1;
 
     DefaultZoneFlowState state;
@@ -1047,6 +1104,59 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
         << "a dropped press must cost a retry, not the toggle";
     EXPECT_EQ(1, g_zone_trace_click_retries)
         << "exactly one press left no trace and was re-sent";
+    EXPECT_TRUE(state.finished);
+}
+
+// The other tooth, for the other half of the ladder: the press lands and
+// traces, but its acknowledgement — the pointer reset posted back to the
+// menu thread — is cancelled unrun. That is the mode seen under load at
+// CampaignZoneUi.default_zone_keeps_the_classic_roster_flows: the deploy
+// autosave leaves the menu thread unpumped past the ceiling, the post is
+// cancelled while still queued, and the toggle was reported unacknowledged.
+// Re-posting the reset is toggle-safe, so the flow still finishes both
+// toggles — with exactly one extra post and NO extra press. The re-post
+// COUNT is what this pins: the click's own verdict no longer depends on a
+// clock (a fully stalled thread leaves the reset queued instead), so the
+// counter is the teeth.
+TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    write_save0_with_two_soldiers("gladiator", 1);
+
+    g_zone_trace_click_retries = 0;
+    g_zone_ack_post_retries = 0;
+    g_zone_click_drops = 0;
+    g_zone_ack_drops = 1;
+
+    DefaultZoneFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        default_zone_injector, "default_zone_ack_drop", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    // Shared injector, process-wide shot ledger: answer for the capture here
+    // or the next verifying flow inherits it.
+    verify_zone_shots("default_zone_ack_drop", 1);
+
+    EXPECT_EQ(0, g_zone_ack_drops)
+        << "the injected cancellation must be consumed";
+    EXPECT_TRUE(state.deploy_edges_acknowledged)
+        << "a cancelled acknowledge must cost a re-post, not the toggle";
+    EXPECT_EQ(1, g_zone_ack_post_retries)
+        << "exactly one acknowledge post was re-sent";
+    EXPECT_EQ(0, g_zone_trace_click_retries)
+        << "the press itself registered: it must never be re-pressed";
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
     EXPECT_TRUE(state.finished);
 }
 
@@ -2961,8 +3071,9 @@ bool click_until_edge(const std::string& id,
             (void)interact(id);
         }
         if (edge_reached(wait_ms)) {
-            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
-                                     wait_ms);
+            // Same bounded re-post: a cancelled acknowledgement here leaves
+            // the next press to evaporate against a stale baseline.
+            (void)acknowledge_press(wait_ms);
             return true;
         }
         ++g_zone_click_retries;
