@@ -257,6 +257,7 @@ int text_picker_testing_staged_view_scenario();
 int text_picker_testing_launch_seed_matches_the_preview();
 int text_picker_testing_launch_census_matches_the_preview();
 int text_picker_testing_founding_is_reproducible_at_one_seed();
+int text_picker_testing_hires_across_visits_draw_fresh_names();
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -1273,6 +1274,21 @@ TEST(PlatformHeadless, text_picker_founding_is_reproducible_at_one_seed)
     restore_default_campaigns();
     EXPECT_EQ(0,
               silenced(&og::ui::text_picker_testing_founding_is_reproducible_at_one_seed))
+        << "negated 1-based index of the first failed check";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// N7 follow-up: seeding the recruit names must not turn every Hire Troops
+// visit into a replay of the same short name window. Hiring nine soldiers
+// across nine visits at one seed used to fill the roster with "Nestor2",
+// "Nestor3", "Nestor4" while a third of the soldier pool had never been
+// offered.
+TEST(PlatformHeadless, text_picker_hires_across_visits_draw_fresh_names)
+{
+    restore_default_campaigns();
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_hires_across_visits_draw_fresh_names))
         << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
