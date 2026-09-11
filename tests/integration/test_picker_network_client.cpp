@@ -12072,6 +12072,81 @@ TEST(PickerNetworkClient, host_resume_after_a_torn_down_lobby_rebuilds_it)
     host_client->shutdown();
 }
 
+// The other end of the same fallback: a re-host that cannot bind. This runs
+// behind the post-game fadeblack, so an exception escaping here unwinds the
+// menu out of a black window. The failure must be a REPORT — logged, and
+// latched as a lost session so the per-frame revert retires the dead host to
+// a local lobby with the existing CONNECTION LOST modal, exactly as a kick
+// does.
+TEST(PickerNetworkClient, a_failed_rehost_between_levels_is_reported_not_thrown)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Rebuilt Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    // The owned slot: the per-frame revert only retires the client it owns.
+    std::unique_ptr<og::ui::IPickerLobbyClient> owned_client =
+        og::ui::create_host_picker_lobby_client(host_options);
+    og::ui::IPickerLobbyClient* const host_client = owned_client.get();
+    ActivePickerLobbyClientGuard active_client(host_client);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->session_established());
+
+    // The lobby did not survive the round, so the resume takes the fallback
+    // that rebuilds a listener from the save.
+    host_client->shutdown();
+    ASSERT_FALSE(host_client->session_established());
+
+    // Someone else owns the port by the time we come back from the level.
+    // Waiting on the bind succeeding is also the wait on the host's own
+    // listener having released it — no deadline is lengthened; the blocker
+    // either takes the port or this says so by name.
+    std::shared_ptr<og::sim::WebSocketServerTransport> blocking_server;
+    ASSERT_TRUE(wait_until([&] {
+        auto candidate =
+            std::make_shared<og::sim::WebSocketServerTransport>(
+                host_options.port);
+        try
+        {
+            candidate->accept_connections();
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
+        blocking_server = std::move(candidate);
+        return true;
+    })) << "the blocker must own the port the re-host will try to bind";
+
+    picker_testing_set_lobby_client_owner(&owned_client);
+    EXPECT_NO_THROW(picker_reinitialize_lobby_after_game());
+    EXPECT_TRUE(host_client->session_lost())
+        << "a re-host that could not bind is a session that is over";
+    EXPECT_TRUE(picker_lobby_session_lost());
+
+    trace_clear();
+    EXPECT_TRUE(picker_revert_lobby_client_if_kicked())
+        << "the failed re-host retires to a local lobby on the next frame";
+    EXPECT_FALSE(picker_lobby_is_networked())
+        << "Base Camp is local again after the revert";
+    ASSERT_TRUE(owned_client);
+    EXPECT_FALSE(owned_client->is_networked_session())
+        << "the owned slot now holds the local client";
+    EXPECT_TRUE(trace_contains(
+        "networking", "connection lost: reverting to local lobby client"));
+    EXPECT_TRUE(trace_contains("popup", "CONNECTION LOST"));
+
+    picker_testing_set_lobby_client_owner(nullptr);
+    if (owned_client)
+        owned_client->shutdown();
+}
+
 // The same contract as the joiner's twin above, through the host role: a
 // lobby that had to be rebuilt from the save keeps the seat teams THIS
 // session was played with, instead of re-seeding them from a roster the
