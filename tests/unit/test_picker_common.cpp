@@ -36,6 +36,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "../test_save_state_guard.h"
 
 namespace {
 
@@ -1422,6 +1423,7 @@ TEST(PickerCommon, deal_arena_lineup_fill_lifts_none_on_authored_teams_once)
 
 TEST(PickerCommon, deal_arena_lineup_for_cursor_reads_the_mounted_arena)
 {
+    og::test::ScopedCampaignMountState mount_restore;
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));

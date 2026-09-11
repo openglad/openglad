@@ -25,6 +25,7 @@
 
 #include "family_registry_dump.h"
 #include "registry_difference.h"
+#include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/campaign_ids.h>
@@ -156,6 +157,11 @@ namespace {
 // Core pins are never touched by reset_all_registry_mod_slots().
 class ModSlotGuard {
 public:
+    // declare_or_die() clears the family-chunk store on the way in and out,
+    // so the shipped chunks come back too — destroyed after the dump compare
+    // below, which therefore still sees exactly what the test left.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     ModSlotGuard()
     {
         init_all_registries();

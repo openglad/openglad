@@ -19,6 +19,7 @@
 #include <openglad/resources/gloader.h>
 
 #include "../test_game_world_fixture.h"
+#include "unit_pack_store_guard.h"
 
 #include <array>
 #include <memory>
@@ -35,6 +36,11 @@ loader& mode_tick_test_loader()
 
 struct ModeWorld : TestGameWorld
 {
+    // Declared first so it outlives every clear below and the destructor's:
+    // the shipped pack scripts and family chunks this fixture wipes are what
+    // the next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore;
+
     explicit ModeWorld(int level_id = 42)
         : TestGameWorld(level_id)
     {

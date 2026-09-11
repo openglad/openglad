@@ -31,12 +31,19 @@
 #include <string>
 #include <vector>
 
+#include "unit_pack_store_guard.h"
+
 using namespace og::script;
 
 namespace {
 
 class ScriptHooksTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override
     {
         init_all_registries();
@@ -207,6 +214,11 @@ namespace {
 
 class SpecialsDispatchTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     SpecialsDispatchTest() : world(11)
     {
         init_all_registries();
@@ -774,6 +786,11 @@ namespace {
 // (`gen`, `spawn`) without needing a full world tick.
 class ScriptBindingTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     ScriptBindingTest() : world(11)
     {
         init_all_registries();

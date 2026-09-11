@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 
 #include "../test_game_world_fixture.h"
+#include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/families/family_registries.h>
@@ -46,6 +47,11 @@ namespace {
 
 class ScriptBindingErrorTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override
     {
         init_all_registries();

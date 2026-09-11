@@ -44,6 +44,8 @@
 #include <string>
 #include <vector>
 
+#include "unit_pack_store_guard.h"
+
 using og::data::ClasspackData;
 using og::script::DeclareResult;
 
@@ -53,6 +55,11 @@ constexpr const char* kPack = "v3decl";
 
 class LuaFamilyDeclTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // family chunks this fixture wipes are what the next test in a
+    // --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override { og::script::clear_pack_family_chunks(); }
     void TearDown() override { og::script::clear_pack_family_chunks(); }
 
