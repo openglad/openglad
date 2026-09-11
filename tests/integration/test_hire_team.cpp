@@ -165,6 +165,12 @@ static int hire_injector(void* data)
 TEST(HireTeam, hire_menu_browsing) {
     trace_clear();
 
+    // This flow FOUNDS a company (BEGIN NEW GAME), which repoints the process
+    // -wide active slot. Restore it on the way out so the next test starts
+    // where it expects to.
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
     // Start with empty team
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
@@ -256,6 +262,10 @@ static int hire_deployed_injector(void* data)
 TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     trace_clear();
 
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
     // One existing member + gold to hire with; CONTINUE needs the file on
     // disk (it also serves as the pre-hire disk baseline).
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -270,7 +280,13 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
         og::runtime::current_session->myscreen_->save_data.m_totalcash[0] = 100000;
         og::runtime::current_session->myscreen_->save_data.totalcash = 100000;
     }
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    // CONTINUE opens the most recent company, so seed this one THROUGH the
+    // autosave choke point: a bare SaveData::save() leaves last_played at
+    // zero and the flow then belongs to whichever company some other test
+    // stamped last.
+    ASSERT_TRUE(seed_open_company(og::runtime::current_session->myscreen_->save_data,
+                                  "save0", og::data::company_clock_now_s()))
+        << "the company under test must be written as the most recent one";
 
     HireDeployState state = { false, false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(hire_deployed_injector, "hire_deploy_test", &state);
@@ -301,6 +317,8 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
 
     // §3.8: the hire mutation AUTOSAVED — the pre-hire disk baseline had one
     // member; the file must now hold the hired member, deployed.
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the hire flow must still be on the company this test seeded";
     SaveData reloaded;
     ASSERT_TRUE(reloaded.load("save0"));
     ASSERT_EQ(2, static_cast<int>(reloaded.team_size));
@@ -324,10 +342,13 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
 {
     trace_clear();
 
-    CompanySlotCleanup cleanup{{"straycompany"}};
+    // Both companies are scratch slots: save0 is left exactly as the rest of
+    // the binary expects to find it (this test must not become the next
+    // stray itself).
+    CompanySlotCleanup cleanup{{"straycompany", "hireopen"}};
     CompanyClockRestore clock_restore;
-    og::data::ScopedActiveCompany pin("save0");
-    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+    og::data::ScopedActiveCompany pin("hireopen");
+    ASSERT_TRUE(pin.applied()) << "hireopen must be a valid company slot";
 
     const std::int64_t now_s = og::data::company_clock_now_s();
 
@@ -362,7 +383,8 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
         save_data.m_totalcash[0] = 100000;
         save_data.totalcash = 100000;
     }
-    ASSERT_TRUE(save_data.save("save0"));
+    ASSERT_TRUE(seed_open_company(save_data, "hireopen", now_s + 2000000))
+        << "the company under test must be written as the most recent one";
 
     HireDeployState state = { false, false, false, false, false };
     SDL_Thread* thread =
@@ -381,12 +403,12 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
-    ASSERT_EQ("save0", og::data::active_company_slot())
+    ASSERT_EQ("hireopen", og::data::active_company_slot())
         << "the hire flow must still be on the company this test seeded — a "
            "stray company file must never take the session over";
 
     SaveData reloaded;
-    ASSERT_TRUE(reloaded.load("save0"));
+    ASSERT_TRUE(reloaded.load("hireopen"));
     ASSERT_EQ(2, static_cast<int>(reloaded.team_size))
         << "the hire must have autosaved into the open company";
 }
