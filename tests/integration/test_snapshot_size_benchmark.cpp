@@ -33,6 +33,12 @@ constexpr short kBenchmarkLevel = 30;
 constexpr int kWarmupTicks = 100;
 constexpr int kCatchupDeltaTicks = 10;
 constexpr std::string_view kBenchmarkSaveName = "test_snapshot_size_benchmark";
+// Loading a level consumes sim RNG -- the freshly loaded GameWorld is seeded
+// from world().rng_.state_ and every walker built during the load draws from
+// it -- so an unpinned incoming state decides the whole 110-tick scenario,
+// including whether the four single-fighter teams survive the warmup at all.
+// test_replay.cpp pins its own load the same way, for the same reason.
+constexpr std::uint32_t kBenchmarkLoadSeed = 0x3039u;
 
 struct PayloadSizeReport {
     std::size_t raw_payload_bytes = 0;
@@ -412,6 +418,7 @@ TEST(SnapshotSizeBenchmark,
 
     ASSERT_TRUE(game_screen.save_data.save(std::string(kBenchmarkSaveName)))
         << "benchmark save should succeed";
+    game_screen.world().rng_.state_ = kBenchmarkLoadSeed;
     ASSERT_TRUE(load_saved_game(kBenchmarkSaveName.data(), &game_screen) != 0)
         << "load_saved_game should succeed for snapshot benchmark";
 
