@@ -8,6 +8,14 @@
 
 #include <ixwebsocket/IXGetFreePort.h>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -784,6 +792,102 @@ TEST(NetTransportWebSocketClient,
                       "ix's poll, so the gc join never returned";
         }
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// Liveness bounds on the DIRECT link.
+//
+// Both production users of this transport (the picker's direct-join button,
+// src/platform/sdl/picker_lobby_network_client.cpp, and the terminal client,
+// src/platform/curses/curses_network.cpp) construct it with the defaults, so
+// whatever bounds the defaults carry ARE the shipped joiner behaviour.
+
+TEST(NetTransportWebSocketClient,
+     a_black_holed_dial_is_abandoned_inside_the_handshake_timeout)
+{
+#ifdef _WIN32
+    GTEST_SKIP() << "the black-hole listener below is POSIX-only";
+#else
+    // ix's acceptor accepts a connection and then, when the server is already
+    // stopping, returns WITHOUT closing the descriptor it just accepted
+    // (IXSocketServer.cpp:415, `if (_stop) return;`). A joiner that re-dials
+    // while the host tears its lobby transport down — the common case, since
+    // the joiner's link dies at that same instant — is left with a connection
+    // that is ESTABLISHED and unserviced: no RST, no data, nobody reading its
+    // upgrade request. ix's io thread then parks in the HTTP status-line read
+    // for the whole handshake timeout and issues no further dials while it
+    // waits, so the host can come back and never be found.
+    //
+    // Reproduce that state exactly rather than racing it: accept the dial,
+    // hold the descriptor, answer nothing.
+    const int port = ix::getFreePort();
+
+    const int listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_GE(listen_fd, 0);
+    const int enable = 1;
+    ASSERT_EQ(0,
+              ::setsockopt(
+                  listen_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)));
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = ::htons(static_cast<std::uint16_t>(port));
+    address.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+    ASSERT_EQ(0,
+              ::bind(listen_fd,
+                     reinterpret_cast<const sockaddr*>(&address),
+                     sizeof(address)));
+    ASSERT_EQ(0, ::listen(listen_fd, 4));
+
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port));
+    client.accept_connections();
+
+    // poll() rather than a blocking accept(): a transport that never dials has
+    // to name itself instead of hanging the whole binary.
+    pollfd waiting_listener{};
+    waiting_listener.fd = listen_fd;
+    waiting_listener.events = POLLIN;
+    ASSERT_EQ(1, ::poll(&waiting_listener, 1, 10'000))
+        << "the transport never dialled the black-hole listener";
+
+    const int held_fd = ::accept(listen_fd, nullptr, nullptr);
+    ASSERT_GE(held_fd, 0);
+    // Only the LISTENING descriptor is closed. The accepted one stays open for
+    // the rest of the test, which is what keeps the client's connection
+    // ESTABLISHED with its upgrade request unread — the leaked-fd state
+    // observed in /proc on the real host.
+    ASSERT_EQ(0, ::close(listen_fd));
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server(port, server_options);
+    server.accept_connections();
+
+    // Ceiling, derived from the options this transport ships with:
+    //   handshake_timeout_secs (10 s) — the bound this test is about, the
+    //     longest the black-holed dial may occupy the io thread
+    // + max_reconnect_wait_ms (1 s)  — the clamp the next dial waits out
+    // + 2 s of margin for a loaded box.
+    // ix's own untouched default is 60 s, so an unbounded client is still
+    // parked in the first dial when this expires.
+    constexpr auto kReturnCeiling = 13s;
+    const bool returned = wait_until(
+        [&] {
+            (void)client.poll();
+            (void)server.poll();
+            return client.connected_peers().size() == 1u;
+        },
+        kReturnCeiling);
+    EXPECT_TRUE(returned)
+        << "the joiner never gave up on a dial the host answered with silence: "
+           "with no handshake bound ix waits its 60 s default before it looks "
+           "for the host again";
+
+    client.disconnect(1u);
+    ::close(held_fd);
+#endif
 }
 
 } // namespace
