@@ -11525,6 +11525,14 @@ TEST(PickerNetworkClient,
     {
         StartRequestTimeoutOverride silent_phase_timeout(300);
         trace_clear();
+        // The product stamps the request's deadline INSIDE
+        // request_start_game() (open_start_request_wait), so the measurement
+        // has to start no later than that call: reading the clock three
+        // assertions afterwards measured from a later origin than the
+        // deadline and made EXPECT_GE(expired_after_ms, 300) fail on a
+        // loaded box with nothing wrong (243 vs 300, observed on seed 24 of
+        // a 30-seed shuffle sweep).
+        const auto pressed_at = std::chrono::steady_clock::now();
         EXPECT_FALSE(elected_host->request_start_game());
         EXPECT_TRUE(elected_host->start_request_pending())
             << "the request went out";
@@ -11532,7 +11540,6 @@ TEST(PickerNetworkClient,
                   elected_host->start_request_outcome());
         EXPECT_TRUE(elected_host->session_established())
             << "the socket is open: this is a silent host, not a dead link";
-        const auto pressed_at = std::chrono::steady_clock::now();
         ASSERT_TRUE(wait_until([&] {
             pump_clients();
             return !elected_host->start_request_pending();
