@@ -90,9 +90,16 @@ test after the failure never ran.
   (promote_orc detail-menu test) and og_test_view seed 7
   (base_camp_name_tap). Don't attribute these to new tests without
   reproducing on a clean tree.
-- `Difficulty.submenu_door_flow` (og_test_menu_ui) is load-flaky and DOES
-  hit CI ASan occasionally — a rerun clears it; a missed injector click
-  under load leaves its cycle one short.
+- `Difficulty.submenu_door_flow` (og_test_menu_ui) used to be recorded
+  here as load-flaky with "a rerun clears it". It was not load: its
+  per-click oracle was `wait_for_interactable_label_change`, which
+  returns true for ANY label that differs from the snapshot, so a click
+  the row never saw still counted and the lap assertion sixty lines
+  later read one short. The helper now reads the stored VALUE on the
+  menu thread and re-clicks, deadline-bounded, until it moves — the
+  shape `click_cycle_step` in test_options_menu.cpp has always used.
+  A rerun is never the answer to a flaky injector flow; find the oracle
+  that certifies a click nobody consumed.
 - Never bump a deadline to fix a timing-flaky test: measure the real
   cost, fix it, then convert the flat delay into a wait-on-condition
   with a generous ceiling, and prove the wait can still fail by planting

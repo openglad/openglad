@@ -237,7 +237,7 @@ Menu functions block in event loops. Tests use an injector thread:
 
 static int my_injector_thread(void* data) {
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);  // Wait for fadeblack animation
+    wait_for_menu_frames(2);   // settle on a COMPLETED engine frame
     interact("continue_game");
     return 0;
 }
@@ -255,10 +255,33 @@ TEST(MenuFlow, main_menu_flow) {
 
 **Key rules for menu tests:**
 - Use `interact("button_id")` to click buttons — don't compute raw coordinates
-- Use `wait_for_interactable("id", timeout_ms)` before clicking
-- Always `SDL_Delay(750)` after `wait_for_interactable` — `fadeblack()` eats events
+- Use `wait_for_interactable("id", timeout_ms)` before clicking, and check
+  what `interact()` returns when the flow has not already waited for the id
+- Settle with `wait_for_menu_frames(n)`, never with a flat delay. **There is
+  no fade to wait for under TESTING**: `FadeBetween` is a single
+  `SDL_BlitSurface` (`src/platform/sdl/video_sdl.cpp`, the `#ifdef TESTING`
+  branch that traces `"FadeBetween: skipping animation (test mode)"`), and
+  `src/interface/ui/menu_screen_runner.cpp` says the same in its own comment.
+  The old `SDL_Delay(750)  // fadeblack` cargo cult waited for an animation
+  that does not exist and proved nothing about the incoming screen; a
+  completed engine frame proves it composed.
+- Prove each click was CONSUMED by the value or label it writes, read on the
+  menu thread with `run_on_main_thread`, and re-click on a bounded deadline —
+  never by counting the clicks you sent. `tests/integration/test_options_menu.cpp`
+  (`click_cycle_step`) is the reference for a cycle row.
+- The canonical two-way injector handshake, for anything with a counter seam,
+  is `tests/integration/test_campaign_and_level_picker.cpp:200-272`: read the
+  screen's action counter, push DOWN, wait for the counter to advance, push
+  UP, wait for the event queue to drain, and abort loudly on expiry. That
+  flow costs ~99 ms; the same class of flow on flat delays costs ~6 s.
+- A screen that is NOT engine-hosted has its own oracle, because
+  `wait_for_menu_frames` can never be satisfied inside it: the blocking
+  `input_string_ex` editor is observed through `SDL_TextInputActive()`, and
+  the help viewer through `og::input_native::yield_count()`.
 - Set `g_picker_max_mainmenu_calls` to limit loop iterations
 - Call `cleanup_picker_state()` after the test
+- `scripts/check_injector_settles.sh` fails the build if a flat
+  `SDL_Delay(750)` reappears next to a `wait_for_interactable`
 
 ### `#ifdef TESTING` Guards
 

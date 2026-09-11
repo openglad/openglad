@@ -1262,16 +1262,22 @@ set_tests_properties(og_test_picker_network PROPERTIES
 # lane, and a genuine hang still trips well before the job cap.
 set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
 
-# og_test_menu_ui is the slowest integration binary: its injector flows
-# gate on fadeblack animations (~0.75-1s wall clock each), so it runs
-# ~148s standalone against the 180s group default — only ~18% headroom.
-# The difficulty/FX-menu work added ~31 more such waits. In a full
-# parallel ctest run it overlaps the other heavy integration binaries
+# og_test_menu_ui is the slowest integration binary. The rationale that
+# used to stand here — "its injector flows gate on fadeblack animations
+# (~0.75-1s wall clock each)" — was never true of this build: under
+# TESTING FadeBetween is a single SDL_BlitSurface (video_sdl.cpp) and
+# menu_screen_runner.cpp says so too. What the flows actually gated on
+# was a cargo-culted flat SDL_Delay(750) per settle, now replaced by
+# wait_for_menu_frames() (tests/test_interact.h).
+# The budget stays where it is regardless: in a full parallel ctest run
+# this binary overlaps the other heavy integration binaries
 # (og_test_view/og_test_game_core/og_test_level) with no serialization,
-# blowing the 180s budget under load and making the standard pre-commit
-# gate (ctest --preset ci-test) intermittently red. The coverage and
+# and the standard pre-commit gate (ctest --preset ci-test) went
+# intermittently red against the 180s group default. The coverage and
 # sanitizer lanes already protect it below; give it the same dedicated
-# budget in EVERY lane, mirroring og_test_picker_network above.
+# budget in EVERY lane, mirroring og_test_picker_network above. Do NOT
+# raise it further — the fix for a slow injector flow is to make its
+# waits conditions, not to buy more clock.
 set_tests_properties(og_test_menu_ui PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
