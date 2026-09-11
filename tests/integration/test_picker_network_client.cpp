@@ -100,6 +100,15 @@ void picker_testing_yes_or_no_queue_push(bool value);
 void picker_testing_set_lobby_client_owner(
     std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
 
+// picker.cpp's swap seam (external linkage; declared here with every
+// parameter spelled out because the defaults live at its own declaration).
+bool picker_replace_lobby_client(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
+    const char* popup_title,
+    bool show_success_popup,
+    bool restore_previous_on_failure);
+
 namespace og::ui {
 
 std::vector<std::string> build_host_picker_status_lines(
@@ -12145,6 +12154,52 @@ TEST(PickerNetworkClient, a_failed_rehost_between_levels_is_reported_not_thrown)
     picker_testing_set_lobby_client_owner(nullptr);
     if (owned_client)
         owned_client->shutdown();
+}
+
+// The same class of gap one layer down. picker_replace_lobby_client's restore
+// leg installs the previous client as the active one and only THEN re-dials
+// it, unguarded, from inside a catch block. When that re-dial throws too —
+// the port the previous host released has been taken meanwhile — the second
+// exception escapes while a host with no listener is already installed, and
+// nothing retires it: a host reports no kick, and this is not the
+// between-levels resume that latches session_lost.
+TEST(PickerNetworkClient,
+     a_restore_that_cannot_re_dial_leaves_no_dead_host_installed)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Restored Host");
+    g_start_game_requested = false;
+
+    // ONE port, held by someone else: both the incoming host and the restored
+    // previous host fail to bind it, which is the two-throw shape the restore
+    // leg cannot survive.
+    og::ui::PickerHostGameOptions options;
+    options.port = ix::getFreePort();
+    auto blocking_server =
+        std::make_shared<og::sim::WebSocketServerTransport>(options.port);
+    blocking_server->accept_connections();
+
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        og::ui::create_host_picker_lobby_client(options);
+    ActivePickerLobbyClientGuard active_client(current_client.get());
+
+    EXPECT_THROW(picker_replace_lobby_client(
+                     current_client,
+                     og::ui::create_host_picker_lobby_client(options),
+                     "NETWORKING",
+                     /*show_success_popup=*/false,
+                     /*restore_previous_on_failure=*/true),
+                 std::runtime_error);
+
+    EXPECT_EQ(nullptr, og::ui::active_picker_lobby_client())
+        << "a restored host that could not re-dial must not stay installed";
+    EXPECT_FALSE(static_cast<bool>(current_client))
+        << "the owned slot is empty, so Base Camp falls back to the lazily "
+           "created local lobby";
 }
 
 // The same contract as the joiner's twin above, through the host role: a
