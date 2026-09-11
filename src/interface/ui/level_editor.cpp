@@ -4345,7 +4345,7 @@ Sint32 get_random_matching_tile(Sint32 whatback)
 			}
 			//break;
 		case PIX_COBBLE_1:
-			switch (random(static_cast<Uint32>(i)))
+			switch (i)
 			{
 				case 0:
 					return PIX_COBBLE_1;
@@ -4360,7 +4360,7 @@ Sint32 get_random_matching_tile(Sint32 whatback)
 			}
 			//break;
 		case PIX_BOULDER_1:
-			switch (random(static_cast<Uint32>(i)))
+			switch (i)
 			{
 				case 0:
 					return PIX_BOULDER_1;
