@@ -2473,6 +2473,9 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
 
     (void)remove_user_file("save/lineupd.gtl");
     og::data::set_active_company_slot("save0");
+    // A drive that loads a "modes" company must not leave modes mounted for
+    // the next test in the binary.
+    EXPECT_EQ(std::string("gladiator"), get_mounted_campaign());
 }
 
 // The same two rows on a CLASSIC campaign. Amendment 3 C5 moved the match
