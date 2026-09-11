@@ -7,6 +7,7 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/core/fnv1a.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/zlib_api.h>
 #include <openglad/interface/button.h>
@@ -30,6 +31,7 @@
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/win_shares.h>
 #include <openglad/server/match_stage.h>
 
@@ -2230,6 +2232,51 @@ TEST(PickerNetworkClient, host_relay_flow_uses_campaign_content_hash)
     EXPECT_NE(*first_campaign_hash, *second_campaign_hash);
 
     host_client_restarted->shutdown();
+}
+
+// A port already in use (a second copy of the game, a stale host) must not
+// take the whole HOST GAME attempt down with it: the relay room is created
+// before the direct listener is opened, so the session still hosts over the
+// relay and the conflict surfaces on the "Direct: " status line.
+TEST(PickerNetworkClient, host_direct_port_conflict_still_hosts_over_the_relay)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Host");
+    g_start_game_requested = false;
+
+    const int relay_port = ix::getFreePort();
+    FakeRelayServer relay_server(
+        relay_port,
+        200,
+        R"({"code":"glad-xkcd","owner_token":"owner-secret-token"})");
+
+    // Somebody else already owns the direct port: a REAL listener on it, not
+    // a mocked failure.
+    const int busy_port = ix::getFreePort();
+    og::sim::WebSocketServerTransport blocker(busy_port);
+    blocker.accept_connections();
+
+    og::ui::PickerHostGameOptions options;
+    options.port = busy_port;
+    options.enable_relay = true;
+    options.relay_base_url = std::format("ws://127.0.0.1:{}", relay_port);
+    auto host_client = og::ui::create_host_picker_lobby_client(options);
+    ASSERT_NO_THROW(host_client->initialize_from_save())
+        << "a busy direct port must not abort a relay-capable host";
+
+    const auto status = host_client->status_lines();
+    EXPECT_TRUE(status_lines_contain_exact(status, "Room: GLAD-XKCD"))
+        << "the relay room that was already created must still be hosted";
+    EXPECT_TRUE(status_lines_contain_prefix(status, "Direct: "))
+        << "the bind conflict belongs on the direct status line";
+    EXPECT_FALSE(status_lines_contain_prefix(status, "LAN: "))
+        << "no direct listener was opened, so no LAN address may be offered";
+
+    host_client->shutdown();
 }
 
 // #155 cloud saves, native transport: platform_cloud_http_get/post are the
@@ -10773,16 +10820,25 @@ struct LinkLossWindowOverride
     }
 };
 
+// Scopes the product's start-request expiry to the phase under test.
+// Restores the PREVIOUS value rather than zero so a short deadline can be
+// nested inside a generous one: only the deliberately silent phase of a
+// flow wants a 300 ms expiry, and the phases either side of it have to
+// complete a live loopback round-trip before the deadline they run under.
 struct StartRequestTimeoutOverride
 {
     explicit StartRequestTimeoutOverride(std::uint64_t ms)
+        : previous_(g_picker_start_request_timeout_ms_override)
     {
         g_picker_start_request_timeout_ms_override = ms;
     }
     ~StartRequestTimeoutOverride()
     {
-        g_picker_start_request_timeout_ms_override = 0;
+        g_picker_start_request_timeout_ms_override = previous_;
     }
+
+private:
+    std::uint64_t previous_ = 0;
 };
 
 } // namespace
@@ -11273,7 +11329,9 @@ TEST(PickerNetworkClient,
      elected_host_start_request_expires_and_the_next_go_sends_a_fresh_one)
 {
     IxNetSystemScope net_system;
-    StartRequestTimeoutOverride timeout_override(300);
+    // Generous for the phases that have to be ANSWERED over a live loopback
+    // round-trip; the deliberately silent phase (1) narrows it to 300 ms.
+    StartRequestTimeoutOverride timeout_override(30'000);
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     PickerSaveStateGuard save_guard(save);
@@ -11370,35 +11428,47 @@ TEST(PickerNetworkClient,
 
     // (1) The host goes silent: its socket stays open (nothing is torn
     // down), but lobby_server is no longer pumped, so the request gets
-    // neither the handoff nor a denial echo.
-    trace_clear();
-    EXPECT_FALSE(elected_host->request_start_game());
-    EXPECT_TRUE(elected_host->start_request_pending())
-        << "the request went out";
-    EXPECT_EQ(og::ui::StartRequestOutcome::None,
-              elected_host->start_request_outcome());
-    EXPECT_TRUE(elected_host->session_established())
-        << "the socket is open: this is a silent host, not a dead link";
-    const auto pressed_at = std::chrono::steady_clock::now();
-    ASSERT_TRUE(wait_until([&] {
-        pump_clients();
-        return !elected_host->start_request_pending();
-    }, 3s)) << "the client must expire its own unanswered request";
-    const auto expired_after_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - pressed_at).count();
-    EXPECT_GE(expired_after_ms, 300)
-        << "the expiry cannot precede the timeout (it fired after "
-        << expired_after_ms << " ms)";
-    EXPECT_EQ(og::ui::StartRequestOutcome::NoAnswer,
-              elected_host->start_request_outcome())
-        << "the verdict of an abandoned request";
-    EXPECT_TRUE(trace_contains("networking", "start_request_expired id=2"));
-    EXPECT_FALSE(trace_contains("networking", "start_request_link_lost"))
-        << "a silent host is not a dead link";
-    EXPECT_TRUE(elected_host->session_established())
-        << "a silent host is not a lost session";
-    EXPECT_FALSE(g_start_game_requested);
+    // neither the handoff nor a denial echo. THIS is the phase the short
+    // expiry belongs to — the expiry is read at check time, so narrowing it
+    // here is enough and the phases around it keep their live round-trip.
+    {
+        StartRequestTimeoutOverride silent_phase_timeout(300);
+        trace_clear();
+        // The product stamps the request's deadline INSIDE
+        // request_start_game() (open_start_request_wait), so the measurement
+        // has to start no later than that call: reading the clock three
+        // assertions afterwards measured from a later origin than the
+        // deadline and made EXPECT_GE(expired_after_ms, 300) fail on a
+        // loaded box with nothing wrong (243 vs 300, observed on seed 24 of
+        // a 30-seed shuffle sweep).
+        const auto pressed_at = std::chrono::steady_clock::now();
+        EXPECT_FALSE(elected_host->request_start_game());
+        EXPECT_TRUE(elected_host->start_request_pending())
+            << "the request went out";
+        EXPECT_EQ(og::ui::StartRequestOutcome::None,
+                  elected_host->start_request_outcome());
+        EXPECT_TRUE(elected_host->session_established())
+            << "the socket is open: this is a silent host, not a dead link";
+        ASSERT_TRUE(wait_until([&] {
+            pump_clients();
+            return !elected_host->start_request_pending();
+        }, 3s)) << "the client must expire its own unanswered request";
+        const auto expired_after_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - pressed_at).count();
+        EXPECT_GE(expired_after_ms, 300)
+            << "the expiry cannot precede the timeout (it fired after "
+            << expired_after_ms << " ms)";
+        EXPECT_EQ(og::ui::StartRequestOutcome::NoAnswer,
+                  elected_host->start_request_outcome())
+            << "the verdict of an abandoned request";
+        EXPECT_TRUE(trace_contains("networking", "start_request_expired id=2"));
+        EXPECT_FALSE(trace_contains("networking", "start_request_link_lost"))
+            << "a silent host is not a dead link";
+        EXPECT_TRUE(elected_host->session_established())
+            << "a silent host is not a lost session";
+        EXPECT_FALSE(g_start_game_requested);
+    }
 
     // (2) The next GO opens a FRESH request (id 3) — pending again, the
     // stale verdict cleared.
@@ -11845,6 +11915,64 @@ TEST(PickerNetworkClient, joiner_resume_without_a_link_keeps_its_seat_teams)
     join_client->shutdown();
 }
 
+// The other half of the resume contract, for the class packs a joiner
+// downloaded from its host: ending a NETWORKED SESSION drops the session
+// pack mounts, but a between-levels resume is not the end of the session.
+// The joiner's no-link fallback rebuilds the lobby through
+// initialize_from_save(), whose first act is shutdown() — so an unmount hung
+// on that shutdown would strand the next level's world with the pack it is
+// about to run already gone from the search path.
+TEST(PickerNetworkClient, joiner_resume_between_levels_keeps_its_session_packs)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Packed Joiner");
+
+    // A pack that arrived over the wire this session, installed exactly the
+    // way PackTransferClient installs one.
+    const std::string pack_script = "og.log('session pack loaded')\n";
+    const std::vector<std::uint8_t> pack_bytes(pack_script.begin(),
+                                               pack_script.end());
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0;
+    manifest.pack_count = 1;
+    manifest.pack_id = "org.wp9.sessionpack";
+    manifest.version = "1";
+    manifest.files.push_back(og::sim::PackManifestFileEntry{
+        .path = "scripts/session.lua",
+        .size_bytes = static_cast<std::uint32_t>(pack_bytes.size()),
+        .hash64 = og::core::fnv1a64(pack_bytes.data(), pack_bytes.size())});
+    ASSERT_TRUE(og::resources::install_received_pack(manifest, {pack_bytes}));
+    ASSERT_TRUE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "the transferred pack must be mounted before the resume runs";
+
+    // Nothing is listening: the resume takes the transport-unusable fallback
+    // that re-enters initialize_from_save().
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", ix::getFreePort());
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    ASSERT_NE(nullptr, join_client);
+    join_client->initialize_from_save();
+    ASSERT_FALSE(join_client->session_established());
+
+    join_client->resume_after_level();
+
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "a between-levels resume is not the end of the session: the "
+           "packs this session downloaded must still be mounted";
+
+    join_client->shutdown();
+    og::resources::unmount_session_packs();
+    std::error_code pack_cache_ec;
+    std::filesystem::remove_all(
+        std::filesystem::path(get_user_path()) / "packs_cache",
+        pack_cache_ec);
+}
+
 // A host that comes back from a level with its lobby torn down (the session
 // was shut down rather than carried across gameplay) must rebuild one from
 // the save instead of leaving Base Camp with a dead lobby.
@@ -11877,6 +12005,54 @@ TEST(PickerNetworkClient, host_resume_after_a_torn_down_lobby_rebuilds_it)
     EXPECT_EQ(1u, host_client->local_seat_count());
     EXPECT_EQ(0, host_client->lobby_players().front().team);
     EXPECT_FALSE(host_client->start_request_pending());
+
+    host_client->shutdown();
+}
+
+// The same contract as the joiner's twin above, through the host role: a
+// lobby that had to be rebuilt from the save keeps the seat teams THIS
+// session was played with, instead of re-seeding them from a roster the
+// player recoloured in Base Camp between levels. Both roles run the one
+// hoisted restore helper; this is the host's end of it.
+TEST(PickerNetworkClient, host_resume_after_a_torn_down_lobby_keeps_its_seat_teams)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Seat One");
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Seat Two";
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+    save.numplayers = 2;
+    save.my_team = 0;
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->session_established());
+    ASSERT_EQ(2u, host_client->local_seat_count());
+    ASSERT_EQ(0, save.my_team);
+
+    host_client->shutdown();  // the torn-down lobby the sibling test covers
+
+    // Between levels the roster is recoloured in Base Camp. The seats this
+    // session was played with must not follow.
+    save.team_list[0]->teamnum = 2;
+    save.team_list[1]->teamnum = 3;
+    save.my_team = 2;
+
+    host_client->resume_after_level();
+
+    EXPECT_EQ(0, save.my_team)
+        << "the host's rebuild must keep this session's seat teams";
+    EXPECT_EQ(2u, host_client->local_seat_count());
+    ASSERT_FALSE(host_client->lobby_players().empty());
+    EXPECT_EQ(0, host_client->lobby_players().front().team);
 
     host_client->shutdown();
 }

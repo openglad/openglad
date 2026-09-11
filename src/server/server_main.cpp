@@ -269,8 +269,17 @@ int main(int argc, char* argv[])
 
         og::sim::LobbyServer lobby_server(transport);
         // Offer this host's mounted non-core class packs for automatic
-        // transfer to joiners (protocol v10).
-        lobby_server.set_hosted_packs(og::resources::build_transferable_packs());
+        // transfer to joiners (protocol v10). The shared memo keys on the
+        // MOUNTED campaign, the tree the set is built from.
+        og::resources::HostedPackSync hosted_packs;
+        const auto sync_hosted_packs = [&lobby_server, &hosted_packs] {
+            if (std::optional<std::vector<og::sim::HostedPack>> packs =
+                    hosted_packs.refresh())
+            {
+                lobby_server.set_hosted_packs(std::move(*packs));
+            }
+        };
+        sync_hosted_packs();
 
         // Staged lobby (#218): the dedicated owner stages the match world
         // in the lobby through the same pipeline the GO block below runs
@@ -322,6 +331,9 @@ int main(int argc, char* argv[])
             stage.maintain(og::server::stage_clock_now_ms());
             og::server::deliver_staged_pair(stage, &transport,
                                             stage_broadcast);
+            // Staging mounts the lobby's campaign; the announcement
+            // describes the mounted tree, so it has to follow.
+            sync_hosted_packs();
 
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(args.lobby_poll_ms));

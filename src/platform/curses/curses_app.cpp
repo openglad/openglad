@@ -23,6 +23,7 @@
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/save_data.h>
 
 #include <cstdio>
@@ -221,6 +222,9 @@ int run_curses_app(const AppOptions& options, int argc, char* argv[])
             return 1;
         }
         run_curses_lobby(*lobby, *terminal, clock);
+        // The one-shot networked session this process was started for is
+        // over: drop the class packs it downloaded from the host.
+        og::resources::end_pack_transfer_session();
     } else {
         run_curses_picker(*terminal, clock, config, picker_options);
     }

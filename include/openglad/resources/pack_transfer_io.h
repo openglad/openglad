@@ -18,6 +18,7 @@
 #include <openglad/gameplay/pack_transfer.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -53,6 +54,42 @@ bool install_received_pack(
 // Unmount every pack mounted by try_mount_cached_pack/install_received_pack
 // this session and refresh the script registry (session teardown, tests).
 void unmount_session_packs();
+
+// The one seam a NETWORKED SESSION ends through. Packs a joiner downloaded
+// from its host are session-scoped: left mounted, the next campaign the
+// player opens registers a second campaign book and the dispatch answers
+// "one campaign, one book: no scripted picker will be served" for the rest
+// of the process. Call it where the session truly ends — a join client
+// disconnecting, the picker replacing a networked client with a local one,
+// the lobby shutting down, the terminal client returning to its picker.
+// NEVER between levels: a resume rebuilds the lobby through the same
+// shutdown() the session end runs, and the pack the next level needs is
+// still the one that has to stay mounted.
+void end_pack_transfer_session();
+
+// Host side: the transferable pack set describes the campaign this machine
+// has MOUNTED, and hosting stages the lobby's campaign on its first poll —
+// which remounts under an announcement built at construction time. A set
+// snapshotted once therefore advertises the wrong campaign's packs, and
+// joiners download a pack for a campaign nobody is playing.
+//
+// refresh() answers with a fresh set on its first call and whenever the
+// mounted campaign changed since; nullopt otherwise, because rebuilding it
+// hashes every file of every mounted pack. One memo shared by every host
+// (SDL picker, terminal client, dedicated server) instead of one per role.
+class HostedPackSync
+{
+public:
+    [[nodiscard]] std::optional<std::vector<og::sim::HostedPack>> refresh();
+
+    // Forget the memo: the next refresh() announces unconditionally (a new
+    // LobbyServer has nothing announced to it yet).
+    void reset() noexcept;
+
+private:
+    std::string mounted_memo_;
+    bool announced_ = false;
+};
 
 // Ready-made PackTransferClient callbacks over the three entry points above.
 og::sim::PackTransferClient::Callbacks make_pack_transfer_client_callbacks();

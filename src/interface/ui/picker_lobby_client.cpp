@@ -9,6 +9,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/server/match_stage.h>
 
 #include <algorithm>
@@ -1166,8 +1167,17 @@ void picker_lobby_initialize_from_save()
 
 void picker_lobby_shutdown()
 {
-    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+    og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client();
+    const bool was_networked =
+        client != nullptr && client->is_networked_session();
+    if (client != nullptr)
         client->shutdown();
+    if (was_networked)
+    {
+        // The lobby is gone for good, so the session is over: drop the class
+        // packs it downloaded before they shadow the next campaign's book.
+        og::resources::end_pack_transfer_session();
+    }
     if (!og::ui::active_picker_lobby_client())
         g_standalone_picker_lobby_client.reset();
 }

@@ -38,6 +38,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_selection.h>
 #include <openglad/resources/og_file.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/session_state.h>
@@ -611,8 +612,20 @@ bool picker_replace_lobby_client(
     if (previous_was_active)
         og::ui::install_active_picker_lobby_client(nullptr);
 
+    const bool leaving_networked_session =
+        previous_client != nullptr &&
+        previous_client->is_networked_session() &&
+        !next_client->is_networked_session();
     if (previous_client)
         previous_client->shutdown();
+    if (leaving_networked_session)
+    {
+        // The networked session is over (a local client is taking its place):
+        // the class packs it downloaded from its host stop shadowing the next
+        // campaign's book here. Not on the way into another networked
+        // session — that one re-announces and re-mounts what it needs.
+        og::resources::end_pack_transfer_session();
+    }
 
     std::string message;
     try
