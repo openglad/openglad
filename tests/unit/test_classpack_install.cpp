@@ -23,6 +23,8 @@
 
 #include <gtest/gtest.h>
 
+#include "family_registry_dump.h"
+
 #include <openglad/core/constants.h>
 #include <openglad/core/campaign_ids.h>
 #include <openglad/core/family_presentation.h>
@@ -180,6 +182,36 @@ void load_committed_core_pack(ClasspackData& data)
     ASSERT_TRUE(declared.ok) << declared.error;
 }
 
+// Restores one core pin verbatim. The mod-slot reset deliberately leaves
+// the pins alone, so a test that installs over one has to put it back or
+// every later test (in any --gtest_shuffle order) inherits the edit.
+class CorePinGuard {
+public:
+    explicit CorePinGuard(int family_id)
+        : family_id_(family_id), saved_(*get_family_descriptor(family_id))
+    {
+        // Installing over a slot replaces its tuning too (an entry that
+        // declares none erases what was there), so the pin is not restored
+        // by the descriptor alone.
+        if (const og::script::TuningMap* tuning =
+                og::script::family_tuning(Order::Living, family_id))
+            saved_tuning_ = *tuning;
+    }
+    ~CorePinGuard()
+    {
+        set_family_descriptor(family_id_, saved_);
+        og::script::set_family_tuning(Order::Living, family_id_, saved_tuning_);
+    }
+
+    CorePinGuard(const CorePinGuard&) = delete;
+    CorePinGuard& operator=(const CorePinGuard&) = delete;
+
+private:
+    int family_id_;
+    FamilyDescriptor saved_;
+    og::script::TuningMap saved_tuning_;
+};
+
 }  // namespace
 
 TEST(CommittedCorePack, matches_the_built_in_registries)
@@ -266,6 +298,7 @@ TEST(CommittedCorePack, matches_the_built_in_registries)
 TEST(ClasspackInstall, overrides_data_preserves_callbacks)
 {
     init_all_registries();
+    CorePinGuard pin(FAMILY_SOLDIER);
     const FamilyDescriptor before = *get_family_descriptor(FAMILY_SOLDIER);
 
     og::data::ClasspackData data;
@@ -311,9 +344,6 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
     ASSERT_EQ(after->customize_weapon, before.customize_weapon);
     ASSERT_EQ(after->on_ani_complete, before.on_ani_complete);
     ASSERT_EQ(after->on_melee_hit, before.on_melee_hit);
-
-    // Restore the pristine descriptor for the rest of the process.
-    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
 }
 
 // #209: `radar_ping = true` rides the presentation fold onto the
@@ -321,6 +351,7 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
 TEST(ClasspackInstall, radar_ping_installs_onto_the_descriptor)
 {
     init_all_registries();
+    CorePinGuard pin(FAMILY_SOLDIER);
     const FamilyDescriptor before = *get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_FALSE(before.radar.ping) << "core families ship no ping";
 
@@ -349,14 +380,12 @@ TEST(ClasspackInstall, radar_ping_installs_onto_the_descriptor)
     ASSERT_EQ(og::resources::install_classpack_data(std::move(keep)), 1);
     EXPECT_TRUE(get_family_descriptor(FAMILY_SOLDIER)->radar.ping)
         << "omitting radar_ping keeps whatever the slot holds";
-
-    // Restore the pristine descriptor for the rest of the process.
-    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
 }
 
 TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
 {
     init_all_registries();
+    CorePinGuard pin_mage(FAMILY_MAGE);
     const FamilyDescriptor before_mage = *get_family_descriptor(FAMILY_MAGE);
     const GeneratorFamilyDescriptor before_tent =
         *get_generator_family_descriptor(FAMILY_TENT);
@@ -391,7 +420,6 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
     ASSERT_EQ(tent->default_weapon, FAMILY_GHOST)
         << "generator default_weapon resolves through the living registry";
 
-    ASSERT_TRUE(set_family_descriptor(FAMILY_MAGE, before_mage));
     ASSERT_TRUE(set_generator_family_descriptor(FAMILY_TENT, before_tent));
 }
 
@@ -610,6 +638,43 @@ TEST(ClasspackInstall, absent_train_axes_install_zero)
 
 namespace {
 
+// The first differing line of two registry dumps, with the [order id]
+// header it sits under. A whole-dump EXPECT_EQ on 80 KB of text is
+// unreadable; the point is to NAME the field that moved.
+std::string first_registry_difference(const std::string& want,
+                                      const std::string& got)
+{
+    const auto lines_of = [](const std::string& text) {
+        std::vector<std::string> out;
+        std::istringstream in(text);
+        std::string line;
+        while (std::getline(in, line))
+            out.push_back(line);
+        return out;
+    };
+    const std::vector<std::string> a = lines_of(want);
+    const std::vector<std::string> b = lines_of(got);
+    const std::size_t n = std::min(a.size(), b.size());
+    std::size_t i = 0;
+    for (; i < n; i++) {
+        if (a[i] != b[i])
+            break;
+    }
+    if (i == n && a.size() == b.size())
+        return "  (dumps are equal)";
+    std::ostringstream out;
+    out << "  first difference at line " << (i + 1) << "\n";
+    for (std::size_t back = i + 1; back-- > 0;) {
+        if (back < a.size() && !a[back].empty() && a[back][0] == '[') {
+            out << "  in " << a[back] << "\n";
+            break;
+        }
+    }
+    out << "  on entry: " << (i < a.size() ? a[i] : "<end of dump>") << "\n";
+    out << "  on exit:  " << (i < b.size() ? b[i] : "<end of dump>");
+    return out.str();
+}
+
 // The five registries are process-global and every install test shares
 // them. Frees the pack-installed slots on the way IN and OUT, so a
 // shuffled run order can never leak a mod family into a test that counts
@@ -621,11 +686,25 @@ public:
     {
         init_all_registries();
         reset_all_registry_mod_slots();
+        entry_ = og::testing::dump_installed_families();
     }
-    ~ModSlotGuard() { reset_all_registry_mod_slots(); }
+    ~ModSlotGuard()
+    {
+        reset_all_registry_mod_slots();
+        const std::string exit = og::testing::dump_installed_families();
+        EXPECT_EQ(entry_, exit)
+            << "this test left a CORE pin edited: the mod-slot reset does "
+               "not undo one, so every later test in a --gtest_shuffle order "
+               "inherits it. Hold a CorePinGuard (or RegistrySnapshotGuard) "
+               "over the install.\n"
+            << first_registry_difference(entry_, exit);
+    }
 
     ModSlotGuard(const ModSlotGuard&) = delete;
     ModSlotGuard& operator=(const ModSlotGuard&) = delete;
+
+private:
+    std::string entry_;
 };
 
 // Which ids of one order currently answer a descriptor. Used to prove an
@@ -882,7 +961,7 @@ og::data::ClasspackData one_living(const char* pack, const char* id,
 }
 
 // Restores every populated slot of all five registries verbatim. Same
-// reason as CorePinGuard below, for a test that installs a whole pack over
+// reason as CorePinGuard above, for a test that installs a whole pack over
 // the pins.
 class RegistrySnapshotGuard {
 public:
@@ -932,25 +1011,6 @@ private:
     std::vector<std::pair<int, EffectFamilyDescriptor>> effects_;
     std::vector<std::pair<int, TreasureFamilyDescriptor>> treasures_;
     std::vector<std::pair<int, GeneratorFamilyDescriptor>> generators_;
-};
-
-// Restores one core pin verbatim. The mod-slot reset deliberately leaves
-// the pins alone, so a test that installs over one has to put it back or
-// every later test (in any --gtest_shuffle order) inherits the edit.
-class CorePinGuard {
-public:
-    explicit CorePinGuard(int family_id)
-        : family_id_(family_id), saved_(*get_family_descriptor(family_id))
-    {
-    }
-    ~CorePinGuard() { set_family_descriptor(family_id_, saved_); }
-
-    CorePinGuard(const CorePinGuard&) = delete;
-    CorePinGuard& operator=(const CorePinGuard&) = delete;
-
-private:
-    int family_id_;
-    FamilyDescriptor saved_;
 };
 
 }  // namespace
@@ -1587,10 +1647,41 @@ using og::data::ClasspackTuningValue;
 
 // The tuning store is process-global (like the registries); every test
 // that touches it restores emptiness on both sides of itself.
+// A tuning test wants the store empty to start with, but the store is
+// process-global and packs/core fills it for the CORE families -- clearing
+// it and walking away costs every later test in the process its core
+// tuning. Save what is there, clear, and put it back.
 class TuningStoreGuard {
 public:
-    TuningStoreGuard() { og::script::clear_all_family_tuning(); }
-    ~TuningStoreGuard() { og::script::clear_all_family_tuning(); }
+    TuningStoreGuard() : saved_(grab()) { og::script::clear_all_family_tuning(); }
+
+    ~TuningStoreGuard()
+    {
+        og::script::clear_all_family_tuning();
+        for (const auto& entry : saved_)
+            og::script::set_family_tuning(entry.first.first, entry.first.second,
+                                          entry.second);
+    }
+
+    TuningStoreGuard(const TuningStoreGuard&) = delete;
+    TuningStoreGuard& operator=(const TuningStoreGuard&) = delete;
+
+private:
+    using Key = std::pair<Order, int>;
+
+    static std::vector<std::pair<Key, og::script::TuningMap>> grab()
+    {
+        std::vector<std::pair<Key, og::script::TuningMap>> out;
+        for (const Order order : {Order::Living, Order::Weapon, Order::FX,
+                                  Order::Treasure, Order::Generator})
+            for (int id = 0; id < NUM_FAMILY_SLOTS; id++)
+                if (const og::script::TuningMap* map =
+                        og::script::family_tuning(order, id))
+                    out.emplace_back(Key{order, id}, *map);
+        return out;
+    }
+
+    std::vector<std::pair<Key, og::script::TuningMap>> saved_;
 };
 
 }  // namespace
@@ -2091,6 +2182,7 @@ TEST(ClasspackInstallErrors, an_oversized_pack_stops_at_every_registry_end)
 TEST(ClasspackInstallErrors, an_unknown_bit_flag_name_keeps_the_whole_mask)
 {
     ModSlotGuard guard;
+    CorePinGuard pin(FAMILY_GHOST);
 
     // Pin onto a core family so there is a non-zero mask to preserve.
     const FamilyDescriptor* ghost_before =
@@ -2125,6 +2217,7 @@ TEST(ClasspackInstallErrors, an_unknown_bit_flag_name_keeps_the_whole_mask)
 TEST(ClasspackInstallErrors, an_entry_without_a_declared_id_keeps_the_slot_id)
 {
     ModSlotGuard guard;
+    CorePinGuard pin(FAMILY_SOLDIER);
 
     const FamilyDescriptor* before = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(before, nullptr);

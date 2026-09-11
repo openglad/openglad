@@ -15,6 +15,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/mapgen/builders.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -278,6 +279,30 @@ TEST(TowerFallback, t0_fallback_is_audit_clean)
         EXPECT_NE(-104.0f, entity->damage());
         EXPECT_NE(-105.0f, entity->fire_frequency());
     }
+}
+
+// run_audits calls audit_reachability unconditionally, which is only safe
+// because the audit borrows the ambient context and hands its world pointer
+// back. (A context is always installed by then: the builders construct
+// walkers, and walker construction aborts without one.) Pin the hand-back.
+TEST(TowerAuditContext, build_leaves_the_ambient_context_world_as_it_found_it)
+{
+    ASSERT_NE(nullptr, current_game) << "the unit harness installs a context";
+    GameWorld* const before = current_game->world;
+
+    GameWorld world(0);
+    std::list<std::string> description;
+    const std::vector<std::string> failures =
+        build_tower_floor(world, description, 4242u, 7, /*attempt=*/0);
+
+    EXPECT_EQ(before, current_game->world)
+        << "run_audits must leave the ambient context's world as it found it";
+    EXPECT_NE(&world, current_game->world)
+        << "the scratch world must not be left installed";
+    std::string joined;
+    for (const std::string& e : failures)
+        joined += e + "\n";
+    EXPECT_TRUE(failures.empty()) << joined;
 }
 
 // --- Reload self-check (westlands pattern: LevelRuntimeData + headless hooks).

@@ -879,6 +879,13 @@ og_add_unit_group(og_unit_script FILES
 # sources. tests/ sits outside the src/ vendor-leak boundary
 # (scripts/check_vendor_leaks.sh), so the include is legal there.
 target_link_libraries(og_unit_script PRIVATE og_lua)
+# CoverageReportGate drives the real scripts/coverage/coverage_report.py,
+# which needs the executable-line oracle, and the fixture looks for it
+# BESIDE the test binary. og_lua_lines is defined later, in
+# cmake/OpenGladCoverage.cmake (CMake resolves target dependencies at
+# generate time), so naming it here is what makes a targeted
+# `--build --target og_unit_script` build it too.
+add_dependencies(og_unit_script og_lua_lines)
 
 og_add_unit_group(og_unit_entity FILES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_unit.cpp

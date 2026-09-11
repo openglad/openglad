@@ -907,19 +907,13 @@ std::vector<std::string> run_audits(GameWorld& w, const BuildPlan& plan,
         auto e = og::mapgen::audit_fall_lines(w, /*max_fall_depth=*/4);
         errors.insert(errors.end(), e.begin(), e.end());
     }
-    // Reachability needs an installed GameplayContext. At GO time (D8) none
-    // is installed -> guard a scratch context; under the unit harness an
-    // ambient context exists and the audit swap-restores its world pointer.
-    if (current_game != nullptr)
+    // Reachability needs an installed GameplayContext (pathfinding + obmap),
+    // and one is always installed by the time we get here: step (4)
+    // place_start constructs walkers, and walker construction aborts without
+    // a context (walker.cpp walker_rng), so a context-free call can never
+    // reach the audits. audit_reachability swap-restores current_game->world
+    // around its probe.
     {
-        auto e = og::mapgen::audit_reachability(w);
-        errors.insert(errors.end(), e.begin(), e.end());
-    }
-    else
-    {
-        GameplayContext scratch{};
-        scratch.world = &w;
-        GameplayContextGuard guard(&scratch);
         auto e = og::mapgen::audit_reachability(w);
         errors.insert(errors.end(), e.begin(), e.end());
     }
