@@ -281,6 +281,11 @@ TEST(PlatformHeadless, user_and_asset_paths_cover_normalization)
     setenv("OPENGLAD_CONFIG_DIR", "/tmp/openglad-headless///", 1);
     EXPECT_EQ("/tmp/openglad-headless/", get_user_path());
 
+    // The trim loop stops at one character, so normalize_dir never sees an
+    // empty path -- the reason there is no empty-path arm to cover.
+    setenv("OPENGLAD_CONFIG_DIR", "///", 1);
+    EXPECT_EQ("/", get_user_path());
+
     setenv("OPENGLAD_CONFIG_DIR", "", 1);
     setenv("HOME", "/tmp/openglad-home", 1);
     EXPECT_EQ("/tmp/openglad-home/.openglad/", get_user_path());
