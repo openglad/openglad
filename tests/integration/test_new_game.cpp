@@ -170,7 +170,7 @@ static int new_game_injector(void* data)
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
         state->saw_networking_button = has_interactable("networking");
-        SDL_Delay(750);
+        wait_for_menu_frames(2);
 
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking back from team menu\n");
@@ -519,7 +519,7 @@ static int continue_player_count_injector(void* data)
         return 0;
     state->saw_initial_base_camp = true;
     state->founded_slot = og::data::active_company_slot();
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
     // A slot with no seat in it IS the add door: with one seat claimed, slot
     // one wears ADD PLAYER, and the click lands when it stops wearing it.
     if (!wait_for_interactable_label("seat_card_1", "ADD PLAYER", 5000))

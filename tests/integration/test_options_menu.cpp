@@ -589,7 +589,7 @@ static int options_injector(void* data)
         state->finished = true;
         return 0;
     }
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking options\n");
     bool in_options =
@@ -783,7 +783,7 @@ static int options_injector(void* data)
             fprintf(stderr, "  [test] entering %s subscreen\n", screen.opener_id);
             bool in_screen = click_until_interactable(
                 screen.opener_id, screen.toggles[0].button_id, 5000);
-            SDL_Delay(750);
+            wait_for_menu_frames(2);
             if (!in_screen &&
                 !wait_for_interactable(screen.toggles[0].button_id, 5000)) {
                 continue;
@@ -1480,7 +1480,7 @@ int menu_effects_injector(void* data)
 
         for (const ScreenPlan& plan : kPlan) {
             bool in_screen = click_until_interactable(plan.opener, plan.toggles[0], 5000);
-            SDL_Delay(750);
+            wait_for_menu_frames(2);
             if (!in_screen && !wait_for_interactable(plan.toggles[0], 5000)) {
                 all_screens = false;
                 continue;

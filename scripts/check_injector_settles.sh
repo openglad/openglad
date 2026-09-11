@@ -44,13 +44,14 @@ for file in "${FILES[@]}"; do
         status=1
         continue
     fi
-    # A flat 750 ms sleep within three lines after a wait_for_interactable is
-    # the cargo-culted fade settle.
-    hits=$(awk '
-        /wait_for_interactable/ { armed = 3; next }
-        armed > 0 && /SDL_Delay\(750\)/ { printf "%s:%d:%s\n", FILENAME, FNR, $0 }
-        armed > 0 { armed-- }
-    ' "$file")
+    # Any flat 750 ms sleep at all, not just one within N lines of a
+    # wait_for_interactable. A proximity window is a gate that can be walked
+    # around by moving the sleep two lines further down — and it was: the
+    # first pass of this conversion left five 750 ms settles standing in these
+    # files (three behind click_until_interactable, two behind
+    # wait_for_team_menu) precisely because they sat outside the window. In a
+    # converted file there is no legitimate 750, so the rule is simply none.
+    hits=$(grep -nF 'SDL_Delay(750)' "$file" | sed "s|^|$file:|" || true)
     if [ -n "$hits" ]; then
         echo "$hits" >&2
         status=1
@@ -58,7 +59,7 @@ for file in "${FILES[@]}"; do
 done
 
 if [ "$status" -ne 0 ]; then
-    echo "ERROR: flat fade settles found next to wait_for_interactable." >&2
+    echo "ERROR: flat 750 ms fade settles found in a converted file." >&2
     echo "       Use wait_for_menu_frames(n) — fades are a single blit under" >&2
     echo "       TESTING, so the sleep waits for an animation that never runs." >&2
     echo "       See CLAUDE.md, \"Testing Menu UI / Interactive Flows\"." >&2
