@@ -94,6 +94,36 @@ using og::ui::PauseMenuResult;
 // og_test_picker / og_test_view / og_test_matchup / og_test_menu_ui, and
 // changing wait_for_interactable's semantics would change every injector flow
 // in the repo at once.
+//
+// WHY A FRAME-COUNTED WAIT CAN STILL TIME OUT (measured, not inferred). A
+// click whose dispatch writes the config stalls the MAIN thread inside the
+// kernel, and no frame counter can tick while it is there. The INPUT / MODE /
+// REMAP / RESET / ZOOM / HUD / REMOVE row handlers call
+// persist_pause_player_controls() inside the click dispatch
+// (src/interface/ui/pause_menu.cpp:885-899 and :904/:913/:919/:928/:959),
+// which runs cfg_store::save_settings() — a whole-file libyaml emit of
+// cfg/openglad.yaml on the menu thread (src/resources/gparser.cpp:324-390,
+// whose Log("Saving settings") is the last line printed before the stall).
+// menu_screen_runner.cpp posts the completed-frame counter AFTER that
+// dispatch, so a frame blocked in the write completes nothing.
+//
+// Sampling /proc/<pid>/task/<main tid>/{stat,wchan} at 50 ms through a failing
+// run caught the main thread in state D on balance_dirty_pages for 4.7 s, and
+// 7.9 s at the next cycle, each starting the instant "Saving settings" is
+// logged (200 of 216 samples in D). Paired on one box, one filter: with
+// dirty-page writers running beside the suite, 60/60 runs failed; with the
+// writers stopped, 72/72 passed.
+//
+// The backstop below is therefore doing its job — it NAMES a stalled menu
+// instead of hanging the binary, and the failure is self-recovering: a re-run
+// without a build beside it passes. Do not raise the 5 s / 10 s ceilings to
+// paper over it. The two honest alternatives, both deliberately unshipped:
+// make the backstop I/O-aware (stop accruing stalled_ms while the main
+// thread's /proc state is 'D'), rejected as Linux-only machinery inside a test
+// helper; or coalesce the cfg write to screen exit, which is a product design
+// decision — it changes persistence semantics and breaks the four tests in
+// this file that read cfg immediately after a row dispatch, plus
+// docs/pause-menu-design.md §3.2.
 constexpr int kPauseMenuFrameBudget = 240;
 
 template <typename Ready>
