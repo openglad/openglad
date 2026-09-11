@@ -239,22 +239,25 @@ int g_ack_click_post_ceiling_ms = 0;
 // press, while synchronous save/stage work can keep the release queued well
 // past that edge under load. A menu-thread reset consumes that release before
 // the caller may send another press, preventing a late first attempt plus its
-// retry from advancing a wheel twice.
+// retry from advancing a wheel twice. Both resets are posted with the CLICK'S
+// OWN wait as their ceiling: the post is cancelled, not failed fast, when no
+// run_menu_screen is pumping, so the 15 s default would let one unlandable
+// click cost six times what its caller budgeted for it.
 bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
 {
     const std::string before = interactable_label(id);
     if (before.empty())
         return false;
     ++g_ack_click_posts;
-    g_ack_click_post_ceiling_ms = 15000;
-    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }))
+    g_ack_click_post_ceiling_ms = wait_ms;
+    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms))
         return false;
     interact(id);
     const bool changed =
         ::wait_for_interactable_label_change(id, before, wait_ms);
     ++g_ack_click_posts;
     const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); });
+        run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms);
     return changed && acknowledged;
 }
 
@@ -2053,13 +2056,42 @@ struct MacroRoundTripState
     int captures = 0;
 };
 
+// The acknowledged click, as a bounded ladder over a NAMED screen edge.
+// click_until_label_containing covers a row whose own label moves; a door
+// that opens another screen has no label change to wait on, so it gets the
+// same treatment against the edge that identifies the destination. A press
+// that evaporated on a starved frame then costs one attempt instead of the
+// whole flow — and, because every injector below bails out when a door does
+// not open, instead of leaving picker_main spinning until the group's budget
+// expires. Counted, never clocked.
+int g_lineup_click_retries = 0;
+
+bool click_until_edge(const std::string& id,
+                      const std::function<bool(int)>& edge_reached,
+                      int attempts = 3, int wait_ms = 2500)
+{
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        (void)run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms);
+        (void)interact(id);
+        if (edge_reached(wait_ms)) {
+            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                     wait_ms);
+            return true;
+        }
+        ++g_lineup_click_retries;
+        fprintf(stderr, "  [lineup] attempt %d: '%s' did not reach its edge\n",
+                attempt + 1, id.c_str());
+    }
+    return false;
+}
+
 int macro_round_trip_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<MacroRoundTripState*>(data);
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    SDL_Delay(750);  // fadeblack eats events: one of the two settles that stay
     interact("continue_game");
 
     // (a) The camp's MATCH SETUP door: the macro rows at rest.
@@ -2069,14 +2101,14 @@ int macro_round_trip_injector(void* data)
         state->finished = true;
         return 0;
     }
-    SDL_Delay(400);
-    interact("zone_action_3");
-    state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
+    state->page_opened = click_until_edge("zone_action_3", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 169, wait_ms);
+    });
     if (!state->page_opened) {
         state->finished = true;
         return 0;
     }
-    SDL_Delay(500);
+    (void)wait_for_menu_frames(2);
     state->rest_teams_label = interactable_label("zone_row_0");
     state->rest_fill_label = interactable_label("zone_row_1");
 
@@ -2084,17 +2116,17 @@ int macro_round_trip_injector(void* data)
     // to VIEW LEVEL: a three-side match, no refusal anywhere.
     state->teams_three =
         click_until_label_containing("zone_row_0", "TEAMS: 3");
-    SDL_Delay(400);
-    interact("back");  // zone submenu -> Base Camp
-    (void)wait_for_team_menu(10000);
-    SDL_Delay(300);
-    interact("scenario");
-    if (wait_for_interactable("view_scenario", 10000)) {
-        SDL_Delay(750);
+    (void)click_until_edge("back",  // zone submenu -> Base Camp
+                           [](int wait_ms) { return wait_for_team_menu(wait_ms); });
+    if (click_until_edge("scenario", [](int wait_ms) {
+            return wait_for_interactable("view_scenario", wait_ms);
+        })) {
+        SDL_Delay(750);  // the other one: the viewer's own fadeblack
         trace_clear();
-        interact("view_scenario");
         state->viewer_opened_after_three =
-            wait_for_interactable_at("back", 10, 170, 10000);
+            click_until_edge("view_scenario", [](int wait_ms) {
+                return wait_for_interactable_at("back", 10, 170, wait_ms);
+            });
         if (state->viewer_opened_after_three) {
             (void)wait_for_trace(
                 "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
@@ -2103,95 +2135,90 @@ int macro_round_trip_injector(void* data)
                 trace_contains("picker", "FEWER THAN 2 TEAMS");
             state->green_line_after_three =
                 first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
-            SDL_Delay(300);
-            interact("back");
-            SDL_Delay(300);
-            (void)wait_for_interactable("progress", 10000);
-            SDL_Delay(300);
+            (void)click_until_edge("back", [](int wait_ms) {
+                return wait_for_interactable("progress", wait_ms);
+            });
         }
     }
     if (wait_for_interactable_at("back", 30, 170, 5000)) {
-        SDL_Delay(300);
-        interact("back");  // SCENARIO -> Base Camp
+        (void)click_until_edge(
+            "back",  // SCENARIO -> Base Camp
+            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
-    (void)wait_for_team_menu(10000);
-    SDL_Delay(300);
 
     // (c) Back at the page: TEAMS persisted, one more click deals the
     // fourth side, and one FILL click steps the FAIR face to STRONG.
-    interact("zone_action_3");
     state->second_page_opened =
-        wait_for_interactable_at("back", 10, 169, 10000);
+        click_until_edge("zone_action_3", [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        });
     if (state->second_page_opened) {
         (void)wait_for_interactable_label_containing("zone_row_0",
                                                      "TEAMS: 3", 10000);
-        SDL_Delay(400);
         state->teams_four =
             click_until_label_containing("zone_row_0", "TEAMS: 4");
-        SDL_Delay(400);
         state->fill_strong =
             click_until_label_containing("zone_row_1", "FILL: STRONG");
-        SDL_Delay(400);
-        interact("back");  // zone submenu -> Base Camp
-        (void)wait_for_team_menu(10000);
-        SDL_Delay(300);
+        (void)click_until_edge("back",  // zone submenu -> Base Camp
+                               [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
 
     // (d) LINEUP reads the same array band by band: STRONG on the human
     // team's own band too (H1) and STRONG on all three sides. Then the
     // tweak that diverges them: TEAM 2's wheel walked on to WEAK.
-    interact("scenario");
-    if (!wait_for_interactable("lineup", 10000)) {
+    if (!click_until_edge("scenario", [](int wait_ms) {
+            return wait_for_interactable("lineup", wait_ms);
+        })) {
         state->finished = true;
         return 0;
     }
-    SDL_Delay(300);
-    interact("lineup");
-    state->lineup_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->lineup_opened = click_until_edge("lineup", [](int wait_ms) {
+        return wait_for_interactable_at("back", 8, 176, wait_ms);
+    });
     if (state->lineup_opened) {
-        SDL_Delay(750);
+        (void)wait_for_menu_frames(2);
         for (int t = 0; t < 4; ++t) {
             state->band_labels[static_cast<std::size_t>(t)] =
                 interactable_label("lineup_fill_" + std::to_string(t));
         }
         state->captures += capture_frame("lineup_after_macro");
-        SDL_Delay(300);
         state->band_two_weak = click_through_labels(
             "lineup_fill_1",
             {"FILL: BRUTAL", "FILL: NONE", "FILL: WEAK"});
-        SDL_Delay(300);
-        interact("back");  // LINEUP -> SCENARIO
-        SDL_Delay(300);
+        (void)click_until_edge("back",  // LINEUP -> SCENARIO
+                               [](int wait_ms) {
+            return wait_for_interactable_at("back", 30, 170, wait_ms);
+        });
     }
     if (wait_for_interactable_at("back", 30, 170, 5000)) {
-        SDL_Delay(300);
-        interact("back");  // SCENARIO -> Base Camp
+        (void)click_until_edge(
+            "back",  // SCENARIO -> Base Camp
+            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
-    (void)wait_for_team_menu(10000);
-    SDL_Delay(300);
 
     // (e) The camp face answers the divergence: FILL: MIXED, sides kept.
-    interact("zone_action_3");
     state->third_page_opened =
-        wait_for_interactable_at("back", 10, 169, 10000);
+        click_until_edge("zone_action_3", [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        });
     if (state->third_page_opened) {
         (void)wait_for_interactable_label_containing("zone_row_1",
                                                      "FILL: MIXED", 10000);
-        SDL_Delay(400);
         state->mixed_teams_label = interactable_label("zone_row_0");
         state->mixed_fill_label = interactable_label("zone_row_1");
-        interact("back");
-        (void)wait_for_team_menu(10000);
-        SDL_Delay(300);
+        (void)click_until_edge(
+            "back",  // zone submenu -> Base Camp
+            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
 
     if (wait_for_team_menu(5000)) {
-        SDL_Delay(300);
-        interact("back");
+        // Base Camp -> out. No ladder here: with the main-menu call budget
+        // spent, picker_main RETURNS on this click instead of painting
+        // another screen, so there is no edge left to wait on.
+        (void)interact("back");
     }
     if (g_picker_max_mainmenu_calls == 0 &&
         wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
         interact("quit");
     }
     state->finished = true;

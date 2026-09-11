@@ -1298,8 +1298,10 @@ set_tests_properties(og_test_basecamp PROPERTIES
     TIMEOUT 420
 )
 # The matchup group's CTF and campaign-zone flows are injector-driven
-# picker_main runs whose waits are wall-clock settles, putting the
-# standalone binary well past the 180s group default. Same treatment as
+# picker_main runs. Their settles are wait-on-condition now — named edges,
+# completed menu frames and bounded retry ladders rather than flat sleeps —
+# but a whole group of picker_main flows is still well past the 180s group
+# default. Same treatment as
 # og_test_menu_ui / og_test_basecamp above: isolate it and give it the
 # standard heavy-flow budget in every lane. The LINEUP flows
 # (docs/lineup-design.md §2) used to sit in this group and pushed the
