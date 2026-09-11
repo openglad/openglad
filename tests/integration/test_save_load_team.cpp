@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include "test_save_state_guard.h"
 #include <openglad/resources/save_data.h>
@@ -95,6 +96,8 @@ static bool interact_match(
 TEST(SaveLoadTeam, save_team_then_load) {
     trace_clear();
 
+    ScopedCompanyFileCleanup cleanup;
+
     // Build a team with specific guys
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
@@ -163,6 +166,7 @@ TEST(SaveLoadTeam, save_team_then_load) {
 // round-trip through the on-disk save format with the upgraded family AND the
 // post-promotion stats intact.
 TEST(SaveLoadTeam, promoted_archmage_round_trips_through_save) {
+    ScopedCompanyFileCleanup cleanup;
     auto& save_data = og::runtime::current_session->myscreen_->save_data;
     save_data.reset();
     save_data.numplayers = 1;
@@ -364,15 +368,14 @@ static int deploy_toggle_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
-    SDL_Delay(500);
     if (wait_for_interactable("roster_dep_1", 10000)) {
         state->saw_roster = true;
-        SDL_Delay(750);
+        wait_for_menu_frames(2);
 
         fprintf(stderr, "  [test] toggling roster_dep_1\n");
         interact("roster_dep_1");

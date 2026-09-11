@@ -12,6 +12,7 @@
 #include <openglad/resources/io_common.h>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -75,26 +76,71 @@ struct DifficultyState {
     bool returned_to_base_camp;
 };
 
-// Click `id` `times` times, waiting for the bound label to prove each action
-// was consumed before queueing the next. A fixed delay races the synchronous
-// autosave behind these rows: under I/O load several complete clicks can pile
-// up before the menu polls SDL, collapsing them into one mouse state.
-static void interact_times(const std::string& id, int times)
+// Click `id` `times` times, proving each click was CONSUMED before queueing
+// the next.
+//
+// The oracle is the value the row STORES, read on the menu thread — not the
+// row's label. wait_for_interactable_label_change returns true for any label
+// that differs from the snapshot, including one produced by a neighbouring
+// per-frame re-derive, so it certified clicks the row never saw: under
+// ci-asan this flow lost one cycle step in roughly two runs out of three, and
+// the lap assertion sixty lines below then read one short with no complaint
+// from the injector at all.
+//
+// Same shape as test_options_menu.cpp's click_cycle_step, which drives 70
+// clicks per run through this engine and has never lost one: read the value,
+// click, poll for it to MOVE, re-click on the documented 300 ms spacing, and
+// fail by name on the deadline. The 5000 ms deadline is unchanged; the happy
+// path now exits on the first frame that lands the change instead of paying a
+// flat settle.
+static void interact_times(const std::string& id, int times,
+                           const std::function<int()>& read_value)
 {
     for (int i = 0; i < times; ++i) {
         fprintf(stderr, "  [test] clicking %s (%d/%d)\n", id.c_str(), i + 1, times);
-        const std::string old_label = interactable_label(id);
-        ASSERT_FALSE(old_label.empty())
+        int before = 0;
+        ASSERT_TRUE(run_on_main_thread([&] { before = read_value(); }))
+            << id << ": the menu loop never read the value before click "
+            << (i + 1);
+        ASSERT_TRUE(interact(id))
             << id << " disappeared before click " << (i + 1);
-        interact(id);
-        ASSERT_TRUE(wait_for_interactable_label_change(id, old_label, 5000))
-            << id << " did not consume click " << (i + 1);
-        // The label changes on the press edge. Establish the next frame's
+
+        const Uint64 deadline = SDL_GetTicks() + 5000;
+        Uint64 last_click = SDL_GetTicks();
+        for (;;) {
+            int now = before;
+            ASSERT_TRUE(run_on_main_thread([&] { now = read_value(); }))
+                << id << ": the menu loop never read the value after click "
+                << (i + 1);
+            if (now != before)
+                break;
+            if (SDL_GetTicks() >= deadline)
+                FAIL() << id << " never consumed click " << (i + 1)
+                       << " (value stuck at " << before << ")";
+            // 300 ms is the minimum RE-CLICK spacing: a shorter gap can land
+            // the next press while this one is still held, and it is dropped.
+            // It is not a poll interval.
+            if (SDL_GetTicks() - last_click >= 300) {
+                ASSERT_TRUE(interact(id))
+                    << id << " disappeared before a re-click of click "
+                    << (i + 1);
+                last_click = SDL_GetTicks();
+            }
+            SDL_Delay(20);
+        }
+
+        // The value changes on the press edge. Establish the next frame's
         // pointer baseline on the menu thread so its event poll consumes the
         // already-queued release before this injector sends another press.
         ASSERT_TRUE(run_on_main_thread([] { reset_mouse_click_tracking(); }))
             << id << " did not acknowledge click " << (i + 1);
     }
+}
+
+// The rows' stored values, all read on the menu thread by the helper above.
+static SaveData& live_save()
+{
+    return og::runtime::current_session->myscreen_->save_data;
 }
 
 static int difficulty_injector(void* data)
@@ -105,15 +151,14 @@ static int difficulty_injector(void* data)
 
     // The door lives in Base Camp now, so the flow starts with CONTINUE.
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
     interact("continue_game");
-    SDL_Delay(500);
     if (!wait_for_interactable("difficulty", 10000)) {
         fprintf(stderr, "  [test] Base Camp never showed the DIFFICULTY door\n");
         return 0;
     }
     state->reached_base_camp = true;
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     // Open the DIFFICULTY door.
     fprintf(stderr, "  [test] clicking difficulty (door)\n");
@@ -123,15 +168,25 @@ static int difficulty_injector(void* data)
         return 0;
     }
     state->entered_submenu = true;
-    SDL_Delay(300);
+    wait_for_menu_frames(2);
 
-    // Full cycle on every row: each setting ends back at its default.
-    interact_times("difficulty", 3);     // Battle -> Slaughter -> Skirmish -> Battle
-    interact_times("respawn_mode", 4);   // Off -> Heroes -> Everyone -> Team 1 -> Off
-    interact_times("respawn_delay", 3);  // Normal -> Fast -> Slow -> Normal
-    interact_times("permadeath", 2);     // On -> Off -> On
-    interact_times("generator_rate", 3); // Normal -> Calm -> Frenzy -> Normal
-    interact_times("infinite_gold", 2);  // Off -> On -> Off
+    // Full cycle on every row: each setting ends back at its default, and
+    // EVERY individual click is verified against the value that row writes —
+    // so an even number of lost clicks on a two-step lap (permadeath,
+    // infinite gold) can no longer read as a completed cycle.
+    interact_times("difficulty", 3,      // Battle -> Slaughter -> Skirmish -> Battle
+                   [] { return static_cast<int>(
+                            og::runtime::current_session->current_difficulty_); });
+    interact_times("respawn_mode", 4,    // Off -> Heroes -> Everyone -> Team 1 -> Off
+                   [] { return static_cast<int>(live_save().respawn_mode); });
+    interact_times("respawn_delay", 3,   // Normal -> Fast -> Slow -> Normal
+                   [] { return static_cast<int>(live_save().ctf_respawn_ticks); });
+    interact_times("permadeath", 2,      // On -> Off -> On
+                   [] { return static_cast<int>(live_save().keep_fallen_heroes); });
+    interact_times("generator_rate", 3,  // Normal -> Calm -> Frenzy -> Normal
+                   [] { return static_cast<int>(live_save().generator_rate); });
+    interact_times("infinite_gold", 2,   // Off -> On -> Off
+                   [] { return static_cast<int>(live_save().infinite_gold); });
     state->cycled_settings = true;
 
     // Leave the subscreen: the nested MENU_REDRAW must land back on a LIVE
@@ -143,7 +198,7 @@ static int difficulty_injector(void* data)
         return 0;
     }
     state->returned_to_base_camp = true;
-    SDL_Delay(300);
+    wait_for_menu_frames(2);
     EXPECT_TRUE(has_interactable("difficulty"))
         << "the strip door must still be live after its own subscreen closes";
     EXPECT_TRUE(has_interactable("scenario"))
@@ -154,7 +209,7 @@ static int difficulty_injector(void* data)
     fprintf(stderr, "  [test] clicking base camp back\n");
     interact("back");
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(300);
+    wait_for_menu_frames(2);
 
     EXPECT_FALSE(has_interactable("difficulty"))
         << "DIFFICULTY belongs to the Base Camp strip, not the main menu";
@@ -164,7 +219,7 @@ static int difficulty_injector(void* data)
     interact("options");
     if (!wait_for_interactable("options_back", 5000))
         return 0;
-    SDL_Delay(300);
+    wait_for_menu_frames(2);
     // Player controls are per-seat now: GAME SETTINGS must not carry the
     // retired global CONTROLS door or its RESET ALL.
     EXPECT_FALSE(has_interactable("control_settings"));
