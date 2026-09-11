@@ -225,6 +225,16 @@ bool wait_for_interactable_label(const std::string& id,
 bool wait_for_trace(const char* category, const char* substring,
                     int timeout_ms);
 
+// Counted instrumentation for the acknowledged click (TESTING-only, and this
+// whole file is TESTING-only): how many main-thread tasks the last call
+// posted, and the ceiling it posted them with. run_on_main_thread's ceiling
+// is a CANCELLATION deadline, not a liveness bound — a task posted while no
+// run_menu_screen is pumping is cancelled there and then — so a click that
+// was given 2.5 s to land must not sit on the 15 s default waiting to find
+// that out.
+int g_ack_click_posts = 0;
+int g_ack_click_post_ceiling_ms = 0;
+
 // Send one click and wait for its own label edge. The label changes on the
 // press, while synchronous save/stage work can keep the release queued well
 // past that edge under load. A menu-thread reset consumes that release before
@@ -233,12 +243,16 @@ bool wait_for_trace(const char* category, const char* substring,
 bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
 {
     const std::string before = interactable_label(id);
-    if (before.empty() ||
-        !run_on_main_thread([] { reset_mouse_click_tracking(); }))
+    if (before.empty())
+        return false;
+    ++g_ack_click_posts;
+    g_ack_click_post_ceiling_ms = 15000;
+    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }))
         return false;
     interact(id);
     const bool changed =
         ::wait_for_interactable_label_change(id, before, wait_ms);
+    ++g_ack_click_posts;
     const bool acknowledged =
         run_on_main_thread([] { reset_mouse_click_tracking(); });
     return changed && acknowledged;
@@ -2185,6 +2199,38 @@ int macro_round_trip_injector(void* data)
 }
 
 } // namespace
+
+// The acknowledged click's post ceiling is its own, not the 15 s default.
+// run_on_main_thread cancels a task that no run_menu_screen ever pumped, so
+// the ceiling decides how long a click that never landed costs the ladder
+// above it: three attempts of a 2.5 s click must not be able to spend 97 s.
+// Asserted on the recorded ceiling and the post count, never on a clock.
+TEST(LineupUi, acknowledged_click_gives_up_within_its_own_wait)
+{
+    // A live button to click, with no menu loop running behind it: the post
+    // can therefore never be pumped, which is exactly the starved case.
+    std::vector<button> rows;
+    rows.emplace_back("ack_probe", "PROBE", KEYSTATE_UNKNOWN, 10, 10, 60, 12,
+                      0, 0, MenuNav{});
+    og::runtime::current_session->localbuttons_ =
+        init_buttons(rows.data(), static_cast<Sint32>(rows.size()));
+    const std::string clickable = "ack_probe";
+    ASSERT_FALSE(::interactable_label(clickable).empty())
+        << "a live labelled row is needed for this to test anything";
+
+    g_ack_click_posts = 0;
+    g_ack_click_post_ceiling_ms = 0;
+    EXPECT_FALSE(click_and_acknowledge_label_change(clickable, 2500))
+        << "no menu loop is pumping, so the click cannot be acknowledged";
+    EXPECT_EQ(1, g_ack_click_posts)
+        << "a click that cannot be acknowledged posts once and stops";
+    EXPECT_EQ(2500, g_ack_click_post_ceiling_ms)
+        << "the post ceiling must be the click's own wait, not the 15 s "
+           "cancellation default";
+
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+}
 
 TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
 {
