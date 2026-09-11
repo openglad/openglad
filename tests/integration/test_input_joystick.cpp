@@ -16,7 +16,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-extern void wait_for_key(int somekey);
 extern og::input_native::JoystickHandle joysticks[10];
 // From picker_input.cpp: the menu-nav key consumer whose release waits poll
 // isPlayerHoldingKey (the hostile-pad hang site).
@@ -344,8 +343,6 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
     joy_event.type = SDL_EVENT_JOYSTICK_HAT_MOTION;
     ASSERT_TRUE(!isKeyboardEvent(joy_event)) << "joy hat should not be keyboard event";
     ASSERT_TRUE(isJoystickEvent(joy_event)) << "joy hat should be joystick event";
-
-    wait_for_key(SDLK_SPACE); // TESTING build: should return immediately.
 
     player_joy[0] = j;
     clear_player_joystick(0);

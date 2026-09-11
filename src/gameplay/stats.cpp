@@ -387,7 +387,8 @@ short statistics::do_command()
 	if (!controller_) // allow dead controllers for now
 	{
 		Log("STATS:DO_COM: No controller!\n");
-		// wait_for_key only available in SDL builds; skip in headless
+		// The 2013 code waited on a keypress here (wait_for_key); the
+		// headless split dropped the call and the function is gone now.
 		return 0;
 	}
 

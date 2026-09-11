@@ -671,7 +671,6 @@ void clear_keyboard();
 // state. Called on window focus/visibility loss, where any release can
 // happen without us ever seeing the event (missed-keyup latch protection).
 void clear_transient_input_state();
-void wait_for_key(int somekey);
 inline short query_key_press_event() { return input_key_press_event_ref(); }
 inline void clear_key_press_event() { input_key_press_event_ref() = 0; }
 // Monotonic count of key presses seen (never cleared): compare two readings
