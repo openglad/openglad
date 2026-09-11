@@ -182,6 +182,36 @@ void load_committed_core_pack(ClasspackData& data)
     ASSERT_TRUE(declared.ok) << declared.error;
 }
 
+// Restores one core pin verbatim. The mod-slot reset deliberately leaves
+// the pins alone, so a test that installs over one has to put it back or
+// every later test (in any --gtest_shuffle order) inherits the edit.
+class CorePinGuard {
+public:
+    explicit CorePinGuard(int family_id)
+        : family_id_(family_id), saved_(*get_family_descriptor(family_id))
+    {
+        // Installing over a slot replaces its tuning too (an entry that
+        // declares none erases what was there), so the pin is not restored
+        // by the descriptor alone.
+        if (const og::script::TuningMap* tuning =
+                og::script::family_tuning(Order::Living, family_id))
+            saved_tuning_ = *tuning;
+    }
+    ~CorePinGuard()
+    {
+        set_family_descriptor(family_id_, saved_);
+        og::script::set_family_tuning(Order::Living, family_id_, saved_tuning_);
+    }
+
+    CorePinGuard(const CorePinGuard&) = delete;
+    CorePinGuard& operator=(const CorePinGuard&) = delete;
+
+private:
+    int family_id_;
+    FamilyDescriptor saved_;
+    og::script::TuningMap saved_tuning_;
+};
+
 }  // namespace
 
 TEST(CommittedCorePack, matches_the_built_in_registries)
@@ -268,6 +298,7 @@ TEST(CommittedCorePack, matches_the_built_in_registries)
 TEST(ClasspackInstall, overrides_data_preserves_callbacks)
 {
     init_all_registries();
+    CorePinGuard pin(FAMILY_SOLDIER);
     const FamilyDescriptor before = *get_family_descriptor(FAMILY_SOLDIER);
 
     og::data::ClasspackData data;
@@ -313,9 +344,6 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
     ASSERT_EQ(after->customize_weapon, before.customize_weapon);
     ASSERT_EQ(after->on_ani_complete, before.on_ani_complete);
     ASSERT_EQ(after->on_melee_hit, before.on_melee_hit);
-
-    // Restore the pristine descriptor for the rest of the process.
-    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
 }
 
 // #209: `radar_ping = true` rides the presentation fold onto the
@@ -323,6 +351,7 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
 TEST(ClasspackInstall, radar_ping_installs_onto_the_descriptor)
 {
     init_all_registries();
+    CorePinGuard pin(FAMILY_SOLDIER);
     const FamilyDescriptor before = *get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_FALSE(before.radar.ping) << "core families ship no ping";
 
@@ -351,14 +380,12 @@ TEST(ClasspackInstall, radar_ping_installs_onto_the_descriptor)
     ASSERT_EQ(og::resources::install_classpack_data(std::move(keep)), 1);
     EXPECT_TRUE(get_family_descriptor(FAMILY_SOLDIER)->radar.ping)
         << "omitting radar_ping keeps whatever the slot holds";
-
-    // Restore the pristine descriptor for the rest of the process.
-    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
 }
 
 TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
 {
     init_all_registries();
+    CorePinGuard pin_mage(FAMILY_MAGE);
     const FamilyDescriptor before_mage = *get_family_descriptor(FAMILY_MAGE);
     const GeneratorFamilyDescriptor before_tent =
         *get_generator_family_descriptor(FAMILY_TENT);
@@ -393,7 +420,6 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
     ASSERT_EQ(tent->default_weapon, FAMILY_GHOST)
         << "generator default_weapon resolves through the living registry";
 
-    ASSERT_TRUE(set_family_descriptor(FAMILY_MAGE, before_mage));
     ASSERT_TRUE(set_generator_family_descriptor(FAMILY_TENT, before_tent));
 }
 
@@ -935,7 +961,7 @@ og::data::ClasspackData one_living(const char* pack, const char* id,
 }
 
 // Restores every populated slot of all five registries verbatim. Same
-// reason as CorePinGuard below, for a test that installs a whole pack over
+// reason as CorePinGuard above, for a test that installs a whole pack over
 // the pins.
 class RegistrySnapshotGuard {
 public:
@@ -985,36 +1011,6 @@ private:
     std::vector<std::pair<int, EffectFamilyDescriptor>> effects_;
     std::vector<std::pair<int, TreasureFamilyDescriptor>> treasures_;
     std::vector<std::pair<int, GeneratorFamilyDescriptor>> generators_;
-};
-
-// Restores one core pin verbatim. The mod-slot reset deliberately leaves
-// the pins alone, so a test that installs over one has to put it back or
-// every later test (in any --gtest_shuffle order) inherits the edit.
-class CorePinGuard {
-public:
-    explicit CorePinGuard(int family_id)
-        : family_id_(family_id), saved_(*get_family_descriptor(family_id))
-    {
-        // Installing over a slot replaces its tuning too (an entry that
-        // declares none erases what was there), so the pin is not restored
-        // by the descriptor alone.
-        if (const og::script::TuningMap* tuning =
-                og::script::family_tuning(Order::Living, family_id))
-            saved_tuning_ = *tuning;
-    }
-    ~CorePinGuard()
-    {
-        set_family_descriptor(family_id_, saved_);
-        og::script::set_family_tuning(Order::Living, family_id_, saved_tuning_);
-    }
-
-    CorePinGuard(const CorePinGuard&) = delete;
-    CorePinGuard& operator=(const CorePinGuard&) = delete;
-
-private:
-    int family_id_;
-    FamilyDescriptor saved_;
-    og::script::TuningMap saved_tuning_;
 };
 
 }  // namespace
