@@ -44,6 +44,7 @@ int level_editor_test_exercise_internal_helpers();
 int level_editor_test_decor_migrated_roundtrip();
 int level_editor_test_mouse_release_workflows();
 int level_editor_test_save_failure_reporting();
+int level_editor_test_nameless_selection_panel_rows();
 enum class EventType;
 EventType handle_basic_editor_event(const void* native_event);
 
@@ -244,6 +245,17 @@ TEST(LevelEditorHelpers, failed_saves_report_and_keep_the_level_dirty)
 {
     ASSERT_EQ(0, level_editor_test_save_failure_reporting())
         << "save-failure reporting failed at the negated check index";
+}
+
+// A guy with no name must not push his family label onto the name row: the
+// info box keeps one row per field so LEVEL/AI stay where the eye expects
+// them. Four checks -- the family row matches the named render, the name row
+// is blank, the two renders differ at all, and a single TREASURE selection
+// (whose name is always empty) still writes its label on row 0.
+TEST(LevelEditorHelpers, nameless_guy_keeps_the_family_label_on_the_name_row)
+{
+    ASSERT_EQ(4, level_editor_test_nameless_selection_panel_rows())
+        << "info-panel row layout for a nameless single selection";
 }
 
 TEST(LevelEditorHelpers, mouse_release_workflows_preserve_exact_editor_state)

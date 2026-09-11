@@ -2068,6 +2068,125 @@ int level_editor_test_decor_migrated_roundtrip()
     return failed_check == 0 ? 0 : -failed_check;
 }
 
+// The info panel's name row for a SINGLE selection. A named Living writes
+// its name on row 0 and its family label on row 1; a nameless one has
+// nothing to write on row 0, and Jonathan Dearborn's 2013 arm meant to
+// leave that row blank so the rest of the box keeps its place. Renders the
+// same soldier named and nameless and compares the two 8-pixel row bands
+// inside the info box, plus a single-treasure render that pins the guard to
+// Order::Living (a treasure's name is ALWAYS empty, and its family label
+// must stay on row 0).
+//
+// Returns the number of checks that passed; the caller pins the count.
+int level_editor_test_nameless_selection_panel_rows()
+{
+    int passed = 0;
+    const auto check = [&passed](bool condition) {
+        if (condition)
+            ++passed;
+    };
+
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    if (!mount_guard.switch_to("gladiator"))
+        return -1;
+
+    screen* scr = og::runtime::current_session->myscreen_;
+    if (scr == nullptr || scr->viewob[0] == nullptr)
+        return -2;
+
+    LevelEditorData data;
+    if (!data.loadCampaign("gladiator") || !data.loadLevel(1))
+        return -3;
+    data.level->delete_objects();
+    data.level->create_new_grid();
+    data.level->set_draw_pos(0, 0);
+    eds().current_floor = 0;
+    eds().decor_mode = false;
+
+    struct FramebufferGuard
+    {
+        screen& scr;
+        std::vector<unsigned char> saved;
+
+        explicit FramebufferGuard(screen& scr_) : scr(scr_), saved(scr_.videobuffer) {}
+        ~FramebufferGuard() { scr.videobuffer = std::move(saved); }
+    } framebuffer_guard(*scr);
+
+    // One 8-pixel text row of the info box, sampled strictly INSIDE the box
+    // the panel draws at draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2): x1=241,
+    // x2=315, so 245..314 never touches a border column.
+    const auto row_band = [&scr](int row) {
+        std::vector<unsigned char> pixels;
+        for (int y = L_D(row); y < L_D(row) + 8; ++y)
+        {
+            for (int x = 245; x < 315; ++x)
+            {
+                Uint8 red = 0;
+                Uint8 green = 0;
+                Uint8 blue = 0;
+                scr->get_pixel(x, y, &red, &green, &blue);
+                pixels.push_back(red);
+                pixels.push_back(green);
+                pixels.push_back(blue);
+            }
+        }
+        return pixels;
+    };
+
+    data.mode = Mode::Select;
+    data.reset_mode_buttons();
+
+    walker* guy = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+    if (guy == nullptr)
+        return -4;
+    guy->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    guy->set_team_num(0);
+
+    // Render A: the same guy with a name.
+    guy->stats()->name = "Rembrandt";
+    data.selection.clear();
+    data.selection.push_back(SelectionInfo(guy));
+    scr->clearbuffer();
+    data.display_panel(scr);
+    const std::vector<unsigned char> named_row0 = row_band(0);
+    const std::vector<unsigned char> named_row1 = row_band(1);
+
+    // Render B: the same guy with no name.
+    guy->stats()->name = "";
+    data.selection.clear();
+    data.selection.push_back(SelectionInfo(guy));
+    scr->clearbuffer();
+    data.display_panel(scr);
+    const std::vector<unsigned char> nameless_row0 = row_band(0);
+    const std::vector<unsigned char> nameless_row1 = row_band(1);
+    // Row 5 is past every line a single Living selection writes (family,
+    // level, AI), so it is the box's blank interior fill.
+    const std::vector<unsigned char> blank_row = row_band(5);
+
+    check(named_row1 == nameless_row1);   // 1: family label on the same row
+    check(nameless_row0 == blank_row);    // 2: the nameless name row is blank
+    check(named_row0 != nameless_row0);   // 3: the two renders really differ
+
+    // Render C: a single TREASURE selection. Its name is empty too, but the
+    // skipped row is a Living affordance -- the gold bar's family label stays
+    // on row 0.
+    walker* gold = data.level->add_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    if (gold == nullptr)
+        return -5;
+    gold->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
+    data.selection.clear();
+    data.selection.push_back(SelectionInfo(gold));
+    scr->clearbuffer();
+    data.display_panel(scr);
+    check(row_band(0) != row_band(5));    // 4: treasure label still on row 0
+
+    data.selection.clear();
+    data.level->delete_objects();
+    mount_guard.restore();
+    return passed;
+}
+
 // Issue #12 seams. The editor's LevelEditorData is a function-local static
 // inside level_editor() with its own LevelRuntimeData (and therefore its own
 // GameWorld), so a test that drives the real event loop has no other handle on
