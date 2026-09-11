@@ -1710,6 +1710,101 @@ TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
     game_screen->world().delete_objects();
 }
 
+// A team with no start marker of its own is placed by the neutral-teleport
+// fallback (og::server::spawn_team_from_save's else arm -> walker::teleport),
+// which draws its destination cell from the world RNG. gladiator scen1 authors
+// 21 start markers and every one belongs to team 0, so a team-1 hero can
+// legitimately land on a team-0 marker tile.
+//
+// Which RNG decides that landing: the DISPLAY world's. The level load seeds
+// the freshly loaded world from screen::world().rng_.state_
+// (level_runtime_data.cpp), and with no match stage in play the shadow install
+// takes the legacy display-seed branch, which applies a keyframe of the
+// display world onto the authoritative server world
+// (local_transport_shadow.cpp). Pinning that one state therefore fixes BOTH
+// worlds' spawn — the server-side assertion at the end of this case is the
+// proof, and it is why this test pins the display world rather than a match
+// seed.
+//
+// Without the pin the landing is a function of every RNG draw the process made
+// earlier (each level load carries the previous world's RNG state forward on
+// purpose), which is what made
+// GameLoop.local_gameplay_spawns_and_controls_every_selected_team_color fail
+// under --gtest_shuffle --gtest_random_seed=3 and pass in isolation.
+TEST(GameLoop, a_marker_less_team_teleports_and_may_share_a_team0_marker_tile)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    // The landing each pinned state produces. State 55 puts the team-1 hero on
+    // (480,896), a tile that carries one of team 0's start markers; state 56
+    // puts it somewhere else entirely. Team 0 ignores both — it consumes a
+    // marker. These are ASSERTed below so the case can never silently stop
+    // exercising the collision.
+    struct Landing { std::uint32_t rng_state; short team; int x; int y; };
+    const std::array<Landing, 4> cases = {
+        Landing{55u, 1, 480, 896},
+        Landing{56u, 1, 64, 384},
+        Landing{55u, 0, 384, 928},
+        Landing{56u, 0, 384, 928},
+    };
+
+    for (const Landing& landing : cases)
+    {
+        if (og::runtime::current_game_session != nullptr)
+            og::runtime::clear_local_transport_shadow(
+                *og::runtime::current_game_session);
+        game_screen->world().delete_objects();
+
+        SaveData& save = game_screen->save_data;
+        save.reset();
+        save.current_campaign = "gladiator";
+        save.current_levels[save.current_campaign] = 1;
+        save.scen_num = 1;
+        save.numplayers = 1;
+        save.allied_mode = 0;
+        save.my_team = landing.team;
+        save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[0]->name = "Color Guard";
+        save.team_list[0]->teamnum = landing.team;
+        save.team_size = 1;
+
+        og::ui::PickerLobbyGameStartConfig config =
+            make_one_view_lobby_start_config(save);
+        config.my_team = landing.team;
+        config.is_networked = false;
+
+        ready_screen_for_game_start(*game_screen, &config);
+        game_screen->world().rng_.state_ = landing.rng_state;
+        glad_init(false, &config);
+
+        walker* const hero = find_named_team_member(
+            game_screen->world(), "Color Guard", landing.team);
+        ASSERT_NE(nullptr, hero)
+            << "rng=" << landing.rng_state << " team=" << landing.team;
+        ASSERT_EQ(landing.x, static_cast<int>(hero->xpos()))
+            << "the pinned RNG state no longer produces the landing this case "
+               "was written around; rng=" << landing.rng_state
+            << " team=" << landing.team;
+        ASSERT_EQ(landing.y, static_cast<int>(hero->ypos()))
+            << "the pinned RNG state no longer produces the landing this case "
+               "was written around; rng=" << landing.rng_state
+            << " team=" << landing.team;
+
+        const std::vector<short> spawn_marker_teams =
+            start_marker_teams_at(game_screen->world(), *hero);
+        for (const short marker_team : spawn_marker_teams)
+            EXPECT_EQ(landing.team, marker_team)
+                << "a hero must never borrow another team's start marker; "
+                << "rng=" << landing.rng_state << " team=" << landing.team;
+    }
+
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, ready_screen_for_game_start_uses_lobby_player_count_for_numviews)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
