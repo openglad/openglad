@@ -48,6 +48,7 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/level_selection.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
 
@@ -2132,6 +2133,11 @@ bool CursesPickerClient::join_game()
 void CursesPickerClient::run_network_lobby(std::unique_ptr<CursesLobby> lobby)
 {
     finish_network_round(run_curses_lobby(*lobby, term_, clock_));
+    // Back in the picker: this networked session is over, so the class packs
+    // it downloaded from the host stop shadowing the next campaign's book.
+    // (The lobby's own teardown() is the wrong seam — ~CursesLobbyImpl runs
+    // it after take_session() handed the live session off.)
+    og::resources::end_pack_transfer_session();
 }
 
 // #207 design point 5 on the networked path. A networked round folds into the

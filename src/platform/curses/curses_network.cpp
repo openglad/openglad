@@ -1431,6 +1431,34 @@ public:
     // make_host_lobby_over_transport_for_testing.
     void pin_match_seed_for_testing(std::uint32_t seed) { match_seed_ = seed; }
 
+#ifdef TESTING
+    // Test-only observer: the pack ids this lobby is currently offering
+    // joiners (protocol v10). See curses_network_testing_hosted_pack_ids.
+    std::vector<std::string> testing_hosted_pack_ids() const
+    {
+        std::vector<std::string> ids;
+        if (server_ == nullptr)
+            return ids;
+        for (const og::sim::HostedPack& pack : server_->pack_host().packs())
+            ids.push_back(pack.manifest.pack_id);
+        return ids;
+    }
+#endif
+
+    // Offer this host's mounted non-core class packs (protocol v10). The
+    // shared memo keys on the MOUNTED campaign, so the announcement follows
+    // the staging remount instead of being snapshotted at construction.
+    void sync_hosted_packs()
+    {
+        if (server_ == nullptr)
+            return;
+        if (std::optional<std::vector<og::sim::HostedPack>> packs =
+                hosted_packs_.refresh())
+        {
+            server_->set_hosted_packs(std::move(*packs));
+        }
+    }
+
     // --- HOST setup: in-process loopback + WebSocket server (+ relay) ---------
     bool init_host(const HostOptions& opt, std::string* error)
     {
@@ -1489,7 +1517,8 @@ public:
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
         // Offer this host's mounted non-core class packs (protocol v10).
-        server_->set_hosted_packs(og::resources::build_transferable_packs());
+        hosted_packs_.reset();
+        sync_hosted_packs();
         wire_start_gate();
 
         // Seed the host's own settings + join over the loopback client transport.
@@ -1549,7 +1578,8 @@ public:
         host_client_transport_ = std::move(host_client_transport);
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
-        server_->set_hosted_packs(og::resources::build_transferable_packs());
+        hosted_packs_.reset();
+        sync_hosted_packs();
         wire_start_gate();
 
         send_lobby_message(*host_client_transport_,
@@ -2444,6 +2474,9 @@ private:
             og::server::deliver_staged_pair(stage_,
                                             combined_transport_.get(),
                                             stage_broadcast_);
+            // Staging mounts the lobby's campaign; the pack announcement
+            // describes the mounted tree, so it has to follow.
+            sync_hosted_packs();
         }
 
         // The host listens on its loopback client transport; the joiner on its
@@ -2616,6 +2649,8 @@ private:
     std::shared_ptr<og::sim::WebSocketServerTransport> ws_server_;
     std::shared_ptr<og::sim::RelayWebSocketTransport> relay_;
     std::unique_ptr<og::sim::LobbyServer> server_;
+    // Mounted campaign whose pack set this lobby last announced.
+    og::resources::HostedPackSync hosted_packs_;
 
     // Join transport.
     std::shared_ptr<og::sim::ITransport> transport_;
@@ -2762,6 +2797,15 @@ const SaveData* curses_network_testing_host_server_save(
 {
     auto* const host = dynamic_cast<HostCursesSession*>(&session);
     return host != nullptr ? &host->testing_server_save() : nullptr;
+}
+
+// The pack ids this lobby is currently offering joiners (protocol v10).
+std::vector<std::string> curses_network_testing_hosted_pack_ids(
+    CursesLobby& lobby)
+{
+    auto* const impl = dynamic_cast<CursesLobbyImpl*>(&lobby);
+    return impl != nullptr ? impl->testing_hosted_pack_ids()
+                           : std::vector<std::string>{};
 }
 #endif
 

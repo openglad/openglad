@@ -7,6 +7,7 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/core/fnv1a.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/zlib_api.h>
 #include <openglad/interface/button.h>
@@ -30,6 +31,7 @@
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/win_shares.h>
 #include <openglad/server/match_stage.h>
 
@@ -11995,6 +11997,64 @@ TEST(PickerNetworkClient, joiner_resume_without_a_link_keeps_its_seat_teams)
         << "no link came back: the rebuild is local only";
 
     join_client->shutdown();
+}
+
+// The other half of the resume contract, for the class packs a joiner
+// downloaded from its host: ending a NETWORKED SESSION drops the session
+// pack mounts, but a between-levels resume is not the end of the session.
+// The joiner's no-link fallback rebuilds the lobby through
+// initialize_from_save(), whose first act is shutdown() — so an unmount hung
+// on that shutdown would strand the next level's world with the pack it is
+// about to run already gone from the search path.
+TEST(PickerNetworkClient, joiner_resume_between_levels_keeps_its_session_packs)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Packed Joiner");
+
+    // A pack that arrived over the wire this session, installed exactly the
+    // way PackTransferClient installs one.
+    const std::string pack_script = "og.log('session pack loaded')\n";
+    const std::vector<std::uint8_t> pack_bytes(pack_script.begin(),
+                                               pack_script.end());
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0;
+    manifest.pack_count = 1;
+    manifest.pack_id = "org.wp9.sessionpack";
+    manifest.version = "1";
+    manifest.files.push_back(og::sim::PackManifestFileEntry{
+        .path = "scripts/session.lua",
+        .size_bytes = static_cast<std::uint32_t>(pack_bytes.size()),
+        .hash64 = og::core::fnv1a64(pack_bytes.data(), pack_bytes.size())});
+    ASSERT_TRUE(og::resources::install_received_pack(manifest, {pack_bytes}));
+    ASSERT_TRUE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "the transferred pack must be mounted before the resume runs";
+
+    // Nothing is listening: the resume takes the transport-unusable fallback
+    // that re-enters initialize_from_save().
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", ix::getFreePort());
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    ASSERT_NE(nullptr, join_client);
+    join_client->initialize_from_save();
+    ASSERT_FALSE(join_client->session_established());
+
+    join_client->resume_after_level();
+
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "a between-levels resume is not the end of the session: the "
+           "packs this session downloaded must still be mounted";
+
+    join_client->shutdown();
+    og::resources::unmount_session_packs();
+    std::error_code pack_cache_ec;
+    std::filesystem::remove_all(
+        std::filesystem::path(get_user_path()) / "packs_cache",
+        pack_cache_ec);
 }
 
 // A host that comes back from a level with its lobby torn down (the session

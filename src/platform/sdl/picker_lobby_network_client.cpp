@@ -2614,7 +2614,9 @@ public:
             std::move(transports));
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
-        sync_hosted_packs(*save, /*force=*/true);
+        // A brand-new LobbyServer has been told nothing yet.
+        hosted_packs_.reset();
+        sync_hosted_packs();
 
         // Staged lobby (#218): the network host stages through the dedicated
         // pipeline, seeded from its own company save (V5 Option A) with the
@@ -2706,6 +2708,10 @@ public:
         apply_state_to_current_save();
         rebuild_status_lines();
         drive_stage();
+        // Staging mounts the lobby's campaign, which is exactly what the
+        // pack announcement describes: re-offer the set when that mount
+        // moved (a string compare when it did not).
+        sync_hosted_packs();
     }
 
     [[nodiscard]] const GameWorld* staged_world() const override
@@ -3338,20 +3344,22 @@ private:
             og::ui::detail::make_settings_message(*save));
         // A campaign switch can change the campaign-embedded pack set;
         // re-offer it so joiners get the new manifests (protocol v10).
-        sync_hosted_packs(*save, /*force=*/false);
+        sync_hosted_packs();
     }
 
-    // Offer this machine's mounted non-core packs for transfer. Rebuilding
-    // hashes every pack file, so only do it when the mounted campaign (the
-    // one lobby-time source of pack-set changes) actually changed.
-    void sync_hosted_packs(const SaveData& save, bool force)
+    // Offer this machine's mounted non-core packs for transfer. The shared
+    // memo keys on the MOUNTED campaign — the thing build_transferable_packs
+    // actually reads — and rebuilding hashes every pack file, so it answers
+    // only when that mount moved.
+    void sync_hosted_packs()
     {
         if (server_ == nullptr)
             return;
-        if (!force && save.current_campaign == hosted_packs_campaign_)
-            return;
-        hosted_packs_campaign_ = save.current_campaign;
-        server_->set_hosted_packs(og::resources::build_transferable_packs());
+        if (std::optional<std::vector<og::sim::HostedPack>> packs =
+                hosted_packs_.refresh())
+        {
+            server_->set_hosted_packs(std::move(*packs));
+        }
     }
 
     void send_join_from_save()
@@ -3579,9 +3587,9 @@ private:
     std::string relay_room_code_;
     std::string relay_status_message_;
     std::string direct_status_message_;
-    // Campaign whose pack set was last offered to the LobbyServer; guards
-    // sync_hosted_packs against re-hashing every settings echo.
-    std::string hosted_packs_campaign_;
+    // Mounted campaign whose pack set was last offered to the LobbyServer;
+    // guards sync_hosted_packs against re-hashing every settings echo.
+    og::resources::HostedPackSync hosted_packs_;
 };
 
 class JoinPickerLobbyClient final : public og::ui::IPickerLobbyClient
@@ -4291,6 +4299,12 @@ public:
         if (!transport_)
             return false;
         shutdown();
+        // LEAVING is the end of this networked session: the class packs it
+        // downloaded from the host stop shadowing the next campaign's book.
+        // (Deliberately NOT in shutdown() itself — initialize_from_save()
+        // calls that as its first statement, including the between-levels
+        // resume fallback, which must keep the running pack mounted.)
+        og::resources::end_pack_transfer_session();
         return true;
     }
 
