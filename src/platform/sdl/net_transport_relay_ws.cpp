@@ -529,8 +529,12 @@ struct RelayWebSocketTransport::Impl
         // callback can race the member teardown that follows this body.
         // (Moving the pointer out before stopping raced the callback
         // thread's reads of `websocket`.)
+        // Same re-dial gap as the direct client transport: ix closes before it
+        // raises its own stop flag, so quiesce_and_stop() disarms the
+        // reconnection loop and closes until the socket is at rest before the
+        // join inside stop().
         if (websocket)
-            websocket->stop();
+            detail::quiesce_and_stop(*websocket);
     }
 
 private:

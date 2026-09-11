@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "../test_game_world_fixture.h"
+#include "../test_teardown_ceiling.h"
 
 namespace {
 
@@ -698,6 +699,78 @@ TEST(NetTransportWebSocketClient,
         },
         5s)) << "a drop after connecting should surface as Lost, not Failed";
     EXPECT_TRUE(client.connected_peers().empty());
+}
+
+TEST(NetTransportWebSocketClient,
+     disconnect_returns_while_the_auto_reconnect_loop_is_live)
+{
+    // ix::WebSocket::stop() closes the socket and only afterwards raises its
+    // own stop flag, so with automatic reconnection live the io thread can
+    // re-dial inside that gap: the fresh socket comes up OPEN and parks in an
+    // unbounded poll(), and the join inside stop() then never returns. Tear a
+    // reconnecting transport down right after the server dropped it (the
+    // widest re-dial window) and require disconnect() to come back.
+    //
+    // The same re-dial is what puts a half-finished connection on the server,
+    // so the server is torn down under a ceiling of its own rather than on
+    // this thread — a wedge on either leg has to name itself.
+    //
+    // Gated by a cycle COUNT, not a clock.
+    constexpr int kCycles = 200;
+    constexpr auto kTeardownCeiling = 30s;
+
+    for (int cycle = 0; cycle < kCycles; ++cycle)
+    {
+        const int port = ix::getFreePort();
+
+        og::sim::WebSocketServerTransport::Options server_options;
+        server_options.host = "127.0.0.1";
+        auto server = std::make_unique<og::sim::WebSocketServerTransport>(
+            port, server_options);
+        server->accept_connections();
+
+        og::sim::WebSocketClientTransport::Options client_options;
+        client_options.remote_peer_id = 9u;
+        client_options.automatic_reconnection = true;
+        client_options.min_reconnect_wait_ms = 1u;
+        client_options.max_reconnect_wait_ms = 20u;
+        auto client = std::make_unique<og::sim::WebSocketClientTransport>(
+            std::format("ws://127.0.0.1:{}", port),
+            client_options);
+        client->accept_connections();
+
+        ASSERT_TRUE(poll_until_peer_count(*client, 1u)) << "cycle " << cycle;
+        ASSERT_TRUE(poll_until_peer_count(*server, 1u)) << "cycle " << cycle;
+
+        // Drop the link from the far end: the client's io thread is now inside
+        // its reconnection loop, which is what races the teardown below.
+        server->disconnect(server->connected_peers().front());
+
+        const bool client_torn_down = og::test::finishes_within(
+            kTeardownCeiling,
+            [peer_id = client_options.remote_peer_id,
+             owned = std::move(client)]() mutable {
+                owned->disconnect(peer_id);
+            });
+        if (!client_torn_down)
+        {
+            // Leave the far end of the wedged socket standing too.
+            (void)server.release();
+            FAIL() << "client transport teardown wedged on cycle " << cycle
+                   << ": ix re-dialled between close() and _stop, and stop()'s "
+                      "join never returned";
+        }
+
+        const bool server_torn_down = og::test::finishes_within(
+            kTeardownCeiling,
+            [owned = std::move(server)]() mutable { owned.reset(); });
+        if (!server_torn_down)
+        {
+            FAIL() << "server transport teardown wedged on cycle " << cycle
+                   << ": the reconnecting client left a connection parked in "
+                      "ix's poll, so the gc join never returned";
+        }
+    }
 }
 
 } // namespace
