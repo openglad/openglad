@@ -2546,6 +2546,13 @@ public:
         {
             websocket_server_transport_ =
                 std::make_shared<og::sim::WebSocketServerTransport>(options_.port);
+            // The listening socket is only bound by accept_connections(); the
+            // constructor cannot fail on a port conflict. Bind HERE so an
+            // address-in-use lands in direct_status_message_ and the relay
+            // fallback above still gets its chance (the relay transport is
+            // started the same way). The combined accept_connections() below
+            // is idempotent for a transport that is already listening.
+            websocket_server_transport_->accept_connections();
         }
         catch (const std::exception& error)
         {

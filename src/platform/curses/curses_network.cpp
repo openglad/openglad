@@ -1447,6 +1447,13 @@ public:
         try {
             const int port = opt.port > 0 ? opt.port : kDefaultPort;
             ws_server_ = std::make_shared<og::sim::WebSocketServerTransport>(port);
+            // The listening socket is only bound by accept_connections(); the
+            // constructor cannot fail on a port conflict. Bind HERE so an
+            // address-in-use becomes the "Direct: ..." refusal below instead
+            // of an exception thrown out of make_host_lobby. The combined
+            // accept_connections() further down is idempotent for a transport
+            // that is already listening.
+            ws_server_->accept_connections();
             transports.push_back(ws_server_);
         } catch (const std::exception& ex) {
             ws_server_.reset();
