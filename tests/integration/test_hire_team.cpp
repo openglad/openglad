@@ -91,11 +91,69 @@ static bool seed_open_company(SaveData& save, const std::string& slot,
 //       Team Build -> Hire Troops -> NEXT -> NEXT -> PREV -> Back -> Back
 
 struct HireState {
-    bool started;
-    bool finished;
-    bool saw_hire_menu;
-    int cycles_completed;
+    bool started = false;
+    bool finished = false;
+    bool saw_hire_menu = false;
+    bool left_hire_menu = false;
+    int cycles_completed = 0;
 };
+
+// The hire screen's live candidate index, read on the menu thread. PREV/NEXT/
+// HIRE ME/BACK all carry fixed text, so there is no per-candidate LABEL to
+// watch: the index cycle_guy() writes is the only honest proof that a click
+// was consumed. (Counting the clicks the injector SENT is not — an engine
+// that dropped every one of them satisfies that count exactly.)
+static bool hire_candidate_index(int& out)
+{
+    return run_on_main_thread([&out] {
+        out = static_cast<int>(og::runtime::current_session->current_type_);
+    });
+}
+
+// Establish the next frame's pointer baseline on the menu thread. A press
+// sent while the previous click's release is still queued reads to the menu
+// loop as one held pointer, and the new press is simply dropped — which is
+// what the flat SDL_Delay between consecutive clicks was buying, expensively
+// and without ever proving it worked. Same shape as test_difficulty.cpp's
+// interact_times.
+static void settle_pointer_between_clicks()
+{
+    (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
+    wait_for_menu_frames(1);
+}
+
+// Click a hire cycler and report whether the candidate ACTUALLY moved,
+// re-clicking on the documented 300 ms spacing until a 5 s deadline. Same
+// shape as test_options_menu.cpp's click_cycle_step.
+static bool cycle_hire_candidate(const char* id)
+{
+    int before = -1;
+    if (!hire_candidate_index(before))
+        return false;
+    if (!interact(id))
+        return false;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    Uint64 last_click = SDL_GetTicks();
+    for (;;) {
+        int now = before;
+        if (!hire_candidate_index(now))
+            return false;
+        if (now != before)
+            return true;
+        if (SDL_GetTicks() >= deadline) {
+            fprintf(stderr,
+                    "  [test] '%s' did not advance the hire candidate "
+                    "(index stuck at %d)\n", id, before);
+            return false;
+        }
+        if (SDL_GetTicks() - last_click >= 300) {  // re-click spacing only
+            if (!interact(id))
+                return false;
+            last_click = SDL_GetTicks();
+        }
+        SDL_Delay(20);
+    }
+}
 
 static int hire_injector(void* data)
 {
@@ -105,7 +163,7 @@ static int hire_injector(void* data)
 
     // Wait for main menu
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
@@ -118,45 +176,59 @@ static int hire_injector(void* data)
     // out of the team-build screen instead.
 
     // New games now land on team build first, then enter hire explicitly.
-    SDL_Delay(500);
-    wait_for_interactable("hire_troops", 10000);
-    SDL_Delay(300);
+    if (!wait_for_interactable("hire_troops", 10000)) {
+        state->finished = true;
+        return 0;
+    }
+    wait_for_menu_frames(2);
     fprintf(stderr, "  [test] clicking hire_troops\n");
     interact("hire_troops");
 
-    SDL_Delay(500);
     if (wait_for_interactable("hire_me", 10000)) {
         state->saw_hire_menu = true;
-        SDL_Delay(500);
+        wait_for_menu_frames(2);
 
-        // Cycle through characters with NEXT
+        // Cycle through characters: NEXT, NEXT, PREV — counting only the
+        // cycles the SCREEN confirmed.
         fprintf(stderr, "  [test] clicking next\n");
-        interact("next");
-        state->cycles_completed++;
-        SDL_Delay(300);
+        if (cycle_hire_candidate("next"))
+            state->cycles_completed++;
 
         fprintf(stderr, "  [test] clicking next again\n");
-        interact("next");
-        state->cycles_completed++;
-        SDL_Delay(300);
+        if (cycle_hire_candidate("next"))
+            state->cycles_completed++;
 
         // And back with PREV
         fprintf(stderr, "  [test] clicking prev\n");
-        interact("prev");
-        state->cycles_completed++;
-        SDL_Delay(300);
+        if (cycle_hire_candidate("prev"))
+            state->cycles_completed++;
+        settle_pointer_between_clicks();
     }
 
-    // Go back to team menu
+    // Go back to team menu. Never click blind: a BACK fired at a screen that
+    // has not settled prints a warning nobody reads, and the flow then fails
+    // ten seconds later on an unrelated wait. Waiting for it names the miss
+    // where it happens.
+    //
+    // RESIDUAL, stated plainly: if BACK really is gone, this blocking screen
+    // still cannot be unwound from an injector — the engine's Escape hotkey
+    // reads SDL's keyboard-state array, which SDL_PushEvent cannot write, so
+    // there is no injectable key that substitutes for the button. The flow
+    // below then reports left_hire_menu == false once picker_main returns,
+    // and if it cannot return, ctest's group timeout is still the backstop.
     fprintf(stderr, "  [test] clicking back from hire menu\n");
-    interact("back");
+    if (wait_for_interactable("back", 5000))
+        state->left_hire_menu = interact("back");
 
     // Back to main menu
-    SDL_Delay(500);
-    wait_for_interactable("hire_troops", 10000);
-    SDL_Delay(750);
+    if (!wait_for_interactable("hire_troops", 10000)) {
+        state->finished = true;
+        return 0;
+    }
+    wait_for_menu_frames(2);
     fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
+    if (wait_for_interactable("back", 5000))
+        interact("back");
 
     state->finished = true;
     return 0;
@@ -177,7 +249,7 @@ TEST(HireTeam, hire_menu_browsing) {
     og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    HireState state = { false, false, false, 0 };
+    HireState state;
     SDL_Thread* thread = SDL_CreateThread(hire_injector, "hire_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -194,7 +266,15 @@ TEST(HireTeam, hire_menu_browsing) {
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_hire_menu) << "should have seen the hire menu";
-    ASSERT_TRUE(state.cycles_completed >= 3) << "should have cycled through characters 3 times";
+    ASSERT_TRUE(state.left_hire_menu)
+        << "BACK must have been on screen and clickable when the flow left "
+           "the hire menu";
+    // EXACT, and counted from the screen's own candidate index: the old
+    // `>= 3` counted the clicks the injector SENT (incremented
+    // unconditionally), so an engine that dropped every one of them passed.
+    ASSERT_EQ(3, state.cycles_completed)
+        << "NEXT/PREV did not advance the hire candidate: only "
+        << state.cycles_completed << " of 3 cycles were confirmed";
 }
 
 // §2.9 flow 7 + §3.8: HIRE re-enters from the base-camp command strip, a
@@ -221,39 +301,37 @@ static int hire_deployed_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
     interact("continue_game");
 
-    SDL_Delay(500);
     if (!wait_for_interactable("hire_troops", 10000)) {
         state->finished = true;
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
     interact("hire_troops");
 
-    SDL_Delay(500);
     if (wait_for_interactable("hire_me", 10000)) {
         state->saw_hire_menu = true;
-        SDL_Delay(500);
+        wait_for_menu_frames(2);
         fprintf(stderr, "  [test] clicking hire_me\n");
-        interact("hire_me");
-        state->hired = true;
-        SDL_Delay(500);
+        state->hired = interact("hire_me");
+        settle_pointer_between_clicks();
     }
 
     fprintf(stderr, "  [test] clicking back from hire menu\n");
-    interact("back");
+    if (wait_for_interactable("back", 5000))
+        interact("back");
 
     // Re-entry: the base camp shows the hired member as roster row 1.
-    SDL_Delay(500);
     if (wait_for_interactable("roster_dep_1", 10000)) {
         state->saw_new_row = true;
     }
-    SDL_Delay(750);
+    settle_pointer_between_clicks();
     fprintf(stderr, "  [test] clicking back from base camp\n");
-    interact("back");
+    if (wait_for_interactable("back", 5000))
+        interact("back");
 
     state->finished = true;
     return 0;
