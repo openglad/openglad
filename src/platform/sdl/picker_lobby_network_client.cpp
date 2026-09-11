@@ -2468,6 +2468,35 @@ std::vector<std::string> build_host_picker_status_lines(
 
 namespace {
 
+// Both roles rebuild their lobby from the save when the connection did not
+// survive, and both must keep the seat COLOURS the session was played with
+// rather than re-seed them from a roster the player may have recoloured in
+// Base Camp between levels. One implementation, so the survivor is the one
+// under test (PR #245, "no rule twins"). Returns true when the caller still
+// owes its role's roster re-send.
+bool restore_seat_teams_after_rebuild(
+    const std::vector<short>& preserved_teams,
+    std::vector<short>& seat_teams,
+    short& local_team,
+    bool spectator_mode,
+    int local_player_count,
+    SaveData* save)
+{
+    if (preserved_teams.empty() || seat_teams.empty())
+        return false;
+    seat_teams = preserved_teams;
+    if (save == nullptr)
+        return false;
+    og::ui::detail::resize_local_seat_assignments(
+        seat_teams,
+        *save,
+        spectator_mode,
+        local_player_count);
+    local_team = seat_teams.front();
+    save->my_team = local_team;
+    return true;
+}
+
 class HostPickerLobbyClient final : public og::ui::IPickerLobbyClient
 {
 public:
@@ -2498,6 +2527,12 @@ public:
             og::ui::detail::seed_local_seat_assignments(*save, spectator_mode_);
         local_team_ = local_seat_teams_.front();
         save->my_team = local_team_;
+        // shutdown() clears local_seat_teams_, and the resume fallback below
+        // runs only AFTER a shutdown — so the seats it means to preserve need
+        // a copy that teardown does not touch. Re-seeded here on every fresh
+        // start, so a restart on the same options never resurrects the
+        // previous session's seats.
+        last_session_seat_teams_ = local_seat_teams_;
         direct_address_ = detect_lan_ipv4_address();
 
         local_server_transport_ = og::sim::InProcessTransport::create_server();
@@ -3234,23 +3269,17 @@ public:
         if (combined_transport_ == nullptr || local_client_transport_ == nullptr ||
             server_ == nullptr)
         {
-            const std::vector<short> preserved_teams = local_seat_teams_;
+            const std::vector<short> preserved_teams = last_session_seat_teams_;
             initialize_from_save();
-            if (!preserved_teams.empty() && !local_seat_teams_.empty())
+            if (restore_seat_teams_after_rebuild(
+                    preserved_teams,
+                    local_seat_teams_,
+                    local_team_,
+                    spectator_mode_,
+                    local_player_count_,
+                    current_picker_save()))
             {
-                local_seat_teams_ = preserved_teams;
-                SaveData* const save = current_picker_save();
-                if (save != nullptr)
-                {
-                    og::ui::detail::resize_local_seat_assignments(
-                        local_seat_teams_,
-                        *save,
-                        spectator_mode_,
-                        local_player_count_);
-                    local_team_ = local_seat_teams_.front();
-                    save->my_team = local_team_;
-                    sync_roster_from_save();
-                }
+                sync_roster_from_save();
             }
             return;
         }
@@ -3376,6 +3405,7 @@ private:
                     local_seat_teams_.clear();
                     for (const og::sim::LobbyPlayer* const seat : local_seats)
                         local_seat_teams_.push_back(seat->team);
+                    last_session_seat_teams_ = local_seat_teams_;
                 }
             }
             break;
@@ -3538,6 +3568,10 @@ private:
     int local_player_count_ = 1;
     short local_team_ = 0;
     std::vector<short> local_seat_teams_;
+    // Survives shutdown(): the seat teams of the session that just ended,
+    // read by the resume fallback (which runs only after a shutdown has
+    // already cleared local_seat_teams_).
+    std::vector<short> last_session_seat_teams_;
     bool start_request_pending_ = false;
     std::uint32_t next_start_request_id_ = 1;
     std::uint32_t pending_start_request_id_ = 0;
@@ -4566,21 +4600,15 @@ public:
         {
             const std::vector<short> preserved_teams = local_seat_teams_;
             initialize_from_save();
-            if (!preserved_teams.empty() && !local_seat_teams_.empty())
+            if (restore_seat_teams_after_rebuild(
+                    preserved_teams,
+                    local_seat_teams_,
+                    local_team_,
+                    spectator_mode_,
+                    local_player_count_,
+                    current_picker_save()))
             {
-                local_seat_teams_ = preserved_teams;
-                SaveData* const save = current_picker_save();
-                if (save != nullptr)
-                {
-                    og::ui::detail::resize_local_seat_assignments(
-                        local_seat_teams_,
-                        *save,
-                        spectator_mode_,
-                        local_player_count_);
-                    local_team_ = local_seat_teams_.front();
-                    save->my_team = local_team_;
-                    sync_roster_from_save();
-                }
+                sync_roster_from_save();
             }
             return;
         }
