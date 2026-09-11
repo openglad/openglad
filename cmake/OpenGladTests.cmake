@@ -1137,6 +1137,7 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_picker_client.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_game_runtime.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_network.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_host_bind_conflict.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
         ${CMAKE_SOURCE_DIR}/src/core/test_trace.cpp
         ${SRC_DIR}/platform/curses/curses_platform_globals.cpp

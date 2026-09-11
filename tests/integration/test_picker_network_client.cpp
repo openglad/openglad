@@ -2232,6 +2232,51 @@ TEST(PickerNetworkClient, host_relay_flow_uses_campaign_content_hash)
     host_client_restarted->shutdown();
 }
 
+// A port already in use (a second copy of the game, a stale host) must not
+// take the whole HOST GAME attempt down with it: the relay room is created
+// before the direct listener is opened, so the session still hosts over the
+// relay and the conflict surfaces on the "Direct: " status line.
+TEST(PickerNetworkClient, host_direct_port_conflict_still_hosts_over_the_relay)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Host");
+    g_start_game_requested = false;
+
+    const int relay_port = ix::getFreePort();
+    FakeRelayServer relay_server(
+        relay_port,
+        200,
+        R"({"code":"glad-xkcd","owner_token":"owner-secret-token"})");
+
+    // Somebody else already owns the direct port: a REAL listener on it, not
+    // a mocked failure.
+    const int busy_port = ix::getFreePort();
+    og::sim::WebSocketServerTransport blocker(busy_port);
+    blocker.accept_connections();
+
+    og::ui::PickerHostGameOptions options;
+    options.port = busy_port;
+    options.enable_relay = true;
+    options.relay_base_url = std::format("ws://127.0.0.1:{}", relay_port);
+    auto host_client = og::ui::create_host_picker_lobby_client(options);
+    ASSERT_NO_THROW(host_client->initialize_from_save())
+        << "a busy direct port must not abort a relay-capable host";
+
+    const auto status = host_client->status_lines();
+    EXPECT_TRUE(status_lines_contain_exact(status, "Room: GLAD-XKCD"))
+        << "the relay room that was already created must still be hosted";
+    EXPECT_TRUE(status_lines_contain_prefix(status, "Direct: "))
+        << "the bind conflict belongs on the direct status line";
+    EXPECT_FALSE(status_lines_contain_prefix(status, "LAN: "))
+        << "no direct listener was opened, so no LAN address may be offered";
+
+    host_client->shutdown();
+}
+
 // #155 cloud saves, native transport: platform_cloud_http_get/post are the
 // ix::HttpClient half of the /api/save/<KEY> vault. Drive both verbs against
 // the loopback relay (the same fixture the room-create flow uses), then drive
