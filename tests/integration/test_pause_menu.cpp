@@ -2979,18 +2979,23 @@ int add_cycle_input_injector(void* data)
     auto* const flow = static_cast<AddCycleFlow*>(data);
     og::runtime::ensure_thread_session();
 
-    // Bounded escape, the tail pause_hostile_pad_injector already carries.
+    // Escape tail, in the shape pause_hostile_pad_injector already carries.
     // This flow drives a BLOCKING menu from the main thread: nothing but a
-    // RESUME click lets game_frame_with_result return, so an injector that
-    // gives up mid-flow leaves the whole binary hung instead of failing. Keep
-    // closing every menu that appears until the main thread says it is done,
-    // then report the leg that gave up.
+    // click lets game_frame_with_result return, so an injector that gives up
+    // mid-flow leaves the whole binary hung instead of failing. Keep closing
+    // whatever screen is open until the main thread says it is out of the menu
+    // for good, then report the leg that gave up.
+    //
+    // No wall-clock bound on the loop: the main thread cannot leave the menu
+    // on its own, so a tail that stopped trying early would GUARANTEE the
+    // wedge it exists to prevent. The player sub-screen publishes BACK and no
+    // RESUME, so a leg that dies in there needs both clicks.
     const auto escape = [flow](int leg) {
-        for (int waited = 0; waited < 30'000; waited += 100) {
-            if (flow->test_finished.load())
-                break;
+        while (!flow->test_finished.load()) {
             if (has_interactable("pause_resume"))
                 interact("pause_resume");
+            else if (has_interactable("pause_player_back"))
+                interact("pause_player_back");
             SDL_Delay(100);
         }
         return leg;
@@ -3213,6 +3218,10 @@ TEST(PauseMenuFlow, add_player_injector_escapes_a_failed_leg_instead_of_wedging)
     flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
+    // The tail's last click may have been pushed after the menu closed under
+    // it; a stray mouse event must not ride into the next test's menu.
+    SDL_PumpEvents();
+    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
 
     EXPECT_EQ(1, injector_result)
         << "the sabotaged leg must be reported by number, not swallowed";
@@ -3349,15 +3358,20 @@ int pause_hostile_pad_injector(void* data)
         if (wait_for_interactable("pause_resume", 5'000))
             (void)wait_for_completed_pause_menu_frame();
     }
-    for (int waited = 0; waited < 10'000; waited += 250)
+    // No wall-clock bound: run_pause_menu only returns when something clicks
+    // its way out, so a tail that stopped trying would leave the main thread
+    // blocked forever — the hang this tail exists to prevent. The player
+    // sub-screen publishes BACK and no RESUME, so a leg that dies in there
+    // needs both clicks.
+    while (!flow->menu_returned.load())
     {
-        if (flow->menu_returned.load())
-            return failure != 0 ? failure : 7;
         if (has_interactable("pause_resume"))
             interact("pause_resume");
+        else if (has_interactable("pause_player_back"))
+            interact("pause_player_back");
         SDL_Delay(250);
     }
-    return 8;
+    return failure != 0 ? failure : 7;
 }
 
 } // namespace
