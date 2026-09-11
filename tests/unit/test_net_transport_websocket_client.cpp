@@ -12,7 +12,6 @@
 #include <chrono>
 #include <cstdint>
 #include <format>
-#include <future>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -22,6 +21,7 @@
 #include <vector>
 
 #include "../test_game_world_fixture.h"
+#include "../test_teardown_ceiling.h"
 
 namespace {
 
@@ -711,12 +711,14 @@ TEST(NetTransportWebSocketClient,
     // reconnecting transport down right after the server dropped it (the
     // widest re-dial window) and require disconnect() to come back.
     //
-    // Gated by a cycle COUNT, not a clock. The teardown runs on a worker
-    // thread so a wedge is reported as a failure instead of hanging the
-    // binary; everything that worker touches is owned by the worker or by a
-    // shared_ptr, so the leaked transport of a failing cycle cannot outlive
-    // its own state.
+    // The same re-dial is what puts a half-finished connection on the server,
+    // so the server is torn down under a ceiling of its own rather than on
+    // this thread — a wedge on either leg has to name itself.
+    //
+    // Gated by a cycle COUNT, not a clock.
     constexpr int kCycles = 200;
+    constexpr auto kTeardownCeiling = 30s;
+
     for (int cycle = 0; cycle < kCycles; ++cycle)
     {
         const int port = ix::getFreePort();
@@ -744,28 +746,30 @@ TEST(NetTransportWebSocketClient,
         // its reconnection loop, which is what races the teardown below.
         server->disconnect(server->connected_peers().front());
 
-        auto done = std::make_shared<std::promise<void>>();
-        std::future<void> finished = done->get_future();
-        std::thread tearer(
-            [done, peer_id = client_options.remote_peer_id,
+        const bool client_torn_down = og::test::finishes_within(
+            kTeardownCeiling,
+            [peer_id = client_options.remote_peer_id,
              owned = std::move(client)]() mutable {
                 owned->disconnect(peer_id);
-                done->set_value();
             });
-
-        if (finished.wait_for(30s) != std::future_status::ready)
+        if (!client_torn_down)
         {
-            // Never destroy a transport whose io thread is wedged, and leave
-            // the far end of its socket standing: both stay alive inside the
-            // detached worker / the released server for the rest of the run.
-            tearer.detach();
+            // Leave the far end of the wedged socket standing too.
             (void)server.release();
             FAIL() << "client transport teardown wedged on cycle " << cycle
                    << ": ix re-dialled between close() and _stop, and stop()'s "
                       "join never returned";
         }
 
-        tearer.join();
+        const bool server_torn_down = og::test::finishes_within(
+            kTeardownCeiling,
+            [owned = std::move(server)]() mutable { owned.reset(); });
+        if (!server_torn_down)
+        {
+            FAIL() << "server transport teardown wedged on cycle " << cycle
+                   << ": the reconnecting client left a connection parked in "
+                      "ix's poll, so the gc join never returned";
+        }
     }
 }
 

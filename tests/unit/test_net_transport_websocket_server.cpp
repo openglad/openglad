@@ -13,7 +13,6 @@
 #include <condition_variable>
 #include <cstdint>
 #include <format>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -24,6 +23,7 @@
 #include <vector>
 
 #include "../test_network_fixture.h"
+#include "../test_teardown_ceiling.h"
 
 namespace {
 
@@ -665,18 +665,18 @@ TEST(NetTransportWebSocketServer,
     // ix::WebSocketServer::stop() closes the clients it can see and then joins
     // its gc thread, which only exits once every connection thread has ended.
     // A connection that is already in the client set but still inside its
-    // handshake when that close pass runs comes up OPEN afterwards and parks
-    // in an unbounded poll(), so its thread never ends, the gc join never
-    // returns, and the server destructor wedges. Stand a live client up, put
-    // more connections into that handshake window, and require
-    // ~WebSocketServerTransport to come back.
+    // handshake when that close pass runs ignores the close, comes up OPEN
+    // afterwards and parks in an unbounded poll(), so its thread never ends,
+    // the gc thread spins on closeTerminatedThreads() forever, and the server
+    // destructor never returns. Stand a live client up, put more connections
+    // into that handshake window, and require ~WebSocketServerTransport to
+    // come back.
     //
-    // Gated by a cycle COUNT, not a clock. The destruction runs on a worker
-    // thread so a wedge is reported as a failure instead of hanging the
-    // binary, and the worker owns the transport it is destroying.
+    // Gated by a cycle COUNT, not a clock.
     IxNetSystemScope net_system;
     constexpr int kCycles = 200;
     constexpr int kRacingProbes = 3;
+    constexpr auto kTeardownCeiling = 30s;
 
     for (int cycle = 0; cycle < kCycles; ++cycle)
     {
@@ -703,20 +703,12 @@ TEST(NetTransportWebSocketServer,
             probes.back()->start();
         }
 
-        auto done = std::make_shared<std::promise<void>>();
-        std::future<void> finished = done->get_future();
-        std::thread destroyer(
-            [done, owned = std::move(transport)]() mutable {
-                owned.reset();
-                done->set_value();
-            });
-
-        if (finished.wait_for(30s) != std::future_status::ready)
+        const bool destroyed = og::test::finishes_within(
+            kTeardownCeiling,
+            [owned = std::move(transport)]() mutable { owned.reset(); });
+        if (!destroyed)
         {
-            // Never touch a wedged server or the sockets still attached to it:
-            // the transport stays owned by the detached worker and the probes
-            // are leaked rather than stopped.
-            destroyer.detach();
+            // Never touch the sockets still attached to a wedged server.
             for (auto& probe : probes)
                 (void)probe.release();
             FAIL() << "server transport destruction wedged on cycle " << cycle
@@ -724,7 +716,6 @@ TEST(NetTransportWebSocketServer,
                       "unbounded poll(), so the gc join never returned";
         }
 
-        destroyer.join();
         probes.clear();
     }
 }
