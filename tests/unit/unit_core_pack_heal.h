@@ -18,21 +18,27 @@ std::string get_asset_path();
 
 namespace og::test {
 
+// Family behavior lives in the core class pack. Its descriptors carry no
+// C++ behavior callbacks, so a headless unit
+// binary that skips io_init's asset mounts would run a sim whose specials,
+// potions and effects all silently do nothing. Mount the shipped packs/ tree
+// the same way io_init does. Idempotent, and re-asserted after every test:
+// a test that tears PhysFS down (or remounts a campaign, which rescans
+// packs/) must not leave later tests with no family behavior at all.
+//
 // Family data and behavior both live in the core class pack: the five
 // registries start empty and are filled by install_classpacks() from the
-// mounted packs/ tree. Family behavior lives in the core class pack. Its
-// descriptors carry no C++ behavior callbacks, so a headless unit
-// binary that skips io_init's asset mounts would run a sim whose specials,
-// potions and effects all silently do nothing, against registries
+// mounted packs/ tree. A headless unit binary
+// that skips io_init's asset mounts would otherwise run against registries
 // where every get_*_family_descriptor answers nullptr — no soldier, no
 // knife, no specials. Mount the shipped packs/ tree the same way io_init
 // does. Idempotent, and re-asserted after every test: a test that tears
 // PhysFS down (or remounts a campaign, which rescans packs/) must not leave
 // later tests with no families at all.
 //
-// One definition for both unit mains: they had drifted, and the heal the
-// SDL-free one gained in af0c5e35 never reached the og_add_unit_group
-// binaries.
+// (Both mains' own words, kept verbatim: this is one definition for both
+// of them, because they had drifted and the heal the SDL-free one gained
+// in af0c5e35 never reached the og_add_unit_group binaries.)
 inline void mount_core_pack()
 {
     const bool mounted = og::resources::mount(
