@@ -9,8 +9,46 @@
 #include <openglad/resources/our_palette.h>
 #include <gtest/gtest.h>
 
+
+namespace {
+
+// set_palette/adjust_palette/cycle_palette/set_palette_reg all write the
+// SESSION's live palette (og::runtime::current_session->curpal_), which the
+// whole binary shares: later pixel tests resolve a colour back through
+// screen::get_pixel's first-RGB-match reverse lookup, so a scratch table left
+// installed here makes them read the wrong index. Round-trip the registers
+// rather than reloading from disk — query/set_palette_reg restore exactly what
+// was installed, brightness gamma included.
+struct RuntimePaletteGuard
+{
+    std::array<unsigned char, 768> saved{};
+
+    RuntimePaletteGuard()
+    {
+        for (int i = 0; i < 256; ++i) {
+            int r = 0, g = 0, b = 0;
+            query_palette_reg(static_cast<unsigned char>(i), &r, &g, &b);
+            saved[static_cast<std::size_t>(i * 3 + 0)] = static_cast<unsigned char>(r);
+            saved[static_cast<std::size_t>(i * 3 + 1)] = static_cast<unsigned char>(g);
+            saved[static_cast<std::size_t>(i * 3 + 2)] = static_cast<unsigned char>(b);
+        }
+    }
+
+    ~RuntimePaletteGuard()
+    {
+        for (int i = 0; i < 256; ++i)
+            set_palette_reg(static_cast<unsigned char>(i),
+                            saved[static_cast<std::size_t>(i * 3 + 0)],
+                            saved[static_cast<std::size_t>(i * 3 + 1)],
+                            saved[static_cast<std::size_t>(i * 3 + 2)]);
+    }
+};
+
+} // namespace
+
 TEST(Palette, set_and_query_reg)
 {
+    const RuntimePaletteGuard palette_guard;
     std::array<unsigned char, 768> pal{};
     // Keep values in the classic 0-63 VGA range that this game expects.
     for (size_t i = 0; i < pal.size(); i++)
@@ -34,6 +72,7 @@ TEST(Palette, set_and_query_reg)
 
 TEST(Palette, adjust_clamps)
 {
+    const RuntimePaletteGuard palette_guard;
     std::array<unsigned char, 768> pal{};
     // A small known palette that will exercise both clamp directions.
     pal[0] = 0;
@@ -59,6 +98,7 @@ TEST(Palette, adjust_clamps)
 
 TEST(Palette, cycle_basic)
 {
+    const RuntimePaletteGuard palette_guard;
     std::array<unsigned char, 768> pal{};
 
     // Encode 4 palette entries (0..3) with distinct RGB triplets.
