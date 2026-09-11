@@ -10818,16 +10818,25 @@ struct LinkLossWindowOverride
     }
 };
 
+// Scopes the product's start-request expiry to the phase under test.
+// Restores the PREVIOUS value rather than zero so a short deadline can be
+// nested inside a generous one: only the deliberately silent phase of a
+// flow wants a 300 ms expiry, and the phases either side of it have to
+// complete a live loopback round-trip before the deadline they run under.
 struct StartRequestTimeoutOverride
 {
     explicit StartRequestTimeoutOverride(std::uint64_t ms)
+        : previous_(g_picker_start_request_timeout_ms_override)
     {
         g_picker_start_request_timeout_ms_override = ms;
     }
     ~StartRequestTimeoutOverride()
     {
-        g_picker_start_request_timeout_ms_override = 0;
+        g_picker_start_request_timeout_ms_override = previous_;
     }
+
+private:
+    std::uint64_t previous_ = 0;
 };
 
 } // namespace
@@ -11409,7 +11418,9 @@ TEST(PickerNetworkClient,
      elected_host_start_request_expires_and_the_next_go_sends_a_fresh_one)
 {
     IxNetSystemScope net_system;
-    StartRequestTimeoutOverride timeout_override(300);
+    // Generous for the phases that have to be ANSWERED over a live loopback
+    // round-trip; the deliberately silent phase (1) narrows it to 300 ms.
+    StartRequestTimeoutOverride timeout_override(30'000);
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     PickerSaveStateGuard save_guard(save);
@@ -11506,35 +11517,40 @@ TEST(PickerNetworkClient,
 
     // (1) The host goes silent: its socket stays open (nothing is torn
     // down), but lobby_server is no longer pumped, so the request gets
-    // neither the handoff nor a denial echo.
-    trace_clear();
-    EXPECT_FALSE(elected_host->request_start_game());
-    EXPECT_TRUE(elected_host->start_request_pending())
-        << "the request went out";
-    EXPECT_EQ(og::ui::StartRequestOutcome::None,
-              elected_host->start_request_outcome());
-    EXPECT_TRUE(elected_host->session_established())
-        << "the socket is open: this is a silent host, not a dead link";
-    const auto pressed_at = std::chrono::steady_clock::now();
-    ASSERT_TRUE(wait_until([&] {
-        pump_clients();
-        return !elected_host->start_request_pending();
-    }, 3s)) << "the client must expire its own unanswered request";
-    const auto expired_after_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - pressed_at).count();
-    EXPECT_GE(expired_after_ms, 300)
-        << "the expiry cannot precede the timeout (it fired after "
-        << expired_after_ms << " ms)";
-    EXPECT_EQ(og::ui::StartRequestOutcome::NoAnswer,
-              elected_host->start_request_outcome())
-        << "the verdict of an abandoned request";
-    EXPECT_TRUE(trace_contains("networking", "start_request_expired id=2"));
-    EXPECT_FALSE(trace_contains("networking", "start_request_link_lost"))
-        << "a silent host is not a dead link";
-    EXPECT_TRUE(elected_host->session_established())
-        << "a silent host is not a lost session";
-    EXPECT_FALSE(g_start_game_requested);
+    // neither the handoff nor a denial echo. THIS is the phase the short
+    // expiry belongs to — the expiry is read at check time, so narrowing it
+    // here is enough and the phases around it keep their live round-trip.
+    {
+        StartRequestTimeoutOverride silent_phase_timeout(300);
+        trace_clear();
+        EXPECT_FALSE(elected_host->request_start_game());
+        EXPECT_TRUE(elected_host->start_request_pending())
+            << "the request went out";
+        EXPECT_EQ(og::ui::StartRequestOutcome::None,
+                  elected_host->start_request_outcome());
+        EXPECT_TRUE(elected_host->session_established())
+            << "the socket is open: this is a silent host, not a dead link";
+        const auto pressed_at = std::chrono::steady_clock::now();
+        ASSERT_TRUE(wait_until([&] {
+            pump_clients();
+            return !elected_host->start_request_pending();
+        }, 3s)) << "the client must expire its own unanswered request";
+        const auto expired_after_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - pressed_at).count();
+        EXPECT_GE(expired_after_ms, 300)
+            << "the expiry cannot precede the timeout (it fired after "
+            << expired_after_ms << " ms)";
+        EXPECT_EQ(og::ui::StartRequestOutcome::NoAnswer,
+                  elected_host->start_request_outcome())
+            << "the verdict of an abandoned request";
+        EXPECT_TRUE(trace_contains("networking", "start_request_expired id=2"));
+        EXPECT_FALSE(trace_contains("networking", "start_request_link_lost"))
+            << "a silent host is not a dead link";
+        EXPECT_TRUE(elected_host->session_established())
+            << "a silent host is not a lost session";
+        EXPECT_FALSE(g_start_game_requested);
+    }
 
     // (2) The next GO opens a FRESH request (id 3) — pending again, the
     // stale verdict cleared.
