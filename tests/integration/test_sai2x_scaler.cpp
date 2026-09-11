@@ -406,6 +406,30 @@ TEST(Sai2xScaler, smart_scaler_allocation_and_invalid_source_fail_closed)
     EXPECT_NE(nullptr, value.renderer);
 }
 
+// P5: the clipped scaler's left-neighbour sample. sub1 is the stride back to
+// the previous source column; with it pinned to 0 at every x the four left
+// samples collapse onto the centre column and two of the four 2xSaI corner
+// rules become self-contradictory (measured: zero hits over 200k images).
+TEST(Sai2xScaler, clipped_scaler_samples_the_previous_column_not_the_current_one)
+{
+    ASSERT_EQ(0, Init_2xSaI());
+    // A 4x4 strip built so exactly one destination pixel depends on the
+    // left-neighbour sample. At src(1,1): color5=(1,1)=W, color6=(2,1)=W,
+    // color2=(1,2)=B, color3=(2,2)=B, and the LEFT column supplies
+    // color4=(0,1)=W, color1=(0,2)=W, colorA0=(0,3)=B, so the 2xSaI
+    // product2a rule "color5==color1 && color6==color5 && color4!=color2 &&
+    // color5!=colorA0" fires and blends: INTERPOLATE(B, W) == 0x007F7F7F.
+    constexpr Uint32 W = 0x00FFFFFFu;
+    constexpr Uint32 B = 0x00000000u;
+    const std::vector<Uint32> source{ W, W, W, W,
+                                      W, W, W, W,
+                                      W, B, B, B,
+                                      B, W, W, W };
+    const std::vector<Uint32> out =
+        scale_pixels(DirectScaler::Super2xSaiClipped, source, 4, 4);
+    EXPECT_EQ(0x007F7F7Fu, out[3 * 8 + 2]) // dst(2,3) == product2a of src(1,1)
+        << "the left-neighbour sample must be the previous column, not the current one";
+}
 
 static void run_sai2x_ex2_and_supereagle_write_output()
 {
