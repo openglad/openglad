@@ -429,6 +429,27 @@ static std::vector<short> start_marker_teams_at(const GameWorld& world,
     return teams;
 }
 
+// Which teams the LEVEL authors a start marker for. spawn_team_from_save
+// consumes markers with an exact team filter, so only these teams are placed
+// on a marker at all; the rest take the neutral-teleport fallback. Markers are
+// killed rather than erased during the spawn, so they are all still countable
+// here (the same reason start_marker_teams_at above sees dead ones).
+static std::set<short> teams_with_start_markers(const GameWorld& world)
+{
+    std::set<short> teams;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const marker = uptr.get();
+        if (marker == nullptr || marker->query_order() != Order::Special ||
+            marker->family() != FAMILY_RESERVED_TEAM)
+        {
+            continue;
+        }
+        teams.insert(marker->team_num());
+    }
+    return teams;
+}
+
 static std::set<std::uint32_t> non_zero_controlled_entity_ids(
     const og::sim::GameClient& client)
 {
@@ -764,8 +785,29 @@ TEST(GameLoop, game_frame_ends_the_mission_without_a_transport_runtime)
     game_screen->world().delete_objects();
 }
 
+namespace {
+
+// initialize_replay_screen (replay_runtime.cpp) latches the session into
+// playback and only begin_replay_recording clears it. While it is set,
+// reset_local_transport_shadow skips the whole staged-lobby path
+// (local_transport_shadow.cpp's adopt_stage takes
+// !session.replay_playback_active_ as a conjunct), so a case that arms
+// playback must disarm it again. RAII, because the case below has ASSERTs
+// that return early.
+struct ReplayPlaybackFlagGuard
+{
+    bool saved = og::runtime::current_session->replay_playback_active_;
+    ~ReplayPlaybackFlagGuard()
+    {
+        og::runtime::current_session->replay_playback_active_ = saved;
+    }
+};
+
+} // namespace
+
 TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
 {
+    const ReplayPlaybackFlagGuard playback_guard;
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
 
@@ -846,6 +888,21 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     game_screen->world().end = 0;
     game_screen->world().delete_objects();
     std::filesystem::remove(replay_path, ec);
+}
+
+// Order pin for the case above. initialize_replay_screen latches
+// session.replay_playback_active_ (replay_runtime.cpp) and only
+// begin_replay_recording clears it again. While it is set,
+// reset_local_transport_shadow short-circuits the whole staged-lobby path
+// (local_transport_shadow.cpp: `!session.replay_playback_active_` is a
+// conjunct of adopt_stage), so the stage tests further down lose their
+// subject — the stage is neither adopted nor rejected — and no assertion in
+// the leaking test notices.
+TEST(GameLoop, replay_recording_test_does_not_leave_the_session_in_playback)
+{
+    ASSERT_NE(nullptr, og::runtime::current_session);
+    EXPECT_FALSE(og::runtime::current_session->replay_playback_active_)
+        << "the recording test above must restore the session's playback flag";
 }
 
 TEST(GameLoop, glad_init_preserves_existing_timing_when_requested)
@@ -1636,6 +1693,12 @@ TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
             config.is_networked = false;
 
             ready_screen_for_game_start(*game_screen, &config);
+            // Pin the display world's RNG: the marker-less teams below are
+            // placed by the neutral-teleport fallback, which draws its cell
+            // from that stream, and level loads carry the stream forward on
+            // purpose. Unpinned, where teams 1-3 land is a function of every
+            // draw made earlier in the process.
+            game_screen->world().rng_.state_ = 0x5eed0c07u;
             glad_init(false, &config);
 
             ASSERT_NE(nullptr, og::runtime::current_game_session);
@@ -1654,18 +1717,190 @@ TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
                 << "allied=" << allied_mode << " team=" << team;
             const std::vector<short> spawn_marker_teams =
                 start_marker_teams_at(game_screen->world(), *hero);
-            if (team == 0)
+            if (teams_with_start_markers(game_screen->world()).count(team) != 0)
             {
-                ASSERT_FALSE(spawn_marker_teams.empty());
-            }
-            for (const short marker_team : spawn_marker_teams)
-                EXPECT_EQ(team, marker_team)
-                    << "a hero must never borrow another team's start marker; "
+                // The level authors a marker for this team, so
+                // spawn_team_from_save consumed one: the hero stands on its
+                // OWN marker's tile and never on a foreign one. (In gladiator
+                // scen1 all 21 markers are team 0's, so this arm is exercised
+                // for team 0 only — a level with markers for two teams would
+                // be needed to exercise the exact-team filter on a non-zero
+                // team.)
+                ASSERT_FALSE(spawn_marker_teams.empty())
                     << "allied=" << allied_mode << " team=" << team;
+                for (const short marker_team : spawn_marker_teams)
+                    EXPECT_EQ(team, marker_team)
+                        << "a hero must never borrow another team's start "
+                        << "marker; allied=" << allied_mode
+                        << " team=" << team;
+            }
+            else
+            {
+                // No marker of its own: the neutral-teleport fallback placed
+                // it from a random grid cell, which may coincide with another
+                // team's marker tile — legal, because every marker is killed
+                // the moment the spawn finishes and nothing reads them again.
+                // What must hold is that the hero got a real cell and that the
+                // recorded respawn point is that cell (the classic respawn
+                // feature revives heroes there).
+                EXPECT_GE(static_cast<int>(hero->xpos()), 0);
+                EXPECT_LT(static_cast<int>(hero->xpos()),
+                          game_screen->world().grid.w * GRID_SIZE);
+                EXPECT_GE(static_cast<int>(hero->ypos()), 0);
+                EXPECT_LT(static_cast<int>(hero->ypos()),
+                          game_screen->world().grid.h * GRID_SIZE);
+                EXPECT_EQ(static_cast<int>(hero->xpos()),
+                          static_cast<int>(hero->spawn_x()))
+                    << "allied=" << allied_mode << " team=" << team;
+                EXPECT_EQ(static_cast<int>(hero->ypos()),
+                          static_cast<int>(hero->spawn_y()))
+                    << "allied=" << allied_mode << " team=" << team;
+            }
             ASSERT_NE(nullptr, game_screen->viewob[0]->control);
             EXPECT_EQ(team, game_screen->viewob[0]->control->team_num())
                 << "allied=" << allied_mode << " team=" << team;
         }
+    }
+
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+// A team with no start marker of its own is placed by the neutral-teleport
+// fallback (og::server::spawn_team_from_save's else arm -> walker::teleport),
+// which draws its destination cell from the world RNG. gladiator scen1 authors
+// 21 start markers and every one belongs to team 0, so a team-1 hero can
+// legitimately land on a team-0 marker tile.
+//
+// Which RNG decides that landing: the DISPLAY world's. The level load seeds
+// the freshly loaded world from screen::world().rng_.state_
+// (level_runtime_data.cpp), and with no match stage in play the shadow install
+// takes the legacy display-seed branch, which applies a keyframe of the
+// display world onto the authoritative server world
+// (local_transport_shadow.cpp). Pinning that one state therefore fixes BOTH
+// worlds' spawn — the server-side assertion at the end of this case is the
+// proof, and it is why this test pins the display world rather than a match
+// seed.
+//
+// Without the pin the landing is a function of every RNG draw the process made
+// earlier (each level load carries the previous world's RNG state forward on
+// purpose), which is what made
+// GameLoop.local_gameplay_spawns_and_controls_every_selected_team_color fail
+// under --gtest_shuffle --gtest_random_seed=3 and pass in isolation.
+TEST(GameLoop, a_marker_less_team_teleports_and_may_share_a_team0_marker_tile)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    // The landing each pinned state produces. State 55 puts the team-1 hero on
+    // (480,896), a tile that carries one of team 0's start markers; state 56
+    // puts it somewhere else entirely. Team 0 ignores both — it consumes a
+    // marker. These are ASSERTed below so the case can never silently stop
+    // exercising the collision.
+    struct Landing { std::uint32_t rng_state; short team; int x; int y; };
+    const std::array<Landing, 4> cases = {
+        Landing{55u, 1, 480, 896},
+        Landing{56u, 1, 64, 384},
+        Landing{55u, 0, 384, 928},
+        Landing{56u, 0, 384, 928},
+    };
+
+    for (const Landing& landing : cases)
+    {
+        if (og::runtime::current_game_session != nullptr)
+            og::runtime::clear_local_transport_shadow(
+                *og::runtime::current_game_session);
+        game_screen->world().delete_objects();
+
+        SaveData& save = game_screen->save_data;
+        save.reset();
+        save.current_campaign = "gladiator";
+        save.current_levels[save.current_campaign] = 1;
+        save.scen_num = 1;
+        save.numplayers = 1;
+        save.allied_mode = 0;
+        save.my_team = landing.team;
+        save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[0]->name = "Color Guard";
+        save.team_list[0]->teamnum = landing.team;
+        save.team_size = 1;
+
+        og::ui::PickerLobbyGameStartConfig config =
+            make_one_view_lobby_start_config(save);
+        config.my_team = landing.team;
+        config.is_networked = false;
+
+        ready_screen_for_game_start(*game_screen, &config);
+        game_screen->world().rng_.state_ = landing.rng_state;
+        glad_init(false, &config);
+
+        walker* const hero = find_named_team_member(
+            game_screen->world(), "Color Guard", landing.team);
+        ASSERT_NE(nullptr, hero)
+            << "rng=" << landing.rng_state << " team=" << landing.team;
+        ASSERT_EQ(landing.x, static_cast<int>(hero->xpos()))
+            << "the pinned RNG state no longer produces the landing this case "
+               "was written around; rng=" << landing.rng_state
+            << " team=" << landing.team;
+        ASSERT_EQ(landing.y, static_cast<int>(hero->ypos()))
+            << "the pinned RNG state no longer produces the landing this case "
+               "was written around; rng=" << landing.rng_state
+            << " team=" << landing.team;
+
+        const std::vector<short> spawn_marker_teams =
+            start_marker_teams_at(game_screen->world(), *hero);
+        const std::set<short> marker_teams =
+            teams_with_start_markers(game_screen->world());
+        EXPECT_EQ(std::set<short>{short{0}}, marker_teams)
+            << "gladiator scen1's markers are all team 0's; this case is "
+               "written around that";
+
+        if (landing.team == 0)
+        {
+            // Marker-driven placement: the same tile under both RNG states,
+            // and it is team 0's OWN marker.
+            EXPECT_EQ(std::vector<short>{short{0}}, spawn_marker_teams)
+                << "rng=" << landing.rng_state;
+        }
+        else if (landing.rng_state == 55u)
+        {
+            // The collision the seed-3 shuffle stumbled into: a marker-less
+            // team's random cell coincided with a team-0 marker tile. Legal —
+            // no marker was consumed (the exact-team filter cannot hand a
+            // team-1 hero a team-0 marker) and every marker is killed right
+            // after the spawn.
+            EXPECT_EQ(std::vector<short>{short{0}}, spawn_marker_teams)
+                << "state 55 is the pinned collision";
+        }
+        else
+        {
+            EXPECT_TRUE(spawn_marker_teams.empty())
+                << "state 56's landing carries no marker";
+        }
+
+        // The recorded respawn point is the cell the hero actually got.
+        EXPECT_EQ(static_cast<int>(hero->xpos()),
+                  static_cast<int>(hero->spawn_x()));
+        EXPECT_EQ(static_cast<int>(hero->ypos()),
+                  static_cast<int>(hero->spawn_y()));
+
+        // The pin on the DISPLAY world fixed the AUTHORITATIVE spawn too: with
+        // no match stage the install seeds the server world from a display
+        // keyframe, so the hero sits on the same cell on both sides.
+        screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session);
+        ASSERT_NE(nullptr, server_screen);
+        walker* const server_hero = find_named_team_member(
+            server_screen->world(), "Color Guard", landing.team);
+        ASSERT_NE(nullptr, server_hero)
+            << "rng=" << landing.rng_state << " team=" << landing.team;
+        EXPECT_EQ(landing.x, static_cast<int>(server_hero->xpos()))
+            << "rng=" << landing.rng_state << " team=" << landing.team;
+        EXPECT_EQ(landing.y, static_cast<int>(server_hero->ypos()))
+            << "rng=" << landing.rng_state << " team=" << landing.team;
     }
 
     if (og::runtime::current_game_session != nullptr)
