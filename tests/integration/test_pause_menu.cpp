@@ -154,6 +154,33 @@ bool wait_for_pause_interactable_label(const std::string& id,
         frames, stall_timeout_ms);
 }
 
+// The settle half of the same rule: wait for COMPLETED menu frames instead of
+// sleeping a guess. A completion is posted after the frame consumed input,
+// dispatched and reset its action and ran the screen's frame tick, so one
+// completed frame proves the screen that just published its buttons actually
+// composed — the statement a flat SDL_Delay only assumed. Converted injector
+// settles pass the same 10 s liveness budget their neighbouring appearance
+// waits already carry, so no wait here is tighter than the one before it, and
+// a miss is named rather than silent.
+bool wait_for_completed_pause_menu_frames(int frames = 1,
+                                          int timeout_ms = 5'000)
+{
+    const std::uint64_t target =
+        og::ui::menu_screen_testing_completed_frames() +
+        static_cast<std::uint64_t>(frames < 1 ? 1 : frames);
+    for (int waited = 0; waited < timeout_ms; waited += 50)
+    {
+        if (og::ui::menu_screen_testing_completed_frames() >= target)
+            return true;
+        SDL_Delay(50);
+    }
+    fprintf(stderr,
+            "  [pause] %d completed menu frame(s) did not arrive within "
+            "%d ms\n",
+            frames, timeout_ms);
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // Stub host: plain function pointers over one file-static state blob.
 
@@ -2071,10 +2098,16 @@ int pause_scripted_poll(SDL_Event* out)
 // menu never publishes (so the give-up path itself is testable), and
 // `test_finished` is how the main thread tells the injector it has left the
 // menu for good.
+// The yield window: how many COMPLETED menu frames the yield regression holds
+// the pause menu open for before it clicks RESUME.
+constexpr int kYieldWindowFrames = 12;
+
 struct PauseFlowScript
 {
     bool sabotage_first_leg = false;
     std::atomic<bool> test_finished{false};
+    // Completed menu frames the yield injector observed inside its window.
+    std::atomic<std::uint64_t> frames_observed{0};
 };
 
 int pause_menu_flow_injector(void* data)
@@ -2107,35 +2140,35 @@ int pause_menu_flow_injector(void* data)
     // Leg 1: RESUME closes the menu.
     const char* const resume_id =
         flow->sabotage_first_leg ? "pause_never_published" : "pause_resume";
-    if (!wait_for_pause_interactable(resume_id, 10'000))
+    if (!wait_for_pause_interactable(resume_id, 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(1);
-    SDL_Delay(300);
     interact("pause_resume");
 
     // Leg 2: ADD PLAYER creates a real second seat mid-game; its player row
     // appears in place.
-    if (!wait_for_pause_interactable("pause_add_player", 10'000))
+    if (!wait_for_pause_interactable("pause_add_player", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(2);
-    SDL_Delay(300);
     interact("pause_add_player");
-    if (!wait_for_pause_interactable("pause_player_1", 10'000))
+    if (!wait_for_pause_interactable("pause_player_1", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(3);
-    SDL_Delay(300);
 
     // Leg 3: the new seat's row opens the player screen; REMOVE PLAYER
     // (NO-first confirm answered from the queue) drops the seat and pops
     // back to the PAUSED screen whose row re-hides.
     interact("pause_player_1");
-    if (!wait_for_pause_interactable("pause_remove", 10'000))
+    if (!wait_for_pause_interactable("pause_remove", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(4);
-    SDL_Delay(300);
     picker_testing_yes_or_no_queue_push(true);
     interact("pause_remove");
 
     // Leg 4: back on the PAUSED screen, QUIT ends the mission.
-    if (!wait_for_pause_interactable("pause_quit", 10'000))
+    if (!wait_for_pause_interactable("pause_quit", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(5);
-    SDL_Delay(300);
     picker_testing_yes_or_no_queue_push(true);
     interact("pause_quit");
     return 0;
@@ -2384,9 +2417,19 @@ int pause_yield_injector(void* data)
         flow->sabotage_first_leg ? "pause_never_published" : "pause_resume";
     if (!wait_for_pause_interactable(resume_id, 10'000))
         return escape(1);
-    // Long enough that a yielding loop (10 ms per iteration) racks up a clear
-    // count, while a busy-wait would leave it at zero.
-    SDL_Delay(400);
+    // Hold the menu open for a COUNTED number of completed frames instead of
+    // a flat 400 ms. run_menu_screen posts each completion and then calls
+    // og::input_native::sleep_ms(10) once per iteration
+    // (menu_screen_runner.cpp), so K completed frames inside this window
+    // guarantee at least K-1 yields — while a busy-wait would report zero
+    // however many frames it drew. The test reads the count back and pins the
+    // yields against it.
+    const std::uint64_t frames_before =
+        og::ui::menu_screen_testing_completed_frames();
+    if (!wait_for_completed_pause_menu_frames(kYieldWindowFrames, 10'000))
+        return escape(2);
+    flow->frames_observed.store(
+        og::ui::menu_screen_testing_completed_frames() - frames_before);
     interact("pause_resume");
     return 0;
 }
@@ -2442,10 +2485,16 @@ TEST(PauseMenuFlow, blocking_menu_yields_to_the_browser_each_iteration)
     const unsigned long yields_after = og::input_native::yield_count();
 
     EXPECT_EQ(GameFrameResult::Continue, result);
-    // The injector held the menu open for ~400 ms at a 10 ms yield cadence.
-    // A raw spin would report 0; the loose bound keeps the pin off wall-clock
-    // scheduling luck.
-    EXPECT_GT(yields_after - yields_before, 5UL)
+    // Counts, not clocks: the injector held the menu open for a known number
+    // of COMPLETED frames, and run_menu_screen yields exactly once per
+    // iteration after posting the completion — so the yields cannot be fewer
+    // than one per completed frame bar the last, whose yield may not have run
+    // when the counter was sampled. A raw spin reports zero.
+    const std::uint64_t frames_observed = flow.frames_observed.load();
+    ASSERT_GE(frames_observed, static_cast<std::uint64_t>(kYieldWindowFrames))
+        << "the injector's frame window never closed";
+    EXPECT_GE(static_cast<std::uint64_t>(yields_after - yields_before),
+              frames_observed - 1)
         << "the blocking pause loop must call og::input_native::sleep_ms once "
            "per iteration — under Emscripten that is the only thing that hands "
            "control back to the browser";
@@ -2568,13 +2617,15 @@ int pause_view_team_return_injector(void* data)
 
     const char* const view_team_id =
         flow->sabotage_first_leg ? "pause_never_published" : "pause_view_team";
-    if (!wait_for_pause_interactable(view_team_id, 10'000))
+    if (!wait_for_pause_interactable(view_team_id, 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(1);
-    SDL_Delay(300);
     interact("pause_view_team");
     SDL_Delay(300);
-    // VIEW TEAM's own screen is not a run_menu_screen frame producer, so this
-    // leg leans on the stall backstop until the pause menu is back.
+    // VIEW TEAM's own screen is not a run_menu_screen frame producer, so no
+    // completed frame can be counted while it is up: that settle stays a
+    // clock, and this leg leans on the stall backstop until the pause menu is
+    // back.
     if (!wait_for_pause_interactable("pause_resume", 10'000))
         return escape(2);
     interact("pause_resume");
@@ -2735,6 +2786,8 @@ struct RestartFlowState {
 };
 
 constexpr int kRestartPollMs = 25;
+// The third-fade observation window, in COMPLETED Base Camp menu frames.
+constexpr int kQuitFadeSettleFrames = 20;
 constexpr int kRestartStageTimeoutMs = 20'000;
 
 bool restart_wait_for_team_menu(int timeout_ms)
@@ -2808,7 +2861,11 @@ int restart_relaunch_injector(void* data)
     // -- Main menu -> Continue -> Base Camp (team saved in save0) --
     if (!wait_for_interactable("continue_game", 15'000))
         return fail_restart_flow(state, "main menu never appeared");
-    SDL_Delay(750); // fadeblack eats events
+    // Counts, not clocks: FadeBetween is a single blit under TESTING, so the
+    // settle is about the main menu having COMPOSED, not about an animation.
+    // The re-click loop below still covers a click the transition eats.
+    if (!wait_for_menu_frames(2))
+        return fail_restart_flow(state, "main menu never composed a frame");
     interact("continue_game");
     {
         // The fade can eat the first click: re-click while the main menu is
@@ -3076,7 +3133,10 @@ int quit_fade_count_injector(void* data)
     // -- Main menu -> Continue -> Base Camp --
     if (!wait_for_interactable("continue_game", 15'000))
         return fail_quit_fade_flow(state, "main menu never appeared");
-    SDL_Delay(750); // fadeblack eats events
+    // Counts, not clocks (see restart_relaunch_injector): the fade is a single
+    // blit under TESTING, so what the settle wants is a composed main menu.
+    if (!wait_for_menu_frames(2))
+        return fail_quit_fade_flow(state, "main menu never composed a frame");
     interact("continue_game");
     {
         int elapsed = 0;
@@ -3167,7 +3227,12 @@ int quit_fade_count_injector(void* data)
             waited_ms += kRestartPollMs;
         }
     }
-    SDL_Delay(1'000);
+    // The window the third fade would land in, counted in COMPOSED Base Camp
+    // frames rather than a flat second: the bug's extra fade lands between the
+    // two expected ones, so the window only has to outlast the transition, and
+    // 20 completed menu frames say it did more strongly than any sleep.
+    if (!wait_for_menu_frames(kQuitFadeSettleFrames))
+        return fail_quit_fade_flow(state, "base camp stopped composing frames");
     state->fades_after_quit = count_fade_traces();
 
     SDL_Delay(250);
@@ -3285,33 +3350,33 @@ int add_cycle_input_injector(void* data)
     // Menu 1: ADD PLAYER (P2 row appears in place), then RESUME.
     const char* const add_player_id =
         flow->sabotage_first_leg ? "pause_never_published" : "pause_add_player";
-    if (!wait_for_pause_interactable(add_player_id, 10'000))
+    if (!wait_for_pause_interactable(add_player_id, 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(1);
-    SDL_Delay(300);
     interact("pause_add_player");
-    if (!wait_for_pause_interactable("pause_player_1", 10'000))
+    if (!wait_for_pause_interactable("pause_player_1", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(2);
-    SDL_Delay(300);
     interact("pause_resume");
 
     // Menu 2 (the main thread plays real frames, then sends Esc again):
     // open the ADDED seat's player screen and cycle INPUT twice — the
     // reporter's crash step — then BACK and RESUME.
-    if (!wait_for_pause_interactable("pause_player_1", 15'000))
+    if (!wait_for_pause_interactable("pause_player_1", 15'000) ||
+        !wait_for_completed_pause_menu_frames(2, 15'000))
         return escape(3);
-    SDL_Delay(300);
     interact("pause_player_1");
-    if (!wait_for_pause_interactable("pause_input", 10'000))
+    if (!wait_for_pause_interactable("pause_input", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(4);
-    SDL_Delay(300);
     interact("pause_input");
     SDL_Delay(200);
     interact("pause_input");
     SDL_Delay(200);
     interact("pause_player_back");
-    if (!wait_for_pause_interactable("pause_resume", 10'000))
+    if (!wait_for_pause_interactable("pause_resume", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
         return escape(5);
-    SDL_Delay(300);
     interact("pause_resume");
     return 0;
 }
@@ -3558,19 +3623,6 @@ struct HostilePadFlow
     std::atomic<bool> menu_returned{false};
 };
 
-bool wait_for_completed_pause_menu_frame(int timeout_ms = 5'000)
-{
-    const std::uint64_t completed_before =
-        og::ui::menu_screen_testing_completed_frames();
-    for (int waited = 0; waited < timeout_ms; waited += 50)
-    {
-        if (og::ui::menu_screen_testing_completed_frames() > completed_before)
-            return true;
-        SDL_Delay(50);
-    }
-    return false;
-}
-
 int pause_hostile_pad_injector(void* data)
 {
     auto* const flow = static_cast<HostilePadFlow*>(data);
@@ -3583,16 +3635,17 @@ int pause_hostile_pad_injector(void* data)
     int failure = 0;
     if (!wait_for_pause_interactable("pause_player_0", 10'000))
         failure = 1;
+    if (failure == 0 && !wait_for_completed_pause_menu_frames(2, 10'000))
+        failure = 1;
     if (failure == 0)
     {
-        SDL_Delay(300);
         interact("pause_player_0");
         if (!wait_for_pause_interactable("pause_input", 10'000))
             failure = 2;
         else if (!wait_for_pause_interactable_label(
                      "pause_input", "INPUT: WASD", 5'000))
             failure = 3;
-        else if (!wait_for_completed_pause_menu_frame())
+        else if (!wait_for_completed_pause_menu_frames())
             failure = 4;
     }
 
@@ -3610,7 +3663,7 @@ int pause_hostile_pad_injector(void* data)
         if (!wait_for_pause_interactable_label(
                 "pause_input", expected_input_labels[i], 5'000))
             failure = 10 + static_cast<int>(i);
-        else if (!wait_for_completed_pause_menu_frame())
+        else if (!wait_for_completed_pause_menu_frames())
             failure = 20 + static_cast<int>(i);
     }
 
@@ -3621,7 +3674,7 @@ int pause_hostile_pad_injector(void* data)
     {
         interact("pause_player_back");
         if (wait_for_pause_interactable("pause_resume", 5'000) &&
-            wait_for_completed_pause_menu_frame())
+            wait_for_completed_pause_menu_frames())
         {
             interact("pause_resume");
             for (int waited = 0; waited < 5'000; waited += 50)
@@ -3644,7 +3697,7 @@ int pause_hostile_pad_injector(void* data)
     {
         interact("pause_player_back");
         if (wait_for_interactable("pause_resume", 5'000))
-            (void)wait_for_completed_pause_menu_frame();
+            (void)wait_for_completed_pause_menu_frames();
     }
     // No wall-clock bound: run_pause_menu only returns when something clicks
     // its way out, so a tail that stopped trying would leave the main thread

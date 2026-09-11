@@ -38,6 +38,7 @@ FILES=(
     tests/integration/test_options_menu.cpp
     tests/integration/test_help_smoke.cpp
     tests/integration/test_campaign_and_level_picker.cpp
+    tests/integration/test_pause_menu.cpp
 )
 
 status=0
