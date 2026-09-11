@@ -1071,11 +1071,7 @@ int text_picker_testing_launch_seed_matches_the_preview()
         TextPickerClient client(config, &error);
         client.testing_save_data_mutable().current_campaign = "modes";
         client.testing_save_data_mutable().scen_num = 820;
-        // The starting recruit is named off the process-global rand() stream
-        // (picker_common.cpp's get_random_name), which is not one of this
-        // preview's inputs. Pin the name so nothing ambient reaches the text.
-        client.testing_save_data_mutable().team_list[0]->name = "Pin";
-        // ...and buy the match, the way text_picker_testing_staged_view_scenario
+        // Buy the match, the way text_picker_testing_staged_view_scenario
         // does: at rest every band sits on the stored NONE, soccer 820 refuses
         // ("MATCH WILL NOT START: FEWER THAN 2 TEAMS") and the census carries
         // nothing the seed could move. FILL: FAIR on the empty half puts the

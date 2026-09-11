@@ -250,7 +250,8 @@ public:
         // VIEW LEVEL preview and GO would name three different levels after
         // a new game started from `--level N`.
         config_.level = save_data_.scen_num;
-        ensure_team_populated(save_data_);
+        SeededRandom recruit_names = recruit_rng();
+        ensure_team_populated(save_data_, {}, 0, &recruit_names);
         // The display name lives in the 40-byte save_name; the filename stays
         // this terminal client's own slot (config_.save_name, [SAVE-R2]).
         save_data_.save_name = company_name;
@@ -428,7 +429,8 @@ public:
         config_.campaign = save_data_.current_campaign;
         config_.level = save_data_.scen_num > 0 ? save_data_.scen_num : 1;
 
-        ensure_team_populated(save_data_);
+        SeededRandom recruit_names = recruit_rng();
+        ensure_team_populated(save_data_, {}, 0, &recruit_names);
 
         sync_config_from_save();
 
@@ -989,9 +991,13 @@ private:
     // the one launch pipeline (#218): a one-shot MatchStage over this save
     // with the session-latched seed (config_.seed — the --seed CLI), so the
     // census lists the real assembled match (merged roster spawns, mode
-    // init, seeded squads) and the same seed prints the same census. Stage
-    // failure degrades to the scratch-load fallback census plus the honest
-    // STAGING FAILED line.
+    // init, seeded squads) and the same seed prints the same census. That
+    // now covers the company itself: N7 seeded the recruit-name draw off
+    // config_.seed at every site this client founds or hires at, so the
+    // roster the census lists is a function of the latch too instead of a
+    // walk of the process-global std::rand() stream. Stage failure degrades
+    // to the scratch-load fallback census plus the honest STAGING FAILED
+    // line.
     void view_scenario()
     {
         if (get_mounted_campaign() != save_data_.current_campaign) {
@@ -1299,11 +1305,20 @@ private:
         // every roster could only ever be noise.
     }
 
+    // N7: every recruit this client manufactures is named off the session
+    // seed (--seed, config_.seed), not the process-global std::rand() stream.
+    // The seed is what VIEW LEVEL stages its census with, so the company the
+    // session founds has to be a function of it too or "the same seed prints
+    // the same census" is only half true: founding twice in one process used
+    // to walk the ambient stream and print a different roster.
+    SeededRandom recruit_rng() const { return SeededRandom(config_.seed); }
+
     void ensure_team_initialized()
     {
         if (config_.team_families.empty())
             config_.team_families.push_back(FAMILY_SOLDIER);
-        initialize_starting_team(save_data_, config_.team_families);
+        SeededRandom rng = recruit_rng();
+        initialize_starting_team(save_data_, config_.team_families, 0, &rng);
     }
 
     void sync_config_from_save()
@@ -1514,7 +1529,8 @@ private:
             std::printf("%s\n", refused->c_str());
             return;
         }
-        HireSession session(save_data_, 0);
+        SeededRandom recruit_names = recruit_rng();
+        HireSession session(save_data_, 0, &recruit_names);
         if (session.team_full()) {
             std::printf("Team is already at max size (%d).\n", MAX_TEAM_SIZE);
             return;

@@ -590,7 +590,11 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
         menu.show_text("Hire Troops", {*refused});
         return;
     }
-    og::ui::HireSession session(save, 0);
+    // N7: hired recruits are named off the session seed, like the founding
+    // roster -- the terminal clients latch one seed and stake the census
+    // promise on it.
+    SeededRandom recruit_names(config.seed);
+    og::ui::HireSession session(save, 0, &recruit_names);
     if (session.team_full()) {
         menu.show_text("Hire Troops",
             {std::format("Team is already at max size ({}).", MAX_TEAM_SIZE)});
@@ -1177,7 +1181,13 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
     // Match TextPickerClient: guarantee a starting team exists immediately.
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
-    og::ui::initialize_starting_team(save_data_, config_.team_families);
+    // N7: every recruit this client manufactures is named off the session
+    // seed (--seed, config_.seed), never the process-global std::rand()
+    // stream -- the seed is what VIEW LEVEL stages its census with, so the
+    // company the session founds has to be a function of it too.
+    SeededRandom recruit_names(config_.seed);
+    og::ui::initialize_starting_team(save_data_, config_.team_families, 0,
+                                     &recruit_names);
     // Terminal slot authority ([SAVE-R2]): company-level writes must target
     // this client's chosen slot, never save0. An unsafe name is rejected by
     // the setter and leaves the previous active slot in place.
@@ -1217,7 +1227,9 @@ const PickerMenuItem* CursesPickerClient::present_menu(PickerMenuId menu_id)
 
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
-    og::ui::initialize_starting_team(save_data_, config_.team_families);
+    SeededRandom recruit_names(config_.seed);
+    og::ui::initialize_starting_team(save_data_, config_.team_families, 0,
+                                     &recruit_names);
 
     // Amendment 7 (#276): the arena FILL deal, once per cursor, on the host
     // only — the same seam and the same rule as the text picker above.
@@ -1559,7 +1571,8 @@ bool CursesPickerClient::prepare_new_game()
     }
 
     og::ui::reset_for_new_game(save_data_);
-    og::ui::ensure_team_populated(save_data_);
+    SeededRandom recruit_names(config_.seed);
+    og::ui::ensure_team_populated(save_data_, {}, 0, &recruit_names);
     // The display name lives in the 40-byte save_name; the filename stays this
     // client's own slot (config_.save_name, [SAVE-R2]).
     save_data_.save_name = company_name;
@@ -1683,7 +1696,9 @@ void CursesPickerClient::run_game()
 {
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
-    og::ui::initialize_starting_team(save_data_, config_.team_families);
+    SeededRandom recruit_names(config_.seed);
+    og::ui::initialize_starting_team(save_data_, config_.team_families, 0,
+                                     &recruit_names);
     config_.team_families = og::ui::collect_team_families(save_data_);
     save_data_.current_campaign = config_.campaign;
     save_data_.scen_num = static_cast<short>(config_.level);
@@ -1769,7 +1784,8 @@ bool CursesPickerClient::load_game()
     config_.campaign = save_data_.current_campaign;
     config_.level = save_data_.scen_num > 0 ? save_data_.scen_num : 1;
 
-    og::ui::ensure_team_populated(save_data_);
+    SeededRandom recruit_names(config_.seed);
+    og::ui::ensure_team_populated(save_data_, {}, 0, &recruit_names);
     config_.team_families = og::ui::collect_team_families(save_data_);
 
     menu.show_text("Loaded",
@@ -1802,7 +1818,9 @@ bool CursesPickerClient::save_game()
     assert_company_slot_authority(); // [SAVE-R2]
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
-    og::ui::initialize_starting_team(save_data_, config_.team_families);
+    SeededRandom recruit_names(config_.seed);
+    og::ui::initialize_starting_team(save_data_, config_.team_families, 0,
+                                     &recruit_names);
     save_data_.current_campaign = config_.campaign;
     save_data_.scen_num = static_cast<short>(config_.level);
     save_data_.numplayers = 1;

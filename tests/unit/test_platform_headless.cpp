@@ -1278,6 +1278,41 @@ TEST(PlatformHeadless, text_picker_founding_is_reproducible_at_one_seed)
               mount_campaign_package_with_error("gladiator"));
 }
 
+// The unit-level half of the same rule, one layer down from the client: when
+// ensure_team_populated is handed an rng, that rng names the recruit and the
+// ambient stream is not consulted. Written green-first (it cannot compile
+// before the parameter exists), so the red above is the proof, not this.
+TEST(PlatformHeadless, ensure_team_populated_draws_from_the_supplied_rng_not_the_ambient_stream)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    const auto found_at = [](unsigned ambient_seed) {
+        std::srand(ambient_seed);
+        SaveData sd;
+        sd.reset();
+        SeededRandom rng(777u);
+        og::ui::ensure_team_populated(sd, {FAMILY_SOLDIER}, 0, &rng);
+        return sd.team_list[0] ? sd.team_list[0]->name : std::string();
+    };
+
+    // The perturbation is visible at all: the ambient arm still moves with
+    // the process-global stream, which is what the default (nullptr) keeps.
+    std::srand(1u);
+    const std::string ambient_a = og::ui::get_random_name(FAMILY_SOLDIER);
+    std::srand(2u);
+    const std::string ambient_b = og::ui::get_random_name(FAMILY_SOLDIER);
+    ASSERT_NE(ambient_a, ambient_b)
+        << "an invisible perturbation would make the check below vacuous";
+
+    const std::string seeded_a = found_at(1u);
+    const std::string seeded_b = found_at(2u);
+    ASSERT_FALSE(seeded_a.empty()) << "the fallback soldier must be named";
+    EXPECT_EQ(seeded_a, seeded_b)
+        << "the supplied rng names the recruit; the ambient stream must not";
+}
+
 // #247: the text picker's GO launches the world VIEW LEVEL promised. The
 // launch used to build its own world from a fresh default save, so the match
 // knobs never reached it: the preview showed matched squads and the launch

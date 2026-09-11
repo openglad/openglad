@@ -566,24 +566,32 @@ bool has_name_in_save(const char* name, const SaveData& save)
 // A family with no pool of its own borrows the soldier pool, the fallback the
 // old `default:` branch used; the core pack leaves the three unhireable
 // families (golem, giant skeleton, tower) poolless on purpose.
-const char* get_random_name(unsigned char family)
+//
+// The one draw site for recruit names. A session that latched a seed passes
+// its generator; everyone else keeps the ambient std::rand() stream this has
+// drawn from since 466080ff.
+const char* get_random_name(unsigned char family, IRandom* rng)
 {
     const FamilyDescriptor* fd = get_family_descriptor(family);
     if (fd == nullptr || fd->name_pool == nullptr || fd->name_pool_size <= 0)
         fd = get_family_descriptor(FAMILY_SOLDIER);
     if (fd == nullptr || fd->name_pool == nullptr || fd->name_pool_size <= 0)
         return "Nameless";  // no pool at all: not reachable with a core pack
-    return fd->name_pool[std::rand() % fd->name_pool_size];
+    const int index = rng != nullptr
+        ? static_cast<int>(rng->next(static_cast<std::uint32_t>(fd->name_pool_size)))
+        : (std::rand() % fd->name_pool_size);
+    return fd->name_pool[index];
 }
 
-std::string get_unique_name(unsigned char family, const SaveData& save)
+std::string get_unique_name(unsigned char family, const SaveData& save,
+                            IRandom* rng)
 {
-    const char* result = get_random_name(family);
+    const char* result = get_random_name(family, rng);
 
     // Try a few times to get a unique name
     int i = 0;
     while (has_name_in_save(result, save) && i < 10) {
-        result = get_random_name(family);
+        result = get_random_name(family, rng);
         i++;
     }
 
@@ -686,11 +694,12 @@ int add_recruit_to_team(SaveData& save, std::unique_ptr<guy> recruit, int team_n
     return -1;
 }
 
-std::unique_ptr<guy> create_recruit(int family, int team_num, const SaveData& save)
+std::unique_ptr<guy> create_recruit(int family, int team_num,
+                                    const SaveData& save, IRandom* rng)
 {
     auto recruit = std::make_unique<guy>(family);
     recruit->teamnum = static_cast<short>(team_num);
-    recruit->name = get_unique_name(static_cast<unsigned char>(family), save);
+    recruit->name = get_unique_name(static_cast<unsigned char>(family), save, rng);
     return recruit;
 }
 
@@ -700,19 +709,20 @@ void reset_for_new_game(SaveData& save)
     save.totalcash = kNewGameStartingGold;
 }
 
-void ensure_team_populated(SaveData& save, const std::vector<int>& families, int team_num)
+void ensure_team_populated(SaveData& save, const std::vector<int>& families,
+                           int team_num, IRandom* rng)
 {
     if (save.team_size > 0)
         return;
 
     for (size_t i = 0; i < families.size() && save.team_size < MAX_TEAM_SIZE; ++i) {
-        auto recruit = create_recruit(families[i], team_num, save);
+        auto recruit = create_recruit(families[i], team_num, save, rng);
         add_recruit_to_team(save, std::move(recruit), team_num);
     }
 
     // Fallback: if families was empty or all failed, add a soldier.
     if (save.team_size == 0) {
-        auto recruit = create_recruit(FAMILY_SOLDIER, team_num, save);
+        auto recruit = create_recruit(FAMILY_SOLDIER, team_num, save, rng);
         add_recruit_to_team(save, std::move(recruit), team_num);
     }
 }
@@ -2418,7 +2428,8 @@ std::vector<int> collect_team_families(const SaveData& save)
 
 // --- Team initialization ---
 
-void initialize_starting_team(SaveData& save, const std::vector<int>& families, int team_num)
+void initialize_starting_team(SaveData& save, const std::vector<int>& families,
+                              int team_num, IRandom* rng)
 {
     if (save.team_size > 0)
         return;
@@ -2426,7 +2437,7 @@ void initialize_starting_team(SaveData& save, const std::vector<int>& families, 
     save.m_totalcash[team_num] = kNewGameStartingGold;
     save.totalcash = kNewGameStartingGold;
 
-    ensure_team_populated(save, families, team_num);
+    ensure_team_populated(save, families, team_num, rng);
 }
 
 // --- Save/Load error strings ---
@@ -2477,8 +2488,8 @@ void statscopy(guy* dest, const guy* source)
 
 // --- HireSession ---
 
-HireSession::HireSession(SaveData& save, int team_num)
-    : save_(save), team_num_(team_num)
+HireSession::HireSession(SaveData& save, int team_num, IRandom* rng)
+    : save_(save), team_num_(team_num), rng_(rng)
 {
     make_recruit();
 }
@@ -2532,7 +2543,7 @@ int HireSession::hire()
             // Save a copy of the hired recruit's stats for the next recruit
             auto next = std::make_unique<guy>(newfamily);
             statscopy(next.get(), recruit_.get());
-            next->name = get_unique_name(static_cast<unsigned char>(newfamily), save_);
+            next->name = get_unique_name(static_cast<unsigned char>(newfamily), save_, rng_);
 
             save_.team_list[static_cast<std::size_t>(i)] = std::move(recruit_);
             save_.team_size++;
@@ -2586,7 +2597,7 @@ void HireSession::make_recruit()
     // A fresh recruit already carries the family's base stats: create_recruit
     // constructs guy(family), whose constructor seeds strength..level from
     // the same FamilyDescriptor. There is nothing left to clamp up.
-    recruit_ = create_recruit(family, team_num_, save_);
+    recruit_ = create_recruit(family, team_num_, save_, rng_);
 }
 
 // --- TrainSession ---
