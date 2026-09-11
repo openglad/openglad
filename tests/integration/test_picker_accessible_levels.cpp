@@ -121,6 +121,8 @@ TEST(PickerAccessibleLevels, a_progress_row_click_leaves_no_lobby_client_behind)
 // the cursor exactly as before.
 TEST(PickerAccessibleLevels, progress_row_click_applies_gate)
 {
+    PickerLobbyShutdownGuard lobby_guard;  // the click below creates one
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -146,6 +148,8 @@ TEST(PickerAccessibleLevels, progress_row_click_applies_gate)
 // for the fold/picker-re-entry restore.
 TEST(PickerAccessibleLevels, progress_row_replay_click_arms)
 {
+    PickerLobbyShutdownGuard lobby_guard;  // the click below creates one
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -178,6 +182,8 @@ TEST(PickerAccessibleLevels, progress_row_replay_click_arms)
 // walked exit, blocking exactly the re-branching VISIT exists for.
 TEST(PickerAccessibleLevels, visit_after_replay_arm_abandons_the_excursion)
 {
+    PickerLobbyShutdownGuard lobby_guard;  // the click below creates one
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
