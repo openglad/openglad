@@ -3053,28 +3053,79 @@ struct MatchSetupShotState
 // menu thread, press, wait for a NAMED edge, acknowledge. Wrapped in a
 // bounded ladder, a dropped press costs one attempt instead of the cascade.
 //
+// The same toggle-safety rule click_and_acknowledge_trace states, applied
+// to the press half here: a press may only be RE-SENT when there is
+// evidence it did not land. A door and a cycler row are pressed the same
+// way, but a cycler is not idempotent — a second press walks the wheel one
+// stop past the target and the flow then waits for a face the row has
+// already gone by. Observed on this box: three `zone_row_0` presses all
+// landed (each traced its autosave) while the menu thread was too starved
+// to republish the label inside the wait, and the TEAMS wheel went
+// 4 -> 2 -> 3 -> 4 past its own target. So every call that can name its
+// landing names it: the zone screen traces `submenu_opened` when a door
+// lands and `acted_autosave` when an action row lands, both BEFORE the
+// label the edge waits on is republished. Once the witness arrives the
+// ladder stops pressing and spends the rest of its attempts WAITING.
+//
 // Counted, never clocked: `zone_click_retries` is the number of attempts
-// that did not reach their edge.
+// that re-pressed because nothing registered; `zone_edge_waits` is the
+// number that only waited, because the press had already landed.
 int g_zone_click_retries = 0;
+int g_zone_edge_waits = 0;
+// TESTING-only fault injection for that half, mirroring g_zone_click_drops:
+// make the next N edge observations come back false although the press
+// landed — exactly how a label the menu thread has not republished yet
+// looks from the injector.
+int g_zone_edge_blinds = 0;
 
 bool click_until_edge(const std::string& id,
                       const std::function<bool(int)>& edge_reached,
-                      int attempts = 3, int wait_ms = 2500)
+                      const char* landed_trace = nullptr, int attempts = 3,
+                      int wait_ms = 2500)
 {
+    const int landed_before =
+        landed_trace ? count_trace_containing("zone", landed_trace) : 0;
+    const auto has_landed = [&] {
+        return landed_trace &&
+               count_trace_containing("zone", landed_trace) > landed_before;
+    };
+    bool spent = false;  // the press landed: never send another one
     for (int attempt = 0; attempt < attempts; ++attempt) {
-        (void)run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms);
-        if (g_zone_click_drops > 0) {
-            --g_zone_click_drops;
-            fprintf(stderr, "  [zone] dropping the press on '%s' (injected)\n",
-                    id.c_str());
-        } else {
-            (void)interact(id);
+        if (!spent) {
+            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                     wait_ms);
+            if (g_zone_click_drops > 0) {
+                --g_zone_click_drops;
+                fprintf(stderr,
+                        "  [zone] dropping the press on '%s' (injected)\n",
+                        id.c_str());
+            } else {
+                (void)interact(id);
+            }
         }
-        if (edge_reached(wait_ms)) {
+        bool reached = edge_reached(wait_ms);
+        if (reached && g_zone_edge_blinds > 0) {
+            --g_zone_edge_blinds;
+            fprintf(stderr,
+                    "  [zone] blinding the edge observation on '%s' "
+                    "(injected)\n",
+                    id.c_str());
+            reached = false;
+        }
+        if (reached) {
             // Same bounded re-post: a cancelled acknowledgement here leaves
             // the next press to evaporate against a stale baseline.
             (void)acknowledge_press(wait_ms);
             return true;
+        }
+        if (has_landed()) {
+            spent = true;
+            ++g_zone_edge_waits;
+            fprintf(stderr,
+                    "  [zone] attempt %d: '%s' landed but its edge lagged; "
+                    "waiting, not re-pressing\n",
+                    attempt + 1, id.c_str());
+            continue;
         }
         ++g_zone_click_retries;
         fprintf(stderr, "  [zone] attempt %d: '%s' did not reach its edge\n",
@@ -3101,9 +3152,12 @@ int match_setup_injector(void* data)
     // the two macro rows lead the page (amendment 5): TEAMS: 4 — the face
     // derived from the arena's deal on its four authored teams (amendment
     // 7) — over FILL: FAIR, then the two knobs at MAP.
-    state->page_opened = click_until_edge("zone_action_3", [](int wait_ms) {
-        return wait_for_interactable_at("back", 10, 169, wait_ms);
-    });
+    state->page_opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
     state->teams_row_read_four = wait_for_interactable_label_containing(
         "zone_row_0", "TEAMS: 4", 10000);
     state->fill_row_read_fair = wait_for_interactable_label_containing(
@@ -3120,24 +3174,33 @@ int match_setup_injector(void* data)
     // faces re-derive from the one fill array) — and one FILL click steps
     // that FAIR face to STRONG.
     state->teams_stepped_to_two =
-        click_until_edge("zone_row_0", [](int wait_ms) {
-            return wait_for_interactable_label_containing("zone_row_0",
-                                                          "TEAMS: 2", wait_ms);
-        });
+        click_until_edge(
+            "zone_row_0",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_0", "TEAMS: 2", wait_ms);
+            },
+            "acted_autosave");
     state->fill_stepped_to_strong =
-        click_until_edge("zone_row_1", [](int wait_ms) {
-            return wait_for_interactable_label_containing(
-                "zone_row_1", "FILL: STRONG", wait_ms);
-        });
+        click_until_edge(
+            "zone_row_1",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_1", "FILL: STRONG", wait_ms);
+            },
+            "acted_autosave");
     (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_macros");
 
     // One click walks the score cycle one stop (map -> 1) and speaks it.
     state->score_row_stepped_to_one =
-        click_until_edge("zone_row_2", [](int wait_ms) {
-            return wait_for_interactable_label_containing(
-                "zone_row_2", "TARGET SCORE: 1", wait_ms);
-        });
+        click_until_edge(
+            "zone_row_2",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_2", "TARGET SCORE: 1", wait_ms);
+            },
+            "acted_autosave");
     (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_cycled");
 
@@ -3145,10 +3208,13 @@ int match_setup_injector(void* data)
     // manifest authored — and one click hands the host the shortest
     // override the cycle offers.
     state->time_row_stepped_to_five =
-        click_until_edge("zone_row_3", [](int wait_ms) {
-            return wait_for_interactable_label_containing(
-                "zone_row_3", "TIME LIMIT: 5M", wait_ms);
-        });
+        click_until_edge(
+            "zone_row_3",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_3", "TIME LIMIT: 5M", wait_ms);
+            },
+            "acted_autosave");
     (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_time");
 
@@ -3232,9 +3298,12 @@ int match_setup_retry_injector(void* data)
     (void)wait_for_interactable_label_containing("zone_action_3",
                                                  "MATCH SETUP", 10000);
 
-    *opened = click_until_edge("zone_action_3", [](int wait_ms) {
-        return wait_for_interactable_at("back", 10, 169, wait_ms);
-    });
+    *opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
 
     if (*opened) {
         (void)click_until_edge("back", [](int wait_ms) {
@@ -3259,10 +3328,70 @@ int match_setup_wrong_id_injector(void* data)
     (void)wait_for_interactable_label_containing("zone_action_3",
                                                  "MATCH SETUP", 10000);
 
-    *reached = click_until_edge("zone_action_99_not_a_row", [](int wait_ms) {
-        return wait_for_interactable_at("back", 10, 169, wait_ms);
-    }, 3, 500);
+    // No witness: a press that is nowhere near a button cannot land, so
+    // this ladder is allowed to spend every attempt on a fresh press.
+    *reached = click_until_edge(
+        "zone_action_99_not_a_row",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        nullptr, 3, 500);
 
+    (void)interact("back");
+    return 0;
+}
+
+struct BlindCyclerState
+{
+    bool opened = false;
+    bool stepped = false;
+    bool wheel_still_on_two = false;
+};
+
+// The cycler half of the same ladder. Open MATCH SETUP, then step the TEAMS
+// macro exactly ONCE with the first edge observation blinded
+// (g_zone_edge_blinds) — the starved menu thread that has not republished
+// the row's label yet, seen from here. A ladder that re-presses a landed
+// cycler walks the wheel 4 -> 2 -> 3 -> 4 and never reads TEAMS: 2 again.
+int match_setup_blind_cycler_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BlindCyclerState*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    state->opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
+    if (state->opened) {
+        (void)wait_for_interactable_label_containing("zone_row_0", "TEAMS: 4",
+                                                     10000);
+        // Armed HERE, not in the test body: the blind belongs to the cycler
+        // press, and the door ladder above would otherwise eat it.
+        g_zone_edge_blinds = 1;
+        state->stepped = click_until_edge(
+            "zone_row_0",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_0", "TEAMS: 2", wait_ms);
+            },
+            "acted_autosave");
+        // Where the wheel actually stands once the ladder is done: one
+        // press, one stop. An overshoot reads 3 or 4 here and this stays
+        // false however the ladder reported.
+        state->wheel_still_on_two = wait_for_interactable_label_containing(
+            "zone_row_0", "TEAMS: 2", 5000);
+        (void)click_until_edge("back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        });
+    }
     (void)interact("back");
     return 0;
 }
@@ -3281,6 +3410,8 @@ TEST(CampaignZoneUi, match_setup_click_helper_retries_a_dropped_press)
 
     g_zone_click_retries = 0;
     g_zone_click_drops = 1;
+    g_zone_edge_waits = 0;
+    g_zone_edge_blinds = 0;
 
     bool opened = false;
     SDL_Thread* thread =
@@ -3313,6 +3444,8 @@ TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
 
     g_zone_click_retries = 0;
     g_zone_click_drops = 0;
+    g_zone_edge_waits = 0;
+    g_zone_edge_blinds = 0;
 
     bool reached = true;
     SDL_Thread* thread = SDL_CreateThread(match_setup_wrong_id_injector,
@@ -3328,6 +3461,53 @@ TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
     EXPECT_FALSE(reached) << "a wrong id can never reach the page";
     EXPECT_EQ(3, g_zone_click_retries)
         << "the ladder spends its three attempts and reports, never hangs";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The other half of the same rule: a press that DID land is never re-sent,
+// however long its edge takes to show up. The blind makes the first
+// observation lie exactly the way a starved menu thread does, and a cycler
+// is the one row where a second press is not free — it costs the wheel a
+// stop it can only get back by going all the way round.
+TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_zone_click_retries = 0;
+    g_zone_click_drops = 0;
+    g_zone_edge_waits = 0;
+    // The injector arms the blind on the cycler press itself; nothing is
+    // blinded on the way there.
+    g_zone_edge_blinds = 0;
+
+    BlindCyclerState state;
+    SDL_Thread* thread = SDL_CreateThread(match_setup_blind_cycler_injector,
+                                          "zone_blind_cycler", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.opened) << "the MATCH SETUP door still opens";
+    EXPECT_EQ(0, g_zone_edge_blinds) << "the injected blind must be consumed";
+    EXPECT_TRUE(state.stepped)
+        << "a landed press whose label lagged must still reach its edge";
+    EXPECT_TRUE(state.wheel_still_on_two)
+        << "the ladder must not press a landed cycler again: a second press "
+           "walks the TEAMS wheel past the stop the flow asked for";
+    EXPECT_EQ(1, g_zone_edge_waits)
+        << "exactly one attempt waited on a press that had already landed";
+    EXPECT_EQ(0, g_zone_click_retries)
+        << "a landed press is never charged as a re-press";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
