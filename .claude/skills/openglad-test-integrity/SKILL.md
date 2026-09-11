@@ -108,9 +108,16 @@ test after the failure never ran.
 ## Tests that hang (the three known traps)
 
 1. Menu/prompt/picker paths need the injector-thread pattern
-   (`wait_for_interactable` + `SDL_Delay(750)` + `interact`). Never
-   drive a prompt from a TESTING exerciser — restrict exercisers to
-   non-blocking data/mode/draw paths.
+   (`wait_for_interactable` + `wait_for_menu_frames(n)` + `interact`;
+   there is no fade to wait for under TESTING, so never a flat delay).
+   Never drive a prompt from a TESTING exerciser — restrict exercisers
+   to non-blocking data/mode/draw paths. An injector that drives a
+   BLOCKING menu from the main thread must never bound its escape tail
+   by wall clock: `run_pause_menu` returns only when something clicks
+   its way out, so a tail that stops clicking guarantees the hang it
+   exists to prevent. Loop until the main thread signals it left the
+   menu, and click BACK as well as RESUME — the player sub-screen
+   publishes no RESUME (`tests/integration/test_pause_menu.cpp`).
 2. Never feed malformed YAML to gparser as a coverage target; it does
    not return.
 3. Run ctest with stdin PIPED, never under a pty — headless clients
