@@ -10,7 +10,12 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/company.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/gameplay/guy.h>
+#include <optional>
+#include <string>
+#include <vector>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -34,6 +39,46 @@ static void cleanup_picker_state()
     pks().main_columns_data.free();
     pks().main_title_logo_pix.reset();
     pks().main_title_logo_data.free();
+}
+
+// Removes scratch companies (and their backups) a test wrote into the shared
+// user dir. A company file left behind is not inert: CONTINUE opens the
+// MOST-RECENT company, so a stray slot with a fresher last_played silently
+// redirects the next flow's whole session. Same shape as
+// tests/integration/test_cloud_ui.cpp's guard.
+struct CompanySlotCleanup {
+    std::vector<std::string> slots;
+    ~CompanySlotCleanup()
+    {
+        for (const std::string& slot : slots) {
+            for (const og::data::CompanyBackupInfo& backup :
+                 og::data::list_company_backups(slot))
+                (void)og::data::delete_company_backup(slot, backup.seq);
+            (void)remove_user_file("save/" + slot + ".gtl");
+        }
+    }
+};
+
+// Restores whatever fixed clock (if any) the suite had installed.
+struct CompanyClockRestore {
+    ~CompanyClockRestore() { og::data::set_company_clock_for_tests(std::nullopt); }
+};
+
+// Write the in-memory save to `slot` the way the GAME writes a company: through
+// the autosave choke point, which stamps last_played_unix_s. A bare
+// SaveData::save() leaves the stamp at zero, which is what made these flows
+// depend on nothing else in the binary having a fresher company — the CONTINUE
+// door opens the most recent one, not the one the test happened to write.
+static bool seed_open_company(SaveData& save, const std::string& slot,
+                              std::int64_t stamp_s)
+{
+    og::data::set_company_clock_for_tests(stamp_s);
+    const bool ok = og::data::set_active_company_slot(slot) &&
+                    og::data::company_autosave(
+                        save, og::data::CompanyAutosaveKind::BaseCampMutation) ==
+                        SaveDataIoError::None;
+    og::data::set_company_clock_for_tests(std::nullopt);
+    return ok;
 }
 
 // Test: Navigate to hire troops, browse characters with NEXT/PREV, then exit.
@@ -263,4 +308,85 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     EXPECT_TRUE(reloaded.team_list[1]->deployed)
         << "the hired member must persist deployed via the mutation autosave";
     EXPECT_EQ("VETERAN", reloaded.team_list[0]->name) << "slot 0 untouched";
+}
+
+// §3.8, order-free: the hire autosave lands in the company the flow actually
+// has OPEN. CONTINUE opens the MOST-RECENT company (§2.1), so a stray company
+// file with a fresher last_played — which any test in this binary can leave
+// behind, and which `--gtest_shuffle` duly arranges — silently redirects the
+// whole flow: the hire is written to a slot nobody asserts on while the test's
+// own save0 keeps its pre-hire baseline, and the failure surfaces sixty lines
+// later as "2 vs 1" on a reload.
+//
+// This reproduces that without depending on a shuffle seed, and it fails at
+// the point of divergence (which company is open) instead of at the symptom.
+TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
+{
+    trace_clear();
+
+    CompanySlotCleanup cleanup{{"straycompany"}};
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
+    const std::int64_t now_s = og::data::company_clock_now_s();
+
+    // The stray: a real, loadable company stamped in the future — the shape a
+    // sibling test leaves behind when its scratch slot gets autosaved.
+    {
+        SaveData stray;
+        stray.reset();
+        stray.numplayers = 1;
+        stray.current_campaign = "gladiator";
+        stray.scen_num = 1;
+        auto decoy = std::make_unique<guy>(FAMILY_SOLDIER);
+        decoy->name = "STRAY";
+        stray.team_list[0] = std::move(decoy);
+        stray.team_size = 1;
+        stray.m_totalcash[0] = 100000;
+        stray.totalcash = 100000;
+        ASSERT_TRUE(seed_open_company(stray, "straycompany", now_s + 1000000))
+            << "the stray company fixture must be written";
+    }
+
+    SaveData& save_data = og::runtime::current_session->myscreen_->save_data;
+    save_data.reset();
+    save_data.numplayers = 1;
+    save_data.current_campaign = "gladiator";
+    save_data.scen_num = 1;
+    {
+        auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+        soldier->name = "VETERAN";
+        save_data.team_list[0] = std::move(soldier);
+        save_data.team_size = 1;
+        save_data.m_totalcash[0] = 100000;
+        save_data.totalcash = 100000;
+    }
+    ASSERT_TRUE(save_data.save("save0"));
+
+    HireDeployState state = { false, false, false, false, false };
+    SDL_Thread* thread =
+        SDL_CreateThread(hire_deployed_injector, "hire_stray_test", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the hire flow must still be on the company this test seeded — a "
+           "stray company file must never take the session over";
+
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    ASSERT_EQ(2, static_cast<int>(reloaded.team_size))
+        << "the hire must have autosaved into the open company";
 }
