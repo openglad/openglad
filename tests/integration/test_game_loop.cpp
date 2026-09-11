@@ -848,6 +848,21 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     std::filesystem::remove(replay_path, ec);
 }
 
+// Order pin for the case above. initialize_replay_screen latches
+// session.replay_playback_active_ (replay_runtime.cpp) and only
+// begin_replay_recording clears it again. While it is set,
+// reset_local_transport_shadow short-circuits the whole staged-lobby path
+// (local_transport_shadow.cpp: `!session.replay_playback_active_` is a
+// conjunct of adopt_stage), so the stage tests further down lose their
+// subject — the stage is neither adopted nor rejected — and no assertion in
+// the leaking test notices.
+TEST(GameLoop, replay_recording_test_does_not_leave_the_session_in_playback)
+{
+    ASSERT_NE(nullptr, og::runtime::current_session);
+    EXPECT_FALSE(og::runtime::current_session->replay_playback_active_)
+        << "the recording test above must restore the session's playback flag";
+}
+
 TEST(GameLoop, glad_init_preserves_existing_timing_when_requested)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
