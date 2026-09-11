@@ -2307,6 +2307,8 @@ TEST(CursesNetwork, lobby_team_key_cycles_the_selected_owned_seat)
 // keystrokes now have to walk all four.
 TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
 {
+    MountRestore mount_restore;
+
     SaveData save;
     init_team_save(save, 0, FAMILY_SOLDIER, "CTF Keyboard");
     // The shared-teams rule rides the wire since protocol v12, derived from
@@ -2362,6 +2364,8 @@ TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
 // number (every campaign has a level 1).
 TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
 {
+    MountRestore mount_restore;
+
     SaveData save;
     init_team_save(save, 2, FAMILY_ELF, "Mismatch");
     save.current_campaign = "modes"; // not the mounted campaign
@@ -2632,6 +2636,8 @@ TEST(CursesNetwork, five_clients_can_change_global_player_five_exactly)
 // round-trips and shows up as a [ready] tag in the status lines.
 TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
 {
+    MountRestore mount_restore;
+
     SaveData host_save;
     SaveData join_save;
     init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
