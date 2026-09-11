@@ -2210,6 +2210,11 @@ TEST_F(WalkerSpecials, thief_charm_drives_simulation)
     GameContext test_ctx;
     test_ctx.rng = &seq_rng;
     push_test_context(&test_ctx);
+    // The charm's resist roll is `og.rand(20) == 0` (living-11-thief.lua), and
+    // og.rand draws from the WORLD rng (world_scripts.cpp), not from the
+    // context rng pushed above -- that one steers nothing on this path. Pin
+    // the world rng or a shuffled predecessor decides the 1-in-20.
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;  // next(20) == 18: no resist
     ASSERT_TRUE(w->special()) << "thief charm should fire on a charmable foe";
     pop_test_context();
     ASSERT_TRUE(foe->charm_left() > 0 || foe->team_num() == w->team_num())

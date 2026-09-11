@@ -40,6 +40,8 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include "curses_mount_restore.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -1626,23 +1628,6 @@ const walker* find_living_named(const GameWorld& world, const std::string& name,
     return nullptr;
 }
 
-// Restore the process campaign mount exactly (the .inc's pattern), so
-// shuffled neighbors see their original package after a test that hosts a
-// non-default campaign.
-struct MountRestore {
-    std::string before = get_mounted_campaign();
-    ~MountRestore()
-    {
-        const std::string after = get_mounted_campaign();
-        if (after == before)
-            return;
-        if (before.empty())
-            (void)unmount_campaign_package_with_error(after);
-        else
-            (void)mount_campaign_package_with_error(before);
-    }
-};
-
 } // namespace
 
 // V5 consequence (a) + the point-3 trap's curses direction: a host whose
@@ -2322,6 +2307,8 @@ TEST(CursesNetwork, lobby_team_key_cycles_the_selected_owned_seat)
 // keystrokes now have to walk all four.
 TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
 {
+    MountRestore mount_restore;
+
     SaveData save;
     init_team_save(save, 0, FAMILY_SOLDIER, "CTF Keyboard");
     // The shared-teams rule rides the wire since protocol v12, derived from
@@ -2377,6 +2364,8 @@ TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
 // number (every campaign has a level 1).
 TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
 {
+    MountRestore mount_restore;
+
     SaveData save;
     init_team_save(save, 2, FAMILY_ELF, "Mismatch");
     save.current_campaign = "modes"; // not the mounted campaign
@@ -2647,6 +2636,8 @@ TEST(CursesNetwork, five_clients_can_change_global_player_five_exactly)
 // round-trips and shows up as a [ready] tag in the status lines.
 TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
 {
+    MountRestore mount_restore;
+
     SaveData host_save;
     SaveData join_save;
     init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");

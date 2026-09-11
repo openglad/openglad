@@ -2478,6 +2478,18 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
 
     (void)remove_user_file("save/lineupd.gtl");
     og::data::set_active_company_slot("save0");
+    // The company this drive loads names "modes", so the picker mounted that
+    // campaign on the way in -- pinned here because it is the reason the
+    // restore below exists.
+    EXPECT_EQ(std::string("modes"), get_mounted_campaign())
+        << "loading a modes company should have mounted modes";
+    // Put the mount back the way this test found it, or every later test in
+    // the binary inherits the wreckage -- the same rule
+    // FreshFilesystemForIoInit states above. Still inside the
+    // HeadlessSaveDirSandbox, which swaps <user>/save and not the campaigns
+    // directory, so the remount here is safe.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
 }
 
 // The same two rows on a CLASSIC campaign. Amendment 3 C5 moved the match

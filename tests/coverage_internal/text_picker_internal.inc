@@ -1071,6 +1071,17 @@ int text_picker_testing_launch_seed_matches_the_preview()
         TextPickerClient client(config, &error);
         client.testing_save_data_mutable().current_campaign = "modes";
         client.testing_save_data_mutable().scen_num = 820;
+        // The starting recruit is named off the process-global rand() stream
+        // (picker_common.cpp's get_random_name), which is not one of this
+        // preview's inputs. Pin the name so nothing ambient reaches the text.
+        client.testing_save_data_mutable().team_list[0]->name = "Pin";
+        // ...and buy the match, the way text_picker_testing_staged_view_scenario
+        // does: at rest every band sits on the stored NONE, soccer 820 refuses
+        // ("MATCH WILL NOT START: FEWER THAN 2 TEAMS") and the census carries
+        // nothing the seed could move. FILL: FAIR on the empty half puts the
+        // seed-drawn cast into the preview, which is what the seed check below
+        // is supposed to be reading.
+        client.testing_save_data_mutable().fill[1] = og::sim::kFillFair;
 
         const PickerMenuItem* const item = find_picker_menu_item(
             PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
@@ -1112,18 +1123,44 @@ int text_picker_testing_launch_seed_matches_the_preview()
         return {preview, launch};
     };
 
+    // 777 and 5, not 777 and 4242: with the match bought the staged cast IS
+    // seed-driven, and these two latches draw different casts (THIEF vs
+    // SOLDIER) while 4242 happens to draw the same cast as 777. A content
+    // change that collides them again is a legible failure of the check
+    // below rather than a coin flip.
     const auto [preview_777, launch_777] = preview_and_launch(777u);
-    const auto [preview_4242, launch_4242] = preview_and_launch(4242u);
+    const auto [preview_5, launch_5] = preview_and_launch(5u);
 
     check(launch_777.find("\"seed\":777") != std::string::npos);
-    check(launch_4242.find("\"seed\":4242") != std::string::npos);
-    // The previews are seed-sensitive (staged squads are drawn at stage
-    // time), so a preview that ignored the latch would print the same census
-    // for both.
+    check(launch_5.find("\"seed\":5") != std::string::npos);
+    // The previews are seed-sensitive (the staged squad is drawn at stage
+    // time from the latch), so a preview that ignored the latch would print
+    // the same census for both.
     check(!preview_777.empty());
     check(preview_777.find("--- SCEN 820:") != std::string::npos);
-    check(preview_4242.find("--- SCEN 820:") != std::string::npos);
-    check(preview_777 != preview_4242);
+    check(preview_5.find("--- SCEN 820:") != std::string::npos);
+
+    // Purity (the contract this helper states at the top of the file): only
+    // (save, knobs, seed) may reach the preview. Two previews at ONE seed,
+    // taken from two different positions of the process-global rand()
+    // stream, must not differ by a byte. srand rather than a discarded
+    // rand() so the perturbation is deterministic instead of a 1-in-15 coin
+    // flip, and the two positions are first proven to be visible at all --
+    // an invisible perturbation would make the check vacuous.
+    std::srand(1u);
+    const std::string ambient_name_a = get_random_name(FAMILY_SOLDIER);
+    std::srand(2u);
+    const std::string ambient_name_b = get_random_name(FAMILY_SOLDIER);
+    check(ambient_name_a != ambient_name_b);
+
+    std::srand(1u);
+    const std::pair<std::string, std::string> pure_a = preview_and_launch(777u);
+    std::srand(2u);
+    const std::pair<std::string, std::string> pure_b = preview_and_launch(777u);
+    check(!pure_a.first.empty());
+    check(pure_a == pure_b);
+
+    check(preview_777 != preview_5);
 
     check(state_restore.restore());
     return failed ? -failed_check : 0;
