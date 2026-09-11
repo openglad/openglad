@@ -1123,6 +1123,27 @@ int text_picker_testing_launch_seed_matches_the_preview()
     check(!preview_777.empty());
     check(preview_777.find("--- SCEN 820:") != std::string::npos);
     check(preview_4242.find("--- SCEN 820:") != std::string::npos);
+
+    // Purity (the contract this helper states at the top of the file): only
+    // (save, knobs, seed) may reach the preview. Two previews at ONE seed,
+    // taken from two different positions of the process-global rand()
+    // stream, must not differ by a byte. srand rather than a discarded
+    // rand() so the perturbation is deterministic instead of a 1-in-15 coin
+    // flip, and the two positions are first proven to be visible at all --
+    // an invisible perturbation would make the check vacuous.
+    std::srand(1u);
+    const std::string ambient_name_a = get_random_name(FAMILY_SOLDIER);
+    std::srand(2u);
+    const std::string ambient_name_b = get_random_name(FAMILY_SOLDIER);
+    check(ambient_name_a != ambient_name_b);
+
+    std::srand(1u);
+    const std::pair<std::string, std::string> pure_a = preview_and_launch(777u);
+    std::srand(2u);
+    const std::pair<std::string, std::string> pure_b = preview_and_launch(777u);
+    check(!pure_a.first.empty());
+    check(pure_a == pure_b);
+
     check(preview_777 != preview_4242);
 
     check(state_restore.restore());
