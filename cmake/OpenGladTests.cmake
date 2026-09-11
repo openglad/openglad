@@ -671,8 +671,10 @@ og_add_test_group(og_test_matchup FILES
 )
 
 # The LINEUP flows live in their own binary. They are injector-driven
-# picker_main runs whose waits are wall-clock settles, so their cost adds
-# to the matchup group's rather than overlapping it: together the two
+# picker_main runs whose click ladders wait on named edges but whose screen
+# settles are still wall-clock (tests/integration/test_lineup_ui.cpp is on
+# scripts/check_injector_settles.sh's not-yet-converted list), so their cost
+# adds to the matchup group's rather than overlapping it: together the two
 # suites ran ~213s standalone against a 420s budget, close enough that a
 # loaded CI runner tipped a lane over. Split at the natural seam — the
 # LineupUi suite alone is ~111s of that — so each binary keeps its own
@@ -1300,10 +1302,13 @@ set_tests_properties(og_test_basecamp PROPERTIES
     TIMEOUT 420
 )
 # The matchup group's CTF and campaign-zone flows are injector-driven
-# picker_main runs. Their settles are wait-on-condition now — named edges,
-# completed menu frames and bounded retry ladders rather than flat sleeps —
-# but a whole group of picker_main flows is still well past the 180s group
-# default. Same treatment as
+# picker_main runs. Their click ladders are wait-on-condition now — named
+# edges, completed menu frames and bounded retry ladders (the shared
+# tests/test_click_ladder.h) rather than flat sleeps — though the
+# campaign-zone screen settles are still partly wall-clock: test_ctf_ui.cpp
+# is on scripts/check_injector_settles.sh, test_campaign_zone_ui.cpp is not
+# yet. Either way a whole group of picker_main flows is still well past the
+# 180s group default. Same treatment as
 # og_test_menu_ui / og_test_basecamp above: isolate it and give it the
 # standard heavy-flow budget in every lane. The LINEUP flows
 # (docs/lineup-design.md §2) used to sit in this group and pushed the
