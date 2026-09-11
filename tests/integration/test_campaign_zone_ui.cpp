@@ -1037,6 +1037,11 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    // The injector this shares with default_zone_keeps_the_classic_roster_flows
+    // records a capture, and the shot ledger is process-wide: answer for it
+    // here or the next verifying flow inherits it.
+    verify_zone_shots("default_zone_drop", 1);
+
     EXPECT_EQ(0, g_zone_click_drops) << "the injected drop must be consumed";
     EXPECT_TRUE(state.deploy_edges_acknowledged)
         << "a dropped press must cost a retry, not the toggle";
