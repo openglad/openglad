@@ -135,37 +135,67 @@ int count_trace_containing(const char* category, const char* substring)
 // acknowledgement that the full press/release is consumed before another
 // press is allowed. This covers repeated traces too: the final BURDEN -> WAR
 // assignment waits for count 2, not stale count 1.
+//
+// Bounded ladder on top of that: a press that evaporated on a starved frame
+// left NO new trace, so re-pressing it cannot double-cycle anything. A press
+// that DID register (the trace arrived) is never repeated, whatever else went
+// wrong — that is the toggle-safety rule this retry turns on.
+int g_zone_trace_click_retries = 0;
+// TESTING-only fault injection, shared with click_until_edge below: make the
+// next N presses evaporate the way a starved frame does.
+int g_zone_click_drops = 0;
+
 bool click_and_acknowledge_trace(const std::string& id, const char* category,
                                  const char* trace_substring,
                                  bool waits_for_autosave = true,
-                                 int timeout_ms = 5000)
+                                 int timeout_ms = 5000, int attempts = 3)
 {
     const int before = count_trace_containing(category, trace_substring);
     const int saves_before = trace_count("save");
-    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms))
-        return false;
-    interact(id);
-    int elapsed = 0;
-    while (elapsed < timeout_ms &&
-           (count_trace_containing(category, trace_substring) <= before ||
-            (waits_for_autosave && trace_count("save") <= saves_before))) {
-        SDL_Delay(50);
-        elapsed += 50;
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        if (!run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                timeout_ms))
+            return false;
+        if (g_zone_click_drops > 0) {
+            --g_zone_click_drops;
+            fprintf(stderr, "  [zone] dropping the press on '%s' (injected)\n",
+                    id.c_str());
+        } else {
+            (void)interact(id);
+        }
+        int elapsed = 0;
+        while (elapsed < timeout_ms &&
+               (count_trace_containing(category, trace_substring) <= before ||
+                (waits_for_autosave && trace_count("save") <= saves_before))) {
+            SDL_Delay(50);
+            elapsed += 50;
+        }
+        const bool traced =
+            count_trace_containing(category, trace_substring) > before;
+        if (!traced) {
+            fprintf(stderr,
+                    "  [interact] TIMEOUT waiting for new %s trace '%s'\n",
+                    category, trace_substring);
+            if (attempt + 1 < attempts) {
+                ++g_zone_trace_click_retries;
+                continue;  // nothing registered: the press may be re-sent
+            }
+            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                     timeout_ms);
+            return false;
+        }
+        const bool autosaved =
+            !waits_for_autosave || trace_count("save") > saves_before;
+        if (!autosaved) {
+            fprintf(stderr,
+                    "  [interact] TIMEOUT waiting for cycler autosave\n");
+        }
+        const bool acknowledged =
+            run_on_main_thread([] { reset_mouse_click_tracking(); },
+                               timeout_ms);
+        return autosaved && acknowledged;
     }
-    const bool traced =
-        count_trace_containing(category, trace_substring) > before;
-    if (!traced) {
-        fprintf(stderr,
-                "  [interact] TIMEOUT waiting for new %s trace '%s'\n",
-                category, trace_substring);
-    }
-    const bool autosaved =
-        !waits_for_autosave || trace_count("save") > saves_before;
-    if (!autosaved)
-        fprintf(stderr, "  [interact] TIMEOUT waiting for cycler autosave\n");
-    const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms);
-    return traced && autosaved && acknowledged;
+    return false;
 }
 
 // Stash/restore the picker save across an injector flow (the test_ctf_ui
@@ -979,6 +1009,40 @@ TEST(CampaignZoneUi, default_zone_keeps_the_classic_roster_flows)
         << "both deploy toggles must finish before the train-door click";
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
+}
+
+// Teeth for the trace ladder: the first deploy press evaporates, and the flow
+// still lands both toggles — with exactly one retry, and no double-toggle
+// (the second edge, "deploy slot=0 on", proves the first one landed once).
+TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    write_save0_with_two_soldiers("gladiator", 1);
+
+    g_zone_trace_click_retries = 0;
+    g_zone_click_drops = 1;
+
+    DefaultZoneFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        default_zone_injector, "default_zone_drop", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, g_zone_click_drops) << "the injected drop must be consumed";
+    EXPECT_TRUE(state.deploy_edges_acknowledged)
+        << "a dropped press must cost a retry, not the toggle";
+    EXPECT_EQ(1, g_zone_trace_click_retries)
+        << "exactly one press left no trace and was re-sent";
+    EXPECT_TRUE(state.finished);
 }
 
 namespace {
@@ -2877,9 +2941,6 @@ struct MatchSetupShotState
 // Counted, never clocked: `zone_click_retries` is the number of attempts
 // that did not reach their edge.
 int g_zone_click_retries = 0;
-// TESTING-only fault injection: make the next N presses evaporate the way a
-// starved frame does, so the ladder's retry can be exercised deterministically.
-int g_zone_click_drops = 0;
 
 bool click_until_edge(const std::string& id,
                       const std::function<bool(int)>& edge_reached,
