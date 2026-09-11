@@ -462,21 +462,30 @@ TEST(WalkerCoreMore, walker_round5_act_switch_random_and_fire_branches)
     actor->set_lasty(0);
     ASSERT_TRUE(actor->act()) << "ACT_FIRE should dispatch and return true";
 
-    // ACT_RANDOM 1/4 + 1/20 branch should queue COMMAND_WALK.
-    SequenceRandom rng_walk_branch({0, 0, 5, 1, 2});
+    // The actor is an Order::Living orc, so act() dispatches to living::act(),
+    // whose ACT_RANDOM arm is a 1/5 + 1/5 rule drawn straight from the WORLD
+    // rng -- not walker::act()'s 1-in-4-then-1-in-20 walk rule, which this
+    // orc never executes. Both arms below are pinned, because an unpinned
+    // draw is whatever a shuffled predecessor left behind.
+    //
+    // 16-in-25: neither next(5) is zero, so the actor acquires a near foe,
+    // queues COMMAND_SEARCH and returns 1.
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;  // next(5): 3 then 1
     actor->stats()->clear_command();
     actor->set_ani_type(ANI_WALK);
     actor->set_foe(nullptr);
     actor->set_act_type(ACT_RANDOM);
-    ASSERT_TRUE(actor->act()) << "ACT_RANDOM walk-command branch should return true";
+    ASSERT_TRUE(actor->act()) << "ACT_RANDOM acquire/search arm should return true";
 
-    // ACT_RANDOM 3/4 branch should acquire far foe and queue COMMAND_SEARCH.
-    SequenceRandom rng_search_branch({3, 0});
+    // 4-in-25: the first next(5) is non-zero and the second is zero, so
+    // living::act() calls act_random() and breaks out of the switch, which
+    // falls through to `return 0`.
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 6;  // next(5): 4 then 0
     actor->stats()->clear_command();
     actor->set_ani_type(ANI_WALK);
     actor->set_foe(nullptr);
     actor->set_act_type(ACT_RANDOM);
-    (void)actor->act();
+    ASSERT_FALSE(actor->act()) << "ACT_RANDOM act_random() arm should return false";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
