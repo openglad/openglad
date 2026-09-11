@@ -4008,20 +4008,17 @@ int sdl_video::fadeblack(bool fade_in)
                  detail + ")").c_str());
     }
 #endif
-	// Sized to the active canvas: FadeBetween requires exact dim matches
-	// with E_Screen->render.
-	SDL_Surface* black = SDL_CreateSurface(active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_XRGB8888);
-    if (!black)
-        return -1;
-    SDL_FillSurfaceRect(black, nullptr, map_surface_rgb_fast(black, 0, 0, 0));
+	// No hand-built black: FadeBetween's own null shorthand builds the
+	// stand-in from the peer surface, so c409e7c85's rule (the stand-in must
+	// match E_Screen->render or every precondition rejects it) now holds on
+	// the FORMAT axis as well as the size axis it was written for.
 	int i;
 
 	if(fade_in)
-        i = FadeBetween(black, E_Screen->render, E_Screen->render); // fade from black
+        i = FadeBetween(nullptr, E_Screen->render, E_Screen->render); // fade from black
 	else
-        i = FadeBetween(E_Screen->render, black, E_Screen->render); // fade to black
+        i = FadeBetween(E_Screen->render, nullptr, E_Screen->render); // fade to black
 
-	SDL_DestroySurface(black);
 	// Stamped AFTER FadeBetween: its terminal swap presents the black frame
 	// and, like every present, clears the flag. A 0 return means the fade
 	// never ran (a precondition failure), so the window keeps its state; an
