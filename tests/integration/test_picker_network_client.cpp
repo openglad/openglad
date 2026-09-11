@@ -10496,13 +10496,19 @@ TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
         // Once the lobby state lands on a live link, the joiner is in a
         // session too (the host's roster converging does not by itself mean
         // the broadcast has reached the joiner, hence the wait).
+        //
+        // The roster is part of what the wait certifies. session_established()
+        // flips on the connect-time LobbyState, which carries the host alone,
+        // so a wait on it alone can return one poll BEFORE the two-player
+        // broadcast lands — the status line is a later event, not the same
+        // one, and asserting it outside the wait is a race.
         auto join_scope = join_session.activate();
         ASSERT_TRUE(wait_until([&] {
             join_client->poll_and_apply();
-            return join_client->session_established();
+            return join_client->session_established() &&
+                status_lines_contain_exact(join_client->status_lines(),
+                                           "Lobby: 2 players");
         })) << "a joiner with the roster on a live link is in a session";
-        EXPECT_TRUE(status_lines_contain_exact(join_client->status_lines(),
-                                               "Lobby: 2 players"));
         ActivePickerLobbyClientGuard active_client(join_client.get());
         EXPECT_TRUE(picker_lobby_session_established());
     }
