@@ -27,6 +27,7 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -1513,6 +1514,40 @@ TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
     EXPECT_TRUE(state.matched_line_seen)
         << "a FILL: STRONG flip under the open viewer must restage into a "
            "squad wearing STRONG";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// The resting contract the pane test above depends on, pinned without an
+// injector. `deal_arena_lineup_fill` only writes FAIR onto a band that is
+// still kFillNone — an explicit choice is never re-dealt (picker_common.cpp)
+// — so a fill array left STRONG by an earlier MATCH SETUP macro survives the
+// re-deal and the resting census reads STRONG where this suite pins FAIR.
+// The fixture therefore owes fill/map_units a defined resting state, exactly
+// as the campaign-zone fixture already documents for itself.
+TEST(CtfUi, staged_pane_rest_is_fair_even_after_a_prior_fill_macro)
+{
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // Exactly what a MATCH SETUP FILL macro leaves behind: two bands set
+    // STRONG, and the lobby stamped with them. (The stamp's own apply can
+    // remount, so the arena package is mounted after it, not before.)
+    save.fill = {og::sim::kFillStrong, og::sim::kFillStrong,
+                 og::sim::kFillNone, og::sim::kFillNone};
+    picker_lobby_sync_settings_from_save();
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 500);
+    EXPECT_EQ(og::sim::kFillNone, save.fill[1])
+        << "the fixture must hand the arena an undealt band";
+
+    EXPECT_TRUE(og::ui::deal_arena_lineup_for_cursor(
+        save, headless_level_data_hooks()));
+    EXPECT_EQ(og::sim::kFillFair, save.fill[1])
+        << "amendment 7: FIRST BLOOD's authored GREEN band deals FAIR";
 
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");
