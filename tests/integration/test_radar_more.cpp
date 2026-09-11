@@ -1524,11 +1524,8 @@ TEST_F(RadarMore, a_pack_can_give_any_treasure_family_a_radar_blip)
 // map's right column or bottom row. If the wrong arm ran, the second pixel of
 // the pair would be painted past the box border, over the HUD next to it.
 //
-// The exact bottom-right CORNER is deliberately not asserted: with tempx at
-// the right column and tempy on the last row the first arm wins (its
-// `tempy < yloc+yview` is still true there) and paints tempy+1, one pixel
-// below the box. That is a real latent 1px escape, reported rather than
-// pinned; fixing it is a rendering change of its own.
+// The exact bottom-right CORNER, where both of those arms apply at once, has
+// its own case below (control_blip_stays_inside_the_box_at_the_bottom_right_corner).
 TEST_F(RadarMore, control_blip_stays_inside_the_box_at_the_right_column_and_bottom_row)
 {
     FixedRandom fixed_rng(200); // the control blip's rng(256) colour
