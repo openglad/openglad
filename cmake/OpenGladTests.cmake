@@ -254,6 +254,10 @@ function(og_add_unit_group NAME)
 
     add_executable(${NAME}
         ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
+        # unit_main's registry census dumps every installed family around
+        # every test, so the dump belongs to every unit group, not just
+        # og_unit_data.
+        ${CMAKE_SOURCE_DIR}/tests/unit/family_registry_dump.cpp
         ${ARG_FILES}
     )
     configure_openglad_library(${NAME})
@@ -904,7 +908,6 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_decl.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_install.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry_golden.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/family_registry_dump.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_save_data_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp
