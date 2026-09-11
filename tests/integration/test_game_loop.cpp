@@ -429,6 +429,27 @@ static std::vector<short> start_marker_teams_at(const GameWorld& world,
     return teams;
 }
 
+// Which teams the LEVEL authors a start marker for. spawn_team_from_save
+// consumes markers with an exact team filter, so only these teams are placed
+// on a marker at all; the rest take the neutral-teleport fallback. Markers are
+// killed rather than erased during the spawn, so they are all still countable
+// here (the same reason start_marker_teams_at above sees dead ones).
+static std::set<short> teams_with_start_markers(const GameWorld& world)
+{
+    std::set<short> teams;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const marker = uptr.get();
+        if (marker == nullptr || marker->query_order() != Order::Special ||
+            marker->family() != FAMILY_RESERVED_TEAM)
+        {
+            continue;
+        }
+        teams.insert(marker->team_num());
+    }
+    return teams;
+}
+
 static std::set<std::uint32_t> non_zero_controlled_entity_ids(
     const og::sim::GameClient& client)
 {
@@ -1672,6 +1693,12 @@ TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
             config.is_networked = false;
 
             ready_screen_for_game_start(*game_screen, &config);
+            // Pin the display world's RNG: the marker-less teams below are
+            // placed by the neutral-teleport fallback, which draws its cell
+            // from that stream, and level loads carry the stream forward on
+            // purpose. Unpinned, where teams 1-3 land is a function of every
+            // draw made earlier in the process.
+            game_screen->world().rng_.state_ = 0x5eed0c07u;
             glad_init(false, &config);
 
             ASSERT_NE(nullptr, og::runtime::current_game_session);
@@ -1690,14 +1717,45 @@ TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
                 << "allied=" << allied_mode << " team=" << team;
             const std::vector<short> spawn_marker_teams =
                 start_marker_teams_at(game_screen->world(), *hero);
-            if (team == 0)
+            if (teams_with_start_markers(game_screen->world()).count(team) != 0)
             {
-                ASSERT_FALSE(spawn_marker_teams.empty());
-            }
-            for (const short marker_team : spawn_marker_teams)
-                EXPECT_EQ(team, marker_team)
-                    << "a hero must never borrow another team's start marker; "
+                // The level authors a marker for this team, so
+                // spawn_team_from_save consumed one: the hero stands on its
+                // OWN marker's tile and never on a foreign one. (In gladiator
+                // scen1 all 21 markers are team 0's, so this arm is exercised
+                // for team 0 only — a level with markers for two teams would
+                // be needed to exercise the exact-team filter on a non-zero
+                // team.)
+                ASSERT_FALSE(spawn_marker_teams.empty())
                     << "allied=" << allied_mode << " team=" << team;
+                for (const short marker_team : spawn_marker_teams)
+                    EXPECT_EQ(team, marker_team)
+                        << "a hero must never borrow another team's start "
+                        << "marker; allied=" << allied_mode
+                        << " team=" << team;
+            }
+            else
+            {
+                // No marker of its own: the neutral-teleport fallback placed
+                // it from a random grid cell, which may coincide with another
+                // team's marker tile — legal, because every marker is killed
+                // the moment the spawn finishes and nothing reads them again.
+                // What must hold is that the hero got a real cell and that the
+                // recorded respawn point is that cell (the classic respawn
+                // feature revives heroes there).
+                EXPECT_GE(static_cast<int>(hero->xpos()), 0);
+                EXPECT_LT(static_cast<int>(hero->xpos()),
+                          game_screen->world().grid.w * GRID_SIZE);
+                EXPECT_GE(static_cast<int>(hero->ypos()), 0);
+                EXPECT_LT(static_cast<int>(hero->ypos()),
+                          game_screen->world().grid.h * GRID_SIZE);
+                EXPECT_EQ(static_cast<int>(hero->xpos()),
+                          static_cast<int>(hero->spawn_x()))
+                    << "allied=" << allied_mode << " team=" << team;
+                EXPECT_EQ(static_cast<int>(hero->ypos()),
+                          static_cast<int>(hero->spawn_y()))
+                    << "allied=" << allied_mode << " team=" << team;
+            }
             ASSERT_NE(nullptr, game_screen->viewob[0]->control);
             EXPECT_EQ(team, game_screen->viewob[0]->control->team_num())
                 << "allied=" << allied_mode << " team=" << team;
@@ -1793,10 +1851,56 @@ TEST(GameLoop, a_marker_less_team_teleports_and_may_share_a_team0_marker_tile)
 
         const std::vector<short> spawn_marker_teams =
             start_marker_teams_at(game_screen->world(), *hero);
-        for (const short marker_team : spawn_marker_teams)
-            EXPECT_EQ(landing.team, marker_team)
-                << "a hero must never borrow another team's start marker; "
-                << "rng=" << landing.rng_state << " team=" << landing.team;
+        const std::set<short> marker_teams =
+            teams_with_start_markers(game_screen->world());
+        EXPECT_EQ(std::set<short>{short{0}}, marker_teams)
+            << "gladiator scen1's markers are all team 0's; this case is "
+               "written around that";
+
+        if (landing.team == 0)
+        {
+            // Marker-driven placement: the same tile under both RNG states,
+            // and it is team 0's OWN marker.
+            EXPECT_EQ(std::vector<short>{short{0}}, spawn_marker_teams)
+                << "rng=" << landing.rng_state;
+        }
+        else if (landing.rng_state == 55u)
+        {
+            // The collision the seed-3 shuffle stumbled into: a marker-less
+            // team's random cell coincided with a team-0 marker tile. Legal —
+            // no marker was consumed (the exact-team filter cannot hand a
+            // team-1 hero a team-0 marker) and every marker is killed right
+            // after the spawn.
+            EXPECT_EQ(std::vector<short>{short{0}}, spawn_marker_teams)
+                << "state 55 is the pinned collision";
+        }
+        else
+        {
+            EXPECT_TRUE(spawn_marker_teams.empty())
+                << "state 56's landing carries no marker";
+        }
+
+        // The recorded respawn point is the cell the hero actually got.
+        EXPECT_EQ(static_cast<int>(hero->xpos()),
+                  static_cast<int>(hero->spawn_x()));
+        EXPECT_EQ(static_cast<int>(hero->ypos()),
+                  static_cast<int>(hero->spawn_y()));
+
+        // The pin on the DISPLAY world fixed the AUTHORITATIVE spawn too: with
+        // no match stage the install seeds the server world from a display
+        // keyframe, so the hero sits on the same cell on both sides.
+        screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session);
+        ASSERT_NE(nullptr, server_screen);
+        walker* const server_hero = find_named_team_member(
+            server_screen->world(), "Color Guard", landing.team);
+        ASSERT_NE(nullptr, server_hero)
+            << "rng=" << landing.rng_state << " team=" << landing.team;
+        EXPECT_EQ(landing.x, static_cast<int>(server_hero->xpos()))
+            << "rng=" << landing.rng_state << " team=" << landing.team;
+        EXPECT_EQ(landing.y, static_cast<int>(server_hero->ypos()))
+            << "rng=" << landing.rng_state << " team=" << landing.team;
     }
 
     if (og::runtime::current_game_session != nullptr)
