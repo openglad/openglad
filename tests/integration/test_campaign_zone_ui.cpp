@@ -180,16 +180,6 @@ struct SavedPickerSave
 
     SavedPickerSave()
     {
-        // A defined resting state includes the PROCESS-WIDE lobby. The
-        // standalone picker lobby client caches the settings every cycler
-        // stamps into it (picker_lobby_sync_settings_from_save), nothing in
-        // a test binary tears it down, and its apply writes that cached
-        // campaign_id back over save.current_campaign and REMOUNTS it —
-        // which rebuilds the pack-script registry underneath a scripted
-        // book. Drop the singleton here and the next
-        // resolve_picker_lobby_client() rebuilds it from the save this
-        // flow actually set up.
-        picker_lobby_shutdown();
         SaveData& save = test_screen()->save_data;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             team_list[static_cast<std::size_t>(i)] =
@@ -212,6 +202,18 @@ struct SavedPickerSave
         snapshot_fields.arena_lineup_dealt_campaign =
             save.arena_lineup_dealt_campaign;
         snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
+
+        // ...and, once everything above is safely snapshotted, the
+        // PROCESS-WIDE lobby. The standalone picker lobby client caches the
+        // settings every cycler stamps into it
+        // (picker_lobby_sync_settings_from_save), nothing in a test binary
+        // tears it down, and its apply writes that cached campaign_id back
+        // over save.current_campaign and REMOUNTS it — rebuilding the
+        // pack-script registry underneath a scripted book. Re-stamping it
+        // from the save this flow inherits is enough, and is far cheaper
+        // than shutting the singleton down (a shutdown makes the next lobby
+        // use rebuild the server, its peers and the mount).
+        picker_lobby_sync_settings_from_save();
     }
 
     ~SavedPickerSave()
