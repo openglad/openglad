@@ -59,24 +59,41 @@ struct SurfaceDeleter
 
 using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 
-class SessionWindowMetricsRestore
+// Constructing a Screen rewrites the session's WINDOW metrics from its own
+// window and then recomputes the four derived VIEWPORT fields from them
+// (Screen::Screen -> update_overscan_setting). Restoring the window alone
+// leaves the viewport at the test Screen's size for every later suite, so
+// this guard covers both halves.
+class SessionWindowAndViewportRestore
 {
 public:
-    SessionWindowMetricsRestore()
+    SessionWindowAndViewportRestore()
         : width_(og::runtime::current_session->window_w_),
-          height_(og::runtime::current_session->window_h_)
+          height_(og::runtime::current_session->window_h_),
+          viewport_w_(og::runtime::current_session->viewport_w_),
+          viewport_h_(og::runtime::current_session->viewport_h_),
+          viewport_offset_x_(og::runtime::current_session->viewport_offset_x_),
+          viewport_offset_y_(og::runtime::current_session->viewport_offset_y_)
     {
     }
 
-    ~SessionWindowMetricsRestore()
+    ~SessionWindowAndViewportRestore()
     {
         og::runtime::current_session->window_w_ = width_;
         og::runtime::current_session->window_h_ = height_;
+        og::runtime::current_session->viewport_w_ = viewport_w_;
+        og::runtime::current_session->viewport_h_ = viewport_h_;
+        og::runtime::current_session->viewport_offset_x_ = viewport_offset_x_;
+        og::runtime::current_session->viewport_offset_y_ = viewport_offset_y_;
     }
 
 private:
     float width_;
     float height_;
+    float viewport_w_;
+    float viewport_h_;
+    float viewport_offset_x_;
+    float viewport_offset_y_;
 };
 
 enum class DirectScaler
@@ -288,7 +305,7 @@ TEST(Sai2xScaler, surface_wrapper_rejects_mismatched_pixel_depths)
 
 TEST(Sai2xScaler, screen_fullscreen_and_output_fallback_preserve_pixels)
 {
-    SessionWindowMetricsRestore metrics_restore;
+    SessionWindowAndViewportRestore metrics_restore;
     Screen fullscreen(RenderEngine::NoZoom, 320, 200, 1);
     ASSERT_NE(nullptr, fullscreen.window);
     EXPECT_NE(0u, SDL_GetWindowFlags(fullscreen.window) &
@@ -311,7 +328,7 @@ TEST(Sai2xScaler, screen_fullscreen_and_output_fallback_preserve_pixels)
 
 TEST(Sai2xScaler, render_backend_failure_retries_without_losing_cpu_pixels)
 {
-    SessionWindowMetricsRestore metrics_restore;
+    SessionWindowAndViewportRestore metrics_restore;
     Screen value(RenderEngine::NoZoom, 320, 200, 0);
     ASSERT_NE(nullptr, value.window);
     ASSERT_NE(nullptr, value.renderer);
@@ -359,7 +376,7 @@ TEST(Sai2xScaler, render_backend_failure_retries_without_losing_cpu_pixels)
 
 TEST(Sai2xScaler, smart_scaler_allocation_and_invalid_source_fail_closed)
 {
-    SessionWindowMetricsRestore metrics_restore;
+    SessionWindowAndViewportRestore metrics_restore;
     Screen value(RenderEngine::SAI, 320, 200, 0);
     ASSERT_NE(nullptr, value.renderer);
     ASSERT_EQ(nullptr, value.render2);
@@ -450,7 +467,7 @@ TEST(Sai2xScaler, constructing_a_screen_leaves_the_session_viewport_untouched)
     const float offset_y = og::runtime::current_session->viewport_offset_y_;
 
     {
-        SessionWindowMetricsRestore metrics_restore;
+        SessionWindowAndViewportRestore metrics_restore;
         Screen value(RenderEngine::NoZoom, 320, 200, 0);
         ASSERT_NE(nullptr, value.window);
     }
@@ -540,7 +557,7 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
 
 static void run_sai2x_screen_class_paths()
 {
-    SessionWindowMetricsRestore metrics_restore;
+    SessionWindowAndViewportRestore metrics_restore;
     {
         Screen s(RenderEngine::NoZoom, 320, 200, 0);
         s.clear();
