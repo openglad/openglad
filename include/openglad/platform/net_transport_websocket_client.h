@@ -35,6 +35,16 @@ public:
         // TCP connect and upgrade for a direct join typed at a WAN address:
         // this UI accepts any ws:// address, not only a peer on the LAN.
         int handshake_timeout_secs = 10;
+        // WebSocket PING/PONG on the direct link, in seconds. Without an
+        // interval ix's poll() timeout is infinite and a half-open link is
+        // never noticed at all: the io thread either sits on a socket that
+        // will never speak again or spins on poll() -> Error forever, and
+        // either way it never re-dials. With one, ix sends a heartbeat every
+        // interval and closes the socket when the pong does not come back
+        // (kPingTimeoutMessage), which lets its reconnection loop run. The
+        // RELAY transport carries no pings on purpose: that one talks to
+        // Cloudflare, not to a peer.
+        int ping_interval_secs = 5;
     };
 
     // IXWebSocket invokes callbacks on background I/O threads. Those callbacks

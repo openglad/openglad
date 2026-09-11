@@ -57,10 +57,13 @@ inline constexpr int kWebSocketQuiesceSettlePasses = 25;
 //
 // ix::WebSocket::stop() closes the socket and only THEN raises its own _stop
 // flag (IXWebSocket.cpp:187-200). With automatic reconnection live the io
-// thread can re-dial inside that gap: the new socket comes up OPEN and, since
-// nothing configures a ping interval, its poll() timeout is infinite
-// (IXWebSocketTransport.cpp:340), so run() never reaches the _stop check and
-// the join at the end of stop() never returns.
+// thread can re-dial inside that gap: the new socket comes up OPEN and parks
+// in poll() (IXWebSocketTransport.cpp:340), so run() does not reach the _stop
+// check and the join at the end of stop() waits on it. For the RELAY client,
+// which configures no ping interval, that poll timeout is infinite and the
+// join never returns at all; the DIRECT client's ping interval makes it
+// finite but still a multi-second wedge inside a teardown that has to be
+// prompt.
 //
 // Take the re-dial away first, then close until the socket really is Closed.
 // close() on an OPEN socket starts the close handshake and wakes the poll;

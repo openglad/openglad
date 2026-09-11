@@ -173,6 +173,14 @@ TEST(NetTransportWebSocketClient, direct_handshake_timeout_is_capped_at_ten_seco
            "ix's sixty-second default";
 }
 
+TEST(NetTransportWebSocketClient, direct_ping_interval_is_five_seconds)
+{
+    EXPECT_EQ(5,
+              og::sim::WebSocketClientTransport::Options{}.ping_interval_secs)
+        << "the direct link is kept honest by PING/PONG: with no interval ix's "
+           "poll timeout is infinite and a half-open link is never noticed";
+}
+
 TEST(NetTransportWebSocketClient,
      validates_configuration_and_preserves_idle_state_on_noop_operations)
 {
@@ -1074,6 +1082,66 @@ TEST(NetTransportWebSocketClient,
     }
 
     client.disconnect(client_options.remote_peer_id);
+}
+
+TEST(NetTransportWebSocketClient, a_healthy_link_survives_a_ping_interval)
+{
+    // The direct client sends a heartbeat every ping_interval_secs and closes
+    // the link on the next one if no pong came back (kPingTimeoutMessage), so
+    // a server that does not answer pings would turn every quiet lobby into a
+    // reconnect blip. Our server transport is an ix::WebSocketServer, which
+    // answers by default — this is the test that says so.
+    //
+    // Held just past the first pong-timeout decision (the heartbeat ix sends
+    // at open, then the check one interval later), not for a clock's worth of
+    // idling.
+    constexpr auto kHold = 6'500ms;
+
+    const int port = ix::getFreePort();
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server(port, server_options);
+    server.accept_connections();
+
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port));
+    client.accept_connections();
+
+    ASSERT_TRUE(poll_until_peer_count(client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(server, 1u));
+    const og::sim::PeerId server_peer_id = server.connected_peers().front();
+
+    const auto hold_until = std::chrono::steady_clock::now() + kHold;
+    while (std::chrono::steady_clock::now() < hold_until)
+    {
+        (void)client.poll();
+        (void)server.poll();
+        ASSERT_EQ(og::sim::TransportLinkState::Connected, client.link_state())
+            << "the idle link was closed while the server was answering pings";
+        std::this_thread::sleep_for(25ms);
+    }
+
+    ASSERT_EQ((std::vector<og::sim::PeerId>{server_peer_id}),
+              server.connected_peers())
+        << "the client re-dialled during an idle link that never broke";
+
+    const auto delivered = send_until_matching_message(
+        client,
+        [&] {
+            client.send_client_ready(
+                1u,
+                std::make_shared<og::sim::ClientReadyMessage>(
+                    og::sim::ClientReadyMessage{.last_applied_tick = 31u}));
+        },
+        server,
+        [server_peer_id](const og::sim::ReceivedMessage& message) {
+            return message.peer_id == server_peer_id &&
+                decode_client_ready_tick(message.data) == 31u;
+        });
+    EXPECT_TRUE(delivered.has_value());
+
+    client.disconnect(1u);
 }
 
 } // namespace

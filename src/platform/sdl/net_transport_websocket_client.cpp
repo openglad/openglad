@@ -334,6 +334,10 @@ private:
         // client-side deadline ends it. The leak is upstream at a pinned rev,
         // so this bound is the fix available to us.
         socket->setHandshakeTimeout(options.handshake_timeout_secs);
+        // Keep the link honest once it is up: with a ping interval ix's poll
+        // timeout is finite, so a half-open link ends in a pong timeout and a
+        // re-dial instead of an io thread that spins or waits forever.
+        socket->setPingInterval(options.ping_interval_secs);
         // The callback receives the socket that owns the callback thread, so
         // handle_message() never has to read the cross-thread `websocket`
         // member. The raw pointer cannot dangle: the callback only runs on
