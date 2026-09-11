@@ -162,6 +162,17 @@ TEST(NetTransportWebSocketClient, direct_redial_wait_is_capped_at_one_second)
            "second, not after the backoff has run out to ten";
 }
 
+// Same site, same reason it is pinned here: the defaults are what the picker's
+// direct join and the terminal client ship with.
+TEST(NetTransportWebSocketClient, direct_handshake_timeout_is_capped_at_ten_seconds)
+{
+    EXPECT_EQ(10,
+              og::sim::WebSocketClientTransport::Options{}.handshake_timeout_secs)
+        << "a dial that nobody answers must be abandoned in ten seconds so the "
+           "backoff can find a host that came back, not hold the io thread for "
+           "ix's sixty-second default";
+}
+
 TEST(NetTransportWebSocketClient,
      validates_configuration_and_preserves_idle_state_on_noop_operations)
 {

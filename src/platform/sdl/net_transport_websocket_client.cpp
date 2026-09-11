@@ -305,6 +305,12 @@ private:
             options.min_reconnect_wait_ms);
         socket->setMaxWaitBetweenReconnectionRetries(
             options.max_reconnect_wait_ms);
+        // Bound the dial itself, not just the wait between dials: a
+        // connection accepted by ix's acceptor and then abandoned unclosed
+        // (IXSocketServer.cpp:415) never answers and never resets, so only a
+        // client-side deadline ends it. The leak is upstream at a pinned rev,
+        // so this bound is the fix available to us.
+        socket->setHandshakeTimeout(options.handshake_timeout_secs);
         // The callback receives the socket that owns the callback thread, so
         // handle_message() never has to read the cross-thread `websocket`
         // member. The raw pointer cannot dangle: the callback only runs on
