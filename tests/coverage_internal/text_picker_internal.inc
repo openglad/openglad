@@ -1450,13 +1450,15 @@ int text_picker_testing_founding_is_reproducible_at_one_seed()
     // One whole founding on this client, then the VIEW LEVEL census it
     // produced. EOF on the name prompt keeps the generated company name
     // (which never reaches the census; only the roster names do).
-    const auto found_and_census = [&client]() -> std::string {
+    const auto found_and_census = [&client, &check]() -> std::string {
         {
             ScopedTextPickerStdoutCapture founding;
             if (!founding.ready())
                 return {};
             ScopedCinRedirect input("");
-            (void)client.prepare_new_game();
+            // A founding that refuses is a named failed check, not a silent
+            // empty census two checks later.
+            check(client.prepare_new_game());
             (void)founding.finish();
             if (!founding.finish_ok())
                 return {};
