@@ -2064,6 +2064,14 @@ struct MacroRoundTripState
 // whole flow — and, because every injector below bails out when a door does
 // not open, instead of leaving picker_main spinning until the group's budget
 // expires. Counted, never clocked.
+//
+// The count is a diagnostic here, deliberately not an assertion: how many
+// presses a loaded box drops is load, and pinning a number would pin the
+// load. The ladder's SHAPE is pinned instead, once, by the matchup group's
+// teeth — CampaignZoneUi.match_setup_click_helper_retries_a_dropped_press,
+// .match_setup_click_helper_reports_a_ladder_that_never_lands and
+// .deploy_toggle_survives_a_cancelled_acknowledge — which inject the fault
+// rather than wait for the box to supply it.
 int g_lineup_click_retries = 0;
 
 bool click_until_edge(const std::string& id,
