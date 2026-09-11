@@ -23,6 +23,8 @@
 
 #include <gtest/gtest.h>
 
+#include "family_registry_dump.h"
+
 #include <openglad/core/constants.h>
 #include <openglad/core/campaign_ids.h>
 #include <openglad/core/family_presentation.h>
@@ -610,6 +612,43 @@ TEST(ClasspackInstall, absent_train_axes_install_zero)
 
 namespace {
 
+// The first differing line of two registry dumps, with the [order id]
+// header it sits under. A whole-dump EXPECT_EQ on 80 KB of text is
+// unreadable; the point is to NAME the field that moved.
+std::string first_registry_difference(const std::string& want,
+                                      const std::string& got)
+{
+    const auto lines_of = [](const std::string& text) {
+        std::vector<std::string> out;
+        std::istringstream in(text);
+        std::string line;
+        while (std::getline(in, line))
+            out.push_back(line);
+        return out;
+    };
+    const std::vector<std::string> a = lines_of(want);
+    const std::vector<std::string> b = lines_of(got);
+    const std::size_t n = std::min(a.size(), b.size());
+    std::size_t i = 0;
+    for (; i < n; i++) {
+        if (a[i] != b[i])
+            break;
+    }
+    if (i == n && a.size() == b.size())
+        return "  (dumps are equal)";
+    std::ostringstream out;
+    out << "  first difference at line " << (i + 1) << "\n";
+    for (std::size_t back = i + 1; back-- > 0;) {
+        if (back < a.size() && !a[back].empty() && a[back][0] == '[') {
+            out << "  in " << a[back] << "\n";
+            break;
+        }
+    }
+    out << "  on entry: " << (i < a.size() ? a[i] : "<end of dump>") << "\n";
+    out << "  on exit:  " << (i < b.size() ? b[i] : "<end of dump>");
+    return out.str();
+}
+
 // The five registries are process-global and every install test shares
 // them. Frees the pack-installed slots on the way IN and OUT, so a
 // shuffled run order can never leak a mod family into a test that counts
@@ -621,11 +660,25 @@ public:
     {
         init_all_registries();
         reset_all_registry_mod_slots();
+        entry_ = og::testing::dump_installed_families();
     }
-    ~ModSlotGuard() { reset_all_registry_mod_slots(); }
+    ~ModSlotGuard()
+    {
+        reset_all_registry_mod_slots();
+        const std::string exit = og::testing::dump_installed_families();
+        EXPECT_EQ(entry_, exit)
+            << "this test left a CORE pin edited: the mod-slot reset does "
+               "not undo one, so every later test in a --gtest_shuffle order "
+               "inherits it. Hold a CorePinGuard (or RegistrySnapshotGuard) "
+               "over the install.\n"
+            << first_registry_difference(entry_, exit);
+    }
 
     ModSlotGuard(const ModSlotGuard&) = delete;
     ModSlotGuard& operator=(const ModSlotGuard&) = delete;
+
+private:
+    std::string entry_;
 };
 
 // Which ids of one order currently answer a descriptor. Used to prove an
