@@ -561,6 +561,47 @@ TEST(ViewTeam, go_starts_level) {
 }
 
 
+// ---------------------------------------------------------------------------
+// The base-camp injectors' escape hatch.
+//
+// A pushed key event is NOT a keystate: inject_key_down builds an SDL_Event
+// and SDL_PushEvent()s it, which never runs SDL_SendKeyboardKey, so SDL's
+// keyboard state array — the array og::runtime::current_session->keystates_
+// points at, assigned once from SDL_GetKeyboardState() — does not move. The
+// menu engine's BACK control is a hotkey (KEYSTATE_ESCAPE) and the only two
+// things that fire it, leftmouse() and vbutton::leftclick(), both read that
+// array. run_menu_screen has no other Escape path. So a pushed Escape can
+// never close an engine menu screen, and an injector that bails out with one
+// leaves its body spinning until the CTest timeout kills the whole binary.
+//
+// Clicking the visible BACK control is the affordance the engine actually
+// listens to. A timed-out injector can be one screen deep inside another (the
+// TRAIN screen opened from the base camp), so the hatch keeps clicking while
+// the engine still offers a BACK; the raw-key push stays as the fallback for
+// the legacy loops that read raw_key_ (dialogs, the networking menu), where it
+// does work.
+// ---------------------------------------------------------------------------
+static bool cancel_menu_screen(int timeout_ms = 2000)
+{
+    bool clicked = false;
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    // At most three: the deepest nesting a base-camp injector can be caught in
+    // is base camp -> train/scenario screen -> modal, and once the body has
+    // returned allbuttons_ still holds the last screen's BACK, so an unbounded
+    // loop would keep clicking into nothing until the deadline.
+    for (int level = 0; level < 3; ++level) {
+        if (SDL_GetTicks() >= deadline || !has_interactable("back"))
+            break;
+        if (!interact("back"))
+            break;
+        clicked = true;
+        SDL_Delay(150);
+    }
+    if (!clicked)
+        inject_key_press(SDLK_ESCAPE, 10);
+    return clicked;
+}
+
 // §2.5 flow 4 via the §9.11 row-body affordance: tapping a roster row's
 // visible NAME (inside the name/class/level body — the TRAIN column is
 // deleted) opens the train screen seeded ON THAT CHARACTER (no more
@@ -579,7 +620,7 @@ static int base_camp_row_train_injector(void* data)
 
     if (!wait_for_interactable("roster_row_1", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(750);  // entry settle (fades are instant under TESTING)
@@ -591,7 +632,7 @@ static int base_camp_row_train_injector(void* data)
 
     if (!wait_for_interactable("inc_str", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_train_menu = true;
@@ -603,7 +644,7 @@ static int base_camp_row_train_injector(void* data)
 
     if (!wait_for_interactable("roster_dep_0", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(300);
@@ -4625,10 +4666,29 @@ static int base_camp_hatch_injector(void* data)
 
     // A wait proven able to fail: no roster row 99 exists on any page.
     state->absent_wait_failed = !wait_for_interactable("roster_row_99", 1500);
-    inject_key_press(SDLK_ESCAPE, 10);  // today's hatch
-    state->hatch_closed_the_screen = true;
+    state->hatch_closed_the_screen = cancel_menu_screen();
     state->finished.store(true, std::memory_order_relaxed);
     return 0;
+}
+
+// The seam itself, so the next author does not re-adopt the dead hatch: a
+// pushed key event is not a keystate.
+TEST(ViewTeam, a_pushed_escape_never_reaches_the_keystate_the_hotkey_reads)
+{
+    ASSERT_TRUE(og::runtime::current_session->keystates_ != nullptr);
+    ASSERT_FALSE(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
+        << "precondition: nothing is holding Escape";
+
+    inject_key_down(SDLK_ESCAPE);
+    get_input_events(POLL);
+    EXPECT_FALSE(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
+        << "SDL_PushEvent does not run SDL_SendKeyboardKey, so the keyboard "
+           "state array the BACK hotkey is read from never moves — click the "
+           "button instead";
+
+    inject_key_up(SDLK_ESCAPE);
+    get_input_events(POLL);
+    og::runtime::current_session->raw_key_ = 0;
 }
 
 TEST(ViewTeam, base_camp_injector_hatch_closes_the_screen_when_a_wait_times_out)
@@ -4693,7 +4753,7 @@ static int base_camp_train_rename_injector(void* data)
 
     if (!wait_for_interactable("roster_row_1", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(750);  // entry settle (fades are instant under TESTING)
@@ -4701,7 +4761,7 @@ static int base_camp_train_rename_injector(void* data)
 
     if (!wait_for_interactable("rename", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_train_menu = true;
@@ -4718,7 +4778,7 @@ static int base_camp_train_rename_injector(void* data)
 
     if (!wait_for_interactable("inc_str", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(300);
@@ -4726,7 +4786,7 @@ static int base_camp_train_rename_injector(void* data)
 
     if (!wait_for_interactable("roster_dep_0", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(300);
