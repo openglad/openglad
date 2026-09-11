@@ -2936,18 +2936,32 @@ Sint32 create_detail_menu(guy *arg1)
    //leftmouse(buttons);
    //localbuttons->leftclick(buttons);
 
+   // The parameter SEATS the slot and is never dereferenced past the first
+   // poll: every iteration below opens with picker_lobby_poll(), which
+   // rebuilds save.team_list (picker_lobby_client.cpp, apply_state_to_save),
+   // so arg1 names a freed guy from that moment on. The slot is re-read each
+   // frame instead — which is what the nullptr path always did.
+   if (arg1 != nullptr)
+   {
+       auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
+       for (std::size_t i = 0; i < tl.size(); ++i)
+       {
+           if (tl[i].get() == arg1)
+           {
+               og::runtime::current_session->editguy_ = static_cast<int>(i);
+               break;
+           }
+       }
+   }
+
    while ( !(retvalue & MENU_EXIT) )
    {
        picker_lobby_poll();
-       guy* thisguy = arg1;
-       if (!thisguy)
-       {
-           auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
-           const int slot = og::runtime::current_session->editguy_;
-           if (slot < 0 || slot >= static_cast<int>(tl.size()))
-               return MENU_REDRAW;
-           thisguy = tl[static_cast<std::size_t>(slot)].get();
-       }
+       auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
+       const int slot = og::runtime::current_session->editguy_;
+       if (slot < 0 || slot >= static_cast<int>(tl.size()))
+           return MENU_REDRAW;
+       guy* thisguy = tl[static_cast<std::size_t>(slot)].get();
        if (!thisguy)
            return MENU_REDRAW;
 
