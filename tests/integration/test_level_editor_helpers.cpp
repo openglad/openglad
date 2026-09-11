@@ -37,8 +37,6 @@ std::string get_editor_family_label(Order order, Sint32 family, std::span<const 
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 bool editor_order_supports_spawn_delay(Order order);
 std::string format_editor_spawn_delay_label(int ticks);
-void importCampaignPicker();
-void shareCampaign(screen* scr);
 bool prompt_for_string(const std::string& message, std::string& result);
 int level_editor_test_exercise_internal_helpers();
 int level_editor_test_decor_migrated_roundtrip();
@@ -136,8 +134,6 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_TRUE(get_editor_level_label(Order::Weapon, FAMILY_KNIFE, 8) == "POWER: 8") << "weapon power label";
     ASSERT_TRUE(get_editor_level_label(static_cast<Order>(255), FAMILY_KNIFE, 8).empty()) << "unknown order has empty level label";
 
-    importCampaignPicker();
-    shareCampaign(og::runtime::current_session->myscreen_);
     std::string name = "Default";
     ASSERT_TRUE(prompt_for_string("Name", name)) << "prompt_for_string test-mode path should accept";
     ASSERT_EQ(0, level_editor_test_exercise_internal_helpers())

@@ -1422,12 +1422,6 @@ int level_editor_test_exercise_internal_helpers()
             open_file_menu();
             click_button(data.fileLevelButton);
         };
-        auto expose_hidden_file_campaign_choice = [&](SimpleButton& button) {
-            data.current_menu.clear();
-            std::set<SimpleButton*> s;
-            s.insert(&button);
-            data.current_menu.push_back(std::make_pair(&data.fileCampaignButton, s));
-        };
 
         data.mode = Mode::Terrain;
         data.reset_mode_buttons();
@@ -1569,23 +1563,16 @@ int level_editor_test_exercise_internal_helpers()
 	        check(data.get_decor(4, 4) == DECOR_NONE);
 
 	        open_file_campaign_menu();
+        // The Campaign submenu is exactly these four entries. A dead entry
+        // added back here would otherwise be "covered" by a fabricated menu
+        // state no player can produce.
+        check(data.current_menu.back().second ==
+              std::set<SimpleButton*>{&data.fileCampaignNewButton,
+                                      &data.fileCampaignLoadButton,
+                                      &data.fileCampaignSaveButton,
+                                      &data.fileCampaignSaveAsButton});
         click_button(data.fileCampaignSaveButton);
         check(!eds().campaignchanged);
-
-        eds().levelchanged = 1;
-        eds().campaignchanged = 1;
-        picker_testing_yes_or_no_queue_push(true);
-        picker_testing_yes_or_no_queue_push(true);
-        expose_hidden_file_campaign_choice(data.fileCampaignImportButton);
-        click_button(data.fileCampaignImportButton);
-
-        eds().levelchanged = 1;
-        eds().campaignchanged = 1;
-        picker_testing_yes_or_no_queue_push(true);
-        picker_testing_yes_or_no_queue_push(true);
-        expose_hidden_file_campaign_choice(data.fileCampaignShareButton);
-        click_button(data.fileCampaignShareButton);
-        check(!eds().levelchanged && !eds().campaignchanged);
 
         open_file_level_menu();
         check(!data.current_menu.empty());

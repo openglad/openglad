@@ -280,8 +280,6 @@ static inline auto& object_pane()
 bool save_level_and_map(screen* ascreen);
 bool does_campaign_exist(const std::string& campaign_id);
 bool create_new_campaign(const std::string& campaign_id);
-void importCampaignPicker();
-void shareCampaign(screen* scr);
 
 bool prompt_for_string_block(const std::string& message, std::list<std::string>& result);
 bool prompt_for_string(const std::string& message, std::string& result);
@@ -577,7 +575,7 @@ public:
 	SimpleButton fileButton, fileCampaignButton, fileLevelButton, fileQuitButton;
 	
 	// File > Campaign submenu
-	SimpleButton fileCampaignImportButton, fileCampaignShareButton, fileCampaignNewButton, fileCampaignLoadButton, fileCampaignSaveButton, fileCampaignSaveAsButton;
+	SimpleButton fileCampaignNewButton, fileCampaignLoadButton, fileCampaignSaveButton, fileCampaignSaveAsButton;
 	
 	// File > Level submenu
 	SimpleButton fileLevelNewButton, fileLevelLoadButton, fileLevelSaveButton, fileLevelSaveAsButton;
@@ -708,13 +706,11 @@ LevelEditorData::LevelEditorData()
 	, fileLevelButton("Level >", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(fileCampaignButton.area.y) + fileCampaignButton.area.h), 65, menu_button_height, true, true)
 	, fileQuitButton("Exit", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(fileLevelButton.area.y) + fileLevelButton.area.h), 65, menu_button_height, true, true)
 	
-	, fileCampaignImportButton("Import...", static_cast<int>(static_cast<unsigned int>(fileCampaignButton.area.x) + fileCampaignButton.area.w), fileCampaignButton.area.y, 65, menu_button_height, true)
-	, fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignImportButton.area.y) + fileCampaignImportButton.area.h), 65, menu_button_height, true, true)
 	//, fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h, 65, menu_button_height, true, true)
 	, fileCampaignNewButton("New", static_cast<int>(static_cast<unsigned int>(fileCampaignButton.area.x) + fileCampaignButton.area.w), fileCampaignButton.area.y, 65, menu_button_height, true)
-	, fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignNewButton.area.y) + fileCampaignNewButton.area.h), 65, menu_button_height, true, true)
-	, fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignLoadButton.area.y) + fileCampaignLoadButton.area.h), 65, menu_button_height, true, true)
-	, fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignSaveButton.area.y) + fileCampaignSaveButton.area.h), 65, menu_button_height, true, true)
+	, fileCampaignLoadButton("Load...", fileCampaignNewButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignNewButton.area.y) + fileCampaignNewButton.area.h), 65, menu_button_height, true, true)
+	, fileCampaignSaveButton("Save", fileCampaignNewButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignLoadButton.area.y) + fileCampaignLoadButton.area.h), 65, menu_button_height, true, true)
+	, fileCampaignSaveAsButton("Save As...", fileCampaignNewButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignSaveButton.area.y) + fileCampaignSaveButton.area.h), 65, menu_button_height, true, true)
 	
 	, fileLevelNewButton("New", static_cast<int>(static_cast<unsigned int>(fileLevelButton.area.x) + fileLevelButton.area.w), fileLevelButton.area.y, 65, menu_button_height, true)
 	, fileLevelLoadButton("Load...", fileLevelNewButton.area.x, static_cast<int>(static_cast<unsigned int>(fileLevelNewButton.area.y) + fileLevelNewButton.area.h), 65, menu_button_height, true, true)
@@ -2192,81 +2188,11 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_sub_menu_button(mx, my, current_menu, fileCampaignButton))
         {
             std::set<SimpleButton*> s;
-            //s.insert(&fileCampaignImportButton);
-            //s.insert(&fileCampaignShareButton);
             s.insert(&fileCampaignNewButton);
             s.insert(&fileCampaignLoadButton);
             s.insert(&fileCampaignSaveButton);
             s.insert(&fileCampaignSaveAsButton);
             current_menu.push_back(std::make_pair(&fileCampaignButton, s));
-        }
-        else if(activate_menu_choice(mx, my, *this, fileCampaignImportButton))
-        {
-            bool cancel = false;
-            if(eds().levelchanged)
-            {
-                cancel = !yes_or_no_prompt("Import", "Discard unsaved level changes?", false);
-            }
-            
-            if(eds().campaignchanged)
-            {
-                cancel = !yes_or_no_prompt("Import", "Discard unsaved campaign changes?", false);
-            }
-            
-            if(!cancel)
-            {
-                popup_dialog("Import Campaign", "Not yet implemented.");
-                importCampaignPicker();
-            }
-        }
-        else if(activate_menu_choice(mx, my, *this, fileCampaignShareButton))
-        {
-            bool cancel = false;
-            if(eds().levelchanged)
-            {
-                if(yes_or_no_prompt("Share", "Save level first?", false))
-                {
-                    if(saveLevel())
-                    {
-                        timed_dialog("Level saved.");
-                        eds().redraw = 1;
-                        eds().levelchanged = 0;
-                    }
-                    else
-                    {
-                        timed_dialog("Save failed.");
-                        eds().redraw = 1;
-                        
-                        cancel = true;
-                    }
-                }
-            }
-            
-            if(eds().campaignchanged)
-            {
-                if(yes_or_no_prompt("Share", "Save campaign first?", false))
-                {
-                    if(saveCampaign())
-                    {
-                        timed_dialog("Campaign saved.");
-                        eds().redraw = 1;
-                        eds().campaignchanged = 0;
-                    }
-                    else
-                    {
-                        timed_dialog("Save failed.");
-                        eds().redraw = 1;
-                        
-                        cancel = true;
-                    }
-                }
-            }
-            
-            if(!cancel)
-            {
-                popup_dialog("Share Campaign", "Not yet implemented.");
-                shareCampaign(og::runtime::current_session->myscreen_);
-            }
         }
         else if(activate_menu_choice(mx, my, *this, fileCampaignNewButton))
         {
