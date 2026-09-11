@@ -282,8 +282,9 @@ TEST(MenuFlow, main_menu_flow) {
   about), and the help viewer through `og::input_native::yield_count()`.
 - Set `g_picker_max_mainmenu_calls` to limit loop iterations
 - Call `cleanup_picker_state()` after the test
-- `scripts/check_injector_settles.sh` fails the build if a flat
-  `SDL_Delay(750)` reappears next to a `wait_for_interactable`
+- `scripts/check_injector_settles.sh` fails the build (it is a dependency of
+  `og_game_test`) if a flat `SDL_Delay(750)` reappears in any of the injector
+  files it lists; add your file to that list when you convert it
 
 ### `#ifdef TESTING` Guards
 

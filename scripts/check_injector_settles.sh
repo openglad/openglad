@@ -23,6 +23,10 @@
 # exists in other injector suites (test_company_list.cpp, test_lineup_ui.cpp,
 # test_ctf_ui.cpp, test_uxshots_probe.cpp and others); add each file here as
 # its own conversion lands, so the gate never passes by looking away.
+#
+# Wired into the build as a dependency of og_game_test (CMakeLists.txt,
+# beside check_vendor_leaks), so a reintroduced settle fails the test build
+# rather than waiting for someone to run this by hand.
 set -euo pipefail
 
 FILES=(

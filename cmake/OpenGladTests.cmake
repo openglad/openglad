@@ -294,7 +294,7 @@ target_link_libraries(og_game_test PUBLIC ${OG_IO_EXTERNAL_LIBS} og_runtime_deps
 if(NOT EMSCRIPTEN)
     target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
 endif()
-add_dependencies(og_game_test check_vendor_leaks)
+add_dependencies(og_game_test check_vendor_leaks check_injector_settles)
 
 enable_testing()
 
