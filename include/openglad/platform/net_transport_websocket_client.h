@@ -17,7 +17,13 @@ public:
         PeerId remote_peer_id = 1;
         bool automatic_reconnection = true;
         std::uint32_t min_reconnect_wait_ms = 1;
-        std::uint32_t max_reconnect_wait_ms = 10'000;
+        // IXWebSocket doubles the wait after each failed dial (2^n * 100 ms)
+        // and clamps it here. Ten seconds meant a host that blipped for a few
+        // seconds went unnoticed for up to ten more after it came back; one
+        // second is the whole recovery latency a returning host can cost.
+        // The RELAY transport keeps its own ten-second clamp on purpose: that
+        // one re-dials Cloudflare, not a peer on the LAN.
+        std::uint32_t max_reconnect_wait_ms = 1'000;
     };
 
     // IXWebSocket invokes callbacks on background I/O threads. Those callbacks
