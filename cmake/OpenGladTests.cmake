@@ -38,6 +38,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_replay.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_snapshot_size_benchmark.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_difficulty.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_frame_wait.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_guy.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_go_no_team.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_fairy_death.cpp
@@ -530,6 +531,7 @@ og_add_test_group(og_test_picker_network FILES
 
 og_add_test_group(og_test_menu_ui FILES
     test_back_to_mainmenu.cpp
+    test_menu_frame_wait.cpp
     test_cloud_ui.cpp
     test_menu.cpp
     test_menu_layout.cpp
