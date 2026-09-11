@@ -276,8 +276,10 @@ TEST(MenuFlow, main_menu_flow) {
   flow costs ~99 ms; the same class of flow on flat delays costs ~6 s.
 - A screen that is NOT engine-hosted has its own oracle, because
   `wait_for_menu_frames` can never be satisfied inside it: the blocking
-  `input_string_ex` editor is observed through `SDL_TextInputActive()`, and
-  the help viewer through `og::input_native::yield_count()`.
+  `input_string_ex` editor is observed through
+  `og::input_native::text_input_is_active()` (TESTING-only: under the dummy
+  video driver there is no window for `SDL_TextInputActive()` to answer
+  about), and the help viewer through `og::input_native::yield_count()`.
 - Set `g_picker_max_mainmenu_calls` to limit loop iterations
 - Call `cleanup_picker_state()` after the test
 - `scripts/check_injector_settles.sh` fails the build if a flat
