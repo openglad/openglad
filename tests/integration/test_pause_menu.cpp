@@ -126,6 +126,32 @@ using og::ui::PauseMenuResult;
 // docs/pause-menu-design.md §3.2.
 constexpr int kPauseMenuFrameBudget = 240;
 
+// Injector diagnostics quote the label they are waiting for verbatim, and some
+// of those labels are control bytes: og::input::mapping_short_name("ARROWS")
+// is include/openglad/interface/input_mappings.h's kArrowGlyphs,
+// "\x01\x03\x02\x04" — the SDL font's arrow glyphs. A terminal eats
+// SOH/ETX/STX/EOT, so a failed ARROWS wait printed as
+//   'pause_input' reading 'INPUT: ' did not happen
+// and read as an EMPTY expected label. That cost a sweep agent a whole pass
+// chasing a non-existent empty named-mapping registry (wave-C N8), so render
+// every non-printable byte as <hh> and let the diagnostic say what it means.
+std::string escape_for_log(const std::string& text)
+{
+    std::string out;
+    out.reserve(text.size());
+    for (const char raw : text) {
+        const unsigned char byte = static_cast<unsigned char>(raw);
+        if (byte >= 0x20 && byte < 0x7f) {
+            out.push_back(raw);
+        } else {
+            char hex[8];
+            std::snprintf(hex, sizeof(hex), "<%02X>", byte);
+            out += hex;
+        }
+    }
+    return out;
+}
+
 template <typename Ready>
 bool wait_for_pause_menu_progress(const std::string& what,
                                   Ready ready,
@@ -148,14 +174,14 @@ bool wait_for_pause_menu_progress(const std::string& what,
             fprintf(stderr,
                     "  [pause] %s did not happen within %d completed menu "
                     "frames\n",
-                    what.c_str(), frames);
+                    escape_for_log(what).c_str(), frames);
             return false;
         }
         if (stalled_ms >= stall_timeout_ms) {
             fprintf(stderr,
                     "  [pause] %s did not happen; the menu produced no frame "
                     "for %d ms\n",
-                    what.c_str(), stall_timeout_ms);
+                    escape_for_log(what).c_str(), stall_timeout_ms);
             return false;
         }
         SDL_Delay(50);
@@ -1966,6 +1992,24 @@ TEST(PausePlayerHandlers, zoom_row_cycles_labels_persists_and_clamps)
     scr->relayout_views();
 
     og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+// Diagnostic legibility, not a product contract (wave-C N8). The reported
+// defect — mapping_short_name("ARROWS") returning an empty string because the
+// "named-mapping registry" was torn down by some test order — does not exist
+// and cannot: src/interface/input/input_mappings.cpp branches on the literal
+// and hands back a compile-time constant, pinned by
+// tests/unit/test_input_mappings.cpp. What was really seen was this file's own
+// injector diagnostic printing four control bytes into a terminal that ate
+// them. The escaper is the fix; the label itself is untouched.
+TEST(PausePlayerHandlers, expected_input_labels_print_visibly_in_diagnostics)
+{
+    EXPECT_EQ(
+        "INPUT: <01><03><02><04>",
+        escape_for_log("INPUT: " + og::input::mapping_short_name("ARROWS")));
+    // Printable labels pass through byte for byte.
+    EXPECT_EQ("INPUT: WASD",
+              escape_for_log("INPUT: " + og::input::mapping_short_name("WASD")));
 }
 
 // ---------------------------------------------------------------------------
