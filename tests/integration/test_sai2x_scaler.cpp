@@ -1,5 +1,6 @@
 #include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
+#include <openglad/interface/input.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -429,6 +430,36 @@ TEST(Sai2xScaler, clipped_scaler_samples_the_previous_column_not_the_current_one
         scale_pixels(DirectScaler::Super2xSaiClipped, source, 4, 4);
     EXPECT_EQ(0x007F7F7Fu, out[3 * 8 + 2]) // dst(2,3) == product2a of src(1,1)
         << "the left-neighbour sample must be the previous column, not the current one";
+}
+
+// T3b: a Screen constructed as an ordinary test object writes the process-wide
+// session window metrics from its own window and recomputes the viewport from
+// them (sai2x.cpp Screen::Screen -> update_overscan_setting). Every scaler test
+// below builds a 320x200 Screen while the real window is 640x400; if the
+// derived viewport is left behind at 320x200, the next suite's native world
+// plane is sized at 1x instead of 2x.
+TEST(Sai2xScaler, constructing_a_screen_leaves_the_session_viewport_untouched)
+{
+    // Rederive the viewport from the live window first. Another
+    // Screen-constructing test may already have left it at its own 320x200,
+    // and comparing that against itself would make this a tautology.
+    update_overscan_setting();
+    const float viewport_w = og::runtime::current_session->viewport_w_;
+    const float viewport_h = og::runtime::current_session->viewport_h_;
+    const float offset_x = og::runtime::current_session->viewport_offset_x_;
+    const float offset_y = og::runtime::current_session->viewport_offset_y_;
+
+    {
+        SessionWindowMetricsRestore metrics_restore;
+        Screen value(RenderEngine::NoZoom, 320, 200, 0);
+        ASSERT_NE(nullptr, value.window);
+    }
+
+    EXPECT_EQ(viewport_w, og::runtime::current_session->viewport_w_)
+        << "a scaler Screen must not leave the session viewport at its own 320x200";
+    EXPECT_EQ(viewport_h, og::runtime::current_session->viewport_h_);
+    EXPECT_EQ(offset_x, og::runtime::current_session->viewport_offset_x_);
+    EXPECT_EQ(offset_y, og::runtime::current_session->viewport_offset_y_);
 }
 
 static void run_sai2x_ex2_and_supereagle_write_output()
