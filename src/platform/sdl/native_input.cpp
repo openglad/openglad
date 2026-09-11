@@ -615,6 +615,18 @@ unsigned long yield_count()
 {
     return g_yield_count.load(std::memory_order_relaxed);
 }
+
+namespace
+{
+// Atomic mirror of s_text_input_active for cross-thread readers (injector
+// threads). The production flag itself is untouched.
+std::atomic<bool> g_testing_text_input_active{false};
+}
+
+bool text_input_is_active()
+{
+    return g_testing_text_input_active.load(std::memory_order_acquire);
+}
 #endif
 
 void sleep_ms(int ms)
@@ -668,6 +680,9 @@ void start_text_input(const char* initial_value, int max_bytes,
     // window, even when no SDL window exists (dummy driver in tests).
     s_text_input_active = true;
     s_text_cancel_requested = false;
+#ifdef TESTING
+    g_testing_text_input_active.store(true, std::memory_order_release);
+#endif
 #ifdef __EMSCRIPTEN__
     s_allowed_escape_events = 0;
     // The flag changes the mapping without any key event; re-derive now.
@@ -700,6 +715,9 @@ void stop_text_input()
 {
     s_text_input_active = false;
     s_text_cancel_requested = false;
+#ifdef TESTING
+    g_testing_text_input_active.store(false, std::memory_order_release);
+#endif
 #ifdef __EMSCRIPTEN__
     s_allowed_escape_events = 0;
     refresh_web_keyboard_state();

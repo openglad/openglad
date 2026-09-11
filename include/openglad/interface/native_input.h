@@ -176,6 +176,16 @@ void sleep_ms(int ms);
 // actually yields instead of busy-waiting (natively the sleep itself is
 // invisible, so "the call returned" proves nothing on its own).
 unsigned long yield_count();
+// Whether a native text-input session is open: start_text_input() has run and
+// stop_text_input() has not. Injector tests driving the blocking
+// input_string_ex editor need this because nothing else can see it — the
+// editor is not engine-hosted (no completed menu frames), it parks in
+// get_input_events(WAIT) (no sleep_ms, so yield_count is frozen too), and
+// under the dummy video driver there is no window for SDL_TextInputActive()
+// to answer about. It is the ONLY observable that the modal reached its event
+// loop and cleared the input state, which is the moment before which anything
+// injected is discarded.
+bool text_input_is_active();
 #endif
 void show_cursor(bool show);
 // Start a native text-input session and, on web touch devices, describe the

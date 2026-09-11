@@ -2,6 +2,7 @@
 #include <array>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/native_input.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/core/test_trace.h>
 #include <openglad/legacy/base.h>
@@ -15,6 +16,7 @@
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <string>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -83,7 +85,37 @@ struct NewGameState {
     // #237 symmetry leg: fades counted across the name-entry BACK, from the
     // cancel click to the re-presented main menu. -1 = never read.
     int fades_added_by_name_entry_back;
+    // Empty unless the blocking name editor missed its handshake. A miss used
+    // to be invisible (and fatal: the flow typed into a closed editor and the
+    // binary hung on SDL_WaitThread until ctest killed it at 420 s); it is a
+    // named failure now.
+    std::string name_editor_miss;
 };
+
+// Wait until the blocking company-name editor is open (want == true) or
+// closed (want == false).
+//
+// The editor is input_string_ex, and it is the one screen in this suite that
+// NOTHING else can observe: it is not engine-hosted, so wait_for_menu_frames
+// can never be satisfied inside it; it parks in get_input_events(WAIT), so
+// og::input_native::yield_count() is frozen too; and under the dummy video
+// driver there is no window for SDL_TextInputActive() to answer about. The
+// native text-input session is the observable, and it opens on the line
+// AFTER the modal clears the keyboard, the key-press event, the text-input
+// event and the mouse tracking — so anything injected before it is silently
+// discarded. That discard is what the flat SDL_Delay(400) was betting
+// against.
+static bool wait_for_text_input(bool want, int timeout_ms = 5000)
+{
+    for (int waited = 0; waited <= timeout_ms; waited += 20) {
+        if (og::input_native::text_input_is_active() == want)
+            return true;
+        SDL_Delay(20);
+    }
+    fprintf(stderr, "  [test] the name editor was not %s within %d ms\n",
+            want ? "open" : "closed", timeout_ms);
+    return false;
+}
 
 // Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
 // traces exactly one "video" line per fade — so counting those lines counts
@@ -109,7 +141,7 @@ static int new_game_injector(void* data)
 
     // Wait for main menu
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     // #237: the new-game cut is a context switch, and name entry is its first
@@ -121,7 +153,7 @@ static int new_game_injector(void* data)
     // §2.2: BEGIN NEW GAME now opens the name-entry screen first. Accept the
     // generated company name to found the company.
     wait_for_interactable("company_name_accept", 5000);
-    SDL_Delay(750);  // menu-entry settle
+    wait_for_menu_frames(2);  // menu-entry settle
     state->fades_added_by_name_entry =
         count_fade_between_traces() - fades_before_new_game;
     fprintf(stderr, "  [test] accepting generated company name\n");
@@ -171,7 +203,7 @@ TEST(NewGame, begin_new_game) {
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    NewGameState state = { false, false, false, false, -1, -1 };
+    NewGameState state = { false, false, false, false, -1, -1, {} };
     SDL_Thread* thread = SDL_CreateThread(new_game_injector, "new_game_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -218,13 +250,13 @@ static int name_entry_cancel_injector(void* data)
     state->started = true;
 
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
 
     // Name-entry appears. Reroll the suggestion, then BACK out (cancel).
     if (wait_for_interactable("company_name_reroll", 5000)) {
-        SDL_Delay(750);  // menu-entry settle
+        wait_for_menu_frames(2);  // menu-entry settle
         fprintf(stderr, "  [test] clicking REROLL\n");
         interact("company_name_reroll");
         SDL_Delay(300);  // let the click release before the next press
@@ -238,7 +270,7 @@ static int name_entry_cancel_injector(void* data)
         // The re-entered main menu is a SECOND mainmenu call, so this flow
         // runs with g_picker_max_mainmenu_calls = 2 and leaves through QUIT.
         if (wait_for_interactable("begin_new_game", 5000)) {
-            SDL_Delay(750);  // menu-entry settle
+            wait_for_menu_frames(2);  // menu-entry settle
             state->fades_added_by_name_entry_back =
                 count_fade_between_traces() - fades_before_back;
             fprintf(stderr, "  [test] quitting from the main menu\n");
@@ -262,7 +294,7 @@ TEST(NewGame, name_entry_back_cancels_without_founding) {
         "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    NewGameState state = { false, false, false, false, -1, -1 };
+    NewGameState state = { false, false, false, false, -1, -1, {} };
     SDL_Thread* thread =
         SDL_CreateThread(name_entry_cancel_injector, "name_entry_cancel", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
@@ -332,34 +364,74 @@ static int name_entry_edit_injector(void* data)
     state->started = true;
 
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
 
     if (wait_for_interactable("company_name_value", 5000)) {
-        SDL_Delay(750);  // menu-entry settle
+        wait_for_menu_frames(2);
         fprintf(stderr, "  [test] clicking the name strip to edit\n");
         interact("company_name_value");  // opens input_string_value (blocks)
-        SDL_Delay(400);  // let the engine dispatch + the editor start + clear
-        // The first text input replaces the pre-filled suggestion entirely.
-        inject_text_input("MY GUILD");
-        SDL_Delay(50);
-        inject_key_press(SDLK_RETURN);  // commit the edit
-        SDL_Delay(400);
+        if (!wait_for_text_input(true, 5000)) {
+            // Failsafe: Escape is the modal's cancel path. Without it the
+            // remaining steps click buttons that sit BEHIND the modal,
+            // picker_main never returns, and the binary hangs until ctest
+            // kills it. (test_help_smoke.cpp uses the same idiom.)
+            state->name_editor_miss = "the name editor never opened";
+            inject_key_press(SDLK_ESCAPE, 10);
+            (void)wait_for_text_input(false, 5000);
+        } else {
+            // The first text input replaces the pre-filled suggestion
+            // entirely. The 50 ms here is the gap between two injected
+            // events, not a settle: the modal's event loop must consume the
+            // text before the RETURN that commits it.
+            inject_text_input("MY GUILD");
+            SDL_Delay(50);
+            inject_key_press(SDLK_RETURN);  // commit the edit
+            if (!wait_for_text_input(false, 5000)) {
+                state->name_editor_miss = "the name editor never closed";
+                inject_key_press(SDLK_ESCAPE, 10);
+                (void)wait_for_text_input(false, 5000);
+            }
+        }
         fprintf(stderr, "  [test] accepting the edited name\n");
-        interact("company_name_accept");
+        if (wait_for_interactable("company_name_accept", 5000))
+            interact("company_name_accept");
     }
 
     // The campaign select and intro run un-driven under TESTING (auto-accept
     // and auto-dismiss after one presented frame each) — the flow reaches
     // team build on its own. Unwind back to the main menu so picker_main can
     // hit its Quit gate.
-    SDL_Delay(500);
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
-        SDL_Delay(750);
+        wait_for_menu_frames(2);
         fprintf(stderr, "  [test] clicking back from team menu\n");
-        interact("back");
+        if (wait_for_interactable("back", 5000))
+            interact("back");
+        else
+            inject_key_press(SDLK_ESCAPE, 10);
+    } else {
+        // Failsafe. Every screen left in this flow BLOCKS, so if the flow did
+        // not arrive where it expected, picker_main can no longer return on
+        // its own and the whole binary waits out the ctest kill. Escape is
+        // BACK's hotkey on these screens: unwind with it, bounded, so the
+        // miss recorded above is reported as a named failure instead.
+        state->name_editor_miss =
+            state->name_editor_miss.empty()
+                ? std::string("the flow never reached the team menu")
+                : state->name_editor_miss;
+        // Escape is a keystate hotkey and SDL_PushEvent cannot write the
+        // keyboard-state array the engine reads, so the only injectable way
+        // out of a blocking ENGINE screen is its own BACK button (Escape does
+        // still cancel the input_string_ex modal, which reads key EVENTS).
+        for (int i = 0; i < 8 && !has_interactable("begin_new_game"); ++i) {
+            if (has_interactable("back"))
+                interact("back");
+            else
+                inject_key_press(SDLK_ESCAPE, 10);
+            SDL_Delay(300);
+        }
     }
 
     state->finished = true;
@@ -369,7 +441,7 @@ static int name_entry_edit_injector(void* data)
 TEST(NewGame, name_entry_edit_strip_sets_company_name) {
     trace_clear();
 
-    NewGameState state = { false, false, false, false, -1, -1 };
+    NewGameState state = { false, false, false, false, -1, -1, {} };
     SDL_Thread* thread =
         SDL_CreateThread(name_entry_edit_injector, "name_entry_edit", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
@@ -386,6 +458,8 @@ TEST(NewGame, name_entry_edit_strip_sets_company_name) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_EQ("", state.name_editor_miss)
+        << "the blocking name editor missed its handshake";
     ASSERT_TRUE(state.saw_team_menu) << "should have reached the name-entry strip";
     ASSERT_TRUE(trace_contains("name_entry", "edit MY GUILD"))
         << "the strip edit should capture the typed name";
@@ -428,7 +502,7 @@ static int continue_player_count_injector(void* data)
 
     if (!wait_for_interactable("begin_new_game", 5000))
         return 0;
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
     fprintf(stderr, "  [test] founding company for player-count Continue flow\n");
     interact("begin_new_game");
 
@@ -469,7 +543,7 @@ static int continue_player_count_injector(void* data)
 
     if (!wait_for_interactable("continue_game", 10000))
         return 0;
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
     fprintf(stderr, "  [test] continuing the founded company\n");
     interact("continue_game");
 
@@ -595,4 +669,85 @@ TEST(NewGame, player_count_survives_back_then_continue)
         *company_file, &legacy_player_count, 1, 1));
     EXPECT_EQ(1, static_cast<int>(legacy_player_count))
         << "GTL must retain only its canonical compatibility marker";
+}
+
+// Teeth for the name-editor handshake (§2.2).
+//
+// The old flow bet a flat SDL_Delay(400) that the menu thread had reached
+// input_string_ex's event loop before it typed. When the bet lost, the modal's
+// entry clear (clear_keyboard / clear_key_press_event / clear_text_input_event
+// / reset_mouse_click_tracking, immediately before start_text_input) ate the
+// text AND the RETURN, the edit never committed, and the injector's remaining
+// clicks landed on buttons sitting behind a modal that never returned — so
+// picker_main never returned, SDL_WaitThread never returned, and the binary
+// hung until ctest killed the group.
+//
+// This case drives the miss deliberately: open the editor, type NOTHING, and
+// require the wait to REPORT that the editor is still open rather than
+// pretend it closed — then require the Escape failsafe to actually bring the
+// flow back to the name-entry screen. It runs against beginmenu() directly,
+// so it costs a fraction of a picker_main flow.
+struct NameEditorMissState {
+    bool editor_opened = false;
+    bool closed_without_typing = false;
+    bool escape_closed_the_editor = false;
+    bool returned_to_name_entry = false;
+};
+
+static int name_entry_editor_miss_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<NameEditorMissState*>(data);
+
+    if (!wait_for_interactable("company_name_value", 5000))
+        return 1;
+    wait_for_menu_frames(2);
+    interact("company_name_value");  // opens input_string_value (blocks)
+
+    state->editor_opened = wait_for_text_input(true, 5000);
+    // Nothing is typed, so nothing can commit: the editor must still be open.
+    state->closed_without_typing = wait_for_text_input(false, 800);
+
+    inject_key_press(SDLK_ESCAPE, 10);  // the modal's cancel path
+    state->escape_closed_the_editor = wait_for_text_input(false, 5000);
+    state->returned_to_name_entry =
+        wait_for_interactable("company_name_accept", 5000);
+    if (state->returned_to_name_entry) {
+        wait_for_menu_frames(2);
+        interact("back");  // cancel name entry so beginmenu() returns
+    }
+    return 0;
+}
+
+TEST(NewGame, name_entry_editor_wait_reports_a_miss_instead_of_hanging)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const auto saved_cash = save.totalcash;
+    const std::string saved_name = save.save_name;
+
+    NameEditorMissState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        name_entry_editor_miss_injector, "name_entry_editor_miss", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    EXPECT_EQ(MENU_REDRAW, beginmenu(99));
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    EXPECT_EQ(0, thread_result);
+
+    ASSERT_TRUE(state.editor_opened)
+        << "clicking the name strip must open the native text-input session";
+    ASSERT_FALSE(state.closed_without_typing)
+        << "nothing was typed and nothing committed, so the editor is still "
+           "open: a wait that reports success here would let the flow click "
+           "buttons behind a live modal";
+    ASSERT_TRUE(state.escape_closed_the_editor)
+        << "the Escape failsafe must close the editor";
+    ASSERT_TRUE(state.returned_to_name_entry)
+        << "cancelling the editor must land back on the name-entry screen";
+
+    // Cancelling the editor founds nothing and changes nothing.
+    EXPECT_EQ(saved_cash, save.totalcash);
+    EXPECT_EQ(saved_name, save.save_name);
 }
