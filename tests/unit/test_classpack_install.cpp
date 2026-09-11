@@ -995,8 +995,18 @@ public:
     explicit CorePinGuard(int family_id)
         : family_id_(family_id), saved_(*get_family_descriptor(family_id))
     {
+        // Installing over a slot replaces its tuning too (an entry that
+        // declares none erases what was there), so the pin is not restored
+        // by the descriptor alone.
+        if (const og::script::TuningMap* tuning =
+                og::script::family_tuning(Order::Living, family_id))
+            saved_tuning_ = *tuning;
     }
-    ~CorePinGuard() { set_family_descriptor(family_id_, saved_); }
+    ~CorePinGuard()
+    {
+        set_family_descriptor(family_id_, saved_);
+        og::script::set_family_tuning(Order::Living, family_id_, saved_tuning_);
+    }
 
     CorePinGuard(const CorePinGuard&) = delete;
     CorePinGuard& operator=(const CorePinGuard&) = delete;
@@ -1004,6 +1014,7 @@ public:
 private:
     int family_id_;
     FamilyDescriptor saved_;
+    og::script::TuningMap saved_tuning_;
 };
 
 }  // namespace
@@ -1640,10 +1651,41 @@ using og::data::ClasspackTuningValue;
 
 // The tuning store is process-global (like the registries); every test
 // that touches it restores emptiness on both sides of itself.
+// A tuning test wants the store empty to start with, but the store is
+// process-global and packs/core fills it for the CORE families -- clearing
+// it and walking away costs every later test in the process its core
+// tuning. Save what is there, clear, and put it back.
 class TuningStoreGuard {
 public:
-    TuningStoreGuard() { og::script::clear_all_family_tuning(); }
-    ~TuningStoreGuard() { og::script::clear_all_family_tuning(); }
+    TuningStoreGuard() : saved_(grab()) { og::script::clear_all_family_tuning(); }
+
+    ~TuningStoreGuard()
+    {
+        og::script::clear_all_family_tuning();
+        for (const auto& entry : saved_)
+            og::script::set_family_tuning(entry.first.first, entry.first.second,
+                                          entry.second);
+    }
+
+    TuningStoreGuard(const TuningStoreGuard&) = delete;
+    TuningStoreGuard& operator=(const TuningStoreGuard&) = delete;
+
+private:
+    using Key = std::pair<Order, int>;
+
+    static std::vector<std::pair<Key, og::script::TuningMap>> grab()
+    {
+        std::vector<std::pair<Key, og::script::TuningMap>> out;
+        for (const Order order : {Order::Living, Order::Weapon, Order::FX,
+                                  Order::Treasure, Order::Generator})
+            for (int id = 0; id < NUM_FAMILY_SLOTS; id++)
+                if (const og::script::TuningMap* map =
+                        og::script::family_tuning(order, id))
+                    out.emplace_back(Key{order, id}, *map);
+        return out;
+    }
+
+    std::vector<std::pair<Key, og::script::TuningMap>> saved_;
 };
 
 }  // namespace
@@ -2144,6 +2186,7 @@ TEST(ClasspackInstallErrors, an_oversized_pack_stops_at_every_registry_end)
 TEST(ClasspackInstallErrors, an_unknown_bit_flag_name_keeps_the_whole_mask)
 {
     ModSlotGuard guard;
+    CorePinGuard pin(FAMILY_GHOST);
 
     // Pin onto a core family so there is a non-zero mask to preserve.
     const FamilyDescriptor* ghost_before =
@@ -2178,6 +2221,7 @@ TEST(ClasspackInstallErrors, an_unknown_bit_flag_name_keeps_the_whole_mask)
 TEST(ClasspackInstallErrors, an_entry_without_a_declared_id_keeps_the_slot_id)
 {
     ModSlotGuard guard;
+    CorePinGuard pin(FAMILY_SOLDIER);
 
     const FamilyDescriptor* before = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(before, nullptr);
