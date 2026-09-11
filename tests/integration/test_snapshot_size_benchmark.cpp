@@ -443,6 +443,13 @@ TEST(SnapshotSizeBenchmark,
         ASSERT_TRUE(frame.has_value()) << "benchmark replay should include warmup ticks";
         ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
         replay_fixture.step_tick(frame->input);
+        // Tripwire. When the four single-fighter teams wipe each other out
+        // during the warmup, sim_reacquire_apply ends the match and the
+        // server stops ticking a finished world: tick_count_ freezes while
+        // the replay frames keep advancing, so the equality above trips on
+        // the NEXT iteration with an opaque off-by-one. Say what happened.
+        ASSERT_EQ(0, replay_world.ending)
+            << "benchmark roster was wiped; the server stopped ticking";
         ASSERT_FALSE(replay_world.game_ended)
             << "benchmark scenario should not end during replay capture";
     }
