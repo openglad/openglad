@@ -11925,3 +11925,51 @@ TEST(PickerNetworkClient, host_resume_after_a_torn_down_lobby_rebuilds_it)
 
     host_client->shutdown();
 }
+
+// The same contract as the joiner's twin above, through the host role: a
+// lobby that had to be rebuilt from the save keeps the seat teams THIS
+// session was played with, instead of re-seeding them from a roster the
+// player recoloured in Base Camp between levels. Both roles run the one
+// hoisted restore helper; this is the host's end of it.
+TEST(PickerNetworkClient, host_resume_after_a_torn_down_lobby_keeps_its_seat_teams)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Seat One");
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Seat Two";
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+    save.numplayers = 2;
+    save.my_team = 0;
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->session_established());
+    ASSERT_EQ(2u, host_client->local_seat_count());
+    ASSERT_EQ(0, save.my_team);
+
+    host_client->shutdown();  // the torn-down lobby the sibling test covers
+
+    // Between levels the roster is recoloured in Base Camp. The seats this
+    // session was played with must not follow.
+    save.team_list[0]->teamnum = 2;
+    save.team_list[1]->teamnum = 3;
+    save.my_team = 2;
+
+    host_client->resume_after_level();
+
+    EXPECT_EQ(0, save.my_team)
+        << "the host's rebuild must keep this session's seat teams";
+    EXPECT_EQ(2u, host_client->local_seat_count());
+    ASSERT_FALSE(host_client->lobby_players().empty());
+    EXPECT_EQ(0, host_client->lobby_players().front().team);
+
+    host_client->shutdown();
+}
