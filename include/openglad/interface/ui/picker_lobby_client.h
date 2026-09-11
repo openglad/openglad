@@ -381,6 +381,16 @@ inline PickerMainThreadPump g_picker_main_thread_pump = nullptr;
 
 void picker_lobby_initialize_from_save();
 void picker_lobby_shutdown();
+#ifdef TESTING
+// Is the lazily-created STANDALONE lobby client alive? Nothing in the
+// shipping API can answer that — active_picker_lobby_client() is null for it
+// by construction, and session_established() is false for every local client
+// — but a standalone client that outlives the screen that created it rewrites
+// the NEXT screen's save.team_list from its own cached roster, which is the
+// whole promote-wedge / base-camp-hang family. The integration harness needs
+// to see it to attribute the leak to the test that left it behind.
+bool picker_lobby_testing_standalone_client_alive() noexcept;
+#endif
 void picker_lobby_sync_from_save();
 void picker_lobby_sync_roster_from_save();
 void picker_lobby_sync_settings_from_save();

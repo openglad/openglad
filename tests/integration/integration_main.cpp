@@ -306,10 +306,27 @@ public:
         og::video_testing::reset_fade_violations();
     }
 
-    void OnTestEnd(const ::testing::TestInfo&) override
+    void OnTestEnd(const ::testing::TestInfo& info) override
     {
         og::ui::g_picker_main_thread_pump = nullptr;
         drain_main_thread_tasks();
+#ifdef TESTING
+        // [LOBBY-CENSUS] Any picker seam lazily creates the process-wide
+        // STANDALONE lobby client, and only picker_lobby_shutdown() destroys
+        // it. A survivor answers the NEXT test's picker_lobby_poll() with the
+        // roster IT cached: apply_state_to_save resets every save.team_list
+        // slot and rebuilds it, freeing the guys that test just planted. That
+        // is the promote wedge (og_test_picker) and the base-camp roster-row
+        // hang (og_test_view). Report-only for now — the counts per binary
+        // decide whether this becomes a failure.
+        if (picker_lobby_testing_standalone_client_alive())
+        {
+            std::fprintf(stderr,
+                         "LOBBY LEAK CENSUS: %s.%s left a picker lobby client "
+                         "alive (LobbyShutdownGuard, test_view_team.cpp)\n",
+                         info.test_suite_name(), info.name());
+        }
+#endif
         // Fade-ownership invariants (video_sdl.h): a fade-in over a window
         // that is not black, or a fade-out of a buffer the window never
         // showed. Every flow test in this binary is an oracle for the class;

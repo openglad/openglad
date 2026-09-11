@@ -1165,6 +1165,13 @@ void picker_lobby_initialize_from_save()
     resolve_picker_lobby_client().initialize_from_save();
 }
 
+#ifdef TESTING
+bool picker_lobby_testing_standalone_client_alive() noexcept
+{
+    return g_standalone_picker_lobby_client != nullptr;
+}
+#endif
+
 void picker_lobby_shutdown()
 {
     og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client();
