@@ -434,6 +434,55 @@ bool wait_for_interactable_at(const std::string& id, int x, int y,
     return false;
 }
 
+// Two presses per flow deliberately stay bare. The flow's LAST back leaves
+// the picker, and once picker_main has returned nothing pumps the menu thread
+// and nothing republishes allbuttons — there is no witness left to wait on, so
+// a ladder there would only spend four attempts against a dead loop. The
+// degrade flow's RE-ENTRY press on VIEW LEVEL is refused by design (the entry
+// guard keeps the SCENARIO submenu up), so it has no landing either.
+//
+// Every converted press keeps the flat wait's own ceiling: four witnessed
+// attempts of 2500 ms is the same 10 000 ms these flows always gave a screen
+// to compose in, spent pressing-and-watching instead of watching a press
+// nobody may have received.
+constexpr int kCtfDoorAttempts = 4;
+constexpr int kCtfDoorWaitMs = 2500;
+
+// A BACK press is not idempotent — a second one leaves the screen the first
+// one arrived at — so its witness has two arms, polled together: the successor
+// row shows (the normal landing), or the BACK we pressed is gone from its own
+// rect (it landed and its successor is a frame behind). Either arm stops the
+// ladder pressing; only "nothing registered at all" earns a re-press.
+// Geometry is the disambiguator the per-screen backs are designed around
+// (menu_screen_specs.cpp:1297 — the SCENARIO submenu's BACK sits apart at
+// (30,170), the VIEW LEVEL frame's at (10,170)).
+bool back_left_its_screen(const std::string& successor_id, int back_x,
+                          int back_y, int timeout_ms)
+{
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        bool successor = false;
+        bool back_still_up = false;
+        for (const Interactable& item : get_interactables()) {
+            if (item.hidden)
+                continue;
+            if (item.id == successor_id)
+                successor = true;
+            if (item.id == "back" && item.x == back_x && item.y == back_y)
+                back_still_up = true;
+        }
+        if (successor || !back_still_up)
+            return true;
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT: BACK at (%d,%d) is still up and '%s' has "
+            "not shown\n",
+            back_x, back_y, successor_id.c_str());
+    return false;
+}
+
 // Stash/restore the picker save across an injector flow.
 struct SavedPickerSave
 {
@@ -558,14 +607,18 @@ int teams_local_flow_injector(void* data)
 
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
-    interact("continue_game");
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // The match-settings band lives on the SCENARIO submenu (#218 — the
     // MATCHUP screen's door is a parked spare).
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("scenario");
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Classic campaign: the versus-only SCORE row stays hidden — the
     // re-homed row keeps MATCHUP's classic-campaign gate — and neither
@@ -578,16 +631,22 @@ int teams_local_flow_injector(void* data)
         !has_interactable("scenario_troops_spare");
 
     // VIEW LEVEL: framed report over a scratch load; BACK returns.
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -606,7 +665,9 @@ int teams_ctf_settings_flow_injector(void* data)
 
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
-    interact("continue_game");
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu, where the knob row lives now (#218,
     // A5/B5): SCORE alone at y=140 (TEAMS and TROOPS both retired into
@@ -614,7 +675,9 @@ int teams_ctf_settings_flow_injector(void* data)
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("scenario");
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // CTF campaign + local host: the versus-gated SCORE row shows, reading
     // the map's own target; the retired TEAMS cell never does.
@@ -638,16 +701,22 @@ int teams_ctf_settings_flow_injector(void* data)
 
     // VIEW LEVEL on the loaded CTF map (the save0 load mounted the CTF
     // campaign): the framed CTF report renders, BACK returns.
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     state->viewer_back_seen = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -727,6 +796,9 @@ struct NeverLandsState
 {
     bool subscreen_opened = false;
     bool ladder_reported_false = false;
+    // Sampled the moment the SCORE ladder returns, so the BACK ladders on the
+    // way out of the flow cannot be counted against it.
+    int score_retries = 0;
     bool finished = false;
 };
 
@@ -740,19 +812,27 @@ int ctf_never_lands_injector(void* data)
 
     wait_for_interactable("continue_game", 5000);
     wait_for_menu_frames(2);
-    interact("continue_game");
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     wait_for_interactable("scenario", 10000);
     wait_for_menu_frames(2);
-    interact("scenario");
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->subscreen_opened = wait_for_interactable("ctf_caps", 10000);
     if (state->subscreen_opened) {
+        const int retries_before = g_click_ladder_click_retries;
         state->ladder_reported_false =
-            !click_until_label("ctf_caps", "SCORE: NOT A FACE", 3, 500);
+            !click_until_label("ctf_caps", "SCORE: NOT A FACE");
+        state->score_retries = g_click_ladder_click_retries - retries_before;
     }
 
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("go", 10000);
     wait_for_menu_frames(2);
     interact("back");
@@ -769,16 +849,22 @@ int view_scenario_pager_injector(void* data)
 
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
-    interact("continue_game");
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu -> VIEW LEVEL.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("scenario");
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
@@ -797,7 +883,9 @@ int view_scenario_pager_injector(void* data)
     SDL_Delay(500);
 
     // Viewer back -> SCENARIO submenu.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
@@ -869,6 +957,9 @@ TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
     SavedPickerSave save_guard;
     write_save0_with_two_soldiers("gladiator", 1);
 
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+
     TeamsFlowState state;
     SDL_Thread* thread = SDL_CreateThread(
         teams_local_flow_injector, "teams_local_flow", &state);
@@ -890,6 +981,10 @@ TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
     EXPECT_TRUE(state.troops_row_gone)
         << "the retired TROOPS cell never shows (B5)";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    // The other half of the ladder's rule, on a flow with nothing injected:
+    // every press of this flow landed, so not one of them was re-sent.
+    EXPECT_EQ(0, g_click_ladder_click_retries)
+        << "a healthy flow re-presses nothing";
 
     EXPECT_EQ(0, save.my_team)
         << "the flow must not mutate the player's assigned team";
@@ -1009,7 +1104,6 @@ TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
     SavedPickerSave save_guard;
     write_save0_with_two_soldiers("modes", 500);
 
-    g_click_ladder_click_retries = 0;
     g_click_ladder_ack_drops = 0;
     g_click_ladder_ack_post_retries = 0;
 
@@ -1029,7 +1123,7 @@ TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
         << "CTF campaign + host shows SCORE on SCENARIO";
     EXPECT_TRUE(state.ladder_reported_false)
         << "a face the wheel never shows must be reported, not claimed";
-    EXPECT_EQ(3, g_click_ladder_click_retries)
+    EXPECT_EQ(3, state.score_retries)
         << "the ladder spends its three attempts and reports, never hangs";
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
 
@@ -1129,16 +1223,22 @@ int view_scenario_refresh_injector(void* data)
 
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
-    interact("continue_game");
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu -> VIEW LEVEL.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("scenario");
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
@@ -1178,11 +1278,15 @@ int view_scenario_refresh_injector(void* data)
     }
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -1260,16 +1364,22 @@ int view_scenario_camera_injector(void* data)
 
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
-    interact("continue_game");
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu -> VIEW LEVEL.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("scenario");
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     state->pane_healed =
@@ -1282,11 +1392,15 @@ int view_scenario_camera_injector(void* data)
 
     // Viewer back -> SCENARIO submenu; its back -> team build; its back
     // leaves the picker.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     state->back_at_scenario_menu = wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -1389,22 +1503,27 @@ int view_scenario_degrade_injector(void* data)
 
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
-    interact("continue_game");
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu -> VIEW LEVEL (loads scen 500).
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    if (g_ctf_scenario_door_drops > 0) {
-        --g_ctf_scenario_door_drops;
-        fprintf(stderr,
-                "  [ctf] dropping the press on 'scenario' (injected)\n");
-    } else {
-        interact("scenario");
-    }
+    // The drop is armed HERE, not in the test body (the zone blind-cycler
+    // pattern): it belongs to the SCENARIO door, and the CONTINUE ladder
+    // above would otherwise eat it.
+    g_click_ladder_click_drops += g_ctf_scenario_door_drops;
+    g_ctf_scenario_door_drops = 0;
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
 
@@ -1470,7 +1589,9 @@ int view_scenario_degrade_injector(void* data)
     // Leave the viewer, land the unloadable id again, and try to re-enter:
     // the entry guard refuses (popup is a TESTING no-op; MENU_REDRAW keeps
     // the SCENARIO submenu up, so VIEW LEVEL stays interactable).
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("view_scenario", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
     state->save_edits_ran_on_main_thread &= set_scen_num_through_lobby(9999);
@@ -1484,7 +1605,9 @@ int view_scenario_degrade_injector(void* data)
     SDL_Delay(400);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -1549,6 +1672,9 @@ TEST(CtfUi, scenario_door_survives_a_dropped_press)
     write_save0_with_two_soldiers("modes", 500);
 
     g_ctf_scenario_door_drops = 1;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_edge_waits = 0;
 
     DegradeFlowState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -1564,7 +1690,11 @@ TEST(CtfUi, scenario_door_survives_a_dropped_press)
 
     EXPECT_EQ(0, g_ctf_scenario_door_drops)
         << "the injected drop must be consumed";
+    EXPECT_EQ(0, g_click_ladder_click_drops)
+        << "the ladder must have consumed the drop it was handed";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_EQ(1, g_click_ladder_click_retries)
+        << "exactly one press left no witness and was re-sent";
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
 
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
@@ -1595,15 +1725,21 @@ int view_scenario_staged_pane_injector(void* data)
 
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
-    interact("continue_game");
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("scenario");
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
@@ -1647,11 +1783,15 @@ int view_scenario_staged_pane_injector(void* data)
     SDL_Delay(300);
 
     // Viewer back -> SCENARIO -> team build -> main.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
@@ -1832,10 +1972,14 @@ int view_scenario_seat_ready_flip_injector(void* data)
     // menu in front of it).
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("scenario");
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
@@ -1857,11 +2001,15 @@ int view_scenario_seat_ready_flip_injector(void* data)
     SDL_Delay(300);
 
     // Viewer back -> SCENARIO -> team build -> leave.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("view_scenario", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
