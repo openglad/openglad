@@ -29,6 +29,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_click_ladder.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -362,60 +363,54 @@ bool wait_for_interactable_label(const std::string& id, const std::string& want,
     return false;
 }
 
-// TESTING-only fault injection for the acknowledgement half of the click
-// below: make the next N acknowledgements come back empty although the menu
-// thread really did complete a frame — exactly how a menu thread starved by
-// its own synchronous autosave looks from this injector.
-int g_ctf_ack_blinds = 0;
-
-// Click `id` until its label reads `want`. The label edge proves the press was
-// consumed, but synchronous save/stage work can leave that click's release
-// queued after the edge. A completed menu-frame edge acknowledges the full
-// click before this injector can send another press. Bounded retries retain
-// teeth: a cycler that genuinely skips or breaks the target still fails every
-// attempt, and the save-value pins at the end of each flow back this up.
+// Click `id` until its label reads `want`, on the shared ladder
+// (tests/test_click_ladder.h). The row is a CYCLER, so the two halves of the
+// ladder's rule both bite here:
+//
+//   * the pointer baseline is posted BEFORE the press, not after a failed
+//     attempt — a press sent against a release the engine has not consumed
+//     yet evaporates, and the first press is exactly the one that used to go
+//     out with no baseline at all;
+//   * the LABEL EDGE is the landing witness, and a press that reached it is
+//     never re-sent, however slow the rest of the attempt is. A second press
+//     walks the wheel one stop past the face the flow asked for.
+//
+// The acknowledgement that follows the landing is the handoff that protects
+// the NEXT press, not an oracle for this one: acknowledge_press reports its
+// own stall by name and leaves the reset queued for whenever the menu thread
+// comes back, and its verdict stays out of the return. A menu thread starved
+// by the knob's own synchronous autosave has not un-cycled the knob.
+//
+// Teeth: a cycler that genuinely skips or breaks the target still fails every
+// attempt (CtfUi.settings_cycler_reports_a_label_that_never_lands pins the
+// retry count), and the save-value pins at the end of each flow back this up.
 bool click_until_label(const std::string& id, const std::string& want,
                        int attempts = 3, int wait_ms = 2500)
 {
     for (int i = 0; i < attempts; ++i) {
         const int saves_before = trace_count("save");
-        interact(id);
-        if (wait_for_interactable_label(id, want, wait_ms)) {
-            int elapsed = 0;
-            while (elapsed < wait_ms && trace_count("save") <= saves_before) {
-                SDL_Delay(50);
-                elapsed += 50;
-            }
-            const bool autosaved = trace_count("save") > saves_before;
-            if (!autosaved)
-                fprintf(stderr,
-                        "  [interact] TIMEOUT waiting for '%s' autosave\n",
-                        id.c_str());
-            const std::uint64_t completed_before =
-                og::ui::menu_screen_testing_completed_frames();
-            elapsed = 0;
-            while (elapsed < wait_ms &&
-                   og::ui::menu_screen_testing_completed_frames() <=
-                       completed_before) {
-                SDL_Delay(50);
-                elapsed += 50;
-            }
-            bool acknowledged =
-                og::ui::menu_screen_testing_completed_frames() >
-                completed_before;
-            if (acknowledged && g_ctf_ack_blinds > 0) {
-                --g_ctf_ack_blinds;
-                fprintf(stderr,
-                        "  [ctf] starving the acknowledgement on '%s' "
-                        "(injected)\n",
-                        id.c_str());
-                acknowledged = false;
-            }
-            return autosaved && acknowledged;
+        (void)acknowledge_press(wait_ms);
+        (void)interact(id);
+        const bool label_reached =
+            wait_for_interactable_label(id, want, wait_ms);
+        if (!label_reached) {
+            ++g_click_ladder_click_retries;
+            fprintf(stderr,
+                    "  [interact] retry %d: '%s' has not reached '%s'\n",
+                    i + 1, id.c_str(), want.c_str());
+            continue;
         }
-        fprintf(stderr, "  [interact] retry %d: '%s' has not reached '%s'\n",
-                i + 1, id.c_str(), want.c_str());
-        (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
+        int elapsed = 0;
+        while (elapsed < wait_ms && trace_count("save") <= saves_before) {
+            SDL_Delay(50);
+            elapsed += 50;
+        }
+        const bool autosaved = trace_count("save") > saves_before;
+        if (!autosaved)
+            fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' autosave\n",
+                    id.c_str());
+        (void)acknowledge_press(wait_ms, attempts, /*injectable=*/true);
+        return label_reached && autosaved;
     }
     return false;
 }
@@ -728,6 +723,44 @@ void press_nav_key(SDL_Keycode key, int hold_ms)
     hold_nav_key(key, false);
 }
 
+struct NeverLandsState
+{
+    bool subscreen_opened = false;
+    bool ladder_reported_false = false;
+    bool finished = false;
+};
+
+// The SCORE ladder pointed at a face the wheel does not carry. It must spend
+// its attempts and REPORT — never hang against the group's budget, and never
+// claim a cycle that did not happen.
+int ctf_never_lands_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    NeverLandsState* state = static_cast<NeverLandsState*>(data);
+
+    wait_for_interactable("continue_game", 5000);
+    wait_for_menu_frames(2);
+    interact("continue_game");
+
+    wait_for_interactable("scenario", 10000);
+    wait_for_menu_frames(2);
+    interact("scenario");
+
+    state->subscreen_opened = wait_for_interactable("ctf_caps", 10000);
+    if (state->subscreen_opened) {
+        state->ladder_reported_false =
+            !click_until_label("ctf_caps", "SCORE: NOT A FACE", 3, 500);
+    }
+
+    interact("back");
+    wait_for_interactable("go", 10000);
+    wait_for_menu_frames(2);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
 int view_scenario_pager_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -936,7 +969,9 @@ TEST(CtfUi, settings_cycler_is_not_charged_for_a_starved_acknowledge)
     SavedPickerSave save_guard;
     write_save0_with_two_soldiers("modes", 500);
 
-    g_ctf_ack_blinds = 1;
+    g_click_ladder_ack_drops = 1;
+    g_click_ladder_ack_post_retries = 0;
+    g_click_ladder_click_retries = 0;
 
     TeamsFlowState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -954,7 +989,49 @@ TEST(CtfUi, settings_cycler_is_not_charged_for_a_starved_acknowledge)
     EXPECT_TRUE(state.score_relabelled) << "SCORE cycle should relabel";
     EXPECT_EQ(1, (int)save.ctf_capture_limit)
         << "the press itself landed: the knob cycled and the flow autosaved";
-    EXPECT_EQ(0, g_ctf_ack_blinds) << "the injected stall must be consumed";
+    EXPECT_EQ(0, g_click_ladder_ack_drops)
+        << "the injected stall must be consumed";
+    EXPECT_EQ(1, g_click_ladder_ack_post_retries)
+        << "exactly one acknowledge post was re-sent";
+    EXPECT_EQ(0, g_click_ladder_click_retries)
+        << "the press itself registered: it must never be re-pressed";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// The other tooth on the same ladder: a face the row never shows must cost
+// every attempt and come back false. Without it, "report the stall, never
+// charge it to the click" would be indistinguishable from "never fail".
+TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("modes", 500);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_ack_drops = 0;
+    g_click_ladder_ack_post_retries = 0;
+
+    NeverLandsState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        ctf_never_lands_injector, "ctf_never_lands", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.subscreen_opened)
+        << "CTF campaign + host shows SCORE on SCENARIO";
+    EXPECT_TRUE(state.ladder_reported_false)
+        << "a face the wheel never shows must be reported, not claimed";
+    EXPECT_EQ(3, g_click_ladder_click_retries)
+        << "the ladder spends its three attempts and reports, never hangs";
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
 
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");
