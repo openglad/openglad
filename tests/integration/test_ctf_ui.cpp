@@ -198,10 +198,45 @@ TEST(CtfUi, classic_respawn_shows_only_the_shared_countdown)
     v->control = old_control;
 }
 
+// Everything a settings cycler writes OUTSIDE the SaveData fields the caller
+// restores by hand: the process-wide lobby singleton, whose cached settings
+// picker_lobby_sync_settings_from_save() stamps, and the active company file,
+// which picker_settings_autosave() rewrites whenever it exists. Restoring only
+// the save FIELD leaves both holding this test's throwaway campaign — the
+// og_test_matchup segfault (a later flow's lobby apply remounts it and the
+// remount rebuilds the pack-script registry) and a save0 that names a campaign
+// the fixture never chose.
+struct SettingsCyclerFallout
+{
+    bool had_save0 = false;
+
+    SettingsCyclerFallout()
+        : had_save0(user_file_exists("save/save0.gtl"))
+    {
+        if (had_save0)
+            (void)copy_user_file("save/save0.gtl", "save/save0.cyclerstash");
+    }
+
+    ~SettingsCyclerFallout()
+    {
+        if (had_save0)
+        {
+            (void)copy_user_file("save/save0.cyclerstash", "save/save0.gtl");
+            (void)remove_user_file("save/save0.cyclerstash");
+        }
+        else
+        {
+            (void)remove_user_file("save/save0.gtl");
+        }
+        picker_lobby_shutdown();
+    }
+};
+
 TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
 {
     screen* s = test_screen();
     SaveData& save = s->save_data;
+    SettingsCyclerFallout cycler_fallout;
     const std::string old_campaign = save.current_campaign;
     const short old_teams = save.ctf_team_count;
     const short old_caps = save.ctf_capture_limit;

@@ -180,6 +180,16 @@ struct SavedPickerSave
 
     SavedPickerSave()
     {
+        // A defined resting state includes the PROCESS-WIDE lobby. The
+        // standalone picker lobby client caches the settings every cycler
+        // stamps into it (picker_lobby_sync_settings_from_save), nothing in
+        // a test binary tears it down, and its apply writes that cached
+        // campaign_id back over save.current_campaign and REMOUNTS it —
+        // which rebuilds the pack-script registry underneath a scripted
+        // book. Drop the singleton here and the next
+        // resolve_picker_lobby_client() rebuilds it from the save this
+        // flow actually set up.
+        picker_lobby_shutdown();
         SaveData& save = test_screen()->save_data;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             team_list[static_cast<std::size_t>(i)] =
@@ -228,10 +238,14 @@ struct SavedPickerSave
 };
 
 // Save/restore the pack-script registry around a synthetic registration.
-// The gladiator campaign is mounted (same-id remounts are no-ops), so the
-// save0 load inside picker_main never re-walks the registry from disk and
-// the synthetic chunk survives the whole flow. The chunk name deliberately
-// does NOT start with `packs/` (the pack-Lua coverage inventory rule).
+// The gladiator campaign is mounted and the save0 load inside picker_main
+// never re-walks the registry from disk, so the synthetic chunk survives an
+// ordinary flow. It does NOT survive a remount of a DIFFERENT package: that
+// rebuilds the registry and the chunk is gone, which is how a stale lobby
+// campaign stamp used to turn a scripted zone into the default composition
+// (see roster_mutations_survive_a_stale_lobby_settings_stamp). The chunk
+// name deliberately does NOT start with `packs/` (the pack-Lua coverage
+// inventory rule).
 class SyntheticCampaignScriptGuard
 {
 public:
