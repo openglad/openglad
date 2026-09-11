@@ -270,6 +270,28 @@ TEST(VideoFade, video_fadebetween_null_new_surface_runs_the_documented_simple_fa
         << "the destination must end on black";
 }
 
+// The alpha-format twin of the fade-OUT above. SDL3 hands every alpha-format
+// surface SDL_BLENDMODE_BLEND at creation (SDL_surface.c), so a stand-in
+// filled with the literal 0 is TRANSPARENT black: the terminal blit writes
+// nothing and the "completed" fade leaves the destination on its old pixels.
+TEST(VideoFade, video_fadebetween_null_new_surface_blackens_an_alpha_format_destination)
+{
+    SurfacePtr dest = make_surface_masks(320, 200, 32, 0x00ff0000, 0x0000ff00,
+                                         0x000000ff, 0xff000000);
+    SurfacePtr old_ok = make_surface_masks(320, 200, 32, 0x00ff0000, 0x0000ff00,
+                                           0x000000ff, 0xff000000);
+    ASSERT_TRUE(dest != nullptr && old_ok != nullptr)
+        << "ARGB8888 surfaces created";
+    ASSERT_TRUE(SDL_FillSurfaceRect(old_ok.get(), nullptr, 0xFF336699u));
+    ASSERT_TRUE(SDL_FillSurfaceRect(dest.get(), nullptr, 0xFFFFFFFFu));
+
+    EXPECT_EQ(1, og::runtime::current_session->myscreen_->fade_between(
+                     old_ok.get(), nullptr, dest.get()))
+        << "a null new surface must fade out to black on an alpha format too";
+    EXPECT_EQ(0xFF000000u, static_cast<const Uint32*>(dest->pixels)[0])
+        << "the stand-in must be OPAQUE black or the terminal blit is a no-op";
+}
+
 TEST(VideoFade, video_fadebetween_honors_surface_lock_requirements)
 {
     SurfacePtr dest = make_surface(320, 200);
