@@ -3276,7 +3276,20 @@ public:
             server_ == nullptr)
         {
             const std::vector<short> preserved_teams = last_session_seat_teams_;
-            initialize_from_save();
+            try
+            {
+                initialize_from_save();
+            }
+            catch (...)
+            {
+                // The re-host could not bind (the port is someone else's now).
+                // There is no lobby to come back to, so this session is over:
+                // latch it like a joiner's dead link, and the picker's
+                // per-frame revert retires the dead host to a local lobby on
+                // the next frame. The caller still sees the exception.
+                session_lost_ = true;
+                throw;
+            }
             if (restore_seat_teams_after_rebuild(
                     preserved_teams,
                     local_seat_teams_,
@@ -3556,6 +3569,11 @@ private:
                                         stage_broadcast_);
     }
 
+    [[nodiscard]] bool session_lost() const noexcept override
+    {
+        return session_lost_;
+    }
+
     og::ui::PickerHostGameOptions options_;
     std::string player_name_;
     std::string direct_address_;
@@ -3590,6 +3608,11 @@ private:
     // Mounted campaign whose pack set was last offered to the LobbyServer;
     // guards sync_hosted_packs against re-hashing every settings echo.
     og::resources::HostedPackSync hosted_packs_;
+    // A host's lobby is in-process, so nothing can DROP it — but a re-host
+    // between levels can fail to bind, and then the session really is over.
+    // Latched like the joiner's: shutdown() and resume_after_level() leave
+    // it set, and the picker's kick/lost revert reads it.
+    bool session_lost_ = false;
 };
 
 class JoinPickerLobbyClient final : public og::ui::IPickerLobbyClient

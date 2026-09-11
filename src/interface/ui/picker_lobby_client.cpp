@@ -1209,10 +1209,23 @@ void picker_reinitialize_lobby_after_game()
     // Networked clients reuse the live connection that survived gameplay and
     // re-sync the advanced campaign cursor; local/single-player rebuilds from
     // the save (the default resume_after_level()).
-    if (client != nullptr)
-        client->resume_after_level();
-    else
-        picker_lobby_initialize_from_save();
+    try
+    {
+        if (client != nullptr)
+            client->resume_after_level();
+        else
+            picker_lobby_initialize_from_save();
+    }
+    catch (const std::exception& error)
+    {
+        // A re-host that cannot bind between levels is a REPORT, not an
+        // escape: an exception here unwinds the menu out of the black
+        // window. The client latches the failure as a lost session, so the
+        // next picker frame's kick/lost revert swaps Base Camp to a local
+        // lobby with the CONNECTION LOST modal it already shows for a kick.
+        LogError("picker_reinit_lobby_after_game_failed reason={}\n",
+                 error.what());
+    }
     Log("picker_reinit_lobby_after_game elapsed_ms={} networked={} "
         "session_lost={}\n",
         std::chrono::duration_cast<std::chrono::milliseconds>(
