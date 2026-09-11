@@ -18,13 +18,14 @@
 #include <array>
 #include <span>
 #include <cstdio>
+#include <cstdlib>
 #include <unistd.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // From level_editor.cpp
 void set_screen_pos(screen* scr, Sint32 x, Sint32 y);
-char get_random_matching_tile(Sint32 whatback);
+Sint32 get_random_matching_tile(Sint32 whatback);
 Sint32 check_collide(Sint32 x, Sint32 y, Sint32 xsize, Sint32 ysize,
                      Sint32 x2, Sint32 y2, Sint32 xsize2, Sint32 ysize2);
 walker* some_hit(Sint32 x, Sint32 y, walker* ob, LevelRuntimeData* data);
@@ -141,6 +142,28 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_EQ(0, level_editor_test_exercise_internal_helpers())
         << "internal helper exerciser should report the first failed check as a negative index";
 
+}
+
+// The terrain brush's variant picker. Every family in the switch has four
+// authored variants and the brush must be able to paint all of them: a pick
+// that can never return the fourth tile makes 16cob4.png / 16stone4.png
+// unpaintable in the editor even though the smoother and the mapgens place
+// them. Exact-set equality, not membership, is what catches that.
+TEST(LevelEditorHelpers, random_matching_tile_paints_every_cobble_and_boulder_variant)
+{
+    std::srand(12345);
+
+    std::set<int> cobble;
+    std::set<int> boulder;
+    for (int n = 0; n < 4000; ++n) {
+        cobble.insert(get_random_matching_tile(PIX_COBBLE_1));
+        boulder.insert(get_random_matching_tile(PIX_BOULDER_1));
+    }
+
+    ASSERT_EQ((std::set<int>{PIX_COBBLE_1, PIX_COBBLE_2, PIX_COBBLE_3, PIX_COBBLE_4}), cobble)
+        << "the brush must be able to paint every cobble variant";
+    ASSERT_EQ((std::set<int>{PIX_BOULDER_1, PIX_BOULDER_2, PIX_BOULDER_3, PIX_BOULDER_4}), boulder)
+        << "the brush must be able to paint every boulder variant";
 }
 
 // Spawn-delay authoring guards. Only oblist orders (Living/Generator) are put
