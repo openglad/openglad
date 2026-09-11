@@ -630,3 +630,57 @@ TEST(ViewInputPaths, view_input_f3_posts_the_measured_frame_rate)
     v->clear_text();
     v->control = nullptr;
 }
+
+// P1: F3 pressed in the first second of a level. query_timer_control() ticks
+// at 72.3/s, so (now - timerstart)/72 is 0 for the first ~979 ms of EVERY
+// level (timerstart is re-stamped at glad_gameplay.cpp:361), and the readout
+// divided by that — an x86 integer divide by zero, i.e. SIGFPE, killing the
+// process. Under a second of level time the rate is the frames drawn so far.
+TEST(ViewInputPaths, view_input_f3_inside_the_first_second_of_a_level_reads_the_frames_so_far)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+    KeyStateGuard ks;
+
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    v->mynum = 0;
+    v->my_team = 0;
+
+    auto control = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    s->world().oblist.push_back(std::move(control));
+    v->control = controlp;
+    v->clear_text();
+
+    ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
+
+    const Uint32 saved_timerstart = s->timerstart;
+    const Uint32 saved_framecount = s->framecount;
+    s->timerstart = static_cast<Uint32>(query_timer_control());  // level just started
+    s->framecount = 12;
+    // Guard the measurement itself: if this box stalled a whole second between
+    // the two statements the case is no longer the one under test, and that
+    // must be a loud failure, never a silent pass.
+    ASSERT_EQ(0u, (static_cast<Uint32>(query_timer_control()) - s->timerstart) / 72u)
+        << "this case only holds while under one second of level time has elapsed";
+
+    SDL_Event e{};
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.repeat = false;
+    e.key.key = SDLK_F3;
+    v->input(e);
+
+    bool posted = false;
+    for (const std::string& line : v->textlist)
+        posted = posted || (line == "12 FRAMES PER SEC");
+    EXPECT_TRUE(posted)
+        << "under a second of level time reads back the frames drawn so far";
+
+    s->timerstart = saved_timerstart;
+    s->framecount = saved_framecount;
+    v->clear_text();
+    v->control = nullptr;
+}
