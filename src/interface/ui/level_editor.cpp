@@ -1677,6 +1677,8 @@ Sint32 LevelEditorData::display_panel(screen* s)
                 scentext.write_xy(lm, L_D(curline++), ("\"" + sel.name + "\"").c_str(), DARK_BLUE, 1);
                 showing_name = true;
             }
+            else if(selection.size() == 1 && sel.order == Order::Living && sel.name.empty())
+                curline++;  // Skip name line for guy with no name
 
             if(selection.size() == 1 || !showing_name)
             {
