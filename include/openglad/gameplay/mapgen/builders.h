@@ -19,11 +19,14 @@
  * installed while building.
  *
  * Audit execution context: audit_reachability needs an installed
- * GameplayContext (pathfinding + obmap). At generation time (GO, spec
- * §D8) no context is installed, so the caller wraps the call in a
- * GameplayContextGuard over a scratch context whose world is the level
- * under audit. Audits return human-readable failure strings; empty
- * result = pass.
+ * GameplayContext (pathfinding + obmap), and without one it returns the
+ * failure string "reachability: audit needs a lead start marker, an
+ * installed gameplay context and an obmap" instead of auditing. Every
+ * builder caller already runs under a context -- placing anything
+ * constructs walkers, which requires one -- so only a test drives the
+ * audits with no ambient context, wrapping them in a GameplayContextGuard
+ * over a scratch context (MapgenAudits.gameplay_context_guard_smoke).
+ * Audits return human-readable failure strings; empty result = pass.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
