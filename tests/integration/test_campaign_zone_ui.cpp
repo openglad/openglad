@@ -2860,6 +2860,50 @@ struct MatchSetupShotState
     bool finished = false;
 };
 
+// --- The acknowledged, bounded-retry click the injector flows use ---------
+//
+// A bare interact() sends one press/release pair and never looks back. Under
+// a starved menu thread one of the two can land on the wrong side of the
+// engine's pointer-handoff reset (menu_screen_runner.cpp) and the click
+// simply evaporates; nothing retries, and every wait that follows then
+// expires against a screen the flow never entered — one dropped press turns
+// a 5.7 s capture into 98 s of stacked ceilings. The idiom that survives it
+// is the file's own click_and_acknowledge_trace: baseline the pointer on the
+// menu thread, press, wait for a NAMED edge, acknowledge. Wrapped in a
+// bounded ladder, a dropped press costs one attempt instead of the cascade.
+//
+// Counted, never clocked: `zone_click_retries` is the number of attempts
+// that did not reach their edge.
+int g_zone_click_retries = 0;
+// TESTING-only fault injection: make the next N presses evaporate the way a
+// starved frame does, so the ladder's retry can be exercised deterministically.
+int g_zone_click_drops = 0;
+
+bool click_until_edge(const std::string& id,
+                      const std::function<bool(int)>& edge_reached,
+                      int attempts = 3, int wait_ms = 2500)
+{
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        (void)run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms);
+        if (g_zone_click_drops > 0) {
+            --g_zone_click_drops;
+            fprintf(stderr, "  [zone] dropping the press on '%s' (injected)\n",
+                    id.c_str());
+        } else {
+            (void)interact(id);
+        }
+        if (edge_reached(wait_ms)) {
+            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                     wait_ms);
+            return true;
+        }
+        ++g_zone_click_retries;
+        fprintf(stderr, "  [zone] attempt %d: '%s' did not reach its edge\n",
+                attempt + 1, id.c_str());
+    }
+    return false;
+}
+
 int match_setup_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -2873,14 +2917,14 @@ int match_setup_injector(void* data)
     // the door this shot is about.
     state->setup_row_seen = wait_for_interactable_label_containing(
         "zone_action_3", "MATCH SETUP", 10000);
-    SDL_Delay(400);
-    interact("zone_action_3");
 
     // The zone submenu's own BACK owns the unique (10,169) rect. At rest
     // the two macro rows lead the page (amendment 5): TEAMS: 4 — the face
     // derived from the arena's deal on its four authored teams (amendment
     // 7) — over FILL: FAIR, then the two knobs at MAP.
-    state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
+    state->page_opened = click_until_edge("zone_action_3", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 169, wait_ms);
+    });
     state->teams_row_read_four = wait_for_interactable_label_containing(
         "zone_row_0", "TEAMS: 4", 10000);
     state->fill_row_read_fair = wait_for_interactable_label_containing(
@@ -2889,46 +2933,50 @@ int match_setup_injector(void* data)
         "zone_row_2", "TARGET SCORE: MAP", 10000);
     state->time_row_read_map = wait_for_interactable_label_containing(
         "zone_row_3", "TIME LIMIT: MAP", 10000);
-    SDL_Delay(500);
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("zone_submenu_match_setup");
 
     // The macros move: one TEAMS click wraps the four-side deal back to
     // two — the lowest opponent keeps FAIR, the other two turn NONE (both
     // faces re-derive from the one fill array) — and one FILL click steps
     // that FAIR face to STRONG.
-    interact("zone_row_0");
-    state->teams_stepped_to_two = wait_for_interactable_label_containing(
-        "zone_row_0", "TEAMS: 2", 10000);
-    SDL_Delay(400);
-    interact("zone_row_1");
-    state->fill_stepped_to_strong = wait_for_interactable_label_containing(
-        "zone_row_1", "FILL: STRONG", 10000);
-    SDL_Delay(400);
+    state->teams_stepped_to_two =
+        click_until_edge("zone_row_0", [](int wait_ms) {
+            return wait_for_interactable_label_containing("zone_row_0",
+                                                          "TEAMS: 2", wait_ms);
+        });
+    state->fill_stepped_to_strong =
+        click_until_edge("zone_row_1", [](int wait_ms) {
+            return wait_for_interactable_label_containing(
+                "zone_row_1", "FILL: STRONG", wait_ms);
+        });
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_macros");
-    SDL_Delay(400);
 
     // One click walks the score cycle one stop (map -> 1) and speaks it.
-    interact("zone_row_2");
-    state->score_row_stepped_to_one = wait_for_interactable_label_containing(
-        "zone_row_2", "TARGET SCORE: 1", 10000);
-    SDL_Delay(400);
+    state->score_row_stepped_to_one =
+        click_until_edge("zone_row_2", [](int wait_ms) {
+            return wait_for_interactable_label_containing(
+                "zone_row_2", "TARGET SCORE: 1", wait_ms);
+        });
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_cycled");
-    SDL_Delay(400);
 
     // The clock: a fresh match wears MAP — the limit the level's own
     // manifest authored — and one click hands the host the shortest
     // override the cycle offers.
-    interact("zone_row_3");
-    state->time_row_stepped_to_five = wait_for_interactable_label_containing(
-        "zone_row_3", "TIME LIMIT: 5M", 10000);
-    SDL_Delay(400);
+    state->time_row_stepped_to_five =
+        click_until_edge("zone_row_3", [](int wait_ms) {
+            return wait_for_interactable_label_containing(
+                "zone_row_3", "TIME LIMIT: 5M", wait_ms);
+        });
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_time");
-    SDL_Delay(400);
 
-    interact("back");
-    wait_for_interactable("go", 10000);
-    SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return wait_for_interactable("go", wait_ms);
+    });
+    (void)interact("back");
     state->finished = true;
     return 0;
 }
@@ -2985,6 +3033,123 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
     EXPECT_TRUE(state.finished);
 
     // Leave the default campaign mounted for whatever runs next.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+namespace {
+
+// Open MATCH SETUP through the ladder and come straight back out. The
+// press the flow starts with is dropped on purpose (g_zone_click_drops), so
+// only a retry can reach the page.
+int match_setup_retry_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* opened = static_cast<bool*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    *opened = click_until_edge("zone_action_3", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 169, wait_ms);
+    });
+
+    if (*opened) {
+        (void)click_until_edge("back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        });
+    }
+    (void)interact("back");
+    return 0;
+}
+
+// The same ladder, pointed at a button that is not on this screen: it must
+// spend its three attempts and REPORT, never hang against the group's
+// 420 s budget.
+int match_setup_wrong_id_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* reached = static_cast<bool*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    *reached = click_until_edge("zone_action_99_not_a_row", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 169, wait_ms);
+    }, 3, 500);
+
+    (void)interact("back");
+    return 0;
+}
+
+} // namespace
+
+// Teeth for the ladder: a press that evaporates costs one attempt, and the
+// flow still reaches the screen. Counts, never clocks.
+TEST(CampaignZoneUi, match_setup_click_helper_retries_a_dropped_press)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_zone_click_retries = 0;
+    g_zone_click_drops = 1;
+
+    bool opened = false;
+    SDL_Thread* thread =
+        SDL_CreateThread(match_setup_retry_injector, "zone_retry", &opened);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, g_zone_click_drops) << "the injected drop must be consumed";
+    EXPECT_TRUE(opened)
+        << "a dropped press must cost a retry, not the whole flow";
+    EXPECT_EQ(1, g_zone_click_retries)
+        << "exactly one attempt missed its edge";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_zone_click_retries = 0;
+    g_zone_click_drops = 0;
+
+    bool reached = true;
+    SDL_Thread* thread = SDL_CreateThread(match_setup_wrong_id_injector,
+                                          "zone_wrong_id", &reached);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_FALSE(reached) << "a wrong id can never reach the page";
+    EXPECT_EQ(3, g_zone_click_retries)
+        << "the ladder spends its three attempts and reports, never hangs";
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
