@@ -113,7 +113,7 @@ class TextPickerClient final : public IPickerClient
 {
 public:
     explicit TextPickerClient(TextPickerConfig& config, TextPickerError* error)
-        : config_(config), error_(error)
+        : config_(config), error_(error), recruit_names_(config.seed)
     {
         ensure_team_initialized();
         // #247: the session cursor IS the save's cursor. Both the VIEW LEVEL
@@ -250,8 +250,13 @@ public:
         // VIEW LEVEL preview and GO would name three different levels after
         // a new game started from `--level N`.
         config_.level = save_data_.scen_num;
-        SeededRandom recruit_names = recruit_rng();
-        ensure_team_populated(save_data_, {}, 0, &recruit_names);
+        // Founding restarts the recruit sequence: the same seed founds the
+        // same company however many companies this session has founded
+        // before. Everything after the founding (a hire, a load top-up)
+        // CONTINUES from here instead of restarting, or the same handful of
+        // names would be re-offered at every visit.
+        recruit_names_.seed(config_.seed);
+        ensure_team_populated(save_data_, {}, 0, &recruit_names_);
         // The display name lives in the 40-byte save_name; the filename stays
         // this terminal client's own slot (config_.save_name, [SAVE-R2]).
         save_data_.save_name = company_name;
@@ -429,8 +434,7 @@ public:
         config_.campaign = save_data_.current_campaign;
         config_.level = save_data_.scen_num > 0 ? save_data_.scen_num : 1;
 
-        SeededRandom recruit_names = recruit_rng();
-        ensure_team_populated(save_data_, {}, 0, &recruit_names);
+        ensure_team_populated(save_data_, {}, 0, &recruit_names_);
 
         sync_config_from_save();
 
@@ -1305,20 +1309,12 @@ private:
         // every roster could only ever be noise.
     }
 
-    // N7: every recruit this client manufactures is named off the session
-    // seed (--seed, config_.seed), not the process-global std::rand() stream.
-    // The seed is what VIEW LEVEL stages its census with, so the company the
-    // session founds has to be a function of it too or "the same seed prints
-    // the same census" is only half true: founding twice in one process used
-    // to walk the ambient stream and print a different roster.
-    SeededRandom recruit_rng() const { return SeededRandom(config_.seed); }
-
     void ensure_team_initialized()
     {
         if (config_.team_families.empty())
             config_.team_families.push_back(FAMILY_SOLDIER);
-        SeededRandom rng = recruit_rng();
-        initialize_starting_team(save_data_, config_.team_families, 0, &rng);
+        initialize_starting_team(save_data_, config_.team_families, 0,
+                                 &recruit_names_);
     }
 
     void sync_config_from_save()
@@ -1529,8 +1525,7 @@ private:
             std::printf("%s\n", refused->c_str());
             return;
         }
-        SeededRandom recruit_names = recruit_rng();
-        HireSession session(save_data_, 0, &recruit_names);
+        HireSession session(save_data_, 0, &recruit_names_);
         if (session.team_full()) {
             std::printf("Team is already at max size (%d).\n", MAX_TEAM_SIZE);
             return;
@@ -1720,6 +1715,19 @@ private:
     TextPickerError* error_ = nullptr;
     SaveData save_data_;
     bool show_new_game_team_build_notice_ = false;
+    // N7: every recruit this client manufactures is named off the session
+    // seed (--seed, config_.seed), not the process-global std::rand() stream.
+    // The seed is what VIEW LEVEL stages its census with, so the company the
+    // session founds has to be a function of it too or "the same seed prints
+    // the same census" is only half true: founding twice in one process used
+    // to walk the ambient stream and print a different roster.
+    //
+    // ONE generator for the session, re-seeded where a company is founded
+    // (prepare_new_game) and advanced by everything else. A generator built
+    // per call site would restart the sequence at every Hire Troops visit,
+    // which re-offers the same names until get_unique_name gives up and
+    // numbers them.
+    SeededRandom recruit_names_;
 };
 
 #ifdef TESTING
