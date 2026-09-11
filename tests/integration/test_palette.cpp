@@ -145,3 +145,27 @@ TEST(PaletteExport, gpl_matches_runtime_palette)
     ASSERT_EQ(256, parsed) << "must parse exactly 256 palette entries";
 }
 
+
+// Order pin: the three mutating cases above write the SESSION's live palette
+// (og::runtime::current_session->curpal_, via pal32.cpp's set_palette,
+// adjust_palette, cycle_palette and set_palette_reg) and nothing used to put
+// it back. screen::get_pixel (video_sdl.cpp's reverse lookup) resolves a pixel
+// to the FIRST palette index whose RGB matches, so a scratch palette left
+// behind here made every later glyph/backdrop test read the wrong index —
+// DARK_BLUE(72) came back as 4, and the briefing test's "the scroll view
+// painted something" oracle saw an all-black table and counted nothing.
+// The shipped palette gives index 72 an RGB no other index carries, so this
+// only passes when the runtime palette is the real one.
+TEST(Palette, suite_leaves_the_runtime_palette_usable_for_pixel_tests)
+{
+    int r = -1, g = -1, b = -1;
+    query_palette_reg(DARK_BLUE, &r, &g, &b);
+    for (int i = 0; i < static_cast<int>(DARK_BLUE); ++i) {
+        int cr = -1, cg = -1, cb = -1;
+        query_palette_reg(static_cast<unsigned char>(i), &cr, &cg, &cb);
+        EXPECT_FALSE(cr == r && cg == g && cb == b)
+            << "index " << i << " shadows DARK_BLUE (" << r << "," << g << ","
+            << b << ") after the palette suite; get_pixel would resolve every "
+               "DARK_BLUE pixel to " << i;
+    }
+}
