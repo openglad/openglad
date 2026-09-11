@@ -11367,6 +11367,12 @@ TEST(PickerNetworkClient,
         << "the carried window is consumed by the resume that read it";
 
     join_client->shutdown();
+    // The dead link posted "CONNECTION LOST - RECONNECTING" onto the SHARED
+    // display feed, and viewscreen::set_display_text fills the first EMPTY
+    // slot: a line left behind here takes slot 0 from the next test that
+    // plants one of its own. Hand the feed back empty.
+    if (session.myscreen_ != nullptr)
+        session.myscreen_->clear_all_view_text();
 }
 
 // #278 (the reviewer's silent-host GO): an ELECTED host on a dedicated
