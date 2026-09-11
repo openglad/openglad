@@ -40,6 +40,8 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include "curses_mount_restore.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -1625,23 +1627,6 @@ const walker* find_living_named(const GameWorld& world, const std::string& name,
     }
     return nullptr;
 }
-
-// Restore the process campaign mount exactly (the .inc's pattern), so
-// shuffled neighbors see their original package after a test that hosts a
-// non-default campaign.
-struct MountRestore {
-    std::string before = get_mounted_campaign();
-    ~MountRestore()
-    {
-        const std::string after = get_mounted_campaign();
-        if (after == before)
-            return;
-        if (before.empty())
-            (void)unmount_campaign_package_with_error(after);
-        else
-            (void)mount_campaign_package_with_error(before);
-    }
-};
 
 } // namespace
 
