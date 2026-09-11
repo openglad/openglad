@@ -4605,6 +4605,77 @@ TEST(ViewTeam, solo_go_benched_roster_popups_deploy_at_least_one)
 }
 
 // ---------------------------------------------------------------------------
+// The injector escape hatch, pinned. Every base-camp injector below bails out
+// through a hatch when one of its waits times out; if that hatch cannot close
+// the screen, create_team_menu never returns and the whole binary dies at its
+// CTest timeout with no attribution. So the hatch itself is a test subject:
+// a deliberately-absent id times out, the hatch fires, and reaching the line
+// after create_team_menu IS the assertion.
+// ---------------------------------------------------------------------------
+struct BaseCampHatchState {
+    std::atomic<bool> finished{false};
+    bool absent_wait_failed = false;
+    bool hatch_closed_the_screen = false;
+};
+
+static int base_camp_hatch_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampHatchState*>(data);
+
+    // A wait proven able to fail: no roster row 99 exists on any page.
+    state->absent_wait_failed = !wait_for_interactable("roster_row_99", 1500);
+    inject_key_press(SDLK_ESCAPE, 10);  // today's hatch
+    state->hatch_closed_the_screen = true;
+    state->finished.store(true, std::memory_order_relaxed);
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_injector_hatch_closes_the_screen_when_a_wait_times_out)
+{
+    trace_clear();
+
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    soldier->name = "HATCH1";
+    archer->name = "HATCH2";
+    save.team_list[0] = std::move(soldier);
+    save.team_list[1] = std::move(archer);
+    save.team_size = 2;
+
+    BaseCampHatchState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_hatch_injector, "base_camp_hatch", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);  // must RETURN
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
+    ASSERT_TRUE(state.absent_wait_failed)
+        << "the absent-id wait must time out, or the hatch was never taken";
+    ASSERT_TRUE(state.hatch_closed_the_screen)
+        << "the hatch must use the affordance the engine listens to: a pushed "
+           "SDL key event never reaches keystates_, which is the only thing "
+           "that fires a menu screen's ESCAPE hotkey";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+}
+
+
+// ---------------------------------------------------------------------------
 // §2.5 flow 4 + rename: the train screen's RENAME button, reached through a
 // §9.11 row-body click's seed, renames THAT character (editguy_ follows the
 // seeded slot) and the rename accept autosaves the company (§3.8).
