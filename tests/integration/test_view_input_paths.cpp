@@ -566,9 +566,10 @@ TEST(ViewInputPaths, view_input_spectator_switch_acquires_a_target_from_none)
 // number is total frames over elapsed seconds, so a wrong divisor (or a
 // message posted to the wrong view) is visible in the text itself.
 //
-// KNOWN BUG, deliberately not exercised here: within the first 72 ticks of a
-// level `totaltime` is 0 and the division faults. This test seeds a ten-second
-// timer so it measures the rule, not the crash.
+// The first 72 ticks of a level (where `totaltime` truncates to 0) are the
+// separate case exercised by
+// view_input_f3_inside_the_first_second_of_a_level_reads_the_frames_so_far
+// below; this test seeds a ten-second timer so it measures the rule.
 //
 // TIMING MARGIN: the divisor is the REAL clock (query_timer_control is
 // ticks_ms / 13.6) truncated by an integer /72, so the seeded ten seconds
