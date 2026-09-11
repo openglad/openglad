@@ -6838,6 +6838,24 @@ TEST(PickerNetworkClient,
         << "the host's advanced campaign cursor survives the resume";
 }
 
+// CENSUS TRIPWIRE. The shared display screen is process-wide state: a
+// multi-seat round must hand it back at the ambient view count, or every
+// single-seat client test that runs afterwards silently skips
+// og::runtime::sync_single_display_team_from_save (local_transport_shadow.cpp
+// returns early unless numviews == 1) and reads my_team == 0 off a freshly
+// built view. Declared immediately after the multi-seat round so declaration
+// order runs that leaker first; under --gtest_shuffle this names ANY test in
+// the binary that leaves the count moved.
+TEST(PickerNetworkClient, seven_player_host_leaves_the_display_at_one_view)
+{
+    ASSERT_NE(nullptr, og::runtime::current_session);
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_);
+    EXPECT_EQ(1,
+              static_cast<int>(
+                  og::runtime::current_session->myscreen_->numviews))
+        << "a multi-seat round must restore the display view count";
+}
+
 // Explicit team choices are control assignments, not capacity claims. A
 // classic non-allied lobby may therefore keep more seats than there are team
 // colors, including a joiner seat that shares the host's team.
