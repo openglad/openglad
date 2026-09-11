@@ -27,6 +27,7 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -198,10 +199,45 @@ TEST(CtfUi, classic_respawn_shows_only_the_shared_countdown)
     v->control = old_control;
 }
 
+// Everything a settings cycler writes OUTSIDE the SaveData fields the caller
+// restores by hand: the process-wide lobby singleton, whose cached settings
+// picker_lobby_sync_settings_from_save() stamps, and the active company file,
+// which picker_settings_autosave() rewrites whenever it exists. Restoring only
+// the save FIELD leaves both holding this test's throwaway campaign — the
+// og_test_matchup segfault (a later flow's lobby apply remounts it and the
+// remount rebuilds the pack-script registry) and a save0 that names a campaign
+// the fixture never chose.
+struct SettingsCyclerFallout
+{
+    bool had_save0 = false;
+
+    SettingsCyclerFallout()
+        : had_save0(user_file_exists("save/save0.gtl"))
+    {
+        if (had_save0)
+            (void)copy_user_file("save/save0.gtl", "save/save0.cyclerstash");
+    }
+
+    ~SettingsCyclerFallout()
+    {
+        if (had_save0)
+        {
+            (void)copy_user_file("save/save0.cyclerstash", "save/save0.gtl");
+            (void)remove_user_file("save/save0.cyclerstash");
+        }
+        else
+        {
+            (void)remove_user_file("save/save0.gtl");
+        }
+        picker_lobby_shutdown();
+    }
+};
+
 TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
 {
     screen* s = test_screen();
     SaveData& save = s->save_data;
+    SettingsCyclerFallout cycler_fallout;
     const std::string old_campaign = save.current_campaign;
     const short old_teams = save.ctf_team_count;
     const short old_caps = save.ctf_capture_limit;
@@ -417,6 +453,9 @@ struct SavedPickerSave
         snapshot_fields.arena_lineup_dealt_campaign =
             save.arena_lineup_dealt_campaign;
         snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
+        // ...and the match knobs the macro rows write, for the same reason.
+        snapshot_fields.fill = save.fill;
+        snapshot_fields.map_units = save.map_units;
     }
 
     ~SavedPickerSave()
@@ -427,6 +466,8 @@ struct SavedPickerSave
         save.arena_lineup_dealt_campaign =
             snapshot_fields.arena_lineup_dealt_campaign;
         save.arena_lineup_dealt_scen = snapshot_fields.arena_lineup_dealt_scen;
+        save.fill = snapshot_fields.fill;
+        save.map_units = snapshot_fields.map_units;
         save.team_size = snapshot_fields.team_size;
         save.my_team = snapshot_fields.my_team;
         save.numplayers = snapshot_fields.numplayers;
@@ -465,9 +506,16 @@ void write_save0_with_soldiers(const std::string& campaign, short scen_num,
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 0;
     save.ctf_strip_scenario_troops = 0;
-    // A defined resting state includes the arena deal memo (amendment 7):
-    // a memo left on this cursor by an earlier flow would mark the fresh
-    // bands as already dealt.
+    // A defined resting state includes the match knobs: in binary order an
+    // earlier flow's fill/map_units would otherwise leak into this save and
+    // the amendment-5 macro faces (derived from fill[]) would not be at
+    // rest (caught by the ordered og_test_matchup run, invisible alone).
+    // The deal only fills a band that is still kFillNone, so a leaked
+    // STRONG survives it.
+    save.fill = {};
+    save.map_units = {};
+    // ...and the arena deal memo (amendment 7): a memo left on this cursor
+    // by an earlier flow would mark the fresh bands as already dealt.
     save.arena_lineup_dealt_campaign.clear();
     save.arena_lineup_dealt_scen = 0;
     ASSERT_TRUE(save.save("save0"));
@@ -1478,6 +1526,40 @@ TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
     EXPECT_TRUE(state.matched_line_seen)
         << "a FILL: STRONG flip under the open viewer must restage into a "
            "squad wearing STRONG";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// The resting contract the pane test above depends on, pinned without an
+// injector. `deal_arena_lineup_fill` only writes FAIR onto a band that is
+// still kFillNone — an explicit choice is never re-dealt (picker_common.cpp)
+// — so a fill array left STRONG by an earlier MATCH SETUP macro survives the
+// re-deal and the resting census reads STRONG where this suite pins FAIR.
+// The fixture therefore owes fill/map_units a defined resting state, exactly
+// as the campaign-zone fixture already documents for itself.
+TEST(CtfUi, staged_pane_rest_is_fair_even_after_a_prior_fill_macro)
+{
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // Exactly what a MATCH SETUP FILL macro leaves behind: two bands set
+    // STRONG, and the lobby stamped with them. (The stamp's own apply can
+    // remount, so the arena package is mounted after it, not before.)
+    save.fill = {og::sim::kFillStrong, og::sim::kFillStrong,
+                 og::sim::kFillNone, og::sim::kFillNone};
+    picker_lobby_sync_settings_from_save();
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 500);
+    EXPECT_EQ(og::sim::kFillNone, save.fill[1])
+        << "the fixture must hand the arena an undealt band";
+
+    EXPECT_TRUE(og::ui::deal_arena_lineup_for_cursor(
+        save, headless_level_data_hooks()));
+    EXPECT_EQ(og::sim::kFillFair, save.fill[1])
+        << "amendment 7: FIRST BLOOD's authored GREEN band deals FAIR";
 
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");

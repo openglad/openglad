@@ -135,37 +135,122 @@ int count_trace_containing(const char* category, const char* substring)
 // acknowledgement that the full press/release is consumed before another
 // press is allowed. This covers repeated traces too: the final BURDEN -> WAR
 // assignment waits for count 2, not stale count 1.
+//
+// Bounded ladder on top of that: a press that evaporated on a starved frame
+// left NO new trace, so re-pressing it cannot double-cycle anything. A press
+// that DID register (the trace arrived) is never repeated, whatever else went
+// wrong — that is the toggle-safety rule this retry turns on.
+int g_zone_trace_click_retries = 0;
+// TESTING-only fault injection, shared with click_until_edge below: make the
+// next N presses evaporate the way a starved frame does.
+int g_zone_click_drops = 0;
+
+// The other half of the same starvation: the press DID register (its trace
+// arrived) but the reset posted back to the menu thread was cancelled unrun,
+// because the thread pumped nothing inside the ceiling — the deploy autosave
+// under load is the observed case. Every wait that follows then runs against
+// a pointer baseline nobody cleared, so the next press evaporates too. A
+// reset never presses anything, so re-posting it is safe by the same
+// toggle-safety rule the press ladder states: retry the post, never the
+// press.
+//
+// Counted, never clocked: `zone_ack_post_retries` is the number of
+// acknowledge posts that had to be re-sent. A thread that pumps nothing for
+// the WHOLE ladder is not charged to the click at all — see the last resort
+// at the bottom of acknowledge_press.
+int g_zone_ack_post_retries = 0;
+// TESTING-only fault injection for that half: make the next N acknowledge
+// posts come back cancelled the way a starved menu thread cancels them.
+int g_zone_ack_drops = 0;
+
+bool acknowledge_press(int timeout_ms, int attempts = 3,
+                       bool injectable = false)
+{
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        if (injectable && g_zone_ack_drops > 0) {
+            --g_zone_ack_drops;
+            fprintf(stderr,
+                    "  [zone] cancelling the acknowledge post (injected)\n");
+        } else if (run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                      timeout_ms)) {
+            return true;
+        } else {
+            fprintf(stderr,
+                    "  [interact] acknowledge post did not run within %d ms\n",
+                    timeout_ms);
+        }
+        if (attempt + 1 < attempts)
+            ++g_zone_ack_post_retries;
+    }
+    // Last resort, for the stall that outlives the whole ladder: the menu
+    // thread pumped NOTHING for the full budget (a >15 s gap has been seen
+    // on this box, with the flow otherwise healthy — the press had already
+    // traced and the toggle had already autosaved). The reset captures
+    // nothing, so unlike a lambda over the caller's locals it does not need
+    // the cancelling wait at all: post it and leave it queued. The pump runs
+    // at frame top BEFORE the event poll (menu_screen_runner.cpp), so a
+    // queued reset still lands ahead of the next press whenever the thread
+    // comes back — the ordering this acknowledgement exists for is a
+    // property of the queue, not of the observer's clock. Report the stall,
+    // never charge it to the click.
+    fprintf(stderr,
+            "  [interact] the menu thread pumped nothing for %d x %d ms; "
+            "the reset stays queued for the next frame\n",
+            attempts, timeout_ms);
+    (void)post_main_thread_task([] { reset_mouse_click_tracking(); });
+    return true;
+}
+
 bool click_and_acknowledge_trace(const std::string& id, const char* category,
                                  const char* trace_substring,
                                  bool waits_for_autosave = true,
-                                 int timeout_ms = 5000)
+                                 int timeout_ms = 5000, int attempts = 3)
 {
     const int before = count_trace_containing(category, trace_substring);
     const int saves_before = trace_count("save");
-    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms))
-        return false;
-    interact(id);
-    int elapsed = 0;
-    while (elapsed < timeout_ms &&
-           (count_trace_containing(category, trace_substring) <= before ||
-            (waits_for_autosave && trace_count("save") <= saves_before))) {
-        SDL_Delay(50);
-        elapsed += 50;
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        if (!run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                timeout_ms))
+            return false;
+        if (g_zone_click_drops > 0) {
+            --g_zone_click_drops;
+            fprintf(stderr, "  [zone] dropping the press on '%s' (injected)\n",
+                    id.c_str());
+        } else {
+            (void)interact(id);
+        }
+        int elapsed = 0;
+        while (elapsed < timeout_ms &&
+               (count_trace_containing(category, trace_substring) <= before ||
+                (waits_for_autosave && trace_count("save") <= saves_before))) {
+            SDL_Delay(50);
+            elapsed += 50;
+        }
+        const bool traced =
+            count_trace_containing(category, trace_substring) > before;
+        if (!traced) {
+            fprintf(stderr,
+                    "  [interact] TIMEOUT waiting for new %s trace '%s'\n",
+                    category, trace_substring);
+            if (attempt + 1 < attempts) {
+                ++g_zone_trace_click_retries;
+                continue;  // nothing registered: the press may be re-sent
+            }
+            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                     timeout_ms);
+            return false;
+        }
+        const bool autosaved =
+            !waits_for_autosave || trace_count("save") > saves_before;
+        if (!autosaved) {
+            fprintf(stderr,
+                    "  [interact] TIMEOUT waiting for cycler autosave\n");
+        }
+        const bool acknowledged =
+            acknowledge_press(timeout_ms, attempts, /*injectable=*/true);
+        return autosaved && acknowledged;
     }
-    const bool traced =
-        count_trace_containing(category, trace_substring) > before;
-    if (!traced) {
-        fprintf(stderr,
-                "  [interact] TIMEOUT waiting for new %s trace '%s'\n",
-                category, trace_substring);
-    }
-    const bool autosaved =
-        !waits_for_autosave || trace_count("save") > saves_before;
-    if (!autosaved)
-        fprintf(stderr, "  [interact] TIMEOUT waiting for cycler autosave\n");
-    const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms);
-    return traced && autosaved && acknowledged;
+    return false;
 }
 
 // Stash/restore the picker save across an injector flow (the test_ctf_ui
@@ -202,6 +287,18 @@ struct SavedPickerSave
         snapshot_fields.arena_lineup_dealt_campaign =
             save.arena_lineup_dealt_campaign;
         snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
+
+        // ...and, once everything above is safely snapshotted, the
+        // PROCESS-WIDE lobby. The standalone picker lobby client caches the
+        // settings every cycler stamps into it
+        // (picker_lobby_sync_settings_from_save), nothing in a test binary
+        // tears it down, and its apply writes that cached campaign_id back
+        // over save.current_campaign and REMOUNTS it — rebuilding the
+        // pack-script registry underneath a scripted book. Re-stamping it
+        // from the save this flow inherits is enough, and is far cheaper
+        // than shutting the singleton down (a shutdown makes the next lobby
+        // use rebuild the server, its peers and the mount).
+        picker_lobby_sync_settings_from_save();
     }
 
     ~SavedPickerSave()
@@ -228,10 +325,14 @@ struct SavedPickerSave
 };
 
 // Save/restore the pack-script registry around a synthetic registration.
-// The gladiator campaign is mounted (same-id remounts are no-ops), so the
-// save0 load inside picker_main never re-walks the registry from disk and
-// the synthetic chunk survives the whole flow. The chunk name deliberately
-// does NOT start with `packs/` (the pack-Lua coverage inventory rule).
+// The gladiator campaign is mounted and the save0 load inside picker_main
+// never re-walks the registry from disk, so the synthetic chunk survives an
+// ordinary flow. It does NOT survive a remount of a DIFFERENT package: that
+// rebuilds the registry and the chunk is gone, which is how a stale lobby
+// campaign stamp used to turn a scripted zone into the default composition
+// (see roster_mutations_survive_a_stale_lobby_settings_stamp). The chunk
+// name deliberately does NOT start with `packs/` (the pack-Lua coverage
+// inventory rule).
 class SyntheticCampaignScriptGuard
 {
 public:
@@ -963,6 +1064,100 @@ TEST(CampaignZoneUi, default_zone_keeps_the_classic_roster_flows)
         << "both deploy toggles must finish before the train-door click";
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
+}
+
+// Teeth for the trace ladder: the first deploy press evaporates, and the flow
+// still lands both toggles — with exactly one retry, and no double-toggle
+// (the second edge, "deploy slot=0 on", proves the first one landed once).
+TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    write_save0_with_two_soldiers("gladiator", 1);
+
+    g_zone_trace_click_retries = 0;
+    g_zone_ack_post_retries = 0;
+    g_zone_ack_drops = 0;
+    g_zone_click_drops = 1;
+
+    DefaultZoneFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        default_zone_injector, "default_zone_drop", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    // The injector this shares with default_zone_keeps_the_classic_roster_flows
+    // records a capture, and the shot ledger is process-wide: answer for it
+    // here or the next verifying flow inherits it.
+    verify_zone_shots("default_zone_drop", 1);
+
+    EXPECT_EQ(0, g_zone_click_drops) << "the injected drop must be consumed";
+    EXPECT_TRUE(state.deploy_edges_acknowledged)
+        << "a dropped press must cost a retry, not the toggle";
+    EXPECT_EQ(1, g_zone_trace_click_retries)
+        << "exactly one press left no trace and was re-sent";
+    EXPECT_TRUE(state.finished);
+}
+
+// The other tooth, for the other half of the ladder: the press lands and
+// traces, but its acknowledgement — the pointer reset posted back to the
+// menu thread — is cancelled unrun. That is the mode seen under load at
+// CampaignZoneUi.default_zone_keeps_the_classic_roster_flows: the deploy
+// autosave leaves the menu thread unpumped past the ceiling, the post is
+// cancelled while still queued, and the toggle was reported unacknowledged.
+// Re-posting the reset is toggle-safe, so the flow still finishes both
+// toggles — with exactly one extra post and NO extra press. The re-post
+// COUNT is what this pins: the click's own verdict no longer depends on a
+// clock (a fully stalled thread leaves the reset queued instead), so the
+// counter is the teeth.
+TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    write_save0_with_two_soldiers("gladiator", 1);
+
+    g_zone_trace_click_retries = 0;
+    g_zone_ack_post_retries = 0;
+    g_zone_click_drops = 0;
+    g_zone_ack_drops = 1;
+
+    DefaultZoneFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        default_zone_injector, "default_zone_ack_drop", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    // Shared injector, process-wide shot ledger: answer for the capture here
+    // or the next verifying flow inherits it.
+    verify_zone_shots("default_zone_ack_drop", 1);
+
+    EXPECT_EQ(0, g_zone_ack_drops)
+        << "the injected cancellation must be consumed";
+    EXPECT_TRUE(state.deploy_edges_acknowledged)
+        << "a cancelled acknowledge must cost a re-post, not the toggle";
+    EXPECT_EQ(1, g_zone_ack_post_retries)
+        << "exactly one acknowledge post was re-sent";
+    EXPECT_EQ(0, g_zone_trace_click_retries)
+        << "the press itself registered: it must never be re-pressed";
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
+    EXPECT_TRUE(state.finished);
 }
 
 namespace {
@@ -2081,6 +2276,13 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &state));
     EXPECT_TRUE(trace_contains("zone", "assign slot=0 tag=1"));
     EXPECT_TRUE(trace_contains("zone", "refetch"));
+    // A refetch that lost the scripted book falls back to the DEFAULT
+    // composition, which carries no Text widget at all: read texts()[0]
+    // unguarded and the empty vector hands back freed TextLayout storage
+    // (the og_test_matchup SIGSEGV). Name the fallback instead.
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
     EXPECT_EQ("LEAD Alpha/0 SWORN 1", zone.texts()[0].lines[0])
         << "the assign site must refetch the composition";
 
@@ -2089,6 +2291,9 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
     EXPECT_TRUE(trace_contains("basecamp", "move_up slot=1 to=0"));
     EXPECT_TRUE(trace_contains("zone", "refetch"));
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
     EXPECT_EQ("LEAD Beta/0 SWORN 1", zone.texts()[0].lines[0])
         << "the move-up site must refetch the composition";
 
@@ -2105,6 +2310,72 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     spec.on_reset(&state);
     EXPECT_TRUE(trace_contains("zone", "refetch"))
         << "the reset site must refetch the composition";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+// The same roster mutation, run against a lobby whose cached settings still
+// name a DIFFERENT campaign. The standalone picker lobby client is a
+// process-wide singleton whose settings are stamped by
+// picker_lobby_sync_settings_from_save() — the tail of every settings
+// cycler (change_ctf_caps, set_difficulty, ...) — and nothing in a test
+// binary ever tears it down. A stamp left behind by an earlier flow reaches
+// this mutation through picker_base_camp_after_roster_mutation's lobby
+// sync, whose apply writes settings.campaign_id back over save.current_campaign
+// and REMOUNTS that package; the remount rebuilds the pack-script registry,
+// the scripted book vanishes, and the zone silently falls back to the
+// default composition. Pinning it here keeps the mutation tail honest
+// whatever the lobby is holding.
+TEST(CampaignZoneUi, roster_mutations_survive_a_stale_lobby_settings_stamp)
+{
+    trace_clear();
+
+    // Staged BEFORE the fixture, because that is where it comes from: an
+    // EARLIER test's settings cycle. This is the exact shape
+    // src/interface/ui/picker.cpp change_ctf_caps leaves behind — sync the
+    // lobby under a foreign campaign, then restore only the save FIELD.
+    {
+        SaveData& live = test_screen()->save_data;
+        const std::string before = live.current_campaign;
+        live.current_campaign = "modes";
+        picker_lobby_sync_settings_from_save();
+        live.current_campaign = before;
+    }
+
+    SaveData& save = test_screen()->save_data;
+    SavedPickerSave save_guard;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.current_campaign = "gladiator";
+    ASSERT_EQ("gladiator", get_mounted_campaign());
+
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kRosterEchoScript);
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
+    EXPECT_EQ("gladiator", get_mounted_campaign())
+        << "the mutation tail must not remount a stale lobby campaign";
+    ASSERT_EQ(1u, zone.texts()[0].lines.size());
+    EXPECT_EQ("LEAD Beta/0 SWORN 1", zone.texts()[0].lines[0]);
 
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
@@ -2770,6 +3041,99 @@ struct MatchSetupShotState
     bool finished = false;
 };
 
+// --- The acknowledged, bounded-retry click the injector flows use ---------
+//
+// A bare interact() sends one press/release pair and never looks back. Under
+// a starved menu thread one of the two can land on the wrong side of the
+// engine's pointer-handoff reset (menu_screen_runner.cpp) and the click
+// simply evaporates; nothing retries, and every wait that follows then
+// expires against a screen the flow never entered — one dropped press turns
+// a 5.7 s capture into 98 s of stacked ceilings. The idiom that survives it
+// is the file's own click_and_acknowledge_trace: baseline the pointer on the
+// menu thread, press, wait for a NAMED edge, acknowledge. Wrapped in a
+// bounded ladder, a dropped press costs one attempt instead of the cascade.
+//
+// The same toggle-safety rule click_and_acknowledge_trace states, applied
+// to the press half here: a press may only be RE-SENT when there is
+// evidence it did not land. A door and a cycler row are pressed the same
+// way, but a cycler is not idempotent — a second press walks the wheel one
+// stop past the target and the flow then waits for a face the row has
+// already gone by. Observed on this box: three `zone_row_0` presses all
+// landed (each traced its autosave) while the menu thread was too starved
+// to republish the label inside the wait, and the TEAMS wheel went
+// 4 -> 2 -> 3 -> 4 past its own target. So every call that can name its
+// landing names it: the zone screen traces `submenu_opened` when a door
+// lands and `acted_autosave` when an action row lands, both BEFORE the
+// label the edge waits on is republished. Once the witness arrives the
+// ladder stops pressing and spends the rest of its attempts WAITING.
+//
+// Counted, never clocked: `zone_click_retries` is the number of attempts
+// that re-pressed because nothing registered; `zone_edge_waits` is the
+// number that only waited, because the press had already landed.
+int g_zone_click_retries = 0;
+int g_zone_edge_waits = 0;
+// TESTING-only fault injection for that half, mirroring g_zone_click_drops:
+// make the next N edge observations come back false although the press
+// landed — exactly how a label the menu thread has not republished yet
+// looks from the injector.
+int g_zone_edge_blinds = 0;
+
+bool click_until_edge(const std::string& id,
+                      const std::function<bool(int)>& edge_reached,
+                      const char* landed_trace = nullptr, int attempts = 3,
+                      int wait_ms = 2500)
+{
+    const int landed_before =
+        landed_trace ? count_trace_containing("zone", landed_trace) : 0;
+    const auto has_landed = [&] {
+        return landed_trace &&
+               count_trace_containing("zone", landed_trace) > landed_before;
+    };
+    bool spent = false;  // the press landed: never send another one
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        if (!spent) {
+            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
+                                     wait_ms);
+            if (g_zone_click_drops > 0) {
+                --g_zone_click_drops;
+                fprintf(stderr,
+                        "  [zone] dropping the press on '%s' (injected)\n",
+                        id.c_str());
+            } else {
+                (void)interact(id);
+            }
+        }
+        bool reached = edge_reached(wait_ms);
+        if (reached && g_zone_edge_blinds > 0) {
+            --g_zone_edge_blinds;
+            fprintf(stderr,
+                    "  [zone] blinding the edge observation on '%s' "
+                    "(injected)\n",
+                    id.c_str());
+            reached = false;
+        }
+        if (reached) {
+            // Same bounded re-post: a cancelled acknowledgement here leaves
+            // the next press to evaporate against a stale baseline.
+            (void)acknowledge_press(wait_ms);
+            return true;
+        }
+        if (has_landed()) {
+            spent = true;
+            ++g_zone_edge_waits;
+            fprintf(stderr,
+                    "  [zone] attempt %d: '%s' landed but its edge lagged; "
+                    "waiting, not re-pressing\n",
+                    attempt + 1, id.c_str());
+            continue;
+        }
+        ++g_zone_click_retries;
+        fprintf(stderr, "  [zone] attempt %d: '%s' did not reach its edge\n",
+                attempt + 1, id.c_str());
+    }
+    return false;
+}
+
 int match_setup_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -2783,14 +3147,17 @@ int match_setup_injector(void* data)
     // the door this shot is about.
     state->setup_row_seen = wait_for_interactable_label_containing(
         "zone_action_3", "MATCH SETUP", 10000);
-    SDL_Delay(400);
-    interact("zone_action_3");
 
     // The zone submenu's own BACK owns the unique (10,169) rect. At rest
     // the two macro rows lead the page (amendment 5): TEAMS: 4 — the face
     // derived from the arena's deal on its four authored teams (amendment
     // 7) — over FILL: FAIR, then the two knobs at MAP.
-    state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
+    state->page_opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
     state->teams_row_read_four = wait_for_interactable_label_containing(
         "zone_row_0", "TEAMS: 4", 10000);
     state->fill_row_read_fair = wait_for_interactable_label_containing(
@@ -2799,46 +3166,62 @@ int match_setup_injector(void* data)
         "zone_row_2", "TARGET SCORE: MAP", 10000);
     state->time_row_read_map = wait_for_interactable_label_containing(
         "zone_row_3", "TIME LIMIT: MAP", 10000);
-    SDL_Delay(500);
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("zone_submenu_match_setup");
 
     // The macros move: one TEAMS click wraps the four-side deal back to
     // two — the lowest opponent keeps FAIR, the other two turn NONE (both
     // faces re-derive from the one fill array) — and one FILL click steps
     // that FAIR face to STRONG.
-    interact("zone_row_0");
-    state->teams_stepped_to_two = wait_for_interactable_label_containing(
-        "zone_row_0", "TEAMS: 2", 10000);
-    SDL_Delay(400);
-    interact("zone_row_1");
-    state->fill_stepped_to_strong = wait_for_interactable_label_containing(
-        "zone_row_1", "FILL: STRONG", 10000);
-    SDL_Delay(400);
+    state->teams_stepped_to_two =
+        click_until_edge(
+            "zone_row_0",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_0", "TEAMS: 2", wait_ms);
+            },
+            "acted_autosave");
+    state->fill_stepped_to_strong =
+        click_until_edge(
+            "zone_row_1",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_1", "FILL: STRONG", wait_ms);
+            },
+            "acted_autosave");
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_macros");
-    SDL_Delay(400);
 
     // One click walks the score cycle one stop (map -> 1) and speaks it.
-    interact("zone_row_2");
-    state->score_row_stepped_to_one = wait_for_interactable_label_containing(
-        "zone_row_2", "TARGET SCORE: 1", 10000);
-    SDL_Delay(400);
+    state->score_row_stepped_to_one =
+        click_until_edge(
+            "zone_row_2",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_2", "TARGET SCORE: 1", wait_ms);
+            },
+            "acted_autosave");
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_cycled");
-    SDL_Delay(400);
 
     // The clock: a fresh match wears MAP — the limit the level's own
     // manifest authored — and one click hands the host the shortest
     // override the cycle offers.
-    interact("zone_row_3");
-    state->time_row_stepped_to_five = wait_for_interactable_label_containing(
-        "zone_row_3", "TIME LIMIT: 5M", 10000);
-    SDL_Delay(400);
+    state->time_row_stepped_to_five =
+        click_until_edge(
+            "zone_row_3",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_3", "TIME LIMIT: 5M", wait_ms);
+            },
+            "acted_autosave");
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_time");
-    SDL_Delay(400);
 
-    interact("back");
-    wait_for_interactable("go", 10000);
-    SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return wait_for_interactable("go", wait_ms);
+    });
+    (void)interact("back");
     state->finished = true;
     return 0;
 }
@@ -2895,6 +3278,237 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
     EXPECT_TRUE(state.finished);
 
     // Leave the default campaign mounted for whatever runs next.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+namespace {
+
+// Open MATCH SETUP through the ladder and come straight back out. The
+// press the flow starts with is dropped on purpose (g_zone_click_drops), so
+// only a retry can reach the page.
+int match_setup_retry_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* opened = static_cast<bool*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    *opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
+
+    if (*opened) {
+        (void)click_until_edge("back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        });
+    }
+    (void)interact("back");
+    return 0;
+}
+
+// The same ladder, pointed at a button that is not on this screen: it must
+// spend its three attempts and REPORT, never hang against the group's
+// 420 s budget.
+int match_setup_wrong_id_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* reached = static_cast<bool*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    // No witness: a press that is nowhere near a button cannot land, so
+    // this ladder is allowed to spend every attempt on a fresh press.
+    *reached = click_until_edge(
+        "zone_action_99_not_a_row",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        nullptr, 3, 500);
+
+    (void)interact("back");
+    return 0;
+}
+
+struct BlindCyclerState
+{
+    bool opened = false;
+    bool stepped = false;
+    bool wheel_still_on_two = false;
+};
+
+// The cycler half of the same ladder. Open MATCH SETUP, then step the TEAMS
+// macro exactly ONCE with the first edge observation blinded
+// (g_zone_edge_blinds) — the starved menu thread that has not republished
+// the row's label yet, seen from here. A ladder that re-presses a landed
+// cycler walks the wheel 4 -> 2 -> 3 -> 4 and never reads TEAMS: 2 again.
+int match_setup_blind_cycler_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BlindCyclerState*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    state->opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
+    if (state->opened) {
+        (void)wait_for_interactable_label_containing("zone_row_0", "TEAMS: 4",
+                                                     10000);
+        // Armed HERE, not in the test body: the blind belongs to the cycler
+        // press, and the door ladder above would otherwise eat it.
+        g_zone_edge_blinds = 1;
+        state->stepped = click_until_edge(
+            "zone_row_0",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_0", "TEAMS: 2", wait_ms);
+            },
+            "acted_autosave");
+        // Where the wheel actually stands once the ladder is done: one
+        // press, one stop. An overshoot reads 3 or 4 here and this stays
+        // false however the ladder reported.
+        state->wheel_still_on_two = wait_for_interactable_label_containing(
+            "zone_row_0", "TEAMS: 2", 5000);
+        (void)click_until_edge("back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        });
+    }
+    (void)interact("back");
+    return 0;
+}
+
+} // namespace
+
+// Teeth for the ladder: a press that evaporates costs one attempt, and the
+// flow still reaches the screen. Counts, never clocks.
+TEST(CampaignZoneUi, match_setup_click_helper_retries_a_dropped_press)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_zone_click_retries = 0;
+    g_zone_click_drops = 1;
+    g_zone_edge_waits = 0;
+    g_zone_edge_blinds = 0;
+
+    bool opened = false;
+    SDL_Thread* thread =
+        SDL_CreateThread(match_setup_retry_injector, "zone_retry", &opened);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, g_zone_click_drops) << "the injected drop must be consumed";
+    EXPECT_TRUE(opened)
+        << "a dropped press must cost a retry, not the whole flow";
+    EXPECT_EQ(1, g_zone_click_retries)
+        << "exactly one attempt missed its edge";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_zone_click_retries = 0;
+    g_zone_click_drops = 0;
+    g_zone_edge_waits = 0;
+    g_zone_edge_blinds = 0;
+
+    bool reached = true;
+    SDL_Thread* thread = SDL_CreateThread(match_setup_wrong_id_injector,
+                                          "zone_wrong_id", &reached);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_FALSE(reached) << "a wrong id can never reach the page";
+    EXPECT_EQ(3, g_zone_click_retries)
+        << "the ladder spends its three attempts and reports, never hangs";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The other half of the same rule: a press that DID land is never re-sent,
+// however long its edge takes to show up. The blind makes the first
+// observation lie exactly the way a starved menu thread does, and a cycler
+// is the one row where a second press is not free — it costs the wheel a
+// stop it can only get back by going all the way round.
+TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_zone_click_retries = 0;
+    g_zone_click_drops = 0;
+    g_zone_edge_waits = 0;
+    // The injector arms the blind on the cycler press itself; nothing is
+    // blinded on the way there.
+    g_zone_edge_blinds = 0;
+
+    BlindCyclerState state;
+    SDL_Thread* thread = SDL_CreateThread(match_setup_blind_cycler_injector,
+                                          "zone_blind_cycler", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.opened) << "the MATCH SETUP door still opens";
+    EXPECT_EQ(0, g_zone_edge_blinds) << "the injected blind must be consumed";
+    EXPECT_TRUE(state.stepped)
+        << "a landed press whose label lagged must still reach its edge";
+    EXPECT_TRUE(state.wheel_still_on_two)
+        << "the ladder must not press a landed cycler again: a second press "
+           "walks the TEAMS wheel past the stop the flow asked for";
+    EXPECT_EQ(1, g_zone_edge_waits)
+        << "exactly one attempt waited on a press that had already landed";
+    EXPECT_EQ(0, g_zone_click_retries)
+        << "a landed press is never charged as a re-press";
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
