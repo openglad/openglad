@@ -764,8 +764,29 @@ TEST(GameLoop, game_frame_ends_the_mission_without_a_transport_runtime)
     game_screen->world().delete_objects();
 }
 
+namespace {
+
+// initialize_replay_screen (replay_runtime.cpp) latches the session into
+// playback and only begin_replay_recording clears it. While it is set,
+// reset_local_transport_shadow skips the whole staged-lobby path
+// (local_transport_shadow.cpp's adopt_stage takes
+// !session.replay_playback_active_ as a conjunct), so a case that arms
+// playback must disarm it again. RAII, because the case below has ASSERTs
+// that return early.
+struct ReplayPlaybackFlagGuard
+{
+    bool saved = og::runtime::current_session->replay_playback_active_;
+    ~ReplayPlaybackFlagGuard()
+    {
+        og::runtime::current_session->replay_playback_active_ = saved;
+    }
+};
+
+} // namespace
+
 TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
 {
+    const ReplayPlaybackFlagGuard playback_guard;
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
 
