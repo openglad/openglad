@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <format>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -656,6 +657,76 @@ TEST(NetTransportWebSocketServer,
         return snapshot_hash_checks >= 4u;
     });
     EXPECT_EQ(4u, snapshot_hash_checks);
+}
+
+TEST(NetTransportWebSocketServer,
+     destruction_returns_while_a_client_is_still_connected)
+{
+    // ix::WebSocketServer::stop() closes the clients it can see and then joins
+    // its gc thread, which only exits once every connection thread has ended.
+    // A connection that is already in the client set but still inside its
+    // handshake when that close pass runs comes up OPEN afterwards and parks
+    // in an unbounded poll(), so its thread never ends, the gc join never
+    // returns, and the server destructor wedges. Stand a live client up, put
+    // more connections into that handshake window, and require
+    // ~WebSocketServerTransport to come back.
+    //
+    // Gated by a cycle COUNT, not a clock. The destruction runs on a worker
+    // thread so a wedge is reported as a failure instead of hanging the
+    // binary, and the worker owns the transport it is destroying.
+    IxNetSystemScope net_system;
+    constexpr int kCycles = 200;
+    constexpr int kRacingProbes = 3;
+
+    for (int cycle = 0; cycle < kCycles; ++cycle)
+    {
+        const int port = ix::getFreePort();
+        og::sim::WebSocketServerTransport::Options options;
+        options.host = "127.0.0.1";
+        auto transport =
+            std::make_unique<og::sim::WebSocketServerTransport>(port, options);
+        transport->accept_connections();
+
+        const std::string url = std::format("ws://127.0.0.1:{}", port);
+        std::vector<std::unique_ptr<WebSocketClientProbe>> probes;
+        probes.push_back(std::make_unique<WebSocketClientProbe>(url));
+        probes.back()->start();
+        ASSERT_TRUE(probes.back()->wait_until_open())
+            << "cycle " << cycle << ": " << probes.back()->error();
+        ASSERT_TRUE(poll_until_peer_count(*transport, 1u)) << "cycle " << cycle;
+
+        // These are deliberately not waited on: each one is somewhere between
+        // accept() and the end of its handshake when the server goes away.
+        for (int probe_index = 0; probe_index < kRacingProbes; ++probe_index)
+        {
+            probes.push_back(std::make_unique<WebSocketClientProbe>(url));
+            probes.back()->start();
+        }
+
+        auto done = std::make_shared<std::promise<void>>();
+        std::future<void> finished = done->get_future();
+        std::thread destroyer(
+            [done, owned = std::move(transport)]() mutable {
+                owned.reset();
+                done->set_value();
+            });
+
+        if (finished.wait_for(30s) != std::future_status::ready)
+        {
+            // Never touch a wedged server or the sockets still attached to it:
+            // the transport stays owned by the detached worker and the probes
+            // are leaked rather than stopped.
+            destroyer.detach();
+            for (auto& probe : probes)
+                (void)probe.release();
+            FAIL() << "server transport destruction wedged on cycle " << cycle
+                   << ": a connection accepted around stop() stayed in an "
+                      "unbounded poll(), so the gc join never returned";
+        }
+
+        destroyer.join();
+        probes.clear();
+    }
 }
 
 } // namespace
