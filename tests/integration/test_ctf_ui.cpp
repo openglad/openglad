@@ -362,6 +362,12 @@ bool wait_for_interactable_label(const std::string& id, const std::string& want,
     return false;
 }
 
+// TESTING-only fault injection for the acknowledgement half of the click
+// below: make the next N acknowledgements come back empty although the menu
+// thread really did complete a frame — exactly how a menu thread starved by
+// its own synchronous autosave looks from this injector.
+int g_ctf_ack_blinds = 0;
+
 // Click `id` until its label reads `want`. The label edge proves the press was
 // consumed, but synchronous save/stage work can leave that click's release
 // queued after the edge. A completed menu-frame edge acknowledges the full
@@ -394,9 +400,17 @@ bool click_until_label(const std::string& id, const std::string& want,
                 SDL_Delay(50);
                 elapsed += 50;
             }
-            const bool acknowledged =
+            bool acknowledged =
                 og::ui::menu_screen_testing_completed_frames() >
                 completed_before;
+            if (acknowledged && g_ctf_ack_blinds > 0) {
+                --g_ctf_ack_blinds;
+                fprintf(stderr,
+                        "  [ctf] starving the acknowledgement on '%s' "
+                        "(injected)\n",
+                        id.c_str());
+                acknowledged = false;
+            }
             return autosaved && acknowledged;
         }
         fprintf(stderr, "  [interact] retry %d: '%s' has not reached '%s'\n",
@@ -904,6 +918,44 @@ TEST(CtfUi, scenario_ctf_settings_flow)
 
     // The save0 load remounted the CTF campaign; restore the default mount
     // so later (or shuffled) tests load classic levels again.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// Teeth for the acknowledgement half of the SCORE ladder. The press lands,
+// the row relabels and the knob autosaves — and then the completed-frame
+// observation that follows comes back empty. That is the starved menu thread
+// a loaded box produces (ci-asan seed 4 reported exactly this shape:
+// score_relabelled false beside a ctf_capture_limit that had already cycled
+// to 1, one press in the log and no retry), and it is the pointer handoff
+// that protects the NEXT press, not an oracle for this one. A stall there is
+// reported by name; it is never charged to the click.
+TEST(CtfUi, settings_cycler_is_not_charged_for_a_starved_acknowledge)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("modes", 500);
+
+    g_ctf_ack_blinds = 1;
+
+    TeamsFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        teams_ctf_settings_flow_injector, "teams_ctf_ack_blind", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.score_relabelled) << "SCORE cycle should relabel";
+    EXPECT_EQ(1, (int)save.ctf_capture_limit)
+        << "the press itself landed: the knob cycled and the flow autosaved";
+    EXPECT_EQ(0, g_ctf_ack_blinds) << "the injected stall must be consumed";
+
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");
 }
