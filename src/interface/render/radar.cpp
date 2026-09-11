@@ -454,7 +454,11 @@ short radar::draw(LevelRuntimeData* data)
 					if (viewscreenp && viewscreenp->control == ob)
 					{
 						tempcolor = static_cast<unsigned char>(rng(256));
-						if (tempx >= (xloc + xview - 1) && tempy < (yloc+yview) )
+						// The box's last drawable row is yloc+yview-1 (the bound
+						// plot_ping_blip clamps to). On that row the pair must go
+						// UP, not down, or the corner blip paints one pixel below
+						// the box, over the HUD; that is what the next arm is for.
+						if (tempx >= (xloc + xview - 1) && tempy < (yloc + yview - 1) )
 						{
 							og::runtime::current_session->myscreen_->pointb(tempx-1,tempy,tempcolor, alpha);
 							og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);

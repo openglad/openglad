@@ -3760,19 +3760,21 @@ int sdl_video::FadeBetween(
 	//(for simple fade-in/out effects).
 	if (!pOldSurface && !pNewSurface)
 		return 0; //nothing to do; avoid allocating two unused temporaries
+	// The stand-in has to match the surface it will be faded against, not the
+	// active canvas: every precondition below demands identical pitch, size
+	// and pixel format, and a 24-bit temp can never clear the bpp gate.
+	SDL_Surface* const peer = pOldSurface ? pOldSurface : pNewSurface;
 	if (!pOldSurface)
 	{
 		bOldNull = true;
-		pOldSurface = SDL_CreateSurface(
-			active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_RGB24);
+		pOldSurface = SDL_CreateSurface(peer->w, peer->h, peer->format);
 		if (!pOldSurface) return 0;  // OOM: nothing safely lockable below
 		SDL_FillSurfaceRect(pOldSurface,nullptr,0);
 	}
 	if (!pNewSurface)
 	{
 		bNewNull = true;
-		pNewSurface = SDL_CreateSurface(
-			active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_RGB24);
+		pNewSurface = SDL_CreateSurface(peer->w, peer->h, peer->format);
 		if (!pNewSurface) { if (bOldNull) SDL_DestroySurface(pOldSurface); return 0; }  // OOM: free the temp we just made
 		SDL_FillSurfaceRect(pNewSurface,nullptr,0);
 	}
@@ -3780,6 +3782,9 @@ int sdl_video::FadeBetween(
     bool old_locked = false;
 	if ( SDL_MUSTLOCK(pOldSurface) ) {
 		if ( !SDL_LockSurface(pOldSurface) ) {
+			// fail() is not in scope yet, so free the stand-ins by hand.
+			if (bOldNull) SDL_DestroySurface(pOldSurface);
+			if (bNewNull) SDL_DestroySurface(pNewSurface);
 			return 0;
 		}
         old_locked = true;
@@ -3804,7 +3809,7 @@ int sdl_video::FadeBetween(
 	// Reject surfaces that require locking instead of writing through an
 	// unlocked RLE buffer.
 	if(!DestSurface)
-        return fail("dest size mismatch");
+        return fail("null dest");
 	if(SDL_MUSTLOCK(DestSurface))
         return fail("DestSurface requires lock");
 

@@ -174,7 +174,7 @@ void Super2xSaI_ex2(
 			if (x==0)
 				sub1=0;
 			else
-				sub1=0;
+				sub1=1;
 
 			if (x >= xbeforelast2)
 				add2 = 0;

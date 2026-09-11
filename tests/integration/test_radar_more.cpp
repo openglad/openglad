@@ -1524,11 +1524,8 @@ TEST_F(RadarMore, a_pack_can_give_any_treasure_family_a_radar_blip)
 // map's right column or bottom row. If the wrong arm ran, the second pixel of
 // the pair would be painted past the box border, over the HUD next to it.
 //
-// The exact bottom-right CORNER is deliberately not asserted: with tempx at
-// the right column and tempy on the last row the first arm wins (its
-// `tempy < yloc+yview` is still true there) and paints tempy+1, one pixel
-// below the box. That is a real latent 1px escape, reported rather than
-// pinned; fixing it is a rendering change of its own.
+// The exact bottom-right CORNER, where both of those arms apply at once, has
+// its own case below (control_blip_stays_inside_the_box_at_the_bottom_right_corner).
 TEST_F(RadarMore, control_blip_stays_inside_the_box_at_the_right_column_and_bottom_row)
 {
     FixedRandom fixed_rng(200); // the control blip's rng(256) colour
@@ -1596,6 +1593,72 @@ TEST_F(RadarMore, control_blip_stays_inside_the_box_at_the_right_column_and_bott
     EXPECT_EQ(cleared, blip_rgb_at(r, 20, 60))
         << "nothing may be painted past the box's bottom border";
     EXPECT_EQ(cleared, blip_rgb_at(r, 21, 60));
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// P2: the exact bottom-right CORNER — the one cell where the right-column arm
+// and the bottom-row arm both apply. The pair must go up-and-left; a blip
+// pixel on row yloc+yview is outside the box, on the HUD below it.
+TEST_F(RadarMore, control_blip_stays_inside_the_box_at_the_bottom_right_corner)
+{
+    FixedRandom fixed_rng(200); // the control blip's rng(256) colour
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    ASSERT_EQ(40, d.world().grid.w);
+    ASSERT_EQ(60, d.world().grid.h);
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->set_team_num(0);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* const saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    ASSERT_EQ(40, r.xview);
+    ASSERT_EQ(44, r.yview);
+
+    const std::array<int, 3> blip = palette_rgb(200);
+    const std::array<int, 3> cleared = palette_rgb(0);
+
+    control->setxy(GRID_SIZE * 39, GRID_SIZE * 59); // the map's last cell
+    og::runtime::current_session->myscreen_->clearbuffer();
+    ASSERT_EQ(1, r.draw(&d));
+    ASSERT_EQ(0, r.radarx) << "scrolled hard right";
+    ASSERT_EQ(16, r.radary) << "scrolled hard down";
+    // Sampled inside the scrolled window (grid rows 16..59 are the visible
+    // ones once the radar is scrolled hard down).
+    const std::array<int, 3> terrain = blip_rgb_at(r, 10, 30);
+    ASSERT_NE(terrain, blip);
+    ASSERT_NE(terrain, cleared) << "the baked terrain must be visible";
+
+    // The pair goes UP from the last row, and LEFT from the last column.
+    EXPECT_EQ(blip, blip_rgb_at(r, 38, 58));
+    EXPECT_EQ(blip, blip_rgb_at(r, 39, 58));
+    EXPECT_EQ(blip, blip_rgb_at(r, 38, 59));
+    EXPECT_EQ(blip, blip_rgb_at(r, 39, 59));
+    // Nothing past the box's bottom border, and nothing past its right one.
+    EXPECT_EQ(cleared, blip_rgb_at(r, 38, 60))
+        << "the corner blip must not paint below the box";
+    EXPECT_EQ(cleared, blip_rgb_at(r, 39, 60));
+    EXPECT_EQ(cleared, blip_rgb_at(r, 40, 59));
+    EXPECT_EQ(terrain, blip_rgb_at(r, 37, 59)) << "exactly two cells wide";
+    EXPECT_EQ(terrain, blip_rgb_at(r, 38, 57)) << "exactly two cells tall";
 
     og::runtime::current_session->myscreen_->clearbuffer();
     vs->control = saved_control;
