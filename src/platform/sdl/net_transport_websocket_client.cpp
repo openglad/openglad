@@ -231,8 +231,13 @@ struct WebSocketClientTransport::Impl
         // only thread that runs handle_message() — so once it returns no
         // callback can race the reset below. (Moving the pointer out before
         // stopping raced the callback thread's reads of `websocket`.)
+        // stop() alone is not enough: ix closes the socket before raising its
+        // own stop flag, so a live reconnection loop can re-dial in that gap
+        // and park the io thread in an unbounded poll() that the join below
+        // would then wait on forever. quiesce_and_stop() takes the re-dial
+        // away and closes until the socket is really at rest first.
         if (websocket)
-            websocket->stop();
+            detail::quiesce_and_stop(*websocket);
         websocket.reset();
         clear_queue();
     }
@@ -262,9 +267,10 @@ struct WebSocketClientTransport::Impl
     {
         active_generation = 0;
         // Same teardown protocol as disconnect(): join the callback thread
-        // via stop() before the member teardown that follows this body.
+        // via stop() before the member teardown that follows this body, and
+        // close ix's re-dial gap before that join.
         if (websocket)
-            websocket->stop();
+            detail::quiesce_and_stop(*websocket);
     }
 
 private:
