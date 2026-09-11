@@ -536,6 +536,17 @@ og::sim::InitialSetupMessage make_initial_setup_for_test()
     return message;
 }
 
+// The relay leg re-dials Cloudflare, not a peer on the LAN, so it keeps the
+// ten-second clamp the direct transport gave up. The two defaults are a
+// deliberate pair: lowering this one would change the cadence every live relay
+// room sees.
+TEST(NetTransportRelayWs, relay_redial_wait_stays_capped_at_ten_seconds)
+{
+    EXPECT_EQ(10'000u,
+              og::sim::RelayWebSocketTransport::Options{}.max_reconnect_wait_ms)
+        << "the live relay's re-dial cadence is deliberately unchanged";
+}
+
 TEST(NetTransportRelayWs,
      validates_configuration_and_preserves_idle_state_on_noop_operations)
 {

@@ -141,6 +141,19 @@ std::uint32_t decode_keyframe_request_tick(std::span<const std::uint8_t> bytes)
     return decoded ? decoded->last_seen_tick : 0u;
 }
 
+// The picker's direct join site constructs this transport with the defaults
+// (no per-site twin), so the re-dial cadence a blipping host costs a joiner is
+// decided right here: IXWebSocket doubles the wait after each failed dial and
+// clamps it at this value. The behavioural recovery test is withheld while the
+// transport's stuck-reconnect defect is open; this pins the number it measured.
+TEST(NetTransportWebSocketClient, direct_redial_wait_is_capped_at_one_second)
+{
+    EXPECT_EQ(1'000u,
+              og::sim::WebSocketClientTransport::Options{}.max_reconnect_wait_ms)
+        << "a host that comes back on the LAN must be re-dialled within a "
+           "second, not after the backoff has run out to ten";
+}
+
 TEST(NetTransportWebSocketClient,
      validates_configuration_and_preserves_idle_state_on_noop_operations)
 {
