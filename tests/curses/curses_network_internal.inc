@@ -2,60 +2,14 @@
 // this orchestration in tests/ prevents coverage tools from treating it as
 // shipped curses networking logic while preserving translation-unit access.
 
+#include "curses_mount_restore.h"
+
 bool curses_network_testing_inject_mode(CursesGameSession& session,
                                        short requested_respawn_ticks);
 int curses_network_testing_force_server_win(CursesGameSession& session,
                                              std::uint32_t pinned_team0_score);
 int curses_network_testing_clear_server_team(CursesGameSession& session,
                                               short team);
-
-class CursesNetworkTestingMountRestore
-{
-public:
-    CursesNetworkTestingMountRestore()
-        : mounted_before_(get_mounted_campaign())
-    {
-    }
-
-    ~CursesNetworkTestingMountRestore()
-    {
-        (void)restore();
-    }
-
-    bool restore()
-    {
-        if (restored_)
-            return restore_ok_;
-
-        const std::string mounted_after =
-            get_mounted_campaign();
-        if (mounted_after != mounted_before_) {
-            const CampaignPackageIoError result =
-                mounted_before_.empty()
-                    ? unmount_campaign_package_with_error(
-                          mounted_after)
-                    : mount_campaign_package_with_error(
-                          mounted_before_);
-            restore_ok_ =
-                result == CampaignPackageIoError::None;
-        }
-        restore_ok_ =
-            get_mounted_campaign() == mounted_before_ &&
-            restore_ok_;
-        restored_ = true;
-        return restore_ok_;
-    }
-
-    const std::string& mounted_before() const
-    {
-        return mounted_before_;
-    }
-
-private:
-    std::string mounted_before_;
-    bool restored_ = false;
-    bool restore_ok_ = true;
-};
 
 int curses_network_testing_exercise_internal_helpers()
 {
@@ -1034,7 +988,7 @@ int curses_network_testing_exercise_internal_helpers()
     // The authored-team helper reads only from the save's mounted campaign.
     // Pin both the failed-load and successful-load paths, then restore the
     // process mount exactly so shuffled neighbors see their original package.
-    CursesNetworkTestingMountRestore mount_restore;
+    MountRestore mount_restore;
     const std::string ctf_campaign = "modes";
     const CampaignPackageIoError ctf_mount =
         mount_campaign_package_with_error(ctf_campaign);
@@ -1067,7 +1021,7 @@ std::string curses_network_testing_session_build_failure(bool host,
 {
     // load_campaign UNMOUNTS before it discovers the package is missing, so
     // the borrowed mount is restored on every exit path.
-    CursesNetworkTestingMountRestore mount_restore;
+    MountRestore mount_restore;
 
     og::sim::LobbySaveDataEquivalent lobby_save;
     lobby_save.current_campaign = campaign;

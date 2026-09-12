@@ -14,6 +14,8 @@
 
 #include <algorithm>
 
+#include "../test_save_state_guard.h"
+
 std::string get_asset_path();
 
 namespace {
@@ -32,10 +34,6 @@ void ensure_game_loop_wrapper_test_runtime()
             << "SDL video init should succeed for wrapper test";
     }
 
-    restore_default_campaigns();
-    ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("gladiator"))
-        << "default campaign should mount for screen-backed unit session";
     ASSERT_TRUE(og::resources::mount((get_asset_path() + "pix/").c_str(),
                                      "pix/",
                                      1));
@@ -48,11 +46,25 @@ void ensure_game_loop_wrapper_test_runtime()
     initialized = true;
 }
 
+// The screen-backed session needs a campaign mounted, and the mount is
+// process-global: each test borrows it and hands it back (its caller holds
+// an og::test::ScopedCampaignMountState), rather than the one-shot runtime
+// setup above leaving it mounted for every later test in the binary.
+void mount_game_loop_wrapper_campaign()
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"))
+        << "default campaign should mount for screen-backed unit session";
+}
+
 } // namespace
 
 TEST(GameLoopWrapper, bool_wrapper_matches_typed_result)
 {
+    og::test::ScopedCampaignMountState mount_restore;
     ensure_game_loop_wrapper_test_runtime();
+    mount_game_loop_wrapper_campaign();
 
     og::runtime::GameSession::Config session_cfg;
     session_cfg.allocate_screen = true;
@@ -84,7 +96,9 @@ TEST(GameLoopWrapper, bool_wrapper_matches_typed_result)
 
 TEST(GameLoopWrapper, browser_wrapper_emits_one_browser_frame_step_per_call)
 {
+    og::test::ScopedCampaignMountState mount_restore;
     ensure_game_loop_wrapper_test_runtime();
+    mount_game_loop_wrapper_campaign();
 
     og::runtime::GameSession::Config session_cfg;
     session_cfg.allocate_screen = true;

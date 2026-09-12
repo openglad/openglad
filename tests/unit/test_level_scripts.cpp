@@ -20,12 +20,19 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 
+#include "unit_pack_store_guard.h"
+
 using namespace og::script;
 
 namespace {
 
 class LevelScriptsTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     LevelScriptsTest() : world(7)
     {
         world.id = 42;

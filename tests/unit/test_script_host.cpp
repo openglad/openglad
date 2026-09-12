@@ -43,6 +43,8 @@
 #include <string>
 #include <vector>
 
+#include "unit_pack_store_guard.h"
+
 #if !defined(_WIN32)
 #include <sys/wait.h>
 #include <unistd.h>  // mkdtemp lives here on macOS (stdlib.h on glibc)
@@ -508,6 +510,7 @@ TEST(ScriptLogStore, an_unfilled_log_drops_nothing)
 
 TEST(PackScriptRegistry, unregister_removes_one_packs_chunks_and_bumps_the_gen)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     og::script::clear_pack_scripts();
     og::script::register_pack_script({"pack.a", "a1.lua", "-- a1\n"});
     og::script::register_pack_script({"pack.a", "a2.lua", "-- a2\n"});
@@ -540,6 +543,7 @@ TEST(PackScriptRegistry, unregister_removes_one_packs_chunks_and_bumps_the_gen)
 // earlier.
 TEST(PackFamilyChunkRegistry, unregister_removes_one_packs_chunks)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     og::script::clear_pack_family_chunks();
     og::script::register_pack_family_chunk(
         {"pack.a", "a-families.lua", "-- a\n"});
@@ -576,6 +580,11 @@ namespace {
 
 class ScriptHostPackTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override
     {
         init_all_registries();
@@ -1157,6 +1166,11 @@ const cov::FunctionRecord* find_fn(const std::vector<cov::FunctionRecord>& v,
 
 class ScriptCoverageHookTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override
     {
         init_all_registries();
@@ -1274,6 +1288,11 @@ namespace {
 
 class ScriptCoverageLevelTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     ScriptCoverageLevelTest() : world(7)
     {
         init_all_registries();
@@ -3461,6 +3480,11 @@ namespace {
 
 class PackLibTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override
     {
         init_all_registries();

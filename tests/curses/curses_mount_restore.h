@@ -24,16 +24,57 @@
 // Restore the process campaign mount exactly (the .inc's pattern), so
 // shuffled neighbors see their original package after a test that hosts a
 // non-default campaign.
-struct MountRestore {
-    std::string before = get_mounted_campaign();
+//
+// restore() is idempotent and reports whether the mount really came back, so
+// a test that wants to assert the restore (rather than leave it to the
+// destructor) can call it in the body and read the answer.
+class MountRestore
+{
+public:
+    MountRestore()
+        : mounted_before_(get_mounted_campaign())
+    {
+    }
+
     ~MountRestore()
     {
-        const std::string after = get_mounted_campaign();
-        if (after == before)
-            return;
-        if (before.empty())
-            (void)unmount_campaign_package_with_error(after);
-        else
-            (void)mount_campaign_package_with_error(before);
+        (void)restore();
     }
+
+    bool restore()
+    {
+        if (restored_)
+            return restore_ok_;
+
+        const std::string mounted_after =
+            get_mounted_campaign();
+        if (mounted_after != mounted_before_) {
+            const CampaignPackageIoError result =
+                mounted_before_.empty()
+                    ? unmount_campaign_package_with_error(
+                          mounted_after)
+                    : mount_campaign_package_with_error(
+                          mounted_before_);
+            restore_ok_ =
+                result == CampaignPackageIoError::None;
+        }
+        restore_ok_ =
+            get_mounted_campaign() == mounted_before_ &&
+            restore_ok_;
+        restored_ = true;
+        return restore_ok_;
+    }
+
+    const std::string& mounted_before() const
+    {
+        return mounted_before_;
+    }
+
+    MountRestore(const MountRestore&) = delete;
+    MountRestore& operator=(const MountRestore&) = delete;
+
+private:
+    std::string mounted_before_;
+    bool restored_ = false;
+    bool restore_ok_ = true;
 };

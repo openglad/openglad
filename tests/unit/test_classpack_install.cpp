@@ -24,6 +24,8 @@
 #include <gtest/gtest.h>
 
 #include "family_registry_dump.h"
+#include "registry_difference.h"
+#include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/campaign_ids.h>
@@ -147,6 +149,43 @@ TEST(FamilyStringIds, reader_vocabulary)
 // ---------------------------------------------------------------------------
 
 namespace {
+
+// The five registries are process-global and every install test shares
+// them. Frees the pack-installed slots on the way IN and OUT, so a
+// shuffled run order can never leak a mod family into a test that counts
+// core families (and so each test's `auto` ids start from the same place).
+// Core pins are never touched by reset_all_registry_mod_slots().
+class ModSlotGuard {
+public:
+    // declare_or_die() clears the family-chunk store on the way in and out,
+    // so the shipped chunks come back too — destroyed after the dump compare
+    // below, which therefore still sees exactly what the test left.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
+    ModSlotGuard()
+    {
+        init_all_registries();
+        reset_all_registry_mod_slots();
+        entry_ = og::testing::dump_installed_families();
+    }
+    ~ModSlotGuard()
+    {
+        reset_all_registry_mod_slots();
+        const std::string exit = og::testing::dump_installed_families();
+        EXPECT_EQ(entry_, exit)
+            << "this test left a CORE pin edited: the mod-slot reset does "
+               "not undo one, so every later test in a --gtest_shuffle order "
+               "inherits it. Hold a CorePinGuard (or RegistrySnapshotGuard) "
+               "over the install.\n"
+            << og::testing::first_registry_difference(entry_, exit);
+    }
+
+    ModSlotGuard(const ModSlotGuard&) = delete;
+    ModSlotGuard& operator=(const ModSlotGuard&) = delete;
+
+private:
+    std::string entry_;
+};
 
 // Loads the committed core pack the way the loader does: every
 // families/*.lua in sorted filename order, evaluated by the declaration
@@ -425,7 +464,7 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
 
 TEST(ClasspackInstall, a_declaration_installs_and_skips_bad_refs)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
     const WeaponFamilyDescriptor before_rock =
         *get_weapon_family_descriptor(FAMILY_ROCK);
     const FamilyDescriptor before_elf = *get_family_descriptor(FAMILY_ELF);
@@ -509,7 +548,7 @@ og.family('living', {
 
 TEST(ClasspackInstall, a_declaration_installs_the_shipped_soldier_bytes)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
 
     ClasspackData data;
     declare_or_die(kSoldierDecl, data);
@@ -559,7 +598,7 @@ TEST(ClasspackInstall, a_declaration_installs_the_shipped_soldier_bytes)
 // and a mod that renamed one special would silently inherit four.
 TEST(ClasspackInstall, a_specials_list_rewrites_every_slot)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
     ClasspackData full;
     declare_or_die(kSoldierDecl, full);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(full)), 1);
@@ -586,7 +625,7 @@ TEST(ClasspackInstall, a_specials_list_rewrites_every_slot)
 // can leave a hole where an older one had a special and still fill slot 5.
 TEST(ClasspackInstall, an_explicit_slot_leaves_a_hole_behind_it)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
     ClasspackData data;
     declare_or_die(
         "og.family('living', { id = 'decl:slots', wire_id = 62,\n"
@@ -617,7 +656,7 @@ TEST(ClasspackInstall, an_explicit_slot_leaves_a_hole_behind_it)
 // free to train, exactly as the original tables shipped it.
 TEST(ClasspackInstall, absent_train_axes_install_zero)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
     ClasspackData data;
     declare_or_die(
         "og.family('living', { id = 'decl:sparse', wire_id = 63,\n"
@@ -637,75 +676,6 @@ TEST(ClasspackInstall, absent_train_axes_install_zero)
 // ---------------------------------------------------------------------------
 
 namespace {
-
-// The first differing line of two registry dumps, with the [order id]
-// header it sits under. A whole-dump EXPECT_EQ on 80 KB of text is
-// unreadable; the point is to NAME the field that moved.
-std::string first_registry_difference(const std::string& want,
-                                      const std::string& got)
-{
-    const auto lines_of = [](const std::string& text) {
-        std::vector<std::string> out;
-        std::istringstream in(text);
-        std::string line;
-        while (std::getline(in, line))
-            out.push_back(line);
-        return out;
-    };
-    const std::vector<std::string> a = lines_of(want);
-    const std::vector<std::string> b = lines_of(got);
-    const std::size_t n = std::min(a.size(), b.size());
-    std::size_t i = 0;
-    for (; i < n; i++) {
-        if (a[i] != b[i])
-            break;
-    }
-    if (i == n && a.size() == b.size())
-        return "  (dumps are equal)";
-    std::ostringstream out;
-    out << "  first difference at line " << (i + 1) << "\n";
-    for (std::size_t back = i + 1; back-- > 0;) {
-        if (back < a.size() && !a[back].empty() && a[back][0] == '[') {
-            out << "  in " << a[back] << "\n";
-            break;
-        }
-    }
-    out << "  on entry: " << (i < a.size() ? a[i] : "<end of dump>") << "\n";
-    out << "  on exit:  " << (i < b.size() ? b[i] : "<end of dump>");
-    return out.str();
-}
-
-// The five registries are process-global and every install test shares
-// them. Frees the pack-installed slots on the way IN and OUT, so a
-// shuffled run order can never leak a mod family into a test that counts
-// core families (and so each test's `auto` ids start from the same place).
-// Core pins are never touched by reset_all_registry_mod_slots().
-class ModSlotGuard {
-public:
-    ModSlotGuard()
-    {
-        init_all_registries();
-        reset_all_registry_mod_slots();
-        entry_ = og::testing::dump_installed_families();
-    }
-    ~ModSlotGuard()
-    {
-        reset_all_registry_mod_slots();
-        const std::string exit = og::testing::dump_installed_families();
-        EXPECT_EQ(entry_, exit)
-            << "this test left a CORE pin edited: the mod-slot reset does "
-               "not undo one, so every later test in a --gtest_shuffle order "
-               "inherits it. Hold a CorePinGuard (or RegistrySnapshotGuard) "
-               "over the install.\n"
-            << first_registry_difference(entry_, exit);
-    }
-
-    ModSlotGuard(const ModSlotGuard&) = delete;
-    ModSlotGuard& operator=(const ModSlotGuard&) = delete;
-
-private:
-    std::string entry_;
-};
 
 // Which ids of one order currently answer a descriptor. Used to prove an
 // install changes exactly one slot and leaves every never-populated id

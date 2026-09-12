@@ -61,6 +61,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "curses_mount_restore.h"
+
 using namespace og::curses;
 using og::ui::PickerMenuCommand;
 using og::ui::PickerMenuId;
@@ -130,54 +132,6 @@ void dismiss(HeadlessTerminal& term)
 {
     term.push_special(KeyCode::Enter);
 }
-
-class ScopedCursesPickerMountRestore
-{
-public:
-    ScopedCursesPickerMountRestore()
-        : mounted_before_(get_mounted_campaign())
-    {
-    }
-
-    ~ScopedCursesPickerMountRestore()
-    {
-        (void)restore();
-    }
-
-    bool restore()
-    {
-        if (restored_)
-            return restore_ok_;
-
-        const std::string mounted_after =
-            get_mounted_campaign();
-        if (mounted_after != mounted_before_) {
-            const CampaignPackageIoError result =
-                mounted_before_.empty()
-                    ? unmount_campaign_package_with_error(
-                          mounted_after)
-                    : mount_campaign_package_with_error(
-                          mounted_before_);
-            restore_ok_ =
-                result == CampaignPackageIoError::None;
-        }
-        restore_ok_ =
-            get_mounted_campaign() == mounted_before_ &&
-            restore_ok_;
-        restored_ = true;
-        return restore_ok_;
-    }
-
-    const std::string& mounted_before() const
-    {
-        return mounted_before_;
-    }
-
-private:
-    std::string mounted_before_;
-    bool restored_ = false;
-    bool restore_ok_ = true;
-};
 
 // Count non-null team members.
 int team_count(const SaveData& save)
@@ -923,7 +877,7 @@ TEST(CursesPickerClient, train_rejects_changes_when_gold_is_insufficient)
 // band (rows 2..13 on a 40-row terminal) above the census lines.
 TEST(CursesPickerClient, view_scenario_renders_the_staged_glyph_band)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -967,7 +921,7 @@ TEST(CursesPickerClient, view_scenario_renders_the_staged_glyph_band)
 // show_text — no band, census lines right below the title.
 TEST(CursesPickerClient, view_scenario_degrades_to_text_on_small_terminals)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f({}, /*rows=*/12, /*cols=*/60);
@@ -991,7 +945,7 @@ TEST(CursesPickerClient, view_scenario_degrades_to_text_on_small_terminals)
 // dismiss the screen — only the fresh press does.
 TEST(CursesPickerClient, view_scenario_band_overflow_stops_at_the_footer)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     // 18 columns: wide enough for the footer prompt, narrow enough that a
@@ -1024,7 +978,7 @@ TEST(CursesPickerClient, view_scenario_band_overflow_stops_at_the_footer)
 // FAILED line — never a crash, never a stale band presented as the stage.
 TEST(CursesPickerClient, view_scenario_staging_failure_degrades_to_fallback)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -1062,7 +1016,7 @@ TEST(CursesPickerClient, view_scenario_staging_failure_degrades_to_fallback)
 
 TEST(CursesPickerClient, set_level_updates_config_and_save)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -1085,7 +1039,7 @@ TEST(CursesPickerClient, set_level_updates_config_and_save)
 // and stays free on a versus campaign, whose arena picking is the point.
 TEST(CursesPickerClient, set_level_rides_the_earned_roads_gate)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -1147,7 +1101,7 @@ TEST(CursesPickerClient, set_level_rejects_invalid_value)
 // remembered for the fold/re-entry restore.
 TEST(CursesPickerClient, replay_level_arms_only_cleared_levels)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -1211,7 +1165,7 @@ TEST(CursesPickerClient, replay_level_arms_only_cleared_levels)
 // abandoned origin.
 TEST(CursesPickerClient, plain_set_level_abandons_the_replay_arm)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -1269,7 +1223,7 @@ TEST(CursesPickerClient, campaign_select_updates_and_cancel_keeps_current)
 // campaign changes nothing and keeps the arm.
 TEST(CursesPickerClient, campaign_switch_clears_the_replay_arm)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     PickerFixture f;
     const std::string original = f.save().current_campaign;
     f.save().add_level_completed(original, 1);
@@ -2663,7 +2617,7 @@ TEST(CursesPickerClient, run_game_starts_real_session_and_withdraws)
 // level.
 TEST(CursesPickerClient, run_game_quit_of_armed_replay_restores_cursor)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -2693,7 +2647,7 @@ TEST(CursesPickerClient, run_game_quit_of_armed_replay_restores_cursor)
 // cursor.
 TEST(CursesPickerClient, network_round_loss_of_armed_replay_restores_cursor)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -2732,7 +2686,7 @@ TEST(CursesPickerClient, network_round_loss_of_armed_replay_restores_cursor)
 // autosaving the stale copy would erase the win it just earned.
 TEST(CursesPickerClient, network_round_win_heals_memory_without_clobbering_disk)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -2788,7 +2742,7 @@ TEST(CursesPickerClient, run_game_reports_real_session_load_failure)
     TextPickerConfig config;
     CursesPickerOptions options;
     CursesPickerClient client(term, clock, config, options);
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     const std::string mounted_before =
         mount_restore.mounted_before();
     config.campaign =
@@ -3057,7 +3011,7 @@ TEST(CursesPickerClient, view_scenario_reports_mount_and_level_failures)
     TextPickerConfig config;
     CursesPickerOptions options;
     CursesPickerClient client(term, clock, config, options);
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     const std::string mounted_before =
         mount_restore.mounted_before();
 
@@ -3327,7 +3281,7 @@ TEST(CursesPickerClient, camp_page_reads_my_team_from_the_clients_own_seats)
 // replay voice.
 TEST(CursesPickerClient, camp_replay_row_arms_through_the_curses_tail)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
@@ -3960,7 +3914,7 @@ TEST(CursesPickerClient, company_list_cancelled_prompts_destroy_nothing)
 // matching-mount arm below is the control.
 TEST(CursesPickerClient, view_scenario_refuses_an_unmounted_campaign)
 {
-    ScopedCursesPickerMountRestore mount_restore;
+    MountRestore mount_restore;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     const auto* item = og::ui::find_picker_menu_item(

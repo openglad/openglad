@@ -22,6 +22,7 @@
 #include <openglad/resources/gloader.h>
 
 #include "../test_game_world_fixture.h"
+#include "unit_pack_store_guard.h"
 
 #include <fstream>
 #include <memory>
@@ -41,6 +42,11 @@ loader& mode_test_loader()
 // stats) plus pack-script lifecycle management.
 struct ModeBindingsWorld : TestGameWorld
 {
+    // Declared first so it outlives every clear below and the destructor's:
+    // the shipped pack scripts and family chunks this fixture wipes are what
+    // the next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore;
+
     explicit ModeBindingsWorld(int level_id = 42)
         : TestGameWorld(level_id)
     {
@@ -862,6 +868,7 @@ TEST(ModeBindings, bit_32768_reads_back_truthy)
 
 TEST(ModeBindings, radar_landmark_declares_on_treasure_and_fx_only)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     og::script::clear_pack_family_chunks();
     og::data::ClasspackData data;
     og::script::register_pack_family_chunk(

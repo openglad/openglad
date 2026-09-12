@@ -563,11 +563,17 @@ TEST(LevelDataOps, level_data_save_description_serialization_bounds)
     og::runtime::current_session->myscreen_->world().par_value = 2;
     og::runtime::current_session->myscreen_->world().time_bonus_limit = 3000;
     og::runtime::current_session->myscreen_->world().delete_objects();
+    // save_level() writes the grid plane as well as the .fss, and an empty
+    // grid refuses to serialize — so build one here instead of riding on
+    // whatever an earlier test in this process left behind.
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->level_description().clear();
     og::runtime::current_session->myscreen_->level_description().push_back(empty_line);
     og::runtime::current_session->myscreen_->level_description().push_back(boundary_line);
     og::runtime::current_session->myscreen_->level_description().push_back(long_line);
     std::filesystem::create_directories("temp/scen");
+    // /temp/ is gitignored, so temp/pix does not exist on a fresh checkout.
+    std::filesystem::create_directories("temp/pix");
 
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed for description bounds regression";
 

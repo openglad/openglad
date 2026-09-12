@@ -32,6 +32,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "unit_pack_store_guard.h"
 
 using namespace og::script;
 
@@ -44,6 +45,11 @@ constexpr const char* kPack = "test.campaign";
 
 class CampaignHooksTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     CampaignHooksTest()
     {
         previous_ = current_game;

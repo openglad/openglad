@@ -71,6 +71,8 @@ inline constexpr int kModesWaypointFamily = 14;
 #include <string>
 #include <vector>
 
+#include "../test_save_state_guard.h"
+
 using namespace og::modes_test;
 
 namespace og::script {
@@ -2732,8 +2734,11 @@ struct LoadedRealLevel
 
 TEST(ModesRealCampaign, shipped_scen500_runs_the_lua_ctf_rules)
 {
+    // The hand-rolled tail this replaces never ran when one of the body's
+    // ASSERT_*s returned early, which is exactly when the shuffle neighbour
+    // needed it most.
+    og::test::ScopedCampaignMountState mount_restore;
     restore_default_campaigns();
-    const std::string previous = get_mounted_campaign();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"))
         << "builtin/modes.glad should restore and mount";
@@ -2802,19 +2807,6 @@ TEST(ModesRealCampaign, shipped_scen500_runs_the_lua_ctf_rules)
             ADD_FAILURE() << "script error: " << err.where << ": "
                           << err.message;
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-    }
-    const std::string now = get_mounted_campaign();
-    if (now == "modes")
-        (void)unmount_campaign_package_with_error(now);
-    if (previous.empty())
-    {
-        const std::string still = get_mounted_campaign();
-        if (!still.empty())
-            (void)unmount_campaign_package_with_error(still);
-    }
-    else if (get_mounted_campaign() != previous)
-    {
-        (void)mount_campaign_package_with_error(previous);
     }
 }
 

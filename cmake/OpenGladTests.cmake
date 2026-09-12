@@ -254,6 +254,10 @@ function(og_add_unit_group NAME)
 
     add_executable(${NAME}
         ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
+        # unit_main's registry census dumps every installed family around
+        # every test, so the dump belongs to every unit group, not just
+        # og_unit_data.
+        ${CMAKE_SOURCE_DIR}/tests/unit/family_registry_dump.cpp
         ${ARG_FILES}
     )
     configure_openglad_library(${NAME})
@@ -906,7 +910,6 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_decl.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_install.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry_golden.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/family_registry_dump.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_save_data_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp
@@ -1142,6 +1145,7 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_host_bind_conflict.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_hosted_pack_sync.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_mount_guard.cpp
         ${CMAKE_SOURCE_DIR}/src/core/test_trace.cpp
         ${SRC_DIR}/platform/curses/curses_platform_globals.cpp
         ${OG_CURSES_LIB_SOURCES}
@@ -1153,6 +1157,9 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         TESTING
         OPENGLAD_CURSES_TEST_EXECUTABLE="$<TARGET_FILE:openglad_curses>"
         OPENGLAD_SERVER_TEST_EXECUTABLE="$<TARGET_FILE:openglad_server>"
+        # The mount-guard tripwire reads the suite's own sources, and this
+        # binary's ctest WORKING_DIRECTORY is the build tree, not the repo.
+        OG_CURSES_TESTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tests/curses"
     )
     add_dependencies(og_test_curses openglad_curses openglad_server)
     target_include_directories(og_test_curses PRIVATE
