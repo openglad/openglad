@@ -239,9 +239,11 @@ public:
     // still has the rest of its window and is left to the lobby poll.
     // Latched; survives shutdown() and resume_after_level(); never cleared
     // in this client's lifetime. The picker reverts to a local client on it
-    // exactly as on a kick (the kick outranks it when both are set). Only a
-    // joiner ever reports it — a host's lobby is in-process and a dead relay
-    // is just its line-B alert.
+    // exactly as on a kick (the kick outranks it when both are set). A
+    // joiner reports it when its link dies for good; a host reports it only
+    // when a re-host between levels cannot bind (its own lobby is
+    // in-process and cannot be dropped, and a dead relay is just its
+    // line-B alert).
     [[nodiscard]] virtual bool session_lost() const noexcept
     {
         return false;

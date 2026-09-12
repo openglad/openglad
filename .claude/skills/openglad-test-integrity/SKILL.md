@@ -85,10 +85,15 @@ test after the failure never ran.
   sweep, not one run. In render tests, compute `world_to_screen_*` only
   AFTER a settle redraw (the first redraw pans the camera) — the classic
   passes-in-order, fails-shuffled shape.
-- Known pre-existing shuffle hangs (proven on master; CI runs
-  declaration order and is unaffected): og_test_picker seed 29
+- The two shuffle hangs recorded here — og_test_picker seed 29
   (promote_orc detail-menu test) and og_test_view seed 7
-  (base_camp_name_tap). Don't attribute these to new tests without
+  (base_camp_name_tap) — were one bug each and are fixed: a picker
+  lobby client outliving the test that made it, whose next
+  picker_lobby_poll() freed the following test's roster. The
+  integration harness now drops the standalone client between tests
+  ([LOBBY-R1] in tests/integration/integration_main.cpp); run with
+  OPENGLAD_TEST_LOBBY_CENSUS=1 to list the tests that end holding one.
+  Still don't attribute a shuffle failure to new tests without
   reproducing on a clean tree.
 - `Difficulty.submenu_door_flow` (og_test_menu_ui) used to be recorded
   here as load-flaky with "a rerun clears it". It was not load: its
