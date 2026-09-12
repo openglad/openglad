@@ -651,7 +651,26 @@ bool picker_replace_lobby_client(
         if (previous_was_active)
             og::ui::install_active_picker_lobby_client(current_client.get());
         if (current_client)
-            current_client->initialize_from_save();
+        {
+            try
+            {
+                current_client->initialize_from_save();
+            }
+            catch (const std::exception& restore_error)
+            {
+                // The rollback cannot re-dial either — the port it released
+                // on the way out is someone else's now. Leaving it installed
+                // would hand Base Camp a client with no listener that nothing
+                // retires (a host reports no kick). Retire it here instead;
+                // the process falls back to the lazily created local lobby,
+                // and the ORIGINAL failure is still what the caller reports.
+                LogError("picker_restore_lobby_client_failed reason={}\n",
+                         restore_error.what());
+                if (previous_was_active)
+                    og::ui::install_active_picker_lobby_client(nullptr);
+                current_client.reset();
+            }
+        }
         throw;
     }
 

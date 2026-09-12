@@ -100,6 +100,15 @@ void picker_testing_yes_or_no_queue_push(bool value);
 void picker_testing_set_lobby_client_owner(
     std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
 
+// picker.cpp's swap seam (external linkage; declared here with every
+// parameter spelled out because the defaults live at its own declaration).
+bool picker_replace_lobby_client(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
+    const char* popup_title,
+    bool show_success_popup,
+    bool restore_previous_on_failure);
+
 namespace og::ui {
 
 std::vector<std::string> build_host_picker_status_lines(
@@ -231,6 +240,30 @@ struct ActivePickerLobbyClientGuard
     ~ActivePickerLobbyClientGuard()
     {
         og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+// The display screen is process-wide, and its view count is a piece of it:
+// ready_for_battle(n) rebuilds the shared viewobs for n local seats and every
+// later test inherits whatever the last multi-seat round left behind. This
+// hands the ambient count back with the same production call the round used
+// to grow it (screen::reset() would additionally reset save_data and fight
+// PickerSaveStateGuard).
+struct DisplayViewCountGuard
+{
+    screen* display = nullptr;
+    short views = 0;
+
+    explicit DisplayViewCountGuard(screen* target)
+        : display(target)
+        , views(target != nullptr ? target->numviews : 0)
+    {
+    }
+
+    ~DisplayViewCountGuard()
+    {
+        if (display != nullptr && display->numviews != views)
+            display->ready_for_battle(views);
     }
 };
 
@@ -6200,6 +6233,15 @@ TEST(PickerNetworkClient,
         join_b_client->initialize_from_save();
     }
 
+    // Declared BEFORE `cleanup` so it is destroyed AFTER it: ready_for_battle
+    // rebuilds the shared viewobs, which must happen once CleanupGuard has
+    // nulled every view->control and deleted the world objects (otherwise the
+    // fresh views would be built around freed walkers), and still before
+    // PickerSaveStateGuard restores the save.
+    DisplayViewCountGuard display_view_guard(
+        active_game_session() != nullptr ? active_game_session()->myscreen_
+                                         : nullptr);
+
     struct CleanupGuard
     {
         og::runtime::GameSession* host_session = nullptr;
@@ -6836,6 +6878,24 @@ TEST(PickerNetworkClient,
     }
     EXPECT_EQ(2, static_cast<int>(host_save.scen_num))
         << "the host's advanced campaign cursor survives the resume";
+}
+
+// CENSUS TRIPWIRE. The shared display screen is process-wide state: a
+// multi-seat round must hand it back at the ambient view count, or every
+// single-seat client test that runs afterwards silently skips
+// og::runtime::sync_single_display_team_from_save (local_transport_shadow.cpp
+// returns early unless numviews == 1) and reads my_team == 0 off a freshly
+// built view. Declared immediately after the multi-seat round so declaration
+// order runs that leaker first; under --gtest_shuffle this names ANY test in
+// the binary that leaves the count moved.
+TEST(PickerNetworkClient, seven_player_host_leaves_the_display_at_one_view)
+{
+    ASSERT_NE(nullptr, og::runtime::current_session);
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_);
+    EXPECT_EQ(1,
+              static_cast<int>(
+                  og::runtime::current_session->myscreen_->numviews))
+        << "a multi-seat round must restore the display view count";
 }
 
 // Explicit team choices are control assignments, not capacity claims. A
@@ -10445,13 +10505,19 @@ TEST(PickerNetworkClient, host_kicks_a_joiner_which_learns_it_was_kicked)
         // Once the lobby state lands on a live link, the joiner is in a
         // session too (the host's roster converging does not by itself mean
         // the broadcast has reached the joiner, hence the wait).
+        //
+        // The roster is part of what the wait certifies. session_established()
+        // flips on the connect-time LobbyState, which carries the host alone,
+        // so a wait on it alone can return one poll BEFORE the two-player
+        // broadcast lands — the status line is a later event, not the same
+        // one, and asserting it outside the wait is a race.
         auto join_scope = join_session.activate();
         ASSERT_TRUE(wait_until([&] {
             join_client->poll_and_apply();
-            return join_client->session_established();
+            return join_client->session_established() &&
+                status_lines_contain_exact(join_client->status_lines(),
+                                           "Lobby: 2 players");
         })) << "a joiner with the roster on a live link is in a session";
-        EXPECT_TRUE(status_lines_contain_exact(join_client->status_lines(),
-                                               "Lobby: 2 players"));
         ActivePickerLobbyClientGuard active_client(join_client.get());
         EXPECT_TRUE(picker_lobby_session_established());
     }
@@ -11316,6 +11382,12 @@ TEST(PickerNetworkClient,
         << "the carried window is consumed by the resume that read it";
 
     join_client->shutdown();
+    // The dead link posted "CONNECTION LOST - RECONNECTING" onto the SHARED
+    // display feed, and viewscreen::set_display_text fills the first EMPTY
+    // slot: a line left behind here takes slot 0 from the next test that
+    // plants one of its own. Hand the feed back empty.
+    if (session.myscreen_ != nullptr)
+        session.myscreen_->clear_all_view_text();
 }
 
 // #278 (the reviewer's silent-host GO): an ELECTED host on a dedicated
@@ -12007,6 +12079,127 @@ TEST(PickerNetworkClient, host_resume_after_a_torn_down_lobby_rebuilds_it)
     EXPECT_FALSE(host_client->start_request_pending());
 
     host_client->shutdown();
+}
+
+// The other end of the same fallback: a re-host that cannot bind. This runs
+// behind the post-game fadeblack, so an exception escaping here unwinds the
+// menu out of a black window. The failure must be a REPORT — logged, and
+// latched as a lost session so the per-frame revert retires the dead host to
+// a local lobby with the existing CONNECTION LOST modal, exactly as a kick
+// does.
+TEST(PickerNetworkClient, a_failed_rehost_between_levels_is_reported_not_thrown)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Rebuilt Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    // The owned slot: the per-frame revert only retires the client it owns.
+    std::unique_ptr<og::ui::IPickerLobbyClient> owned_client =
+        og::ui::create_host_picker_lobby_client(host_options);
+    og::ui::IPickerLobbyClient* const host_client = owned_client.get();
+    ActivePickerLobbyClientGuard active_client(host_client);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->session_established());
+
+    // The lobby did not survive the round, so the resume takes the fallback
+    // that rebuilds a listener from the save.
+    host_client->shutdown();
+    ASSERT_FALSE(host_client->session_established());
+
+    // Someone else owns the port by the time we come back from the level.
+    // Waiting on the bind succeeding is also the wait on the host's own
+    // listener having released it — no deadline is lengthened; the blocker
+    // either takes the port or this says so by name.
+    std::shared_ptr<og::sim::WebSocketServerTransport> blocking_server;
+    ASSERT_TRUE(wait_until([&] {
+        auto candidate =
+            std::make_shared<og::sim::WebSocketServerTransport>(
+                host_options.port);
+        try
+        {
+            candidate->accept_connections();
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
+        blocking_server = std::move(candidate);
+        return true;
+    })) << "the blocker must own the port the re-host will try to bind";
+
+    picker_testing_set_lobby_client_owner(&owned_client);
+    EXPECT_NO_THROW(picker_reinitialize_lobby_after_game());
+    EXPECT_TRUE(host_client->session_lost())
+        << "a re-host that could not bind is a session that is over";
+    EXPECT_TRUE(picker_lobby_session_lost());
+
+    trace_clear();
+    EXPECT_TRUE(picker_revert_lobby_client_if_kicked())
+        << "the failed re-host retires to a local lobby on the next frame";
+    EXPECT_FALSE(picker_lobby_is_networked())
+        << "Base Camp is local again after the revert";
+    ASSERT_TRUE(owned_client);
+    EXPECT_FALSE(owned_client->is_networked_session())
+        << "the owned slot now holds the local client";
+    EXPECT_TRUE(trace_contains(
+        "networking", "connection lost: reverting to local lobby client"));
+    EXPECT_TRUE(trace_contains("popup", "CONNECTION LOST"));
+
+    picker_testing_set_lobby_client_owner(nullptr);
+    if (owned_client)
+        owned_client->shutdown();
+}
+
+// The same class of gap one layer down. picker_replace_lobby_client's restore
+// leg installs the previous client as the active one and only THEN re-dials
+// it, unguarded, from inside a catch block. When that re-dial throws too —
+// the port the previous host released has been taken meanwhile — the second
+// exception escapes while a host with no listener is already installed, and
+// nothing retires it: a host reports no kick, and this is not the
+// between-levels resume that latches session_lost.
+TEST(PickerNetworkClient,
+     a_restore_that_cannot_re_dial_leaves_no_dead_host_installed)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Restored Host");
+    g_start_game_requested = false;
+
+    // ONE port, held by someone else: both the incoming host and the restored
+    // previous host fail to bind it, which is the two-throw shape the restore
+    // leg cannot survive.
+    og::ui::PickerHostGameOptions options;
+    options.port = ix::getFreePort();
+    auto blocking_server =
+        std::make_shared<og::sim::WebSocketServerTransport>(options.port);
+    blocking_server->accept_connections();
+
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        og::ui::create_host_picker_lobby_client(options);
+    ActivePickerLobbyClientGuard active_client(current_client.get());
+
+    EXPECT_THROW(picker_replace_lobby_client(
+                     current_client,
+                     og::ui::create_host_picker_lobby_client(options),
+                     "NETWORKING",
+                     /*show_success_popup=*/false,
+                     /*restore_previous_on_failure=*/true),
+                 std::runtime_error);
+
+    EXPECT_EQ(nullptr, og::ui::active_picker_lobby_client())
+        << "a restored host that could not re-dial must not stay installed";
+    EXPECT_FALSE(static_cast<bool>(current_client))
+        << "the owned slot is empty, so Base Camp falls back to the lazily "
+           "created local lobby";
 }
 
 // The same contract as the joiner's twin above, through the host role: a
