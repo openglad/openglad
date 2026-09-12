@@ -229,10 +229,17 @@ bool wait_for_trace(const char* category, const char* substring,
 // Counted instrumentation for the acknowledged click (TESTING-only, and this
 // whole file is TESTING-only): how many main-thread tasks the last call
 // posted, and the ceiling it posted them with. run_on_main_thread's ceiling
-// is a CANCELLATION deadline, not a liveness bound — a task posted while no
-// run_menu_screen is pumping is cancelled there and then — so a click that
-// was given 2.5 s to land must not sit on the 15 s default waiting to find
-// that out.
+// is a CANCELLATION deadline for a pump that is not running at all; it is
+// NOT the click's budget. The click's own wait (2.5 s) bounds the LABEL edge.
+// The post keeps the generous default because a pump that is alive but slow
+// must still get to service it: under coverage instrumentation on a
+// four-slot CI runner the menu thread took longer than 2.5 s to reach a
+// queued reset, the post was cancelled "while still queued", and every lap
+// of match_setup_macros_round_trip_with_lineup failed three attempts in a
+// row (PR #291, Coverage CI run 34679834685). The cost that the short
+// ceiling was meant to cap — a click posted with no menu loop behind it —
+// is bounded by the injectors' escape tails instead.
+constexpr int kAckPostCeilingMs = 15000;
 int g_ack_click_posts = 0;
 int g_ack_click_post_ceiling_ms = 0;
 
@@ -240,25 +247,26 @@ int g_ack_click_post_ceiling_ms = 0;
 // press, while synchronous save/stage work can keep the release queued well
 // past that edge under load. A menu-thread reset consumes that release before
 // the caller may send another press, preventing a late first attempt plus its
-// retry from advancing a wheel twice. Both resets are posted with the CLICK'S
-// OWN wait as their ceiling: the post is cancelled, not failed fast, when no
-// run_menu_screen is pumping, so the 15 s default would let one unlandable
-// click cost six times what its caller budgeted for it.
+// retry from advancing a wheel twice. Both resets are posted with
+// kAckPostCeilingMs — the cancellation default — never with the click's own
+// wait: that wait bounds how long the label may take to move, while the post
+// must survive a pump that is merely slow (see kAckPostCeilingMs).
 bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
 {
     const std::string before = interactable_label(id);
     if (before.empty())
         return false;
     ++g_ack_click_posts;
-    g_ack_click_post_ceiling_ms = wait_ms;
-    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms))
+    g_ack_click_post_ceiling_ms = kAckPostCeilingMs;
+    if (!run_on_main_thread([] { reset_mouse_click_tracking(); },
+                            kAckPostCeilingMs))
         return false;
     interact(id);
     const bool changed =
         ::wait_for_interactable_label_change(id, before, wait_ms);
     ++g_ack_click_posts;
-    const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms);
+    const bool acknowledged = run_on_main_thread(
+        [] { reset_mouse_click_tracking(); }, kAckPostCeilingMs);
     return changed && acknowledged;
 }
 
@@ -2317,10 +2325,12 @@ int macro_round_trip_injector(void* data)
 
 } // namespace
 
-// The acknowledged click's post ceiling is its own, not the 15 s default.
-// run_on_main_thread cancels a task that no run_menu_screen ever pumped, so
-// the ceiling decides how long a click that never landed costs the ladder
-// above it: three attempts of a 2.5 s click must not be able to spend 97 s.
+// The acknowledged click's post ceiling is the cancellation default, NOT the
+// click's own 2.5 s wait: the post must outlive a pump that is alive but
+// slow (coverage instrumentation on a loaded runner needed more than 2.5 s
+// to reach a queued reset — PR #291). With no menu loop pumping at all the
+// post is cancelled at that ceiling and the click reports false; the cost
+// of that dead case is bounded by the injectors' escape tails, not here.
 // Asserted on the recorded ceiling and the post count, never on a clock.
 TEST(LineupUi, acknowledged_click_gives_up_within_its_own_wait)
 {
@@ -2341,9 +2351,9 @@ TEST(LineupUi, acknowledged_click_gives_up_within_its_own_wait)
         << "no menu loop is pumping, so the click cannot be acknowledged";
     EXPECT_EQ(1, g_ack_click_posts)
         << "a click that cannot be acknowledged posts once and stops";
-    EXPECT_EQ(2500, g_ack_click_post_ceiling_ms)
-        << "the post ceiling must be the click's own wait, not the 15 s "
-           "cancellation default";
+    EXPECT_EQ(kAckPostCeilingMs, g_ack_click_post_ceiling_ms)
+        << "the post ceiling must be the cancellation default, not the "
+           "click's own wait: a slow pump must still get to service it";
 
     clear_allbuttons();
     og::runtime::current_session->localbuttons_ = nullptr;
