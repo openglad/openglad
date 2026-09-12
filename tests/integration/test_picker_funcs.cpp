@@ -4146,6 +4146,67 @@ constexpr int kSheetBackClickY = 185;
 // a press which evaporated is re-sent while the test still has a budget.
 constexpr int kSheetBackWaitMs = 1000;
 
+// Extra presses the step ladder had to send, and the fault injector that
+// arms it: the same counted, never-clocked shape the BACK tail uses.
+int g_spritesheet_step_retries = 0;
+int g_spritesheet_step_drops = 0;
+
+// Send ONE list/trough/wheel input and wait for the picker to say it
+// consumed it. A 60 ms hold spans several 10 ms picker frames on an idle
+// box, but a frame slower than the hold drains press AND release in one
+// get_input_events and the press evaporates -- silently, since the injector
+// cannot see scroll_top or the selection. pick_spritesheet traces every
+// input it consumes ("sheet"), so that trace is the landing witness: a press
+// that did not land is re-sent, a press that landed never is (re-sending a
+// consumed trough click would page the list twice).
+//
+// Observed: with the BACK tail in place but the presses still
+// unacknowledged, SpriteSheetPicker.scrollbar_trough_pages_the_list_both_ways
+// failed 1 starved run in 3 on the ci-asan build pinned to one CPU -- the
+// top row had never moved ("" instead of the first pack).
+void inject_mouse_wheel(int integer_y);  // defined with the step kinds below
+
+bool send_acknowledged_sheet_input(bool wheel, int x, int y, int ticks)
+{
+    constexpr int kStepAttempts = 4;
+    // Ten frames of a runner where a frame costs ten times what it does
+    // here: long enough that a late press is never re-sent, short enough
+    // that an evaporated one is re-sent inside the group's budget.
+    constexpr int kStepWaitMs = 1000;
+    for (int attempt = 0; attempt < kStepAttempts; ++attempt)
+    {
+        const int before = trace_count("sheet");
+        if (g_spritesheet_step_drops > 0)
+        {
+            --g_spritesheet_step_drops;
+            fprintf(stderr, "  [sheet] dropping the step press (injected)\n");
+        }
+        else if (wheel)
+        {
+            inject_mouse_wheel(ticks);
+        }
+        else
+        {
+            inject_mouse_click(x, y, 60);
+        }
+        int elapsed = 0;
+        while (elapsed < kStepWaitMs && trace_count("sheet") <= before)
+        {
+            SDL_Delay(10);
+            elapsed += 10;
+        }
+        if (trace_count("sheet") > before)
+            return true;
+        ++g_spritesheet_step_retries;
+        fprintf(stderr,
+                "  [sheet] a step press left no trace; re-sending "
+                "(attempt %d)\n",
+                attempt + 2);
+    }
+    fprintf(stderr, "  [sheet] a step press never reached the picker\n");
+    return false;
+}
+
 void spritesheet_click_out()
 {
     for (int attempt = 0;
@@ -4180,7 +4241,7 @@ static int picker_spritesheet_select_first_pack_injector(void*)
     SDL_Delay(200);
 
     // Row 0 is "Standard"; row 1 is the first sorted pack.
-    inject_mouse_click(80, 56, 60);
+    (void)send_acknowledged_sheet_input(false, 80, 56, 0);
     SDL_Delay(120);
     spritesheet_click_out();
     return 0;
@@ -4213,6 +4274,7 @@ TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
 
     prepare_picker_mouse();
     g_spritesheet_back_retries = 0;
+    g_spritesheet_step_retries = 0;
     g_spritesheet_picker_open.store(true, std::memory_order_release);
     SDL_Thread* th = SDL_CreateThread(
         picker_spritesheet_select_first_pack_injector,
@@ -4331,24 +4393,18 @@ int picker_spritesheet_step_injector(void*)
     SDL_Delay(100);
     for (const SpriteSheetStep& step : g_spritesheet_steps)
     {
-        switch (step.kind)
-        {
-        case SpriteSheetStep::Kind::Click:
-            // A 60 ms hold spans several 10 ms picker frames, so the press is
-            // observed before the release collapses it; each list/trough
-            // click is then consumed exactly once (the picker waits for the
-            // release before looking at the mouse again).
-            inject_mouse_click(step.x, step.y, 60);
-            break;
-        case SpriteSheetStep::Kind::Wheel:
-            inject_mouse_wheel(step.wheel);
-            break;
-        case SpriteSheetStep::Kind::RemoveDir:
+        if (step.kind == SpriteSheetStep::Kind::RemoveDir)
         {
             std::error_code ec;
             std::filesystem::remove_all(step.path, ec);
-            break;
         }
+        else if (step.kind == SpriteSheetStep::Kind::Wheel)
+        {
+            (void)send_acknowledged_sheet_input(true, 0, 0, step.wheel);
+        }
+        else
+        {
+            (void)send_acknowledged_sheet_input(false, step.x, step.y, 0);
         }
         SDL_Delay(60);
     }
@@ -4365,6 +4421,7 @@ Sint32 run_spritesheet_picker(std::vector<SpriteSheetStep> steps)
     g_spritesheet_steps = std::move(steps);
     prepare_picker_mouse();
     g_spritesheet_back_retries = 0;
+    g_spritesheet_step_retries = 0;
     g_spritesheet_picker_open.store(true, std::memory_order_release);
     SDL_Thread* thread = SDL_CreateThread(
         picker_spritesheet_step_injector, "picker_sheet_steps", nullptr);
@@ -4483,6 +4540,30 @@ TEST_F(SpriteSheetPicker, a_dropped_back_press_costs_a_retry_not_the_run)
            "tail gave up, more means it re-sent a press that had landed";
     EXPECT_EQ("", cfg.get_setting("graphics", "sprite_sheet"))
         << "row 0 is Standard: the list click still decided the selection";
+}
+
+// The same tooth for the other half: the wheel notch evaporates, the ladder
+// re-sends it, and the top row still ends up holding the first pack. Without
+// the re-send the click that follows lands on Standard and the pick is
+// silently wrong -- the shape that failed 1 starved run in 3 here.
+TEST_F(SpriteSheetPicker, a_dropped_step_press_costs_a_retry_not_the_pick)
+{
+    SpriteSheetPackDirs packs_dirs("zz_wp4_drop_", 13);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    ASSERT_GE(packs.size(), 13u);
+
+    reset_sprite_sheet_selection();
+    g_spritesheet_step_drops = 1;
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker({sheet_wheel(-1), sheet_row_click(0)}));
+
+    EXPECT_EQ(0, g_spritesheet_step_drops)
+        << "the injected drop must be consumed";
+    EXPECT_EQ(1, g_spritesheet_step_retries)
+        << "a dropped step press costs exactly one re-send: fewer means the "
+           "ladder gave up, more means it re-sent a press that had landed";
+    EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"))
+        << "the wheel notch still moved the list by exactly one row";
 }
 
 // The scrollbar trough is the other way down the list: clicking below the

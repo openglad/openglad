@@ -3144,6 +3144,14 @@ static std::string pick_spritesheet()
             ++scroll_top;
         if (scroll_delta > 0 && scroll_top > 0)
             --scroll_top;
+        // Named landing witness for every input this loop CONSUMES (the
+        // three traces below are TESTING-only). An injector driving this
+        // screen cannot see scroll_top or the selection, so without them a
+        // press eaten by a frame slower than its hold is indistinguishable
+        // from one that landed -- and it is re-sent blind or not at all.
+        if (scroll_delta != 0)
+            TRACE("sheet", "wheel delta=%d top=%d",
+                  static_cast<int>(scroll_delta), scroll_top);
 
         MouseState& ms = query_mouse();
         if (ms.left) {
@@ -3159,6 +3167,7 @@ static std::string pick_spritesheet()
                     scroll_top = std::max(0, scroll_top - 1);
                 else if (my >= thumb_y + thumb_h)
                     scroll_top = std::min(total_items - VISIBLE_ROWS, scroll_top + 1);
+                TRACE("sheet", "trough top=%d", scroll_top);
                 spritesheet_wait_for_mouse_release();
             } else if (mx >= LIST_X && mx < LIST_X + LIST_W
                     && my >= LIST_Y && my < LIST_Y + SCROLL_H) {
@@ -3169,6 +3178,7 @@ static std::string pick_spritesheet()
                     const std::string& pack = packs[static_cast<std::size_t>(item - 1)];
                     selection = (selection == pack) ? "" : pack;
                 }
+                TRACE("sheet", "row item=%d sel=%s", item, selection.c_str());
                 spritesheet_wait_for_mouse_release();
             }
         }
