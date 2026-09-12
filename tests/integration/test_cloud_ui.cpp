@@ -118,6 +118,14 @@ struct FlowState {
     bool finished = false;
     bool saw_cloud_screen = false;
     bool clicked_all = false;
+    // The step that did not land, named. An injector whose exit path is
+    // conditional on success reports a miss as a hang; this reports it as a
+    // string the test can assert on.
+    std::string failed_step;
+    // Whether the UPLOAD row was on screen at the moment the upload step
+    // gave up — "the button never came back" and "the button came back
+    // dead" are different bugs.
+    bool upload_row_on_screen = false;
     // #237 symmetry pin, the nested main-menu door (run_nested_menu_door):
     // CLOUD SAVES runs INSIDE the still-open main menu, so the depth rule
     // cannot see it and the door site brackets the fade by hand.
@@ -158,6 +166,47 @@ bool wait_for_trace(const char* category, const char* substring, int timeout_ms)
     return false;
 }
 
+// Leave whatever screen the flow is standing on and get back to the main
+// menu. This runs whatever happened above, and that is the whole point.
+//
+// The CLOUD screen is a NESTED engine screen (run_nested_menu_door ->
+// run_menu_screen, src/interface/ui/menu_screen_runner.cpp) that publishes
+// its OWN four rows over allbuttons, so while it is up the main menu's
+// begin_new_game does not exist. The injector used to click BACK only on the
+// success path: one failed step left the flow inside the nested screen, the
+// wait for begin_new_game could only expire, interact("quit") never ran, and
+// picker_main never returned. A named failure became a group-wide hang, and
+// og_test_menu_ui's CTest TIMEOUT is 420 s — the whole group dies with no
+// attribution to the test that wedged it.
+//
+// BACK carries KEYSTATE_ESCAPE (src/interface/ui/menu_screen_specs.cpp), so
+// the key press reaches the same row without a pointer. This is the ladder
+// tests/integration/test_train_team.cpp:120-140 already uses.
+bool unwind_to_main_menu(int attempts = 8)
+{
+    const auto main_menu_is_up = [] {
+        for (int i = 0; i < 20; ++i) {
+            if (has_interactable("begin_new_game"))
+                return true;
+            SDL_Delay(50);
+        }
+        return false;
+    };
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        if (has_interactable("begin_new_game"))
+            return true;
+        if (!interact("back"))
+            inject_key_press(SDLK_ESCAPE, 10);
+        wait_for_menu_frames(2, 2000);
+        if (main_menu_is_up())
+            return true;
+    }
+    fprintf(stderr,
+            "  [test] could not unwind to the main menu in %d attempts\n",
+            attempts);
+    return false;
+}
+
 int cloud_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -170,7 +219,9 @@ int cloud_flow_injector(void* data)
     interact("cloud");
 
     int fades_inside_cloud = -1;
-    if (wait_for_interactable("cloud_passphrase", 5000)) {
+    if (!wait_for_interactable("cloud_passphrase", 5000)) {
+        state->failed_step = "cloud_door";
+    } else {
         state->saw_cloud_screen = true;
         SDL_Delay(750);
         state->fades_added_by_cloud_door =
@@ -181,6 +232,8 @@ int cloud_flow_injector(void* data)
         // UPLOAD stays disabled until the passphrase lands, so wait for the
         // button instead of guessing a delay.
         bool ok = wait_for_interactable("cloud_upload", 5000);
+        if (!ok)
+            state->failed_step = "upload";
         if (ok) {
             SDL_Delay(750);
             fprintf(stderr, "  [test] clicking UPLOAD\n");
@@ -193,21 +246,31 @@ int cloud_flow_injector(void* data)
             // request's own completion popup is the causal condition — the
             // button being on screen is not.
             ok = wait_for_trace("popup", "Uploaded", 15000);
+            if (!ok) {
+                state->failed_step = "upload";
+                state->upload_row_on_screen = has_interactable("cloud_upload");
+            }
         }
         if (ok) {
             SDL_Delay(750);
             fprintf(stderr, "  [test] clicking DOWNLOAD (queued YES)\n");
             interact("cloud_download");
             ok = wait_for_trace("popup", "Downloaded", 15000);
+            if (!ok)
+                state->failed_step = "download";
         }
         if (ok) {
             SDL_Delay(750);
             fprintf(stderr, "  [test] leaving the cloud screen\n");
             fades_inside_cloud = count_fade_between_traces();
-            interact("back");
         }
         state->clicked_all = ok;
     }
+
+    // Unconditional: a flow that stops clicking inside a nested screen never
+    // lets picker_main return.
+    if (!unwind_to_main_menu() && state->failed_step.empty())
+        state->failed_step = "unwind";
 
     if (wait_for_interactable("begin_new_game", 10000)) {
         SDL_Delay(750);
