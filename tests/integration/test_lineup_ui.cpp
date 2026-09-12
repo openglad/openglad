@@ -262,23 +262,41 @@ bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
     return changed && acknowledged;
 }
 
+// The landing witness for a knob row. Every accepted FILL cycle traces
+// "fill team=N value=V" (picker.cpp) BEFORE the button's face is republished,
+// which is exactly what the shared ladder needs to tell "the press evaporated"
+// (re-press) from "the press landed and its label lags" (wait, never
+// re-press). A cycler is not idempotent: a second press walks the wheel one
+// stop PAST the target and the flow then waits for a face the row has already
+// gone by -- observed on this box as og_test_lineup --gtest_random_seed=2,
+// where zone_row_0 went TEAMS 3 -> 4 -> 2.
+std::string knob_landed_trace(const std::string& id)
+{
+    static constexpr std::string_view kFillPrefix = "lineup_fill_";
+    if (id.starts_with(kFillPrefix))
+        return std::string("fill team=") + id.substr(kFillPrefix.size());
+    return {};
+}
+
 // Click `id` until its label reads `want`. The bounded retry, the
 // acknowledged pointer baseline and the toggle-safety rule all live in
 // tests/test_click_ladder.h now (one implementation of the rule, not three --
-// PR #245); this is the lineup-shaped edge handed to it. Waiting for the
-// TARGET label rather than for any change is also the stronger oracle: a
-// label that moved to the wrong stop no longer counts as an arrival.
+// PR #245); this is the lineup-shaped edge and witness handed to it. Waiting
+// for the TARGET label rather than for any change is also the stronger oracle:
+// a label that moved to the wrong stop no longer counts as an arrival.
 bool click_until_label(const std::string& id, const std::string& want,
                        int attempts = 3, int wait_ms = 2500)
 {
     if (interactable_label(id) == want)
         return true;
+    const std::string landed = knob_landed_trace(id);
     return click_until_edge(
         id,
         [&](int edge_wait_ms) {
             return wait_for_interactable_label(id, want, edge_wait_ms);
         },
-        /*landed_trace=*/nullptr, attempts, wait_ms);
+        landed.empty() ? nullptr : landed.c_str(), attempts, wait_ms,
+        /*landed_category=*/"lineup");
 }
 
 // The zone submenu's rows compose "FACE - note" onto one button label, so
@@ -305,7 +323,11 @@ bool wait_for_interactable_label_containing(const std::string& id,
     return false;
 }
 
-// The substring twin of the above, on the same shared ladder.
+// The substring twin of the above, on the same shared ladder. Its callers are
+// all zone-submenu rows, and every such row that lands traces its autosave
+// ("acted_autosave", menu_screen_specs.cpp) before its own label is
+// republished -- the same witness test_campaign_zone_ui.cpp hands the ladder
+// for these rows.
 bool click_until_label_containing(const std::string& id,
                                   const std::string& want, int attempts = 3,
                                   int wait_ms = 2500)
@@ -318,7 +340,7 @@ bool click_until_label_containing(const std::string& id,
             return wait_for_interactable_label_containing(id, want,
                                                           edge_wait_ms);
         },
-        /*landed_trace=*/nullptr, attempts, wait_ms);
+        "acted_autosave", attempts, wait_ms, /*landed_category=*/"zone");
 }
 
 bool wait_for_interactable_at(const std::string& id, int x, int y,
