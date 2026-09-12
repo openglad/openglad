@@ -7952,6 +7952,18 @@ Sint32 create_team_menu(Sint32 arg1)
 {
     (void)arg1;
     og::ui::BaseCampScreenState state;
+    // The reload guard's FIRST pass belongs to screen ENTRY, not to the
+    // first frame tick. Everything below reads the world and the save it
+    // refreshes -- the entry composition, the cold frame's labels, and any
+    // door a click dispatched on the loop's first iteration opens (dispatch
+    // runs before frame_tick) -- and on a versus campaign that pass is also
+    // where the arena's FILL bands are dealt (amendment 7, #276). Priming
+    // the cursor here leaves the first frame_tick a no-op instead of
+    // duplicating the load.
+    screen* const camp_screen = og::runtime::current_session->myscreen_;
+    state.last_level_id = camp_screen->save_data.scen_num;
+    og::ui::reload_picker_level_and_sync_settings(*camp_screen,
+                                                  state.last_level_id);
     // The gameplay-zone session (docs/basecamp-zones-design.md): owned
     // beside the screen state; fetch trigger 1 (screen entry) runs before
     // the first frame. No base_camp hook => the default composition through
