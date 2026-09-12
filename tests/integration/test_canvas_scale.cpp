@@ -1553,6 +1553,57 @@ TEST(CanvasScale, fadeblack_matches_the_grown_world_canvas)
     EXPECT_EQ(1, s->fadeblack(true)) << "fade-from-black must run at 640x400";
 }
 
+// The FORMAT-axis twin of the size-axis pin directly above. fadeblack used
+// to hand-build its black at the active canvas SIZE but with a HARDCODED
+// XRGB8888 format, so on the one canvas that is not XRGB8888 -- the
+// ARGB8888 gameplay-UI overlay -- FadeBetween's format gate rejected it,
+// logged "pixel format mismatch" and returned 0 with nothing faded. The
+// collapse onto FadeBetween's own null shorthand sizes AND formats the
+// stand-in from the peer surface, so both axes are now one rule.
+//
+// Stated honestly: fadeblack inside a HUD scope is NOT a production flow
+// (ScopedGameplayUiCanvas has two users, score_panel.cpp and walker_draw.cpp,
+// and neither fades), the never-presented overlay deliberately trips the
+// fade-site invariant, and FadeBetween's first act
+// (discard_gameplay_ui_frame) repoints E_Screen->render mid-call. This is a
+// format probe of the fade path, not a flow the game takes; the primary red
+// for the stand-in defect is
+// VideoFade.video_fadebetween_null_new_surface_blackens_an_alpha_format_destination.
+TEST(CanvasScale, fadeblack_matches_the_alpha_gameplay_ui_canvas)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* s = test_screen();
+    ASSERT_TRUE(s);
+
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
+                             320, 200);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, 0x00ffffffu);
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+
+    const int violations_before = og::video_testing::g_fade_violations.load();
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*s);
+        SDL_Surface* const overlay = E_Screen->render;
+        ASSERT_EQ(SDL_PIXELFORMAT_ARGB8888, overlay->format)
+            << "the gameplay-UI overlay is the one canvas with an alpha format";
+        ASSERT_TRUE(SDL_FillSurfaceRect(
+            overlay, nullptr, SDL_MapSurfaceRGBA(overlay, 255, 255, 255, 255)));
+
+        EXPECT_EQ(1, s->fadeblack(false))
+            << "a format-hardcoded black fails FadeBetween's format gate here";
+        EXPECT_EQ(0xFF000000u, static_cast<const Uint32*>(overlay->pixels)[0])
+            << "the faded canvas must read OPAQUE black";
+    }
+    EXPECT_EQ(violations_before + 1, og::video_testing::g_fade_violations.load())
+        << "exactly one fade-site violation, the contrived never-presented "
+           "HUD canvas this probe stages on purpose";
+    og::video_testing::reset_fade_violations();
+}
+
 TEST(CanvasScale, smart_smoothed_fade_discards_prepared_gameplay_ui)
 {
     ASSERT_TRUE(E_Screen);

@@ -256,6 +256,8 @@ int text_picker_testing_exercise_internal_paths();
 int text_picker_testing_staged_view_scenario();
 int text_picker_testing_launch_seed_matches_the_preview();
 int text_picker_testing_launch_census_matches_the_preview();
+int text_picker_testing_founding_is_reproducible_at_one_seed();
+int text_picker_testing_hires_across_visits_draw_fresh_names();
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -1259,6 +1261,72 @@ TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
         << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
+}
+
+// N7: the session seed governs the company the session founds. The text
+// client latches one seed and VIEW LEVEL promises the same seed prints the
+// same census, but the starting recruit's name was drawn from the ambient
+// std::rand() stream — so two foundings in one process at one seed printed
+// two different rosters ("Arthur - SOLDIER Lv 1" vs "Hector - SOLDIER Lv 1"
+// on the shipped openglad_text at --seed 777).
+TEST(PlatformHeadless, text_picker_founding_is_reproducible_at_one_seed)
+{
+    restore_default_campaigns();
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_founding_is_reproducible_at_one_seed))
+        << "negated 1-based index of the first failed check";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// N7 follow-up: seeding the recruit names must not turn every Hire Troops
+// visit into a replay of the same short name window. Hiring nine soldiers
+// across nine visits at one seed used to fill the roster with "Nestor2",
+// "Nestor3", "Nestor4" while a third of the soldier pool had never been
+// offered.
+TEST(PlatformHeadless, text_picker_hires_across_visits_draw_fresh_names)
+{
+    restore_default_campaigns();
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_hires_across_visits_draw_fresh_names))
+        << "negated 1-based index of the first failed check";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The unit-level half of the same rule, one layer down from the client: when
+// ensure_team_populated is handed an rng, that rng names the recruit and the
+// ambient stream is not consulted. Written green-first (it cannot compile
+// before the parameter exists), so the red above is the proof, not this.
+TEST(PlatformHeadless, ensure_team_populated_draws_from_the_supplied_rng_not_the_ambient_stream)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    const auto found_at = [](unsigned ambient_seed) {
+        std::srand(ambient_seed);
+        SaveData sd;
+        sd.reset();
+        SeededRandom rng(777u);
+        og::ui::ensure_team_populated(sd, {FAMILY_SOLDIER}, 0, &rng);
+        return sd.team_list[0] ? sd.team_list[0]->name : std::string();
+    };
+
+    // The perturbation is visible at all: the ambient arm still moves with
+    // the process-global stream, which is what the default (nullptr) keeps.
+    std::srand(1u);
+    const std::string ambient_a = og::ui::get_random_name(FAMILY_SOLDIER);
+    std::srand(2u);
+    const std::string ambient_b = og::ui::get_random_name(FAMILY_SOLDIER);
+    ASSERT_NE(ambient_a, ambient_b)
+        << "an invisible perturbation would make the check below vacuous";
+
+    const std::string seeded_a = found_at(1u);
+    const std::string seeded_b = found_at(2u);
+    ASSERT_FALSE(seeded_a.empty()) << "the fallback soldier must be named";
+    EXPECT_EQ(seeded_a, seeded_b)
+        << "the supplied rng names the recruit; the ambient stream must not";
 }
 
 // #247: the text picker's GO launches the world VIEW LEVEL promised. The

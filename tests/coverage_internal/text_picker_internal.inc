@@ -1071,11 +1071,7 @@ int text_picker_testing_launch_seed_matches_the_preview()
         TextPickerClient client(config, &error);
         client.testing_save_data_mutable().current_campaign = "modes";
         client.testing_save_data_mutable().scen_num = 820;
-        // The starting recruit is named off the process-global rand() stream
-        // (picker_common.cpp's get_random_name), which is not one of this
-        // preview's inputs. Pin the name so nothing ambient reaches the text.
-        client.testing_save_data_mutable().team_list[0]->name = "Pin";
-        // ...and buy the match, the way text_picker_testing_staged_view_scenario
+        // Buy the match, the way text_picker_testing_staged_view_scenario
         // does: at rest every band sits on the stored NONE, soccer 820 refuses
         // ("MATCH WILL NOT START: FEWER THAN 2 TEAMS") and the census carries
         // nothing the seed could move. FILL: FAIR on the empty half puts the
@@ -1401,6 +1397,223 @@ int text_picker_testing_launch_census_matches_the_preview()
     check(red_units_off.preview.find("GREEN TEAM  ACTIVE - MAP TROOPS (2)") !=
           std::string::npos);
     check(red_units_off.launched == std::vector<int>({1, 2}));
+
+    check(state_restore.restore());
+    return failed ? -failed_check : 0;
+}
+
+// N7: founding a company is part of what --seed governs. The text client
+// latches ONE session seed and the VIEW LEVEL narration promises that the
+// same seed prints the same census, but the starting recruit's NAME was
+// drawn from the process-global std::rand() stream, which the latch never
+// reaches. Founding twice in one process at one seed therefore printed two
+// different censuses (the shipped binary at `--seed 777` prints
+// "Arthur - SOLDIER Lv 1" for the first company and "Hector - SOLDIER Lv 1"
+// for the second; recon's scratchpad/n7/twogames.txt).
+//
+// Two foundings at ONE seed, taken from two different positions of the
+// ambient stream, must print byte-identical censuses. srand rather than a
+// discarded rand() so the perturbation is deterministic instead of a
+// 1-in-15 coin flip, and the two positions are first proven visible at all
+// so the comparison cannot be vacuous. Returns 0, or the negated 1-based
+// index of the first failed check.
+int text_picker_testing_founding_is_reproducible_at_one_seed()
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+
+    int check_index = 0;
+    int failed_check = 0;
+    bool failed = false;
+    const auto check = [&check_index, &failed_check, &failed](bool condition) {
+        ++check_index;
+        if (!condition) {
+            failed = true;
+            if (failed_check == 0)
+                failed_check = check_index;
+        }
+    };
+
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.level = 1;
+    config.seed = 777u;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+
+    // One whole founding on this client, then the VIEW LEVEL census it
+    // produced. EOF on the name prompt keeps the generated company name
+    // (which never reaches the census; only the roster names do).
+    const auto found_and_census = [&client, &check]() -> std::string {
+        {
+            ScopedTextPickerStdoutCapture founding;
+            if (!founding.ready())
+                return {};
+            ScopedCinRedirect input("");
+            // A founding that refuses is a named failed check, not a silent
+            // empty census two checks later.
+            check(client.prepare_new_game());
+            (void)founding.finish();
+            if (!founding.finish_ok())
+                return {};
+        }
+
+        const PickerMenuItem* const item = find_picker_menu_item(
+            PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+        if (item == nullptr)
+            return {};
+        ScopedTextPickerStdoutCapture output;
+        if (!output.ready())
+            return {};
+        ScopedCinRedirect input("\n");
+        client.handle_menu_item(PickerMenuId::Scenario, *item);
+        std::string text = output.finish();
+        if (!output.finish_ok())
+            return {};
+        return text;
+    };
+
+    std::srand(1u);
+    const std::string ambient_name_a = get_random_name(FAMILY_SOLDIER);
+    std::srand(2u);
+    const std::string ambient_name_b = get_random_name(FAMILY_SOLDIER);
+    check(ambient_name_a != ambient_name_b);
+
+    std::srand(1u);
+    const std::string census_a = found_and_census();
+    std::srand(2u);
+    const std::string census_b = found_and_census();
+
+    check(!census_a.empty());
+    check(census_a.find("--- SCEN 1:") != std::string::npos);
+    // The founded recruit is actually listed, so the equality below is
+    // reading the name the founding drew and not an empty roster pane.
+    check(census_a.find(" - SOLDIER Lv 1") != std::string::npos);
+    check(census_a == census_b);
+
+    check(state_restore.restore());
+    return failed ? -failed_check : 0;
+}
+
+// N7 follow-up: a seeded stream must ADVANCE, not replay. The first fix
+// built a fresh SeededRandom(config_.seed) at every site that manufactures a
+// recruit, so each Hire Troops visit restarted the same sequence and
+// re-offered the same handful of names. get_unique_name skips a name the
+// roster already holds (one draw plus ten retries), so once those names were
+// taken every later hire fell through to the "still a duplicate" numbering
+// while most of the family's pool had never been offered: the shipped
+// openglad_text at the default seed hired Arthur, Attila, Bigfoot, Lu Bu,
+// Leonidas, Wallace, Achilles, Nestor, then Nestor2, Nestor3, Nestor4 --
+// with Uther, Priam, Tom, Alexander, Hector and Lothar never drawn.
+//
+// Nine hires, each from its own Hire Troops visit (its own HireSession), at
+// the shipped default seed. Every visit must add exactly one recruit, and
+// the finished roster must read as ten distinct unnumbered pool names while
+// the family pool still holds names nobody was offered. Counts, not clocks.
+// Returns 0, or the negated 1-based index of the first failed check.
+int text_picker_testing_hires_across_visits_draw_fresh_names()
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+
+    int check_index = 0;
+    int failed_check = 0;
+    bool failed = false;
+    const auto check = [&check_index, &failed_check, &failed](bool condition) {
+        ++check_index;
+        if (!condition) {
+            failed = true;
+            if (failed_check == 0)
+                failed_check = check_index;
+        }
+    };
+
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.level = 1;
+    config.seed = 42u;  // the shipped default (src/platform/text/main.cpp)
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    SaveData& save = client.testing_save_data_mutable();
+
+    // Found the company. EOF on the name prompt keeps the generated name.
+    {
+        ScopedTextPickerStdoutCapture founding;
+        check(founding.ready());
+        ScopedCinRedirect input("");
+        check(client.prepare_new_game());
+        (void)founding.finish();
+        check(founding.finish_ok());
+    }
+
+    constexpr int kVisits = 9;
+    const PickerMenuItem* const hire_item = find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    check(hire_item != nullptr);
+    if (hire_item != nullptr) {
+        for (int visit = 0; visit < kVisits; ++visit) {
+            const unsigned char before = save.team_size;
+            ScopedTextPickerStdoutCapture output;
+            check(output.ready());
+            {
+                // The hire screen opens on the first family (SOLDIER), so
+                // every visit hires from ONE pool: [H]ire, then [B]ack.
+                ScopedCinRedirect input("h\nb\n");
+                client.handle_menu_item(PickerMenuId::TeamBuild, *hire_item);
+            }
+            (void)output.finish();
+            check(output.finish_ok());
+            // A refused hire (no gold, team full) would leave the roster
+            // short and make the name comparison below vacuous.
+            check(save.team_size == static_cast<unsigned char>(before + 1));
+        }
+    }
+
+    std::vector<std::string> roster;
+    for (int i = 0; i < MAX_TEAM_SIZE; i++) {
+        if (save.team_list[static_cast<std::size_t>(i)])
+            roster.push_back(save.team_list[static_cast<std::size_t>(i)]->name);
+    }
+    check(roster.size() == static_cast<std::size_t>(kVisits) + 1);
+
+    // A trailing digit is get_unique_name's numbered fallback: no pool name
+    // ends in one.
+    bool numbered = false;
+    for (const std::string& name : roster) {
+        if (!name.empty() && name.back() >= '0' && name.back() <= '9')
+            numbered = true;
+    }
+    check(!numbered);
+
+    std::vector<std::string> distinct = roster;
+    std::sort(distinct.begin(), distinct.end());
+    distinct.erase(std::unique(distinct.begin(), distinct.end()), distinct.end());
+    check(distinct.size() == roster.size());
+
+    // ...and the pool was never the constraint: the family offers more names
+    // than this roster holds. 400 draws over a pool this size leave a name
+    // undrawn with probability ~1e-12, and the probe is seeded, so the count
+    // is the same on every run.
+    SeededRandom probe(20260911u);
+    std::vector<std::string> pool;
+    for (int i = 0; i < 400; i++) {
+        std::string name = get_random_name(FAMILY_SOLDIER, &probe);
+        if (std::find(pool.begin(), pool.end(), name) == pool.end())
+            pool.push_back(std::move(name));
+    }
+    check(pool.size() > roster.size());
 
     check(state_restore.restore());
     return failed ? -failed_check : 0;
