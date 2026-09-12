@@ -1640,6 +1640,12 @@ int new_game_name_accepter(void* data)
 
 TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
 {
+    // This flow FOUNDS a company, and founding is an autosave: the file it
+    // writes outranks every bare-save save0 in this binary and would take
+    // over the next CONTINUE flow's session. See
+    // new_game_flow_leaves_no_company_behind above.
+    ScopedCompanyFileCleanup founded_cleanup;
+
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     const std::string old_mounted = get_mounted_campaign();
 
