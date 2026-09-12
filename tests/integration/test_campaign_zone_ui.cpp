@@ -3055,6 +3055,100 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
 
 namespace {
 
+// Index of the FIRST matching trace, or -1. The trace buffer is append-only
+// and ordered, so two indices compare as "this happened before that" —
+// which is the whole claim of the test below.
+int first_trace_index(const char* category, const char* substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    for (std::size_t i = 0; i < g_trace_buffer.size(); ++i) {
+        if (g_trace_buffer[i].category == category &&
+            g_trace_buffer[i].message.find(substring) != std::string::npos)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+// Walk into the camp and straight back out: the flow exists for the ORDER
+// of what the entry does, not for anything clicked inside it.
+int camp_entry_order_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const finished = static_cast<bool*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+    (void)wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    (void)interact("back");
+    *finished = true;
+    return 0;
+}
+
+} // namespace
+
+// The camp's ENTRY composition must read a save the arena deal has already
+// dealt (amendment 7, #276).
+//
+// create_team_menu composes the zone once at screen entry (fetch trigger 1)
+// and only then runs the loop, whose FIRST frame_tick holds the level-reload
+// guard that loads the arena and deals its FILL: FAIR bands. Everything the
+// entry composed — the camp's own rows and, through them, the MATCH SETUP
+// page a door opens — therefore read an UNDEALT save, and a click dispatched
+// on the loop's first iteration (dispatch runs before frame_tick) opens that
+// page before the deal ever lands. On a fast box the injector's 50 ms poll
+// never wins that race; on the instrumented four-slot CI runners of PR #291
+// it won every time — CampaignZoneUi.zzz_uxr_capture_modes_match_setup_page
+// read TEAMS: 1 / FILL: NONE and failed 3/3 attempts in BOTH the Coverage
+// (run 34684325469) and the ASan (run 34684325459) lane, with the deal's
+// autosave appearing in the log only after the page was closed again.
+//
+// Ordered traces, not a clock: the deal must be recorded before the entry
+// fetch it feeds.
+TEST(CampaignZoneUi, base_camp_entry_deals_the_arena_before_it_composes)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // THE CIRCLE (scen 300) authors all four teams: a fresh save on that
+    // cursor is exactly one deal away from TEAMS: 4 / FILL: FAIR.
+    write_save0_with_two_soldiers("modes", 300);
+
+    bool finished = false;
+    SDL_Thread* thread =
+        SDL_CreateThread(camp_entry_order_injector, "camp_entry", &finished);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    const int deal_index = first_trace_index("lineup", "arena_deal");
+    const int fetch_index = first_trace_index("zone", "entry_fetch");
+    EXPECT_TRUE(finished);
+    ASSERT_NE(-1, deal_index)
+        << "the arena deal must run on a versus campaign's fresh cursor";
+    ASSERT_NE(-1, fetch_index)
+        << "create_team_menu composes the zone once on entry";
+    EXPECT_LT(deal_index, fetch_index)
+        << "the camp's entry composition read a save whose arena FILL deal "
+           "had not been dealt yet: the deal belongs to screen ENTRY, not to "
+           "the first frame tick, or a door activated on the loop's first "
+           "iteration serves an undealt MATCH SETUP page";
+
+    // Leave the default campaign mounted for whatever runs next.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+namespace {
+
 // Open MATCH SETUP through the ladder and come straight back out. The
 // press the flow starts with is dropped on purpose (g_click_ladder_click_drops), so
 // only a retry can reach the page.

@@ -78,8 +78,24 @@ inline int g_click_ladder_ack_post_retries = 0;
 // posts come back cancelled the way a starved menu thread cancels them.
 inline int g_click_ladder_ack_drops = 0;
 
-inline bool acknowledge_press(int timeout_ms, int attempts = 3,
-                       bool injectable = false)
+// The ceiling every POST in this file is sent with, and never the caller's
+// own wait. run_on_main_thread's ceiling is a CANCELLATION deadline for a
+// pump that is not running at all; it is NOT the click's budget. The click's
+// own wait bounds the LABEL EDGE -- how long the screen may take to answer a
+// press -- while the post only has to outlive a pump that is alive but slow,
+// and under coverage instrumentation on a four-slot CI runner the menu
+// thread has taken longer than 2.5 s to reach a queued reset: every lap of
+// LineupUi.match_setup_macros_round_trip_with_lineup failed three attempts
+// in a row that way (PR #291, Coverage run 34679834685) until acb265a3 gave
+// that file's own acknowledged click the 15 s cancellation default. This is
+// the same rule for the shared ladder -- one home for it, not three (PR
+// #245). The cost the short ceiling capped -- a click posted with no menu
+// loop behind it -- is bounded by the last resort at the bottom of
+// acknowledge_press and by the injectors' escape tails instead.
+inline constexpr int kAckPostCeilingMs = 15000;
+
+inline bool acknowledge_press(int timeout_ms = kAckPostCeilingMs,
+                       int attempts = 3, bool injectable = false)
 {
     for (int attempt = 0; attempt < attempts; ++attempt) {
         if (injectable && g_click_ladder_ack_drops > 0) {
@@ -125,7 +141,7 @@ inline bool click_and_acknowledge_trace(const std::string& id, const char* categ
     const int saves_before = trace_count("save");
     for (int attempt = 0; attempt < attempts; ++attempt) {
         if (!run_on_main_thread([] { reset_mouse_click_tracking(); },
-                                timeout_ms))
+                                kAckPostCeilingMs))
             return false;
         if (g_click_ladder_click_drops > 0) {
             --g_click_ladder_click_drops;
@@ -152,7 +168,7 @@ inline bool click_and_acknowledge_trace(const std::string& id, const char* categ
                 continue;  // nothing registered: the press may be re-sent
             }
             (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
-                                     timeout_ms);
+                                     kAckPostCeilingMs);
             return false;
         }
         const bool autosaved =
@@ -162,7 +178,8 @@ inline bool click_and_acknowledge_trace(const std::string& id, const char* categ
                     "  [interact] TIMEOUT waiting for cycler autosave\n");
         }
         const bool acknowledged =
-            acknowledge_press(timeout_ms, attempts, /*injectable=*/true);
+            acknowledge_press(kAckPostCeilingMs, attempts,
+                              /*injectable=*/true);
         return autosaved && acknowledged;
     }
     return false;
@@ -223,7 +240,7 @@ inline bool click_until_edge(const std::string& id,
     for (int attempt = 0; attempt < attempts; ++attempt) {
         if (!spent) {
             (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
-                                     wait_ms);
+                                     kAckPostCeilingMs);
             if (g_click_ladder_click_drops > 0) {
                 --g_click_ladder_click_drops;
                 fprintf(stderr,
@@ -245,7 +262,7 @@ inline bool click_until_edge(const std::string& id,
         if (reached) {
             // Same bounded re-post: a cancelled acknowledgement here leaves
             // the next press to evaporate against a stale baseline.
-            (void)acknowledge_press(wait_ms);
+            (void)acknowledge_press();
             return true;
         }
         if (has_landed()) {
