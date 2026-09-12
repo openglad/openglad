@@ -24,6 +24,27 @@ public:
         // The RELAY transport keeps its own ten-second clamp on purpose: that
         // one re-dials Cloudflare, not a peer on the LAN.
         std::uint32_t max_reconnect_wait_ms = 1'000;
+        // How long a single dial may occupy the io thread before it is
+        // abandoned. A dial that is answered by a socket nobody services —
+        // ix's acceptor leaks one on every stop()-vs-dial race
+        // (IXSocketServer.cpp:415 accepts, then returns on its stop flag
+        // without closing the descriptor) — parks the io thread in the HTTP
+        // status-line read, and no re-dial runs while it waits. ix's own
+        // default is sixty seconds, which is a minute of a returning host
+        // going unnoticed. Ten seconds bounds that while still covering DNS,
+        // TCP connect and upgrade for a direct join typed at a WAN address:
+        // this UI accepts any ws:// address, not only a peer on the LAN.
+        int handshake_timeout_secs = 10;
+        // WebSocket PING/PONG on the direct link, in seconds. Without an
+        // interval ix's poll() timeout is infinite and a half-open link is
+        // never noticed at all: the io thread either sits on a socket that
+        // will never speak again or spins on poll() -> Error forever, and
+        // either way it never re-dials. With one, ix sends a heartbeat every
+        // interval and closes the socket when the pong does not come back
+        // (kPingTimeoutMessage), which lets its reconnection loop run. The
+        // RELAY transport carries no pings on purpose: that one talks to
+        // Cloudflare, not to a peer.
+        int ping_interval_secs = 5;
     };
 
     // IXWebSocket invokes callbacks on background I/O threads. Those callbacks
