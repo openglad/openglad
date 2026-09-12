@@ -390,6 +390,11 @@ void picker_lobby_shutdown();
 // whole promote-wedge / base-camp-hang family. The integration harness needs
 // to see it to attribute the leak to the test that left it behind.
 bool picker_lobby_testing_standalone_client_alive() noexcept;
+// Destroy it, and nothing else. Deliberately NOT picker_lobby_shutdown(): that
+// one also shuts down an INSTALLED client (a test's fake) and, for a networked
+// session, unmounts the session's class packs — side effects a between-tests
+// reset has no business performing. This is the reset's seam only.
+void picker_lobby_testing_drop_standalone_client() noexcept;
 #endif
 void picker_lobby_sync_from_save();
 void picker_lobby_sync_roster_from_save();

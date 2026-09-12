@@ -75,6 +75,20 @@ void reset_integration_ui_state()
     // process-wide slot (directly or via ScopedActiveCompany misuse) must not
     // leak it into later tests under --gtest_shuffle.
     (void)og::data::set_active_company_slot("save0");
+    // [LOBBY-R1] The same treatment for the standalone picker lobby client.
+    // It is created lazily by almost any picker seam and destroyed only here
+    // or by an explicit picker_lobby_shutdown(); a survivor answers the next
+    // test's picker_lobby_poll() with ITS roster, and apply_state_to_save
+    // frees every save.team_list slot to rebuild from that cache. The
+    // [LOBBY-CENSUS] line below measured 265 tests across the ten integration
+    // groups running with one already alive, so the per-test guards some of
+    // them carry cannot be the rule — this is. The narrow seam, not
+    // picker_lobby_shutdown(): a reset must not shut down a fake client a test
+    // installed, nor unmount a networked session's packs. Free when no
+    // standalone client exists, and it never creates one.
+#ifdef TESTING
+    picker_lobby_testing_drop_standalone_client();
+#endif
 
     if (og::runtime::current_session == nullptr)
         return;
@@ -294,6 +308,11 @@ void run_main_thread_tasks()
     }
 }
 
+#ifdef TESTING
+const bool s_lobby_census_enabled =
+    std::getenv("OPENGLAD_TEST_LOBBY_CENSUS") != nullptr;
+#endif
+
 class WorldCleanupListener final : public ::testing::EmptyTestEventListener
 {
 public:
@@ -311,19 +330,24 @@ public:
         og::ui::g_picker_main_thread_pump = nullptr;
         drain_main_thread_tasks();
 #ifdef TESTING
-        // [LOBBY-CENSUS] Any picker seam lazily creates the process-wide
-        // STANDALONE lobby client, and only picker_lobby_shutdown() destroys
-        // it. A survivor answers the NEXT test's picker_lobby_poll() with the
-        // roster IT cached: apply_state_to_save resets every save.team_list
-        // slot and rebuilds it, freeing the guys that test just planted. That
-        // is the promote wedge (og_test_picker) and the base-camp roster-row
-        // hang (og_test_view). Report-only for now — the counts per binary
-        // decide whether this becomes a failure.
-        if (picker_lobby_testing_standalone_client_alive())
+        // [LOBBY-CENSUS] Which tests end holding the standalone lobby client.
+        // Before [LOBBY-R1] below existed this was the leak that wedged the
+        // next test (the promote wedge in og_test_picker, the base-camp
+        // roster-row hang in og_test_view): the survivor answered the next
+        // test's picker_lobby_poll() with the roster IT cached, and
+        // apply_state_to_save freed every save.team_list slot to rebuild from
+        // it. The structural reset closes that, so this is a diagnostic, not a
+        // gate — and NOT a failure: 43 tests legitimately create a client in
+        // their own body (og_test_view 5, og_test_matchup 28, og_test_lineup 3,
+        // og_test_menu_ui 3, og_test_basecamp 2, og_test_picker 1,
+        // og_test_game_core 1). Run with OPENGLAD_TEST_LOBBY_CENSUS=1 to list
+        // them, e.g. when a new order dependence smells like this family.
+        if (s_lobby_census_enabled &&
+            picker_lobby_testing_standalone_client_alive())
         {
             std::fprintf(stderr,
-                         "LOBBY LEAK CENSUS: %s.%s left a picker lobby client "
-                         "alive (LobbyShutdownGuard, test_view_team.cpp)\n",
+                         "LOBBY CENSUS: %s.%s ended holding a picker lobby "
+                         "client\n",
                          info.test_suite_name(), info.name());
         }
 #endif
