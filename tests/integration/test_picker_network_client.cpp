@@ -12249,3 +12249,129 @@ TEST(PickerNetworkClient, host_resume_after_a_torn_down_lobby_keeps_its_seat_tea
 
     host_client->shutdown();
 }
+
+// A host that blips and comes back must be FOUND again promptly. This is
+// WP9's withdrawn re-dial test, restored: it was pulled because ~7 % of its
+// runs hit a joiner whose transport never re-dialled at all, and that defect
+// is now fixed (a dial black-holed by ix's acceptor leak is abandoned after
+// Options::handshake_timeout_secs instead of after ix's sixty-second
+// default). What it pins is the re-dial CADENCE on the direct transport.
+//
+// Both halves of the ceiling below are read off the shipped options:
+//
+//   outage  = 14 s. Longer than handshake_timeout_secs (10 s), so the worst
+//             thing the host's teardown can do to the joiner — leave a dial
+//             parked on a socket that ix accepted and then abandoned
+//             (IXSocketServer.cpp:415) — is spent BEFORE the host returns.
+//             Past that point ix has walked its exponential rungs (dials at
+//             0, 100, 300, 700, 1500 ms and then one clamp apart) well into
+//             the clamped stretch.
+//   ceiling = 4 s = max_reconnect_wait_ms (1 s: the longest gap between two
+//             dials once the backoff is clamped) + 3 s for the dial itself —
+//             TCP connect, the WebSocket upgrade and the lobby's hello and
+//             roster exchange, polled at 5 ms on a loaded box.
+//
+// The ceiling is what makes this a regression test rather than a smoke test:
+// with ix's ten-second clamp the rungs after a 14 s outage are 12.7 s and
+// 22.7 s, so the next dial lands 8.7 s after the host is back — twice the
+// ceiling — and with ix's sixty-second handshake default a black-holed dial
+// is still parked when the host returns.
+TEST(PickerNetworkClient, joiner_finds_a_returning_host_within_the_redial_cap)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    const auto both_see_two_players = [&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(join_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            status_lines_contain_exact(host_client->status_lines(),
+                                       "Lobby: 2 players");
+    };
+    ASSERT_TRUE(wait_until(both_see_two_players, 10s))
+        << "before the outage: host and joiner should converge on a "
+           "two-player lobby";
+
+    const auto describe = [](const og::ui::IPickerLobbyClient& client) {
+        std::string joined;
+        for (const std::string& line : client.status_lines())
+        {
+            if (!joined.empty())
+                joined += " | ";
+            joined += line;
+        }
+        return joined;
+    };
+
+    // The host goes away. Keep the joiner polling so it really walks the
+    // backoff rungs rather than sitting idle.
+    host_client->shutdown();
+    const auto down_until = std::chrono::steady_clock::now() + 14s;
+    while (std::chrono::steady_clock::now() < down_until)
+    {
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        std::this_thread::sleep_for(5ms);
+    }
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(status_lines_contain_exact(join_client->status_lines(),
+                                               "Status: connection lost"))
+            << "the outage must actually have taken the link down; joiner=["
+            << describe(*join_client) << "]";
+    }
+
+    host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    const bool found_again = wait_until(both_see_two_players, 4s);
+    const std::string host_status = describe(*host_client);
+    std::string joiner_status;
+    {
+        auto join_scope = join_session.activate();
+        joiner_status = describe(*join_client);
+    }
+    EXPECT_TRUE(found_again)
+        << "a returning host must be re-dialled within one clamped re-dial "
+           "gap (max_reconnect_wait_ms = 1 s) plus the cost of one dial, not "
+           "after ix's exponential backoff has run out to its ten-second "
+           "clamp (next rung 8.7 s after this host came back) and not while a "
+           "dial is still parked on ix's sixty-second handshake default. "
+           "joiner=["
+        << joiner_status << "] host=[" << host_status << "]";
+
+    {
+        auto join_scope = join_session.activate();
+        join_client->shutdown();
+    }
+    host_client->shutdown();
+}
