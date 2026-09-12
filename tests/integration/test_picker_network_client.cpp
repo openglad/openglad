@@ -6755,13 +6755,27 @@ TEST(PickerNetworkClient,
             }
         }
     };
-    bool all_ended = false;
-    for (int round = 0; round < 120 && !all_ended; ++round)
-    {
-        pump(5);
-        all_ended = peer_finished(*cleanup.host_session) &&
-            peer_finished(join_a_session) && peer_finished(join_b_session);
-    }
+    // Ending the level is a three-MACHINE edge, and the two joiners are real
+    // 127.0.0.1 WebSocket peers driven by IXWebSocket's own I/O threads: the
+    // win reaches them only once those threads have been scheduled and the
+    // bytes have crossed the loopback. The pump loop this replaces spent an
+    // ITERATION budget (120 rounds of 5 ticks) where the thing it waited for
+    // costs real TIME -- 600 pumps spin past in a couple of milliseconds on an
+    // idle box, less than one loopback round trip on a loaded one, so the
+    // assertion below read `false` while the end was still in flight. Every
+    // other cross-machine edge in this test already waits on its condition with
+    // a seconds ceiling; this one now does too, at the same 10 s the
+    // initial-snapshot convergence above uses for these same three peers over
+    // these same sockets (one end broadcast is strictly less work than the
+    // keyframe that wait covers).
+    const bool all_ended = wait_until(
+        [&] {
+            pump(5);
+            return peer_finished(*cleanup.host_session) &&
+                peer_finished(join_a_session) &&
+                peer_finished(join_b_session);
+        },
+        10s);
     ASSERT_TRUE(all_ended)
         << "a networked win must end ALL three machines' display sessions";
 
