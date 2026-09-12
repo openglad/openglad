@@ -21,8 +21,8 @@
 # SCOPE, deliberately narrow for now: this check covers the files the
 # counts-not-clocks conversion has actually reached. The same pattern still
 # exists in other injector suites (test_company_list.cpp, test_lineup_ui.cpp,
-# test_ctf_ui.cpp, test_uxshots_probe.cpp and others); add each file here as
-# its own conversion lands, so the gate never passes by looking away.
+# test_campaign_zone_ui.cpp, test_uxshots_probe.cpp and others); add each file
+# here as its own conversion lands, so the gate never passes by looking away.
 #
 # Wired into the build as a dependency of og_game_test (CMakeLists.txt,
 # beside check_vendor_leaks), so a reintroduced settle fails the test build
@@ -39,6 +39,7 @@ FILES=(
     tests/integration/test_help_smoke.cpp
     tests/integration/test_campaign_and_level_picker.cpp
     tests/integration/test_pause_menu.cpp
+    tests/integration/test_ctf_ui.cpp
 )
 
 status=0
