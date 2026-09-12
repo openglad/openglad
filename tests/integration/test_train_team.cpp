@@ -18,6 +18,8 @@ void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/core/util.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
@@ -193,3 +195,65 @@ TEST(TrainTeam, train_team) {
     ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
 }
 
+// ---------------------------------------------------------------------------
+// The TRAIN screen's content pass runs on a LIVE session: run_menu_screen
+// polls the lobby at the top of every frame for a polls_lobby spec, and
+// LocalPickerLobbyClient::apply_state_to_save resets every save.team_list
+// slot before rebuilding the roster from its cached lobby state. So a frame
+// can arrive with the trained member already gone. Every TrainSession
+// accessor the pass reads is null-guarded except original(), which is a bare
+// `return *original_member();` — the draw pass must not reach it.
+// ---------------------------------------------------------------------------
+
+// TrainEngineState is file-local to picker_team_build.cpp; the whole of it is
+// the start_time the content pass reads (picker_team_build.cpp, "Per-open
+// screen state (the legacy loop's locals)"), so the screen_state a test hands
+// the pass is layout-compatible with it.
+struct TrainEngineStateMirror {
+    Sint32 start_time = 0;
+};
+
+void picker_train_menu_engine_draw_content(void* screen_state);
+
+TEST(TrainMenuDraw, draw_content_survives_the_member_vanishing_under_a_lobby_poll)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->name = "VANISHER";
+    save.team_list[0]->level = 6;
+    save.team_size = 1;
+
+    og::ui::TrainSession session(save);
+    og::runtime::current_session->current_guy_ =
+        std::make_unique<guy>(*save.team_list[0]);
+    pks().train_session = &session;
+    ASSERT_FALSE(session.empty()) << "the session starts on a real member";
+
+    // What one lobby poll does to the roster, verbatim
+    // (picker_lobby_client.cpp, apply_state_to_save).
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_size = 0;
+    ASSERT_TRUE(session.empty()) << "the session must see its member is gone";
+
+    // The guarded siblings already agree the member is gone...
+    EXPECT_EQ(0u, session.current_cost());
+    EXPECT_FALSE(session.level_increased());
+
+    // ... and the draw pass must agree too instead of dereferencing the null
+    // original (SEGV at picker_team_build.cpp's stat table on the unfixed
+    // tree).
+    TrainEngineStateMirror state;
+    state.start_time = query_timer();
+    picker_train_menu_engine_draw_content(&state);
+
+    pks().train_session = nullptr;
+    og::runtime::current_session->current_guy_.reset();
+    save.reset();
+    SUCCEED() << "the draw pass returned instead of dereferencing a null "
+                 "original";
+}
