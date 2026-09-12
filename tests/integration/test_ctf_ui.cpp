@@ -389,7 +389,10 @@ bool click_until_label(const std::string& id, const std::string& want,
 {
     for (int i = 0; i < attempts; ++i) {
         const int saves_before = trace_count("save");
-        (void)acknowledge_press(wait_ms);
+        // Both posts take the ladder's cancellation ceiling, never this
+        // click's wait: the wait bounds the label edge, the post only has to
+        // outlive a slow pump (test_click_ladder.h, kAckPostCeilingMs).
+        (void)acknowledge_press();
         (void)interact(id);
         const bool label_reached =
             wait_for_interactable_label(id, want, wait_ms);
@@ -409,7 +412,8 @@ bool click_until_label(const std::string& id, const std::string& want,
         if (!autosaved)
             fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' autosave\n",
                     id.c_str());
-        (void)acknowledge_press(wait_ms, attempts, /*injectable=*/true);
+        (void)acknowledge_press(kAckPostCeilingMs, attempts,
+                                /*injectable=*/true);
         return label_reached && autosaved;
     }
     return false;

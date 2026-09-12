@@ -239,7 +239,10 @@ bool wait_for_trace(const char* category, const char* substring,
 // row (PR #291, Coverage CI run 34679834685). The cost that the short
 // ceiling was meant to cap — a click posted with no menu loop behind it —
 // is bounded by the injectors' escape tails instead.
-constexpr int kAckPostCeilingMs = 15000;
+//
+// That ceiling now lives once, in the shared ladder every injector suite
+// posts through (tests/test_click_ladder.h's kAckPostCeilingMs) — the rule
+// has one implementation, not one per file (PR #245).
 int g_ack_click_posts = 0;
 int g_ack_click_post_ceiling_ms = 0;
 
