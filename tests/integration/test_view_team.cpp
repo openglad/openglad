@@ -230,6 +230,21 @@ struct ActivePickerLobbyClientGuard
     }
 };
 
+// save_data.numplayers is a process-wide setting: og::ui::is_spectator_mode()
+// is numplayers == 0, and viewscreen::process_input() RETURNS out of the
+// spectator branch before it ever reaches the sim, so a zero left behind here
+// silently disarms every later input test in the binary. SaveData::reset()
+// does not restore it (the `//numplayers = 1;` line in save_data.cpp is
+// commented out on purpose), so a test that seats nobody restores it itself.
+struct PlayerCountGuard
+{
+    SaveData& save;
+    unsigned char saved;
+
+    explicit PlayerCountGuard(SaveData& s) : save(s), saved(s.numplayers) {}
+    ~PlayerCountGuard() { save.numplayers = saved; }
+};
+
 } // namespace
 
 
@@ -3908,6 +3923,7 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_through_the_first_slot)
 {
     FactoryMappingGuard mapping_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PlayerCountGuard player_count_guard(save);
     save.reset();
     save.numplayers = 0;
     save.current_campaign = "gladiator";
