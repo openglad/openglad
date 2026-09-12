@@ -19,6 +19,7 @@
 #include <openglad/resources/save_data.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_company_cleanup.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -84,27 +85,6 @@ std::string read_file_bytes(const std::filesystem::path& path)
                        std::istreambuf_iterator<char>());
 }
 
-struct CompanySlotCleanup {
-    std::vector<std::string> slots;
-    ~CompanySlotCleanup()
-    {
-        for (const std::string& slot : slots) {
-            for (const og::data::CompanyBackupInfo& backup :
-                 og::data::list_company_backups(slot))
-                (void)og::data::delete_company_backup(slot, backup.seq);
-            (void)remove_user_file("save/" + slot + ".gtl");
-        }
-    }
-};
-
-struct ActiveCompanySlotRestore {
-    std::string slot = og::data::active_company_slot();
-    ~ActiveCompanySlotRestore()
-    {
-        (void)og::data::set_active_company_slot(slot);
-    }
-};
-
 // Written by the fake bridge on the picker thread; read by the test only
 // after picker_main returns.
 struct FakeCloudTransport {
@@ -126,6 +106,11 @@ struct FlowState {
     // gave up — "the button never came back" and "the button came back
     // dead" are different bugs.
     bool upload_row_on_screen = false;
+    // Set by the test: delete the active company's file once the CLOUD door
+    // is open, which holds UPLOAD Disabled (cloud_upload_row_state needs
+    // key_set AND company_present) — the same screen state a swallowed
+    // passphrase press produces, driven deterministically.
+    bool drop_company_file_in_the_door = false;
     // #237 symmetry pin, the nested main-menu door (run_nested_menu_door):
     // CLOUD SAVES runs INSIDE the still-open main menu, so the depth rule
     // cannot see it and the door site brackets the fade by hand.
@@ -226,6 +211,15 @@ int cloud_flow_injector(void* data)
         SDL_Delay(750);
         state->fades_added_by_cloud_door =
             count_fade_between_traces() - fades_before_door;
+        if (state->drop_company_file_in_the_door) {
+            // Posted to the menu thread, not done from here: the row states
+            // are recomputed there, and this is the ordering the assertion
+            // depends on. The refresh that reads it back runs when the
+            // passphrase row acts, one step below.
+            fprintf(stderr, "  [test] removing the company file mid-flow\n");
+            (void)run_on_main_thread(
+                [] { (void)remove_user_file("save/cloudflow.gtl"); });
+        }
         fprintf(stderr, "  [test] setting the passphrase (queued)\n");
         interact("cloud_passphrase");
 
@@ -286,79 +280,129 @@ int cloud_flow_injector(void* data)
     return 0;
 }
 
+
+// Everything a CLOUD flow needs staged: the local company this machine
+// uploads, the cloud-side company the download installs over it, and the
+// fake bridge that records both halves. Two flow tests share it rather than
+// two copies of forty lines (PR #245, "no rule twins").
+//
+// The scratch slots are cleaned up by the SHARED snapshot guard
+// (tests/test_company_cleanup.h) instead of this file's own slot list and
+// slot restore: the same rule, one implementation, and the snapshot form
+// also catches a company created under a name this file does not know.
+// No gtest macro runs inside the fixture — `staged` is the flag the test
+// asserts on — so nothing here depends on fatal assertions inside a
+// constructor.
+struct CloudFlowFixture {
+    ScopedCompanyFileCleanup founded_cleanup;
+    og::data::ScopedActiveCompany pin{"cloudflow"};
+    PlatformBridge original_bridge = platform_bridge();
+    FakeCloudTransport transport;
+    std::string local_bytes;
+    std::string remote_bytes;
+    bool staged = false;
+
+    CloudFlowFixture()
+    {
+        trace_clear();
+        cfg.data.erase("cloud");
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_cloud_passphrase_queue_clear();
+
+        // The local company this machine uploads (most recent, so the picker
+        // boots on it even if a shuffled sibling stamped a fresh save0).
+        const std::int64_t now_s = og::data::company_clock_now_s();
+        if (!seed_company("cloudflow", "LOCAL BAND", now_s + 1000000))
+            return;
+        if (!pin.applied())
+            return;
+        local_bytes = read_file_bytes(company_path("cloudflow"));
+        if (local_bytes.empty())
+            return;
+
+        // The cloud-side company the download must install over it: real
+        // writer bytes (loadable by the §2.3 open path), staged through a
+        // scratch slot.
+        if (!seed_company("cloudremote", "CLOUD BAND", now_s + 2000000))
+            return;
+        remote_bytes = read_file_bytes(company_path("cloudremote"));
+        if (!remove_user_file("save/cloudremote.gtl"))
+            return;
+        const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                                   remote_bytes.end());
+
+        // Fake bridge HTTP: keep the real SDL bridge callbacks, swap the two
+        // cloud transports for canned results.
+        transport.get_body =
+            R"({"revision":3,"uploaded_at":1754200000000,"slot":"cloudflow",)"
+            R"("save_name":"CLOUD BAND","scen_num":1,"last_played":)" +
+            std::to_string(now_s + 2000000) + R"(,"data_hex":")" +
+            og::ui::cloud::hex_encode(remote_raw) + R"("})";
+        PlatformBridge faked = platform_bridge();
+        faked.cloud_http_post = [this](const std::string& url,
+                                       const std::string& body) {
+            transport.post_urls.push_back(url);
+            transport.post_bodies.push_back(body);
+            og::ui::cloud::CloudHttpResult result;
+            result.status = 200;
+            result.body = R"({"revision":1})";
+            return result;
+        };
+        faked.cloud_http_get = [this](const std::string& url) {
+            transport.get_urls.push_back(url);
+            og::ui::cloud::CloudHttpResult result;
+            result.status = 200;
+            result.body = transport.get_body;
+            return result;
+        };
+        set_platform_bridge(faked);
+        staged = true;
+    }
+
+    CloudFlowFixture(const CloudFlowFixture&) = delete;
+    CloudFlowFixture& operator=(const CloudFlowFixture&) = delete;
+
+    ~CloudFlowFixture()
+    {
+        set_platform_bridge(original_bridge);
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_cloud_passphrase_queue_clear();
+        cfg.data.erase("cloud");
+    }
+
+    // Drive one full pass of the main menu with the injector attached.
+    // Returns false only when the thread could not be created.
+    bool run(FlowState& state)
+    {
+        SDL_Thread* thread =
+            SDL_CreateThread(cloud_flow_injector, "cloud_flow", &state);
+        if (thread == nullptr)
+            return false;
+        g_picker_mainmenu_calls = 0;
+        g_picker_max_mainmenu_calls = 1;
+        picker_main(0, nullptr);
+        SDL_WaitThread(thread, nullptr);
+        cleanup_picker_state();
+        g_picker_max_mainmenu_calls = 0;
+        return true;
+    }
+};
+
 } // namespace
 
 TEST(CloudUi, upload_then_download_through_the_cloud_screen)
 {
-    trace_clear();
-    CompanySlotCleanup cleanup{{"cloudflow", "cloudremote"}};
-    ActiveCompanySlotRestore active_slot_restore;
-    cfg.data.erase("cloud");
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_cloud_passphrase_queue_clear();
-
-    // The local company this machine uploads (most recent, so the picker
-    // boots on it even if a shuffled sibling stamped a fresh save0).
-    const std::int64_t now_s = og::data::company_clock_now_s();
-    ASSERT_TRUE(seed_company("cloudflow", "LOCAL BAND", now_s + 1000000));
-    ASSERT_TRUE(og::data::set_active_company_slot("cloudflow"));
-    const std::string local_bytes = read_file_bytes(company_path("cloudflow"));
-    ASSERT_FALSE(local_bytes.empty());
-
-    // The cloud-side company the download must install over it: real writer
-    // bytes (loadable by the §2.3 open path), staged through a scratch slot.
-    ASSERT_TRUE(seed_company("cloudremote", "CLOUD BAND", now_s + 2000000));
-    const std::string remote_bytes =
-        read_file_bytes(company_path("cloudremote"));
-    ASSERT_TRUE(remove_user_file("save/cloudremote.gtl"));
-    std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
-                                         remote_bytes.end());
-
-    // Fake bridge HTTP: keep the real SDL bridge callbacks, swap the two
-    // cloud transports for canned results.
-    FakeCloudTransport transport;
-    transport.get_body =
-        R"({"revision":3,"uploaded_at":1754200000000,"slot":"cloudflow",)"
-        R"("save_name":"CLOUD BAND","scen_num":1,"last_played":)" +
-        std::to_string(now_s + 2000000) + R"(,"data_hex":")" +
-        og::ui::cloud::hex_encode(remote_raw) + R"("})";
-    PlatformBridge original = platform_bridge();
-    PlatformBridge faked = platform_bridge();
-    faked.cloud_http_post = [&transport](const std::string& url,
-                                         const std::string& body) {
-        transport.post_urls.push_back(url);
-        transport.post_bodies.push_back(body);
-        og::ui::cloud::CloudHttpResult result;
-        result.status = 200;
-        result.body = R"({"revision":1})";
-        return result;
-    };
-    faked.cloud_http_get = [&transport](const std::string& url) {
-        transport.get_urls.push_back(url);
-        og::ui::cloud::CloudHttpResult result;
-        result.status = 200;
-        result.body = transport.get_body;
-        return result;
-    };
-    set_platform_bridge(faked);
+    CloudFlowFixture fixture;
+    ASSERT_TRUE(fixture.staged) << "the two company fixtures must be written";
+    const FakeCloudTransport& transport = fixture.transport;
+    const std::string& local_bytes = fixture.local_bytes;
+    const std::string& remote_bytes = fixture.remote_bytes;
 
     picker_testing_cloud_passphrase_queue_push("correct horse battery");
     picker_testing_yes_or_no_queue_push(true);  // download overwrite: YES
 
     FlowState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(cloud_flow_injector, "cloud_flow", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
-    set_platform_bridge(original);
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_cloud_passphrase_queue_clear();
+    ASSERT_TRUE(fixture.run(state));
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_cloud_screen) << "the CLOUD door must open";
@@ -418,8 +462,44 @@ TEST(CloudUi, upload_then_download_through_the_cloud_screen)
     EXPECT_EQ("CLOUD BAND",
               og::runtime::current_session->myscreen_->save_data.save_name);
     ASSERT_TRUE(trace_contains("cloud_save", "opened cloudflow"));
+}
 
-    cfg.data.erase("cloud");
+// N4: the CLOUD screen publishes UPLOAD as a VISIBLE row whose action is
+// gone whenever the flow is not allowed to upload (cloud_upload_row_state
+// needs key_set AND company_present, src/interface/ui/menu_screen_specs.cpp).
+// has_interactable() cannot see that — apply_row_states marks `hidden` only
+// for RowState::Hidden — so the injector's wait returned instantly, the
+// press landed on a row with no handler, and the flow then waited 15 s for a
+// popup that could never come and hung inside the nested screen.
+//
+// This drives that exact screen state deterministically: the company file is
+// removed once the CLOUD door is open, so the passphrase's own refresh
+// recomputes company_present as false and UPLOAD stays Disabled with a key
+// set. What the unwind buys is that the miss comes back as a NAME.
+TEST(CloudUi, a_dropped_upload_click_fails_by_name_not_by_hanging)
+{
+    CloudFlowFixture fixture;
+    ASSERT_TRUE(fixture.staged) << "the two company fixtures must be written";
+
+    picker_testing_cloud_passphrase_queue_push("correct horse battery");
+
+    FlowState state;
+    state.drop_company_file_in_the_door = true;
+    ASSERT_TRUE(fixture.run(state));
+
+    ASSERT_TRUE(state.finished)
+        << "the injector must return, not wedge inside the nested screen";
+    ASSERT_TRUE(state.saw_cloud_screen) << "the CLOUD door must open";
+    ASSERT_FALSE(state.clicked_all)
+        << "an inert UPLOAD row must be reported, not waited out";
+    EXPECT_EQ("upload", state.failed_step)
+        << "the flow must name the step that did not land";
+    EXPECT_TRUE(state.upload_row_on_screen)
+        << "the row was on screen the whole time; only its action was gone";
+    EXPECT_EQ(0u, fixture.transport.post_urls.size())
+        << "a disabled row must never reach the network";
+    EXPECT_TRUE(trace_contains("cloud_save", "passphrase_set"))
+        << "the flow got as far as the passphrase; only UPLOAD was refused";
 }
 
 // D9 (the passphrase IS the vault address): a refused passphrase must leave
