@@ -541,6 +541,50 @@ void injector_unwind_from_scenario()
     }
 }
 
+// --- the escape tail -------------------------------------------------------
+//
+// A blocking menu driven from the MAIN thread (create_team_menu, picker_main)
+// returns only when a click walks it out. An injector that presses BACK once
+// and then returns therefore hands the process a permanent hang the moment
+// that one press evaporates on a starved frame: the injector thread is gone,
+// nobody presses again, SDL_WaitThread has already been satisfied, and the
+// main thread sits in the menu loop until the group's ctest cap kills the
+// binary. og_test_lineup did exactly that once, reaching the 900 s cap inside
+// basecamp_chip_cycles_own_row_networked_and_resyncs with the log ending on
+// "[interact] clicking 'back' at game(30,187)".
+//
+// The tail must NOT be bounded by a clock: a wall-clock ceiling only relocates
+// the hang (the tail stops clicking, the menu never leaves). It presses until
+// the MAIN thread signals that the menu call returned, which the caller does
+// between the menu call and SDL_WaitThread -- exactly the window this loop
+// covers. Counted, never clocked.
+std::atomic<int> g_escape_back_presses{0};
+// TESTING-only fault injection: make the next N escape presses evaporate the
+// way a starved frame does. This is the fault the tail exists for, so the
+// teeth test arms it rather than waiting for the box to supply it.
+int g_escape_back_drops = 0;
+
+void click_back_until_menu_returns(const std::atomic<bool>& menu_returned)
+{
+    while (!menu_returned.load(std::memory_order_acquire)) {
+        if (g_escape_back_drops > 0) {
+            --g_escape_back_drops;
+            fprintf(stderr,
+                    "  [lineup] dropping the escape BACK press (injected)\n");
+        } else {
+            g_escape_back_presses.fetch_add(1, std::memory_order_release);
+            (void)interact("back");
+        }
+        for (int waited = 0;
+             waited < 500 &&
+             !menu_returned.load(std::memory_order_acquire);
+             waited += 50)
+        {
+            SDL_Delay(50);
+        }
+    }
+}
+
 // --- fake networked lobby (test_uxshots_probe.cpp pattern) ------------------
 
 class FakeNetLobbyClient final : public og::ui::IPickerLobbyClient {
@@ -1233,6 +1277,9 @@ struct BasecampChipFlowState
     bool foreign_chip_inert = false;
     bool chip_cycled = false;
     int captures = 0;
+    // Set by the MAIN thread the instant create_team_menu returns; the
+    // injector's escape tail presses BACK until it does.
+    std::atomic<bool> menu_returned{false};
 };
 
 int basecamp_chip_flow_injector(void* data)
@@ -1254,7 +1301,7 @@ int basecamp_chip_flow_injector(void* data)
         state->chip_cycled =
             wait_for_trace("basecamp", "team slot=0 team=1", 5000);
         SDL_Delay(300);
-        interact("back");
+        click_back_until_menu_returns(state->menu_returned);
     }
     state->finished = true;
     return 0;
@@ -1286,6 +1333,7 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
     picker_load_menu_backdrops();
     const int syncs_before = client.roster_syncs;
     create_team_menu(0);
+    state.menu_returned.store(true, std::memory_order_release);
     SDL_WaitThread(thread, nullptr);
     cleanup_picker_state();
     restore_gladiator_mount();
@@ -1303,6 +1351,40 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
     EXPECT_GT(client.roster_syncs, syncs_before)
         << "the mutation tail re-syncs the lobby roster (B6)";
     EXPECT_EQ(1, state.captures);
+}
+
+// Teeth for that escape tail. The tail exists for the press that evaporates,
+// and a tail that gives up after one press looks exactly like a working one
+// until the day a press is dropped -- so the drop is INJECTED here instead of
+// waited for. Two dropped presses must cost two more laps of the tail, not the
+// binary: the stand-in for "the main thread left the menu" flips only once a
+// real press has been sent, which the two drops delay by exactly two laps.
+// Counted, never clocked.
+TEST(LineupUi, escape_tail_outlives_a_dropped_back_press)
+{
+    std::atomic<bool> menu_returned{false};
+    g_escape_back_drops = 2;
+    g_escape_back_presses.store(0, std::memory_order_release);
+
+    SDL_Thread* watcher = SDL_CreateThread(
+        [](void* data) -> int {
+            auto* left = static_cast<std::atomic<bool>*>(data);
+            while (g_escape_back_presses.load(std::memory_order_acquire) < 1)
+                SDL_Delay(10);
+            left->store(true, std::memory_order_release);
+            return 0;
+        },
+        "escape_tail_menu", &menu_returned);
+    ASSERT_NE(nullptr, watcher);
+
+    click_back_until_menu_returns(menu_returned);
+    SDL_WaitThread(watcher, nullptr);
+
+    EXPECT_EQ(0, g_escape_back_drops)
+        << "the tail consumed both injected drops instead of giving up";
+    EXPECT_EQ(1, g_escape_back_presses.load(std::memory_order_acquire))
+        << "the tail presses again after a dropped press and stops on the "
+           "main thread's signal, never on a clock";
 }
 
 namespace {
