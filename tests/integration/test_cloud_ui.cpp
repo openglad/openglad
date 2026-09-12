@@ -19,6 +19,7 @@
 #include <openglad/resources/save_data.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_click_ladder.h"
 #include "test_company_cleanup.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -111,6 +112,15 @@ struct FlowState {
     // key_set AND company_present) — the same screen state a swallowed
     // passphrase press produces, driven deterministically.
     bool drop_company_file_in_the_door = false;
+    // Set by the test: evaporate the first UPLOAD press the way a starved
+    // frame does, to prove the ladder's retry is live and not decorative.
+    int upload_press_drops = 0;
+    // The two waits, side by side, read at the moment UPLOAD was gated. A
+    // Disabled row is VISIBLE, so the blind wait says yes and the enabled
+    // wait says no — that difference is the whole defect, recorded rather
+    // than argued.
+    bool upload_seen_by_the_blind_wait = false;
+    bool upload_seen_by_the_enabled_wait = false;
     // #237 symmetry pin, the nested main-menu door (run_nested_menu_door):
     // CLOUD SAVES runs INSIDE the still-open main menu, so the depth rule
     // cannot see it and the door site brackets the fade by hand.
@@ -133,23 +143,10 @@ int count_fade_between_traces()
     return fades;
 }
 
-// Block until a trace line shows up, the way wait_for_interactable polls the
-// button list. trace_contains takes the trace mutex, so the injector thread
-// may poll it while the picker thread writes.
-bool wait_for_trace(const char* category, const char* substring, int timeout_ms)
-{
-    int elapsed = 0;
-    const int poll_interval = 50;
-    while (elapsed < timeout_ms) {
-        if (trace_contains(category, substring))
-            return true;
-        SDL_Delay(poll_interval);
-        elapsed += poll_interval;
-    }
-    fprintf(stderr, "  [test] TIMEOUT waiting for trace %s/'%s' (%d ms)\n",
-            category, substring, timeout_ms);
-    return false;
-}
+// (The file's own wait_for_trace polling helper is gone: every trace wait
+// here now runs through the shared click ladder's
+// click_and_acknowledge_trace, which counts NEW matching traces under the
+// same trace mutex and re-presses only when nothing registered.)
 
 // Leave whatever screen the flow is standing on and get back to the main
 // menu. This runs whatever happened above, and that is the whole point.
@@ -198,7 +195,7 @@ int cloud_flow_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
 
     wait_for_interactable("cloud", 10000);
-    SDL_Delay(750);  // menu-entry settle
+    wait_for_menu_frames(2);  // settle on a COMPLETED main-menu frame
     fprintf(stderr, "  [test] clicking CLOUD\n");
     const int fades_before_door = count_fade_between_traces();
     interact("cloud");
@@ -208,7 +205,7 @@ int cloud_flow_injector(void* data)
         state->failed_step = "cloud_door";
     } else {
         state->saw_cloud_screen = true;
-        SDL_Delay(750);
+        wait_for_menu_frames(2);
         state->fades_added_by_cloud_door =
             count_fade_between_traces() - fades_before_door;
         if (state->drop_company_file_in_the_door) {
@@ -220,18 +217,46 @@ int cloud_flow_injector(void* data)
             (void)run_on_main_thread(
                 [] { (void)remove_user_file("save/cloudflow.gtl"); });
         }
-        fprintf(stderr, "  [test] setting the passphrase (queued)\n");
-        interact("cloud_passphrase");
 
-        // UPLOAD stays disabled until the passphrase lands, so wait for the
-        // button instead of guessing a delay.
-        bool ok = wait_for_interactable("cloud_upload", 5000);
+        // The passphrase handler traces its own completion
+        // (menu_screen_specs.cpp, TRACE("cloud_save", "passphrase_set")), so
+        // the press is acknowledged by the edge it writes rather than by a
+        // delay. Re-pressing is toggle-safe by the ladder's own rule: no new
+        // trace means nothing registered, so the queued passphrase is still
+        // sitting in the TESTING queue.
+        fprintf(stderr, "  [test] setting the passphrase (queued)\n");
+        bool ok = click_and_acknowledge_trace("cloud_passphrase", "cloud_save",
+                                              "passphrase_set",
+                                              /*waits_for_autosave=*/false);
         if (!ok)
-            state->failed_step = "upload";
+            state->failed_step = "passphrase";
+
         if (ok) {
-            SDL_Delay(750);
+            // UPLOAD stays disabled until the passphrase lands, so wait for
+            // the button instead of guessing a delay — the intent this file
+            // has always recorded here, and could not deliver until now.
+            //
+            // NOT wait_for_interactable. UPLOAD needs a passphrase AND a
+            // company on disk (cloud_upload_row_state,
+            // src/interface/ui/menu_screen_specs.cpp), and a row the engine
+            // gates is published VISIBLE with its action id zeroed
+            // (apply_row_states, menu_screen_runner.cpp) — so the blind wait
+            // returns instantly for a row whose click can only no-op, and
+            // the flow then spends 15 s waiting for a popup that cannot
+            // come. Wait for the row to be ENABLED, which is the condition
+            // the comment here used to claim.
+            state->upload_seen_by_the_blind_wait =
+                wait_for_interactable("cloud_upload", 5000);
+            ok = wait_for_enabled_interactable("cloud_upload", 5000);
+            state->upload_seen_by_the_enabled_wait = ok;
+            if (!ok) {
+                state->failed_step = "upload";
+                state->upload_row_on_screen = has_interactable("cloud_upload");
+            }
+        }
+        if (ok) {
             fprintf(stderr, "  [test] clicking UPLOAD\n");
-            interact("cloud_upload");
+            g_click_ladder_click_drops += state->upload_press_drops;
             // A request is answered on a LATER frame, and a click that lands
             // while the previous one is still in flight is swallowed. That is
             // the race this test hit on a loaded machine: DOWNLOAD was clicked
@@ -239,22 +264,30 @@ int cloud_flow_injector(void* data)
             // transport.get_urls assertion below failed. Waiting on each
             // request's own completion popup is the causal condition — the
             // button being on screen is not.
-            ok = wait_for_trace("popup", "Uploaded", 15000);
-            if (!ok) {
+            //
+            // The ceiling stays 15 s and is never raised. The ONE-POST
+            // assertion in the test below is what makes the ladder safe
+            // here: run_cloud_upload is fully synchronous inside the row
+            // action (cloud_save_client.cpp), so "no new Uploaded trace"
+            // proves "no POST fired" and a re-press cannot double-post. The
+            // retry gates on the missing trace, never on a timer.
+            ok = click_and_acknowledge_trace("cloud_upload", "popup",
+                                             "Uploaded",
+                                             /*waits_for_autosave=*/false,
+                                             15000);
+            if (!ok)
                 state->failed_step = "upload";
-                state->upload_row_on_screen = has_interactable("cloud_upload");
-            }
         }
         if (ok) {
-            SDL_Delay(750);
             fprintf(stderr, "  [test] clicking DOWNLOAD (queued YES)\n");
-            interact("cloud_download");
-            ok = wait_for_trace("popup", "Downloaded", 15000);
+            ok = click_and_acknowledge_trace("cloud_download", "popup",
+                                             "Downloaded",
+                                             /*waits_for_autosave=*/false,
+                                             15000);
             if (!ok)
                 state->failed_step = "download";
         }
         if (ok) {
-            SDL_Delay(750);
             fprintf(stderr, "  [test] leaving the cloud screen\n");
             fades_inside_cloud = count_fade_between_traces();
         }
@@ -267,7 +300,7 @@ int cloud_flow_injector(void* data)
         state->failed_step = "unwind";
 
     if (wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
+        wait_for_menu_frames(2);
         if (fades_inside_cloud >= 0) {
             state->fades_added_by_cloud_return =
                 count_fade_between_traces() - fades_inside_cloud;
@@ -308,6 +341,10 @@ struct CloudFlowFixture {
         cfg.data.erase("cloud");
         picker_testing_yes_or_no_queue_clear();
         picker_testing_cloud_passphrase_queue_clear();
+        g_click_ladder_trace_click_retries = 0;
+        g_click_ladder_ack_post_retries = 0;
+        g_click_ladder_click_drops = 0;
+        g_click_ladder_ack_drops = 0;
 
         // The local company this machine uploads (most recent, so the picker
         // boots on it even if a shuffled sibling stamped a fresh save0).
@@ -500,6 +537,46 @@ TEST(CloudUi, a_dropped_upload_click_fails_by_name_not_by_hanging)
         << "a disabled row must never reach the network";
     EXPECT_TRUE(trace_contains("cloud_save", "passphrase_set"))
         << "the flow got as far as the passphrase; only UPLOAD was refused";
+
+    // The two waits side by side: this is the defect in one pair of lines,
+    // and the reason tests/test_interact.h needed a second wait at all.
+    EXPECT_TRUE(state.upload_seen_by_the_blind_wait)
+        << "has_interactable is blind to RowState::Disabled — a gated row is "
+           "still VISIBLE, so the old wait returned true for it";
+    EXPECT_FALSE(state.upload_seen_by_the_enabled_wait)
+        << "wait_for_enabled_interactable must refuse a row whose action id "
+           "the engine zeroed";
+}
+
+// Teeth for the UPLOAD ladder: the first press evaporates the way a starved
+// frame drops one, and the flow still uploads — with exactly one retry and
+// still exactly one POST. That last count is the load-bearing one: a ladder
+// that re-pressed on a slow-but-live upload would double-post, so the retry
+// gates on "no new trace" and nothing else.
+TEST(CloudUi, upload_survives_a_dropped_press)
+{
+    CloudFlowFixture fixture;
+    ASSERT_TRUE(fixture.staged) << "the two company fixtures must be written";
+
+    picker_testing_cloud_passphrase_queue_push("correct horse battery");
+    picker_testing_yes_or_no_queue_push(true);  // download overwrite: YES
+
+    FlowState state;
+    state.upload_press_drops = 1;
+    ASSERT_TRUE(fixture.run(state));
+
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.clicked_all)
+        << "a dropped press must cost a retry, not the upload";
+    EXPECT_EQ(0, g_click_ladder_click_drops)
+        << "the injected drop must be consumed";
+    EXPECT_EQ(1, g_click_ladder_trace_click_retries)
+        << "exactly one press left no trace and was re-sent";
+    EXPECT_EQ(1u, fixture.transport.post_urls.size())
+        << "the re-press must not double-post";
+    EXPECT_EQ(1u, fixture.transport.get_urls.size());
+    EXPECT_TRUE(trace_contains("popup", "Uploaded 'LOCAL BAND'."));
+    EXPECT_TRUE(trace_contains("popup", "Downloaded 'CLOUD BAND'."));
 }
 
 // D9 (the passphrase IS the vault address): a refused passphrase must leave
