@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
@@ -149,6 +150,16 @@ static int train_injector(void* data)
 TEST(TrainTeam, train_team) {
     trace_clear();
 
+    // CONTINUE opens the MOST RECENT company on disk, not the one this test
+    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
+    // company another test founded would take the session over silently.
+    // Seed through the autosave choke point that stamps, and check after the
+    // flow which company it actually got.
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
     // Set up a team with members so train menu doesn't show "NEED A TEAM!" popup
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
@@ -174,7 +185,10 @@ TEST(TrainTeam, train_team) {
     og::runtime::current_session->myscreen_->save_data.team_list[4] = std::move(orc);
     og::runtime::current_session->myscreen_->save_data.team_size = 5;
 
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    ASSERT_TRUE(seed_open_company(
+        og::runtime::current_session->myscreen_->save_data, "save0",
+        newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
 
     TrainState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_injector, "train_test", &state);
@@ -191,7 +205,83 @@ TEST(TrainTeam, train_team) {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the flow must have run on the company this test seeded";
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
+}
+
+// WP7 shuffle seed 9: TrainTeam.train_team ran on a company some other test
+// founded, whose roster is EMPTY, so the train menu never appeared and the
+// failure surfaced sixty lines away as a missing roster row. This reproduces
+// it without a shuffle seed and fails at the point of divergence (which
+// company is open) instead of at the symptom.
+TEST(TrainTeam, train_team_runs_on_the_open_company_not_a_stray_slot)
+{
+    trace_clear();
+
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("trainopen");
+    ASSERT_TRUE(pin.applied()) << "trainopen must be a valid company slot";
+
+    const std::int64_t base_s = newest_company_stamp();
+
+    // The stray: a loadable, EMPTY-roster company stamped ahead of now — the
+    // exact shape CampaignAndLevelPicker's BEGIN NEW GAME leaves behind.
+    {
+        SaveData stray;
+        stray.reset();
+        stray.numplayers = 1;
+        stray.current_campaign = "gladiator";
+        stray.scen_num = 1;
+        stray.totalcash = 50000;
+        ASSERT_TRUE(seed_open_company(stray, "straycompany", base_s + 1000))
+            << "the stray company fixture must be written";
+    }
+
+    // The company under test: five level-10 members, stamped newer still.
+    SaveData& save_data = og::runtime::current_session->myscreen_->save_data;
+    save_data.reset();
+    save_data.numplayers = 1;
+    save_data.current_campaign = "gladiator";
+    save_data.scen_num = 1;
+    save_data.totalcash = 50000;
+    {
+        static const int kFamilies[5] = {FAMILY_ARCHMAGE, FAMILY_CLERIC,
+                                         FAMILY_DRUID, FAMILY_THIEF,
+                                         FAMILY_ORC};
+        for (int i = 0; i < 5; ++i) {
+            auto member = std::make_unique<guy>(kFamilies[i]);
+            member->level = 10;
+            save_data.team_list[static_cast<std::size_t>(i)] =
+                std::move(member);
+        }
+        save_data.team_size = 5;
+    }
+    ASSERT_TRUE(seed_open_company(save_data, "trainopen", base_s + 2000))
+        << "the company under test must be written as the most recent one";
+
+    TrainState state = { false, false, false };
+    SDL_Thread* thread =
+        SDL_CreateThread(train_injector, "train_stray_test", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_EQ("trainopen", og::data::active_company_slot())
+        << "the train flow must still be on the company this test seeded — a "
+           "stray company file must never take the session over";
     ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
 }
 
