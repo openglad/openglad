@@ -4103,6 +4103,77 @@ protected:
 
 namespace {
 
+// --- The sprite-sheet picker's escape tail -------------------------------
+//
+// pick_spritesheet returns only when something clicks its way out, and its
+// BACK button is the only door (the ESCAPE hotkey reads SDL's keystate
+// array, which a pushed key event never moves -- see test_input_helpers.h).
+// So an injector that sends ONE parting BACK click and exits is a hang
+// waiting for a starved frame: inject_mouse_click holds the press for 60 ms,
+// and a frame slower than that drains the press AND the release in one
+// get_input_events, leaving query_mouse().left false. The picker saw no
+// click, the injector thread is already gone, and nothing will ever press
+// again.
+//
+// That is what PR #291's ASan lane hit: og_test_picker was killed at its
+// 420 s ctest ceiling with
+// SpriteSheetPicker.wheel_scroll_changes_the_pack_under_the_top_row as the
+// last [ RUN ] line. It reproduces on an ASan build pinned to one starved
+// CPU: the process sits in the picker loop with its injector thread exited
+// (build/repro evidence, this branch).
+//
+// The rule for an injector driving a BLOCKING screen (openglad-test-
+// integrity, "Tests that hang"): never bound the escape tail by wall clock
+// -- a tail that stops clicking guarantees the hang it exists to prevent.
+// Press, WAIT for the main thread to report that the dispatch returned, and
+// press again while it has not. A press on this screen is an exit, so
+// re-sending it can only close a door that is already closed; the per-press
+// wait is generous because it bounds a slow frame, not a dead one.
+//
+// Counted, never clocked: g_spritesheet_back_retries is the number of extra
+// presses the tail had to send.
+std::atomic<bool> g_spritesheet_picker_open{false};
+int g_spritesheet_back_retries = 0;
+// TESTING-only fault injection: make the next N BACK presses evaporate the
+// way a starved frame does.
+int g_spritesheet_back_drops = 0;
+
+constexpr int kSheetBackX = 25;
+constexpr int kSheetBackClickY = 185;
+// One press is given ten frames' worth of a runner where a frame costs ten
+// times what it does here (the picker sleeps 10 ms per frame): long enough
+// that a press which merely landed late is never re-sent, short enough that
+// a press which evaporated is re-sent while the test still has a budget.
+constexpr int kSheetBackWaitMs = 1000;
+
+void spritesheet_click_out()
+{
+    for (int attempt = 0;
+         g_spritesheet_picker_open.load(std::memory_order_acquire);
+         ++attempt)
+    {
+        if (attempt > 0) {
+            ++g_spritesheet_back_retries;
+            fprintf(stderr,
+                    "  [sheet] BACK left the picker open; re-sending "
+                    "(attempt %d)\n",
+                    attempt + 1);
+        }
+        if (g_spritesheet_back_drops > 0) {
+            --g_spritesheet_back_drops;
+            fprintf(stderr, "  [sheet] dropping the BACK press (injected)\n");
+        } else {
+            inject_mouse_click(kSheetBackX, kSheetBackClickY, 60);
+        }
+        int elapsed = 0;
+        while (elapsed < kSheetBackWaitMs &&
+               g_spritesheet_picker_open.load(std::memory_order_acquire)) {
+            SDL_Delay(10);
+            elapsed += 10;
+        }
+    }
+}
+
 static int picker_spritesheet_select_first_pack_injector(void*)
 {
     og::runtime::ensure_thread_session();
@@ -4111,7 +4182,7 @@ static int picker_spritesheet_select_first_pack_injector(void*)
     // Row 0 is "Standard"; row 1 is the first sorted pack.
     inject_mouse_click(80, 56, 60);
     SDL_Delay(120);
-    inject_mouse_click(25, 185, 60);
+    spritesheet_click_out();
     return 0;
 }
 
@@ -4141,6 +4212,8 @@ TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
     fs::create_directories(pack_dir, ec);
 
     prepare_picker_mouse();
+    g_spritesheet_back_retries = 0;
+    g_spritesheet_picker_open.store(true, std::memory_order_release);
     SDL_Thread* th = SDL_CreateThread(
         picker_spritesheet_select_first_pack_injector,
         "picker_sprite_sheet",
@@ -4150,6 +4223,7 @@ TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
     vbutton dispatcher;
     const Sint32 result = dispatcher.do_call(
         button_action_id(ButtonAction::PickSpriteSheet), 0);
+    g_spritesheet_picker_open.store(false, std::memory_order_release);
 
     int code = 0;
     if (th)
@@ -4278,8 +4352,9 @@ int picker_spritesheet_step_injector(void*)
         }
         SDL_Delay(60);
     }
-    // BACK closes the picker and applies whatever is selected.
-    inject_mouse_click(25, 185, 60);
+    // BACK closes the picker and applies whatever is selected -- through
+    // the acknowledged tail, never as one parting click.
+    spritesheet_click_out();
     return 0;
 }
 
@@ -4289,6 +4364,8 @@ Sint32 run_spritesheet_picker(std::vector<SpriteSheetStep> steps)
 {
     g_spritesheet_steps = std::move(steps);
     prepare_picker_mouse();
+    g_spritesheet_back_retries = 0;
+    g_spritesheet_picker_open.store(true, std::memory_order_release);
     SDL_Thread* thread = SDL_CreateThread(
         picker_spritesheet_step_injector, "picker_sheet_steps", nullptr);
     EXPECT_TRUE(thread != nullptr);
@@ -4296,6 +4373,7 @@ Sint32 run_spritesheet_picker(std::vector<SpriteSheetStep> steps)
     vbutton dispatcher;
     const Sint32 result = dispatcher.do_call(
         button_action_id(ButtonAction::PickSpriteSheet), 0);
+    g_spritesheet_picker_open.store(false, std::memory_order_release);
 
     if (thread != nullptr)
         SDL_WaitThread(thread, nullptr);
@@ -4378,6 +4456,33 @@ TEST_F(SpriteSheetPicker, wheel_scroll_changes_the_pack_under_the_top_row)
     ASSERT_EQ(MENU_REDRAW,
               run_spritesheet_picker({sheet_wheel(-1), sheet_row_click(0)}));
     EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"));
+}
+
+// Teeth for the escape tail: the parting BACK press evaporates exactly the
+// way a frame slower than the 60 ms hold eats it, and the run still ENDS --
+// with one extra press, no other press disturbed, and the same selection.
+// On the tree before the tail landed this test is the hang itself: the
+// injector exits with the picker still open and nothing ever presses again
+// (PR #291's ASan lane, og_test_picker killed at 420 s).
+TEST_F(SpriteSheetPicker, a_dropped_back_press_costs_a_retry_not_the_run)
+{
+    // A real pack to start from, so clearing it to Standard is a change the
+    // row click had to make.
+    SpriteSheetPackDirs pack_dirs("zz_wp4_back_", 1);
+    reset_sprite_sheet_selection();
+    cfg.apply_setting("graphics", "sprite_sheet", "zz_wp4_back_00");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+
+    g_spritesheet_back_drops = 1;
+    ASSERT_EQ(MENU_REDRAW, run_spritesheet_picker({sheet_row_click(0)}));
+
+    EXPECT_EQ(0, g_spritesheet_back_drops)
+        << "the injected drop must be consumed";
+    EXPECT_EQ(1, g_spritesheet_back_retries)
+        << "a dropped BACK press costs exactly one re-send: fewer means the "
+           "tail gave up, more means it re-sent a press that had landed";
+    EXPECT_EQ("", cfg.get_setting("graphics", "sprite_sheet"))
+        << "row 0 is Standard: the list click still decided the selection";
 }
 
 // The scrollbar trough is the other way down the list: clicking below the
