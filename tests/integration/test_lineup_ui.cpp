@@ -34,6 +34,7 @@
 #include <openglad/server/match_stage.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_click_ladder.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -261,35 +262,23 @@ bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
     return changed && acknowledged;
 }
 
-bool click_and_acknowledge_trace(const std::string& id,
-                                 const char* category,
-                                 const char* message, int wait_ms)
-{
-    trace_clear();
-    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }))
-        return false;
-    interact(id);
-    const bool traced = wait_for_trace(category, message, wait_ms);
-    const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); });
-    return traced && acknowledged;
-}
-
-// Click `id` until its label reads `want`, with every bounded retry starting
-// from an acknowledged pointer baseline.
+// Click `id` until its label reads `want`. The bounded retry, the
+// acknowledged pointer baseline and the toggle-safety rule all live in
+// tests/test_click_ladder.h now (one implementation of the rule, not three --
+// PR #245); this is the lineup-shaped edge handed to it. Waiting for the
+// TARGET label rather than for any change is also the stronger oracle: a
+// label that moved to the wrong stop no longer counts as an arrival.
 bool click_until_label(const std::string& id, const std::string& want,
                        int attempts = 3, int wait_ms = 2500)
 {
-    for (int i = 0; i < attempts; ++i) {
-        if (interactable_label(id) == want)
-            return true;
-        if (click_and_acknowledge_label_change(id, wait_ms) &&
-            interactable_label(id) == want)
-            return true;
-        fprintf(stderr, "  [lineup] retry %d: '%s' not yet '%s'\n", i + 1,
-                id.c_str(), want.c_str());
-    }
-    return false;
+    if (interactable_label(id) == want)
+        return true;
+    return click_until_edge(
+        id,
+        [&](int edge_wait_ms) {
+            return wait_for_interactable_label(id, want, edge_wait_ms);
+        },
+        /*landed_trace=*/nullptr, attempts, wait_ms);
 }
 
 // The zone submenu's rows compose "FACE - note" onto one button label, so
@@ -316,20 +305,20 @@ bool wait_for_interactable_label_containing(const std::string& id,
     return false;
 }
 
+// The substring twin of the above, on the same shared ladder.
 bool click_until_label_containing(const std::string& id,
                                   const std::string& want, int attempts = 3,
                                   int wait_ms = 2500)
 {
-    for (int i = 0; i < attempts; ++i) {
-        if (interactable_label(id).find(want) != std::string::npos)
-            return true;
-        if (click_and_acknowledge_label_change(id, wait_ms) &&
-            interactable_label(id).find(want) != std::string::npos)
-            return true;
-        fprintf(stderr, "  [lineup] retry %d: '%s' not yet ~'%s'\n", i + 1,
-                id.c_str(), want.c_str());
-    }
-    return false;
+    if (interactable_label(id).find(want) != std::string::npos)
+        return true;
+    return click_until_edge(
+        id,
+        [&](int edge_wait_ms) {
+            return wait_for_interactable_label_containing(id, want,
+                                                          edge_wait_ms);
+        },
+        /*landed_trace=*/nullptr, attempts, wait_ms);
 }
 
 bool wait_for_interactable_at(const std::string& id, int x, int y,
@@ -1621,8 +1610,14 @@ int lineup_classic_viewer_injector(void* data)
     // E1: the band rests on NONE, so STRONG is three stops along.
     state->fill_green_strong = click_through_labels(
         "lineup_fill_1", {"FILL: WEAK", "FILL: FAIR", "FILL: STRONG"});
+    // tests/test_click_ladder.h's ladder, with the autosave half turned off:
+    // the MAP UNITS box traces its own action and does not autosave. It
+    // baselines the trace count instead of the clear-then-wait this file used
+    // to do locally, so a stale trace from earlier in the flow cannot satisfy
+    // the wait and no unrelated trace is thrown away.
     state->map_units_green_off = click_and_acknowledge_trace(
-        "lineup_map_units_1", "lineup", "map_units team=1 value=1", 5000);
+        "lineup_map_units_1", "lineup", "map_units team=1 value=1",
+        /*waits_for_autosave=*/false, 5000);
     state->map_units_green_off = state->map_units_green_off &&
         wait_for_staged_lineup(1, og::sim::kFillStrong,
                                og::sim::kMapUnitsOff, 10000);
@@ -2138,42 +2133,25 @@ struct MacroRoundTripState
     int captures = 0;
 };
 
-// The acknowledged click, as a bounded ladder over a NAMED screen edge.
-// click_until_label_containing covers a row whose own label moves; a door
-// that opens another screen has no label change to wait on, so it gets the
-// same treatment against the edge that identifies the destination. A press
-// that evaporated on a starved frame then costs one attempt instead of the
-// whole flow — and, because every injector below bails out when a door does
-// not open, instead of leaving picker_main spinning until the group's budget
-// expires. Counted, never clocked.
+// The acknowledged click, as a bounded ladder over a NAMED screen edge, is
+// tests/test_click_ladder.h's click_until_edge — this file used to carry a
+// third copy of the rule beside test_campaign_zone_ui.cpp's and
+// test_ctf_ui.cpp's. click_until_label_containing above covers a row whose own
+// label moves; a door that opens another screen has no label change to wait
+// on, so it gets the same treatment against the edge that identifies the
+// destination. A press that evaporated on a starved frame then costs one
+// attempt instead of the whole flow — and, because every injector below bails
+// out when a door does not open, instead of leaving picker_main spinning until
+// the group's budget expires. Counted, never clocked, in
+// g_click_ladder_click_retries.
 //
-// The count is a diagnostic here, deliberately not an assertion: how many
-// presses a loaded box drops is load, and pinning a number would pin the
-// load. The ladder's SHAPE is pinned instead, once, by the matchup group's
-// teeth — CampaignZoneUi.match_setup_click_helper_retries_a_dropped_press,
+// That count is a diagnostic, deliberately not an assertion: how many presses
+// a loaded box drops is load, and pinning a number would pin the load. The
+// ladder's SHAPE is pinned instead, once, by the matchup group's teeth —
+// CampaignZoneUi.match_setup_click_helper_retries_a_dropped_press,
 // .match_setup_click_helper_reports_a_ladder_that_never_lands and
 // .deploy_toggle_survives_a_cancelled_acknowledge — which inject the fault
 // rather than wait for the box to supply it.
-int g_lineup_click_retries = 0;
-
-bool click_until_edge(const std::string& id,
-                      const std::function<bool(int)>& edge_reached,
-                      int attempts = 3, int wait_ms = 2500)
-{
-    for (int attempt = 0; attempt < attempts; ++attempt) {
-        (void)run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms);
-        (void)interact(id);
-        if (edge_reached(wait_ms)) {
-            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
-                                     wait_ms);
-            return true;
-        }
-        ++g_lineup_click_retries;
-        fprintf(stderr, "  [lineup] attempt %d: '%s' did not reach its edge\n",
-                attempt + 1, id.c_str());
-    }
-    return false;
-}
 
 int macro_round_trip_injector(void* data)
 {
