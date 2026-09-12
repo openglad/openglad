@@ -29,8 +29,14 @@ struct CampaignFixture {
     }
 
     ~CampaignFixture() {
+        // "gladiator" was already the mounted package: the constructor's
+        // unmount/mount pair was a round trip, so this is already the state we
+        // found and unmounting here would hand the next test an EMPTY mount it
+        // never asked for.
+        if (old_campaign == "gladiator")
+            return;
         (void)unmount_campaign_package_with_error("gladiator");
-        if (!old_campaign.empty() && old_campaign != "gladiator")
+        if (!old_campaign.empty())
             (void)mount_campaign_package_with_error(old_campaign);
     }
 };

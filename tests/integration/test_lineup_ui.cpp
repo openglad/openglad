@@ -34,6 +34,7 @@
 #include <openglad/server/match_stage.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_click_ladder.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -261,33 +262,36 @@ bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
     return changed && acknowledged;
 }
 
-bool click_and_acknowledge_trace(const std::string& id,
-                                 const char* category,
-                                 const char* message, int wait_ms)
-{
-    trace_clear();
-    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }))
-        return false;
-    interact(id);
-    const bool traced = wait_for_trace(category, message, wait_ms);
-    const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); });
-    return traced && acknowledged;
-}
-
-// Click `id` until its label reads `want`, with every bounded retry starting
-// from an acknowledged pointer baseline.
+// Click `id` until its label reads `want`. The press itself -- the
+// acknowledged pointer baseline before it, the acknowledgement after it, the
+// dropped-press accounting -- is tests/test_click_ladder.h's click_until_edge
+// now, one implementation of that rule instead of three (PR #245). The LAP is
+// still this file's, and deliberately so: these rows are cyclers, and the
+// guard that keeps a cycler from double-stepping here is the re-read of the
+// face BEFORE every press. If a press landed but its label was republished
+// only after the wait expired, the re-read sees the arrival and the flow stops
+// instead of pressing the wheel one stop PAST its target and then waiting for
+// a face the row has already gone by. (The shared ladder's own answer to this
+// is a landing TRACE; these rows publish none that arrives inside the wait --
+// "acted_autosave" was tried and observed NOT to reach the ladder on a starved
+// frame -- so the re-read is the witness that works.) Waiting for the TARGET
+// label rather than for any change is the stronger oracle the old helper
+// lacked: a label that moved to the wrong stop no longer counts as an arrival.
 bool click_until_label(const std::string& id, const std::string& want,
                        int attempts = 3, int wait_ms = 2500)
 {
-    for (int i = 0; i < attempts; ++i) {
+    for (int lap = 0; lap < attempts; ++lap) {
         if (interactable_label(id) == want)
             return true;
-        if (click_and_acknowledge_label_change(id, wait_ms) &&
-            interactable_label(id) == want)
+        if (click_until_edge(
+                id,
+                [&](int edge_wait_ms) {
+                    return wait_for_interactable_label(id, want, edge_wait_ms);
+                },
+                /*landed_trace=*/nullptr, /*attempts=*/1, wait_ms))
+        {
             return true;
-        fprintf(stderr, "  [lineup] retry %d: '%s' not yet '%s'\n", i + 1,
-                id.c_str(), want.c_str());
+        }
     }
     return false;
 }
@@ -316,18 +320,25 @@ bool wait_for_interactable_label_containing(const std::string& id,
     return false;
 }
 
+// The substring twin of the above, same lap rule, same reason: its callers are
+// the zone submenu's TEAMS and FILL wheels.
 bool click_until_label_containing(const std::string& id,
                                   const std::string& want, int attempts = 3,
                                   int wait_ms = 2500)
 {
-    for (int i = 0; i < attempts; ++i) {
+    for (int lap = 0; lap < attempts; ++lap) {
         if (interactable_label(id).find(want) != std::string::npos)
             return true;
-        if (click_and_acknowledge_label_change(id, wait_ms) &&
-            interactable_label(id).find(want) != std::string::npos)
+        if (click_until_edge(
+                id,
+                [&](int edge_wait_ms) {
+                    return wait_for_interactable_label_containing(
+                        id, want, edge_wait_ms);
+                },
+                /*landed_trace=*/nullptr, /*attempts=*/1, wait_ms))
+        {
             return true;
-        fprintf(stderr, "  [lineup] retry %d: '%s' not yet ~'%s'\n", i + 1,
-                id.c_str(), want.c_str());
+        }
     }
     return false;
 }
@@ -538,6 +549,50 @@ void injector_unwind_from_scenario()
         wait_for_interactable("begin_new_game", 10000)) {
         SDL_Delay(750);
         interact("quit");
+    }
+}
+
+// --- the escape tail -------------------------------------------------------
+//
+// A blocking menu driven from the MAIN thread (create_team_menu, picker_main)
+// returns only when a click walks it out. An injector that presses BACK once
+// and then returns therefore hands the process a permanent hang the moment
+// that one press evaporates on a starved frame: the injector thread is gone,
+// nobody presses again, SDL_WaitThread has already been satisfied, and the
+// main thread sits in the menu loop until the group's ctest cap kills the
+// binary. og_test_lineup did exactly that once, reaching the 900 s cap inside
+// basecamp_chip_cycles_own_row_networked_and_resyncs with the log ending on
+// "[interact] clicking 'back' at game(30,187)".
+//
+// The tail must NOT be bounded by a clock: a wall-clock ceiling only relocates
+// the hang (the tail stops clicking, the menu never leaves). It presses until
+// the MAIN thread signals that the menu call returned, which the caller does
+// between the menu call and SDL_WaitThread -- exactly the window this loop
+// covers. Counted, never clocked.
+std::atomic<int> g_escape_back_presses{0};
+// TESTING-only fault injection: make the next N escape presses evaporate the
+// way a starved frame does. This is the fault the tail exists for, so the
+// teeth test arms it rather than waiting for the box to supply it.
+int g_escape_back_drops = 0;
+
+void click_back_until_menu_returns(const std::atomic<bool>& menu_returned)
+{
+    while (!menu_returned.load(std::memory_order_acquire)) {
+        if (g_escape_back_drops > 0) {
+            --g_escape_back_drops;
+            fprintf(stderr,
+                    "  [lineup] dropping the escape BACK press (injected)\n");
+        } else {
+            g_escape_back_presses.fetch_add(1, std::memory_order_release);
+            (void)interact("back");
+        }
+        for (int waited = 0;
+             waited < 500 &&
+             !menu_returned.load(std::memory_order_acquire);
+             waited += 50)
+        {
+            SDL_Delay(50);
+        }
     }
 }
 
@@ -1233,6 +1288,9 @@ struct BasecampChipFlowState
     bool foreign_chip_inert = false;
     bool chip_cycled = false;
     int captures = 0;
+    // Set by the MAIN thread the instant create_team_menu returns; the
+    // injector's escape tail presses BACK until it does.
+    std::atomic<bool> menu_returned{false};
 };
 
 int basecamp_chip_flow_injector(void* data)
@@ -1254,7 +1312,7 @@ int basecamp_chip_flow_injector(void* data)
         state->chip_cycled =
             wait_for_trace("basecamp", "team slot=0 team=1", 5000);
         SDL_Delay(300);
-        interact("back");
+        click_back_until_menu_returns(state->menu_returned);
     }
     state->finished = true;
     return 0;
@@ -1286,6 +1344,7 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
     picker_load_menu_backdrops();
     const int syncs_before = client.roster_syncs;
     create_team_menu(0);
+    state.menu_returned.store(true, std::memory_order_release);
     SDL_WaitThread(thread, nullptr);
     cleanup_picker_state();
     restore_gladiator_mount();
@@ -1303,6 +1362,40 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
     EXPECT_GT(client.roster_syncs, syncs_before)
         << "the mutation tail re-syncs the lobby roster (B6)";
     EXPECT_EQ(1, state.captures);
+}
+
+// Teeth for that escape tail. The tail exists for the press that evaporates,
+// and a tail that gives up after one press looks exactly like a working one
+// until the day a press is dropped -- so the drop is INJECTED here instead of
+// waited for. Two dropped presses must cost two more laps of the tail, not the
+// binary: the stand-in for "the main thread left the menu" flips only once a
+// real press has been sent, which the two drops delay by exactly two laps.
+// Counted, never clocked.
+TEST(LineupUi, escape_tail_outlives_a_dropped_back_press)
+{
+    std::atomic<bool> menu_returned{false};
+    g_escape_back_drops = 2;
+    g_escape_back_presses.store(0, std::memory_order_release);
+
+    SDL_Thread* watcher = SDL_CreateThread(
+        [](void* data) -> int {
+            auto* left = static_cast<std::atomic<bool>*>(data);
+            while (g_escape_back_presses.load(std::memory_order_acquire) < 1)
+                SDL_Delay(10);
+            left->store(true, std::memory_order_release);
+            return 0;
+        },
+        "escape_tail_menu", &menu_returned);
+    ASSERT_NE(nullptr, watcher);
+
+    click_back_until_menu_returns(menu_returned);
+    SDL_WaitThread(watcher, nullptr);
+
+    EXPECT_EQ(0, g_escape_back_drops)
+        << "the tail consumed both injected drops instead of giving up";
+    EXPECT_EQ(1, g_escape_back_presses.load(std::memory_order_acquire))
+        << "the tail presses again after a dropped press and stops on the "
+           "main thread's signal, never on a clock";
 }
 
 namespace {
@@ -1539,8 +1632,14 @@ int lineup_classic_viewer_injector(void* data)
     // E1: the band rests on NONE, so STRONG is three stops along.
     state->fill_green_strong = click_through_labels(
         "lineup_fill_1", {"FILL: WEAK", "FILL: FAIR", "FILL: STRONG"});
+    // tests/test_click_ladder.h's ladder, with the autosave half turned off:
+    // the MAP UNITS box traces its own action and does not autosave. It
+    // baselines the trace count instead of the clear-then-wait this file used
+    // to do locally, so a stale trace from earlier in the flow cannot satisfy
+    // the wait and no unrelated trace is thrown away.
     state->map_units_green_off = click_and_acknowledge_trace(
-        "lineup_map_units_1", "lineup", "map_units team=1 value=1", 5000);
+        "lineup_map_units_1", "lineup", "map_units team=1 value=1",
+        /*waits_for_autosave=*/false, 5000);
     state->map_units_green_off = state->map_units_green_off &&
         wait_for_staged_lineup(1, og::sim::kFillStrong,
                                og::sim::kMapUnitsOff, 10000);
@@ -2056,42 +2155,25 @@ struct MacroRoundTripState
     int captures = 0;
 };
 
-// The acknowledged click, as a bounded ladder over a NAMED screen edge.
-// click_until_label_containing covers a row whose own label moves; a door
-// that opens another screen has no label change to wait on, so it gets the
-// same treatment against the edge that identifies the destination. A press
-// that evaporated on a starved frame then costs one attempt instead of the
-// whole flow — and, because every injector below bails out when a door does
-// not open, instead of leaving picker_main spinning until the group's budget
-// expires. Counted, never clocked.
+// The acknowledged click, as a bounded ladder over a NAMED screen edge, is
+// tests/test_click_ladder.h's click_until_edge — this file used to carry a
+// third copy of the rule beside test_campaign_zone_ui.cpp's and
+// test_ctf_ui.cpp's. click_until_label_containing above covers a row whose own
+// label moves; a door that opens another screen has no label change to wait
+// on, so it gets the same treatment against the edge that identifies the
+// destination. A press that evaporated on a starved frame then costs one
+// attempt instead of the whole flow — and, because every injector below bails
+// out when a door does not open, instead of leaving picker_main spinning until
+// the group's budget expires. Counted, never clocked, in
+// g_click_ladder_click_retries.
 //
-// The count is a diagnostic here, deliberately not an assertion: how many
-// presses a loaded box drops is load, and pinning a number would pin the
-// load. The ladder's SHAPE is pinned instead, once, by the matchup group's
-// teeth — CampaignZoneUi.match_setup_click_helper_retries_a_dropped_press,
+// That count is a diagnostic, deliberately not an assertion: how many presses
+// a loaded box drops is load, and pinning a number would pin the load. The
+// ladder's SHAPE is pinned instead, once, by the matchup group's teeth —
+// CampaignZoneUi.match_setup_click_helper_retries_a_dropped_press,
 // .match_setup_click_helper_reports_a_ladder_that_never_lands and
 // .deploy_toggle_survives_a_cancelled_acknowledge — which inject the fault
 // rather than wait for the box to supply it.
-int g_lineup_click_retries = 0;
-
-bool click_until_edge(const std::string& id,
-                      const std::function<bool(int)>& edge_reached,
-                      int attempts = 3, int wait_ms = 2500)
-{
-    for (int attempt = 0; attempt < attempts; ++attempt) {
-        (void)run_on_main_thread([] { reset_mouse_click_tracking(); }, wait_ms);
-        (void)interact(id);
-        if (edge_reached(wait_ms)) {
-            (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
-                                     wait_ms);
-            return true;
-        }
-        ++g_lineup_click_retries;
-        fprintf(stderr, "  [lineup] attempt %d: '%s' did not reach its edge\n",
-                attempt + 1, id.c_str());
-    }
-    return false;
-}
 
 int macro_round_trip_injector(void* data)
 {
