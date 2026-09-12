@@ -6,6 +6,7 @@
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_company_cleanup.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -262,6 +263,13 @@ TEST(Difficulty, submenu_door_flow) {
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    // The flow's whole claim is about THIS company's settings. CONTINUE
+    // opens the most recent company on disk, not the one a test happened to
+    // write, so without this line the whole flow can run on — and autosave
+    // into — a company some other test founded, and still report green.
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the flow must have run on the company this test seeded";
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.reached_base_camp)
