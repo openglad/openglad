@@ -19,6 +19,7 @@
 #include <cstring>
 #include <vector>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -1162,11 +1163,23 @@ TEST(OptionsMenu, options_menu) {
     save_player_control_settings_to_cfg(cfg);
     cfg.save_settings();
 
+    // CONTINUE opens the MOST RECENT company on disk, not the one this test
+    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
+    // company another test founded would take the session over silently.
+    // Seed through the autosave choke point that stamps, and check after the
+    // flow which company it actually got.
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
     // Need save data for continue_game
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
 
     reset_cycle_helper_clicks();
     OptionsState state = {};
@@ -1185,6 +1198,16 @@ TEST(OptionsMenu, options_menu) {
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    // NO active-company oracle here, deliberately. Measured: this flow goes
+    // straight from the main menu into SETTINGS and never clicks CONTINUE,
+    // so nothing ever repoints the active slot and the assertion the other
+    // five flows carry would be true whatever company were on disk — a
+    // check an empty result also satisfies. The seeded save0 above still
+    // earns its place: it is what the main menu's company view reads.
+    // (Under a planted stray this test passes either way, which is the
+    // proof; OptionsMenu.zz_capture_* below DO click CONTINUE and do carry
+    // the oracle.)
 
     // Leave this integration process with the same default controls it began
     // with; the assertions below use the injector's captured results.
@@ -1525,10 +1548,22 @@ void run_capture_flow(const char* scene, int (*injector)(void*),
 {
     trace_clear();
 
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    // CONTINUE opens the MOST RECENT company on disk, not the one this test
+    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
+    // company another test founded would take the session over silently.
+    // Seed through the autosave choke point that stamps, and check after the
+    // flow which company it actually got.
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
 
     char scene_dir[512];
     snprintf(scene_dir, sizeof(scene_dir), "%s/%s",
@@ -1550,6 +1585,9 @@ void run_capture_flow(const char* scene, int (*injector)(void*),
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the flow must have run on the company this test seeded";
 }
 
 // menu_difficulty: main menu -> CONTINUE -> Base Camp -> the DIFFICULTY door
