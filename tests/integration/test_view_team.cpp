@@ -230,6 +230,21 @@ struct ActivePickerLobbyClientGuard
     }
 };
 
+// save_data.numplayers is a process-wide setting: og::ui::is_spectator_mode()
+// is numplayers == 0, and viewscreen::process_input() RETURNS out of the
+// spectator branch before it ever reaches the sim, so a zero left behind here
+// silently disarms every later input test in the binary. SaveData::reset()
+// does not restore it (the `//numplayers = 1;` line in save_data.cpp is
+// commented out on purpose), so a test that seats nobody restores it itself.
+struct PlayerCountGuard
+{
+    SaveData& save;
+    unsigned char saved;
+
+    explicit PlayerCountGuard(SaveData& s) : save(s), saved(s.numplayers) {}
+    ~PlayerCountGuard() { save.numplayers = saved; }
+};
+
 } // namespace
 
 
@@ -709,7 +724,7 @@ static int base_camp_team_chip_tap_injector(void* data)
 
     if (!wait_for_interactable("roster_team_0", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(750);
@@ -778,7 +793,7 @@ static int base_camp_scenario_line_injector(void* data)
 
     if (!wait_for_interactable("scenario_line", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(750);  // entry settle (fades are instant under TESTING)
@@ -788,7 +803,7 @@ static int base_camp_scenario_line_injector(void* data)
 
     if (!wait_for_interactable("set_level", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_scenario_menu = true;
@@ -797,7 +812,7 @@ static int base_camp_scenario_line_injector(void* data)
 
     if (!wait_for_interactable("scenario_line", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(300);
@@ -2275,7 +2290,7 @@ int add_player_slot_injector(void* data)
     auto* state = static_cast<SlotClickFlowState*>(data);
     if (!wait_for_interactable("seat_card_1", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_rail = true;
@@ -2300,7 +2315,7 @@ int lobby_full_slot_injector(void* data)
     auto* state = static_cast<SlotClickFlowState*>(data);
     if (!wait_for_interactable("seat_card_1", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_rail = true;
@@ -3908,6 +3923,7 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_through_the_first_slot)
 {
     FactoryMappingGuard mapping_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PlayerCountGuard player_count_guard(save);
     save.reset();
     save.numplayers = 0;
     save.current_campaign = "gladiator";
@@ -4731,6 +4747,77 @@ TEST(ViewTeam, base_camp_injector_hatch_closes_the_screen_when_a_wait_times_out)
         << "the hatch must use the affordance the engine listens to: a pushed "
            "SDL key event never reaches keystates_, which is the only thing "
            "that fires a menu screen's ESCAPE hotkey";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+}
+
+// ...and from one screen deeper. The scenario-line and seat-card injectors
+// bail out with the Scenario menu still open on top of the base camp, so the
+// hatch has to unwind TWO engine screens, not one — the level the first hatch
+// test never reaches.
+struct BaseCampDeepHatchState {
+    std::atomic<bool> finished{false};
+    bool saw_scenario_menu = false;
+    bool absent_wait_failed = false;
+    bool hatch_closed_the_screen = false;
+};
+
+static int base_camp_deep_hatch_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampDeepHatchState*>(data);
+
+    if (!wait_for_interactable("scenario_line", 10000)) {
+        state->finished.store(true, std::memory_order_relaxed);
+        cancel_menu_screen();
+        return 0;
+    }
+    SDL_Delay(750);  // entry settle (fades are instant under TESTING)
+    const auto [mapped_x, mapped_y] = ui_canvas_to_window(30.0f, 19.0f);
+    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
+
+    // One screen deep now: the Scenario menu is the one publishing set_level.
+    state->saw_scenario_menu = wait_for_interactable("set_level", 10000);
+    // A wait proven able to fail: the Scenario menu publishes no such row.
+    state->absent_wait_failed = !wait_for_interactable("set_level_99", 1500);
+    state->hatch_closed_the_screen = cancel_menu_screen();
+    state->finished.store(true, std::memory_order_relaxed);
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_injector_hatch_closes_two_screens_when_a_wait_times_out)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "DEEPHATCH";
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+
+    BaseCampDeepHatchState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_deep_hatch_injector, "base_camp_deep_hatch", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);  // must RETURN
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
+    ASSERT_TRUE(state.saw_scenario_menu)
+        << "precondition: the hatch must be taken from inside the Scenario "
+           "menu, not from the base camp";
+    ASSERT_TRUE(state.absent_wait_failed)
+        << "the absent-id wait must time out, or the hatch was never taken";
+    ASSERT_TRUE(state.hatch_closed_the_screen)
+        << "the hatch must click its way out of both screens";
     ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
 }
 
