@@ -7959,6 +7959,11 @@ Sint32 create_team_menu(Sint32 arg1)
     og::ui::CampaignZoneSession zone(
         og::runtime::current_session->myscreen_->save_data);
     zone.fetch();
+    // Named evidence for the entry composition's ORDER (TESTING-only): the
+    // page this fetch composes reads the save, so anything that refreshes
+    // the save on entry — the level-reload guard and the arena FILL deal it
+    // runs — has to land ahead of it.
+    TRACE("zone", "entry_fetch");
     state.zone = &zone;
     og::ui::base_camp_refresh_rows(state);
     og::ui::install_base_camp_state_for_screen(&state);
