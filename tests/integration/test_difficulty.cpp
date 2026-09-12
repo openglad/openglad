@@ -6,6 +6,7 @@
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_company_cleanup.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -234,6 +235,16 @@ static int difficulty_injector(void* data)
 TEST(Difficulty, submenu_door_flow) {
     trace_clear();
 
+    // CONTINUE opens the MOST RECENT company on disk, not the one this test
+    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
+    // company another test founded would take the session over silently.
+    // Seed through the autosave choke point that stamps, and check after the
+    // flow which company it actually got.
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
@@ -243,7 +254,8 @@ TEST(Difficulty, submenu_door_flow) {
     save.keep_fallen_heroes = 0;
     save.generator_rate = 0;
     save.infinite_gold = 0;
-    save.save("save0");
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
     og::runtime::current_session->current_difficulty_ = 1;
 
     DifficultyState state = { false, false, false, false, false, false };
@@ -262,6 +274,13 @@ TEST(Difficulty, submenu_door_flow) {
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    // The flow's whole claim is about THIS company's settings. CONTINUE
+    // opens the most recent company on disk, not the one a test happened to
+    // write, so without this line the whole flow can run on — and autosave
+    // into — a company some other test founded, and still report green.
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the flow must have run on the company this test seeded";
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.reached_base_camp)

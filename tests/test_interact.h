@@ -138,6 +138,59 @@ inline bool wait_for_interactable(const std::string& id, int timeout_ms = 5000)
     return false;
 }
 
+// Presence is NOT clickability. A row the engine publishes as Disabled is
+// VISIBLE — apply_row_states (src/interface/ui/menu_screen_runner.cpp) marks
+// `hidden` only for RowState::Hidden and expresses Disabled by zeroing the
+// action id and greying the face — so has_interactable() above returns true
+// for a row whose click can only no-op (with a "menu_engine"/
+// "disabled_row_click <id>" trace). An injector that waits for such a row and
+// then presses it burns the press and every ceiling that follows: that is the
+// CLOUD-screen UPLOAD wedge.
+//
+// This is the wait that means "the row will actually run something": present,
+// not hidden, AND carrying a nonzero action id. NOTE the corollary — a
+// LABEL-ONLY row, one whose spec carries action id 0 on purpose (a heading, a
+// status line), reads as disabled here and can never satisfy this wait. Use
+// has_interactable()/wait_for_interactable() for those; this one is for rows
+// that are supposed to DO something.
+inline bool has_enabled_interactable(const std::string& id)
+{
+    og::runtime::ensure_thread_session();
+    AllButtonsLock lock;
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        vbutton* const live =
+            og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
+        if (live == nullptr || live->id != id || live->hidden)
+            continue;
+        if (live->myfunc != 0)
+            return true;
+    }
+    return false;
+}
+
+// Block until an interactable is present, visible AND enabled; false on
+// timeout, with the reason named (absent vs. on screen but inert), because
+// "the button never came back" and "the button came back dead" are different
+// bugs and the log is where a reviewer tells them apart.
+inline bool wait_for_enabled_interactable(const std::string& id,
+                                          int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (has_enabled_interactable(id))
+            return true;
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for '%s' to become ENABLED (%d ms; "
+            "it is %s)\n",
+            id.c_str(), timeout_ms,
+            has_interactable(id) ? "on screen but inert" : "not on screen");
+    return false;
+}
+
 // The live label of a visible interactable, or "" when it is absent/hidden.
 // Base Camp's seat slots are one ordinal wearing two faces (a seat card or an
 // ADD PLAYER door), so presence alone no longer tells an injector what a slot

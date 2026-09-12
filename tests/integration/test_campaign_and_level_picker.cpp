@@ -12,6 +12,7 @@
 #include <openglad/resources/io.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_company_cleanup.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -23,6 +24,7 @@
 #include <map>
 #include <string_view>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -1638,6 +1640,12 @@ int new_game_name_accepter(void* data)
 
 TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
 {
+    // This flow FOUNDS a company, and founding is an autosave: the file it
+    // writes outranks every bare-save save0 in this binary and would take
+    // over the next CONTINUE flow's session. See
+    // new_game_flow_leaves_no_company_behind above.
+    ScopedCompanyFileCleanup founded_cleanup;
+
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     const std::string old_mounted = get_mounted_campaign();
 
@@ -1664,6 +1672,60 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
     ASSERT_EQ(std::string("gladiator"), get_mounted_campaign())
         << "a new game must remount the default campaign package";
     ASSERT_EQ(1, save.scen_num) << "a new game must rewind the level cursor";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(old_mounted));
+}
+
+// BEGIN NEW GAME founds a company, and founding IS the first autosave
+// (src/interface/ui/picker_main_menu.cpp): run_new_company_name_entry()
+// generates a RANDOM display name, derive_company_slot() slugs it, and
+// company_autosave() writes save/<slug>.gtl stamped with the wall clock. The
+// file outranks every bare-save save0 in this binary and nothing in the
+// product deletes it — a test that founds one and walks away has handed the
+// next CONTINUE flow somebody else's company.
+//
+// The slug is random (gold-wolf-crew, storm-viper-pack, amber-shield-order
+// were three consecutive observations), so a per-slot cleanup list cannot
+// cover it; the snapshot-diff guard is the only shape that can. This test is
+// that guard's tooth: run the real founding entry point under it and prove
+// the company list comes back where it started.
+TEST(CampaignAndLevelPicker, new_game_flow_leaves_no_company_behind)
+{
+    const auto slots = [] {
+        std::set<std::string> result;
+        for (const og::data::CompanyInfo& info : og::data::list_companies())
+            result.insert(info.slot);
+        return result;
+    };
+
+    const std::string old_mounted = get_mounted_campaign();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    for (int i = 0; i < MAX_TEAM_SIZE; i++)
+        save.team_list[static_cast<std::size_t>(i)].reset();
+    save.team_size = 0;
+
+    const std::set<std::string> before = slots();
+
+    {
+        ScopedCompanyFileCleanup guard;
+        og::data::ScopedActiveCompany pin("save0");
+        ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+        SDL_Thread* thread =
+            SDL_CreateThread(new_game_name_accepter, "leak_name_accept",
+                             nullptr);
+        ASSERT_TRUE(thread != nullptr);
+        const bool ok = picker_prepare_new_game_setup();
+        SDL_WaitThread(thread, nullptr);
+        ASSERT_TRUE(ok) << "new game setup should not abort";
+        // The flow really did found something; otherwise the guard below
+        // would be proving nothing.
+        ASSERT_EQ(before.size() + 1, slots().size())
+            << "BEGIN NEW GAME must have founded exactly one company";
+    }
+
+    ASSERT_EQ(before, slots())
+        << "BEGIN NEW GAME founded a company this binary never cleaned up";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error(old_mounted));

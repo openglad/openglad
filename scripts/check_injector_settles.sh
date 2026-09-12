@@ -40,6 +40,7 @@ FILES=(
     tests/integration/test_campaign_and_level_picker.cpp
     tests/integration/test_pause_menu.cpp
     tests/integration/test_ctf_ui.cpp
+    tests/integration/test_cloud_ui.cpp
 )
 
 status=0

@@ -44,40 +44,10 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-// Restores whatever fixed clock (if any) the suite had installed.
-struct CompanyClockRestore {
-    ~CompanyClockRestore() { og::data::set_company_clock_for_tests(std::nullopt); }
-};
-
-// Later than ANY company already on disk, not merely later than "now".
-// Another test in this binary can found a company under a FIXED future clock
-// (test_new_game.cpp pins 2100-01-01 for its player-count flow, and the flow
-// stamps save0 on the way through), so a now-relative stamp loses to it and
-// CONTINUE opens that company instead of the one under test.
-static std::int64_t newest_company_stamp()
-{
-    std::int64_t newest = og::data::company_clock_now_s();
-    for (const og::data::CompanyInfo& info : og::data::list_companies())
-        newest = std::max(newest, info.last_played_unix_s);
-    return newest;
-}
-
-// Write the in-memory save to `slot` the way the GAME writes a company: through
-// the autosave choke point, which stamps last_played_unix_s. A bare
-// SaveData::save() leaves the stamp at zero, which is what made these flows
-// depend on nothing else in the binary having a fresher company — the CONTINUE
-// door opens the most recent one, not the one the test happened to write.
-static bool seed_open_company(SaveData& save, const std::string& slot,
-                              std::int64_t stamp_s)
-{
-    og::data::set_company_clock_for_tests(stamp_s);
-    const bool ok = og::data::set_active_company_slot(slot) &&
-                    og::data::company_autosave(
-                        save, og::data::CompanyAutosaveKind::BaseCampMutation) ==
-                        SaveDataIoError::None;
-    og::data::set_company_clock_for_tests(std::nullopt);
-    return ok;
-}
+// CompanyClockRestore, newest_company_stamp() and seed_open_company() were
+// written here and now live in tests/test_company_cleanup.h beside
+// ScopedCompanyFileCleanup: six more og_test_menu_ui flows need the same
+// three lines.
 
 // Test: Navigate to hire troops, browse characters with NEXT/PREV, then exit.
 //
