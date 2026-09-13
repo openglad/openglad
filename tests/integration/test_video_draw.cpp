@@ -7,7 +7,11 @@
 
 #include <array>
 #include <cstring>
+#include <map>
 #include <span>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -72,6 +76,110 @@ struct ScopedVideoRandom
     }
     ~ScopedVideoRandom() { ctx().rng = saved; }
 };
+
+// The canvas a text write is expected to leave behind: palette index per
+// inked pixel. Pixels absent from the plan must stay at the cleared canvas.
+using VdTextPlan = std::map<std::pair<int, int>, int>;
+
+// Stamps `message` into `plan` the way putdatatext stamps it onto the canvas:
+// glyph byte 0 is transparent, a byte above 247 is replaced by `color`, and
+// any other byte is copied verbatim (src/platform/sdl/video_sdl.cpp,
+// sdl_video::putdatatext). Glyph n sits at x + n*(sizex+1), the stride every
+// monospaced write_xy/write_formatted path uses. Later stamps overwrite
+// earlier ones, exactly as the canvas does, so a shadow pass followed by the
+// coloured pass plans the visible result. Returns the number of glyph bytes
+// stamped, so a caller can pin that the oracle expected real ink.
+int vd_plan_text(const text& font, int x, int y, std::string_view message,
+                 unsigned char color, VdTextPlan& plan)
+{
+    const int glyph_w = static_cast<int>(font.letters->w);
+    const int glyph_h = static_cast<int>(font.letters->h);
+    const auto stride =
+        static_cast<std::size_t>(glyph_w) * static_cast<std::size_t>(glyph_h);
+    int stamped = 0;
+    for (std::size_t i = 0; i < message.size(); ++i)
+    {
+        const auto letter = static_cast<unsigned char>(message[i]);
+        // safe_glyph_span() would silently substitute '?' past the end of the
+        // font, which would make the plan a lie rather than a failure.
+        EXPECT_LT(static_cast<int>(letter), static_cast<int>(font.letters->frames))
+            << "glyph '" << message[i] << "' must exist without the '?' fallback";
+        const unsigned char* glyph =
+            font.letters->data.get() + static_cast<std::size_t>(letter) * stride;
+        const int origin_x = x + static_cast<int>(i) * (glyph_w + 1);
+        for (int gy = 0; gy < glyph_h; ++gy)
+        {
+            for (int gx = 0; gx < glyph_w; ++gx)
+            {
+                const unsigned char byte =
+                    glyph[static_cast<std::size_t>(gy) * static_cast<std::size_t>(glyph_w) +
+                          static_cast<std::size_t>(gx)];
+                if (byte == 0)
+                    continue;
+                plan[{origin_x + gx, y + gy}] =
+                    byte > 247 ? static_cast<int>(color) : static_cast<int>(byte);
+                ++stamped;
+            }
+        }
+    }
+    return stamped;
+}
+
+// The verdict of comparing one canvas box against a plan.
+struct VdPlanVerdict
+{
+    int matched = 0;      // planned pixels found carrying their planned index
+    int mismatches = 0;   // pixels of the box disagreeing with the plan
+    std::string first;    // the first disagreement, for the failure message
+};
+
+// Compares every pixel of the box against the plan: a planned pixel must carry
+// its planned index, and every other pixel in the box must still be the
+// cleared canvas (index 0).
+VdPlanVerdict vd_check_plan(screen* s, const VdTextPlan& plan,
+                            int x0, int y0, int x1, int y1)
+{
+    VdPlanVerdict verdict;
+    for (int y = y0; y <= y1; ++y)
+    {
+        for (int x = x0; x <= x1; ++x)
+        {
+            const auto it = plan.find({x, y});
+            const int expected = it == plan.end() ? 0 : it->second;
+            const int actual = vd_index(s, x, y);
+            if (actual == expected)
+            {
+                if (it != plan.end())
+                    ++verdict.matched;
+                continue;
+            }
+            ++verdict.mismatches;
+            if (verdict.first.empty())
+            {
+                verdict.first = "pixel (" + std::to_string(x) + "," +
+                                std::to_string(y) + ") is index " +
+                                std::to_string(actual) + ", the glyph plan says " +
+                                std::to_string(expected);
+            }
+        }
+    }
+    return verdict;
+}
+
+// How many pixels of the box carry palette index `color`.
+int vd_box_hits(screen* s, int x0, int y0, int x1, int y1, int color)
+{
+    int hits = 0;
+    for (int y = y0; y <= y1; ++y)
+    {
+        for (int x = x0; x <= x1; ++x)
+        {
+            if (vd_index(s, x, y) == color)
+                ++hits;
+        }
+    }
+    return hits;
+}
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -889,19 +997,140 @@ TEST(VideoDraw, text_write_xy_inks_every_glyph_byte_in_the_requested_colour)
 }
 
 
-TEST(VideoDraw, video_text_write_xy_center)
+TEST(VideoDraw, text_write_xy_center_starts_half_the_string_width_left_of_x)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_xy_center(160, 100, WHITE, "Centered");
+    screen* const s = vd_screen();
+    text& font = s->text_normal;
+    ASSERT_NE(nullptr, font.letters) << "the small font must be loaded";
+    ASSERT_TRUE(font.letters->valid()) << "the small font must be loaded";
+
+    const std::string_view message = "Centered";
+    s->clearbuffer();
+    font.write_xy_center(160, 100, WHITE, "%s", std::string(message).c_str());
+
+    // write_formatted() centres by pulling the origin back half the string's
+    // pixel width (src/interface/render/text.cpp), which for this monospaced
+    // font is exactly query_width()/2.
+    const int width = font.query_width(message);
+    ASSERT_EQ((static_cast<int>(font.letters->w) + 1) *
+                  static_cast<int>(message.size()),
+              width)
+        << "the small font measures monospaced, one pixel of gap per glyph";
+    const int expected_x = 160 - width / 2;
+
+    VdTextPlan plan;
+    const int stamped = vd_plan_text(font, expected_x, 100, message, WHITE, plan);
+    ASSERT_GT(stamped, 20) << "the oracle itself must expect real ink";
+
+    // The box is wide enough on both sides to catch a write that never moved
+    // (ink starting at 160) and one that moved the whole width (ink starting
+    // at 160 - width): either lands on a pixel the plan says is blank.
+    const VdPlanVerdict verdict = vd_check_plan(
+        s, plan, 160 - width - 4, 99, 160 + width + 4,
+        100 + static_cast<int>(font.letters->h));
+    EXPECT_EQ(0, verdict.mismatches) << verdict.first;
+    EXPECT_EQ(static_cast<int>(plan.size()), verdict.matched)
+        << "every planned pixel of the centred string must be on the canvas";
+    EXPECT_EQ(0, vd_box_hits(s, 160 + width / 2, 99, 160 + width + 4,
+                             100 + static_cast<int>(font.letters->h), WHITE))
+        << "a centred string never inks past x + width/2";
 }
 
 
-TEST(VideoDraw, video_text_write_xy_shadow)
+TEST(VideoDraw, text_write_xy_shadow_underlays_an_offset_dark_copy)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_xy_shadow(10, 30, WHITE, "Shadow text");
+    screen* const s = vd_screen();
+    text& font = s->text_normal;
+    ASSERT_NE(nullptr, font.letters) << "the small font must be loaded";
+    ASSERT_TRUE(font.letters->valid()) << "the small font must be loaded";
+
+    const std::string_view message = "Shadow text";
+    constexpr int kShadowColor = PURE_BLACK + 2;
+
+    s->clearbuffer();
+    font.write_xy_shadow(10, 30, WHITE, "%s", std::string(message).c_str());
+
+    // write_formatted()'s shadow pass draws each glyph at (x-1, y+1) in
+    // PURE_BLACK+2 and the coloured pass then draws it at (x, y), so the
+    // coloured copy wins wherever the two overlap.
+    VdTextPlan plan;
+    const int shadow_ink =
+        vd_plan_text(font, 9, 31, message, static_cast<unsigned char>(kShadowColor), plan);
+    const int main_ink = vd_plan_text(font, 10, 30, message, WHITE, plan);
+    ASSERT_EQ(shadow_ink, main_ink) << "both passes stamp the same glyph bytes";
+    ASSERT_GT(main_ink, 20) << "the oracle itself must expect real ink";
+
+    int planned_shadow = 0;
+    for (const auto& [pixel, index] : plan)
+    {
+        (void)pixel;
+        if (index == kShadowColor)
+            ++planned_shadow;
+    }
+    ASSERT_GT(planned_shadow, 10)
+        << "a shadow the coloured pass fully covers would prove nothing";
+
+    const int glyph_w = static_cast<int>(font.letters->w);
+    const int glyph_h = static_cast<int>(font.letters->h);
+    const int box_x1 = 10 + static_cast<int>(message.size()) * (glyph_w + 1) + 2;
+    const VdPlanVerdict verdict =
+        vd_check_plan(s, plan, 7, 29, box_x1, 30 + glyph_h + 2);
+    EXPECT_EQ(0, verdict.mismatches) << verdict.first;
+    EXPECT_EQ(static_cast<int>(plan.size()), verdict.matched)
+        << "the canvas must hold both the shadow and the coloured copy";
+    EXPECT_EQ(planned_shadow,
+              vd_box_hits(s, 7, 29, box_x1, 30 + glyph_h + 2, kShadowColor))
+        << "exactly the uncovered shadow pixels wear PURE_BLACK+2";
+
+    // Negative control: the same string without the shadow pass inks no
+    // PURE_BLACK+2 at all, and inks strictly fewer pixels.
+    s->clearbuffer();
+    font.write_xy(10, 30, WHITE, "%s", std::string(message).c_str());
+    EXPECT_EQ(0, vd_box_hits(s, 7, 29, box_x1, 30 + glyph_h + 2, kShadowColor))
+        << "write_xy has no shadow pass";
+    EXPECT_EQ(main_ink, vd_box_hits(s, 7, 29, box_x1, 30 + glyph_h + 2, WHITE))
+        << "write_xy inks only the coloured copy";
+    EXPECT_EQ(main_ink + planned_shadow, static_cast<int>(plan.size()))
+        << "the shadowed write inks strictly more pixels than the plain one";
 }
 
 
-TEST(VideoDraw, video_text_big)
+TEST(VideoDraw, text_big_is_a_taller_font_that_inks_its_own_glyphs)
 {
-    og::runtime::current_session->myscreen_->text_big.write_xy(10, 50, "Big text", WHITE);
+    screen* const s = vd_screen();
+    text& big = s->text_big;
+    text& small = s->text_normal;
+    ASSERT_NE(nullptr, big.letters) << "the big font must be loaded";
+    ASSERT_TRUE(big.letters->valid()) << "the big font must be loaded";
+    ASSERT_NE(nullptr, small.letters) << "the small font must be loaded";
+    ASSERT_NE(big.letters, small.letters)
+        << "text_big and text_normal must be distinct font assets";
+    ASSERT_GT(static_cast<int>(big.letters->frames), static_cast<int>('t'))
+        << "the big font must carry the glyphs this test writes";
+
+    const std::string_view message = "Big text";
+    s->clearbuffer();
+    big.write_xy(10, 50, message, WHITE);
+
+    // sync_geometry() copies the pixie's box onto sizex/sizey on every write,
+    // so after the write the geometry must be the big font's own box.
+    EXPECT_EQ(static_cast<int>(big.letters->w), static_cast<int>(big.sizex))
+        << "sizex tracks the big pixie's width";
+    EXPECT_EQ(static_cast<int>(big.letters->h), static_cast<int>(big.sizey))
+        << "sizey tracks the big pixie's height";
+    EXPECT_GT(static_cast<int>(big.letters->h), static_cast<int>(small.letters->h))
+        << "text_big's glyphs are taller than text_normal's";
+
+    VdTextPlan plan;
+    const int stamped = vd_plan_text(big, 10, 50, message, WHITE, plan);
+    ASSERT_GT(stamped, 40) << "the big font must carry real glyph ink";
+
+    const int glyph_w = static_cast<int>(big.letters->w);
+    const int glyph_h = static_cast<int>(big.letters->h);
+    const VdPlanVerdict verdict = vd_check_plan(
+        s, plan, 8, 49,
+        10 + static_cast<int>(message.size()) * (glyph_w + 1) + 2, 50 + glyph_h);
+    EXPECT_EQ(0, verdict.mismatches) << verdict.first;
+    EXPECT_EQ(static_cast<int>(plan.size()), verdict.matched)
+        << "every big-font glyph byte must reach the canvas";
 }
