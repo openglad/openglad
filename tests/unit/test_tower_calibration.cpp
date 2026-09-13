@@ -47,6 +47,17 @@ struct FloorPin
     int floor_number;
     int crew_level; // the player curve crew(f) = 1 + f/4
     int survivors_floor; // min 8-mixed-crew survivors at tick 600, all seeds
+    int survivors_ceiling; // max survivors on the hot bands (8 = no ceiling)
+};
+
+// What the generated floor actually fielded, beside the survivor count: a
+// floor alone is one-sided, so an unpopulated deep floor (run_audits pins
+// footing/stairs/reachability, never POPULATION) or foes that never bite
+// would leave every 0-floor row green.
+struct FloorBattle
+{
+    int alive = -1; // crew standing at tick 600
+    int foes = 0;   // placed team-2/3 livings the floor deploys with
 };
 
 // Measured 2026-07-13 on the first shipped generator (min across run seeds
@@ -91,8 +102,12 @@ struct FloorPin
 // f20 0 0 0. Floor 5 joining the 0-floor class for one seed is a balance
 // signal for the next tower pass, not a contract this pin enforces —
 // WP-7's bracket sweeps are still the clearability gate.)
+// (2026-09-13: hot-side ceilings added — 8 means "no ceiling". Every
+// 0-floor band has measured 0..6 survivors on all three run seeds since the
+// generator shipped, so 7 is pure slack that still reds a band which stops
+// taking a single one of the eight. Floor 1 keeps its floor only.)
 constexpr FloorPin kPins[] = {
-    {1, 1, 7}, {5, 2, 0}, {10, 3, 0}, {15, 4, 0}, {20, 6, 0},
+    {1, 1, 7, 8}, {5, 2, 0, 7}, {10, 3, 0, 7}, {15, 4, 0, 7}, {20, 6, 0, 7},
 };
 
 void prune_all_floors()
@@ -101,15 +116,33 @@ void prune_all_floors()
         (void)og::data::delete_tower_floor_files(id);
 }
 
-int survivors_at_600(std::uint32_t run_seed, int floor_number, int crew_level)
+// The foes the generator placed: tower posts climb on teams 2/3 (never the
+// hold-post teams 0/1) — the same census test_tower_floor_gen.cpp pins.
+int placed_foes(GameWorld& world)
 {
+    int n = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living &&
+            (w->team_num() == 2 || w->team_num() == 3))
+            ++n;
+    }
+    return n;
+}
+
+FloorBattle battle_at_600(std::uint32_t run_seed, int floor_number,
+                          int crew_level)
+{
+    FloorBattle out;
     prune_all_floors();
     if (!og::tower::generate_tower_floor_to_user_dir(run_seed, floor_number)
              .written)
-        return -1;
+        return out;
     LoadedWestlandsLevel fx(og::kTowerGateLevel + floor_number, 42u);
     if (!fx.loaded)
-        return -1;
+        return out;
     GameWorld& world = fx.world();
     std::vector<walker*> crew = deploy_crew(
         fx.level, world,
@@ -117,14 +150,20 @@ int survivors_at_600(std::uint32_t run_seed, int floor_number, int crew_level)
          FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN},
         crew_level);
     if (crew.size() != 8u)
-        return -1;
+        return out;
+    out.foes = placed_foes(world);
     for (int t = 0; t < kCalibrationTicks; ++t)
         world.tick();
-    int alive = 0;
+    out.alive = 0;
     for (walker* w : crew)
         if (w != nullptr && !w->dead())
-            ++alive;
-    return alive;
+            ++out.alive;
+    return out;
+}
+
+int survivors_at_600(std::uint32_t run_seed, int floor_number, int crew_level)
+{
+    return battle_at_600(run_seed, floor_number, crew_level).alive;
 }
 
 } // namespace
@@ -163,16 +202,30 @@ TEST(TowerCalibration, curve_crew_survival_floors_at_600_ticks)
         }
         for (std::uint32_t seed : kRunSeeds)
         {
-            const int alive =
-                survivors_at_600(seed, pin.floor_number, pin.crew_level);
-            ASSERT_GE(alive, 0) << "floor failed to generate/load/deploy "
-                                   "(run seed " << seed << ")";
-            EXPECT_GE(alive, pin.survivors_floor)
+            const FloorBattle r =
+                battle_at_600(seed, pin.floor_number, pin.crew_level);
+            ASSERT_GE(r.alive, 0) << "floor failed to generate/load/deploy "
+                                     "(run seed " << seed << ")";
+            // §5.6: N(f) = min(7 + f, 30) foes, boss floors keeping 70 % and
+            // up to a quarter carved off as team-3 raiders — a third of N is
+            // slack under every one of those splits, and zero is not.
+            EXPECT_GE(r.foes,
+                      og::tower::foe_count_for_floor(pin.floor_number) / 3)
+                << "run seed " << seed
+                << ": the generated floor fielded almost nobody — the ramp "
+                   "contract is that every floor is populated from N(f)";
+            EXPECT_GE(r.alive, pin.survivors_floor)
                 << "run seed " << seed
                 << ": a curve-level fresh crew fell below its survival "
                    "floor — the band got meaningfully hotter; re-measure "
                    "with TOWER_CALIBRATION_MEASURE=1 and recalibrate "
                    "deliberately";
+            EXPECT_LE(r.alive, pin.survivors_ceiling)
+                << "run seed " << seed
+                << ": the band left more of the eight standing than it ever "
+                   "has — it got meaningfully COLDER (foes that do not bite "
+                   "are invisible to a floor); re-measure with "
+                   "TOWER_CALIBRATION_MEASURE=1 before touching this pin";
         }
     }
     prune_all_floors();

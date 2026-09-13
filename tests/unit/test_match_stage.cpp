@@ -1680,23 +1680,71 @@ TEST_F(MatchStageTest, adoption_refuses_an_unstaged_stage)
 }
 
 // GameWorld::adopt_scripts_from self-adoption guard: adopting a world's own
-// VM is a no-op — the scripts stay live and the staged keyframe still
-// re-serializes byte-identical afterwards.
-TEST_F(MatchStageTest, self_script_adoption_is_a_no_op)
+// VM is a no-op. The keyframe bytes cannot see that — nothing from the VM is
+// serialized — so the oracle is the VM ITSELF: the entity hooks the staged
+// on_load registered must still dispatch on the same world afterwards.
+TEST_F(MatchStageTest, self_script_adoption_leaves_the_worlds_own_vm_live)
 {
+    // Mount FIRST: pack (re)installation clears every registered script.
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("modes"));
+              mount_campaign_package_with_error("gladiator"));
+    AdoptHookProbeScript probe;
 
-    og::server::MatchStage stage({.networked = true});
-    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    og::server::MatchStage stage({.networked = false});
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "gladiator";
+    inputs.equivalent.scen_num = 1;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.team_list = {
+        make_slot(0u, 100, "Host", FAMILY_SOLDIER, 0),
+    };
+    inputs.difficulty = 1;
+    inputs.match_seed = 7u;
+    stage.observe_inputs(inputs, /*now_ms=*/0);
     ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
     GameWorld* const staged_world = stage.world();
     ASSERT_NE(nullptr, staged_world);
-    const std::vector<std::uint8_t> before = staged_keyframe_bytes(stage);
+    ASSERT_TRUE(staged_world->scripts().host().errors().empty())
+        << staged_world->scripts().host().errors().back().message;
+    const std::int32_t target_id = staged_world->mode.vars[47];
+    ASSERT_NE(0, target_id) << "the on_load probe banked its target id";
+    ASSERT_EQ(0, staged_world->mode.vars[48]) << "the hook has not fired yet";
 
+    const std::vector<std::uint8_t> before = staged_keyframe_bytes(stage);
     staged_world->adopt_scripts_from(*staged_world);
     EXPECT_EQ(before, staged_keyframe_bytes(stage))
-        << "self-adoption must not move the VM out from under the world";
+        << "self-adoption must not move a replicated byte";
+
+    // Fire the hook IN THE STILL-STAGED WORLD: dispatch resolves its world
+    // through the ambient context, so bracket the kill with one pointing at
+    // the staged world.
+    SaveData probe_save;
+    og::sim::SimEventLog probe_events;
+    IRandom* probe_rng = &staged_world->rng_;
+    bool probe_active = false;
+    GameplayContext probe_ctx;
+    probe_ctx.world = staged_world;
+    probe_ctx.save = &probe_save;
+    probe_ctx.sim_events = &probe_events;
+    probe_ctx.config = &cfg;
+    probe_ctx.session_rng_ref = &probe_rng;
+    probe_ctx.gameplay_active_ref = &probe_active;
+    GameplayContext* const previous_context = current_game;
+    current_game = &probe_ctx;
+    walker* const target =
+        staged_world->find_by_id(static_cast<std::uint32_t>(target_id));
+    ASSERT_NE(nullptr, target);
+    target->set_dead(1);
+    target->death();
+    current_game = previous_context;
+
+    EXPECT_TRUE(staged_world->scripts().host().errors().empty())
+        << (staged_world->scripts().host().errors().empty()
+                ? std::string()
+                : staged_world->scripts().host().errors().back().message);
+    EXPECT_EQ(31337, staged_world->mode.vars[48])
+        << "self-adoption must leave the staged VM and its og.set_entity_hooks "
+           "registry live — a moved-out or rebuilt VM dispatches nothing";
 }
 
 // ---------------------------------------------------------------------------

@@ -256,9 +256,26 @@ TEST(TowerFallback, t0_fallback_is_audit_clean)
         EXPECT_TRUE(failures.empty()) << joined;
         EXPECT_LE(world.floor_count(), 2) << "fallback keeps it simple";
 
-        ASSERT_FALSE(world.oblist.empty());
-        walker* const entity = world.oblist.front().get();
-        ASSERT_NE(nullptr, entity);
+        // Re-deriving a configured entity restores the FAMILY'S OWN row:
+        // set_derived_stats re-reads speed, sight, damage and fire rate for
+        // exactly (order, family), so the values it writes back must be the
+        // ones the entity already had. Pick a deliberately non-soldier foe —
+        // a wrong-row regression (hard-coded FAMILY_SOLDIER) is invisible on
+        // a soldier.
+        walker* entity = nullptr;
+        for (const auto& uptr : world.oblist)
+        {
+            walker* const candidate = uptr.get();
+            if (candidate != nullptr &&
+                candidate->query_order() == Order::Living &&
+                candidate->family() != FAMILY_SOLDIER)
+            {
+                entity = candidate;
+                break;
+            }
+        }
+        ASSERT_NE(nullptr, entity)
+            << "the fallback floor must place a non-soldier living";
         const Order order = entity->query_order();
         const int family = entity->family();
         const PixieData* const graphics =
@@ -266,6 +283,14 @@ TEST(TowerFallback, t0_fallback_is_audit_clean)
         ASSERT_NE(nullptr, graphics);
         EXPECT_EQ(order, entity->query_order());
         EXPECT_EQ(family, entity->family());
+
+        const float step0 = entity->stepsize();
+        const int los0 = entity->lineofsight();
+        const float dmg0 = entity->damage();
+        const float fire0 = entity->fire_frequency();
+        ASSERT_NE(-101.0f, step0) << "the probe sentinels must be impossible";
+        ASSERT_GT(los0, 0) << "a configured foe can see";
+
         entity->set_stepsize(-101.0f);
         entity->set_normal_stepsize(-102.0f);
         entity->set_lineofsight(-103);
@@ -273,11 +298,13 @@ TEST(TowerFallback, t0_fallback_is_audit_clean)
         entity->set_fire_frequency(-105.0f);
         world.set_entity_derived_stats(
             entity, entity->query_order(), entity->family());
-        EXPECT_NE(-101.0f, entity->stepsize());
-        EXPECT_FLOAT_EQ(entity->stepsize(), entity->normal_stepsize());
-        EXPECT_NE(-103, entity->lineofsight());
-        EXPECT_NE(-104.0f, entity->damage());
-        EXPECT_NE(-105.0f, entity->fire_frequency());
+        EXPECT_FLOAT_EQ(step0, entity->stepsize())
+            << "family " << family << ": the re-derive must restore the "
+               "family's own speed, not another row's";
+        EXPECT_FLOAT_EQ(step0, entity->normal_stepsize());
+        EXPECT_EQ(los0, entity->lineofsight());
+        EXPECT_FLOAT_EQ(dmg0, entity->damage());
+        EXPECT_FLOAT_EQ(fire0, entity->fire_frequency());
     }
 }
 
