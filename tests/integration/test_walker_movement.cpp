@@ -992,6 +992,11 @@ TEST(WalkerMovement, walker_draw_tile_phantom_and_forestwalk_paths)
 // a bare "0 <= facing < 8" range check cannot tell from a no-op: each arm turns
 // to a named facing, walks ONE full stepsize that way, reports that walk's
 // result and restores the original curdir.
+//
+// The slope ladder exists TWICE in src/: living::facing (src/gameplay/living.cpp)
+// is a byte-for-byte copy of walker::facing (src/gameplay/walker_movement.cpp),
+// and a living never reaches the base one. Weapons, effects and every other
+// non-living walker do, so the table below runs through both.
 TEST(WalkerMovement, facing_buckets_and_npc_fallback_component_walks)
 {
     fresh_grass_map();
@@ -1009,7 +1014,19 @@ TEST(WalkerMovement, facing_buckets_and_npc_fallback_component_walks)
     };
     for (auto& v : vectors) {
         ASSERT_EQ(v.expected, (int)w->facing(v.x, v.y))
-            << "facing(" << v.x << "," << v.y << ") slope bucket";
+            << "living::facing(" << v.x << "," << v.y << ") slope bucket";
+    }
+
+    // The same ten rungs through the base rule, which only a NON-living walker
+    // reaches: make_guy always yields a living, whose override shadows it.
+    {
+        PixieData px(1, 1, 1, new unsigned char[1]{0});
+        walker nonliving(px);
+        for (auto& v : vectors) {
+            ASSERT_EQ(v.expected, (int)nonliving.facing(v.x, v.y))
+                << "walker::facing(" << v.x << "," << v.y
+                << ") slope bucket (the non-living twin of the rule above)";
+        }
     }
 
     // An npc's blocked step takes the fallback switch. The arm is reached only
