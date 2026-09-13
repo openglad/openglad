@@ -2396,46 +2396,667 @@ TEST(MassCoverage, text_write_xy_center_starts_half_the_string_left_of_the_ancho
     ASSERT_EQ(snapshot_indices(0, 40, 160, sy), centered)
         << "the centered run must be the plain run started at the computed base";
 }
-TEST(MassCoverage, text_write_xy_center_alpha) { og::runtime::current_session->myscreen_->text_normal.write_xy_center_alpha(80, 46, WHITE, 100, "%s", "alpha"); }
-TEST(MassCoverage, text_write_xy_center_shadow) { og::runtime::current_session->myscreen_->text_normal.write_xy_center_shadow(80, 52, WHITE, "%s", "center-shadow"); }
-TEST(MassCoverage, text_write_xy_default) { og::runtime::current_session->myscreen_->text_normal.write_xy(5, 58, "default"); }
-TEST(MassCoverage, text_write_xy_tobuffer) { og::runtime::current_session->myscreen_->text_normal.write_xy(5, 64, "buf", static_cast<short>(1)); }
-TEST(MassCoverage, text_write_xy_view) { og::runtime::current_session->myscreen_->text_normal.write_xy(5, 70, "view", og::runtime::current_session->myscreen_->viewob[0].get()); }
-TEST(MassCoverage, text_write_y_color) { og::runtime::current_session->myscreen_->text_normal.write_y(76, "yc", WHITE); }
-TEST(MassCoverage, text_write_y_default) { og::runtime::current_session->myscreen_->text_normal.write_y(82, "yd"); }
-TEST(MassCoverage, text_write_y_tobuffer) { og::runtime::current_session->myscreen_->text_normal.write_y(88, "yb", static_cast<short>(1)); }
-TEST(MassCoverage, text_write_y_view_color) { og::runtime::current_session->myscreen_->text_normal.write_y(94, "yvc", WHITE, og::runtime::current_session->myscreen_->viewob[0].get()); }
-TEST(MassCoverage, text_write_y_view) { og::runtime::current_session->myscreen_->text_normal.write_y(100, "yv", og::runtime::current_session->myscreen_->viewob[0].get()); }
-TEST(MassCoverage, text_write_char_xy_tobuffer) { og::runtime::current_session->myscreen_->text_normal.write_char_xy(5, 106, 'Q', static_cast<short>(1)); }
-TEST(MassCoverage, text_write_char_xy_default) { og::runtime::current_session->myscreen_->text_normal.write_char_xy(15, 106, 'R'); }
-TEST(MassCoverage, text_write_char_xy_view) { og::runtime::current_session->myscreen_->text_normal.write_char_xy(25, 106, 'S', og::runtime::current_session->myscreen_->viewob[0].get()); }
 
-// obmap_debug_draw.cpp uncovered file target
-TEST(MassCoverage, obmap_debug_draw) {
+namespace {
+
+// Ink goldens for the remaining text entry points, measured off the shipped
+// 5x6 font (data/text.png). Two ramps exist and they differ, so the counts
+// differ too:
+//   * putdatatext (the direct write_char_xy path) maps EVERY source index
+//     above 247 to the requested colour, so the whole glyph reads back as one
+//     colour;
+//   * walkputbuffertext (the to_buffer / viewscreen path) maps index i>247 to
+//     colour + (255 - i), so only the index-255 pixels read back as the
+//     requested colour and the rest climb the palette above it.
+// A blit that paints nothing, paints the wrong colour, takes the wrong ramp or
+// lays the glyphs at the wrong pitch all read differently.
+inline constexpr int kWordInkAlpha = 54;              // "alpha", centred
+inline constexpr int kWordInkCenterShadowGlyph = 140; // "center-shadow", glyph pass
+inline constexpr int kWordInkCenterShadowShade = 116; // "center-shadow", shadow pass
+inline constexpr int kWordInkDefault = 74;            // "default", direct ramp
+inline constexpr int kWordInkBufRamp = 9;             // "buf", to_buffer ramp
+inline constexpr int kWordInkViewRamp = 11;           // "view", viewscreen ramp
+inline constexpr int kWordInkYcWhite = 18;            // "yc", direct ramp
+inline constexpr int kWordInkYdDefault = 19;          // "yd", direct ramp
+inline constexpr int kWordInkYbRamp = 5;              // "yb", to_buffer ramp
+inline constexpr int kWordInkYvcRamp = 8;             // "yvc", viewscreen ramp
+inline constexpr int kWordInkYvRamp = 4;              // "yv", viewscreen ramp
+inline constexpr int kGlyphInkQRamp = 2;              // 'Q', to_buffer ramp
+inline constexpr int kGlyphInkRRamp = 3;              // 'R', to_buffer ramp
+inline constexpr int kGlyphInkRRaw = 12;              // 'R', uncoloured (raw indices)
+
+// The shared font pixies are freed by text_shutdown(), and screen::text_normal
+// caches the glyph box it was constructed with. ensure_font_loaded() puts the
+// pixies back but does NOT refresh that cache, and write_y() computes its
+// centred x from the CACHED sizex before write_xy() gets a chance to
+// sync_geometry(). query_width() syncs, so call it first whenever the test
+// reads sizex/sizey or relies on write_y's centring.
+text& synced_text()
+{
+    ensure_font_loaded();
+    text& t = og::runtime::current_session->myscreen_->text_normal;
+    (void)t.query_width("x");  // sync_geometry()
+    return t;
+}
+
+// viewob[0] is laid out full-canvas, so a view-relative write lands exactly
+// where the same absolute write would and proves nothing. These cases push the
+// view origin off (0,0) for the duration and put it back even when an
+// assertion fires.
+struct ScopedViewOffset
+{
+    viewscreen* view;
+    Sint32 saved_x;
+    Sint32 saved_y;
+
+    ScopedViewOffset(viewscreen* v, Sint32 x, Sint32 y)
+        : view(v), saved_x(v->xloc), saved_y(v->yloc)
+    {
+        view->xloc = x;
+        view->yloc = y;
+    }
+    ~ScopedViewOffset()
+    {
+        view->xloc = saved_x;
+        view->yloc = saved_y;
+    }
+};
+
+// How many pixels of the whole canvas are not the cleared background.
+int nonblack_on_canvas()
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    const int black = pal_readback_index(PURE_BLACK);
+    int n = 0;
+    for (int y = 0; y < s->canvas_h(); y++)
+        for (int x = 0; x < s->canvas_w(); x++)
+            if (px_index(x, y) != black)
+                n++;
+    return n;
+}
+
+// Count of, and bounding box over, the canvas pixels reading back as `index`.
+struct IndexExtent
+{
+    int count = 0;
+    int minx = -1;
+    int maxx = -1;
+    int miny = -1;
+    int maxy = -1;
+};
+
+IndexExtent index_extent_on_canvas(int index)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    IndexExtent e;
+    for (int y = 0; y < s->canvas_h(); y++)
+        for (int x = 0; x < s->canvas_w(); x++)
+            if (px_index(x, y) == index)
+            {
+                if (e.count == 0)
+                {
+                    e.minx = e.maxx = x;
+                    e.miny = e.maxy = y;
+                }
+                else
+                {
+                    e.minx = std::min(e.minx, x);
+                    e.maxx = std::max(e.maxx, x);
+                    e.miny = std::min(e.miny, y);
+                    e.maxy = std::max(e.maxy, y);
+                }
+                e.count++;
+            }
+    return e;
+}
+
+} // namespace
+
+// write_xy_center_alpha(cx,y,color,alpha,...) centres like write_xy_center and
+// blends every glyph pixel through write_char_xy_alpha -> pointb, so the ink
+// comes out at dest + ((src-dest)*alpha >> 8) rather than in `color`
+// (src/interface/render/text.cpp write_formatted, use_alpha branch).
+TEST(MassCoverage, text_write_xy_center_alpha_blends_the_centred_glyphs_at_the_given_alpha) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int base = 80 - 5 * (sx + 1) / 2;
+
+    int wr = 0, wg = 0, wb = 0;
+    pal_rgb8(WHITE, &wr, &wg, &wb);
+    int kr = 0, kg = 0, kb = 0;
+    pal_rgb8(PURE_BLACK, &kr, &kg, &kb);
+    const int er = alpha_blend8(kr, wr, 100);
+    const int eg = alpha_blend8(kg, wg, 100);
+    const int eb = alpha_blend8(kb, wb, 100);
+
+    auto count_blended = [&](int x0, int w) {
+        int n = 0;
+        for (int j = 0; j < sy; j++)
+            for (int i = 0; i < w; i++)
+            {
+                Uint8 r = 0, g = 0, b = 0;
+                s->get_pixel(x0 + i, 46 + j, &r, &g, &b);
+                if (static_cast<int>(r) == er && static_cast<int>(g) == eg &&
+                    static_cast<int>(b) == eb)
+                    n++;
+            }
+        return n;
+    };
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_xy_center_alpha(80, 46, WHITE, 100, "%s", "alpha"))
+        << "the centered form returns 1";
+    ASSERT_EQ(kWordInkAlpha, count_blended(0, 160))
+        << "every glyph pixel must come out at 100/256 of WHITE over the cleared ground";
+    ASSERT_EQ(0, count_index_in(0, 46, 160, sy, WHITE))
+        << "the alpha path must blend, never paint the colour flat";
+    ASSERT_EQ(0, count_blended(0, base))
+        << "nothing may be painted left of cx - len*(sizex+1)/2";
+
+    // alpha 255 is the opaque case: the same pixels write_xy_center paints.
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_xy_center_alpha(80, 46, WHITE, 255, "%s", "alpha"))
+        << "the centered form returns 1";
+    const std::vector<int> opaque = snapshot_indices(0, 46, 160, sy);
+    ASSERT_EQ(kWordInkAlpha, count_index_in(0, 46, 160, sy, WHITE))
+        << "at alpha 255 the glyphs land flat in the requested colour";
+    s->clearbuffer();
+    t.write_xy_center(80, 46, WHITE, "%s", "alpha");
+    ASSERT_EQ(snapshot_indices(0, 46, 160, sy), opaque)
+        << "alpha 255 must be the plain centered run, pixel for pixel";
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_xy_center_alpha(80, 46, WHITE, 0, "%s", "alpha"))
+        << "the centered form returns 1";
+    ASSERT_EQ(0, nonblack_on_canvas())
+        << "alpha 0 must leave the destination exactly as it was";
+}
+
+// write_xy_center_shadow(cx,y,color,...) centres AND takes write_formatted's
+// shadow branch: a (x-1,y+1) copy in PURE_BLACK+2 under every glyph
+// (src/interface/render/text.cpp write_formatted).
+TEST(MassCoverage, text_write_xy_center_shadow_centres_and_shadows_every_glyph) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int base = 80 - 13 * (sx + 1) / 2;  // "center-shadow" is 13 glyphs
+    constexpr unsigned char kShadowColor = static_cast<unsigned char>(PURE_BLACK + 2);
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_xy_center_shadow(80, 52, WHITE, "%s", "center-shadow"))
+        << "the centered form returns 1";
+    const std::vector<int> shadowed = snapshot_indices(0, 52, 160, sy + 2);
+    ASSERT_EQ(kWordInkCenterShadowGlyph, count_index_in(0, 52, 160, sy + 2, WHITE))
+        << "the glyph pass paints in the requested colour";
+    ASSERT_EQ(kWordInkCenterShadowShade,
+              count_index_in(0, 52, 160, sy + 2, kShadowColor))
+        << "the shadow pass paints in PURE_BLACK+2 where the glyph pass does not cover";
+    ASSERT_EQ(0, count_index_in(0, 52, base - 1, sy + 2, WHITE))
+        << "nothing may be painted left of cx - len*(sizex+1)/2";
+
+    // Golden by reconstruction: the shadow string one left and one down, the
+    // centred glyphs on top.
+    s->clearbuffer();
+    t.write_xy(base - 1, 53, "center-shadow", kShadowColor);
+    t.write_xy(base, 52, "center-shadow", WHITE);
+    ASSERT_EQ(snapshot_indices(0, 52, 160, sy + 2), shadowed)
+        << "the shadowed centred run must be the plain run at the computed base,"
+           " over its offset copy";
+}
+
+// write_xy(x,y,str) is the default-colour overload: it forwards to the
+// colour form with DEFAULT_TEXT_COLOR (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_xy_default_paints_in_the_default_text_colour) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int box_w = 7 * (sx + 1);  // "default" is 7 glyphs
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_xy(5, 58, "default")) << "write_xy returns 1";
+    const std::vector<int> painted = snapshot_indices(5, 58, box_w, sy);
+    ASSERT_EQ(kWordInkDefault,
+              count_index_in(5, 58, box_w, sy, DEFAULT_TEXT_COLOR))
+        << "the glyphs must land in DEFAULT_TEXT_COLOR";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(4, 58))
+        << "the run must start at x, not left of it";
+
+    s->clearbuffer();
+    t.write_xy(5, 58, "default", static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+    ASSERT_EQ(snapshot_indices(5, 58, box_w, sy), painted)
+        << "the default overload must be the explicit DEFAULT_TEXT_COLOR run";
+}
+
+// write_xy(x,y,str,to_buffer=1) walks the string at a (sizex+1) pitch through
+// write_char_xy(...,to_buffer), i.e. walkputbuffertext -- whose ramp turns a
+// source index i>247 into colour + (255-i), so only the index-255 pixels read
+// back as DEFAULT_TEXT_COLOR. It returns the ADVANCE, not 1
+// (src/interface/render/text.cpp, small-font branch).
+TEST(MassCoverage, text_write_xy_tobuffer_walks_the_string_through_the_buffer_ramp) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int box_w = 3 * (sx + 1);  // "buf" is 3 glyphs
+
+    s->clearbuffer();
+    ASSERT_EQ(3 * (sx + 1), t.write_xy(5, 64, "buf", static_cast<short>(1)))
+        << "the to_buffer form returns the advance, len*(sizex+1)";
+    const std::vector<int> buffered = snapshot_indices(5, 64, box_w, sy);
+    ASSERT_EQ(kWordInkBufRamp,
+              count_index_in(5, 64, box_w, sy, DEFAULT_TEXT_COLOR))
+        << "the buffer ramp puts only the index-255 pixels in DEFAULT_TEXT_COLOR";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(4, 64))
+        << "the run must start at x, not left of it";
+
+    // Golden by reconstruction: the same three glyphs, one per call, at the
+    // (sizex+1) pitch. This is the loop's own contract -- right glyphs, right
+    // pitch, right start, right ramp.
+    s->clearbuffer();
+    const char* word = "buf";
+    for (int i = 0; i < 3; i++)
+        t.write_char_xy(5 + i * (sx + 1), 64, word[i],
+                        static_cast<unsigned char>(DEFAULT_TEXT_COLOR),
+                        static_cast<short>(1));
+    ASSERT_EQ(snapshot_indices(5, 64, box_w, sy), buffered)
+        << "the to_buffer run must be the per-glyph buffer blits at the (sizex+1) pitch";
+
+    // The direct path takes the OTHER ramp, so the two must not agree.
+    s->clearbuffer();
+    t.write_xy(5, 64, "buf", static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+    ASSERT_NE(snapshot_indices(5, 64, box_w, sy), buffered)
+        << "to_buffer=1 must take walkputbuffertext's ramp, not putdatatext's";
+}
+
+// write_xy(x,y,str,view) paints at the VIEW's origin + (x,y) through
+// walkputbuffertext, and falls back to the flat putdatatext path when the view
+// is null (src/interface/render/text.cpp write_char_xy(...,viewscreen*)).
+TEST(MassCoverage, text_write_xy_view_paints_at_the_view_origin) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int box_w = 4 * (sx + 1);  // "view" is 4 glyphs
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v) << "setup: view 0 must exist";
+
+    {
+        ScopedViewOffset offset(v, 20, 30);
+        s->clearbuffer();
+        ASSERT_EQ(1, t.write_xy(5, 70, "view", v)) << "the view form returns 1";
+        ASSERT_EQ(kWordInkViewRamp,
+                  count_index_in(25, 100, box_w, sy, DEFAULT_TEXT_COLOR))
+            << "the run must land at (view->xloc + x, view->yloc + y)";
+        ASSERT_EQ(0, count_index_in(5, 70, box_w, sy, DEFAULT_TEXT_COLOR))
+            << "the view offset must not be ignored";
+    }
+
+    // A null view is the flat, absolute path.
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_xy(5, 70, "view", static_cast<viewscreen*>(nullptr)))
+        << "the view form returns 1";
+    const std::vector<int> flat = snapshot_indices(5, 70, box_w, sy);
+    s->clearbuffer();
+    t.write_xy(5, 70, "view", static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+    ASSERT_EQ(snapshot_indices(5, 70, box_w, sy), flat)
+        << "a null view must be the plain DEFAULT_TEXT_COLOR run at (x,y)";
+}
+
+// write_y(y,str,color) starts the row at (320 - len*(sizex+1))/2
+// (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_y_color_centres_the_row_on_the_320_wide_canvas) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int xstart = (320 - 2 * (sx + 1)) / 2;  // "yc" is 2 glyphs
+    ASSERT_EQ(154, xstart) << "setup: the 5x6 font centres a 2-glyph row at 154";
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_y(76, "yc", WHITE)) << "write_y returns write_xy's 1";
+    const std::vector<int> painted = snapshot_indices(xstart, 76, 2 * (sx + 1), sy);
+    ASSERT_EQ(kWordInkYcWhite, count_index_in(xstart, 76, 2 * (sx + 1), sy, WHITE))
+        << "the glyphs must land in the requested colour at the centred start";
+    ASSERT_EQ(0, count_index_in(0, 76, xstart, sy, WHITE))
+        << "nothing may be painted left of (320 - len*(sizex+1))/2";
+
+    s->clearbuffer();
+    t.write_xy(xstart, 76, "yc", WHITE);
+    ASSERT_EQ(snapshot_indices(xstart, 76, 2 * (sx + 1), sy), painted)
+        << "the centred row must be the plain run started at the computed x";
+}
+
+// write_y(y,str) centres in DEFAULT_TEXT_COLOR (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_y_default_centres_the_row_in_the_default_colour) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int xstart = (320 - 2 * (sx + 1)) / 2;  // "yd" is 2 glyphs
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_y(82, "yd")) << "write_y returns write_xy's 1";
+    const std::vector<int> painted = snapshot_indices(xstart, 82, 2 * (sx + 1), sy);
+    ASSERT_EQ(kWordInkYdDefault,
+              count_index_in(xstart, 82, 2 * (sx + 1), sy, DEFAULT_TEXT_COLOR))
+        << "the glyphs must land in DEFAULT_TEXT_COLOR at the centred start";
+    ASSERT_EQ(0, count_index_in(0, 82, xstart, sy, DEFAULT_TEXT_COLOR))
+        << "nothing may be painted left of (320 - len*(sizex+1))/2";
+
+    s->clearbuffer();
+    t.write_xy(xstart, 82, "yd", static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+    ASSERT_EQ(snapshot_indices(xstart, 82, 2 * (sx + 1), sy), painted)
+        << "the default centred row must be the plain DEFAULT_TEXT_COLOR run at the computed x";
+}
+
+// write_y(y,str,to_buffer=1) centres and hands the row to the to_buffer path,
+// returning that path's ADVANCE rather than 1 (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_y_tobuffer_centres_the_row_and_returns_the_advance) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int xstart = (320 - 2 * (sx + 1)) / 2;  // "yb" is 2 glyphs
+
+    s->clearbuffer();
+    ASSERT_EQ(2 * (sx + 1), t.write_y(88, "yb", static_cast<short>(1)))
+        << "the to_buffer row returns the advance, len*(sizex+1)";
+    const std::vector<int> painted = snapshot_indices(xstart, 88, 2 * (sx + 1), sy);
+    ASSERT_EQ(kWordInkYbRamp,
+              count_index_in(xstart, 88, 2 * (sx + 1), sy, DEFAULT_TEXT_COLOR))
+        << "the buffer ramp puts only the index-255 pixels in DEFAULT_TEXT_COLOR";
+    ASSERT_EQ(0, count_index_in(0, 88, xstart, sy, DEFAULT_TEXT_COLOR))
+        << "nothing may be painted left of (320 - len*(sizex+1))/2";
+
+    s->clearbuffer();
+    t.write_xy(xstart, 88, "yb", static_cast<short>(1));
+    ASSERT_EQ(snapshot_indices(xstart, 88, 2 * (sx + 1), sy), painted)
+        << "the centred to_buffer row must be the to_buffer run at the computed x";
+}
+
+// write_y(y,str,color,view) centres on 320 and then offsets by the view
+// (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_y_view_color_centres_then_offsets_by_the_view) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int xstart = (320 - 3 * (sx + 1)) / 2;  // "yvc" is 3 glyphs
+    ASSERT_EQ(151, xstart) << "setup: the 5x6 font centres a 3-glyph row at 151";
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v) << "setup: view 0 must exist";
+
+    {
+        ScopedViewOffset offset(v, 20, 30);
+        s->clearbuffer();
+        ASSERT_EQ(1, t.write_y(94, "yvc", WHITE, v)) << "the view row returns 1";
+        ASSERT_EQ(kWordInkYvcRamp,
+                  count_index_in(20 + xstart, 30 + 94, 3 * (sx + 1), sy, WHITE))
+            << "the centred row must land at the view origin + (xstart, y)";
+        ASSERT_EQ(0, count_index_in(xstart, 94, 3 * (sx + 1), sy, WHITE))
+            << "the view offset must not be ignored";
+    }
+
+    // A null view is the flat, absolute centred row.
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_y(94, "yvc", WHITE, static_cast<viewscreen*>(nullptr)))
+        << "the view row returns 1";
+    const std::vector<int> flat = snapshot_indices(xstart, 94, 3 * (sx + 1), sy);
+    s->clearbuffer();
+    t.write_xy(xstart, 94, "yvc", WHITE);
+    ASSERT_EQ(snapshot_indices(xstart, 94, 3 * (sx + 1), sy), flat)
+        << "a null view must be the plain run at the centred x";
+}
+
+// write_y(y,str,view) centres in DEFAULT_TEXT_COLOR through the view
+// (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_y_view_centres_in_the_default_colour_through_the_view) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    const int xstart = (320 - 2 * (sx + 1)) / 2;  // "yv" is 2 glyphs
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v) << "setup: view 0 must exist";
+
+    {
+        ScopedViewOffset offset(v, 20, 30);
+        s->clearbuffer();
+        ASSERT_EQ(1, t.write_y(100, "yv", v)) << "the view row returns 1";
+        ASSERT_EQ(kWordInkYvRamp,
+                  count_index_in(20 + xstart, 30 + 100, 2 * (sx + 1), sy,
+                                 DEFAULT_TEXT_COLOR))
+            << "the centred row must land at the view origin in DEFAULT_TEXT_COLOR";
+        ASSERT_EQ(0, count_index_in(xstart, 100, 2 * (sx + 1), sy, DEFAULT_TEXT_COLOR))
+            << "the view offset must not be ignored";
+    }
+
+    // A null view is the flat, absolute centred row.
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_y(100, "yv", static_cast<viewscreen*>(nullptr)))
+        << "the view row returns 1";
+    const std::vector<int> flat = snapshot_indices(xstart, 100, 2 * (sx + 1), sy);
+    s->clearbuffer();
+    t.write_xy(xstart, 100, "yv", static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+    ASSERT_EQ(snapshot_indices(xstart, 100, 2 * (sx + 1), sy), flat)
+        << "a null view must be the plain DEFAULT_TEXT_COLOR run at the centred x";
+}
+
+// write_char_xy(x,y,c,to_buffer=1) blits glyph c through walkputbuffertext in
+// DEFAULT_TEXT_COLOR; to_buffer=0 falls through to the flat overload
+// (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_char_xy_tobuffer_blits_the_requested_glyph) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_char_xy(5, 106, 'Q', static_cast<short>(1)))
+        << "a blitted glyph reports 1";
+    const std::vector<int> q = snapshot_indices(5, 106, sx, sy);
+    ASSERT_EQ(kGlyphInkQRamp, count_index_in(5, 106, sx, sy, DEFAULT_TEXT_COLOR))
+        << "'Q' must paint its own index-255 ink in DEFAULT_TEXT_COLOR";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(4, 106))
+        << "the glyph must start at x, not left of it";
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_char_xy(5, 106, 'R', static_cast<short>(1)))
+        << "a blitted glyph reports 1";
+    const std::vector<int> r = snapshot_indices(5, 106, sx, sy);
+    ASSERT_EQ(kGlyphInkRRamp, count_index_in(5, 106, sx, sy, DEFAULT_TEXT_COLOR))
+        << "'R' must paint its own index-255 ink in DEFAULT_TEXT_COLOR";
+    ASSERT_NE(q, r) << "the blit must follow the letter it was given";
+
+    // to_buffer=0 hands off to the COLOURED flat overload -- DEFAULT_TEXT_COLOR
+    // through putdatatext, which flattens the whole 251..255 ramp onto that one
+    // colour -- not to the uncoloured write_char_xy(x,y,c).
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_char_xy(15, 106, 'R', static_cast<short>(0)))
+        << "a blitted glyph reports 1";
+    const std::vector<int> flat = snapshot_indices(15, 106, sx, sy);
+    s->clearbuffer();
+    t.write_char_xy(15, 106, 'R', static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+    ASSERT_EQ(snapshot_indices(15, 106, sx, sy), flat)
+        << "to_buffer=0 must be the flat DEFAULT_TEXT_COLOR blit";
+    s->clearbuffer();
+    t.write_char_xy(15, 106, 'R');
+    ASSERT_NE(snapshot_indices(15, 106, sx, sy), flat)
+        << "to_buffer=0 must NOT be the uncoloured raw-index blit";
+}
+
+// write_char_xy(x,y,c) -- the overload with NO colour -- goes to
+// putdatatext(...) without a colour, so the glyph paints its RAW palette
+// indices (the 251..255 font ramp), not DEFAULT_TEXT_COLOR
+// (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_char_xy_default_paints_the_raw_glyph_indices) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_char_xy(15, 106, 'R')) << "a blitted glyph reports 1";
+    const std::vector<int> raw = snapshot_indices(15, 106, sx, sy);
+    ASSERT_EQ(kGlyphInkRRaw,
+              static_cast<int>(std::count_if(raw.begin(), raw.end(),
+                                             [&](int i) {
+                                                 return i != pal_readback_index(PURE_BLACK);
+                                             })))
+        << "'R' must paint its whole ink";
+    std::vector<int> present = raw;
+    std::sort(present.begin(), present.end());
+    present.erase(std::unique(present.begin(), present.end()), present.end());
+    ASSERT_EQ((std::vector<int>{0, 251, 252, 253, 254, 255}), present)
+        << "the uncoloured overload must paint the font's raw 251..255 ramp";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(14, 106))
+        << "the glyph must start at x, not left of it";
+
+    s->clearbuffer();
+    t.write_char_xy(15, 106, 'R', static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+    ASSERT_NE(snapshot_indices(15, 106, sx, sy), raw)
+        << "the uncoloured overload must not be the DEFAULT_TEXT_COLOR blit";
+}
+
+// write_char_xy(x,y,c,view) blits at the view origin + (x,y) in
+// DEFAULT_TEXT_COLOR; a null view is the flat, uncoloured blit
+// (src/interface/render/text.cpp).
+TEST(MassCoverage, text_write_char_xy_view_blits_at_the_view_origin) {
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    const int sx = t.sizex;
+    const int sy = t.sizey;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v) << "setup: view 0 must exist";
+
+    {
+        ScopedViewOffset offset(v, 20, 30);
+        s->clearbuffer();
+        ASSERT_EQ(1, t.write_char_xy(25, 106, 'S', v)) << "a blitted glyph reports 1";
+        ASSERT_EQ(3, count_index_in(45, 136, sx, sy, DEFAULT_TEXT_COLOR))
+            << "'S' must land at (view->xloc + x, view->yloc + y) in DEFAULT_TEXT_COLOR";
+        ASSERT_EQ(0, count_index_in(25, 106, sx, sy, DEFAULT_TEXT_COLOR))
+            << "the view offset must not be ignored";
+    }
+
+    // A null view is the flat, UNCOLOURED blit.
+    s->clearbuffer();
+    ASSERT_EQ(1, t.write_char_xy(25, 106, 'S', static_cast<viewscreen*>(nullptr)))
+        << "a blitted glyph reports 1";
+    const std::vector<int> flat = snapshot_indices(25, 106, sx, sy);
+    s->clearbuffer();
+    t.write_char_xy(25, 106, 'S');
+    ASSERT_EQ(snapshot_indices(25, 106, sx, sy), flat)
+        << "a null view must be the flat, uncoloured write_char_xy blit";
+}
+
+// obmap_debug_draw(map,scr) runs two passes: a YELLOW hollow OBRES box per
+// occupied pos_to_walker cell with the pile size centred in it, and a
+// team-colour hollow box per walker_to_pos entry -- both at
+// unhash(cell) - viewob[0]->top{x,y} (src/interface/render/obmap_debug_draw.cpp).
+TEST(MassCoverage, obmap_debug_draw_boxes_every_pile_and_every_walker) {
     reset_level_state();
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    (void)t;
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+    ASSERT_EQ(0, s->viewob[0]->topx) << "setup: the camera must sit at the map origin";
+    ASSERT_EQ(0, s->viewob[0]->topy) << "setup: the camera must sit at the map origin";
+
+    // An empty map draws nothing at all -- the negative control that a debug
+    // pass painting the whole canvas would fail.
+    obmap empty_map;
+    s->clearbuffer();
+    obmap_debug_draw(empty_map, s);
+    ASSERT_EQ(0, nonblack_on_canvas()) << "an empty collision map must paint nothing";
+
+    walker* w = add_sized_living(0, 100, 100);
+    ASSERT_NE(nullptr, w) << "setup: the walker must exist";
+    const int team_index = pal_readback_index(w->query_team_color());
+    const int label_index = pal_readback_index(YELLOW);
+    ASSERT_NE(team_index, label_index)
+        << "setup: the two passes must be distinguishable on the canvas";
+
+    // Pass 1 in isolation: a pile in a cell the walker does not occupy. The
+    // YELLOW box spans unhash(hash(200))=192 .. +OBRES and carries the pile
+    // count centred inside it.
+    obmap pile_only;
+    pile_only.pos_to_walker[{obmap::hash(200), obmap::hash(100)}].push_back(w);
+    s->clearbuffer();
+    obmap_debug_draw(pile_only, s);
+    const IndexExtent pile = index_extent_on_canvas(label_index);
+    ASSERT_EQ(128 + 8, pile.count)
+        << "the pile pass must draw the 33x33 hollow box (128 px) plus the \"1\" label (8 px)";
+    ASSERT_EQ(192, pile.minx) << "the pile box starts at unhash(hash(200))";
+    ASSERT_EQ(224, pile.maxx) << "the pile box spans OBRES";
+    ASSERT_EQ(96, pile.miny) << "the pile box starts at unhash(hash(100))";
+    ASSERT_EQ(128, pile.maxy) << "the pile box spans OBRES";
+
+    // Pass 2 in isolation: obmap::add registers the walker's own cell, and the
+    // walker box lands on it in the team colour.
     obmap map;
-    walker* w = add_living(0);
-    if (w)
-        map.add(w, 100, 100);
-    obmap_debug_draw(map, og::runtime::current_session->myscreen_);
+    map.add(w, 100, 100);
+    s->clearbuffer();
+    obmap_debug_draw(map, s);
+    const IndexExtent team = index_extent_on_canvas(team_index);
+    ASSERT_EQ(128, team.count) << "the walker pass must draw a 33x33 hollow box";
+    ASSERT_EQ(96, team.minx) << "the walker box starts at unhash(hash(100))";
+    ASSERT_EQ(128, team.maxx) << "the walker box spans OBRES";
+    ASSERT_EQ(96, team.miny) << "the walker box starts at unhash(hash(100))";
+    ASSERT_EQ(128, team.maxy) << "the walker box spans OBRES";
+
     reset_level_state();
 }
 
+// The per-walker box grows to the min/max of EVERY cell in walker_to_pos, in
+// all four directions, and is then drawn in unhashed (pixel) coordinates
+// (src/interface/render/obmap_debug_draw.cpp, the walker_to_pos loop).
 TEST(MassCoverage, obmap_debug_draw_expands_bounding_boxes_all_directions) {
     reset_level_state();
+    screen* s = og::runtime::current_session->myscreen_;
+    text& t = synced_text();
+    (void)t;
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+    ASSERT_EQ(0, s->viewob[0]->topx) << "setup: the camera must sit at the map origin";
+    ASSERT_EQ(0, s->viewob[0]->topy) << "setup: the camera must sit at the map origin";
 
-    obmap map;
     walker* w = add_living(1, FAMILY_ARCHER);
-    ASSERT_TRUE(w != nullptr) << "walker should be created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w) << "setup: the walker must exist";
+    const int team_index = pal_readback_index(w->query_team_color());
+    ASSERT_NE(pal_readback_index(YELLOW), team_index)
+        << "setup: the walker box must be distinguishable from the pile pass";
 
+    // One cell: the box is a single OBRES square at unhash(4) = 128.
+    obmap one_cell;
+    one_cell.walker_to_pos[w] = {{4, 4}};
+    s->clearbuffer();
+    obmap_debug_draw(one_cell, s);
+    const IndexExtent small = index_extent_on_canvas(team_index);
+    ASSERT_EQ(128, small.count) << "one cell must give a 33x33 hollow box";
+    ASSERT_EQ(128, small.minx) << "the single-cell box starts at unhash(4)";
+    ASSERT_EQ(160, small.maxx) << "the single-cell box spans unhash(1)";
+    ASSERT_EQ(128, small.miny) << "the single-cell box starts at unhash(4)";
+    ASSERT_EQ(160, small.maxy) << "the single-cell box spans unhash(1)";
+
+    // Five cells reached in every direction from the first: left (x 4->2), up
+    // (y 4->1), right (x 2->7) and down (y 1->6). The box must end up at
+    // cell (2,1) with cell extents (5,5) -- pixels (64,32)..(224,192).
+    obmap map;
     map.pos_to_walker[{obmap::hash(96), obmap::hash(96)}].push_back(w);
     map.pos_to_walker[{obmap::hash(128), obmap::hash(128)}].push_back(w);
     map.walker_to_pos[w] = {{4, 4}, {2, 4}, {2, 1}, {7, 1}, {7, 6}};
+    s->clearbuffer();
+    obmap_debug_draw(map, s);
+    const IndexExtent grown = index_extent_on_canvas(team_index);
+    ASSERT_EQ(640, grown.count) << "the grown box is a 161x161 hollow rect";
+    ASSERT_EQ(64, grown.minx) << "the leftward expansion must reach unhash(2)";
+    ASSERT_EQ(224, grown.maxx) << "the rightward expansion must reach unhash(2+5)";
+    ASSERT_EQ(32, grown.miny) << "the upward expansion must reach unhash(1)";
+    ASSERT_EQ(192, grown.maxy) << "the downward expansion must reach unhash(1+5)";
 
-    obmap_debug_draw(map, og::runtime::current_session->myscreen_);
     reset_level_state();
 }
-
-
