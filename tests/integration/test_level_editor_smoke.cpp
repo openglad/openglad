@@ -20,16 +20,37 @@ Sint32 level_editor();
 
 std::string get_user_path();
 
-TEST(LevelEditorSmoke, end_flag_exits_quickly)
+// Declared in tests/coverage_internal/level_editor_internal.inc:2184 (the same
+// declaration test_level_editor_issue12_wall_crash.cpp:76 already uses): the
+// editor's LevelEditorData is a function-local static, so this is the only
+// handle on the level it loaded. Read it only after level_editor() returns.
+LevelRuntimeData* level_editor_testing_level();
+
+// The world().end shortcut is the editor's whole startup path minus the event
+// loop: it pins the world canvas classic, remounts the gladiator campaign and
+// loads list_levels().front() into the static LevelEditorData BEFORE the loop
+// sees the end flag at level_editor.cpp:3686 and breaks out to return OK (4).
+TEST(LevelEditorSmoke, end_flag_exits_after_full_editor_startup)
 {
-    // level_editor() has its own event loop, but it exits if myscreen->end is set.
+    trace_clear();
     const char old_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 1;
 
     Sint32 r = level_editor();
-    (void)r;
 
     og::runtime::current_session->myscreen_->world().end = old_end;
+
+    ASSERT_EQ(4, r) << "level_editor() returns OK (level_editor.cpp:66) after "
+                       "the end flag breaks its loop";
+    EXPECT_TRUE(trace_contains("canvas", "editor_pin_classic"))
+        << "the editor pins the world canvas classic on entry";
+    EXPECT_TRUE(trace_contains("canvas", "editor_unpin"))
+        << "the editor's canvas pin is balanced by an unpin on the way out";
+    LevelRuntimeData* level = level_editor_testing_level();
+    ASSERT_NE(nullptr, level)
+        << "entry must publish the editor's LevelEditorData level";
+    EXPECT_TRUE(level->world().grid.valid())
+        << "startup must have loaded list_levels().front() into the editor";
 }
 
 namespace {
