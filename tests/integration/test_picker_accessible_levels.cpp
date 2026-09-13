@@ -35,25 +35,30 @@ TEST(PickerAccessibleLevels, picker_get_accessible_levels_always_has_level1_and_
 }
 
 
-TEST(PickerAccessibleLevels, picker_get_accessible_levels_includes_exits_of_cleared_levels)
+// Clearing gladiator level 1 opens EXACTLY the sorted, de-duplicated
+// destinations of scen1's FAMILY_EXIT treasures (og::data::level_exits reads
+// stats()->level() of each exit in the MOUNTED campaign's scen1.fss) plus
+// level 1 itself — not "some id above 1", which an off-by-one or
+// whole-campaign scan would also satisfy.
+TEST(PickerAccessibleLevels, cleared_level_one_opens_exactly_its_own_exits)
 {
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"))
+        << "the exit scan reads the MOUNTED campaign, so mount it here";
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
-    // Mark level 1 as cleared; get_accessible_levels should attempt to load it and add exits.
+    // Mark level 1 as cleared; get_accessible_levels loads it and adds exits.
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 1);
 
-    std::vector<int> levels = get_accessible_levels();
-    ASSERT_TRUE(contains(levels, 1)) << "level 1 should be accessible";
-
-    // Most campaigns have at least one exit from level 1.
-    bool has_exit = false;
-    for (int id : levels) {
-        if (id > 1)
-            has_exit = true;
-    }
-    ASSERT_TRUE(has_exit) << "cleared level 1 should yield at least one additional accessible level via exits";
+    const std::vector<int> levels = get_accessible_levels();
+    EXPECT_EQ(std::vector<int>({1, 2, 11}), levels)
+        << "clearing gladiator level 1 opens exactly its two exit "
+           "destinations (scen1.fss FAMILY_EXIT stats()->level()), and "
+           "nothing else";
+    EXPECT_FALSE(contains(levels, 15))
+        << "an unearned forward level is not in the frontier";
 }
 
 

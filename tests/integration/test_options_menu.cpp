@@ -1331,25 +1331,65 @@ TEST(OptionsMenu, options_menu) {
 }
 
 
-TEST(OptionsMenu, edit_player_keymap_exercises_four_and_eight_direction_prompts)
+// Every prompt the remap wizard draws consumes exactly one key event, and
+// under TESTING each consumption traces the fake ESC that keeps the existing
+// binding (input.cpp) — so counting those lines counts prompts walked.
+static int count_fake_esc_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int consumed = 0;
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == "input" &&
+            entry.message.find("returning fake ESC") != std::string::npos)
+            ++consumed;
+    }
+    return consumed;
+}
+
+// remap_player_keys (picker.cpp) walks 11 prompts in four-direction mode and
+// 15 in eight-direction, consuming one key per prompt, and draws nothing at
+// all for a player index outside [0, 4).
+TEST(OptionsMenu, edit_player_keymap_walks_eleven_then_fifteen_prompts)
 {
     constexpr Sint32 kMenuRedraw = 2;
     reset_default_player_controls();
     const int original_fire = og::runtime::current_session->player_keys_[0][KEY_FIRE];
+    ASSERT_EQ(static_cast<int>(ControlDirectionMode::FourDirection),
+              get_player_control_mode(0))
+        << "the default control mode is four-direction";
 
-    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0))
-        << "four-direction remap should complete without changing ESC-kept keys";
-    ASSERT_EQ(original_fire, og::runtime::current_session->player_keys_[0][KEY_FIRE])
-        << "fake ESC key should preserve the existing binding";
+    trace_clear();
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0));
+    EXPECT_EQ(11, count_fake_esc_traces())
+        << "four-direction remap prompts for exactly the 11 four-way keys";
+    EXPECT_EQ(original_fire, og::runtime::current_session->player_keys_[0][KEY_FIRE])
+        << "an ESC answer keeps the existing binding";
 
     ASSERT_EQ(kMenuRedraw, toggle_player_control_mode(0));
-    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0))
-        << "eight-direction remap should also complete under TESTING";
+    ASSERT_EQ(static_cast<int>(ControlDirectionMode::EightDirection),
+              get_player_control_mode(0))
+        << "the toggle must actually flip the player's control mode";
 
+    trace_clear();
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0));
+    EXPECT_EQ(15, count_fake_esc_traces())
+        << "eight-direction remap adds the four diagonals to the same wizard";
+    EXPECT_EQ(original_fire, og::runtime::current_session->player_keys_[0][KEY_FIRE])
+        << "an ESC answer keeps the existing binding in eight-direction too";
+
+    trace_clear();
     ASSERT_EQ(kMenuRedraw, edit_player_keymap(-1))
-        << "invalid player index should be ignored safely";
+        << "an invalid player index still returns MENU_REDRAW";
     ASSERT_EQ(kMenuRedraw, edit_player_keymap(4))
-        << "out-of-range player index should be ignored safely";
+        << "an out-of-range player index still returns MENU_REDRAW";
+    EXPECT_EQ(0, count_fake_esc_traces())
+        << "an index outside [0, 4) must draw no prompt and consume no key";
+
+    ASSERT_EQ(kMenuRedraw, toggle_player_control_mode(0));
+    ASSERT_EQ(static_cast<int>(ControlDirectionMode::FourDirection),
+              get_player_control_mode(0))
+        << "the toggle flips back, restoring the process default";
+    reset_default_player_controls();
 }
 
 // ---------------------------------------------------------------------------

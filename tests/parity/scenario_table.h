@@ -852,6 +852,14 @@ inline constexpr FactPredicate kFacts_scripted_input_scen9301[] = {
     pred::EventKindExactly(/*withdraw_to_level*/8, 1),
 };
 
+// Subsystem 12's row is no longer an empty arena: two spawned soldiers give
+// the dirty-bit snapshot something to carry, and these facts say so, so an
+// arena that silently stops populating can never satisfy the row again.
+inline constexpr FactPredicate kFacts_snapshot_dirty_bits[] = {
+    pred::TickReached(50),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+};
+
 inline constexpr FactPredicate kFacts_smoke_nonempty_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
@@ -1192,6 +1200,13 @@ inline constexpr Mutation kMut_exit_neuter = {
     "Zeroes the east/west step inside walker::walkstep. The K_RIGHT soldier remains at its spawn xpos and never reaches the exit pad, so WalkerPositionMoved(SOLDIER,623,224) flips."
 };
 
+// Stays on the determinism anchor on purpose. The canary measures a row by
+// running `Parity.<scenario_id>` and nothing else, so a pin moved onto
+// world_snapshot.cpp's dirty-mask capture would leave THIS row green (the
+// Invariant arm re-runs the dumper; it never builds a snapshot) — a pin with
+// no teeth. The dirty-bit rule itself is pinned by
+// Parity.snapshot_dirty_bits_delta_merge_matches_a_full_capture, which goes
+// red for `snapshot.dirty_mask[i] = 0;`.
 inline constexpr Mutation kMut_snapshot_dirty = {
     "src/gameplay/game_world.cpp", 1692,
     "level_done = 2;",
@@ -8089,12 +8104,18 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_exit_withdraw_path },
 
     // Branch-internal companion: dirty-bit snapshot vs direct iteration.
-    // Lint exempts Invariant rows from fact requirements; expected_facts
-    // stays nullptr.
-    { "snapshot_dirty_bits_scen9301","scen/scen9301.fss",   0x00000055u,
+    // It loads the real scen1.fss and spawns two soldiers on a fresh arena:
+    // Parity.snapshot_dirty_bits_delta_merge_matches_a_full_capture runs this
+    // row with an observer that captures a keyframe, ticks, captures the
+    // dirty-bit delta and merges it — an EMPTY arena would make that
+    // invariant hold vacuously. Lint exempts Invariant rows from fact
+    // requirements; the facts here are the non-empty-arena guard.
+    { "snapshot_dirty_bits_scen9301","scen/scen1.fss",   0x00000055u,
       nullptr, 0,                                                       50,  CompareMode::Invariant, true,
-      nullptr, 0, 0, false, false, Exercises::None,
-      nullptr, 0, kMut_snapshot_dirty },
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
+      kFacts_snapshot_dirty_bits, std::size(kFacts_snapshot_dirty_bits),
+      kMut_snapshot_dirty },
 
     // Z-axis / multi-floor (branch-internal Invariant; no master companion can
     // model stacked floors). fresh_arena drops scen9301's (empty) population;

@@ -6,6 +6,8 @@
 #include "state_dump.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/world_snapshot.h>
 
 #include <gtest/gtest.h>
 
@@ -55,10 +57,12 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
     // search path used to read as every golden drifting at once. Say what
     // actually happened before comparing anything.
     //
-    // Exempt on purpose are the four rows that point at the three-byte
-    // "FSS"-header-only fixture — snapshot_dirty_bits_scen9301 and the three
-    // Z-axis arenas — which has never loaded and is not meant to: they build
-    // their whole arena from floor_paints + spawns instead. The exemption used
+    // Exempt on purpose are the rows that point at the three-byte
+    // "FSS"-header-only fixture — the three Z-axis arenas — which has never
+    // loaded and is not meant to: they build their whole arena from
+    // floor_paints + spawns instead. (snapshot_dirty_bits_scen9301 used to be
+    // the fourth; it now loads the real scen1.fss and spawns its own
+    // soldiers.) The exemption used
     // to key on is_branch_internal, which is a different set: there are FIVE
     // branch-internal rows, and the fifth (treasure_exit_open_prompt_scen99)
     // loads the real scen1.fss like everything else.
@@ -594,6 +598,60 @@ TEST(Parity, treasure_exit_open_prompt_facts)
                                    outcome.dump);
     EXPECT_TRUE(facts.ok)
         << "treasure_exit_open_prompt_scen99 facts failed: " << facts.message;
+}
+
+// Subsystem 12, pinned as the invariant its name promises: a dirty-bit DELTA
+// merged over a keyframe baseline must reproduce exactly the state a full
+// keyframe capture of the same world produces. Nothing else under
+// tests/parity/ builds a snapshot, so without this the row was 50 ticks of an
+// empty arena compared against itself — true for every possible break of the
+// snapshot path.
+TEST(Parity, snapshot_dirty_bits_delta_merge_matches_a_full_capture)
+{
+    const og::parity::ScenarioSpec* spec =
+        find_scenario("snapshot_dirty_bits_scen9301");
+    ASSERT_NE(spec, nullptr)
+        << "snapshot_dirty_bits_scen9301 missing from kScenarios";
+
+    bool observed = false;
+    std::size_t baseline_entities = 0;
+    std::size_t merged_entities = 0;
+    std::size_t full_entities = 0;
+    std::uint32_t merged_hash = 0;
+    std::uint32_t full_hash = 0;
+
+    const og::parity::RunOutcome outcome = og::parity::run_scenario(
+        *spec, [&](GameWorld& world) {
+            og::sim::WorldSnapshot baseline =
+                og::sim::capture_keyframe_snapshot(world);
+            baseline_entities = baseline.oblist.size();
+
+            world.tick();
+
+            const og::sim::WorldSnapshot delta = og::sim::capture_snapshot(world);
+            og::sim::apply_delta(baseline, delta);
+            merged_entities = baseline.oblist.size();
+            merged_hash = og::sim::compute_snapshot_hash(baseline);
+
+            const og::sim::WorldSnapshot full =
+                og::sim::capture_keyframe_snapshot(world);
+            full_entities = full.oblist.size();
+            full_hash = og::sim::compute_snapshot_hash(full);
+            observed = true;
+        });
+
+    ASSERT_TRUE(observed) << "the run never reached the observation hook";
+    // The arena must be populated, or the merge invariant is vacuous.
+    ASSERT_EQ(2u, outcome.dump.walkers.size())
+        << "the row must run two spawned soldiers, not an empty arena";
+    ASSERT_EQ(2u, baseline_entities)
+        << "the keyframe baseline must carry both live entities";
+    EXPECT_EQ(full_entities, merged_entities)
+        << "merging the dirty-bit delta must keep every live entity — a "
+           "zeroed dirty mask is apply_delta's REMOVAL sentinel";
+    EXPECT_EQ(full_hash, merged_hash)
+        << "keyframe + dirty-bit delta must reproduce the same world state a "
+           "full capture of that world produces";
 }
 
 // Phase 01 new gtests --------------------------------------------------------

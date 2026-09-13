@@ -306,7 +306,8 @@ int main(int argc, char** argv)
     //
     // Exempt from the load half are the rows that build their own arena from
     // the header-only stub fixture, exactly as in test_parity_scenarios: the
-    // four scen9301 rows (snapshot dirty bits, the three Z-axis arenas).
+    // three Z-axis scen9301 rows (snapshot_dirty_bits_scen9301 now loads the
+    // real scen1.fss and is no longer among them).
     // run_mutation_canary_runtime.py --all walks those rows, so failing them
     // here would break a driver over a stub that is by design. Every other
     // row — branch-internal ones included, since

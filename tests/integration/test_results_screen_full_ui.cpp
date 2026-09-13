@@ -4,7 +4,9 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/sound.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/platform/sai2x.h>
 
@@ -12,6 +14,7 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
+#include <atomic>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -19,6 +22,9 @@
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
+
+int get_num_foes(LevelRuntimeData& level, short viewer_team);
+Uint32 get_time_bonus(int playernum);
 
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
@@ -215,9 +221,69 @@ int count_fade_between_traces()
     return fades;
 }
 
+
+// Every button press the results loop CONSUMES answers with SOUND_BOW
+// (results_screen.cpp, the do_ok/do_retry/do_overview/do_troops arms), so a
+// counting soundob is the free proof that an injected click landed on a
+// button rect — as opposed to missing it and letting the injector's
+// `world().end = 1` failsafe end the loop with nothing consumed.
+class BowCountingSound : public soundob
+{
+public:
+    explicit BowCountingSound(std::unique_ptr<soundob> inner)
+        : inner_(std::move(inner))
+    {
+    }
+
+    void play_sound(short whichsound) override
+    {
+        if (whichsound == SOUND_BOW)
+            bows_.fetch_add(1);
+        if (inner_)
+            inner_->play_sound(whichsound);
+    }
+
+    unsigned char set_sound(bool silent) override
+    {
+        return inner_ ? inner_->set_sound(silent) : 0;
+    }
+
+    int bows() const { return bows_.load(); }
+    std::unique_ptr<soundob> release_inner() { return std::move(inner_); }
+
+private:
+    std::unique_ptr<soundob> inner_;
+    std::atomic<int> bows_{0};
+};
+
+struct ScopedBowCounter
+{
+    ScopedBowCounter()
+    {
+        screen& s = *og::runtime::current_session->myscreen_;
+        auto counter = std::make_unique<BowCountingSound>(std::move(s.soundp));
+        counter_ = counter.get();
+        s.soundp = std::move(counter);
+    }
+
+    ~ScopedBowCounter()
+    {
+        screen& s = *og::runtime::current_session->myscreen_;
+        s.soundp = counter_->release_inner();
+    }
+
+    int bows() const { return counter_->bows(); }
+
+    BowCountingSound* counter_ = nullptr;
+};
+
 } // namespace
 
-TEST(ResultsScreenFullUi, overview_and_troops_paths)
+// The OVERVIEW/TROOPS tab clicks and the OK click must each be consumed by a
+// results-panel button, and OK — not the injector's failsafe — must be what
+// ends the loop. #237 ownership rides along: the panel is a context switch,
+// so it owns exactly three fades and leaves a black window behind.
+TEST(ResultsScreenFullUi, overview_and_troops_clicks_land_and_ok_click_exits)
 {
     CanvasRoutingGuard canvas_guard;
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
@@ -308,21 +374,34 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     // Force full UI loop; default TESTING path bypasses it.
     results_screen_testing_set_force_full(true);
 
-    ResultsThreadState st{};
-    SDL_Thread* thread = SDL_CreateThread(results_ui_injector, "results_ui_injector", &st);
-    ASSERT_TRUE(thread != nullptr) << "failed to create results injector thread";
+    int bows = 0;
+    bool retry = true;
+    {
+        ScopedBowCounter clicks;
+        ResultsThreadState st{};
+        SDL_Thread* thread = SDL_CreateThread(results_ui_injector, "results_ui_injector", &st);
+        ASSERT_TRUE(thread != nullptr) << "failed to create results injector thread";
 
-    trace_clear();
-    const bool retry = results_screen(0, 2, before, after);
+        trace_clear();
+        retry = results_screen(0, 2, before, after);
 
-    int rc = 0;
-    SDL_WaitThread(thread, &rc);
+        int rc = 0;
+        SDL_WaitThread(thread, &rc);
+        bows = clicks.bows();
+        ASSERT_TRUE(st.started && st.finished) << "results UI injector should run";
+    }
 
     results_screen_testing_set_force_full(false);
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
-    ASSERT_TRUE(st.started && st.finished) << "results UI injector should run";
     ASSERT_TRUE(!retry) << "OK path should not request retry";
+    EXPECT_EQ(6, bows)
+        << "each injected press (TROOPS, OVERVIEW x3, TROOPS, OK) must be "
+           "consumed by a results button, not fall between the rects";
+    EXPECT_TRUE(trace_contains("results", "exit ok_click"))
+        << "the OK button is what ends the panel";
+    EXPECT_FALSE(trace_contains("results", "exit world_end"))
+        << "the injector's world().end failsafe must never be the exit";
     EXPECT_EQ(3, count_fade_between_traces())
         << "#237: the results panel is a context switch — exactly one "
            "fade-out, the first-frame fade-in, and its own exit fade-out";
@@ -337,7 +416,11 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
 }
 
 
-TEST(ResultsScreenFullUi, troop_scroll_paths_cover_bonus_losses_and_specials)
+// The TROOPS tab press and the OK press must both be consumed by a button,
+// the wheel events must be drained by the loop's scroll accumulator
+// (results_screen.cpp `scroll -= get_and_reset_scroll_amount()`), and OK —
+// not the failsafe — must end the panel.
+TEST(ResultsScreenFullUi, troop_scroll_clicks_and_wheel_are_consumed_by_the_panel)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -403,23 +486,45 @@ TEST(ResultsScreenFullUi, troop_scroll_paths_cover_bonus_losses_and_specials)
 
     results_screen_testing_set_force_full(true);
 
-    ResultsThreadState st{};
-    SDL_Thread* thread = SDL_CreateThread(results_ui_scroll_injector, "results_ui_scroll_injector", &st);
-    ASSERT_TRUE(thread != nullptr) << "failed to create scroll injector thread";
+    (void)get_and_reset_scroll_amount(); // start from a drained accumulator
 
-    const bool retry = results_screen(0, 2, before, after);
+    int bows = 0;
+    bool retry = true;
+    {
+        ScopedBowCounter clicks;
+        ResultsThreadState st{};
+        SDL_Thread* thread = SDL_CreateThread(results_ui_scroll_injector, "results_ui_scroll_injector", &st);
+        ASSERT_TRUE(thread != nullptr) << "failed to create scroll injector thread";
 
-    int rc = 0;
-    SDL_WaitThread(thread, &rc);
+        trace_clear();
+        retry = results_screen(0, 2, before, after);
+
+        int rc = 0;
+        SDL_WaitThread(thread, &rc);
+        bows = clicks.bows();
+        ASSERT_TRUE(st.started && st.finished) << "scroll injector should run";
+    }
 
     results_screen_testing_set_force_full(false);
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
-    ASSERT_TRUE(st.started && st.finished) << "scroll injector should run";
     ASSERT_TRUE(!retry) << "scrolling and OK should not request retry";
+    EXPECT_EQ(2, bows)
+        << "the TROOPS press and the OK press must both land on a button";
+    EXPECT_EQ(0, get_and_reset_scroll_amount())
+        << "the panel loop must have drained every injected wheel event";
+    EXPECT_TRUE(trace_contains("results", "exit ok_click"))
+        << "the OK button is what ends the panel";
+    EXPECT_FALSE(trace_contains("results", "exit world_end"))
+        << "the injector's world().end failsafe must never be the exit";
 }
 
-TEST(ResultsScreenFullUi, defeat_overview_path_reports_foe_totals)
+// The defeat overview prints "<defeated> of <total> Foes Defeated", where
+// both halves come from get_num_foes() — living, undead walkers whose team is
+// not the viewer's — counted over the live level and over a freshly loaded
+// copy of the same level. The drawn string has no test seam; what is pinned
+// here is that counting rule by value, plus the OK exit.
+TEST(ResultsScreenFullUi, defeat_overview_counts_foes_and_ok_click_exits)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -432,22 +537,60 @@ TEST(ResultsScreenFullUi, defeat_overview_path_reports_foe_totals)
     std::map<int, guy*> before;
     std::map<int, walker*> after;
 
+    // The overview's foe arithmetic, pinned by value on a hand-built level:
+    // only the other team's LIVING, undead walkers count.
+    {
+        LevelRuntimeData foes(1, /*headless=*/true);
+        ASSERT_EQ(0, get_num_foes(foes, 0))
+            << "an empty level has no foes at all";
+        auto* enemy_a = foes.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        auto* enemy_b = foes.world().add_ob(Order::Living, FAMILY_ARCHER);
+        auto* friendly = foes.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        auto* corpse = foes.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        auto* prop = foes.world().add_ob(Order::Treasure, FAMILY_GOLD_BAR);
+        ASSERT_TRUE(enemy_a && enemy_b && friendly && corpse && prop)
+            << "expected walkers for the foe-count fixture";
+        enemy_a->set_team_num(1);
+        enemy_b->set_team_num(2);
+        friendly->set_team_num(0);
+        corpse->set_team_num(1);
+        corpse->set_dead(1);
+        prop->set_team_num(1);
+        ASSERT_EQ(2, get_num_foes(foes, 0))
+            << "foes are the other teams' living walkers: not my own team, "
+               "not the dead, not treasure";
+        ASSERT_EQ(3, get_num_foes(foes, 3))
+            << "a viewer on a third team counts every other living walker";
+    }
+
     results_screen_testing_set_force_full(true);
 
-    ResultsThreadState st{};
-    SDL_Thread* thread = SDL_CreateThread(results_ui_ok_injector, "results_ui_ok_injector", &st);
-    ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
+    int bows = 0;
+    bool retry = true;
+    {
+        ScopedBowCounter clicks;
+        ResultsThreadState st{};
+        SDL_Thread* thread = SDL_CreateThread(results_ui_ok_injector, "results_ui_ok_injector", &st);
+        ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
 
-    const bool retry = results_screen(1, -1, before, after);
+        trace_clear();
+        retry = results_screen(1, -1, before, after);
 
-    int rc = 0;
-    SDL_WaitThread(thread, &rc);
+        int rc = 0;
+        SDL_WaitThread(thread, &rc);
+        bows = clicks.bows();
+        ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    }
 
     results_screen_testing_set_force_full(false);
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
-    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
     ASSERT_TRUE(!retry) << "defeat OK path should not request retry";
+    EXPECT_EQ(1, bows) << "the OK press must land on the OK button";
+    EXPECT_TRUE(trace_contains("results", "exit ok_click"))
+        << "the OK button is what ends the defeat panel";
+    EXPECT_FALSE(trace_contains("results", "exit world_end"))
+        << "the injector's world().end failsafe must never be the exit";
 }
 
 TEST(ResultsScreenFullUi, retry_button_accepts_prompt_and_returns_retry)
@@ -528,7 +671,12 @@ TEST(ResultsScreenFullUi, networked_results_suppress_local_retry)
         << "a display-only network peer cannot roll back the committed result";
 }
 
-TEST(ResultsScreenFullUi, completed_victory_zeroes_bonus_cash)
+// Re-winning a level that is already in completed_levels must pay no time
+// bonus (results_screen.cpp: every bonuscash[i] and allbonuscash are forced
+// to 0, which suppresses the "+ N Time Bonus" line). The fixture puts a
+// PAYABLE bonus on the table first — a level tick well under the limit — so
+// the win genuinely enters the zeroing arm, and pins the OK exit.
+TEST(ResultsScreenFullUi, completed_victory_enters_the_already_won_bonus_arm)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -544,29 +692,48 @@ TEST(ResultsScreenFullUi, completed_victory_zeroes_bonus_cash)
     screen_ref.save_data.m_score[1] = 50;
     screen_ref.world().time_bonus_limit = 500;
     screen_ref.world().par_value = 4;
-    screen_ref.framecount = static_cast<Uint32>(screen_ref.world().time_bonus_limit);
-    screen_ref.world().set_level_tick_count(
-        static_cast<std::uint32_t>(screen_ref.world().time_bonus_limit));
+    screen_ref.framecount = 100;
+    screen_ref.world().set_level_tick_count(100);
+
+    ASSERT_TRUE(screen_ref.save_data.is_level_completed(screen_ref.save_data.scen_num))
+        << "the fixture must be a re-win of an already completed level";
+    // (1 + par/10) * (limit - ticks)/limit * score = 1.4 * 0.8 * 250 = 280.
+    ASSERT_EQ(280u, get_time_bonus(0))
+        << "the clock alone would pay a bonus here, so the suppression must "
+           "come from the already-completed arm, not from an expired timer";
 
     std::map<int, guy*> before;
     std::map<int, walker*> after;
 
     results_screen_testing_set_force_full(true);
 
-    ResultsThreadState st{};
-    SDL_Thread* thread = SDL_CreateThread(results_ui_ok_injector, "results_completed_ok_injector", &st);
-    ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
+    int bows = 0;
+    bool retry = true;
+    {
+        ScopedBowCounter clicks;
+        ResultsThreadState st{};
+        SDL_Thread* thread = SDL_CreateThread(results_ui_ok_injector, "results_completed_ok_injector", &st);
+        ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
 
-    const bool retry = results_screen(0, 2, before, after);
+        trace_clear();
+        retry = results_screen(0, 2, before, after);
 
-    int rc = 0;
-    SDL_WaitThread(thread, &rc);
+        int rc = 0;
+        SDL_WaitThread(thread, &rc);
+        bows = clicks.bows();
+        ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    }
 
     results_screen_testing_set_force_full(false);
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
-    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
     ASSERT_TRUE(!retry) << "completed victory OK path should not request retry";
+    EXPECT_EQ(1, bows) << "the OK press must land on the OK button";
+    EXPECT_TRUE(trace_contains("results", "exit ok_click"))
+        << "the OK button is what ends the panel";
+    EXPECT_FALSE(trace_contains("results", "exit world_end"))
+        << "the injector's world().end failsafe must never be the exit";
+    screen_ref.save_data.completed_levels.clear();
 }
 
 // Playtest bug C regression (MVP): in a decided CTF match the MVP pool is the
@@ -833,7 +1000,12 @@ TEST(ResultsScreenFullUi, classic_mvp_ignores_foreign_company_team)
     screen_ref.world().end = saved_end;
 }
 
-TEST(ResultsScreenFullUi, troop_detail_paths_show_specials_and_negative_xp)
+// The TROOPS presses and the OK press must each be consumed by a panel
+// button, and OK must be what ends the loop — the troop page's own rows
+// (a level-up's gained special, a negative XP gain) are text-only and have
+// no test seam, so what is pinned here is that the page was actually opened
+// and dismissed by the clicks this test injects.
+TEST(ResultsScreenFullUi, troop_detail_tab_presses_land_and_ok_click_exits)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -901,19 +1073,32 @@ TEST(ResultsScreenFullUi, troop_detail_paths_show_specials_and_negative_xp)
 
     results_screen_testing_set_force_full(true);
 
-    ResultsThreadState st{};
-    SDL_Thread* thread = SDL_CreateThread(results_ui_troops_then_ok_injector, "results_troops_ok_injector", &st);
-    ASSERT_TRUE(thread != nullptr) << "failed to create troop detail injector thread";
+    int bows = 0;
+    bool retry = true;
+    {
+        ScopedBowCounter clicks;
+        ResultsThreadState st{};
+        SDL_Thread* thread = SDL_CreateThread(results_ui_troops_then_ok_injector, "results_troops_ok_injector", &st);
+        ASSERT_TRUE(thread != nullptr) << "failed to create troop detail injector thread";
 
-    const bool retry = results_screen(0, 2, before, after);
+        trace_clear();
+        retry = results_screen(0, 2, before, after);
 
-    int rc = 0;
-    SDL_WaitThread(thread, &rc);
+        int rc = 0;
+        SDL_WaitThread(thread, &rc);
+        bows = clicks.bows();
+        ASSERT_TRUE(st.started && st.finished) << "troop detail injector should run";
+    }
 
     results_screen_testing_set_force_full(false);
     screen_ref.special_name[FAMILY_MAGE][2] = saved_special;
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
-    ASSERT_TRUE(st.started && st.finished) << "troop detail injector should run";
     ASSERT_TRUE(!retry) << "troop detail OK path should not request retry";
+    EXPECT_EQ(5, bows)
+        << "four TROOPS presses and the OK press must all land on a button";
+    EXPECT_TRUE(trace_contains("results", "exit ok_click"))
+        << "the OK button is what ends the troop page";
+    EXPECT_FALSE(trace_contains("results", "exit world_end"))
+        << "the injector's world().end failsafe must never be the exit";
 }
