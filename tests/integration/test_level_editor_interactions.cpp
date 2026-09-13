@@ -29,6 +29,7 @@ int level_editor_test_object_brush_team_range();
 // From picker_dialogs.cpp (TESTING): queue answers for yes_or_no_prompt().
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
 
 // From level_editor_ui.cpp (TESTING): queue answers for prompt_for_string().
 void level_editor_testing_prompt_queue_clear();
@@ -46,6 +47,9 @@ int level_editor_testing_mode();
 int level_editor_testing_terrain_brush();
 int level_editor_testing_object_brush_order();
 int level_editor_testing_object_brush_family();
+int level_editor_testing_object_brush_team();
+int level_editor_testing_object_brush_level();
+bool level_editor_testing_object_brush_snap_to_grid();
 
 
 struct EditorThreadState {
@@ -241,6 +245,30 @@ static void push_mouse_motion_game(int gx, int gy, int gxrel, int gyrel)
                       game_to_window_y(gyrel) - game_to_window_y(0));
 }
 
+// A right click. test_input_helpers.h only injects the left button, and the
+// editor's right button is a whole separate action (pick the brush from what
+// is under the pointer), so it needs its own press/release pair.
+static void push_mouse_button_game(bool down, int gx, int gy, Uint8 button)
+{
+    SDL_Event e{};
+    e.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+    e.button.button = button;
+    e.button.down = down;
+    e.button.clicks = 1;
+    e.button.x = static_cast<float>(game_to_window_x(gx));
+    e.button.y = static_cast<float>(game_to_window_y(gy));
+    SDL_PushEvent(&e);
+}
+
+// The gap between press and release matches inject_click()'s: the editor
+// samples the held button once per pump, so a collapsed pair can be missed.
+static void inject_right_click_game(int gx, int gy, int gap_ms = 20)
+{
+    push_mouse_button_game(true, gx, gy, SDL_BUTTON_RIGHT);
+    SDL_Delay(static_cast<Uint32>(gap_ms));
+    push_mouse_button_game(false, gx, gy, SDL_BUTTON_RIGHT);
+}
+
 // Wait-on-condition helpers with generous ceilings. Each returns false if the
 // condition never arrives, so a broken editor fails the test instead of
 // hanging it.
@@ -303,6 +331,12 @@ bool key_settled(SDL_Keycode key)
     return wait_for_drained_event_queue(kEditorDrainCeilingMs);
 }
 
+bool right_click_settled(int gx, int gy)
+{
+    inject_right_click_game(gx, gy, 20);
+    return wait_for_drained_event_queue(kEditorDrainCeilingMs);
+}
+
 // `send` must be an IDEMPOTENT chain (a menu walk, a brush pick, a paint
 // stroke): it is repeated until `arrived` reports the value the editor writes
 // when it consumes it. Never wrap a toggle in this — a second pass undoes it.
@@ -338,6 +372,10 @@ constexpr int kParValueX = 255, kParValueY = 90;           // ... Par value...
 constexpr int kTilePaneWaterX = 296, kTilePaneWaterY = 113;
 // Object pane cell (0, 0) = Living / family 0 (FAMILY_SOLDIER).
 constexpr int kObjectPaneFirstX = 246, kObjectPaneFirstY = 81;
+// Object pane cell (1, 0), one GRID_SIZE right = Living / family 1
+// (FAMILY_ELF): the pane is built family-by-family from index 0.
+constexpr int kObjectPaneSecondX = kObjectPaneFirstX + GRID_SIZE;
+constexpr int kObjectPaneSecondY = kObjectPaneFirstY;
 // A map cell clear of every panel button, the menu bar and the minimap.
 constexpr int kMapCellX = 160, kMapCellY = 120;
 
@@ -484,6 +522,25 @@ int editor_paint_and_place_injector(void* /*data*/)
     if (ok)
         ok = stroke_dirties_the_level(kMapCellX, kMapCellY);
 
+    // Right click = pick the brush off whatever is under the pointer. Move
+    // the brush off the soldier first (pane cell (1,0) is the elf), then
+    // right-click the cell the soldier was placed on: the brush must come
+    // back as that soldier.
+    if (ok)
+        ok = retry_until(
+            []() { return click_settled(kObjectPaneSecondX, kObjectPaneSecondY); },
+            []() {
+                return level_editor_testing_object_brush_family() == FAMILY_ELF;
+            });
+    if (ok)
+        ok = retry_until(
+            []() { return right_click_settled(kMapCellX, kMapCellY); },
+            []() {
+                return level_editor_testing_object_brush_family() == FAMILY_SOLDIER &&
+                       level_editor_testing_object_brush_order() ==
+                           static_cast<int>(Order::Living);
+            });
+
     og::runtime::current_session->myscreen_->world().end = 1;
     return ok ? 0 : 1;
 }
@@ -539,9 +596,10 @@ TEST(LevelEditorInteractions, level_menu_authors_new_level_goal_bits_and_par_val
 
 
 // Terrain mode paints the clicked cell with the tile-pane brush; Object mode
-// places the object-pane brush there. Both are read back off the editor's own
-// level after the loop returns — the placed walker's snapped position is also
-// how the painted cell is identified.
+// places the object-pane brush there, and a right click picks the brush back
+// off whatever is under the pointer. The paint and the placement are read
+// back off the editor's own level after the loop returns — the placed
+// walker's snapped position is also how the painted cell is identified.
 TEST(LevelEditorInteractions, terrain_brush_paints_and_object_brush_places_on_the_clicked_cell)
 {
     EditorDecorStateGuard state_guard;
@@ -588,6 +646,283 @@ TEST(LevelEditorInteractions, terrain_brush_paints_and_object_brush_places_on_th
            "(a new level's grid is all grass)";
     EXPECT_EQ(TYPE_GRASS, sm.query_genre_x_y(cell_x + 2, cell_y + 2))
         << "only the clicked cell is painted; the grid two cells over stays grass";
+
+    // The injector left the brush on the elf and then right-clicked the
+    // placed soldier; the pick is what put the soldier back.
+    EXPECT_EQ(FAMILY_SOLDIER, level_editor_testing_object_brush_family())
+        << "a right click picks the clicked object's family into the brush";
+    EXPECT_EQ(static_cast<int>(Order::Living),
+              level_editor_testing_object_brush_order())
+        << "a right click picks the clicked object's order into the brush";
+}
+
+
+namespace
+{
+// Reach Object mode from whatever mode an earlier test left: T always lands
+// on Terrain (retryable), and one O from Terrain lands on Object.
+bool enter_object_mode()
+{
+    return retry_until([]() { return key_settled(SDLK_T); },
+                       []() { return level_editor_testing_mode() == 0; }) &&
+           key_settled(SDLK_O) &&
+           wait_until([]() { return level_editor_testing_mode() == 1; },
+                      kEditorEditCeilingMs);
+}
+
+// A digit key sets the brush team outright, so it is safe to repeat.
+bool press_team_digit(SDL_Keycode digit, int expected_team)
+{
+    return retry_until([digit]() { return key_settled(digit); },
+                       [expected_team]() {
+                           return level_editor_testing_object_brush_team() ==
+                                  expected_team;
+                       });
+}
+
+// ']' / '[' step the brush level by one; '[' refuses to go below 1.
+bool press_brush_level(SDL_Keycode key, int expected_level)
+{
+    return key_settled(key) &&
+           wait_until([expected_level]() {
+               return level_editor_testing_object_brush_level() == expected_level;
+           }, kEditorEditCeilingMs);
+}
+
+int editor_brush_key_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+
+    // A known level: par 1, no goal bits, and (from the ESC arm below) a
+    // dirty flag this injector controls.
+    if (ok)
+        ok = author_new_level();
+    if (ok)
+        ok = enter_object_mode();
+
+    // Teams 0-7 are the digit row. 5 then 0 proves the digit chooses the
+    // team rather than merely nudging it; the closing 1 restores the brush
+    // default for the rest of the binary.
+    if (ok)
+        ok = press_team_digit(SDLK_5, 5);
+    if (ok)
+        ok = press_team_digit(SDLK_0, 0);
+
+    // Walk the brush level down to the floor first: the editor's static
+    // brush carries whatever an earlier session left.
+    for (int i = 0; ok && i < 24; ++i)
+    {
+        const int here = level_editor_testing_object_brush_level();
+        if (here <= 1)
+            break;
+        ok = press_brush_level(SDLK_LEFTBRACKET, here - 1);
+    }
+    if (ok)
+        ok = (level_editor_testing_object_brush_level() == 1);
+    // '[' at 1 is refused, not wrapped: the press is consumed (the queue
+    // drains) and the level stays 1.
+    if (ok)
+        ok = key_settled(SDLK_LEFTBRACKET) &&
+             level_editor_testing_object_brush_level() == 1;
+    if (ok)
+        ok = press_brush_level(SDLK_RIGHTBRACKET, 2);
+    if (ok)
+        ok = press_brush_level(SDLK_RIGHTBRACKET, 3);
+    if (ok)
+        ok = press_brush_level(SDLK_LEFTBRACKET, 2);
+    if (ok)
+        ok = press_brush_level(SDLK_LEFTBRACKET, 1);
+
+    // 'g' toggles grid snap in Object mode. A toggle is never retried; each
+    // press is acknowledged by the value it flips to, and the second press
+    // puts the editor's static brush back the way it was found.
+    const bool snap_before = level_editor_testing_object_brush_snap_to_grid();
+    if (ok)
+        ok = key_settled(SDLK_G) &&
+             wait_until([snap_before]() {
+                 return level_editor_testing_object_brush_snap_to_grid() !=
+                        snap_before;
+             }, kEditorEditCeilingMs);
+    if (ok)
+        ok = key_settled(SDLK_G) &&
+             wait_until([snap_before]() {
+                 return level_editor_testing_object_brush_snap_to_grid() ==
+                        snap_before;
+             }, kEditorEditCeilingMs);
+
+    // F5 resmooths the terrain and dirties the level. Zeroing the flag first
+    // makes the flip back to 1 acknowledge THIS press.
+    if (ok)
+    {
+        eds().levelchanged = 0;
+        ok = retry_until([]() { return key_settled(SDLK_F5); },
+                         []() { return eds().levelchanged == 1; });
+    }
+    // F9 reloads the scenario palette. It publishes nothing outside the
+    // editor's own palette buffer, so the drained queue is the whole oracle.
+    if (ok)
+        ok = key_settled(SDLK_F9);
+
+    // ESC with a dirty level asks before leaving. Answer "no" and the editor
+    // must stay in its loop — proven by driving one more key through it.
+    if (ok)
+    {
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(false);
+        ok = eds().levelchanged == 1 && key_settled(SDLK_ESCAPE);
+    }
+    if (ok)
+        ok = press_team_digit(SDLK_1, 1);
+
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+int editor_select_delete_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+
+    // Start from an empty object list and a known draw position.
+    if (ok)
+        ok = author_new_level();
+    if (ok)
+        ok = retry_until([]() { return key_settled(SDLK_T); },
+                         []() { return level_editor_testing_mode() == 0; });
+    // Warm-up stroke in Terrain mode: it consumes a "Pick" toggle an earlier
+    // editor session may have left armed without placing anything.
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX, kMapCellY);
+
+    if (ok)
+        ok = key_settled(SDLK_O) &&
+             wait_until([]() { return level_editor_testing_mode() == 1; },
+                        kEditorEditCeilingMs);
+    if (ok)
+    {
+        eds().rowsdown = 0;
+        ok = retry_until(
+            []() { return click_settled(kObjectPaneFirstX, kObjectPaneFirstY); },
+            []() {
+                return level_editor_testing_object_brush_family() == FAMILY_SOLDIER &&
+                       level_editor_testing_object_brush_order() ==
+                           static_cast<int>(Order::Living);
+            });
+    }
+    // The placement is acknowledged by its own levelchanged flip, so an
+    // editor that never places fails here rather than sliding into an empty
+    // end state that would look like a successful delete.
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX, kMapCellY);
+
+    // Select mode (one O from Object; never retried), then rect-select the
+    // placed soldier. The first small motion anchors the rectangle near the
+    // press before it is stretched over the cell.
+    if (ok)
+        ok = key_settled(SDLK_O) &&
+             wait_until([]() { return level_editor_testing_mode() == 2; },
+                        kEditorEditCeilingMs);
+    if (ok)
+    {
+        inject_mouse_down(game_to_window_x(130), game_to_window_y(95));
+        push_mouse_motion_game(135, 100, 5, 5);
+        push_mouse_motion_game(200, 155, 65, 55);
+        inject_mouse_up(game_to_window_x(200), game_to_window_y(155));
+        ok = wait_for_drained_event_queue(kEditorDrainCeilingMs);
+    }
+
+    // DELETE removes every selected walker and dirties the level once per
+    // removal, so the flip back to 1 acknowledges that something really was
+    // selected and really was removed.
+    if (ok)
+    {
+        eds().levelchanged = 0;
+        ok = key_settled(SDLK_DELETE) &&
+             wait_until([]() { return eds().levelchanged == 1; },
+                        kEditorEditCeilingMs);
+    }
+
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+} // namespace
+
+
+// The object brush's keyboard arms: the digit row picks the team outright,
+// ']' / '[' step the authored level and refuse to go below 1, 'g' toggles
+// grid snap, F5 resmooths and dirties, F9 reloads the palette, and ESC over a
+// dirty level obeys the "Quit without saving?" answer instead of leaving
+// regardless.
+TEST(LevelEditorInteractions, brush_keys_author_team_level_snap_and_f5_dirties_the_level)
+{
+    EditorDecorStateGuard state_guard;   // enters with both dirty flags 0
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+
+    SDL_Thread* thread = SDL_CreateThread(
+        editor_brush_key_injector, "editor_brush_keys", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)level_editor();
+
+    int injector_result = 1;
+    SDL_WaitThread(thread, &injector_result);
+
+    const int team_after = level_editor_testing_object_brush_team();
+    const int brush_level_after = level_editor_testing_object_brush_level();
+    const int levelchanged_after = eds().levelchanged;
+    const int yes_no_remaining = picker_testing_yes_or_no_queue_remaining();
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+
+    ASSERT_EQ(0, injector_result)
+        << "every brush key must be consumed and acknowledged by the editor";
+    EXPECT_EQ(1, team_after)
+        << "the last digit pressed ('1') is the team the brush carries";
+    EXPECT_EQ(1, brush_level_after)
+        << "']' twice and '[' twice from the floor leave the brush at level 1";
+    EXPECT_EQ(1, levelchanged_after)
+        << "F5 resmooths the terrain and dirties the level";
+    EXPECT_EQ(0, yes_no_remaining)
+        << "ESC over a dirty level must ASK before leaving, consuming the "
+           "queued 'no' answer";
+}
+
+
+// Rect-select plus DELETE is the editor's only way to remove a placed object
+// with the keyboard. The placement is acknowledged mid-flight (levelchanged
+// 0 -> 1) and so is the delete, so an editor that never placed cannot pass by
+// leaving an empty list behind.
+TEST(LevelEditorInteractions, select_rect_then_delete_key_removes_the_placed_object)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+
+    SDL_Thread* thread = SDL_CreateThread(
+        editor_select_delete_injector, "editor_select_delete", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)level_editor();
+
+    int injector_result = 1;
+    SDL_WaitThread(thread, &injector_result);
+
+    LevelRuntimeData* lvl = level_editor_testing_level();
+    ASSERT_NE(nullptr, lvl) << "the editor must have published its level";
+    const std::size_t oblist_after = lvl->world().oblist.size();
+
+    picker_testing_yes_or_no_queue_clear();
+
+    ASSERT_EQ(0, injector_result)
+        << "the placement and the DELETE must each be acknowledged by the "
+           "editor's own dirty flag";
+    EXPECT_EQ(0u, oblist_after)
+        << "DELETE removes every rect-selected walker from the level";
 }
 
 
@@ -1086,9 +1421,11 @@ TEST(LevelEditorInteractions, editor_exit_clicks_cannot_activate_the_main_menu)
 //
 // The editor's key handler is only reachable from level_editor()'s own pump,
 // so these tests script real SDL events and read the result from the editor's
-// function-local static AFTER the loop returns. The injector never writes
-// editor state; its one product write is world().end, the loop's documented
-// exit flag (same seam as the menu-authoring test above).
+// function-local static AFTER the loop returns. The script-driven injector in
+// THIS section never writes editor state; its one product write is
+// world().end, the loop's documented exit flag. (The acknowledging injectors
+// above do zero eds().levelchanged / eds().rowsdown between steps, each time
+// while the pump is idle, so that the next edit's flip acknowledges itself.)
 // ---------------------------------------------------------------------------
 
 // From picker_dialogs.cpp (TESTING).

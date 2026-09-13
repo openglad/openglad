@@ -2268,3 +2268,21 @@ int level_editor_testing_object_brush_team()
         return -1;
     return g_level_editor_testing_data->object_brush.team;
 }
+
+// The object brush's authored level (']' raises, '[' lowers, never below 1)
+// and its grid-snap flag ('g' toggles it in Object/Select mode). Same read
+// discipline as level_editor_testing_object_brush_team() above: each is a
+// single scalar the editor writes only from the key handler, so the injector
+// that sent the key may poll for its own edit to land.
+int level_editor_testing_object_brush_level()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->object_brush.level;
+}
+
+bool level_editor_testing_object_brush_snap_to_grid()
+{
+    return g_level_editor_testing_data != nullptr &&
+           g_level_editor_testing_data->object_brush.snap_to_grid;
+}

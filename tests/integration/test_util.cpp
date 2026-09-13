@@ -112,7 +112,10 @@ TEST(Util, time_delay_returns_immediately_for_non_positive_delays)
     time_delay(-1);
     const auto spent_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start).count();
-    ASSERT_LT(spent_ms, 20)
+    // 100 ms bounds a delay that really slept (one tick is 13.6 ms, so the
+    // smallest positive delay costs 68 ms) without being a wall-clock race
+    // on the 4-way instrumented CI lanes.
+    ASSERT_LT(spent_ms, 100)
         << "time_delay(<= 0) must return without waiting";
 }
 

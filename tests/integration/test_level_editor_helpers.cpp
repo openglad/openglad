@@ -290,6 +290,33 @@ TEST(LevelEditorHelpers, basic_event_outcomes_report_exact_release_and_quit_stat
         og::runtime::current_session->myscreen_->world().end,
         saved_world_end};
 
+    // The finger/text/joystick arms below write session-wide latches; put them
+    // back so the next test in the binary sees the state it expects.
+    struct RestoreEventLatches
+    {
+        LevelEditorState& editor;
+        int motion_x;
+        int motion_y;
+        std::string text;
+        short text_event;
+        short key_press_event;
+        unsigned key_press_serial;
+
+        ~RestoreEventLatches()
+        {
+            editor.mouse_motion_x = motion_x;
+            editor.mouse_motion_y = motion_y;
+            og::runtime::current_session->raw_text_input_ = text;
+            og::runtime::current_session->text_input_event_ = text_event;
+            og::runtime::current_session->key_press_event_ = key_press_event;
+            og::runtime::current_session->key_press_serial_ = key_press_serial;
+        }
+    } restore_latches{editor, editor.mouse_motion_x, editor.mouse_motion_y,
+                      og::runtime::current_session->raw_text_input_,
+                      og::runtime::current_session->text_input_event_,
+                      og::runtime::current_session->key_press_event_,
+                      og::runtime::current_session->key_press_serial_};
+
     EXPECT_EQ(
         0, static_cast<int>(handle_basic_editor_event(nullptr)))
         << "an absent native event is handled without changing state";
@@ -345,6 +372,136 @@ TEST(LevelEditorHelpers, basic_event_outcomes_report_exact_release_and_quit_stat
         saved_world_end,
         og::runtime::current_session->myscreen_->world().end)
         << "an unhandled event does not end the editor session";
+
+    // Window events go to the window handler and come back as Handled: a
+    // window event reported as a release or a scroll would replay the last
+    // click's action on every focus change or restore.
+    editor.mouse_up_button = MOUSE_RIGHT;
+    SDL_Event window_event{};
+    window_event.type = SDL_EVENT_WINDOW_RESTORED;
+    EXPECT_EQ(
+        0, static_cast<int>(handle_basic_editor_event(&window_event)))
+        << "a window event is handled, never reported as input";
+    EXPECT_EQ(MOUSE_RIGHT, editor.mouse_up_button)
+        << "a window event leaves the recorded release alone";
+
+    // Text input is reported as Text (1) and the typed bytes land in the
+    // session's text buffer verbatim -- that buffer is what the editor's
+    // name/description editors read one character at a time.
+    og::runtime::current_session->raw_text_input_.clear();
+    og::runtime::current_session->text_input_event_ = 0;
+    SDL_Event text_event{};
+    text_event.type = SDL_EVENT_TEXT_INPUT;
+    text_event.text.text = "Qz";
+    EXPECT_EQ(
+        1, static_cast<int>(handle_basic_editor_event(&text_event)))
+        << "a text-input event is reported as Text";
+    EXPECT_EQ(std::string("Qz"),
+              og::runtime::current_session->raw_text_input_)
+        << "the typed characters reach the session text buffer verbatim";
+    EXPECT_EQ(
+        1, static_cast<int>(og::runtime::current_session->text_input_event_))
+        << "a text-input event raises the session's text latch";
+
+    // A finger swipe is a pointer delta. SDL normalizes dx/dy to the whole
+    // window, so the editor scales them through the aspect-fitted viewport
+    // into canvas pixels: half a window swiped is half a canvas crossed.
+    const og::CanvasViewport viewport = active_canvas_viewport();
+    ASSERT_EQ(static_cast<int>(og::runtime::current_session->window_w_),
+              viewport.w)
+        << "this arithmetic assumes an unletterboxed viewport";
+    ASSERT_EQ(static_cast<int>(og::runtime::current_session->window_h_),
+              viewport.h)
+        << "this arithmetic assumes an unletterboxed viewport";
+    const int canvas_w = og::runtime::current_session->myscreen_->canvas_w();
+    const int canvas_h = og::runtime::current_session->myscreen_->canvas_h();
+    ASSERT_GT(canvas_w, 0) << "the session must have a canvas to scale into";
+    ASSERT_GT(canvas_h, 0) << "the session must have a canvas to scale into";
+    editor.mouse_motion_x = -1;
+    editor.mouse_motion_y = -1;
+    SDL_Event finger_motion{};
+    finger_motion.type = SDL_EVENT_FINGER_MOTION;
+    finger_motion.tfinger.dx = 0.5f;
+    finger_motion.tfinger.dy = 0.25f;
+    EXPECT_EQ(
+        3, static_cast<int>(handle_basic_editor_event(&finger_motion)))
+        << "a finger swipe is reported as MouseMotion";
+    EXPECT_EQ(canvas_w / 2, editor.mouse_motion_x)
+        << "a half-window finger swipe moves the pointer half a canvas across";
+    EXPECT_EQ(canvas_h / 4, editor.mouse_motion_y)
+        << "a quarter-window finger swipe moves it a quarter canvas down";
+
+    SDL_Event finger_down{};
+    finger_down.type = SDL_EVENT_FINGER_DOWN;
+    EXPECT_EQ(
+        4, static_cast<int>(handle_basic_editor_event(&finger_down)))
+        << "a finger press is reported as MouseDown";
+
+    // A finger release runs the same held-button bookkeeping as a mouse
+    // release. This is a desktop build (USE_TOUCH_INPUT is off), so
+    // handle_mouse_event has no finger case and no held button changes --
+    // the release must therefore name NO button, which is what stops a stray
+    // touch event from replaying the last left click's action.
+    mouse.left = true;
+    mouse.right = false;
+    editor.mouse_up_button = -1;
+    SDL_Event finger_up{};
+    finger_up.type = SDL_EVENT_FINGER_UP;
+    EXPECT_EQ(
+        5, static_cast<int>(handle_basic_editor_event(&finger_up)))
+        << "a finger release is reported as MouseUp";
+    EXPECT_EQ(0, editor.mouse_up_button)
+        << "no held button changed, so the release names no button";
+    EXPECT_TRUE(mouse.left)
+        << "a desktop build's finger release leaves the mouse state alone";
+
+    // Joystick events feed only the "press any key" edge: an axis beyond the
+    // dead zone and a button press each raise the latch and advance the press
+    // serial exactly once; a button release advances neither.
+    og::runtime::current_session->key_press_event_ = 0;
+    const unsigned serial_before =
+        og::runtime::current_session->key_press_serial_;
+    SDL_Event joy_axis{};
+    joy_axis.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
+    joy_axis.jaxis.axis = 1;
+    joy_axis.jaxis.value = 30000;
+    EXPECT_EQ(
+        0, static_cast<int>(handle_basic_editor_event(&joy_axis)))
+        << "a joystick axis event is handled, never reported as input";
+    EXPECT_EQ(
+        1, static_cast<int>(og::runtime::current_session->key_press_event_))
+        << "an axis past the dead zone counts as a key press";
+    EXPECT_EQ(serial_before + 1u,
+              og::runtime::current_session->key_press_serial_)
+        << "the axis event advances the press serial exactly once";
+
+    og::runtime::current_session->key_press_event_ = 0;
+    SDL_Event joy_down{};
+    joy_down.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
+    joy_down.jbutton.button = 2;
+    EXPECT_EQ(
+        0, static_cast<int>(handle_basic_editor_event(&joy_down)))
+        << "a joystick button press is handled, never reported as input";
+    EXPECT_EQ(
+        1, static_cast<int>(og::runtime::current_session->key_press_event_))
+        << "a joystick button press counts as a key press";
+    EXPECT_EQ(serial_before + 2u,
+              og::runtime::current_session->key_press_serial_)
+        << "the button press advances the press serial exactly once";
+
+    og::runtime::current_session->key_press_event_ = 0;
+    SDL_Event joy_up{};
+    joy_up.type = SDL_EVENT_JOYSTICK_BUTTON_UP;
+    joy_up.jbutton.button = 2;
+    EXPECT_EQ(
+        0, static_cast<int>(handle_basic_editor_event(&joy_up)))
+        << "a joystick button release is handled, never reported as input";
+    EXPECT_EQ(
+        0, static_cast<int>(og::runtime::current_session->key_press_event_))
+        << "a joystick button release is not a press";
+    EXPECT_EQ(serial_before + 2u,
+              og::runtime::current_session->key_press_serial_)
+        << "a joystick button release does not advance the press serial";
 
     trace_clear();
     SDL_Event quit_event{};
