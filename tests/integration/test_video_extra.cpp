@@ -532,6 +532,20 @@ void fill_half_and_half(unsigned char (&bmp)[16*16])
             bmp[row * 16 + col] =
                 (col < 8) ? kLeftHalf : kRightHalf;
 }
+
+// The same trick rotated: the top eight rows are one colour, the bottom eight
+// another, so a top clip that draws the wrong source rows (or the whole sprite
+// pushed down the port) is visible.
+constexpr unsigned char kTopHalf = kLeftHalf;
+constexpr unsigned char kBottomHalf = kRightHalf;
+
+void fill_top_and_bottom(unsigned char (&bmp)[16*16])
+{
+    for (int row = 0; row < 16; row++)
+        for (int col = 0; col < 16; col++)
+            bmp[row * 16 + col] =
+                (row < 8) ? kTopHalf : kBottomHalf;
+}
 } // namespace
 
 TEST(VideoExtra, walkputbuffer_left_clip_drops_the_hidden_columns_without_shifting)
@@ -589,12 +603,44 @@ TEST(VideoExtra, walkputbuffer_right_clip_stops_at_the_exclusive_port_edge)
 }
 
 
-TEST(VideoExtra, video_walkputbuffer_clipped_top)
+// A sprite that hangs off the TOP of the port loses its first rows; the rows
+// that remain must land on the port edge, not be pushed down it (the sprite
+// would swim as it walked over the top edge of a split-screen pane).
+TEST(VideoExtra, walkputbuffer_top_clip_draws_the_lower_source_rows_at_the_port_edge)
 {
+    screen* const s = scr();
+    ASSERT_NE(nullptr, s);
     unsigned char testbmp[16*16];
-    memset(testbmp, 100, sizeof(testbmp));
-    auto span = std::span<const unsigned char>(testbmp, 256);
-    og::runtime::current_session->myscreen_->walkputbuffer(50, -8, 16, 16, 0, 0, 319, 199, span, 40);
+    fill_top_and_bottom(testbmp);
+    const auto span = std::span<const unsigned char>(testbmp, 256);
+
+    // Control: unclipped, row 0 is the top half and row 8 the bottom half, so
+    // both colours are ones this blitter really can draw.
+    s->clearbuffer();
+    s->walkputbuffer(100, 50, 16, 16, kPortX0, kPortY0, kPortX1, kPortY1, span, 40);
+    ASSERT_EQ(static_cast<int>(kTopHalf), idx(100, 50))
+        << "control: the unclipped sprite draws its top half first";
+    ASSERT_EQ(static_cast<int>(kBottomHalf), idx(100, 58))
+        << "control: source row 8 is the bottom half";
+
+    s->clearbuffer();
+    // ymin = portstarty - walkerstarty = 8: source rows 8..15 draw at y 0..7.
+    s->walkputbuffer(50, -8, 16, 16, kPortX0, kPortY0, kPortX1, kPortY1, span, 40);
+
+    EXPECT_EQ(static_cast<int>(kBottomHalf), idx(50, 0))
+        << "the sprite's source row 8 lands on the port's top edge";
+    EXPECT_EQ(static_cast<int>(kBottomHalf), idx(50, 7))
+        << "the visible half is exactly 8 rows tall";
+    EXPECT_EQ(0, idx(50, 8))
+        << "the clipped rows must not shift the sprite down the port";
+    EXPECT_EQ(static_cast<int>(kBottomHalf), idx(65, 7))
+        << "every column of the visible rows draws";
+    EXPECT_EQ(0, idx(49, 0)) << "nothing is drawn left of the sprite's x";
+    EXPECT_EQ(0, idx(66, 0)) << "nothing is drawn past the sprite's 16th column";
+    for (int y = 0; y < 20; y++)
+        EXPECT_NE(static_cast<int>(kTopHalf), idx(50, y))
+            << "the clipped-off source rows must not be drawn, at y=" << y;
+    s->clearbuffer();
 }
 
 
@@ -644,21 +690,83 @@ TEST(VideoExtra, video_walkputbuffer_clips_at_the_port_bottom_edge)
 // video::walkputbuffertext
 // ---------------------------------------------------------------------------
 
-TEST(VideoExtra, video_walkputbuffertext)
+TEST(VideoExtra, walkputbuffertext_fills_non_zero_bytes_and_recolours_bytes_over_247)
 {
+    screen* const s = scr();
+    ASSERT_NE(nullptr, s);
+    constexpr unsigned char kTeam = 40;
     unsigned char testbmp[16*16];
-    memset(testbmp, 100, sizeof(testbmp));
-    auto span = std::span<const unsigned char>(testbmp, 256);
-    og::runtime::current_session->myscreen_->walkputbuffertext(50, 50, 16, 16, 0, 0, 319, 199, span, 40);
+    memset(testbmp, kInk, sizeof(testbmp));
+    testbmp[0] = 0;                    // index 0 is transparent
+    testbmp[2 * 16 + 2] = 248;         // > 247 -> teamcolor + (255 - byte) = 47
+    const auto span = std::span<const unsigned char>(testbmp, 256);
+
+    s->clearbuffer();
+    ground_box(48, 48, 24, 24);
+    const RGB ground = px(50, 50);
+    s->walkputbuffertext(50, 50, 16, 16, kPortX0, kPortY0, kPortX1, kPortY1,
+                         span, kTeam);
+
+    EXPECT_EQ(ground, px(50, 50)) << "source index 0 must be left transparent";
+    EXPECT_EQ(static_cast<int>(kInk), idx(51, 50))
+        << "the source byte is filled in its own palette colour";
+    EXPECT_EQ(static_cast<int>(kInk), idx(65, 65))
+        << "the whole 16x16 rect is filled";
+    EXPECT_EQ(47, idx(52, 52))
+        << "a byte over 247 is recoloured to teamcolor + (255 - byte)";
+    EXPECT_EQ(ground, px(66, 65)) << "and nothing past the rect's right edge";
+    EXPECT_EQ(ground, px(50, 66)) << "and nothing past the rect's bottom edge";
+    s->clearbuffer();
 }
 
 
-TEST(VideoExtra, video_walkputbuffertext_alpha)
+TEST(VideoExtra, walkputbuffertext_alpha_blends_the_source_shape_at_the_given_alpha)
 {
+    screen* const s = scr();
+    ASSERT_NE(nullptr, s);
+    // The implementation plots `teamcolor` (not the source byte) through the
+    // alpha pointb, so the sprite is filled with the team colour here and the
+    // pins below are about the SHAPE and the ALPHA, which are the rule.
+    constexpr unsigned char kTeam = 40;
     unsigned char testbmp[16*16];
-    memset(testbmp, 100, sizeof(testbmp));
-    auto span = std::span<const unsigned char>(testbmp, 256);
-    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(50, 50, 16, 16, 0, 0, 319, 199, span, 40, 128);
+    memset(testbmp, kTeam, sizeof(testbmp));
+    testbmp[0] = 0;                       // index 0 is transparent
+    for (int row = 0; row < 16; row++)
+        testbmp[row * 16 + 4] = 0;        // a transparent column through it
+    const auto span = std::span<const unsigned char>(testbmp, 256);
+
+    s->clearbuffer();
+    ground_box(48, 48, 60, 60);
+    const RGB ground = px(50, 50);
+    s->pointb(100, 50, kTeam);
+    const RGB opaque = px(100, 50);
+    s->pointb(102, 50, kTeam, 128);
+    const RGB half = px(102, 50);
+    s->pointb(104, 50, kTeam, 64);
+    const RGB quarter = px(104, 50);
+    ASSERT_NE(ground, half) << "control: a half blend changes the ground";
+    ASSERT_NE(opaque, half) << "control: a half blend is not the opaque write";
+    ASSERT_NE(half, quarter) << "control: the two alphas differ";
+
+    s->walkputbuffertext_alpha(50, 50, 16, 16, kPortX0, kPortY0, kPortX1,
+                               kPortY1, span, kTeam, 128);
+    EXPECT_EQ(ground, px(50, 50)) << "source index 0 must be left transparent";
+    EXPECT_EQ(half, px(51, 50))
+        << "non-zero bytes must blend at the given alpha, not overwrite";
+    EXPECT_EQ(half, px(65, 65)) << "to the last pixel of the rect";
+    EXPECT_EQ(ground, px(54, 50))
+        << "the transparent source column must stay unblended";
+    EXPECT_EQ(ground, px(54, 65)) << "for every row of the sprite";
+    EXPECT_EQ(ground, px(66, 65)) << "and nothing past the rect's right edge";
+    EXPECT_EQ(ground, px(50, 66)) << "and nothing past the rect's bottom edge";
+
+    // The alpha argument reaches the blend instead of being hardcoded.
+    s->walkputbuffertext_alpha(50, 70, 16, 16, kPortX0, kPortY0, kPortX1,
+                               kPortY1, span, kTeam, 64);
+    EXPECT_EQ(quarter, px(51, 70)) << "a quarter-alpha blit is the quarter blend";
+    EXPECT_NE(px(51, 50), px(51, 70))
+        << "the two alphas must not land on the same colour";
+    s->clearbuffer();
 }
 
 
@@ -666,9 +774,32 @@ TEST(VideoExtra, video_walkputbuffertext_alpha)
 // video::clearbuffer with rect
 // ---------------------------------------------------------------------------
 
-TEST(VideoExtra, video_clearbuffer_rect)
+TEST(VideoExtra, clearbuffer_rect_zeroes_only_that_rectangle)
 {
-    og::runtime::current_session->myscreen_->clearbuffer(10, 10, 100, 100);
+    screen* const s = scr();
+    ASSERT_NE(nullptr, s);
+    constexpr unsigned char kPaint = 50;
+    s->clearbuffer();
+    s->fastbox(0, 0, 320, 200, kPaint, 1);
+    ASSERT_EQ(static_cast<int>(kPaint), idx(10, 10))
+        << "control: the whole canvas is painted before the clear";
+    ASSERT_EQ(static_cast<int>(kPaint), idx(110, 110)) << "control: painted";
+
+    s->clearbuffer(10, 10, 100, 100);
+    EXPECT_EQ(0, idx(10, 10)) << "the rect's first pixel is cleared";
+    EXPECT_EQ(0, idx(109, 109))
+        << "the rect's last pixel (x+w-1, y+h-1) is cleared";
+    EXPECT_EQ(static_cast<int>(kPaint), idx(9, 10))
+        << "the column left of the rect must survive";
+    EXPECT_EQ(static_cast<int>(kPaint), idx(10, 9))
+        << "the row above the rect must survive";
+    EXPECT_EQ(static_cast<int>(kPaint), idx(110, 109))
+        << "w is exclusive: the column right of the rect must survive";
+    EXPECT_EQ(static_cast<int>(kPaint), idx(109, 110))
+        << "h is exclusive: the row below the rect must survive";
+    EXPECT_EQ(static_cast<int>(kPaint), idx(319, 199))
+        << "clearing a rect must not clear the whole canvas";
+    s->clearbuffer();
 }
 
 
@@ -676,8 +807,39 @@ TEST(VideoExtra, video_clearbuffer_rect)
 // video::draw_text_bar (already tested but exercise more)
 // ---------------------------------------------------------------------------
 
-TEST(VideoExtra, video_draw_text_bar_wide)
+TEST(VideoExtra, draw_text_bar_fills_face_12_with_its_indented_border_at_full_width)
 {
-    og::runtime::current_session->myscreen_->draw_text_bar(0, 0, 320, 10);
+    screen* const s = scr();
+    ASSERT_NE(nullptr, s);
+    s->clearbuffer();
+    // Reference plots for the four faces draw_text_bar uses. The greys are not
+    // unique in our.pal, so compare true colours rather than palette indices.
+    s->pointb(0, 190, 12);
+    const RGB face = px(0, 190);
+    s->pointb(2, 190, 10);
+    const RGB top_edge = px(2, 190);
+    s->pointb(4, 190, 15);
+    const RGB bottom_edge = px(4, 190);
+    s->pointb(6, 190, 11);
+    const RGB left_edge = px(6, 190);
+    ASSERT_NE(face, top_edge) << "control: the faces must be distinguishable";
+    ASSERT_NE(face, bottom_edge) << "control: the faces must be distinguishable";
+    ASSERT_NE(face, left_edge) << "control: the faces must be distinguishable";
+    ASSERT_NE(top_edge, bottom_edge)
+        << "control: the light and dark edges must differ";
+
+    s->draw_text_bar(0, 0, 320, 10);
+
+    EXPECT_EQ(face, px(160, 5)) << "the bar's interior is the grey face 12";
+    EXPECT_EQ(face, px(319, 5))
+        << "a full-width bar fills to the last canvas column";
+    EXPECT_EQ(top_edge, px(160, 0)) << "the top edge is the light face 10";
+    EXPECT_EQ(bottom_edge, px(160, 10)) << "the bottom edge is the dark face 15";
+    EXPECT_EQ(left_edge, px(0, 5)) << "the left edge is face 11";
+    EXPECT_EQ(RGB{}, px(160, 11))
+        << "y2 is the bar's last row: the row below stays cleared";
+    EXPECT_EQ(RGB{}, px(160, 180))
+        << "and the bar must not fill the rest of the canvas";
+    s->clearbuffer();
 }
 
