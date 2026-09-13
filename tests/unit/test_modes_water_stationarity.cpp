@@ -1005,3 +1005,82 @@ TEST_F(ModesWaterRealCampaign,
     EXPECT_EQ(start_y, probe->ypos());
     expect_no_script_errors(world, kCauseway);
 }
+
+// The shoreline veto answers "this bot cannot get its weapon on that
+// objective", and the mode Lua uses it to pick a shooter. It must bend for
+// the two ways a fighter legitimately crosses water — a flight potion and a
+// ghost's ethereal body — and it must refuse the objectives no walk can
+// reach at all. A veto that never bends parks a flying carrier on the bank;
+// a veto that never refuses sends a bot chasing a corpse.
+TEST_F(ModesWaterRealCampaign,
+       the_shoreline_veto_bends_for_flight_and_refuses_unreachable_objectives)
+{
+    LoadedModesWaterLevel fx(kCauseway);
+    ASSERT_TRUE(fx.loaded);
+    request_two_automatic_squads(fx.world());
+    fx.world().tick();
+    ASSERT_TRUE(fx.world().mode.active);
+
+    walker* knife = team_family(fx.world(), 0, FAMILY_THIEF);
+    ASSERT_NE(nullptr, knife);
+    ASSERT_NE(nullptr, knife->stats());
+    knife->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    knife->stats()->set_weapon_cost(0);
+    knife->set_current_weapon(FAMILY_KNIFE);
+
+    // The centre of Causeway's committed northwest bay — water between the
+    // melee carrier and the ball.
+    constexpr int kBallX = 13 * GRID_SIZE + GRID_SIZE / 2;
+    constexpr int kBallY = 4 * GRID_SIZE + GRID_SIZE / 2;
+    ASSERT_EQ(TYPE_WATER,
+              fx.world().smoother_for_floor(0).query_genre_x_y(13, 4));
+    walker* ball = stage_causeway_water_ball(fx.world(), kBallX, kBallY);
+    ASSERT_NE(nullptr, ball);
+    ASSERT_FALSE(knife->can_approach_weapon_range(ball))
+        << "the baseline: a walking melee carrier is stopped at the bank";
+
+    // A flight potion crosses the bay.
+    knife->set_flight_left(60);
+    EXPECT_TRUE(knife->can_approach_weapon_range(ball))
+        << "a flyer must not be vetoed by water it flies over";
+    knife->set_flight_left(0);
+    ASSERT_FALSE(knife->can_approach_weapon_range(ball))
+        << "and the veto returns the moment the potion runs out";
+
+    // So does a ghost's ethereal body.
+    knife->stats()->set_bit_flags(BIT_ETHEREAL, 1);
+    EXPECT_TRUE(knife->can_approach_weapon_range(ball))
+        << "an ethereal walker must not be vetoed by water it passes through";
+    knife->stats()->set_bit_flags(BIT_ETHEREAL, 0);
+    ASSERT_FALSE(knife->can_approach_weapon_range(ball));
+
+    // From here on the carrier can fly, so every remaining refusal is about
+    // the objective or the walker's own motion, never the water.
+    knife->set_flight_left(60);
+    ASSERT_TRUE(knife->can_approach_weapon_range(ball));
+
+    const float walking_step = knife->stepsize();
+    ASSERT_GT(walking_step, 0.0f);
+    knife->set_stepsize(0.0f);
+    EXPECT_FALSE(knife->can_approach_weapon_range(ball))
+        << "a walker rooted to zero stepsize closes no distance at all";
+    knife->set_stepsize(walking_step);
+    ASSERT_TRUE(knife->can_approach_weapon_range(ball));
+
+    ball->set_dead(1);
+    EXPECT_FALSE(knife->can_approach_weapon_range(ball))
+        << "a dead objective is not something to approach";
+    ball->set_dead(0);
+    ASSERT_TRUE(knife->can_approach_weapon_range(ball));
+
+    const short ball_floor = ball->floor();
+    ball->set_floor(static_cast<short>(ball_floor + 1));
+    EXPECT_FALSE(knife->can_approach_weapon_range(ball))
+        << "weapon range is a same-floor question; a storey up is a stair "
+           "problem, not an approach";
+    ball->set_floor(ball_floor);
+    EXPECT_TRUE(knife->can_approach_weapon_range(ball));
+
+    knife->set_flight_left(0);
+    expect_no_script_errors(fx.world(), kCauseway);
+}

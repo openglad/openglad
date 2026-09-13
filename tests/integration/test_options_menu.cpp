@@ -19,6 +19,7 @@
 #include <cstring>
 #include <vector>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -228,6 +229,44 @@ static bool main_thread_cfg_is_on(const char* category, const char* key,
         [&out, category, key] { out = cfg.is_on(category, key); });
 }
 
+// Every click the three lap helpers below issue passes through here. The
+// tour's wall clock is a COUNT problem — each click costs one injected press
+// plus a main-thread round trip whose latency is the menu frame time — so the
+// gate on it is an exact click count, never a clock (which would itself be a
+// flake). A helper that starts double-clicking, or a lap that silently grows,
+// moves the count.
+static std::atomic<int> g_cycle_helper_clicks{0};
+static std::atomic<int> g_cycle_helper_reclicks{0};
+
+static int cycle_helper_clicks()
+{
+    return g_cycle_helper_clicks.load(std::memory_order_relaxed);
+}
+
+static int cycle_helper_reclicks()
+{
+    return g_cycle_helper_reclicks.load(std::memory_order_relaxed);
+}
+
+static void reset_cycle_helper_clicks()
+{
+    g_cycle_helper_clicks.store(0, std::memory_order_relaxed);
+    g_cycle_helper_reclicks.store(0, std::memory_order_relaxed);
+}
+
+// The press is held until the engine has COMPLETED a frame with the button
+// down, instead of for a flat 100 ms that only assumes the menu loop polled.
+// `first` separates the click a step owes from the recovery click it should
+// never need: a re-click means the engine dropped a press, which is exactly
+// the failure this suite spent months hiding behind a silent retry.
+static bool cycle_helper_click(const char* button_id, bool first = true)
+{
+    g_cycle_helper_clicks.fetch_add(1, std::memory_order_relaxed);
+    if (!first)
+        g_cycle_helper_reclicks.fetch_add(1, std::memory_order_relaxed);
+    return interact_framed(button_id);
+}
+
 // Click an FX-subscreen toggle and report whether its cfg key flipped.
 // Under machine load a single click can be dropped (the press is still held
 // when the handler samples the mouse), so poll for the flip and re-click
@@ -241,11 +280,10 @@ static bool toggle_effect_and_check_flip(const char* button_id, const char* cate
     if (!main_thread_cfg_is_on(category, cfg_key, before))
         return false;
     const Uint64 deadline = SDL_GetTicks() + 5000;
-    interact(button_id);
+    if (!cycle_helper_click(button_id))
+        return false;
+    Uint64 last_click = SDL_GetTicks();
     for (;;) {
-        // 300ms per the menu-test discipline: a shorter gap can land the next
-        // click while this one's press is still held, and it gets dropped.
-        SDL_Delay(300);
         bool now = before;
         if (!main_thread_cfg_is_on(category, cfg_key, now))
             return false;
@@ -253,7 +291,16 @@ static bool toggle_effect_and_check_flip(const char* button_id, const char* cate
             return true;
         if (SDL_GetTicks() >= deadline)
             return false;
-        interact(button_id);
+        // 300ms is the minimum RE-CLICK spacing, not a poll interval: a
+        // shorter gap can land the next click while this one's press is still
+        // held, and it gets dropped. A click that landed on the first frame
+        // must not pay for that.
+        if (SDL_GetTicks() - last_click >= 300) {
+            if (!cycle_helper_click(button_id, /*first=*/false))
+                return false;
+            last_click = SDL_GetTicks();
+        }
+        SDL_Delay(20);
     }
 }
 
@@ -266,9 +313,10 @@ static bool click_cycle_step(const char* button_id, const char* category,
     if (!main_thread_cfg_setting(category, cfg_key, before))
         return false;
     const Uint64 deadline = SDL_GetTicks() + 5000;
-    interact(button_id);
+    if (!cycle_helper_click(button_id))
+        return false;
+    Uint64 last_click = SDL_GetTicks();
     for (;;) {
-        SDL_Delay(300);
         std::string now;
         if (!main_thread_cfg_setting(category, cfg_key, now))
             return false;
@@ -276,7 +324,12 @@ static bool click_cycle_step(const char* button_id, const char* category,
             return true;
         if (SDL_GetTicks() >= deadline)
             return false;
-        interact(button_id);
+        if (SDL_GetTicks() - last_click >= 300) {  // re-click spacing only
+            if (!cycle_helper_click(button_id, /*first=*/false))
+                return false;
+            last_click = SDL_GetTicks();
+        }
+        SDL_Delay(20);
     }
 }
 
@@ -287,6 +340,7 @@ static bool click_until_cfg_setting(const char* button_id, const char* category,
                                     const std::string& expected)
 {
     const Uint64 deadline = SDL_GetTicks() + 5000;
+    Uint64 last_click = 0;  // 0 == "no click issued yet", so the first is free
     for (;;) {
         std::string now;
         if (!main_thread_cfg_setting(category, cfg_key, now))
@@ -295,8 +349,12 @@ static bool click_until_cfg_setting(const char* button_id, const char* category,
             return true;
         if (SDL_GetTicks() >= deadline)
             return false;
-        interact(button_id);
-        SDL_Delay(300);
+        if (last_click == 0 || SDL_GetTicks() - last_click >= 300) {
+            if (!cycle_helper_click(button_id, /*first=*/last_click == 0))
+                return false;
+            last_click = SDL_GetTicks();
+        }
+        SDL_Delay(20);
     }
 }
 
@@ -532,7 +590,7 @@ static int options_injector(void* data)
         state->finished = true;
         return 0;
     }
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking options\n");
     bool in_options =
@@ -726,7 +784,7 @@ static int options_injector(void* data)
             fprintf(stderr, "  [test] entering %s subscreen\n", screen.opener_id);
             bool in_screen = click_until_interactable(
                 screen.opener_id, screen.toggles[0].button_id, 5000);
-            SDL_Delay(750);
+            wait_for_menu_frames(2);
             if (!in_screen &&
                 !wait_for_interactable(screen.toggles[0].button_id, 5000)) {
                 continue;
@@ -1105,12 +1163,25 @@ TEST(OptionsMenu, options_menu) {
     save_player_control_settings_to_cfg(cfg);
     cfg.save_settings();
 
-    // Need save data for continue_game
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    // CONTINUE opens the MOST RECENT company on disk, not the one this test
+    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
+    // company another test founded would take the session over silently.
+    // Seed through the autosave choke point that stamps, and check after the
+    // flow which company it actually got.
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
+    // Need save data for continue_game
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
+
+    reset_cycle_helper_clicks();
     OptionsState state = {};
     state.initial_control_mode = get_player_control_mode(0);
     SDL_Thread* thread = SDL_CreateThread(options_injector, "options_test", &state);
@@ -1128,6 +1199,16 @@ TEST(OptionsMenu, options_menu) {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    // NO active-company oracle here, deliberately. Measured: this flow goes
+    // straight from the main menu into SETTINGS and never clicks CONTINUE,
+    // so nothing ever repoints the active slot and the assertion the other
+    // five flows carry would be true whatever company were on disk — a
+    // check an empty result also satisfies. The seeded save0 above still
+    // earns its place: it is what the main menu's company view reads.
+    // (Under a planted stray this test passes either way, which is the
+    // proof; OptionsMenu.zz_capture_* below DO click CONTINUE and do carry
+    // the oracle.)
+
     // Leave this integration process with the same default controls it began
     // with; the assertions below use the injector's captured results.
     reset_default_player_controls();
@@ -1137,6 +1218,15 @@ TEST(OptionsMenu, options_menu) {
     ASSERT_TRUE(state.started) << "injector thread should have started";
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
+    // The tour's whole cost is its click count; the count is meaningful only
+    // if every click LANDED. A re-click is the engine dropping a press — the
+    // failure class that let Difficulty.submenu_door_flow lose a cycle step
+    // for months behind a silent retry — so surface it here rather than
+    // recover quietly. (Measured: zero re-clicks across the tour, including
+    // six concurrent copies on a box at load 41.)
+    EXPECT_EQ(0, cycle_helper_reclicks())
+        << "a lap helper had to click a row twice: the engine dropped a press "
+           "(total clicks this tour: " << cycle_helper_clicks() << ")";
     ASSERT_TRUE(state.main_thread_tasks_all_ran)
         << "#257: every cfg / keymap / sprite read and write in this flow "
            "must have run on the menu thread's pump; a timed-out task is "
@@ -1413,7 +1503,7 @@ int menu_effects_injector(void* data)
 
         for (const ScreenPlan& plan : kPlan) {
             bool in_screen = click_until_interactable(plan.opener, plan.toggles[0], 5000);
-            SDL_Delay(750);
+            wait_for_menu_frames(2);
             if (!in_screen && !wait_for_interactable(plan.toggles[0], 5000)) {
                 all_screens = false;
                 continue;
@@ -1458,10 +1548,22 @@ void run_capture_flow(const char* scene, int (*injector)(void*),
 {
     trace_clear();
 
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    // CONTINUE opens the MOST RECENT company on disk, not the one this test
+    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
+    // company another test founded would take the session over silently.
+    // Seed through the autosave choke point that stamps, and check after the
+    // flow which company it actually got.
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
 
     char scene_dir[512];
     snprintf(scene_dir, sizeof(scene_dir), "%s/%s",
@@ -1483,6 +1585,9 @@ void run_capture_flow(const char* scene, int (*injector)(void*),
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the flow must have run on the company this test seeded";
 }
 
 // menu_difficulty: main menu -> CONTINUE -> Base Camp -> the DIFFICULTY door
@@ -1635,4 +1740,108 @@ TEST(OptionsMenu, zz_capture_menu_effects)
             << menu_capture::kEffectsCfgKeys[i].first << "/"
             << menu_capture::kEffectsCfgKeys[i].second
             << " must end unchanged (flip-twice discipline)";
+}
+
+// The cost gate for the lap helpers, in COUNTS rather than clocks (a clock
+// gate on a timing fix is itself a flake). The SPEED cycler's lap is eleven
+// steps on every platform — unlike zoom, resolution and display mode, whose
+// laps are driver-derived — so the click budget for one verified lap is
+// exactly eleven: one click per step, none repeated, and none spent by the
+// closing click_until_cfg_setting because the lap has already landed.
+//
+// Plant `return true;` at the top of click_cycle_step (no click, no read) and
+// this goes red twice over: the budget drops to zero and the lap never lands.
+struct LapCountState
+{
+    std::atomic<bool> started{false};
+    std::atomic<bool> finished{false};
+    std::atomic<bool> entered{false};
+    std::atomic<bool> lap_landed{false};
+    std::atomic<int> step_clicks{-1};
+    std::atomic<int> finish_clicks{-1};
+    std::atomic<bool> picker_returned{false};
+};
+
+static int lap_count_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<LapCountState*>(data);
+    state->started.store(true, std::memory_order_release);
+
+    if (wait_for_interactable("options", 5000)) {
+        wait_for_menu_frames(2);
+        if (click_until_interactable("options", "game_speed", 10000)) {
+            state->entered.store(true, std::memory_order_release);
+            wait_for_menu_frames(2);
+
+            std::string expected;
+            bool ok = main_thread_cfg_setting("gameplay", "timer_wait", expected);
+            for (int i = 0; i < 11; ++i)
+                expected = og::ui::cycle_game_speed(expected);
+
+            reset_cycle_helper_clicks();
+            for (int i = 0; ok && i < 11; ++i)
+                ok = click_cycle_step("game_speed", "gameplay", "timer_wait");
+            const int after_steps = cycle_helper_clicks();
+            state->step_clicks.store(after_steps, std::memory_order_release);
+            ok = ok && click_until_cfg_setting("game_speed", "gameplay",
+                                               "timer_wait", expected);
+            state->finish_clicks.store(cycle_helper_clicks() - after_steps,
+                                       std::memory_order_release);
+            state->lap_landed.store(ok, std::memory_order_release);
+        }
+    }
+
+    if (wait_for_interactable("options_back", 5000)) {
+        (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
+        interact("options_back");
+        const Uint64 deadline = SDL_GetTicks() + 5000;
+        while (!state->picker_returned.load(std::memory_order_acquire) &&
+               SDL_GetTicks() < deadline)
+            SDL_Delay(50);
+    }
+
+    state->finished.store(true, std::memory_order_release);
+    return 0;
+}
+
+TEST(OptionsMenu, options_menu_lap_helpers_spend_a_bounded_number_of_clicks)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
+
+    LapCountState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(lap_count_injector, "options_lap_count", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+    state.picker_returned.store(true, std::memory_order_release);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished.load(std::memory_order_acquire))
+        << "injector thread should have completed";
+    ASSERT_TRUE(state.entered.load(std::memory_order_acquire))
+        << "should have reached the SPEED row in GAME SETTINGS";
+    ASSERT_TRUE(state.lap_landed.load(std::memory_order_acquire))
+        << "eleven verified steps must return cfg gameplay/timer_wait to "
+           "where the lap started";
+    ASSERT_EQ(11, state.step_clicks.load(std::memory_order_acquire))
+        << "eleven verified steps must cost exactly eleven clicks — one each, "
+           "none repeated";
+    ASSERT_EQ(0, state.finish_clicks.load(std::memory_order_acquire))
+        << "the closing click_until_cfg_setting must find the lap already "
+           "landed and spend nothing; a step helper that reported success "
+           "without clicking would be paid for here instead";
 }

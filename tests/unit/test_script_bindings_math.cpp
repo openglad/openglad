@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "../test_game_world_fixture.h"
+#include "unit_pack_store_guard.h"
 
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
@@ -42,6 +43,11 @@ namespace {
 
 class ScriptBindingMathTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override
     {
         init_all_registries();
@@ -579,4 +585,65 @@ TEST_F(ScriptBindingMathTest, og_C_combat_constants_match_the_header)
                        og::combat::kSprinkleRefreshFloor,
                        "SPRINKLE_REFRESH_FLOOR");
     expect_ran_clean(run_do_special(body, self));
+}
+
+// og.rand(n)'s two refusals, in the order the binding checks them. A bound
+// of zero is a script bug the author must see, not a silent 0: a "random"
+// pick that always answers the same slot is the hardest kind of pack bug to
+// notice in play.
+TEST_F(ScriptBindingMathTest, rand_refuses_a_non_positive_bound)
+{
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+
+    tw.world().rng_.state_ = 0x5EEDu;
+    expect_errored_with(run_do_special("    og.rand(0)", self),
+                        "og.rand: n must be positive");
+    expect_errored_with(run_do_special("    og.rand(-7)", self),
+                        "og.rand: n must be positive");
+    EXPECT_EQ(0x5EEDu, tw.world().rng_.state_)
+        << "a refused bound must not draw from the deterministic stream";
+
+    // Control: the smallest bound the binding accepts draws, and moves the
+    // stream on exactly as any accepted bound does.
+    expect_ran_clean(run_do_special("    og.log(og.rand(1))", self));
+    ASSERT_FALSE(og::script::active_world_scripts().host().log().empty());
+    EXPECT_EQ("0", og::script::active_world_scripts().host().log().back())
+        << "rand(1) has exactly one possible answer";
+    EXPECT_NE(0x5EEDu, tw.world().rng_.state_);
+}
+
+// og.rand draws from the WORLD's generator, so a menu-side VM with no world
+// in context has nothing to draw from and says so rather than falling back
+// to some other stream (which would desync every peer that did have one).
+TEST_F(ScriptBindingMathTest, rand_requires_an_active_world)
+{
+    GameplayContext worldless;  // .world stays nullptr
+    ScopedContextOverride scope(&worldless);
+    expect_errored_with(run_do_special("    og.rand(4)", nullptr),
+                        "og.rand: no active world");
+}
+
+// og.family_id's order argument is the same five-name vocabulary
+// og.register_hooks takes; a typo there must name the typo, not answer nil
+// (which reads as "no such family" and sends the author hunting the wrong
+// half of the call).
+TEST_F(ScriptBindingMathTest, family_id_refuses_an_unknown_order)
+{
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+
+    expect_errored_with(run_do_special("    og.family_id('lifing', "
+                                       "'core:soldier')", self),
+                        "og.family_id: unknown order 'lifing'");
+
+    // Control: the correctly spelled order resolves the same family string
+    // to its wire byte.
+    expect_ran_clean(run_do_special(
+        "    og.log(og.family_id('living', 'core:soldier'))", self));
+    ASSERT_FALSE(og::script::active_world_scripts().host().log().empty());
+    EXPECT_EQ(std::to_string(FAMILY_SOLDIER),
+              og::script::active_world_scripts().host().log().back());
 }

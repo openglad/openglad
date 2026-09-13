@@ -44,6 +44,8 @@
 #include <string>
 #include <vector>
 
+#include "unit_pack_store_guard.h"
+
 using og::data::ClasspackData;
 using og::script::DeclareResult;
 
@@ -53,6 +55,11 @@ constexpr const char* kPack = "v3decl";
 
 class LuaFamilyDeclTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // family chunks this fixture wipes are what the next test in a
+    // --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override { og::script::clear_pack_family_chunks(); }
     void TearDown() override { og::script::clear_pack_family_chunks(); }
 
@@ -863,4 +870,263 @@ TEST_F(LuaFamilyDeclTest, a_failed_declaration_can_be_remembered_and_cleared)
     EXPECT_FALSE(og::script::pack_declaration_failed(kPack))
         << "the ledger describes the install pass that just ran, so a "
            "reinstall starts it empty";
+}
+
+// ---------------------------------------------------------------------------
+// The error surface, field by field
+//
+// Everything below asserts the WHOLE where-path, because the path is what a
+// modder navigates by: "og.family living 'v3:soldier'.names[2]" says which
+// declaration, which key and which element, and a message that only said
+// "expected a string" would leave them reading a 40-line table by eye.
+// ---------------------------------------------------------------------------
+
+// A pack that wrote `name = 12` gets told which key it was, and that a number
+// arrived where a string belongs — not a silently coerced "12" on the HUD.
+TEST_F(LuaFamilyDeclTest, a_wrong_scalar_type_names_the_path_and_what_arrived)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare(kSoldier, good).ok);
+    EXPECT_EQ("SOLDIER", *good.living[0].name);
+    ASSERT_EQ(2u, good.living[0].names->size());
+    EXPECT_EQ("Gunther", (*good.living[0].names)[1]);
+    ASSERT_TRUE(good.living[0].presentation.radar_jitter.has_value());
+    EXPECT_EQ(0, *good.living[0].presentation.radar_jitter);
+    EXPECT_EQ("S", *good.living[0].presentation.glyph);
+
+    expect_rejected(declare(soldier_with("name = \"SOLDIER\",", "name = 12,")),
+                    "og.family living 'v3:soldier'.name: expected a string, "
+                    "got number");
+    // The list reader names the ELEMENT, not the list.
+    expect_rejected(
+        declare(soldier_with("names = { \"Lothar\", \"Gunther\" },",
+                             "names = { \"Lothar\", 7 },")),
+        "og.family living 'v3:soldier'.names[2]: expected a string, got "
+        "number");
+    // Lua integers are 64-bit and the descriptor field is 32: a value that
+    // would wrap has to be refused, with the number quoted back.
+    expect_rejected(
+        declare(soldier_with("radar_jitter = 0,", "radar_jitter = 9999999999,")),
+        "og.family living 'v3:soldier'.radar_jitter: 9999999999 is out of "
+        "range");
+    // The presentation block reports through the family's own path, so a bad
+    // glyph does not read as an error in some shared sub-table.
+    expect_rejected(declare(soldier_with("glyph = \"S\",", "glyph = 12,")),
+                    "og.family living 'v3:soldier'.glyph: expected a string, "
+                    "got number");
+}
+
+// og.NIL is a value, not an absence, so it has to be REPORTED as one: a list
+// field says "this field has no reading for it", and a field with no null
+// guard at all says the type it saw was og.NIL rather than "table".
+TEST_F(LuaFamilyDeclTest, og_nil_is_reported_as_og_NIL_and_never_as_absence)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare(kSoldier, good).ok);
+    ASSERT_TRUE(good.living[0].init_bit_flags.has_value());
+    EXPECT_TRUE(good.living[0].init_bit_flags->empty());
+    EXPECT_EQ("charge", (*good.living[0].specials)[0].id);
+
+    expect_rejected(declare(soldier_with("flags = {},", "flags = og.NIL,")),
+                    "og.family living 'v3:soldier'.flags: og.NIL means "
+                    "\"explicitly none\", which this field has no reading for");
+    expect_rejected(
+        declare("og.family('living', { id = 'v3:x', specials = "
+                "{ { id = og.NIL, name = 'A', mp_cost = 1 } } })"),
+        "og.family living 'v3:x'.specials[1].id: expected a string, got "
+        "og.NIL");
+}
+
+// The suggestion has to be STABLE: two candidates one edit away from the typo
+// must not depend on the order the key table happens to list them, or the same
+// pack reports two different messages on two builds. 'ad' is one edit from
+// both 'id' and 'ai'; alphabetical order settles it.
+TEST_F(LuaFamilyDeclTest, a_tied_key_suggestion_is_settled_alphabetically)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x', specials = "
+                        "{ { id = 'a', name = 'A', mp_cost = 1, "
+                        "ai = function() return true end } } })", good).ok);
+    ASSERT_EQ(1u, good.living[0].specials->size());
+
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "ad = function() return true end } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a': unknown key 'ad' "
+                    "(did you mean 'ai'?)");
+}
+
+// radar_color is the one field with two spellings AND a numeric range, so it
+// needs both arms proved: the names fold to their sentinels, an index passes
+// through, and anything else is refused by name.
+TEST_F(LuaFamilyDeclTest, radar_colour_takes_two_names_or_a_palette_index)
+{
+    ClasspackData team;
+    ASSERT_TRUE(declare(soldier_with("radar_color = \"none\",",
+                                     "radar_color = \"team\","), team).ok);
+    EXPECT_EQ(og::kRadarColorTeam, *team.living[0].presentation.radar_color);
+    ClasspackData index;
+    ASSERT_TRUE(declare(soldier_with("radar_color = \"none\",",
+                                     "radar_color = 5,"), index).ok);
+    EXPECT_EQ(5, *index.living[0].presentation.radar_color);
+
+    expect_rejected(declare(soldier_with("radar_color = \"none\",",
+                                         "radar_color = \"purple\",")),
+                    "og.family living 'v3:soldier'.radar_color: unknown radar "
+                    "colour 'purple' (a palette index, \"none\" or \"team\")");
+    // A palette index is a whole number: 1.5 is not "almost 1".
+    expect_rejected(declare(soldier_with("radar_color = \"none\",",
+                                         "radar_color = 1.5,")),
+                    "og.family living 'v3:soldier'.radar_color: expected a "
+                    "whole number, got number");
+}
+
+// tuning is the pack's own free-form numbers, so its shape is the only thing
+// the engine can check: a named table of scalars. A positional list or a
+// nested table would be read back by og.tuning as nothing at all.
+TEST_F(LuaFamilyDeclTest, tuning_must_be_a_table_of_named_scalars)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare(kSoldier, good).ok);
+    EXPECT_EQ(4u, good.living[0].tuning.size());
+
+    expect_rejected(declare("og.family('living', { id = 'v3:x', tuning = 7 })"),
+                    "og.family living 'v3:x'.tuning: expected a table of named "
+                    "values, got number");
+    expect_rejected(
+        declare("og.family('living', { id = 'v3:x', tuning = "
+                "{ 'positional' } })"),
+        "og.family living 'v3:x'.tuning: keys must be names");
+    expect_rejected(
+        declare("og.family('living', { id = 'v3:x', tuning = "
+                "{ charge = {} } })"),
+        "og.family living 'v3:x'.tuning.charge: a tuning value is a number, a "
+        "string or a boolean, got table");
+}
+
+// Each field of a specials entry is checked where it is written, and the
+// message carries the entry's index AND its id, because a five-slot list is
+// where "expected a whole number" is least navigable on its own.
+TEST_F(LuaFamilyDeclTest, a_special_entry_is_type_checked_field_by_field)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x', specials = "
+                        "{ { id = 'a', name = 'A', mp_cost = 7, slot = 2, "
+                        "alternate = { name = 'ALT' } } } })", good).ok);
+    const auto& entry = (*good.living[0].specials)[0];
+    EXPECT_EQ("a", entry.id);
+    EXPECT_EQ("A", entry.name);
+    EXPECT_EQ(7, entry.mp_cost);
+    EXPECT_EQ(2, entry.slot);
+    EXPECT_EQ("ALT", *entry.alternate_name);
+
+    // The empty id is a special case of the charset rule: it passes the
+    // string reader and still names nothing.
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = '', name = 'A', mp_cost = 1 } } })"),
+                    "og.family living 'v3:x'.specials[1].id '': a special id "
+                    "is lowercase letters, digits and underscores");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 7, mp_cost = 1 } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.name: expected a "
+                    "string, got number");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 'lots' } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.mp_cost: expected "
+                    "a whole number, got string");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "slot = 'two' } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.slot: expected a "
+                    "whole number, got string");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "alternate = { name = 7 } } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.alternate.name: "
+                    "expected a string, got number");
+}
+
+// `specials` is an ARRAY of tables and slots come from position, so a table
+// that is not a list — or a list whose entry is not a table — cannot be
+// silently skipped: the slots after it would all shift.
+TEST_F(LuaFamilyDeclTest, a_specials_block_that_is_not_a_list_of_tables_says_which)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x', specials = "
+                        "{ { id = 'a', name = 'A', mp_cost = 1 } } })",
+                        good).ok);
+    ASSERT_EQ(1u, good.living[0].specials->size());
+    EXPECT_EQ(1, (*good.living[0].specials)[0].slot);
+
+    expect_rejected(
+        declare("og.family('living', { id = 'v3:x', specials = 7 })"),
+        "og.family living 'v3:x'.specials: expected a list, got number");
+    expect_rejected(
+        declare("og.family('living', { id = 'v3:x', specials = { 7 } })"),
+        "og.family living 'v3:x'.specials[1]: expected a table, got number");
+}
+
+// costs.train is the one block that may name a subset of its axes, and that
+// leniency is exactly why it still needs strict keys: a misspelt axis would
+// otherwise price at 0 and ship a class trainable for free.
+TEST_F(LuaFamilyDeclTest, costs_train_is_strict_about_its_axes)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x', costs = "
+                        "{ hire = 10, train = { strength = 6 } } })", good).ok);
+    EXPECT_EQ(6, good.living[0].costs->train->strength);
+    EXPECT_EQ(0, good.living[0].costs->train->dexterity);
+
+    expect_rejected(declare("og.family('living', { id = 'v3:x', costs = "
+                            "{ hire = 10, train = { strenght = 1 } } })"),
+                    "og.family living 'v3:x'.costs.train: unknown key "
+                    "'strenght' (did you mean 'strength'?)");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', costs = "
+                            "{ hire = 10, train = { strength = 'lots' } } })"),
+                    "og.family living 'v3:x'.costs.train.strength: expected a "
+                    "whole number, got string");
+}
+
+// Every order reports under its OWN name. A merged file declares all five, so
+// "og.family weapon 'v3:plank'.hp" is what tells the author which of the
+// declarations in front of them is the broken one.
+TEST_F(LuaFamilyDeclTest, each_non_living_order_reports_a_bad_hp_under_its_own_name)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare(R"LUA(
+og.family("weapon",    { id = "v3:plank", hp = 50 })
+og.family("effect",    { id = "v3:puff",  hp = 1 })
+og.family("treasure",  { id = "v3:chest", hp = 12 })
+og.family("generator", { id = "v3:kiln",  hp = 300 })
+)LUA", good).ok);
+    EXPECT_FLOAT_EQ(50.0f, *good.weapons[0].hp);
+    EXPECT_FLOAT_EQ(1.0f, *good.effects[0].hp);
+    EXPECT_FLOAT_EQ(12.0f, *good.treasures[0].hp);
+    EXPECT_FLOAT_EQ(300.0f, *good.generators[0].hp);
+
+    expect_rejected(
+        declare("og.family('weapon', { id = 'v3:x', hp = 'lots' })"),
+        "og.family weapon 'v3:x'.hp: expected a number, got string");
+    expect_rejected(
+        declare("og.family('effect', { id = 'v3:x', hp = 'lots' })"),
+        "og.family effect 'v3:x'.hp: expected a number, got string");
+    expect_rejected(
+        declare("og.family('treasure', { id = 'v3:x', hp = 'lots' })"),
+        "og.family treasure 'v3:x'.hp: expected a number, got string");
+    expect_rejected(
+        declare("og.family('generator', { id = 'v3:x', hp = 'lots' })"),
+        "og.family generator 'v3:x'.hp: expected a number, got string");
+}
+
+// The id is read before anything else precisely so it can name the rest of the
+// diagnostics — which leaves it as the one field whose own error has no id in
+// it, and it still has to say which ORDER was being declared.
+TEST_F(LuaFamilyDeclTest, an_id_that_is_not_a_string_names_the_order_it_was_declaring)
+{
+    ClasspackData good;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x' })", good).ok);
+    EXPECT_EQ("v3:x", good.living[0].id);
+
+    expect_rejected(declare("og.family('living', { id = 7 })"),
+                    "og.family living.id: expected a string, got number");
 }

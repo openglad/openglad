@@ -17,6 +17,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/level_selection.h>
 #include <openglad/resources/save_data.h>
@@ -567,6 +568,12 @@ void CampaignZoneSession::fetch_composition()
     // over-budget layout: the built-in default composition — the SAME
     // renderer, full capability.
     composed_ = false;
+    // A scripted book that vanishes mid-flow (a campaign remount rebuilds
+    // the pack-script registry) is otherwise indistinguishable from a
+    // campaign that never had one: the camp simply redraws as the default.
+    // Say so, so one run names it.
+    TRACE("zone", "composition_fallback campaign=%s",
+          get_mounted_campaign().c_str());
     const bool ok = adopt(default_campaign_zone());
     (void)ok;  // the default is one 8-row roster; it always lays out
 }

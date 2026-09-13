@@ -2468,6 +2468,35 @@ std::vector<std::string> build_host_picker_status_lines(
 
 namespace {
 
+// Both roles rebuild their lobby from the save when the connection did not
+// survive, and both must keep the seat COLOURS the session was played with
+// rather than re-seed them from a roster the player may have recoloured in
+// Base Camp between levels. One implementation, so the survivor is the one
+// under test (PR #245, "no rule twins"). Returns true when the caller still
+// owes its role's roster re-send.
+bool restore_seat_teams_after_rebuild(
+    const std::vector<short>& preserved_teams,
+    std::vector<short>& seat_teams,
+    short& local_team,
+    bool spectator_mode,
+    int local_player_count,
+    SaveData* save)
+{
+    if (preserved_teams.empty() || seat_teams.empty())
+        return false;
+    seat_teams = preserved_teams;
+    if (save == nullptr)
+        return false;
+    og::ui::detail::resize_local_seat_assignments(
+        seat_teams,
+        *save,
+        spectator_mode,
+        local_player_count);
+    local_team = seat_teams.front();
+    save->my_team = local_team;
+    return true;
+}
+
 class HostPickerLobbyClient final : public og::ui::IPickerLobbyClient
 {
 public:
@@ -2498,6 +2527,12 @@ public:
             og::ui::detail::seed_local_seat_assignments(*save, spectator_mode_);
         local_team_ = local_seat_teams_.front();
         save->my_team = local_team_;
+        // shutdown() clears local_seat_teams_, and the resume fallback below
+        // runs only AFTER a shutdown — so the seats it means to preserve need
+        // a copy that teardown does not touch. Re-seeded here on every fresh
+        // start, so a restart on the same options never resurrects the
+        // previous session's seats.
+        last_session_seat_teams_ = local_seat_teams_;
         direct_address_ = detect_lan_ipv4_address();
 
         local_server_transport_ = og::sim::InProcessTransport::create_server();
@@ -2546,6 +2581,13 @@ public:
         {
             websocket_server_transport_ =
                 std::make_shared<og::sim::WebSocketServerTransport>(options_.port);
+            // The listening socket is only bound by accept_connections(); the
+            // constructor cannot fail on a port conflict. Bind HERE so an
+            // address-in-use lands in direct_status_message_ and the relay
+            // fallback above still gets its chance (the relay transport is
+            // started the same way). The combined accept_connections() below
+            // is idempotent for a transport that is already listening.
+            websocket_server_transport_->accept_connections();
         }
         catch (const std::exception& error)
         {
@@ -2572,7 +2614,9 @@ public:
             std::move(transports));
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
-        sync_hosted_packs(*save, /*force=*/true);
+        // A brand-new LobbyServer has been told nothing yet.
+        hosted_packs_.reset();
+        sync_hosted_packs();
 
         // Staged lobby (#218): the network host stages through the dedicated
         // pipeline, seeded from its own company save (V5 Option A) with the
@@ -2664,6 +2708,10 @@ public:
         apply_state_to_current_save();
         rebuild_status_lines();
         drive_stage();
+        // Staging mounts the lobby's campaign, which is exactly what the
+        // pack announcement describes: re-offer the set when that mount
+        // moved (a string compare when it did not).
+        sync_hosted_packs();
     }
 
     [[nodiscard]] const GameWorld* staged_world() const override
@@ -3169,6 +3217,13 @@ public:
         return server_ != nullptr;
     }
 
+    // A host's own lobby is in-process and cannot be dropped, but a re-host
+    // between levels can fail to bind — and then the session really is over.
+    [[nodiscard]] bool session_lost() const noexcept override
+    {
+        return session_lost_;
+    }
+
     bool install_gameplay_runtime(og::runtime::GameSession& session,
                                   screen& gameplay_screen)
     {
@@ -3227,23 +3282,30 @@ public:
         if (combined_transport_ == nullptr || local_client_transport_ == nullptr ||
             server_ == nullptr)
         {
-            const std::vector<short> preserved_teams = local_seat_teams_;
-            initialize_from_save();
-            if (!preserved_teams.empty() && !local_seat_teams_.empty())
+            const std::vector<short> preserved_teams = last_session_seat_teams_;
+            try
             {
-                local_seat_teams_ = preserved_teams;
-                SaveData* const save = current_picker_save();
-                if (save != nullptr)
-                {
-                    og::ui::detail::resize_local_seat_assignments(
-                        local_seat_teams_,
-                        *save,
-                        spectator_mode_,
-                        local_player_count_);
-                    local_team_ = local_seat_teams_.front();
-                    save->my_team = local_team_;
-                    sync_roster_from_save();
-                }
+                initialize_from_save();
+            }
+            catch (...)
+            {
+                // The re-host could not bind (the port is someone else's now).
+                // There is no lobby to come back to, so this session is over:
+                // latch it like a joiner's dead link, and the picker's
+                // per-frame revert retires the dead host to a local lobby on
+                // the next frame. The caller still sees the exception.
+                session_lost_ = true;
+                throw;
+            }
+            if (restore_seat_teams_after_rebuild(
+                    preserved_teams,
+                    local_seat_teams_,
+                    local_team_,
+                    spectator_mode_,
+                    local_player_count_,
+                    current_picker_save()))
+            {
+                sync_roster_from_save();
             }
             return;
         }
@@ -3302,20 +3364,22 @@ private:
             og::ui::detail::make_settings_message(*save));
         // A campaign switch can change the campaign-embedded pack set;
         // re-offer it so joiners get the new manifests (protocol v10).
-        sync_hosted_packs(*save, /*force=*/false);
+        sync_hosted_packs();
     }
 
-    // Offer this machine's mounted non-core packs for transfer. Rebuilding
-    // hashes every pack file, so only do it when the mounted campaign (the
-    // one lobby-time source of pack-set changes) actually changed.
-    void sync_hosted_packs(const SaveData& save, bool force)
+    // Offer this machine's mounted non-core packs for transfer. The shared
+    // memo keys on the MOUNTED campaign — the thing build_transferable_packs
+    // actually reads — and rebuilding hashes every pack file, so it answers
+    // only when that mount moved.
+    void sync_hosted_packs()
     {
         if (server_ == nullptr)
             return;
-        if (!force && save.current_campaign == hosted_packs_campaign_)
-            return;
-        hosted_packs_campaign_ = save.current_campaign;
-        server_->set_hosted_packs(og::resources::build_transferable_packs());
+        if (std::optional<std::vector<og::sim::HostedPack>> packs =
+                hosted_packs_.refresh())
+        {
+            server_->set_hosted_packs(std::move(*packs));
+        }
     }
 
     void send_join_from_save()
@@ -3369,6 +3433,7 @@ private:
                     local_seat_teams_.clear();
                     for (const og::sim::LobbyPlayer* const seat : local_seats)
                         local_seat_teams_.push_back(seat->team);
+                    last_session_seat_teams_ = local_seat_teams_;
                 }
             }
             break;
@@ -3531,6 +3596,10 @@ private:
     int local_player_count_ = 1;
     short local_team_ = 0;
     std::vector<short> local_seat_teams_;
+    // Survives shutdown(): the seat teams of the session that just ended,
+    // read by the resume fallback (which runs only after a shutdown has
+    // already cleared local_seat_teams_).
+    std::vector<short> last_session_seat_teams_;
     bool start_request_pending_ = false;
     std::uint32_t next_start_request_id_ = 1;
     std::uint32_t pending_start_request_id_ = 0;
@@ -3538,9 +3607,14 @@ private:
     std::string relay_room_code_;
     std::string relay_status_message_;
     std::string direct_status_message_;
-    // Campaign whose pack set was last offered to the LobbyServer; guards
-    // sync_hosted_packs against re-hashing every settings echo.
-    std::string hosted_packs_campaign_;
+    // Mounted campaign whose pack set was last offered to the LobbyServer;
+    // guards sync_hosted_packs against re-hashing every settings echo.
+    og::resources::HostedPackSync hosted_packs_;
+    // A host's lobby is in-process, so nothing can DROP it — but a re-host
+    // between levels can fail to bind, and then the session really is over.
+    // Latched like the joiner's: shutdown() and resume_after_level() leave
+    // it set, and the picker's kick/lost revert reads it.
+    bool session_lost_ = false;
 };
 
 class JoinPickerLobbyClient final : public og::ui::IPickerLobbyClient
@@ -4250,6 +4324,12 @@ public:
         if (!transport_)
             return false;
         shutdown();
+        // LEAVING is the end of this networked session: the class packs it
+        // downloaded from the host stop shadowing the next campaign's book.
+        // (Deliberately NOT in shutdown() itself — initialize_from_save()
+        // calls that as its first statement, including the between-levels
+        // resume fallback, which must keep the running pack mounted.)
+        og::resources::end_pack_transfer_session();
         return true;
     }
 
@@ -4559,21 +4639,15 @@ public:
         {
             const std::vector<short> preserved_teams = local_seat_teams_;
             initialize_from_save();
-            if (!preserved_teams.empty() && !local_seat_teams_.empty())
+            if (restore_seat_teams_after_rebuild(
+                    preserved_teams,
+                    local_seat_teams_,
+                    local_team_,
+                    spectator_mode_,
+                    local_player_count_,
+                    current_picker_save()))
             {
-                local_seat_teams_ = preserved_teams;
-                SaveData* const save = current_picker_save();
-                if (save != nullptr)
-                {
-                    og::ui::detail::resize_local_seat_assignments(
-                        local_seat_teams_,
-                        *save,
-                        spectator_mode_,
-                        local_player_count_);
-                    local_team_ = local_seat_teams_.front();
-                    save->my_team = local_team_;
-                    sync_roster_from_save();
-                }
+                sync_roster_from_save();
             }
             return;
         }

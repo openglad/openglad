@@ -27,6 +27,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_click_ladder.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -38,6 +39,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <initializer_list>
 #include <map>
 #include <memory>
@@ -115,58 +117,6 @@ bool wait_for_interactable_at(const std::string& id, int x, int y,
     return false;
 }
 
-int count_trace_containing(const char* category, const char* substring)
-{
-    std::lock_guard<std::mutex> lock(g_trace_mutex);
-    int count = 0;
-    for (const TraceEntry& entry : g_trace_buffer) {
-        if (entry.category == category &&
-            entry.message.find(substring) != std::string::npos)
-            ++count;
-    }
-    return count;
-}
-
-// Roster cyclers do not always change their face (the DEPLOY column is an X
-// both ways), but every accepted or refused transition emits a named trace.
-// Start from a pointer baseline, wait for a NEW matching trace, then reset on
-// the menu thread after the click was observed. That reset is the
-// acknowledgement that the full press/release is consumed before another
-// press is allowed. This covers repeated traces too: the final BURDEN -> WAR
-// assignment waits for count 2, not stale count 1.
-bool click_and_acknowledge_trace(const std::string& id, const char* category,
-                                 const char* trace_substring,
-                                 bool waits_for_autosave = true,
-                                 int timeout_ms = 5000)
-{
-    const int before = count_trace_containing(category, trace_substring);
-    const int saves_before = trace_count("save");
-    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms))
-        return false;
-    interact(id);
-    int elapsed = 0;
-    while (elapsed < timeout_ms &&
-           (count_trace_containing(category, trace_substring) <= before ||
-            (waits_for_autosave && trace_count("save") <= saves_before))) {
-        SDL_Delay(50);
-        elapsed += 50;
-    }
-    const bool traced =
-        count_trace_containing(category, trace_substring) > before;
-    if (!traced) {
-        fprintf(stderr,
-                "  [interact] TIMEOUT waiting for new %s trace '%s'\n",
-                category, trace_substring);
-    }
-    const bool autosaved =
-        !waits_for_autosave || trace_count("save") > saves_before;
-    if (!autosaved)
-        fprintf(stderr, "  [interact] TIMEOUT waiting for cycler autosave\n");
-    const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); }, timeout_ms);
-    return traced && autosaved && acknowledged;
-}
-
 // Stash/restore the picker save across an injector flow (the test_ctf_ui
 // pattern, plus the campaign-state book and the v16 campaign_tag bytes the
 // zone flows write into).
@@ -201,6 +151,18 @@ struct SavedPickerSave
         snapshot_fields.arena_lineup_dealt_campaign =
             save.arena_lineup_dealt_campaign;
         snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
+
+        // ...and, once everything above is safely snapshotted, the
+        // PROCESS-WIDE lobby. The standalone picker lobby client caches the
+        // settings every cycler stamps into it
+        // (picker_lobby_sync_settings_from_save), nothing in a test binary
+        // tears it down, and its apply writes that cached campaign_id back
+        // over save.current_campaign and REMOUNTS it — rebuilding the
+        // pack-script registry underneath a scripted book. Re-stamping it
+        // from the save this flow inherits is enough, and is far cheaper
+        // than shutting the singleton down (a shutdown makes the next lobby
+        // use rebuild the server, its peers and the mount).
+        picker_lobby_sync_settings_from_save();
     }
 
     ~SavedPickerSave()
@@ -227,10 +189,14 @@ struct SavedPickerSave
 };
 
 // Save/restore the pack-script registry around a synthetic registration.
-// The gladiator campaign is mounted (same-id remounts are no-ops), so the
-// save0 load inside picker_main never re-walks the registry from disk and
-// the synthetic chunk survives the whole flow. The chunk name deliberately
-// does NOT start with `packs/` (the pack-Lua coverage inventory rule).
+// The gladiator campaign is mounted and the save0 load inside picker_main
+// never re-walks the registry from disk, so the synthetic chunk survives an
+// ordinary flow. It does NOT survive a remount of a DIFFERENT package: that
+// rebuilds the registry and the chunk is gone, which is how a stale lobby
+// campaign stamp used to turn a scripted zone into the default composition
+// (see roster_mutations_survive_a_stale_lobby_settings_stamp). The chunk
+// name deliberately does NOT start with `packs/` (the pack-Lua coverage
+// inventory rule).
 class SyntheticCampaignScriptGuard
 {
 public:
@@ -487,6 +453,31 @@ constexpr const char* kZoneScript = R"LUA(og.register_campaign_hooks({
           { id = "sip", label = "SIP", kind = "action" },
         },
       }
+    end
+    -- Direct-drive fixtures below; no interactive flow opens these pages,
+    -- so no existing row index moves. "long" overflows the 8-row window
+    -- for the pager tests, "roads" carries one deliberately over-budget
+    -- level label for the host-marker tests, and "void" is the page the
+    -- book refuses to hand back at all.
+    if page_id == "long" then
+      local entries = {}
+      for i = 1, 12 do
+        entries[i] = { id = "shelf" .. i, label = "SHELF " .. i,
+                       kind = "action" }
+      end
+      return { title = "LONG SHELF", entries = entries }
+    end
+    if page_id == "roads" then
+      return {
+        title = "ROADS",
+        entries = {
+          { id = "milestone", kind = "level", level = 1,
+            label = "ROADROADROADROADROADROADROADROADROADROADROADRO" },
+        },
+      }
+    end
+    if page_id == "void" then
+      return nil
     end
     return { title = "EMPTY" }
   end,
@@ -937,6 +928,100 @@ TEST(CampaignZoneUi, default_zone_keeps_the_classic_roster_flows)
         << "both deploy toggles must finish before the train-door click";
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
+}
+
+// Teeth for the trace ladder: the first deploy press evaporates, and the flow
+// still lands both toggles — with exactly one retry, and no double-toggle
+// (the second edge, "deploy slot=0 on", proves the first one landed once).
+TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    write_save0_with_two_soldiers("gladiator", 1);
+
+    g_click_ladder_trace_click_retries = 0;
+    g_click_ladder_ack_post_retries = 0;
+    g_click_ladder_ack_drops = 0;
+    g_click_ladder_click_drops = 1;
+
+    DefaultZoneFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        default_zone_injector, "default_zone_drop", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    // The injector this shares with default_zone_keeps_the_classic_roster_flows
+    // records a capture, and the shot ledger is process-wide: answer for it
+    // here or the next verifying flow inherits it.
+    verify_zone_shots("default_zone_drop", 1);
+
+    EXPECT_EQ(0, g_click_ladder_click_drops) << "the injected drop must be consumed";
+    EXPECT_TRUE(state.deploy_edges_acknowledged)
+        << "a dropped press must cost a retry, not the toggle";
+    EXPECT_EQ(1, g_click_ladder_trace_click_retries)
+        << "exactly one press left no trace and was re-sent";
+    EXPECT_TRUE(state.finished);
+}
+
+// The other tooth, for the other half of the ladder: the press lands and
+// traces, but its acknowledgement — the pointer reset posted back to the
+// menu thread — is cancelled unrun. That is the mode seen under load at
+// CampaignZoneUi.default_zone_keeps_the_classic_roster_flows: the deploy
+// autosave leaves the menu thread unpumped past the ceiling, the post is
+// cancelled while still queued, and the toggle was reported unacknowledged.
+// Re-posting the reset is toggle-safe, so the flow still finishes both
+// toggles — with exactly one extra post and NO extra press. The re-post
+// COUNT is what this pins: the click's own verdict no longer depends on a
+// clock (a fully stalled thread leaves the reset queued instead), so the
+// counter is the teeth.
+TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    write_save0_with_two_soldiers("gladiator", 1);
+
+    g_click_ladder_trace_click_retries = 0;
+    g_click_ladder_ack_post_retries = 0;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_ack_drops = 1;
+
+    DefaultZoneFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        default_zone_injector, "default_zone_ack_drop", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    // Shared injector, process-wide shot ledger: answer for the capture here
+    // or the next verifying flow inherits it.
+    verify_zone_shots("default_zone_ack_drop", 1);
+
+    EXPECT_EQ(0, g_click_ladder_ack_drops)
+        << "the injected cancellation must be consumed";
+    EXPECT_TRUE(state.deploy_edges_acknowledged)
+        << "a cancelled acknowledge must cost a re-post, not the toggle";
+    EXPECT_EQ(1, g_click_ladder_ack_post_retries)
+        << "exactly one acknowledge post was re-sent";
+    EXPECT_EQ(0, g_click_ladder_trace_click_retries)
+        << "the press itself registered: it must never be re-pressed";
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
+    EXPECT_TRUE(state.finished);
 }
 
 namespace {
@@ -1401,6 +1486,449 @@ TEST(CampaignZoneUi, submenu_action_result_level_routes_the_gated_set_tail)
     og::ui::install_zone_submenu_state_for_screen(nullptr);
 }
 
+// Every refusal the submenu's shared level-set tail can give, on the same
+// page and through the same dispatch a click takes. Each one is one line on
+// the message strip and NO cursor movement — a book that quietly moved the
+// level under a refused click would launch the wrong arena at GO.
+TEST(CampaignZoneUi, zone_submenu_level_refusals_speak_and_move_no_cursor)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.my_team = 0;
+    save.scen_num = 1;
+    save.completed_levels.clear();
+    save.add_level_completed("gladiator", 2);
+    screen* const game = test_screen();
+    game->world().id = 1;
+    ASSERT_TRUE(game->load_level());
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_EQ(5u, session.page().rows.size());
+    ASSERT_EQ("ghost", session.page().rows[2].id);
+    ASSERT_EQ(9999, session.page().rows[2].level);
+    ASSERT_EQ("dice", session.page().rows[3].id);
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // 1. HOST GATE. A joiner's click on a level row is refused before the
+    // loader is ever consulted: the GHOST row points at a level that does
+    // not exist, and the joiner is still told the HOST line, not the
+    // closed-road one. The gate is the first thing in the tail for a
+    // reason — a joiner must never learn about the host's level list by
+    // watching which rows fail differently.
+    {
+        JoinerZoneLobbyClient lobby;
+        og::ui::IPickerLobbyClient* const saved_client =
+            og::ui::active_picker_lobby_client();
+        og::ui::install_active_picker_lobby_client(&lobby);
+        EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(2, &st));
+        og::ui::install_active_picker_lobby_client(saved_client);
+
+        EXPECT_EQ(1, save.scen_num)
+            << "a joiner's level click must not move the cursor";
+        EXPECT_EQ(1, game->world().id)
+            << "and must not load anything either";
+        EXPECT_TRUE(trace_contains("zone", "level_denied_nonhost 9999"));
+        EXPECT_EQ(std::string(og::ui::kCampaignPickerHostGuardMessage),
+                  st.toast);
+    }
+
+    // The paired control: the SAME row as HOST gets the campaign's own
+    // closed-road voice from the load-with-rollback arm instead.
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(2, &st));
+    EXPECT_EQ(1, save.scen_num);
+    EXPECT_EQ(std::string(og::ui::kCampaignLevelClosedMessage), st.toast)
+        << "as host the same row answers with the loader's refusal, in the "
+           "campaign's voice";
+
+    // 2. ALREADY THERE. DICE answers with level 2, which is earned, so the
+    // first click commits...
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(3, &st));
+    EXPECT_EQ(2, save.scen_num);
+    ASSERT_EQ(2, game->world().id);
+
+    // ...and the second click on the same row is refused as unchanged. The
+    // refusal owns the line: "Already on that level. GO when ready." plus
+    // the roll's own "The dice land." is 52 glyphs against a 41-glyph
+    // strip, so the pack's flavour is dropped whole rather than cut, and
+    // never in the refusal's place.
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(3, &st));
+    EXPECT_EQ(2, save.scen_num) << "an unchanged set moves nothing";
+    EXPECT_TRUE(trace_contains("zone", "level_unchanged 2"));
+    EXPECT_EQ(std::string(og::ui::kCampaignLevelUnchangedMessage), st.toast);
+    EXPECT_FALSE(trace_contains("zone", "toast The dice land."))
+        << "the pack's line must never speak in the refusal's place";
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+}
+
+// A purchase the company cannot afford must cost it nothing and must not
+// run the persistence tail: a refused BREAD that still debited (or still
+// autosaved a half-applied state) is a shop that charges for nothing.
+TEST(CampaignZoneUi, zone_submenu_refused_purchase_debits_nothing)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.my_team = 0;
+    save.scen_num = 1;
+    save.m_totalcash[0] = 0;
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_EQ("bread", session.page().rows[0].id);
+    ASSERT_EQ(10, session.page().rows[0].cost);
+    ASSERT_FALSE(session.page().rows[0].affordable);
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(0, &st));
+    EXPECT_EQ(0u, save.m_totalcash[0]) << "a refused purchase debits nothing";
+    EXPECT_EQ("Not enough gold.", st.toast);
+    EXPECT_TRUE(trace_contains("zone", "refused Not enough gold."));
+    EXPECT_FALSE(trace_contains("zone", "acted_autosave"))
+        << "a refusal never runs the Acted persistence tail";
+    EXPECT_FALSE(trace_contains("zone", "toast Bread eaten."))
+        << "and the book's own line never speaks for a purchase that did "
+           "not happen";
+
+    // The paired control: with coin in the purse the same row buys.
+    trace_clear();
+    save.m_totalcash[0] = 100;
+    session.refresh();
+    ASSERT_TRUE(session.page().rows[0].affordable);
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(0, &st));
+    EXPECT_EQ(90u, save.m_totalcash[0]) << "the accepted purchase debits 10";
+    EXPECT_EQ("Bread eaten.", st.toast);
+    EXPECT_TRUE(trace_contains("zone", "acted_autosave"));
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+}
+
+// The submenu pagers step the 8-row window and SATURATE at both ends: a
+// PREV at page 0 (or a NEXT on the last page) is not a page change, so it
+// must not trace one and must not move the window. A pager that wrapped —
+// or that traced a flip it never made — makes a long shelf unreadable.
+TEST(CampaignZoneUi, zone_submenu_pagers_step_and_saturate)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("long"));
+    ASSERT_EQ(12u, session.page().rows.size());
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+    ASSERT_TRUE(st.page.multi_page());
+    ASSERT_EQ(0, st.page.first_index());
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // PREV on the first page: no move, no flip trace.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuPrevIndex, &st));
+    EXPECT_EQ(0, st.page.first_index());
+    EXPECT_EQ(0, count_trace_containing("zone", "submenu_page"));
+
+    // NEXT: the window moves to rows 8..11 and the flip is announced.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuNextIndex, &st));
+    EXPECT_EQ(8, st.page.first_index());
+    EXPECT_EQ(12, st.page.end_index());
+    EXPECT_EQ(1, count_trace_containing("zone", "submenu_page"));
+    EXPECT_TRUE(trace_contains("zone", "submenu_page 2/2"));
+
+    // NEXT on the last page: saturated, same silence as PREV at the top.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuNextIndex, &st));
+    EXPECT_EQ(8, st.page.first_index());
+    EXPECT_EQ(1, count_trace_containing("zone", "submenu_page"));
+
+    // PREV comes home.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuPrevIndex, &st));
+    EXPECT_EQ(0, st.page.first_index());
+    EXPECT_EQ(2, count_trace_containing("zone", "submenu_page"));
+    EXPECT_TRUE(trace_contains("zone", "submenu_page 1/2"));
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+}
+
+namespace {
+
+// A camp whose only docket row is a door to a page the book will not hand
+// back: the Base Camp half of the unreadable-page rule.
+constexpr const char* kVoidPageZoneScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "void", label = "THE VOID", kind = "page" },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+  picker_menu = function(page_id)
+    if page_id == "void" then
+      return nil
+    end
+    return { title = "SOMEWHERE", entries = {} }
+  end,
+}))LUA";
+
+} // namespace
+
+// A page door the book refuses to open must say so on the message line and
+// build no screen at all. The refusal is deliberately NOT a modal: a modal
+// here strands a networked joiner mid-GO behind an OK button nobody else
+// can see.
+TEST(CampaignZoneUi, unreadable_page_speaks_and_opens_no_screen)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+
+    // The fixture's own control: only "void" is unreadable — "stores" on
+    // the same book opens fine, so the refusal below is the page, not the
+    // registration.
+    {
+        og::ui::CampaignPickerSession probe(save);
+        EXPECT_TRUE(probe.open_at("stores"));
+        EXPECT_FALSE(probe.open_at("void"));
+    }
+
+    // The blocking wrapper never reaches its screen: `opened` starts true
+    // (what the real caller passes), and nothing is installed in the
+    // engine's live button table.
+    clear_allbuttons();
+    bool opened = true;
+    EXPECT_EQ(MENU_REDRAW, og::ui::run_campaign_zone_submenu("void", &opened));
+    EXPECT_FALSE(opened) << "the wrapper must report the failed open";
+    EXPECT_TRUE(trace_contains("zone", "submenu_unreadable void"));
+    EXPECT_EQ(nullptr, og::runtime::current_session->allbuttons_[0])
+        << "a page that cannot be read builds no screen";
+
+    // ...and the Base Camp caller turns that report into the message-line
+    // toast the player actually reads.
+    SyntheticCampaignScriptGuard::install(kVoidPageZoneScript);
+    trace_clear();
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(1u, zone.actions()[0].rows.size());
+    ASSERT_EQ("void", zone.actions()[0].rows[0].id);
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& camp =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, camp.on_spec_row);
+    EXPECT_EQ(MENU_REDRAW,
+              camp.on_spec_row(kBaseCampZoneActionBase + 0, &state));
+    EXPECT_EQ(std::string(og::ui::kCampaignPageUnreadableMessage),
+              state.toast);
+    EXPECT_TRUE(trace_contains("zone", "page_row void"));
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
+// A camp docket whose single row is a level with a deliberately over-budget
+// label, for the Base Camp half of the host-marker rule.
+constexpr const char* kLongRoadZoneScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "milestone", kind = "level", level = 1,
+            label = "ROADROADROADROADROADROADROADROADROADROADROADRO" },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA";
+
+} // namespace
+
+// A joiner cannot set the level, so every level row it can see says so —
+// and the marker is paid for out of the row's OWN label budget, never added
+// past the face. A marker bolted on top would push the last glyphs of every
+// long road name outside the bevel on both sides (labels are drawn centered
+// and unclipped). Both surfaces that draw level rows answer the same way.
+TEST(CampaignZoneUi, joiner_level_rows_pay_for_the_host_marker_out_of_the_label)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.completed_levels.clear();
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("roads"));
+    ASSERT_EQ(1u, session.page().rows.size());
+    ASSERT_EQ(46u, session.page().rows[0].label.size())
+        << "the fixture label must overrun both budgets";
+    ASSERT_TRUE(session.page().rows[0].available);
+    ASSERT_TRUE(session.page().rows[0].current)
+        << "the [CURRENT] tail is part of the budget being measured";
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    button* const buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    int highlighted = kZoneSubmenuBackIndex;
+
+    // JOINER first, from a freshly initialized live surface.
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, count);
+    ASSERT_NE(nullptr, og::runtime::current_session->allbuttons_[0]);
+    const unsigned char resting_face =
+        og::runtime::current_session->allbuttons_[0]->color;
+    {
+        JoinerZoneLobbyClient lobby;
+        og::ui::IPickerLobbyClient* const saved_client =
+            og::ui::active_picker_lobby_client();
+        og::ui::install_active_picker_lobby_client(&lobby);
+        spec.nav.rewire(buttons, count, highlighted);
+        og::ui::install_active_picker_lobby_client(saved_client);
+    }
+    EXPECT_EQ("ROADROADROADROADROADROADROAD..  [CURRENT] (HOST)",
+              buttons[0].label);
+    EXPECT_EQ(kZoneSubmenuRowLabelChars, buttons[0].label.size())
+        << "the marked label still fits the face exactly";
+    EXPECT_EQ(buttons[0].label,
+              og::runtime::current_session->allbuttons_[0]->label)
+        << "both label surfaces carry the marker";
+    EXPECT_EQ(resting_face,
+              og::runtime::current_session->allbuttons_[0]->color)
+        << "a row the joiner cannot activate never wears the GO face";
+
+    // HOST: the same row, same face width, seven more glyphs of road name.
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, count);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ROADROADROADROADROADROADROADROADROA..  [CURRENT]",
+              buttons[0].label);
+    EXPECT_EQ(kZoneSubmenuRowLabelChars, buttons[0].label.size());
+    EXPECT_EQ(buttons[0].label,
+              og::runtime::current_session->allbuttons_[0]->label);
+    EXPECT_EQ(og::ui::kReadyGoFaceGo,
+              og::runtime::current_session->allbuttons_[0]->color)
+        << "an actionable level row wears the green launch face";
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+
+    // The Base Camp docket band is the same rule at its own 42-glyph face.
+    SyntheticCampaignScriptGuard::install(kLongRoadZoneScript);
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(1u, zone.actions()[0].rows.size());
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& camp =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, camp.nav.rewire);
+    button* const camp_buttons = camp.buttons_accessor();
+    const int camp_count = camp.count_accessor();
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ =
+        init_buttons(camp_buttons, camp_count);
+    int camp_highlight = camp.default_highlight;
+
+    {
+        JoinerZoneLobbyClient lobby;
+        og::ui::IPickerLobbyClient* const saved_client =
+            og::ui::active_picker_lobby_client();
+        og::ui::install_active_picker_lobby_client(&lobby);
+        camp.nav.rewire(camp_buttons, camp_count, camp_highlight);
+        og::ui::install_active_picker_lobby_client(saved_client);
+    }
+    EXPECT_EQ("ROADROADROADROADROADRO..  [CURRENT] (HOST)",
+              camp_buttons[kBaseCampZoneActionBase].label);
+
+    camp.nav.rewire(camp_buttons, camp_count, camp_highlight);
+    EXPECT_EQ("ROADROADROADROADROADROADROADR..  [CURRENT]",
+              camp_buttons[kBaseCampZoneActionBase].label)
+        << "the host reads seven more glyphs of the same road name";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+}
+
 // Fetch triggers 3 and 4 through the REAL frame hook: the level-reload
 // guard firing (any scen_num source — a host SET LEVEL landing on a
 // joiner) and an applied lobby-settings change both refetch the zone;
@@ -1612,6 +2140,13 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &state));
     EXPECT_TRUE(trace_contains("zone", "assign slot=0 tag=1"));
     EXPECT_TRUE(trace_contains("zone", "refetch"));
+    // A refetch that lost the scripted book falls back to the DEFAULT
+    // composition, which carries no Text widget at all: read texts()[0]
+    // unguarded and the empty vector hands back freed TextLayout storage
+    // (the og_test_matchup SIGSEGV). Name the fallback instead.
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
     EXPECT_EQ("LEAD Alpha/0 SWORN 1", zone.texts()[0].lines[0])
         << "the assign site must refetch the composition";
 
@@ -1620,6 +2155,9 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
     EXPECT_TRUE(trace_contains("basecamp", "move_up slot=1 to=0"));
     EXPECT_TRUE(trace_contains("zone", "refetch"));
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
     EXPECT_EQ("LEAD Beta/0 SWORN 1", zone.texts()[0].lines[0])
         << "the move-up site must refetch the composition";
 
@@ -1636,6 +2174,184 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
     spec.on_reset(&state);
     EXPECT_TRUE(trace_contains("zone", "refetch"))
         << "the reset site must refetch the composition";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+// The same roster mutation, run against a lobby whose cached settings still
+// name a DIFFERENT campaign. The standalone picker lobby client is a
+// process-wide singleton whose settings are stamped by
+// picker_lobby_sync_settings_from_save() — the tail of every settings
+// cycler (change_ctf_caps, set_difficulty, ...) — and nothing in a test
+// binary ever tears it down. A stamp left behind by an earlier flow reaches
+// this mutation through picker_base_camp_after_roster_mutation's lobby
+// sync, whose apply writes settings.campaign_id back over save.current_campaign
+// and REMOUNTS that package; the remount rebuilds the pack-script registry,
+// the scripted book vanishes, and the zone silently falls back to the
+// default composition. Pinning it here keeps the mutation tail honest
+// whatever the lobby is holding.
+TEST(CampaignZoneUi, roster_mutations_survive_a_stale_lobby_settings_stamp)
+{
+    trace_clear();
+
+    // Staged BEFORE the fixture, because that is where it comes from: an
+    // EARLIER test's settings cycle. This is the exact shape
+    // src/interface/ui/picker.cpp change_ctf_caps leaves behind — sync the
+    // lobby under a foreign campaign, then restore only the save FIELD.
+    {
+        SaveData& live = test_screen()->save_data;
+        const std::string before = live.current_campaign;
+        live.current_campaign = "modes";
+        picker_lobby_sync_settings_from_save();
+        live.current_campaign = before;
+    }
+
+    SaveData& save = test_screen()->save_data;
+    SavedPickerSave save_guard;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.current_campaign = "gladiator";
+    ASSERT_EQ("gladiator", get_mounted_campaign());
+
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kRosterEchoScript);
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+
+    ASSERT_EQ(1u, zone.texts().size())
+        << "a base-camp mutation must not swap the scripted composition "
+           "for the default";
+    EXPECT_EQ("gladiator", get_mounted_campaign())
+        << "the mutation tail must not remount a stale lobby campaign";
+    ASSERT_EQ(1u, zone.texts()[0].lines.size());
+    EXPECT_EQ("LEAD Beta/0 SWORN 1", zone.texts()[0].lines[0]);
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
+// The same LEAD echo, over a roster whose reorder/deploy controls the
+// composition may retire. The two flags are the ONLY difference between
+// the locked and unlocked fixtures below.
+std::string roster_lock_script(const char* controls_live)
+{
+    return std::string(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local team = og.campaign_team()
+    local lead = "-"
+    if #team > 0 then lead = team[1].name end
+    return {
+      widgets = {
+        { kind = "text", lines = { "LEAD " .. lead } },
+        { kind = "roster", can_reorder = )LUA") +
+        controls_live + ", can_deploy = " + controls_live + R"LUA( },
+      },
+    }
+  end,
+}))LUA";
+}
+
+} // namespace
+
+// A composition that retires the reorder or deploy control hides its face —
+// but the click that was already in flight when the composition changed
+// (a lobby poll can swap the book under the open Base Camp) still reaches
+// the dispatcher. That stale click must be INERT: a retired control that
+// still reordered the company, or still stood a hero up, would undo the
+// state the book just took away, silently and without a trace.
+TEST(CampaignZoneUi, retired_roster_controls_are_inert_for_a_stale_click)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // --- Locked composition: both controls retired. ---
+    SyntheticCampaignScriptGuard::install(
+        roster_lock_script("false").c_str());
+    og::ui::CampaignZoneSession locked(save);
+    locked.fetch();
+    ASSERT_TRUE(locked.scripted());
+    ASSERT_FALSE(locked.roster().can_reorder);
+    ASSERT_FALSE(locked.roster().can_deploy);
+    ASSERT_EQ("LEAD Alpha", locked.texts()[0].lines[0]);
+
+    og::ui::BaseCampScreenState locked_state;
+    locked_state.zone = &locked;
+    og::ui::base_camp_refresh_rows(locked_state);
+    og::ui::install_base_camp_state_for_screen(&locked_state);
+
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampMoveUpBase + 1, &locked_state));
+    EXPECT_EQ("Alpha", save.team_list[0]->name)
+        << "a retired MOVE UP must not reorder the company";
+    EXPECT_EQ("Beta", save.team_list[1]->name);
+    EXPECT_FALSE(trace_contains("basecamp", "move_up"))
+        << "and must not announce a move it did not make";
+    EXPECT_EQ("LEAD Alpha", locked.texts()[0].lines[0]);
+
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(0, &locked_state));
+    EXPECT_FALSE(save.team_list[0]->deployed)
+        << "a retired deploy toggle must not stand a hero up";
+    EXPECT_FALSE(trace_contains("basecamp", "deploy"))
+        << "and must not announce a toggle it did not make";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+
+    // --- The paired control: the SAME two dispatches on a composition
+    // that keeps both controls do exactly what the player asked. ---
+    SyntheticCampaignScriptGuard::install(
+        roster_lock_script("true").c_str());
+    og::ui::CampaignZoneSession open_roster(save);
+    open_roster.fetch();
+    ASSERT_TRUE(open_roster.scripted());
+    ASSERT_TRUE(open_roster.roster().can_reorder);
+    ASSERT_TRUE(open_roster.roster().can_deploy);
+
+    og::ui::BaseCampScreenState open_state;
+    open_state.zone = &open_roster;
+    og::ui::base_camp_refresh_rows(open_state);
+    og::ui::install_base_camp_state_for_screen(&open_state);
+
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampMoveUpBase + 1, &open_state));
+    EXPECT_EQ("Beta", save.team_list[0]->name)
+        << "the live MOVE UP reorders the company";
+    EXPECT_EQ("Alpha", save.team_list[1]->name);
+    EXPECT_TRUE(trace_contains("basecamp", "move_up slot=1 to=0"));
+    EXPECT_EQ("LEAD Beta", open_roster.texts()[0].lines[0]);
+
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(0, &open_state));
+    EXPECT_TRUE(save.team_list[0]->deployed)
+        << "the live deploy toggle stands the hero up";
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
 
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
@@ -2202,14 +2918,17 @@ int match_setup_injector(void* data)
     // the door this shot is about.
     state->setup_row_seen = wait_for_interactable_label_containing(
         "zone_action_3", "MATCH SETUP", 10000);
-    SDL_Delay(400);
-    interact("zone_action_3");
 
     // The zone submenu's own BACK owns the unique (10,169) rect. At rest
     // the two macro rows lead the page (amendment 5): TEAMS: 4 — the face
     // derived from the arena's deal on its four authored teams (amendment
     // 7) — over FILL: FAIR, then the two knobs at MAP.
-    state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
+    state->page_opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
     state->teams_row_read_four = wait_for_interactable_label_containing(
         "zone_row_0", "TEAMS: 4", 10000);
     state->fill_row_read_fair = wait_for_interactable_label_containing(
@@ -2218,46 +2937,62 @@ int match_setup_injector(void* data)
         "zone_row_2", "TARGET SCORE: MAP", 10000);
     state->time_row_read_map = wait_for_interactable_label_containing(
         "zone_row_3", "TIME LIMIT: MAP", 10000);
-    SDL_Delay(500);
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("zone_submenu_match_setup");
 
     // The macros move: one TEAMS click wraps the four-side deal back to
     // two — the lowest opponent keeps FAIR, the other two turn NONE (both
     // faces re-derive from the one fill array) — and one FILL click steps
     // that FAIR face to STRONG.
-    interact("zone_row_0");
-    state->teams_stepped_to_two = wait_for_interactable_label_containing(
-        "zone_row_0", "TEAMS: 2", 10000);
-    SDL_Delay(400);
-    interact("zone_row_1");
-    state->fill_stepped_to_strong = wait_for_interactable_label_containing(
-        "zone_row_1", "FILL: STRONG", 10000);
-    SDL_Delay(400);
+    state->teams_stepped_to_two =
+        click_until_edge(
+            "zone_row_0",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_0", "TEAMS: 2", wait_ms);
+            },
+            "acted_autosave");
+    state->fill_stepped_to_strong =
+        click_until_edge(
+            "zone_row_1",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_1", "FILL: STRONG", wait_ms);
+            },
+            "acted_autosave");
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_macros");
-    SDL_Delay(400);
 
     // One click walks the score cycle one stop (map -> 1) and speaks it.
-    interact("zone_row_2");
-    state->score_row_stepped_to_one = wait_for_interactable_label_containing(
-        "zone_row_2", "TARGET SCORE: 1", 10000);
-    SDL_Delay(400);
+    state->score_row_stepped_to_one =
+        click_until_edge(
+            "zone_row_2",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_2", "TARGET SCORE: 1", wait_ms);
+            },
+            "acted_autosave");
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_cycled");
-    SDL_Delay(400);
 
     // The clock: a fresh match wears MAP — the limit the level's own
     // manifest authored — and one click hands the host the shortest
     // override the cycle offers.
-    interact("zone_row_3");
-    state->time_row_stepped_to_five = wait_for_interactable_label_containing(
-        "zone_row_3", "TIME LIMIT: 5M", 10000);
-    SDL_Delay(400);
+    state->time_row_stepped_to_five =
+        click_until_edge(
+            "zone_row_3",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_3", "TIME LIMIT: 5M", wait_ms);
+            },
+            "acted_autosave");
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_match_setup_time");
-    SDL_Delay(400);
 
-    interact("back");
-    wait_for_interactable("go", 10000);
-    SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return wait_for_interactable("go", wait_ms);
+    });
+    (void)interact("back");
     state->finished = true;
     return 0;
 }
@@ -2314,6 +3049,331 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
     EXPECT_TRUE(state.finished);
 
     // Leave the default campaign mounted for whatever runs next.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+namespace {
+
+// Index of the FIRST matching trace, or -1. The trace buffer is append-only
+// and ordered, so two indices compare as "this happened before that" —
+// which is the whole claim of the test below.
+int first_trace_index(const char* category, const char* substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    for (std::size_t i = 0; i < g_trace_buffer.size(); ++i) {
+        if (g_trace_buffer[i].category == category &&
+            g_trace_buffer[i].message.find(substring) != std::string::npos)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+// Walk into the camp and straight back out: the flow exists for the ORDER
+// of what the entry does, not for anything clicked inside it.
+int camp_entry_order_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const finished = static_cast<bool*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+    (void)wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    (void)interact("back");
+    *finished = true;
+    return 0;
+}
+
+} // namespace
+
+// The camp's ENTRY composition must read a save the arena deal has already
+// dealt (amendment 7, #276).
+//
+// create_team_menu composes the zone once at screen entry (fetch trigger 1)
+// and only then runs the loop, whose FIRST frame_tick holds the level-reload
+// guard that loads the arena and deals its FILL: FAIR bands. Everything the
+// entry composed — the camp's own rows and, through them, the MATCH SETUP
+// page a door opens — therefore read an UNDEALT save, and a click dispatched
+// on the loop's first iteration (dispatch runs before frame_tick) opens that
+// page before the deal ever lands. On a fast box the injector's 50 ms poll
+// never wins that race; on the instrumented four-slot CI runners of PR #291
+// it won every time — CampaignZoneUi.zzz_uxr_capture_modes_match_setup_page
+// read TEAMS: 1 / FILL: NONE and failed 3/3 attempts in BOTH the Coverage
+// (run 34684325469) and the ASan (run 34684325459) lane, with the deal's
+// autosave appearing in the log only after the page was closed again.
+//
+// Ordered traces, not a clock: the deal must be recorded before the entry
+// fetch it feeds.
+TEST(CampaignZoneUi, base_camp_entry_deals_the_arena_before_it_composes)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // THE CIRCLE (scen 300) authors all four teams: a fresh save on that
+    // cursor is exactly one deal away from TEAMS: 4 / FILL: FAIR.
+    write_save0_with_two_soldiers("modes", 300);
+
+    bool finished = false;
+    SDL_Thread* thread =
+        SDL_CreateThread(camp_entry_order_injector, "camp_entry", &finished);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    const int deal_index = first_trace_index("lineup", "arena_deal");
+    const int fetch_index = first_trace_index("zone", "entry_fetch");
+    EXPECT_TRUE(finished);
+    ASSERT_NE(-1, deal_index)
+        << "the arena deal must run on a versus campaign's fresh cursor";
+    ASSERT_NE(-1, fetch_index)
+        << "create_team_menu composes the zone once on entry";
+    EXPECT_LT(deal_index, fetch_index)
+        << "the camp's entry composition read a save whose arena FILL deal "
+           "had not been dealt yet: the deal belongs to screen ENTRY, not to "
+           "the first frame tick, or a door activated on the loop's first "
+           "iteration serves an undealt MATCH SETUP page";
+
+    // Leave the default campaign mounted for whatever runs next.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+namespace {
+
+// Open MATCH SETUP through the ladder and come straight back out. The
+// press the flow starts with is dropped on purpose (g_click_ladder_click_drops), so
+// only a retry can reach the page.
+int match_setup_retry_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* opened = static_cast<bool*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    *opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
+
+    if (*opened) {
+        (void)click_until_edge("back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        });
+    }
+    (void)interact("back");
+    return 0;
+}
+
+// The same ladder, pointed at a button that is not on this screen: it must
+// spend its three attempts and REPORT, never hang against the group's
+// 420 s budget.
+int match_setup_wrong_id_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* reached = static_cast<bool*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    // No witness: a press that is nowhere near a button cannot land, so
+    // this ladder is allowed to spend every attempt on a fresh press.
+    *reached = click_until_edge(
+        "zone_action_99_not_a_row",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        nullptr, 3, 500);
+
+    (void)interact("back");
+    return 0;
+}
+
+struct BlindCyclerState
+{
+    bool opened = false;
+    bool stepped = false;
+    bool wheel_still_on_two = false;
+};
+
+// The cycler half of the same ladder. Open MATCH SETUP, then step the TEAMS
+// macro exactly ONCE with the first edge observation blinded
+// (g_click_ladder_edge_blinds) — the starved menu thread that has not republished
+// the row's label yet, seen from here. A ladder that re-presses a landed
+// cycler walks the wheel 4 -> 2 -> 3 -> 4 and never reads TEAMS: 2 again.
+int match_setup_blind_cycler_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BlindCyclerState*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)interact("continue_game");
+    (void)wait_for_interactable_label_containing("zone_action_3",
+                                                 "MATCH SETUP", 10000);
+
+    state->opened = click_until_edge(
+        "zone_action_3",
+        [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        },
+        "submenu_opened");
+    if (state->opened) {
+        (void)wait_for_interactable_label_containing("zone_row_0", "TEAMS: 4",
+                                                     10000);
+        // Armed HERE, not in the test body: the blind belongs to the cycler
+        // press, and the door ladder above would otherwise eat it.
+        g_click_ladder_edge_blinds = 1;
+        state->stepped = click_until_edge(
+            "zone_row_0",
+            [](int wait_ms) {
+                return wait_for_interactable_label_containing(
+                    "zone_row_0", "TEAMS: 2", wait_ms);
+            },
+            "acted_autosave");
+        // Where the wheel actually stands once the ladder is done: one
+        // press, one stop. An overshoot reads 3 or 4 here and this stays
+        // false however the ladder reported.
+        state->wheel_still_on_two = wait_for_interactable_label_containing(
+            "zone_row_0", "TEAMS: 2", 5000);
+        (void)click_until_edge("back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        });
+    }
+    (void)interact("back");
+    return 0;
+}
+
+} // namespace
+
+// Teeth for the ladder: a press that evaporates costs one attempt, and the
+// flow still reaches the screen. Counts, never clocks.
+TEST(CampaignZoneUi, match_setup_click_helper_retries_a_dropped_press)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 1;
+    g_click_ladder_edge_waits = 0;
+    g_click_ladder_edge_blinds = 0;
+
+    bool opened = false;
+    SDL_Thread* thread =
+        SDL_CreateThread(match_setup_retry_injector, "zone_retry", &opened);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, g_click_ladder_click_drops) << "the injected drop must be consumed";
+    EXPECT_TRUE(opened)
+        << "a dropped press must cost a retry, not the whole flow";
+    EXPECT_EQ(1, g_click_ladder_click_retries)
+        << "exactly one attempt missed its edge";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_edge_waits = 0;
+    g_click_ladder_edge_blinds = 0;
+
+    bool reached = true;
+    SDL_Thread* thread = SDL_CreateThread(match_setup_wrong_id_injector,
+                                          "zone_wrong_id", &reached);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_FALSE(reached) << "a wrong id can never reach the page";
+    EXPECT_EQ(3, g_click_ladder_click_retries)
+        << "the ladder spends its three attempts and reports, never hangs";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The other half of the same rule: a press that DID land is never re-sent,
+// however long its edge takes to show up. The blind makes the first
+// observation lie exactly the way a starved menu thread does, and a cycler
+// is the one row where a second press is not free — it costs the wheel a
+// stop it can only get back by going all the way round.
+TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_edge_waits = 0;
+    // The injector arms the blind on the cycler press itself; nothing is
+    // blinded on the way there.
+    g_click_ladder_edge_blinds = 0;
+
+    BlindCyclerState state;
+    SDL_Thread* thread = SDL_CreateThread(match_setup_blind_cycler_injector,
+                                          "zone_blind_cycler", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.opened) << "the MATCH SETUP door still opens";
+    EXPECT_EQ(0, g_click_ladder_edge_blinds) << "the injected blind must be consumed";
+    EXPECT_TRUE(state.stepped)
+        << "a landed press whose label lagged must still reach its edge";
+    EXPECT_TRUE(state.wheel_still_on_two)
+        << "the ladder must not press a landed cycler again: a second press "
+           "walks the TEAMS wheel past the stop the flow asked for";
+    EXPECT_EQ(1, g_click_ladder_edge_waits)
+        << "exactly one attempt waited on a press that had already landed";
+    EXPECT_EQ(0, g_click_ladder_click_retries)
+        << "a landed press is never charged as a re-press";
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }

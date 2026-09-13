@@ -34,6 +34,8 @@
 #include <utility>
 #include <vector>
 
+#include "../test_save_state_guard.h"
+
 using namespace og::modes_test;
 
 namespace og::script {
@@ -615,8 +617,11 @@ walker* first_uncamped_drumstick(GameWorld& world)
 
 TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
 {
+    // The hand-rolled tail this replaces never ran when one of the body's
+    // ASSERT_*s returned early, which is exactly when the shuffle neighbour
+    // needed it most.
+    og::test::ScopedCampaignMountState mount_restore;
     restore_default_campaigns();
-    const std::string previous = get_mounted_campaign();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"))
         << "builtin/modes.glad should restore and mount";
@@ -667,19 +672,6 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
         expect_no_script_errors(fx.world());
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
-    const std::string now = get_mounted_campaign();
-    if (now == "modes")
-        (void)unmount_campaign_package_with_error(now);
-    if (previous.empty())
-    {
-        const std::string still = get_mounted_campaign();
-        if (!still.empty())
-            (void)unmount_campaign_package_with_error(still);
-    }
-    else if (get_mounted_campaign() != previous)
-    {
-        (void)mount_campaign_package_with_error(previous);
-    }
 }
 
 // ===========================================================================
@@ -695,8 +687,11 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
 
 TEST(ModesItemsRealCampaign, soccer_scen820_eaten_drumstick_respawns_on_its_pad)
 {
+    // The hand-rolled tail this replaces never ran when one of the body's
+    // ASSERT_*s returned early, which is exactly when the shuffle neighbour
+    // needed it most.
+    og::test::ScopedCampaignMountState mount_restore;
     restore_default_campaigns();
-    const std::string previous = get_mounted_campaign();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"))
         << "builtin/modes.glad should restore and mount";
@@ -754,26 +749,16 @@ TEST(ModesItemsRealCampaign, soccer_scen820_eaten_drumstick_respawns_on_its_pad)
         expect_no_script_errors(fx.world());
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
-    const std::string now = get_mounted_campaign();
-    if (now == "modes")
-        (void)unmount_campaign_package_with_error(now);
-    if (previous.empty())
-    {
-        const std::string still = get_mounted_campaign();
-        if (!still.empty())
-            (void)unmount_campaign_package_with_error(still);
-    }
-    else if (get_mounted_campaign() != previous)
-    {
-        (void)mount_campaign_package_with_error(previous);
-    }
 }
 
 TEST(ModesItemsRealCampaign,
      basketball_scen824_eaten_drumstick_respawns_on_its_pad)
 {
+    // The hand-rolled tail this replaces never ran when one of the body's
+    // ASSERT_*s returned early, which is exactly when the shuffle neighbour
+    // needed it most.
+    og::test::ScopedCampaignMountState mount_restore;
     restore_default_campaigns();
-    const std::string previous = get_mounted_campaign();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"))
         << "builtin/modes.glad should restore and mount";
@@ -830,18 +815,5 @@ TEST(ModesItemsRealCampaign,
                "past the refilled pad's manifest row";
         expect_no_script_errors(fx.world());
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-    }
-    const std::string now = get_mounted_campaign();
-    if (now == "modes")
-        (void)unmount_campaign_package_with_error(now);
-    if (previous.empty())
-    {
-        const std::string still = get_mounted_campaign();
-        if (!still.empty())
-            (void)unmount_campaign_package_with_error(still);
-    }
-    else if (get_mounted_campaign() != previous)
-    {
-        (void)mount_campaign_package_with_error(previous);
     }
 }

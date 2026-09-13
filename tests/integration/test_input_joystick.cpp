@@ -16,7 +16,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-extern void wait_for_key(int somekey);
 extern og::input_native::JoystickHandle joysticks[10];
 // From picker_input.cpp: the menu-nav key consumer whose release waits poll
 // isPlayerHoldingKey (the hostile-pad hang site).
@@ -345,14 +344,105 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
     ASSERT_TRUE(!isKeyboardEvent(joy_event)) << "joy hat should not be keyboard event";
     ASSERT_TRUE(isJoystickEvent(joy_event)) << "joy hat should be joystick event";
 
-    wait_for_key(SDLK_SPACE); // TESTING build: should return immediately.
-
     player_joy[0] = j;
     clear_player_joystick(0);
     ASSERT_TRUE(!playerHasJoystick(0))
         << "clear_player_joystick should leave the seat keyboard-driven";
     ASSERT_EQ(JoyData::NONE, player_joy[0].key_type[KEY_FIRE])
         << "clear_player_joystick is a full unbind, not just an index drop";
+}
+
+
+// The guard rules every event-driven input site leans on. If any of them
+// broke: a pad released when its device went away (index -1) would keep
+// pressing and releasing for the seat it no longer owns; a stick mapped to
+// an axis would fire on a face-button press from the SAME pad; and a seat
+// whose touch key lifted would still read as holding it. Every refusal
+// below is paired, in this test, with the arm that must still say yes.
+TEST(InputJoystick, unbound_pad_and_axis_guards_refuse_paired_arms)
+{
+    PlayerJoyGuard guard;
+    JoystickHandleGuard joystick_guard;
+    CompleteInputStateGuard state_guard;
+    for (int i = 0; i < 4; ++i)
+        player_joy[i] = JoyData();
+
+    // 1. An unbound pad refuses the very events it answers when bound.
+    JoyData bound;
+    bound.index = 2;
+    bound.key_type[KEY_FIRE] = JoyData::BUTTON;
+    bound.key_index[KEY_FIRE] = 4;
+
+    SDL_Event press{};
+    press.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
+    press.jbutton.which = 2;
+    press.jbutton.button = 4;
+    SDL_Event release{};
+    release.type = SDL_EVENT_JOYSTICK_BUTTON_UP;
+    release.jbutton.which = 2;
+    release.jbutton.button = 4;
+
+    EXPECT_TRUE(bound.getPress(KEY_FIRE, press))
+        << "the bound pad presses on its own button";
+    EXPECT_TRUE(bound.getRelease(KEY_FIRE, release))
+        << "the bound pad releases on its own button";
+
+    JoyData unbound = bound;
+    unbound.index = -1;
+    EXPECT_FALSE(unbound.getPress(KEY_FIRE, press))
+        << "an unbound pad may not press for a seat it no longer owns";
+    EXPECT_FALSE(unbound.getRelease(KEY_FIRE, release))
+        << "an unbound pad may not release for a seat it no longer owns";
+
+    // 2. An axis-mapped key ignores button traffic from the same pad — and
+    // still answers the axis events it IS mapped to.
+    JoyData axes;
+    axes.index = 2;
+    axes.key_type[KEY_UP] = JoyData::POS_AXIS;
+    axes.key_index[KEY_UP] = 0;
+    axes.key_type[KEY_DOWN] = JoyData::NEG_AXIS;
+    axes.key_index[KEY_DOWN] = 0;
+
+    SDL_Event axis{};
+    axis.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
+    axis.jaxis.which = 2;
+    axis.jaxis.axis = 0;
+    axis.jaxis.value = 12000;
+    EXPECT_TRUE(axes.getPress(KEY_UP, axis))
+        << "the positive axis past the dead zone presses UP";
+    axis.jaxis.value = -12000;
+    EXPECT_TRUE(axes.getPress(KEY_DOWN, axis))
+        << "the negative axis past the dead zone presses DOWN";
+    axis.jaxis.value = 0;
+    EXPECT_TRUE(axes.getRelease(KEY_UP, axis))
+        << "the axis coming home releases UP";
+    EXPECT_TRUE(axes.getRelease(KEY_DOWN, axis))
+        << "the axis coming home releases DOWN";
+
+    EXPECT_FALSE(axes.getPress(KEY_UP, press))
+        << "a button press must not move a positive-axis key";
+    EXPECT_FALSE(axes.getPress(KEY_DOWN, press))
+        << "a button press must not move a negative-axis key";
+    EXPECT_FALSE(axes.getRelease(KEY_UP, release))
+        << "a button release must not move a positive-axis key";
+    EXPECT_FALSE(axes.getRelease(KEY_DOWN, release))
+        << "a button release must not move a negative-axis key";
+
+    // 3. isPlayerHoldingKey answers from the touch seam. Seat 1 is given a
+    // real pad binding over a device that reports nothing held, so the whole
+    // block is decided by the touch seam and never by whatever the keyboard
+    // happens to be doing.
+    player_joy[1].index = 0;  // joysticks[0] is null under the handle guard
+    player_joy[1].key_type[KEY_FIRE] = JoyData::BUTTON;
+    player_joy[1].key_index[KEY_FIRE] = 0;
+
+    input_hardware_state().touch_keystate[1][KEY_FIRE] = true;
+    EXPECT_TRUE(isPlayerHoldingKey(1, KEY_FIRE))
+        << "a seat with the touch key down IS holding it";
+
+    input_hardware_state().touch_keystate[1][KEY_FIRE] = false;
+    EXPECT_FALSE(isPlayerHoldingKey(1, KEY_FIRE))
+        << "the same seat stops holding when the touch key lifts";
 }
 
 

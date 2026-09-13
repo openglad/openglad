@@ -72,7 +72,7 @@ commit of the build you are running.
 
 **Under the hood**
 
-- C++20 in five components with an enforced dependency direction, GoogleTest unit and integration groups, a byte-exact parity harness that pins gameplay against the classic simulation, and a coverage gate at 95 % of lines and 100 % of functions over `src/` and the pack Lua ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/GAMEPLAY_FIXES_FROM_CLASSIC.md](docs/GAMEPLAY_FIXES_FROM_CLASSIC.md)).
+- C++20 in five components with an enforced dependency direction, GoogleTest unit and integration groups, a byte-exact parity harness that pins gameplay against the classic simulation, and a coverage gate at 96 % of lines and 100 % of functions over `src/` and the pack Lua ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/GAMEPLAY_FIXES_FROM_CLASSIC.md](docs/GAMEPLAY_FIXES_FROM_CLASSIC.md)).
 - Every build stamps `v2.<commit count>` and its git hash on the main menu; each push to `master` becomes a GitHub release and a versioned web URL automatically.
 
 **Note:** as of July 1st, 2002, Gladiator is open sourced under the GPL.

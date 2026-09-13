@@ -3,6 +3,7 @@
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <gtest/gtest.h>
 
+#include <stdexcept>
 #include <optional>
 #include <string>
 #include <vector>
@@ -363,6 +364,117 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
     EXPECT_EQ(std::string::npos, prompt.find("2 players"));
     EXPECT_NE(std::string::npos, prompt.find("Host One"));
     EXPECT_NE(std::string::npos, prompt.find("GLAD-ABCD"));
+}
+
+// The JOIN > RELAY prompt is the only place a player reads the room list, so
+// every shape of it is product copy: a listing error names the reason, an
+// empty list says whether the filter or the relay is empty, five rooms is the
+// display budget with an exact overflow count, and a room the relay returned
+// with no code at all must not leave a blank line in the middle of the
+// dialog. The whole message is pinned per shape.
+TEST(MenuModel, relay_room_prompt_covers_error_empty_and_overflow_shapes)
+{
+    const std::string header =
+        "ENTER RELAY ROOM CODE\n"
+        "Type a code manually or choose an active room.";
+
+    // A listing failure replaces the list outright, reason included.
+    EXPECT_EQ(header + "\nRoom list unavailable: HTTP 503",
+              og::ui::build_relay_room_prompt_message({}, "gladiator",
+                                                      "HTTP 503"));
+
+    // No rooms: the campaign filter is named when one is in force, because
+    // "none found" would be a lie about the relay when rooms exist for other
+    // campaigns.
+    EXPECT_EQ(header + "\nNo active relay rooms match this campaign.",
+              og::ui::build_relay_room_prompt_message({}, "gladiator"));
+    EXPECT_EQ(header + "\nNo active relay rooms found.",
+              og::ui::build_relay_room_prompt_message({}, ""));
+
+    const auto room = [](std::string code,
+                         std::string host,
+                         std::string campaign_name) {
+        return og::ui::PickerRelayRoomInfo{
+            .code = std::move(code),
+            .campaign_hash = "gladiator",
+            .campaign_name = std::move(campaign_name),
+            .host_name = std::move(host),
+            .player_count = 1u,
+            .created_at_ms = 1000,
+        };
+    };
+
+    // Six unnamed hosts with no campaign filter: the campaign title stands in
+    // for the missing host name, five rows are drawn, and the tail is counted
+    // in the singular.
+    std::vector<og::ui::PickerRelayRoomInfo> rooms;
+    for (const char* code : {"GLAD-A", "GLAD-B", "GLAD-C", "GLAD-D", "GLAD-E",
+                             "GLAD-F"})
+    {
+        rooms.push_back(room(code, "", "Gladiator"));
+    }
+    EXPECT_EQ(header +
+                  "\nActive rooms:"
+                  "\nGLAD-A  Gladiator"
+                  "\nGLAD-B  Gladiator"
+                  "\nGLAD-C  Gladiator"
+                  "\nGLAD-D  Gladiator"
+                  "\nGLAD-E  Gladiator"
+                  "\n+1 more room",
+              og::ui::build_relay_room_prompt_message(rooms, ""));
+
+    // Seven rooms pluralizes the tail; a campaign filter suppresses the
+    // redundant campaign title on every row.
+    rooms.push_back(room("GLAD-G", "", "Gladiator"));
+    EXPECT_EQ(header +
+                  "\nActive rooms:"
+                  "\nGLAD-A"
+                  "\nGLAD-B"
+                  "\nGLAD-C"
+                  "\nGLAD-D"
+                  "\nGLAD-E"
+                  "\n+2 more rooms",
+              og::ui::build_relay_room_prompt_message(rooms, "gladiator"));
+
+    // A relay row with nothing to print is dropped whole: the dialog must not
+    // grow a blank line where that room would have been.
+    const std::vector<og::ui::PickerRelayRoomInfo> with_blank = {
+        room("GLAD-A", "Host One", "Gladiator"),
+        room("", "", ""),
+        room("GLAD-C", "Host Three", "Gladiator"),
+    };
+    const std::string blank_prompt =
+        og::ui::build_relay_room_prompt_message(with_blank, "gladiator");
+    EXPECT_EQ(header +
+                  "\nActive rooms:"
+                  "\nGLAD-A  Host One"
+                  "\nGLAD-C  Host Three",
+              blank_prompt);
+    EXPECT_EQ(std::string::npos, blank_prompt.find("\n\n"));
+}
+
+// The three prompt validators refuse empty input by throwing, which is what
+// turns a bare RETURN at the JOIN prompt into "try again" instead of a
+// connection attempt to nowhere. Each refusal is pinned beside the accepted
+// spelling of the same input.
+TEST(MenuModel, empty_network_prompt_input_is_refused_by_every_validator)
+{
+    EXPECT_EQ("ws://10.0.0.4:2000",
+              og::ui::normalize_direct_websocket_url("10.0.0.4:2000"));
+    EXPECT_THROW((void)og::ui::normalize_direct_websocket_url("   "),
+                 std::invalid_argument);
+
+    EXPECT_EQ("GLAD-9", og::ui::normalize_relay_room_code("glad-9"));
+    EXPECT_THROW((void)og::ui::normalize_relay_room_code("\t "),
+                 std::invalid_argument);
+
+    // A base URL of nothing but slashes trims to nothing once the trailing
+    // separators come off — the one input that survives the default-URL
+    // fallback and still leaves no host to talk to.
+    EXPECT_EQ("https://relay.example",
+              og::ui::normalize_relay_base_url("https://relay.example//"));
+    EXPECT_THROW((void)og::ui::normalize_relay_base_url("//"),
+                 std::invalid_argument);
 }
 
 TEST(MenuModel, networking_menu_instructions_match_build_shape)

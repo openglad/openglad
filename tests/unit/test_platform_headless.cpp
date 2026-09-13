@@ -256,6 +256,8 @@ int text_picker_testing_exercise_internal_paths();
 int text_picker_testing_staged_view_scenario();
 int text_picker_testing_launch_seed_matches_the_preview();
 int text_picker_testing_launch_census_matches_the_preview();
+int text_picker_testing_founding_is_reproducible_at_one_seed();
+int text_picker_testing_hires_across_visits_draw_fresh_names();
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -280,6 +282,11 @@ TEST(PlatformHeadless, user_and_asset_paths_cover_normalization)
 
     setenv("OPENGLAD_CONFIG_DIR", "/tmp/openglad-headless///", 1);
     EXPECT_EQ("/tmp/openglad-headless/", get_user_path());
+
+    // The trim loop stops at one character, so normalize_dir never sees an
+    // empty path -- the reason there is no empty-path arm to cover.
+    setenv("OPENGLAD_CONFIG_DIR", "///", 1);
+    EXPECT_EQ("/", get_user_path());
 
     setenv("OPENGLAD_CONFIG_DIR", "", 1);
     setenv("HOME", "/tmp/openglad-home", 1);
@@ -1254,6 +1261,72 @@ TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
         << "negated 1-based index of the first failed check";
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
+}
+
+// N7: the session seed governs the company the session founds. The text
+// client latches one seed and VIEW LEVEL promises the same seed prints the
+// same census, but the starting recruit's name was drawn from the ambient
+// std::rand() stream — so two foundings in one process at one seed printed
+// two different rosters ("Arthur - SOLDIER Lv 1" vs "Hector - SOLDIER Lv 1"
+// on the shipped openglad_text at --seed 777).
+TEST(PlatformHeadless, text_picker_founding_is_reproducible_at_one_seed)
+{
+    restore_default_campaigns();
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_founding_is_reproducible_at_one_seed))
+        << "negated 1-based index of the first failed check";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// N7 follow-up: seeding the recruit names must not turn every Hire Troops
+// visit into a replay of the same short name window. Hiring nine soldiers
+// across nine visits at one seed used to fill the roster with "Nestor2",
+// "Nestor3", "Nestor4" while a third of the soldier pool had never been
+// offered.
+TEST(PlatformHeadless, text_picker_hires_across_visits_draw_fresh_names)
+{
+    restore_default_campaigns();
+    EXPECT_EQ(0,
+              silenced(&og::ui::text_picker_testing_hires_across_visits_draw_fresh_names))
+        << "negated 1-based index of the first failed check";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The unit-level half of the same rule, one layer down from the client: when
+// ensure_team_populated is handed an rng, that rng names the recruit and the
+// ambient stream is not consulted. Written green-first (it cannot compile
+// before the parameter exists), so the red above is the proof, not this.
+TEST(PlatformHeadless, ensure_team_populated_draws_from_the_supplied_rng_not_the_ambient_stream)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    const auto found_at = [](unsigned ambient_seed) {
+        std::srand(ambient_seed);
+        SaveData sd;
+        sd.reset();
+        SeededRandom rng(777u);
+        og::ui::ensure_team_populated(sd, {FAMILY_SOLDIER}, 0, &rng);
+        return sd.team_list[0] ? sd.team_list[0]->name : std::string();
+    };
+
+    // The perturbation is visible at all: the ambient arm still moves with
+    // the process-global stream, which is what the default (nullptr) keeps.
+    std::srand(1u);
+    const std::string ambient_a = og::ui::get_random_name(FAMILY_SOLDIER);
+    std::srand(2u);
+    const std::string ambient_b = og::ui::get_random_name(FAMILY_SOLDIER);
+    ASSERT_NE(ambient_a, ambient_b)
+        << "an invisible perturbation would make the check below vacuous";
+
+    const std::string seeded_a = found_at(1u);
+    const std::string seeded_b = found_at(2u);
+    ASSERT_FALSE(seeded_a.empty()) << "the fallback soldier must be named";
+    EXPECT_EQ(seeded_a, seeded_b)
+        << "the supplied rng names the recruit; the ambient stream must not";
 }
 
 // #247: the text picker's GO launches the world VIEW LEVEL promised. The
@@ -2473,6 +2546,18 @@ TEST(PlatformHeadless, text_picker_lineup_cycles_a_knob_and_splits_fair)
 
     (void)remove_user_file("save/lineupd.gtl");
     og::data::set_active_company_slot("save0");
+    // The company this drive loads names "modes", so the picker mounted that
+    // campaign on the way in -- pinned here because it is the reason the
+    // restore below exists.
+    EXPECT_EQ(std::string("modes"), get_mounted_campaign())
+        << "loading a modes company should have mounted modes";
+    // Put the mount back the way this test found it, or every later test in
+    // the binary inherits the wreckage -- the same rule
+    // FreshFilesystemForIoInit states above. Still inside the
+    // HeadlessSaveDirSandbox, which swaps <user>/save and not the campaigns
+    // directory, so the remount here is safe.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
 }
 
 // The same two rows on a CLASSIC campaign. Amendment 3 C5 moved the match
@@ -3322,4 +3407,321 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_at_rest_fields_the_match)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
+}
+
+namespace {
+
+// Seeds a company slot with an explicit campaign id and display name. A
+// company whose current_campaign names a package that is NOT installed saves
+// fine and lists fine, but every load of it fails with CampaignLoadFailed —
+// the shape a player hits after uninstalling a campaign they had a company in.
+bool seed_headless_company_for_campaign(const std::string& slot,
+                                        const std::string& name,
+                                        const std::string& campaign,
+                                        std::int64_t last_played)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = name;
+    sd.current_campaign = campaign;
+    sd.last_played_unix_s = last_played;
+    return sd.save_with_error(slot) == SaveDataIoError::None;
+}
+
+// load_campaign UNMOUNTS before it discovers the package is missing, so any
+// test that drives a failing load leaves the process with nothing mounted —
+// which the next test would then blame on itself (and which lets a headless
+// run rewrite the tracked cfg through the cwd fallback).
+class RemountGladiatorGuard
+{
+public:
+    ~RemountGladiatorGuard()
+    {
+        restore_default_campaigns();
+        (void)mount_campaign_package_with_error("gladiator");
+    }
+};
+
+// Opening a company repoints the process-wide active slot ([SAVE-R2]). The
+// sandbox then deletes the file that slot names, so every test that drives an
+// open puts the previous slot back before it leaves.
+class ActiveCompanySlotGuard
+{
+public:
+    ActiveCompanySlotGuard()
+        : previous_(og::data::active_company_slot())
+    {
+    }
+
+    ~ActiveCompanySlotGuard()
+    {
+        (void)og::data::set_active_company_slot(previous_);
+    }
+
+private:
+    std::string previous_;
+};
+
+} // namespace
+
+// Opening a company whose campaign package is gone must refuse in the file's
+// own words and leave the terminal's slot authority where it was — a picker
+// that kept the failed slot would autosave the NEXT base-camp mutation over a
+// company it never loaded. The file itself is never touched by the refusal.
+TEST(PlatformHeadless, text_picker_open_refuses_a_company_whose_campaign_is_gone)
+{
+    restore_default_campaigns();
+    HeadlessSaveDirSandbox sandbox;
+    RemountGladiatorGuard remount;
+    ActiveCompanySlotGuard slot_guard;
+    ASSERT_TRUE(seed_headless_company_for_campaign(
+        "wp9ghost", "GHOST BAND", "wp9nosuchcampaign", 7000));
+
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "1\n"   //   list: open company...
+        "1\n"   //     #1 = wp9ghost -> load fails, the slot rolls back
+        "4\n"   //   list: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    const std::string out = stdout_capture.restore();
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::LoadIoError, error.code);
+    EXPECT_NE(std::string::npos,
+              out.find("Load failed for 'wp9ghost' (campaign_load_failed).\n"))
+        << out;
+    EXPECT_EQ("text_quicksave", config.save_name)
+        << "[SAVE-R2] a refused open must roll the slot authority back";
+    EXPECT_EQ("text_quicksave", og::data::active_company_slot());
+    EXPECT_TRUE(user_file_exists("save/wp9ghost.gtl"))
+        << "a refused open must not delete the company it could not read";
+}
+
+// An empty save directory has no company list to show: the LOAD door says so
+// in one line and backs straight out to the main menu, instead of printing an
+// empty list header the player would then have to escape.
+TEST(PlatformHeadless, text_picker_company_list_backs_out_of_an_empty_save_dir)
+{
+    restore_default_campaigns();
+    const std::string previous_slot = og::data::active_company_slot();
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(og::data::list_companies().empty());
+
+    {
+        const std::string input =
+            "7\n"   // main: load company -> nothing to list
+            "6\n";  // main: quit
+        StdinRedirect stdin_redirect(input);
+        CoutRedirect cout_redirect;
+        StdoutCapture stdout_capture;
+
+        og::ui::TextPickerConfig config;
+        config.team_families = {FAMILY_SOLDIER};
+        og::ui::TextPickerError error;
+        og::ui::run_text_picker(config, &error);
+        const std::string out = stdout_capture.restore();
+
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+        EXPECT_NE(std::string::npos, out.find("No companies yet.\n")) << out;
+        EXPECT_EQ(std::string::npos, out.find("--- Companies"))
+            << "no list chrome may print above the empty-list line:\n" << out;
+    }
+
+    // The paired control: with one company seeded, the SAME door prints the
+    // list chrome and the row instead.
+    ASSERT_TRUE(seed_headless_company("wp9one", "SOLO BAND", 7100));
+    {
+        const std::string input =
+            "7\n"   // main: load company -> one row
+            "4\n"   //   list: back -> main
+            "6\n";  // main: quit
+        StdinRedirect stdin_redirect(input);
+        CoutRedirect cout_redirect;
+        StdoutCapture stdout_capture;
+
+        og::ui::TextPickerConfig config;
+        config.team_families = {FAMILY_SOLDIER};
+        og::ui::TextPickerError error;
+        og::ui::run_text_picker(config, &error);
+        const std::string out = stdout_capture.restore();
+
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+        EXPECT_EQ(std::string::npos, out.find("No companies yet."));
+        EXPECT_NE(std::string::npos, out.find("SOLO BAND")) << out;
+    }
+    (void)og::data::set_active_company_slot(previous_slot);
+}
+
+// §3.7 step 3 [SAVE-R3]: a rewind whose bytes will not reload must roll the
+// slot file back to the state it replaced and say why. The player keeps the
+// company they had, the pre-restore snapshot survives, and the terminal slot
+// authority never follows a rewind that did not happen.
+TEST(PlatformHeadless, text_picker_failed_backup_restore_rolls_back_and_keeps_the_slot)
+{
+    restore_default_campaigns();
+    HeadlessSaveDirSandbox sandbox;
+    RemountGladiatorGuard remount;
+    ActiveCompanySlotGuard slot_guard;
+    // Snapshot seq 1 holds a company whose campaign package is missing: its
+    // header reads fine (so the row is not marked damaged and the restore
+    // runs), but step 3's reload cannot load the campaign.
+    ASSERT_TRUE(seed_headless_company_for_campaign(
+        "wp9res", "GHOST BAND", "wp9nosuchcampaign", 7200));
+    ASSERT_TRUE(og::data::backup_company_now("wp9res"));
+    // The live state is a good gladiator company.
+    ASSERT_TRUE(seed_headless_company("wp9res", "GOOD BAND", 7300));
+
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "2\n"   //   list: backups...
+        "1\n"   //     #1 = wp9res (the only company)
+        "1\n"   //     backups: restore...
+        "1\n"   //       #1 = seq 1 (the ghost snapshot)...
+        "y\n"   //       explicit yes -> restore runs and fails at reload
+        "3\n"   //     backups: back -> the company list
+        "4\n"   //   list: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    const std::string out = stdout_capture.restore();
+
+    EXPECT_NE(std::string::npos, out.find("Restore failed (")) << out;
+    EXPECT_EQ(std::string::npos, out.find("Restored backup 1"))
+        << "a failed rewind must never claim it landed:\n" << out;
+    EXPECT_EQ("text_quicksave", config.save_name)
+        << "[SAVE-R2] the slot authority must not follow a failed rewind";
+
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header("wp9res");
+    ASSERT_TRUE(header && header->valid);
+    EXPECT_EQ("GOOD BAND", header->display_name)
+        << "step 3 must roll the slot file back to the state it replaced";
+    // Step 1's pre-restore snapshot of GOOD BAND joins the ghost snapshot.
+    EXPECT_EQ(2u, og::data::list_company_backups("wp9res").size());
+}
+
+namespace {
+
+// Seeds a company with `members` roster slots and an exact purse.
+bool seed_headless_company_with_team(const std::string& slot,
+                                     const std::string& name, int members,
+                                     std::uint32_t cash, std::int64_t last_played)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = name;
+    sd.current_campaign = "gladiator";
+    sd.last_played_unix_s = last_played;
+    og::ui::ensure_team_populated(
+        sd, std::vector<int>(static_cast<std::size_t>(members), FAMILY_SOLDIER),
+        0);
+    if (sd.team_size != members)
+        return false;
+    sd.m_totalcash[0] = cash;
+    sd.totalcash = cash;
+    return sd.save_with_error(slot) == SaveDataIoError::None;
+}
+
+// The first "Cost: N  |  Gold: G" pair the hire screen printed.
+bool first_hire_quote(const std::string& out, long& cost, long& gold)
+{
+    const std::size_t at = out.find("Cost: ");
+    if (at == std::string::npos)
+        return false;
+    return std::sscanf(out.c_str() + at, "Cost: %ld  |  Gold: %ld", &cost,
+                       &gold) == 2;
+}
+
+} // namespace
+
+// The HIRE row has to refuse for the two reasons a player actually meets, in
+// different words: a roster already at the 24-slot cap, and a purse that
+// cannot cover the recruit. Between them sits the accepted hire that proves
+// the row works at all — it lands, and it debits exactly the quoted cost once.
+TEST(PlatformHeadless, text_picker_hire_refuses_a_full_team_and_an_empty_purse)
+{
+    restore_default_campaigns();
+    HeadlessSaveDirSandbox sandbox;
+    RemountGladiatorGuard remount;
+    ActiveCompanySlotGuard slot_guard;
+    ASSERT_TRUE(seed_headless_company_with_team("wp9broke", "BROKE BAND", 1, 0u,
+                                                7300));
+    ASSERT_TRUE(seed_headless_company_with_team("wp9full", "FULL BAND", 23,
+                                                100000u, 7400));
+
+    // Rows (most-recent-first): 1 = wp9full, 2 = wp9broke.
+    const std::string input =
+        "7\n"   // main: load company -> the company list
+        "1\n"   //   list: open company...
+        "1\n"   //     #1 = wp9full (23 of 24) -> team build
+        "3\n"   // base camp: hire
+        "h\n"   //   hire the 24th -> "Team is now full." and the row returns
+        "3\n"   // base camp: hire again -> refused at the cap
+        "4\n"   // base camp: deploy prompt
+        "\n"    //   a blank row number backs out, changing nothing
+        "8\n"   // team build: back -> main
+        "7\n"   // main: load company
+        "1\n"   //   list: open company...
+        "2\n"   //     #2 = wp9broke (1 member, 0 gold) -> team build
+        "3\n"   // base camp: hire
+        "h\n"   //   no gold: refused, the screen reprints
+        "b\n"   //   back out of hire
+        "8\n"   // team build: back -> main
+        "6\n";  // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    const std::string out = stdout_capture.restore();
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("Team is now full.\n")) << out;
+    EXPECT_NE(std::string::npos,
+              out.find("Team is already at max size (24).\n")) << out;
+    EXPECT_NE(std::string::npos,
+              out.find("Can't hire (not enough gold or team full).\n")) << out;
+
+    // The accepted hire landed once and cost exactly what it quoted.
+    long cost = 0;
+    long gold = 0;
+    ASSERT_TRUE(first_hire_quote(out, cost, gold)) << out;
+    EXPECT_EQ(100000L, gold) << "the hire screen quotes the live purse";
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("wp9full"));
+    EXPECT_EQ(24, reloaded.team_size);
+    EXPECT_EQ(static_cast<std::uint32_t>(100000L - cost), reloaded.m_totalcash[0])
+        << "\u00a73.8 autosave must persist exactly one debit of the quoted cost";
+    // The blank deploy row is a back-out, not a toggle: every member of the
+    // roster keeps the deploy flag it had.
+    for (int i = 0; i < reloaded.team_size; ++i) {
+        ASSERT_NE(reloaded.team_list[static_cast<std::size_t>(i)], nullptr);
+        EXPECT_TRUE(reloaded.team_list[static_cast<std::size_t>(i)]->deployed)
+            << "row " << i << " must not have been benched by a blank line";
+    }
+
+    // The broke company kept its single member and its empty purse.
+    SaveData broke;
+    ASSERT_EQ(SaveDataIoError::None, broke.load_with_error("wp9broke"));
+    EXPECT_EQ(1, broke.team_size);
+    EXPECT_EQ(0u, broke.m_totalcash[0]);
 }

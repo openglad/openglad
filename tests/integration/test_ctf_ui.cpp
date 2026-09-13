@@ -27,7 +27,9 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_click_ladder.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -198,10 +200,45 @@ TEST(CtfUi, classic_respawn_shows_only_the_shared_countdown)
     v->control = old_control;
 }
 
+// Everything a settings cycler writes OUTSIDE the SaveData fields the caller
+// restores by hand: the process-wide lobby singleton, whose cached settings
+// picker_lobby_sync_settings_from_save() stamps, and the active company file,
+// which picker_settings_autosave() rewrites whenever it exists. Restoring only
+// the save FIELD leaves both holding this test's throwaway campaign — the
+// og_test_matchup segfault (a later flow's lobby apply remounts it and the
+// remount rebuilds the pack-script registry) and a save0 that names a campaign
+// the fixture never chose.
+struct SettingsCyclerFallout
+{
+    bool had_save0 = false;
+
+    SettingsCyclerFallout()
+        : had_save0(user_file_exists("save/save0.gtl"))
+    {
+        if (had_save0)
+            (void)copy_user_file("save/save0.gtl", "save/save0.cyclerstash");
+    }
+
+    ~SettingsCyclerFallout()
+    {
+        if (had_save0)
+        {
+            (void)copy_user_file("save/save0.cyclerstash", "save/save0.gtl");
+            (void)remove_user_file("save/save0.cyclerstash");
+        }
+        else
+        {
+            (void)remove_user_file("save/save0.gtl");
+        }
+        picker_lobby_shutdown();
+    }
+};
+
 TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
 {
     screen* s = test_screen();
     SaveData& save = s->save_data;
+    SettingsCyclerFallout cycler_fallout;
     const std::string old_campaign = save.current_campaign;
     const short old_teams = save.ctf_team_count;
     const short old_caps = save.ctf_capture_limit;
@@ -326,46 +363,58 @@ bool wait_for_interactable_label(const std::string& id, const std::string& want,
     return false;
 }
 
-// Click `id` until its label reads `want`. The label edge proves the press was
-// consumed, but synchronous save/stage work can leave that click's release
-// queued after the edge. A completed menu-frame edge acknowledges the full
-// click before this injector can send another press. Bounded retries retain
-// teeth: a cycler that genuinely skips or breaks the target still fails every
-// attempt, and the save-value pins at the end of each flow back this up.
+// Click `id` until its label reads `want`, on the shared ladder
+// (tests/test_click_ladder.h). The row is a CYCLER, so the two halves of the
+// ladder's rule both bite here:
+//
+//   * the pointer baseline is posted BEFORE the press, not after a failed
+//     attempt — a press sent against a release the engine has not consumed
+//     yet evaporates, and the first press is exactly the one that used to go
+//     out with no baseline at all;
+//   * the LABEL EDGE is the landing witness, and a press that reached it is
+//     never re-sent, however slow the rest of the attempt is. A second press
+//     walks the wheel one stop past the face the flow asked for.
+//
+// The acknowledgement that follows the landing is the handoff that protects
+// the NEXT press, not an oracle for this one: acknowledge_press reports its
+// own stall by name and leaves the reset queued for whenever the menu thread
+// comes back, and its verdict stays out of the return. A menu thread starved
+// by the knob's own synchronous autosave has not un-cycled the knob.
+//
+// Teeth: a cycler that genuinely skips or breaks the target still fails every
+// attempt (CtfUi.settings_cycler_reports_a_label_that_never_lands pins the
+// retry count), and the save-value pins at the end of each flow back this up.
 bool click_until_label(const std::string& id, const std::string& want,
                        int attempts = 3, int wait_ms = 2500)
 {
     for (int i = 0; i < attempts; ++i) {
         const int saves_before = trace_count("save");
-        interact(id);
-        if (wait_for_interactable_label(id, want, wait_ms)) {
-            int elapsed = 0;
-            while (elapsed < wait_ms && trace_count("save") <= saves_before) {
-                SDL_Delay(50);
-                elapsed += 50;
-            }
-            const bool autosaved = trace_count("save") > saves_before;
-            if (!autosaved)
-                fprintf(stderr,
-                        "  [interact] TIMEOUT waiting for '%s' autosave\n",
-                        id.c_str());
-            const std::uint64_t completed_before =
-                og::ui::menu_screen_testing_completed_frames();
-            elapsed = 0;
-            while (elapsed < wait_ms &&
-                   og::ui::menu_screen_testing_completed_frames() <=
-                       completed_before) {
-                SDL_Delay(50);
-                elapsed += 50;
-            }
-            const bool acknowledged =
-                og::ui::menu_screen_testing_completed_frames() >
-                completed_before;
-            return autosaved && acknowledged;
+        // Both posts take the ladder's cancellation ceiling, never this
+        // click's wait: the wait bounds the label edge, the post only has to
+        // outlive a slow pump (test_click_ladder.h, kAckPostCeilingMs).
+        (void)acknowledge_press();
+        (void)interact(id);
+        const bool label_reached =
+            wait_for_interactable_label(id, want, wait_ms);
+        if (!label_reached) {
+            ++g_click_ladder_click_retries;
+            fprintf(stderr,
+                    "  [interact] retry %d: '%s' has not reached '%s'\n",
+                    i + 1, id.c_str(), want.c_str());
+            continue;
         }
-        fprintf(stderr, "  [interact] retry %d: '%s' has not reached '%s'\n",
-                i + 1, id.c_str(), want.c_str());
-        (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
+        int elapsed = 0;
+        while (elapsed < wait_ms && trace_count("save") <= saves_before) {
+            SDL_Delay(50);
+            elapsed += 50;
+        }
+        const bool autosaved = trace_count("save") > saves_before;
+        if (!autosaved)
+            fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' autosave\n",
+                    id.c_str());
+        (void)acknowledge_press(kAckPostCeilingMs, attempts,
+                                /*injectable=*/true);
+        return label_reached && autosaved;
     }
     return false;
 }
@@ -386,6 +435,55 @@ bool wait_for_interactable_at(const std::string& id, int x, int y,
     }
     fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' at (%d,%d)\n",
             id.c_str(), x, y);
+    return false;
+}
+
+// Two presses per flow deliberately stay bare. The flow's LAST back leaves
+// the picker, and once picker_main has returned nothing pumps the menu thread
+// and nothing republishes allbuttons — there is no witness left to wait on, so
+// a ladder there would only spend four attempts against a dead loop. The
+// degrade flow's RE-ENTRY press on VIEW LEVEL is refused by design (the entry
+// guard keeps the SCENARIO submenu up), so it has no landing either.
+//
+// Every converted press keeps the flat wait's own ceiling: four witnessed
+// attempts of 2500 ms is the same 10 000 ms these flows always gave a screen
+// to compose in, spent pressing-and-watching instead of watching a press
+// nobody may have received.
+constexpr int kCtfDoorAttempts = 4;
+constexpr int kCtfDoorWaitMs = 2500;
+
+// A BACK press is not idempotent — a second one leaves the screen the first
+// one arrived at — so its witness has two arms, polled together: the successor
+// row shows (the normal landing), or the BACK we pressed is gone from its own
+// rect (it landed and its successor is a frame behind). Either arm stops the
+// ladder pressing; only "nothing registered at all" earns a re-press.
+// Geometry is the disambiguator the per-screen backs are designed around
+// (menu_screen_specs.cpp:1297 — the SCENARIO submenu's BACK sits apart at
+// (30,170), the VIEW LEVEL frame's at (10,170)).
+bool back_left_its_screen(const std::string& successor_id, int back_x,
+                          int back_y, int timeout_ms)
+{
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        bool successor = false;
+        bool back_still_up = false;
+        for (const Interactable& item : get_interactables()) {
+            if (item.hidden)
+                continue;
+            if (item.id == successor_id)
+                successor = true;
+            if (item.id == "back" && item.x == back_x && item.y == back_y)
+                back_still_up = true;
+        }
+        if (successor || !back_still_up)
+            return true;
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT: BACK at (%d,%d) is still up and '%s' has "
+            "not shown\n",
+            back_x, back_y, successor_id.c_str());
     return false;
 }
 
@@ -417,6 +515,9 @@ struct SavedPickerSave
         snapshot_fields.arena_lineup_dealt_campaign =
             save.arena_lineup_dealt_campaign;
         snapshot_fields.arena_lineup_dealt_scen = save.arena_lineup_dealt_scen;
+        // ...and the match knobs the macro rows write, for the same reason.
+        snapshot_fields.fill = save.fill;
+        snapshot_fields.map_units = save.map_units;
     }
 
     ~SavedPickerSave()
@@ -427,6 +528,8 @@ struct SavedPickerSave
         save.arena_lineup_dealt_campaign =
             snapshot_fields.arena_lineup_dealt_campaign;
         save.arena_lineup_dealt_scen = snapshot_fields.arena_lineup_dealt_scen;
+        save.fill = snapshot_fields.fill;
+        save.map_units = snapshot_fields.map_units;
         save.team_size = snapshot_fields.team_size;
         save.my_team = snapshot_fields.my_team;
         save.numplayers = snapshot_fields.numplayers;
@@ -465,9 +568,16 @@ void write_save0_with_soldiers(const std::string& campaign, short scen_num,
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 0;
     save.ctf_strip_scenario_troops = 0;
-    // A defined resting state includes the arena deal memo (amendment 7):
-    // a memo left on this cursor by an earlier flow would mark the fresh
-    // bands as already dealt.
+    // A defined resting state includes the match knobs: in binary order an
+    // earlier flow's fill/map_units would otherwise leak into this save and
+    // the amendment-5 macro faces (derived from fill[]) would not be at
+    // rest (caught by the ordered og_test_matchup run, invisible alone).
+    // The deal only fills a band that is still kFillNone, so a leaked
+    // STRONG survives it.
+    save.fill = {};
+    save.map_units = {};
+    // ...and the arena deal memo (amendment 7): a memo left on this cursor
+    // by an earlier flow would mark the fresh bands as already dealt.
     save.arena_lineup_dealt_campaign.clear();
     save.arena_lineup_dealt_scen = 0;
     ASSERT_TRUE(save.save("save0"));
@@ -500,15 +610,19 @@ int teams_local_flow_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // The match-settings band lives on the SCENARIO submenu (#218 — the
     // MATCHUP screen's door is a parked spare).
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Classic campaign: the versus-only SCORE row stays hidden — the
     // re-homed row keeps MATCHUP's classic-campaign gate — and neither
@@ -521,16 +635,22 @@ int teams_local_flow_injector(void* data)
         !has_interactable("scenario_troops_spare");
 
     // VIEW LEVEL: framed report over a scratch load; BACK returns.
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -548,16 +668,20 @@ int teams_ctf_settings_flow_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu, where the knob row lives now (#218,
     // A5/B5): SCORE alone at y=140 (TEAMS and TROOPS both retired into
     // the LINEUP band).
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // CTF campaign + local host: the versus-gated SCORE row shows, reading
     // the map's own target; the retired TEAMS cell never does.
@@ -581,16 +705,22 @@ int teams_ctf_settings_flow_injector(void* data)
 
     // VIEW LEVEL on the loaded CTF map (the save0 load mounted the CTF
     // campaign): the framed CTF report renders, BACK returns.
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     state->viewer_back_seen = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -641,6 +771,9 @@ struct PagerFlowState
     bool finished = false;
     bool viewer_opened = false;
     bool pager_visible = false;
+    // The keyboard close of the SCENARIO submenu (runner MENU_EXIT path).
+    bool go_absent_inside_submenu = false;
+    bool keyboard_back_reached_base_camp = false;
 };
 
 // handle_menu_nav reads SDL_GetKeyboardState (not the event queue), so the
@@ -663,6 +796,55 @@ void press_nav_key(SDL_Keycode key, int hold_ms)
     hold_nav_key(key, false);
 }
 
+struct NeverLandsState
+{
+    bool subscreen_opened = false;
+    bool ladder_reported_false = false;
+    // Sampled the moment the SCORE ladder returns, so the BACK ladders on the
+    // way out of the flow cannot be counted against it.
+    int score_retries = 0;
+    bool finished = false;
+};
+
+// The SCORE ladder pointed at a face the wheel does not carry. It must spend
+// its attempts and REPORT — never hang against the group's budget, and never
+// claim a cycle that did not happen.
+int ctf_never_lands_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    NeverLandsState* state = static_cast<NeverLandsState*>(data);
+
+    wait_for_interactable("continue_game", 5000);
+    wait_for_menu_frames(2);
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
+
+    wait_for_interactable("scenario", 10000);
+    wait_for_menu_frames(2);
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
+
+    state->subscreen_opened = wait_for_interactable("ctf_caps", 10000);
+    if (state->subscreen_opened) {
+        const int retries_before = g_click_ladder_click_retries;
+        state->ladder_reported_false =
+            !click_until_label("ctf_caps", "SCORE: NOT A FACE");
+        state->score_retries = g_click_ladder_click_retries - retries_before;
+    }
+
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
+    wait_for_interactable("go", 10000);
+    wait_for_menu_frames(2);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
 int view_scenario_pager_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -670,17 +852,23 @@ int view_scenario_pager_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu -> VIEW LEVEL.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
@@ -698,14 +886,34 @@ int view_scenario_pager_injector(void* data)
     press_nav_key(SDLK_SPACE, 120);
     SDL_Delay(500);
 
-    // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
-    interact("back");
+    // Viewer back -> SCENARIO submenu.
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
 
-    SDL_Delay(300);
+    // Keyboard close of the SCENARIO submenu. Its highlight rests on BACK
+    // (the screen's declared default) and BACK carries MENU_EXIT, so FIRE
+    // must take the same structural exit a mouse activation does. GO
+    // belongs to Base Camp, so its absence here and its presence after is
+    // the whole claim. The first FIRE may only ARM menu-nav (picker_input's
+    // rule), so the press is retried a bounded number of times.
+    state->go_absent_inside_submenu = !has_interactable("go");
+    for (int attempt = 0; attempt < 4 && !has_interactable("go"); ++attempt) {
+        press_nav_key(SDLK_SPACE, 120);
+        SDL_Delay(400);
+    }
+    state->keyboard_back_reached_base_camp =
+        has_interactable("go") && has_interactable("scenario");
+
+    // Fallback so a failed keyboard close cannot strand the flow; the test
+    // reports the miss through the flags above either way.
+    if (!has_interactable("go")) {
+        interact("back");
+        SDL_Delay(300);
+    }
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
     interact("back");
@@ -753,6 +961,9 @@ TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
     SavedPickerSave save_guard;
     write_save0_with_two_soldiers("gladiator", 1);
 
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+
     TeamsFlowState state;
     SDL_Thread* thread = SDL_CreateThread(
         teams_local_flow_injector, "teams_local_flow", &state);
@@ -774,6 +985,10 @@ TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
     EXPECT_TRUE(state.troops_row_gone)
         << "the retired TROOPS cell never shows (B5)";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    // The other half of the ladder's rule, on a flow with nothing injected:
+    // every press of this flow landed, so not one of them was re-sent.
+    EXPECT_EQ(0, g_click_ladder_click_retries)
+        << "a healthy flow re-presses nothing";
 
     EXPECT_EQ(0, save.my_team)
         << "the flow must not mutate the player's assigned team";
@@ -839,6 +1054,87 @@ TEST(CtfUi, scenario_ctf_settings_flow)
     (void)mount_campaign_package_with_error("gladiator");
 }
 
+// Teeth for the acknowledgement half of the SCORE ladder. The press lands,
+// the row relabels and the knob autosaves — and then the completed-frame
+// observation that follows comes back empty. That is the starved menu thread
+// a loaded box produces (ci-asan seed 4 reported exactly this shape:
+// score_relabelled false beside a ctf_capture_limit that had already cycled
+// to 1, one press in the log and no retry), and it is the pointer handoff
+// that protects the NEXT press, not an oracle for this one. A stall there is
+// reported by name; it is never charged to the click.
+TEST(CtfUi, settings_cycler_is_not_charged_for_a_starved_acknowledge)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("modes", 500);
+
+    g_click_ladder_ack_drops = 1;
+    g_click_ladder_ack_post_retries = 0;
+    g_click_ladder_click_retries = 0;
+
+    TeamsFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        teams_ctf_settings_flow_injector, "teams_ctf_ack_blind", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.score_relabelled) << "SCORE cycle should relabel";
+    EXPECT_EQ(1, (int)save.ctf_capture_limit)
+        << "the press itself landed: the knob cycled and the flow autosaved";
+    EXPECT_EQ(0, g_click_ladder_ack_drops)
+        << "the injected stall must be consumed";
+    EXPECT_EQ(1, g_click_ladder_ack_post_retries)
+        << "exactly one acknowledge post was re-sent";
+    EXPECT_EQ(0, g_click_ladder_click_retries)
+        << "the press itself registered: it must never be re-pressed";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// The other tooth on the same ladder: a face the row never shows must cost
+// every attempt and come back false. Without it, "report the stall, never
+// charge it to the click" would be indistinguishable from "never fail".
+TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("modes", 500);
+
+    g_click_ladder_ack_drops = 0;
+    g_click_ladder_ack_post_retries = 0;
+
+    NeverLandsState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        ctf_never_lands_injector, "ctf_never_lands", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.subscreen_opened)
+        << "CTF campaign + host shows SCORE on SCENARIO";
+    EXPECT_TRUE(state.ladder_reported_false)
+        << "a face the wheel never shows must be reported, not claimed";
+    EXPECT_EQ(3, state.score_retries)
+        << "the ladder spends its three attempts and reports, never hangs";
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
 TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
 {
     trace_clear();
@@ -889,6 +1185,12 @@ TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
         << "mouse click on NEXT must flip to page 1";
     EXPECT_GE(count_picker_trace_containing("page=0"), 2)
         << "keyboard FIRE on PREV must flip back (entry trace + flip trace)";
+    EXPECT_TRUE(state.go_absent_inside_submenu)
+        << "GO belongs to Base Camp and must not be reachable from inside "
+           "the SCENARIO submenu";
+    EXPECT_TRUE(state.keyboard_back_reached_base_camp)
+        << "keyboard FIRE on the MENU_EXIT-bearing BACK row must close the "
+           "submenu, exactly like a mouse activation";
 }
 
 // The MATCHUP screen retired with #218 — its seat/team overview is VIEW
@@ -924,17 +1226,23 @@ int view_scenario_refresh_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu -> VIEW LEVEL.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
@@ -974,11 +1282,15 @@ int view_scenario_refresh_injector(void* data)
     }
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -1055,17 +1367,23 @@ int view_scenario_camera_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu -> VIEW LEVEL.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     state->pane_healed =
@@ -1078,11 +1396,15 @@ int view_scenario_camera_injector(void* data)
 
     // Viewer back -> SCENARIO submenu; its back -> team build; its back
     // leaves the picker.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     state->back_at_scenario_menu = wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -1170,6 +1492,13 @@ struct DegradeFlowState
 constexpr int kDegradeLedgerFirstLevel = 100000;
 constexpr int kDegradeLedgerLevels = 17000;
 
+// TESTING-only fault injection for the SCENARIO door, armed by the
+// dropped-press tooth alone: make the next N presses on that door evaporate
+// the way a starved frame does. It is its own counter rather than the shared
+// g_click_ladder_click_drops because the drop belongs to THIS door — an
+// earlier ladder in the same flow would otherwise eat it.
+int g_ctf_scenario_door_drops = 0;
+
 int view_scenario_degrade_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -1177,17 +1506,28 @@ int view_scenario_degrade_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     // Team build -> SCENARIO submenu -> VIEW LEVEL (loads scen 500).
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
+    wait_for_menu_frames(2);
+    // The drop is armed HERE, not in the test body (the zone blind-cycler
+    // pattern): it belongs to the SCENARIO door, and the CONTINUE ladder
+    // above would otherwise eat it.
+    g_click_ladder_click_drops += g_ctf_scenario_door_drops;
+    g_ctf_scenario_door_drops = 0;
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
 
@@ -1253,7 +1593,9 @@ int view_scenario_degrade_injector(void* data)
     // Leave the viewer, land the unloadable id again, and try to re-enter:
     // the entry guard refuses (popup is a TESTING no-op; MENU_REDRAW keeps
     // the SCENARIO submenu up, so VIEW LEVEL stays interactable).
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("view_scenario", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
     state->save_edits_ran_on_main_thread &= set_scen_num_through_lobby(9999);
@@ -1267,7 +1609,9 @@ int view_scenario_degrade_injector(void* data)
     SDL_Delay(400);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -1317,6 +1661,50 @@ TEST(CtfUi, view_scenario_degrades_and_recovers_on_level_moves)
     (void)mount_campaign_package_with_error("gladiator");
 }
 
+// Teeth for the press half, on the door whose loss was reported: seed 1 of
+// og_test_matchup showed one press on 'scenario', then
+// "[interact] TIMEOUT waiting for 'view_scenario'", then every downstream
+// ceiling in turn — a 69.6 s cascade out of a single evaporated click, with
+// no diagnostic at the click itself. The SCENARIO door has no gate at all
+// (ButtonAction::CreateScenarioMenu opens unconditionally), so a landed press
+// always opens the submenu: a press that produced nothing was never received,
+// and must cost one retry rather than the whole flow.
+TEST(CtfUi, scenario_door_survives_a_dropped_press)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("modes", 500);
+
+    g_ctf_scenario_door_drops = 1;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_edge_waits = 0;
+
+    DegradeFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        view_scenario_degrade_injector, "view_degrade_drop", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, g_ctf_scenario_door_drops)
+        << "the injected drop must be consumed";
+    EXPECT_EQ(0, g_click_ladder_click_drops)
+        << "the ladder must have consumed the drop it was handed";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_EQ(1, g_click_ladder_click_retries)
+        << "exactly one press left no witness and was re-sent";
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
 // --- The staged preview pane (#218, C10) ------------------------------------
 
 struct StagedPaneFlowState
@@ -1340,16 +1728,22 @@ int view_scenario_staged_pane_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable("scenario", wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
@@ -1393,11 +1787,15 @@ int view_scenario_staged_pane_injector(void* data)
     SDL_Delay(300);
 
     // Viewer back -> SCENARIO -> team build -> main.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("progress", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
@@ -1451,6 +1849,40 @@ TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
     EXPECT_TRUE(state.matched_line_seen)
         << "a FILL: STRONG flip under the open viewer must restage into a "
            "squad wearing STRONG";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// The resting contract the pane test above depends on, pinned without an
+// injector. `deal_arena_lineup_fill` only writes FAIR onto a band that is
+// still kFillNone — an explicit choice is never re-dealt (picker_common.cpp)
+// — so a fill array left STRONG by an earlier MATCH SETUP macro survives the
+// re-deal and the resting census reads STRONG where this suite pins FAIR.
+// The fixture therefore owes fill/map_units a defined resting state, exactly
+// as the campaign-zone fixture already documents for itself.
+TEST(CtfUi, staged_pane_rest_is_fair_even_after_a_prior_fill_macro)
+{
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // Exactly what a MATCH SETUP FILL macro leaves behind: two bands set
+    // STRONG, and the lobby stamped with them. (The stamp's own apply can
+    // remount, so the arena package is mounted after it, not before.)
+    save.fill = {og::sim::kFillStrong, og::sim::kFillStrong,
+                 og::sim::kFillNone, og::sim::kFillNone};
+    picker_lobby_sync_settings_from_save();
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 500);
+    EXPECT_EQ(og::sim::kFillNone, save.fill[1])
+        << "the fixture must hand the arena an undealt band";
+
+    EXPECT_TRUE(og::ui::deal_arena_lineup_for_cursor(
+        save, headless_level_data_hooks()));
+    EXPECT_EQ(og::sim::kFillFair, save.fill[1])
+        << "amendment 7: FIRST BLOOD's authored GREEN band deals FAIR";
 
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");
@@ -1543,11 +1975,15 @@ int view_scenario_seat_ready_flip_injector(void* data)
     // Base Camp -> SCENARIO -> VIEW LEVEL (create_team_menu entry, no main
     // menu in front of it).
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
+    wait_for_menu_frames(2);
+    (void)click_until_edge("scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("view_scenario");
+    (void)click_until_edge("view_scenario", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
     state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
@@ -1569,11 +2005,15 @@ int view_scenario_seat_ready_flip_injector(void* data)
     SDL_Delay(300);
 
     // Viewer back -> SCENARIO -> team build -> leave.
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("view_scenario", 10, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
-    interact("back");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return back_left_its_screen("go", 30, 170, wait_ms);
+    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
     SDL_Delay(300);

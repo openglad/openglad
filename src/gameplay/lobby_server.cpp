@@ -580,24 +580,10 @@ bool LobbyServer::is_team_available(std::int16_t team,
     if (!lobby_team_is_selectable(state_.settings, team))
         return false;
 
-    // Explicit assignments are shareable in every mode: any in-range team is
-    // open to every seat, including another seat of this peer. Keep the
-    // compatibility query here so older allied/CTF-oriented callers retain
-    // the same public helper without controlling the new assignment rule.
-    if (lobby_teams_shareable(state_.settings))
-        return true;
-
-    for (const auto& [other_peer_id, peer] : peers_)
-    {
-        if (other_peer_id == peer_id)
-            continue;
-        for (const LobbyPlayer& seat : peer.seats)
-        {
-            if (seat.team == team)
-                return false;
-        }
-    }
-
+    // Explicit per-seat assignments are shareable in every mode: any
+    // in-range team is open to every seat, on this peer or another. What
+    // remains of availability is the authored-domain check above.
+    (void)peer_id;
     return true;
 }
 
@@ -1254,72 +1240,6 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                         std::nullopt,
                         sibling_teams);
                     if (reteamed < 0)
-                        continue;
-                    seat.team = reteamed;
-                    rebuild_needed = true;
-                }
-            }
-
-            // Shared->exclusive transition (CTF/allied -> classic): seats
-            // legitimately sharing a team across peers must be de-shared, or
-            // a classic match starts with two humans on one team. Iterate the
-            // flattened (connection order, seat order) list; the earliest
-            // seat keeps the team.
-            if (!lobby_teams_shareable(state_.settings))
-            {
-                struct OrderedSeat {
-                    PeerId peer_id = 0;
-                    ConnectedPeerState* peer = nullptr;
-                    std::size_t seat_order = 0;
-                };
-                std::vector<std::pair<PeerId, ConnectedPeerState*>> ordered;
-                ordered.reserve(peers_.size());
-                for (auto& [other_peer_id, peer] : peers_)
-                {
-                    if (!peer.seats.empty())
-                        ordered.emplace_back(other_peer_id, &peer);
-                }
-                std::sort(ordered.begin(), ordered.end(),
-                          compare_peer_connection_order);
-                std::vector<OrderedSeat> ordered_seats;
-                for (auto& [other_peer_id, peer] : ordered)
-                {
-                    for (std::size_t seat_order = 0;
-                         seat_order < peer->seats.size(); ++seat_order)
-                    {
-                        ordered_seats.push_back(
-                            OrderedSeat{other_peer_id, peer, seat_order});
-                    }
-                }
-                for (std::size_t i = 0; i < ordered_seats.size(); ++i)
-                {
-                    LobbyPlayer& seat = ordered_seats[i]
-                        .peer->seats[ordered_seats[i].seat_order];
-                    bool collides = false;
-                    for (std::size_t j = 0; j < i; ++j)
-                    {
-                        const LobbyPlayer& earlier = ordered_seats[j]
-                            .peer->seats[ordered_seats[j].seat_order];
-                        if (earlier.team == seat.team)
-                        {
-                            collides = true;
-                            break;
-                        }
-                    }
-                    if (!collides)
-                        continue;
-                    std::vector<std::int16_t> sibling_teams;
-                    const auto& seats = ordered_seats[i].peer->seats;
-                    sibling_teams.reserve(seats.size());
-                    for (std::size_t k = 0; k < seats.size(); ++k)
-                    {
-                        if (k != ordered_seats[i].seat_order)
-                            sibling_teams.push_back(seats[k].team);
-                    }
-                    const std::int16_t reteamed = resolve_seat_team(
-                        ordered_seats[i].peer_id, seat.team, std::nullopt,
-                        sibling_teams);
-                    if (reteamed < 0 || reteamed == seat.team)
                         continue;
                     seat.team = reteamed;
                     rebuild_needed = true;

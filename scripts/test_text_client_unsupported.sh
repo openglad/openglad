@@ -94,4 +94,87 @@ if ! grep -Fq 'picker error: protocol session failed with code 1' "$TMPOERR"; th
     exit 1
 fi
 
+# --team-level / --campaign-state are inputs to the --protocol session
+# assembler only; the picker's GO stages from its own save and would drop them
+# silently (#247). Each must be refused loudly rather than ignored.
+for flag_args in "--team-level 5" "--campaign-state wp9_flag=3"; do
+    # shellcheck disable=SC2086
+    if HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" $flag_args \
+        < /dev/null > "$TMPOUT" 2> "$TMPOERR"; then
+        echo "FAIL: '$flag_args' without --protocol unexpectedly succeeded" >&2
+        exit 1
+    else
+        rc=$?
+    fi
+    if [ $rc -ne 1 ]; then
+        echo "FAIL: '$flag_args' without --protocol exited with $rc instead of 1" >&2
+        exit 1
+    fi
+    if ! grep -Fq -- '--team-level and --campaign-state require --protocol' "$TMPOERR"; then
+        echo "FAIL: '$flag_args' without --protocol did not print the refusal" >&2
+        exit 1
+    fi
+    if [ -s "$TMPOUT" ]; then
+        echo "FAIL: '$flag_args' without --protocol produced stdout before refusing" >&2
+        exit 1
+    fi
+done
+
+echo "PASS: picker-mode runs refuse the protocol-only session flags"
+
+# The paired positive arm: with --protocol the same flag reaches the seeder and
+# the session comes up ready. A key the save's write choke rejects fails the
+# session with status 1 instead of seeding a half-applied campaign.
+printf 'quit\n' | HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" \
+    --protocol --level 1 --seed 42 --campaign-state wp9_flag=3,wp9_other=1 \
+    > "$TMPOUT" 2> "$TMPOERR"
+rc=$?
+if [ $rc -ne 0 ]; then
+    echo "FAIL: --protocol --campaign-state run exited with code $rc" >&2
+    exit 1
+fi
+if ! head -n 1 "$TMPOUT" | grep -Fq '"status":"ready"'; then
+    echo "FAIL: --protocol --campaign-state run did not report ready: $(head -n 1 "$TMPOUT")" >&2
+    exit 1
+fi
+
+if printf 'quit\n' | HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" \
+    --protocol --level 1 --seed 42 --campaign-state BadKey=3 \
+    > "$TMPOUT" 2> "$TMPOERR"; then
+    echo "FAIL: --campaign-state BadKey unexpectedly seeded the session" >&2
+    exit 1
+else
+    rc=$?
+fi
+if [ $rc -ne 1 ]; then
+    echo "FAIL: --campaign-state BadKey exited with $rc instead of 1" >&2
+    exit 1
+fi
+if ! grep -Fq 'Rejected --campaign-state key BadKey' "$TMPOERR"; then
+    echo "FAIL: --campaign-state BadKey did not name the rejected key" >&2
+    exit 1
+fi
+
+echo "PASS: --protocol --campaign-state seeds valid keys and refuses invalid ones"
+
+# A --campaign-state token with no '=' is a usage error: print the usage line,
+# exit 0, and start no session at all (no ready banner on stdout).
+HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" \
+    --protocol --campaign-state wp9_flag < /dev/null > "$TMPOUT" 2> "$TMPOERR"
+rc=$?
+if [ $rc -ne 0 ]; then
+    echo "FAIL: malformed --campaign-state token exited with $rc instead of 0" >&2
+    exit 1
+fi
+if ! grep -Fq -- '--campaign-state expects key=value[,key=value...]' "$TMPOERR"; then
+    echo "FAIL: malformed --campaign-state token did not print the usage line" >&2
+    exit 1
+fi
+if [ -s "$TMPOUT" ]; then
+    echo "FAIL: malformed --campaign-state token still started a session: $(cat "$TMPOUT")" >&2
+    exit 1
+fi
+
+echo "PASS: a malformed --campaign-state token aborts before any session starts"
+
 echo "PASS: text picker propagates protocol startup failures"

@@ -159,8 +159,31 @@ struct WebSocketClientTransport::Impl
             websocket->sendBinary(ix::IXWebSocketSendData(bytes, send_len));
         if (!send_info.success)
         {
-            enqueue_disconnect(active_generation);
-            websocket->close();
+            // A send that ix refused has already closed the socket and set it
+            // CLOSED on THIS thread (IXWebSocketTransport::sendOnSocket). If
+            // the io thread was at the top of run() having just sampled
+            // isConnected() as true, it reads that Closed and returns for
+            // good with automatic reconnection still armed — no callback ever
+            // fires again, so close() here would be a no-op on a corpse and
+            // nothing would ever re-dial. Retire the socket and start a fresh
+            // one instead of trusting ix's reconnection loop.
+            //
+            // Order matters. The generation goes first, so the retiring
+            // socket's queued callbacks are dropped by poll(). Then the link
+            // is marked down synchronously — send() and poll() both run on
+            // the game thread, exactly as disconnect() does it — because that
+            // is what makes the NEXT send return at the `connected` gate
+            // above: without it every tick would land here again while the
+            // new socket is still dialling, cancel that dial and create
+            // another one. The retirement happens once per link death; the
+            // flags below are the game-thread state the old queued Disconnect
+            // existed to produce, so it is not enqueued twice.
+            connected = false;
+            link_closed = true;
+            active_generation = next_generation++;
+            detail::quiesce_and_stop(*websocket);
+            websocket = make_websocket(active_generation);
+            websocket->start();
         }
     }
 
@@ -231,8 +254,13 @@ struct WebSocketClientTransport::Impl
         // only thread that runs handle_message() — so once it returns no
         // callback can race the reset below. (Moving the pointer out before
         // stopping raced the callback thread's reads of `websocket`.)
+        // stop() alone is not enough: ix closes the socket before raising its
+        // own stop flag, so a live reconnection loop can re-dial in that gap
+        // and park the io thread in an unbounded poll() that the join below
+        // would then wait on forever. quiesce_and_stop() takes the re-dial
+        // away and closes until the socket is really at rest first.
         if (websocket)
-            websocket->stop();
+            detail::quiesce_and_stop(*websocket);
         websocket.reset();
         clear_queue();
     }
@@ -262,9 +290,10 @@ struct WebSocketClientTransport::Impl
     {
         active_generation = 0;
         // Same teardown protocol as disconnect(): join the callback thread
-        // via stop() before the member teardown that follows this body.
+        // via stop() before the member teardown that follows this body, and
+        // close ix's re-dial gap before that join.
         if (websocket)
-            websocket->stop();
+            detail::quiesce_and_stop(*websocket);
     }
 
 private:
@@ -299,6 +328,16 @@ private:
             options.min_reconnect_wait_ms);
         socket->setMaxWaitBetweenReconnectionRetries(
             options.max_reconnect_wait_ms);
+        // Bound the dial itself, not just the wait between dials: a
+        // connection accepted by ix's acceptor and then abandoned unclosed
+        // (IXSocketServer.cpp:415) never answers and never resets, so only a
+        // client-side deadline ends it. The leak is upstream at a pinned rev,
+        // so this bound is the fix available to us.
+        socket->setHandshakeTimeout(options.handshake_timeout_secs);
+        // Keep the link honest once it is up: with a ping interval ix's poll
+        // timeout is finite, so a half-open link ends in a pong timeout and a
+        // re-dial instead of an io thread that spins or waits forever.
+        socket->setPingInterval(options.ping_interval_secs);
         // The callback receives the socket that owns the callback thread, so
         // handle_message() never has to read the cross-thread `websocket`
         // member. The raw pointer cannot dangle: the callback only runs on

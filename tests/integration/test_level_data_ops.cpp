@@ -156,6 +156,17 @@ void setup_editor_campaign_fixture()
 void teardown_editor_campaign_fixture()
 {
     delete_campaign(g_editor_campaign_fixture.tmp_id);
+    // Put the mount back exactly as it was found, INCLUDING the "nothing was
+    // mounted" case. The test mounts the fixture package and delete_campaign
+    // only removes the .glad file, so skipping the restore leaves a package
+    // that no longer exists on disk mounted for the rest of the binary: every
+    // later test that snapshots the mount and restores it at the end (the
+    // editor's LevelEditorTestingMountGuard) then fails its own restore.
+    const std::string mounted = get_mounted_campaign();
+    if(mounted == g_editor_campaign_fixture.old_mounted_campaign)
+        return;
+    if(!mounted.empty())
+        (void)unmount_campaign_package_with_error(mounted);
     if(!g_editor_campaign_fixture.old_mounted_campaign.empty())
         (void)mount_campaign_package_with_error(g_editor_campaign_fixture.old_mounted_campaign);
 }
@@ -563,11 +574,17 @@ TEST(LevelDataOps, level_data_save_description_serialization_bounds)
     og::runtime::current_session->myscreen_->world().par_value = 2;
     og::runtime::current_session->myscreen_->world().time_bonus_limit = 3000;
     og::runtime::current_session->myscreen_->world().delete_objects();
+    // save_level() writes the grid plane as well as the .fss, and an empty
+    // grid refuses to serialize — so build one here instead of riding on
+    // whatever an earlier test in this process left behind.
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->level_description().clear();
     og::runtime::current_session->myscreen_->level_description().push_back(empty_line);
     og::runtime::current_session->myscreen_->level_description().push_back(boundary_line);
     og::runtime::current_session->myscreen_->level_description().push_back(long_line);
     std::filesystem::create_directories("temp/scen");
+    // /temp/ is gitignored, so temp/pix does not exist on a fresh checkout.
+    std::filesystem::create_directories("temp/pix");
 
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed for description bounds regression";
 

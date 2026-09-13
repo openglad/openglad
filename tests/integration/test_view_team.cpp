@@ -103,6 +103,7 @@ Sint32 create_train_menu(Sint32 arg1);
 extern bool g_start_game_requested;
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
@@ -227,6 +228,21 @@ struct ActivePickerLobbyClientGuard
     {
         og::ui::install_active_picker_lobby_client(saved);
     }
+};
+
+// save_data.numplayers is a process-wide setting: og::ui::is_spectator_mode()
+// is numplayers == 0, and viewscreen::process_input() RETURNS out of the
+// spectator branch before it ever reaches the sim, so a zero left behind here
+// silently disarms every later input test in the binary. SaveData::reset()
+// does not restore it (the `//numplayers = 1;` line in save_data.cpp is
+// commented out on purpose), so a test that seats nobody restores it itself.
+struct PlayerCountGuard
+{
+    SaveData& save;
+    unsigned char saved;
+
+    explicit PlayerCountGuard(SaveData& s) : save(s), saved(s.numplayers) {}
+    ~PlayerCountGuard() { save.numplayers = saved; }
 };
 
 } // namespace
@@ -560,6 +576,47 @@ TEST(ViewTeam, go_starts_level) {
 }
 
 
+// ---------------------------------------------------------------------------
+// The base-camp injectors' escape hatch.
+//
+// A pushed key event is NOT a keystate: inject_key_down builds an SDL_Event
+// and SDL_PushEvent()s it, which never runs SDL_SendKeyboardKey, so SDL's
+// keyboard state array — the array og::runtime::current_session->keystates_
+// points at, assigned once from SDL_GetKeyboardState() — does not move. The
+// menu engine's BACK control is a hotkey (KEYSTATE_ESCAPE) and the only two
+// things that fire it, leftmouse() and vbutton::leftclick(), both read that
+// array. run_menu_screen has no other Escape path. So a pushed Escape can
+// never close an engine menu screen, and an injector that bails out with one
+// leaves its body spinning until the CTest timeout kills the whole binary.
+//
+// Clicking the visible BACK control is the affordance the engine actually
+// listens to. A timed-out injector can be one screen deep inside another (the
+// TRAIN screen opened from the base camp), so the hatch keeps clicking while
+// the engine still offers a BACK; the raw-key push stays as the fallback for
+// the legacy loops that read raw_key_ (dialogs, the networking menu), where it
+// does work.
+// ---------------------------------------------------------------------------
+static bool cancel_menu_screen(int timeout_ms = 2000)
+{
+    bool clicked = false;
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    // At most three: the deepest nesting a base-camp injector can be caught in
+    // is base camp -> train/scenario screen -> modal, and once the body has
+    // returned allbuttons_ still holds the last screen's BACK, so an unbounded
+    // loop would keep clicking into nothing until the deadline.
+    for (int level = 0; level < 3; ++level) {
+        if (SDL_GetTicks() >= deadline || !has_interactable("back"))
+            break;
+        if (!interact("back"))
+            break;
+        clicked = true;
+        SDL_Delay(150);
+    }
+    if (!clicked)
+        inject_key_press(SDLK_ESCAPE, 10);
+    return clicked;
+}
+
 // §2.5 flow 4 via the §9.11 row-body affordance: tapping a roster row's
 // visible NAME (inside the name/class/level body — the TRAIN column is
 // deleted) opens the train screen seeded ON THAT CHARACTER (no more
@@ -578,7 +635,7 @@ static int base_camp_row_train_injector(void* data)
 
     if (!wait_for_interactable("roster_row_1", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(750);  // entry settle (fades are instant under TESTING)
@@ -590,7 +647,7 @@ static int base_camp_row_train_injector(void* data)
 
     if (!wait_for_interactable("inc_str", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_train_menu = true;
@@ -602,7 +659,7 @@ static int base_camp_row_train_injector(void* data)
 
     if (!wait_for_interactable("roster_dep_0", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(300);
@@ -667,7 +724,7 @@ static int base_camp_team_chip_tap_injector(void* data)
 
     if (!wait_for_interactable("roster_team_0", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(750);
@@ -736,7 +793,7 @@ static int base_camp_scenario_line_injector(void* data)
 
     if (!wait_for_interactable("scenario_line", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(750);  // entry settle (fades are instant under TESTING)
@@ -746,7 +803,7 @@ static int base_camp_scenario_line_injector(void* data)
 
     if (!wait_for_interactable("set_level", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_scenario_menu = true;
@@ -755,7 +812,7 @@ static int base_camp_scenario_line_injector(void* data)
 
     if (!wait_for_interactable("scenario_line", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(300);
@@ -2233,7 +2290,7 @@ int add_player_slot_injector(void* data)
     auto* state = static_cast<SlotClickFlowState*>(data);
     if (!wait_for_interactable("seat_card_1", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_rail = true;
@@ -2258,7 +2315,7 @@ int lobby_full_slot_injector(void* data)
     auto* state = static_cast<SlotClickFlowState*>(data);
     if (!wait_for_interactable("seat_card_1", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_rail = true;
@@ -3670,6 +3727,19 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     EXPECT_EQ("REMOVE PLAYER",
               buttons[kSeatSettingsRemoveIndex].label);
 
+    // A NO answer is a full stop. The prompt is deliberately NO-first
+    // BECAUSE this branch throws a seat (and its key bindings) away: a
+    // declined REMOVE must ask authority for nothing at all.
+    picker_testing_yes_or_no_queue_push(false);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsRemoveIndex, &state));
+    EXPECT_TRUE(lobby.remove_seat_calls.empty())
+        << "a declined REMOVE must not ask authority to drop the seat";
+    EXPECT_FALSE(state.removed) << "and the editor stays open on its seat";
+    EXPECT_EQ(2u, lobby.local_indices.size())
+        << "both seats are still seated";
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "the prompt WAS put to the player; only the answer was no";
+
     // REMOVE is deliberately NO-first; the queued affirmative drives the
     // destructive branch without weakening the live confirmation contract.
     picker_testing_yes_or_no_queue_push(true);
@@ -3682,6 +3752,8 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
         lobby.remove_seat_calls.front())
         << "the dense P# and authority token must name the same live seat";
     EXPECT_TRUE(state.removed);
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "the accepted answer is consumed too";
     EXPECT_FALSE(spec.frame_tick(&state, 0))
         << "the editor exits immediately after its selected seat leaves";
     ASSERT_TRUE(lobby.active_local_count.has_value());
@@ -3786,10 +3858,72 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 #endif
 }
 
+// Offline, the LAST seat cannot leave: there is nobody left to hand the
+// game to, so the row is a no-op that never even puts the question. Asking
+// and then refusing would be worse than not asking — the player answers YES
+// and watches nothing happen. (Networked, the same row IS offered: leaving
+// the last local seat there means spectating, which is a real thing to do.)
+TEST(ViewTeam, seat_settings_remove_never_asks_the_last_offline_seat)
+{
+#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
+    GTEST_SKIP() << "remove/spectate is not compiled into single-seat builds";
+#else
+    InputHardwareSnapshotGuard input_guard;
+    picker_testing_yes_or_no_queue_clear();
+    reset_default_player_controls();
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.networked = false;
+    lobby.local_indices = {0};
+    lobby.active_local_count = 1;
+    lobby.players.push_back(
+        make_foreign_lobby_player(0, "solo", "MY COMPANY", 0, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = lobby.players.front().seat_id,
+        .player_index = lobby.players.front().player_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // A YES is queued: if the row asked, it would remove the seat.
+    picker_testing_yes_or_no_queue_push(true);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsRemoveIndex, &state));
+    EXPECT_TRUE(lobby.remove_seat_calls.empty())
+        << "the last offline seat is never dropped";
+    EXPECT_FALSE(state.removed);
+    EXPECT_EQ(1u, lobby.local_indices.size());
+    EXPECT_EQ(1, picker_testing_yes_or_no_queue_remaining())
+        << "the question was never put to the player";
+
+    // The paired control: with a SECOND offline seat the same row does ask,
+    // and the queued YES drops the seat.
+    lobby.local_indices.push_back(1);
+    lobby.active_local_count = 2;
+    lobby.players.push_back(
+        make_foreign_lobby_player(1, "duo", "MY COMPANY", 0, 0));
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kSeatSettingsRemoveIndex, &state));
+    ASSERT_EQ(1u, lobby.remove_seat_calls.size());
+    EXPECT_TRUE(state.removed);
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "this time the answer was consumed";
+
+    picker_testing_yes_or_no_queue_clear();
+    reset_default_player_controls();
+    og::ui::install_seat_settings_state_for_screen(nullptr);
+#endif
+}
+
 TEST(ViewTeam, base_camp_zero_seat_state_activates_through_the_first_slot)
 {
     FactoryMappingGuard mapping_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PlayerCountGuard player_count_guard(save);
     save.reset();
     save.numplayers = 0;
     save.current_campaign = "gladiator";
@@ -4528,6 +4662,167 @@ TEST(ViewTeam, solo_go_benched_roster_popups_deploy_at_least_one)
 }
 
 // ---------------------------------------------------------------------------
+// The injector escape hatch, pinned. Every base-camp injector below bails out
+// through a hatch when one of its waits times out; if that hatch cannot close
+// the screen, create_team_menu never returns and the whole binary dies at its
+// CTest timeout with no attribution. So the hatch itself is a test subject:
+// a deliberately-absent id times out, the hatch fires, and reaching the line
+// after create_team_menu IS the assertion.
+// ---------------------------------------------------------------------------
+struct BaseCampHatchState {
+    std::atomic<bool> finished{false};
+    bool absent_wait_failed = false;
+    bool hatch_closed_the_screen = false;
+};
+
+static int base_camp_hatch_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampHatchState*>(data);
+
+    // A wait proven able to fail: no roster row 99 exists on any page.
+    state->absent_wait_failed = !wait_for_interactable("roster_row_99", 1500);
+    state->hatch_closed_the_screen = cancel_menu_screen();
+    state->finished.store(true, std::memory_order_relaxed);
+    return 0;
+}
+
+// The seam itself, so the next author does not re-adopt the dead hatch: a
+// pushed key event is not a keystate.
+TEST(ViewTeam, a_pushed_escape_never_reaches_the_keystate_the_hotkey_reads)
+{
+    ASSERT_TRUE(og::runtime::current_session->keystates_ != nullptr);
+    ASSERT_FALSE(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
+        << "precondition: nothing is holding Escape";
+
+    inject_key_down(SDLK_ESCAPE);
+    get_input_events(POLL);
+    EXPECT_FALSE(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
+        << "SDL_PushEvent does not run SDL_SendKeyboardKey, so the keyboard "
+           "state array the BACK hotkey is read from never moves — click the "
+           "button instead";
+
+    inject_key_up(SDLK_ESCAPE);
+    get_input_events(POLL);
+    og::runtime::current_session->raw_key_ = 0;
+}
+
+TEST(ViewTeam, base_camp_injector_hatch_closes_the_screen_when_a_wait_times_out)
+{
+    trace_clear();
+
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    soldier->name = "HATCH1";
+    archer->name = "HATCH2";
+    save.team_list[0] = std::move(soldier);
+    save.team_list[1] = std::move(archer);
+    save.team_size = 2;
+
+    BaseCampHatchState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_hatch_injector, "base_camp_hatch", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);  // must RETURN
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
+    ASSERT_TRUE(state.absent_wait_failed)
+        << "the absent-id wait must time out, or the hatch was never taken";
+    ASSERT_TRUE(state.hatch_closed_the_screen)
+        << "the hatch must use the affordance the engine listens to: a pushed "
+           "SDL key event never reaches keystates_, which is the only thing "
+           "that fires a menu screen's ESCAPE hotkey";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+}
+
+// ...and from one screen deeper. The scenario-line and seat-card injectors
+// bail out with the Scenario menu still open on top of the base camp, so the
+// hatch has to unwind TWO engine screens, not one — the level the first hatch
+// test never reaches.
+struct BaseCampDeepHatchState {
+    std::atomic<bool> finished{false};
+    bool saw_scenario_menu = false;
+    bool absent_wait_failed = false;
+    bool hatch_closed_the_screen = false;
+};
+
+static int base_camp_deep_hatch_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampDeepHatchState*>(data);
+
+    if (!wait_for_interactable("scenario_line", 10000)) {
+        state->finished.store(true, std::memory_order_relaxed);
+        cancel_menu_screen();
+        return 0;
+    }
+    SDL_Delay(750);  // entry settle (fades are instant under TESTING)
+    const auto [mapped_x, mapped_y] = ui_canvas_to_window(30.0f, 19.0f);
+    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
+
+    // One screen deep now: the Scenario menu is the one publishing set_level.
+    state->saw_scenario_menu = wait_for_interactable("set_level", 10000);
+    // A wait proven able to fail: the Scenario menu publishes no such row.
+    state->absent_wait_failed = !wait_for_interactable("set_level_99", 1500);
+    state->hatch_closed_the_screen = cancel_menu_screen();
+    state->finished.store(true, std::memory_order_relaxed);
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_injector_hatch_closes_two_screens_when_a_wait_times_out)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "DEEPHATCH";
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+
+    BaseCampDeepHatchState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_deep_hatch_injector, "base_camp_deep_hatch", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);  // must RETURN
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
+    ASSERT_TRUE(state.saw_scenario_menu)
+        << "precondition: the hatch must be taken from inside the Scenario "
+           "menu, not from the base camp";
+    ASSERT_TRUE(state.absent_wait_failed)
+        << "the absent-id wait must time out, or the hatch was never taken";
+    ASSERT_TRUE(state.hatch_closed_the_screen)
+        << "the hatch must click its way out of both screens";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+}
+
+
+// ---------------------------------------------------------------------------
 // §2.5 flow 4 + rename: the train screen's RENAME button, reached through a
 // §9.11 row-body click's seed, renames THAT character (editguy_ follows the
 // seeded slot) and the rename accept autosaves the company (§3.8).
@@ -4545,7 +4840,7 @@ static int base_camp_train_rename_injector(void* data)
 
     if (!wait_for_interactable("roster_row_1", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(750);  // entry settle (fades are instant under TESTING)
@@ -4553,7 +4848,7 @@ static int base_camp_train_rename_injector(void* data)
 
     if (!wait_for_interactable("rename", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     state->saw_train_menu = true;
@@ -4570,7 +4865,7 @@ static int base_camp_train_rename_injector(void* data)
 
     if (!wait_for_interactable("inc_str", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(300);
@@ -4578,7 +4873,7 @@ static int base_camp_train_rename_injector(void* data)
 
     if (!wait_for_interactable("roster_dep_0", 10000)) {
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
+        cancel_menu_screen();
         return 0;
     }
     SDL_Delay(300);

@@ -23,6 +23,10 @@
 
 #include <gtest/gtest.h>
 
+#include "family_registry_dump.h"
+#include "registry_difference.h"
+#include "unit_pack_store_guard.h"
+
 #include <openglad/core/constants.h>
 #include <openglad/core/campaign_ids.h>
 #include <openglad/core/family_presentation.h>
@@ -146,6 +150,43 @@ TEST(FamilyStringIds, reader_vocabulary)
 
 namespace {
 
+// The five registries are process-global and every install test shares
+// them. Frees the pack-installed slots on the way IN and OUT, so a
+// shuffled run order can never leak a mod family into a test that counts
+// core families (and so each test's `auto` ids start from the same place).
+// Core pins are never touched by reset_all_registry_mod_slots().
+class ModSlotGuard {
+public:
+    // declare_or_die() clears the family-chunk store on the way in and out,
+    // so the shipped chunks come back too — destroyed after the dump compare
+    // below, which therefore still sees exactly what the test left.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
+    ModSlotGuard()
+    {
+        init_all_registries();
+        reset_all_registry_mod_slots();
+        entry_ = og::testing::dump_installed_families();
+    }
+    ~ModSlotGuard()
+    {
+        reset_all_registry_mod_slots();
+        const std::string exit = og::testing::dump_installed_families();
+        EXPECT_EQ(entry_, exit)
+            << "this test left a CORE pin edited: the mod-slot reset does "
+               "not undo one, so every later test in a --gtest_shuffle order "
+               "inherits it. Hold a CorePinGuard (or RegistrySnapshotGuard) "
+               "over the install.\n"
+            << og::testing::first_registry_difference(entry_, exit);
+    }
+
+    ModSlotGuard(const ModSlotGuard&) = delete;
+    ModSlotGuard& operator=(const ModSlotGuard&) = delete;
+
+private:
+    std::string entry_;
+};
+
 // Loads the committed core pack the way the loader does: every
 // families/*.lua in sorted filename order, evaluated by the declaration
 // pass into ONE ClasspackData. The pack header is og.pack, declared in
@@ -179,6 +220,36 @@ void load_committed_core_pack(ClasspackData& data)
         og::script::declare_pack_families("core", data);
     ASSERT_TRUE(declared.ok) << declared.error;
 }
+
+// Restores one core pin verbatim. The mod-slot reset deliberately leaves
+// the pins alone, so a test that installs over one has to put it back or
+// every later test (in any --gtest_shuffle order) inherits the edit.
+class CorePinGuard {
+public:
+    explicit CorePinGuard(int family_id)
+        : family_id_(family_id), saved_(*get_family_descriptor(family_id))
+    {
+        // Installing over a slot replaces its tuning too (an entry that
+        // declares none erases what was there), so the pin is not restored
+        // by the descriptor alone.
+        if (const og::script::TuningMap* tuning =
+                og::script::family_tuning(Order::Living, family_id))
+            saved_tuning_ = *tuning;
+    }
+    ~CorePinGuard()
+    {
+        set_family_descriptor(family_id_, saved_);
+        og::script::set_family_tuning(Order::Living, family_id_, saved_tuning_);
+    }
+
+    CorePinGuard(const CorePinGuard&) = delete;
+    CorePinGuard& operator=(const CorePinGuard&) = delete;
+
+private:
+    int family_id_;
+    FamilyDescriptor saved_;
+    og::script::TuningMap saved_tuning_;
+};
 
 }  // namespace
 
@@ -266,6 +337,7 @@ TEST(CommittedCorePack, matches_the_built_in_registries)
 TEST(ClasspackInstall, overrides_data_preserves_callbacks)
 {
     init_all_registries();
+    CorePinGuard pin(FAMILY_SOLDIER);
     const FamilyDescriptor before = *get_family_descriptor(FAMILY_SOLDIER);
 
     og::data::ClasspackData data;
@@ -311,9 +383,6 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
     ASSERT_EQ(after->customize_weapon, before.customize_weapon);
     ASSERT_EQ(after->on_ani_complete, before.on_ani_complete);
     ASSERT_EQ(after->on_melee_hit, before.on_melee_hit);
-
-    // Restore the pristine descriptor for the rest of the process.
-    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
 }
 
 // #209: `radar_ping = true` rides the presentation fold onto the
@@ -321,6 +390,7 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
 TEST(ClasspackInstall, radar_ping_installs_onto_the_descriptor)
 {
     init_all_registries();
+    CorePinGuard pin(FAMILY_SOLDIER);
     const FamilyDescriptor before = *get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_FALSE(before.radar.ping) << "core families ship no ping";
 
@@ -349,14 +419,12 @@ TEST(ClasspackInstall, radar_ping_installs_onto_the_descriptor)
     ASSERT_EQ(og::resources::install_classpack_data(std::move(keep)), 1);
     EXPECT_TRUE(get_family_descriptor(FAMILY_SOLDIER)->radar.ping)
         << "omitting radar_ping keeps whatever the slot holds";
-
-    // Restore the pristine descriptor for the rest of the process.
-    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
 }
 
 TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
 {
     init_all_registries();
+    CorePinGuard pin_mage(FAMILY_MAGE);
     const FamilyDescriptor before_mage = *get_family_descriptor(FAMILY_MAGE);
     const GeneratorFamilyDescriptor before_tent =
         *get_generator_family_descriptor(FAMILY_TENT);
@@ -391,13 +459,12 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
     ASSERT_EQ(tent->default_weapon, FAMILY_GHOST)
         << "generator default_weapon resolves through the living registry";
 
-    ASSERT_TRUE(set_family_descriptor(FAMILY_MAGE, before_mage));
     ASSERT_TRUE(set_generator_family_descriptor(FAMILY_TENT, before_tent));
 }
 
 TEST(ClasspackInstall, a_declaration_installs_and_skips_bad_refs)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
     const WeaponFamilyDescriptor before_rock =
         *get_weapon_family_descriptor(FAMILY_ROCK);
     const FamilyDescriptor before_elf = *get_family_descriptor(FAMILY_ELF);
@@ -481,7 +548,7 @@ og.family('living', {
 
 TEST(ClasspackInstall, a_declaration_installs_the_shipped_soldier_bytes)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
 
     ClasspackData data;
     declare_or_die(kSoldierDecl, data);
@@ -531,7 +598,7 @@ TEST(ClasspackInstall, a_declaration_installs_the_shipped_soldier_bytes)
 // and a mod that renamed one special would silently inherit four.
 TEST(ClasspackInstall, a_specials_list_rewrites_every_slot)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
     ClasspackData full;
     declare_or_die(kSoldierDecl, full);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(full)), 1);
@@ -558,7 +625,7 @@ TEST(ClasspackInstall, a_specials_list_rewrites_every_slot)
 // can leave a hole where an older one had a special and still fill slot 5.
 TEST(ClasspackInstall, an_explicit_slot_leaves_a_hole_behind_it)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
     ClasspackData data;
     declare_or_die(
         "og.family('living', { id = 'decl:slots', wire_id = 62,\n"
@@ -589,7 +656,7 @@ TEST(ClasspackInstall, an_explicit_slot_leaves_a_hole_behind_it)
 // free to train, exactly as the original tables shipped it.
 TEST(ClasspackInstall, absent_train_axes_install_zero)
 {
-    init_all_registries();
+    ModSlotGuard mod_slots;
     ClasspackData data;
     declare_or_die(
         "og.family('living', { id = 'decl:sparse', wire_id = 63,\n"
@@ -609,24 +676,6 @@ TEST(ClasspackInstall, absent_train_axes_install_zero)
 // ---------------------------------------------------------------------------
 
 namespace {
-
-// The five registries are process-global and every install test shares
-// them. Frees the pack-installed slots on the way IN and OUT, so a
-// shuffled run order can never leak a mod family into a test that counts
-// core families (and so each test's `auto` ids start from the same place).
-// Core pins are never touched by reset_all_registry_mod_slots().
-class ModSlotGuard {
-public:
-    ModSlotGuard()
-    {
-        init_all_registries();
-        reset_all_registry_mod_slots();
-    }
-    ~ModSlotGuard() { reset_all_registry_mod_slots(); }
-
-    ModSlotGuard(const ModSlotGuard&) = delete;
-    ModSlotGuard& operator=(const ModSlotGuard&) = delete;
-};
 
 // Which ids of one order currently answer a descriptor. Used to prove an
 // install changes exactly one slot and leaves every never-populated id
@@ -882,7 +931,7 @@ og::data::ClasspackData one_living(const char* pack, const char* id,
 }
 
 // Restores every populated slot of all five registries verbatim. Same
-// reason as CorePinGuard below, for a test that installs a whole pack over
+// reason as CorePinGuard above, for a test that installs a whole pack over
 // the pins.
 class RegistrySnapshotGuard {
 public:
@@ -932,25 +981,6 @@ private:
     std::vector<std::pair<int, EffectFamilyDescriptor>> effects_;
     std::vector<std::pair<int, TreasureFamilyDescriptor>> treasures_;
     std::vector<std::pair<int, GeneratorFamilyDescriptor>> generators_;
-};
-
-// Restores one core pin verbatim. The mod-slot reset deliberately leaves
-// the pins alone, so a test that installs over one has to put it back or
-// every later test (in any --gtest_shuffle order) inherits the edit.
-class CorePinGuard {
-public:
-    explicit CorePinGuard(int family_id)
-        : family_id_(family_id), saved_(*get_family_descriptor(family_id))
-    {
-    }
-    ~CorePinGuard() { set_family_descriptor(family_id_, saved_); }
-
-    CorePinGuard(const CorePinGuard&) = delete;
-    CorePinGuard& operator=(const CorePinGuard&) = delete;
-
-private:
-    int family_id_;
-    FamilyDescriptor saved_;
 };
 
 }  // namespace
@@ -1587,10 +1617,41 @@ using og::data::ClasspackTuningValue;
 
 // The tuning store is process-global (like the registries); every test
 // that touches it restores emptiness on both sides of itself.
+// A tuning test wants the store empty to start with, but the store is
+// process-global and packs/core fills it for the CORE families -- clearing
+// it and walking away costs every later test in the process its core
+// tuning. Save what is there, clear, and put it back.
 class TuningStoreGuard {
 public:
-    TuningStoreGuard() { og::script::clear_all_family_tuning(); }
-    ~TuningStoreGuard() { og::script::clear_all_family_tuning(); }
+    TuningStoreGuard() : saved_(grab()) { og::script::clear_all_family_tuning(); }
+
+    ~TuningStoreGuard()
+    {
+        og::script::clear_all_family_tuning();
+        for (const auto& entry : saved_)
+            og::script::set_family_tuning(entry.first.first, entry.first.second,
+                                          entry.second);
+    }
+
+    TuningStoreGuard(const TuningStoreGuard&) = delete;
+    TuningStoreGuard& operator=(const TuningStoreGuard&) = delete;
+
+private:
+    using Key = std::pair<Order, int>;
+
+    static std::vector<std::pair<Key, og::script::TuningMap>> grab()
+    {
+        std::vector<std::pair<Key, og::script::TuningMap>> out;
+        for (const Order order : {Order::Living, Order::Weapon, Order::FX,
+                                  Order::Treasure, Order::Generator})
+            for (int id = 0; id < NUM_FAMILY_SLOTS; id++)
+                if (const og::script::TuningMap* map =
+                        og::script::family_tuning(order, id))
+                    out.emplace_back(Key{order, id}, *map);
+        return out;
+    }
+
+    std::vector<std::pair<Key, og::script::TuningMap>> saved_;
 };
 
 }  // namespace
@@ -2091,6 +2152,7 @@ TEST(ClasspackInstallErrors, an_oversized_pack_stops_at_every_registry_end)
 TEST(ClasspackInstallErrors, an_unknown_bit_flag_name_keeps_the_whole_mask)
 {
     ModSlotGuard guard;
+    CorePinGuard pin(FAMILY_GHOST);
 
     // Pin onto a core family so there is a non-zero mask to preserve.
     const FamilyDescriptor* ghost_before =
@@ -2125,6 +2187,7 @@ TEST(ClasspackInstallErrors, an_unknown_bit_flag_name_keeps_the_whole_mask)
 TEST(ClasspackInstallErrors, an_entry_without_a_declared_id_keeps_the_slot_id)
 {
     ModSlotGuard guard;
+    CorePinGuard pin(FAMILY_SOLDIER);
 
     const FamilyDescriptor* before = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(before, nullptr);
@@ -2145,4 +2208,151 @@ TEST(ClasspackInstallErrors, an_entry_without_a_declared_id_keeps_the_slot_id)
     EXPECT_EQ(after->hiring_cost, 4242) << "declared field applied";
     EXPECT_EQ(after->declared_id, declared_before)
         << "an id-less entry must not clear the slot's string id";
+}
+
+// `hp` is the one tuning number every non-living order shares: it is what a
+// pack-declared door, mine, chest or spawner can take before it breaks. Each
+// order copies it out of its own entry struct, so a missing assignment in any
+// one of the four leaves that order's mod families on the core row's value
+// (0) and makes them indestructible. The sibling field checked beside each hp
+// is what proves the copy is a field-by-field patch, not a wholesale
+// overwrite.
+TEST(ClasspackInstall, declared_hp_reaches_every_non_living_order)
+{
+    ModSlotGuard guard;
+
+    ClasspackData data;
+    declare_or_die(
+        "og.family('weapon', { id = 'mod:plank', wire_id = 'auto',\n"
+        "                      hp = 7, init_lifetime = 33 })\n"
+        "og.family('weapon', { id = 'mod:twig', wire_id = 'auto',\n"
+        "                      init_lifetime = 44 })\n"
+        "og.family('effect', { id = 'mod:ember', wire_id = 'auto',\n"
+        "                      hp = 9, loops_animation = true })\n"
+        "og.family('treasure', { id = 'mod:urn', wire_id = 'auto',\n"
+        "                        hp = 11, init_frame = 2 })\n"
+        "og.family('generator', { id = 'mod:kiln', wire_id = 'auto',\n"
+        "                         hp = 13, editor_label = 'KILN' })\n",
+        data);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 5);
+
+    const WeaponFamilyDescriptor* w = get_weapon_family_descriptor(21);
+    ASSERT_NE(w, nullptr);
+    EXPECT_EQ(7.0f, w->hp);
+    EXPECT_EQ(33, w->init_lifetime) << "the sibling field lands too";
+
+    const EffectFamilyDescriptor* e = get_effect_family_descriptor(21);
+    ASSERT_NE(e, nullptr);
+    EXPECT_EQ(9.0f, e->hp);
+    EXPECT_TRUE(e->loops_animation);
+
+    const TreasureFamilyDescriptor* t = get_treasure_family_descriptor(21);
+    ASSERT_NE(t, nullptr);
+    EXPECT_EQ(11.0f, t->hp);
+    EXPECT_EQ(2, t->init_frame);
+
+    const GeneratorFamilyDescriptor* g = get_generator_family_descriptor(21);
+    ASSERT_NE(g, nullptr);
+    EXPECT_EQ(13.0f, g->hp);
+    EXPECT_STREQ("KILN", g->editor_label);
+
+    // Paired control: the sibling weapon declares no hp and keeps the core
+    // row's value instead of being zeroed by the patch.
+    const WeaponFamilyDescriptor* quiet = get_weapon_family_descriptor(22);
+    ASSERT_NE(quiet, nullptr);
+    EXPECT_EQ(0.0f, quiet->hp) << "absent hp keeps the copied core row";
+    EXPECT_EQ(44, quiet->init_lifetime);
+}
+
+namespace {
+
+// A pack whose families/ and scripts/ directories each hold one zero-byte
+// .lua beside one real one. A zero-byte file is what a truncated download or
+// an interrupted editor save leaves behind.
+std::filesystem::path make_scratch_empty_chunk_pack()
+{
+    std::string templ =
+        (std::filesystem::temp_directory_path() / "og_emptychunk_XXXXXX")
+            .string();
+    char* made = ::mkdtemp(templ.data());
+    if (made == nullptr)
+        return {};
+    const std::filesystem::path root(made);
+    std::error_code ec;
+    std::filesystem::create_directories(root / "families", ec);
+    std::filesystem::create_directories(root / "scripts", ec);
+    if (ec)
+        return {};
+    const auto put = [&](const std::filesystem::path& p,
+                         const std::string& bytes) {
+        std::ofstream out(p, std::ios::binary);
+        out << bytes;
+    };
+    // "aaa" sorts before "good": the walk meets the empty file FIRST, so a
+    // missing skip would abort or mis-register before the good one is seen.
+    put(root / "families" / "aaa.lua", "");
+    put(root / "families" / "good.lua",
+        "og.pack{ id = 'org.test.emptychunk' }\n"
+        "og.family('living', { id = 'emptychunk:sole', wire_id = 31,\n"
+        "                      name = 'SOLE' })\n");
+    put(root / "scripts" / "aaa.lua", "");
+    put(root / "scripts" / "good.lua", "-- intentionally inert\n");
+    return root;
+}
+
+}  // namespace
+
+// A zero-byte pack chunk is skipped, not registered: registering it would put
+// an empty source into the coverage inventory (a chunk with no lines that can
+// never be covered) and, for families/, hand the declaration pass a file that
+// declares nothing. The good neighbour behind it must still install — that is
+// what makes this a skip rather than an abort.
+TEST(ClasspackSplitLayout, zero_byte_chunks_are_skipped_and_the_rest_installs)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+    const std::filesystem::path root = make_scratch_empty_chunk_pack();
+    ASSERT_FALSE(root.empty());
+
+    struct Mount {
+        std::filesystem::path root;
+        bool ok = false;
+        ~Mount()
+        {
+            if (ok) {
+                (void)og::resources::unmount(root.string().c_str());
+                og::resources::refresh_pack_scripts();
+            }
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
+    } mount{root,
+            og::resources::mount(root.string().c_str(),
+                                 "packs/org.test.emptychunk", 1)};
+    ASSERT_TRUE(mount.ok);
+    og::resources::refresh_pack_scripts();
+
+    std::vector<std::string> family_chunks;
+    for (const og::script::PackScript& c : og::script::pack_family_chunks())
+        if (c.pack_id == "org.test.emptychunk")
+            family_chunks.push_back(c.chunk_name);
+    ASSERT_EQ(1u, family_chunks.size())
+        << "families/aaa.lua is empty and must not be registered";
+    EXPECT_EQ("packs/org.test.emptychunk/families/good.lua",
+              family_chunks[0]);
+
+    std::vector<std::string> scripts;
+    for (const og::script::PackScript& c : og::script::pack_scripts())
+        if (c.pack_id == "org.test.emptychunk")
+            scripts.push_back(c.chunk_name);
+    ASSERT_EQ(1u, scripts.size())
+        << "scripts/aaa.lua is empty and must not be registered";
+    EXPECT_EQ("packs/org.test.emptychunk/scripts/good.lua", scripts[0]);
+
+    // The skip is a skip: the family declared behind the empty file is live.
+    const int sole = og::families::resolve_family_string_id(
+        Order::Living, "emptychunk:sole");
+    EXPECT_EQ(31, sole);
+    ASSERT_NE(nullptr, get_family_descriptor(31));
+    EXPECT_STREQ("SOLE", get_family_descriptor(31)->name);
 }

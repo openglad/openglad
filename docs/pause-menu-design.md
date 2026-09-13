@@ -74,7 +74,7 @@ render as the fallback glyph.)
   from the game loop's Esc branch, wrapped in `ScopedUiCanvas`. NOT added to
   the `MenuScreenId` registry (the registry sweep would run it in picker
   context); it lives in a new `src/interface/ui/pause_menu.cpp`.
-  `polls_lobby=false`, `remote_start=None`, `backdrop=false`, `enter=None`.
+  `polls_lobby=false`, `remote_start=None`, `enter=None`.
 - On exit: `release_mouse()`, `clear_transient_input_state()`,
   `clear_allbuttons()`, world redraw on the World target, `redrawme = 1`.
 

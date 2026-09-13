@@ -1,5 +1,6 @@
 #include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
+#include <openglad/interface/input.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -58,24 +59,41 @@ struct SurfaceDeleter
 
 using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 
-class SessionWindowMetricsRestore
+// Constructing a Screen rewrites the session's WINDOW metrics from its own
+// window and then recomputes the four derived VIEWPORT fields from them
+// (Screen::Screen -> update_overscan_setting). Restoring the window alone
+// leaves the viewport at the test Screen's size for every later suite, so
+// this guard covers both halves.
+class SessionWindowAndViewportRestore
 {
 public:
-    SessionWindowMetricsRestore()
+    SessionWindowAndViewportRestore()
         : width_(og::runtime::current_session->window_w_),
-          height_(og::runtime::current_session->window_h_)
+          height_(og::runtime::current_session->window_h_),
+          viewport_w_(og::runtime::current_session->viewport_w_),
+          viewport_h_(og::runtime::current_session->viewport_h_),
+          viewport_offset_x_(og::runtime::current_session->viewport_offset_x_),
+          viewport_offset_y_(og::runtime::current_session->viewport_offset_y_)
     {
     }
 
-    ~SessionWindowMetricsRestore()
+    ~SessionWindowAndViewportRestore()
     {
         og::runtime::current_session->window_w_ = width_;
         og::runtime::current_session->window_h_ = height_;
+        og::runtime::current_session->viewport_w_ = viewport_w_;
+        og::runtime::current_session->viewport_h_ = viewport_h_;
+        og::runtime::current_session->viewport_offset_x_ = viewport_offset_x_;
+        og::runtime::current_session->viewport_offset_y_ = viewport_offset_y_;
     }
 
 private:
     float width_;
     float height_;
+    float viewport_w_;
+    float viewport_h_;
+    float viewport_offset_x_;
+    float viewport_offset_y_;
 };
 
 enum class DirectScaler
@@ -287,7 +305,7 @@ TEST(Sai2xScaler, surface_wrapper_rejects_mismatched_pixel_depths)
 
 TEST(Sai2xScaler, screen_fullscreen_and_output_fallback_preserve_pixels)
 {
-    SessionWindowMetricsRestore metrics_restore;
+    SessionWindowAndViewportRestore metrics_restore;
     Screen fullscreen(RenderEngine::NoZoom, 320, 200, 1);
     ASSERT_NE(nullptr, fullscreen.window);
     EXPECT_NE(0u, SDL_GetWindowFlags(fullscreen.window) &
@@ -310,7 +328,7 @@ TEST(Sai2xScaler, screen_fullscreen_and_output_fallback_preserve_pixels)
 
 TEST(Sai2xScaler, render_backend_failure_retries_without_losing_cpu_pixels)
 {
-    SessionWindowMetricsRestore metrics_restore;
+    SessionWindowAndViewportRestore metrics_restore;
     Screen value(RenderEngine::NoZoom, 320, 200, 0);
     ASSERT_NE(nullptr, value.window);
     ASSERT_NE(nullptr, value.renderer);
@@ -358,7 +376,7 @@ TEST(Sai2xScaler, render_backend_failure_retries_without_losing_cpu_pixels)
 
 TEST(Sai2xScaler, smart_scaler_allocation_and_invalid_source_fail_closed)
 {
-    SessionWindowMetricsRestore metrics_restore;
+    SessionWindowAndViewportRestore metrics_restore;
     Screen value(RenderEngine::SAI, 320, 200, 0);
     ASSERT_NE(nullptr, value.renderer);
     ASSERT_EQ(nullptr, value.render2);
@@ -406,6 +424,60 @@ TEST(Sai2xScaler, smart_scaler_allocation_and_invalid_source_fail_closed)
     EXPECT_NE(nullptr, value.renderer);
 }
 
+// P5: the clipped scaler's left-neighbour sample. sub1 is the stride back to
+// the previous source column; with it pinned to 0 at every x the four left
+// samples collapse onto the centre column and two of the four 2xSaI corner
+// rules become self-contradictory (measured: zero hits over 200k images).
+TEST(Sai2xScaler, clipped_scaler_samples_the_previous_column_not_the_current_one)
+{
+    ASSERT_EQ(0, Init_2xSaI());
+    // A 4x4 strip built so exactly one destination pixel depends on the
+    // left-neighbour sample. At src(1,1): color5=(1,1)=W, color6=(2,1)=W,
+    // color2=(1,2)=B, color3=(2,2)=B, and the LEFT column supplies
+    // color4=(0,1)=W, color1=(0,2)=W, colorA0=(0,3)=B, so the 2xSaI
+    // product2a rule "color5==color1 && color6==color5 && color4!=color2 &&
+    // color5!=colorA0" fires and blends: INTERPOLATE(B, W) == 0x007F7F7F.
+    constexpr Uint32 W = 0x00FFFFFFu;
+    constexpr Uint32 B = 0x00000000u;
+    const std::vector<Uint32> source{ W, W, W, W,
+                                      W, W, W, W,
+                                      W, B, B, B,
+                                      B, W, W, W };
+    const std::vector<Uint32> out =
+        scale_pixels(DirectScaler::Super2xSaiClipped, source, 4, 4);
+    EXPECT_EQ(0x007F7F7Fu, out[3 * 8 + 2]) // dst(2,3) == product2a of src(1,1)
+        << "the left-neighbour sample must be the previous column, not the current one";
+}
+
+// T3b: a Screen constructed as an ordinary test object writes the process-wide
+// session window metrics from its own window and recomputes the viewport from
+// them (sai2x.cpp Screen::Screen -> update_overscan_setting). Every scaler test
+// below builds a 320x200 Screen while the real window is 640x400; if the
+// derived viewport is left behind at 320x200, the next suite's native world
+// plane is sized at 1x instead of 2x.
+TEST(Sai2xScaler, constructing_a_screen_leaves_the_session_viewport_untouched)
+{
+    // Rederive the viewport from the live window first. Another
+    // Screen-constructing test may already have left it at its own 320x200,
+    // and comparing that against itself would make this a tautology.
+    update_overscan_setting();
+    const float viewport_w = og::runtime::current_session->viewport_w_;
+    const float viewport_h = og::runtime::current_session->viewport_h_;
+    const float offset_x = og::runtime::current_session->viewport_offset_x_;
+    const float offset_y = og::runtime::current_session->viewport_offset_y_;
+
+    {
+        SessionWindowAndViewportRestore metrics_restore;
+        Screen value(RenderEngine::NoZoom, 320, 200, 0);
+        ASSERT_NE(nullptr, value.window);
+    }
+
+    EXPECT_EQ(viewport_w, og::runtime::current_session->viewport_w_)
+        << "a scaler Screen must not leave the session viewport at its own 320x200";
+    EXPECT_EQ(viewport_h, og::runtime::current_session->viewport_h_);
+    EXPECT_EQ(offset_x, og::runtime::current_session->viewport_offset_x_);
+    EXPECT_EQ(offset_y, og::runtime::current_session->viewport_offset_y_);
+}
 
 static void run_sai2x_ex2_and_supereagle_write_output()
 {
@@ -485,7 +557,7 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
 
 static void run_sai2x_screen_class_paths()
 {
-    SessionWindowMetricsRestore metrics_restore;
+    SessionWindowAndViewportRestore metrics_restore;
     {
         Screen s(RenderEngine::NoZoom, 320, 200, 0);
         s.clear();

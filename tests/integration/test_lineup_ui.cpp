@@ -34,6 +34,7 @@
 #include <openglad/server/match_stage.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_click_ladder.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -225,52 +226,83 @@ bool wait_for_interactable_label(const std::string& id,
 bool wait_for_trace(const char* category, const char* substring,
                     int timeout_ms);
 
+// Counted instrumentation for the acknowledged click (TESTING-only, and this
+// whole file is TESTING-only): how many main-thread tasks the last call
+// posted, and the ceiling it posted them with. run_on_main_thread's ceiling
+// is a CANCELLATION deadline for a pump that is not running at all; it is
+// NOT the click's budget. The click's own wait (2.5 s) bounds the LABEL edge.
+// The post keeps the generous default because a pump that is alive but slow
+// must still get to service it: under coverage instrumentation on a
+// four-slot CI runner the menu thread took longer than 2.5 s to reach a
+// queued reset, the post was cancelled "while still queued", and every lap
+// of match_setup_macros_round_trip_with_lineup failed three attempts in a
+// row (PR #291, Coverage CI run 34679834685). The cost that the short
+// ceiling was meant to cap — a click posted with no menu loop behind it —
+// is bounded by the injectors' escape tails instead.
+//
+// That ceiling now lives once, in the shared ladder every injector suite
+// posts through (tests/test_click_ladder.h's kAckPostCeilingMs) — the rule
+// has one implementation, not one per file (PR #245).
+int g_ack_click_posts = 0;
+int g_ack_click_post_ceiling_ms = 0;
+
 // Send one click and wait for its own label edge. The label changes on the
 // press, while synchronous save/stage work can keep the release queued well
 // past that edge under load. A menu-thread reset consumes that release before
 // the caller may send another press, preventing a late first attempt plus its
-// retry from advancing a wheel twice.
+// retry from advancing a wheel twice. Both resets are posted with
+// kAckPostCeilingMs — the cancellation default — never with the click's own
+// wait: that wait bounds how long the label may take to move, while the post
+// must survive a pump that is merely slow (see kAckPostCeilingMs).
 bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
 {
     const std::string before = interactable_label(id);
-    if (before.empty() ||
-        !run_on_main_thread([] { reset_mouse_click_tracking(); }))
+    if (before.empty())
+        return false;
+    ++g_ack_click_posts;
+    g_ack_click_post_ceiling_ms = kAckPostCeilingMs;
+    if (!run_on_main_thread([] { reset_mouse_click_tracking(); },
+                            kAckPostCeilingMs))
         return false;
     interact(id);
     const bool changed =
         ::wait_for_interactable_label_change(id, before, wait_ms);
-    const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); });
+    ++g_ack_click_posts;
+    const bool acknowledged = run_on_main_thread(
+        [] { reset_mouse_click_tracking(); }, kAckPostCeilingMs);
     return changed && acknowledged;
 }
 
-bool click_and_acknowledge_trace(const std::string& id,
-                                 const char* category,
-                                 const char* message, int wait_ms)
-{
-    trace_clear();
-    if (!run_on_main_thread([] { reset_mouse_click_tracking(); }))
-        return false;
-    interact(id);
-    const bool traced = wait_for_trace(category, message, wait_ms);
-    const bool acknowledged =
-        run_on_main_thread([] { reset_mouse_click_tracking(); });
-    return traced && acknowledged;
-}
-
-// Click `id` until its label reads `want`, with every bounded retry starting
-// from an acknowledged pointer baseline.
+// Click `id` until its label reads `want`. The press itself -- the
+// acknowledged pointer baseline before it, the acknowledgement after it, the
+// dropped-press accounting -- is tests/test_click_ladder.h's click_until_edge
+// now, one implementation of that rule instead of three (PR #245). The LAP is
+// still this file's, and deliberately so: these rows are cyclers, and the
+// guard that keeps a cycler from double-stepping here is the re-read of the
+// face BEFORE every press. If a press landed but its label was republished
+// only after the wait expired, the re-read sees the arrival and the flow stops
+// instead of pressing the wheel one stop PAST its target and then waiting for
+// a face the row has already gone by. (The shared ladder's own answer to this
+// is a landing TRACE; these rows publish none that arrives inside the wait --
+// "acted_autosave" was tried and observed NOT to reach the ladder on a starved
+// frame -- so the re-read is the witness that works.) Waiting for the TARGET
+// label rather than for any change is the stronger oracle the old helper
+// lacked: a label that moved to the wrong stop no longer counts as an arrival.
 bool click_until_label(const std::string& id, const std::string& want,
                        int attempts = 3, int wait_ms = 2500)
 {
-    for (int i = 0; i < attempts; ++i) {
+    for (int lap = 0; lap < attempts; ++lap) {
         if (interactable_label(id) == want)
             return true;
-        if (click_and_acknowledge_label_change(id, wait_ms) &&
-            interactable_label(id) == want)
+        if (click_until_edge(
+                id,
+                [&](int edge_wait_ms) {
+                    return wait_for_interactable_label(id, want, edge_wait_ms);
+                },
+                /*landed_trace=*/nullptr, /*attempts=*/1, wait_ms))
+        {
             return true;
-        fprintf(stderr, "  [lineup] retry %d: '%s' not yet '%s'\n", i + 1,
-                id.c_str(), want.c_str());
+        }
     }
     return false;
 }
@@ -299,18 +331,25 @@ bool wait_for_interactable_label_containing(const std::string& id,
     return false;
 }
 
+// The substring twin of the above, same lap rule, same reason: its callers are
+// the zone submenu's TEAMS and FILL wheels.
 bool click_until_label_containing(const std::string& id,
                                   const std::string& want, int attempts = 3,
                                   int wait_ms = 2500)
 {
-    for (int i = 0; i < attempts; ++i) {
+    for (int lap = 0; lap < attempts; ++lap) {
         if (interactable_label(id).find(want) != std::string::npos)
             return true;
-        if (click_and_acknowledge_label_change(id, wait_ms) &&
-            interactable_label(id).find(want) != std::string::npos)
+        if (click_until_edge(
+                id,
+                [&](int edge_wait_ms) {
+                    return wait_for_interactable_label_containing(
+                        id, want, edge_wait_ms);
+                },
+                /*landed_trace=*/nullptr, /*attempts=*/1, wait_ms))
+        {
             return true;
-        fprintf(stderr, "  [lineup] retry %d: '%s' not yet ~'%s'\n", i + 1,
-                id.c_str(), want.c_str());
+        }
     }
     return false;
 }
@@ -521,6 +560,50 @@ void injector_unwind_from_scenario()
         wait_for_interactable("begin_new_game", 10000)) {
         SDL_Delay(750);
         interact("quit");
+    }
+}
+
+// --- the escape tail -------------------------------------------------------
+//
+// A blocking menu driven from the MAIN thread (create_team_menu, picker_main)
+// returns only when a click walks it out. An injector that presses BACK once
+// and then returns therefore hands the process a permanent hang the moment
+// that one press evaporates on a starved frame: the injector thread is gone,
+// nobody presses again, SDL_WaitThread has already been satisfied, and the
+// main thread sits in the menu loop until the group's ctest cap kills the
+// binary. og_test_lineup did exactly that once, reaching the 900 s cap inside
+// basecamp_chip_cycles_own_row_networked_and_resyncs with the log ending on
+// "[interact] clicking 'back' at game(30,187)".
+//
+// The tail must NOT be bounded by a clock: a wall-clock ceiling only relocates
+// the hang (the tail stops clicking, the menu never leaves). It presses until
+// the MAIN thread signals that the menu call returned, which the caller does
+// between the menu call and SDL_WaitThread -- exactly the window this loop
+// covers. Counted, never clocked.
+std::atomic<int> g_escape_back_presses{0};
+// TESTING-only fault injection: make the next N escape presses evaporate the
+// way a starved frame does. This is the fault the tail exists for, so the
+// teeth test arms it rather than waiting for the box to supply it.
+int g_escape_back_drops = 0;
+
+void click_back_until_menu_returns(const std::atomic<bool>& menu_returned)
+{
+    while (!menu_returned.load(std::memory_order_acquire)) {
+        if (g_escape_back_drops > 0) {
+            --g_escape_back_drops;
+            fprintf(stderr,
+                    "  [lineup] dropping the escape BACK press (injected)\n");
+        } else {
+            g_escape_back_presses.fetch_add(1, std::memory_order_release);
+            (void)interact("back");
+        }
+        for (int waited = 0;
+             waited < 500 &&
+             !menu_returned.load(std::memory_order_acquire);
+             waited += 50)
+        {
+            SDL_Delay(50);
+        }
     }
 }
 
@@ -1216,6 +1299,9 @@ struct BasecampChipFlowState
     bool foreign_chip_inert = false;
     bool chip_cycled = false;
     int captures = 0;
+    // Set by the MAIN thread the instant create_team_menu returns; the
+    // injector's escape tail presses BACK until it does.
+    std::atomic<bool> menu_returned{false};
 };
 
 int basecamp_chip_flow_injector(void* data)
@@ -1237,7 +1323,7 @@ int basecamp_chip_flow_injector(void* data)
         state->chip_cycled =
             wait_for_trace("basecamp", "team slot=0 team=1", 5000);
         SDL_Delay(300);
-        interact("back");
+        click_back_until_menu_returns(state->menu_returned);
     }
     state->finished = true;
     return 0;
@@ -1269,6 +1355,7 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
     picker_load_menu_backdrops();
     const int syncs_before = client.roster_syncs;
     create_team_menu(0);
+    state.menu_returned.store(true, std::memory_order_release);
     SDL_WaitThread(thread, nullptr);
     cleanup_picker_state();
     restore_gladiator_mount();
@@ -1286,6 +1373,40 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
     EXPECT_GT(client.roster_syncs, syncs_before)
         << "the mutation tail re-syncs the lobby roster (B6)";
     EXPECT_EQ(1, state.captures);
+}
+
+// Teeth for that escape tail. The tail exists for the press that evaporates,
+// and a tail that gives up after one press looks exactly like a working one
+// until the day a press is dropped -- so the drop is INJECTED here instead of
+// waited for. Two dropped presses must cost two more laps of the tail, not the
+// binary: the stand-in for "the main thread left the menu" flips only once a
+// real press has been sent, which the two drops delay by exactly two laps.
+// Counted, never clocked.
+TEST(LineupUi, escape_tail_outlives_a_dropped_back_press)
+{
+    std::atomic<bool> menu_returned{false};
+    g_escape_back_drops = 2;
+    g_escape_back_presses.store(0, std::memory_order_release);
+
+    SDL_Thread* watcher = SDL_CreateThread(
+        [](void* data) -> int {
+            auto* left = static_cast<std::atomic<bool>*>(data);
+            while (g_escape_back_presses.load(std::memory_order_acquire) < 1)
+                SDL_Delay(10);
+            left->store(true, std::memory_order_release);
+            return 0;
+        },
+        "escape_tail_menu", &menu_returned);
+    ASSERT_NE(nullptr, watcher);
+
+    click_back_until_menu_returns(menu_returned);
+    SDL_WaitThread(watcher, nullptr);
+
+    EXPECT_EQ(0, g_escape_back_drops)
+        << "the tail consumed both injected drops instead of giving up";
+    EXPECT_EQ(1, g_escape_back_presses.load(std::memory_order_acquire))
+        << "the tail presses again after a dropped press and stops on the "
+           "main thread's signal, never on a clock";
 }
 
 namespace {
@@ -1522,8 +1643,14 @@ int lineup_classic_viewer_injector(void* data)
     // E1: the band rests on NONE, so STRONG is three stops along.
     state->fill_green_strong = click_through_labels(
         "lineup_fill_1", {"FILL: WEAK", "FILL: FAIR", "FILL: STRONG"});
+    // tests/test_click_ladder.h's ladder, with the autosave half turned off:
+    // the MAP UNITS box traces its own action and does not autosave. It
+    // baselines the trace count instead of the clear-then-wait this file used
+    // to do locally, so a stale trace from earlier in the flow cannot satisfy
+    // the wait and no unrelated trace is thrown away.
     state->map_units_green_off = click_and_acknowledge_trace(
-        "lineup_map_units_1", "lineup", "map_units team=1 value=1", 5000);
+        "lineup_map_units_1", "lineup", "map_units team=1 value=1",
+        /*waits_for_autosave=*/false, 5000);
     state->map_units_green_off = state->map_units_green_off &&
         wait_for_staged_lineup(1, og::sim::kFillStrong,
                                og::sim::kMapUnitsOff, 10000);
@@ -2039,13 +2166,33 @@ struct MacroRoundTripState
     int captures = 0;
 };
 
+// The acknowledged click, as a bounded ladder over a NAMED screen edge, is
+// tests/test_click_ladder.h's click_until_edge — this file used to carry a
+// third copy of the rule beside test_campaign_zone_ui.cpp's and
+// test_ctf_ui.cpp's. click_until_label_containing above covers a row whose own
+// label moves; a door that opens another screen has no label change to wait
+// on, so it gets the same treatment against the edge that identifies the
+// destination. A press that evaporated on a starved frame then costs one
+// attempt instead of the whole flow — and, because every injector below bails
+// out when a door does not open, instead of leaving picker_main spinning until
+// the group's budget expires. Counted, never clocked, in
+// g_click_ladder_click_retries.
+//
+// That count is a diagnostic, deliberately not an assertion: how many presses
+// a loaded box drops is load, and pinning a number would pin the load. The
+// ladder's SHAPE is pinned instead, once, by the matchup group's teeth —
+// CampaignZoneUi.match_setup_click_helper_retries_a_dropped_press,
+// .match_setup_click_helper_reports_a_ladder_that_never_lands and
+// .deploy_toggle_survives_a_cancelled_acknowledge — which inject the fault
+// rather than wait for the box to supply it.
+
 int macro_round_trip_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<MacroRoundTripState*>(data);
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    SDL_Delay(750);  // fadeblack eats events: one of the two settles that stay
     interact("continue_game");
 
     // (a) The camp's MATCH SETUP door: the macro rows at rest.
@@ -2055,14 +2202,14 @@ int macro_round_trip_injector(void* data)
         state->finished = true;
         return 0;
     }
-    SDL_Delay(400);
-    interact("zone_action_3");
-    state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
+    state->page_opened = click_until_edge("zone_action_3", [](int wait_ms) {
+        return wait_for_interactable_at("back", 10, 169, wait_ms);
+    });
     if (!state->page_opened) {
         state->finished = true;
         return 0;
     }
-    SDL_Delay(500);
+    (void)wait_for_menu_frames(2);
     state->rest_teams_label = interactable_label("zone_row_0");
     state->rest_fill_label = interactable_label("zone_row_1");
 
@@ -2070,17 +2217,17 @@ int macro_round_trip_injector(void* data)
     // to VIEW LEVEL: a three-side match, no refusal anywhere.
     state->teams_three =
         click_until_label_containing("zone_row_0", "TEAMS: 3");
-    SDL_Delay(400);
-    interact("back");  // zone submenu -> Base Camp
-    (void)wait_for_team_menu(10000);
-    SDL_Delay(300);
-    interact("scenario");
-    if (wait_for_interactable("view_scenario", 10000)) {
-        SDL_Delay(750);
+    (void)click_until_edge("back",  // zone submenu -> Base Camp
+                           [](int wait_ms) { return wait_for_team_menu(wait_ms); });
+    if (click_until_edge("scenario", [](int wait_ms) {
+            return wait_for_interactable("view_scenario", wait_ms);
+        })) {
+        SDL_Delay(750);  // the other one: the viewer's own fadeblack
         trace_clear();
-        interact("view_scenario");
         state->viewer_opened_after_three =
-            wait_for_interactable_at("back", 10, 170, 10000);
+            click_until_edge("view_scenario", [](int wait_ms) {
+                return wait_for_interactable_at("back", 10, 170, wait_ms);
+            });
         if (state->viewer_opened_after_three) {
             (void)wait_for_trace(
                 "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
@@ -2089,95 +2236,90 @@ int macro_round_trip_injector(void* data)
                 trace_contains("picker", "FEWER THAN 2 TEAMS");
             state->green_line_after_three =
                 first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
-            SDL_Delay(300);
-            interact("back");
-            SDL_Delay(300);
-            (void)wait_for_interactable("progress", 10000);
-            SDL_Delay(300);
+            (void)click_until_edge("back", [](int wait_ms) {
+                return wait_for_interactable("progress", wait_ms);
+            });
         }
     }
     if (wait_for_interactable_at("back", 30, 170, 5000)) {
-        SDL_Delay(300);
-        interact("back");  // SCENARIO -> Base Camp
+        (void)click_until_edge(
+            "back",  // SCENARIO -> Base Camp
+            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
-    (void)wait_for_team_menu(10000);
-    SDL_Delay(300);
 
     // (c) Back at the page: TEAMS persisted, one more click deals the
     // fourth side, and one FILL click steps the FAIR face to STRONG.
-    interact("zone_action_3");
     state->second_page_opened =
-        wait_for_interactable_at("back", 10, 169, 10000);
+        click_until_edge("zone_action_3", [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        });
     if (state->second_page_opened) {
         (void)wait_for_interactable_label_containing("zone_row_0",
                                                      "TEAMS: 3", 10000);
-        SDL_Delay(400);
         state->teams_four =
             click_until_label_containing("zone_row_0", "TEAMS: 4");
-        SDL_Delay(400);
         state->fill_strong =
             click_until_label_containing("zone_row_1", "FILL: STRONG");
-        SDL_Delay(400);
-        interact("back");  // zone submenu -> Base Camp
-        (void)wait_for_team_menu(10000);
-        SDL_Delay(300);
+        (void)click_until_edge("back",  // zone submenu -> Base Camp
+                               [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
 
     // (d) LINEUP reads the same array band by band: STRONG on the human
     // team's own band too (H1) and STRONG on all three sides. Then the
     // tweak that diverges them: TEAM 2's wheel walked on to WEAK.
-    interact("scenario");
-    if (!wait_for_interactable("lineup", 10000)) {
+    if (!click_until_edge("scenario", [](int wait_ms) {
+            return wait_for_interactable("lineup", wait_ms);
+        })) {
         state->finished = true;
         return 0;
     }
-    SDL_Delay(300);
-    interact("lineup");
-    state->lineup_opened = wait_for_interactable_at("back", 8, 176, 10000);
+    state->lineup_opened = click_until_edge("lineup", [](int wait_ms) {
+        return wait_for_interactable_at("back", 8, 176, wait_ms);
+    });
     if (state->lineup_opened) {
-        SDL_Delay(750);
+        (void)wait_for_menu_frames(2);
         for (int t = 0; t < 4; ++t) {
             state->band_labels[static_cast<std::size_t>(t)] =
                 interactable_label("lineup_fill_" + std::to_string(t));
         }
         state->captures += capture_frame("lineup_after_macro");
-        SDL_Delay(300);
         state->band_two_weak = click_through_labels(
             "lineup_fill_1",
             {"FILL: BRUTAL", "FILL: NONE", "FILL: WEAK"});
-        SDL_Delay(300);
-        interact("back");  // LINEUP -> SCENARIO
-        SDL_Delay(300);
+        (void)click_until_edge("back",  // LINEUP -> SCENARIO
+                               [](int wait_ms) {
+            return wait_for_interactable_at("back", 30, 170, wait_ms);
+        });
     }
     if (wait_for_interactable_at("back", 30, 170, 5000)) {
-        SDL_Delay(300);
-        interact("back");  // SCENARIO -> Base Camp
+        (void)click_until_edge(
+            "back",  // SCENARIO -> Base Camp
+            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
-    (void)wait_for_team_menu(10000);
-    SDL_Delay(300);
 
     // (e) The camp face answers the divergence: FILL: MIXED, sides kept.
-    interact("zone_action_3");
     state->third_page_opened =
-        wait_for_interactable_at("back", 10, 169, 10000);
+        click_until_edge("zone_action_3", [](int wait_ms) {
+            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        });
     if (state->third_page_opened) {
         (void)wait_for_interactable_label_containing("zone_row_1",
                                                      "FILL: MIXED", 10000);
-        SDL_Delay(400);
         state->mixed_teams_label = interactable_label("zone_row_0");
         state->mixed_fill_label = interactable_label("zone_row_1");
-        interact("back");
-        (void)wait_for_team_menu(10000);
-        SDL_Delay(300);
+        (void)click_until_edge(
+            "back",  // zone submenu -> Base Camp
+            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
 
     if (wait_for_team_menu(5000)) {
-        SDL_Delay(300);
-        interact("back");
+        // Base Camp -> out. No ladder here: with the main-menu call budget
+        // spent, picker_main RETURNS on this click instead of painting
+        // another screen, so there is no edge left to wait on.
+        (void)interact("back");
     }
     if (g_picker_max_mainmenu_calls == 0 &&
         wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
         interact("quit");
     }
     state->finished = true;
@@ -2185,6 +2327,40 @@ int macro_round_trip_injector(void* data)
 }
 
 } // namespace
+
+// The acknowledged click's post ceiling is the cancellation default, NOT the
+// click's own 2.5 s wait: the post must outlive a pump that is alive but
+// slow (coverage instrumentation on a loaded runner needed more than 2.5 s
+// to reach a queued reset — PR #291). With no menu loop pumping at all the
+// post is cancelled at that ceiling and the click reports false; the cost
+// of that dead case is bounded by the injectors' escape tails, not here.
+// Asserted on the recorded ceiling and the post count, never on a clock.
+TEST(LineupUi, acknowledged_click_gives_up_within_its_own_wait)
+{
+    // A live button to click, with no menu loop running behind it: the post
+    // can therefore never be pumped, which is exactly the starved case.
+    std::vector<button> rows;
+    rows.emplace_back("ack_probe", "PROBE", KEYSTATE_UNKNOWN, 10, 10, 60, 12,
+                      0, 0, MenuNav{});
+    og::runtime::current_session->localbuttons_ =
+        init_buttons(rows.data(), static_cast<Sint32>(rows.size()));
+    const std::string clickable = "ack_probe";
+    ASSERT_FALSE(::interactable_label(clickable).empty())
+        << "a live labelled row is needed for this to test anything";
+
+    g_ack_click_posts = 0;
+    g_ack_click_post_ceiling_ms = 0;
+    EXPECT_FALSE(click_and_acknowledge_label_change(clickable, 2500))
+        << "no menu loop is pumping, so the click cannot be acknowledged";
+    EXPECT_EQ(1, g_ack_click_posts)
+        << "a click that cannot be acknowledged posts once and stops";
+    EXPECT_EQ(kAckPostCeilingMs, g_ack_click_post_ceiling_ms)
+        << "the post ceiling must be the cancellation default, not the "
+           "click's own wait: a slow pump must still get to service it";
+
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+}
 
 TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
 {
@@ -3479,4 +3655,239 @@ TEST(LineupUi, arena_defaults_field_a_fair_match_in_the_launched_world)
     }
 
     restore_gladiator_mount();
+}
+
+
+// --- WP5: seatless SPLIT, partial-lock toasts, the title-band clip -------
+
+namespace {
+
+// A per-slot ownership veto for the SPLIT tests. The real callback is a
+// plain function pointer installed by the lobby client, so the guard swaps
+// it the way tests/unit/test_lineup_common.cpp does.
+std::array<bool, MAX_TEAM_SIZE> g_wp5_locked_slots{};
+
+bool wp5_slot_editable(int slot)
+{
+    return slot >= 0 && slot < MAX_TEAM_SIZE &&
+        !g_wp5_locked_slots[static_cast<std::size_t>(slot)];
+}
+
+struct Wp5LockedSlotsGuard
+{
+    og::ui::PickerSaveSlotEditableCallback saved =
+        og::ui::g_picker_save_slot_editable_callback;
+
+    Wp5LockedSlotsGuard()
+    {
+        g_wp5_locked_slots.fill(false);
+        og::ui::g_picker_save_slot_editable_callback = &wp5_slot_editable;
+    }
+
+    ~Wp5LockedSlotsGuard()
+    {
+        og::ui::g_picker_save_slot_editable_callback = saved;
+        g_wp5_locked_slots.fill(false);
+    }
+};
+
+void seed_lineup_roster(SaveData& save,
+                        const std::vector<FighterSeed>& roster)
+{
+    for (auto& slot : save.team_list)
+        slot.reset();
+    for (std::size_t i = 0; i < roster.size(); ++i)
+    {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = roster[i].name;
+        member->upgrade_to_level(roster[i].level, true);
+        member->deployed = roster[i].deployed;
+        member->teamnum = roster[i].team;
+        save.team_list[i] = std::move(member);
+    }
+    save.team_size = static_cast<unsigned char>(roster.size());
+}
+
+} // namespace
+
+// §5: a spectator/autoplay company has no seat at this machine, so there is
+// no seat picture to split ACROSS. The three buttons must say so and touch
+// nothing — before the fix a seatless SPLIT silently did nothing at all.
+TEST(LineupUi, split_without_a_local_seat_says_so_and_moves_nobody)
+{
+    SavedPickerSave save_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    seed_lineup_roster(save, {{"A", 3, true, 1},
+                              {"B", 3, true, 2},
+                              {"C", 3, true, 1}});
+    save.my_team = 1;
+    save.allied_mode = 0;
+    save.current_campaign = "gladiator";
+    // Nobody is sitting at this machine: no lobby client, and a save that
+    // synthesizes no seats either.
+    save.numplayers = 0;
+    picker_lobby_shutdown();
+
+    const std::array<short, 3> before = {save.team_list[0]->teamnum,
+                                         save.team_list[1]->teamnum,
+                                         save.team_list[2]->teamnum};
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        trace_clear();
+        EXPECT_EQ(MENU_OK, lineup_split_action(mode)) << "mode " << mode;
+        EXPECT_TRUE(trace_contains(
+            "lineup", std::format("split_no_seat mode={}", mode).c_str()))
+            << "mode " << mode;
+        EXPECT_TRUE(trace_contains("lineup", "toast NO LOCAL SEAT"))
+            << "mode " << mode;
+        EXPECT_FALSE(trace_contains("lineup", "split mode="))
+            << "mode " << mode << ": no plan may be drawn without a seat";
+        for (int i = 0; i < 3; ++i)
+        {
+            EXPECT_EQ(before[static_cast<std::size_t>(i)],
+                      save.team_list[static_cast<std::size_t>(i)]->teamnum)
+                << "mode " << mode << " slot " << i;
+        }
+    }
+
+    // Paired control: give this machine one seat and the same UNITE call
+    // marches the company.
+    save.numplayers = 1;
+    picker_lobby_set_player_mode(1);
+    trace_clear();
+    EXPECT_EQ(MENU_OK, lineup_split_action(2));
+    EXPECT_FALSE(trace_contains("lineup", "split_no_seat"));
+    EXPECT_EQ(1, save.team_list[0]->teamnum);
+    EXPECT_EQ(1, save.team_list[1]->teamnum)
+        << "the seated team collects everybody";
+    EXPECT_EQ(1, save.team_list[2]->teamnum);
+    EXPECT_TRUE(trace_contains("lineup", "toast ALL FIGHTERS TO TEAM 2"));
+
+    // Hand the next test a lobby with no seats rather than one holding THIS
+    // roster's teams: picker_lobby_set_player_mode resizes an existing
+    // client instead of re-deriving it, so a live client would leak these
+    // seat teams into whoever runs next.
+    picker_lobby_shutdown();
+    restore_gladiator_mount();
+}
+
+// §5 + §2.2: when a SPLIT moves some fighters and the ownership rule keeps
+// others, the toast has to report BOTH — the march and the count that stayed
+// — through the real button dispatch the strip uses.
+TEST(LineupUi, split_toasts_count_the_slots_that_stayed_put)
+{
+    SavedPickerSave save_guard;
+    Wp5LockedSlotsGuard lock_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    seed_lineup_roster(save, {{"A", 3, true, 1},
+                              {"B", 3, true, 1},
+                              {"C", 3, true, 0},
+                              {"D", 3, true, 0}});
+    save.my_team = 0;
+    save.allied_mode = 0;
+    save.numplayers = 2;
+    save.current_campaign = "gladiator";
+    // Rebuild the lobby from THIS roster: resize keeps a previous test's
+    // seat teams, and the toasts below name the seated teams.
+    picker_lobby_shutdown();
+    picker_lobby_set_player_mode(2);
+    restore_gladiator_mount();
+    ASSERT_TRUE(og::ui::lineup_zone_can_team(save))
+        << "gladiator must leave the team rule alone for this test";
+
+    // The back half of the roster belongs to somebody else.
+    g_wp5_locked_slots[2] = true;
+    g_wp5_locked_slots[3] = true;
+
+    vbutton dispatcher;
+
+    // UNITE moves the two free fighters and names the count that could not
+    // come along.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              dispatcher.do_call(button_action_id(ButtonAction::LineupUnite), 0));
+    EXPECT_TRUE(trace_contains("lineup", "split mode=2 moved=2 locked=2"));
+    EXPECT_TRUE(trace_contains("lineup",
+                               "toast ALL FIGHTERS TO TEAM 1 (2 LOCKED)"));
+    EXPECT_EQ(0, save.team_list[0]->teamnum);
+    EXPECT_EQ(0, save.team_list[1]->teamnum);
+    EXPECT_EQ(0, save.team_list[2]->teamnum) << "locked slot 2 never moved";
+    EXPECT_EQ(0, save.team_list[3]->teamnum) << "locked slot 3 never moved";
+
+    // EVEN deals across both seats, so the toast drops the march sentence
+    // and reports only what stayed.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              dispatcher.do_call(
+                  button_action_id(ButtonAction::LineupSplitEven), 0));
+    EXPECT_TRUE(trace_contains("lineup", "split mode=0 moved=1 locked=2"));
+    EXPECT_TRUE(trace_contains("lineup", "toast 2 LOCKED SLOTS KEPT"));
+    EXPECT_FALSE(trace_contains("lineup", "ALL FIGHTERS"))
+        << "two seated teams is not an ALL TO 1";
+    EXPECT_EQ(0, save.team_list[0]->teamnum);
+    EXPECT_EQ(1, save.team_list[1]->teamnum);
+    EXPECT_EQ(0, save.team_list[2]->teamnum);
+    EXPECT_EQ(0, save.team_list[3]->teamnum);
+
+    // FAIR routes through its own dispatch case: the free pair is already
+    // one per seat, so nothing moves and only the locked count is reported.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              dispatcher.do_call(
+                  button_action_id(ButtonAction::LineupSplitFair), 0));
+    EXPECT_TRUE(trace_contains("lineup", "split mode=1 moved=0 locked=2"));
+    EXPECT_TRUE(trace_contains("lineup", "toast 2 LOCKED SLOTS KEPT"));
+    EXPECT_EQ(0, save.team_list[0]->teamnum);
+    EXPECT_EQ(1, save.team_list[1]->teamnum);
+
+    // Paired control: unlock the two rows and the count disappears from the
+    // toast entirely.
+    g_wp5_locked_slots.fill(false);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[1]->teamnum = 1;
+    save.team_list[2]->teamnum = 1;
+    save.team_list[3]->teamnum = 1;
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              dispatcher.do_call(button_action_id(ButtonAction::LineupUnite), 0));
+    EXPECT_TRUE(trace_contains("lineup", "split mode=2 moved=4 locked=0"));
+    EXPECT_TRUE(trace_contains("lineup", "toast ALL FIGHTERS TO TEAM 1"));
+    EXPECT_FALSE(trace_contains("lineup", "LOCKED"))
+        << "nothing stayed behind, so nothing is counted";
+
+    // Leave no client behind (see the seatless test): a resized one would
+    // carry these seat teams into the next test's SPLIT.
+    picker_lobby_shutdown();
+    restore_gladiator_mount();
+}
+
+// §2.2: the toast shares the title band's 40-character census slot, so an
+// over-long one is clipped before it is shown OR logged — an unclipped
+// toast painted over the band's own text.
+TEST(LineupUi, a_long_toast_clips_to_the_title_band)
+{
+    og::ui::LineupScreenState state;
+    og::ui::install_lineup_state_for_screen(&state);
+
+    const std::string fits(static_cast<std::size_t>(kLineupTitleCensusChars),
+                           'A');
+    trace_clear();
+    og::ui::lineup_show_toast(fits);
+    EXPECT_EQ(fits, state.toast) << "exactly the budget survives whole";
+    EXPECT_TRUE(trace_contains("lineup", ("toast " + fits).c_str()));
+
+    const std::string overlong =
+        std::string(static_cast<std::size_t>(kLineupTitleCensusChars), 'B') +
+        "OVERRUN";
+    trace_clear();
+    og::ui::lineup_show_toast(overlong);
+    EXPECT_EQ(static_cast<std::size_t>(kLineupTitleCensusChars),
+              state.toast.size());
+    EXPECT_EQ(overlong.substr(0,
+                              static_cast<std::size_t>(kLineupTitleCensusChars)),
+              state.toast);
+    EXPECT_FALSE(trace_contains("lineup", "OVERRUN"))
+        << "the trace carries the clipped text, not the raw one";
+
+    og::ui::install_lineup_state_for_screen(nullptr);
 }

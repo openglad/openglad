@@ -11,7 +11,10 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/pack_transfer.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/packs.h>
@@ -262,6 +265,36 @@ TEST(PackTransferWire, manifest_rejects_truncated_payload)
     bytes[3] = static_cast<std::uint8_t>((shorter >> 8) & 0xffu);
     EXPECT_FALSE(
         og::sim::deserialize_pack_manifest_message(bytes).has_value());
+}
+
+// A manifest entry names a file the client will create on disk, so the
+// decoder — not the installer — is where a nameless or absurdly long path is
+// refused; a host cannot talk a joiner into writing one.
+TEST(PackTransferWire, manifest_rejects_empty_and_overlong_file_paths)
+{
+    og::sim::PackManifestMessage empty_path = make_test_manifest();
+    empty_path.files.front().path.clear();
+    EXPECT_FALSE(og::sim::deserialize_pack_manifest_message(
+                     og::sim::serialize_pack_manifest_message(empty_path))
+                     .has_value());
+
+    og::sim::PackManifestMessage overlong = make_test_manifest();
+    overlong.files.front().path =
+        std::string(og::sim::kMaxPackRelativePathLength + 1, 'a');
+    EXPECT_FALSE(og::sim::deserialize_pack_manifest_message(
+                     og::sim::serialize_pack_manifest_message(overlong))
+                     .has_value());
+
+    // The cap itself is legal: the refusals above are the length rule, not a
+    // blanket refusal of long names.
+    og::sim::PackManifestMessage at_cap = make_test_manifest();
+    at_cap.files.front().path =
+        std::string(og::sim::kMaxPackRelativePathLength, 'a');
+    const std::optional<og::sim::PackManifestMessage> decoded =
+        og::sim::deserialize_pack_manifest_message(
+            og::sim::serialize_pack_manifest_message(at_cap));
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(at_cap, *decoded);
 }
 
 TEST(PackTransferWire, chunk_rejects_data_over_cap)
@@ -1036,4 +1069,164 @@ TEST_F(PackCacheReuseTest, install_re_validates_the_manifest_it_is_handed)
 
     EXPECT_FALSE(fs::exists(cache_dir_))
         << "no rejected install may leave anything behind";
+}
+
+// --- session end: the transferred pack must not outlive the session --------
+
+namespace {
+
+// A pack that arrived over the wire mid-match and registers a campaign book,
+// exactly the shape of campaigns/modes/packs/modes.core's campaign_picker.lua.
+constexpr const char* kSessionPackId = "org.wp9.hostbook";
+constexpr const char* kSessionPackScript =
+    "og.register_campaign_hooks({\n"
+    "  picker_menu = function() return { title = 'HOST BOOK' } end,\n"
+    "})\n";
+
+class PackTransferSessionEndTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        restore_default_campaigns();
+        previous_mount_ = get_mounted_campaign();
+        og::script::active_world_scripts().host().clear_errors();
+    }
+
+    void TearDown() override
+    {
+        og::resources::unmount_session_packs();
+        const std::string mounted = get_mounted_campaign();
+        if (!mounted.empty())
+            (void)unmount_campaign_package_with_error(mounted);
+        if (!previous_mount_.empty())
+            (void)mount_campaign_package_with_error(previous_mount_);
+        (void)og::resources::refresh_pack_scripts();
+        og::script::active_world_scripts().host().clear_errors();
+        std::error_code ec;
+        std::filesystem::remove_all(
+            std::filesystem::path(get_user_path()) / "packs_cache", ec);
+    }
+
+    static og::sim::PackManifestMessage session_pack_manifest(
+        std::vector<std::vector<std::uint8_t>>& contents)
+    {
+        const std::string_view script(kSessionPackScript);
+        contents.assign(
+            1, std::vector<std::uint8_t>(script.begin(), script.end()));
+        og::sim::PackManifestMessage manifest;
+        manifest.pack_index = 0;
+        manifest.pack_count = 1;
+        manifest.pack_id = kSessionPackId;
+        manifest.version = "1";
+        manifest.files.push_back(og::sim::PackManifestFileEntry{
+            .path = "scripts/book.lua",
+            .size_bytes = static_cast<std::uint32_t>(contents[0].size()),
+            .hash64 = og::core::fnv1a64(contents[0].data(),
+                                        contents[0].size())});
+        return manifest;
+    }
+
+    static bool script_errors_contain(std::string_view needle)
+    {
+        for (const og::script::ScriptError& error :
+             og::script::active_world_scripts().host().errors())
+        {
+            if (error.message.find(needle) != std::string::npos)
+                return true;
+        }
+        return false;
+    }
+
+    static std::vector<std::string> transferable_pack_ids()
+    {
+        std::vector<std::string> ids;
+        for (const og::sim::HostedPack& pack :
+             og::resources::build_transferable_packs())
+            ids.push_back(pack.manifest.pack_id);
+        return ids;
+    }
+
+    static bool contains(const std::vector<std::string>& ids,
+                         std::string_view id)
+    {
+        return std::find(ids.begin(), ids.end(), id) != ids.end();
+    }
+
+    std::string previous_mount_;
+};
+
+} // namespace
+
+// A joiner downloads its host's class pack mid-match. That pack is SESSION
+// scoped — when the session ends it has to leave the virtual tree, or the
+// next campaign the player opens registers a second campaign book and the
+// dispatch answers "one campaign, one book: no scripted picker will be
+// served" for the rest of the process. Restarting the game is the only cure,
+// so the session-end seam is the whole defence.
+TEST_F(PackTransferSessionEndTest,
+       a_finished_session_stops_shadowing_the_next_campaigns_book)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    ASSERT_FALSE(og::script::hooks::campaign_picker_registered())
+        << "gladiator ships no campaign book: the slot starts empty";
+
+    std::vector<std::vector<std::uint8_t>> contents;
+    const og::sim::PackManifestMessage manifest =
+        session_pack_manifest(contents);
+    ASSERT_TRUE(og::resources::install_received_pack(manifest, contents));
+    ASSERT_TRUE(og::resources::mounted_pack_matches_manifest(manifest));
+    ASSERT_TRUE(og::script::hooks::campaign_picker_registered())
+        << "the transferred book answers while the session runs";
+
+    // The networked session ends (the joiner leaves, or the picker swaps its
+    // network client out for a local one).
+    og::resources::end_pack_transfer_session();
+
+    // The next campaign the player opens brings its OWN book.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+    EXPECT_TRUE(og::script::hooks::campaign_picker_registered())
+        << "westlands' own book must be the one and only book";
+    EXPECT_FALSE(script_errors_contain("duplicate og.register_campaign_hooks"))
+        << "the finished session's pack must not collide with the next "
+           "campaign's book";
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "the session pack really left the search path";
+}
+
+// The host's class-pack announcement describes the packs of the campaign it
+// actually has MOUNTED. Hosting stages the lobby's campaign on the first
+// poll, which remounts under the announcement built at construction time, so
+// the set has to follow the mount rather than be snapshotted once.
+TEST_F(PackTransferSessionEndTest, hosted_pack_sync_follows_the_mounted_campaign)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+
+    og::resources::HostedPackSync sync;
+    const std::optional<std::vector<og::sim::HostedPack>> first =
+        sync.refresh();
+    ASSERT_TRUE(first.has_value()) << "the first refresh always announces";
+    std::vector<std::string> ids;
+    for (const og::sim::HostedPack& pack : *first)
+        ids.push_back(pack.manifest.pack_id);
+    EXPECT_TRUE(contains(ids, "westlands.fire"));
+
+    EXPECT_FALSE(sync.refresh().has_value())
+        << "re-hashing every pack file on an unchanged mount is the cost the "
+           "memo exists to avoid";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    const std::optional<std::vector<og::sim::HostedPack>> second =
+        sync.refresh();
+    ASSERT_TRUE(second.has_value()) << "the mount moved: re-announce";
+    ids.clear();
+    for (const og::sim::HostedPack& pack : *second)
+        ids.push_back(pack.manifest.pack_id);
+    EXPECT_TRUE(contains(ids, "modes.core"));
+    EXPECT_FALSE(contains(ids, "westlands.fire"))
+        << "the previous campaign's pack must not ride the new announcement";
 }

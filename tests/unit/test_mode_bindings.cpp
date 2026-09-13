@@ -22,6 +22,7 @@
 #include <openglad/resources/gloader.h>
 
 #include "../test_game_world_fixture.h"
+#include "unit_pack_store_guard.h"
 
 #include <fstream>
 #include <memory>
@@ -41,6 +42,11 @@ loader& mode_test_loader()
 // stats) plus pack-script lifecycle management.
 struct ModeBindingsWorld : TestGameWorld
 {
+    // Declared first so it outlives every clear below and the destructor's:
+    // the shipped pack scripts and family chunks this fixture wipes are what
+    // the next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore;
+
     explicit ModeBindingsWorld(int level_id = 42)
         : TestGameWorld(level_id)
     {
@@ -273,6 +279,30 @@ TEST(ModeBindings, camera_view_sets_slot_zero_and_rejects_out_of_range_slots)
               fx.world().mode.cameras[0].entity_id);
     // No opts table: the default style is "auto".
     EXPECT_EQ(og::sim::kCameraStyleAuto, fx.world().mode.cameras[0].style);
+}
+
+// "auto" spelled OUT LOUD is the only way a pack can take a slot back off
+// the inset camera without dropping the entity it follows — clearing the
+// slot and re-declaring it would blink the view for a frame. So the branch
+// has to write the auto byte over an inset one, with the target untouched.
+TEST(ModeBindings, an_explicit_auto_style_takes_a_slot_back_off_inset)
+{
+    ModeBindingsWorld fx;
+    walker* ball = fx.spawn_living(FAMILY_SOLDIER, 1, 160, 160);
+    ASSERT_NE(nullptr, ball);
+    const std::uint32_t id = ball->entity_id();
+    fx.run_on_load(
+        "    local obs = og.oblist()\n"
+        "    og.set_camera_view(0, obs[1], { style = 'inset' })\n"
+        "    og.set_camera_view(0, obs[1], { style = 'auto' })\n");
+    EXPECT_TRUE(fx.script_errors().find("set_camera_view") ==
+                std::string::npos)
+        << fx.script_errors();
+    EXPECT_EQ(og::sim::kCameraStyleAuto, fx.world().mode.cameras[0].style)
+        << "an explicit 'auto' must overwrite the inset byte";
+    EXPECT_EQ(static_cast<std::int32_t>(id),
+              fx.world().mode.cameras[0].entity_id)
+        << "and must not drop the entity the slot was following";
 }
 
 TEST(ModeBindings, camera_view_nil_clears_the_whole_slot)
@@ -726,10 +756,20 @@ TEST(ModeBindings, respawn_anchors_read_back_and_validate)
         "    og.log('anchor', x, y)\n"
         "    local ok1 = pcall(og.respawn_anchor, 0, 2)\n"
         "    local ok2 = pcall(og.respawn_anchor_count, 5)\n"
-        "    og.log('errs', ok1 and 1 or 0, ok2 and 1 or 0)\n");
+        // The reader's OWN team guard, which is not the counter's: a team
+        // past the score-team domain would index the anchor arrays out of
+        // bounds, so it has to be refused here too, and by name.
+        "    local ok3, e3 = pcall(og.respawn_anchor, 5, 0)\n"
+        "    local ok4, e4 = pcall(og.respawn_anchor, -1, 0)\n"
+        "    og.log('errs', ok1 and 1 or 0, ok2 and 1 or 0,\n"
+        "           ok3 and 1 or 0, ok4 and 1 or 0)\n"
+        "    og.log('hi', e3)\n"
+        "    og.log('lo', e4)\n");
     EXPECT_TRUE(fx.logged("counts\t2\t1\t0"));
     EXPECT_TRUE(fx.logged("anchor\t192\t96"));
-    EXPECT_TRUE(fx.logged("errs\t0\t0"));
+    EXPECT_TRUE(fx.logged("errs\t0\t0\t0\t0"));
+    EXPECT_TRUE(fx.logged("team 5 out of range [0, 3]")) << fx.script_errors();
+    EXPECT_TRUE(fx.logged("team -1 out of range [0, 3]")) << fx.script_errors();
 }
 
 TEST(ModeBindings, spawn_spot_clear_probes_without_eating)
@@ -828,6 +868,7 @@ TEST(ModeBindings, bit_32768_reads_back_truthy)
 
 TEST(ModeBindings, radar_landmark_declares_on_treasure_and_fx_only)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     og::script::clear_pack_family_chunks();
     og::data::ClasspackData data;
     og::script::register_pack_family_chunk(

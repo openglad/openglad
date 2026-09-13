@@ -346,6 +346,54 @@ TEST(NetTransport, initial_setup_full_roundtrip_and_decode_received_message)
     EXPECT_EQ(expected, *typed.initial_setup);
 }
 
+// A short InitialSetup frame must decode to nothing, never to a half-read
+// roster: every reader guard (including the float reads that carry a guy's
+// scenario damage) has to fail the whole message. Trimming one byte at a time
+// walks the frame through every one of those guards.
+TEST(NetTransport, initial_setup_rejects_every_truncation_of_a_guy_frame)
+{
+    og::sim::InitialSetupMessage expected;
+    expected.level_id = 21;
+    expected.level_title = "Cut Short";
+    expected.setup_generation = 5u;
+    expected.guys.push_back(make_initial_setup_guy_for_test());
+    expected.completed_levels = {4, 9};
+    expected.controlled_entity_ids[0] = 55u;
+
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_initial_setup_message(expected);
+    ASSERT_GT(bytes.size(), og::sim::kTransportHeaderSize);
+
+    // The intact frame is the paired control: the sweep below is only
+    // evidence because this exact payload does decode.
+    const std::optional<og::sim::InitialSetupMessage> decoded =
+        og::sim::deserialize_initial_setup_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(expected, *decoded);
+
+    for (std::size_t prefix = 0; prefix < bytes.size(); ++prefix)
+    {
+        std::vector<std::uint8_t> truncated(bytes.begin(),
+                                            bytes.begin() +
+                                                static_cast<std::ptrdiff_t>(
+                                                    prefix));
+        if (truncated.size() >= og::sim::kTransportHeaderSize)
+        {
+            // Restamp the declared payload length so the envelope check is
+            // not the only thing rejecting the frame — the payload readers
+            // have to refuse it on their own.
+            const std::uint16_t payload_size = static_cast<std::uint16_t>(
+                truncated.size() - og::sim::kTransportHeaderSize);
+            truncated[2] = static_cast<std::uint8_t>(payload_size & 0xffu);
+            truncated[3] =
+                static_cast<std::uint8_t>((payload_size >> 8) & 0xffu);
+        }
+        EXPECT_FALSE(
+            og::sim::deserialize_initial_setup_message(truncated).has_value())
+            << "prefix of " << prefix << " bytes decoded as a setup message";
+    }
+}
+
 TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
 {
     std::vector<og::sim::LobbyMessage> messages;
@@ -1037,6 +1085,12 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
     transport.send_pause_response(1u, {});
     transport.send_control_change(1u, {});
     transport.send_snapshot_hash_check(1u, {});
+    // Pack transfer (protocol v14): the four wrappers guard the same way, so
+    // a host with nothing to announce never emits a headerless frame.
+    transport.send_pack_manifest(1u, {});
+    transport.send_pack_request(1u, {});
+    transport.send_pack_file_chunk(1u, {});
+    transport.send_pack_transfer_done(1u, {});
     EXPECT_TRUE(transport.sent_messages().empty());
 
     auto snapshot = std::make_shared<og::sim::WorldSnapshot>();
@@ -1144,7 +1198,34 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
                 .snapshot_hash = 7u,
             }));
 
-    const std::array<og::sim::TypedReceivedMessageKind, 18> expected_kinds = {
+    const og::sim::PackManifestMessage manifest{
+        .pack_index = 0u,
+        .pack_count = 1u,
+        .pack_id = "org.test.sweep",
+        .version = "2",
+        .files = {{.path = "families/imp.lua",
+                   .size_bytes = 12u,
+                   .hash64 = 0x0102030405060708ull}},
+    };
+    transport.send_pack_manifest(
+        2u, std::make_shared<og::sim::PackManifestMessage>(manifest));
+    const og::sim::PackRequestMessage pack_request{.pack_id = "org.test.sweep"};
+    transport.send_pack_request(
+        2u, std::make_shared<og::sim::PackRequestMessage>(pack_request));
+    const og::sim::PackFileChunkMessage pack_chunk{
+        .pack_id = "org.test.sweep",
+        .file_index = 0u,
+        .offset = 4u,
+        .data = {0xd0, 0xd1},
+    };
+    transport.send_pack_file_chunk(
+        2u, std::make_shared<og::sim::PackFileChunkMessage>(pack_chunk));
+    const og::sim::PackTransferDoneMessage pack_done{
+        .pack_id = "org.test.sweep"};
+    transport.send_pack_transfer_done(
+        2u, std::make_shared<og::sim::PackTransferDoneMessage>(pack_done));
+
+    const std::array<og::sim::TypedReceivedMessageKind, 22> expected_kinds = {
         og::sim::TypedReceivedMessageKind::Snapshot,
         og::sim::TypedReceivedMessageKind::DeltaSnapshot,
         og::sim::TypedReceivedMessageKind::Input,
@@ -1163,6 +1244,10 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
         og::sim::TypedReceivedMessageKind::PauseResponse,
         og::sim::TypedReceivedMessageKind::ControlChange,
         og::sim::TypedReceivedMessageKind::SnapshotHashCheck,
+        og::sim::TypedReceivedMessageKind::PackManifest,
+        og::sim::TypedReceivedMessageKind::PackRequest,
+        og::sim::TypedReceivedMessageKind::PackFileChunk,
+        og::sim::TypedReceivedMessageKind::PackTransferDone,
     };
     ASSERT_EQ(expected_kinds.size(), transport.sent_messages().size());
     for (std::size_t i = 0; i < transport.sent_messages().size(); ++i)
@@ -1202,6 +1287,22 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
             ASSERT_EQ(game_flow_batch->events.size(),
                       typed.event_batch->events.size());
             EXPECT_EQ(game_flow_batch->events[0], typed.event_batch->events[0]);
+            break;
+        case og::sim::TypedReceivedMessageKind::PackManifest:
+            ASSERT_NE(nullptr, typed.pack_manifest);
+            EXPECT_EQ(manifest, *typed.pack_manifest);
+            break;
+        case og::sim::TypedReceivedMessageKind::PackRequest:
+            ASSERT_NE(nullptr, typed.pack_request);
+            EXPECT_EQ(pack_request, *typed.pack_request);
+            break;
+        case og::sim::TypedReceivedMessageKind::PackFileChunk:
+            ASSERT_NE(nullptr, typed.pack_file_chunk);
+            EXPECT_EQ(pack_chunk, *typed.pack_file_chunk);
+            break;
+        case og::sim::TypedReceivedMessageKind::PackTransferDone:
+            ASSERT_NE(nullptr, typed.pack_transfer_done);
+            EXPECT_EQ(pack_done, *typed.pack_transfer_done);
             break;
         default:
             EXPECT_NE(og::sim::TypedReceivedMessageKind::Malformed,
@@ -3476,6 +3577,41 @@ TEST(NetTransport, game_client_render_interpolation_alpha_respects_game_speed)
 
     client.testing_set_render_interpolation_elapsed_ms(20.5f);
     EXPECT_FLOAT_EQ(1.0f, client.render_interpolation_alpha(0.0f));
+}
+
+// A snapshot landing mid-interpolation must not snap the mirror back to the
+// start of the interval: the alpha the renderer was already showing is
+// carried across by back-dating the arrival, so walkers keep gliding instead
+// of stuttering on every snapshot. (A fresh baseline is exempt — there is no
+// in-flight interval to preserve — so this is the delta case.)
+TEST(NetTransport, delta_snapshot_arrival_preserves_in_flight_render_alpha)
+{
+    // A long sim interval keeps the assertion about the preserved alpha
+    // rather than about how fast this machine got from poll to read.
+    const auto alpha_after_delta_polled_with = [](float prior_alpha) {
+        MockTransport transport;
+        TestGameWorld fixture;
+        fixture.world().timer_wait = 60;
+        fixture.world().tick_count_ = 1u;
+        transport.queue_received(
+            7u,
+            og::sim::serialize_snapshot(
+                og::sim::capture_keyframe_snapshot(fixture.world())));
+        og::sim::GameClient client(transport, 7u);
+        client.poll_messages();
+
+        fixture.world().tick_count_ = 2u;
+        transport.queue_received(
+            7u,
+            og::sim::serialize_delta(og::sim::capture_snapshot(fixture.world())));
+        client.poll_messages(prior_alpha);
+        return client.render_interpolation_alpha(1.0f);
+    };
+
+    EXPECT_NEAR(0.5f, alpha_after_delta_polled_with(0.5f), 0.05f);
+    // Control: an arrival with nothing in flight starts the interval at zero,
+    // so the preserved value is the alpha that was handed in, not a constant.
+    EXPECT_NEAR(0.0f, alpha_after_delta_polled_with(0.0f), 0.05f);
 }
 
 TEST(NetTransportJitter, interpolation_alpha_uses_rounded_timer_wait_interval)

@@ -8,6 +8,14 @@
 
 #include <ixwebsocket/IXGetFreePort.h>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -21,6 +29,7 @@
 #include <vector>
 
 #include "../test_game_world_fixture.h"
+#include "../test_teardown_ceiling.h"
 
 namespace {
 
@@ -138,6 +147,38 @@ std::uint32_t decode_keyframe_request_tick(std::span<const std::uint8_t> bytes)
     const auto decoded = og::sim::deserialize_keyframe_request_message(bytes);
     EXPECT_TRUE(decoded.has_value());
     return decoded ? decoded->last_seen_tick : 0u;
+}
+
+// The picker's direct join site constructs this transport with the defaults
+// (no per-site twin), so the re-dial cadence a blipping host costs a joiner is
+// decided right here: IXWebSocket doubles the wait after each failed dial and
+// clamps it at this value. The behavioural recovery test is withheld while the
+// transport's stuck-reconnect defect is open; this pins the number it measured.
+TEST(NetTransportWebSocketClient, direct_redial_wait_is_capped_at_one_second)
+{
+    EXPECT_EQ(1'000u,
+              og::sim::WebSocketClientTransport::Options{}.max_reconnect_wait_ms)
+        << "a host that comes back on the LAN must be re-dialled within a "
+           "second, not after the backoff has run out to ten";
+}
+
+// Same site, same reason it is pinned here: the defaults are what the picker's
+// direct join and the terminal client ship with.
+TEST(NetTransportWebSocketClient, direct_handshake_timeout_is_capped_at_ten_seconds)
+{
+    EXPECT_EQ(10,
+              og::sim::WebSocketClientTransport::Options{}.handshake_timeout_secs)
+        << "a dial that nobody answers must be abandoned in ten seconds so the "
+           "backoff can find a host that came back, not hold the io thread for "
+           "ix's sixty-second default";
+}
+
+TEST(NetTransportWebSocketClient, direct_ping_interval_is_five_seconds)
+{
+    EXPECT_EQ(5,
+              og::sim::WebSocketClientTransport::Options{}.ping_interval_secs)
+        << "the direct link is kept honest by PING/PONG: with no interval ix's "
+           "poll timeout is infinite and a half-open link is never noticed";
 }
 
 TEST(NetTransportWebSocketClient,
@@ -698,6 +739,409 @@ TEST(NetTransportWebSocketClient,
         },
         5s)) << "a drop after connecting should surface as Lost, not Failed";
     EXPECT_TRUE(client.connected_peers().empty());
+}
+
+TEST(NetTransportWebSocketClient,
+     disconnect_returns_while_the_auto_reconnect_loop_is_live)
+{
+    // ix::WebSocket::stop() closes the socket and only afterwards raises its
+    // own stop flag, so with automatic reconnection live the io thread can
+    // re-dial inside that gap: the fresh socket comes up OPEN and parks in an
+    // unbounded poll(), and the join inside stop() then never returns. Tear a
+    // reconnecting transport down right after the server dropped it (the
+    // widest re-dial window) and require disconnect() to come back.
+    //
+    // The same re-dial is what puts a half-finished connection on the server,
+    // so the server is torn down under a ceiling of its own rather than on
+    // this thread — a wedge on either leg has to name itself.
+    //
+    // Gated by a cycle COUNT, not a clock.
+    constexpr int kCycles = 200;
+    constexpr auto kTeardownCeiling = 30s;
+
+    for (int cycle = 0; cycle < kCycles; ++cycle)
+    {
+        const int port = ix::getFreePort();
+
+        og::sim::WebSocketServerTransport::Options server_options;
+        server_options.host = "127.0.0.1";
+        auto server = std::make_unique<og::sim::WebSocketServerTransport>(
+            port, server_options);
+        server->accept_connections();
+
+        og::sim::WebSocketClientTransport::Options client_options;
+        client_options.remote_peer_id = 9u;
+        client_options.automatic_reconnection = true;
+        client_options.min_reconnect_wait_ms = 1u;
+        client_options.max_reconnect_wait_ms = 20u;
+        auto client = std::make_unique<og::sim::WebSocketClientTransport>(
+            std::format("ws://127.0.0.1:{}", port),
+            client_options);
+        client->accept_connections();
+
+        ASSERT_TRUE(poll_until_peer_count(*client, 1u)) << "cycle " << cycle;
+        ASSERT_TRUE(poll_until_peer_count(*server, 1u)) << "cycle " << cycle;
+
+        // Drop the link from the far end: the client's io thread is now inside
+        // its reconnection loop, which is what races the teardown below.
+        server->disconnect(server->connected_peers().front());
+
+        const bool client_torn_down = og::test::finishes_within(
+            kTeardownCeiling,
+            [peer_id = client_options.remote_peer_id,
+             owned = std::move(client)]() mutable {
+                owned->disconnect(peer_id);
+            });
+        if (!client_torn_down)
+        {
+            // Leave the far end of the wedged socket standing too.
+            (void)server.release();
+            FAIL() << "client transport teardown wedged on cycle " << cycle
+                   << ": ix re-dialled between close() and _stop, and stop()'s "
+                      "join never returned";
+        }
+
+        const bool server_torn_down = og::test::finishes_within(
+            kTeardownCeiling,
+            [owned = std::move(server)]() mutable { owned.reset(); });
+        if (!server_torn_down)
+        {
+            FAIL() << "server transport teardown wedged on cycle " << cycle
+                   << ": the reconnecting client left a connection parked in "
+                      "ix's poll, so the gc join never returned";
+        }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Liveness bounds on the DIRECT link.
+//
+// Both production users of this transport (the picker's direct-join button,
+// src/platform/sdl/picker_lobby_network_client.cpp, and the terminal client,
+// src/platform/curses/curses_network.cpp) construct it with the defaults, so
+// whatever bounds the defaults carry ARE the shipped joiner behaviour.
+
+TEST(NetTransportWebSocketClient,
+     a_black_holed_dial_is_abandoned_inside_the_handshake_timeout)
+{
+#ifdef _WIN32
+    GTEST_SKIP() << "the black-hole listener below is POSIX-only";
+#else
+    // ix's acceptor accepts a connection and then, when the server is already
+    // stopping, returns WITHOUT closing the descriptor it just accepted
+    // (IXSocketServer.cpp:415, `if (_stop) return;`). A joiner that re-dials
+    // while the host tears its lobby transport down — the common case, since
+    // the joiner's link dies at that same instant — is left with a connection
+    // that is ESTABLISHED and unserviced: no RST, no data, nobody reading its
+    // upgrade request. ix's io thread then parks in the HTTP status-line read
+    // for the whole handshake timeout and issues no further dials while it
+    // waits, so the host can come back and never be found.
+    //
+    // Reproduce that state exactly rather than racing it: accept the dial,
+    // hold the descriptor, answer nothing.
+    const int port = ix::getFreePort();
+
+    const int listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_GE(listen_fd, 0);
+    const int enable = 1;
+    ASSERT_EQ(0,
+              ::setsockopt(
+                  listen_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)));
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = ::htons(static_cast<std::uint16_t>(port));
+    address.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+    ASSERT_EQ(0,
+              ::bind(listen_fd,
+                     reinterpret_cast<const sockaddr*>(&address),
+                     sizeof(address)));
+    ASSERT_EQ(0, ::listen(listen_fd, 4));
+
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port));
+    client.accept_connections();
+
+    // poll() rather than a blocking accept(): a transport that never dials has
+    // to name itself instead of hanging the whole binary.
+    pollfd waiting_listener{};
+    waiting_listener.fd = listen_fd;
+    waiting_listener.events = POLLIN;
+    ASSERT_EQ(1, ::poll(&waiting_listener, 1, 10'000))
+        << "the transport never dialled the black-hole listener";
+
+    const int held_fd = ::accept(listen_fd, nullptr, nullptr);
+    ASSERT_GE(held_fd, 0);
+    // Only the LISTENING descriptor is closed. The accepted one stays open for
+    // the rest of the test, which is what keeps the client's connection
+    // ESTABLISHED with its upgrade request unread — the leaked-fd state
+    // observed in /proc on the real host.
+    ASSERT_EQ(0, ::close(listen_fd));
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server(port, server_options);
+    server.accept_connections();
+
+    // Ceiling, derived from the options this transport ships with:
+    //   handshake_timeout_secs (10 s) — the bound this test is about, the
+    //     longest the black-holed dial may occupy the io thread
+    // + max_reconnect_wait_ms (1 s)  — the clamp the next dial waits out
+    // + 2 s of margin for a loaded box.
+    // ix's own untouched default is 60 s, so an unbounded client is still
+    // parked in the first dial when this expires.
+    constexpr auto kReturnCeiling = 13s;
+    const bool returned = wait_until(
+        [&] {
+            (void)client.poll();
+            (void)server.poll();
+            return client.connected_peers().size() == 1u;
+        },
+        kReturnCeiling);
+    EXPECT_TRUE(returned)
+        << "the joiner never gave up on a dial the host answered with silence: "
+           "with no handshake bound ix waits its 60 s default before it looks "
+           "for the host again";
+
+    client.disconnect(1u);
+    ::close(held_fd);
+#endif
+}
+
+TEST(NetTransportWebSocketClient,
+     a_failed_send_retires_the_link_before_the_next_send_is_attempted)
+{
+    // A send runs on the GAME thread, and ix's sendOnSocket closes the socket
+    // and sets CLOSED on that thread when the write fails
+    // (IXWebSocketTransport.cpp:1069-1090). If the io thread was at the top of
+    // run() having just sampled isConnected() as true, it reads that Closed and
+    // returns FOR GOOD with automatic reconnection still armed — no further
+    // callback ever fires, so the queued Disconnect that poll() used to rely on
+    // is the last word the transport ever hears, and until poll() runs the
+    // game thread still believes the link is up.
+    //
+    // Force the failing send deterministically instead of racing it: take the
+    // host away, wait for the close to reach the queue WITHOUT polling (a
+    // queued transition empties connected_peers() on its own), then send.
+    const int port = ix::getFreePort();
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    auto server = std::make_unique<og::sim::WebSocketServerTransport>(
+        port, server_options);
+    server->accept_connections();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 9u;
+    client_options.automatic_reconnection = true;
+    client_options.min_reconnect_wait_ms = 1u;
+    client_options.max_reconnect_wait_ms = 20u;
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port), client_options);
+    client.accept_connections();
+
+    ASSERT_TRUE(poll_until_peer_count(client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(*server, 1u));
+
+    server.reset();
+
+    // No poll() in this wait on purpose: connected_peers() reports empty as
+    // soon as a transition is QUEUED, while the game-thread `connected` flag
+    // still says Connected because only poll() moves it.
+    ASSERT_TRUE(wait_until(
+        [&] { return client.connected_peers().empty(); }, 10s))
+        << "the client never noticed the host going away";
+    ASSERT_EQ(og::sim::TransportLinkState::Connected, client.link_state())
+        << "the game thread must still believe the link is up when the failing "
+           "send below runs — that is the state the defect lived in";
+
+    // ix reports failure for any send on a socket that is not OPEN
+    // (IXWebSocket.cpp:536-540), so this send fails and takes the branch.
+    client.send_client_ready(
+        client_options.remote_peer_id,
+        std::make_shared<og::sim::ClientReadyMessage>(
+            og::sim::ClientReadyMessage{.last_applied_tick = 11u}));
+
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, client.link_state())
+        << "a send that failed has already closed the socket on this thread; "
+           "the link must be marked down here and now, not on some later "
+           "poll() that a dead io thread will never feed";
+    EXPECT_TRUE(client.connected_peers().empty());
+
+    // The second send is the storm test. With the link marked down
+    // synchronously it returns at send()'s `connected` gate, so it cannot tear
+    // the freshly created socket down and start another dial; without that it
+    // would reach ix again, fail again, and cancel the in-flight dial every
+    // tick for as long as the game keeps sending.
+    client.send_client_ready(
+        client_options.remote_peer_id,
+        std::make_shared<og::sim::ClientReadyMessage>(
+            og::sim::ClientReadyMessage{.last_applied_tick = 12u}));
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, client.link_state());
+    EXPECT_TRUE(client.connected_peers().empty());
+
+    // And the retired socket must have been replaced by one that still dials:
+    // a host returning on the same port is found again.
+    og::sim::WebSocketServerTransport returning_server(port, server_options);
+    returning_server.accept_connections();
+
+    EXPECT_TRUE(wait_until(
+        [&] {
+            (void)client.poll();
+            (void)returning_server.poll();
+            return client.connected_peers().size() == 1u &&
+                returning_server.connected_peers().size() == 1u;
+        },
+        15s))
+        << "the transport stopped dialling after the failed send";
+
+    client.disconnect(client_options.remote_peer_id);
+}
+
+TEST(NetTransportWebSocketClient,
+     a_send_that_fails_across_a_close_still_reconnects)
+{
+    // The scenario half of the test above. The race it hunts — the game
+    // thread's failed send retiring ix's io thread while the far end is still
+    // there — cannot be forced, so this is gated by a CYCLE COUNT: each cycle
+    // drops the link from the far end and keeps sending across the close for a
+    // fixed window, which is the shape the recon measured at 3 hits in 40
+    // cycles (a single post-drop send hits about 1 in 300). kCycles below is
+    // sized to og_unit_sim's time budget rather than to certainty: on an
+    // unfixed tree a run is red with probability ~1 - 0.925^kCycles, and the
+    // deterministic statement of the same defect is the test above.
+    //
+    // The oracle is "the server eventually holds a peer it has not retired" —
+    // NOT "exactly one peer, and it is new": under a 300 ms send window the
+    // client legitimately reconnects more than once per cycle.
+    constexpr int kCycles = 24;
+    constexpr auto kSendWindow = 300ms;
+    constexpr auto kReturnCeiling = 10s;
+
+    const int port = ix::getFreePort();
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server(port, server_options);
+    server.accept_connections();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 9u;
+    client_options.automatic_reconnection = true;
+    client_options.min_reconnect_wait_ms = 1u;
+    client_options.max_reconnect_wait_ms = 20u;
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port), client_options);
+    client.accept_connections();
+
+    ASSERT_TRUE(poll_until_peer_count(client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(server, 1u));
+
+    // The server hands out peer ids in order, so "not retired yet" is "above
+    // every id this test has already dropped".
+    og::sim::PeerId retired_high_water = 0u;
+
+    for (int cycle = 0; cycle < kCycles; ++cycle)
+    {
+        for (const og::sim::PeerId peer : server.connected_peers())
+        {
+            retired_high_water = std::max(retired_high_water, peer);
+            server.disconnect(peer);
+        }
+        ASSERT_NE(0u, retired_high_water) << "cycle " << cycle;
+
+        const auto send_until = std::chrono::steady_clock::now() + kSendWindow;
+        while (std::chrono::steady_clock::now() < send_until)
+        {
+            client.send_client_ready(
+                client_options.remote_peer_id,
+                std::make_shared<og::sim::ClientReadyMessage>(
+                    og::sim::ClientReadyMessage{.last_applied_tick = 55u}));
+            (void)server.poll();
+        }
+
+        ASSERT_TRUE(wait_until(
+            [&] {
+                (void)client.poll();
+                (void)server.poll();
+                const std::vector<og::sim::PeerId> peers =
+                    server.connected_peers();
+                return std::any_of(
+                    peers.begin(),
+                    peers.end(),
+                    [retired_high_water](og::sim::PeerId peer) {
+                        return peer > retired_high_water;
+                    });
+            },
+            kReturnCeiling))
+            << "cycle " << cycle
+            << ": the client never came back after a send that failed across "
+               "the close — its io thread left the run loop for good and the "
+               "transport went on reporting the dead peer as connected";
+    }
+
+    client.disconnect(client_options.remote_peer_id);
+}
+
+TEST(NetTransportWebSocketClient, a_healthy_link_survives_a_ping_interval)
+{
+    // The direct client sends a heartbeat every ping_interval_secs and closes
+    // the link on the next one if no pong came back (kPingTimeoutMessage), so
+    // a server that does not answer pings would turn every quiet lobby into a
+    // reconnect blip. Our server transport is an ix::WebSocketServer, which
+    // answers by default — this is the test that says so.
+    //
+    // Held just past the first pong-timeout decision (the heartbeat ix sends
+    // at open, then the check one interval later), not for a clock's worth of
+    // idling.
+    constexpr auto kHold = 6'500ms;
+
+    const int port = ix::getFreePort();
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server(port, server_options);
+    server.accept_connections();
+
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port));
+    client.accept_connections();
+
+    ASSERT_TRUE(poll_until_peer_count(client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(server, 1u));
+    const og::sim::PeerId server_peer_id = server.connected_peers().front();
+
+    const auto hold_until = std::chrono::steady_clock::now() + kHold;
+    while (std::chrono::steady_clock::now() < hold_until)
+    {
+        (void)client.poll();
+        (void)server.poll();
+        ASSERT_EQ(og::sim::TransportLinkState::Connected, client.link_state())
+            << "the idle link was closed while the server was answering pings";
+        std::this_thread::sleep_for(25ms);
+    }
+
+    ASSERT_EQ((std::vector<og::sim::PeerId>{server_peer_id}),
+              server.connected_peers())
+        << "the client re-dialled during an idle link that never broke";
+
+    const auto delivered = send_until_matching_message(
+        client,
+        [&] {
+            client.send_client_ready(
+                1u,
+                std::make_shared<og::sim::ClientReadyMessage>(
+                    og::sim::ClientReadyMessage{.last_applied_tick = 31u}));
+        },
+        server,
+        [server_peer_id](const og::sim::ReceivedMessage& message) {
+            return message.peer_id == server_peer_id &&
+                decode_client_ready_tick(message.data) == 31u;
+        });
+    EXPECT_TRUE(delivered.has_value());
+
+    client.disconnect(1u);
 }
 
 } // namespace
