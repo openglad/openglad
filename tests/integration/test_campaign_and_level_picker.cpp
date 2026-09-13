@@ -191,14 +191,6 @@ static int hold_q_key_for_picker(void* data)
     return 0;
 }
 
-static void repeated_click(int x, int y, int attempts = 8)
-{
-    for (int i = 0; i < attempts; ++i) {
-        inject_click(x, y, 100);
-        SDL_Delay(150);
-    }
-}
-
 bool wait_for_campaign_picker_counter(
     std::uint64_t (*counter)(), std::uint64_t baseline)
 {
@@ -430,18 +422,25 @@ struct TemporaryCampaignGuard
     }
 };
 
-// How many popup traces carry `substring` (the popup dialog is trace-only
-// under TESTING, and its text IS the product contract here).
-int count_popup_traces(const std::string& substring)
+// How many traces in `category` carry `substring`. Both dialog shapes are
+// trace-only under TESTING ("popup" for popup_dialog, "confirm" for the
+// yes/no prompts, src/interface/ui/picker_dialogs.cpp) and their text IS the
+// product contract here.
+int count_trace_in(const char* category, const std::string& substring)
 {
     std::lock_guard<std::mutex> lock(g_trace_mutex);
     int count = 0;
     for (const TraceEntry& entry : g_trace_buffer) {
-        if (entry.category == "popup" &&
+        if (entry.category == category &&
             entry.message.find(substring) != std::string::npos)
             ++count;
     }
     return count;
+}
+
+int count_popup_traces(const std::string& substring)
+{
+    return count_trace_in("popup", substring);
 }
 
 struct PromptQueueGuard
@@ -654,44 +653,25 @@ static int campaign_confirmed_reset_injector(void* data)
     return reset && canceled ? 0 : 1;
 }
 
-static int level_picker_choose_injector(void* data)
+// Clicks the SECOND preview row, then OK. The window opens AT the default
+// level's index, so row 0 would be the default itself and the returned id
+// would be tautological; row 1 is the first row that proves the picker read
+// the click.
+static int level_picker_choose_second_row_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
     const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
     int row_x = 0;
     int row_y = 0;
-    level_row_click_point(0, row_x, row_y);
-    SDL_Delay(500);
-    for (int i = 0; i < 8; ++i) {
-        inject_click(row_x, row_y, 100);   // Select entry 1
-        SDL_Delay(150);
-        inject_click(rect_center_x(layout.choose),
-                     rect_center_y(layout.choose), 100); // OK
-        SDL_Delay(150);
-    }
-    return 0;
-}
-
-static int level_picker_delete_then_cancel_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    (void)data;
-    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
-    int row_x = 0;
-    int row_y = 0;
-    level_row_click_point(0, row_x, row_y);
-    SDL_Delay(500);
-    for (int i = 0; i < 4; ++i) {
-        inject_click(row_x, row_y, 100);  // Select entry 1
-        SDL_Delay(150);
-        inject_click(rect_center_x(layout.delete_button),
-                     rect_center_y(layout.delete_button), 100); // DELETE
-        SDL_Delay(150);
-    }
-    repeated_click(rect_center_x(layout.cancel),
-                   rect_center_y(layout.cancel), 8); // CANCEL
-    return 0;
+    level_row_click_point(1, row_x, row_y);
+    bool ok = wait_for_level_picker_ready();
+    if (ok)
+        ok = click_level_picker_action(row_x, row_y); // Select the 2nd entry
+    if (ok)
+        ok = click_level_picker_action(rect_center_x(layout.choose),
+                                       rect_center_y(layout.choose)); // OK
+    return ok ? 0 : 1;
 }
 
 static int level_picker_scroll_then_choose_first_injector(void* data)
@@ -775,7 +755,8 @@ static int level_picker_delete_once_then_cancel_injector(void* data)
     return ok ? 0 : 1;
 }
 
-TEST(CampaignAndLevelPicker, campaign_picker_cancel_esc_does_not_crash)
+TEST(CampaignAndLevelPicker,
+     picker_helpers_and_ending_popups_and_early_exit)
 {
     cleanup_leftover_test_campaigns();
 
@@ -799,10 +780,34 @@ TEST(CampaignAndLevelPicker, campaign_picker_cancel_esc_does_not_crash)
     current_levels.clear();
     ASSERT_EQ(4, load_campaign(mounted, current_levels, 4)) << "load_campaign should fall back to first level";
 
+    // show_ending_popup picks the ending dialog by branch
+    // (src/interface/ui/results_screen.cpp); popup_dialog traces
+    // "<title>: <message>" under TESTING, so the chosen text IS observable.
+    // Without these counts the branch table could pick the wrong ending --
+    // or pop nothing at all -- and this case would stay green.
+    const SaveData& ending_save = og::runtime::current_session->myscreen_->save_data;
+    const bool scenario_done =
+        ending_save.is_level_completed(ending_save.scen_num);
+    trace_clear();
     show_ending_popup(1, -1);
     show_ending_popup(1, 3);
     show_ending_popup(SCEN_TYPE_SAVE_ALL, 2);
     show_ending_popup(0, 2);
+
+    EXPECT_EQ(1, count_popup_traces("Defeat!: YOUR MEN ARE CRUSHED!"))
+        << "ending 1 with no next level is the generic defeat";
+    EXPECT_EQ(1, count_popup_traces("Retreat!: Retreating to"))
+        << "ending 1 with a next level retreats to it";
+    EXPECT_EQ(1,
+              count_popup_traces("YOU FAILED TO KEEP YOUR ALLY ALIVE"))
+        << "SCEN_TYPE_SAVE_ALL names the ally the player lost";
+    EXPECT_EQ(1, count_popup_traces(scenario_done
+                                        ? "Traveling on...: Moving on to"
+                                        : "Victory!: You have won the battle!"))
+        << "the win branch depends on whether this scenario was already "
+           "completed";
+    EXPECT_EQ(4, count_popup_traces(""))
+        << "exactly one dialog per ending, no more and no fewer";
 
     // Keep picker exit deterministic in headless CI while still exercising setup paths.
     char old_end = og::runtime::current_session->myscreen_->world().end;
@@ -812,9 +817,20 @@ TEST(CampaignAndLevelPicker, campaign_picker_cancel_esc_does_not_crash)
     ASSERT_TRUE(canceled.id.empty()) << "campaign picker early-exit should return empty campaign id";
 }
 
+// The exerciser renders each metadata arm and compares the detail pane's
+// three text bands, byte for byte, against a script of the EXACT strings
+// CampaignEntry::draw must write at the exact coordinates and colours
+// (tests/coverage_internal/campaign_picker_internal.inc). Non-zero return
+// codes: 2 = no render surface, 12 = the pinned Thanks budget moved,
+// 10*N+1 = arm N's bands differ from the script, 10*N+2 = arm N's script
+// inked nothing. Arm 1 is the unmet suggested power (RED), arm 2 the unrated
+// / power-less shape, arm 3 the suggested-alone shape, arm 4 the MET power
+// (LIGHT_GREEN).
 TEST(CampaignAndLevelPicker, campaign_entry_draws_real_metadata_states)
 {
-    EXPECT_EQ(0, campaign_picker_testing_exercise_entry_draw_paths());
+    EXPECT_EQ(0, campaign_picker_testing_exercise_entry_draw_paths())
+        << "the detail pane must ink exactly the metadata rows its state calls "
+           "for";
 }
 
 
@@ -887,13 +903,27 @@ TEST(CampaignAndLevelPicker, campaign_picker_mouse_choose_and_cancel_paths)
     WorldEndGuard end_guard(end);
     end = 0;
 
+    // pick_campaign starts its list cursor on the campaign that was mounted
+    // at entry (campaign_picker.cpp: old_campaign_id, then the cursor loop),
+    // and OK returns ensure_entry(cursor)->id. The injector clicks no row, so
+    // OK must hand back EXACTLY the mounted campaign -- not row 0, not the
+    // last row, not a stale entry.
+    std::list<std::string> select_order = list_campaigns();
+    og::ui::order_campaigns_for_select(select_order);
+    ASSERT_GT(select_order.size(), 1u)
+        << "this pin needs a shelf whose second row differs from row 0";
+    const std::string highlighted = *std::next(select_order.begin());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(highlighted));
     ScopedSdlThread choose_thread(
         SDL_CreateThread(picker_choose_injector, "picker_choose", nullptr));
     ASSERT_TRUE(choose_thread.valid()) << "failed to create choose injector";
     CampaignResult chosen = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     const int choose_rc = choose_thread.join();
     ASSERT_EQ(0, choose_rc);
-    ASSERT_TRUE(!chosen.id.empty()) << "choose path should return a selected campaign id";
+    ASSERT_EQ(highlighted, chosen.id)
+        << "OK must choose the highlighted (mounted) campaign -- the cursor "
+           "opens on it -- not row 0 and not a stale entry";
     // Ensure later tests run against the baseline default campaign that has scenarios.
     ASSERT_TRUE(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None) << "failed to restore mounted campaign after choose path";
 
@@ -914,7 +944,8 @@ TEST(CampaignAndLevelPicker, campaign_picker_mouse_choose_and_cancel_paths)
 }
 
 
-TEST(CampaignAndLevelPicker, campaign_picker_delete_and_reset_prompt_paths)
+TEST(CampaignAndLevelPicker,
+     campaign_picker_delete_and_reset_ask_first_and_a_refusal_changes_nothing)
 {
     cleanup_leftover_test_campaigns();
 
@@ -931,6 +962,38 @@ TEST(CampaignAndLevelPicker, campaign_picker_delete_and_reset_prompt_paths)
     WorldEndGuard end_guard(end);
     end = 0;
 
+    // A REFUSED destructive control must (a) actually ASK, in its own words,
+    // and (b) change nothing. An empty override queue makes
+    // yes_no_prompt_impl return the prompt's own default -- false for both
+    // controls -- which also short-circuits the second "Are you really
+    // sure?" prompt (src/interface/ui/picker_dialogs.cpp). The guard makes
+    // sure no queued 'true' from another case can turn these arms
+    // destructive.
+    YesNoQueueGuard yes_no_queue;
+    CampaignMountGuard mount_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"))
+        << "the cursor must open on a real shelf row";
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const auto saved_completed_levels = save.completed_levels;
+    struct CompletedLevelsRestore
+    {
+        SaveData& save;
+        std::map<std::string, std::set<int>> completed;
+        ~CompletedLevelsRestore()
+        {
+            save.completed_levels = std::move(completed);
+        }
+    } completed_restore{save, saved_completed_levels};
+    save.add_level_completed("gladiator", 1);
+    save.add_level_completed("gladiator", 2);
+    const int completed_before = save.get_num_levels_completed("gladiator");
+    ASSERT_EQ(2, completed_before) << "the refused reset needs progress to keep";
+
+    const std::list<std::string> campaigns_before = list_campaigns();
+
+    trace_clear();
     ScopedSdlThread delete_thread(SDL_CreateThread(
         campaign_delete_then_cancel_injector,
         "picker_delete_cancel", nullptr));
@@ -940,8 +1003,19 @@ TEST(CampaignAndLevelPicker, campaign_picker_delete_and_reset_prompt_paths)
     const int delete_rc = delete_thread.join();
     ASSERT_EQ(0, delete_rc);
     ASSERT_TRUE(after_delete_prompt.id.empty()) << "delete+cancel path should return empty campaign id";
+    EXPECT_EQ(1, count_trace_in(
+                     "confirm",
+                     "Delete campaign: Delete this campaign permanently?"))
+        << "DELETE must raise its own confirmation, exactly once";
+    EXPECT_EQ(0, count_trace_in("confirm", "Are you really sure?"))
+        << "the default NO must short-circuit the second prompt";
+    EXPECT_EQ(campaigns_before, list_campaigns())
+        << "a refused delete removes no package";
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "no queued answer may be left behind for the next arm";
 
     input_guard.reset();
+    trace_clear();
     ScopedSdlThread reset_thread(SDL_CreateThread(
         campaign_reset_then_cancel_injector,
         "picker_reset_cancel", nullptr));
@@ -951,7 +1025,13 @@ TEST(CampaignAndLevelPicker, campaign_picker_delete_and_reset_prompt_paths)
     const int reset_rc = reset_thread.join();
     ASSERT_EQ(0, reset_rc);
     ASSERT_TRUE(after_reset_prompt.id.empty()) << "reset+cancel path should return empty campaign id";
-
+    EXPECT_EQ(1, count_trace_in("confirm",
+                                "Reset campaign: Reset your progress"))
+        << "RESET must raise its own confirmation, exactly once";
+    EXPECT_EQ(0, count_trace_in("confirm", "Are you really sure?"))
+        << "the default NO must short-circuit the second prompt";
+    EXPECT_EQ(completed_before, save.get_num_levels_completed("gladiator"))
+        << "a refused reset keeps the campaign's progress";
 }
 
 TEST(CampaignAndLevelPicker, campaign_picker_next_and_prev_reach_ordered_boundaries)
@@ -1285,7 +1365,8 @@ TEST(CampaignAndLevelPicker, level_picker_cancel_esc_returns_default)
 }
 
 
-TEST(CampaignAndLevelPicker, level_picker_choose_and_delete_prompt_paths)
+TEST(CampaignAndLevelPicker,
+     level_picker_returns_the_clicked_row_and_a_refused_delete_keeps_it)
 {
     ViewportGuard guard;
     og::runtime::current_session->window_w_ = 320;
@@ -1298,19 +1379,45 @@ TEST(CampaignAndLevelPicker, level_picker_choose_and_delete_prompt_paths)
     char old_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    SDL_Thread* choose_thread = SDL_CreateThread(level_picker_choose_injector, "level_picker_choose", nullptr);
+    // pick_level returns level_list[current_level_index + selected_entry]
+    // (src/interface/ui/level_picker.cpp), with the window opening on the
+    // default level's index. So OK after clicking ROW 1 must hand back the
+    // SECOND listed level -- `chosen > 0` was satisfied by the untouched
+    // default (pick_level returns default_level on any non-choose exit).
+    const std::vector<int> levels = list_levels_v();
+    ASSERT_GT(levels.size(), 1u)
+        << "this pin needs a second preview row distinct from the default";
+    const int default_level = levels.front();
+
+    level_picker_testing_input_reset();
+    SDL_Thread* choose_thread = SDL_CreateThread(level_picker_choose_second_row_injector, "level_picker_choose", nullptr);
     ASSERT_TRUE(choose_thread != nullptr) << "failed to create level picker choose injector";
-    int chosen = pick_level(og::runtime::current_session->myscreen_, 1, false);
+    int chosen = pick_level(og::runtime::current_session->myscreen_, default_level, false);
     int choose_rc = 0;
     SDL_WaitThread(choose_thread, &choose_rc);
-    ASSERT_TRUE(chosen > 0) << "choose path should return a valid level id";
+    ASSERT_EQ(0, choose_rc) << "every choose click must be acknowledged";
+    ASSERT_EQ(levels[1], chosen)
+        << "OK must return the clicked preview row's level id, not the "
+           "untouched default";
 
-    SDL_Thread* delete_thread = SDL_CreateThread(level_picker_delete_then_cancel_injector, "level_picker_delete_cancel", nullptr);
+    // The refused DELETE: it must ASK (the prompt is trace-only under
+    // TESTING and its words are the contract), and remove nothing. The empty
+    // override queue answers the prompt's own default, false.
+    YesNoQueueGuard yes_no_queue;
+    level_picker_testing_input_reset();
+    trace_clear();
+    SDL_Thread* delete_thread = SDL_CreateThread(level_picker_delete_once_then_cancel_injector, "level_picker_delete_cancel", nullptr);
     ASSERT_TRUE(delete_thread != nullptr) << "failed to create level picker delete injector";
-    int canceled_after_delete_prompt = pick_level(og::runtime::current_session->myscreen_, 1, true);
+    int canceled_after_delete_prompt = pick_level(og::runtime::current_session->myscreen_, default_level, true);
     int delete_rc = 0;
     SDL_WaitThread(delete_thread, &delete_rc);
-    ASSERT_EQ(1, canceled_after_delete_prompt) << "delete prompt + cancel should keep default level";
+    ASSERT_EQ(0, delete_rc) << "every delete-arm click must be acknowledged";
+    ASSERT_EQ(default_level, canceled_after_delete_prompt) << "delete prompt + cancel should keep default level";
+    EXPECT_EQ(1, count_trace_in("confirm",
+                                "Delete level: Delete this level permanently?"))
+        << "DELETE must raise its own confirmation, exactly once";
+    EXPECT_EQ(levels, list_levels_v())
+        << "a refused delete removes no level";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
 }

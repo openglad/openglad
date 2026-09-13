@@ -3892,10 +3892,29 @@ TEST(MenuLayout, networking_session_copy_fits_within_panel_frame)
              waiting_w, mytext.sizey, "waiting line");
     }
 
-    // The KICKED toast budget: 44 chars of 6px centered at 160 stay inside
-    // the frame's inner face.
-    fits(160 - (44 * 6) / 2, PICKER_NETWORKING_ROOMS_HEADER_Y, 44 * 6,
-         mytext.sizey, "toast budget");
+    // The KICKED toast budget. picker.cpp's show_toast clamps the message to
+    // 44 characters and the content pass draws it centred at 160 on the LAST
+    // row of the instruction band -- instruction_y + instruction_height -
+    // mytext.sizey (src/interface/ui/picker.cpp). Derive that row from the
+    // live JOIN button and the real instruction lines, exactly as the sibling
+    // networking_content_fits_within_panel_frame does, and measure the
+    // worst-case clamped line with the real font metrics instead of assuming
+    // 6px glyphs.
+    button* buttons = picker_networking_buttons();
+    ASSERT_NE(nullptr, buttons);
+    const auto instruction_lines = og::ui::networking_menu_instruction_lines();
+    const int toast_pitch = mytext.sizey + 1;
+    const int instruction_height =
+        instruction_lines.empty()
+            ? 0
+            : mytext.sizey +
+                  static_cast<int>(instruction_lines.size() - 1) * toast_pitch;
+    const int instruction_y = buttons[kNetworkingMenuJoinIndex].y -
+        PICKER_NETWORKING_INSTRUCTION_GAP - instruction_height;
+    const int toast_y = instruction_y + instruction_height - mytext.sizey;
+    const std::string widest_toast(44, 'W');
+    const int toast_w = mytext.query_width(widest_toast);
+    fits(160 - toast_w / 2, toast_y, toast_w, mytext.sizey, "toast budget");
 }
 
 

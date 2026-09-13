@@ -2602,6 +2602,38 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     EXPECT_TRUE(state.second_window)
         << "the pager pages the docket IN PLACE, never onto a new screen";
     EXPECT_TRUE(state.wrapped_home) << "and back again";
+
+    // ...and COUNTS itself. state.pager_shown only proves the two arrows
+    // exist; the gutter strip under them prints
+    // ActionsLayout::page.indicator() for every multi-page band of 2+ units
+    // (src/interface/ui/menu_screen_specs.cpp, the docket-pager gutter
+    // loop). Compose the same docket the flow just paged and pin the count
+    // that strip has to ink -- without this, deleting the strip (the very
+    // thing the comment above kPagedDocketScript says two bare arrows cannot
+    // replace) left every expectation above green.
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    og::ui::CampaignZoneSession::ActionsLayout band = zone.actions()[0];
+    EXPECT_EQ(2, band.units) << "weight 2 buys a two-row band";
+    EXPECT_EQ(5u, band.rows.size()) << "all five authored rows are carried";
+    ASSERT_TRUE(band.page.multi_page())
+        << "five rows in a two-row window overflow";
+    EXPECT_EQ(3, band.page.page_count())
+        << "five rows across a two-row window is three pages";
+    EXPECT_EQ(std::string("1/3"), band.page.indicator())
+        << "the gutter must open on page one of three";
+    ASSERT_TRUE(band.page.step(1));
+    EXPECT_EQ(std::string("2/3"), band.page.indicator())
+        << "one NEXT moves the printed count with the window";
+    ASSERT_TRUE(band.page.step(1));
+    EXPECT_EQ(std::string("3/3"), band.page.indicator());
+    EXPECT_FALSE(band.page.step(1))
+        << "the count saturates on the last page instead of wrapping";
 }
 
 namespace {
