@@ -241,6 +241,17 @@ TEST_F(CampaignMetadataTest, cache_survives_repeat_calls_and_clear)
     const std::string title_first = og::data::campaign_display_title(kModesId);
     const std::string scen_first = og::data::scenario_display_name(1);
 
+    // Anchor both first reads to real content before comparing them to
+    // themselves: without this, a lookup that always returned the raw id (or
+    // always "1. Level 1") satisfied every ASSERT_EQ below.
+    ASSERT_EQ("Multiplayer Game Modes", title_first)
+        << "the unmounted-campaign private mount must serve the real title";
+    const std::string scen1_title = og::data::load_scenario_title("scen1");
+    ASSERT_NE("none", scen1_title);
+    ASSERT_FALSE(scen1_title.empty());
+    ASSERT_EQ(std::format("1. {}", scen1_title), scen_first)
+        << "the scenario name is the mounted campaign's scen1.fss title";
+
     // Memoized second call.
     ASSERT_EQ(title_first, og::data::campaign_display_title(kModesId));
     ASSERT_EQ(scen_first, og::data::scenario_display_name(1));
@@ -299,14 +310,21 @@ TEST_F(CampaignMetadataTest, accessible_levels_and_the_gate)
     // twice and the answers agree).
     save.add_level_completed(kGladiatorId, 1);
     frontier = og::data::accessible_levels(save);
-    EXPECT_GT(frontier.size(), 2u)
-        << "cleared level 1 should contribute at least one exit";
+    EXPECT_EQ((std::vector<int>{1, 2, 3, 11}), frontier)
+        << "clearing gladiator level 1 opens exactly its two exits "
+           "(scen1.fss FAMILY_EXIT destinations 2 and 11) beside the entry "
+           "level and the cursor";
+    EXPECT_TRUE(og::data::level_selection_allowed(save, 2));
+    EXPECT_TRUE(og::data::level_selection_allowed(save, 11));
     EXPECT_EQ(frontier, og::data::accessible_levels(save));
 
     // A completed id no scenario backs stays accessible (replay contract)
-    // and its failed scan is harmless.
+    // and its failed scan is harmless: it adds itself and NOTHING else.
     save.add_level_completed(kGladiatorId, 9999);
     EXPECT_TRUE(og::data::level_selection_allowed(save, 9999));
+    EXPECT_EQ((std::vector<int>{1, 2, 3, 11, 9999}),
+              og::data::accessible_levels(save))
+        << "a level that will not load contributes no exits";
 
     // The versus campaign never gates, earned or not.
     save.current_campaign = kModesId;

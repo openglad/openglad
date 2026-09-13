@@ -141,11 +141,14 @@ TEST(LevelDataUnit, level_data_remove_and_remaining_foes_paths)
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
 
     const short foes_before = remaining_foes(fx.level, self);
-    ASSERT_TRUE(foes_before >= 1);
+    ASSERT_EQ(1, (int)foes_before)
+        << "the team-1 orc is the only unfriendly living walker; the actor "
+           "itself must never be counted";
 
     ASSERT_TRUE(fx.level.remove_ob(foe) == 1);
     const short foes_after = remaining_foes(fx.level, self);
-    ASSERT_TRUE(foes_after <= foes_before);
+    ASSERT_EQ(0, (int)foes_after)
+        << "removing the only foe must empty the count, not merely not grow it";
 
     fx.level.delete_objects();
     ASSERT_TRUE(fx.level.world().oblist.empty());
@@ -651,7 +654,14 @@ TEST(LevelDataUnit, level_data_r12_remove_ob_paths_and_zip_api_paths)
     ASSERT_TRUE(fx.level.remove_ob(nullptr) == 0);
 
     ASSERT_TRUE(og::io::unzip_into_with_error("temp/r12_zip/not_there.zip", "temp/r12_zip/out2") == ArchiveIoError::OpenArchiveFailed);
-    (void)og::io::zip_contents_with_error("temp/r12_zip/in", "temp/r12_zip/missing_parent/archive.zip");
+    // A missing input directory is not an error: zip_contents_with_error
+    // reports None and creates NO archive (the empty-source contract).
+    ASSERT_EQ(ArchiveIoError::None,
+              og::io::zip_contents_with_error("temp/r12_zip/in",
+                                             "temp/r12_zip/missing_parent/archive.zip"))
+        << "a missing input directory must report None, not an IO error";
+    ASSERT_FALSE(std::filesystem::exists("temp/r12_zip/missing_parent/archive.zip"))
+        << "nothing to zip must leave no archive behind";
 }
 } // namespace detail_level_data_r12
 
@@ -898,9 +908,12 @@ TEST(LevelDataUnit, level_data_r14_lines_95_99_353_371_378_campaign_description_
     ASSERT_TRUE(c.get_description_line(0) == "No description.");
     ASSERT_TRUE(c.get_description_line(5).empty());
 
-    // Out-of-range from load/save wrappers should remain deterministic without I/O setup.
-    ASSERT_TRUE(c.load_with_error() == c.last_io_error());
-    ASSERT_TRUE(c.save_with_error() == c.last_io_error());
+    // The *_with_error wrappers forward the concrete failure for a campaign
+    // that is not installed: the mount never happens, the unpack never happens.
+    ASSERT_EQ(CampaignData::IoError::PackageMountFailed, c.load_with_error())
+        << "load_with_error must forward the mount failure";
+    ASSERT_EQ(CampaignData::IoError::PackageUnpackFailed, c.save_with_error())
+        << "save_with_error must forward the unpack failure";
 }
 } // namespace detail_level_data_r14
 
@@ -931,9 +944,13 @@ TEST(LevelDataUnit, level_data_r15_campaign_wrappers_and_description_iteration)
     ASSERT_TRUE(c.get_description_line(-1).empty());
     ASSERT_TRUE(c.get_description_line(9).empty());
 
-    (void)c.load_with_error();
-    (void)c.save_with_error();
-    (void)c.save_as_with_error("missing_campaign_r15_copy");
+    ASSERT_EQ(CampaignData::IoError::PackageMountFailed, c.load_with_error())
+        << "an uninstalled campaign cannot be mounted";
+    ASSERT_EQ(CampaignData::IoError::PackageUnpackFailed, c.save_with_error())
+        << "an uninstalled campaign cannot be unpacked for a save";
+    ASSERT_EQ(CampaignData::IoError::PackageUnpackFailed,
+              c.save_as_with_error("missing_campaign_r15_copy"))
+        << "save_as of an uninstalled campaign fails at the same unpack";
 }
 
 TEST(LevelDataUnit, level_data_r15_ctor_hooks_add_paths_and_clear)
@@ -944,8 +961,11 @@ TEST(LevelDataUnit, level_data_r15_ctor_hooks_add_paths_and_clear)
     hooks.create_level_render = make_render;
 
     LevelRuntimeData level_non_headless(9415, &hooks);
+    ASSERT_EQ(1, g_render_calls)
+        << "a non-headless ctor calls create_level_render exactly once";
     LevelRuntimeData level_headless(9416, true, &hooks);
-    ASSERT_TRUE(g_render_calls >= 1);
+    ASSERT_EQ(1, g_render_calls)
+        << "the headless ctor must not create a renderer";
 
     SaveData save;
     std::int32_t freeze = 0;
@@ -957,7 +977,15 @@ TEST(LevelDataUnit, level_data_r15_ctor_hooks_add_paths_and_clear)
     walker* fxob = level_non_headless.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     walker* weap = level_non_headless.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(living && fxob && weap);
-    ASSERT_TRUE(level_non_headless.numobs >= 1);
+    // numobs counts oblist (Living) adds only; the fx and weapon adds land on
+    // their own lists.
+    ASSERT_EQ(1, (int)level_non_headless.numobs)
+        << "add_ob is the only add that bumps numobs";
+    ASSERT_EQ(1u, level_non_headless.world().oblist.size());
+    ASSERT_EQ(1u, level_non_headless.world().fxlist.size())
+        << "add_fx_ob must append to fxlist";
+    ASSERT_EQ(1u, level_non_headless.world().weaplist.size())
+        << "add_weap_ob must append to weaplist";
 
     level_non_headless.world().title = "Mutated";
     level_non_headless.world().type = 7;
