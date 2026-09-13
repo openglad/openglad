@@ -413,9 +413,38 @@ TEST(TextRender, buffered_write_char_xy_paints_one_ramped_glyph)
 // text::write_xy_shadow
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_write_xy_shadow_color)
+// The results screen's headings and every HUD counter drawn over terrain use
+// write_xy_shadow to stay legible: write_formatted lays each glyph down
+// twice, first in PURE_BLACK+2 at (x-1, y+1) and then in the caller's colour
+// at (x, y), and reports len * (sizex + 1) so the caller can append the next
+// run. A dropped shadow pass, a shadow at the wrong offset, a glyph that
+// never lands on top and a wrong advance are each separately visible here.
+TEST(TextRender, write_xy_shadow_lays_black_under_each_glyph_and_reports_the_run_width)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_xy_shadow(50, 50, RED, "Red shadow");
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    ASSERT_LT(font.sizex, 9) << "text_normal is the small monospaced font";
+
+    constexpr Sint32 x = 50;
+    constexpr Sint32 y = 50;
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    const Sint32 advance = font.sizex + 1;
+
+    // "A B" puts the blank space glyph between the two letters, so the two
+    // shadow boxes (each one pixel wider and one taller than the glyph)
+    // cannot overlap and the third glyph's position pins the advance at
+    // pixel level rather than only through the returned width.
+    out->fastbox(x - 4, y - 2, 3 * advance + 8, font.sizey + 6,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(3 * advance, font.write_xy_shadow(x, y, ink, "A B"))
+        << "the shadowed arm reports len * (sizex + 1)";
+    expect_shadowed_glyph_at(out, font, x, y, 'A', ink, background,
+                             "write_xy_shadow first glyph");
+    expect_shadowed_glyph_at(out, font, x + 2 * advance, y, 'B', ink,
+                             background, "write_xy_shadow third glyph");
 }
 
 
@@ -423,15 +452,95 @@ TEST(TextRender, text_write_xy_shadow_color)
 // big text
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_big_write_xy_color)
+// The big font is PROPORTIONAL in the buffered write arm: bytes 65..92 cost
+// sizex, every other byte costs sizex - 1, and the arm returns the total it
+// consumed while each glyph lands at the running offset. The PAUSED banner
+// and the results-screen headings are laid out from that number, so a branch
+// that collapsed to one fixed advance would misplace every letter after the
+// first.
+TEST(TextRender, big_font_buffered_write_xy_charges_uppercase_the_wider_advance)
 {
-    og::runtime::current_session->myscreen_->text_big.write_xy(10, 150, "Big colored", (unsigned char)WHITE);
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& big = out->text_big;
+    ASSERT_NE(nullptr, big.letters);
+    ASSERT_TRUE(big.letters->valid());
+    ASSERT_GE(big.sizex, 9) << "text_big takes the proportional branch";
+
+    constexpr Sint32 x = 10;
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    const Sint32 y_upper = 140;
+    const Sint32 y_mixed = y_upper + big.sizey + 3;
+    const Sint32 y_lower = y_mixed + big.sizey + 3;
+    ASSERT_LE(y_lower + big.sizey, out->canvas_h())
+        << "the three test bands must fit on the canvas";
+
+    // Two uppercase bytes: sizex each, so the second glyph starts at x+sizex.
+    out->fastbox(x, y_upper, 4 * big.sizex, big.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(2 * big.sizex, big.write_xy(x, y_upper, "AB", ink, (short)1))
+        << "bytes 65..92 each cost sizex";
+    expect_glyph_at(out, big, x, y_upper, 'A', ink, background,
+                    GlyphInk::TeamShifted, "big write_xy uppercase first");
+    expect_glyph_at(out, big, x + big.sizex, y_upper, 'B', ink, background,
+                    GlyphInk::TeamShifted, "big write_xy uppercase second");
+
+    // Uppercase then lowercase: sizex + (sizex - 1). The lowercase glyph
+    // still starts at the running offset left by the uppercase one, so its
+    // position pins the ORDER of the advance, not just the sum.
+    out->fastbox(x, y_mixed, 4 * big.sizex, big.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(big.sizex + (big.sizex - 1),
+              big.write_xy(x, y_mixed, "Ab", ink, (short)1))
+        << "a lowercase byte costs sizex - 1";
+    expect_glyph_at(out, big, x, y_mixed, 'A', ink, background,
+                    GlyphInk::TeamShifted, "big write_xy mixed first");
+    expect_glyph_at(out, big, x + big.sizex, y_mixed, 'b', ink, background,
+                    GlyphInk::TeamShifted, "big write_xy mixed second");
+
+    // Three lowercase bytes pack at sizex - 1 each. Their glyph boxes overlap
+    // at that pitch, so only the reported width is pinned for this run.
+    out->fastbox(x, y_lower, 4 * big.sizex, big.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(3 * (big.sizex - 1),
+              big.write_xy(x, y_lower, "abc", ink, (short)1))
+        << "the lowercase advance accumulates once per byte";
 }
 
 
-TEST(TextRender, text_big_write_y)
+// write_y centres on the 320-wide UI raster with the MONOSPACED advance --
+// (320 - len * (sizex + 1)) / 2 -- for every font, the big one included,
+// because it forwards to the direct four-argument write_xy arm. That arm
+// reports 1, not a width. Both halves matter: the dialog headers and the
+// PAUSED banner are centred through here.
+TEST(TextRender, big_font_write_y_centres_with_the_monospaced_advance)
 {
-    og::runtime::current_session->myscreen_->text_big.write_y(160, "Big centered");
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& big = out->text_big;
+    ASSERT_NE(nullptr, big.letters);
+    ASSERT_TRUE(big.letters->valid());
+    ASSERT_GE(big.sizex, 9) << "text_big is the large font";
+
+    constexpr int background = 13;
+    constexpr Sint32 y = 160;
+    const Sint32 advance = big.sizex + 1;
+    const Sint32 centered_x = (320 - 2 * advance) / 2;
+    ASSERT_LE(y + big.sizey, out->canvas_h())
+        << "the test band must fit on the canvas";
+
+    out->fastbox(0, y, 320, big.sizey, static_cast<unsigned char>(background));
+    EXPECT_EQ(1, big.write_y(y, "AB"))
+        << "write_y(y, string) forwards to the direct arm, which reports 1";
+    int at_left_margin = -1;
+    out->get_pixel(0, y + big.sizey / 2, &at_left_margin);
+    EXPECT_EQ(background, at_left_margin)
+        << "a centred run must not start at the left margin";
+    expect_glyph_at(out, big, centered_x, y, 'A',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::Recolored, "big write_y first glyph");
+    expect_glyph_at(out, big, centered_x + advance, y, 'B',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::Recolored, "big write_y second glyph");
 }
 
 // The write arms that go straight to the canvas (no viewscreen, no buffer
