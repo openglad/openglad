@@ -15,14 +15,18 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/core/test_trace.h>
 
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <list>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -49,6 +53,39 @@ walker* add_living(unsigned char team = 0, unsigned char family = FAMILY_SOLDIER
     w->set_real_team_num(255);
     w->set_dead(0);
     w->setxy(100, 100);
+    return w;
+}
+
+// A living with a 1x1 collision box parked at an exact spot. Size first, then
+// setxy: the obmap pile a walker occupies is derived from its size at
+// REGISTRATION time, and obmap::move re-registers only when the coordinates
+// actually change -- so re-placing at (100,100) would keep the default-size
+// registration and smear the walker across neighbouring cells.
+walker* add_sized_living(unsigned char team, short x, short y,
+                         unsigned char family = FAMILY_SOLDIER)
+{
+    walker* w = add_living(team, family);
+    if (!w)
+        return nullptr;
+    w->set_sizex(1);
+    w->set_sizey(1);
+    w->setxy(x, y);
+    return w;
+}
+
+// A 1x1 Treasure in fxlist (the list find_nearest_blood scans).
+walker* add_fx_treasure(unsigned char family, short x, short y)
+{
+    walker* w = og::runtime::current_session->myscreen_->world().add_fx_ob(
+        Order::Treasure, family);
+    if (!w)
+        return nullptr;
+    w->set_team_num(0);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_sizex(1);
+    w->set_sizey(1);
+    w->setxy(x, y);
     return w;
 }
 
@@ -258,153 +295,606 @@ TEST(MassCoverage, screen_query_object_passable_reads_obmap_occupancy) {
 
     reset_level_state();
 }
-TEST(MassCoverage, screen_clear) { og::runtime::current_session->myscreen_->clear(); }
-TEST(MassCoverage, screen_redraw) { (void)og::runtime::current_session->myscreen_->redraw(); }
-TEST(MassCoverage, screen_refresh) { og::runtime::current_session->myscreen_->refresh(); }
+// clear(): the render canvas is blanked AND every live view's legacy
+// videobuffer is zeroed (src/interface/screen.cpp screen::clear -> clearbuffer
+// + viewob[i]->clear(); src/interface/render/view.cpp viewscreen::clear).
+TEST(MassCoverage, screen_clear_blanks_the_canvas_and_every_view_buffer) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->ready_for_battle(1);
 
-TEST(MassCoverage, screen_endgame_one_arg) {
-    const char saved_end = og::runtime::current_session->myscreen_->world().end;
-    og::runtime::current_session->myscreen_->world().end = 1;
-    (void)og::runtime::current_session->myscreen_->endgame(0);
-    og::runtime::current_session->myscreen_->world().end = saved_end;
+    s->point(5, 5, RED);
+    int painted = -1;
+    s->get_pixel(5, 5, &painted);
+    ASSERT_EQ(static_cast<int>(RED), painted)
+        << "setup: the probe pixel must be painted before clear() is asked to blank it";
+
+    std::span<unsigned char> buf = s->getbuffer();
+    ASSERT_LT(std::size_t{100}, buf.size()) << "setup: the legacy videobuffer must be allocated";
+    buf[100] = 42;
+
+    s->clear();
+
+    painted = -1;
+    s->get_pixel(5, 5, &painted);
+    ASSERT_EQ(0, painted) << "clear() must blank the render canvas";
+    ASSERT_EQ(0, static_cast<int>(s->getbuffer()[100]))
+        << "clear() must run viewob[i]->clear() and zero the legacy videobuffer";
 }
 
-TEST(MassCoverage, screen_endgame_two_args) {
-    const char saved_end = og::runtime::current_session->myscreen_->world().end;
-    og::runtime::current_session->myscreen_->world().end = 1;
-    (void)og::runtime::current_session->myscreen_->endgame(0, -1);
-    og::runtime::current_session->myscreen_->world().end = saved_end;
+// redraw(): composes a world frame and runs the per-view chrome pass, which
+// frames every non-FULL view (src/interface/screen.cpp screen::redraw ->
+// draw_panel_chrome, TRACE("hud", "panel_border view=%d")).
+TEST(MassCoverage, screen_redraw_runs_the_panel_chrome_pass) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->ready_for_battle(1);
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+
+    s->viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_PANELS;
+    trace_clear();
+    ASSERT_TRUE(s->redraw()) << "redraw must report a composed frame";
+    ASSERT_TRUE(trace_contains("hud", "panel_border view=0"))
+        << "redraw must frame the non-FULL view 0";
+
+    s->viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_FULL;
+    trace_clear();
+    ASSERT_TRUE(s->redraw()) << "redraw must report a composed frame";
+    ASSERT_FALSE(trace_contains("hud", "panel_border view=0"))
+        << "a FULL view carries no frame";
 }
 
-TEST(MassCoverage, screen_find_near_foe) {
+// refresh(): presents the composed canvas exactly once, and presents nothing at
+// all when there is no view to compose (src/interface/screen.cpp
+// screen::refresh; a present clears window_is_black_ in Screen::swap).
+TEST(MassCoverage, screen_refresh_presents_the_canvas_and_skips_when_no_views) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->ready_for_battle(1);
+    ASSERT_TRUE(s->window_is_black())
+        << "setup: every integration test starts from a black window";
+
+    const short saved_numviews = s->numviews;
+    s->numviews = 0;
+    s->refresh();
+    ASSERT_TRUE(s->window_is_black()) << "refresh with no views must present nothing";
+    s->numviews = saved_numviews;
+
+    ASSERT_LT(0, static_cast<int>(s->numviews)) << "setup: at least one view must exist";
+    s->clearbuffer();
+    s->draw_rect_filled(0, 0, 40, 40, WHITE, 255);
+    s->refresh();
+    ASSERT_FALSE(s->window_is_black()) << "refresh must present the composed canvas";
+}
+
+// endgame(ending) forwards to endgame(ending, -1), which returns 1 immediately
+// when world.end is already set: no results screen, no win fold
+// (src/interface/screen.cpp screen::endgame).
+TEST(MassCoverage, screen_endgame_one_arg_short_circuits_on_an_ended_world) {
+    screen* s = og::runtime::current_session->myscreen_;
+    const char saved_end = s->world().end;
+    s->world().end = 1;
+
+    ASSERT_EQ(1, static_cast<int>(s->endgame(0)))
+        << "endgame on an already-ended world must report handled";
+    ASSERT_EQ(1, static_cast<int>(s->world().end))
+        << "the short circuit must leave the world.end guard set";
+
+    s->world().end = saved_end;
+}
+
+TEST(MassCoverage, screen_endgame_two_args_short_circuits_without_touching_save_state) {
+    screen* s = og::runtime::current_session->myscreen_;
+    const char saved_end = s->world().end;
+    const short saved_scen = s->save_data.scen_num;
+    s->world().end = 1;
+
+    ASSERT_EQ(1, static_cast<int>(s->endgame(0, -1)))
+        << "endgame on an already-ended world must report handled";
+    ASSERT_EQ(1, static_cast<int>(s->world().end))
+        << "the short circuit must leave the world.end guard set";
+    ASSERT_EQ(static_cast<int>(saved_scen), static_cast<int>(s->save_data.scen_num))
+        << "the short circuit must not advance the campaign cursor";
+
+    s->world().end = saved_end;
+}
+
+// find_near_foe(ob): nullptr for a null searcher; otherwise an obmap spiral
+// around the searcher's OWN floor that starts one cell out -- a foe sharing the
+// searcher's cell is invisible to it -- and only falls back to the full-list
+// find_far_foe scan once the spiral leaves the map
+// (src/gameplay/game_world.cpp GameWorld::find_near_foe).
+TEST(MassCoverage, screen_find_near_foe_returns_the_obmap_spiral_hit) {
     reset_level_state();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    ASSERT_NE(nullptr, world.myobmap.get()) << "setup: the collision map must exist";
+    // The spiral abandons itself to find_far_foe the moment it steps off the
+    // map, so the arena has to be wider than its first probe at x=132.
+    world.create_new_grid();
+    ASSERT_LT(132, world.pixmaxx) << "setup: the map must outreach the spiral's first probe";
+
+    ASSERT_EQ(nullptr, world.find_near_foe(nullptr)) << "a null searcher has no foe";
+
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->world().find_near_foe(w);
+    ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
+    ASSERT_EQ(nullptr, world.find_near_foe(w)) << "an empty level has no foe";
+
+    walker* ally = add_sized_living(0, 140, 100);
+    ASSERT_NE(nullptr, ally) << "setup: the ally must exist";
+    ASSERT_EQ(nullptr, world.find_near_foe(w)) << "a same-team walker is never a foe";
+
+    // (140,100) is the very first cell the spiral probes; (101,100) shares the
+    // searcher's own cell, which the spiral steps over and never probes. So the
+    // two functions must disagree here, and that disagreement is the only proof
+    // the spiral ran at all (find_near_foe falls back to find_far_foe).
+    walker* spiral_foe = add_sized_living(1, 140, 100, FAMILY_ORC);
+    ASSERT_NE(nullptr, spiral_foe) << "setup: the spiral foe must exist";
+    walker* own_cell_foe = add_sized_living(1, 101, 100, FAMILY_ORC);
+    ASSERT_NE(nullptr, own_cell_foe) << "setup: the own-cell foe must exist";
+
+    ASSERT_EQ(spiral_foe, world.find_near_foe(w))
+        << "find_near_foe must answer from the obmap spiral, not the full-list scan";
+    ASSERT_EQ(own_cell_foe, world.find_far_foe(w))
+        << "control: the full-list scan does see the closer own-cell foe";
+
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_find_far_foe) {
+// find_far_foe(ob): despite the name, the full-list scan returns the CLOSEST
+// non-friendly, live, non-dormant Living/Generator -- the minimum of
+// distance_to_ob -- and nullptr when there is none; it also stamps the 10000
+// sentinel on the searcher (src/gameplay/game_world.cpp GameWorld::find_far_foe).
+TEST(MassCoverage, screen_find_far_foe_scans_the_list_for_the_closest_live_foe) {
     reset_level_state();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    ASSERT_EQ(nullptr, world.find_far_foe(nullptr)) << "a null searcher has no foe";
+
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->world().find_far_foe(w);
+    ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
+    ASSERT_EQ(nullptr, world.find_far_foe(w)) << "an empty level has no foe";
+
+    walker* distant_foe = add_sized_living(1, 200, 100, FAMILY_ORC);
+    ASSERT_NE(nullptr, distant_foe) << "setup: the distant foe must exist";
+    ASSERT_EQ(distant_foe, world.find_far_foe(w)) << "the only foe must be returned";
+
+    walker* close_foe = add_sized_living(1, 110, 100, FAMILY_ORC);
+    ASSERT_NE(nullptr, close_foe) << "setup: the close foe must exist";
+    ASSERT_EQ(close_foe, world.find_far_foe(w))
+        << "the scan keeps the smallest distance_to_ob, not the largest";
+    ASSERT_EQ(10000u, w->stats()->last_distance())
+        << "the scan stamps the 10000 sentinel on the searcher";
+
+    close_foe->set_dormant(true);
+    ASSERT_EQ(distant_foe, world.find_far_foe(w)) << "a dormant foe is skipped";
+    close_foe->set_dormant(false);
+
+    close_foe->set_dead(1);
+    ASSERT_EQ(distant_foe, world.find_far_foe(w)) << "a dead foe is skipped";
+
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_set_scen_title_with_error) {
-    std::string out;
-    (void)og::runtime::current_session->myscreen_->get_scen_title_with_error(nullptr, out);
+// get_scen_title_with_error(filename, out): an unloadable scenario reports a
+// typed error and leaves the caller's string at "none" -- it never keeps the
+// caller's previous value (src/interface/screen.cpp
+// screen::get_scen_title_with_error -> og::data::load_scenario_title_with_error).
+TEST(MassCoverage, screen_get_scen_title_with_error_reports_open_failure_and_the_none_fallback) {
+    screen* s = og::runtime::current_session->myscreen_;
+
+    std::string out = "left over from the caller";
+    ASSERT_EQ(screen::ScenarioTitleError::OpenReadFailed,
+              s->get_scen_title_with_error(nullptr, out))
+        << "a null filename cannot be opened";
+    ASSERT_EQ("none", out) << "the out-parameter must be reset to the none fallback";
+
+    out = "left over from the caller";
+    ASSERT_EQ(screen::ScenarioTitleError::OpenReadFailed,
+              s->get_scen_title_with_error("missing_mass_scen", out))
+        << "a missing scenario file cannot be opened";
+    ASSERT_EQ("none", out) << "the out-parameter must be reset to the none fallback";
 }
 
-TEST(MassCoverage, screen_get_scen_title) {
-    (void)og::runtime::current_session->myscreen_->get_scen_title("missing_mass_scen", og::runtime::current_session->myscreen_);
+// get_scen_title(filename, master): the char* form hands back "none" whenever
+// the title could not be loaded (src/interface/screen.cpp screen::get_scen_title).
+TEST(MassCoverage, screen_get_scen_title_returns_the_none_fallback_for_a_missing_scenario) {
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_STREQ("none", s->get_scen_title("missing_mass_scen", s))
+        << "a missing scenario must read back as the none fallback";
+    ASSERT_STREQ("none", s->get_scen_title(nullptr, s))
+        << "a null filename must read back as the none fallback";
 }
 
-TEST(MassCoverage, screen_first_of) {
+// first_of(order, family, team): the first LIVE walker matching order+family,
+// with team -1 meaning any team (src/interface/screen.cpp screen::first_of).
+TEST(MassCoverage, screen_first_of_matches_order_family_and_team) {
     reset_level_state();
-    (void)add_living(0);
-    (void)og::runtime::current_session->myscreen_->first_of(Order::Living, FAMILY_SOLDIER, 0);
+    screen* s = og::runtime::current_session->myscreen_;
+
+    walker* w = add_living(0);
+    ASSERT_NE(nullptr, w) << "setup: the soldier must exist";
+
+    ASSERT_EQ(w, s->first_of(Order::Living, FAMILY_SOLDIER, 0))
+        << "the team-0 soldier must be found on its own team";
+    ASSERT_EQ(w, s->first_of(Order::Living, FAMILY_SOLDIER, -1))
+        << "team -1 must match any team";
+    ASSERT_EQ(nullptr, s->first_of(Order::Living, FAMILY_SOLDIER, 1))
+        << "another team must not match";
+    ASSERT_EQ(nullptr, s->first_of(Order::Living, FAMILY_ORC, 0))
+        << "another family must not match";
+    ASSERT_EQ(nullptr, s->first_of(Order::Weapon, FAMILY_SOLDIER, 0))
+        << "another order must not match";
+
+    w->set_dead(1);
+    ASSERT_EQ(nullptr, s->first_of(Order::Living, FAMILY_SOLDIER, 0))
+        << "a dead walker must not be returned";
+
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_draw_panels) { og::runtime::current_session->myscreen_->draw_panels(1); }
-TEST(MassCoverage, screen_draw_panels_multiview_border_path) {
+// draw_panels(n): clears the buffer and redraws, so the per-view chrome pass
+// runs (src/interface/screen.cpp screen::draw_panels -> redraw ->
+// draw_panel_chrome).
+TEST(MassCoverage, screen_draw_panels_repaints_through_redraw) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->ready_for_battle(1);
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+    s->viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_PANELS;
+
+    trace_clear();
+    s->draw_panels(1);
+    ASSERT_TRUE(trace_contains("hud", "panel_border view=0"))
+        << "draw_panels must repaint through redraw's chrome pass";
+}
+
+// draw_panel_chrome frames every view whose PREF_VIEW is not FULL (and skips
+// the whole pass at four views) -- src/interface/screen.cpp
+// screen::draw_panel_chrome, TRACE("hud", "panel_border view=%d").
+TEST(MassCoverage, screen_draw_panels_frames_every_non_full_view) {
     screen* s = og::runtime::current_session->myscreen_;
     s->ready_for_battle(2);
-    ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr) << "two views should exist";
-    if (s->viewob[0] && s->viewob[1]) {
-        s->viewob[0]->resize(PREF_VIEW_PANELS);
-        s->viewob[1]->resize(PREF_VIEW_1);
-        s->draw_panels(2);
-    }
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+    ASSERT_NE(nullptr, s->viewob[1].get()) << "setup: view 1 must exist";
+
+    s->viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_PANELS;
+    s->viewob[1]->prefs[PREF_VIEW] = PREF_VIEW_1;
+    trace_clear();
+    s->draw_panels(2);
+    ASSERT_TRUE(trace_contains("hud", "panel_border view=0"))
+        << "a PANELS view must be framed";
+    ASSERT_TRUE(trace_contains("hud", "panel_border view=1"))
+        << "a split view must be framed";
+
+    s->viewob[1]->prefs[PREF_VIEW] = PREF_VIEW_FULL;
+    trace_clear();
+    s->draw_panels(2);
+    ASSERT_TRUE(trace_contains("hud", "panel_border view=0"))
+        << "the non-FULL view must still be framed";
+    ASSERT_FALSE(trace_contains("hud", "panel_border view=1"))
+        << "a FULL view must not be framed";
+
     s->reset(1);
 }
-TEST(MassCoverage, screen_find_nearest_blood) { (void)og::runtime::current_session->myscreen_->world().find_nearest_blood(nullptr); }
 
-TEST(MassCoverage, screen_find_in_range) {
+// find_nearest_blood(who): nullptr for a null walker, otherwise the closest
+// LIVE FAMILY_STAIN Treasure in fxlist whose squared centre distance is under
+// 800 (src/gameplay/game_world.cpp GameWorld::find_nearest_blood).
+TEST(MassCoverage, screen_find_nearest_blood_picks_the_closest_stain_in_range) {
     reset_level_state();
-    Sint32 n = 0;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    ASSERT_EQ(nullptr, world.find_nearest_blood(nullptr)) << "a null walker has no blood";
+
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 32, &n, w);
+    ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
+    w->set_sizex(1);
+    w->set_sizey(1);
+    ASSERT_EQ(nullptr, world.find_nearest_blood(w)) << "an empty level has no blood";
+
+    ASSERT_NE(nullptr, add_fx_treasure(FAMILY_LIFE_GEM, 100, 100))
+        << "setup: the decoy treasure must exist";
+    ASSERT_EQ(nullptr, world.find_nearest_blood(w))
+        << "only FAMILY_STAIN treasures count as blood";
+
+    // 1x1 boxes make distance_to_ob_center the exact squared delta: 20*20=400
+    // and 5*5=25 are both inside the 800 search radius.
+    walker* far_stain = add_fx_treasure(FAMILY_STAIN, 120, 100);
+    ASSERT_NE(nullptr, far_stain) << "setup: the far stain must exist";
+    walker* near_stain = add_fx_treasure(FAMILY_STAIN, 105, 100);
+    ASSERT_NE(nullptr, near_stain) << "setup: the near stain must exist";
+    ASSERT_EQ(near_stain, world.find_nearest_blood(w)) << "the closest stain must win";
+
+    near_stain->set_dead(1);
+    ASSERT_EQ(far_stain, world.find_nearest_blood(w)) << "a dead stain is skipped";
+
+    // 29*29 = 841, just outside the radius.
+    far_stain->setxy(129, 100);
+    ASSERT_EQ(nullptr, world.find_nearest_blood(w))
+        << "a stain past the 800 radius must be ignored";
+
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_find_nearest_player) {
+// find_in_range(list, range, &n, ob): every live, non-dormant walker within
+// range (the searcher included), counted into n; empty with n=0 for a null
+// searcher (src/gameplay/game_world.cpp GameWorld::find_in_range).
+TEST(MassCoverage, screen_find_in_range_counts_every_live_walker_within_range) {
     reset_level_state();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    Sint32 n = 9;
+    std::list<walker*> found = world.find_in_range(world.oblist, 32, &n, nullptr);
+    ASSERT_EQ(0, n) << "a null searcher must write a zero count";
+    ASSERT_TRUE(found.empty()) << "a null searcher must return nothing";
+
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->world().find_nearest_player(w);
+    ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
+    walker* neighbour = add_sized_living(1, 110, 100, FAMILY_ORC);
+    ASSERT_NE(nullptr, neighbour) << "setup: the neighbour must exist";
+
+    n = 0;
+    found = world.find_in_range(world.oblist, 32, &n, w);
+    ASSERT_EQ(2, n) << "the searcher and the neighbour are both within 32";
+    ASSERT_EQ(std::size_t{2}, found.size()) << "the list must match the count";
+
+    neighbour->setxy(300, 100);
+    n = 0;
+    found = world.find_in_range(world.oblist, 32, &n, w);
+    ASSERT_EQ(1, n) << "only the searcher stays within 32";
+    ASSERT_EQ(w, found.front()) << "the searcher is always in its own range";
+
+    neighbour->setxy(110, 100);
+    neighbour->set_dead(1);
+    n = 0;
+    found = world.find_in_range(world.oblist, 32, &n, w);
+    ASSERT_EQ(1, n) << "a dead walker in range must be excluded";
+
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_find_foes_in_range) {
+// find_nearest_player(ob): the closest non-dormant walker with user() != -1,
+// nullptr when nobody is user-controlled (src/gameplay/game_world.cpp
+// GameWorld::find_nearest_player).
+TEST(MassCoverage, screen_find_nearest_player_picks_the_closest_user_controlled_walker) {
     reset_level_state();
-    Sint32 n = 0;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    ASSERT_EQ(nullptr, world.find_nearest_player(nullptr)) << "a null searcher has no player";
+
     walker* w = add_living(0);
-    (void)add_living(1);
-    (void)og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 64, &n, w);
+    ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
+    ASSERT_EQ(nullptr, world.find_nearest_player(w))
+        << "an uncontrolled level has no nearest player";
+
+    walker* distant_player = add_sized_living(0, 200, 100);
+    ASSERT_NE(nullptr, distant_player) << "setup: the distant player must exist";
+    distant_player->set_user(1);
+    ASSERT_EQ(distant_player, world.find_nearest_player(w))
+        << "the only user-controlled walker must be returned";
+
+    walker* close_player = add_sized_living(0, 120, 100);
+    ASSERT_NE(nullptr, close_player) << "setup: the close player must exist";
+    close_player->set_user(0);
+    ASSERT_EQ(close_player, world.find_nearest_player(w))
+        << "the closest user-controlled walker must win";
+
+    close_player->set_dormant(true);
+    ASSERT_EQ(distant_player, world.find_nearest_player(w))
+        << "a dormant player must be skipped";
+
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_find_friends_in_range) {
+// find_foes_in_range: live, non-dormant Living/Generator walkers the searcher
+// is NOT friendly to, within range (src/gameplay/game_world.cpp
+// GameWorld::find_foes_in_range).
+TEST(MassCoverage, screen_find_foes_in_range_excludes_allies_and_distant_foes) {
     reset_level_state();
-    Sint32 n = 0;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    Sint32 n = 9;
+    std::list<walker*> found = world.find_foes_in_range(world.oblist, 64, &n, nullptr);
+    ASSERT_EQ(0, n) << "a null searcher must write a zero count";
+    ASSERT_TRUE(found.empty()) << "a null searcher must return nothing";
+
     walker* w = add_living(0);
-    (void)add_living(0);
-    (void)og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 64, &n, w);
+    ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
+    walker* foe = add_sized_living(1, 105, 100, FAMILY_ORC);
+    ASSERT_NE(nullptr, foe) << "setup: the foe must exist";
+
+    n = 0;
+    found = world.find_foes_in_range(world.oblist, 64, &n, w);
+    ASSERT_EQ(1, n) << "exactly the one hostile walker is in range";
+    ASSERT_EQ(foe, found.front()) << "and it is the foe, not the searcher";
+
+    ASSERT_NE(nullptr, add_sized_living(0, 110, 100)) << "setup: the ally must exist";
+    n = 0;
+    found = world.find_foes_in_range(world.oblist, 64, &n, w);
+    ASSERT_EQ(1, n) << "an ally in range is not a foe";
+
+    foe->setxy(300, 100);
+    n = 0;
+    found = world.find_foes_in_range(world.oblist, 64, &n, w);
+    ASSERT_EQ(0, n) << "a foe past the range must be excluded";
+
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_find_foe_weapons_in_range) {
+// find_friends_in_range: live, non-dormant Living walkers the searcher IS
+// friendly to -- itself included -- within range (src/gameplay/game_world.cpp
+// GameWorld::find_friends_in_range).
+TEST(MassCoverage, screen_find_friends_in_range_counts_allies_and_the_searcher) {
     reset_level_state();
-    Sint32 n = 0;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    Sint32 n = 9;
+    std::list<walker*> found = world.find_friends_in_range(world.oblist, 64, &n, nullptr);
+    ASSERT_EQ(0, n) << "a null searcher must write a zero count";
+    ASSERT_TRUE(found.empty()) << "a null searcher must return nothing";
+
     walker* w = add_living(0);
-    (void)add_weapon(FAMILY_KNIFE, 1);
-    (void)og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 64, &n, w);
+    ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
+    walker* ally = add_sized_living(0, 110, 100);
+    ASSERT_NE(nullptr, ally) << "setup: the ally must exist";
+
+    n = 0;
+    found = world.find_friends_in_range(world.oblist, 64, &n, w);
+    ASSERT_EQ(2, n) << "the searcher is friendly to itself, so it and the ally both count";
+    ASSERT_NE(found.end(), std::find(found.begin(), found.end(), ally))
+        << "the ally must be in the returned list";
+
+    ASSERT_NE(nullptr, add_sized_living(1, 105, 100, FAMILY_ORC))
+        << "setup: the foe must exist";
+    n = 0;
+    found = world.find_friends_in_range(world.oblist, 64, &n, w);
+    ASSERT_EQ(2, n) << "a hostile walker in range is not a friend";
+
+    ally->setxy(300, 100);
+    n = 0;
+    found = world.find_friends_in_range(world.oblist, 64, &n, w);
+    ASSERT_EQ(1, n) << "an ally past the range must be excluded";
+
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_damage_tile) { (void)og::runtime::current_session->myscreen_->damage_tile(0, 0); }
-TEST(MassCoverage, screen_damage_tile_grass_branch) {
-    auto& world = og::runtime::current_session->myscreen_->world();
+// find_foe_weapons_in_range: despite the name, the kept branch is the FRIENDLY
+// one -- live Order::Weapon walkers the searcher is friendly to, within range
+// (src/gameplay/game_world.cpp GameWorld::find_foe_weapons_in_range).
+TEST(MassCoverage, screen_find_foe_weapons_in_range_keeps_friendly_weapons_in_range) {
+    reset_level_state();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    Sint32 n = 9;
+    std::list<walker*> found = world.find_foe_weapons_in_range(world.weaplist, 64, &n, nullptr);
+    ASSERT_EQ(0, n) << "a null searcher must write a zero count";
+    ASSERT_TRUE(found.empty()) << "a null searcher must return nothing";
+
+    walker* w = add_living(0);
+    ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
+    walker* knife = add_weapon(FAMILY_KNIFE, 0);
+    ASSERT_NE(nullptr, knife) << "setup: the knife must exist";
+
+    n = 0;
+    found = world.find_foe_weapons_in_range(world.weaplist, 64, &n, w);
+    ASSERT_EQ(1, n) << "a same-team weapon in range is the one this filter keeps";
+    ASSERT_EQ(knife, found.front()) << "and it is that knife";
+
+    knife->set_team_num(1);
+    n = 0;
+    found = world.find_foe_weapons_in_range(world.weaplist, 64, &n, w);
+    ASSERT_EQ(0, n) << "a weapon the searcher is not friendly to is excluded";
+
+    knife->set_team_num(0);
+    knife->setxy(300, 100);
+    n = 0;
+    found = world.find_foe_weapons_in_range(world.weaplist, 64, &n, w);
+    ASSERT_EQ(0, n) << "a friendly weapon past the range is excluded";
+
+    reset_level_state();
+}
+
+// screen::damage_tile forwards to GameWorld::damage_tile: grass chars to
+// PIX_GRASS1_DAMAGED in the grid itself, every other tile is returned unchanged
+// (src/interface/screen.cpp screen::damage_tile ->
+// src/gameplay/game_world.cpp GameWorld::damage_tile).
+TEST(MassCoverage, screen_damage_tile_chars_grass_and_leaves_other_tiles_alone) {
+    screen* s = og::runtime::current_session->myscreen_;
+    auto& world = s->world();
     world.create_new_grid();
     ASSERT_TRUE(world.grid.data != nullptr) << "grid should be allocated";
-    if (world.grid.data == nullptr)
-        return;
+
     world.grid.data[0] = PIX_GRASS1;
-    ASSERT_EQ(PIX_GRASS1_DAMAGED,
-              static_cast<unsigned char>(og::runtime::current_session->myscreen_->damage_tile(0, 0)))
+    ASSERT_EQ(PIX_GRASS1_DAMAGED, static_cast<unsigned char>(s->damage_tile(0, 0)))
         << "grass tile should convert to damaged grass";
+    ASSERT_EQ(PIX_GRASS1_DAMAGED, static_cast<unsigned char>(world.grid.data[0]))
+        << "the grid cell itself must be rewritten";
+
+    world.grid.data[0] = PIX_WATER1;
+    ASSERT_EQ(PIX_WATER1, static_cast<unsigned char>(s->damage_tile(0, 0)))
+        << "a non-grass tile must be handed back unchanged";
+    ASSERT_EQ(PIX_WATER1, static_cast<unsigned char>(world.grid.data[0]))
+        << "a non-grass tile must not be rewritten";
 }
-TEST(MassCoverage, screen_do_notify) { og::runtime::current_session->myscreen_->do_notify("mass-notify", nullptr); }
-TEST(MassCoverage, screen_report_mem) { og::runtime::current_session->myscreen_->report_mem(); }
-TEST(MassCoverage, find_follow_leader) { (void)find_follow_leader(); }
+
+// do_notify(msg, who): the message goes to the view whose control is `who`, and
+// to EVERY view when no view controls it (src/interface/screen.cpp
+// screen::do_notify -> viewscreen::set_display_text).
+TEST(MassCoverage, screen_do_notify_targets_the_controlling_view_else_every_view) {
+    reset_level_state();
+    screen* s = og::runtime::current_session->myscreen_;
+    s->ready_for_battle(2);
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+    ASSERT_NE(nullptr, s->viewob[1].get()) << "setup: view 1 must exist";
+
+    walker* w = add_living(0);
+    ASSERT_NE(nullptr, w) << "setup: the controlled walker must exist";
+    s->viewob[0]->control = nullptr;
+    s->viewob[1]->control = w;
+
+    s->viewob[0]->clear_text();
+    s->viewob[1]->clear_text();
+    s->do_notify("mass-targeted", w);
+    ASSERT_EQ("mass-targeted", s->viewob[1]->textlist[0])
+        << "the view controlling the walker must receive the notice";
+    ASSERT_TRUE(s->viewob[0]->textlist[0].empty())
+        << "a targeted notice must not reach the other view";
+
+    s->viewob[0]->clear_text();
+    s->viewob[1]->clear_text();
+    s->do_notify("mass-broadcast", nullptr);
+    ASSERT_EQ("mass-broadcast", s->viewob[0]->textlist[0])
+        << "an untargeted notice must reach view 0";
+    ASSERT_EQ("mass-broadcast", s->viewob[1]->textlist[0])
+        << "an untargeted notice must reach view 1";
+
+    s->viewob[0]->control = nullptr;
+    s->viewob[1]->control = nullptr;
+    s->reset(1);
+    reset_level_state();
+}
+
+// report_mem(): posts its one memory line to view 0 for 25 cycles
+// (src/interface/screen.cpp screen::report_mem).
+TEST(MassCoverage, screen_report_mem_posts_the_memory_line_to_view_zero) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->ready_for_battle(1);
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+
+    s->viewob[0]->clear_text();
+    s->report_mem();
+    ASSERT_EQ("Free Linear address: 0 pages", s->viewob[0]->textlist[0])
+        << "report_mem must post its line to view 0";
+    ASSERT_EQ(25, static_cast<int>(s->viewob[0]->textcycles[0]))
+        << "report_mem must post it for 25 cycles";
+
+    s->viewob[0]->clear_text();
+}
 TEST(MassCoverage, find_follow_leader_prefers_active_multiview_control) {
     reset_level_state();
 
     screen* s = og::runtime::current_session->myscreen_;
     s->ready_for_battle(2);
-    ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr) << "two views should exist";
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+    ASSERT_NE(nullptr, s->viewob[1].get()) << "setup: view 1 must exist";
 
     walker* left = add_living(0);
     walker* right = add_living(1, FAMILY_ORC);
-    ASSERT_TRUE(left != nullptr && right != nullptr) << "test leaders should exist";
-    if (left && right && s->viewob[0] && s->viewob[1]) {
-        left->set_yo_delay(0);
-        right->set_yo_delay(4);
-        s->viewob[0]->control = left;
-        s->viewob[1]->control = right;
-        ASSERT_EQ(right, find_follow_leader()) << "second active view should be selected";
+    ASSERT_NE(nullptr, left) << "setup: the view-0 leader must exist";
+    ASSERT_NE(nullptr, right) << "setup: the view-1 leader must exist";
 
-        left->set_yo_delay(6);
-        right->set_yo_delay(0);
-        ASSERT_EQ(left, find_follow_leader()) << "first active view should be selected";
+    left->set_yo_delay(0);
+    right->set_yo_delay(4);
+    s->viewob[0]->control = left;
+    s->viewob[1]->control = right;
+    ASSERT_EQ(right, find_follow_leader()) << "second active view should be selected";
 
-        left->set_yo_delay(0);
-        right->set_yo_delay(0);
-        ASSERT_EQ(nullptr, find_follow_leader()) << "no delayed view should return null";
+    left->set_yo_delay(6);
+    right->set_yo_delay(0);
+    ASSERT_EQ(left, find_follow_leader()) << "first active view should be selected";
 
-        s->viewob[0]->control = nullptr;
-        s->viewob[1]->control = nullptr;
-    }
+    left->set_yo_delay(0);
+    right->set_yo_delay(0);
+    ASSERT_EQ(nullptr, find_follow_leader()) << "no delayed view should return null";
+
+    s->viewob[0]->control = nullptr;
+    s->viewob[1]->control = nullptr;
 
     s->reset(1);
     reset_level_state();
