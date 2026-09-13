@@ -702,13 +702,25 @@ int editor_brush_key_injector(void* /*data*/)
     if (ok)
         ok = enter_object_mode();
 
-    // Teams 0-7 are the digit row. 5 then 0 proves the digit chooses the
-    // team rather than merely nudging it; the closing 1 restores the brush
-    // default for the rest of the binary.
+    // Teams 0-7 are the digit row, and every digit has its own arm in the
+    // editor's key handler, so every digit gets pressed and pinned here: 5
+    // then 0 first, proving the digit chooses the team rather than merely
+    // nudging it, then the rest of the row. The closing 1 (after the ESC
+    // arm below) restores the brush default for the rest of the binary.
     if (ok)
         ok = press_team_digit(SDLK_5, 5);
     if (ok)
         ok = press_team_digit(SDLK_0, 0);
+    if (ok)
+        ok = press_team_digit(SDLK_2, 2);
+    if (ok)
+        ok = press_team_digit(SDLK_3, 3);
+    if (ok)
+        ok = press_team_digit(SDLK_4, 4);
+    if (ok)
+        ok = press_team_digit(SDLK_6, 6);
+    if (ok)
+        ok = press_team_digit(SDLK_7, 7);
 
     // Walk the brush level down to the floor first: the editor's static
     // brush carries whatever an earlier session left.
