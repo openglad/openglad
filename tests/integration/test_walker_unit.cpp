@@ -15,6 +15,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <array>
+#include <cmath>
 #include <openglad/core/constants.h>
 #include "test_gameplay_context_scope.h"
 
@@ -82,6 +83,17 @@ private:
     og::runtime::SessionState* session_ = nullptr;
     bool previous_ = false;
 };
+
+// Count the events of one kind in a log: the SAVE_ALL oracle below must be
+// blind to unrelated sound/notification pushes but exact about EndGame.
+int count_events(const og::sim::SimEventLog& log, og::sim::EventKind kind)
+{
+    int n = 0;
+    for (const auto& e : log.events())
+        if (e.kind == kind)
+            ++n;
+    return n;
+}
 
 } // namespace
 
@@ -190,7 +202,28 @@ TEST(WalkerUnit, walker_death_save_all_and_misc_paths)
     fx.level.world().my_team = 0;
 
     ASSERT_TRUE(w->death());
-    ASSERT_TRUE(fx.events.size() >= 1);
+    ASSERT_EQ(1, count_events(fx.events, og::sim::EventKind::EndGame))
+        << "a named team-0 living dying in a SAVE_ALL level ends the mission";
+    const og::sim::Event* end_game = nullptr;
+    for (const auto& e : fx.events.events())
+        if (e.kind == og::sim::EventKind::EndGame)
+            end_game = &e;
+    ASSERT_NE(nullptr, end_game);
+    EXPECT_EQ(static_cast<std::uint32_t>(SCEN_TYPE_SAVE_ALL), end_game->a)
+        << "the ending type names the SAVE_ALL loss";
+    EXPECT_EQ(static_cast<std::uint32_t>(-1), end_game->b)
+        << "no next level is chosen by a mission loss";
+
+    // Negative control: an UNNAMED walker on the same team is scenery, and
+    // its death must not fail the mission.
+    fx.events.clear();
+    walker* nameless = add_living(fx, FAMILY_SKELETON, 0);
+    ASSERT_NE(nullptr, nameless);
+    nameless->stats()->name.clear();
+    nameless->set_dead(1);
+    ASSERT_TRUE(nameless->death());
+    ASSERT_EQ(0, count_events(fx.events, og::sim::EventKind::EndGame))
+        << "an unnamed casualty must not end a SAVE_ALL mission";
 
     walker misc;
     misc.set_order_family(Order::Generator, FAMILY_TENT);
@@ -352,24 +385,65 @@ TEST(WalkerUnit, walker_r11_fire_check_create_weapon_and_angles)
     walker* spawned = gen->create_weapon();
     ASSERT_TRUE(spawned != nullptr);
 
-    // set_weapon_heading switch traversal for all facings
+    // set_weapon_heading reads the OWNER's lastx/lasty (never curdir) and
+    // writes both the weapon's spawn cell and its flight vector. The waver
+    // term is world-rng next(stepsize/2 + 1) - (stepsize/2)/2, which is
+    // exactly 0 for a stepsize-1 weapon, so every value below is fixed.
     walker* weapon = add_ob(fx, Order::Weapon, FAMILY_KNIFE, 0, 70, 70);
-    for (int d = 0; d < 8; ++d)
+    ASSERT_NE(nullptr, weapon);
+    ASSERT_FLOAT_EQ(1.0f, weapon->stepsize());
+    shooter->setxy(80, 80);
+    struct HeadingCase {
+        float dx, dy;       // owner heading
+        int ex, ey;         // expected weapon spawn cell
+        float lastx, lasty; // expected weapon flight vector
+        const char* name;
+    };
+    const HeadingCase headings[8] = {
+        {  0.0f, -1.0f, 80, 63,  0.0f, -1.0f, "FACE_UP" },
+        {  1.0f, -1.0f, 97, 63,  1.0f, -1.0f, "FACE_UP_RIGHT" },
+        {  1.0f,  0.0f, 97, 80,  1.0f,  0.0f, "FACE_RIGHT" },
+        {  1.0f,  1.0f, 97, 97,  1.0f,  1.0f, "FACE_DOWN_RIGHT" },
+        {  0.0f,  1.0f, 80, 97,  0.0f,  1.0f, "FACE_DOWN" },
+        { -1.0f,  1.0f, 63, 97, -1.0f,  1.0f, "FACE_DOWN_LEFT" },
+        { -1.0f,  0.0f, 63, 80, -1.0f,  0.0f, "FACE_LEFT" },
+        { -1.0f, -1.0f, 63, 63, -1.0f, -1.0f, "FACE_UP_LEFT" },
+    };
+    for (const auto& h : headings)
     {
-        shooter->set_curdir(static_cast<char>(d));
-        shooter->set_lastx((d == FACE_LEFT || d == FACE_UP_LEFT || d == FACE_DOWN_LEFT) ? -1.0f : 1.0f);
-        shooter->set_lasty((d == FACE_UP || d == FACE_UP_LEFT || d == FACE_UP_RIGHT) ? -1.0f : 1.0f);
+        weapon->setxy(0, 0);
+        weapon->set_lastx(99.0f);
+        weapon->set_lasty(99.0f);
+        shooter->set_lastx(h.dx);
+        shooter->set_lasty(h.dy);
         shooter->set_weapon_heading(weapon);
+        EXPECT_EQ(h.ex, static_cast<int>(weapon->xpos())) << h.name << " spawn x";
+        EXPECT_EQ(h.ey, static_cast<int>(weapon->ypos())) << h.name << " spawn y";
+        EXPECT_FLOAT_EQ(h.lastx, weapon->lastx()) << h.name << " flight x";
+        EXPECT_FLOAT_EQ(h.lasty, weapon->lasty()) << h.name << " flight y";
     }
 
-    // angle switch/default
+    // get_current_angle is a fixed facing -> radians table, with 0 as the
+    // fallback for an out-of-range facing.
+    const float expected_angle[8] = {
+        -static_cast<float>(M_PI_2),      // FACE_UP
+        -static_cast<float>(M_PI_4),      // FACE_UP_RIGHT
+        0.0f,                             // FACE_RIGHT
+        static_cast<float>(M_PI_4),       // FACE_DOWN_RIGHT
+        static_cast<float>(M_PI_2),       // FACE_DOWN
+        static_cast<float>(3 * M_PI_4),   // FACE_DOWN_LEFT
+        static_cast<float>(M_PI),         // FACE_LEFT
+        static_cast<float>(5 * M_PI_4),   // FACE_UP_LEFT
+    };
     for (int d = 0; d < 8; ++d)
     {
         shooter->set_curdir(static_cast<char>(d));
-        (void)shooter->get_current_angle();
+        EXPECT_FLOAT_EQ(expected_angle[d], shooter->get_current_angle())
+            << "facing " << d << " must map to its own angle";
     }
     shooter->set_curdir(120);
-    (void)shooter->get_current_angle();
+    EXPECT_FLOAT_EQ(0.0f, shooter->get_current_angle())
+        << "an out-of-range facing uses the default angle";
 }
 
 TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
@@ -490,21 +564,53 @@ TEST(WalkerUnit, walker_r11_fire_query_next_to_and_outline_branches)
 
     walker* viewer = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 60, 64);
     ASSERT_TRUE(viewer != nullptr);
+    const int team_color = static_cast<int>(shooter->query_team_color());
+
+    // Block 1: INVULNERABLE + flight -> FLYING, then invisibility hides the
+    // marker under the plain team color.
     shooter->set_outline(OUTLINE_INVULNERABLE);
     shooter->set_flight_left(1);
     shooter->set_invisibility_left(1);
     shooter->set_invulnerable_left(0);
     shooter->compute_outline(viewer);
+    ASSERT_EQ(team_color, static_cast<int>(shooter->outline()))
+        << "an invisible flyer shows nothing but its team color";
 
+    // Same block WITHOUT invisibility: the flying marker survives.
+    shooter->set_outline(OUTLINE_INVULNERABLE);
+    shooter->set_invisibility_left(0);
+    shooter->compute_outline(viewer);
+    ASSERT_EQ(static_cast<int>(OUTLINE_FLYING), static_cast<int>(shooter->outline()))
+        << "INVULNERABLE + flight -> FLYING when nothing is hiding it";
+
+    // Block 2: FLYING with the flight expired but invulnerability running,
+    // and invisibility back on -> team color again.
     shooter->set_outline(OUTLINE_FLYING);
     shooter->set_flight_left(0);
     shooter->set_invulnerable_left(1);
+    shooter->set_invisibility_left(1);
     shooter->compute_outline(viewer);
+    ASSERT_EQ(team_color, static_cast<int>(shooter->outline()))
+        << "invisibility wins over invulnerability in the FLYING arm";
 
+    // Same block without invisibility: the invulnerable marker shows.
+    shooter->set_outline(OUTLINE_FLYING);
+    shooter->set_invisibility_left(0);
+    shooter->compute_outline(viewer);
+    ASSERT_EQ(static_cast<int>(OUTLINE_INVULNERABLE), static_cast<int>(shooter->outline()))
+        << "FLYING + invulnerability (no flight, no invisibility) -> INVULNERABLE";
+
+    // Block 3: NAMED + invisibility -> team color.
     shooter->set_outline(OUTLINE_NAMED);
+    shooter->set_invisibility_left(1);
     shooter->stats()->set_bit_flags(BIT_NAMED, 1);
     shooter->compute_outline(viewer);
+    ASSERT_EQ(team_color, static_cast<int>(shooter->outline()))
+        << "an invisible named walker shows only its team color";
 
+    // Block 4: no marker timers and BIT_NAMED off -> no outline at all.
+    // mark_player_controls defaults to false, so a same-team player control
+    // gets no courtesy outline either.
     shooter->set_outline(shooter->query_team_color());
     shooter->stats()->set_bit_flags(BIT_NAMED, 0);
     shooter->set_invulnerable_left(0);
@@ -513,10 +619,18 @@ TEST(WalkerUnit, walker_r11_fire_query_next_to_and_outline_branches)
     shooter->set_user(0);
     viewer->set_team_num(shooter->team_num());
     shooter->compute_outline(viewer);
-    ASSERT_TRUE(shooter->outline() == shooter->query_team_color() || shooter->outline() == 0);
+    ASSERT_EQ(0, static_cast<int>(shooter->outline()))
+        << "nothing to mark means outline 0, not the team color";
+    // ... unless the caller opts into the networked player-control marker.
+    shooter->set_outline(shooter->query_team_color());
+    shooter->compute_outline(viewer, true);
+    ASSERT_EQ(team_color, static_cast<int>(shooter->outline()))
+        << "mark_player_controls paints a same-team peer's control";
 
+    // float_eq is a tolerance compare, not an equality alias.
     ASSERT_TRUE(float_eq(1.0f, 1.0f));
-    ASSERT_TRUE(float_eq(1.0000001f, 1.0f));
+    ASSERT_TRUE(float_eq(1.0000001f, 1.0f)) << "a sub-tolerance difference compares equal";
+    ASSERT_FALSE(float_eq(1.0f, 1.001f)) << "a difference above tolerance must not compare equal";
 }
 
 TEST(WalkerUnit, walker_r11_act_and_animate_extra_cases)
@@ -541,28 +655,59 @@ TEST(WalkerUnit, walker_r11_act_and_animate_extra_cases)
     w->set_foe(foe);
     (void)w->act();
 
+    // A frozen walker burns exactly one freeze tick and returns before the
+    // busy drain and before its act arm runs.
+    w->set_ani_type(ANI_WALK);
+    w->stats()->clear_command();
+    w->set_act_type(ACT_CONTROL);
     w->stats()->set_frozen_delay(2);
-    (void)w->act();
+    w->set_busy(3.0f);
+    ASSERT_TRUE(w->act());
+    ASSERT_EQ(1, static_cast<int>(w->stats()->frozen_delay()))
+        << "act() decrements frozen_delay by exactly one";
+    ASSERT_FLOAT_EQ(3.0f, w->busy())
+        << "a frozen act() returns before the busy drain";
 
-    w->set_attack_lunge(0.2f);
-    w->set_hit_recoil(0.2f);
-    (void)w->act();
+    // Unfrozen: busy drains by 1.0, attack_lunge by 0.4, hit_recoil by 0.6.
+    w->stats()->set_frozen_delay(0);
+    w->set_attack_lunge(1.0f);
+    w->set_hit_recoil(1.0f);
+    ASSERT_TRUE(w->act());
+    ASSERT_FLOAT_EQ(2.0f, w->busy()) << "busy drains by exactly 1.0 per act";
+    ASSERT_FLOAT_EQ(0.6f, w->attack_lunge())
+        << "attack_lunge decays by exactly 0.4 per unfrozen act";
+    ASSERT_FLOAT_EQ(0.4f, w->hit_recoil())
+        << "hit_recoil decays by exactly 0.6 per unfrozen act";
 
-    w->set_ani_type(ANI_SKEL_GROW);
-    w->set_cycle(8);
+    // Completing a SKEL_GROW animation drops the walker back to the walk cycle.
     w->set_order_family(Order::Living, FAMILY_SKELETON);
-    (void)w->animate();
+    w->set_ani_type(ANI_SKEL_GROW);
+    w->set_curdir(FACE_RIGHT);
+    w->set_cycle(8); // past the end of the test sequence
+    ASSERT_TRUE(w->animate());
+    ASSERT_EQ(ANI_WALK, w->ani_type())
+        << "a finished SKEL_GROW returns to the walk animation";
+    ASSERT_EQ(0, static_cast<int>(w->cycle()));
 
-    w->set_ani_type(ANI_TELE_OUT);
-    w->set_cycle(8);
+    // A mage's TELE_OUT completion runs the family teleport handler, which
+    // re-enters the TELE_IN animation.
     w->set_order_family(Order::Living, FAMILY_MAGE);
-    (void)w->animate();
-
-    // ANI_TELE_OUT default path on family without teleport handler.
     w->set_ani_type(ANI_TELE_OUT);
     w->set_cycle(8);
+    fx.level.world().rng_.state_ = 11u;
+    ASSERT_TRUE(w->animate());
+    ASSERT_EQ(ANI_TELE_IN, w->ani_type())
+        << "the mage teleport handler swaps TELE_OUT for TELE_IN";
+    ASSERT_EQ(0, static_cast<int>(w->cycle()));
+
+    // A family with no teleport handler just stops: back to walk, reports 0.
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(!w->animate() || w->ani_type() == ANI_WALK);
+    w->set_ani_type(ANI_TELE_OUT);
+    w->set_cycle(8);
+    ASSERT_FALSE(w->animate())
+        << "the default TELE_OUT arm reports the animation stopped";
+    ASSERT_EQ(ANI_WALK, w->ani_type());
+    ASSERT_EQ(0, static_cast<int>(w->cycle()));
 }
 } // namespace detail_walker_r11
 
@@ -637,18 +782,30 @@ TEST(WalkerUnit, walker_r14_lines_518_557_563_602_607_outline_and_act_counters)
     w->set_flight_left(1);
     w->set_invisibility_left(1);
     w->compute_outline(view);
+    ASSERT_EQ(static_cast<int>(w->query_team_color()), static_cast<int>(w->outline()))
+        << "INVULNERABLE + flight becomes FLYING, then invisibility hides it";
 
     w->set_outline(w->query_team_color());
     w->set_invulnerable_left(0);
     w->set_flight_left(1);
     w->compute_outline(view);
+    ASSERT_EQ(static_cast<int>(OUTLINE_FLYING), static_cast<int>(w->outline()))
+        << "team color + flight (no invulnerability) -> FLYING";
 
+    // act() on a frozen walker burns exactly one freeze tick.
+    w->set_act_type(ACT_CONTROL);
     w->stats()->set_frozen_delay(1);
+    w->set_busy(4.0f);
     ASSERT_TRUE(w->act());
+    ASSERT_EQ(0, static_cast<int>(w->stats()->frozen_delay()))
+        << "act() decrements frozen_delay by exactly one";
+    ASSERT_FLOAT_EQ(4.0f, w->busy())
+        << "the frozen arm returns before the busy drain";
 
-    w->set_busy(1);
-    (void)w->act();
-    ASSERT_TRUE(w->busy() <= 1);
+    // Unfrozen, busy drains by exactly 1.0 per act.
+    w->set_busy(1.0f);
+    ASSERT_TRUE(w->act());
+    ASSERT_FLOAT_EQ(0.0f, w->busy()) << "busy drains by exactly 1.0 per act";
 }
 
 TEST(WalkerUnit, walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths)
@@ -733,15 +890,33 @@ TEST(WalkerUnit, walker_r15_generator_fire_and_heading_branches)
 
     walker* weapon = fx.level.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weapon != nullptr);
+    // stepsize 1 makes the waver term exactly 0 (next(1) - 0), so the spawn
+    // cell and flight vector below are fully determined.
+    weapon->set_sizex(16);
+    weapon->set_sizey(16);
+    weapon->set_stepsize(1.0f);
+
     gen_tower->set_lastx(-1.0f);
     gen_tower->set_lasty(0.0f);
     gen_tower->set_weapon_heading(weapon);
-    ASSERT_TRUE(weapon->lastx() <= 0.0f);
+    ASSERT_FLOAT_EQ(-1.0f, weapon->lastx())
+        << "FACE_LEFT flies at exactly -weapon stepsize";
+    ASSERT_FLOAT_EQ(0.0f, weapon->lasty())
+        << "the waver is 0 for a stepsize-1 weapon";
+    ASSERT_EQ(64 - 16 - 1, static_cast<int>(weapon->xpos()))
+        << "a left-thrown weapon starts one pixel west of the owner";
+    ASSERT_EQ(64, static_cast<int>(weapon->ypos()))
+        << "equal sizes centre the weapon on the owner's row";
 
     gen_tower->set_lastx(0.0f);
     gen_tower->set_lasty(1.0f);
     gen_tower->set_weapon_heading(weapon);
-    ASSERT_TRUE(weapon->lasty() >= 0.0f);
+    ASSERT_FLOAT_EQ(1.0f, weapon->lasty())
+        << "FACE_DOWN flies at exactly +weapon stepsize";
+    ASSERT_FLOAT_EQ(0.0f, weapon->lastx());
+    ASSERT_EQ(64 + 16 + 1, static_cast<int>(weapon->ypos()))
+        << "a down-thrown weapon starts one pixel south of the owner";
+    ASSERT_EQ(64, static_cast<int>(weapon->xpos()));
 }
 
 TEST(WalkerUnit, walker_r15_compute_outline_and_next_frame_and_generate_paths)
@@ -755,38 +930,75 @@ TEST(WalkerUnit, walker_r15_compute_outline_and_next_frame_and_generate_paths)
     viewer->set_team_num(0);
     a->stats()->set_bit_flags(BIT_NAMED, 1);
 
+    // A BIT_NAMED walker seen by the OTHER team always resolves to NAMED,
+    // whichever marker it was wearing, as long as nothing hides it.
     a->set_outline(OUTLINE_INVULNERABLE);
     a->set_invulnerable_left(1);
     a->set_flight_left(0);
     a->set_invisibility_left(0);
     a->compute_outline(viewer);
-    ASSERT_TRUE(a->outline() == OUTLINE_NAMED || a->outline() == OUTLINE_INVULNERABLE);
+    ASSERT_EQ(static_cast<int>(OUTLINE_NAMED), static_cast<int>(a->outline()))
+        << "INVULNERABLE with no flight, seen by a foe, becomes NAMED";
 
     a->set_outline(OUTLINE_FLYING);
     a->set_flight_left(1);
     a->compute_outline(viewer);
-    ASSERT_TRUE(a->outline() == OUTLINE_FLYING || a->outline() == OUTLINE_NAMED);
+    ASSERT_EQ(static_cast<int>(OUTLINE_NAMED), static_cast<int>(a->outline()))
+        << "FLYING seen by a foe becomes NAMED";
 
     a->set_outline(static_cast<unsigned char>(a->query_team_color()));
     a->set_invulnerable_left(1);
     a->set_flight_left(0);
     a->compute_outline(viewer);
-    ASSERT_TRUE(a->outline() == OUTLINE_INVULNERABLE || a->outline() == OUTLINE_NAMED);
+    ASSERT_EQ(static_cast<int>(OUTLINE_INVULNERABLE), static_cast<int>(a->outline()))
+        << "the team-color arm checks invulnerability before the NAMED marker";
 
+    // act_generate's cadence roll is `next(level*3) * rate > next(300 +
+    // living_count*8) * 100`, drawn from the world LCG. Both outcomes are
+    // pinned here: a losing roll neither fires nor heals, a winning roll
+    // adds exactly one hitpoint while the generator is below max.
     walker* gen_tent = fx.level.add_ob(Order::Generator, FAMILY_TENT);
     ASSERT_TRUE(gen_tent != nullptr);
-    gen_tent->stats()->set_level(200);
-    gen_tent->stats()->set_hitpoints(10.0f);
+    gen_tent->stats()->set_level(200); // first draw bound 600
+    gen_tent->stats()->set_hitpoints(5.0f);
     gen_tent->stats()->set_max_hitpoints(10.0f);
     gen_tent->set_lineofsight(3);
     gen_tent->set_act_type(ACT_GENERATE);
-    (void)gen_tent->act();
-    ASSERT_TRUE(gen_tent->stats()->hitpoints() <= gen_tent->stats()->max_hitpoints());
+    gen_tent->stats()->set_magicpoints(9999.0f);
+    ASSERT_EQ(2, fx.level.world().living_count)
+        << "the second draw bound is 300 + 8*living_count == 316";
 
-    // next_frame path using real animation data loaded by loader.
+    gen_tent->set_ani_type(ANI_WALK);
+    fx.level.world().rng_.state_ = 9u; // draws 72 then 315: the roll loses
+    (void)gen_tent->act();
+    ASSERT_FLOAT_EQ(5.0f, gen_tent->stats()->hitpoints())
+        << "a generator that loses its cadence roll gains no hitpoint";
+
+    gen_tent->set_ani_type(ANI_WALK);
+    gen_tent->set_busy(0.0f);
+    fx.level.world().rng_.state_ = 7u; // draws 132 then 10: the roll wins
+    (void)gen_tent->act();
+    ASSERT_FLOAT_EQ(6.0f, gen_tent->stats()->hitpoints())
+        << "a firing generator adds exactly one hitpoint while below max";
+
+    // next_frame wraps the frame index modulo the loaded frame count, and
+    // refuses (0) rather than dividing by zero when there is no table.
     walker* living = fx.level.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(living != nullptr);
-    (void)living->next_frame();
+    short frame_count = 0; // walker::frames is protected; probe set_frame's gate
+    while (frame_count < 256 && living->set_frame(frame_count) == 1)
+        frame_count = static_cast<short>(frame_count + 1);
+    ASSERT_NE(0, frame_count) << "the loader must give a soldier a frame table";
+    living->set_direct_frame(static_cast<short>(frame_count + 2));
+    ASSERT_EQ(1, living->next_frame())
+        << "next_frame must re-seat an out-of-range frame, not refuse it";
+    ASSERT_EQ(2 % frame_count, static_cast<int>(living->frame()))
+        << "next_frame wraps the frame index modulo the table length";
+
+    walker bare; // no render data attached: frames == 0
+    ASSERT_EQ(0, bare.next_frame())
+        << "a frameless walker must refuse instead of dividing by zero";
+    ASSERT_EQ(0, static_cast<int>(bare.frame()));
 }
 
 TEST(WalkerUnit, walker_r15_path_check_counter_init_and_reset_are_seed_deterministic)
