@@ -405,8 +405,28 @@ TEST(SaveDataVersions, save_data_load_v9_uses_campaign_list)
     SaveData tmp;
     ASSERT_TRUE(tmp.load("ver9_campaigns")) << "v9 load should succeed";
     ASSERT_EQ(1, tmp.team_size) << "v9 should load 1 guy";
+
+    // The loader pre-seeds the DEFAULT campaign ("gladiator" cursor 1, EMPTY
+    // completed set) before it reads the v8+ campaign list, so key presence
+    // alone proves nothing. Pin the values the fixture wrote: the two cleared
+    // levels, and the second campaign the pre-seed cannot manufacture.
     ASSERT_TRUE(tmp.current_levels.count("gladiator") > 0) << "v9 should populate current_levels";
+    ASSERT_EQ(1, tmp.current_levels["gladiator"]) << "gladiator's saved cursor is scen_num 1";
     ASSERT_TRUE(tmp.completed_levels.count("gladiator") > 0) << "v9 should populate completed_levels";
+    EXPECT_EQ(2u, tmp.completed_levels["gladiator"].size())
+        << "the fixture cleared exactly levels 1 and 3 for gladiator";
+    EXPECT_TRUE(tmp.completed_levels["gladiator"].count(1) > 0) << "cleared level 1 is read back";
+    EXPECT_TRUE(tmp.completed_levels["gladiator"].count(3) > 0) << "cleared level 3 is read back";
+
+    ASSERT_TRUE(tmp.current_levels.count("nonexistent") > 0)
+        << "the second saved campaign is read even when no package exists for it";
+    EXPECT_EQ(1, tmp.current_levels["nonexistent"]) << "the second campaign's saved cursor";
+    ASSERT_TRUE(tmp.completed_levels.count("nonexistent") > 0)
+        << "the second campaign's cleared set is read";
+    EXPECT_EQ(1u, tmp.completed_levels["nonexistent"].size())
+        << "the fixture cleared exactly one level for the second campaign";
+    EXPECT_TRUE(tmp.completed_levels["nonexistent"].count(2) > 0)
+        << "that cleared level is 2";
 }
 
 
@@ -1416,16 +1436,41 @@ TEST(SaveDataVersions, save_data_v2_load_defaults_stats_added_by_later_versions)
 }
 
 
-TEST(SaveDataVersions, save_data_save_with_error_open_write_failed_for_missing_directory)
+// A SAFE slot name whose file cannot be opened for write is the failure this
+// pins: the old body passed "typed_save_missing_dir/slot1", which the slot-name
+// validator refuses before any path is built (already pinned by
+// save_data_rejects_unsafe_save_slot_names), so the og_open_write branch never
+// ran. A directory parked at save/<slot>.gtl makes the open genuinely fail.
+TEST(SaveDataVersions, save_data_save_with_error_reports_open_write_failure_for_a_safe_slot)
 {
-    const std::string bad_subdir = "save/typed_save_missing_dir";
+    namespace fs = std::filesystem;
+    const fs::path blocker =
+        fs::path(get_user_path()) / "save" / "typed_save_blocked_slot.gtl";
     std::error_code ec;
-    std::filesystem::remove_all(bad_subdir, ec);
+    fs::create_directories(blocker, ec);
+    ASSERT_FALSE(ec) << "the blocking directory should be creatable";
+    {
+        std::ofstream sentinel(blocker / "keep", std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(sentinel.good()) << "the blocker needs a child so it cannot be replaced";
+        sentinel << "write sentinel";
+    }
 
     SaveData tmp;
     tmp.current_campaign = "gladiator";
-    SaveDataIoError err = tmp.save_with_error("typed_save_missing_dir/slot1");
-    ASSERT_EQ(static_cast<int>(SaveDataIoError::OpenWriteFailed), static_cast<int>(err)) << "save_with_error should report OpenWriteFailed for missing nested directory";
+    const SaveDataIoError err = tmp.save_with_error("typed_save_blocked_slot");
+    EXPECT_EQ(SaveDataIoError::OpenWriteFailed, err)
+        << "a safe slot whose file cannot be opened reports OpenWriteFailed";
+    EXPECT_EQ(SaveDataIoError::OpenWriteFailed, tmp.last_io_error())
+        << "the typed error is also latched on the SaveData";
+    EXPECT_TRUE(fs::is_directory(blocker))
+        << "the failed save must not have clobbered the blocker";
+
+    fs::remove_all(blocker, ec);
+
+    // Paired control: unblocked, the identical call writes.
+    EXPECT_EQ(SaveDataIoError::None, tmp.save_with_error("typed_save_blocked_slot"))
+        << "the same slot saves once the path is writable";
+    fs::remove(fs::path(get_user_path()) / "save" / "typed_save_blocked_slot.gtl", ec);
 }
 
 
@@ -1659,7 +1704,13 @@ TEST(SaveDataVersions, save_data_save_with_team_entry_and_wrapper_none_path)
 }
 
 
-TEST(SaveDataVersions, save_data_round8_open_write_failure_and_is_level_completed_paths)
+// The old tail here asserted save_with_error("round8/missing_parent_path") ==
+// OpenWriteFailed, which the slot-name validator answers before any path is
+// built: a duplicate of save_data_rejects_unsafe_save_slot_names, and it never
+// reached the og_open_write branch its name claimed. The real open-write
+// failure now lives in
+// save_data_save_with_error_reports_open_write_failure_for_a_safe_slot.
+TEST(SaveDataVersions, save_data_is_level_completed_follows_the_current_campaign)
 {
     SaveData data;
     data.current_campaign = "round8.campaign";
@@ -1671,11 +1722,13 @@ TEST(SaveDataVersions, save_data_round8_open_write_failure_and_is_level_complete
     ASSERT_TRUE(data.is_level_completed(3)) << "is_level_completed should be true after adding the level to current campaign";
     ASSERT_TRUE(!data.is_level_completed(99)) << "is_level_completed should be false for a non-completed level index";
 
+    // A level cleared in ANOTHER campaign is not completed in this one.
+    data.add_level_completed("round8.other", 99);
+    ASSERT_TRUE(!data.is_level_completed(99))
+        << "is_level_completed reads only the current campaign's set";
+
     data.reset_campaign("round8.campaign");
     ASSERT_TRUE(!data.is_level_completed(3)) << "is_level_completed should become false after reset_campaign";
-
-    const SaveDataIoError err = data.save_with_error("round8/missing_parent_path");
-    ASSERT_EQ((int)SaveDataIoError::OpenWriteFailed, (int)err) << "save_with_error should report OpenWriteFailed when parent path is missing";
 }
 
 
