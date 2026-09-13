@@ -77,6 +77,43 @@ static int count_family_all_lists(char family)
     return count_family_in_oblist(family) + count_family_in_fxlist(family);
 }
 
+// Family ids are per-ORDER -- living 10 is a medium slime, treasure 10 a
+// life gem and fx 10 a chain bolt, all at once -- so anything that counts
+// one specific spawn has to match the order as well as the family.
+static int count_order_family(Order order, char family)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    int count = 0;
+    for (auto& uptr : world.oblist)
+        if (uptr && uptr->order() == order && uptr->family() == family)
+            count++;
+    for (auto& uptr : world.fxlist)
+        if (uptr && uptr->order() == order && uptr->family() == family)
+            count++;
+    for (auto& uptr : world.weaplist)
+        if (uptr && uptr->order() == order && uptr->family() == family)
+            count++;
+    return count;
+}
+
+// The LAST entity of (order, family) across the three lists, live or dead --
+// i.e. the one a cast just appended.
+static walker* find_order_family(Order order, char family)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    walker* found = nullptr;
+    for (auto& uptr : world.oblist)
+        if (uptr && uptr->order() == order && uptr->family() == family)
+            found = uptr.get();
+    for (auto& uptr : world.fxlist)
+        if (uptr && uptr->order() == order && uptr->family() == family)
+            found = uptr.get();
+    for (auto& uptr : world.weaplist)
+        if (uptr && uptr->order() == order && uptr->family() == family)
+            found = uptr.get();
+    return found;
+}
+
 struct VelocitySample
 {
     float x = 0.0f;
@@ -835,27 +872,6 @@ TEST_F(WalkerSpecials, ghost_scare_does_not_accumulate)
 }
 
 
-TEST_F(WalkerSpecials, orc_howl)
-{
-    walker* w = make_special_guy(FAMILY_ORC);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // howl
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, barbarian_hurl)
-{
-    walker* w = make_special_guy(FAMILY_BARBARIAN);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_lastx(w->stepsize());
-    w->set_lasty(0);
-    w->set_busy(0);
-    w->set_current_special(1); // hurl boulder
-    w->special();
-}
-
-
 // ---------------------------------------------------------------------------
 // special() when dead, no stats, or not enough magic
 // ---------------------------------------------------------------------------
@@ -910,44 +926,116 @@ TEST_F(WalkerSpecials, no_magic)
 // death() - exercises order/family switches (lines 4422-4534)
 // ---------------------------------------------------------------------------
 
-TEST_F(WalkerSpecials, walker_death_fire_elemental)
+// core:elemental's on_death is a FREE parting starburst: the hook un-kills
+// the corpse, refunds the special's own cost, casts it (eight fireballs, one
+// per compass direction, pre-paid the same way) and kills the corpse again.
+// So a dying elemental ends dead with its magic pool exactly where it was
+// (packs/core/families/living-06-elemental.lua on_death / do_special).
+TEST_F(WalkerSpecials, elemental_death_fires_a_free_parting_starburst)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
     walker* w = make_special_guy(FAMILY_FIREELEMENTAL, 1);
-    ASSERT_TRUE(w != nullptr) << "walker created";
+    ASSERT_NE(nullptr, w) << "fire elemental created";
+    w->setxy(100, 100);
+    w->set_busy(0);
+    w->set_current_special(1);
+    w->stats()->set_magicpoints(500.0f);
+    const float mp_before = w->stats()->magicpoints();
+    const int meteors_before = count_order_family(Order::Weapon, FAMILY_METEOR);
+
     w->set_dead(1);
-    w->death();
+    ASSERT_TRUE(w->death()) << "death() runs the family's on_death hook";
+
+    EXPECT_EQ(meteors_before + 8, count_order_family(Order::Weapon, FAMILY_METEOR))
+        << "the parting starburst releases one meteor per compass direction";
+    EXPECT_EQ(1, static_cast<int>(w->dead()))
+        << "the hook re-kills the corpse it un-killed to cast";
+    EXPECT_FLOAT_EQ(mp_before, w->stats()->magicpoints())
+        << "the parting shot is free: refunded before the cast, spent by it";
+
+    delete w;
+    world.delete_objects();
 }
 
 
-TEST_F(WalkerSpecials, walker_death_with_myguy)
+// A player character's death leaves the two things the score screen and a
+// cleric each read: one life gem worth 37.5 % of the hero's heart value on
+// the hero's team, and one bloodstain at the corpse remembering the family
+// that fell. A generator's death is the other arm of the same switch:
+// exactly four explosions, never one (src/gameplay/walker.cpp death()).
+TEST_F(WalkerSpecials, character_death_drops_one_heart_and_one_stain)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    // Under SAVE_ALL a named team-my_team death ends the level and returns
+    // before the bloodspot; this test is about the ordinary corpse. Permadeath
+    // on (the default) keeps the gem at full legacy value.
+    world.type = static_cast<char>(world.type & ~SCEN_TYPE_SAVE_ALL);
+    world.keep_fallen_heroes = 0;
+
     walker* w = make_special_guy(FAMILY_SOLDIER, 0);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    ASSERT_TRUE(w->myguy != nullptr) << "should have myguy";
-    w->set_dead(1);
-    w->death();
+    ASSERT_NE(nullptr, w) << "soldier created";
+    ASSERT_NE(nullptr, w->myguy) << "should have myguy";
+    w->setxy(100, 100);
 
-    // Also exercise generator-death explosion fan-out path.
-    walker* generator = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
-    ASSERT_TRUE(generator != nullptr) << "generator created";
-    int fx_before = count_family_all_lists(FAMILY_EXPLOSION);
+    const int gems_before = count_order_family(Order::Treasure, FAMILY_LIFE_GEM);
+    const int stains_before = count_order_family(Order::Treasure, FAMILY_STAIN);
+    const float heart = static_cast<float>(w->myguy->query_heart_value());
+    ASSERT_GT(heart, 0.0f) << "a levelled hero is worth something";
+    const Sint32 corpse_x = static_cast<Sint32>(w->xpos());
+    const Sint32 corpse_y = static_cast<Sint32>(w->ypos());
+
+    w->set_dead(1);
+    ASSERT_TRUE(w->death()) << "death() runs to completion";
+
+    ASSERT_EQ(gems_before + 1, count_order_family(Order::Treasure, FAMILY_LIFE_GEM))
+        << "a character death drops exactly one life gem";
+    walker* gem = find_order_family(Order::Treasure, FAMILY_LIFE_GEM);
+    ASSERT_NE(nullptr, gem) << "the life gem is in the world";
+    EXPECT_FLOAT_EQ(heart * 0.375f, gem->stats()->hitpoints())
+        << "the gem is 75 % of the heart value, halved because score doubles";
+    EXPECT_EQ(static_cast<int>(w->team_num()), static_cast<int>(gem->team_num()))
+        << "and it belongs to the fallen hero's team";
+
+    ASSERT_EQ(stains_before + 1, count_order_family(Order::Treasure, FAMILY_STAIN))
+        << "a soldier leaves exactly one bloodstain";
+    walker* stain = find_order_family(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, stain) << "the bloodstain is in the world";
+    EXPECT_EQ(FAMILY_SOLDIER, static_cast<int>(stain->stats()->old_family()))
+        << "the stain remembers the family that fell, so a cleric can raise it";
+    EXPECT_EQ(corpse_x, static_cast<Sint32>(stain->xpos())) << "it marks the corpse's x";
+    EXPECT_EQ(corpse_y, static_cast<Sint32>(stain->ypos())) << "it marks the corpse's y";
+
+    // Generators go up in flames: four explosions per death.
+    walker* generator = world.add_ob(Order::Generator, FAMILY_TOWER);
+    ASSERT_NE(nullptr, generator) << "generator created";
+    const int fx_before = count_order_family(Order::FX, FAMILY_EXPLOSION);
     generator->set_dead(1);
-    generator->death();
-    int fx_after = count_family_all_lists(FAMILY_EXPLOSION);
-    ASSERT_TRUE(fx_after >= fx_before + 1) << "generator death should spawn explosion FX";
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    ASSERT_TRUE(generator->death()) << "generator death() runs";
+    EXPECT_EQ(fx_before + 4, count_order_family(Order::FX, FAMILY_EXPLOSION))
+        << "a dying generator spawns exactly four explosions";
+
+    delete w;
+    world.delete_objects();
 }
 
 
-TEST_F(WalkerSpecials, archmage_illusion_rng_tables)
+// Archmage special 3 WITHOUT the shifter is the illusion summon, and which
+// phantom appears is a pure function of the post-cost magic pool: under 100
+// MP it is always an elf and no die is rolled at all, and each higher tier
+// rolls one og.rand over a wider table (living-17-archmage.lua summon_image).
+// og.rand draws from the WORLD stream -- a GameContext rng steers nothing
+// here -- so every row below seeds world.rng_ with a state whose FIRST draw
+// is the wanted table index.
+TEST_F(WalkerSpecials, archmage_illusion_family_follows_the_magic_pool_tier)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
 
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
-    ASSERT_TRUE(arch != nullptr) << "archmage created";
-    if (!arch) {
-        return;
-    }
+    ASSERT_NE(nullptr, arch) << "archmage created";
+    world.delete_objects();
 
     arch->setxy(120, 120);
     arch->stats()->set_special_cost(3, 0);
@@ -955,173 +1043,314 @@ TEST_F(WalkerSpecials, archmage_illusion_rng_tables)
     arch->set_current_special(static_cast<char>(3));
     arch->set_shifter_down(static_cast<short>(0));
 
-    GameContext ctx;
+    // The archmage itself is not in oblist (make_special_guy owns it), so
+    // oblist holds exactly the phantom of the cast under test.
+    auto only_ob = [&world]() -> walker* {
+        for (auto& uptr : world.oblist)
+            if (uptr)
+                return uptr.get();
+        return nullptr;
+    };
 
-    const int mp_tiers[] = {120, 300, 700, 1200};
-    const int max_pick[] = {3, 5, 7, 9};
-    for (int t = 0; t < 4; ++t) {
-        for (Uint32 pick = 0; pick < static_cast<Uint32>(max_pick[t]); ++pick) {
-            SequenceRandom rng({pick});
-            ctx.rng = &rng;
-            push_test_context(&ctx);
-            int before = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
-            arch->stats()->set_magicpoints(static_cast<float>(mp_tiers[t]));
-            arch->set_busy(0);
-            (void)arch->special();
-            int after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
-            ASSERT_TRUE(after >= before) << "illusion summon case should not reduce object count";
-            pop_test_context();
-        }
+    // Tier 0: below 100 MP the ladder short-circuits to the elf with no draw.
+    arch->set_busy(0);
+    arch->stats()->set_magicpoints(50.0f);
+    world.rng_.state_ = 4242u;
+    ASSERT_TRUE(arch->special()) << "the illusion summon fires";
+    ASSERT_EQ(1u, world.oblist.size()) << "exactly one phantom per cast";
+    ASSERT_NE(nullptr, only_ob()) << "the phantom is in oblist";
+    EXPECT_EQ(FAMILY_ELF, static_cast<int>(only_ob()->family()))
+        << "the sub-100 MP tier is always an elf";
+    EXPECT_EQ(4242u, world.rng_.state_)
+        << "and it costs no die roll: the world stream is untouched";
+    world.remove_ob(only_ob());
+
+    struct TierRow
+    {
+        float mp;
+        std::uint32_t seed;
+        int expected_family;
+    };
+    // (s * 1103515245 + 12345) >> 16, modulo the tier's table size, is the
+    // index the cast reads; these seeds are that equation solved per index.
+    const TierRow rows[] = {
+        {120.0f, 7u, FAMILY_ELF},   {120.0f, 2u, FAMILY_SOLDIER},
+        {120.0f, 1u, FAMILY_ARCHER},
+        {300.0f, 3u, FAMILY_ELF},   {300.0f, 2u, FAMILY_SOLDIER},
+        {300.0f, 4u, FAMILY_ARCHER}, {300.0f, 1u, FAMILY_ORC},
+        {300.0f, 6u, FAMILY_SKELETON},
+        {700.0f, 5u, FAMILY_ELF},   {700.0f, 8u, FAMILY_SOLDIER},
+        {700.0f, 13u, FAMILY_ARCHER}, {700.0f, 1u, FAMILY_ORC},
+        {700.0f, 4u, FAMILY_SKELETON}, {700.0f, 12u, FAMILY_DRUID},
+        {700.0f, 2u, FAMILY_CLERIC},
+        {1200.0f, 35u, FAMILY_ELF}, {1200.0f, 31u, FAMILY_SOLDIER},
+        {1200.0f, 27u, FAMILY_ARCHER}, {1200.0f, 22u, FAMILY_ORC},
+        {1200.0f, 15u, FAMILY_SKELETON}, {1200.0f, 11u, FAMILY_DRUID},
+        {1200.0f, 7u, FAMILY_CLERIC}, {1200.0f, 2u, FAMILY_FIREELEMENTAL},
+        {1200.0f, 1u, FAMILY_BIG_ORC},
+    };
+
+    for (const TierRow& row : rows)
+    {
+        SCOPED_TRACE(::testing::Message() << "mp=" << row.mp << " seed=" << row.seed);
+        ASSERT_EQ(0u, world.oblist.size()) << "the previous phantom was removed";
+        arch->set_busy(0);
+        arch->stats()->set_magicpoints(row.mp);
+        world.rng_.state_ = row.seed;
+        ASSERT_TRUE(arch->special()) << "the illusion summon fires";
+        ASSERT_EQ(1u, world.oblist.size()) << "exactly one phantom per cast";
+        walker* phantom = only_ob();
+        ASSERT_NE(nullptr, phantom) << "the phantom is in oblist";
+        EXPECT_EQ(row.expected_family, static_cast<int>(phantom->family()))
+            << "this tier's table maps this roll to this family";
+        EXPECT_TRUE(phantom->summoned())
+            << "a phantom is conjured ammunition, never a SAVE_ALL casualty";
+        EXPECT_EQ(arch, phantom->owner()) << "and it belongs to its summoner";
+        world.remove_ob(phantom);
     }
 
-    og::runtime::current_session->myscreen_->world().delete_objects();
     delete arch;
+    world.delete_objects();
 }
 
 
-TEST_F(WalkerSpecials, mage_marker_remove_and_freeze_enemy_branch)
+// Mage special 1 with the shifter held is TELEPORT MARKER, and recasting it
+// can never bank two markers: the marker the caster already owns is killed
+// and a fresh one is centered on the caster, the removal and the placement
+// costing 8 busy ticks each, with the new marker's uses read off the guy's
+// Intelligence / 33 (packs/core/families/living-03-mage.lua teleport).
+TEST_F(WalkerSpecials, mage_marker_recast_replaces_the_owned_marker)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
     walker* mage = make_special_guy(FAMILY_MAGE, 2, 6);
-    ASSERT_TRUE(mage != nullptr) << "mage created";
-    if (!mage) {
-        return;
-    }
-
-    // Marker remove/replace path for mage special 1 with shifter held.
+    ASSERT_NE(nullptr, mage) << "mage created";
+    mage->setxy(100, 100);
     mage->set_current_special(1);
     mage->set_shifter_down(1);
     mage->set_user(0);
     mage->set_busy(0);
-    if (mage->myguy) {
-        mage->myguy->intelligence = 120;
-    }
+    ASSERT_NE(nullptr, mage->myguy) << "the marker path reads the guy's Intelligence";
+    mage->myguy->intelligence = 120;
 
-    walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    ASSERT_TRUE(marker != nullptr) << "marker created";
-    if (marker) {
-        marker->set_owner(mage);
-        marker->set_dead(0);
-        marker->setxy(mage->xpos() + 8, mage->ypos() + 8);
-    }
-    (void)mage->special();
+    walker* old_marker = world.add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, old_marker) << "marker created";
+    old_marker->set_owner(mage);
+    old_marker->set_dead(0);
+    old_marker->setxy(static_cast<Sint32>(mage->xpos() + 8), static_cast<Sint32>(mage->ypos() + 8));
 
-    // Freeze-time enemy-team branch.
+    ASSERT_TRUE(mage->special()) << "the marker recast fires";
+    EXPECT_EQ(1, static_cast<int>(old_marker->dead()))
+        << "the marker the caster already owned is removed";
+
+    int live_markers = 0;
+    walker* survivor = nullptr;
+    for (auto& uptr : world.oblist)
+    {
+        if (uptr && uptr->order() == Order::FX && uptr->family() == FAMILY_MARKER
+            && !uptr->dead() && uptr->owner() == mage)
+        {
+            live_markers++;
+            survivor = uptr.get();
+        }
+    }
+    ASSERT_EQ(1, live_markers) << "a mage never holds two live markers at once";
+    ASSERT_NE(nullptr, survivor) << "the replacement marker exists";
+    EXPECT_EQ(120 / 33, static_cast<int>(survivor->lifetime()))
+        << "the new marker carries Intelligence / 33 uses";
+    EXPECT_FLOAT_EQ(16.0f, mage->busy())
+        << "8 busy ticks for the removal plus 8 for the placement";
+
+    delete mage;
+    world.delete_objects();
+}
+
+
+// Mage special 3 is FREEZE TIME, and enemy_freeze is relative to
+// world.my_team: a mage that is NOT on the player's team banks NO global time
+// stop at all. It hands min(base + per_level*level, cap) bonus rounds to its
+// own side instead (living-03-mage.lua freeze_time).
+TEST_F(WalkerSpecials, mage_freeze_time_off_team_grants_bonus_rounds_not_a_global_stop)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* mage = make_special_guy(FAMILY_MAGE, 3, 6);
+    ASSERT_NE(nullptr, mage) << "mage created";
+    mage->setxy(100, 100);
     mage->set_current_special(3);
     mage->set_shifter_down(0);
     mage->set_busy(0);
     mage->set_team_num(3);
-    if (mage->myguy) {
-        mage->clear_myguy();
-    }
-    walker* ally = make_special_guy(FAMILY_ORC, 3, 2);
-    ASSERT_TRUE(ally != nullptr) << "ally created";
-    if (ally) {
-        ally->setxy(mage->xpos() + 6, mage->ypos() + 6);
-    }
-    (void)mage->special();
+    mage->clear_myguy();
+    ASSERT_NE(3, static_cast<int>(world.my_team))
+        << "the arm under test is the one where the caster is NOT the player's side";
 
-    delete ally;
+    // find_friends_in_range scans oblist, so the ally has to BE in it.
+    walker* ally = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, ally) << "ally created";
+    ally->set_team_num(3);
+    ally->stats()->set_level(2);
+    ally->setxy(static_cast<Sint32>(mage->xpos() + 6), static_cast<Sint32>(mage->ypos() + 6));
+    ally->set_bonus_rounds(0);
+
+    world.enemy_freeze = 0;
+    ASSERT_TRUE(mage->special()) << "freeze time fires";
+    EXPECT_EQ(0, world.enemy_freeze)
+        << "an off-team mage banks no global time stop";
+    EXPECT_EQ(5 + 2 * 6, static_cast<int>(ally->bonus_rounds()))
+        << "it grants bonus_rounds_base + per_level * level rounds to its own side";
+
     delete mage;
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    world.delete_objects();
 }
 
 
-TEST_F(WalkerSpecials, mage_wave_and_burst_with_targets)
+// Mage special 4 (ENERGY WAVE) converts one fired bolt into exactly one
+// rolling wave; special 5 (HEARTBURST) detonates one explosion ON EACH foe in
+// range and pays for every one of them out of the caster's pool, so the count
+// scales with the targets and not with the cast
+// (packs/core/families/living-03-mage.lua energy_wave / heartburst).
+TEST_F(WalkerSpecials, mage_wave_is_one_and_heartburst_is_one_per_foe)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
     walker* mage = make_special_guy(FAMILY_MAGE, 1, 7);
-    walker* foe1 = make_special_guy(FAMILY_ORC, 2, 3);
-    walker* foe2 = make_special_guy(FAMILY_SKELETON, 2, 3);
-    ASSERT_TRUE(mage != nullptr && foe1 != nullptr && foe2 != nullptr) << "mage and foes created";
-    if (!(mage && foe1 && foe2)) {
-        return;
-    }
-
+    ASSERT_NE(nullptr, mage) << "mage created";
     mage->setxy(120, 120);
     mage->set_lastx(mage->stepsize());
     mage->set_lasty(0);
-    foe1->setxy(128, 120);
-    foe2->setxy(132, 124);
-
-    mage->set_current_special(4); // energy wave
     mage->set_busy(0);
-    (void)mage->special();
 
-    mage->set_current_special(5); // burst enemies
+    // find_foes_in_range scans oblist, so the foes have to BE in it.
+    walker* foe1 = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe2 = world.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, foe1) << "first foe created";
+    ASSERT_NE(nullptr, foe2) << "second foe created";
+    for (walker* foe : {foe1, foe2})
+    {
+        foe->set_team_num(2);
+        foe->stats()->set_level(3);
+    }
+    // Well inside heartburst's 80 + 2*level reach, but OFF the muzzle: a foe
+    // standing where the bolt spawns turns walker::fire() into a melee swing
+    // that returns no bolt at all, and energy_wave needs the bolt.
+    foe1->setxy(110, 170);
+    foe2->setxy(150, 175);
+
+    mage->set_current_special(4);
+    const int waves_before = count_order_family(Order::Weapon, FAMILY_WAVE);
+    ASSERT_TRUE(mage->special()) << "energy wave fires";
+    EXPECT_EQ(waves_before + 1, count_order_family(Order::Weapon, FAMILY_WAVE))
+        << "one cast leaves exactly one wave behind";
+
+    mage->set_current_special(5);
     mage->set_busy(0);
     mage->stats()->set_magicpoints(1200);
     mage->stats()->set_special_cost(5, 0);
-    (void)mage->special();
+    const int bursts_before = count_order_family(Order::FX, FAMILY_EXPLOSION);
+    const float mp_before = mage->stats()->magicpoints();
+    ASSERT_TRUE(mage->special()) << "heartburst fires with two foes in range";
+    EXPECT_EQ(bursts_before + 2, count_order_family(Order::FX, FAMILY_EXPLOSION))
+        << "heartburst is one explosion per acquired foe, not one per cast";
+    EXPECT_LT(mage->stats()->magicpoints(), mp_before)
+        << "each burst is paid for out of the caster's pool";
+    EXPECT_FLOAT_EQ(5.0f, mage->busy()) << "heartburst costs the caster 5 busy ticks";
 
-    delete foe1;
-    delete foe2;
     delete mage;
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    world.delete_objects();
 }
 
 
-TEST_F(WalkerSpecials, archmage_low_int_marker_chain_and_summon_true)
+// The archmage's four shifter-held arms, each pinned by what it leaves
+// behind: special 1 is refused outright under 75 Int and spends nothing;
+// with the Int to pay for it, it removes the marker the caster already owns
+// and plants one fresh; special 2 is exactly one chain bolt; special 3 is
+// exactly one fire elemental (packs/core/families/living-17-archmage.lua).
+TEST_F(WalkerSpecials, archmage_marker_needs_75_int_then_chain_and_summon_are_one_each)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
-    walker* foe = make_special_guy(FAMILY_ORC, 2, 2);
-    ASSERT_TRUE(arch != nullptr && foe != nullptr) << "arch and foe created";
-    if (!(arch && foe)) {
-        return;
-    }
+    ASSERT_NE(nullptr, arch) << "archmage created";
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, foe) << "foe created";
+    foe->set_team_num(2);
+    foe->stats()->set_level(2);
 
     arch->setxy(140, 140);
     foe->setxy(148, 140);
-    arch->stats()->set_special_cost(1, 0);
-    arch->stats()->set_special_cost(2, 0);
-    arch->stats()->set_special_cost(3, 0);
-    arch->stats()->set_special_cost(4, 0);
+    for (int slot = 1; slot <= 4; ++slot)
+        arch->stats()->set_special_cost(slot, 0);
+    arch->stats()->set_max_magicpoints(1800);
+    arch->stats()->set_magicpoints(1800);
+    ASSERT_NE(nullptr, arch->myguy) << "the Int gate reads the guy";
 
-    // Archmage special 1 low-int path.
+    // 1. Marker with too little Intelligence: refused, nothing placed or spent.
     arch->set_current_special(1);
     arch->set_shifter_down(1);
     arch->set_busy(0);
     arch->set_user(0);
-    if (arch->myguy) {
-        arch->myguy->intelligence = 20;
-    }
-    (void)arch->special();
+    arch->myguy->intelligence = 20;
+    const float mp_before_refusal = arch->stats()->magicpoints();
+    ASSERT_FALSE(arch->special()) << "under 75 Int the marker is refused";
+    EXPECT_EQ(0, count_order_family(Order::FX, FAMILY_MARKER))
+        << "a refused marker places nothing";
+    EXPECT_FLOAT_EQ(mp_before_refusal, arch->stats()->magicpoints())
+        << "a refused cast spends no magic";
+    EXPECT_FLOAT_EQ(0.0f, arch->busy()) << "and costs no time";
 
-    // Marker removal + replacement path.
-    if (arch->myguy) {
-        arch->myguy->intelligence = 220;
-    }
-    walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    ASSERT_TRUE(marker != nullptr) << "arch marker created";
-    if (marker) {
-        marker->set_owner(arch);
-        marker->set_dead(0);
-        marker->setxy(arch->xpos() + 8, arch->ypos() + 8);
-    }
+    // 2. Same cast with the Int for it, over a marker the caster already owns.
+    arch->myguy->intelligence = 220;
+    walker* old_marker = world.add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, old_marker) << "arch marker created";
+    old_marker->set_owner(arch);
+    old_marker->set_dead(0);
+    old_marker->setxy(static_cast<Sint32>(arch->xpos() + 8), static_cast<Sint32>(arch->ypos() + 8));
     arch->set_busy(0);
-    arch->set_current_special(1);
-    arch->set_shifter_down(1);
-    (void)arch->special();
+    ASSERT_TRUE(arch->special()) << "with 220 Int the marker is placed";
+    EXPECT_EQ(1, static_cast<int>(old_marker->dead())) << "the old marker is removed";
+    int live_markers = 0;
+    walker* survivor = nullptr;
+    for (auto& uptr : world.oblist)
+    {
+        if (uptr && uptr->order() == Order::FX && uptr->family() == FAMILY_MARKER
+            && !uptr->dead() && uptr->owner() == arch)
+        {
+            live_markers++;
+            survivor = uptr.get();
+        }
+    }
+    ASSERT_EQ(1, live_markers) << "an archmage never holds two live markers";
+    ASSERT_NE(nullptr, survivor) << "the replacement marker exists";
+    EXPECT_EQ(220 / 33, static_cast<int>(survivor->lifetime()))
+        << "the new marker carries Intelligence / 33 uses";
+    EXPECT_FLOAT_EQ(16.0f, arch->busy())
+        << "8 busy ticks for the removal plus 8 for the placement";
 
-    // Chain-lightning path.
+    // 3. Chain lightning: one bolt per cast.
     arch->set_busy(0);
     arch->set_current_special(2);
     arch->set_shifter_down(1);
-    (void)arch->special();
+    const int chains_before = count_order_family(Order::FX, FAMILY_CHAIN);
+    ASSERT_TRUE(arch->special()) << "chain lightning fires with a foe in range";
+    EXPECT_EQ(chains_before + 1, count_order_family(Order::FX, FAMILY_CHAIN))
+        << "one cast is exactly one chain bolt";
 
-    // True summon path.
+    // 4. True summon: one elemental per cast.
     arch->set_busy(0);
     arch->set_current_special(3);
     arch->set_shifter_down(1);
-    (void)arch->special();
+    const int elementals_before = count_order_family(Order::Living, FAMILY_FIREELEMENTAL);
+    ASSERT_TRUE(arch->special()) << "the true summon fires";
+    EXPECT_EQ(elementals_before + 1, count_order_family(Order::Living, FAMILY_FIREELEMENTAL))
+        << "one cast summons exactly one fire elemental";
 
-    delete foe;
     delete arch;
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    world.delete_objects();
 }
 
 
@@ -1181,124 +1410,143 @@ TEST_F(WalkerSpecials, archmage_mind_control_stats_name_path)
 }
 
 
-TEST_F(WalkerSpecials, druid_circle_existing_protection_branch)
+// Druid special 4 (PROTECTION) never mints a second ring for an ally that
+// already owns one: a fresh circle is created only to read a full charge off
+// it, that charge tops up the existing ring, and the fresh one is discarded
+// dead (packs/core/families/living-13-druid.lua protection_circle).
+TEST_F(WalkerSpecials, druid_protection_tops_up_an_existing_circle)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
     walker* druid = make_special_guy(FAMILY_DRUID, 1, 6);
-    walker* ally = make_special_guy(FAMILY_SOLDIER, 1, 5);
-    ASSERT_TRUE(druid != nullptr && ally != nullptr) << "druid and ally created";
-    if (!(druid && ally)) {
-        return;
-    }
-
+    ASSERT_NE(nullptr, druid) << "druid created";
     druid->setxy(100, 100);
-    ally->setxy(108, 100);
     druid->set_busy(0);
     druid->set_current_special(4);
+    druid->stats()->set_magicpoints(2000);
 
-    walker* existing = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
-    ASSERT_TRUE(existing != nullptr) << "existing protection created";
-    if (existing) {
-        existing->set_owner(ally);
-        existing->set_team_num(ally->team_num());
-        existing->setxy(ally->xpos(), ally->ypos());
+    // find_friends_in_range scans oblist, and the cast is refused unless it
+    // counts more than one friend there -- and the caster itself is NOT in
+    // oblist, so two allies are the minimum. One of them already owns a ring
+    // (the branch under test), the other does not (the control).
+    walker* protected_ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* bare_ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, protected_ally) << "already-protected ally created";
+    ASSERT_NE(nullptr, bare_ally) << "unprotected ally created";
+    for (walker* ally : {protected_ally, bare_ally})
+    {
+        ally->set_team_num(1);
+        ally->stats()->set_level(5);
     }
+    protected_ally->setxy(108, 100);
+    bare_ally->setxy(130, 100);
 
-    (void)druid->special();
+    walker* existing = world.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    ASSERT_NE(nullptr, existing) << "existing protection created";
+    existing->set_owner(protected_ally);
+    existing->set_team_num(protected_ally->team_num());
+    existing->set_dead(0);
+    existing->setxy(static_cast<Sint32>(protected_ally->xpos()),
+                    static_cast<Sint32>(protected_ally->ypos()));
+    existing->stats()->set_hitpoints(5.0f);
 
-    delete ally;
+    ASSERT_TRUE(druid->special()) << "protection fires with friends in range";
+
+    int rings_on_protected = 0;
+    int rings_on_bare = 0;
+    int spent_circles = 0;
+    walker* fresh = nullptr;
+    for (auto& uptr : world.weaplist)
+    {
+        if (uptr == nullptr || uptr->order() != Order::Weapon
+            || uptr->family() != FAMILY_CIRCLE_PROTECTION)
+            continue;
+        if (uptr->dead())
+        {
+            spent_circles++;
+            fresh = uptr.get();
+        }
+        else if (uptr->owner() == protected_ally)
+        {
+            rings_on_protected++;
+        }
+        else if (uptr->owner() == bare_ally)
+        {
+            rings_on_bare++;
+        }
+    }
+    ASSERT_EQ(1, rings_on_protected)
+        << "the already-protected ally keeps exactly one live ring";
+    EXPECT_EQ(0, static_cast<int>(existing->dead()))
+        << "and the survivor is the ring it already had";
+    EXPECT_EQ(1, rings_on_bare)
+        << "the unprotected ally gets one ring of its own (the other branch)";
+    ASSERT_EQ(1, spent_circles)
+        << "the fresh circle is minted only to read a charge off it, then discarded";
+    ASSERT_NE(nullptr, fresh) << "the discarded circle is still in weaplist";
+    ASSERT_GT(fresh->stats()->hitpoints(), 0.0f) << "a fresh ring carries a charge";
+    EXPECT_FLOAT_EQ(5.0f + fresh->stats()->hitpoints(), existing->stats()->hitpoints())
+        << "the whole fresh charge is poured into the existing ring";
+
     delete druid;
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    world.delete_objects();
 }
 
-TEST_F(WalkerSpecials, orc_eat_corpse_and_barbarian_exploding_boulder_npc)
+// Two NPC (no-guy) casts, each pinned by the exact number it writes. Orc
+// special 2 (EAT CORPSE) heals corpse.level * corpse_heal_per_level and eats
+// the stain; barbarian special 2 hurls one boulder carrying the legacy 5000
+// "explode on impact" sentinel, at 1 + slot*5 busy
+// (living-14-orc.lua eat_corpse; living-16-barbarian.lua do_special).
+TEST_F(WalkerSpecials, npc_orc_eats_a_corpse_and_npc_barbarian_arms_its_boulder)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
     walker* orc = make_special_guy(FAMILY_ORC, 2, 4);
-    ASSERT_TRUE(orc != nullptr) << "orc created";
-    if (!orc) {
-        return;
-    }
-    if (orc->myguy) {
-        orc->clear_myguy();
-    }
+    ASSERT_NE(nullptr, orc) << "orc created";
+    orc->clear_myguy();
     orc->stats()->name = "ORC-NPC";
     orc->stats()->set_hitpoints(10);
     orc->stats()->set_max_hitpoints(100);
     orc->set_current_special(2);
     orc->set_busy(0);
 
-    walker* blood = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    ASSERT_TRUE(blood != nullptr) << "blood created";
-    if (blood) {
-        blood->set_team_num(3);
-        blood->stats()->set_level(3);
-        blood->setxy(orc->xpos() + 1, orc->ypos() + 1);
-    }
-    (void)orc->special();
+    walker* blood = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, blood) << "blood created";
+    blood->set_team_num(3);
+    blood->stats()->set_level(3);
+    blood->set_dead(0);
+    blood->setxy(static_cast<Sint32>(orc->xpos() + 1), static_cast<Sint32>(orc->ypos() + 1));
+
+    ASSERT_TRUE(orc->special()) << "a hungry orc beside a corpse eats it";
+    // corpse_heal_per_level is 5 (living-14-orc.lua tuning), level 3 corpse.
+    EXPECT_FLOAT_EQ(10.0f + 3.0f * 5.0f, orc->stats()->hitpoints())
+        << "the meal is worth corpse level * corpse_heal_per_level, under the cap";
+    EXPECT_EQ(1, static_cast<int>(blood->dead())) << "and the corpse is consumed";
 
     walker* barb = make_special_guy(FAMILY_BARBARIAN, 2, 5);
-    ASSERT_TRUE(barb != nullptr) << "barbarian created";
-    if (barb) {
-        if (barb->myguy) {
-            barb->clear_myguy();
-        }
-        barb->setxy(120, 120);
-        barb->set_lastx(barb->stepsize());
-        barb->set_lasty(0);
-        barb->set_busy(0);
-        barb->set_current_special(2); // exploding boulder
-        (void)barb->special();
-    }
+    ASSERT_NE(nullptr, barb) << "barbarian created";
+    barb->clear_myguy();
+    barb->setxy(120, 120);
+    barb->set_lastx(barb->stepsize());
+    barb->set_lasty(0);
+    barb->set_busy(0);
+    barb->set_current_special(2);
+    const int boulders_before = count_order_family(Order::Weapon, FAMILY_BOULDER);
+    ASSERT_TRUE(barb->special()) << "the exploding boulder is hurled";
+    EXPECT_EQ(boulders_before + 1, count_order_family(Order::Weapon, FAMILY_BOULDER))
+        << "one cast adds exactly one boulder to weaplist";
+    walker* boulder = find_order_family(Order::Weapon, FAMILY_BOULDER);
+    ASSERT_NE(nullptr, boulder) << "the boulder is in the world";
+    EXPECT_EQ(barb, boulder->owner()) << "and it belongs to the thrower";
+    EXPECT_EQ(5000, static_cast<int>(boulder->skip_exit()))
+        << "slot 2 arms the legacy explode-on-impact sentinel";
+    EXPECT_FLOAT_EQ(11.0f, barb->busy()) << "busy += 1 + slot * 5 == 11 for slot 2";
 
     delete barb;
     delete orc;
-    og::runtime::current_session->myscreen_->world().delete_objects();
-}
-
-
-TEST_F(WalkerSpecials, cleric_raise_skeleton_and_ghost_from_stain)
-{
-    og::runtime::current_session->myscreen_->world().delete_objects();
-
-    walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 6);
-    ASSERT_TRUE(cleric != nullptr) << "cleric created";
-    if (!cleric)
-        return;
-
-    // Place a blood stain close by but not colliding with other objects.
-    walker* stain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    ASSERT_TRUE(stain != nullptr) << "stain created";
-    if (!stain) {
-        delete cleric;
-        return;
-    }
-
-    cleric->setxy(80, 80);
-    cleric->set_team_num(1);
-    cleric->set_busy(0);
-    cleric->stats()->set_magicpoints(2000);
-    cleric->stats()->set_max_magicpoints(2000);
-
-    stain->setxy(110, 80);
-    stain->set_team_num(2);
-    stain->set_dead(0);
-
-    // Raise skeletons (special 2, shifter up).
-    cleric->set_current_special(2);
-    cleric->set_shifter_down(0);
-    (void)cleric->special();
-
-    // Raise ghosts (special 3, shifter up).
-    cleric->set_busy(0);
-    cleric->set_current_special(3);
-    cleric->set_shifter_down(0);
-    (void)cleric->special();
-
-    delete cleric;
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    world.delete_objects();
 }
 
 
@@ -1341,40 +1589,6 @@ TEST_F(WalkerSpecials, cleric_mystic_mace_low_int_and_success_paths)
 }
 
 
-TEST_F(WalkerSpecials, cleric_resurrect_friendly_and_enemy_stains)
-{
-    og::runtime::current_session->myscreen_->world().delete_objects();
-
-    walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 8);
-    walker* ally = make_special_guy(FAMILY_SOLDIER, 1, 5);
-    ASSERT_TRUE(cleric != nullptr && ally != nullptr) << "cleric and ally created";
-    if (!(cleric && ally))
-        return;
-
-    cleric->setxy(100, 100);
-    cleric->set_current_special(4);
-    cleric->stats()->set_special_cost(4, 0);
-    cleric->stats()->set_magicpoints(2000);
-    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
-    og::runtime::current_session->myscreen_->world_.allied_mode = 0;
-    ally->setxy(110, 100);
-    ally->set_team_num(1);
-    ally->generate_bloodspot();
-
-    int soldiers_before = count_family_in_oblist(FAMILY_SOLDIER);
-    (void)cleric->special();
-    int soldiers_after = count_family_in_oblist(FAMILY_SOLDIER);
-    ASSERT_TRUE(soldiers_after >= soldiers_before) << "friendly stain should allow resurrecting original family";
-
-    delete ally;
-    delete cleric;
-    og::runtime::current_session->myscreen_->world().delete_objects();
-
-    // Enemy-stain branch depends on map passability and alliance mode interactions;
-    // keep this test deterministic by validating the friendly resurrection path only.
-}
-
-
 TEST_F(WalkerSpecials, elf_rock_barrage_level4_deterministic_spread)
 {
     const auto first = run_elf_barrage(123u, 4);
@@ -1410,65 +1624,96 @@ TEST_F(WalkerSpecials, elf_rock_barrage_level4_deterministic_spread)
 }
 
 
-TEST_F(WalkerSpecials, walker_turn_undead_attack_kill_branch_and_act_guard_random_edges)
+// living::act's two remaining AI arms, each pinned by what it queues.
+// ACT_GUARD hands off to act_guard(), which acquires the nearest foe, faces
+// it, wakes a non-hold-post guard to ACT_RANDOM and queues one directed
+// COMMAND_FIRE -- then falls out of the switch, so act() itself reports 0.
+// ACT_RANDOM's 1-in-5 special roll with a pool too small for special 1 does
+// NOT cast: it drops into act_random(), which with no foe anywhere queues a
+// 40-tick random walk and returns 1 (src/gameplay/living.cpp act/act_random,
+// src/gameplay/walker.cpp act_guard). turn_undead's own counts are pinned in
+// WalkerSpecials.turn_undead_destroys_undead_foes_and_spares_the_living.
+TEST_F(WalkerSpecials, act_guard_and_low_magic_act_random_pin_what_they_queue)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
-
-    walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 7);
-    walker* skel = make_special_guy(FAMILY_SKELETON, 2, 1);
-    walker* ghost = make_special_guy(FAMILY_GHOST, 2, 1);
-    ASSERT_TRUE(cleric != nullptr && skel != nullptr && ghost != nullptr) << "cleric and undead created";
-    if (cleric && skel && ghost) {
-        cleric->setxy(100, 100);
-        skel->setxy(102, 100);
-        ghost->setxy(103, 100);
-        cleric->set_damage(150.0f);
-        skel->stats()->set_hitpoints(8);
-        ghost->stats()->set_hitpoints(8);
-        SequenceRandom seq_rng({1000, 0, 1000, 0});
-        GameContext test_ctx;
-    
-        test_ctx.rng = &seq_rng;
-        push_test_context(&test_ctx);
-        (void)cleric->turn_undead(40, 3);
-        pop_test_context();
-    }
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
     walker* guard = make_special_guy(FAMILY_ORC, 3, 4);
-    walker* foe = make_special_guy(FAMILY_SOLDIER, 2, 2);
-    ASSERT_TRUE(guard != nullptr && foe != nullptr) << "guard and foe created";
-    if (guard && foe) {
-        guard->setxy(140, 140);
-        foe->setxy(146, 140);
-        guard->set_act_type(ACT_GUARD);
-        (void)guard->act();
+    ASSERT_NE(nullptr, guard) << "guard created";
+    // find_near_foe scans oblist, so the foe has to BE in it.
+    walker* foe = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, foe) << "foe created";
+    foe->set_team_num(2);
+    foe->stats()->set_level(2);
+    guard->setxy(140, 140);
+    foe->setxy(160, 140);
+    guard->set_foe(nullptr);
+    guard->set_act_type(ACT_GUARD);
+    guard->set_guard_hold_post(false);
+    // The pre-switch state living::act needs: nothing animating, nothing
+    // queued, no pending turn, not busy, not frozen.
+    guard->stats()->clear_command();
+    guard->stats()->set_frozen_delay(0);
+    guard->set_ani_type(ANI_WALK);
+    guard->set_busy(0);
+    guard->set_curdir(static_cast<signed char>(FACE_UP));
+    guard->set_enddir(static_cast<char>(FACE_UP));
+
+    {
+        // The only draw on this path is act_guard's COMMAND_FIRE count.
+        FixedRandom one_rng(1u);
+        ScopedSimStream scoped(&one_rng);
+        ASSERT_FALSE(guard->act())
+            << "the ACT_GUARD arm breaks out of the switch, so act() returns 0";
     }
+    ASSERT_EQ(foe, guard->foe()) << "act_guard acquires the nearest foe";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(guard->curdir()))
+        << "and turns to face it (face_delta, not a bare curdir write)";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(guard->enddir()))
+        << "parking enddir there too, so the facing survives the next tick";
+    ASSERT_EQ(1u, guard->stats()->commands.size())
+        << "a sighted guard queues exactly one command";
+    EXPECT_EQ(COMMAND_FIRE, static_cast<int>(guard->stats()->commands.back().commandtype))
+        << "and that command is the directed parting shot";
+    EXPECT_EQ(ACT_RANDOM, static_cast<int>(guard->act_type()))
+        << "a genuine sighting wakes a non-hold-post guard";
+
+    delete guard;
+    world.delete_objects();
 
     walker* randomer = make_special_guy(FAMILY_ORC, 5, 4);
-    ASSERT_TRUE(randomer != nullptr) << "randomer created";
-    if (randomer) {
-        randomer->setxy(160, 160);
-        randomer->set_foe(nullptr);
-        randomer->set_act_type(ACT_RANDOM);
-        randomer->stats()->clear_command();
-        // act(): rng(4)==0 and rng(20)==1 => act_random() path
-        // act_random(): rng(70)==0, find no foe => random-walk command path
-        SequenceRandom random_rng({0, 1, 0, 1, 1, 2});
-        GameContext random_ctx;
-    
-        random_ctx.rng = &random_rng;
-        push_test_context(&random_ctx);
-        (void)randomer->act();
-        pop_test_context();
+    ASSERT_NE(nullptr, randomer) << "randomer created";
+    randomer->setxy(160, 160);
+    randomer->set_foe(nullptr);
+    randomer->set_act_type(ACT_RANDOM);
+    randomer->stats()->clear_command();
+    randomer->stats()->set_frozen_delay(0);
+    randomer->set_ani_type(ANI_WALK);
+    randomer->set_busy(0);
+    // Too poor to cast: the 1-in-5 special roll wins but the magic gate sends
+    // the tick to act_random() instead. Nothing regenerates it mid-tick.
+    randomer->stats()->set_magicpoints(0.0f);
+    randomer->stats()->set_magic_per_round(0.0f);
+    ASSERT_GT(static_cast<int>(randomer->stats()->special_cost(1)), 0)
+        << "special 1 costs something, so an empty pool cannot pay for it";
+
+    {
+        // Every draw 0: next(5) == 0 picks the special arm, and inside
+        // act_random next(80) == 0 re-acquires (finding nothing).
+        FixedRandom floor_rng(0u);
+        ScopedSimStream scoped(&floor_rng);
+        ASSERT_TRUE(randomer->act()) << "the low-magic ACT_RANDOM arm returns 1";
     }
+    ASSERT_EQ(1u, randomer->stats()->commands.size())
+        << "act_random with no foe queues exactly one command";
+    EXPECT_EQ(COMMAND_WALK, static_cast<int>(randomer->stats()->commands.back().commandtype))
+        << "try_command(COMMAND_RANDOM_WALK) lands as a directed COMMAND_WALK";
+    EXPECT_EQ(40, static_cast<int>(randomer->stats()->commands.back().commandcount))
+        << "with act_random's own 40-tick budget, not living::act's 300";
+    EXPECT_EQ(nullptr, randomer->foe()) << "and it found no foe to chase";
 
     delete randomer;
-    delete foe;
-    delete guard;
-    delete ghost;
-    delete skel;
-    delete cleric;
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    world.delete_objects();
 }
 
 
@@ -1633,6 +1878,24 @@ static void tick_world(int n)
     }
 }
 
+// grow_into needs all EIGHT neighbouring cells clear, and the stock level's
+// (100,100) has only six -- the scenery around the spawn eats two. Walk the
+// map for a cell with real room and leave the walker there.
+static bool place_with_room_to_grow(walker* w)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    for (Sint32 x = 2 * GRID_SIZE; x + 2 * w->sizex() < world.pixmaxx; x += GRID_SIZE)
+    {
+        for (Sint32 y = 2 * GRID_SIZE; y + 2 * w->sizey() < world.pixmaxy; y += GRID_SIZE)
+        {
+            w->setxy(x, y);
+            if (w->spaces_clear() > 7)
+                return true;
+        }
+    }
+    return false;
+}
+
 static int count_family_in_weaplist(char family)
 {
     int c = 0;
@@ -1696,35 +1959,63 @@ TEST_F(WalkerSpecials, soldier_whirlwind_drives_simulation)
 }
 
 
-TEST_F(WalkerSpecials, soldier_disarm_drives_simulation)
+// Soldier special 4 (DISARM) needs busy == 0 AND something blocking the way
+// forward. With caster level 4 against a level-1 foe, og.rand(foe.level) is
+// always 0, so the roll always wins and the foe eats
+// 6 * (self.level - foe.level + 1) == 24 busy while the caster eats 5.
+// With nothing in front, the cast is refused before any roll
+// (packs/core/families/living-00-soldier.lua disarm).
+TEST_F(WalkerSpecials, soldier_disarm_busies_the_foe_it_disarms)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
     walker* w = make_special_guy(FAMILY_SOLDIER, 1, 4);
-    ASSERT_TRUE(w != nullptr) << "walker created";
+    ASSERT_NE(nullptr, w) << "walker created";
     w->setxy(100, 100);
-    w->set_curdir(static_cast<char>(FACE_RIGHT));
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
     w->set_lastx(w->stepsize());
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(4);
 
-    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(foe != nullptr) << "foe created";
+    // forward_blocked() probes our own bounding box one pixel ahead, so the
+    // foe has to overlap THAT box, not merely stand a pixel clear of it.
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, foe) << "foe created";
     foe->set_team_num(2);
-    foe->setxy(w->xpos() + w->sizex() + 1, w->ypos() + 0);
     foe->stats()->set_level(1);
-    const float foe_busy_before = foe->busy();
+    foe->setxy(static_cast<Sint32>(w->xpos() + w->sizex() - 4), static_cast<Sint32>(w->ypos()));
+    foe->set_busy(0);
+    ASSERT_TRUE(w->stats()->forward_blocked())
+        << "the arm under test is the one with an enemy blocking the way forward";
 
-    bool fired = w->special();
-    if (fired)
-    {
-        ASSERT_TRUE(w->busy() > 0) << "successful disarm should leave caster busy";
-    }
-    else
-    {
-        ASSERT_TRUE(foe->busy() >= foe_busy_before) << "failed disarm should not corrupt foe state";
-    }
-    tick_world(48);
+    ASSERT_TRUE(w->special()) << "disarm fires with a frontal enemy";
+    EXPECT_FLOAT_EQ(24.0f, foe->busy())
+        << "the winning roll adds 6 * (level diff + 1) busy to the foe";
+    EXPECT_FLOAT_EQ(5.0f, w->busy()) << "and 5 busy to the caster";
+
     delete w;
+    world.delete_objects();
+
+    // Decline arm: nothing in front, so nothing is rolled and nothing spent.
+    walker* lone = make_special_guy(FAMILY_SOLDIER, 1, 4);
+    ASSERT_NE(nullptr, lone) << "lone fighter created";
+    lone->setxy(100, 100);
+    lone->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    lone->set_lastx(lone->stepsize());
+    lone->set_lasty(0);
+    lone->set_busy(0);
+    lone->set_current_special(4);
+    ASSERT_FALSE(lone->stats()->forward_blocked()) << "the way forward is clear";
+    const float mp_before = lone->stats()->magicpoints();
+    ASSERT_FALSE(lone->special()) << "disarm needs something blocking the way forward";
+    EXPECT_FLOAT_EQ(mp_before, lone->stats()->magicpoints())
+        << "a refused cast spends no magic";
+    EXPECT_FLOAT_EQ(0.0f, lone->busy()) << "and no time";
+
+    delete lone;
+    world.delete_objects();
 }
 
 
@@ -1985,10 +2276,17 @@ TEST_F(WalkerSpecials, cleric_raise_undead_drives_simulation)
     walker* stain = place_stain_near(w, FAMILY_SOLDIER, 2, 2);
     ASSERT_TRUE(stain != nullptr) << "stain placed";
 
-    int skel_before = count_family_in_oblist(FAMILY_SKELETON);
+    const int skel_before = count_order_family(Order::Living, FAMILY_SKELETON);
     ASSERT_TRUE(w->special()) << "raise undead should fire from stain";
-    int skel_after = count_family_in_oblist(FAMILY_SKELETON);
-    ASSERT_TRUE(skel_after > skel_before) << "raise undead should add a skeleton to oblist";
+    ASSERT_EQ(skel_before + 1, count_order_family(Order::Living, FAMILY_SKELETON))
+        << "one cast raises exactly one skeleton";
+    EXPECT_EQ(1, static_cast<int>(stain->dead()))
+        << "and the corpse it rose from is consumed";
+    walker* raised = find_order_family(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, raised) << "the skeleton is in oblist";
+    EXPECT_EQ(static_cast<int>(w->team_num()), static_cast<int>(raised->team_num()))
+        << "the raised undead serves the cleric";
+    EXPECT_EQ(w, raised->owner()) << "and is owned by it";
     tick_world(48);
     delete w;
 }
@@ -2007,19 +2305,35 @@ TEST_F(WalkerSpecials, cleric_raise_ghost_drives_simulation)
     walker* stain = place_stain_near(w, FAMILY_SOLDIER, 2, 2);
     ASSERT_TRUE(stain != nullptr) << "stain placed";
 
-    int ghost_before = count_family_in_oblist(FAMILY_GHOST);
+    const int ghost_before = count_order_family(Order::Living, FAMILY_GHOST);
     ASSERT_TRUE(w->special()) << "raise ghost should fire from stain";
-    int ghost_after = count_family_in_oblist(FAMILY_GHOST);
-    ASSERT_TRUE(ghost_after > ghost_before) << "raise ghost should add a ghost to oblist";
+    ASSERT_EQ(ghost_before + 1, count_order_family(Order::Living, FAMILY_GHOST))
+        << "one cast raises exactly one ghost";
+    EXPECT_EQ(1, static_cast<int>(stain->dead()))
+        << "and the corpse it rose from is consumed";
+    walker* raised = find_order_family(Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, raised) << "the ghost is in oblist";
+    EXPECT_EQ(static_cast<int>(w->team_num()), static_cast<int>(raised->team_num()))
+        << "the raised undead serves the cleric";
+    EXPECT_EQ(w, raised->owner()) << "and is owned by it";
     tick_world(48);
     delete w;
 }
 
 
+// Cleric special 4 (RESURRECT) on a FRIENDLY corpse re-creates a living of
+// the stain's remembered family, on the stain's team, at exactly half of the
+// max health the corpse carried, and eats the corpse. It never raises a
+// friend as undead (packs/core/families/living-05-cleric.lua resurrect).
 TEST_F(WalkerSpecials, cleric_resurrect_drives_simulation)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
+    world.allied_mode = 0;
+
     walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
-    ASSERT_TRUE(w != nullptr) << "walker created";
+    ASSERT_NE(nullptr, w) << "walker created";
     w->setxy(80, 80);
     w->set_busy(0);
     w->set_current_special(4);
@@ -2028,18 +2342,71 @@ TEST_F(WalkerSpecials, cleric_resurrect_drives_simulation)
     w->stats()->set_special_cost(4, 0);
 
     walker* stain = place_stain_near(w, FAMILY_SOLDIER, 1, 2);
-    ASSERT_TRUE(stain != nullptr) << "stain placed";
+    ASSERT_NE(nullptr, stain) << "stain placed";
+    // transfer_stats copies the corpse's pool onto the revived body, so pin
+    // the half-health rule against a value this test chose.
+    stain->stats()->set_max_hitpoints(120.0f);
 
-    int soldiers_before = count_family_in_oblist(FAMILY_SOLDIER);
-    int ghosts_before = count_family_in_oblist(FAMILY_GHOST);
+    const int soldiers_before = count_order_family(Order::Living, FAMILY_SOLDIER);
+    const int ghosts_before = count_order_family(Order::Living, FAMILY_GHOST);
     ASSERT_TRUE(w->special()) << "resurrect should fire from friendly stain";
-    int soldiers_after = count_family_in_oblist(FAMILY_SOLDIER);
-    int ghosts_after = count_family_in_oblist(FAMILY_GHOST);
-    ASSERT_TRUE(soldiers_after > soldiers_before
-                || ghosts_after > ghosts_before)
-        << "resurrect should produce a living entity (friendly soldier or ghost on enemy stain)";
+    ASSERT_EQ(soldiers_before + 1, count_order_family(Order::Living, FAMILY_SOLDIER))
+        << "a friendly corpse comes back as exactly one of its own family";
+    ASSERT_EQ(ghosts_before, count_order_family(Order::Living, FAMILY_GHOST))
+        << "a friendly corpse is never raised as undead";
+    EXPECT_EQ(1, static_cast<int>(stain->dead())) << "and the corpse is consumed";
+    walker* raised = find_order_family(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, raised) << "the resurrected soldier is in oblist";
+    EXPECT_FLOAT_EQ(60.0f, raised->stats()->hitpoints())
+        << "resurrection returns the fallen at half their max health";
+    EXPECT_FLOAT_EQ(120.0f, raised->stats()->max_hitpoints())
+        << "carrying the corpse's own pool";
+    EXPECT_EQ(1, static_cast<int>(raised->team_num())) << "on the corpse's team";
     tick_world(48);
     delete w;
+    world.delete_objects();
+}
+
+
+// The other arm of the same cast: an ENEMY corpse is not resurrected, it is
+// raised as one ghost on the CLERIC's team, owned by the cleric, and the
+// fallen family never comes back (living-05-cleric.lua resurrect, else arm).
+TEST_F(WalkerSpecials, cleric_resurrect_raises_an_enemy_corpse_as_a_ghost)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
+    world.allied_mode = 0;
+
+    walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
+    ASSERT_NE(nullptr, w) << "walker created";
+    w->setxy(80, 80);
+    w->set_busy(0);
+    w->set_current_special(4);
+    w->set_shifter_down(0);
+    w->stats()->set_magicpoints(2000);
+    w->stats()->set_special_cost(4, 0);
+
+    walker* stain = place_stain_near(w, FAMILY_SOLDIER, 2, 2);
+    ASSERT_NE(nullptr, stain) << "enemy stain placed";
+    ASSERT_FALSE(w->is_friendly(stain)) << "the arm under test is the enemy corpse";
+
+    const int soldiers_before = count_order_family(Order::Living, FAMILY_SOLDIER);
+    const int ghosts_before = count_order_family(Order::Living, FAMILY_GHOST);
+    ASSERT_TRUE(w->special()) << "resurrect fires on an enemy corpse too";
+    ASSERT_EQ(ghosts_before + 1, count_order_family(Order::Living, FAMILY_GHOST))
+        << "an enemy corpse rises as exactly one ghost";
+    ASSERT_EQ(soldiers_before, count_order_family(Order::Living, FAMILY_SOLDIER))
+        << "the enemy's own family is never restored";
+    EXPECT_EQ(1, static_cast<int>(stain->dead())) << "and the corpse is consumed";
+    walker* ghost = find_order_family(Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, ghost) << "the ghost is in oblist";
+    EXPECT_EQ(static_cast<int>(w->team_num()), static_cast<int>(ghost->team_num()))
+        << "a raised enemy serves the cleric, not its old side";
+    EXPECT_EQ(w, ghost->owner()) << "and is owned by it";
+    tick_world(48);
+    delete w;
+    world.delete_objects();
 }
 
 
@@ -2215,19 +2582,26 @@ TEST_F(WalkerSpecials, thief_charm_drives_simulation)
     foe->set_real_team_num(255);
     foe->set_charm_left(0);
 
-    SequenceRandom seq_rng({1, 1, 1, 1, 1, 1, 1, 1});
-    GameContext test_ctx;
-    test_ctx.rng = &seq_rng;
-    push_test_context(&test_ctx);
-    // The charm's resist roll is `og.rand(20) == 0` (living-11-thief.lua), and
-    // og.rand draws from the WORLD rng (world_scripts.cpp), not from the
-    // context rng pushed above -- that one steers nothing on this path. Pin
-    // the world rng or a shuffled predecessor decides the 1-in-20.
-    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;  // next(20) == 18: no resist
-    ASSERT_TRUE(w->special()) << "thief charm should fire on a charmable foe";
-    pop_test_context();
-    ASSERT_TRUE(foe->charm_left() > 0 || foe->team_num() == w->team_num())
-        << "charm should set charm_left or move foe to thief team";
+    const unsigned char foe_team_before = foe->team_num();
+    {
+        // The resist roll is `og.rand(20) == 0` (living-11-thief.lua), drawn
+        // off the WORLD stream -- a GameContext rng steers nothing here. Any
+        // non-zero draw is a successful charm.
+        FixedRandom one_rng(1u);
+        ScopedSimStream scoped(&one_rng);
+        ASSERT_TRUE(w->special()) << "thief charm should fire on a charmable foe";
+    }
+    // A successful charm does ALL of this, not any one of it.
+    EXPECT_EQ(static_cast<int>(w->team_num()), static_cast<int>(foe->team_num()))
+        << "the charmed foe joins the thief's team";
+    EXPECT_EQ(static_cast<int>(foe_team_before), static_cast<int>(foe->real_team_num()))
+        << "and its old team is remembered in real_team_num";
+    // charm_duration_base 75 + level diff 5 * 25 == 200, under the soft knee.
+    EXPECT_EQ(200, static_cast<int>(foe->charm_left()))
+        << "with the pack's own charm duration for this level difference";
+    EXPECT_EQ(nullptr, foe->foe())
+        << "and it inherits the thief's (absent) foe, so it picks a new one";
+    EXPECT_FLOAT_EQ(10.0f, w->busy()) << "the charm costs the thief 10 busy ticks";
     tick_world(48);
     delete w;
 }
@@ -2347,13 +2721,17 @@ TEST_F(WalkerSpecials, orc_howl_drives_simulation)
     foe->stats()->set_frozen_delay(0);
     foe->stats()->set_hitpoints(30.0f);
 
-    FixedRandom one_rng(1);
-    GameContext test_ctx;
-    test_ctx.rng = &one_rng;
-    push_test_context(&test_ctx);
-    ASSERT_TRUE(w->special()) << "orc howl should fire";
-    pop_test_context();
-    ASSERT_TRUE(foe->stats()->frozen_delay() > 0) << "howl should freeze nearby foes";
+    {
+        // The stun is yell_stun_base + rand0(level*10) - rand0(con*10) off the
+        // WORLD stream (og.rand0 never sees a GameContext rng), so a floor
+        // stream zeroes both rolls and the stun is exactly the base 10.
+        FixedRandom floor_rng(0u);
+        ScopedSimStream scoped(&floor_rng);
+        ASSERT_TRUE(w->special()) << "orc howl should fire";
+    }
+    EXPECT_EQ(10, static_cast<int>(foe->stats()->frozen_delay()))
+        << "howl banks exactly yell_stun_base on the foe it reaches";
+    EXPECT_FLOAT_EQ(2.0f, w->busy()) << "and costs the caster 2 busy ticks";
     tick_world(48);
     delete w;
 }
@@ -2393,11 +2771,16 @@ TEST_F(WalkerSpecials, barbarian_hurl_boulder_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(1);
-    int boulders_before = count_family_in_weaplist(FAMILY_BOULDER);
+    const int boulders_before = count_order_family(Order::Weapon, FAMILY_BOULDER);
     ASSERT_TRUE(w->special()) << "barbarian hurl boulder should fire";
-    int boulders_after = count_family_in_weaplist(FAMILY_BOULDER);
-    ASSERT_TRUE(boulders_after > boulders_before) << "hurl boulder should add FAMILY_BOULDER to weaplist";
-    ASSERT_TRUE(w->busy() > 0) << "hurl boulder should set busy";
+    EXPECT_EQ(boulders_before + 1, count_order_family(Order::Weapon, FAMILY_BOULDER))
+        << "one hurl adds exactly one boulder to weaplist";
+    walker* boulder = find_order_family(Order::Weapon, FAMILY_BOULDER);
+    ASSERT_NE(nullptr, boulder) << "the boulder is in the world";
+    EXPECT_EQ(w, boulder->owner()) << "and belongs to the thrower";
+    EXPECT_EQ(0, static_cast<int>(boulder->skip_exit()))
+        << "slot 1 is the plain boulder: no explode-on-impact sentinel";
+    EXPECT_FLOAT_EQ(6.0f, w->busy()) << "busy += 1 + slot * 5 == 6 for slot 1";
     tick_world(48);
     delete w;
 }
@@ -2510,14 +2893,23 @@ TEST_F(WalkerSpecials, archmage_mind_control_drives_simulation)
     foe->set_charm_left(0);
     const unsigned char foe_team_before = foe->team_num();
 
-    SequenceRandom seq_rng({1, 1, 1, 1, 1, 1, 1, 1});
-    GameContext test_ctx;
-    test_ctx.rng = &seq_rng;
-    push_test_context(&test_ctx);
-    ASSERT_TRUE(w->special()) << "archmage mind control should fire";
-    pop_test_context();
-    ASSERT_TRUE(foe->team_num() != foe_team_before || foe->charm_left() > 0)
-        << "mind control should change foe team or set charm_left";
+    {
+        // Two world-stream draws: og.rand(20) for the resist (non-zero means
+        // proper control, not the berserk arm) and compute_charm_duration's
+        // 25 + next(20*edge). A context rng reaches neither.
+        FixedRandom one_rng(1u);
+        ScopedSimStream scoped(&one_rng);
+        ASSERT_TRUE(w->special()) << "archmage mind control should fire";
+    }
+    // Proper control, not berserk: the foe joins the CASTER's team.
+    EXPECT_EQ(static_cast<int>(w->team_num()), static_cast<int>(foe->team_num()))
+        << "the controlled foe joins the archmage's team";
+    EXPECT_EQ(static_cast<int>(foe_team_before), static_cast<int>(foe->real_team_num()))
+        << "and its old team is remembered in real_team_num";
+    EXPECT_EQ(26, static_cast<int>(foe->charm_left()))
+        << "charm_duration is 25 + one draw over 20 * level edge";
+    EXPECT_EQ(nullptr, foe->foe()) << "control clears the foe so it may choose a new one";
+    EXPECT_FLOAT_EQ(10.0f, w->busy()) << "mind control costs the caster 10 busy ticks";
     tick_world(48);
     delete w;
 }
@@ -2548,45 +2940,92 @@ TEST_F(WalkerSpecials, slime_split_drives_simulation)
 }
 
 
+// grow_into (packs/core/families/living-08-slime.lua) has exactly two
+// outcomes and both are pinned here: with all eight neighbouring cells clear
+// the slime transforms into the next size up and the cast returns true; with
+// fewer than eight clear it declines and queues one 10-tick walk instead.
 TEST_F(WalkerSpecials, medium_slime_grow_drives_simulation)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
     walker* w = make_special_guy(FAMILY_MEDIUM_SLIME, 1, 4);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->setxy(100, 100);
+    ASSERT_NE(nullptr, w) << "walker created";
     w->set_busy(0);
     w->set_current_special(1);
-    bool fired = w->special();
-    if (fired)
-    {
-        ASSERT_EQ(w->family(), FAMILY_SLIME) << "successful grow should transform to FAMILY_SLIME";
-    }
-    else
-    {
-        ASSERT_TRUE(w->stats()->commands.size() > 0)
-            << "failed grow (no space) should still leave a walk command queued";
-    }
+    ASSERT_TRUE(place_with_room_to_grow(w)) << "found an open cell on this level";
+    ASSERT_GT(static_cast<int>(w->spaces_clear()), 7)
+        << "the arm under test is the one with room to grow";
+    ASSERT_TRUE(w->special()) << "a medium slime with room grows";
+    EXPECT_EQ(FAMILY_SLIME, static_cast<int>(w->family()))
+        << "and it becomes a full slime";
     tick_world(48);
     delete w;
+    world.delete_objects();
+
+    // No-room arm: at the map origin five of the eight probes are off-map.
+    walker* boxed = make_special_guy(FAMILY_MEDIUM_SLIME, 1, 4);
+    ASSERT_NE(nullptr, boxed) << "boxed slime created";
+    boxed->setxy(0, 0);
+    boxed->set_busy(0);
+    boxed->set_current_special(1);
+    boxed->stats()->clear_command();
+    ASSERT_LE(static_cast<int>(boxed->spaces_clear()), 7)
+        << "the arm under test is the one with no room to grow";
+    ASSERT_FALSE(boxed->special()) << "a boxed-in slime declines to grow";
+    EXPECT_EQ(FAMILY_MEDIUM_SLIME, static_cast<int>(boxed->family()))
+        << "and stays the size it was";
+    ASSERT_EQ(1u, boxed->stats()->commands.size())
+        << "the declined grow queues exactly one command";
+    EXPECT_EQ(COMMAND_WALK, static_cast<int>(boxed->stats()->commands.back().commandtype))
+        << "and that command is a shuffle toward room";
+    EXPECT_EQ(10, static_cast<int>(boxed->stats()->commands.back().commandcount))
+        << "with the pack's own 10-tick budget";
+    tick_world(48);
+    delete boxed;
+    world.delete_objects();
 }
 
 
+// The small slime shares grow_into's body, one size lower: room means
+// FAMILY_MEDIUM_SLIME, no room means the same declined 10-tick shuffle.
 TEST_F(WalkerSpecials, small_slime_grow_drives_simulation)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
     walker* w = make_special_guy(FAMILY_SMALL_SLIME, 1, 4);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->setxy(100, 100);
+    ASSERT_NE(nullptr, w) << "walker created";
     w->set_busy(0);
     w->set_current_special(1);
-    bool fired = w->special();
-    if (fired)
-    {
-        ASSERT_EQ(w->family(), FAMILY_MEDIUM_SLIME) << "successful grow should transform to FAMILY_MEDIUM_SLIME";
-    }
-    else
-    {
-        ASSERT_TRUE(w->stats()->commands.size() > 0)
-            << "failed grow (no space) should still leave a walk command queued";
-    }
+    ASSERT_TRUE(place_with_room_to_grow(w)) << "found an open cell on this level";
+    ASSERT_GT(static_cast<int>(w->spaces_clear()), 7)
+        << "the arm under test is the one with room to grow";
+    ASSERT_TRUE(w->special()) << "a small slime with room grows";
+    EXPECT_EQ(FAMILY_MEDIUM_SLIME, static_cast<int>(w->family()))
+        << "and it becomes a medium slime";
     tick_world(48);
     delete w;
+    world.delete_objects();
+
+    walker* boxed = make_special_guy(FAMILY_SMALL_SLIME, 1, 4);
+    ASSERT_NE(nullptr, boxed) << "boxed slime created";
+    boxed->setxy(0, 0);
+    boxed->set_busy(0);
+    boxed->set_current_special(1);
+    boxed->stats()->clear_command();
+    ASSERT_LE(static_cast<int>(boxed->spaces_clear()), 7)
+        << "the arm under test is the one with no room to grow";
+    ASSERT_FALSE(boxed->special()) << "a boxed-in slime declines to grow";
+    EXPECT_EQ(FAMILY_SMALL_SLIME, static_cast<int>(boxed->family()))
+        << "and stays the size it was";
+    ASSERT_EQ(1u, boxed->stats()->commands.size())
+        << "the declined grow queues exactly one command";
+    EXPECT_EQ(COMMAND_WALK, static_cast<int>(boxed->stats()->commands.back().commandtype))
+        << "and that command is a shuffle toward room";
+    EXPECT_EQ(10, static_cast<int>(boxed->stats()->commands.back().commandcount))
+        << "with the pack's own 10-tick budget";
+    tick_world(48);
+    delete boxed;
+    world.delete_objects();
 }
