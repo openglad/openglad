@@ -68,7 +68,7 @@ jobs:
           echo "${luals_dir}/bin" >> "${GITHUB_PATH}"
           "${luals_dir}/bin/lua-language-server" --version
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: ci-coverage
           max-size: 2G
