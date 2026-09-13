@@ -11,6 +11,8 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <list>
 #include <memory>
 #include <vector>
 
@@ -55,6 +57,91 @@ private:
     std::vector<std::uint32_t> values_;
     std::size_t index_;
 };
+
+// Installs a written RNG script over the world's SimRandom -- the stream
+// living::act, act_random, act_guard, death() and statistics::try_command
+// actually draw from. A GameContext rng reaches only walker construction
+// and combat math (walker_rng/combat_rng), so pushing a context RNG leaves
+// the AI branch picks to whatever a shuffled predecessor left in the LCG.
+class ScopedSimRandom
+{
+public:
+    explicit ScopedSimRandom(std::initializer_list<std::uint32_t> values)
+        : seq_(values), seq_ptr_(&seq_)
+    {
+        og::sim::set_sim_random_override(&seq_ptr_);
+    }
+    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
+    ScopedSimRandom(const ScopedSimRandom&) = delete;
+    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
+
+private:
+    SequenceRandom seq_;
+    IRandom* seq_ptr_;
+};
+
+// The head of a walker's command queue: which AI arm just ran, and with what
+// tick budget. COMMAND_WALK/40 is act_random's no-foe arm, COMMAND_SEARCH/200
+// its blocked-shot arm, COMMAND_FIRE its clear-shot arm, COMMAND_SEARCH/300
+// living::act's own "4 of 5 times" arm.
+struct QueuedCommand
+{
+    int type = -1;
+    int count = -1;
+    int com1 = -9999;
+    int com2 = -9999;
+};
+
+static QueuedCommand queued_command(walker* w)
+{
+    const auto& q = w->stats()->commands;
+    if (q.empty())
+        return {};
+    return {static_cast<int>(q.front().commandtype),
+            static_cast<int>(q.front().commandcount),
+            static_cast<int>(q.front().com1),
+            static_cast<int>(q.front().com2)};
+}
+
+// Puts a walker into the exact pre-switch state act() needs to reach its
+// act_type arm: nothing animating, nothing queued, no pending turn, not busy,
+// not frozen. Without this, act() returns early from animate()/turn()/
+// do_command() and never touches the branch under test.
+static void ready_to_act(walker* w, short act_type, int dir = FACE_UP)
+{
+    w->stats()->clear_command();
+    w->stats()->set_frozen_delay(0);
+    w->set_ani_type(ANI_WALK);
+    w->set_curdir(static_cast<signed char>(dir));
+    w->set_enddir(static_cast<char>(dir));
+    // set_weapon_heading() and create_weapon() read lastx/lasty -- the firing
+    // heading -- not curdir, so keep the two consistent or every shot launches
+    // due north off the map and fire_check returns WallBlocked.
+    const float step = w->stepsize();
+    switch (dir)
+    {
+        case FACE_UP:    w->set_lastx(0.0f);   w->set_lasty(-step); break;
+        case FACE_RIGHT: w->set_lastx(step);   w->set_lasty(0.0f);  break;
+        case FACE_DOWN:  w->set_lastx(0.0f);   w->set_lasty(step);  break;
+        case FACE_LEFT:  w->set_lastx(-step);  w->set_lasty(0.0f);  break;
+        default: break;
+    }
+    w->set_busy(0.0f);
+    w->set_act_type(act_type);
+}
+
+// Live entries of one order+family in the world object list. Both
+// create_weapon()'s generator arm and death()'s generator arm add there
+// (death()'s explosions are add_ob(Order::FX, ...), which routes to oblist --
+// NOT to fxlist).
+static int count_obs(Order order, int family)
+{
+    int n = 0;
+    for (const auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
+        if (uptr && uptr->order() == order && static_cast<int>(uptr->family()) == family)
+            ++n;
+    return n;
+}
 } // namespace
 
 TEST(WalkerCoreMore, walker_compute_outline_state_transitions)
@@ -177,27 +264,57 @@ TEST(WalkerCoreMore, walker_generator_fire_sets_weapon_lifetime_or_owner_paths)
 }
 
 
-TEST(WalkerCoreMore, walker_generator_create_weapon_special_case)
+// walker::create_weapon()'s Order::Generator arm: the summon is a LIVING of the
+// generator's default_weapon family, on the generator's team, owned by it, on
+// its floor -- and deliberately NOT difficulty-scaled here (A12b: fire() rolls
+// the spawn's real level and applies set_difficulty exactly once).
+TEST(WalkerCoreMore, walker_generator_create_weapon_spawns_owned_living_unscaled)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
     FixedRandom fixed_rng(1);
     GameContext c;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
-    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TREEHOUSE);
-    ASSERT_TRUE(gen != nullptr) << "generator created";
-    if (gen) {
-        gen->set_team_num(1);
-        gen->stats()->set_level(3);
-        gen->set_default_weapon(FAMILY_ELF);
-        gen->set_current_weapon(gen->default_weapon());
-        walker* weapon = gen->create_weapon();
-        ASSERT_TRUE(weapon != nullptr) << "create_weapon should return a spawned living for generators";
-    }
+    // A hard difficulty is live while the summon is created, so a reinstated
+    // set_difficulty() call here would be visible in the spawn's hitpoints.
+    const short old_difficulty = world.difficulty;
+    world.difficulty = 150;
 
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    walker* gen = world.add_ob(Order::Generator, FAMILY_TREEHOUSE);
+    ASSERT_NE(nullptr, gen) << "generator created";
+    gen->set_team_num(1);
+    gen->stats()->set_level(3);
+    gen->set_floor(3);  // a summon must land on the summoner's floor, not floor 0
+    gen->set_default_weapon(FAMILY_ELF);
+    gen->set_current_weapon(gen->default_weapon());
+
+    // Reference spawn straight from the loader: the unscaled baseline.
+    walker* reference = world.add_ob(Order::Living, FAMILY_ELF);
+    ASSERT_NE(nullptr, reference) << "reference elf created";
+    const float unscaled_hp = reference->stats()->max_hitpoints();
+
+    const int elves_before = count_obs(Order::Living, FAMILY_ELF);
+    walker* weapon = gen->create_weapon();
+    ASSERT_NE(nullptr, weapon) << "create_weapon spawns a living for generators";
+    ASSERT_EQ(elves_before + 1, count_obs(Order::Living, FAMILY_ELF))
+        << "the summon is added to the world's object list";
+    ASSERT_EQ(Order::Living, weapon->query_order())
+        << "a generator's create_weapon spawns a LIVING, not an Order::Weapon";
+    ASSERT_EQ(static_cast<int>(FAMILY_ELF), static_cast<int>(weapon->family()))
+        << "the summon is the generator's default_weapon family";
+    ASSERT_EQ(1, static_cast<int>(weapon->team_num()))
+        << "the summon joins the generator's team";
+    ASSERT_EQ(gen, weapon->owner()) << "the generator owns its summon";
+    ASSERT_EQ(3, static_cast<int>(weapon->floor()))
+        << "the summon spawns on the summoner's floor";
+    ASSERT_FLOAT_EQ(unscaled_hp, weapon->stats()->max_hitpoints())
+        << "A12b: create_weapon must not difficulty-scale the summon";
+
+    world.difficulty = old_difficulty;
+    world.delete_objects();
 }
 
 
@@ -226,41 +343,54 @@ TEST(WalkerCoreMore, walker_act_guard_and_random_branch_paths)
     }
 
     {
-        SequenceRandom rng_seq({0, 1, 0, 0});
-        GameContext c;
-        c.rng = &rng_seq;
-        GlobalContextGuard guard(&c);
+        // 1-in-5 special roll misses, 1-in-5 act_random() roll hits: act()
+        // delegates to living::act_random(), which finds no foe in an empty
+        // level and queues its wander (COMMAND_RANDOM_WALK expands to
+        // COMMAND_WALK) for exactly 40 ticks.
+        ScopedSimRandom rng_seq({1, 0, 0});
 
-        actor->stats()->clear_command();
-        actor->set_act_type(ACT_RANDOM);
+        ready_to_act(actor.get(), ACT_RANDOM);
         actor->set_foe(nullptr);
-        (void)actor->act();
-        // ACT_RANDOM no-foe branch may pick either random-walk or distant-foe search based on RNG.
-        (void)actor->stats()->has_commands();
+        ASSERT_FALSE(actor->act())
+            << "living::act's act_random() arm breaks out of the switch and returns 0";
+        ASSERT_EQ(nullptr, actor->foe())
+            << "find_near_foe has nothing to acquire in an emptied level";
+        const QueuedCommand wander = queued_command(actor.get());
+        ASSERT_EQ(COMMAND_WALK, wander.type)
+            << "act_random's no-foe arm queues COMMAND_RANDOM_WALK";
+        ASSERT_EQ(40, wander.count)
+            << "with act_random's 40-tick wander budget, not living::act's own 20";
     }
 
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(foe != nullptr) << "foe created";
-    if (foe)
-    {
-        foe->set_team_num(2);
-        foe->setxy(128, 96);
-    }
+    ASSERT_NE(nullptr, foe) << "foe created";
+    foe->set_team_num(2);
+    foe->setxy(128, 96);
     actor->set_team_num(1);
     actor->set_lineofsight(50);
-    actor->set_foe(foe);
 
     {
-        SequenceRandom rng_seq({0, 1, 1, 5});
-        GameContext c;
-        c.rng = &rng_seq;
-        GlobalContextGuard guard(&c);
+        // Same two rolls, but now a hostile soldier stands 32px to the east and
+        // the orc carries BIT_NO_RANGED: act_random acquires it, fire_check
+        // denies the shot, and the orc turns one clockwise step toward it and
+        // queues its 200-tick search.
+        ScopedSimRandom rng_seq({1, 0, 0});
 
-        actor->stats()->clear_command();
-        actor->set_act_type(ACT_RANDOM);
-        (void)actor->act();
-
-        ASSERT_TRUE(actor->foe() == foe) << "ACT_RANDOM visible-foe branch should keep the selected foe";
+        ready_to_act(actor.get(), ACT_RANDOM, FACE_UP);
+        actor->set_foe(nullptr);
+        ASSERT_FALSE(actor->act())
+            << "living::act's act_random() arm breaks out of the switch and returns 0";
+        ASSERT_EQ(foe, actor->foe())
+            << "act_random acquires the only near foe in the level";
+        ASSERT_EQ(FACE_UP_RIGHT, static_cast<int>(actor->curdir()))
+            << "the blocked shot turns one clockwise step from FACE_UP toward the foe at +x";
+        const QueuedCommand search = queued_command(actor.get());
+        ASSERT_EQ(COMMAND_SEARCH, search.type)
+            << "the blocked-shot arm falls through to act_random's COMMAND_SEARCH";
+        ASSERT_EQ(200, search.count)
+            << "act_random's search budget is 200 ticks";
+        ASSERT_EQ(ANI_WALK, static_cast<int>(actor->ani_type()))
+            << "a denied shot must not start the attack animation";
     }
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -334,14 +464,24 @@ TEST(WalkerCoreMore, walker_act_guard_else_and_act_random_turn_walk_paths)
     actor->set_lineofsight(30);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1); // forces fire_check() false branch
 
-    SequenceRandom rng_seq({0, 1, 1});
-    GameContext c;
-    c.rng = &rng_seq;
-    GlobalContextGuard guard(&c);
+    // 1-in-5 special roll misses, 1-in-5 act_random() roll hits, then
+    // act_random's next(80) is non-zero so the preset foe is kept.
+    ScopedSimRandom rng_seq({1, 0, 7});
 
-    actor->set_act_type(ACT_RANDOM);
-    (void)actor->act();
-    ASSERT_TRUE(actor->act_type() != ACT_FIRE) << "act_random blocked fire path should not set ACT_FIRE";
+    ready_to_act(actor.get(), ACT_RANDOM, FACE_UP);
+    actor->set_foe(foe.get());
+    ASSERT_FALSE(actor->act())
+        << "living::act's act_random() arm breaks out of the switch and returns 0";
+    ASSERT_EQ(foe.get(), actor->foe()) << "the in-range foe is kept, not dropped";
+    ASSERT_EQ(FACE_UP_RIGHT, static_cast<int>(actor->curdir()))
+        << "BIT_NO_RANGED denies the shot, so act_random turns one clockwise "
+           "step from FACE_UP toward the foe at +x";
+    const QueuedCommand search = queued_command(actor.get());
+    ASSERT_EQ(COMMAND_SEARCH, search.type)
+        << "the blocked-shot arm falls through to act_random's COMMAND_SEARCH";
+    ASSERT_EQ(200, search.count) << "act_random's search budget is 200 ticks";
+    ASSERT_EQ(ANI_WALK, static_cast<int>(actor->ani_type()))
+        << "a denied shot must not start the attack animation";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -491,75 +631,98 @@ TEST(WalkerCoreMore, walker_round5_act_switch_random_and_fire_branches)
 }
 
 
-TEST(WalkerCoreMore, walker_round5_act_random_contiguous_block_paths)
+// living::act_random's three arms, each reached with a written RNG script and
+// each read back through the command it queues:
+//   no foe          -> COMMAND_RANDOM_WALK (expanded to COMMAND_WALK), 40 ticks
+//   blocked shot    -> turn one step toward the foe + COMMAND_SEARCH, 200 ticks
+//   clear shot      -> init_fire + COMMAND_FIRE carrying the foe delta
+TEST(WalkerCoreMore, walker_round5_act_random_arms_queue_their_own_command)
 {
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
 
-    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(actor != nullptr && foe != nullptr) << "actor and foe should be created";
-    if (!(actor && foe))
-        return;
+    // No-foe arm: an empty level, so find_near_foe fails.
+    walker* actor = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, actor) << "actor created";
+    actor->set_team_num(1);
+    actor->setxy(96, 96);
+    actor->set_lineofsight(20);
+
+    {
+        ScopedSimRandom rng_no_foe({1, 0, 0});
+        ready_to_act(actor, ACT_RANDOM);
+        actor->set_foe(nullptr);
+        ASSERT_FALSE(actor->act())
+            << "living::act's act_random() arm breaks out of the switch and returns 0";
+        ASSERT_EQ(nullptr, actor->foe()) << "no foe exists to acquire";
+        const QueuedCommand wander = queued_command(actor);
+        ASSERT_EQ(COMMAND_WALK, wander.type)
+            << "the no-foe arm queues COMMAND_RANDOM_WALK";
+        ASSERT_EQ(40, wander.count) << "act_random's wander budget is 40 ticks";
+    }
+
+    // Rebuild the actor/foe pair for the in-range arms.
+    world.delete_objects();
+    actor = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor) << "actor recreated";
+    ASSERT_NE(nullptr, foe) << "foe recreated";
 
     actor->set_team_num(1);
     actor->setxy(96, 96);
-    actor->set_ani_type(ANI_WALK);
     actor->set_lineofsight(20);
+    actor->stats()->set_magicpoints(9999.0f);
+    actor->stats()->set_weapon_cost(0.0f);
 
     foe->set_team_num(2);
     foe->setxy(112, 96);
 
-    // No-foe branch: find_far_foe fails and queues COMMAND_RANDOM_WALK.
-    og::runtime::current_session->myscreen_->world().delete_objects();
-    actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(actor != nullptr) << "actor should be recreated";
-    if (!actor)
-        return;
-    actor->set_team_num(1);
-    actor->setxy(96, 96);
-    actor->set_lineofsight(20);
-    actor->set_ani_type(ANI_WALK);
+    // Blocked-shot arm: BIT_NO_RANGED denies fire_check, so the orc only turns.
+    {
+        actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        ScopedSimRandom rng_turn({1, 0, 7});
+        ready_to_act(actor, ACT_RANDOM, FACE_UP);
+        actor->set_foe(foe);
+        ASSERT_FALSE(actor->act())
+            << "living::act's act_random() arm breaks out of the switch and returns 0";
+        ASSERT_EQ(FACE_UP_RIGHT, static_cast<int>(actor->curdir()))
+            << "one clockwise step from FACE_UP toward the foe at +x";
+        const QueuedCommand search = queued_command(actor);
+        ASSERT_EQ(COMMAND_SEARCH, search.type)
+            << "a denied shot falls through to COMMAND_SEARCH";
+        ASSERT_EQ(200, search.count) << "act_random's search budget is 200 ticks";
+        ASSERT_EQ(ANI_WALK, static_cast<int>(actor->ani_type()))
+            << "a denied shot must not start the attack animation";
+    }
 
-    SequenceRandom rng_no_foe({0, 1, 0});
-    actor->set_foe(nullptr);
-    actor->stats()->clear_command();
-    actor->set_ani_type(ANI_WALK);
-    actor->set_act_type(ACT_RANDOM);
-    (void)actor->act();
+    // Clear-shot arm: ranged allowed, already facing the foe, mana to spare.
+    {
+        actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        ready_to_act(actor, ACT_RANDOM, FACE_RIGHT);
+        actor->set_foe(foe);
+        // Positive control: the shot really is available from this state, so a
+        // COMMAND_FIRE failure below means act_random stopped issuing it.
+        walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+        ASSERT_TRUE(actor->fire_check(16, 0, &denial))
+            << "fire_check must pass from this setup or the arm is unreachable "
+               "(denial stage " << static_cast<int>(denial) << ")";
 
-    // Rebuild actor/foe pair for LOS branches.
-    og::runtime::current_session->myscreen_->world().delete_objects();
-    actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(actor != nullptr && foe != nullptr) << "actor and foe should be recreated";
-    if (!(actor && foe))
-        return;
+        ScopedSimRandom rng_fire({1, 0, 7});
+        ready_to_act(actor, ACT_RANDOM, FACE_RIGHT);
+        actor->set_foe(foe);
+        ASSERT_FALSE(actor->act())
+            << "living::act's act_random() arm breaks out of the switch and returns 0";
+        const QueuedCommand fire = queued_command(actor);
+        ASSERT_EQ(COMMAND_FIRE, fire.type)
+            << "a clear shot queues COMMAND_FIRE at the front of the queue";
+        ASSERT_EQ(16, fire.com1) << "COMMAND_FIRE carries the foe's x delta";
+        ASSERT_EQ(0, fire.com2) << "COMMAND_FIRE carries the foe's y delta";
+        ASSERT_EQ(ANI_ATTACK, static_cast<int>(actor->ani_type()))
+            << "init_fire starts the attack animation";
+    }
 
-    actor->set_team_num(1);
-    actor->setxy(96, 96);
-    actor->set_ani_type(ANI_WALK);
-    actor->set_lineofsight(20);
-    actor->set_foe(foe);
-
-    foe->set_team_num(2);
-    foe->setxy(112, 96);
-
-    // In-range foe with blocked ranged attack path: fire_check false -> turn/walkstep.
-    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-    SequenceRandom rng_turn_walk({0, 1, 1});
-    actor->stats()->clear_command();
-    actor->set_act_type(ACT_RANDOM);
-    (void)actor->act();
-
-    // In-range foe with clear fire path: init_fire + COMMAND_FIRE path.
-    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
-    SequenceRandom rng_fire_cmd({0, 1, 1, 7});
-    actor->stats()->clear_command();
-    actor->set_act_type(ACT_RANDOM);
-    (void)actor->act();
-
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    world.delete_objects();
 }
 
 
@@ -760,16 +923,19 @@ TEST(WalkerCoreMore, walker_round6_fire_and_friendliness_paths)
 }
 
 
-TEST(WalkerCoreMore, walker_round6_guard_and_random_direct_branches)
+// walker::act_guard() with a foe in sight: face_delta pins curdir/enddir/lastx
+// at the foe, the guard WAKES to ACT_RANDOM unless it holds its post, and the
+// parting COMMAND_FIRE carries the foe delta (the directional-guard-fire fix).
+TEST(WalkerCoreMore, walker_round6_act_guard_faces_wakes_and_fires_directionally)
 {
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
 
-    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(actor != nullptr && foe != nullptr) << "actor and foe should be created";
-    if (!(actor && foe))
-        return;
+    walker* actor = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor) << "actor created";
+    ASSERT_NE(nullptr, foe) << "foe created";
 
     actor->set_team_num(1);
     actor->setxy(96, 96);
@@ -780,33 +946,78 @@ TEST(WalkerCoreMore, walker_round6_guard_and_random_direct_branches)
     foe->set_team_num(2);
     foe->setxy(112, 96);
 
-    // act_guard() foe path via act(): set facing + queue fire command.
-    SequenceRandom guard_rng({7});
-    actor->set_ani_type(ANI_WALK);
-    actor->set_act_type(ACT_GUARD);
-    (void)actor->act();
+    // A posted guard facing away sights the foe 16px east of it.
+    {
+        ScopedSimRandom guard_rng({7});
+        ready_to_act(actor, ACT_GUARD, FACE_UP);
+        actor->set_guard_hold_post(false);
+        actor->set_foe(nullptr);
+        ASSERT_FALSE(actor->act())
+            << "living::act's ACT_GUARD arm breaks out of the switch and returns 0";
+        ASSERT_EQ(foe, actor->foe()) << "act_guard acquires the near foe";
+        ASSERT_EQ(FACE_RIGHT, static_cast<int>(actor->curdir()))
+            << "face_delta snaps curdir at the foe";
+        ASSERT_EQ(FACE_RIGHT, static_cast<int>(actor->enddir()))
+            << "face_delta snaps enddir too, so the pivot is not undone next tick";
+        ASSERT_GT(actor->lastx(), 0.0f)
+            << "face_delta points the firing heading east, not at the spawn default";
+        ASSERT_EQ(ACT_RANDOM, static_cast<int>(actor->act_type()))
+            << "a genuine sighting wakes the guard out of ACT_GUARD";
+        const QueuedCommand fire = queued_command(actor);
+        ASSERT_EQ(COMMAND_FIRE, fire.type) << "act_guard queues its parting shot";
+        ASSERT_EQ(16, fire.com1) << "the parting COMMAND_FIRE carries the foe's x delta";
+        ASSERT_EQ(0, fire.com2) << "the parting COMMAND_FIRE carries the foe's y delta";
+    }
 
-    // act_random() blocked-ranged path via act(): fire_check false -> turn branch.
-    actor->set_foe(foe);
-    actor->set_curdir(FACE_UP);
-    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-    SequenceRandom blocked_rng({1, 0, 0});
-    actor->set_ani_type(ANI_WALK);
-    actor->set_act_type(ACT_RANDOM);
-    ASSERT_TRUE(actor->act()) << "ACT_RANDOM should still act when ranged attack is blocked";
+    // Hold-post guard: same sighting, same facing turn, but it never wakes.
+    {
+        ScopedSimRandom guard_rng({7});
+        ready_to_act(actor, ACT_GUARD, FACE_UP);
+        actor->set_guard_hold_post(true);
+        actor->set_foe(nullptr);
+        ASSERT_FALSE(actor->act())
+            << "living::act's ACT_GUARD arm breaks out of the switch and returns 0";
+        ASSERT_EQ(FACE_RIGHT, static_cast<int>(actor->curdir()))
+            << "a hold-post guard still turns toward the foe";
+        ASSERT_EQ(ACT_GUARD, static_cast<int>(actor->act_type()))
+            << "npc_flags bit 1 keeps the classic stationary sentry in ACT_GUARD";
+        ASSERT_EQ(COMMAND_FIRE, queued_command(actor).type)
+            << "a hold-post guard still defends its post";
+        actor->set_guard_hold_post(false);
+    }
 
-    // act_random() in-range firing path via act(): fire_check true -> init_fire + COMMAND_FIRE.
-    actor->set_foe(foe);
-    actor->set_curdir(FACE_RIGHT);
-    actor->set_enddir(FACE_RIGHT);
-    actor->set_ani_type(ANI_WALK);
-    actor->set_busy(0);
-    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
-    SequenceRandom fire_rng({1, 5});
-    actor->set_act_type(ACT_RANDOM);
-    (void)actor->act();
+    // act_random() blocked-ranged arm: fire_check denied -> turn only.
+    {
+        actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        ScopedSimRandom blocked_rng({1, 0, 7});
+        ready_to_act(actor, ACT_RANDOM, FACE_UP);
+        actor->set_foe(foe);
+        ASSERT_FALSE(actor->act())
+            << "living::act's act_random() arm breaks out of the switch and returns 0";
+        ASSERT_EQ(FACE_UP_RIGHT, static_cast<int>(actor->curdir()))
+            << "one clockwise step from FACE_UP toward the foe at +x";
+        ASSERT_EQ(COMMAND_SEARCH, queued_command(actor).type)
+            << "a denied shot falls through to COMMAND_SEARCH";
+        ASSERT_EQ(ANI_WALK, static_cast<int>(actor->ani_type()))
+            << "a denied shot must not start the attack animation";
+    }
 
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    // act_random() clear-shot arm: init_fire + COMMAND_FIRE.
+    {
+        actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+        ScopedSimRandom fire_rng({1, 0, 7});
+        ready_to_act(actor, ACT_RANDOM, FACE_RIGHT);
+        actor->set_foe(foe);
+        ASSERT_FALSE(actor->act())
+            << "living::act's act_random() arm breaks out of the switch and returns 0";
+        const QueuedCommand fire = queued_command(actor);
+        ASSERT_EQ(COMMAND_FIRE, fire.type) << "a clear shot queues COMMAND_FIRE";
+        ASSERT_EQ(16, fire.com1) << "COMMAND_FIRE carries the foe's x delta";
+        ASSERT_EQ(ANI_ATTACK, static_cast<int>(actor->ani_type()))
+            << "init_fire starts the attack animation";
+    }
+
+    world.delete_objects();
 }
 
 
@@ -825,34 +1036,49 @@ TEST(WalkerCoreMore, walker_round7a_compute_outline_and_friendliness_edge_paths)
     subject->set_team_num(1);
     subject->stats()->set_bit_flags(BIT_NAMED, 1);
 
+    // Invulnerable + flying: flight wins inside the invulnerable arm.
     subject->set_outline(OUTLINE_INVULNERABLE);
     subject->set_flight_left(3);
     subject->compute_outline(viewer);
+    ASSERT_EQ(static_cast<int>(OUTLINE_FLYING), static_cast<int>(subject->outline()))
+        << "invulnerable + flying shows the flight outline";
 
+    // Invulnerable + invisible, but NAMED and hostile to the viewer: the boss
+    // marker beats the cloak, so the enemy viewer can still see what it fights.
     subject->set_outline(OUTLINE_INVULNERABLE);
     subject->set_flight_left(0);
     subject->set_invisibility_left(3);
     subject->compute_outline(viewer);
+    ASSERT_EQ(static_cast<int>(OUTLINE_NAMED), static_cast<int>(subject->outline()))
+        << "a named enemy's outline is not hidden by invisibility";
 
+    // Flying + invulnerable, still NAMED and hostile: same rule.
     subject->set_outline(OUTLINE_FLYING);
     subject->set_invisibility_left(0);
     subject->set_invulnerable_left(3);
     subject->compute_outline(viewer);
+    ASSERT_EQ(static_cast<int>(OUTLINE_NAMED), static_cast<int>(subject->outline()))
+        << "the named-enemy marker wins over the potion outline too";
 
+    // From the NAMED outline, invisibility drops it to the team colour.
     subject->set_outline(OUTLINE_NAMED);
     subject->set_invisibility_left(3);
     subject->set_invulnerable_left(0);
     subject->set_flight_left(0);
     subject->compute_outline(viewer);
+    ASSERT_EQ(static_cast<int>(subject->query_team_color()),
+              static_cast<int>(subject->outline()))
+        << "a cloaked walker already outlined NAMED falls back to its team colour";
 
-    // No special flags path.
+    // No special flags at all: the else arm clears the outline outright.
     subject->set_outline(OUTLINE_NAMED);
     subject->set_invisibility_left(0);
     subject->set_invulnerable_left(0);
     subject->set_flight_left(0);
     subject->stats()->set_bit_flags(BIT_NAMED, 0);
     subject->compute_outline(viewer);
-    ASSERT_TRUE(subject->outline() == 0 || subject->outline() == subject->query_team_color()) << "compute_outline should settle into neutral or team outline";
+    ASSERT_EQ(0, static_cast<int>(subject->outline()))
+        << "no name, no potion, no cloak: compute_outline clears the outline to 0";
 
     // is_friendly null/dead guards and owner-chain branches.
     GameWorld& world = og::runtime::current_session->myscreen_->world_;
@@ -1017,39 +1243,92 @@ TEST(WalkerCoreMore, walker_round7b_base_act_guard_random_and_death_paths)
     actor->set_act_type(ACT_GUARD);
     ASSERT_TRUE(!actor->act()) << "base ACT_GUARD should return false when no foe is found";
 
-    // Base walker::act_random() in-range fire path.
+    // Base walker::act_random() in-range fire path. next(4)==0 then next(20)!=0
+    // routes walker::act() into act_random(); next(70) is then non-zero so the
+    // preset foe survives.
     foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(foe != nullptr) << "foe recreated";
-    if (!foe)
-        return;
+    ASSERT_NE(nullptr, foe) << "foe recreated";
     foe->set_team_num(2);
     foe->setxy(112, 96);
-    actor->set_foe(foe);
     actor->set_lineofsight(40);
-    actor->set_act_type(ACT_RANDOM);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
-    SequenceRandom rng_fire({5, 7});
-    (void)actor->act();
-
-    // Base walker::act_random() blocked-ranged path -> turn + walkstep.
-    actor->set_foe(foe);
-    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-    SequenceRandom rng_turn_walk({5});
-    ASSERT_TRUE(actor->act()) << "base ACT_RANDOM should still act when ranged attack is blocked";
-    ASSERT_TRUE(actor->act_type() != ACT_FIRE) << "blocked-ranged act_random path should not transition to ACT_FIRE";
-
-    // Base walker::death() generator explosion and death_called guard.
-    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
-    ASSERT_TRUE(gen != nullptr) << "generator created";
-    if (gen)
     {
-        gen->set_dead(1);
-        gen->set_death_called(0);
-        const size_t fx_before = og::runtime::current_session->myscreen_->world().fxlist.size();
-        ASSERT_TRUE(gen->death()) << "first generator death call should succeed";
-        ASSERT_TRUE(og::runtime::current_session->myscreen_->world().fxlist.size() >= fx_before) << "generator death should run explosion spawning path";
-        ASSERT_EQ(0, (int)gen->death()) << "second death call should hit death_called guard";
+        ScopedSimRandom rng_fire({0, 1, 7});
+        ready_to_act(actor, ACT_RANDOM, FACE_UP);
+        actor->set_foe(foe);
+        ASSERT_FALSE(actor->act())
+            << "walker::act's act_random() arm breaks out of the switch and returns 0";
+        const QueuedCommand fire = queued_command(actor);
+        ASSERT_EQ(COMMAND_FIRE, fire.type)
+            << "an in-range foe makes act_random queue COMMAND_FIRE";
+        ASSERT_EQ(16, fire.com1) << "COMMAND_FIRE carries the foe's x delta";
+        ASSERT_EQ(0, fire.com2) << "COMMAND_FIRE carries the foe's y delta";
+        ASSERT_EQ(FACE_RIGHT, static_cast<int>(actor->enddir()))
+            << "init_fire aims a generator by enddir (it never turns like a living)";
+        ASSERT_EQ(ANI_ATTACK, static_cast<int>(actor->ani_type()))
+            << "init_fire starts the attack animation";
     }
+
+    // BIT_NO_RANGED cannot reach act_random's turn arm here: fire_check's first
+    // line lets every Order::Generator through unconditionally, so a posted
+    // generator always shoots. Pin that instead of the old
+    // `act_type() != ACT_FIRE` read, which act_random never writes.
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    ASSERT_TRUE(actor->fire_check(16, 0))
+        << "generators always pass fire_check, even with BIT_NO_RANGED set";
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+
+    // Base walker::act_random()'s 3-of-4 arm: next(4) != 0 -> far-foe search.
+    {
+        ScopedSimRandom rng_search({1});
+        ready_to_act(actor, ACT_RANDOM, FACE_UP);
+        actor->set_foe(nullptr);
+        ASSERT_TRUE(actor->act())
+            << "walker::act's 3-of-4 ACT_RANDOM arm returns 1 directly";
+        ASSERT_EQ(foe, actor->foe()) << "the 3-of-4 arm acquires a far foe";
+        const QueuedCommand search = queued_command(actor);
+        ASSERT_EQ(COMMAND_SEARCH, search.type) << "the 3-of-4 arm queues a search";
+        ASSERT_EQ(500, search.count)
+            << "walker::act's own search budget is 500 ticks, not act_random's 200";
+    }
+
+    // Base walker::death() generator explosion and death_called guard. The
+    // explosions are add_ob(Order::FX, ...), which routes to OBLIST -- reading
+    // fxlist here can never see them.
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, gen) << "generator created";
+    gen->setxy(96, 96);
+    gen->set_team_num(4);
+    gen->stats()->set_level(6);
+    gen->set_floor(2);
+    gen->set_dead(1);
+    gen->set_death_called(0);
+    ASSERT_EQ(0, count_obs(Order::FX, FAMILY_EXPLOSION))
+        << "the level starts with no explosions";
+    ASSERT_TRUE(gen->death()) << "first generator death call should succeed";
+    ASSERT_EQ(4, count_obs(Order::FX, FAMILY_EXPLOSION))
+        << "a dying generator goes up in exactly four explosions";
+    int inspected = 0;
+    for (const auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
+    {
+        if (!uptr || uptr->order() != Order::FX ||
+            static_cast<int>(uptr->family()) != FAMILY_EXPLOSION)
+            continue;
+        ++inspected;
+        EXPECT_EQ(4, static_cast<int>(uptr->team_num()))
+            << "an explosion belongs to the generator's team";
+        EXPECT_EQ(ANI_EXPLODE, static_cast<int>(uptr->ani_type()))
+            << "an explosion runs the explode animation";
+        EXPECT_EQ(6, static_cast<int>(uptr->stats()->level()))
+            << "an explosion inherits the generator's level";
+        EXPECT_EQ(2, static_cast<int>(uptr->floor()))
+            << "an explosion burns on the generator's floor";
+        EXPECT_FLOAT_EQ(12.0f, uptr->damage())
+            << "explosion damage is the generator's level doubled";
+    }
+    ASSERT_EQ(4, inspected) << "every one of the four explosions was inspected";
+    ASSERT_EQ(0, (int)gen->death()) << "second death call should hit death_called guard";
 
     // Save-all early-return event branch in living death path.
     const char old_type = og::runtime::current_session->myscreen_->world().type;
@@ -1163,12 +1442,29 @@ TEST(WalkerCoreMore, walker_round8_death_obmap_cleanup_and_act_control_fallthrou
     ASSERT_EQ(0, (int)w->attack_lunge()) << "act should clamp attack_lunge to zero";
     ASSERT_EQ(0, (int)w->hit_recoil()) << "act should clamp hit_recoil to zero";
 
-    // Exercise death() branch that removes the walker from the active obmap.
+    // death() must unregister the corpse from the collision map BEFORE anything
+    // else: leaving it registered is the stale-pointer bug the branch exists
+    // to prevent.
+    w->setxy(96, 96);
+    obmap* map = og::runtime::current_session->myscreen_->world().myobmap.get();
+    ASSERT_NE(nullptr, map) << "the world has an active obmap";
+    {
+        std::list<walker*>& cell = map->obmap_get_list(96, 96);
+        ASSERT_NE(cell.end(), std::find(cell.begin(), cell.end(), w))
+            << "the walker is registered in its cell before it dies";
+    }
+    const size_t active_before = map->size();
     w->set_dead(1);
     w->set_death_called(0);
-    const size_t active_before = og::runtime::current_session->myscreen_->world().myobmap->size();
     ASSERT_TRUE(w->death()) << "death should succeed with alternate myobmap";
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().myobmap->size() <= active_before) << "death should remove from active obmap";
+    ASSERT_EQ(active_before - 1, map->size())
+        << "death() unregisters exactly the dying walker (the bloodstain is "
+           "ignore()d, so it never registers)";
+    {
+        std::list<walker*>& cell = map->obmap_get_list(96, 96);
+        ASSERT_EQ(cell.end(), std::find(cell.begin(), cell.end(), w))
+            << "no stale pointer to the corpse is left in its cell";
+    }
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -1273,30 +1569,80 @@ TEST(WalkerCoreMore, walker_round14_distance_color_and_friendliness_modes_1480_1
 }
 
 
-TEST(WalkerCoreMore, walker_round15_set_difficulty_generator_and_non_player_paths)
+// set_difficulty at 150 %:
+//   walker::set_difficulty's Generator arm -> hp = max_hp = 100*level*pct/100
+//   living::set_difficulty            team != 0 -> the multiplier applies
+//                       team 0, no myguy (A12a) -> the multiplier applies too
+//                       team 0 carrying a myguy -> exempt (the player crew)
+TEST(WalkerCoreMore, walker_round15_set_difficulty_scales_all_but_player_crew)
 {
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
 
-    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
-    walker* enemy = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    walker* player = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(gen && enemy && player) << "fixtures created";
-    if (!(gen && enemy && player))
-        return;
+    const short old_difficulty = world.difficulty;
+    world.difficulty = 150;
 
+    walker* gen = world.add_ob(Order::Generator, FAMILY_TOWER);
+    ASSERT_NE(nullptr, gen) << "generator created";
     gen->stats()->set_hitpoints(1.0f);
     gen->set_difficulty(5);
-    ASSERT_TRUE(gen->stats()->hitpoints() > 1.0f) << "generator difficulty path should scale hitpoints directly";
+    ASSERT_FLOAT_EQ(750.0f, gen->stats()->hitpoints())
+        << "a generator's hitpoints are 100 * level * difficulty% (100*5*150/100)";
+    ASSERT_FLOAT_EQ(750.0f, gen->stats()->max_hitpoints())
+        << "a generator's fighting HP is also its denominator";
+
+    // Three identical soldiers: only the ownership/team differs, so the
+    // multiplier is the only thing the comparisons below can be reading.
+    walker* enemy = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* ally_npc = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* player = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, enemy) << "enemy created";
+    ASSERT_NE(nullptr, ally_npc) << "allied NPC created";
+    ASSERT_NE(nullptr, player) << "player hero created";
+    ASSERT_FLOAT_EQ(enemy->stats()->max_hitpoints(), player->stats()->max_hitpoints())
+        << "the three fixtures start from one loader baseline";
+    ASSERT_FLOAT_EQ(enemy->stats()->max_hitpoints(), ally_npc->stats()->max_hitpoints())
+        << "the three fixtures start from one loader baseline";
 
     enemy->set_team_num(2);
-    const float enemy_hp_before = enemy->stats()->max_hitpoints();
-    enemy->set_difficulty(4);
-    ASSERT_TRUE(enemy->stats()->max_hitpoints() != enemy_hp_before) << "non-player living difficulty path should scale stats";
-
+    enemy->clear_myguy();
+    ally_npc->set_team_num(0);
+    ally_npc->clear_myguy();   // a placed team-0 NPC, not a hired hero
     player->set_team_num(0);
+    player->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+
+    const float base_hp = player->stats()->max_hitpoints();
+
+    enemy->set_difficulty(4);
+    ally_npc->set_difficulty(4);
     player->set_difficulty(4);
-    ASSERT_TRUE(player->stats()->max_hitpoints() > 0.0f) << "team 0 difficulty application should leave valid hitpoints";
+
+    const float player_hp = player->stats()->max_hitpoints();
+    const float player_mp = player->stats()->max_magicpoints();
+    const float player_dmg = player->damage();
+
+    ASSERT_FLOAT_EQ(player_hp * 1.5f, enemy->stats()->max_hitpoints())
+        << "a hostile living takes the full 150 % hitpoint multiplier";
+    ASSERT_FLOAT_EQ(player_mp * 1.5f, enemy->stats()->max_magicpoints())
+        << "a hostile living takes the 150 % magic multiplier";
+    ASSERT_FLOAT_EQ(player_dmg * 1.5f, enemy->damage())
+        << "a hostile living takes the 150 % damage multiplier";
+
+    ASSERT_FLOAT_EQ(enemy->stats()->max_hitpoints(), ally_npc->stats()->max_hitpoints())
+        << "A12a: a placed team-0 NPC scales exactly like its foes";
+    ASSERT_FLOAT_EQ(enemy->damage(), ally_npc->damage())
+        << "A12a: a placed team-0 NPC scales exactly like its foes";
+
+    // The exemption is from the DIFFICULTY multiplier only -- the hero still
+    // gains the family's level scaling, so this is not a no-op path.
+    ASSERT_GT(player_hp, base_hp)
+        << "a player hero still gains the family level scaling";
+    ASSERT_FLOAT_EQ(player->stats()->max_hitpoints(), player->stats()->hitpoints())
+        << "set_difficulty tops the walker up to its new maximum";
+
+    world.difficulty = old_difficulty;
+    world.delete_objects();
 }
 
 
