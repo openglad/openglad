@@ -178,11 +178,15 @@ TEST(StatsCommands, stats_do_command_fire_denied_without_foe_and_spends_busy_whe
     w->set_foe(foe);
     w->stats()->commands.clear();
     w->stats()->force_command(COMMAND_FIRE, 3, 1, 0);
+    ASSERT_LT(0.0f, w->fire_frequency())
+        << "setup sanity: the soldier's fire_frequency is a positive busy cost";
     ASSERT_EQ(1, w->stats()->do_command()) << "COMMAND_FIRE succeeds against a faced foe in reach";
     ASSERT_TRUE(w->stats()->has_commands()) << "a successful fire leaves the command queued";
     EXPECT_EQ(2, w->stats()->commands.front().commandcount)
         << "only the tail decrement touches commandcount on the success arm";
-    EXPECT_GT(w->busy(), 0.0f) << "init_fire() spends busy (fire_frequency)";
+    // busy was pinned to 0 above and init_fire does set_busy(busy() + fire_frequency()).
+    EXPECT_FLOAT_EQ(w->fire_frequency(), w->busy())
+        << "init_fire() spends exactly fire_frequency of busy";
     EXPECT_EQ(ANI_ATTACK, static_cast<int>(w->ani_type()))
         << "init_fire() switches the walker to the attack animation";
 }
@@ -388,7 +392,10 @@ TEST(StatsCommands, stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_
         << "face_delta aims enddir at the foe so the swing lands next tick";
     EXPECT_EQ(FACE_RIGHT, static_cast<int>(w->curdir()))
         << "face_delta SNAPS curdir at the foe (a gradual turn would not)";
-    EXPECT_LT(0.0f, w->lastx()) << "face_delta points the weapon heading east too";
+    // face_delta sets lastx = xdelta * stepsize(), and COMMAND_ATTACK
+    // normalizes the foe delta to xdelta == 1 for a foe due east.
+    EXPECT_FLOAT_EQ(w->stepsize(), w->lastx())
+        << "face_delta points the weapon heading one stepsize east";
     EXPECT_EQ(0.0f, w->lasty()) << "same row: no vertical component in the heading";
     ASSERT_TRUE(w->stats()->has_commands()) << "the attack command survives";
     EXPECT_EQ(4, w->stats()->commands.front().commandcount) << "the tail decrements once";
