@@ -30,7 +30,6 @@
 
 Sint32 yes_or_no(Sint32 arg);
 void toggle_effect(const std::string& category, const std::string& setting);
-void toggle_rendering_engine();
 walker* find_follow_leader();
 
 namespace {
@@ -88,24 +87,6 @@ PixieData make_test_pixie_data(unsigned char frames = 1,
 
 } // namespace
 
-// MenuNav (button.cpp uncovered)
-TEST(MassCoverage, menunav_up) { (void)MenuNav{.up=1}; }
-TEST(MassCoverage, menunav_down) { (void)MenuNav{.down=2}; }
-TEST(MassCoverage, menunav_left) { (void)MenuNav{.left=3}; }
-TEST(MassCoverage, menunav_right) { (void)MenuNav{.right=4}; }
-TEST(MassCoverage, menunav_updown) { (void)MenuNav{.up=1, .down=2}; }
-TEST(MassCoverage, menunav_upleft) { (void)MenuNav{.up=1, .left=2}; }
-TEST(MassCoverage, menunav_upright) { (void)MenuNav{.up=1, .right=2}; }
-TEST(MassCoverage, menunav_updownleft) { (void)MenuNav{.up=1, .down=2, .left=3}; }
-TEST(MassCoverage, menunav_updownright) { (void)MenuNav{.up=1, .down=2, .right=3}; }
-TEST(MassCoverage, menunav_upleftright) { (void)MenuNav{.up=1, .left=2, .right=3}; }
-TEST(MassCoverage, menunav_downleft) { (void)MenuNav{.down=1, .left=2}; }
-TEST(MassCoverage, menunav_downright) { (void)MenuNav{.down=1, .right=2}; }
-TEST(MassCoverage, menunav_downleftright) { (void)MenuNav{.down=1, .left=2, .right=3}; }
-TEST(MassCoverage, menunav_leftright) { (void)MenuNav{.left=1, .right=2}; }
-TEST(MassCoverage, menunav_updownleftright) { (void)MenuNav{.up=1, .down=2, .left=3, .right=4}; }
-TEST(MassCoverage, menunav_none) { (void)MenuNav{}; }
-
 // vbutton + button helpers (button.cpp uncovered)
 TEST(MassCoverage, vbutton_ctor_callback) {
     vbutton b(1, 1, 20, 10, [](Sint32 v) { return v + 1; }, 7, "cb", KEYSTATE_UNKNOWN);
@@ -147,29 +128,134 @@ TEST(MassCoverage, yes_or_no) {
     ASSERT_EQ(123, yes_or_no(123)) << "yes_or_no passthrough";
 }
 
-TEST(MassCoverage, toggle_effect) {
+// toggle_effect (src/interface/ui/button.cpp): is_on -> "off", else -> "on",
+// in the category/setting it was handed and no other.
+TEST(MassCoverage, toggle_effect_flips_the_named_setting_both_ways) {
     cfg.apply_setting("effects", "mass_toggle_effect", "off");
-    toggle_effect("effects", "mass_toggle_effect");
-}
+    cfg.apply_setting("effects", "mass_toggle_witness", "off");
+    ASSERT_FALSE(cfg.is_on("effects", "mass_toggle_effect")) << "setup: the setting starts off";
 
-TEST(MassCoverage, toggle_rendering_engine) {
-    cfg.apply_setting("graphics", "render", "normal");
-    toggle_rendering_engine();
+    toggle_effect("effects", "mass_toggle_effect");
+    ASSERT_STREQ("on", cfg.get_setting("effects", "mass_toggle_effect").c_str())
+        << "toggle_effect on an off setting must write \"on\"";
+    ASSERT_TRUE(cfg.is_on("effects", "mass_toggle_effect")) << "the written value must read back as on";
+
+    toggle_effect("effects", "mass_toggle_effect");
+    ASSERT_STREQ("off", cfg.get_setting("effects", "mass_toggle_effect").c_str())
+        << "toggle_effect on an on setting must write \"off\"";
+    ASSERT_FALSE(cfg.is_on("effects", "mass_toggle_effect")) << "the written value must read back as off";
+
+    ASSERT_STREQ("off", cfg.get_setting("effects", "mass_toggle_witness").c_str())
+        << "toggle_effect must only touch the setting it was given";
 }
 
 // screen.cpp uncovered wrappers/branches
-TEST(MassCoverage, screen_ready_for_battle) { og::runtime::current_session->myscreen_->ready_for_battle(1); }
-TEST(MassCoverage, screen_reset) { og::runtime::current_session->myscreen_->reset(1); }
-TEST(MassCoverage, screen_query_grid_passable) {
+// ready_for_battle(n): n views built, and the per-battle state (end, retry,
+// redrawme, framecount, enemy_freeze, level progress) zeroed
+// (src/interface/screen.cpp screen::ready_for_battle).
+TEST(MassCoverage, screen_ready_for_battle_builds_views_and_clears_battle_state) {
+    screen* s = og::runtime::current_session->myscreen_;
+    GameWorld& world = s->world();
+
+    world.end = 7;
+    world.retry = true;
+    world.enemy_freeze = 5;
+    world.completion_events_emitted = true;
+    world.set_level_tick_count(9);
+    s->redrawme = 0;
+    s->framecount = 42;
+
+    s->ready_for_battle(1);
+
+    ASSERT_EQ(1, static_cast<int>(s->numviews)) << "ready_for_battle(1) must set numviews";
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "ready_for_battle must build view 0";
+    ASSERT_EQ(nullptr, s->viewob[1].get()) << "ready_for_battle(1) must leave no second view";
+    ASSERT_EQ(0, static_cast<int>(world.end)) << "ready_for_battle must clear world.end";
+    ASSERT_FALSE(world.retry) << "ready_for_battle must clear world.retry";
+    ASSERT_EQ(0, static_cast<int>(world.enemy_freeze)) << "ready_for_battle must clear enemy_freeze";
+    ASSERT_EQ(1, static_cast<int>(s->redrawme)) << "ready_for_battle must request a redraw";
+    ASSERT_EQ(0u, s->framecount) << "ready_for_battle must restart the frame count";
+    ASSERT_EQ(0u, world.level_tick_count()) << "ready_for_battle must reset level progress";
+    ASSERT_FALSE(world.completion_events_emitted) << "ready_for_battle must re-arm completion events";
+}
+
+// reset(n): n views reconstructed, and cleanup() drops the views above n
+// (src/interface/screen.cpp screen::reset).
+TEST(MassCoverage, screen_reset_reconstructs_exactly_n_views) {
+    screen* s = og::runtime::current_session->myscreen_;
+
+    s->reset(2);
+    ASSERT_EQ(2, static_cast<int>(s->numviews)) << "reset(2) must set numviews=2";
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "reset(2) must construct view 0";
+    ASSERT_NE(nullptr, s->viewob[1].get()) << "reset(2) must construct view 1";
+
+    s->reset(1);
+    ASSERT_EQ(1, static_cast<int>(s->numviews)) << "reset(1) must set numviews=1";
+    ASSERT_NE(nullptr, s->viewob[0].get()) << "reset(1) must construct view 0";
+    ASSERT_EQ(nullptr, s->viewob[1].get()) << "reset(1) must drop the second view";
+}
+
+// query_grid_passable(x,y,ob): null ob never passes; a walkable floor tile
+// passes and a blocking tile does not (src/gameplay/game_world.cpp).
+TEST(MassCoverage, screen_query_grid_passable_reads_the_tile_under_the_walker) {
     reset_level_state();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    ASSERT_TRUE(world.grid.data != nullptr) << "setup: create_new_grid must allocate the grid";
+
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->world().query_grid_passable(100, 100, w);
+    ASSERT_NE(nullptr, w) << "setup: the probing walker must exist";
+    w->set_sizex(1);
+    w->set_sizey(1);
+    w->setxy(100, 100);
+
+    ASSERT_FALSE(world.query_grid_passable(100, 100, nullptr))
+        << "a null walker must never be grid-passable";
+
+    const std::size_t cell =
+        static_cast<std::size_t>(100 / GRID_SIZE) +
+        static_cast<std::size_t>(world.grid.w) * static_cast<std::size_t>(100 / GRID_SIZE);
+    world.grid.data[cell] = PIX_GRASS1;
+    ASSERT_TRUE(world.query_grid_passable(100, 100, w)) << "grass under the walker must be passable";
+
+    world.grid.data[cell] = PIX_WATER1;
+    ASSERT_FALSE(world.query_grid_passable(100, 100, w))
+        << "water under a non-swimming living must block";
+
+    world.grid.data[cell] = PIX_WALLSIDE_L;
+    ASSERT_FALSE(world.query_grid_passable(100, 100, w))
+        << "a wall under a living must block";
+
     reset_level_state();
 }
-TEST(MassCoverage, screen_query_object_passable) {
+
+// query_object_passable(x,y,ob): null ob never passes, a dead ob always does,
+// otherwise the obmap's occupancy decides (src/gameplay/game_world.cpp).
+TEST(MassCoverage, screen_query_object_passable_reads_obmap_occupancy) {
     reset_level_state();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->world().query_object_passable(100, 100, w);
+    ASSERT_NE(nullptr, w) << "setup: the probing walker must exist";
+    w->setxy(100, 100);
+
+    ASSERT_FALSE(world.query_object_passable(300, 300, nullptr))
+        << "a null walker must never be object-passable";
+
+    w->set_dead(1);
+    ASSERT_TRUE(world.query_object_passable(300, 300, w))
+        << "a dead walker must short-circuit the obmap check";
+    w->set_dead(0);
+
+    ASSERT_TRUE(world.query_object_passable(300, 300, w))
+        << "an unoccupied spot must be object-passable";
+
+    walker* blocker = add_living(1);
+    ASSERT_NE(nullptr, blocker) << "setup: the blocking walker must exist";
+    blocker->setxy(300, 300);
+    ASSERT_FALSE(world.query_object_passable(300, 300, w))
+        << "a living occupying the spot must block";
+
     reset_level_state();
 }
 TEST(MassCoverage, screen_clear) { og::runtime::current_session->myscreen_->clear(); }
