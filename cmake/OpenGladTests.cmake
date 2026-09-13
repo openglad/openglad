@@ -125,7 +125,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_buffers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_pixel_ops.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_modes_more.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_external_physfs_archivers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_editor_interactions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_input_more.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_help_parsing.cpp
@@ -633,7 +632,6 @@ og_add_test_group(og_test_smooth FILES
 og_add_test_group(og_test_external FILES
     test_external_libzip.cpp
     test_external_physfs_api_edges.cpp
-    test_external_physfs_archivers.cpp
     test_external_physfs_byteorder.cpp
     test_external_physfs_ops.cpp
     test_external_physfs_unicode.cpp

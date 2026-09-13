@@ -895,8 +895,19 @@ TEST(CursesRenderer, zero_log_lines_gives_all_space_to_viewport)
     CursesRenderer renderer(CursesRenderer::Options{true, true, /*max_log_lines=*/0});
     renderer.draw(term, hw.world(), id);
 
-    // The avatar still renders; the last row is viewport, not log.
+    // 10x20 terminal: hud=2, log=0, so the viewport owns rows 2..9 (height 8,
+    // width 20). Centering on tile (8,8) gives cam=(8-10, 8-4)=(-2,4), so the
+    // avatar lands at row 2+(8-4)=6, col 8-(-2)=10, and the bottom row 9 is
+    // viewport tile (8,11) — inside the 16x16 grass grid. With the option
+    // ignored (log_rows=6, height=2) the avatar would sit at row 3 and row 9
+    // would be blank log space.
     EXPECT_EQ(term.count_char(U'@'), 1);
+    EXPECT_EQ(U'@', term.char_at(6, 10))
+        << "the enlarged viewport recenters the followed walker; got:\n"
+        << term.dump();
+    EXPECT_EQ(U'.', term.char_at(term.rows() - 1, 10))
+        << "the last row belongs to the viewport, not to a reserved log; got:\n"
+        << term.dump();
 }
 
 // --- Integration smoke test: real level 1 -------------------------------
