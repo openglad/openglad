@@ -6,12 +6,22 @@
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/core/sound_ids.h>
 #include <openglad/core/terrain_types.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <cstdlib>
+#include <string>
+#include <vector>
 #include "test_family_hook_dispatch.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -37,62 +47,178 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team = 0)
     return w;
 }
 
+static GameWorld& test_world()
+{
+    return og::runtime::current_session->myscreen_->world();
+}
+
+// Paint one tile of the default floor's grid (world/pixel coordinates in).
+static void set_world_tile(short world_x, short world_y, unsigned char tile)
+{
+    auto& level = og::runtime::current_session->myscreen_->level_runtime_data();
+    const int gx = world_x / GRID_SIZE;
+    const int gy = world_y / GRID_SIZE;
+    if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
+        return;
+    level.world().grid.data[static_cast<std::size_t>(gx + level.world().grid.w * gy)] = tile;
+}
+
+// Every walker of one order+family currently in the world. Effect family ids
+// collide numerically with weapon/living ids, so the ORDER is what identifies
+// a spawned FX; and the spawning hooks use all three lists (og.add_ob lands in
+// oblist, og.add_fx_ob in fxlist, og.add_weap_ob in weaplist), so all three
+// are scanned.
+static std::vector<walker*> collect_entities(Order order, int family)
+{
+    std::vector<walker*> found;
+    const GameWorld::EntityList* lists[] = {&test_world().oblist,
+                                            &test_world().fxlist,
+                                            &test_world().weaplist};
+    for (const auto* list : lists)
+        for (const auto& e : *list)
+            if (e->query_order() == order
+                && static_cast<int>(static_cast<unsigned char>(e->family())) == family)
+                found.push_back(e.get());
+    return found;
+}
+
+// The single entity present in `after` but not in `before` (nullptr when the
+// count did not grow by exactly one).
+static walker* only_new_entity(const std::vector<walker*>& before,
+                               const std::vector<walker*>& after)
+{
+    walker* found = nullptr;
+    for (walker* w : after)
+    {
+        if (std::find(before.begin(), before.end(), w) != before.end())
+            continue;
+        if (found != nullptr)
+            return nullptr;
+        found = w;
+    }
+    return found;
+}
+
+static og::sim::SimEventLog& sim_log()
+{
+    return *current_game->sim_events;
+}
+
+// Fresh, readable sim event log. Weapon sit/random announcements land here.
+static void reset_sim_log()
+{
+    ASSERT_NE(nullptr, current_game) << "gameplay context installed";
+    ASSERT_NE(nullptr, current_game->sim_events) << "sim event log available";
+    ASSERT_FALSE(current_game->sim_events->suppressed())
+        << "sim event log must not be suppressed or every oracle below is vacuous";
+    current_game->sim_events->clear();
+}
+
+static int count_notifications(const std::string& text)
+{
+    int n = 0;
+    for (const auto& ev : sim_log().events())
+        if (ev.kind == og::sim::EventKind::Notification && ev.text == text)
+            ++n;
+    return n;
+}
+
+static int count_sounds(int sound_id)
+{
+    int n = 0;
+    for (const auto& ev : sim_log().events())
+        if (ev.kind == og::sim::EventKind::PlaySound
+            && ev.a == static_cast<std::uint32_t>(sound_id))
+            ++n;
+    return n;
+}
+
+// Shared body for the three silent-sit families (tree/blood/door): the family
+// declares skip_sit_notify=true, so weap::act's ACT_SIT arm must announce
+// nothing at all. weap_act_sit_with_non_skipping_family_and_act_animate_shortcut
+// is the positive twin.
+static void expect_silent_sit(char family, const char* what)
+{
+    walker* w = make_weapon(family);
+    ASSERT_NE(nullptr, w) << what << " weapon created";
+    const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(family);
+    ASSERT_NE(nullptr, wfd) << what << " weapon family descriptor exists";
+    ASSERT_TRUE(wfd->skip_sit_notify) << what << " declares skip_sit_notify=true";
+
+    reset_sim_log();
+    w->set_ani_type(ANI_WALK); // otherwise act() short-circuits into animate()
+    w->set_act_type(ACT_SIT);
+    ASSERT_TRUE(w->act()) << what << " sit returns 1";
+    EXPECT_EQ(0, count_notifications("Weapon sitting"))
+        << what << " sits silently (skip_sit_notify)";
+    EXPECT_EQ(0u, sim_log().size())
+        << what << " sitting pushes no sim event of any kind";
+
+    test_world().remove_ob(w);
+}
+
 // ---------------------------------------------------------------------------
 // weap::act - various act types
 // ---------------------------------------------------------------------------
 
 TEST(WeapBehavior, weap_act_fire)
 {
+    test_world().create_new_grid();
     walker* w = make_weapon(FAMILY_KNIFE);
-    if (!w) return;
+    ASSERT_NE(nullptr, w) << "knife weapon created";
+    w->setxy(100, 100);
     w->set_act_type(ACT_FIRE);
+    w->set_ani_type(ANI_WALK); // otherwise act() short-circuits into animate()
     w->set_lastx(1);
     w->set_lasty(0);
-    w->act();
+    w->set_dead(0);
+    w->set_death_called(0);
+    w->set_lineofsight(5);
+
+    // act_fire() spends exactly one point of range per tick, before it walks,
+    // so this holds whether or not the knife collides with anything.
+    ASSERT_TRUE(w->act()) << "ACT_FIRE must route through act_fire() and return 1";
+    ASSERT_EQ(4, (int)w->lineofsight()) << "act_fire spends one point of range per tick";
+
+    // Range already exhausted: the projectile dies on this tick.
+    w->set_ani_type(ANI_WALK);
+    w->set_dead(0);
+    w->set_death_called(0);
+    w->set_lineofsight(0);
+    ASSERT_TRUE(w->act()) << "ACT_FIRE returns 1 even on the killing tick";
+    ASSERT_EQ(1, (int)w->dead()) << "a projectile whose range ran out dies";
+
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 
 
 TEST(WeapBehavior, weap_act_sit_tree)
 {
-    walker* w = make_weapon(FAMILY_TREE);
-    if (!w) return;
-    w->set_act_type(ACT_SIT);
-    bool result = w->act();
-    ASSERT_TRUE(result) << "tree sit returns 1";
-    og::runtime::current_session->myscreen_->world().remove_ob(w);
+    expect_silent_sit(FAMILY_TREE, "core:tree");
 }
 
 
 TEST(WeapBehavior, weap_act_sit_blood)
 {
-    walker* w = make_weapon(FAMILY_BLOOD);
-    if (!w) return;
-    w->set_act_type(ACT_SIT);
-    bool result = w->act();
-    ASSERT_TRUE(result) << "blood sit returns 1";
-    og::runtime::current_session->myscreen_->world().remove_ob(w);
+    expect_silent_sit(FAMILY_BLOOD, "core:blood");
 }
 
 
 TEST(WeapBehavior, weap_act_sit_door)
 {
-    walker* w = make_weapon(FAMILY_DOOR);
-    if (!w) return;
-    w->set_act_type(ACT_SIT);
-    bool result = w->act();
-    ASSERT_TRUE(result) << "door sit returns 1";
-    og::runtime::current_session->myscreen_->world().remove_ob(w);
+    expect_silent_sit(FAMILY_DOOR, "core:door");
 }
 
 
 TEST(WeapBehavior, weap_act_die)
 {
     walker* w = make_weapon(FAMILY_KNIFE);
-    if (!w) return;
+    ASSERT_NE(nullptr, w) << "knife weapon created";
+    w->set_ani_type(ANI_WALK); // otherwise act() short-circuits into animate()
+    w->set_dead(0);
     w->set_act_type(ACT_DIE);
-    w->act();
-    ASSERT_TRUE(w->dead() == 1) << "weap act die sets dead";
+    ASSERT_TRUE(w->act()) << "ACT_DIE returns 1";
+    ASSERT_EQ(1, (int)w->dead()) << "weap act die sets dead";
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 
@@ -100,9 +226,20 @@ TEST(WeapBehavior, weap_act_die)
 TEST(WeapBehavior, weap_act_random)
 {
     walker* w = make_weapon(FAMILY_KNIFE);
-    if (!w) return;
+    ASSERT_NE(nullptr, w) << "knife weapon created";
+    w->set_team_num(3);
+    w->set_ani_type(ANI_WALK); // otherwise act() short-circuits into animate()
     w->set_act_type(ACT_RANDOM);
-    w->act();
+
+    reset_sim_log();
+    ASSERT_TRUE(w->act()) << "ACT_RANDOM returns 1";
+    ASSERT_EQ(1u, sim_log().size()) << "ACT_RANDOM pushes exactly one sim event";
+    const og::sim::Event& ev = sim_log().events()[0];
+    EXPECT_EQ(og::sim::EventKind::Notification, ev.kind) << "the act_random report is a Notification";
+    EXPECT_EQ("Weapon 0 doing act random?", ev.text) << "the report names the weapon family number";
+    EXPECT_EQ((std::uint32_t)FAMILY_KNIFE, ev.a) << "payload a is the weapon family";
+    EXPECT_EQ((std::uint32_t)3, ev.b) << "payload b is the weapon's team";
+
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 
@@ -114,15 +251,41 @@ TEST(WeapBehavior, weap_act_random)
 TEST(WeapBehavior, weap_death_knife_soldier_owner)
 {
     auto owner = make_living(FAMILY_SOLDIER, 0);
-    if (!owner) return;
+    ASSERT_NE(nullptr, owner.get()) << "soldier owner created";
 
     walker* knife = make_weapon(FAMILY_KNIFE);
-    if (!knife) return;
+    ASSERT_NE(nullptr, knife) << "knife weapon created";
     knife->set_owner(owner.get());
+    knife->setxy(120, 144);
+    knife->set_lastx(3);
+    knife->set_lasty(-2);
+    knife->set_stepsize(4);
+    knife->set_damage(9.0f);
     knife->set_dead(1);
-    knife->death();
-    // Should create a KNIFE_BACK effect
 
+    const auto before = collect_entities(Order::FX, FAMILY_KNIFE_BACK);
+    ASSERT_TRUE(knife->death()) << "weap::death dispatches the family hook and reports handled";
+    const auto after = collect_entities(Order::FX, FAMILY_KNIFE_BACK);
+    ASSERT_EQ(before.size() + 1, after.size())
+        << "a returning-weapon owner's knife spawns exactly one core:knife_back";
+    walker* blade = only_new_entity(before, after);
+    ASSERT_NE(nullptr, blade) << "exactly one new knife_back effect";
+
+    EXPECT_EQ(owner.get(), blade->owner()) << "the returning blade belongs to the thrower";
+    EXPECT_EQ(ANI_ATTACK, (int)blade->ani_type()) << "the returning blade animates as an attack";
+    EXPECT_FLOAT_EQ(3.0f, blade->lastx()) << "the blade inherits the knife's X velocity";
+    EXPECT_FLOAT_EQ(-2.0f, blade->lasty()) << "the blade inherits the knife's Y velocity";
+    EXPECT_FLOAT_EQ(4.0f, blade->stepsize()) << "the blade inherits the knife's stepsize";
+    EXPECT_FLOAT_EQ(9.0f, blade->damage()) << "the blade inherits the knife's damage";
+    EXPECT_EQ((int)knife->floor(), (int)blade->floor()) << "return flight starts on the knife's floor";
+    EXPECT_EQ((int)knife->xpos() + (int)knife->sizex() / 2,
+              (int)blade->xpos() + (int)blade->sizex() / 2)
+        << "the blade is centered on the knife (X)";
+    EXPECT_EQ((int)knife->ypos() + (int)knife->sizey() / 2,
+              (int)blade->ypos() + (int)blade->sizey() / 2)
+        << "the blade is centered on the knife (Y)";
+
+    og::runtime::current_session->myscreen_->world().remove_ob(blade);
     og::runtime::current_session->myscreen_->world().remove_ob(knife);
 }
 
@@ -130,14 +293,18 @@ TEST(WeapBehavior, weap_death_knife_soldier_owner)
 TEST(WeapBehavior, weap_death_knife_non_soldier)
 {
     auto owner = make_living(FAMILY_ARCHER, 0);
-    if (!owner) return;
+    ASSERT_NE(nullptr, owner.get()) << "archer owner created";
 
     walker* knife = make_weapon(FAMILY_KNIFE);
-    if (!knife) return;
+    ASSERT_NE(nullptr, knife) << "knife weapon created";
     knife->set_owner(owner.get());
     knife->set_dead(1);
-    knife->death();
-    // Should NOT create a KNIFE_BACK since owner is not soldier
+
+    const auto before = collect_entities(Order::FX, FAMILY_KNIFE_BACK);
+    ASSERT_TRUE(knife->death()) << "weap::death still reports handled (the hook's false is its own)";
+    const auto after = collect_entities(Order::FX, FAMILY_KNIFE_BACK);
+    ASSERT_EQ(before.size(), after.size())
+        << "an owner whose family lacks has_returning_weapon gets no knife_back";
 
     og::runtime::current_session->myscreen_->world().remove_ob(knife);
 }
@@ -146,15 +313,34 @@ TEST(WeapBehavior, weap_death_knife_non_soldier)
 TEST(WeapBehavior, weap_death_fire_arrow_exploding)
 {
     auto owner = make_living(FAMILY_ARCHER, 0);
-	    if (!owner) return;
-	    
-	    walker* arrow = make_weapon(FAMILY_FIRE_ARROW);
-	    if (!arrow) return;
-	    arrow->set_owner(owner.get());
-	    arrow->set_skip_exit(1); // means it's supposed to explode
-	    arrow->set_dead(1);
-	    arrow->death();
+    ASSERT_NE(nullptr, owner.get()) << "archer owner created";
 
+    walker* arrow = make_weapon(FAMILY_FIRE_ARROW);
+    ASSERT_NE(nullptr, arrow) << "fire arrow created";
+    arrow->set_owner(owner.get());
+    arrow->set_skip_exit(1); // means it's supposed to explode
+    arrow->set_damage(7.0f);
+    arrow->set_dead(1);
+
+    reset_sim_log();
+    const auto before = collect_entities(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_TRUE(arrow->death()) << "weap::death dispatches the family hook";
+    const auto after = collect_entities(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_EQ(before.size() + 1, after.size())
+        << "an armed fire arrow spawns exactly one core:explosion";
+    walker* boom = only_new_entity(before, after);
+    ASSERT_NE(nullptr, boom) << "exactly one new explosion effect";
+
+    EXPECT_EQ(owner.get(), boom->owner()) << "the explosion is credited to the archer";
+    EXPECT_EQ(ANI_EXPLODE, (int)boom->ani_type()) << "the explosion plays its explode animation";
+    EXPECT_FLOAT_EQ(14.0f, boom->damage()) << "explosion damage is twice the projectile's";
+    EXPECT_FLOAT_EQ(0.0f, boom->stats()->hitpoints()) << "the explosion starts at hp 0";
+    EXPECT_EQ((int)owner->stats()->level(), (int)boom->stats()->level())
+        << "the explosion inherits the owner's level";
+    EXPECT_EQ((int)arrow->floor(), (int)boom->floor()) << "the explosion stays on the arrow's floor";
+    EXPECT_EQ(1, count_sounds(SOUND_EXPLODE)) << "an explosion is heard exactly once";
+
+    og::runtime::current_session->myscreen_->world().remove_ob(boom);
     og::runtime::current_session->myscreen_->world().remove_ob(arrow);
 }
 
@@ -162,10 +348,19 @@ TEST(WeapBehavior, weap_death_fire_arrow_exploding)
 TEST(WeapBehavior, weap_death_fire_arrow_no_explode)
 {
     walker* arrow = make_weapon(FAMILY_FIRE_ARROW);
-    if (!arrow) return;
+    ASSERT_NE(nullptr, arrow) << "fire arrow created";
     arrow->set_skip_exit(0); // not supposed to explode
+    arrow->set_damage(7.0f);
     arrow->set_dead(1);
-    arrow->death();
+
+    reset_sim_log();
+    const auto before = collect_entities(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_TRUE(arrow->death()) << "weap::death still reports handled";
+    const auto after = collect_entities(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_EQ(before.size(), after.size())
+        << "skip_exit==0 means the arrow just dies: no explosion";
+    EXPECT_EQ(0, count_sounds(SOUND_EXPLODE)) << "and nothing is heard";
+
     og::runtime::current_session->myscreen_->world().remove_ob(arrow);
 }
 
@@ -173,11 +368,18 @@ TEST(WeapBehavior, weap_death_fire_arrow_no_explode)
 TEST(WeapBehavior, weap_death_wave_transforms)
 {
     walker* wave = make_weapon(FAMILY_WAVE);
-    if (!wave) return;
+    ASSERT_NE(nullptr, wave) << "wave weapon created";
+    ASSERT_EQ((int)FAMILY_WAVE, (int)wave->family()) << "starts life as core:wave";
+    wave->stats()->set_hitpoints(1);
     wave->set_dead(1);
-    wave->death();
-    // Should transform to WAVE2 and un-dead
-    ASSERT_TRUE(wave->dead() == 0) << "wave should un-dead on transform";
+
+    ASSERT_TRUE(wave->death()) << "weap::death dispatches the family hook";
+    ASSERT_EQ(0, (int)wave->dead()) << "wave should un-dead on transform";
+    ASSERT_EQ((int)FAMILY_WAVE2, (int)wave->family()) << "wave is promoted to core:wave2";
+    EXPECT_FLOAT_EQ(wave->stats()->max_hitpoints(), wave->stats()->hitpoints())
+        << "the new stage starts at full strength";
+    EXPECT_GT(wave->stats()->hitpoints(), 1.0f) << "the hp refill actually raised hitpoints";
+
     og::runtime::current_session->myscreen_->world().remove_ob(wave);
 }
 
@@ -185,43 +387,101 @@ TEST(WeapBehavior, weap_death_wave_transforms)
 TEST(WeapBehavior, weap_death_wave2_transforms)
 {
     walker* wave = make_weapon(FAMILY_WAVE2);
-    if (!wave) return;
+    ASSERT_NE(nullptr, wave) << "wave2 weapon created";
+    ASSERT_EQ((int)FAMILY_WAVE2, (int)wave->family()) << "starts life as core:wave2";
+    wave->stats()->set_hitpoints(1);
     wave->set_dead(1);
-    wave->death();
-    ASSERT_TRUE(wave->dead() == 0) << "wave2 should un-dead on transform";
+
+    ASSERT_TRUE(wave->death()) << "weap::death dispatches the family hook";
+    ASSERT_EQ(0, (int)wave->dead()) << "wave2 should un-dead on transform";
+    ASSERT_EQ((int)FAMILY_WAVE3, (int)wave->family()) << "wave2 is promoted to core:wave3";
+    EXPECT_FLOAT_EQ(wave->stats()->max_hitpoints(), wave->stats()->hitpoints())
+        << "the last stage starts at full strength";
+    EXPECT_GT(wave->stats()->hitpoints(), 1.0f) << "the hp refill actually raised hitpoints";
+
     og::runtime::current_session->myscreen_->world().remove_ob(wave);
 }
 
 
 TEST(WeapBehavior, weap_death_door)
 {
+    test_world().create_new_grid();
+
+    // No wall above: the opening effect keeps its default facing and the
+    // verbatim-legacy else arm writes FACE_UP onto the DOOR itself.
     walker* door = make_weapon(FAMILY_DOOR);
-    if (!door) return;
+    ASSERT_NE(nullptr, door) << "door created";
+    door->setxy(100, 100);
+    door->set_curdir(static_cast<signed char>(FACE_UP_RIGHT));
+    door->set_team_num(3);
+    door->stats()->set_level(7);
+    set_world_tile(100, 100 - GRID_SIZE, PIX_GRASS1);
     door->set_dead(1);
-    door->death();
+
+    auto before = collect_entities(Order::FX, FAMILY_DOOR_OPEN);
+    ASSERT_TRUE(door->death()) << "weap::death dispatches the family hook";
+    auto after = collect_entities(Order::FX, FAMILY_DOOR_OPEN);
+    ASSERT_EQ(before.size() + 1, after.size()) << "a broken door spawns exactly one core:door_open";
+    walker* opened = only_new_entity(before, after);
+    ASSERT_NE(nullptr, opened) << "exactly one new door_open effect";
+
+    EXPECT_EQ(ANI_DOOR_OPEN, (int)opened->ani_type()) << "the effect plays the opening animation";
+    EXPECT_EQ(100, (int)opened->xpos()) << "the effect takes the door's X";
+    EXPECT_EQ(100, (int)opened->ypos()) << "the effect takes the door's Y";
+    EXPECT_EQ((int)door->floor(), (int)opened->floor()) << "the opened door stays on its floor";
+    EXPECT_EQ(7, (int)opened->stats()->level()) << "the effect inherits the door's level";
+    EXPECT_EQ(3, (int)opened->team_num()) << "the effect inherits the door's team";
+    EXPECT_EQ(FACE_UP, (int)door->curdir())
+        << "verbatim legacy quirk: with no wall above, FACE_UP is written onto the DOOR";
+    EXPECT_EQ(FACE_DOWN, (int)opened->curdir())
+        << "... and the effect keeps the spawn default facing (never FACE_RIGHT)";
+
+    // A wall directly above picks FACE_RIGHT, and that goes on the EFFECT.
+    walker* door2 = make_weapon(FAMILY_DOOR);
+    ASSERT_NE(nullptr, door2) << "second door created";
+    door2->setxy(100, 100);
+    door2->set_curdir(static_cast<signed char>(FACE_UP_RIGHT));
+    set_world_tile(100, 100 - GRID_SIZE, PIX_H_WALL1);
+    door2->set_dead(1);
+
+    before = collect_entities(Order::FX, FAMILY_DOOR_OPEN);
+    ASSERT_TRUE(door2->death()) << "weap::death dispatches the family hook";
+    after = collect_entities(Order::FX, FAMILY_DOOR_OPEN);
+    ASSERT_EQ(before.size() + 1, after.size()) << "the walled door also spawns one core:door_open";
+    walker* opened2 = only_new_entity(before, after);
+    ASSERT_NE(nullptr, opened2) << "exactly one new door_open effect";
+    EXPECT_EQ(FACE_RIGHT, (int)opened2->curdir()) << "a wall above faces the opening effect right";
+    EXPECT_EQ(FACE_UP_RIGHT, (int)door2->curdir()) << "the wall arm leaves the door's own facing alone";
+
+    og::runtime::current_session->myscreen_->world().remove_ob(opened);
+    og::runtime::current_session->myscreen_->world().remove_ob(opened2);
     og::runtime::current_session->myscreen_->world().remove_ob(door);
-}
-
-
-TEST(WeapBehavior, weap_death_rock_no_bounce)
-{
-    walker* rock = make_weapon(FAMILY_ROCK);
-    if (!rock) return;
-    // do_bounce is a member of weap, not walker base
-    // Just test death with default state
-    rock->set_dead(1);
-    rock->death();
-    og::runtime::current_session->myscreen_->world().remove_ob(rock);
+    og::runtime::current_session->myscreen_->world().remove_ob(door2);
 }
 
 
 TEST(WeapBehavior, weap_death_boulder_exploding)
 {
     walker* boulder = make_weapon(FAMILY_BOULDER);
-    if (!boulder) return;
+    ASSERT_NE(nullptr, boulder) << "boulder created";
     boulder->set_skip_exit(1);
+    boulder->set_damage(5.0f);
     boulder->set_dead(1);
-    boulder->death();
+
+    reset_sim_log();
+    const auto before = collect_entities(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_TRUE(boulder->death()) << "weap::death dispatches the family hook";
+    const auto after = collect_entities(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_EQ(before.size() + 1, after.size())
+        << "an armed boulder shares explode_on_death: exactly one core:explosion";
+    walker* boom = only_new_entity(before, after);
+    ASSERT_NE(nullptr, boom) << "exactly one new explosion effect";
+
+    EXPECT_EQ(ANI_EXPLODE, (int)boom->ani_type()) << "the explosion plays its explode animation";
+    EXPECT_FLOAT_EQ(10.0f, boom->damage()) << "explosion damage is twice the boulder's";
+    EXPECT_EQ(1, count_sounds(SOUND_EXPLODE)) << "an explosion is heard exactly once";
+
+    og::runtime::current_session->myscreen_->world().remove_ob(boom);
     og::runtime::current_session->myscreen_->world().remove_ob(boulder);
 }
 
@@ -230,23 +490,47 @@ TEST(WeapBehavior, weap_death_boulder_exploding)
 // weap::animate
 // ---------------------------------------------------------------------------
 
+// Merged: weap_animate_arrow ran the identical hookless default arm of
+// weap::animate, so ARROW is a row in this table instead of its own case.
 TEST(WeapBehavior, weap_animate_knife)
 {
-    walker* w = make_weapon(FAMILY_KNIFE);
-    if (!w) return;
-    w->set_ani_type(ANI_ATTACK);
-    w->animate();
-    og::runtime::current_session->myscreen_->world().remove_ob(w);
-}
+    for (const int family : {FAMILY_KNIFE, FAMILY_ARROW})
+    {
+        SCOPED_TRACE(family == FAMILY_KNIFE ? "core:knife" : "core:arrow");
+        walker* w = make_weapon(static_cast<char>(family));
+        ASSERT_NE(nullptr, w) << "weapon created";
+        ASSERT_NE(nullptr, w->ani) << "real weapon carries an animation table";
+        ASSERT_GT(w->ani_count, FACE_RIGHT) << "real weapon records its table length";
 
+        const signed char* row = w->ani[FACE_RIGHT];
+        ASSERT_NE(nullptr, row) << "facing row exists";
+        ASSERT_NE(-1, (int)row[0]) << "facing row is non-empty";
+        int seq_len = 0;
+        while (seq_len < 128 && row[seq_len] != -1)
+            ++seq_len;
+        ASSERT_LT(seq_len, 128) << "facing row is sentinel-terminated";
 
-TEST(WeapBehavior, weap_animate_arrow)
-{
-    walker* w = make_weapon(FAMILY_ARROW);
-    if (!w) return;
-    w->set_ani_type(ANI_ATTACK);
-    w->animate();
-    og::runtime::current_session->myscreen_->world().remove_ob(w);
+        w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+        w->set_cycle(0);
+        w->set_ani_type(ANI_ATTACK);
+
+        ASSERT_TRUE(w->animate()) << "weap::animate returns 1";
+        EXPECT_EQ(0, (int)w->ani_type()) << "the default arm forces ani_type back to 0";
+        EXPECT_EQ((int)row[0], (int)w->frame()) << "frame comes from ani[facing][cycle]";
+        EXPECT_EQ(1 % seq_len, (int)w->cycle()) << "cycle advances one step (wrapping at the sentinel)";
+
+        // Walk the rest of the row: every step advances by one and the
+        // sentinel wraps the cycle back to 0.
+        for (int step = 1; step < seq_len; ++step)
+        {
+            ASSERT_TRUE(w->animate()) << "weap::animate returns 1 at step " << step;
+            EXPECT_EQ((int)row[step], (int)w->frame()) << "frame at step " << step;
+            EXPECT_EQ((step + 1) % seq_len, (int)w->cycle()) << "cycle at step " << step;
+        }
+        EXPECT_EQ(0, (int)w->cycle()) << "cycle wraps to 0 after the last frame of the row";
+
+        og::runtime::current_session->myscreen_->world().remove_ob(w);
+    }
 }
 
 
@@ -331,16 +615,6 @@ TEST(WeapBehavior, weap_headless_default_ctor_and_setxy_path)
 }
 
 
-static void set_world_tile(short world_x, short world_y, unsigned char tile)
-{
-    auto& level = og::runtime::current_session->myscreen_->level_runtime_data();
-    const int gx = world_x / GRID_SIZE;
-    const int gy = world_y / GRID_SIZE;
-    if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
-        return;
-    level.world().grid.data[static_cast<std::size_t>(gx + level.world().grid.w * gy)] = tile;
-}
-
 TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
@@ -368,6 +642,9 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     rock->set_dead(1);
     rock->set_do_bounce(0);
     ASSERT_TRUE(!og::test::on_death(*rock_desc, rock)) << "rock on_death should short-circuit when do_bounce=0";
+    // Folded in from weap_death_rock_no_bounce: the short-circuit leaves the
+    // rock dead (no un-dead, no bounce).
+    ASSERT_EQ(1, (int)rock->dead()) << "do_bounce=0 short-circuit leaves the rock dead";
 
     // First probe passable => no bounce, die normally.
     rock->set_do_bounce(1);
@@ -540,8 +817,14 @@ TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
         living_target->myguy = nullptr;
         living_target->stats()->set_frozen_delay(0);
         owner->stats()->set_level(6);
+        // og.freeze_duration draws from the world rng: state 1 -> first draw
+        // (1*1103515245+12345)>>16 == 16838, and 16838 % (40 + 2*6 - 0) == 42,
+        // which is below og::combat::kSprinkleRollKnee (79) so soften() is the
+        // identity. Owner level 6 < 21, so the refresh gate is open.
+        og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
         ASSERT_TRUE(og::test::on_hit_target(*sprinkle_desc, tree_w, living_target, owner.get())) << "sprinkle hit callback should return true for living targets";
-        ASSERT_TRUE(living_target->stats()->frozen_delay() >= 0) << "sprinkle should set a deterministic frozen_delay for living targets";
+        ASSERT_EQ(42, (int)living_target->stats()->frozen_delay())
+            << "sprinkle freezes a living target for freeze_duration(owner level 6, con 0) = rng(52) = 42";
     }
 
     og::runtime::current_session->myscreen_->world().remove_ob(non_living_target);
@@ -560,14 +843,29 @@ TEST(WeapBehavior, weap_act_sit_with_non_skipping_family_and_act_animate_shortcu
     if (!(sit_weapon && anim_weapon))
         return;
 
+    const WeaponFamilyDescriptor* knife_fd = get_weapon_family_descriptor(FAMILY_KNIFE);
+    ASSERT_NE(nullptr, knife_fd) << "knife weapon family descriptor exists";
+    ASSERT_FALSE(knife_fd->skip_sit_notify) << "core:knife declares skip_sit_notify=false";
+
+    sit_weapon->set_team_num(2);
+    sit_weapon->set_ani_type(ANI_WALK); // otherwise act() short-circuits into animate()
     sit_weapon->set_act_type(ACT_SIT);
+    reset_sim_log();
     ASSERT_TRUE(sit_weapon->act()) << "non-skip sit family should still return true";
+    ASSERT_EQ(1u, sim_log().size()) << "a non-skipping family announces its sit exactly once";
+    const og::sim::Event& sit_ev = sim_log().events()[0];
+    EXPECT_EQ(og::sim::EventKind::Notification, sit_ev.kind) << "the sit report is a Notification";
+    EXPECT_EQ("Weapon sitting", sit_ev.text) << "the sit report text";
+    EXPECT_EQ((std::uint32_t)FAMILY_KNIFE, sit_ev.a) << "payload a is the weapon family";
+    EXPECT_EQ((std::uint32_t)2, sit_ev.b) << "payload b is the weapon's team";
 
     // Cover act() early return path when previous animation is still active.
     anim_weapon->set_ani_type(ANI_ATTACK);
     anim_weapon->set_cycle(0);
     anim_weapon->set_curdir(0);
     ASSERT_TRUE(anim_weapon->act()) << "non-walk ani_type should route through animate() and return true";
+    EXPECT_EQ(0, (int)anim_weapon->ani_type())
+        << "the animate() shortcut ran weap::animate's default arm (ani_type forced to 0)";
 
     og::runtime::current_session->myscreen_->world().remove_ob(sit_weapon);
     og::runtime::current_session->myscreen_->world().remove_ob(anim_weapon);
