@@ -543,6 +543,10 @@ TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn)
     world.mysmoother.set_target(world.grid);
     world.respawn_mode = saved_respawn_mode;
     world.type = saved_type;
+    // The second floor this test added belongs to this test: the shared
+    // session world has to go back to single-floor, or every later test that
+    // asserts a single-floor fixture depends on running first.
+    world.set_floor_count(1);
 }
 
 TEST(ViewRedrawJitter, render_sample_preserves_float_camera_while_camera_snaps)

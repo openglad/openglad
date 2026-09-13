@@ -981,7 +981,6 @@ constexpr MenuScreenSpec make_pause_menu_spec()
     // even at depth 1 — the only screens carrying this kind are the pause
     // family (#237).
     spec.kind = MenuScreenKind::Overlay;
-    spec.backdrop = false;
     spec.polls_lobby = false;
     spec.draw_background = &pause_menu_draw_background;
     spec.draw_content = &pause_menu_draw_content;
@@ -1006,7 +1005,6 @@ constexpr MenuScreenSpec make_pause_player_spec()
     // Pause family: a mid-mission modal card, never faded (#237).
     spec.kind = MenuScreenKind::Overlay;
     spec.exit_on_redraw = true;
-    spec.backdrop = false;
     spec.polls_lobby = false;
     spec.draw_background = &pause_player_draw_background;
     spec.draw_content = &pause_player_draw_content;

@@ -34,6 +34,7 @@
 #include <utility>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <format>
 #include <cstring>
 #include <openglad/interface/game_context.h>
@@ -2985,33 +2986,34 @@ bool sdl_video::world_smoothing_supported() const
 	return og::platform::exclusive_mode_switch_is_safe(driver, count);
 }
 
-// Attach the closest real video mode by PHYSICAL pixel size. SDL3's mode w/h
-// fields are logical coordinates, so SDL_GetClosestFullscreenDisplayMode()
-// cannot directly consume the values shown by this menu on Retina/HiDPI
-// displays. Select one of SDL's owned mode pointers while the list is alive,
-// then release the list after SDL has accepted it. Equal physical sizes favor
-// the desktop's exact density/layout for the desktop request, otherwise a
-// density nearest 1.0 and a refresh nearest the desktop.
-[[maybe_unused]] static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
+// Rank the display's real modes against a requested PHYSICAL pixel size.
+// SDL3's mode w/h fields are logical coordinates, so
+// SDL_GetClosestFullscreenDisplayMode() cannot directly consume the values
+// shown by the resolution menu on Retina/HiDPI displays. Equal physical sizes
+// favor the desktop's exact density/layout for the desktop request, otherwise
+// a density nearest 1.0 and a refresh nearest the desktop.
+int og::platform::best_fullscreen_mode_index(
+	std::span<const SDL_DisplayMode* const> modes,
+	const SDL_DisplayMode* desktop, int w, int h)
 {
-	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
 	const std::pair<int, int> desktop_pixels = desktop != nullptr
 		? og::platform::display_mode_pixel_size(*desktop)
 		: std::pair<int, int>{0, 0};
 	const bool requesting_desktop =
 		std::pair<int, int>{w, h} == desktop_pixels;
 
-	int count = 0;
-	SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(display, &count);
-	const SDL_DisplayMode* best = nullptr;
+	int best = -1;
 	using Rank = std::tuple<unsigned long long, int, double, double, int>;
 	Rank best_rank{std::numeric_limits<unsigned long long>::max(), 1,
 	               std::numeric_limits<double>::infinity(),
 	               std::numeric_limits<double>::infinity(),
 	               std::numeric_limits<int>::max()};
-	for (int i = 0; modes != nullptr && i < count; ++i)
+	for (int i = 0; i < static_cast<int>(modes.size()); ++i)
 	{
-		const SDL_DisplayMode& candidate = *modes[i];
+		const SDL_DisplayMode* const entry = modes[static_cast<std::size_t>(i)];
+		if (entry == nullptr)
+			continue;
+		const SDL_DisplayMode& candidate = *entry;
 		const auto pixels = og::platform::display_mode_pixel_size(candidate);
 		if (pixels.first < w || pixels.second < h)
 			continue;
@@ -3039,13 +3041,29 @@ bool sdl_video::world_smoothing_supported() const
 		                refresh_distance, i};
 		if (rank < best_rank)
 		{
-			best = &candidate;
+			best = i;
 			best_rank = rank;
 		}
 	}
+	return best;
+}
 
-	const bool applied = best != nullptr &&
-		SDL_SetWindowFullscreenMode(E_Screen->window, best);
+// Attach the closest real video mode by physical pixel size. Select one of
+// SDL's owned mode pointers while the list is alive, then release the list
+// after SDL has accepted it.
+[[maybe_unused]] static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
+{
+	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
+	int count = 0;
+	SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(display, &count);
+	const int best = og::platform::best_fullscreen_mode_index(
+		std::span<const SDL_DisplayMode* const>(
+			const_cast<const SDL_DisplayMode* const*>(modes),
+			modes != nullptr && count > 0 ? static_cast<size_t>(count) : 0u),
+		desktop, w, h);
+
+	const bool applied = best >= 0 &&
+		SDL_SetWindowFullscreenMode(E_Screen->window, modes[best]);
 	SDL_free(modes);
 	return applied;
 }
@@ -3742,26 +3760,36 @@ int sdl_video::FadeBetween(
 	//(for simple fade-in/out effects).
 	if (!pOldSurface && !pNewSurface)
 		return 0; //nothing to do; avoid allocating two unused temporaries
+	// The stand-in has to match the surface it will be faded against, not the
+	// active canvas: every precondition below demands identical pitch, size
+	// and pixel format, and a 24-bit temp can never clear the bpp gate.
+	// Black is mapped through the stand-in's own format rather than written
+	// as the literal 0: SDL3 gives every alpha-format surface
+	// SDL_BLENDMODE_BLEND at creation, so a 0 fill would be TRANSPARENT
+	// black and the terminal blit below would write nothing. On XRGB8888 --
+	// every production canvas -- the mapping is 0x00000000 anyway.
+	SDL_Surface* const peer = pOldSurface ? pOldSurface : pNewSurface;
 	if (!pOldSurface)
 	{
 		bOldNull = true;
-		pOldSurface = SDL_CreateSurface(
-			active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_RGB24);
+		pOldSurface = SDL_CreateSurface(peer->w, peer->h, peer->format);
 		if (!pOldSurface) return 0;  // OOM: nothing safely lockable below
-		SDL_FillSurfaceRect(pOldSurface,nullptr,0);
+		SDL_FillSurfaceRect(pOldSurface,nullptr,map_surface_rgb_fast(pOldSurface,0,0,0));
 	}
 	if (!pNewSurface)
 	{
 		bNewNull = true;
-		pNewSurface = SDL_CreateSurface(
-			active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_RGB24);
+		pNewSurface = SDL_CreateSurface(peer->w, peer->h, peer->format);
 		if (!pNewSurface) { if (bOldNull) SDL_DestroySurface(pOldSurface); return 0; }  // OOM: free the temp we just made
-		SDL_FillSurfaceRect(pNewSurface,nullptr,0);
+		SDL_FillSurfaceRect(pNewSurface,nullptr,map_surface_rgb_fast(pNewSurface,0,0,0));
 	}
 	/* Lock the screen for direct access to the pixels */
     bool old_locked = false;
 	if ( SDL_MUSTLOCK(pOldSurface) ) {
 		if ( !SDL_LockSurface(pOldSurface) ) {
+			// fail() is not in scope yet, so free the stand-ins by hand.
+			if (bOldNull) SDL_DestroySurface(pOldSurface);
+			if (bNewNull) SDL_DestroySurface(pNewSurface);
 			return 0;
 		}
         old_locked = true;
@@ -3786,7 +3814,7 @@ int sdl_video::FadeBetween(
 	// Reject surfaces that require locking instead of writing through an
 	// unlocked RLE buffer.
 	if(!DestSurface)
-        return fail("dest size mismatch");
+        return fail("null dest");
 	if(SDL_MUSTLOCK(DestSurface))
         return fail("DestSurface requires lock");
 
@@ -3973,27 +4001,24 @@ int sdl_video::fadeblack(bool fade_in)
     if (!fade_in)
     {
         std::string detail;
-        if (!E_Screen->testing_render_matches_presented(&detail))
+        if (!E_Screen->testing_render_matches_presented(detail))
             og::video_testing::report_fade_violation(
                 ("fade-out from a frame that was never presented (the render "
                  "buffer was cleared or redrawn after its last present: " +
                  detail + ")").c_str());
     }
 #endif
-	// Sized to the active canvas: FadeBetween requires exact dim matches
-	// with E_Screen->render.
-	SDL_Surface* black = SDL_CreateSurface(active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_XRGB8888);
-    if (!black)
-        return -1;
-    SDL_FillSurfaceRect(black, nullptr, map_surface_rgb_fast(black, 0, 0, 0));
+	// No hand-built black: FadeBetween's own null shorthand builds the
+	// stand-in from the peer surface, so c409e7c85's rule (the stand-in must
+	// match E_Screen->render or every precondition rejects it) now holds on
+	// the FORMAT axis as well as the size axis it was written for.
 	int i;
 
 	if(fade_in)
-        i = FadeBetween(black, E_Screen->render, E_Screen->render); // fade from black
+        i = FadeBetween(nullptr, E_Screen->render, E_Screen->render); // fade from black
 	else
-        i = FadeBetween(E_Screen->render, black, E_Screen->render); // fade to black
+        i = FadeBetween(E_Screen->render, nullptr, E_Screen->render); // fade to black
 
-	SDL_DestroySurface(black);
 	// Stamped AFTER FadeBetween: its terminal swap presents the black frame
 	// and, like every present, clears the flag. A 0 return means the fade
 	// never ran (a precondition failure), so the window keeps its state; an

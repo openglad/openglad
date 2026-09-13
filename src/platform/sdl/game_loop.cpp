@@ -101,23 +101,19 @@ TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
 // desktop main loop bypasses this function and uses FrameDeadlinePacer
 // directly inside game_frame_with_result(). By contract this function
 // returns 0 or 1 — the multi-tick catch-up burst has been removed.
+// Its only call site sits in the enable_frame_timing == false arm, for which
+// compute_sim_interval_ms always reports caller_manages_timing, so the
+// schedule is read for documentation rather than for a branch.
 std::uint32_t ticks_to_run_this_call(GameLoopFrameState& st,
                                      const TickSchedule& schedule,
                                      const GameLoopDeps& deps)
 {
     (void)st;
     (void)deps;
-    if (schedule.caller_manages_timing)
-    {
-        og::runtime::emit_runtime_trace(
-            og::runtime::make_runtime_trace_record(
-                "game_loop", "ticks_caller_managed"));
-        return 1;
-    }
-
+    (void)schedule;
     og::runtime::emit_runtime_trace(
         og::runtime::make_runtime_trace_record(
-            "game_loop", "ticks_single_ready"));
+            "game_loop", "ticks_caller_managed"));
     return 1;
 }
 

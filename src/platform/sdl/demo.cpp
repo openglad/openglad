@@ -490,31 +490,18 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng, int forced_si
         walker* w = guy_create_and_add_walker(g, s);
         if (w) {
             w->set_team_num(0);
-            // Deploy onto the level's authored team-0 start markers exactly
-            // like the real game (game.cpp), consuming one marker per member
-            // and scattering only the overflow. Levels that stage the player
-            // team somewhere specific — a boss arena's petitioners' floor,
-            // say — then read the way the author meant them to.
-            walker* marker = s->first_of(Order::Special, FAMILY_RESERVED_TEAM, 0);
-            if (marker) {
-                // set_floor MUST precede setxy: setxy re-buckets the
-                // floor-keyed obmap at the walker's current floor.
-                w->set_floor(marker->floor());
-                w->setxy(marker->xpos(), marker->ypos());
-                marker->set_dead(1);
-            } else {
-                w->teleport();
-            }
+            // Marker deploy is not a choice here: init_session_game loads
+            // save0 immediately before this call, and load_saved_game runs
+            // og::server::spawn_team_from_save, which ends by killing every
+            // FAMILY_RESERVED_TEAM marker in the world. So this squad always
+            // takes the same scatter fallback the real game gives a team
+            // whose start markers are exhausted.
+            w->teleport();
             // Record the level-entry spawn point (mirrors the game.cpp deploy
             // loop; read it back so the teleport fallback is captured exactly).
             w->set_spawn_point(w->xpos(), w->ypos(),
                                static_cast<std::uint8_t>(w->floor()));
         }
-    }
-
-    // Retire the unused markers, as the deploy loop does.
-    while (walker* marker = s->first_of(Order::Special, FAMILY_RESERVED_TEAM)) {
-        marker->set_dead(1);
     }
 }
 
@@ -1417,8 +1404,18 @@ int main(int argc, char* argv[])
             // grid exactly as shown on screen), for eyeballing the layout
             // without a screen recorder. Setting it implies lockstep, so the
             // composite surface always holds the presented frame here.
+            //
+            // Open the stream ourselves: SDL_SaveBMP(path) converts the
+            // surface BEFORE it opens the file and leaks that conversion
+            // when the open fails (SDL 3.4 SDL_bmp.c InitBMPSaveState), which
+            // LeakSanitizer turns into a non-zero exit — the opposite of the
+            // "a bad dump path is logged, never fatal" contract this run
+            // promises. With the stream opened first, a bad path never
+            // reaches the converter.
             if (!running && composite_dump != nullptr) {
-                if (!SDL_SaveBMP(composite_surface.get(), composite_dump)) {
+                SDL_IOStream* dump_io = SDL_IOFromFile(composite_dump, "wb");
+                if (dump_io == nullptr ||
+                    !SDL_SaveBMP_IO(composite_surface.get(), dump_io, true)) {
                     LogError("composite dump to '{}' failed: {}\n",
                              composite_dump, SDL_GetError());
                 }

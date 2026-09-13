@@ -23,7 +23,7 @@
 extern "C" void __gcov_dump(void);
 #endif
 
-std::string get_asset_path();
+#include "unit_core_pack_heal.h"
 
 namespace og::runtime {
 
@@ -73,35 +73,6 @@ bool init_unit_filesystem(const std::filesystem::path& test_config_dir,
     return true;
 }
 
-// Family data and behavior both live in the core class pack: the five
-// registries start empty and are filled by install_classpacks() from the
-// mounted packs/ tree. A headless unit binary
-// that skips io_init's asset mounts would otherwise run against registries
-// where every get_*_family_descriptor answers nullptr — no soldier, no
-// knife, no specials. Mount the shipped packs/ tree the same way io_init
-// does. Idempotent, and re-asserted after every test: a test that tears
-// PhysFS down (or remounts a campaign, which rescans packs/) must not leave
-// later tests with no families at all.
-void mount_core_pack()
-{
-    const bool mounted = og::resources::mount(
-        (get_asset_path() + "packs/").c_str(), "packs/", 1);
-    if (!mounted)
-    {
-        std::fprintf(stderr,
-                     "error: core class pack not mounted (%s) — the family "
-                     "registries will be empty\n",
-                     og::resources::filesystem_last_error().c_str());
-        return;
-    }
-    // Family chunks carry the shipped families' declarations AND their
-    // hooks, so a test that isolated itself by clearing them needs the same
-    // heal a cleared script registry gets.
-    if (og::script::pack_scripts().empty() ||
-        og::script::pack_family_chunks().empty())
-        og::resources::refresh_pack_scripts();
-}
-
 class HeadlessSessionListener final : public ::testing::EmptyTestEventListener
 {
 public:
@@ -138,7 +109,7 @@ public:
         // core pack (and therefore without any family).
         if (!og::resources::is_initialized())
             (void)og::resources::init("og_headless_unit_tests");
-        mount_core_pack();
+        og::test::mount_core_pack();
     }
 
 private:
@@ -204,7 +175,7 @@ int main(int argc, char** argv)
     current_game = &session.game_;
 
     init_all_registries();
-    mount_core_pack();
+    og::test::mount_core_pack();
     ::testing::TestEventListeners& listeners =
         ::testing::UnitTest::GetInstance()->listeners();
     listeners.Append(new HeadlessSessionListener(session, fallback_world, fallback_save));

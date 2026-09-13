@@ -7,6 +7,9 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/core/util.h>
+
+#include <string>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -493,4 +496,192 @@ TEST(ViewInputPaths, view_input_spectator_switch_with_no_target_says_so)
     // Release the debounce for the next test in this binary.
     v->process_input(empty);
     v->clear_text();
+}
+
+// A spectator who has no camera target yet (the previous target died and the
+// view was cleared) must ACQUIRE one on the next SwitchChar rather than being
+// stuck on a black pane forever. That first press only acquires — it must not
+// also cycle past the walker it just picked up.
+TEST(ViewInputPaths, view_input_spectator_switch_acquires_a_target_from_none)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+
+    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
+    KeyStateGuard ks;
+
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    v->mynum = 0;
+    v->my_team = 0;
+
+    struct SpectatorModeGuard
+    {
+        SaveData& save;
+        unsigned char saved;
+        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
+        {
+            save.numplayers = 0;
+        }
+        ~SpectatorModeGuard() { save.numplayers = saved; }
+    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
+
+    auto first = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    auto second = make_living(FAMILY_ELF, 0, 40, 20);
+    ASSERT_TRUE(first && second);
+    walker* const firstp = first.get();
+    walker* const secondp = second.get();
+    og::runtime::current_session->myscreen_->world().oblist.push_back(
+        std::move(first));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(
+        std::move(second));
+
+    InputState empty = {};
+    v->process_input(empty);
+    v->control = nullptr;
+    v->clear_text();
+
+    InputState input = {};
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    v->process_input(input);
+    EXPECT_EQ(firstp, v->control)
+        << "an empty spectator camera acquires the first live target";
+    for (const std::string& line : v->textlist)
+        EXPECT_NE("NO ONE TO WATCH", line)
+            << "acquiring is not a refused cycle";
+
+    // Control: with a target already held, the same press cycles instead.
+    v->process_input(empty);
+    v->process_input(input);
+    EXPECT_EQ(secondp, v->control)
+        << "a held camera cycles to the next live target";
+
+    v->process_input(empty);
+    v->control = nullptr;
+    v->clear_text();
+}
+
+// F3 posts the running frame rate into the pressing seat's message line. The
+// number is total frames over elapsed seconds, so a wrong divisor (or a
+// message posted to the wrong view) is visible in the text itself.
+//
+// The first 72 ticks of a level (where `totaltime` truncates to 0) are the
+// separate case exercised by
+// view_input_f3_inside_the_first_second_of_a_level_reads_the_frames_so_far
+// below; this test seeds a ten-second timer so it measures the rule.
+//
+// TIMING MARGIN: the divisor is the REAL clock (query_timer_control is
+// ticks_ms / 13.6) truncated by an integer /72, so the seeded ten seconds
+// only reads back as ten while this test body runs inside ~0.98 s of wall
+// clock. That is the whole margin the rule allows; a box stalled longer than
+// that between seeding timerstart and the input would read "22" instead of
+// "25". Widening the seed does not help — the quotient is what is asserted.
+TEST(ViewInputPaths, view_input_f3_posts_the_measured_frame_rate)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+    KeyStateGuard ks;
+
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    v->mynum = 0;
+    v->my_team = 0;
+
+    auto control = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    s->world().oblist.push_back(std::move(control));
+    v->control = controlp;
+    v->clear_text();
+
+    ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
+
+    const Uint32 saved_timerstart = s->timerstart;
+    const Uint32 saved_framecount = s->framecount;
+    // Ten seconds of level time (72 ticks per second) and 250 drawn frames.
+    s->timerstart =
+        static_cast<Uint32>(query_timer_control()) - static_cast<Uint32>(72 * 10);
+    s->framecount = 250;
+
+    SDL_Event e{};
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.repeat = false;
+    e.key.key = SDLK_F3;
+    v->input(e);
+
+    bool posted = false;
+    for (const std::string& line : v->textlist)
+        posted = posted || (line == "25 FRAMES PER SEC");
+    EXPECT_TRUE(posted) << "F3 must post 250 frames / 10 seconds";
+
+    // Control: half the frames over the same ten seconds halves the number,
+    // so the message really is measured and not a constant.
+    v->clear_text();
+    s->framecount = 130;
+    v->input(e);
+    bool halved = false;
+    for (const std::string& line : v->textlist)
+        halved = halved || (line == "13 FRAMES PER SEC");
+    EXPECT_TRUE(halved) << "130 frames / 10 seconds";
+
+    s->timerstart = saved_timerstart;
+    s->framecount = saved_framecount;
+    v->clear_text();
+    v->control = nullptr;
+}
+
+// P1: F3 pressed in the first second of a level. query_timer_control() ticks
+// at 72.3/s, so (now - timerstart)/72 is 0 for the first ~979 ms of EVERY
+// level (timerstart is re-stamped at glad_gameplay.cpp:361), and the readout
+// divided by that — an x86 integer divide by zero, i.e. SIGFPE, killing the
+// process. Under a second of level time the rate is the frames drawn so far.
+TEST(ViewInputPaths, view_input_f3_inside_the_first_second_of_a_level_reads_the_frames_so_far)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+    KeyStateGuard ks;
+
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    v->mynum = 0;
+    v->my_team = 0;
+
+    auto control = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    s->world().oblist.push_back(std::move(control));
+    v->control = controlp;
+    v->clear_text();
+
+    ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
+
+    const Uint32 saved_timerstart = s->timerstart;
+    const Uint32 saved_framecount = s->framecount;
+    s->timerstart = static_cast<Uint32>(query_timer_control());  // level just started
+    s->framecount = 12;
+    // Guard the measurement itself: if this box stalled a whole second between
+    // the two statements the case is no longer the one under test, and that
+    // must be a loud failure, never a silent pass.
+    ASSERT_EQ(0u, (static_cast<Uint32>(query_timer_control()) - s->timerstart) / 72u)
+        << "this case only holds while under one second of level time has elapsed";
+
+    SDL_Event e{};
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.repeat = false;
+    e.key.key = SDLK_F3;
+    v->input(e);
+
+    bool posted = false;
+    for (const std::string& line : v->textlist)
+        posted = posted || (line == "12 FRAMES PER SEC");
+    EXPECT_TRUE(posted)
+        << "under a second of level time reads back the frames drawn so far";
+
+    s->timerstart = saved_timerstart;
+    s->framecount = saved_framecount;
+    v->clear_text();
+    v->control = nullptr;
 }

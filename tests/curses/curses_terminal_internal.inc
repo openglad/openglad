@@ -41,6 +41,44 @@ int curses_terminal_testing_delayed_handshake_poll_count()
     return supported && poll_contract_valid && query_matches ? poll_count : -1;
 }
 
+// Injects `error_code` from ::poll on the first two handshake slices, then lets
+// the real poll run with the kitty reply already queued. Returns the number of
+// poll slices the handshake consumed; *supported_out receives its verdict.
+// Rule: a signal (EINTR) must not cost the terminal its Kitty keyboard mode,
+// while a real poll failure must abandon the handshake immediately.
+int curses_terminal_testing_error_interrupted_handshake(int error_code,
+                                                        bool* supported_out)
+{
+    int input_pipe[2]{};
+    int output_pipe[2]{};
+    if (::pipe(input_pipe) != 0)
+        return -1;
+    ScopedFd input_read(input_pipe[0]);
+    ScopedFd input_write(input_pipe[1]);
+    if (::pipe(output_pipe) != 0)
+        return -1;
+    ScopedFd output_read(output_pipe[0]);
+    ScopedFd output_write(output_pipe[1]);
+
+    if (!write_all(input_write.get(), "\x1b[?11u\x1b[?62;1c"))
+        return -1;
+
+    int poll_count = 0;
+    const bool supported = detect_kitty_support_with_poll(
+        input_read.get(), output_write.get(),
+        [&](pollfd* fds, nfds_t count, int timeout_ms) {
+            ++poll_count;
+            if (poll_count <= 2) {
+                errno = error_code;
+                return -1;
+            }
+            return ::poll(fds, count, timeout_ms);
+        });
+    if (supported_out != nullptr)
+        *supported_out = supported;
+    return poll_count;
+}
+
 int curses_terminal_testing_fatal_signal_probe()
 {
     sigset_t blocked{};
@@ -318,6 +356,22 @@ int curses_terminal_testing_exercise_internal_helpers()
             check(false);
         }
 
+        // An OPEN but idle pipe: poll() reports nothing ready, so a
+        // non-blocking poll_key yields no key AND must not have eaten the
+        // byte that arrives a moment later.
+        int idle_pipe[2]{};
+        if (::pipe(idle_pipe) == 0) {
+            term.impl_->in_fd = idle_pipe[0];
+            check(term.poll_key(false).is_none());
+            (void)write_all(idle_pipe[1], "\x1b[110u");
+            check(term.poll_key(false).is_char(U'n'));
+            ::close(idle_pipe[1]);
+            ::close(idle_pipe[0]);
+            term.impl_->in_fd = STDIN_FILENO;
+        } else {
+            check(false);
+        }
+
         // poll() reports a closed descriptor as ready-with-POLLNVAL; the
         // subsequent read fails with EBADF and must still return Key::none.
         int invalid_pipe[2]{};
@@ -356,6 +410,19 @@ int curses_terminal_testing_exercise_internal_helpers()
         check(false);
     }
 
+    // A write to a closed descriptor reports failure instead of silently
+    // pretending the escape sequence reached the terminal.
+    int closed_pipe[2]{};
+    if (::pipe(closed_pipe) == 0) {
+        const int closed_fd = closed_pipe[1];
+        ::close(closed_pipe[0]);
+        ::close(closed_pipe[1]);
+        errno = 0;
+        check(!write_all(closed_fd, "x") && errno == EBADF);
+    } else {
+        check(false);
+    }
+
     auto probe = [&](std::string_view reply, bool expected) {
         int in_pipe[2]{};
         int out_pipe[2]{};
@@ -383,6 +450,9 @@ int curses_terminal_testing_exercise_internal_helpers()
     };
     probe("\x1b[?11u\x1b[?62;1c", true);
     probe("\x1b[?62;1c", false);
+    // A terminal that hangs up mid-handshake (EOF, no reply at all) reads as
+    // unsupported, and the query was still emitted.
+    probe("", false);
 
     return failed_check == 0 ? 0 : -failed_check;
 }

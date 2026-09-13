@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 
 static int injector_thread_return(void* data)
@@ -153,4 +154,122 @@ TEST(TextInputAndWidth, extended_prompt_backspace_removes_complete_utf8_codepoin
 
     ASSERT_TRUE(v.has_value());
     EXPECT_EQ(*v, "A");
+}
+
+namespace
+{
+// One injector for the "seed selection" rules: an optional key before the
+// Backspace, then Return.
+SDL_Keycode g_pre_backspace_key = SDLK_UNKNOWN;
+
+int injector_thread_seed_backspace(void*)
+{
+    og::runtime::ensure_thread_session();
+    SDL_Delay(50);
+    if (g_pre_backspace_key != SDLK_UNKNOWN)
+    {
+        SDL_Event pre{};
+        pre.type = SDL_EVENT_KEY_DOWN;
+        pre.key.key = g_pre_backspace_key;
+        SDL_PushEvent(&pre);
+        SDL_Delay(20);
+    }
+    SDL_Event ev{};
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_BACKSPACE;
+    SDL_PushEvent(&ev);
+    SDL_Delay(20);
+    ev = SDL_Event{};
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_RETURN;
+    SDL_PushEvent(&ev);
+    return 0;
+}
+
+// SDL truncates a pushed SDL_EVENT_TEXT_INPUT payload at 32 bytes, so a long
+// value arrives the way a real IME/paste does: several chunks.
+std::vector<std::string> g_text_chunks;
+
+int injector_thread_chunks(void*)
+{
+    og::runtime::ensure_thread_session();
+    SDL_Delay(50);
+    for (const std::string& chunk : g_text_chunks)
+    {
+        inject_text_input(chunk.c_str());
+        SDL_Delay(30);
+    }
+    SDL_Event ev{};
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_RETURN;
+    SDL_PushEvent(&ev);
+    return 0;
+}
+} // namespace
+
+// A prompt opens with the previous value pre-selected, the way a rename box
+// does: the FIRST key replaces the whole thing. Backspace as that first key
+// therefore clears the entire seed, not one character. Any cursor key cancels
+// the selection first, so the same Backspace afterwards deletes one character
+// and the rest of the old value survives.
+TEST(TextInputAndWidth, first_backspace_clears_the_seed_but_a_cursor_key_deselects_it)
+{
+    text t(TEXT_1);
+
+    g_pre_backspace_key = SDLK_UNKNOWN;
+    SDL_Thread* th = SDL_CreateThread(injector_thread_seed_backspace,
+                                      "text_seed_backspace", nullptr);
+    ASSERT_NE(nullptr, th);
+    std::optional<std::string> cleared = t.input_string_value(10, 10, 16, "abc");
+    SDL_WaitThread(th, nullptr);
+    ASSERT_TRUE(cleared.has_value());
+    EXPECT_EQ("", *cleared)
+        << "Backspace as the first key clears the whole selected seed";
+
+    g_pre_backspace_key = SDLK_LEFT;
+    th = SDL_CreateThread(injector_thread_seed_backspace,
+                          "text_deselect_backspace", nullptr);
+    ASSERT_NE(nullptr, th);
+    std::optional<std::string> trimmed = t.input_string_value(10, 10, 16, "abc");
+    SDL_WaitThread(th, nullptr);
+    g_pre_backspace_key = SDLK_UNKNOWN;
+    ASSERT_TRUE(trimmed.has_value());
+    EXPECT_EQ("ab", *trimmed)
+        << "a cursor key deselects, so Backspace then removes one character";
+}
+
+// input_string edits inside a fixed 100-byte buffer. A caller that asks for a
+// longer field (a pasted room code, a caller passing a pixel width by mistake)
+// must be clamped to what the buffer holds, or typing past 99 characters
+// writes off the end of it. The limit is otherwise exactly the caller's:
+// maxlength characters INCLUDING the terminator.
+TEST(TextInputAndWidth, oversized_maxlength_clamps_to_the_edit_buffer)
+{
+    text t(TEXT_1);
+
+    // 98 characters is everything the 100-byte buffer can hold beside its
+    // terminator; the 99th is refused.
+    g_text_chunks = {std::string(31, 'x'), std::string(31, 'x'),
+                     std::string(31, 'x'), std::string(5, 'x'), "y"};
+    SDL_Thread* th = SDL_CreateThread(injector_thread_chunks,
+                                      "text_overlong", nullptr);
+    ASSERT_NE(nullptr, th);
+    std::optional<std::string> clamped = t.input_string_value(10, 10, 500, "");
+    SDL_WaitThread(th, nullptr);
+    ASSERT_TRUE(clamped.has_value());
+    EXPECT_EQ(98u, clamped->size())
+        << "maxlength 500 must be clamped to the 100-byte edit buffer";
+    EXPECT_EQ(std::string(98, 'x'), *clamped);
+
+    // The same rule at a caller's own small limit: 11 characters fit a
+    // 12-character field, and the 12th is refused.
+    g_text_chunks = {std::string(11, 'z'), "w"};
+    th = SDL_CreateThread(injector_thread_chunks, "text_small_limit",
+                          nullptr);
+    ASSERT_NE(nullptr, th);
+    std::optional<std::string> small = t.input_string_value(10, 10, 12, "");
+    SDL_WaitThread(th, nullptr);
+    ASSERT_TRUE(small.has_value());
+    EXPECT_EQ(std::string(11, 'z'), *small)
+        << "a small field keeps exactly maxlength-1 characters";
 }

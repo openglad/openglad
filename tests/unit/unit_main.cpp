@@ -3,7 +3,10 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <cstddef>
 #include <filesystem>
+#include <string>
+#include <vector>
 
 #include <openglad/core/util.h>
 #include <openglad/gameplay/families/family_registries.h>
@@ -17,11 +20,13 @@
 #include <openglad/resources/packs.h>
 #include <openglad/resources/save_data.h>
 
+#include "family_registry_dump.h"
+#include "registry_difference.h"
+#include "unit_core_pack_heal.h"
+
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
 #endif
-
-std::string get_asset_path();
 
 namespace {
 
@@ -61,27 +66,39 @@ bool init_unit_filesystem(const std::filesystem::path& test_config_dir, const ch
     return true;
 }
 
-// Family behavior lives in the core class pack. Its descriptors carry no
-// C++ behavior callbacks, so a headless unit
-// binary that skips io_init's asset mounts would run a sim whose specials,
-// potions and effects all silently do nothing. Mount the shipped packs/ tree
-// the same way io_init does. Idempotent, and re-asserted after every test:
-// a test that tears PhysFS down (or remounts a campaign, which rescans
-// packs/) must not leave later tests with no family behavior at all.
-void mount_core_pack()
+// Registry census. The five family registries, the pack script and
+// family-chunk stores and the mounted campaign package are all
+// process-global, so a test that leaves any of them changed hands its
+// --gtest_shuffle neighbour a world it never set up. Fingerprint all four
+// around every test, BEFORE the between-test heal below repairs anything,
+// and fail the binary at the end naming each test that moved one.
+//
+// Collected in a side list and reported after RUN_ALL_TESTS rather than
+// ADD_FAILURE'd from OnTestEnd — the shape tests/curses/curses_test_main.cpp
+// uses for its mount gate, because a failure raised after a test has ended
+// has no test to attach to.
+struct RegistryFingerprint
 {
-    const bool mounted = og::resources::mount(
-        (get_asset_path() + "packs/").c_str(), "packs/", 1);
-    if (!mounted)
-    {
-        std::fprintf(stderr,
-                     "error: core class pack not mounted (%s) — family "
-                     "behavior will be absent\n",
-                     og::resources::filesystem_last_error().c_str());
-        return;
-    }
-    if (og::script::pack_scripts().empty())
-        og::resources::refresh_pack_scripts();
+    std::string families;
+    std::size_t family_chunks = 0;
+    std::size_t scripts = 0;
+    std::string mounted_campaign;
+};
+
+RegistryFingerprint take_registry_fingerprint()
+{
+    RegistryFingerprint fingerprint;
+    fingerprint.families = og::testing::dump_installed_families();
+    fingerprint.family_chunks = og::script::pack_family_chunks().size();
+    fingerprint.scripts = og::script::pack_scripts().size();
+    fingerprint.mounted_campaign = get_mounted_campaign();
+    return fingerprint;
+}
+
+std::vector<std::string>& registry_leaks()
+{
+    static std::vector<std::string> leaks;
+    return leaks;
 }
 
 class HeadlessSessionListener final : public ::testing::EmptyTestEventListener
@@ -105,10 +122,13 @@ public:
             ADD_FAILURE() << "gameplay context corrupted before test";
             restore_context();
         }
+        before_ = take_registry_fingerprint();
     }
 
-    void OnTestEnd(const ::testing::TestInfo&) override
+    void OnTestEnd(const ::testing::TestInfo& info) override
     {
+        record_registry_leak(info);
+
         if (!gameplay_context_intact())
         {
             ADD_FAILURE() << "gameplay context corrupted by test";
@@ -129,10 +149,36 @@ public:
         const std::string user_path = get_user_path();
         (void)og::resources::set_write_dir(user_path);
         (void)og::resources::mount(user_path.c_str(), nullptr, 1);
-        mount_core_pack();
+        og::test::mount_core_pack();
     }
 
 private:
+    void record_registry_leak(const ::testing::TestInfo& info)
+    {
+        const RegistryFingerprint after = take_registry_fingerprint();
+        std::string changed;
+        if (after.families != before_.families)
+            changed += "\n    installed families changed:\n" +
+                       og::testing::first_registry_difference(before_.families,
+                                                              after.families);
+        if (after.family_chunks != before_.family_chunks)
+            changed += "\n    pack family chunks: " +
+                       std::to_string(before_.family_chunks) + " -> " +
+                       std::to_string(after.family_chunks);
+        if (after.scripts != before_.scripts)
+            changed += "\n    pack scripts: " +
+                       std::to_string(before_.scripts) + " -> " +
+                       std::to_string(after.scripts);
+        if (after.mounted_campaign != before_.mounted_campaign)
+            changed += "\n    mounted campaign: \"" +
+                       before_.mounted_campaign + "\" -> \"" +
+                       after.mounted_campaign + "\"";
+        if (changed.empty())
+            return;
+        registry_leaks().push_back(std::string(info.test_suite_name()) + "." +
+                                   info.name() + changed);
+    }
+
     bool gameplay_context_intact() const
     {
         return og::runtime::current_session == &session_ &&
@@ -155,6 +201,7 @@ private:
     GameWorld& fallback_world_;
     SaveData& fallback_save_;
     og::sim::SimEventLog& fallback_events_;
+    RegistryFingerprint before_;
 };
 
 } // namespace
@@ -193,7 +240,7 @@ int main(int argc, char** argv)
     current_game = &session.game_;
 
     init_all_registries();
-    mount_core_pack();
+    og::test::mount_core_pack();
 
     ::testing::TestEventListeners& listeners =
         ::testing::UnitTest::GetInstance()->listeners();
@@ -202,11 +249,27 @@ int main(int argc, char** argv)
 
     const int result = RUN_ALL_TESTS();
 
+    int exit_code = result;
+    if (!registry_leaks().empty())
+    {
+        std::fprintf(stderr,
+                     "\nREGISTRY LEAK: %zu test(s) left the process family "
+                     "registries, pack stores or campaign mount changed:\n",
+                     registry_leaks().size());
+        for (const std::string& leak : registry_leaks())
+            std::fprintf(stderr, "  %s\n", leak.c_str());
+        std::fprintf(stderr,
+                     "A test that edits any of them restores it itself — the "
+                     "between-test heal repairs the pack stores only, and only "
+                     "after the damage has been handed on.\n");
+        exit_code = 1;
+    }
+
     (void)og::resources::deinit();
 #ifdef ENABLE_COVERAGE
     __gcov_dump();
 #endif
     std::error_code ec;
     std::filesystem::remove_all(test_config_dir, ec);
-    return result;
+    return exit_code;
 }

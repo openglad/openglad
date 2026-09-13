@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
@@ -18,6 +19,8 @@ void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/core/util.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
@@ -147,6 +150,16 @@ static int train_injector(void* data)
 TEST(TrainTeam, train_team) {
     trace_clear();
 
+    // CONTINUE opens the MOST RECENT company on disk, not the one this test
+    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
+    // company another test founded would take the session over silently.
+    // Seed through the autosave choke point that stamps, and check after the
+    // flow which company it actually got.
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
     // Set up a team with members so train menu doesn't show "NEED A TEAM!" popup
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
@@ -172,7 +185,10 @@ TEST(TrainTeam, train_team) {
     og::runtime::current_session->myscreen_->save_data.team_list[4] = std::move(orc);
     og::runtime::current_session->myscreen_->save_data.team_size = 5;
 
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    ASSERT_TRUE(seed_open_company(
+        og::runtime::current_session->myscreen_->save_data, "save0",
+        newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
 
     TrainState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_injector, "train_test", &state);
@@ -189,7 +205,145 @@ TEST(TrainTeam, train_team) {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the flow must have run on the company this test seeded";
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
 }
 
+// WP7 shuffle seed 9: TrainTeam.train_team ran on a company some other test
+// founded, whose roster is EMPTY, so the train menu never appeared and the
+// failure surfaced sixty lines away as a missing roster row. This reproduces
+// it without a shuffle seed and fails at the point of divergence (which
+// company is open) instead of at the symptom.
+TEST(TrainTeam, train_team_runs_on_the_open_company_not_a_stray_slot)
+{
+    trace_clear();
+
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("trainopen");
+    ASSERT_TRUE(pin.applied()) << "trainopen must be a valid company slot";
+
+    const std::int64_t base_s = newest_company_stamp();
+
+    // The stray: a loadable, EMPTY-roster company stamped ahead of now — the
+    // exact shape CampaignAndLevelPicker's BEGIN NEW GAME leaves behind.
+    {
+        SaveData stray;
+        stray.reset();
+        stray.numplayers = 1;
+        stray.current_campaign = "gladiator";
+        stray.scen_num = 1;
+        stray.totalcash = 50000;
+        ASSERT_TRUE(seed_open_company(stray, "straycompany", base_s + 1000))
+            << "the stray company fixture must be written";
+    }
+
+    // The company under test: five level-10 members, stamped newer still.
+    SaveData& save_data = og::runtime::current_session->myscreen_->save_data;
+    save_data.reset();
+    save_data.numplayers = 1;
+    save_data.current_campaign = "gladiator";
+    save_data.scen_num = 1;
+    save_data.totalcash = 50000;
+    {
+        static const int kFamilies[5] = {FAMILY_ARCHMAGE, FAMILY_CLERIC,
+                                         FAMILY_DRUID, FAMILY_THIEF,
+                                         FAMILY_ORC};
+        for (int i = 0; i < 5; ++i) {
+            auto member = std::make_unique<guy>(kFamilies[i]);
+            member->level = 10;
+            save_data.team_list[static_cast<std::size_t>(i)] =
+                std::move(member);
+        }
+        save_data.team_size = 5;
+    }
+    ASSERT_TRUE(seed_open_company(save_data, "trainopen", base_s + 2000))
+        << "the company under test must be written as the most recent one";
+
+    TrainState state = { false, false, false };
+    SDL_Thread* thread =
+        SDL_CreateThread(train_injector, "train_stray_test", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_EQ("trainopen", og::data::active_company_slot())
+        << "the train flow must still be on the company this test seeded — a "
+           "stray company file must never take the session over";
+    ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
+}
+
+// ---------------------------------------------------------------------------
+// The TRAIN screen's content pass runs on a LIVE session: run_menu_screen
+// polls the lobby at the top of every frame for a polls_lobby spec, and
+// LocalPickerLobbyClient::apply_state_to_save resets every save.team_list
+// slot before rebuilding the roster from its cached lobby state. So a frame
+// can arrive with the trained member already gone. Every TrainSession
+// accessor the pass reads is null-guarded except original(), which is a bare
+// `return *original_member();` — the draw pass must not reach it.
+// ---------------------------------------------------------------------------
+
+// TrainEngineState is file-local to picker_team_build.cpp; the whole of it is
+// the start_time the content pass reads (picker_team_build.cpp, "Per-open
+// screen state (the legacy loop's locals)"), so the screen_state a test hands
+// the pass is layout-compatible with it.
+struct TrainEngineStateMirror {
+    Sint32 start_time = 0;
+};
+
+void picker_train_menu_engine_draw_content(void* screen_state);
+
+TEST(TrainMenuDraw, draw_content_survives_the_member_vanishing_under_a_lobby_poll)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->name = "VANISHER";
+    save.team_list[0]->level = 6;
+    save.team_size = 1;
+
+    og::ui::TrainSession session(save);
+    og::runtime::current_session->current_guy_ =
+        std::make_unique<guy>(*save.team_list[0]);
+    pks().train_session = &session;
+    ASSERT_FALSE(session.empty()) << "the session starts on a real member";
+
+    // What one lobby poll does to the roster, verbatim
+    // (picker_lobby_client.cpp, apply_state_to_save).
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_size = 0;
+    ASSERT_TRUE(session.empty()) << "the session must see its member is gone";
+
+    // The guarded siblings already agree the member is gone...
+    EXPECT_EQ(0u, session.current_cost());
+    EXPECT_FALSE(session.level_increased());
+
+    // ... and the draw pass must agree too instead of dereferencing the null
+    // original (SEGV at picker_team_build.cpp's stat table on the unfixed
+    // tree).
+    TrainEngineStateMirror state;
+    state.start_time = query_timer();
+    picker_train_menu_engine_draw_content(&state);
+
+    pks().train_session = nullptr;
+    og::runtime::current_session->current_guy_.reset();
+    save.reset();
+    SUCCEED() << "the draw pass returned instead of dereferencing a null "
+                 "original";
+}

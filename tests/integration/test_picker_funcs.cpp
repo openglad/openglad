@@ -800,6 +800,10 @@ TEST(PickerFuncs, how_many_with_team)
     // Additional picker utility/state coverage without registering new tests.
     ASSERT_EQ(-1, get_scen_num_from_filename(nullptr)) << "null input should return -1";
     ASSERT_EQ(-1, get_scen_num_from_filename("scen")) << "no numeric suffix should return -1";
+    // A tail that is present but not a number is refused too: the scenario
+    // list must not read "scen." or "scen_" as scenario 0.
+    ASSERT_EQ(-1, get_scen_num_from_filename("scen.")) << "a non-numeric tail should return -1";
+    ASSERT_EQ(-1, get_scen_num_from_filename("scen_")) << "a non-numeric tail should return -1";
     ASSERT_EQ(123, get_scen_num_from_filename("scen123")) << "numeric suffix should parse";
     ASSERT_EQ(42, get_scen_num_from_filename("file42")) << "mixed prefix should parse trailing number";
 
@@ -2890,6 +2894,12 @@ TEST(PickerFuncs, local_lobby_stage_failure_reports_honest_preview_health)
         auto client = og::ui::create_local_picker_lobby_client();
         client->initialize_from_save();
         using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+        // Before the first drive_stage the stage is Empty, and Empty is
+        // reported as None: the preview pane must show "not staged yet"
+        // rather than a stale or failed pair. (The Staged and Failed arms
+        // below are what make this one evidence.)
+        EXPECT_EQ(Health::None, client->staged_preview_health());
+        EXPECT_EQ(nullptr, client->staged_world());
         const auto poll_until = [&](Health wanted) {
             for (int i = 0; i < 200; ++i)
             {
@@ -3813,6 +3823,264 @@ TEST(PickerFuncs, local_lobby_roundtrip_preserves_benched_members)
     save.allied_mode = orig_allied;
 }
 
+// Mount/save coherence: whatever campaign the lobby settles on must also be
+// the MOUNTED campaign. A cursor the machine cannot mount has to be refused
+// and BOTH halves of the pair rolled back, or the display bootstraps levels
+// from one package while the authoritative sim loads another (the tower
+// ghost-session shape).
+TEST(PickerFuncs,
+     local_lobby_apply_keeps_mount_and_save_coherent_when_the_campaign_is_missing)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Cursor";
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(save.current_campaign));
+
+    auto client = og::ui::create_local_picker_lobby_client();
+    client->initialize_from_save();
+    ASSERT_EQ(1u, client->lobby_players().size());
+    EXPECT_EQ("gladiator", save.current_campaign);
+    EXPECT_EQ(3, save.scen_num);
+
+    // Control arm: a campaign that DOES mount moves the cursor AND the mount.
+    // Without this arm the refusal below would also pass on a client that
+    // never applies a campaign at all.
+    save.current_campaign = "modes";
+    save.scen_num = 2;
+    client->sync_settings_from_save();
+    EXPECT_EQ("modes", save.current_campaign);
+    EXPECT_EQ(2, save.scen_num);
+
+    // Refusal arm: the lobby settles on a package this machine does not have.
+    save.current_campaign = "org.wp4.missing";
+    save.scen_num = 9;
+    client->sync_settings_from_save();
+    EXPECT_EQ("modes", save.current_campaign)
+        << "a cursor that cannot be mounted must fall back to the package "
+           "that IS mounted";
+
+    // The scenario half of the pair: the lobby STATE still asks for 9, the
+    // live save has since moved to 5, and the refused apply must put 5 back
+    // rather than adopt the unreachable campaign's scenario.
+    save.scen_num = 5;
+    client->poll_and_apply();
+    EXPECT_EQ("modes", save.current_campaign);
+    EXPECT_EQ(5, save.scen_num)
+        << "the refused apply must restore the scenario cursor it captured";
+
+    // Mount == save, judged after the stage is disposed so no background
+    // restage can move the mount under the check: the cursor the refusal
+    // left behind is one this machine can actually mount (it would be false
+    // had "org.wp4.missing" been allowed to stand).
+    client->shutdown();
+    EXPECT_TRUE(og::ui::sync_campaign_mount_to_save(save));
+    EXPECT_EQ("modes", save.current_campaign);
+}
+
+// The echoed lobby only carries what the machine last synced. A company
+// member added between two syncs (the Base Camp hire tail) must survive the
+// next ordinary menu frame instead of being deleted by the roster rebuild —
+// and must come back in its own private slot, exactly once.
+TEST(PickerFuncs, local_lobby_poll_keeps_a_roster_member_the_echo_never_carried)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Alpha";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Bravo";
+    save.team_list[1]->teamnum = 0;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+
+    auto client = og::ui::create_local_picker_lobby_client();
+    client->initialize_from_save();
+    ASSERT_EQ(1u, client->lobby_players().size());
+
+    // The hire lands in the live save; no sync runs before the next frame's
+    // poll, so the lobby state this apply reads has never seen it.
+    save.team_list[2] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[2]->name = "Recruit";
+    save.team_list[2]->teamnum = 3;
+    save.team_size = 3;
+
+    client->poll_and_apply();
+
+    // The echo rebuilds slots 0 and 1 ...
+    ASSERT_NE(nullptr, save.team_list[0]);
+    ASSERT_NE(nullptr, save.team_list[1]);
+    EXPECT_EQ("Alpha", save.team_list[0]->name);
+    EXPECT_EQ("Bravo", save.team_list[1]->name);
+    // ... and the preservation pass carries the unseen member through.
+    ASSERT_NE(nullptr, save.team_list[2]);
+    EXPECT_EQ("Recruit", save.team_list[2]->name);
+    EXPECT_EQ(3, save.team_list[2]->teamnum);
+    EXPECT_EQ(3, static_cast<int>(save.team_size));
+
+    int recruits = 0;
+    for (const auto& member : save.team_list)
+    {
+        if (member != nullptr && member->name == "Recruit")
+            ++recruits;
+    }
+    EXPECT_EQ(1, recruits)
+        << "the preserved member must be restored to its own slot, not "
+           "duplicated into a free one";
+
+    client->shutdown();
+}
+
+// A confirmed GO locks the lobby: the machine cannot bolt another seat on
+// after the start it just agreed to. The out-of-range slot guard is pinned
+// beside it — both are the "this door is closed now" rules Base Camp reads
+// before it draws an editable row.
+TEST(PickerFuncs, local_lobby_closes_the_seat_door_after_a_confirmed_start)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    // One fighter per colour: every seat added below needs a fighter of its
+    // own colour, or the start is denied for an uncontrollable seat before
+    // the lock is ever taken.
+    for (int index = 0; index < MAX_PLAYERS; ++index)
+    {
+        save.team_list[static_cast<std::size_t>(index)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(index)]->name =
+            std::format("Seat {}", index + 1);
+        save.team_list[static_cast<std::size_t>(index)]->teamnum =
+            static_cast<short>(index);
+    }
+    save.team_size = static_cast<unsigned char>(MAX_PLAYERS);
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+
+    g_start_game_requested = false;
+    save.numplayers = 1;
+    picker_lobby_initialize_from_save();
+    ASSERT_EQ(1u, picker_lobby_local_seat_count());
+
+    // Arm 1 — the lock, taken TWO seats below the build limit so the lock is
+    // the only rule that can refuse. The first add is the positive control:
+    // the same call on the same lobby one line earlier is accepted.
+    ASSERT_TRUE(picker_lobby_add_local_seat());
+    ASSERT_EQ(2u, picker_lobby_local_seat_count());
+
+    ASSERT_TRUE(picker_lobby_request_start());
+    ASSERT_TRUE(g_start_game_requested);
+
+    EXPECT_FALSE(picker_lobby_add_local_seat())
+        << "a locked lobby must not accept another seat";
+    EXPECT_EQ(2u, picker_lobby_local_seat_count())
+        << "the refused seat must not land anyway";
+
+    // Arm 2 — the build limit, on a fresh unlocked lobby: every seat up to
+    // MAX_PLAYERS is accepted, the fifth is refused.
+    picker_lobby_shutdown();
+    g_start_game_requested = false;
+    save.numplayers = 1;
+    picker_lobby_initialize_from_save();
+    ASSERT_EQ(1u, picker_lobby_local_seat_count());
+    for (std::size_t expected = 2u;
+         expected <= static_cast<std::size_t>(MAX_PLAYERS); ++expected)
+    {
+        EXPECT_TRUE(picker_lobby_add_local_seat());
+        EXPECT_EQ(expected, picker_lobby_local_seat_count());
+    }
+
+    EXPECT_FALSE(picker_lobby_add_local_seat())
+        << "the build limit is MAX_PLAYERS seats on one machine";
+    EXPECT_EQ(static_cast<std::size_t>(MAX_PLAYERS),
+              picker_lobby_local_seat_count());
+
+    // Slot-editable range guard: own slots stay editable, indexes outside
+    // the private roster array are never editable.
+    EXPECT_TRUE(picker_lobby_save_slot_editable(0));
+    EXPECT_FALSE(picker_lobby_save_slot_editable(MAX_TEAM_SIZE));
+    EXPECT_FALSE(picker_lobby_save_slot_editable(-1));
+
+    picker_lobby_shutdown();
+    g_start_game_requested = false;
+}
+
+// Coming back from a level with no lobby left (the local client was torn
+// down, or a fresh one was never initialized) must rebuild the lobby from the
+// company save instead of leaving Base Camp with no roster and no seats.
+TEST(PickerFuncs, lobby_resume_paths_rebuild_from_the_save_without_a_live_lobby)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Red";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Green";
+    save.team_list[1]->teamnum = 2;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    g_start_game_requested = false;
+
+    // Arm 1: the post-game reinitialize with no client at all.
+    ASSERT_TRUE(picker_lobby_players().empty())
+        << "the shutdown above must leave no lobby to resume";
+    picker_reinitialize_lobby_after_game();
+    std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
+    ASSERT_EQ(2u, players.size())
+        << "the rebuilt lobby seats every player the save asks for";
+    EXPECT_EQ(0, players[0].team);
+    EXPECT_EQ(2, players[1].team);
+    EXPECT_EQ(2u, picker_lobby_local_seat_count());
+    picker_lobby_shutdown();
+
+    // Arm 2: resume_after_level on a client that never initialized falls back
+    // to the same rebuild.
+    auto client = og::ui::create_local_picker_lobby_client();
+    ASSERT_TRUE(client->lobby_players().empty());
+    client->resume_after_level();
+    players = client->lobby_players();
+    ASSERT_EQ(2u, players.size());
+    EXPECT_EQ(0, players[0].team);
+    EXPECT_EQ(2, players[1].team);
+    EXPECT_EQ(2u, client->local_seat_count());
+    EXPECT_EQ(2, static_cast<int>(save.numplayers));
+    EXPECT_EQ(0, save.my_team);
+    client->shutdown();
+}
+
 // ---------------------------------------------------------------------------
 // Sprite sheet picker tests
 // ---------------------------------------------------------------------------
@@ -3835,15 +4103,147 @@ protected:
 
 namespace {
 
+// --- The sprite-sheet picker's escape tail -------------------------------
+//
+// pick_spritesheet returns only when something clicks its way out, and its
+// BACK button is the only door (the ESCAPE hotkey reads SDL's keystate
+// array, which a pushed key event never moves -- see test_input_helpers.h).
+// So an injector that sends ONE parting BACK click and exits is a hang
+// waiting for a starved frame: inject_mouse_click holds the press for 60 ms,
+// and a frame slower than that drains the press AND the release in one
+// get_input_events, leaving query_mouse().left false. The picker saw no
+// click, the injector thread is already gone, and nothing will ever press
+// again.
+//
+// That is what PR #291's ASan lane hit: og_test_picker was killed at its
+// 420 s ctest ceiling with
+// SpriteSheetPicker.wheel_scroll_changes_the_pack_under_the_top_row as the
+// last [ RUN ] line. It reproduces on an ASan build pinned to one starved
+// CPU: the process sits in the picker loop with its injector thread exited
+// (build/repro evidence, this branch).
+//
+// The rule for an injector driving a BLOCKING screen (openglad-test-
+// integrity, "Tests that hang"): never bound the escape tail by wall clock
+// -- a tail that stops clicking guarantees the hang it exists to prevent.
+// Press, WAIT for the main thread to report that the dispatch returned, and
+// press again while it has not. A press on this screen is an exit, so
+// re-sending it can only close a door that is already closed; the per-press
+// wait is generous because it bounds a slow frame, not a dead one.
+//
+// Counted, never clocked: g_spritesheet_back_retries is the number of extra
+// presses the tail had to send.
+std::atomic<bool> g_spritesheet_picker_open{false};
+int g_spritesheet_back_retries = 0;
+// TESTING-only fault injection: make the next N BACK presses evaporate the
+// way a starved frame does.
+int g_spritesheet_back_drops = 0;
+
+constexpr int kSheetBackX = 25;
+constexpr int kSheetBackClickY = 185;
+// One press is given ten frames' worth of a runner where a frame costs ten
+// times what it does here (the picker sleeps 10 ms per frame): long enough
+// that a press which merely landed late is never re-sent, short enough that
+// a press which evaporated is re-sent while the test still has a budget.
+constexpr int kSheetBackWaitMs = 1000;
+
+// Extra presses the step ladder had to send, and the fault injector that
+// arms it: the same counted, never-clocked shape the BACK tail uses.
+int g_spritesheet_step_retries = 0;
+int g_spritesheet_step_drops = 0;
+
+// Send ONE list/trough/wheel input and wait for the picker to say it
+// consumed it. A 60 ms hold spans several 10 ms picker frames on an idle
+// box, but a frame slower than the hold drains press AND release in one
+// get_input_events and the press evaporates -- silently, since the injector
+// cannot see scroll_top or the selection. pick_spritesheet traces every
+// input it consumes ("sheet"), so that trace is the landing witness: a press
+// that did not land is re-sent, a press that landed never is (re-sending a
+// consumed trough click would page the list twice).
+//
+// Observed: with the BACK tail in place but the presses still
+// unacknowledged, SpriteSheetPicker.scrollbar_trough_pages_the_list_both_ways
+// failed 1 starved run in 3 on the ci-asan build pinned to one CPU -- the
+// top row had never moved ("" instead of the first pack).
+void inject_mouse_wheel(int integer_y);  // defined with the step kinds below
+
+bool send_acknowledged_sheet_input(bool wheel, int x, int y, int ticks)
+{
+    constexpr int kStepAttempts = 4;
+    // Ten frames of a runner where a frame costs ten times what it does
+    // here: long enough that a late press is never re-sent, short enough
+    // that an evaporated one is re-sent inside the group's budget.
+    constexpr int kStepWaitMs = 1000;
+    for (int attempt = 0; attempt < kStepAttempts; ++attempt)
+    {
+        const int before = trace_count("sheet");
+        if (g_spritesheet_step_drops > 0)
+        {
+            --g_spritesheet_step_drops;
+            fprintf(stderr, "  [sheet] dropping the step press (injected)\n");
+        }
+        else if (wheel)
+        {
+            inject_mouse_wheel(ticks);
+        }
+        else
+        {
+            inject_mouse_click(x, y, 60);
+        }
+        int elapsed = 0;
+        while (elapsed < kStepWaitMs && trace_count("sheet") <= before)
+        {
+            SDL_Delay(10);
+            elapsed += 10;
+        }
+        if (trace_count("sheet") > before)
+            return true;
+        ++g_spritesheet_step_retries;
+        fprintf(stderr,
+                "  [sheet] a step press left no trace; re-sending "
+                "(attempt %d)\n",
+                attempt + 2);
+    }
+    fprintf(stderr, "  [sheet] a step press never reached the picker\n");
+    return false;
+}
+
+void spritesheet_click_out()
+{
+    for (int attempt = 0;
+         g_spritesheet_picker_open.load(std::memory_order_acquire);
+         ++attempt)
+    {
+        if (attempt > 0) {
+            ++g_spritesheet_back_retries;
+            fprintf(stderr,
+                    "  [sheet] BACK left the picker open; re-sending "
+                    "(attempt %d)\n",
+                    attempt + 1);
+        }
+        if (g_spritesheet_back_drops > 0) {
+            --g_spritesheet_back_drops;
+            fprintf(stderr, "  [sheet] dropping the BACK press (injected)\n");
+        } else {
+            inject_mouse_click(kSheetBackX, kSheetBackClickY, 60);
+        }
+        int elapsed = 0;
+        while (elapsed < kSheetBackWaitMs &&
+               g_spritesheet_picker_open.load(std::memory_order_acquire)) {
+            SDL_Delay(10);
+            elapsed += 10;
+        }
+    }
+}
+
 static int picker_spritesheet_select_first_pack_injector(void*)
 {
     og::runtime::ensure_thread_session();
     SDL_Delay(200);
 
     // Row 0 is "Standard"; row 1 is the first sorted pack.
-    inject_mouse_click(80, 56, 60);
+    (void)send_acknowledged_sheet_input(false, 80, 56, 0);
     SDL_Delay(120);
-    inject_mouse_click(25, 185, 60);
+    spritesheet_click_out();
     return 0;
 }
 
@@ -3873,6 +4273,9 @@ TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
     fs::create_directories(pack_dir, ec);
 
     prepare_picker_mouse();
+    g_spritesheet_back_retries = 0;
+    g_spritesheet_step_retries = 0;
+    g_spritesheet_picker_open.store(true, std::memory_order_release);
     SDL_Thread* th = SDL_CreateThread(
         picker_spritesheet_select_first_pack_injector,
         "picker_sprite_sheet",
@@ -3882,6 +4285,7 @@ TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
     vbutton dispatcher;
     const Sint32 result = dispatcher.do_call(
         button_action_id(ButtonAction::PickSpriteSheet), 0);
+    g_spritesheet_picker_open.store(false, std::memory_order_release);
 
     int code = 0;
     if (th)
@@ -3895,4 +4299,348 @@ TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
     cfg.apply_setting("graphics", "sprite_sheet", "");
     ASSERT_TRUE(apply_sprite_sheet_setting());
     fs::remove_all(pack_dir, ec);
+}
+
+namespace {
+
+// The sprite-sheet list geometry, mirrored from pick_spritesheet so the
+// injector can aim at a row, at the scrollbar trough above the thumb, and at
+// the trough below it. These are CLICK TARGETS, not oracles: every test below
+// judges the pack that was actually selected.
+constexpr int kSheetRowH = 16;
+constexpr int kSheetListX = 60;
+constexpr int kSheetListW = 200;
+constexpr int kSheetListY = 32;
+constexpr int kSheetBackY = 178;
+constexpr int kSheetVisibleRows = (kSheetBackY - kSheetListY) / kSheetRowH;
+constexpr int kSheetScrollH = kSheetVisibleRows * kSheetRowH;
+constexpr int kSheetScrollX = kSheetListX + kSheetListW + 2;
+
+std::vector<std::string> spritesheet_pack_list()
+{
+    std::vector<std::string> packs;
+    std::error_code ec;
+    const std::filesystem::path extra_dir =
+        std::filesystem::path(get_user_path()) / "extra_pix";
+    for (const auto& entry : std::filesystem::directory_iterator(extra_dir, ec))
+    {
+        if (entry.is_directory())
+            packs.push_back(entry.path().filename().string());
+    }
+    std::sort(packs.begin(), packs.end());
+    return packs;
+}
+
+// Thumb top and height for a given list length and scroll position — the same
+// arithmetic pick_spritesheet draws with, used to aim trough clicks.
+std::pair<int, int> spritesheet_thumb(int total_items, int scroll_top)
+{
+    const int thumb_h =
+        std::max(kSheetRowH, kSheetScrollH * kSheetVisibleRows / total_items);
+    const int thumb_range = kSheetScrollH - thumb_h;
+    const int thumb_y = kSheetListY +
+        scroll_top * thumb_range / (total_items - kSheetVisibleRows);
+    return {thumb_y, thumb_h};
+}
+
+struct SpriteSheetStep
+{
+    enum class Kind { Click, Wheel, RemoveDir };
+    Kind kind = Kind::Click;
+    int x = 0;
+    int y = 0;
+    int wheel = 0;
+    std::string path;
+};
+
+SpriteSheetStep sheet_click(int x, int y)
+{
+    return SpriteSheetStep{
+        .kind = SpriteSheetStep::Kind::Click, .x = x, .y = y, .wheel = 0,
+        .path = {}};
+}
+
+SpriteSheetStep sheet_row_click(int row)
+{
+    return sheet_click(kSheetListX + kSheetListW / 2,
+                       kSheetListY + row * kSheetRowH + 4);
+}
+
+SpriteSheetStep sheet_wheel(int ticks)
+{
+    return SpriteSheetStep{.kind = SpriteSheetStep::Kind::Wheel,
+                           .x = 0,
+                           .y = 0,
+                           .wheel = ticks,
+                           .path = {}};
+}
+
+std::vector<SpriteSheetStep> g_spritesheet_steps;
+
+void inject_mouse_wheel(int integer_y)
+{
+    SDL_Event event;
+    std::memset(&event, 0, sizeof(event));
+    event.type = SDL_EVENT_MOUSE_WHEEL;
+    event.wheel.integer_y = integer_y;
+    event.wheel.y = static_cast<float>(integer_y);
+    SDL_PushEvent(&event);
+}
+
+int picker_spritesheet_step_injector(void*)
+{
+    og::runtime::ensure_thread_session();
+    SDL_Delay(100);
+    for (const SpriteSheetStep& step : g_spritesheet_steps)
+    {
+        if (step.kind == SpriteSheetStep::Kind::RemoveDir)
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(step.path, ec);
+        }
+        else if (step.kind == SpriteSheetStep::Kind::Wheel)
+        {
+            (void)send_acknowledged_sheet_input(true, 0, 0, step.wheel);
+        }
+        else
+        {
+            (void)send_acknowledged_sheet_input(false, step.x, step.y, 0);
+        }
+        SDL_Delay(60);
+    }
+    // BACK closes the picker and applies whatever is selected -- through
+    // the acknowledged tail, never as one parting click.
+    spritesheet_click_out();
+    return 0;
+}
+
+// Runs one whole PickSpriteSheet dispatch driven by `steps`, returning the
+// dispatcher's result.
+Sint32 run_spritesheet_picker(std::vector<SpriteSheetStep> steps)
+{
+    g_spritesheet_steps = std::move(steps);
+    prepare_picker_mouse();
+    g_spritesheet_back_retries = 0;
+    g_spritesheet_step_retries = 0;
+    g_spritesheet_picker_open.store(true, std::memory_order_release);
+    SDL_Thread* thread = SDL_CreateThread(
+        picker_spritesheet_step_injector, "picker_sheet_steps", nullptr);
+    EXPECT_TRUE(thread != nullptr);
+
+    vbutton dispatcher;
+    const Sint32 result = dispatcher.do_call(
+        button_action_id(ButtonAction::PickSpriteSheet), 0);
+    g_spritesheet_picker_open.store(false, std::memory_order_release);
+
+    if (thread != nullptr)
+        SDL_WaitThread(thread, nullptr);
+    clear_events();
+    g_spritesheet_steps.clear();
+    return result;
+}
+
+// Creates (and, through its destructor, removes) a run of pack directories
+// under extra_pix/, leaving the sprite-sheet setting unmounted on the way out
+// so no removed directory stays mounted.
+class SpriteSheetPackDirs
+{
+public:
+    SpriteSheetPackDirs(const std::string& prefix, int count)
+    {
+        std::error_code ec;
+        for (int index = 0; index < count; ++index)
+        {
+            const std::filesystem::path dir =
+                std::filesystem::path(get_user_path()) / "extra_pix" /
+                std::format("{}{:02d}", prefix, index);
+            std::filesystem::create_directories(dir, ec);
+            dirs_.push_back(dir);
+        }
+    }
+
+    ~SpriteSheetPackDirs()
+    {
+        cfg.apply_setting("graphics", "sprite_sheet", "");
+        (void)apply_sprite_sheet_setting();
+        std::error_code ec;
+        for (const std::filesystem::path& dir : dirs_)
+            std::filesystem::remove_all(dir, ec);
+    }
+
+    SpriteSheetPackDirs(const SpriteSheetPackDirs&) = delete;
+    SpriteSheetPackDirs& operator=(const SpriteSheetPackDirs&) = delete;
+
+    [[nodiscard]] const std::filesystem::path& dir(std::size_t index) const
+    {
+        return dirs_[index];
+    }
+
+private:
+    std::vector<std::filesystem::path> dirs_;
+};
+
+void reset_sprite_sheet_selection()
+{
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+}
+
+} // namespace
+
+// Scrolling the list moves which pack sits under a given row. The same click
+// at the top row picks "Standard" on an unscrolled list and the first pack
+// after one wheel notch — a scroll that silently did nothing (or moved two)
+// would land on a different pack and fail.
+TEST_F(SpriteSheetPicker, wheel_scroll_changes_the_pack_under_the_top_row)
+{
+    SpriteSheetPackDirs packs_dirs("zz_wp4_sheet_", 13);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    ASSERT_GE(packs.size(), 13u) << "the pack directories should be listed";
+    const int total_items = 1 + static_cast<int>(packs.size());
+    ASSERT_GT(total_items, kSheetVisibleRows)
+        << "the list must overflow or there is nothing to scroll";
+
+    // Control arm: no scroll, so the top row is "Standard" and the setting
+    // goes back to the stock sheet.
+    reset_sprite_sheet_selection();
+    cfg.apply_setting("graphics", "sprite_sheet", packs[2]);
+    ASSERT_EQ(MENU_REDRAW, run_spritesheet_picker({sheet_row_click(0)}));
+    EXPECT_EQ("", cfg.get_setting("graphics", "sprite_sheet"))
+        << "row 0 is Standard: it clears the pack selection";
+    EXPECT_TRUE(apply_sprite_sheet_setting());
+
+    // One wheel notch down: the same row now holds the first pack.
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker({sheet_wheel(-1), sheet_row_click(0)}));
+    EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"));
+}
+
+// Teeth for the escape tail: the parting BACK press evaporates exactly the
+// way a frame slower than the 60 ms hold eats it, and the run still ENDS --
+// with one extra press, no other press disturbed, and the same selection.
+// On the tree before the tail landed this test is the hang itself: the
+// injector exits with the picker still open and nothing ever presses again
+// (PR #291's ASan lane, og_test_picker killed at 420 s).
+TEST_F(SpriteSheetPicker, a_dropped_back_press_costs_a_retry_not_the_run)
+{
+    // A real pack to start from, so clearing it to Standard is a change the
+    // row click had to make.
+    SpriteSheetPackDirs pack_dirs("zz_wp4_back_", 1);
+    reset_sprite_sheet_selection();
+    cfg.apply_setting("graphics", "sprite_sheet", "zz_wp4_back_00");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+
+    g_spritesheet_back_drops = 1;
+    ASSERT_EQ(MENU_REDRAW, run_spritesheet_picker({sheet_row_click(0)}));
+
+    EXPECT_EQ(0, g_spritesheet_back_drops)
+        << "the injected drop must be consumed";
+    EXPECT_EQ(1, g_spritesheet_back_retries)
+        << "a dropped BACK press costs exactly one re-send: fewer means the "
+           "tail gave up, more means it re-sent a press that had landed";
+    EXPECT_EQ("", cfg.get_setting("graphics", "sprite_sheet"))
+        << "row 0 is Standard: the list click still decided the selection";
+}
+
+// The same tooth for the other half: the wheel notch evaporates, the ladder
+// re-sends it, and the top row still ends up holding the first pack. Without
+// the re-send the click that follows lands on Standard and the pick is
+// silently wrong -- the shape that failed 1 starved run in 3 here.
+TEST_F(SpriteSheetPicker, a_dropped_step_press_costs_a_retry_not_the_pick)
+{
+    SpriteSheetPackDirs packs_dirs("zz_wp4_drop_", 13);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    ASSERT_GE(packs.size(), 13u);
+
+    reset_sprite_sheet_selection();
+    g_spritesheet_step_drops = 1;
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker({sheet_wheel(-1), sheet_row_click(0)}));
+
+    EXPECT_EQ(0, g_spritesheet_step_drops)
+        << "the injected drop must be consumed";
+    EXPECT_EQ(1, g_spritesheet_step_retries)
+        << "a dropped step press costs exactly one re-send: fewer means the "
+           "ladder gave up, more means it re-sent a press that had landed";
+    EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"))
+        << "the wheel notch still moved the list by exactly one row";
+}
+
+// The scrollbar trough is the other way down the list: clicking below the
+// thumb pages down one row, clicking above it pages back up one row. One run
+// of down, down, up leaves the top row on the FIRST pack, and that single
+// outcome pins both branches: an inert page-down leaves the top row on
+// Standard (""), and an inert page-up leaves it on the second pack.
+TEST_F(SpriteSheetPicker, scrollbar_trough_pages_the_list_both_ways)
+{
+    SpriteSheetPackDirs packs_dirs("zz_wp4_trough_", 13);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    ASSERT_GE(packs.size(), 13u);
+    const int total_items = 1 + static_cast<int>(packs.size());
+    ASSERT_GE(total_items - kSheetVisibleRows, 2)
+        << "the list must be able to scroll at least two rows";
+
+    const auto [thumb0_y, thumb0_h] = spritesheet_thumb(total_items, 0);
+    const auto [thumb1_y, thumb1_h] = spritesheet_thumb(total_items, 1);
+    const auto [thumb2_y, thumb2_h] = spritesheet_thumb(total_items, 2);
+    const SpriteSheetStep page_down_0 =
+        sheet_click(kSheetScrollX + 2, thumb0_y + thumb0_h + 1);
+    const SpriteSheetStep page_down_1 =
+        sheet_click(kSheetScrollX + 2, thumb1_y + thumb1_h + 1);
+    const SpriteSheetStep page_up_2 =
+        sheet_click(kSheetScrollX + 2, thumb2_y - 1);
+    ASSERT_LT(page_down_0.y, kSheetListY + kSheetScrollH);
+    ASSERT_LT(page_down_1.y, kSheetListY + kSheetScrollH);
+    ASSERT_GE(page_up_2.y, kSheetListY);
+
+    // Two pages down, one page up: the top row holds the FIRST pack.
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker(
+                  {page_down_0, page_down_1, page_up_2, sheet_row_click(0)}));
+    EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"))
+        << "a trough click above the thumb must page back exactly one row";
+}
+
+// A pack that disappears between the click and the BACK cannot be mounted, so
+// the picker must roll the selection back to the sheet that was working and
+// say so — otherwise the player leaves the menu with a broken sprite mount.
+TEST_F(SpriteSheetPicker, a_pack_that_vanishes_rolls_back_to_the_previous_sheet)
+{
+    SpriteSheetPackDirs pack_dirs("000_wp4_roll_", 2);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    const auto first = std::find(packs.begin(), packs.end(), "000_wp4_roll_00");
+    const auto second = std::find(packs.begin(), packs.end(), "000_wp4_roll_01");
+    ASSERT_NE(packs.end(), first);
+    ASSERT_NE(packs.end(), second);
+    const int first_row = 1 + static_cast<int>(first - packs.begin());
+    const int second_row = 1 + static_cast<int>(second - packs.begin());
+    ASSERT_LT(second_row, kSheetVisibleRows)
+        << "both rows must be visible without scrolling";
+
+    ScopedTraceBuffer trace_scope;
+    reset_sprite_sheet_selection();
+
+    // Control arm: a pack that is still there is applied and kept.
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker({sheet_row_click(first_row)}));
+    EXPECT_EQ("000_wp4_roll_00", cfg.get_setting("graphics", "sprite_sheet"));
+    EXPECT_FALSE(trace_contains("popup", "Could not load"))
+        << "a pack that mounts must not warn";
+
+    // Rollback arm: pick the second pack, then delete it before BACK.
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker(
+                  {sheet_row_click(second_row),
+                   SpriteSheetStep{
+                       .kind = SpriteSheetStep::Kind::RemoveDir,
+                       .x = 0,
+                       .y = 0,
+                       .wheel = 0,
+                       .path = pack_dirs.dir(1).string()}}));
+    EXPECT_EQ("000_wp4_roll_00", cfg.get_setting("graphics", "sprite_sheet"))
+        << "the unmountable pick must roll back to the working sheet";
+    EXPECT_TRUE(trace_contains("popup",
+                               "Sprite Sheet: Could not load"))
+        << "and the player must be told why";
 }

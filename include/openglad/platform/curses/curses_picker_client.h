@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <openglad/core/irandom.h>
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_state.h>
 #include <openglad/platform/curses/clock.h>
@@ -84,6 +85,13 @@ private:
     og::ui::TextPickerConfig& config_;
     CursesPickerOptions options_;
     SaveData save_data_;
+    // N7: the session's ONE recruit-name generator, seeded from the session
+    // seed (--seed, config_.seed) so the company this client founds is a
+    // function of the latch rather than of the process-global std::rand()
+    // stream. Re-seeded where a company is founded (prepare_new_game) and
+    // advanced by every later draw -- a generator built per call site would
+    // restart at each Hire Troops visit and re-offer the same few names.
+    SeededRandom recruit_names_;
 
     // [SAVE-R2] Re-points the process-wide active-company slot at this
     // client's configured slot (default "curses_quicksave" via CursesApp).

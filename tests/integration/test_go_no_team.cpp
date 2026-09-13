@@ -1,3 +1,4 @@
+#include <atomic>
 #include <memory>
 #include <array>
 #include <openglad/gameplay/pixie_data.h>
@@ -160,4 +161,58 @@ TEST(GoNoTeam, train_without_team) {
     ASSERT_EQ(4, (int)ret) << "empty-roster train entry should return OK";
     ASSERT_TRUE(trace_contains("popup", "NEED A TEAM"))
         << "should have seen 'NEED A TEAM!' popup";
+}
+
+
+// §4.3 rule 4: GO counts DEPLOYED heroes per seat team. Two seats sharing
+// one hero leaves a player with nothing to control, so GO refuses by name
+// and no game starts — the previous behaviour dropped a player into a level
+// with no character.
+extern std::atomic<int> g_test_game_epoch;
+
+TEST(GoNoTeam, go_with_an_unmanned_seat_is_refused)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 2;
+    save.my_team = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    for (auto& slot : save.team_list)
+        slot.reset();
+
+    // Paired control: the same two seats with a hero nobody deployed gets
+    // the DEPLOY refusal, so the popup text really is derived from the
+    // roster and not a constant.
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->deployed = false;
+    save.team_size = 1;
+
+    trace_clear();
+    const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
+    EXPECT_EQ(2, static_cast<int>(go_menu(0)))
+        << "a benched roster returns MENU_REDRAW";
+    EXPECT_TRUE(trace_contains("popup",
+                               "DEPLOY AT LEAST ONE: Deploy at least"))
+        << "benched roster must get the deploy popup";
+
+    // One deployed hero, two seats: the second seat has nothing to control.
+    save.team_list[0]->deployed = true;
+    trace_clear();
+    EXPECT_EQ(2, static_cast<int>(go_menu(0)))
+        << "an unmanned seat returns MENU_REDRAW instead of launching";
+    EXPECT_TRUE(trace_contains("popup",
+                               "DEPLOY FOR EVERY PLAYER: Each player needs"))
+        << "the second seat's refusal names itself";
+    EXPECT_FALSE(trace_contains("popup", "DEPLOY AT LEAST ONE"))
+        << "the deployed hero cleared the earlier guard";
+    EXPECT_EQ(epoch_before, g_test_game_epoch.load(std::memory_order_acquire))
+        << "no level may start while a seat is unmanned";
+
+    for (auto& slot : save.team_list)
+        slot.reset();
+    save.team_size = 0;
+    save.numplayers = 1;
+    save.my_team = 0;
 }

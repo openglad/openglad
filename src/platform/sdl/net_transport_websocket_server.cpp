@@ -5,13 +5,17 @@
 #include <ixwebsocket/IXWebSocketServer.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <deque>
 #include <format>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -269,11 +273,97 @@ struct WebSocketServerTransport::Impl
 
     ~Impl()
     {
-        if (listening)
-            server.stop();
+        if (!listening)
+            return;
+
+        // ix can throw out of its own teardown (see close_quietly), and an
+        // exception leaving a destructor ends the process. Teardown has
+        // nothing left to report, so swallow it here rather than abort.
+        try
+        {
+            stop_server_and_keep_closing();
+        }
+        catch (...)
+        {
+        }
     }
 
 private:
+    // ix::WebSocket's close callback calls the message callback without
+    // checking it (IXWebSocket.cpp:46-56), and WebSocketServer::handleConnection
+    // clears the message callback BEFORE removing the socket from the client
+    // set (IXWebSocketServer.cpp:167-176). A connection whose thread has just
+    // finished is therefore briefly visible with an empty callback, and closing
+    // it throws std::bad_function_call out of ix. ix's own stop() walks the
+    // same set and hits the same window — it aborted this binary once in ~8000
+    // teardown cycles before any of this existed — so the throw is caught here
+    // rather than allowed to end the process. A socket that throws is one whose
+    // thread has already ended, which is what teardown is waiting for anyway.
+    static void close_quietly(ix::WebSocket& client)
+    {
+        try
+        {
+            client.close();
+        }
+        catch (const std::bad_function_call&)
+        {
+        }
+    }
+
+    // Stop the server, closing every connection that turns up while it stops.
+    //
+    // ix::WebSocketServer::stop() closes the clients it can see and then joins
+    // its gc thread, which only exits once every connection thread has ended.
+    // But a connection is put into the client set BEFORE its handshake runs
+    // (IXWebSocketServer.cpp:143-150), and a close() that lands before the
+    // socket reaches OPEN leaves nothing behind: the handshake finishes, the
+    // socket comes up OPEN, and since nothing configures a ping interval its
+    // poll() timeout is infinite (IXWebSocketTransport.cpp:340). That
+    // connection thread never ends, runGC() spins on closeTerminatedThreads()
+    // forever, and the gc join never returns — the server destructor is wedged
+    // for good.
+    //
+    // stop() stops accepting before it closes anything, so once it is running
+    // the only connections that can still appear are the ones already in a
+    // handshake. Run it on a helper thread and keep closing whatever shows up
+    // in the client set until it returns: a socket that has just come up OPEN
+    // gets closed and its thread ends, and a socket still handshaking has ix's
+    // init-cancellation flag raised under it (IXWebSocketHandshake.cpp:98-101),
+    // which aborts the handshake. A CLOSING socket is left alone — ix drops it
+    // to Closed on its own, and poking it again would cut the close handshake
+    // short.
+    //
+    // The loop is what makes stop() finish, so it is deliberately not bounded
+    // by a deadline: giving up early would only hand the hang back.
+    void stop_server_and_keep_closing()
+    {
+        std::atomic<bool> stopped{false};
+        std::thread stopper([this, &stopped] {
+            try
+            {
+                server.stop();
+            }
+            catch (...)
+            {
+            }
+            stopped.store(true, std::memory_order_release);
+        });
+
+        while (!stopped.load(std::memory_order_acquire))
+        {
+            for (const std::shared_ptr<ix::WebSocket>& client :
+                 server.getClients())
+            {
+                if (client && client->getReadyState() != ix::ReadyState::Closing)
+                    close_quietly(*client);
+            }
+
+            std::this_thread::sleep_for(detail::kWebSocketQuiescePollInterval);
+        }
+
+        stopper.join();
+    }
+
     void enqueue_disconnect(const std::string& connection_id)
     {
         QueueEntry entry;

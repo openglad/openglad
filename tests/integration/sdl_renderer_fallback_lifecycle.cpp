@@ -264,6 +264,85 @@ int main(int argc, char* argv[])
         ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
                       "the pinned failure leaves a quiescent SDL");
 
+        // 5. The fallback driver initializes and gives a window, but STILL
+        //    has no renderer. The player must be told both reasons — the
+        //    original failure and the fallback's — instead of a bare "no
+        //    renderer" that hides the reboot that was attempted.
+        SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+        og::video_testing::g_renderer_fallback_probe_override =
+            og::video_testing::RendererFallbackProbe{.current_driver = "wayland",
+                                                     .driver_pinned = false,
+                                                     .fallback_driver = "dummy"};
+        og::video_testing::g_renderer_create_failures_to_inject = 2;
+        const std::string both_failed_error = boot_display_expecting_failure(ok);
+        ok &= require(
+            both_failed_error.find(
+                "fallback to 'dummy' has no renderer either: injected renderer "
+                "failure") != std::string::npos,
+            "a fallback that boots but cannot render names its own reason too");
+        ok &= require(
+            both_failed_error.find("SDL_CreateRenderer failed") !=
+                std::string::npos,
+            "and still carries the original failure");
+        ok &= require(og::video_testing::g_renderer_create_failures_to_inject == 0,
+                      "the boot attempted exactly two renderers");
+        ok &= require(live_window_count() == 0,
+                      "the twice-failed boot leaves no window behind");
+        ok &= require(E_Screen == nullptr,
+                      "the twice-failed boot publishes no global Screen");
+        og::video_testing::g_renderer_fallback_probe_override.reset();
+        SDL_Quit();
+        SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+        ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
+                      "the twice-failed boot leaves a quiescent SDL");
+
+        // 6. Someone else already holds SDL_INIT_VIDEO (a sub-session, or a
+        //    test harness). Reselecting the driver would pull the subsystem
+        //    out from under that owner, so the fallback refuses — and, most
+        //    importantly, leaves the other owner's subsystem alive.
+        ok &= require(SDL_InitSubSystem(SDL_INIT_VIDEO),
+                      "the other owner initializes video");
+        ok &= require(SDL_InitSubSystem(SDL_INIT_VIDEO),
+                      "and holds a second reference");
+        og::video_testing::g_renderer_fallback_probe_override =
+            og::video_testing::RendererFallbackProbe{.current_driver = "wayland",
+                                                     .driver_pinned = false,
+                                                     .fallback_driver = "dummy"};
+        og::video_testing::g_renderer_create_failures_to_inject = 1;
+        const std::string held_error = boot_display_expecting_failure(ok);
+        ok &= require(
+            held_error.find("the video subsystem is held by another "
+                            "initializer") != std::string::npos,
+            "the refusal names the reason the driver could not be switched");
+        ok &= require(
+            held_error.find("fallback to 'dummy' failed:") != std::string::npos,
+            "and reports it as the fallback's failure");
+        ok &= require(og::video_testing::g_renderer_create_failures_to_inject == 0,
+                      "the held boot never gets a second renderer attempt");
+        ok &= require(current_video_driver() == "dummy",
+                      "a refused switch leaves the live video driver alone");
+        ok &= require(live_window_count() == 0,
+                      "the refused switch leaves no window behind");
+        og::video_testing::g_renderer_fallback_probe_override.reset();
+        ok &= require(SDL_WasInit(SDL_INIT_VIDEO) != 0,
+                      "the other owner's video subsystem survives the refusal");
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        ok &= require(SDL_WasInit(SDL_INIT_VIDEO) != 0,
+                      "both of the other owner's references survive it");
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
+                      "and releasing both really does shut video down");
+
+        // Control for 6: with nobody else holding the subsystem, the same
+        // process still boots a display normally.
+        std::unique_ptr<sdl_video> unheld = std::make_unique<sdl_video>(true);
+        ok &= require(E_Screen != nullptr && E_Screen->renderer != nullptr,
+                      "an unheld video subsystem still boots a renderer");
+        unheld.reset();
+        SDL_Quit();
+        ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
+                      "the control boot balances the SDL lifecycle");
+
         io_exit();
     }
     catch (const std::exception& error)

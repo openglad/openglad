@@ -211,7 +211,7 @@ jobs:
         # ANY record the tree cannot account for is an error rather than the
         # incremental-build warning developers get locally.
         run: |
-          LINE_THRESHOLD=95
+          LINE_THRESHOLD=96
           FUNCTION_THRESHOLD=100
 
           mkdir -p build/ci-coverage/coverage
@@ -306,7 +306,7 @@ jobs:
         if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v9
         env:
-          LINE_THRESHOLD: 95
+          LINE_THRESHOLD: 96
           FUNCTION_THRESHOLD: 100
           LINE_PCT: ${{ steps.coverage_metrics.outputs.line_pct }}
           FUNCTION_PCT: ${{ steps.coverage_metrics.outputs.function_pct }}

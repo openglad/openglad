@@ -2,60 +2,14 @@
 // this orchestration in tests/ prevents coverage tools from treating it as
 // shipped curses networking logic while preserving translation-unit access.
 
+#include "curses_mount_restore.h"
+
 bool curses_network_testing_inject_mode(CursesGameSession& session,
                                        short requested_respawn_ticks);
 int curses_network_testing_force_server_win(CursesGameSession& session,
                                              std::uint32_t pinned_team0_score);
 int curses_network_testing_clear_server_team(CursesGameSession& session,
                                               short team);
-
-class CursesNetworkTestingMountRestore
-{
-public:
-    CursesNetworkTestingMountRestore()
-        : mounted_before_(get_mounted_campaign())
-    {
-    }
-
-    ~CursesNetworkTestingMountRestore()
-    {
-        (void)restore();
-    }
-
-    bool restore()
-    {
-        if (restored_)
-            return restore_ok_;
-
-        const std::string mounted_after =
-            get_mounted_campaign();
-        if (mounted_after != mounted_before_) {
-            const CampaignPackageIoError result =
-                mounted_before_.empty()
-                    ? unmount_campaign_package_with_error(
-                          mounted_after)
-                    : mount_campaign_package_with_error(
-                          mounted_before_);
-            restore_ok_ =
-                result == CampaignPackageIoError::None;
-        }
-        restore_ok_ =
-            get_mounted_campaign() == mounted_before_ &&
-            restore_ok_;
-        restored_ = true;
-        return restore_ok_;
-    }
-
-    const std::string& mounted_before() const
-    {
-        return mounted_before_;
-    }
-
-private:
-    std::string mounted_before_;
-    bool restored_ = false;
-    bool restore_ok_ = true;
-};
 
 int curses_network_testing_exercise_internal_helpers()
 {
@@ -375,6 +329,70 @@ int curses_network_testing_exercise_internal_helpers()
             og::sim::TypedReceivedMessageKind::StagedMatchKeyframe &&
         staged_decoded[1].staged_match_keyframe != nullptr &&
         *staged_decoded[1].staged_match_keyframe == staged_keyframe);
+
+    // Class-pack transfer (protocol v10) over a RAW transport: the joiner's
+    // envelope pump must decode all three pack frames and drop undecodable
+    // ones. The in-process typed path never runs this decode, so a regression
+    // here would leave a WebSocket/relay joiner stuck without the host's packs.
+    const og::sim::PackManifestMessage pack_manifest{
+        .pack_index = 0,
+        .pack_count = 1,
+        .pack_id = "wp9pack",
+        .version = "1.2.3",
+        .files = {og::sim::PackManifestFileEntry{
+            .path = "classes/wp9.lua", .size_bytes = 7u, .hash64 = 0xfeedbeefu}},
+    };
+    const og::sim::PackFileChunkMessage pack_chunk{
+        .pack_id = "wp9pack",
+        .file_index = 0u,
+        .offset = 4u,
+        .data = {0x0a, 0x0b, 0x0c},
+    };
+    const og::sim::PackTransferDoneMessage pack_done{.pack_id = "wp9pack"};
+    RawTransport pack_raw({
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = malformed_payload(og::sim::kPackManifestMessageType),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = og::sim::serialize_pack_manifest_message(pack_manifest),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = malformed_payload(og::sim::kPackFileChunkMessageType),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = og::sim::serialize_pack_file_chunk_message(pack_chunk),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = malformed_payload(og::sim::kPackTransferDoneMessageType),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = og::sim::serialize_pack_transfer_done_message(pack_done),
+        },
+    });
+    const std::vector<og::sim::TypedReceivedMessage> pack_decoded =
+        poll_lobby_transport_messages(pack_raw);
+    check(pack_decoded.size() == 3);
+    check(pack_decoded.size() == 3 &&
+        pack_decoded[0].kind ==
+            og::sim::TypedReceivedMessageKind::PackManifest &&
+        pack_decoded[0].pack_manifest != nullptr &&
+        *pack_decoded[0].pack_manifest == pack_manifest);
+    check(pack_decoded.size() == 3 &&
+        pack_decoded[1].kind ==
+            og::sim::TypedReceivedMessageKind::PackFileChunk &&
+        pack_decoded[1].pack_file_chunk != nullptr &&
+        *pack_decoded[1].pack_file_chunk == pack_chunk);
+    check(pack_decoded.size() == 3 &&
+        pack_decoded[2].kind ==
+            og::sim::TypedReceivedMessageKind::PackTransferDone &&
+        pack_decoded[2].pack_transfer_done != nullptr &&
+        *pack_decoded[2].pack_transfer_done == pack_done);
 
     // A lobby before any transport/state attachment must expose a coherent
     // empty public state, reject mutations, and render/cancel safely.
@@ -970,7 +988,7 @@ int curses_network_testing_exercise_internal_helpers()
     // The authored-team helper reads only from the save's mounted campaign.
     // Pin both the failed-load and successful-load paths, then restore the
     // process mount exactly so shuffled neighbors see their original package.
-    CursesNetworkTestingMountRestore mount_restore;
+    MountRestore mount_restore;
     const std::string ctf_campaign = "modes";
     const CampaignPackageIoError ctf_mount =
         mount_campaign_package_with_error(ctf_campaign);
@@ -988,4 +1006,65 @@ int curses_network_testing_exercise_internal_helpers()
             mount_restore.mounted_before());
 
     return failed_check == 0 ? 0 : -failed_check;
+}
+
+// A machine whose campaign package is not installed (an uninstalled or
+// corrupted campaign on the machine that pressed GO) must refuse to build a
+// session and
+// say why, instead of handing the level loop a half-built world — and it must
+// put the caller's GameplayContext back exactly as it found it. Returns the
+// error string the build reported; "" means the build succeeded.
+// `restored_out` reports whether current_game came back unchanged.
+std::string curses_network_testing_session_build_failure(bool host,
+                                                         const char* campaign,
+                                                         bool* restored_out)
+{
+    // load_campaign UNMOUNTS before it discovers the package is missing, so
+    // the borrowed mount is restored on every exit path.
+    MountRestore mount_restore;
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = campaign;
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list.push_back(og::sim::LobbyCharacterSlot{
+        .slot_index = 0,
+        .character = og::sim::LobbyCharacterData{.guy_id = 1,
+                                                 .name = "BUILDFAIL",
+                                                 .family = FAMILY_SOLDIER},
+        .deployed = true,
+    });
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto client = server->create_client_transport();
+
+    GameplayContext* const before = current_game;
+    std::string error = "unset";
+    std::unique_ptr<CursesGameSession> session;
+    if (host) {
+        std::vector<og::sim::LobbyPlayerBinding> bindings;
+        bindings.push_back(og::sim::LobbyPlayerBinding{
+            .peer_id = client->local_peer_id(),
+            .local_slot = 0,
+            .player_index = 0,
+        });
+        session = HostCursesSession::create(
+            lobby_save, bindings, /*difficulty=*/1, server, client,
+            /*host_player_index=*/0, /*host_company_save=*/nullptr, &error,
+            /*stage=*/nullptr);
+    } else {
+        session = JoinCursesSession::create(lobby_save, /*difficulty=*/1,
+                                            client, client->local_peer_id(),
+                                            /*local_player_index=*/0, &error);
+    }
+    if (restored_out != nullptr)
+        *restored_out = current_game == before;
+    if (session != nullptr) {
+        session.reset();
+        current_game = before;
+        return std::string();
+    }
+    current_game = before;
+    return error;
 }

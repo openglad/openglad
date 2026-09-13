@@ -392,6 +392,15 @@ add_custom_target(check_vendor_leaks
     VERBATIM
 )
 
+# Injector settles must be conditions, not clocks: no flat SDL_Delay(750)
+# "fade settle" in a converted menu-injector test. See the script header.
+add_custom_target(check_injector_settles
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_injector_settles.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking menu injector settles are conditions, not clocks"
+    VERBATIM
+)
+
 # Render must not write sim-read entity state (the "drawcycle" class of bug:
 # render-only writes freeze in the headless sim). See the script header.
 add_custom_target(check_render_no_sim_writes

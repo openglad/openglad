@@ -120,12 +120,12 @@ class Screen
 		// The fade-out precondition: the active render surface holds
 		// exactly the pixels the window last showed of it (nothing drew or
 		// cleared it since its last present). False for a surface that was
-		// never presented. `detail` (optional) receives where it differs —
-		// the bounding box of the changed pixels, or "never presented".
-		// "Showed" means the rect each present DECLARED: a partial-rect
-		// swap() records only that rect, so a draw outside it stays
-		// unpresented until a present covers it.
-		bool testing_render_matches_presented(std::string* detail = nullptr) const;
+		// never presented. `detail` receives where it differs — the bounding
+		// box of the changed pixels, or "never presented" — and is cleared
+		// on the matching path. "Showed" means the rect each present
+		// DECLARED: a partial-rect swap() records only that rect, so a draw
+		// outside it stays unpresented until a present covers it.
+		bool testing_render_matches_presented(std::string& detail) const;
 		// Test boundary: the window is BLACK — the state a screen that faded
 		// itself out at its exit leaves, and the state a process starts in —
 		// and every canvas counts as presented as it stands, so a direct-call

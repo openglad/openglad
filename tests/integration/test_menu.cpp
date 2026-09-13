@@ -226,6 +226,72 @@ TEST(Menu, rightclick_search_skips_misses_and_draw_tolerates_empty_slots)
     clear_allbuttons();
 }
 
+// Two rules the whole click sweep rests on, each beside the arm that must
+// still fire. (1) A face the frame's gate pass hid takes no mouse focus and
+// consumes no hotkey — a hidden button that still answered would eat clicks
+// meant for whatever the screen drew in its place. (2) The hotkey pass stops
+// at the FIRST button that consumes the key, so two rows sharing a hotkey
+// run one action, not both.
+TEST(Menu, click_sweep_skips_hidden_faces_and_stops_at_the_first_consumer)
+{
+    const SDL_Scancode q = SDL_GetScancodeFromKey(SDLK_Q, nullptr);
+    int numkeys = 0;
+    bool* const keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
+    ASSERT_GE(q, 0);
+    ASSERT_LT(q, numkeys);
+
+    button descriptors[2] = {
+        button("first", "FIRST", q, 10, 10, 30, 12,
+               button_action_id(ButtonAction::YesOrNo), 11, MenuNav{}),
+        button("second", "SECOND", q, 10, 30, 30, 12,
+               button_action_id(ButtonAction::YesOrNo), 22, MenuNav{}),
+    };
+    vbutton* const sweep = init_buttons(descriptors, 2);
+    ASSERT_NE(nullptr, sweep);
+    vbutton* const first = og::runtime::current_session->allbuttons_[0];
+    vbutton* const second = og::runtime::current_session->allbuttons_[1];
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+
+    // Mouse focus: the pointer sits inside the FIRST face.
+    clear_events();
+    push_mouse_motion_game_coords(20, 15);
+    EXPECT_EQ(1, first->mouse_on())
+        << "the pointer is inside this face";
+    EXPECT_EQ(0, second->mouse_on())
+        << "and outside that one";
+    first->hidden = 1;
+    EXPECT_EQ(0, first->mouse_on())
+        << "a hidden face takes no focus, pointer or no pointer";
+    first->hidden = 0;
+    EXPECT_EQ(1, first->mouse_on()) << "and takes it back when shown again";
+
+    // Hotkey sweep: both rows answer to Q, and exactly the first one runs.
+    SDL_Scancode release_key = q;
+    keys[q] = true;
+    SDL_Thread* releaser = SDL_CreateThread(
+        release_scancode_after_delay, "release_q_first", &release_key);
+    ASSERT_NE(nullptr, releaser);
+    EXPECT_EQ(11, sweep->leftclick(descriptors))
+        << "the first button that consumes the hotkey ends the sweep";
+    SDL_WaitThread(releaser, nullptr);
+
+    // Hide the first the way the runner's gate pass does, and the SAME key
+    // reaches the second — proof the sweep really walked past a live row
+    // rather than stopping at index 0 by accident.
+    first->hidden = 1;
+    keys[q] = true;
+    releaser = SDL_CreateThread(
+        release_scancode_after_delay, "release_q_second", &release_key);
+    ASSERT_NE(nullptr, releaser);
+    EXPECT_EQ(22, sweep->leftclick(descriptors))
+        << "a hidden row consumes nothing and the next row answers";
+    SDL_WaitThread(releaser, nullptr);
+
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+}
+
 TEST(Menu, legacy_button_actions_reach_their_compatible_dispatchers)
 {
     vbutton dispatcher;

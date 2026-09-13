@@ -4,6 +4,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
+#include <openglad/interface/render/pal32.h>
 
 #include <array>
 #include <cstring>
@@ -316,4 +317,57 @@ TEST(VideoPixelOps, video_darken_and_fastbox_negative_inputs_smoke)
     og::runtime::current_session->myscreen_->fastbox(0, -1, 10, 10, 1, 1);
     og::runtime::current_session->myscreen_->fastbox(0, 0, -10, 10, 1, 1);
     og::runtime::current_session->myscreen_->fastbox(0, 0, 10, -10, 1, 1);
+}
+
+// get_pixel(x, y, &index) answers "which palette entry is this pixel?" for
+// callers that read back what they drew. When the pixel is a colour the game
+// palette does not contain — anything blended, alpha-composited or written
+// through the RGB pointb overload — there is no honest answer, and the
+// contract is that the caller's own variable is LEFT ALONE rather than being
+// silently set to the black at index 0. A caller that seeded its variable with
+// a sentinel must be able to tell "no match" from "matched entry 0".
+TEST(VideoPixelOps, off_palette_get_pixel_reports_no_match_without_touching_index)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+
+    // Find a 6-bit colour the palette does not hold. get_pixel compares
+    // r/4, g/4, b/4 against query_palette_reg, so search that space.
+    std::array<bool, 64 * 64 * 64> present{};
+    for (int i = 0; i < 256; ++i)
+    {
+        int pr = 0;
+        int pg = 0;
+        int pb = 0;
+        query_palette_reg(static_cast<unsigned char>(i), &pr, &pg, &pb);
+        if (pr >= 0 && pr < 64 && pg >= 0 && pg < 64 && pb >= 0 && pb < 64)
+            present[static_cast<std::size_t>((pr * 64 + pg) * 64 + pb)] = true;
+    }
+    int off_r = -1;
+    int off_g = -1;
+    int off_b = -1;
+    for (std::size_t i = 0; i < present.size() && off_r < 0; ++i)
+    {
+        if (present[i])
+            continue;
+        off_b = static_cast<int>(i % 64);
+        off_g = static_cast<int>((i / 64) % 64);
+        off_r = static_cast<int>(i / (64 * 64));
+    }
+    ASSERT_GE(off_r, 0) << "the palette cannot hold all 262144 6-bit colours";
+
+    // Control: a real palette entry is reported, and the out-param is set.
+    scr->pointb(31, 29, static_cast<unsigned char>(47));
+    int index = -7;
+    EXPECT_EQ(47, scr->get_pixel(31, 29, &index));
+    EXPECT_EQ(47, index);
+
+    // The off-palette pixel: no match, and the sentinel survives.
+    scr->pointb(32, 29, static_cast<unsigned char>(off_r * 4),
+                static_cast<unsigned char>(off_g * 4),
+                static_cast<unsigned char>(off_b * 4));
+    index = -7;
+    EXPECT_EQ(0, scr->get_pixel(32, 29, &index));
+    EXPECT_EQ(-7, index)
+        << "an unmatched colour must leave the caller's index untouched";
 }

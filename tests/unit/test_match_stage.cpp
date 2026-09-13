@@ -35,6 +35,8 @@
 #include <openglad/server/match_stage.h>
 
 #include "../test_game_world_fixture.h"
+#include "../test_save_state_guard.h"
+#include "unit_pack_store_guard.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -127,6 +129,12 @@ const walker* find_living_named(const GameWorld& world, const std::string& name)
 class MatchStageTest : public ::testing::Test
 {
 protected:
+    // These cases mount campaigns and stage worlds whose packs rewrite the
+    // process pack stores and family registries; both go back the way the
+    // next test in a --gtest_shuffle order expects to find them.
+    og::test::ScopedCampaignMountState mount_restore_;
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     void SetUp() override
     {
         restore_default_campaigns();
@@ -1902,6 +1910,7 @@ TEST_F(MatchStageTest, adopted_world_does_not_re_run_the_lineup_stage)
 // mode_stage_init twin discipline.
 TEST(LineupStageLazyArm, un_staged_world_runs_the_step_on_its_first_tick)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     init_all_registries();
     og::script::clear_pack_scripts();
     TestGameWorld fx(7);
@@ -1924,6 +1933,7 @@ TEST(LineupStageLazyArm, un_staged_world_runs_the_step_on_its_first_tick)
 // enemy squad walked onto it.
 TEST(LineupStageLazyArm, a_step_that_fields_fighters_holds_the_level_open)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     init_all_registries();
     og::script::clear_pack_scripts();
     TestGameWorld fx(7);
@@ -1984,6 +1994,7 @@ constexpr const char* kRefusedModeLineupProbeLua =
 // again.
 TEST(LineupStageLazyArm, refused_mode_world_runs_the_step_once)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     init_all_registries();
     og::script::clear_pack_scripts();
     TestGameWorld fx(7);
@@ -2008,6 +2019,7 @@ TEST(LineupStageLazyArm, refused_mode_world_runs_the_step_once)
 // nor the classic tick-1 arm may fire on a tick past the first.
 TEST(LineupStageLazyArm, snapshot_seeded_twin_of_a_refused_world_does_not_rerun)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     init_all_registries();
     og::script::clear_pack_scripts();
     LineupStageProbeScript probe(kRefusedModeLineupProbeLua);
@@ -2044,6 +2056,7 @@ TEST(LineupStageLazyArm, snapshot_seeded_twin_of_a_refused_world_does_not_rerun)
 // be: no VM is even built for a script-less world.
 TEST(LineupStageLazyArm, un_registered_world_dispatches_nothing)
 {
+    og::test::ScopedPackStoreState pack_store_restore;
     init_all_registries();
     og::script::clear_pack_scripts();
     TestGameWorld fx(7);

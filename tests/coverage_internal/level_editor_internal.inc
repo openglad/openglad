@@ -493,6 +493,54 @@ int level_editor_test_mouse_release_workflows()
             }
         }
 
+        // Free (grid-snapping off) placement: the editor holds the click open
+        // until the button comes back up, then stamps exactly one walker at
+        // the RAW pointer position. Snapping it to the grid here (or stamping
+        // a second copy while it waits) would make fine placement impossible.
+        {
+            data.mode = Mode::Object;
+            data.object_brush.order = Order::Living;
+            data.object_brush.family = FAMILY_SOLDIER;
+            data.object_brush.team = 1;
+            data.object_brush.level = 3;
+            data.object_brush.worldz = 0;
+            data.object_brush.picking = false;
+            data.object_brush.snap_to_grid = false;
+            eds().levelchanged = 0;
+            const std::size_t before_free_place =
+                data.level->world().oblist.size();
+            const int free_x = screen_x + 5;
+            const int free_y = screen_y + 5;
+            const bool free_release_queued =
+                queue_left_release(free_x, free_y);
+            check(free_release_queued);
+            if (free_release_queued)
+            {
+                data.mouse_up(free_x, free_y, free_x, free_y, done);
+                check(data.level->world().oblist.size() ==
+                      before_free_place + 1);
+                // The wait ended because the release arrived, not because the
+                // 36-tick fail-safe expired.
+                check(!mouse.left);
+                check(eds().levelchanged == 1);
+                walker* placed =
+                    data.level->world().oblist.empty()
+                        ? nullptr
+                        : data.level->world().oblist.back().get();
+                check(placed != nullptr && placed != target);
+                if (placed != nullptr && placed != target)
+                {
+                    check(placed->xpos() == world_x + 5);
+                    check(placed->ypos() == world_y + 5);
+                    check(placed->family() == FAMILY_SOLDIER);
+                    check(placed->team_num() == 1);
+                    data.level->remove_ob(placed);
+                }
+                check(data.level->world().oblist.size() ==
+                      before_free_place);
+            }
+        }
+
         // Out-of-grid writes and reads are strict no-ops/fallbacks.
         const unsigned char tile_before = data.get_terrain(0, 0);
         data.set_terrain(-1, -1, PIX_WATER1);
@@ -550,6 +598,157 @@ int level_editor_test_mouse_release_workflows()
 
     check(level_editor_testing_prompt_queue_ref().empty());
     check(mount_guard.restore());
+    check(get_mounted_campaign() == mount_guard.initially_mounted());
+    return failed_check == 0 ? 0 : -failed_check;
+}
+
+// A save the editor could not complete must SAY so and must NOT clear the
+// dirty flag: clearing it would throw the player's unsaved work away at the
+// next exit without ever writing it. Every save path fails deterministically
+// once the campaign package is unmounted (saveLevel's repack_campaign("") and
+// saveCampaign's remount both refuse an empty campaign id). Each refusal sits
+// beside the SAME menu click succeeding while the package is mounted, so an
+// editor that could never save anything would fail this too. All writes land in
+// an isolated helper campaign — an editor save with "gladiator" mounted would
+// leave a per-PID write-dir copy shadowing the shipped package for the rest of
+// the binary.
+int level_editor_test_save_failure_reporting()
+{
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+        {
+            failed_check = check_index;
+            Log("level-editor save-failure check {} failed\n", check_index);
+        }
+    };
+
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    LevelEditorTestingYesNoGuard yes_no_guard;
+    LevelEditorTestingPromptGuard prompt_guard;
+    LevelEditorTestingMouseEventGuard mouse_event_guard;
+
+    const std::string helper_id = "coverage.save_failure";
+    delete_campaign(helper_id);
+    check(create_new_campaign(helper_id));
+    check(mount_guard.switch_to(helper_id));
+
+    LevelEditorData data;
+    check(data.loadCampaign(helper_id));
+    check(data.campaign->id == helper_id);
+
+    // The menu clicks below redraw the editor, which reads the tile palette
+    // and the object pane; give them the same content level_editor() builds on
+    // entry (an empty palette divides by zero in the tile-preview picker).
+    data.level->world().id = 1;
+    data.level->delete_objects();
+    data.level->create_new_grid();
+    data.level->set_draw_pos(0, 0);
+    data.myradar.start(data.level.get());
+    backgrounds().assign(
+        kDefaultBackgrounds.begin(), kDefaultBackgrounds.end());
+    eds().maxrows = static_cast<std::int32_t>(backgrounds().size() / 4);
+    eds().rowsdown = 0;
+    eds().current_floor = 0;
+    eds().decor_mode = false;
+    object_pane().clear();
+    object_pane().push_back({Order::Living, FAMILY_SOLDIER});
+    data.mode = Mode::Terrain;
+    data.reset_mode_buttons();
+    data.update_menu_buttons();
+
+    LevelEditorDialogDismissState dismiss_state;
+    LevelEditorTestingThread dismiss_driver(
+        SDL_CreateThread(
+            level_editor_dialog_dismiss_driver,
+            "level_editor_save_failure_dialogs", &dismiss_state),
+        dismiss_state);
+    check(dismiss_driver.valid());
+    if (dismiss_driver.valid())
+    {
+        MouseState& menu_mouse = query_mouse_no_poll();
+        menu_mouse.left = false;
+        menu_mouse.right = false;
+        const auto click_button = [&](SimpleButton& button) {
+            bool menu_done = false;
+            const int x = button.area.x + 1;
+            const int y = button.area.y + 1;
+            data.mouse_up(x, y, x, y, menu_done);
+            check(!menu_done);
+        };
+        const auto open_file_campaign_menu = [&] {
+            data.current_menu.clear();
+            click_button(data.fileButton);
+            click_button(data.fileCampaignButton);
+        };
+        const auto open_file_level_menu = [&] {
+            data.current_menu.clear();
+            click_button(data.fileButton);
+            click_button(data.fileLevelButton);
+        };
+        // Positive control, mounted: the very same menu path reports success
+        // and clears the flag.
+        eds().campaignchanged = 1;
+        trace_clear();
+        open_file_campaign_menu();
+        click_button(data.fileCampaignSaveButton);
+        check(eds().campaignchanged == 0);
+        check(trace_contains("dialog", "timed_dialog_open Campaign saved."));
+        check(!trace_contains(
+            "dialog", "timed_dialog_open Failed to save campaign."));
+
+        // The level half of the same control, still mounted: File > Level >
+        // Save reports "Level saved." and clears the level's dirty flag. The
+        // write lands in the isolated helper campaign.
+        eds().levelchanged = 1;
+        trace_clear();
+        open_file_level_menu();
+        click_button(data.fileLevelSaveButton);
+        check(eds().levelchanged == 0);
+        check(trace_contains("dialog", "timed_dialog_open Level saved."));
+        check(!trace_contains("dialog", "timed_dialog_open Save failed."));
+
+        // Unmount the package. Nothing else changes.
+        check(mount_guard.switch_to(""));
+        check(get_mounted_campaign().empty());
+
+        // Direct calls first: both report the remount refusal.
+        eds().levelchanged = 1;
+        eds().campaignchanged = 1;
+        check(!data.saveCampaign());
+        check(get_mounted_campaign().empty());
+        check(eds().campaignchanged == 1);
+        check(!data.saveLevel());
+        check(eds().levelchanged == 1);
+
+        // File > Level > Save: the message the player sees is "Save failed."
+        // and the level stays dirty.
+        eds().levelchanged = 1;
+        trace_clear();
+        open_file_level_menu();
+        click_button(data.fileLevelSaveButton);
+        check(eds().levelchanged == 1);
+        check(trace_contains("dialog", "timed_dialog_open Save failed."));
+        check(!trace_contains("dialog", "timed_dialog_open Level saved."));
+
+        // File > Campaign > Save: a different message, same guarantee.
+        eds().campaignchanged = 1;
+        trace_clear();
+        open_file_campaign_menu();
+        click_button(data.fileCampaignSaveButton);
+        check(eds().campaignchanged == 1);
+        check(trace_contains(
+            "dialog", "timed_dialog_open Failed to save campaign."));
+        check(!trace_contains("dialog", "timed_dialog_open Campaign saved."));
+
+        check(dismiss_driver.stop_and_join() == 0);
+    }
+
+    check(mount_guard.restore());
+    delete_campaign(helper_id);
     check(get_mounted_campaign() == mount_guard.initially_mounted());
     return failed_check == 0 ? 0 : -failed_check;
 }
@@ -1223,12 +1422,6 @@ int level_editor_test_exercise_internal_helpers()
             open_file_menu();
             click_button(data.fileLevelButton);
         };
-        auto expose_hidden_file_campaign_choice = [&](SimpleButton& button) {
-            data.current_menu.clear();
-            std::set<SimpleButton*> s;
-            s.insert(&button);
-            data.current_menu.push_back(std::make_pair(&data.fileCampaignButton, s));
-        };
 
         data.mode = Mode::Terrain;
         data.reset_mode_buttons();
@@ -1370,23 +1563,16 @@ int level_editor_test_exercise_internal_helpers()
 	        check(data.get_decor(4, 4) == DECOR_NONE);
 
 	        open_file_campaign_menu();
+        // The Campaign submenu is exactly these four entries. A dead entry
+        // added back here would otherwise be "covered" by a fabricated menu
+        // state no player can produce.
+        check(data.current_menu.back().second ==
+              std::set<SimpleButton*>{&data.fileCampaignNewButton,
+                                      &data.fileCampaignLoadButton,
+                                      &data.fileCampaignSaveButton,
+                                      &data.fileCampaignSaveAsButton});
         click_button(data.fileCampaignSaveButton);
         check(!eds().campaignchanged);
-
-        eds().levelchanged = 1;
-        eds().campaignchanged = 1;
-        picker_testing_yes_or_no_queue_push(true);
-        picker_testing_yes_or_no_queue_push(true);
-        expose_hidden_file_campaign_choice(data.fileCampaignImportButton);
-        click_button(data.fileCampaignImportButton);
-
-        eds().levelchanged = 1;
-        eds().campaignchanged = 1;
-        picker_testing_yes_or_no_queue_push(true);
-        picker_testing_yes_or_no_queue_push(true);
-        expose_hidden_file_campaign_choice(data.fileCampaignShareButton);
-        click_button(data.fileCampaignShareButton);
-        check(!eds().levelchanged && !eds().campaignchanged);
 
         open_file_level_menu();
         check(!data.current_menu.empty());
@@ -1869,6 +2055,125 @@ int level_editor_test_decor_migrated_roundtrip()
     return failed_check == 0 ? 0 : -failed_check;
 }
 
+// The info panel's name row for a SINGLE selection. A named Living writes
+// its name on row 0 and its family label on row 1; a nameless one has
+// nothing to write on row 0, and Jonathan Dearborn's 2013 arm meant to
+// leave that row blank so the rest of the box keeps its place. Renders the
+// same soldier named and nameless and compares the two 8-pixel row bands
+// inside the info box, plus a single-treasure render that pins the guard to
+// Order::Living (a treasure's name is ALWAYS empty, and its family label
+// must stay on row 0).
+//
+// Returns the number of checks that passed; the caller pins the count.
+int level_editor_test_nameless_selection_panel_rows()
+{
+    int passed = 0;
+    const auto check = [&passed](bool condition) {
+        if (condition)
+            ++passed;
+    };
+
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    if (!mount_guard.switch_to("gladiator"))
+        return -1;
+
+    screen* scr = og::runtime::current_session->myscreen_;
+    if (scr == nullptr || scr->viewob[0] == nullptr)
+        return -2;
+
+    LevelEditorData data;
+    if (!data.loadCampaign("gladiator") || !data.loadLevel(1))
+        return -3;
+    data.level->delete_objects();
+    data.level->create_new_grid();
+    data.level->set_draw_pos(0, 0);
+    eds().current_floor = 0;
+    eds().decor_mode = false;
+
+    struct FramebufferGuard
+    {
+        screen& scr;
+        std::vector<unsigned char> saved;
+
+        explicit FramebufferGuard(screen& scr_) : scr(scr_), saved(scr_.videobuffer) {}
+        ~FramebufferGuard() { scr.videobuffer = std::move(saved); }
+    } framebuffer_guard(*scr);
+
+    // One 8-pixel text row of the info box, sampled strictly INSIDE the box
+    // the panel draws at draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2): x1=241,
+    // x2=315, so 245..314 never touches a border column.
+    const auto row_band = [&scr](int row) {
+        std::vector<unsigned char> pixels;
+        for (int y = L_D(row); y < L_D(row) + 8; ++y)
+        {
+            for (int x = 245; x < 315; ++x)
+            {
+                Uint8 red = 0;
+                Uint8 green = 0;
+                Uint8 blue = 0;
+                scr->get_pixel(x, y, &red, &green, &blue);
+                pixels.push_back(red);
+                pixels.push_back(green);
+                pixels.push_back(blue);
+            }
+        }
+        return pixels;
+    };
+
+    data.mode = Mode::Select;
+    data.reset_mode_buttons();
+
+    walker* guy = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+    if (guy == nullptr)
+        return -4;
+    guy->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    guy->set_team_num(0);
+
+    // Render A: the same guy with a name.
+    guy->stats()->name = "Rembrandt";
+    data.selection.clear();
+    data.selection.push_back(SelectionInfo(guy));
+    scr->clearbuffer();
+    data.display_panel(scr);
+    const std::vector<unsigned char> named_row0 = row_band(0);
+    const std::vector<unsigned char> named_row1 = row_band(1);
+
+    // Render B: the same guy with no name.
+    guy->stats()->name = "";
+    data.selection.clear();
+    data.selection.push_back(SelectionInfo(guy));
+    scr->clearbuffer();
+    data.display_panel(scr);
+    const std::vector<unsigned char> nameless_row0 = row_band(0);
+    const std::vector<unsigned char> nameless_row1 = row_band(1);
+    // Row 5 is past every line a single Living selection writes (family,
+    // level, AI), so it is the box's blank interior fill.
+    const std::vector<unsigned char> blank_row = row_band(5);
+
+    check(named_row1 == nameless_row1);   // 1: family label on the same row
+    check(nameless_row0 == blank_row);    // 2: the nameless name row is blank
+    check(named_row0 != nameless_row0);   // 3: the two renders really differ
+
+    // Render C: a single TREASURE selection. Its name is empty too, but the
+    // skipped row is a Living affordance -- the gold bar's family label stays
+    // on row 0.
+    walker* gold = data.level->add_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    if (gold == nullptr)
+        return -5;
+    gold->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
+    data.selection.clear();
+    data.selection.push_back(SelectionInfo(gold));
+    scr->clearbuffer();
+    data.display_panel(scr);
+    check(row_band(0) != row_band(5));    // 4: treasure label still on row 0
+
+    data.selection.clear();
+    data.level->delete_objects();
+    mount_guard.restore();
+    return passed;
+}
+
 // Issue #12 seams. The editor's LevelEditorData is a function-local static
 // inside level_editor() with its own LevelRuntimeData (and therefore its own
 // GameWorld), so a test that drives the real event loop has no other handle on
@@ -1887,4 +2192,23 @@ bool level_editor_testing_terrain_smoothing()
 {
     return g_level_editor_testing_data != nullptr &&
            g_level_editor_testing_data->terrain_brush.use_smoothing;
+}
+
+// The authored sub-floor Z height of the object brush ('.' raises, ','
+// lowers). Same read discipline as level_editor_testing_level(): the editor
+// writes it only from the key handler, so read it after level_editor()
+// returns.
+int level_editor_testing_object_brush_worldz()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->object_brush.worldz;
+}
+
+// The tile-selector row count level_editor() derives on entry
+// (eds().maxrows). A wheel test has to know the wrap modulus BEFORE it enters
+// the editor, and this is the same expression the entry code uses.
+int level_editor_testing_default_maxrows()
+{
+    return static_cast<int>(kDefaultBackgrounds.size() / 4);
 }

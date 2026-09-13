@@ -187,6 +187,107 @@ TEST_F(GladHud, glad_remaining_counts)
 }
 
 
+// The magic bar's colour is the readable signal for "how much mana is left":
+// the MID band (a third to two thirds) and the HIGH band (two thirds to full)
+// are separate ramps and separate lengths, and one bleeding into the other
+// would misreport the pool at a glance.
+TEST_F(GladHud, glad_mp_bar_paints_the_mid_and_high_bands_at_their_lengths)
+{
+    ASSERT_NE(canonical_palette_index(MID_MP_COLOR),
+              canonical_palette_index(HIGH_MP_COLOR))
+        << "the two bands must be distinguishable in the captured frame";
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    screen* const s = og::runtime::current_session->myscreen_;
+    controlp->stats()->set_max_magicpoints(80);
+
+    // The bar box is 62x7 at (left, top); count only inside it.
+    constexpr int kLeft = 10;
+    constexpr int kTop = 20;
+    const auto band_pixels = [](const std::array<unsigned char, 64000>& frame,
+                                unsigned char color) {
+        const unsigned char want = canonical_palette_index(color);
+        int count = 0;
+        for (int y = kTop; y <= kTop + 6; ++y)
+            for (int x = kLeft; x <= kLeft + 61; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] == want)
+                    ++count;
+        return count;
+    };
+
+    // 40 of 80: past the LOW third, short of the HIGH two thirds.
+    // ceil(40 * 60 / 80) == 30 columns, 5 rows, less the two rounded corners
+    // the mask paints back over at x == left + 1.
+    s->clearbuffer();
+    controlp->stats()->set_magicpoints(40);
+    draw_value_bar(kLeft, kTop, controlp, 1, s);
+    const auto mid_frame = capture_rendered_frame(*s);
+    EXPECT_EQ(148, band_pixels(mid_frame, MID_MP_COLOR));
+    EXPECT_EQ(0, band_pixels(mid_frame, HIGH_MP_COLOR));
+
+    // 70 of 80: past two thirds, still short of full.
+    // ceil(70 * 60 / 80) == 53 columns.
+    s->clearbuffer();
+    controlp->stats()->set_magicpoints(70);
+    draw_value_bar(kLeft, kTop, controlp, 1, s);
+    const auto high_frame = capture_rendered_frame(*s);
+    EXPECT_EQ(263, band_pixels(high_frame, HIGH_MP_COLOR));
+    EXPECT_EQ(0, band_pixels(high_frame, MID_MP_COLOR));
+}
+
+// The radar gems are static chrome: they change only when the watched team
+// does. Redrawing them every frame would be four gem blits of pure waste, so
+// the draw is memoized on the team it last painted.
+TEST_F(GladHud, glad_radar_gems_skip_the_redraw_for_an_unchanged_team)
+{
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    screen* const s = og::runtime::current_session->myscreen_;
+
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+    walker* const old_control = v->control;
+    v->control = controlp;
+
+    // The gem band: the four gems at (246,140), (311,140), (246,189) and
+    // (311,189), each a 5x5 sprite drawn around its anchor.
+    const auto gem_band = [](const std::array<unsigned char, 64000>& frame) {
+        std::vector<unsigned char> band;
+        for (int y = 138; y <= 194; ++y)
+            for (int x = 244; x <= 314; ++x)
+                band.push_back(frame[static_cast<std::size_t>(y * 320 + x)]);
+        return band;
+    };
+
+    // Settle the memo on some other team first, so the draw below is a real
+    // change no matter what ran before this test.
+    controlp->set_team_num(1);
+    draw_radar_gems(s);
+
+    s->clearbuffer();
+    const auto cleared_band = gem_band(capture_rendered_frame(*s));
+    controlp->set_team_num(2);
+    draw_radar_gems(s);
+    const auto drawn_band = gem_band(capture_rendered_frame(*s));
+    ASSERT_NE(cleared_band, drawn_band)
+        << "a team change must paint the gems";
+
+    // Same team again: nothing is painted, so the cleared band survives.
+    s->clearbuffer();
+    draw_radar_gems(s);
+    EXPECT_EQ(cleared_band, gem_band(capture_rendered_frame(*s)))
+        << "an unchanged team must not repaint the gems";
+
+    // Leave the memo somewhere neutral for whatever runs next.
+    controlp->set_team_num(1);
+    draw_radar_gems(s);
+    v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
+        ? old_control : nullptr;
+}
+
 TEST_F(GladHud, glad_draw_gems_and_value_bars_smoke)
 {
     auto control = make_player(0);
@@ -1053,6 +1154,17 @@ TEST_F(GladHud, render_pending_redraw_presents_hud_overlay_in_single_frame)
         spy_screen.draw_panels(1);
         score_panel(&spy_screen, 1);
         EXPECT_EQ(capture_rendered_frame(spy_screen), spy_screen.presented_frame);
+
+        // A frame with nothing to repaint costs nothing: no HUD repaint and,
+        // above all, no second present (the flicker this path exists to avoid
+        // comes from presenting more than once around the overlay).
+        const auto settled_frame = capture_rendered_frame(spy_screen);
+        ASSERT_EQ(0, spy_screen.redrawme);
+        og::runtime::detail::render_pending_redraw(spy_screen, true);
+        EXPECT_EQ(1, spy_screen.buffer_to_screen_calls)
+            << "a clean frame must not present";
+        EXPECT_EQ(settled_frame, capture_rendered_frame(spy_screen))
+            << "a clean frame must not repaint the HUD";
     }
 }
 

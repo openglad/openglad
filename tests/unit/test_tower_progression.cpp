@@ -24,6 +24,7 @@
 #include <openglad/resources/save_data.h>
 
 #include "westlands_sim_fixture.h"
+#include "../test_save_state_guard.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -52,6 +53,10 @@ void prune_all_floors()
 class TowerProgressionTest : public ::testing::Test
 {
 protected:
+    // §1.10: SaveData::load mounts the saved campaign; heal the mount
+    // for whatever test runs next in the shuffle.
+    og::test::ScopedCampaignMountState mount_restore_;
+
     void SetUp() override
     {
         restore_default_campaigns();
@@ -67,10 +72,6 @@ protected:
         prune_all_floors();
         std::error_code ec;
         fs::remove(fs::path(get_user_path()) / "save" / "save0.gtl", ec);
-        // §1.10: SaveData::load mounts the saved campaign; heal the mount
-        // for whatever test runs next in the shuffle.
-        (void)unmount_campaign_package_with_error(get_mounted_campaign());
-        (void)mount_campaign_package_with_error("gladiator");
     }
 
     static IProgression& tower() { return og::mode::tower_progression(); }

@@ -47,6 +47,8 @@
 
 #include "test_gameplay_context_scope.h"
 
+#include "test_save_state_guard.h"
+
 namespace og::sim::test {
 
 enum class NetworkTransportBackend : std::uint8_t {
@@ -306,6 +308,10 @@ struct NetworkTestConfig {
 class NetworkTestFixture
 {
 public:
+    // prepare_default_campaign() below mounts "gladiator" for the staged
+    // world; the mount is process-global, so it is borrowed, not taken.
+    og::test::ScopedCampaignMountState mount_restore_;
+
     explicit NetworkTestFixture(NetworkTestConfig config = {})
         : config_(std::move(config))
         , server_world_(config_.level_id)

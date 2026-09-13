@@ -9,6 +9,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/server/match_stage.h>
 
 #include <algorithm>
@@ -176,10 +177,7 @@ void restore_preserved_save_slots(
 {
     for (PreservedSaveSlot& preserved_slot : preserved)
     {
-        if (!preserved_slot.member)
-            continue;
-
-        std::size_t restore_index = preserved_slot.slot_index;
+        const std::size_t restore_index = preserved_slot.slot_index;
         if (restore_index < save.team_list.size() && save.team_list[restore_index])
         {
             // The echoed lobby now carries every private company slot, even
@@ -189,21 +187,6 @@ void restore_preserved_save_slots(
             // fighter.
             continue;
         }
-        if (restore_index >= save.team_list.size())
-        {
-            restore_index = save.team_list.size();
-            for (std::size_t candidate = 0; candidate < save.team_list.size(); ++candidate)
-            {
-                if (!save.team_list[candidate])
-                {
-                    restore_index = candidate;
-                    break;
-                }
-            }
-        }
-
-        if (restore_index >= save.team_list.size())
-            continue;
 
         save.team_list[restore_index] = std::move(preserved_slot.member);
         if (save.team_size < static_cast<unsigned char>(save.team_list.size()))
@@ -1182,10 +1165,35 @@ void picker_lobby_initialize_from_save()
     resolve_picker_lobby_client().initialize_from_save();
 }
 
+#ifdef TESTING
+bool picker_lobby_testing_standalone_client_alive() noexcept
+{
+    return g_standalone_picker_lobby_client != nullptr;
+}
+
+void picker_lobby_testing_drop_standalone_client() noexcept
+{
+    if (g_active_picker_lobby_client != nullptr)
+        return;  // someone else owns the seam right now; not ours to close
+    if (g_standalone_picker_lobby_client)
+        g_standalone_picker_lobby_client->shutdown();
+    g_standalone_picker_lobby_client.reset();
+}
+#endif
+
 void picker_lobby_shutdown()
 {
-    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+    og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client();
+    const bool was_networked =
+        client != nullptr && client->is_networked_session();
+    if (client != nullptr)
         client->shutdown();
+    if (was_networked)
+    {
+        // The lobby is gone for good, so the session is over: drop the class
+        // packs it downloaded before they shadow the next campaign's book.
+        og::resources::end_pack_transfer_session();
+    }
     if (!og::ui::active_picker_lobby_client())
         g_standalone_picker_lobby_client.reset();
 }
@@ -1217,10 +1225,23 @@ void picker_reinitialize_lobby_after_game()
     // Networked clients reuse the live connection that survived gameplay and
     // re-sync the advanced campaign cursor; local/single-player rebuilds from
     // the save (the default resume_after_level()).
-    if (client != nullptr)
-        client->resume_after_level();
-    else
-        picker_lobby_initialize_from_save();
+    try
+    {
+        if (client != nullptr)
+            client->resume_after_level();
+        else
+            picker_lobby_initialize_from_save();
+    }
+    catch (const std::exception& error)
+    {
+        // A re-host that cannot bind between levels is a REPORT, not an
+        // escape: an exception here unwinds the menu out of the black
+        // window. The client latches the failure as a lost session, so the
+        // next picker frame's kick/lost revert swaps Base Camp to a local
+        // lobby with the CONNECTION LOST modal it already shows for a kick.
+        LogError("picker_reinit_lobby_after_game_failed reason={}\n",
+                 error.what());
+    }
     Log("picker_reinit_lobby_after_game elapsed_ms={} networked={} "
         "session_lost={}\n",
         std::chrono::duration_cast<std::chrono::milliseconds>(

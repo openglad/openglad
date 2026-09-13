@@ -293,7 +293,7 @@ private:
     // window may count against DISCONNECT_TIMEOUT_MS; a genuinely dead peer
     // still times out one full window after the resume.
     void restamp_input_freshness();
-    [[nodiscard]] bool process_disconnected_players(std::uint32_t expected_tick);
+    void process_disconnected_players(std::uint32_t expected_tick);
     void clear_pending_exit_prompt();
     void clear_pause_state();
     void handle_exit_prompt_response(bool accepted);

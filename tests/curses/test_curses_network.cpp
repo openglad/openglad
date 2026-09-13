@@ -40,6 +40,8 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include "curses_mount_restore.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -87,6 +89,9 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
 int curses_network_testing_exercise_internal_helpers();
+std::string curses_network_testing_session_build_failure(bool host,
+                                                        const char* campaign,
+                                                        bool* restored_out);
 og::sim::LobbySaveDataEquivalent
 curses_network_testing_build_join_save_equivalent(
     const og::sim::LobbyState& state);
@@ -1623,23 +1628,6 @@ const walker* find_living_named(const GameWorld& world, const std::string& name,
     return nullptr;
 }
 
-// Restore the process campaign mount exactly (the .inc's pattern), so
-// shuffled neighbors see their original package after a test that hosts a
-// non-default campaign.
-struct MountRestore {
-    std::string before = get_mounted_campaign();
-    ~MountRestore()
-    {
-        const std::string after = get_mounted_campaign();
-        if (after == before)
-            return;
-        if (before.empty())
-            (void)unmount_campaign_package_with_error(after);
-        else
-            (void)mount_campaign_package_with_error(before);
-    }
-};
-
 } // namespace
 
 // V5 consequence (a) + the point-3 trap's curses direction: a host whose
@@ -2319,6 +2307,8 @@ TEST(CursesNetwork, lobby_team_key_cycles_the_selected_owned_seat)
 // keystrokes now have to walk all four.
 TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
 {
+    MountRestore mount_restore;
+
     SaveData save;
     init_team_save(save, 0, FAMILY_SOLDIER, "CTF Keyboard");
     // The shared-teams rule rides the wire since protocol v12, derived from
@@ -2374,6 +2364,8 @@ TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
 // number (every campaign has a level 1).
 TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
 {
+    MountRestore mount_restore;
+
     SaveData save;
     init_team_save(save, 2, FAMILY_ELF, "Mismatch");
     save.current_campaign = "modes"; // not the mounted campaign
@@ -2644,6 +2636,8 @@ TEST(CursesNetwork, five_clients_can_change_global_player_five_exactly)
 // round-trips and shows up as a [ready] tag in the status lines.
 TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
 {
+    MountRestore mount_restore;
+
     SaveData host_save;
     SaveData join_save;
     init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
@@ -3189,4 +3183,267 @@ TEST(CursesNetwork, lobby_disconnect_confirm_ignores_key_repeats)
     term.push_char(U'd');
     lobby->poll(term, clock);
     EXPECT_TRUE(lobby->cancelled());
+}
+
+// A machine whose campaign package is not installed must refuse to build the
+// session and name the failure, instead of handing the level loop a half-built
+// world — and it must leave the caller's GameplayContext exactly as it found
+// it, or the picker it returns to renders against a freed world. The mounted
+// arm is the control: the same builder, the same roster, a real package.
+TEST(CursesNetwork, session_build_refuses_a_missing_campaign_and_restores_context)
+{
+    const std::string mounted_before = get_mounted_campaign();
+    bool host_restored = false;
+    EXPECT_EQ("failed to load level for host game",
+              curses_network_testing_session_build_failure(
+                  /*host=*/true, /*campaign=*/"wp9nosuchcampaign", &host_restored));
+    EXPECT_TRUE(host_restored)
+        << "a refused host build must put current_game back";
+
+    bool join_restored = false;
+    EXPECT_EQ("failed to load mirror level for join game",
+              curses_network_testing_session_build_failure(
+                  /*host=*/false, /*campaign=*/"wp9nosuchcampaign", &join_restored));
+    EXPECT_TRUE(join_restored)
+        << "a refused join build must put current_game back";
+
+    EXPECT_EQ("", curses_network_testing_session_build_failure(
+                      /*host=*/true, /*campaign=*/"gladiator", nullptr));
+    EXPECT_EQ("", curses_network_testing_session_build_failure(
+                      /*host=*/false, /*campaign=*/"gladiator", nullptr));
+    EXPECT_EQ(mounted_before, get_mounted_campaign())
+        << "the probe must restore the mount it borrowed";
+}
+
+namespace {
+
+// A terminal that types nothing until the lobby has painted `silent_frames`
+// frames, then types 'q'. Lets a test watch what run_curses_lobby does
+// BETWEEN two idle lobby frames.
+class QuietThenQuitTerminal final : public ITerminal
+{
+public:
+    explicit QuietThenQuitTerminal(int silent_frames)
+        : silent_frames_(silent_frames)
+    {
+    }
+
+    int rows() const override { return 24; }
+    int cols() const override { return 80; }
+    bool supports_unicode() const override { return false; }
+    bool supports_color() const override { return false; }
+    void clear() override {}
+    void put(int, int, char32_t, Color, Color, bool) override {}
+    void put_str(int, int, std::string_view, Color, Color, bool) override {}
+    void present() override { ++frames_; }
+    Key poll_key(bool) override
+    {
+        return frames_ >= silent_frames_ ? Key::character(U'q') : Key::none();
+    }
+    void set_cursor_visible(bool) override {}
+    void beep() override {}
+
+    int frames() const { return frames_; }
+
+private:
+    int silent_frames_ = 0;
+    int frames_ = 0;
+};
+
+} // namespace
+
+// A lobby waiting for peers must not spin the CPU: every idle frame costs the
+// clock exactly one 30 ms yield. The immediate-quit arm is the control — a
+// lobby that never idles never pays it, so the 30 is the yield and not some
+// other clock consumer inside poll().
+TEST(CursesNetwork, run_curses_lobby_yields_thirty_ms_per_idle_frame)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    QuietThenQuitTerminal idle_term(/*silent_frames=*/2);
+    FakeClock idle_clock;
+    const GameRunResult idled = run_curses_lobby(*lobby, idle_term, idle_clock);
+    EXPECT_FALSE(idled.ended);
+    EXPECT_EQ(2, idle_term.frames())
+        << "one idle frame, then the frame that read 'q'";
+    EXPECT_EQ(30u, idle_clock.now_ms())
+        << "exactly one 30 ms yield between the two frames";
+
+    SaveData quick_save;
+    init_team_save(quick_save, 0, FAMILY_SOLDIER, "Host");
+    auto quick_server = og::sim::InProcessTransport::create_server();
+    quick_server->accept_connections();
+    auto quick_client = quick_server->create_client_transport();
+    auto quick_lobby = make_host_lobby_over_transport_for_testing(
+        quick_save, 1, quick_server, quick_client);
+    QuietThenQuitTerminal quit_term(/*silent_frames=*/0);
+    FakeClock quit_clock;
+    const GameRunResult quit = run_curses_lobby(*quick_lobby, quit_term, quit_clock);
+    EXPECT_FALSE(quit.ended);
+    EXPECT_EQ(1, quit_term.frames());
+    EXPECT_EQ(0u, quit_clock.now_ms())
+        << "a lobby that quits on its first frame never yields";
+}
+
+// The lobby cursor walks EVERY seat in the room, so the three seat commands
+// have to say no to somebody else's seat rather than quietly retarget one of
+// this machine's own: 't' on a foreign seat, an exact-seat team request for a
+// seat this machine does not own, a kick from a machine that is not the host,
+// and the host kicking itself. Each refusal sits beside the accepted twin.
+TEST(CursesNetwork, lobby_refuses_foreign_seat_commands_and_self_kicks)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    ASSERT_EQ(2u, host_lobby->players().size());
+
+    // Identify the two seats from the host's replicated roster.
+    const std::vector<og::sim::LobbyPlayer> roster = host_lobby->players();
+    const og::sim::LobbyPlayer* host_seat = nullptr;
+    const og::sim::LobbyPlayer* join_seat = nullptr;
+    for (const og::sim::LobbyPlayer& player : roster) {
+        if (player.is_host)
+            host_seat = &player;
+        else
+            join_seat = &player;
+    }
+    ASSERT_NE(host_seat, nullptr);
+    ASSERT_NE(join_seat, nullptr);
+    ASSERT_EQ(1, join_seat->team);
+
+    // (1) An exact-seat team request for the joiner's seat is refused by the
+    // host's own lobby: the seat is not on this machine.
+    EXPECT_FALSE(host_lobby->request_seat_team_change(
+        join_seat->player_index, join_seat->seat_id, /*team=*/2))
+        << "a machine may only move its OWN seats";
+    // The paired control: the host's own seat moves.
+    EXPECT_TRUE(host_lobby->request_seat_team_change(
+        host_seat->player_index, host_seat->seat_id, /*team=*/2));
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    for (const og::sim::LobbyPlayer& player : host_lobby->players()) {
+        if (player.is_host) {
+            EXPECT_EQ(2, player.team);
+        } else {
+            EXPECT_EQ(1, player.team) << "the foreign seat never moved";
+        }
+    }
+
+    // (2) 't' with the cursor parked on the joiner's seat refuses in words.
+    host_term.push_char(U']');
+    host_term.push_char(U't');
+    for (int i = 0; i < 20; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "That seat is not yours"));
+    for (const og::sim::LobbyPlayer& player : host_lobby->players()) {
+        if (!player.is_host) {
+            EXPECT_EQ(1, player.team)
+                << "a refused 't' must not move the pointed-at seat";
+        }
+    }
+
+    // (3) Only the host kicks, and never itself.
+    EXPECT_FALSE(join_lobby->kick_machine(host_seat->machine_id))
+        << "a joiner has no kick";
+    EXPECT_FALSE(host_lobby->kick_machine(host_seat->machine_id))
+        << "the host may not kick its own machine";
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_EQ(2u, host_lobby->players().size())
+        << "no refused kick may remove anyone";
+    EXPECT_FALSE(join_lobby->connection_alert().has_value());
+
+    // The paired control: the host's kick of the JOINER is accepted.
+    EXPECT_TRUE(host_lobby->kick_machine(join_seat->machine_id));
+}
+
+// §2.5 curses parity: the roster's company column is clipped to the SDL
+// COMPANY budget (16 chars), so a long company name can never push the seat's
+// team/deploy columns off an 80-column terminal.
+TEST(CursesNetwork, lobby_roster_clips_a_long_company_to_sixteen_chars)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+    save.save_name = "AVERYLONGCOMPANYNAME";  // 20 chars
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 100; ++i)
+        lobby->poll(term, clock);
+
+    EXPECT_TRUE(status_contains(*lobby, "<AVERYLONGCOMPANY>"))
+        << "the company rides the roster row clipped to 16";
+    EXPECT_FALSE(status_contains(*lobby, "AVERYLONGCOMPANYNAME"))
+        << "the untrimmed name must never reach the row";
+}
+
+// A host who benched the whole company and pressed GO gets told what is
+// wrong, in the lobby's own words. The deployed arm is the control: the same
+// GO on the same lobby starts the moment one character is deployed.
+TEST(CursesNetwork, host_start_denial_names_an_empty_muster)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+    ASSERT_NE(save.team_list[0], nullptr);
+    for (auto& member : save.team_list) {
+        if (member)
+            member->deployed = false;
+    }
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client, kPinnedCursesMatchSeed);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 200; ++i)
+        lobby->poll(term, clock);
+
+    lobby->request_start();
+    bool started = false;
+    for (int i = 0; i < 100; ++i)
+        started = lobby->poll(term, clock) || started;
+    EXPECT_FALSE(started);
+    EXPECT_TRUE(status_contains(*lobby, "No one is deployed"));
+    EXPECT_EQ(lobby->take_session(), nullptr);
 }

@@ -660,8 +660,6 @@ viewscreen::FloorPassParams viewscreen::compute_floor_pass(
 		    255.0f + dz * static_cast<float>(kFloorBelowAlphaStep)));
 		if (falpha < static_cast<int>(kFloorBelowAlphaMin))
 			falpha = static_cast<int>(kFloorBelowAlphaMin);
-		if (falpha > 255)
-			falpha = 255;
 	}
 	else
 	{
@@ -1393,6 +1391,11 @@ short viewscreen::input(const void* native_event)
 		{
 			totaltime = (static_cast<Uint32>(query_timer_control()) - active_screen()->timerstart)/72;
 			totalframes = (active_screen()->framecount);
+			// Under a second of level time truncates to zero whole seconds;
+			// read the frames drawn so far as the rate rather than dividing
+			// by it (an unguarded integer divide by zero is a SIGFPE).
+			if (totaltime == 0)
+				totaltime = 1;
 			framespersec = totalframes / totaltime;
 			std::string somemessage = std::format("{} FRAMES PER SEC", framespersec);
 			active_screen()->viewob[0]->set_display_text(somemessage.c_str(), STANDARD_TEXT_TIME);

@@ -13,11 +13,14 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
+
+#include "unit_pack_store_guard.h"
 
 using namespace og::script;
 
@@ -25,6 +28,11 @@ namespace {
 
 class LevelScriptsTest : public ::testing::Test {
 protected:
+    // Declared first so it outlives the clears below: the shipped pack
+    // scripts, family chunks and tuning this fixture wipes are what the
+    // next test in a --gtest_shuffle order expects to find.
+    og::test::ScopedPackStoreState pack_store_restore_;
+
     LevelScriptsTest() : world(7)
     {
         world.id = 42;
@@ -316,4 +324,203 @@ TEST_F(LevelScriptsTest, no_level_hooks_means_no_vm_activity)
     world.tick();
     EXPECT_TRUE(vm_log().empty());
     EXPECT_TRUE(world.scripts().host().errors().empty());
+}
+
+// With no class packs installed there is no Lua at all, and the sim's hot
+// paths must not pay for one: a level tick, a spawn, a death, a respawn, a
+// lineup stage and a fighter price all answer "nothing scripted" without
+// building or entering a VM.
+TEST_F(LevelScriptsTest, no_packs_means_every_level_dispatcher_is_inert)
+{
+    ASSERT_TRUE(og::script::pack_scripts().empty());
+
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42));
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(-1));
+
+    world.tick();
+    walker* soldier = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    soldier->set_dead(1);
+    hooks::level_entity_death(soldier);
+    hooks::level_entity_spawn(soldier);
+    hooks::level_respawn(&world, soldier);
+    EXPECT_FALSE(hooks::level_lineup_stage(&world));
+    EXPECT_TRUE(vm_log().empty());
+    EXPECT_TRUE(world.scripts().host().errors().empty());
+
+    hooks::LineupPowerRow row;
+    row.family = "SOLDIER";
+    row.level = 7;
+    row.hp = 30;
+    long long power = -12345;
+    EXPECT_FALSE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(-12345, power) << "a refused price must not write the out-param";
+
+    // Control: one installed pack turns every one of those answers around.
+    register_pack_script(
+        {"test.level", "lvl.lua",
+         "og.register_level_hooks(42, {\n"
+         "  on_tick = function(level, tick) og.log('tick', tick) end,\n"
+         "  on_entity_death = function(ent) og.log('death') end,\n"
+         "  on_respawn = function(ent) og.log('respawn') end,\n"
+         "  on_lineup_stage = function(level) og.log('lineup') end,\n"
+         "})\n"
+         "og.register_campaign_hooks({\n"
+         "  lineup = { power = function(r) return r.hp * 2 + r.level end },\n"
+         "})\n"});
+    EXPECT_NE(0u, hooks::level_hook_kinds_for(42));
+    hooks::level_entity_death(soldier);
+    hooks::level_respawn(&world, soldier);
+    EXPECT_TRUE(hooks::level_lineup_stage(&world));
+    ASSERT_EQ(3u, vm_log().size());
+    EXPECT_EQ("death", vm_log()[0]);
+    EXPECT_EQ("respawn", vm_log()[1]);
+    EXPECT_EQ("lineup", vm_log()[2]);
+    EXPECT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(67, power);
+}
+
+// Level hooks are keyed by level id. A hook registered for scenario 43 must
+// stay silent while the party is on 42 — the two-level campaign whose second
+// level's respawn rule leaked into the first is the bug this pins.
+TEST_F(LevelScriptsTest, hooks_for_another_level_do_not_fire)
+{
+    register_pack_script(
+        {"test.level", "lvl43.lua",
+         "og.register_level_hooks(43, {\n"
+         "  on_respawn = function(ent) og.log('respawn', og.entity_id(ent)) "
+         "end,\n"
+         "  on_lineup_stage = function(level) og.log('lineup', level) end,\n"
+         "})\n"});
+    world.tick();
+    walker* soldier = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    ASSERT_EQ(42, world.id);
+
+    hooks::level_respawn(&world, soldier);
+    EXPECT_FALSE(hooks::level_lineup_stage(&world));
+    EXPECT_TRUE(vm_log().empty())
+        << "level 43's hooks must not run on level 42";
+
+    // The same two calls on the level they were registered for.
+    world.id = 43;
+    hooks::level_respawn(&world, soldier);
+    EXPECT_TRUE(hooks::level_lineup_stage(&world));
+    ASSERT_EQ(2u, vm_log().size());
+    EXPECT_EQ("respawn\t" + std::to_string(soldier->entity_id()), vm_log()[0]);
+    EXPECT_EQ("lineup\t43", vm_log()[1]);
+}
+
+// A per-entity hook table with no on_death is a table the level author
+// filled in conditionally and left empty. The death must still reach the
+// level-wide hook exactly once, and the entity's empty entry must not wedge
+// the dispatcher for the deaths that follow.
+TEST_F(LevelScriptsTest, an_empty_entity_hook_table_still_lets_the_level_hook_fire)
+{
+    register_pack_script(
+        {"test.level", "lvl.lua",
+         "og.register_level_hooks(42, {\n"
+         "  on_entity_spawn = function(ent)\n"
+         "    og.set_entity_hooks(ent, {})\n"
+         "  end,\n"
+         "  on_entity_death = function(ent)\n"
+         "    og.log('level death', og.entity_id(ent))\n"
+         "  end,\n"
+         "})\n"});
+    world.tick();
+    walker* first = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* second = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+    ASSERT_TRUE(vm_log().empty()) << "an empty table logs nothing at spawn";
+
+    first->set_dead(1);
+    first->death();
+    ASSERT_EQ(1u, vm_log().size()) << "exactly one line: the level-wide hook";
+    EXPECT_EQ("level death\t" + std::to_string(first->entity_id()),
+              vm_log().back());
+
+    second->set_dead(1);
+    second->death();
+    ASSERT_EQ(2u, vm_log().size());
+    EXPECT_EQ("level death\t" + std::to_string(second->entity_id()),
+              vm_log().back());
+    EXPECT_TRUE(world.scripts().host().errors().empty())
+        << world.scripts().host().errors().front().message;
+}
+
+// The registrar's refusals, in the words the pack author reads.
+TEST_F(LevelScriptsTest, level_and_entity_hook_registration_rejections)
+{
+    register_pack_script({"test.level", "a.lua",
+                          "og.register_level_hooks(42, { on_load = 5 })\n"});
+    register_pack_script({"test.level", "b.lua",
+                          "og.register_level_hooks(42, {})\n"});
+    register_pack_script(
+        {"test.level", "c.lua",
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  do_special = function(self)\n"
+         "    og.set_entity_hooks(self, { on_death = function() end })\n"
+         "    return true\n"
+         "  end,\n"
+         "})\n"});
+    register_pack_script(
+        {"test.level", "d.lua",
+         "og.register_hooks('living', 'core:orc', {\n"
+         "  do_special = function(self)\n"
+         "    og.set_entity_hooks(self, { on_death = 5 })\n"
+         "    return true\n"
+         "  end,\n"
+         "})\n"});
+
+    const std::vector<ScriptError>& errs = world.scripts().host().errors();
+    ASSERT_EQ(2u, errs.size()) << "two load errors, from a.lua and b.lua";
+    EXPECT_NE(std::string::npos,
+              errs[0].message.find(
+                  "og.register_level_hooks: 'on_load' must be a function"))
+        << errs[0].message;
+    EXPECT_NE(std::string::npos,
+              errs[1].message.find(
+                  "og.register_level_hooks: no valid hooks (check names)"))
+        << errs[1].message;
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42))
+        << "neither refused table may leave a level hook behind";
+
+    // og.set_entity_hooks on a walker the world never tracked: there is no
+    // id to key the override by, so it is refused rather than silently
+    // dropped on the floor.
+    walker loose;
+    loose.set_order_family(Order::Living, static_cast<char>(FAMILY_SOLDIER));
+    ASSERT_EQ(0u, loose.entity_id());
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    EXPECT_FALSE(hooks::do_special(soldier, &loose).has_value())
+        << "the refusal aborts the hook, so nothing is answered";
+    ASSERT_EQ(3u, errs.size());
+    EXPECT_NE(std::string::npos,
+              errs[2].message.find(
+                  "og.set_entity_hooks: entity is untracked"))
+        << errs[2].message;
+
+    // A tracked entity with a non-function on_death is refused by name too.
+    walker* orc = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_NE(0u, orc->entity_id());
+    const FamilyDescriptor* orc_fd = get_family_descriptor(FAMILY_ORC);
+    ASSERT_NE(nullptr, orc_fd);
+    EXPECT_FALSE(hooks::do_special(orc_fd, orc).has_value());
+    ASSERT_EQ(4u, errs.size());
+    EXPECT_NE(std::string::npos,
+              errs[3].message.find(
+                  "og.set_entity_hooks: 'on_death' must be a function"))
+        << errs[3].message;
+
+    // Control: the same call on a tracked entity with a real function is
+    // accepted, and the hook it installs fires.
+    walker* tracked = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, tracked);
+    const auto answered = hooks::do_special(soldier, tracked);
+    ASSERT_TRUE(answered.has_value());
+    EXPECT_TRUE(*answered);
+    EXPECT_EQ(4u, errs.size()) << "an accepted registration reports nothing";
 }

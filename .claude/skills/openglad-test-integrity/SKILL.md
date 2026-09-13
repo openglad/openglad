@@ -85,14 +85,26 @@ test after the failure never ran.
   sweep, not one run. In render tests, compute `world_to_screen_*` only
   AFTER a settle redraw (the first redraw pans the camera) — the classic
   passes-in-order, fails-shuffled shape.
-- Known pre-existing shuffle hangs (proven on master; CI runs
-  declaration order and is unaffected): og_test_picker seed 29
+- The two shuffle hangs recorded here — og_test_picker seed 29
   (promote_orc detail-menu test) and og_test_view seed 7
-  (base_camp_name_tap). Don't attribute these to new tests without
+  (base_camp_name_tap) — were one bug each and are fixed: a picker
+  lobby client outliving the test that made it, whose next
+  picker_lobby_poll() freed the following test's roster. The
+  integration harness now drops the standalone client between tests
+  ([LOBBY-R1] in tests/integration/integration_main.cpp); run with
+  OPENGLAD_TEST_LOBBY_CENSUS=1 to list the tests that end holding one.
+  Still don't attribute a shuffle failure to new tests without
   reproducing on a clean tree.
-- `Difficulty.submenu_door_flow` (og_test_menu_ui) is load-flaky and DOES
-  hit CI ASan occasionally — a rerun clears it; a missed injector click
-  under load leaves its cycle one short.
+- `Difficulty.submenu_door_flow` (og_test_menu_ui) used to be recorded
+  here as load-flaky with "a rerun clears it". It was not load: its
+  per-click oracle was `wait_for_interactable_label_change`, which
+  returns true for ANY label that differs from the snapshot, so a click
+  the row never saw still counted and the lap assertion sixty lines
+  later read one short. The helper now reads the stored VALUE on the
+  menu thread and re-clicks, deadline-bounded, until it moves — the
+  shape `click_cycle_step` in test_options_menu.cpp has always used.
+  A rerun is never the answer to a flaky injector flow; find the oracle
+  that certifies a click nobody consumed.
 - Never bump a deadline to fix a timing-flaky test: measure the real
   cost, fix it, then convert the flat delay into a wait-on-condition
   with a generous ceiling, and prove the wait can still fail by planting
@@ -101,9 +113,16 @@ test after the failure never ran.
 ## Tests that hang (the three known traps)
 
 1. Menu/prompt/picker paths need the injector-thread pattern
-   (`wait_for_interactable` + `SDL_Delay(750)` + `interact`). Never
-   drive a prompt from a TESTING exerciser — restrict exercisers to
-   non-blocking data/mode/draw paths.
+   (`wait_for_interactable` + `wait_for_menu_frames(n)` + `interact`;
+   there is no fade to wait for under TESTING, so never a flat delay).
+   Never drive a prompt from a TESTING exerciser — restrict exercisers
+   to non-blocking data/mode/draw paths. An injector that drives a
+   BLOCKING menu from the main thread must never bound its escape tail
+   by wall clock: `run_pause_menu` returns only when something clicks
+   its way out, so a tail that stops clicking guarantees the hang it
+   exists to prevent. Loop until the main thread signals it left the
+   menu, and click BACK as well as RESUME — the player sub-screen
+   publishes no RESUME (`tests/integration/test_pause_menu.cpp`).
 2. Never feed malformed YAML to gparser as a coverage target; it does
    not return.
 3. Run ctest with stdin PIPED, never under a pty — headless clients

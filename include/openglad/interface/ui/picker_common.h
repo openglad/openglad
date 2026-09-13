@@ -302,10 +302,17 @@ std::uint32_t calculate_sell_value(const guy& member);
 // --- Name generation ---
 
 // Return a random name appropriate for the given family.
-const char* get_random_name(unsigned char family);
+//
+// The optional rng is the SESSION's generator (docs/tower-triple-design.md's
+// run-seed rule). Pass one wherever a client latches a seed and promises the
+// company it founds is a function of it -- the terminal clients do. rng ==
+// nullptr keeps the ambient std::rand() draw this has always made, which is
+// what the SDL client and every unit pin still use.
+const char* get_random_name(unsigned char family, IRandom* rng = nullptr);
 
 // Return a unique name not already in the save's team list.
-std::string get_unique_name(unsigned char family, const SaveData& save);
+std::string get_unique_name(unsigned char family, const SaveData& save,
+                            IRandom* rng = nullptr);
 
 // --- Company name generation (design §2.2) ---
 
@@ -343,14 +350,17 @@ int count_family_members(int family, const SaveData& save);
 int add_recruit_to_team(SaveData& save, std::unique_ptr<guy> recruit, int team_num);
 
 // Create a fresh recruit of the given family with a unique name.
-std::unique_ptr<guy> create_recruit(int family, int team_num, const SaveData& save);
+std::unique_ptr<guy> create_recruit(int family, int team_num,
+                                    const SaveData& save,
+                                    IRandom* rng = nullptr);
 
 // Reset save data for a new game: clear team, reset gold.
 void reset_for_new_game(SaveData& save);
 
 // Ensure team has at least one member.  Creates recruits from the
 // families list, falling back to FAMILY_SOLDIER if the list is empty.
-void ensure_team_populated(SaveData& save, const std::vector<int>& families = {}, int team_num = 0);
+void ensure_team_populated(SaveData& save, const std::vector<int>& families = {},
+                           int team_num = 0, IRandom* rng = nullptr);
 
 // --- Derived stats ---
 
@@ -1395,7 +1405,8 @@ std::vector<int> collect_team_families(const SaveData& save);
 
 // If the team is empty, set starting gold and populate with recruits.
 // No-op if team already has members.
-void initialize_starting_team(SaveData& save, const std::vector<int>& families = {}, int team_num = 0);
+void initialize_starting_team(SaveData& save, const std::vector<int>& families = {},
+                              int team_num = 0, IRandom* rng = nullptr);
 
 // --- Save/Load error strings ---
 
@@ -1417,7 +1428,10 @@ void statscopy(guy* dest, const guy* source);
 
 class HireSession {
 public:
-    HireSession(SaveData& save, int team_num);
+    // The optional rng names the recruits this session manufactures (the
+    // one on the counter and each replacement after a hire). Same rule as
+    // create_recruit: nullptr keeps the ambient draw.
+    HireSession(SaveData& save, int team_num, IRandom* rng = nullptr);
 
     // Navigation — wrapping cycle through kAllowableGuys
     void next_family();
@@ -1441,6 +1455,7 @@ private:
     SaveData& save_;
     int team_num_;
     int current_type_ = 0;
+    IRandom* rng_ = nullptr;
     std::unique_ptr<guy> recruit_;
 
     void make_recruit();

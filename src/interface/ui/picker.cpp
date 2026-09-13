@@ -38,6 +38,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_selection.h>
 #include <openglad/resources/og_file.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/session_state.h>
@@ -611,8 +612,20 @@ bool picker_replace_lobby_client(
     if (previous_was_active)
         og::ui::install_active_picker_lobby_client(nullptr);
 
+    const bool leaving_networked_session =
+        previous_client != nullptr &&
+        previous_client->is_networked_session() &&
+        !next_client->is_networked_session();
     if (previous_client)
         previous_client->shutdown();
+    if (leaving_networked_session)
+    {
+        // The networked session is over (a local client is taking its place):
+        // the class packs it downloaded from its host stop shadowing the next
+        // campaign's book here. Not on the way into another networked
+        // session — that one re-announces and re-mounts what it needs.
+        og::resources::end_pack_transfer_session();
+    }
 
     std::string message;
     try
@@ -638,7 +651,26 @@ bool picker_replace_lobby_client(
         if (previous_was_active)
             og::ui::install_active_picker_lobby_client(current_client.get());
         if (current_client)
-            current_client->initialize_from_save();
+        {
+            try
+            {
+                current_client->initialize_from_save();
+            }
+            catch (const std::exception& restore_error)
+            {
+                // The rollback cannot re-dial either — the port it released
+                // on the way out is someone else's now. Leaving it installed
+                // would hand Base Camp a client with no listener that nothing
+                // retires (a host reports no kick). Retire it here instead;
+                // the process falls back to the lazily created local lobby,
+                // and the ORIGINAL failure is still what the caller reports.
+                LogError("picker_restore_lobby_client_failed reason={}\n",
+                         restore_error.what());
+                if (previous_was_active)
+                    og::ui::install_active_picker_lobby_client(nullptr);
+                current_client.reset();
+            }
+        }
         throw;
     }
 
@@ -2923,18 +2955,32 @@ Sint32 create_detail_menu(guy *arg1)
    //leftmouse(buttons);
    //localbuttons->leftclick(buttons);
 
+   // The parameter SEATS the slot and is never dereferenced past the first
+   // poll: every iteration below opens with picker_lobby_poll(), which
+   // rebuilds save.team_list (picker_lobby_client.cpp, apply_state_to_save),
+   // so arg1 names a freed guy from that moment on. The slot is re-read each
+   // frame instead — which is what the nullptr path always did.
+   if (arg1 != nullptr)
+   {
+       auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
+       for (std::size_t i = 0; i < tl.size(); ++i)
+       {
+           if (tl[i].get() == arg1)
+           {
+               og::runtime::current_session->editguy_ = static_cast<int>(i);
+               break;
+           }
+       }
+   }
+
    while ( !(retvalue & MENU_EXIT) )
    {
        picker_lobby_poll();
-       guy* thisguy = arg1;
-       if (!thisguy)
-       {
-           auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
-           const int slot = og::runtime::current_session->editguy_;
-           if (slot < 0 || slot >= static_cast<int>(tl.size()))
-               return MENU_REDRAW;
-           thisguy = tl[static_cast<std::size_t>(slot)].get();
-       }
+       auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
+       const int slot = og::runtime::current_session->editguy_;
+       if (slot < 0 || slot >= static_cast<int>(tl.size()))
+           return MENU_REDRAW;
+       guy* thisguy = tl[static_cast<std::size_t>(slot)].get();
        if (!thisguy)
            return MENU_REDRAW;
 
@@ -3098,6 +3144,14 @@ static std::string pick_spritesheet()
             ++scroll_top;
         if (scroll_delta > 0 && scroll_top > 0)
             --scroll_top;
+        // Named landing witness for every input this loop CONSUMES (the
+        // three traces below are TESTING-only). An injector driving this
+        // screen cannot see scroll_top or the selection, so without them a
+        // press eaten by a frame slower than its hold is indistinguishable
+        // from one that landed -- and it is re-sent blind or not at all.
+        if (scroll_delta != 0)
+            TRACE("sheet", "wheel delta=%d top=%d",
+                  static_cast<int>(scroll_delta), scroll_top);
 
         MouseState& ms = query_mouse();
         if (ms.left) {
@@ -3113,6 +3167,7 @@ static std::string pick_spritesheet()
                     scroll_top = std::max(0, scroll_top - 1);
                 else if (my >= thumb_y + thumb_h)
                     scroll_top = std::min(total_items - VISIBLE_ROWS, scroll_top + 1);
+                TRACE("sheet", "trough top=%d", scroll_top);
                 spritesheet_wait_for_mouse_release();
             } else if (mx >= LIST_X && mx < LIST_X + LIST_W
                     && my >= LIST_Y && my < LIST_Y + SCROLL_H) {
@@ -3123,6 +3178,7 @@ static std::string pick_spritesheet()
                     const std::string& pack = packs[static_cast<std::size_t>(item - 1)];
                     selection = (selection == pack) ? "" : pack;
                 }
+                TRACE("sheet", "row item=%d sel=%s", item, selection.c_str());
                 spritesheet_wait_for_mouse_release();
             }
         }

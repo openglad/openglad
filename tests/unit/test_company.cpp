@@ -1180,6 +1180,8 @@ TEST(CompanyBackups, delete_backup_and_delete_company_reap_files)
 
     EXPECT_TRUE(og::data::delete_company_backup("delco", 1));
     EXPECT_FALSE(user_file_exists("save/backups/delco.001.gtl"));
+    EXPECT_EQ(1u, og::data::list_company_backups("delco").size())
+        << "the safe-name delete really removed one snapshot";
     EXPECT_FALSE(og::data::delete_company_backup("delco", 1))
         << "deleting a missing backup reports false";
 
@@ -1483,6 +1485,53 @@ TEST(CompanyAutosave, level_win_keeps_success_when_backup_path_is_blocked)
     EXPECT_EQ("Backup Failure Is Nonfatal", header->display_name);
     EXPECT_EQ("not a directory",
               read_file_bytes(sandbox.dir() / "backups"));
+}
+
+// A write failure at the autosave choke point must be REPORTED, not
+// swallowed: the callers use the return value to keep the player on the
+// screen they were on instead of moving past an unsaved level. A backup
+// failure is deliberately non-fatal (the test above); a write failure is not.
+TEST(CompanyAutosave, reports_a_failed_write_and_leaves_no_company_behind)
+{
+    namespace fs = std::filesystem;
+    SaveDirSandbox sandbox;
+    ScopedCompanyClock clock(700);
+    og::data::ScopedActiveCompany active("writefail");
+    ASSERT_TRUE(active.applied());
+
+    // atomic_company_save stages at save/<slot>.tmp.gtl; a directory there
+    // fails the staged write.
+    const fs::path blocker = sandbox.dir() / "writefail.tmp.gtl";
+    std::error_code ec;
+    fs::create_directories(blocker, ec);
+    ASSERT_FALSE(ec);
+    sandbox.write_raw("writefail.tmp.gtl/keep", "write sentinel");
+
+    SaveData save;
+    save.current_campaign = "gladiator";
+    save.save_name = "Never Written";
+    EXPECT_EQ(SaveDataIoError::OpenWriteFailed,
+              og::data::company_autosave(
+                  save, og::data::CompanyAutosaveKind::LevelWin));
+    EXPECT_FALSE(user_file_exists("save/writefail.gtl"))
+        << "a failed autosave leaves no half-written company";
+    EXPECT_TRUE(og::data::list_company_backups("writefail").empty())
+        << "the level-win snapshot is skipped when the write failed";
+    EXPECT_EQ("write sentinel", read_file_bytes(blocker / "keep"));
+
+    // Control: unblock and the identical call writes and snapshots.
+    fs::remove_all(blocker, ec);
+    ASSERT_FALSE(ec);
+    EXPECT_EQ(SaveDataIoError::None,
+              og::data::company_autosave(
+                  save, og::data::CompanyAutosaveKind::LevelWin));
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header("writefail");
+    ASSERT_TRUE(header.has_value());
+    EXPECT_TRUE(header->valid);
+    EXPECT_EQ("Never Written", header->display_name);
+    EXPECT_EQ(700, header->last_played_unix_s);
+    EXPECT_EQ(1u, og::data::list_company_backups("writefail").size());
 }
 
 // [SAVE-F1]: while a networked lobby holds the in-memory save (host campaign
@@ -1837,6 +1886,94 @@ TEST(CompanyAutosave, local_mutation_hook_is_a_plain_stamped_write)
 
 
 // ---------------------------------------------------------------------------
+// The last step of a restore re-stamps last_played so Continue still points
+// at the company. If that write fails the restored BYTES are already on disk
+// and the load already succeeded, so the honest report is RestampFailed with
+// the backup's own timestamp still in the header — never None (which would
+// tell the UI a fully-finished restore) and never a rollback (which would
+// throw away a restore the player already got).
+TEST(CompanyBackups, restore_reports_a_failed_restamp_after_the_bytes_landed)
+{
+    namespace fs = std::filesystem;
+    SaveDirSandbox sandbox;
+    ScopedMountRestore mount_guard;
+    // Step 3 of a restore does a FULL load, which mounts the company's
+    // campaign — make the builtin packages available in the unit config dir.
+    restore_default_campaigns();
+
+    SaveData original;
+    original.current_campaign = "gladiator";
+    original.save_name = "Restamp Source";
+    original.totalcash = 4242;
+    // atomic_company_save writes the caller's stamp verbatim; the autosave
+    // choke point is what normally sets it from the clock.
+    original.last_played_unix_s = 1000;
+    ASSERT_EQ(SaveDataIoError::None,
+              og::data::atomic_company_save(original, "restampco"));
+    ASSERT_TRUE(og::data::backup_company_now("restampco")); // seq 1
+    const std::string backup_bytes =
+        read_file_bytes(sandbox.dir() / "backups/restampco.001.gtl");
+
+    SaveData newer;
+    newer.current_campaign = "gladiator";
+    newer.save_name = "Restamp Later";
+    newer.totalcash = 7;
+    newer.last_played_unix_s = 2000;
+    ASSERT_EQ(SaveDataIoError::None,
+              og::data::atomic_company_save(newer, "restampco"));
+    ASSERT_NE(backup_bytes, read_file_bytes(sandbox.dir() / "restampco.gtl"))
+        << "the live company must differ from the backup for the restore to "
+           "be observable";
+
+    // atomic_company_save stages at save/<slot>.tmp.gtl; a directory there
+    // fails the re-stamp and nothing else (the restore's own staging is
+    // save/<slot>.gtl.restoretmp and its copy half save/<slot>.gtl.tmp).
+    const fs::path restamp_blocker = sandbox.dir() / "restampco.tmp.gtl";
+    std::error_code ec;
+    fs::create_directories(restamp_blocker, ec);
+    ASSERT_FALSE(ec);
+    sandbox.write_raw("restampco.tmp.gtl/keep", "restamp sentinel");
+
+    SaveData memory;
+    {
+        ScopedCompanyClock clock(3000);
+        EXPECT_EQ(og::data::CompanyRestoreError::RestampFailed,
+                  og::data::restore_company_backup(memory, "restampco", 1));
+    }
+
+    EXPECT_EQ(backup_bytes, read_file_bytes(sandbox.dir() / "restampco.gtl"))
+        << "the chosen backup is on disk: the restore itself completed";
+    EXPECT_EQ("Restamp Source", memory.save_name)
+        << "and the reload put it in memory";
+    EXPECT_EQ(4242u, memory.totalcash);
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header("restampco");
+    ASSERT_TRUE(header.has_value());
+    EXPECT_TRUE(header->valid);
+    EXPECT_EQ(1000, header->last_played_unix_s)
+        << "the failed re-stamp left the backup's own timestamp standing";
+    EXPECT_EQ(2u, og::data::list_company_backups("restampco").size())
+        << "the pre-restore snapshot of the replaced company was kept";
+    EXPECT_FALSE(user_file_exists("save/restampco.gtl.restoretmp"))
+        << "no restore staging residue";
+    EXPECT_TRUE(fs::is_directory(restamp_blocker));
+
+    // Control: unblock and the identical restore reports None and re-stamps.
+    fs::remove_all(restamp_blocker, ec);
+    ASSERT_FALSE(ec);
+    SaveData memory2;
+    {
+        ScopedCompanyClock clock(4000);
+        EXPECT_EQ(og::data::CompanyRestoreError::None,
+                  og::data::restore_company_backup(memory2, "restampco", 1));
+    }
+    const std::optional<og::data::CompanyInfo> restamped =
+        og::data::read_company_header("restampco");
+    ASSERT_TRUE(restamped.has_value());
+    EXPECT_EQ(4000, restamped->last_played_unix_s)
+        << "a completed restore stamps the restore's own clock";
+}
+
 // #155 cloud-save byte IO: export_company_bytes / install_company_bytes.
 // ---------------------------------------------------------------------------
 
@@ -1943,6 +2080,88 @@ TEST(CompanyCloudBytes, install_to_fresh_slot_creates_without_backup)
     for (const og::data::CompanyInfo& info : og::data::list_companies())
         listed = listed || info.slot == "cloudnew";
     EXPECT_TRUE(listed);
+}
+
+// A cloud install replaces a company file, so every step that can fail must
+// fail CLOSED: the player's local company survives a download that could not
+// be written to disk and one that could not be snapshotted first. The
+// unblocked control at the end is what proves the two refusals are refusals
+// and not a broken install path.
+TEST(CompanyCloudBytes, install_stage_and_backup_failures_leave_the_company_intact)
+{
+    namespace fs = std::filesystem;
+    SaveDirSandbox sandbox;
+    // og_open_write falls back to a cwd-relative path when PhysFS refuses;
+    // keep the repo's own save/ out of it either way.
+    og::test::ScopedPhysicalFileState cwd_staging_state(
+        fs::current_path() / "save/cloudfail.cloudstage.tmp.gtl");
+    ASSERT_TRUE(cwd_staging_state.ready())
+        << cwd_staging_state.error().message();
+
+    HeaderFixture local;
+    local.name = "Held Company";
+    local.cash = 555;
+    const std::string local_bytes = local.bytes();
+    sandbox.write_raw("cloudfail.gtl", local_bytes);
+
+    HeaderFixture remote;
+    remote.name = "Downloaded Company";
+    remote.cash = 999;
+    const std::string remote_bytes = remote.bytes();
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+
+    // Step 2 (stage the bytes) fails: a directory occupies the staging name.
+    const fs::path stage_blocker =
+        sandbox.dir() / "cloudfail.cloudstage.tmp.gtl";
+    std::error_code ec;
+    fs::create_directories(stage_blocker, ec);
+    ASSERT_FALSE(ec);
+    sandbox.write_raw("cloudfail.cloudstage.tmp.gtl/keep", "stage sentinel");
+
+    EXPECT_EQ(og::data::CompanyInstallError::StageFailed,
+              og::data::install_company_bytes("cloudfail", remote_raw));
+    EXPECT_EQ(local_bytes, read_file_bytes(sandbox.dir() / "cloudfail.gtl"))
+        << "a download that never landed cannot replace the company";
+    EXPECT_TRUE(og::data::list_company_backups("cloudfail").empty())
+        << "a failed stage never spends a backup slot";
+    EXPECT_EQ("stage sentinel", read_file_bytes(stage_blocker / "keep"))
+        << "the staging cleanup must not recurse into what blocked it";
+
+    fs::remove_all(stage_blocker, ec);
+    ASSERT_FALSE(ec);
+
+    // Step 4 (pre-install backup) fails: copy_user_file's "<dst>.tmp" half is
+    // a directory, so the snapshot cannot be written.
+    const fs::path backup_blocker =
+        sandbox.dir() / "backups" / "cloudfail.001.gtl.tmp";
+    fs::create_directories(backup_blocker, ec);
+    ASSERT_FALSE(ec);
+    sandbox.write_raw("backups/cloudfail.001.gtl.tmp/keep", "backup sentinel");
+
+    EXPECT_EQ(og::data::CompanyInstallError::BackupFailed,
+              og::data::install_company_bytes("cloudfail", remote_raw));
+    EXPECT_EQ(local_bytes, read_file_bytes(sandbox.dir() / "cloudfail.gtl"))
+        << "what cannot be snapshotted is never replaced (3.7 ordering)";
+    EXPECT_TRUE(og::data::list_company_backups("cloudfail").empty())
+        << "the half-written snapshot is not a listable backup";
+    EXPECT_FALSE(user_file_exists("save/cloudfail.cloudstage.tmp.gtl"))
+        << "the staged download is reaped when the backup step refuses";
+
+    // Control: with nothing blocked, the identical call installs.
+    fs::remove_all(backup_blocker, ec);
+    ASSERT_FALSE(ec);
+    EXPECT_EQ(og::data::CompanyInstallError::None,
+              og::data::install_company_bytes("cloudfail", remote_raw));
+    EXPECT_EQ(remote_bytes, read_file_bytes(sandbox.dir() / "cloudfail.gtl"))
+        << "the unblocked install replaces the slot";
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("cloudfail");
+    ASSERT_EQ(1u, backups.size());
+    EXPECT_EQ(local_bytes,
+              read_file_bytes(sandbox.dir() / "backups" / backups[0].filename))
+        << "and only then spends a backup slot, on the pre-install bytes";
+    EXPECT_FALSE(user_file_exists("save/cloudfail.cloudstage.tmp.gtl"));
 }
 
 TEST(CompanyCloudBytes, install_refuses_unsafe_slots_and_netsession)

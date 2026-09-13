@@ -233,7 +233,13 @@ TEST(StatsCommands, stats_hit_response_all_families)
 // try_command and command management
 // ---------------------------------------------------------------------------
 
-TEST(StatsCommands, stats_try_command_when_full)
+// Characterization pin, not a bug report: try_command has appended
+// unconditionally and returned 0 since the 2002 initial revision, and the
+// "only if the queue is empty" invariant is upheld by the callers (see the
+// note over statistics::try_command in src/gameplay/stats.cpp). This goes red
+// the day someone implements that sentence in the body -- which would move
+// 560 command insertions across the parity corpus.
+TEST(StatsCommands, stats_try_command_appends_onto_a_non_empty_queue)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
@@ -242,10 +248,13 @@ TEST(StatsCommands, stats_try_command_when_full)
     for (int i = 0; i < 20; i++) {
         w->stats()->add_command(COMMAND_WALK, 1, 1, 0);
     }
-    // try_command should not add if commands exist
-    short result = w->stats()->try_command(COMMAND_WALK, 5, 1, 0);
-    (void)result;
 
+    const short result = w->stats()->try_command(COMMAND_WALK, 5, 1, 0);
+    ASSERT_EQ(0, result) << "try_command has returned 0 unconditionally since 2002";
+    ASSERT_EQ(21u, w->stats()->commands.size())
+        << "try_command appends even when the queue is already full";
+    ASSERT_EQ(COMMAND_WALK, w->stats()->commands.back().commandtype)
+        << "the appended command is the one that was asked for";
 }
 
 

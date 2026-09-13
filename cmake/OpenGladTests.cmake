@@ -38,6 +38,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_replay.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_snapshot_size_benchmark.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_difficulty.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_frame_wait.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_guy.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_go_no_team.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_fairy_death.cpp
@@ -253,6 +254,10 @@ function(og_add_unit_group NAME)
 
     add_executable(${NAME}
         ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
+        # unit_main's registry census dumps every installed family around
+        # every test, so the dump belongs to every unit group, not just
+        # og_unit_data.
+        ${CMAKE_SOURCE_DIR}/tests/unit/family_registry_dump.cpp
         ${ARG_FILES}
     )
     configure_openglad_library(${NAME})
@@ -293,7 +298,7 @@ target_link_libraries(og_game_test PUBLIC ${OG_IO_EXTERNAL_LIBS} og_runtime_deps
 if(NOT EMSCRIPTEN)
     target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
 endif()
-add_dependencies(og_game_test check_vendor_leaks)
+add_dependencies(og_game_test check_vendor_leaks check_injector_settles)
 
 enable_testing()
 
@@ -530,6 +535,7 @@ og_add_test_group(og_test_picker_network FILES
 
 og_add_test_group(og_test_menu_ui FILES
     test_back_to_mainmenu.cpp
+    test_menu_frame_wait.cpp
     test_cloud_ui.cpp
     test_menu.cpp
     test_menu_layout.cpp
@@ -669,8 +675,10 @@ og_add_test_group(og_test_matchup FILES
 )
 
 # The LINEUP flows live in their own binary. They are injector-driven
-# picker_main runs whose waits are wall-clock settles, so their cost adds
-# to the matchup group's rather than overlapping it: together the two
+# picker_main runs whose click ladders wait on named edges but whose screen
+# settles are still wall-clock (tests/integration/test_lineup_ui.cpp is on
+# scripts/check_injector_settles.sh's not-yet-converted list), so their cost
+# adds to the matchup group's rather than overlapping it: together the two
 # suites ran ~213s standalone against a 420s budget, close enough that a
 # loaded CI runner tipped a lane over. Split at the natural seam — the
 # LineupUi suite alone is ~111s of that — so each binary keeps its own
@@ -877,6 +885,13 @@ og_add_unit_group(og_unit_script FILES
 # sources. tests/ sits outside the src/ vendor-leak boundary
 # (scripts/check_vendor_leaks.sh), so the include is legal there.
 target_link_libraries(og_unit_script PRIVATE og_lua)
+# CoverageReportGate drives the real scripts/coverage/coverage_report.py,
+# which needs the executable-line oracle, and the fixture looks for it
+# BESIDE the test binary. og_lua_lines is defined later, in
+# cmake/OpenGladCoverage.cmake (CMake resolves target dependencies at
+# generate time), so naming it here is what makes a targeted
+# `--build --target og_unit_script` build it too.
+add_dependencies(og_unit_script og_lua_lines)
 
 og_add_unit_group(og_unit_entity FILES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_unit.cpp
@@ -895,7 +910,6 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_decl.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_install.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry_golden.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/family_registry_dump.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_save_data_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp
@@ -1128,7 +1142,10 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_picker_client.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_game_runtime.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_network.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_host_bind_conflict.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_hosted_pack_sync.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_mount_guard.cpp
         ${CMAKE_SOURCE_DIR}/src/core/test_trace.cpp
         ${SRC_DIR}/platform/curses/curses_platform_globals.cpp
         ${OG_CURSES_LIB_SOURCES}
@@ -1140,6 +1157,9 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         TESTING
         OPENGLAD_CURSES_TEST_EXECUTABLE="$<TARGET_FILE:openglad_curses>"
         OPENGLAD_SERVER_TEST_EXECUTABLE="$<TARGET_FILE:openglad_server>"
+        # The mount-guard tripwire reads the suite's own sources, and this
+        # binary's ctest WORKING_DIRECTORY is the build tree, not the repo.
+        OG_CURSES_TESTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tests/curses"
     )
     add_dependencies(og_test_curses openglad_curses openglad_server)
     target_include_directories(og_test_curses PRIVATE
@@ -1260,16 +1280,22 @@ set_tests_properties(og_test_picker_network PROPERTIES
 # lane, and a genuine hang still trips well before the job cap.
 set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
 
-# og_test_menu_ui is the slowest integration binary: its injector flows
-# gate on fadeblack animations (~0.75-1s wall clock each), so it runs
-# ~148s standalone against the 180s group default — only ~18% headroom.
-# The difficulty/FX-menu work added ~31 more such waits. In a full
-# parallel ctest run it overlaps the other heavy integration binaries
+# og_test_menu_ui is the slowest integration binary. The rationale that
+# used to stand here — "its injector flows gate on fadeblack animations
+# (~0.75-1s wall clock each)" — was never true of this build: under
+# TESTING FadeBetween is a single SDL_BlitSurface (video_sdl.cpp) and
+# menu_screen_runner.cpp says so too. What the flows actually gated on
+# was a cargo-culted flat SDL_Delay(750) per settle, now replaced by
+# wait_for_menu_frames() (tests/test_interact.h).
+# The budget stays where it is regardless: in a full parallel ctest run
+# this binary overlaps the other heavy integration binaries
 # (og_test_view/og_test_game_core/og_test_level) with no serialization,
-# blowing the 180s budget under load and making the standard pre-commit
-# gate (ctest --preset ci-test) intermittently red. The coverage and
+# and the standard pre-commit gate (ctest --preset ci-test) went
+# intermittently red against the 180s group default. The coverage and
 # sanitizer lanes already protect it below; give it the same dedicated
-# budget in EVERY lane, mirroring og_test_picker_network above.
+# budget in EVERY lane, mirroring og_test_picker_network above. Do NOT
+# raise it further — the fix for a slow injector flow is to make its
+# waits conditions, not to buy more clock.
 set_tests_properties(og_test_menu_ui PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
@@ -1283,8 +1309,13 @@ set_tests_properties(og_test_basecamp PROPERTIES
     TIMEOUT 420
 )
 # The matchup group's CTF and campaign-zone flows are injector-driven
-# picker_main runs whose waits are wall-clock settles, putting the
-# standalone binary well past the 180s group default. Same treatment as
+# picker_main runs. Their click ladders are wait-on-condition now — named
+# edges, completed menu frames and bounded retry ladders (the shared
+# tests/test_click_ladder.h) rather than flat sleeps — though the
+# campaign-zone screen settles are still partly wall-clock: test_ctf_ui.cpp
+# is on scripts/check_injector_settles.sh, test_campaign_zone_ui.cpp is not
+# yet. Either way a whole group of picker_main flows is still well past the
+# 180s group default. Same treatment as
 # og_test_menu_ui / og_test_basecamp above: isolate it and give it the
 # standard heavy-flow budget in every lane. The LINEUP flows
 # (docs/lineup-design.md §2) used to sit in this group and pushed the
@@ -1533,6 +1564,20 @@ add_test(NAME openglad_demo_smoke
         $<TARGET_FILE:openglad_demo>
 )
 set_tests_properties(openglad_demo_smoke PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 120
+)
+
+# The knob contract (uncapped GPU overlay path, parse/clamp rules, the fatal
+# vs non-fatal failure modes). Kept separate from openglad_demo_smoke so
+# neither script's boot budget squeezes the other out of its TIMEOUT.
+add_test(NAME openglad_demo_knobs
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_demo_knobs.sh
+        $<TARGET_FILE:openglad_demo>
+)
+set_tests_properties(openglad_demo_knobs PROPERTIES
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     TIMEOUT 120
 )

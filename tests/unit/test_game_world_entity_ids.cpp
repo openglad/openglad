@@ -696,3 +696,54 @@ TEST_F(GameWorldEntityIdsFixture, boundary_queries_fail_closed_without_side_effe
     world.set_floor_count(0);
     EXPECT_EQ(1, world.floor_count());
 }
+
+// Owner links come back from saves and snapshots, so a corrupted or hostile
+// file can hand the world a loop (a owns b, b owns a). Every AI foe scan
+// walks that chain, so a loop there is a hang. The walk gives up after a
+// bounded number of hops and cuts the link it is standing on — and a
+// legitimate chain in the same world is left exactly as it was.
+TEST_F(GameWorldEntityIdsFixture, an_owner_loop_is_cut_and_legal_chains_survive)
+{
+    GameplayContext context;
+    context.world = &world;
+    ScopedGameplayContextOverride scope(context);
+
+    walker* a = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* b = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* pet = world.add_ob(Order::Living, FAMILY_SKELETON);
+    walker* orc = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, a);
+    ASSERT_NE(nullptr, b);
+    ASSERT_NE(nullptr, pet);
+    ASSERT_NE(nullptr, orc);
+
+    a->setxy(100, 100);
+    b->setxy(140, 100);
+    pet->setxy(180, 100);
+    orc->setxy(220, 100);
+    for (walker* w : {a, b, pet})
+    {
+        w->set_team_num(0);
+        w->set_real_team_num(0);
+    }
+    orc->set_team_num(1);
+    orc->set_real_team_num(1);
+
+    a->set_owner(b);
+    b->set_owner(a);
+    pet->set_owner(a);   // the ordinary summoner -> summon chain
+    ASSERT_EQ(b, a->owner());
+    ASSERT_EQ(a, b->owner());
+    ASSERT_EQ(a, pet->owner());
+
+    // The scan still does its job: the only hostile is the answer.
+    EXPECT_EQ(orc, world.find_far_foe(a));
+
+    EXPECT_EQ(nullptr, a->owner())
+        << "the loop must be cut at the hop the walk gave up on";
+    EXPECT_EQ(a, b->owner())
+        << "only one link is cut: the other half of the pair still points";
+    EXPECT_EQ(a, pet->owner())
+        << "a legal owner chain must survive the same sweep untouched";
+    EXPECT_EQ(a->entity_id(), pet->owner_id());
+}

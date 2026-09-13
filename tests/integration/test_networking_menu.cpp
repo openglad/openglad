@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 
 void picker_main(Sint32 argc, char** argv);
@@ -1149,6 +1150,49 @@ int networking_host_injector(void* data)
 }
 #endif
 
+// Every NETWORKING flow below walks in through CONTINUE, and CONTINUE opens
+// the MOST RECENT company on disk, not the one the test just wrote
+// (src/interface/ui/picker.cpp:325 -> og::data::select_startup_company(),
+// which sorts list_companies() by last_played_unix_s). A bare
+// SaveData::save() never stamps that field, so a company some OTHER test in
+// this binary founded silently takes the session over and every assertion
+// below then holds about somebody else's band.
+//
+// One shape for all eleven flows rather than eleven hand copies (PR #245,
+// "no rule twins"): the guards keep this test from becoming the next stray,
+// the seed goes through the autosave choke point that actually stamps, and
+// the destructor is the oracle — EXPECT in a destructor is gtest's own idiom
+// for a check that must run after the flow but cannot ASSERT, and the pin
+// member is destroyed AFTER this body, so it is still reading the slot the
+// flow left behind.
+struct SeededContinueCompany
+{
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin{"save0"};
+    bool seeded = false;
+
+    SeededContinueCompany()
+    {
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        save.scen_num = 1;
+        save.numplayers = 1;
+        save.current_campaign = "gladiator";
+        seeded = pin.applied() &&
+                 seed_open_company(save, "save0",
+                                   newest_company_stamp() + 1);
+    }
+
+    SeededContinueCompany(const SeededContinueCompany&) = delete;
+    SeededContinueCompany& operator=(const SeededContinueCompany&) = delete;
+
+    ~SeededContinueCompany()
+    {
+        EXPECT_EQ("save0", og::data::active_company_slot())
+            << "the flow must have run on the company this test seeded";
+    }
+};
+
 } // namespace
 
 TEST(NetworkingMenu, room_code_join_invalid_relay_url_stays_in_submenu)
@@ -1160,11 +1204,9 @@ TEST(NetworkingMenu, room_code_join_invalid_relay_url_stays_in_submenu)
     level_editor_testing_prompt_queue_push("24567");
     level_editor_testing_prompt_queue_push("glad-xkcd");
 
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     NetworkingJoinState state;
     SDL_Thread* thread =
@@ -1219,11 +1261,9 @@ TEST(NetworkingMenu, submenu_validation_errors_stay_in_place)
     level_editor_testing_prompt_queue_push("24567");
     level_editor_testing_prompt_queue_push("");
 
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     NetworkingValidationState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -1295,11 +1335,9 @@ TEST(NetworkingMenu, room_list_rows_join_and_prefill_first_room)
     level_editor_testing_prompt_queue_push("");
     level_editor_testing_prompt_queue_push("glad-bbbb");
 
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     NetworkingRoomListState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -1375,11 +1413,9 @@ TEST(NetworkingMenu, room_click_during_refresh_joins_the_visible_snapshot)
     set_platform_bridge(std::move(bridge));
 
     level_editor_testing_prompt_queue_clear();
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     SDL_Thread* thread = SDL_CreateThread(
         networking_room_refresh_race_injector,
@@ -1453,11 +1489,9 @@ TEST(NetworkingMenu, reentry_hides_stale_rooms_until_current_request_completes)
     };
     set_platform_bridge(std::move(bridge));
 
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     SDL_Thread* thread = SDL_CreateThread(
         networking_room_reentry_injector,
@@ -1503,11 +1537,9 @@ TEST(NetworkingMenu, empty_room_list_shows_no_rows_and_stays_usable)
 
     level_editor_testing_prompt_queue_clear();
 
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     NetworkingEmptyRoomListState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -1557,11 +1589,9 @@ TEST(NetworkingMenu, host_factory_error_stays_in_submenu)
     level_editor_testing_prompt_queue_clear();
     level_editor_testing_prompt_queue_push("24567");
 
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     NetworkingHostFactoryErrorState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -1602,11 +1632,9 @@ TEST(NetworkingMenu, host_flow_enters_team_build_and_returns_to_main_menu)
     const std::string port_text = std::to_string(state.port);
     level_editor_testing_prompt_queue_push(port_text.c_str());
 
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     SDL_Thread* thread =
         SDL_CreateThread(networking_host_injector, "networking_host_test", &state);
@@ -1743,15 +1771,6 @@ og::sim::LobbyPlayer session_seat(std::uint8_t index,
     return player;
 }
 
-void seed_session_flow_save()
-{
-    auto& save = og::runtime::current_session->myscreen_->save_data;
-    save.scen_num = 1;
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    ASSERT_TRUE(save.save("save0"));
-}
-
 struct SessionHostKickState
 {
     FakeSessionLobbyClient* lobby = nullptr;
@@ -1838,7 +1857,9 @@ TEST(NetworkingMenu, session_host_view_lists_machines_and_kicks)
 {
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
-    seed_session_flow_save();
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     FakeSessionLobbyClient lobby;
     lobby.players = {
@@ -1954,7 +1975,9 @@ TEST(NetworkingMenu, session_joined_rows_inert_and_disconnect_goes_local)
 {
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
-    seed_session_flow_save();
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     FakeSessionLobbyClient lobby;
     lobby.host_view.store(false);
@@ -2448,7 +2471,9 @@ TEST(NetworkingMenu, kicked_joiner_reverts_to_local_client_in_team_build)
     trace_clear();
     level_editor_testing_prompt_queue_clear();
     picker_testing_yes_or_no_queue_clear();
-    seed_session_flow_save();
+    SeededContinueCompany company;
+    ASSERT_TRUE(company.seeded)
+        << "save0 must be seeded as the most recent company on disk";
 
     std::atomic<bool> kicked_flag{false};
     PlatformBridgeGuard bridge_guard;

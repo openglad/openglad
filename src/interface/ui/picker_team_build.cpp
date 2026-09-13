@@ -2058,6 +2058,8 @@ void picker_train_menu_engine_draw_content(void* screen_state)
     auto* const state = static_cast<TrainEngineState*>(screen_state);
     if (state == nullptr)
         return;
+    if (pks().train_session == nullptr || pks().train_session->empty())
+        return;  // the member vanished under a live poll — draw nothing this frame
     float linesdown = 0.0f;
     unsigned char showcolor;
 

@@ -73,7 +73,8 @@ TEST(WalkerCoreMore, walker_compute_outline_state_transitions)
     subject->stats()->set_bit_flags(BIT_NAMED, 1);
 
     subject->compute_outline(viewer.get());
-    ASSERT_TRUE(subject->outline() != 0) << "outline should remain non-zero with active flags";
+    ASSERT_EQ(OUTLINE_FLYING, (int)subject->outline())
+        << "invulnerable + flying: flight wins the invulnerable branch";
 
     subject->set_outline(subject->query_team_color()); // OUTLINE_INVISIBLE expands to query_team_color()
     subject->set_flight_left(0);
@@ -90,6 +91,34 @@ TEST(WalkerCoreMore, walker_compute_outline_state_transitions)
     subject->stats()->set_bit_flags(BIT_NAMED, 0);
     subject->compute_outline(viewer.get());
     ASSERT_TRUE(subject->outline() == subject->query_team_color()) << "flying should transition to invisible when invisibility_left set";
+
+    // Flying, no longer invisible, but under an invulnerability potion: the
+    // potion is the outline a player must be able to read at a glance.
+    subject->set_outline(OUTLINE_FLYING);
+    subject->set_invisibility_left(0);
+    subject->set_invulnerable_left(5);
+    subject->compute_outline(viewer.get());
+    ASSERT_EQ(OUTLINE_INVULNERABLE, (int)subject->outline())
+        << "flying + invulnerable, not invisible: the potion outline shows";
+
+    // Plain team colour, no potion of any kind, but a NAMED enemy: a boss on
+    // the other team is outlined for the viewer who has to fight it.
+    subject->set_outline(subject->query_team_color());
+    subject->set_invulnerable_left(0);
+    subject->set_flight_left(0);
+    subject->set_invisibility_left(0);
+    subject->stats()->set_bit_flags(BIT_NAMED, 1);
+    ASSERT_NE(subject->team_num(), viewer->team_num());
+    subject->compute_outline(viewer.get());
+    ASSERT_EQ(OUTLINE_NAMED, (int)subject->outline())
+        << "a named enemy is outlined as named for an enemy viewer";
+
+    // The same walker seen by one of its OWN team is not outlined as named.
+    subject->set_outline(subject->query_team_color());
+    viewer->set_team_num(subject->team_num());
+    subject->compute_outline(viewer.get());
+    ASSERT_EQ((int)subject->query_team_color(), (int)subject->outline())
+        << "a named ally keeps its team colour";
 }
 
 
@@ -433,21 +462,30 @@ TEST(WalkerCoreMore, walker_round5_act_switch_random_and_fire_branches)
     actor->set_lasty(0);
     ASSERT_TRUE(actor->act()) << "ACT_FIRE should dispatch and return true";
 
-    // ACT_RANDOM 1/4 + 1/20 branch should queue COMMAND_WALK.
-    SequenceRandom rng_walk_branch({0, 0, 5, 1, 2});
+    // The actor is an Order::Living orc, so act() dispatches to living::act(),
+    // whose ACT_RANDOM arm is a 1/5 + 1/5 rule drawn straight from the WORLD
+    // rng -- not walker::act()'s 1-in-4-then-1-in-20 walk rule, which this
+    // orc never executes. Both arms below are pinned, because an unpinned
+    // draw is whatever a shuffled predecessor left behind.
+    //
+    // 16-in-25: neither next(5) is zero, so the actor acquires a near foe,
+    // queues COMMAND_SEARCH and returns 1.
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;  // next(5): 3 then 1
     actor->stats()->clear_command();
     actor->set_ani_type(ANI_WALK);
     actor->set_foe(nullptr);
     actor->set_act_type(ACT_RANDOM);
-    ASSERT_TRUE(actor->act()) << "ACT_RANDOM walk-command branch should return true";
+    ASSERT_TRUE(actor->act()) << "ACT_RANDOM acquire/search arm should return true";
 
-    // ACT_RANDOM 3/4 branch should acquire far foe and queue COMMAND_SEARCH.
-    SequenceRandom rng_search_branch({3, 0});
+    // 4-in-25: the first next(5) is non-zero and the second is zero, so
+    // living::act() calls act_random() and breaks out of the switch, which
+    // falls through to `return 0`.
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 6;  // next(5): 4 then 0
     actor->stats()->clear_command();
     actor->set_ani_type(ANI_WALK);
     actor->set_foe(nullptr);
     actor->set_act_type(ACT_RANDOM);
-    (void)actor->act();
+    ASSERT_FALSE(actor->act()) << "ACT_RANDOM act_random() arm should return false";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -637,6 +675,27 @@ TEST(WalkerCoreMore, walker_animate_rejects_ani_type_beyond_family_table)
     w->set_curdir(static_cast<char>(100));
     w->set_cycle(static_cast<signed char>(120));
     (void)w->animate(); // must not crash / read OOB (verified under sanitizers)
+
+    // A NEGATIVE cycle on a valid animation clamps to the start of the
+    // sequence, not to the frame before it: `cycle` is a signed char that
+    // walk() can wrap and that a save or a snapshot can carry, and reading
+    // seq[-5] is an out-of-bounds read whose frame lands somewhere else
+    // entirely on screen.
+    w->set_ani_type(static_cast<char>(ANI_WALK));
+    w->set_curdir(static_cast<char>(FACE_DOWN));
+    w->set_cycle(0);
+    (void)w->animate();
+    const short frame_from_zero = w->frame();
+    const int cycle_from_zero = static_cast<int>(w->cycle());
+
+    w->set_ani_type(static_cast<char>(ANI_WALK));
+    w->set_curdir(static_cast<char>(FACE_DOWN));
+    w->set_cycle(static_cast<signed char>(-5));
+    (void)w->animate();
+    ASSERT_EQ(cycle_from_zero, static_cast<int>(w->cycle()))
+        << "a negative cycle must animate exactly as cycle 0 does";
+    ASSERT_EQ(frame_from_zero, w->frame())
+        << "the clamp lands on the sequence's first frame";
 }
 
 

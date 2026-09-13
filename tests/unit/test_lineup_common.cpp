@@ -229,6 +229,44 @@ TEST(LineupCommon, bands_networked_census_is_the_whole_lobby)
     EXPECT_FALSE(bands[0].power.has_value()) << "an empty team has no power";
 }
 
+// A team number outside 0..3 — a foreign client's junk seat, or a .gtl
+// teamnum byte with no range check — must be dropped from the census, never
+// counted into a neighbouring band (and never written past the four bands).
+TEST(LineupCommon, bands_drop_out_of_range_teams)
+{
+    SaveData save;
+    put(save, 0, 1, true);
+    put(save, 1, 9, true);   // off the top
+    put(save, 2, -1, true);  // off the bottom
+
+    std::vector<og::sim::LobbyPlayer> players{seat(0, 1), seat(1, 7),
+                                              seat(2, -2)};
+    const auto local = og::ui::build_lineup_bands(
+        save, players, std::vector<std::uint8_t>{0, 1, 2}, false, {});
+    EXPECT_EQ(1, local[1].seat_count) << "only the in-range seat is a seat";
+    EXPECT_EQ(0, local[0].seat_count);
+    EXPECT_EQ(0, local[2].seat_count);
+    EXPECT_EQ(0, local[3].seat_count);
+    EXPECT_EQ(std::vector<std::string>{"P1 IRO"}, local[1].seat_labels);
+    EXPECT_EQ(1, local[1].fighter_count) << "the two junk rows are not fighters";
+    EXPECT_EQ(0, local[0].fighter_count);
+    EXPECT_EQ(0, local[2].fighter_count);
+    EXPECT_EQ(0, local[3].fighter_count);
+
+    // Networked, the same rule applies to every machine's replicated slots.
+    og::sim::LobbyPlayer host = seat(0, 1, "IRON KETTLE", true, true, 1);
+    add_character(host, 1, true);
+    add_character(host, 5, true);   // off the top
+    add_character(host, -3, true);  // off the bottom
+    std::vector<og::sim::LobbyPlayer> lobby{host};
+    const auto networked = og::ui::build_lineup_bands(
+        save, lobby, std::vector<std::uint8_t>{0}, true, {});
+    EXPECT_EQ(1, networked[1].fighter_count);
+    EXPECT_EQ(0, networked[0].fighter_count);
+    EXPECT_EQ(0, networked[2].fighter_count);
+    EXPECT_EQ(0, networked[3].fighter_count);
+}
+
 TEST(LineupCommon, bands_power_needs_every_fighter_priced)
 {
     SaveData save;
@@ -631,6 +669,41 @@ TEST(LineupCommon, split_fair_falls_back_to_level_without_a_metric)
                                             {}, {});
     EXPECT_EQ((Moves{{1, 1}, {2, 2}, {0, 3}}), plan.moves)
         << "level descending: 9, 5, 1";
+}
+
+// One fighter the campaign cannot price voids the metric for the WHOLE
+// draft: FAIR falls back to levels rather than seeding half the draft on one
+// scale and half on another.
+TEST(LineupCommon, split_fair_drops_the_metric_when_one_fighter_is_unpriced)
+{
+    SaveData save;
+    put(save, 0, 0, true, 1);
+    put(save, 1, 0, true, 9);
+    put(save, 2, 0, true, 5);
+    const std::array<short, 3> seats{1, 2, 3};
+
+    // A metric that deliberately disagrees with level order, so the two arms
+    // cannot be confused for each other.
+    const og::ui::LineupPowerFn inverted =
+        [](const guy& g) -> std::optional<long long> {
+        return 100 - static_cast<long long>(g.level);
+    };
+    EXPECT_EQ((Moves{{0, 1}, {2, 2}, {1, 3}}),
+              og::ui::split_company(save, seats, LineupSplit::Fair, inverted,
+                                    {}).moves)
+        << "with a metric the draft follows the metric: 99, 95, 91";
+
+    // The same metric with one hole in it: the whole draft reverts to level
+    // descending (9, 5, 1), not to the partial prices already collected.
+    const og::ui::LineupPowerFn holed =
+        [](const guy& g) -> std::optional<long long> {
+        if (g.level == 5)
+            return std::nullopt;
+        return 100 - static_cast<long long>(g.level);
+    };
+    EXPECT_EQ((Moves{{1, 1}, {2, 2}, {0, 3}}),
+              og::ui::split_company(save, seats, LineupSplit::Fair, holed,
+                                    {}).moves);
 }
 
 TEST(LineupCommon, split_all_to_first_and_the_single_seat_rule)

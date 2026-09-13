@@ -3393,3 +3393,219 @@ TEST(NetTransportInProcess, marked_local_peer_is_never_timeout_disconnected)
     fixture.step_ticks(1);
     fixture.expect_clients_match_server();
 }
+
+// A hook that DECLINES is the persistence layer saying "I could not commit
+// this outcome" (a failed roster write, a campaign the cursor cannot advance).
+// The server must then leave the level exactly as it was: no EndGame reaches
+// the display, so nobody is sent to the results screen over an outcome that
+// was never recorded. The accepting arm at the end of each test is the control
+// that proves the same sequence DOES end the level when the hook commits.
+TEST(NetTransportInProcess,
+     network_fixture_declined_exit_hook_delivers_no_endgame)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.server().set_return_to_lobby_mode(true);
+
+    bool hook_commits = false;
+    int exits = 0;
+    fixture.server().on_exit_accepted = [&](int /*destination*/) {
+        ++exits;
+        return hook_commits;
+    };
+
+    int endgames = 0;
+    int endgame_next_level = -99;
+    int level_transitions = 0;
+    fixture.client(0).set_game_flow_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            for (const auto& e : batch.events)
+            {
+                if (e.kind == og::sim::EventKind::EndGame)
+                {
+                    ++endgames;
+                    endgame_next_level = static_cast<std::int32_t>(e.b);
+                }
+            }
+        });
+    fixture.client(0).set_initial_setup_callback(
+        [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
+            if (is_level_transition)
+                ++level_transitions;
+        });
+
+    const auto accept_an_exit_to_level_2 = [&] {
+        fixture.with_server_context([&] {
+            fixture.server_events().push_with_text(
+                og::sim::EventKind::RequestExitConfirmation, "Exit to Level 2?",
+                /*a=destination*/ 2u, /*b=exit*/ 0u);
+            fixture.server().step();
+        });
+        fixture.poll_client_messages(0);
+        ASSERT_TRUE(fixture.server().pending_exit_prompt());
+        fixture.client(0).send_exit_prompt_response(true);
+        fixture.with_server_context([&] { fixture.server().step(); });
+        fixture.poll_client_messages(0);
+    };
+
+    accept_an_exit_to_level_2();
+    EXPECT_EQ(1, exits) << "the accepted exit must still consult the hook";
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+    EXPECT_EQ(0, endgames)
+        << "a declined exit must not end the level for the display";
+    EXPECT_EQ(0, level_transitions);
+    EXPECT_EQ(0, fixture.server_world().ending);
+    EXPECT_FALSE(fixture.server_world().game_ended);
+
+    hook_commits = true;
+    accept_an_exit_to_level_2();
+    EXPECT_EQ(2, exits);
+    EXPECT_EQ(1, endgames)
+        << "a committed exit must forward exactly one terminal EndGame";
+    EXPECT_EQ(2, endgame_next_level);
+    EXPECT_EQ(0, level_transitions);
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_declined_abort_withdraw_delivers_no_endgame)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.server().set_return_to_lobby_mode(true);
+
+    bool hook_commits = false;
+    int withdraws = 0;
+    fixture.server().on_withdraw_accepted = [&](int /*destination*/) {
+        ++withdraws;
+        return hook_commits;
+    };
+
+    int endgames = 0;
+    int endgame_ending = -99;
+    int level_transitions = 0;
+    fixture.client(0).set_game_flow_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            for (const auto& e : batch.events)
+            {
+                if (e.kind == og::sim::EventKind::EndGame)
+                {
+                    ++endgames;
+                    endgame_ending = static_cast<std::int32_t>(e.a);
+                }
+            }
+        });
+    fixture.client(0).set_initial_setup_callback(
+        [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
+            if (is_level_transition)
+                ++level_transitions;
+        });
+
+    fixture.client(0).request_level_abort();
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(1, withdraws) << "the abort must still consult the hook";
+    EXPECT_EQ(0, endgames)
+        << "a declined withdraw must not retreat the party for the display";
+    EXPECT_EQ(0, level_transitions);
+    EXPECT_EQ(0, fixture.server_world().ending);
+
+    hook_commits = true;
+    fixture.client(0).request_level_abort();
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(2, withdraws);
+    EXPECT_EQ(1, endgames)
+        << "a committed withdraw must forward exactly one terminal EndGame";
+    EXPECT_EQ(1, endgame_ending) << "an abort withdraw retreats (ending=1)";
+    EXPECT_EQ(0, level_transitions);
+}
+
+// Return-to-lobby mode commits the terminal result BEFORE any peer can consume
+// the synthesized EndGame, so a failed persist is discovered while the outcome
+// can still be reported. A failure is unrecoverable for that outcome, but it
+// must not swallow the result: the display still gets exactly one terminal
+// EndGame carrying the win's ending, and no next-level set-up.
+TEST(NetTransportInProcess,
+     network_fixture_failed_terminal_persist_still_delivers_one_endgame)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+    fixture.server().set_return_to_lobby_mode(true);
+
+    int transition_attempts = 0;
+    fixture.with_server_context([&] {
+        fixture.server().on_level_transition = [&](int /*level_id*/) {
+            ++transition_attempts;
+            return false; // the roster persist failed
+        };
+    });
+
+    int endgames = 0;
+    int endgame_ending = -99;
+    int endgame_next_level = -99;
+    int level_transitions = 0;
+    fixture.client(0).set_game_flow_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            for (const auto& e : batch.events)
+            {
+                if (e.kind == og::sim::EventKind::EndGame)
+                {
+                    ++endgames;
+                    endgame_ending = static_cast<std::int32_t>(e.a);
+                    endgame_next_level = static_cast<std::int32_t>(e.b);
+                }
+            }
+        });
+    fixture.client(0).set_initial_setup_callback(
+        [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
+            if (is_level_transition)
+                ++level_transitions;
+        });
+
+    fixture.with_server_context([&] {
+        GameWorld& world = fixture.server_world();
+        world.game_ended = true;
+        world.ending = 2;
+        world.next_level = 3;
+        fixture.server().broadcast_current_state(
+            og::sim::SnapshotCaptureMode::Peek,
+            og::sim::EventDeliveryMode::Drain);
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(1, transition_attempts)
+        << "the terminal persist must be attempted once, before delivery";
+    EXPECT_EQ(1, endgames)
+        << "a failed persist must still deliver one coherent terminal result";
+    EXPECT_EQ(2, endgame_ending) << "the delivered EndGame carries the win";
+    EXPECT_EQ(3, endgame_next_level);
+    EXPECT_EQ(0, level_transitions)
+        << "a failed persist must not set the client up for the next level";
+}

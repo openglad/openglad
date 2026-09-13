@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -89,10 +90,22 @@ static int mainmenu_button_injector(void* data)
 TEST(Help, mainmenu_buttons_exist) {
     trace_clear();
 
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    // CONTINUE opens the MOST RECENT company on disk, not the one this test
+    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
+    // company another test founded would take the session over silently.
+    // Seed through the autosave choke point that stamps, and check after the
+    // flow which company it actually got.
+    ScopedCompanyFileCleanup founded_cleanup;
+    CompanyClockRestore clock_restore;
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
 
     MainMenuButtonState state = { false, false, false, false, false, false,
                                   false };
@@ -109,6 +122,9 @@ TEST(Help, mainmenu_buttons_exist) {
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the flow must have run on the company this test seeded";
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.has_options) << "Game Settings should exist on main menu";

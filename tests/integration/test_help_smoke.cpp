@@ -1,5 +1,6 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/ui/picker_state.h>
 #include <openglad/interface/ui/scroll_view_layout.h>
@@ -9,6 +10,7 @@
 #include "test_interact.h"
 
 #include <atomic>
+#include <functional>
 #include <list>
 #include <string>
 #include <memory>
@@ -501,7 +503,15 @@ static void probe_step(ScrollProbeState* state, int step, int expected)
 {
     if (!state->ok.load(std::memory_order_acquire))
         return;
-    if (!wait_for_linesdown(expected, 600))
+    // 5000 ms is this suite's ceiling convention, and it is a SAFETY NET, not
+    // a budget: wait_for_linesdown returns the instant the offset reaches the
+    // expected value, so the happy path costs exactly what it did at 600 ms.
+    // The raise lands together with the observation-driven key hold below —
+    // never on its own. The old 600 ms was a real deadline on a viewer loop
+    // that advances once per YIELD_SLEEP; under a loaded coverage lane one
+    // iteration can outlast it, and the step then failed for machine reasons
+    // rather than for a swallowed tap.
+    if (!wait_for_linesdown(expected, 5000))
     {
         state->ok.store(false, std::memory_order_release);
         state->failed_step.store(step, std::memory_order_release);
@@ -510,31 +520,74 @@ static void probe_step(ScrollProbeState* state, int step, int expected)
     }
 }
 
-// One short tap of a seam-modeled key: on for ~40ms, off for ~30ms. Under
-// the old phase-modulo throttle a tap this short was swallowed about half
-// the time; with edge-triggering it always fires exactly once.
+// The viewer must also see the RELEASE before the next press, or a release
+// and the next press merged into one pump read as "held" instead of a fresh
+// edge. Same counts-not-clocks form; replaces the flat SDL_Delay(30)/(80).
+static void drain_one_viewer_iteration()
+{
+    const unsigned long before = og::input_native::yield_count();
+    for (int waited = 0;
+         waited < 5000 && og::input_native::yield_count() < before + 2;
+         ++waited)
+        SDL_Delay(1);
+}
+
+// One tap of a seam-modeled key, released BY OBSERVATION rather than by a
+// stopwatch.
+//
+// These keys are a STATE FLAG, not an event: if the viewer does not sample
+// the flag inside the hold window there is no queued event to catch up on and
+// the tap is simply invisible — which is why the old flat 40 ms hold was
+// "swallowed about half the time" under the pre-edge-trigger throttle, and
+// why it stayed a bet afterwards. og::input_native::yield_count() counts the
+// viewer's own YIELD_SLEEP calls (src/interface/ui/help.cpp, once per loop
+// iteration), so waiting for two increments proves a full iteration ran with
+// the flag set. Edge triggering then fires it exactly once, and the release
+// is caused by the observation instead of by a clock.
+//
+// This is also what makes the clamp steps honest: the last line-down at the
+// bottom moves nothing, so a "wait for the offset to change" hold could never
+// return — the loop-iteration count is the right oracle for both.
+static void hold_for_one_viewer_iteration(
+    const std::function<void(bool, bool)>& set, bool first, bool second)
+{
+    const unsigned long yields_before = og::input_native::yield_count();
+    const int lines_before = help_testing_query_linesdown();
+    set(first, second);
+    // Release on whichever comes first: the offset moved (the edge fired), or
+    // the viewer completed a loop iteration with the flag set (a CLAMPED step
+    // moves nothing, so the iteration count is its only oracle). Taking the
+    // earlier of the two keeps the hold far below the ~270 ms auto-repeat
+    // first-delay even on a loaded box — a hold that outlived it would turn
+    // a single-step tap into a page.
+    for (int waited = 0; waited < 5000; ++waited) {
+        if (help_testing_query_linesdown() != lines_before)
+            break;
+        if (og::input_native::yield_count() >= yields_before + 2)
+            break;
+        SDL_Delay(1);
+    }
+    set(false, false);
+    drain_one_viewer_iteration();
+}
+
 static void tap_page_key(bool up, bool down)
 {
-    help_testing_set_page_state(up, down);
-    SDL_Delay(40);
-    help_testing_set_page_state(false, false);
-    SDL_Delay(30);
+    hold_for_one_viewer_iteration(
+        [](bool a, bool b) { help_testing_set_page_state(a, b); }, up, down);
 }
 
 static void tap_line_key(bool up, bool down)
 {
-    help_testing_set_line_key_state(up, down);
-    SDL_Delay(40);
-    help_testing_set_line_key_state(false, false);
-    SDL_Delay(30);
+    hold_for_one_viewer_iteration(
+        [](bool a, bool b) { help_testing_set_line_key_state(a, b); }, up, down);
 }
 
 static void tap_jump_key(bool home_down, bool end_down)
 {
-    help_testing_set_jump_key_state(home_down, end_down);
-    SDL_Delay(40);
-    help_testing_set_jump_key_state(false, false);
-    SDL_Delay(30);
+    hold_for_one_viewer_iteration(
+        [](bool a, bool b) { help_testing_set_jump_key_state(a, b); },
+        home_down, end_down);
 }
 
 static int scroll_controls_injector_thread(void* data)
@@ -552,7 +605,7 @@ static int scroll_controls_injector_thread(void* data)
     help_testing_set_page_state(false, true);   // hold: edge 105, repeat 208
     probe_step(state, 3, 208);
     help_testing_set_page_state(false, false);
-    SDL_Delay(30);
+    drain_one_viewer_iteration();
     tap_page_key(true, false);   probe_step(state, 4, 103);
     tap_page_key(true, false);   probe_step(state, 5, 0);
     tap_line_key(false, true);   probe_step(state, 6, 8);
@@ -579,30 +632,38 @@ static int scroll_controls_injector_thread(void* data)
 
     // Collapsed tap (down+up inside one event pump — the web-touch shape):
     // caught via the pending-click queue, still a scroll, still no dismiss.
-    SDL_Delay(80);
+    drain_one_viewer_iteration();
     inject_mouse_down(down_cx, down_cy);
     inject_mouse_up(down_cx, down_cy);
     probe_step(state, 11, 16);
 
-    SDL_Delay(80);
+    drain_one_viewer_iteration();
     inject_click(up_cx, up_cy, 50);
     probe_step(state, 12, 8);
 
     // Track click below the thumb pages down: at linesdown=8 the thumb
     // spans y=55..78, so y=110 is below it -> +105.
-    SDL_Delay(80);
+    drain_one_viewer_iteration();
     inject_click(layout.track.x + layout.track.w / 2, 110, 50);
     probe_step(state, 13, 113);
 
     // Track click above the thumb pages back up: at linesdown=113 the thumb
     // spans y=77..100, so y=60 is above it -> -105.
-    SDL_Delay(80);
+    drain_one_viewer_iteration();
     inject_click(layout.track.x + layout.track.w / 2, 60, 50);
     probe_step(state, 14, 8);
 
+    // The BOTTOM clamp, sandwiched by a step that DOES move so "nothing
+    // happened" cannot pass for "clamped": at the last line one more
+    // line-down must stay put, and the line-up after it must land on 200.
+    // Without the clamp the pair would read 216 then 208.
+    tap_jump_key(false, true);   probe_step(state, 15, 208);
+    tap_line_key(false, true);   // already at the end: clamped, not 216
+    tap_line_key(true, false);   probe_step(state, 16, 200);
+
     // A tap in the text area still dismisses (the wasm-touch e2e contract:
     // (160,100) must keep working).
-    SDL_Delay(80);
+    drain_one_viewer_iteration();
     inject_click(160, 100, 30);
     SDL_Delay(100);
     // Failsafe so a missed dismiss cannot hang the binary.

@@ -239,9 +239,11 @@ public:
     // still has the rest of its window and is left to the lobby poll.
     // Latched; survives shutdown() and resume_after_level(); never cleared
     // in this client's lifetime. The picker reverts to a local client on it
-    // exactly as on a kick (the kick outranks it when both are set). Only a
-    // joiner ever reports it — a host's lobby is in-process and a dead relay
-    // is just its line-B alert.
+    // exactly as on a kick (the kick outranks it when both are set). A
+    // joiner reports it when its link dies for good; a host reports it only
+    // when a re-host between levels cannot bind (its own lobby is
+    // in-process and cannot be dropped, and a dead relay is just its
+    // line-B alert).
     [[nodiscard]] virtual bool session_lost() const noexcept
     {
         return false;
@@ -381,6 +383,21 @@ inline PickerMainThreadPump g_picker_main_thread_pump = nullptr;
 
 void picker_lobby_initialize_from_save();
 void picker_lobby_shutdown();
+#ifdef TESTING
+// Is the lazily-created STANDALONE lobby client alive? Nothing in the
+// shipping API can answer that — active_picker_lobby_client() is null for it
+// by construction, and session_established() is false for every local client
+// — but a standalone client that outlives the screen that created it rewrites
+// the NEXT screen's save.team_list from its own cached roster, which is the
+// whole promote-wedge / base-camp-hang family. The integration harness needs
+// to see it to attribute the leak to the test that left it behind.
+bool picker_lobby_testing_standalone_client_alive() noexcept;
+// Destroy it, and nothing else. Deliberately NOT picker_lobby_shutdown(): that
+// one also shuts down an INSTALLED client (a test's fake) and, for a networked
+// session, unmounts the session's class packs — side effects a between-tests
+// reset has no business performing. This is the reset's seam only.
+void picker_lobby_testing_drop_standalone_client() noexcept;
+#endif
 void picker_lobby_sync_from_save();
 void picker_lobby_sync_roster_from_save();
 void picker_lobby_sync_settings_from_save();

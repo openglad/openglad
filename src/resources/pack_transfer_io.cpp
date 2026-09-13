@@ -318,6 +318,30 @@ void unmount_session_packs()
     (void)og::resources::refresh_pack_scripts();
 }
 
+void end_pack_transfer_session()
+{
+    // unmount_session_packs() already refreshes the pack-script registry;
+    // this wrapper exists so the SESSION-END rule has one name and one
+    // documented contract for every client to call.
+    unmount_session_packs();
+}
+
+std::optional<std::vector<og::sim::HostedPack>> HostedPackSync::refresh()
+{
+    std::string mounted = get_mounted_campaign();
+    if (announced_ && mounted == mounted_memo_)
+        return std::nullopt;
+    mounted_memo_ = std::move(mounted);
+    announced_ = true;
+    return build_transferable_packs();
+}
+
+void HostedPackSync::reset() noexcept
+{
+    mounted_memo_.clear();
+    announced_ = false;
+}
+
 og::sim::PackTransferClient::Callbacks make_pack_transfer_client_callbacks()
 {
     og::sim::PackTransferClient::Callbacks callbacks;

@@ -1329,3 +1329,58 @@ TEST(SimWorldHeadless, freeze_still_counts_a_dormant_hostile)
         << "a dormant hostile counts as alive during freeze too";
     EXPECT_FALSE(w.game_ended);
 }
+
+// The session layer asks a level to stop by setting world.end (the exit
+// prompt's "yes", a withdraw, the host tearing a match down). This is tick 1
+// of a TYPE_SCRIPTED level whose mode init REFUSES (no mode script): the tick
+// takes the scripted arm, runs its mode-less stage step, and then has to
+// honour the end request on its way out — the run is over, and no next level
+// is invented, because the session layer owns where the party goes. (From
+// tick 2 on, such a world takes the classic arm, which folds `end` in
+// earlier; the arm exercised here is the one a scripted level stopped on its
+// first tick takes.)
+TEST(SimWorldHeadless, world_end_stops_a_scripted_level_without_choosing_a_level)
+{
+    TestGameWorld t;
+    GameWorld& w = t.world();
+    w.my_team = 0;
+    w.type = GameWorld::TYPE_SCRIPTED;  // no mode script: init refuses
+
+    walker* hero = freeze_census::player_hero(t, 120, 120);
+    ASSERT_NE(nullptr, hero);
+    walker* foe = freeze_census::hostile_living(t, 200, 200);
+    ASSERT_NE(nullptr, foe);
+    const std::uint32_t foe_id = foe->entity_id();
+
+    // Set BEFORE the first tick: any tick latches mode.init_attempted, and
+    // from then on this world takes the classic arm instead.
+    w.end = 1;
+    w.tick();
+    EXPECT_TRUE(w.game_ended) << "world.end must latch game_ended";
+    EXPECT_EQ(-1, w.next_level)
+        << "an end request is not a level completion: nothing picks a next level";
+    EXPECT_EQ(0, w.ending);
+    walker* survivor = w.find_by_id(foe_id);
+    ASSERT_NE(nullptr, survivor);
+    EXPECT_FALSE(survivor->dead()) << "the tick is abandoned, not resolved";
+
+    // Control: an identical scripted world with no end request runs on. It
+    // has to be a separate world — the first tick of the one above already
+    // spent the arm under test.
+    TestGameWorld t2;
+    GameWorld& w2 = t2.world();
+    w2.my_team = 0;
+    w2.type = GameWorld::TYPE_SCRIPTED;
+    ASSERT_NE(nullptr, freeze_census::player_hero(t2, 120, 120));
+    walker* foe2 = freeze_census::hostile_living(t2, 200, 200);
+    ASSERT_NE(nullptr, foe2);
+    const std::uint32_t foe2_id = foe2->entity_id();
+
+    w2.tick();
+    EXPECT_FALSE(w2.game_ended)
+        << "a scripted level runs until it is told to stop";
+    EXPECT_EQ(-1, w2.next_level);
+    walker* still_fighting = w2.find_by_id(foe2_id);
+    ASSERT_NE(nullptr, still_fighting);
+    EXPECT_FALSE(still_fighting->dead());
+}

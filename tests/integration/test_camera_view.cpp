@@ -1254,6 +1254,20 @@ TEST_F(CameraView, native_plane_allocation_failure_never_falls_back_to_ui)
                     << "allocation failure rasterized the world into UI at "
                     << x << "," << y;
     }
+
+    // The injected failure LATCHES this plane's failed size
+    // (ensure_native_world_view_plane refuses the same size again so a
+    // redraw loop cannot storm the allocator), and the latch is only
+    // forgotten by the next allocation that completes. Perform one here at
+    // another size: otherwise every later test in this binary that asks for
+    // the inset's size is refused by a latch this test armed — which is
+    // exactly what made CameraView.inset_draw_queues_native_world_pixels_
+    // and_border fail under --gtest_shuffle --gtest_random_seed=6.
+    const std::array<NativeWorldViewDestination, 1> unlatch = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 7, .h = 5}}};
+    ASSERT_TRUE(game_->begin_native_world_view(unlatch));
+    game_->cancel_native_world_view();
+    E_Screen->discard_native_world_views_for_testing();
 }
 
 // ---------------------------------------------------------------------------

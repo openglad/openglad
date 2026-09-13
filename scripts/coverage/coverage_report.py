@@ -1311,7 +1311,7 @@ def main() -> int:
     ap.add_argument("--cpp-tracefile", type=Path, default=None,
                     help="pre-made lcov tracefile for the C++ side")
     ap.add_argument("--output-dir", type=Path, required=True)
-    ap.add_argument("--line-threshold", type=float, default=95.0)
+    ap.add_argument("--line-threshold", type=float, default=96.0)
     ap.add_argument("--function-threshold", type=float, default=100.0)
     ap.add_argument("--processes-manifest", type=Path,
                     default=PROCESS_MANIFEST_FILE,

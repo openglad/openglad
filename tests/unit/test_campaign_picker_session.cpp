@@ -1647,3 +1647,111 @@ TEST_F(CampaignPickerSessionTest, terminal_camp_oath_undeploys_then_freezes)
     (void)remove_user_file("save/campdrv.gtl");
     (void)og::data::set_active_company_slot("save0");
 }
+
+// An OPEN camp is not a gate: TRAIN and HIRE pass through untouched, and only
+// a camp that closed the row speaks. Both arms come off the same book, so a
+// rule engine that refused everything (or nothing) fails one of them.
+TEST_F(CampaignPickerSessionTest, terminal_roster_refusal_lets_an_open_camp_train_and_hire)
+{
+    save_.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save_.team_list[0]->name = "ALPHA";
+    save_.team_size = 1;
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local shut = og.campaign_state_get("shut") == 1
+    return { widgets = { { kind = "roster",
+      can_train = not shut, can_hire = not shut } } }
+  end,
+}))LUA");
+
+    using og::ui::TerminalRosterCommand;
+    ASSERT_TRUE(save_.campaign_state_set(save_.current_campaign, "shut", 0));
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Train, 0)
+                     .has_value())
+        << "an open camp must not refuse TRAIN";
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Hire, 0)
+                     .has_value())
+        << "an open camp must not refuse HIRE";
+
+    ASSERT_TRUE(save_.campaign_state_set(save_.current_campaign, "shut", 1));
+    const std::optional<std::string> train = og::ui::terminal_roster_refusal(
+        save_, TerminalRosterCommand::Train, 0);
+    ASSERT_TRUE(train.has_value());
+    EXPECT_EQ(og::ui::kCampaignRosterTrainClosedMessage, *train);
+    const std::optional<std::string> hire = og::ui::terminal_roster_refusal(
+        save_, TerminalRosterCommand::Hire, 0);
+    ASSERT_TRUE(hire.has_value());
+    EXPECT_EQ(og::ui::kCampaignRosterHireClosedMessage, *hire);
+}
+
+// The oath un-deploys BEFORE it writes the tag, so a provider that refuses
+// the tag leaves a hero silently off the muster board. The stand-down toast
+// is the only thing that tells the player their company just shrank — the
+// accepting arm below proves the same click normally speaks the full oath.
+TEST_F(CampaignPickerSessionTest, terminal_camp_oath_announces_a_stand_down_the_provider_refused)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      assign = { key = "muster", labels = { "WAR", "BURDEN" } } } } }
+  end,
+}))LUA");
+    ASSERT_TRUE(og::data::set_active_company_slot("campoath"));
+
+    const auto seat_alpha = [this] {
+        save_.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save_.team_list[0]->name = "ALPHA";
+        save_.team_list[0]->teamnum = 0;
+        save_.team_list[0]->deployed = true;
+        save_.team_list[0]->campaign_tag = 0;
+        save_.team_size = 1;
+    };
+    // camp: open the SWEAR door, cycle row 1, leave the swear, close the camp.
+    const std::vector<std::string> answers = {"1", "1", "0", "0"};
+
+    // Refusing arm: the provider says no, so no tag lands and no oath toast
+    // is spoken — but the un-deploy already happened and must be announced.
+    seat_alpha();
+    {
+        og::script::hooks::CampaignProviders refusing =
+            og::data::make_campaign_providers(save_);
+        refusing.assign_set = [](int, int) { return false; };
+        og::script::hooks::install_campaign_providers(std::move(refusing));
+
+        ScriptedTerminalIo scripted;
+        scripted.save = &save_;
+        scripted.answers = answers;
+        og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+        const std::vector<std::string> expected = {
+            std::string(og::ui::kCampaignOathStoodDownMessage)};
+        EXPECT_EQ(expected, scripted.notices)
+            << "a refused oath must still name the stand-down it caused";
+        EXPECT_EQ(0, static_cast<int>(save_.team_list[0]->campaign_tag));
+        EXPECT_FALSE(save_.team_list[0]->deployed);
+    }
+
+    // Accepting arm (the paired control): the same click on the same book
+    // writes the tag and speaks the full-word oath instead.
+    seat_alpha();
+    {
+        og::script::hooks::install_campaign_providers(
+            og::data::make_campaign_providers(save_));
+
+        ScriptedTerminalIo scripted;
+        scripted.save = &save_;
+        scripted.answers = answers;
+        og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+        const std::vector<std::string> expected = {
+            "Sworn to WAR. Stood down from the muster."};
+        EXPECT_EQ(expected, scripted.notices);
+        EXPECT_EQ(1, static_cast<int>(save_.team_list[0]->campaign_tag));
+        EXPECT_FALSE(save_.team_list[0]->deployed);
+    }
+
+    (void)remove_user_file("save/campoath.gtl");
+    (void)og::data::set_active_company_slot("save0");
+}

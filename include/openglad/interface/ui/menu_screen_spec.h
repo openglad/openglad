@@ -52,13 +52,6 @@ enum class MenuBuildVariant : std::uint8_t {
     Web,
 };
 
-// Live-vbutton outline binding, applied every frame in the label-sync pass
-// (replaces raw allbuttons_[N]->do_outline writes when a screen migrates).
-enum class MenuOutlineBinding : std::uint8_t {
-    None,
-    PlayerCountEquals,  // do_outline = (save.numplayers == outline_arg)
-};
-
 // Live-vbutton face-color binding, applied every frame in the label-sync
 // pass (for example, READY/GO state faces).
 using MenuColorFormatter = unsigned char (*)(const MenuLabelContext&);
@@ -92,8 +85,6 @@ struct MenuButtonSpec {
     // Pixie art face family (>= 0), re-applied after init_buttons AND after
     // every reset_buttons (set_graphic overwrites w/h, so ordering matters).
     signed char art_family = -1;
-    MenuOutlineBinding outline = MenuOutlineBinding::None;
-    Sint32 outline_arg = 0;
     MenuColorFormatter color = nullptr;
     bool no_draw = false;
     // Static default hidden flag, transcribed verbatim from the legacy
@@ -105,11 +96,10 @@ struct MenuButtonSpec {
 };
 
 // Navigation precedence: a rewire hook wins; otherwise the static links
-// stand. RouteAround is reserved for screens that prove equivalence first.
+// stand.
 enum class NavProgramKind : std::uint8_t {
     Static,
     Rewire,
-    RouteAround,
 };
 
 struct NavProgram {
@@ -183,14 +173,11 @@ struct MenuScreenSpec {
     // MENU_REDRAW to be consumed by reset_buttons (team build, SCENARIO)
     // keep this false.
     bool exit_on_redraw = false;
-    // Draw the picker backdrop (draw_backdrop()) before draw_background.
-    bool backdrop = false;
     // Frame obligations.
     bool polls_lobby = false;
     bool level_reload_guard = false;
     bool autosave_on_mutation = false;
     bool ready_reset_on_mutation = false;
-    bool sync_settings_after_mutation = false; // after handled MenuSpecRow clicks
     // Per-screen hooks (screen_state is run_menu_screen's opaque argument).
     // Entry-time descriptor fix-ups, run ONCE after materialization and
     // BEFORE init_buttons (the legacy pre-init mutations: hire's computed
@@ -213,8 +200,6 @@ struct MenuScreenSpec {
     // Return value is the frame's new retvalue (MENU_OK/MENU_REDRAW/0, or
     // MENU_EXIT for a structural exit).
     Sint32 (*on_spec_row)(int row, void* screen_state) = nullptr;
-    // Optional extra MenuLabelContext fill (after the runner's default fill).
-    void (*build_context)(MenuLabelContext& context) = nullptr;
     const RowTemplateSpec* row_template = nullptr;
     Sint32 exit_value = 2;  // MENU_REDRAW (picker_sdl_defs.h)
 };

@@ -18,13 +18,14 @@
 #include <array>
 #include <span>
 #include <cstdio>
+#include <cstdlib>
 #include <unistd.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // From level_editor.cpp
 void set_screen_pos(screen* scr, Sint32 x, Sint32 y);
-char get_random_matching_tile(Sint32 whatback);
+Sint32 get_random_matching_tile(Sint32 whatback);
 Sint32 check_collide(Sint32 x, Sint32 y, Sint32 xsize, Sint32 ysize,
                      Sint32 x2, Sint32 y2, Sint32 xsize2, Sint32 ysize2);
 walker* some_hit(Sint32 x, Sint32 y, walker* ob, LevelRuntimeData* data);
@@ -36,12 +37,12 @@ std::string get_editor_family_label(Order order, Sint32 family, std::span<const 
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 bool editor_order_supports_spawn_delay(Order order);
 std::string format_editor_spawn_delay_label(int ticks);
-void importCampaignPicker();
-void shareCampaign(screen* scr);
 bool prompt_for_string(const std::string& message, std::string& result);
 int level_editor_test_exercise_internal_helpers();
 int level_editor_test_decor_migrated_roundtrip();
 int level_editor_test_mouse_release_workflows();
+int level_editor_test_save_failure_reporting();
+int level_editor_test_nameless_selection_panel_rows();
 enum class EventType;
 EventType handle_basic_editor_event(const void* native_event);
 
@@ -133,13 +134,33 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_TRUE(get_editor_level_label(Order::Weapon, FAMILY_KNIFE, 8) == "POWER: 8") << "weapon power label";
     ASSERT_TRUE(get_editor_level_label(static_cast<Order>(255), FAMILY_KNIFE, 8).empty()) << "unknown order has empty level label";
 
-    importCampaignPicker();
-    shareCampaign(og::runtime::current_session->myscreen_);
     std::string name = "Default";
     ASSERT_TRUE(prompt_for_string("Name", name)) << "prompt_for_string test-mode path should accept";
     ASSERT_EQ(0, level_editor_test_exercise_internal_helpers())
         << "internal helper exerciser should report the first failed check as a negative index";
 
+}
+
+// The terrain brush's variant picker. Every family in the switch has four
+// authored variants and the brush must be able to paint all of them: a pick
+// that can never return the fourth tile makes 16cob4.png / 16stone4.png
+// unpaintable in the editor even though the smoother and the mapgens place
+// them. Exact-set equality, not membership, is what catches that.
+TEST(LevelEditorHelpers, random_matching_tile_paints_every_cobble_and_boulder_variant)
+{
+    std::srand(12345);
+
+    std::set<int> cobble;
+    std::set<int> boulder;
+    for (int n = 0; n < 4000; ++n) {
+        cobble.insert(get_random_matching_tile(PIX_COBBLE_1));
+        boulder.insert(get_random_matching_tile(PIX_BOULDER_1));
+    }
+
+    ASSERT_EQ((std::set<int>{PIX_COBBLE_1, PIX_COBBLE_2, PIX_COBBLE_3, PIX_COBBLE_4}), cobble)
+        << "the brush must be able to paint every cobble variant";
+    ASSERT_EQ((std::set<int>{PIX_BOULDER_1, PIX_BOULDER_2, PIX_BOULDER_3, PIX_BOULDER_4}), boulder)
+        << "the brush must be able to paint every boulder variant";
 }
 
 // Spawn-delay authoring guards. Only oblist orders (Living/Generator) are put
@@ -212,6 +233,27 @@ TEST(LevelEditorHelpers, level_editor_decor_migrated_gladiator_roundtrip)
         << "migrated-decor editor round-trip failed at the negated check index";
 }
 
+// A save the editor could not finish must report the failure and leave the
+// dirty flag standing, so the next exit still offers to save. Each refusal in
+// the exerciser sits beside the same click succeeding while the package is
+// mounted.
+TEST(LevelEditorHelpers, failed_saves_report_and_keep_the_level_dirty)
+{
+    ASSERT_EQ(0, level_editor_test_save_failure_reporting())
+        << "save-failure reporting failed at the negated check index";
+}
+
+// A guy with no name must not push his family label onto the name row: the
+// info box keeps one row per field so LEVEL/AI stay where the eye expects
+// them. Four checks -- the family row matches the named render, the name row
+// is blank, the two renders differ at all, and a single TREASURE selection
+// (whose name is always empty) still writes its label on row 0.
+TEST(LevelEditorHelpers, nameless_guy_keeps_the_family_label_on_the_name_row)
+{
+    ASSERT_EQ(4, level_editor_test_nameless_selection_panel_rows())
+        << "info-panel row layout for a nameless single selection";
+}
+
 TEST(LevelEditorHelpers, mouse_release_workflows_preserve_exact_editor_state)
 {
     ASSERT_EQ(0, level_editor_test_mouse_release_workflows())
@@ -263,6 +305,46 @@ TEST(LevelEditorHelpers, basic_event_outcomes_report_exact_release_and_quit_stat
         5, static_cast<int>(handle_basic_editor_event(&mouse_up)));
     EXPECT_EQ(0, editor.mouse_up_button)
         << "an already-released button reports no synthetic release";
+
+    // A release the editor DID hold names the button it let go of: the
+    // editor's click handlers dispatch on mouse_up_button, so mislabelling a
+    // release would fire the right-click (delete) action on a left click.
+    mouse.left = true;
+    mouse.right = false;
+    editor.mouse_up_button = -1;
+    EXPECT_EQ(
+        5, static_cast<int>(handle_basic_editor_event(&mouse_up)));
+    EXPECT_EQ(MOUSE_LEFT, editor.mouse_up_button)
+        << "a held left button reports a left release";
+    EXPECT_FALSE(mouse.left) << "the release clears the held left button";
+
+    SDL_Event right_up{};
+    right_up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    right_up.button.button = SDL_BUTTON_RIGHT;
+    right_up.button.down = false;
+    mouse.left = false;
+    mouse.right = true;
+    editor.mouse_up_button = -1;
+    EXPECT_EQ(
+        5, static_cast<int>(handle_basic_editor_event(&right_up)));
+    EXPECT_EQ(MOUSE_RIGHT, editor.mouse_up_button)
+        << "a held right button reports a right release";
+    EXPECT_FALSE(mouse.right) << "the release clears the held right button";
+
+    // An event type the editor has no case for is swallowed: it must not be
+    // mistaken for a release (that would replay the last click's action) and
+    // must not end the editor session.
+    SDL_Event unhandled{};
+    unhandled.type = SDL_EVENT_CLIPBOARD_UPDATE;
+    editor.mouse_up_button = MOUSE_RIGHT;
+    EXPECT_EQ(
+        0, static_cast<int>(handle_basic_editor_event(&unhandled)));
+    EXPECT_EQ(MOUSE_RIGHT, editor.mouse_up_button)
+        << "an unhandled event leaves the recorded release alone";
+    EXPECT_EQ(
+        saved_world_end,
+        og::runtime::current_session->myscreen_->world().end)
+        << "an unhandled event does not end the editor session";
 
     trace_clear();
     SDL_Event quit_event{};

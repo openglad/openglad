@@ -59,14 +59,3 @@ bool create_new_campaign(const std::string& campaign_id)
     cleanup_unpacked_campaign();
     return true;
 }
-
-void importCampaignPicker()
-{
-    // TODO: Browse campaigns online and download some
-}
-
-void shareCampaign(screen* screenp)
-{
-    (void)screenp;
-    // TODO: Send current campaign to the internets!
-}

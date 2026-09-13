@@ -6,9 +6,12 @@
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/gameplay/game_world.h>
 #include "test_input_helpers.h"
 
 #include <atomic>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -147,11 +150,11 @@ static int editor_injector_thread(void* data)
     inject_click(15, 25, 20);   // Campaign >
     SDL_Delay(30);
     inject_click(85, 25, 20);   // New
-    inject_click(85, 45, 20);   // Import...
-    inject_click(85, 65, 20);   // Share...
-    inject_click(85, 85, 20);   // Load...
-    inject_click(85, 105, 20);  // Save
-    inject_click(85, 125, 20);  // Save As...
+    inject_click(85, 45, 20);   // Load...
+    inject_click(85, 65, 20);   // Save
+    inject_click(85, 85, 20);   // Save As...
+    inject_click(85, 105, 20);  // below the submenu: no entry here
+    inject_click(85, 125, 20);  // below the submenu: no entry here
     SDL_Delay(30);
     inject_click(15, 10, 20);   // File
     SDL_Delay(30);
@@ -1029,4 +1032,319 @@ TEST(LevelEditorInteractions, editor_exit_clicks_cannot_activate_the_main_menu)
            "spent on the main menu — hovering BEGIN NEW GAME during the fade "
            "activated it with no click";
     og::ui::menu_transition_testing_reset();
+}
+
+
+// ---------------------------------------------------------------------------
+// Scripted key/wheel sequences through the real editor event loop (#264).
+//
+// The editor's key handler is only reachable from level_editor()'s own pump,
+// so these tests script real SDL events and read the result from the editor's
+// function-local static AFTER the loop returns. The injector never writes
+// editor state; its one product write is world().end, the loop's documented
+// exit flag (same seam as level_editor_runs_and_handles_basic_input above).
+// ---------------------------------------------------------------------------
+
+// From picker_dialogs.cpp (TESTING).
+void picker_testing_yes_or_no_queue_clear();
+// From level_editor.cpp (TESTING).
+int level_editor_testing_object_brush_worldz();
+int level_editor_testing_default_maxrows();
+LevelRuntimeData* level_editor_testing_level();
+
+namespace
+{
+// One scripted input. `wheel` != 0 sends a mouse-wheel notch instead of a
+// key. `wait_for` (optional) is a substring of a "dialog" trace the driver
+// must observe BEFORE sending this step: timed_dialog() eats pending input
+// while it is open, so anything queued behind a dialog never reaches the key
+// handler.
+struct EditorScriptStep
+{
+    SDL_Keycode key = SDLK_UNKNOWN;
+    SDL_Keymod mod = SDL_KMOD_NONE;
+    int wheel = 0;
+    const char* wait_for = nullptr;
+};
+
+EditorScriptStep plain_key(SDL_Keycode k)
+{
+    return EditorScriptStep{k, SDL_KMOD_NONE, 0, nullptr};
+}
+EditorScriptStep ctrl_key(SDL_Keycode k)
+{
+    return EditorScriptStep{k, SDL_KMOD_LCTRL, 0, nullptr};
+}
+EditorScriptStep wheel_notch(int notches)
+{
+    return EditorScriptStep{SDLK_UNKNOWN, SDL_KMOD_NONE, notches, nullptr};
+}
+EditorScriptStep key_after_dialog(SDL_Keycode k, const char* trace_substring)
+{
+    return EditorScriptStep{k, SDL_KMOD_NONE, 0, trace_substring};
+}
+
+bool push_checked_key_press_mod(SDL_Keycode key, SDL_Keymod mod)
+{
+    SDL_Event down{};
+    down.type = SDL_EVENT_KEY_DOWN;
+    down.key.key = key;
+    down.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
+    down.key.mod = mod;
+    down.key.down = true;
+    if (!SDL_PushEvent(&down))
+        return false;
+
+    SDL_Event up = down;
+    up.type = SDL_EVENT_KEY_UP;
+    up.key.down = false;
+    return SDL_PushEvent(&up);
+}
+
+bool push_checked_wheel(int notches)
+{
+    SDL_Event wheel{};
+    wheel.type = SDL_EVENT_MOUSE_WHEEL;
+    wheel.wheel.y = static_cast<float>(notches);
+    wheel.wheel.integer_y = notches;
+    return SDL_PushEvent(&wheel);
+}
+
+// Wait-on-condition helpers with generous ceilings. Each returns false if the
+// condition never arrives, so a broken editor fails the test instead of
+// hanging it.
+bool wait_for_trace_line(const char* category, const char* needle, Uint32 ceiling_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + ceiling_ms;
+    while (!trace_contains(category, needle))
+    {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        SDL_Delay(1);
+    }
+    return true;
+}
+
+// The editor has consumed everything we queued once SDL's queue is empty.
+bool wait_for_drained_event_queue(Uint32 ceiling_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + ceiling_ms;
+    while (SDL_HasEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP) ||
+           SDL_HasEvent(SDL_EVENT_MOUSE_WHEEL))
+    {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        SDL_Delay(1);
+    }
+    return true;
+}
+
+struct EditorScriptState
+{
+    std::vector<EditorScriptStep> script;
+};
+
+int editor_key_script_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& state = *static_cast<EditorScriptState*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic", 10000u);
+
+    if (ok)
+    {
+        for (const EditorScriptStep& step : state.script)
+        {
+            if (step.wait_for != nullptr &&
+                !wait_for_trace_line("dialog", step.wait_for, 10000u))
+            {
+                ok = false;
+                break;
+            }
+            ok = (step.wheel != 0 ? push_checked_wheel(step.wheel)
+                                  : push_checked_key_press_mod(step.key, step.mod)) &&
+                 ok;
+        }
+    }
+
+    // Two drains with an inert fence key between them. The first proves the
+    // pump consumed the script; the fence can only be read by the NEXT frame's
+    // pump, so the second drain proves the frame that consumed the last
+    // scripted event also ran the post-pump work (the tile-selector scroll).
+    ok = wait_for_drained_event_queue(10000u) && ok;
+    ok = push_checked_key_press_mod(SDLK_F12, SDL_KMOD_NONE) && ok;
+    ok = wait_for_drained_event_queue(10000u) && ok;
+
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+// Runs one real editor session driven by `script`; returns the injector's exit
+// code (0 = every event was queued and every awaited dialog appeared).
+int run_editor_with_key_script(std::vector<EditorScriptStep> script)
+{
+    trace_clear();
+    og::runtime::current_session->myscreen_->world().end = 0;
+    EditorScriptState state;
+    state.script = std::move(script);
+    SDL_Thread* thread =
+        SDL_CreateThread(editor_key_script_injector, "editor_key_script", &state);
+    if (thread == nullptr)
+        return 1;
+    (void)level_editor();
+    int result = 1;
+    SDL_WaitThread(thread, &result);
+    SDL_FlushEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP);
+    return result;
+}
+} // namespace
+
+
+// Ctrl+S on a clean level must say exactly "No changes to save." and touch
+// nothing: if that arm were dropped, a stray Ctrl+S would either repack the
+// campaign or report a save that never happened. The brush keys in the same
+// session are the positive control — they prove the key handler really ran.
+TEST(LevelEditorInteractions, ctrl_s_with_nothing_dirty_reports_no_changes_and_saves_nothing)
+{
+    EditorDecorStateGuard state_guard;   // enters with both dirty flags 0
+    picker_testing_yes_or_no_queue_clear();
+
+    std::vector<EditorScriptStep> script;
+    script.push_back(ctrl_key(SDLK_S));
+    // Close the timed dialog with a key the editor has no handler for, so the
+    // three-second product timeout is never paid.
+    script.push_back(
+        key_after_dialog(SDLK_F12, "timed_dialog_open No changes to save."));
+    // O,T,O reaches Object mode from whichever mode an earlier test left.
+    script.push_back(
+        key_after_dialog(SDLK_O, "timed_dialog_closed No changes to save."));
+    script.push_back(plain_key(SDLK_T));
+    script.push_back(plain_key(SDLK_O));
+    // ',' floors the brush at Z 0 (40 presses is more than any reachable
+    // height, so the last ones exercise the refusal), then '.' raises it three
+    // half-tiles.
+    for (int i = 0; i < 40; ++i)
+        script.push_back(plain_key(SDLK_COMMA));
+    for (int i = 0; i < 3; ++i)
+        script.push_back(plain_key(SDLK_PERIOD));
+
+    const int injector_result = run_editor_with_key_script(std::move(script));
+
+    const int levelchanged_after = eds().levelchanged;
+    const int campaignchanged_after = eds().campaignchanged;
+    const int worldz_after = level_editor_testing_object_brush_worldz();
+
+    EXPECT_EQ(0, injector_result);
+    EXPECT_TRUE(trace_contains("dialog", "timed_dialog_open No changes to save."))
+        << "Ctrl+S on a clean level must say 'No changes to save.'";
+    EXPECT_FALSE(trace_contains("dialog", "timed_dialog_open Saved."))
+        << "nothing was dirty, so nothing may report itself saved";
+    EXPECT_FALSE(trace_contains("dialog", "timed_dialog_open Failed to save level."))
+        << "a clean level is never handed to saveLevel()";
+    EXPECT_FALSE(trace_contains("dialog", "timed_dialog_open Failed to save campaign."))
+        << "a clean campaign is never handed to saveCampaign()";
+    EXPECT_EQ(0, levelchanged_after) << "a refused save leaves the level clean";
+    EXPECT_EQ(0, campaignchanged_after)
+        << "a refused save leaves the campaign clean";
+    EXPECT_EQ(24, worldz_after)
+        << "three '.' presses raise the brush three half-tiles above the floor";
+}
+
+// The authored Z height survives leaving and re-entering the editor, and one
+// ',' lowers it by exactly one half-tile from there. Without this second arm
+// the 24 above could come from a brush that only ever counts up.
+TEST(LevelEditorInteractions, comma_lowers_the_object_brush_z_height_by_one_half_tile)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+
+    std::vector<EditorScriptStep> raise{plain_key(SDLK_O), plain_key(SDLK_T),
+                                        plain_key(SDLK_O)};
+    for (int i = 0; i < 40; ++i)
+        raise.push_back(plain_key(SDLK_COMMA));
+    for (int i = 0; i < 3; ++i)
+        raise.push_back(plain_key(SDLK_PERIOD));
+    const int raise_result = run_editor_with_key_script(std::move(raise));
+    const int worldz_raised = level_editor_testing_object_brush_worldz();
+
+    std::vector<EditorScriptStep> lower{plain_key(SDLK_O), plain_key(SDLK_T),
+                                        plain_key(SDLK_O), plain_key(SDLK_COMMA)};
+    const int lower_result = run_editor_with_key_script(std::move(lower));
+    const int worldz_lowered = level_editor_testing_object_brush_worldz();
+
+    EXPECT_EQ(0, raise_result);
+    EXPECT_EQ(0, lower_result);
+    EXPECT_EQ(24, worldz_raised)
+        << "40 ',' presses floor the brush at 0 and three '.' raise it to 24";
+    EXPECT_EQ(16, worldz_lowered)
+        << "one ',' drops the brush exactly GRID_SIZE/2 from 24";
+}
+
+// Page Up/Down is the whole Z-axis authoring UI: Ctrl+PageUp stacks a floor
+// (and lands the editor on it), plain Page Up/Down walk the stack, and
+// Ctrl+PageDown drops the top floor. A level with one floor cannot lose it —
+// that is what the twelve leading Ctrl+PageDown presses assert.
+TEST(LevelEditorInteractions, page_keys_add_switch_and_drop_editor_floors)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+
+    std::vector<EditorScriptStep> script;
+    // Normalize: whatever floor count the mounted campaign's first level
+    // carries, Ctrl+PageDown becomes a no-op once one floor is left.
+    for (int i = 0; i < 12; ++i)
+        script.push_back(ctrl_key(SDLK_PAGEDOWN));
+    script.push_back(ctrl_key(SDLK_PAGEUP));    // 1 floor -> 2, editor on 1
+    script.push_back(ctrl_key(SDLK_PAGEUP));    // 2 floors -> 3, editor on 2
+    script.push_back(plain_key(SDLK_PAGEDOWN)); // -> floor 1
+    script.push_back(plain_key(SDLK_PAGEUP));   // -> floor 2
+    script.push_back(ctrl_key(SDLK_PAGEDOWN));  // drop floor 2 -> 2 floors
+
+    const int injector_result = run_editor_with_key_script(std::move(script));
+
+    LevelRuntimeData* level = level_editor_testing_level();
+    ASSERT_NE(nullptr, level) << "the editor must have run at least once";
+    const int floor_count_after = level->world().floor_count();
+    const int current_floor_after = eds().current_floor;
+    const int levelchanged_after = eds().levelchanged;
+
+    EXPECT_EQ(0, injector_result);
+    EXPECT_EQ(2, floor_count_after)
+        << "twelve refused drops, two adds and one drop leave exactly two floors";
+    EXPECT_EQ(1, current_floor_after)
+        << "dropping the floor the editor stood on moves it down one";
+    EXPECT_EQ(1, levelchanged_after)
+        << "changing the floor stack dirties the level";
+}
+
+// The tile-selector wheel wraps instead of running off either end of the
+// palette: one notch up from the first row lands on the last row, one notch
+// down from the last row lands back on the first.
+TEST(LevelEditorInteractions, one_wheel_notch_wraps_the_tile_selector_both_ways)
+{
+    const int maxrows = level_editor_testing_default_maxrows();
+    ASSERT_EQ(29, maxrows) << "116 default background tiles, 4 to a row";
+
+    int rowsdown_after_up = -1;
+    int rowsdown_after_down = -1;
+    {
+        EditorDecorStateGuard state_guard;
+        picker_testing_yes_or_no_queue_clear();
+        eds().rowsdown = 0;
+        const int result = run_editor_with_key_script({wheel_notch(1)});
+        rowsdown_after_up = eds().rowsdown;
+        EXPECT_EQ(0, result);
+    }
+    {
+        EditorDecorStateGuard state_guard;
+        picker_testing_yes_or_no_queue_clear();
+        eds().rowsdown = maxrows - 1;
+        const int result = run_editor_with_key_script({wheel_notch(-1)});
+        rowsdown_after_down = eds().rowsdown;
+        EXPECT_EQ(0, result);
+    }
+
+    EXPECT_EQ(maxrows - 1, rowsdown_after_up)
+        << "one notch up from the first row wraps to the last row";
+    EXPECT_EQ(0, rowsdown_after_down)
+        << "one notch down from the last row wraps to the first";
 }

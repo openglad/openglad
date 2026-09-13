@@ -1248,23 +1248,6 @@ void clear_transient_input_state()
     TRACE("input", "transient input cleared (focus/visibility loss)");
 }
 
-void wait_for_key(int somekey)
-{
-#ifdef TESTING
-    (void)somekey;
-    TRACE("input", "wait_for_key: skipping wait (test mode)");
-    return;
-#else
-    // First wait for key press ..
-    while (!og::runtime::current_session->keystates_[og::input_native::scancode_from_key(somekey)])
-        get_input_events(WAIT);
-
-    // And now for the key to be released ..
-    while (!og::runtime::current_session->keystates_[og::input_native::scancode_from_key(somekey)])
-        get_input_events(WAIT);
-#endif
-}
-
 // JoyData::JoyData() (default ctor) is defined in the SDL-free input_state.cpp so
 // InputHardwareState (which value-initializes a JoyData[4]) can be constructed by
 // the headless builds (curses/server/text) that do not compile this file.

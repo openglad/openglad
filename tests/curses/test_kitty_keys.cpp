@@ -9,6 +9,7 @@
 
 #include <openglad/platform/curses/kitty_keys.h>
 
+#include <cerrno>
 #include <vector>
 
 using namespace og::curses;
@@ -17,6 +18,8 @@ using og::curses::kitty::Decoder;
 namespace og::curses {
 int curses_terminal_testing_delayed_handshake_poll_count();
 int curses_terminal_testing_exercise_internal_helpers();
+int curses_terminal_testing_error_interrupted_handshake(int error_code,
+                                                        bool* supported_out);
 }
 
 namespace {
@@ -320,6 +323,22 @@ TEST(KittyKeys, response_indicates_support_partial_not_done)
 TEST(CursesTerminalInternals, capability_probe_waits_past_an_empty_poll_slice)
 {
     EXPECT_EQ(2, curses_terminal_testing_delayed_handshake_poll_count());
+}
+
+// A signal landing on the capability probe must not cost the terminal its
+// Kitty keyboard mode, while a genuine poll failure abandons the handshake at
+// once instead of burning the full one-second budget.
+TEST(CursesTerminalInternals, capability_probe_retries_eintr_but_aborts_on_io_error)
+{
+    bool eintr_supported = false;
+    EXPECT_EQ(3, curses_terminal_testing_error_interrupted_handshake(
+                     EINTR, &eintr_supported));
+    EXPECT_TRUE(eintr_supported);
+
+    bool eio_supported = true;
+    EXPECT_EQ(1, curses_terminal_testing_error_interrupted_handshake(
+                     EIO, &eio_supported));
+    EXPECT_FALSE(eio_supported);
 }
 
 TEST(CursesTerminalInternals, pure_helpers_cover_color_write_and_capability_probe)

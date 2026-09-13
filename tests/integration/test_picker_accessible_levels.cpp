@@ -72,12 +72,57 @@ TEST(PickerAccessibleLevels, picker_get_accessible_levels_handles_missing_leveld
 }
 
 
+namespace {
+
+// progress_row_click_applies() ends in picker_lobby_sync_settings_from_save(),
+// which lazily creates the process-wide STANDALONE local lobby client and
+// seeds its cached roster from whatever save_data holds at that moment (here:
+// the save.reset() these tests start from, i.e. an empty team). Every later
+// picker menu loop begins with picker_lobby_poll(), which rewrites
+// save.team_list from that stale cache — freeing the guys the next test just
+// planted (the documented use-after-free wedge in
+// test_picker_detail_menu_driven.cpp). RAII so an early ASSERT cannot skip it.
+struct PickerLobbyShutdownGuard
+{
+    ~PickerLobbyShutdownGuard() { picker_lobby_shutdown(); }
+};
+
+} // namespace
+
+// The leak itself, pinned in one body: the click DOES create the standalone
+// client, and the guard is what stops it from outliving this test.
+TEST(PickerAccessibleLevels, a_progress_row_click_leaves_no_lobby_client_behind)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+
+    {
+        PickerLobbyShutdownGuard lobby_guard;
+        ASSERT_TRUE(progress_row_click_applies(1, false));
+        ASSERT_TRUE(picker_lobby_testing_standalone_client_alive())
+            << "the click's settings sync lazily creates the standalone "
+               "client — if this ever stops being true the guards below are "
+               "no longer guarding anything";
+    }
+
+    ASSERT_FALSE(picker_lobby_testing_standalone_client_alive())
+        << "a surviving client rewrites the NEXT test's save.team_list from "
+           "this empty roster (picker_lobby_client.cpp apply_state_to_save)";
+}
+
+
 // The PROGRESS GO/REPLAY click rides the earned-roads gate: an id outside
 // the frontier refuses (the report's own rows are always inside it, so this
 // guards stale clicks and future row sources) and an in-frontier id writes
 // the cursor exactly as before.
 TEST(PickerAccessibleLevels, progress_row_click_applies_gate)
 {
+    PickerLobbyShutdownGuard lobby_guard;  // the click below creates one
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -103,6 +148,8 @@ TEST(PickerAccessibleLevels, progress_row_click_applies_gate)
 // for the fold/picker-re-entry restore.
 TEST(PickerAccessibleLevels, progress_row_replay_click_arms)
 {
+    PickerLobbyShutdownGuard lobby_guard;  // the click below creates one
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -135,6 +182,8 @@ TEST(PickerAccessibleLevels, progress_row_replay_click_arms)
 // walked exit, blocking exactly the re-branching VISIT exists for.
 TEST(PickerAccessibleLevels, visit_after_replay_arm_abandons_the_excursion)
 {
+    PickerLobbyShutdownGuard lobby_guard;  // the click below creates one
+
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
     SaveData& save = og::runtime::current_session->myscreen_->save_data;

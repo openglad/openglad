@@ -28,6 +28,8 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
 
+#include "curses_mount_restore.h"
+
 #include <filesystem>
 #include <tuple>
 #include <memory>
@@ -270,6 +272,11 @@ TEST(CursesGameRuntimeLocal,
 
 TEST(CursesGameRuntimeLocal, invalid_campaign_reports_real_load_failure)
 {
+    // The campaign id does not exist, so the failed mount clears the process
+    // mount state instead of replacing it: without this the next test starts
+    // with nothing mounted.
+    MountRestore mount_restore;
+
     SaveData save;
     init_test_save(save);
     save.current_campaign = "missing-curses-test";

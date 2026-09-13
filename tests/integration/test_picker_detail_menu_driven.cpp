@@ -31,6 +31,8 @@ Sint32 create_train_menu(Sint32 arg1);
 const char* family_name_copy(short family);
 void picker_lobby_shutdown();
 void picker_lobby_initialize_from_save();
+void picker_lobby_sync_settings_from_save();
+void picker_lobby_sync_roster_from_save();
 
 namespace
 {
@@ -374,6 +376,95 @@ static int train_menu_promote_injector(void* data)
     return 0;
 }
 } // namespace
+
+namespace
+{
+struct DetailPromoteFlowState
+{
+    std::atomic<bool> finished{false};
+    bool saw_promote = false;
+    bool clicked_promote = false;
+};
+
+// Gated on the affordance, never on a flat delay: on the unfixed tree the
+// freed guy's family byte is garbage, the promote row never un-hides, and
+// this fails BY NAME ("[interact] TIMEOUT waiting for 'promote'") instead of
+// eating the group's whole CTest budget.
+static int detail_menu_promote_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<DetailPromoteFlowState*>(data);
+
+    if (wait_for_interactable("promote", 10000)) {
+        state->saw_promote = true;
+        SDL_Delay(300);
+        // No run_on_main_thread() settle here: create_detail_menu is a legacy
+        // loop, not a run_menu_screen spec, so it never pumps the injector
+        // task queue and the post would burn its whole 15 s ceiling.
+        state->clicked_promote = interact("promote");
+    }
+    if (!state->clicked_promote) {
+        // Do not wedge the body in its menu loop when the promote never came.
+        if (wait_for_interactable("back", 5000))
+            (void)interact("back");
+    }
+    state->finished.store(true, std::memory_order_relaxed);
+    return 0;
+}
+} // namespace
+
+// The detail menu is opened on a BORROWED guy* into save.team_list, and the
+// first statement of its loop is picker_lobby_poll() — which rebuilds every
+// team_list slot at a NEW address. The member is not lost here (the lobby's
+// cached roster already holds it), so this pins the dangling borrow alone:
+// the menu must promote the member that is in the slot NOW.
+TEST(PickerDetailMenuDriven, detail_menu_promotes_after_a_lobby_poll_rebuilds_the_roster)
+{
+    PickerStateGuard guard;
+    TeamSlotGuard slot_guard(0);
+    PickerLobbyShutdownGuard lobby_guard;
+
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    og::runtime::current_session->editguy_ = 0;
+    save.team_size = 1;
+    save.current_campaign = "gladiator";
+    save.team_list[0].reset(new guy(FAMILY_MAGE));
+    save.team_list[0]->name = "POLLED_MAGE";
+    save.team_list[0]->level = 6;
+
+    // Seed the standalone lobby client from a save that ALREADY holds the
+    // member: the poll below then re-creates slot 0 at a new address rather
+    // than dropping it.
+    picker_lobby_shutdown();
+    picker_lobby_sync_settings_from_save();
+    picker_lobby_sync_roster_from_save();
+
+    og::runtime::current_session->current_guy_ =
+        std::make_unique<guy>(*save.team_list[0]);
+
+    prepare_detail_menu_mouse_click();
+    DetailPromoteFlowState state;
+    SDL_Thread* th = SDL_CreateThread(
+        detail_menu_promote_injector, "detail_promote_after_poll", &state);
+    ASSERT_TRUE(th != nullptr) << "injector thread started";
+
+    Sint32 r = create_detail_menu(save.team_list[0].get());
+
+    int code = 0;
+    SDL_WaitThread(th, &code);
+    clear_events();
+
+    ASSERT_TRUE(state.saw_promote)
+        << "the promote affordance must survive the roster rebuild";
+    ASSERT_TRUE(state.clicked_promote);
+    ASSERT_EQ(2, (int)r) << "promote returns REDRAW";
+    ASSERT_TRUE(save.team_list[0] != nullptr)
+        << "the roster rebuild must not lose the member";
+    ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)
+        << "the promotion must land on the guy the slot holds now, not on "
+           "the freed one the caller borrowed";
+}
+
 
 TEST(PickerDetailMenuDriven, train_menu_details_promote_survives_redraw_and_accept)
 {

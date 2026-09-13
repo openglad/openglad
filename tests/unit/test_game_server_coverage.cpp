@@ -4,6 +4,7 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -161,6 +162,9 @@ std::vector<std::uint8_t> malformed_message_for_type(std::uint8_t type)
         bytes = og::sim::serialize_snapshot_hash_check_message(
             {.tick = 10u, .snapshot_hash = 0x12345678u});
         break;
+    case og::sim::kPackRequestMessageType:
+        bytes = og::sim::serialize_pack_request_message({.pack_id = "mods"});
+        break;
     default:
         return {};
     }
@@ -203,6 +207,8 @@ bool type_specific_decoder_rejects(std::uint8_t type,
         return !og::sim::deserialize_pause_response_message(bytes).has_value();
     case og::sim::kSnapshotHashCheckMessageType:
         return !og::sim::deserialize_snapshot_hash_check_message(bytes).has_value();
+    case og::sim::kPackRequestMessageType:
+        return !og::sim::deserialize_pack_request_message(bytes).has_value();
     default:
         return false;
     }
@@ -267,6 +273,25 @@ std::optional<og::sim::PauseBroadcastMessage> find_pause_broadcast(
     return std::nullopt;
 }
 
+std::optional<og::sim::ControlChangeMessage> find_control_change(
+    const CoverageTransport& transport,
+    og::sim::PeerId peer_id)
+{
+    for (const auto& sent : transport.sent())
+    {
+        if (sent.peer_id != peer_id)
+            continue;
+        og::sim::TransportEnvelope envelope;
+        if (!og::sim::decode_transport_envelope(sent.data, envelope))
+            continue;
+        if (envelope.message_type != og::sim::kControlChangeMessageType)
+            continue;
+        if (auto change = og::sim::deserialize_control_change_message(sent.data))
+            return change;
+    }
+    return std::nullopt;
+}
+
 std::optional<og::sim::SimEventBatch> find_sim_event_batch(
     const CoverageTransport& transport,
     og::sim::PeerId peer_id)
@@ -291,7 +316,7 @@ TEST(GameServerCoverage, malformed_payloads_disconnect_each_raw_protocol_peer)
     CoverageTransport transport;
     og::sim::GameServer server(fixture.world(), fixture.events, transport);
 
-    constexpr std::array<std::uint8_t, 11> message_types = {
+    constexpr std::array<std::uint8_t, 12> message_types = {
         og::sim::kLobbyMessageType,
         og::sim::kLobbyStateMessageType,
         og::sim::kInputMessageType,
@@ -303,6 +328,7 @@ TEST(GameServerCoverage, malformed_payloads_disconnect_each_raw_protocol_peer)
         og::sim::kPauseBroadcastMessageType,
         og::sim::kPauseResponseMessageType,
         og::sim::kSnapshotHashCheckMessageType,
+        og::sim::kPackRequestMessageType,
     };
 
     std::vector<og::sim::PeerId> peers;
@@ -717,6 +743,23 @@ TEST(GameServerCoverage, disconnecting_pause_owner_clears_authoritative_pause)
     ASSERT_EQ(1u, server.disconnected_players().size());
     EXPECT_EQ(0u, server.disconnected_players().front().player_index);
     EXPECT_EQ(control, server.disconnected_players().front().control);
+
+    // A spectator holds no seat, so handle_pause_request's binding gate
+    // refuses its pause outright: a watcher must not be able to freeze the
+    // match for the players. The paused/unpaused pair above is the control
+    // that proves the same message DOES pause when it comes from a seat.
+    transport.set_connected({92u});
+    server.poll_incoming_messages();
+    server.connect_spectator(92u);
+    transport.clear_sent();
+    transport.queue_raw(
+        92u, og::sim::serialize_pause_broadcast_message(
+                 {.player_index = 0u, .player_name = ""}));
+    server.step();
+
+    EXPECT_FALSE(server.paused());
+    EXPECT_FALSE(fixture.world().paused);
+    EXPECT_FALSE(find_pause_broadcast(transport, 92u).has_value());
 }
 
 // #239 launch gate bound: a seeded client that never confirms ready holds the
@@ -1057,13 +1100,34 @@ TEST(GameServerCoverage, explicit_host_disconnect_cascades_to_all_clients)
     TestGameWorld fixture;
     CoverageTransport transport;
     og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({93u, 94u});
+    server.poll_incoming_messages();
     server.connect_client(93u);
     server.connect_client(94u);
+
+    // The cascade must also unwind the paused state a cascaded seat owned:
+    // otherwise the host quitting while a client's pause menu is open leaves
+    // the authority frozen with nobody left to resume it.
+    walker* const control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    server.bind_player(94u, 0u, fixture.world().my_team, control);
+    transport.queue_raw(
+        94u, og::sim::serialize_pause_broadcast_message(
+                 {.player_index = 0u, .player_name = ""}));
+    server.step();
+    ASSERT_TRUE(server.paused());
+    ASSERT_TRUE(fixture.world().paused);
 
     server.disconnect_client(93u);
 
     EXPECT_EQ((std::vector<og::sim::PeerId>{93u, 94u}),
               transport.disconnected());
+    EXPECT_FALSE(server.paused())
+        << "the cascade must clear the pause its cascaded seat owned";
+    EXPECT_FALSE(fixture.world().paused);
+    transport.clear_sent();
     server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
     EXPECT_TRUE(transport.sent().empty());
 }
@@ -1275,6 +1339,271 @@ TEST(GameServerCoverage, yell_input_broadcasts_yo_sound_and_notification)
     EXPECT_TRUE(has_sound) << "the broadcast batch should carry the yo sound";
     EXPECT_TRUE(has_notification)
         << "the broadcast batch should carry the Yo! notification";
+}
+
+// Rule (src/gameplay/game_server.cpp:616-635, and the comment there): pack
+// transfers are a lobby-phase concern. A stale PackRequest that slips into the
+// gameplay stream is legal traffic the dispatcher simply ignores — it must NOT
+// mark the peer malformed, because dropping a live player over a late lobby
+// frame is a lost match.
+TEST(GameServerCoverage, stale_pack_request_in_the_gameplay_stream_is_kept)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected({33u});
+    server.poll_incoming_messages();
+
+    transport.queue_raw(
+        33u, og::sim::serialize_pack_request_message({.pack_id = "mods"}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.last_polled_messages().size());
+    const og::sim::TypedReceivedMessage& decoded =
+        server.last_polled_messages().front();
+    EXPECT_EQ(33u, decoded.peer_id);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::PackRequest, decoded.kind);
+    ASSERT_NE(nullptr, decoded.pack_request);
+    EXPECT_EQ("mods", decoded.pack_request->pack_id);
+    EXPECT_TRUE(transport.disconnected().empty());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{33u}), transport.connected_peers());
+}
+
+// Rule (src/gameplay/game_server.cpp:264-275): a peer holding exactly ONE seat
+// keeps the historic single-active-slot heuristic, so a legacy client (text,
+// curses, an old test) that always fills InputState slot 0 still drives a seat
+// bound to any global player index. The heuristic must refuse to guess when
+// two slots are active at once: a two-seat envelope on a one-seat binding is
+// ambiguous, and adopting the wrong slot would let one machine's keys move
+// another machine's hero.
+TEST(GameServerCoverage,
+     legacy_single_seat_input_adopts_one_active_slot_and_refuses_two)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected({96u});
+    server.poll_incoming_messages();
+    server.connect_client(96u);
+
+    walker* const control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(64, 64);
+    control->set_user(1);
+    control->set_act_type(ACT_CONTROL);
+    control->set_yo_delay(0);
+    const std::uint32_t control_id = control->entity_id();
+    // Global player index 1, but the peer only ever fills InputState slot 0.
+    server.bind_player(96u, 1u, fixture.world().my_team, control);
+
+    server.step();
+    transport.queue_raw(
+        96u, og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
+    server.step();
+
+    const auto send_input = [&](const InputState& input) {
+        const auto bytes =
+            og::sim::serialize_input(fixture.world().tick_count_ + 1u, input);
+        transport.queue_raw(
+            96u, std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+        server.step();
+    };
+    // Re-find the hero by id after every tick rather than holding the pointer
+    // across step().
+    const auto yo_delay_now = [&]() -> int {
+        const walker* const found = fixture.world().find_by_id(control_id);
+        EXPECT_NE(nullptr, found) << "the bound hero must survive the tick";
+        return found != nullptr ? found->yo_delay() : -1;
+    };
+
+    // Ambiguous: BOTH active slots carry a yell, so ANY adoption at all would
+    // fire the yo sound and set yo_delay to 30. Only the refusal leaves seat 1
+    // on its own (empty) slot 1, which yells nothing.
+    InputState ambiguous;
+    ambiguous.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    ambiguous.players[2].pressed[static_cast<int>(InputAction::Yell)] = true;
+    ambiguous.players[2].held[static_cast<int>(InputAction::MoveLeft)] = true;
+    send_input(ambiguous);
+    EXPECT_EQ(0, yo_delay_now())
+        << "two active slots are ambiguous for a single-seat peer";
+
+    // Unambiguous: slot 0 is the only active slot, so it drives seat 1.
+    InputState legacy;
+    legacy.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    send_input(legacy);
+    EXPECT_EQ(30, yo_delay_now())
+        << "the one active slot must drive the single bound seat";
+}
+
+// Rule (src/gameplay/game_server.cpp:1923-1936): the input tick is
+// attacker-controlled wire data, and only ticks <= the expected tick are ever
+// consumed, so an input more than KEYFRAME_INTERVAL_TICKS ahead of the live
+// window is dropped outright — otherwise a flood of distinct far-future ticks
+// grows pending_inputs without bound (memory exhaustion). An input exactly AT
+// the bound is legal and must still apply when the world reaches its tick.
+TEST(GameServerCoverage, input_tick_past_the_future_window_is_dropped)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+
+    transport.set_connected({96u});
+    server.poll_incoming_messages();
+    server.connect_client(96u);
+
+    walker* const control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(64, 64);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    control->set_yo_delay(0);
+    const std::uint32_t control_id = control->entity_id();
+    server.bind_player(96u, 0u, fixture.world().my_team, control);
+
+    server.step();
+    transport.queue_raw(
+        96u, og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
+    server.step();
+
+    // Re-find the hero by id after every tick rather than holding the pointer
+    // across step().
+    const auto yo_delay_now = [&]() -> int {
+        const walker* const found = fixture.world().find_by_id(control_id);
+        EXPECT_NE(nullptr, found) << "the bound hero must survive the tick";
+        return found != nullptr ? found->yo_delay() : -1;
+    };
+
+    const std::uint32_t expected_tick = fixture.world().tick_count_ + 1u;
+    constexpr std::uint32_t kBound =
+        static_cast<std::uint32_t>(og::sim::KEYFRAME_INTERVAL_TICKS);
+
+    InputState yell;
+    yell.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    const auto queue_yell_at = [&](std::uint32_t tick) {
+        const auto bytes = og::sim::serialize_input(tick, yell);
+        transport.queue_raw(
+            96u, std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+    };
+    queue_yell_at(expected_tick + kBound);
+    queue_yell_at(expected_tick + kBound + 1u);
+
+    // The first step of the loop polls both frames against `expected_tick`.
+    // Run the world up to the accepted tick; the at-the-bound yell applies.
+    // The step budget is a ceiling, not the oracle: if a future change ever
+    // stalls the world tick (launch gate, pause, ready deadline) this fails in
+    // milliseconds instead of spinning forever.
+    constexpr std::uint32_t kStepCeiling = 2u * kBound;
+    std::uint32_t steps = 0u;
+    while (fixture.world().tick_count_ < expected_tick + kBound &&
+           steps < kStepCeiling)
+    {
+        server.step();
+        ++steps;
+    }
+    ASSERT_LT(steps, kStepCeiling)
+        << "the world stalled before reaching the future-window bound";
+    ASSERT_EQ(expected_tick + kBound, fixture.world().tick_count_);
+    EXPECT_EQ(30, yo_delay_now())
+        << "an input exactly at the future-window bound must be kept";
+
+    // One tick further: the over-bound yell was never stored, so nothing fires.
+    walker* const before_last_tick = fixture.world().find_by_id(control_id);
+    ASSERT_NE(nullptr, before_last_tick);
+    before_last_tick->set_yo_delay(0);
+    server.step();
+    ASSERT_EQ(expected_tick + kBound + 1u, fixture.world().tick_count_);
+    EXPECT_EQ(0, yo_delay_now())
+        << "an input one tick past the bound must have been dropped";
+}
+
+// Rule (src/gameplay/game_server.cpp:1665-1678, 2676-2685, 2833-2851): while a
+// respawn mode is running, the engine puts a dead hero back with its user tag
+// intact but the seat is holding a null control. The seat must adopt that
+// walker again — for a connected seat and for one still inside its disconnect
+// grace window — or the reviving player comes back as a statue: a body on
+// screen that nobody drives and a HUD reading someone else's health.
+TEST(GameServerCoverage, revived_walker_is_reclaimed_for_connected_and_grace_seats)
+{
+    {
+        TestGameWorld fixture;
+        fixture.world().respawn_mode = og::sim::kRespawnModeHeroes;
+        CoverageTransport transport;
+        og::sim::GameServer server(fixture.world(), fixture.events, transport);
+        transport.set_connected({96u});
+        server.poll_incoming_messages();
+        server.connect_client(96u);
+
+        walker* const revived =
+            fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, revived);
+        revived->setxy(64, 64);
+        revived->set_user(0);
+        revived->set_act_type(ACT_CONTROL);
+        ASSERT_NE(nullptr, revived->stats());
+        const std::uint32_t revived_id = revived->entity_id();
+        const float revived_hp = revived->stats()->hitpoints();
+
+        // The seat is bound with no control at all: this is the state a hero
+        // leaves behind when it dies into the respawn engine.
+        server.bind_player(96u, 0u, fixture.world().my_team, nullptr);
+        ASSERT_EQ(nullptr, server.player_control(0));
+
+        server.step();
+        transport.queue_raw(
+            96u,
+            og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
+        server.step();
+
+        ASSERT_NE(nullptr, server.player_control(0));
+        EXPECT_EQ(revived_id, server.player_control(0)->entity_id());
+        EXPECT_EQ(revived_hp, fixture.world().control_hp);
+        const auto change = find_control_change(transport, 96u);
+        ASSERT_TRUE(change.has_value())
+            << "the mirror must be told which entity it now drives";
+        EXPECT_EQ(0u, change->player_index);
+        EXPECT_EQ(revived_id, change->entity_id);
+    }
+
+    {
+        TestGameWorld fixture;
+        fixture.world().respawn_mode = og::sim::kRespawnModeHeroes;
+        CoverageTransport transport;
+        og::sim::GameServer server(fixture.world(), fixture.events, transport);
+        transport.set_connected({97u});
+        server.poll_incoming_messages();
+        server.bind_player(97u, 0u, fixture.world().my_team, nullptr);
+
+        transport.set_connected({});
+        server.poll_incoming_messages();
+        ASSERT_EQ(1u, server.disconnected_players().size());
+        ASSERT_EQ(nullptr, server.disconnected_players().front().control);
+        ASSERT_EQ(nullptr, server.player_control(0));
+
+        walker* const revived =
+            fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, revived);
+        revived->setxy(64, 64);
+        revived->set_user(0);
+        revived->set_act_type(ACT_CONTROL);
+        ASSERT_NE(nullptr, revived->stats());
+        const std::uint32_t revived_id = revived->entity_id();
+        const float revived_hp = revived->stats()->hitpoints();
+
+        server.step();
+
+        ASSERT_NE(nullptr, server.player_control(0));
+        EXPECT_EQ(revived_id, server.player_control(0)->entity_id());
+        EXPECT_EQ(revived_hp, fixture.world().control_hp);
+        ASSERT_EQ(1u, server.disconnected_players().size());
+        ASSERT_NE(nullptr, server.disconnected_players().front().control);
+        EXPECT_EQ(revived_id,
+                  server.disconnected_players().front().control->entity_id())
+            << "a grace-window seat must adopt its revived hero too";
+    }
 }
 
 } // namespace

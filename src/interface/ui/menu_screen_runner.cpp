@@ -135,7 +135,7 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
     draw_highlight(buttons[highlighted_button]);
 }
 
-MenuLabelContext build_label_context(const MenuScreenSpec& spec)
+MenuLabelContext build_label_context()
 {
     MenuLabelContext context;
     screen* scr = og::runtime::current_session->myscreen_;
@@ -147,8 +147,6 @@ MenuLabelContext build_label_context(const MenuScreenSpec& spec)
     context.spectator = scr->save_data.numplayers == 0;
     context.campaign = scr->save_data.current_campaign;
     context.level = scr->save_data.scen_num;
-    if (spec.build_context != nullptr)
-        spec.build_context(context);
     return context;
 }
 
@@ -222,10 +220,6 @@ void apply_nav_program(const MenuScreenSpec& spec, button* buttons,
         if (spec.nav.rewire != nullptr)
             spec.nav.rewire(buttons, num_buttons, highlighted_button);
         break;
-    case NavProgramKind::RouteAround:
-        // Reserved (G1 proof-gated); no screen may declare it yet.
-        OG_MENU_ENGINE_CHECK(false, "NavProgramKind::RouteAround not implemented");
-        break;
     case NavProgramKind::Static:
         break;
     }
@@ -281,11 +275,6 @@ void apply_label_bindings(const SpecRowView& rows, button* buttons,
             buttons[i].label = label;
             if (live != nullptr)
                 live->label = label;
-        }
-        if (row.outline == MenuOutlineBinding::PlayerCountEquals
-            && live != nullptr && context.save != nullptr) {
-            live->do_outline =
-                (context.save->numplayers == row.outline_arg) ? 1 : 0;
         }
         if (row.color != nullptr && live != nullptr)
             live->color = row.color(context);
@@ -560,7 +549,7 @@ void picker_testing_apply_row_states(const MenuScreenSpec& spec,
                                      button* buttons, int num_buttons)
 {
     const SpecRowView spec_rows = materialized_spec_rows(spec);
-    const MenuLabelContext context = build_label_context(spec);
+    const MenuLabelContext context = build_label_context();
     RowState states[MAX_BUTTONS] = {};
     apply_row_states(spec_rows, buttons,
                      std::min(num_buttons, static_cast<int>(MAX_BUTTONS)),
@@ -654,7 +643,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         // Initial visibility + nav, before the first frame (the legacy
         // pre-loop sync_* call). Publish the generic gate pass and the
         // screen-specific rewire atomically to injector-thread observers.
-        const MenuLabelContext context = build_label_context(spec);
+        const MenuLabelContext context = build_label_context();
 #ifdef TESTING
         std::lock_guard<std::mutex> lock(get_allbuttons_mutex());
 #endif
@@ -688,11 +677,9 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         check_entry_found_black_window(override_fade, spec.name);
         scr->fadeblack(0);
         {
-            const MenuLabelContext context = build_label_context(spec);
+            const MenuLabelContext context = build_label_context();
             apply_label_bindings(spec_rows, buttons, num_buttons, context);
         }
-        if (spec.backdrop)
-            draw_backdrop();
         if (spec.draw_background != nullptr)
             spec.draw_background(screen_state);
         draw_buttons(buttons, num_buttons);
@@ -719,7 +706,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         // Per-frame gating: host state can flip mid-screen (connection loss,
         // lobby changes). Both surfaces, then the nav program, then the
         // highlight pull.
-        const MenuLabelContext context = build_label_context(spec);
+        const MenuLabelContext context = build_label_context();
         {
 #ifdef TESTING
             // Rewire screens deliberately start some rows hidden, while the
@@ -820,9 +807,6 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
             retvalue = spec.on_spec_row != nullptr
                 ? spec.on_spec_row(clicked_row, screen_state)
                 : 0;
-            // G12 single-point obligation for lobby-backed engine rows.
-            if (spec.sync_settings_after_mutation)
-                picker_lobby_sync_settings_from_save();
             // Structural exit from a spec row propagates MENU_EXIT itself
             // (a local BACK's break returns spec.exit_value instead).
             if (retvalue == MENU_EXIT)
@@ -855,7 +839,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
                 // A rebuilt array is bare of the gate pass's live-only
                 // state; republish it before this frame is composed.
                 const MenuLabelContext reset_context =
-                    build_label_context(spec);
+                    build_label_context();
 #ifdef TESTING
                 std::lock_guard<std::mutex> lock(get_allbuttons_mutex());
 #endif
@@ -879,11 +863,9 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         // Labels re-derive from a FRESH context: a click this frame (or a
         // lobby poll rewriting the save under the open screen) must show on
         // this frame's draw, exactly like the legacy per-frame re-derives.
-        const MenuLabelContext label_context = build_label_context(spec);
+        const MenuLabelContext label_context = build_label_context();
         apply_label_bindings(spec_rows, buttons, num_buttons, label_context);
 
-        if (spec.backdrop)
-            draw_backdrop();
         if (spec.draw_background != nullptr)
             spec.draw_background(screen_state);
         draw_buttons(buttons, num_buttons);

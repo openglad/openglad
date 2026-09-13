@@ -21,7 +21,23 @@ int run_runtime_bootstrap_lifecycle_validation(int argc, char* argv[])
 
     {
         GameSession session(default_session_config());
+
+        // Uncapped rendering (target_fps <= 0) has to survive the boot round
+        // trip: apply_target_fps_to_cfg must write the sentinel back rather
+        // than clamping it up to the minimum, and vsync must come off, or the
+        // display refresh caps the very setting the player asked to remove.
+        cfg.apply_setting("graphics", "target_fps", "0");
+        check(E_Screen != nullptr && E_Screen->vsync_enabled(),
+              "a fresh display owns vsync before bootstrap runs");
+
         bootstrap_runtime(argc, argv);
+
+        check(current_session != nullptr &&
+                  current_session->target_fps_ ==
+                      og::core::kUncappedTargetFps,
+              "the uncapped sentinel survives the config round trip");
+        check(E_Screen != nullptr && !E_Screen->vsync_enabled(),
+              "an uncapped target frame rate turns vsync off");
 
         check(current_session != nullptr,
               "the production session installs its legacy state");

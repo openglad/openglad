@@ -66,6 +66,8 @@
 #include <utility>
 #include <vector>
 
+#include "../test_save_state_guard.h"
+
 using namespace og::modes_test;
 
 namespace {
@@ -2200,6 +2202,10 @@ og::server::MatchStageInputs classic_gladiator_inputs(std::uint32_t seed)
 class ClassicLineupTest : public ::testing::Test
 {
 protected:
+    // SetUp mounts "gladiator" for the shipped lineup hook; the mount is
+    // process-global, so it is borrowed, not taken.
+    og::test::ScopedCampaignMountState mount_restore_;
+
     void SetUp() override
     {
         restore_default_campaigns();

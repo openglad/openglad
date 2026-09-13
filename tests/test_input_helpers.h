@@ -61,6 +61,15 @@ inline void inject_click(int x, int y, int delay_ms = 50)
 }
 
 // Push a fake key down event (uses SDL_PushEvent, thread-safe).
+//
+// A pushed key event is NOT a keystate. SDL_PushEvent does not run
+// SDL_SendKeyboardKey, so SDL's keyboard state array — what
+// og::runtime::current_session->keystates_ points at — never moves. Loops that
+// read raw_key_/key_press_event_ (the dialogs, the networking menu) see these
+// events; a menu-engine screen's hotkey controls do not, because leftmouse()
+// and vbutton::leftclick() test keystates_[hotkey]. To close an engine menu
+// screen, click its button (see cancel_menu_screen in
+// tests/integration/test_view_team.cpp), never push a key.
 inline void inject_key_down(int keycode)
 {
     SDL_Event event;
