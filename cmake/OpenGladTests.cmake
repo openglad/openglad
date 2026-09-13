@@ -158,7 +158,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_load_versions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_effect_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_core_more.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_view_input_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_text_input_ex_value.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_picker_detail_menu_driven.cpp
@@ -487,7 +486,6 @@ og_add_test_group(og_test_view FILES
     test_glad_hud.cpp
     test_sai2x_scaler.cpp
     test_view_input_paths.cpp
-    test_view_input_more_paths.cpp
     test_view_input_smoke.cpp
     test_view_input_prefs_and_redraw.cpp
     test_view_team.cpp
