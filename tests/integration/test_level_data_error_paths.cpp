@@ -107,6 +107,38 @@ static bool scenario_file_has_consistent_object_block(const fs::path& p, short c
     return pos == bytes.size();
 }
 
+static bool read_all_bytes(const fs::path& p, std::vector<unsigned char>* out)
+{
+    if (!out)
+        return false;
+    FILE* f = fopen(p.string().c_str(), "rb");
+    if (!f)
+        return false;
+    if (fseek(f, 0, SEEK_END) != 0)
+    {
+        fclose(f);
+        return false;
+    }
+    const long raw_size = ftell(f);
+    if (raw_size < 0)
+    {
+        fclose(f);
+        return false;
+    }
+    rewind(f);
+    out->assign(static_cast<std::size_t>(raw_size), 0);
+    const size_t nread = fread(out->data(), 1, out->size(), f);
+    fclose(f);
+    return nread == out->size();
+}
+
+static std::int16_t read_i16_at(const std::vector<unsigned char>& bytes, std::size_t off)
+{
+    std::int16_t v = 0;
+    std::memcpy(&v, bytes.data() + off, sizeof(v));
+    return v;
+}
+
 static bool dev_full_write_fails_as_expected()
 {
     struct stat st {};
@@ -129,11 +161,22 @@ static bool dev_full_write_fails_as_expected()
 
 TEST(LevelDataErrorPaths, level_data_save_truncates_fixed_fields_and_rejects_null_object)
 {
+    const int old_id = og::runtime::current_session->myscreen_->world().id;
+    const std::string old_grid_file = og::runtime::current_session->myscreen_->level_grid_file();
+    const std::string old_title = og::runtime::current_session->myscreen_->world().title;
+    const char old_type = og::runtime::current_session->myscreen_->world().type;
+    const short old_par = og::runtime::current_session->myscreen_->world().par_value;
+    const short old_limit = og::runtime::current_session->myscreen_->world().time_bonus_limit;
+    const bool old_generated = og::runtime::current_session->myscreen_->level_runtime_data().generated;
+    const std::list<std::string> old_description = og::runtime::current_session->myscreen_->level_description();
+
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
-    // Ensure the temp scen directory exists (LevelRuntimeData::save writes temp/scen/scen{id}.fss).
+    // Ensure the temp scen/pix directories exist (LevelRuntimeData::save writes
+    // temp/scen/scen{id}.fss and temp/pix/{grid_file}.png).
     fs::create_directories("temp/scen");
+    fs::create_directories("temp/pix");
 
     og::runtime::current_session->myscreen_->world().id = 123;
     og::runtime::current_session->myscreen_->level_grid_file() = "grid_file_name_too_long"; // >8, triggers truncation warning path
@@ -145,6 +188,39 @@ TEST(LevelDataErrorPaths, level_data_save_truncates_fixed_fields_and_rejects_nul
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_level()) << "save should fail when oblist contains nullptr";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
+
+    // The fixed-field clamp itself: the writer emits the grid name as exactly 8
+    // bytes at [4,12) and the title as exactly 30 bytes at [12,42). A clamp that
+    // wrote the full 23/100 bytes would shift every field after it, so the
+    // scalars that follow are the alignment oracle.
+    og::runtime::current_session->myscreen_->level_runtime_data().generated = false;
+    og::runtime::current_session->myscreen_->world().type = 3;
+    og::runtime::current_session->myscreen_->world().par_value = 7;
+    og::runtime::current_session->myscreen_->world().time_bonus_limit = 11;
+    og::runtime::current_session->myscreen_->level_description().clear();
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed once the null entry is gone";
+
+    std::vector<unsigned char> bytes;
+    const fs::path scen_path = fs::path("temp/scen") / "scen123.fss";
+    ASSERT_TRUE(read_all_bytes(scen_path, &bytes)) << "the saved scenario file should be readable";
+    ASSERT_GE(bytes.size(), 49u) << "a saved scenario carries at least the fixed header";
+    ASSERT_EQ(std::string("grid_fil"), std::string(bytes.begin() + 4, bytes.begin() + 12))
+        << "the grid name should be clamped to exactly 8 bytes";
+    ASSERT_EQ(std::string(30, 'T'), std::string(bytes.begin() + 12, bytes.begin() + 42))
+        << "the title should be clamped to exactly 30 bytes";
+    ASSERT_EQ(3, (int)bytes[42]) << "the scenario type byte should follow the 30-byte title";
+    ASSERT_EQ(7, (int)read_i16_at(bytes, 43)) << "par value should still be aligned after the clamped fields";
+    ASSERT_EQ(11, (int)read_i16_at(bytes, 45)) << "time limit should still be aligned after the clamped fields";
+    ASSERT_EQ(0, (int)read_i16_at(bytes, 47)) << "the object count should still be aligned after the clamped fields";
+
+    og::runtime::current_session->myscreen_->world().id = old_id;
+    og::runtime::current_session->myscreen_->level_grid_file() = old_grid_file;
+    og::runtime::current_session->myscreen_->world().title = old_title;
+    og::runtime::current_session->myscreen_->world().type = old_type;
+    og::runtime::current_session->myscreen_->world().par_value = old_par;
+    og::runtime::current_session->myscreen_->world().time_bonus_limit = old_limit;
+    og::runtime::current_session->myscreen_->level_runtime_data().generated = old_generated;
+    og::runtime::current_session->myscreen_->level_description() = old_description;
 }
 
 
@@ -222,13 +298,10 @@ TEST(LevelDataErrorPaths, level_data_save_reports_failure_when_grid_write_is_sho
 }
 
 
+// No /dev/full dependency: this test only writes temp/scen and temp/pix, so the
+// 4096-object clamp is checked on every runner.
 TEST(LevelDataErrorPaths, level_data_save_caps_object_count_to_loader_limit)
 {
-    if (!dev_full_write_fails_as_expected()) {
-        fprintf(stderr, "  INFO: /dev/full unavailable or not ENOSPC; skipping test\n");
-        return;
-    }
-
     const int old_id = og::runtime::current_session->myscreen_->world().id;
     const std::string old_grid_file = og::runtime::current_session->myscreen_->level_grid_file();
     const std::string old_title = og::runtime::current_session->myscreen_->world().title;

@@ -695,17 +695,27 @@ TEST(LevelDataOps, level_data_load_version4_5_name_field_without_nul_is_bounded)
 TEST(LevelDataOps, level_data_resize_grid_removes_offmap)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
-    // Add an object far out
-    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    if (w) {
-        w->setxy(500, 500); // way beyond 40*GRID_SIZE
-        size_t before = og::runtime::current_session->myscreen_->world().oblist.size();
-        og::runtime::current_session->myscreen_->world().resize_grid(10, 10);
-        // Object at (500,500) should be removed from 10*GRID_SIZE grid
-        ASSERT_TRUE(og::runtime::current_session->myscreen_->world().oblist.size() < before) << "off-map objects removed";
-    }
+    og::runtime::current_session->myscreen_->world().delete_objects();
+
+    // One object that the shrink puts off-map, one that stays in bounds.
+    walker* drop = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, drop) << "add_ob should create the off-map fixture";
+    walker* keep = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
+    ASSERT_NE(nullptr, keep) << "add_ob should create the in-bounds fixture";
+    drop->setxy(500, 500); // way beyond 10*GRID_SIZE
+    keep->setxy(16, 16);
+    ASSERT_EQ(2u, og::runtime::current_session->myscreen_->world().oblist.size()) << "both fixtures should be in oblist";
+
+    og::runtime::current_session->myscreen_->world().resize_grid(10, 10);
+
+    // resize_grid erases exactly the entries outside width*GRID_SIZE x
+    // height*GRID_SIZE and leaves the in-bounds one alone.
+    ASSERT_EQ(1u, og::runtime::current_session->myscreen_->world().oblist.size()) << "resize should erase exactly the off-map object";
+    ASSERT_EQ(keep, og::runtime::current_session->myscreen_->world().oblist.front().get()) << "the in-bounds object should survive the shrink";
+
     // Restore
     og::runtime::current_session->myscreen_->world().resize_grid(40, 60);
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
 

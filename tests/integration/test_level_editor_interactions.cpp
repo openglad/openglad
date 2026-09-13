@@ -8,9 +8,13 @@
 #include <SDL3/SDL.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/smooth.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/core/terrain_types.h>
 #include "test_input_helpers.h"
 
 #include <atomic>
+#include <string>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -30,249 +34,24 @@ void picker_testing_yes_or_no_queue_push(bool value);
 void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
 
+// From level_editor.cpp (TESTING): the editor's LevelEditorData is a
+// function-local static, so these are the only handles a test driving the real
+// event loop has on the level and brushes it just edited. The scalars may be
+// polled from an injector thread (each is written only in response to input
+// that injector itself sent); the level pointer is read after the loop returns.
+LevelRuntimeData* level_editor_testing_level();
+int level_editor_testing_level_type();
+int level_editor_testing_level_par_value();
+int level_editor_testing_mode();
+int level_editor_testing_terrain_brush();
+int level_editor_testing_object_brush_order();
+int level_editor_testing_object_brush_family();
+
+
 struct EditorThreadState {
     bool started;
     bool finished;
 };
-
-static int editor_injector_thread(void* data)
-{
-    og::runtime::ensure_thread_session();
-    EditorThreadState* st = static_cast<EditorThreadState*>(data);
-    st->started = true;
-
-    // Give the editor time to initialize and enter its main loop.
-    SDL_Delay(300);
-
-    // Open Level menu, toggle goal flags (Level > Goals > toggles).
-    inject_click(90, 10, 20);   // Level (top menu)
-    SDL_Delay(30);
-    inject_click(90, 85, 20);   // Goals >
-    SDL_Delay(30);
-    inject_click(200, 85, 20);  // Defeat enemies toggle
-    inject_click(200, 105, 20); // Beat generators toggle
-    inject_click(200, 125, 20); // Protect NPCs toggle
-
-    // Open Level > Details submenu and exercise prompt_for_string (TESTING fast path).
-    SDL_Delay(30);
-    inject_click(90, 10, 20);   // Level (top menu)
-    SDL_Delay(30);
-    inject_click(90, 65, 20);   // Details >
-    SDL_Delay(30);
-    inject_click(200, 85, 20);  // Par value...
-    inject_click(200, 105, 20); // Time limit...
-    inject_click(200, 65, 20);  // Map size...
-
-    // Open Level > Profile submenu and exercise title/description prompts.
-    SDL_Delay(30);
-    inject_click(90, 10, 20);   // Level (top menu)
-    SDL_Delay(30);
-    inject_click(90, 45, 20);   // Profile >
-    SDL_Delay(30);
-    inject_click(200, 45, 20);  // Title...
-    inject_click(200, 65, 20);  // Description...
-
-    // Level info / resmooth / clear paths.
-    SDL_Delay(30);
-    inject_click(90, 10, 20);   // Level (top menu)
-    SDL_Delay(30);
-    inject_click(90, 25, 20);   // Info...
-    SDL_Delay(30);
-    inject_click(90, 105, 20);  // Resmooth terrain
-    inject_click(90, 125, 20);  // Clear all terrain
-    inject_click(90, 145, 20);  // Clear all objects
-
-    // Campaign menu paths (info/profile/details/validate).
-    SDL_Delay(30);
-    inject_click(45, 10, 20);   // Campaign (top menu)
-    SDL_Delay(30);
-    inject_click(45, 25, 20);   // Info...
-    SDL_Delay(30);
-    inject_click(45, 45, 20);   // Profile >
-    SDL_Delay(30);
-    inject_click(120, 45, 20);  // Title...
-    inject_click(120, 65, 20);  // Description...
-    inject_click(120, 85, 20);  // Authors...
-    inject_click(120, 105, 20); // Contributors...
-    SDL_Delay(30);
-    inject_click(45, 10, 20);   // Campaign
-    SDL_Delay(30);
-    inject_click(45, 65, 20);   // Details >
-    SDL_Delay(30);
-    inject_click(120, 65, 20);  // Version...
-    inject_click(120, 85, 20);  // Suggested power...
-    inject_click(120, 105, 20); // First level...
-    SDL_Delay(30);
-    inject_click(45, 10, 20);   // Campaign
-    SDL_Delay(30);
-    inject_click(45, 85, 20);   // Validate
-
-    // Mode menu selections.
-    SDL_Delay(30);
-    inject_click(140, 10, 20);  // Edit (top menu)
-    SDL_Delay(30);
-    inject_click(140, 25, 20);  // Terrain mode
-    inject_click(140, 45, 20);  // Object mode
-    inject_click(140, 65, 20);  // Select mode
-
-    // Mode toggles and a couple keypaths.
-    SDL_Delay(30);
-    inject_key_press(SDLK_O, 10); // Terrain -> Object
-    inject_key_press(SDLK_T, 10); // Object -> Terrain
-    inject_key_press(SDLK_O, 10); // Terrain -> Object
-    inject_key_press(SDLK_RIGHTBRACKET, 10);
-    inject_key_press(SDLK_LEFTBRACKET, 10);
-
-    inject_key_press(SDLK_O, 10); // Object -> Select
-    inject_key_press(SDLK_DELETE, 10);
-
-    // Trigger resmooth (F5) and palette load (F9) paths.
-    inject_key_press(SDLK_F5, 10);
-    inject_key_press(SDLK_F9, 10);
-    inject_key_press(SDLK_G, 10);
-    inject_key_press(SDLK_0, 10);
-    inject_key_press(SDLK_1, 10);
-    inject_key_press(SDLK_2, 10);
-    inject_key_press(SDLK_3, 10);
-    inject_key_press(SDLK_4, 10);
-    inject_key_press(SDLK_5, 10);
-    inject_key_press(SDLK_6, 10);
-    inject_key_press(SDLK_7, 10);
-    inject_key_press(SDLK_W, 10);
-    inject_key_press(SDLK_A, 10);
-    inject_key_press(SDLK_S, 10);
-    inject_key_press(SDLK_D, 10);
-
-    // File menu paths.
-    SDL_Delay(30);
-    inject_click(15, 10, 20);   // File
-    SDL_Delay(30);
-    inject_click(15, 25, 20);   // Campaign >
-    SDL_Delay(30);
-    inject_click(85, 25, 20);   // New
-    inject_click(85, 45, 20);   // Load...
-    inject_click(85, 65, 20);   // Save
-    inject_click(85, 85, 20);   // Save As...
-    inject_click(85, 105, 20);  // below the submenu: no entry here
-    inject_click(85, 125, 20);  // below the submenu: no entry here
-    SDL_Delay(30);
-    inject_click(15, 10, 20);   // File
-    SDL_Delay(30);
-    inject_click(15, 45, 20);   // Level >
-    SDL_Delay(30);
-    inject_click(85, 45, 20);   // New
-    inject_click(85, 65, 20);   // Load...
-    inject_click(85, 85, 20);   // Save
-    inject_click(85, 105, 20);  // Save As...
-
-    // Force the ESC quit prompt path (TESTING returns default without blocking).
-    eds().levelchanged = 1;
-    eds().campaignchanged = 1;
-
-    // Right-click pick path.
-    SDL_Event right_down{};
-    right_down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
-    right_down.button.button = SDL_BUTTON_RIGHT;
-    right_down.button.down = true;
-    right_down.button.x = 120;
-    right_down.button.y = 100;
-    SDL_PushEvent(&right_down);
-    SDL_Delay(10);
-    SDL_Event right_up{};
-    right_up.type = SDL_EVENT_MOUSE_BUTTON_UP;
-    right_up.button.button = SDL_BUTTON_RIGHT;
-    right_up.button.down = false;
-    right_up.button.x = 120;
-    right_up.button.y = 100;
-    SDL_PushEvent(&right_up);
-
-    inject_key_press(SDLK_ESCAPE, 10);
-
-    // Push direct SDL event variants to cover handle_basic_editor_event branches.
-    SDL_Event event{};
-    event.type = SDL_EVENT_WINDOW_EXPOSED;
-    SDL_PushEvent(&event);
-
-    inject_text_input("x");
-
-    event = SDL_Event{};
-    event.type = SDL_EVENT_MOUSE_WHEEL;
-    event.wheel.y = 1;
-    event.wheel.integer_y = 1;
-    SDL_PushEvent(&event);
-
-    event = SDL_Event{};
-    event.type = SDL_EVENT_FINGER_DOWN;
-    event.tfinger.dx = 0.1f;
-    event.tfinger.dy = 0.1f;
-    SDL_PushEvent(&event);
-
-    event = SDL_Event{};
-    event.type = SDL_EVENT_FINGER_MOTION;
-    event.tfinger.dx = 0.2f;
-    event.tfinger.dy = -0.15f;
-    SDL_PushEvent(&event);
-
-    event = SDL_Event{};
-    event.type = SDL_EVENT_FINGER_UP;
-    event.tfinger.dx = 0.0f;
-    event.tfinger.dy = 0.0f;
-    SDL_PushEvent(&event);
-
-    event = SDL_Event{};
-    event.type = SDL_EVENT_MOUSE_MOTION;
-    event.motion.xrel = 2;
-    event.motion.yrel = -3;
-    SDL_PushEvent(&event);
-
-    event = SDL_Event{};
-    event.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
-    event.jaxis.axis = 0;
-    event.jaxis.value = 10000;
-    SDL_PushEvent(&event);
-
-    event = SDL_Event{};
-    event.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
-    event.jbutton.button = 0;
-    SDL_PushEvent(&event);
-
-    event = SDL_Event{};
-    event.type = SDL_EVENT_JOYSTICK_BUTTON_UP;
-    event.jbutton.button = 0;
-    SDL_PushEvent(&event);
-
-    // Exercise a click in the main window.
-    inject_click(100, 100, 10);
-
-    // Let it draw a few frames, then request exit.
-    SDL_Delay(300);
-    og::runtime::current_session->myscreen_->world().end = 1;
-
-    st->finished = true;
-    return 0;
-}
-
-TEST(LevelEditorInteractions, level_editor_runs_and_handles_basic_input)
-{
-    // Ensure the editor loop runs for a short period.
-    og::runtime::current_session->myscreen_->world().end = 0;
-
-    EditorThreadState st{false, false};
-    SDL_Thread* thread = SDL_CreateThread(editor_injector_thread, "editor_injector", &st);
-    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
-
-    // This blocks until myscreen->end is set by the injector.
-    (void)level_editor();
-
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-
-    // Reset end flag for subsequent tests.
-    og::runtime::current_session->myscreen_->world().end = 0;
-
-    ASSERT_TRUE(st.started) << "injector thread should have started";
-    ASSERT_TRUE(st.finished) << "injector thread should have finished";
-}
 
 namespace
 {
@@ -430,91 +209,6 @@ static void push_mouse_motion(int x, int y, int xrel = 0, int yrel = 0)
     SDL_PushEvent(&e);
 }
 
-static void push_mouse_drag(int x0, int y0, int x1, int y1)
-{
-    SDL_Event down{};
-    down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
-    down.button.button = SDL_BUTTON_LEFT;
-    down.button.down = true;
-    down.button.x = static_cast<float>(x0);
-    down.button.y = static_cast<float>(y0);
-    SDL_PushEvent(&down);
-
-    SDL_Delay(10);
-    push_mouse_motion(x1, y1, x1 - x0, y1 - y0);
-    SDL_Delay(10);
-
-    SDL_Event up{};
-    up.type = SDL_EVENT_MOUSE_BUTTON_UP;
-    up.button.button = SDL_BUTTON_LEFT;
-    up.button.down = false;
-    up.button.x = static_cast<float>(x1);
-    up.button.y = static_cast<float>(y1);
-    SDL_PushEvent(&up);
-}
-
-static int editor_edit_smoke_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    EditorThreadState* st = static_cast<EditorThreadState*>(data);
-    st->started = true;
-
-    SDL_Delay(300);
-
-    // Enter terrain mode and paint a couple of tiles.
-    inject_key_press(SDLK_T, 10);
-    inject_key_press(SDLK_G, 10);  // toggle grid alignment
-    inject_key_press(SDLK_1, 10);
-    inject_click(160, 120, 10);
-    inject_key_press(SDLK_2, 10);
-    push_mouse_drag(170, 120, 190, 120);
-
-    // Smooth current map path (F5), then toggle grid again.
-    inject_key_press(SDLK_F5, 10);
-    inject_key_press(SDLK_G, 10);
-
-    // Switch to object mode, cycle brush, and place an object.
-    inject_key_press(SDLK_O, 10);
-    inject_key_press(SDLK_RIGHTBRACKET, 10);
-    inject_key_press(SDLK_LEFTBRACKET, 10);
-    inject_click(200, 130, 10);
-
-    // Select mode: click/drag selection area and delete selection/object.
-    inject_key_press(SDLK_O, 10);  // object -> select
-    push_mouse_drag(190, 120, 210, 140);
-    inject_key_press(SDLK_DELETE, 10);
-
-    // Exit editor.
-    SDL_Delay(200);
-    og::runtime::current_session->myscreen_->world().end = 1;
-
-    st->finished = true;
-    return 0;
-}
-} // namespace
-
-TEST(LevelEditorInteractions, level_editor_edits_terrain_and_places_objects_smoke)
-{
-    og::runtime::current_session->myscreen_->world().end = 0;
-
-    EditorThreadState st{false, false};
-    SDL_Thread* thread = SDL_CreateThread(editor_edit_smoke_injector, "editor_edit_smoke", &st);
-    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
-
-    (void)level_editor();
-
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-
-    og::runtime::current_session->myscreen_->world().end = 0;
-
-    ASSERT_TRUE(st.started) << "injector thread should have started";
-    ASSERT_TRUE(st.finished) << "injector thread should have finished";
-}
-
-
-namespace
-{
 // Injected SDL mouse events carry *window* coordinates; the input layer maps
 // them back to 320x200 game coordinates through the viewport transform. The
 // default test window is 640x400, so raw game coordinates would land at half
@@ -547,6 +241,358 @@ static void push_mouse_motion_game(int gx, int gy, int gxrel, int gyrel)
                       game_to_window_y(gyrel) - game_to_window_y(0));
 }
 
+// Wait-on-condition helpers with generous ceilings. Each returns false if the
+// condition never arrives, so a broken editor fails the test instead of
+// hanging it.
+bool wait_for_trace_line(const char* category, const char* needle, Uint32 ceiling_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + ceiling_ms;
+    while (!trace_contains(category, needle))
+    {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        SDL_Delay(1);
+    }
+    return true;
+}
+
+// The editor has consumed everything we queued once SDL's queue is empty.
+bool wait_for_drained_event_queue(Uint32 ceiling_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + ceiling_ms;
+    while (SDL_HasEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP) ||
+           SDL_HasEvents(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP) ||
+           SDL_HasEvent(SDL_EVENT_MOUSE_WHEEL))
+    {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        SDL_Delay(1);
+    }
+    return true;
+}
+
+constexpr Uint32 kEditorEntryCeilingMs = 10000u;
+constexpr Uint32 kEditorDrainCeilingMs = 10000u;
+// How long one authored edit may take to appear once the pump has drained the
+// events that carry it. Bounds a dead editor, not a slow one.
+constexpr Uint32 kEditorEditCeilingMs = 2000u;
+
+template <typename Pred>
+bool wait_until(Pred pred, Uint32 ceiling_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + ceiling_ms;
+    while (!pred())
+    {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        SDL_Delay(1);
+    }
+    return true;
+}
+
+// Queue one click / key press and wait for the editor's own pump to consume it.
+bool click_settled(int gx, int gy)
+{
+    inject_click_game(gx, gy, 20);
+    return wait_for_drained_event_queue(kEditorDrainCeilingMs);
+}
+
+bool key_settled(SDL_Keycode key)
+{
+    inject_key_press(static_cast<int>(key), 10);
+    return wait_for_drained_event_queue(kEditorDrainCeilingMs);
+}
+
+// `send` must be an IDEMPOTENT chain (a menu walk, a brush pick, a paint
+// stroke): it is repeated until `arrived` reports the value the editor writes
+// when it consumes it. Never wrap a toggle in this — a second pass undoes it.
+template <typename Send, typename Arrived>
+bool retry_until(Send send, Arrived arrived)
+{
+    for (int attempt = 0; attempt < 3; ++attempt)
+    {
+        if (!send())
+            return false;
+        if (wait_until(arrived, kEditorEditCeilingMs))
+            return true;
+    }
+    return false;
+}
+
+// Editor menu geometry in GAME coordinates. LevelEditorData's constructor
+// stacks every one of these from S_RIGHT / OVERSCAN_PADDING and a 20px row
+// height; the pane cells come from S_RIGHT + col*GRID_SIZE, PIX_TOP +
+// row*GRID_SIZE.
+constexpr int kFileX = 15, kFileY = 10;                    // File
+constexpr int kFileLevelX = 32, kFileLevelY = 50;          // File > Level >
+constexpr int kFileLevelNewX = 97, kFileLevelNewY = 50;    // File > Level > New
+constexpr int kLevelX = 105, kLevelY = 10;                 // Level
+constexpr int kLevelGoalsX = 105, kLevelGoalsY = 90;       // Level > Goals >
+constexpr int kGoalEnemiesX = 255, kGoalEnemiesY = 90;     // ... Defeat enemies
+constexpr int kGoalGeneratorsX = 255, kGoalGeneratorsY = 110;
+constexpr int kGoalNpcsX = 255, kGoalNpcsY = 130;
+constexpr int kLevelDetailsX = 105, kLevelDetailsY = 70;   // Level > Details >
+constexpr int kParValueX = 255, kParValueY = 90;           // ... Par value...
+// Tile pane cell (col 3, row 2) with rowsdown 0 = kDefaultBackgrounds[11],
+// PIX_WATER1 — a genre the all-grass grid of a new level never holds.
+constexpr int kTilePaneWaterX = 296, kTilePaneWaterY = 113;
+// Object pane cell (0, 0) = Living / family 0 (FAMILY_SOLDIER).
+constexpr int kObjectPaneFirstX = 246, kObjectPaneFirstY = 81;
+// A map cell clear of every panel button, the menu bar and the minimap.
+constexpr int kMapCellX = 160, kMapCellY = 120;
+
+constexpr int kGoalsAll = GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                          GameWorld::TYPE_MUST_DESTROY_GENERATORS |
+                          GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS;
+
+// eds().levelchanged is the editor's dirty flag and the only thing a paint
+// stroke or an object placement publishes outside the editor's own level. The
+// injector zeroes it just before a stroke so the flip back to 1 acknowledges
+// THAT stroke; the write is safe because it happens only after the previous
+// step's queue drained and its own acknowledgement arrived, so the editor is
+// idle (same discipline as the eds().rowsdown writes the older injectors make).
+bool stroke_dirties_the_level(int gx, int gy)
+{
+    eds().levelchanged = 0;
+    return retry_until([gx, gy]() { return click_settled(gx, gy); },
+                       []() { return eds().levelchanged == 1; });
+}
+
+// File > Level > New: LevelRuntimeData::clear() retitles the level "New Level",
+// zeroes the goal bits and resets par to 1, and the handler dirties the level.
+bool author_new_level()
+{
+    return retry_until(
+        []() {
+            // Armed for the "Discard unsaved changes?" prompt a retry can meet.
+            picker_testing_yes_or_no_queue_push(true);
+            return click_settled(kFileX, kFileY) &&
+                   click_settled(kFileLevelX, kFileLevelY) &&
+                   click_settled(kFileLevelNewX, kFileLevelNewY);
+        },
+        []() {
+            return eds().levelchanged == 1 &&
+                   level_editor_testing_level_par_value() == 1 &&
+                   level_editor_testing_level_type() == 0;
+        });
+}
+
+int editor_menu_authoring_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+
+    if (ok)
+        ok = author_new_level();
+
+    // Level > Goals: each row XORs one goal bit into world().type. A toggle
+    // cannot be retried, so every click is acknowledged by its own bit.
+    if (ok)
+        ok = click_settled(kLevelX, kLevelY) &&
+             click_settled(kLevelGoalsX, kLevelGoalsY) &&
+             click_settled(kGoalEnemiesX, kGoalEnemiesY) &&
+             wait_until([]() {
+                 return level_editor_testing_level_type() ==
+                        GameWorld::TYPE_CAN_EXIT_WHENEVER;
+             }, kEditorEditCeilingMs) &&
+             click_settled(kGoalGeneratorsX, kGoalGeneratorsY) &&
+             wait_until([]() {
+                 return level_editor_testing_level_type() ==
+                        (GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                         GameWorld::TYPE_MUST_DESTROY_GENERATORS);
+             }, kEditorEditCeilingMs) &&
+             click_settled(kGoalNpcsX, kGoalNpcsY) &&
+             wait_until([]() {
+                 return level_editor_testing_level_type() == kGoalsAll;
+             }, kEditorEditCeilingMs);
+
+    // Level > Details > Par value...: the prompted integer lands in par_value.
+    if (ok)
+        ok = retry_until(
+            []() {
+                level_editor_testing_prompt_queue_clear();
+                level_editor_testing_prompt_queue_push("42");
+                return click_settled(kLevelX, kLevelY) &&
+                       click_settled(kLevelDetailsX, kLevelDetailsY) &&
+                       click_settled(kParValueX, kParValueY);
+            },
+            []() { return level_editor_testing_level_par_value() == 42; });
+
+    // Mode keys: T always reaches Terrain; O from Terrain reaches Object (from
+    // Object it would go on to Select, so this one is never retried).
+    if (ok)
+        ok = retry_until([]() { return key_settled(SDLK_T); },
+                         []() { return level_editor_testing_mode() == 0; });
+    if (ok)
+        ok = key_settled(SDLK_O) &&
+             wait_until([]() { return level_editor_testing_mode() == 1; },
+                        kEditorEditCeilingMs);
+
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+int editor_paint_and_place_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+
+    // Start from a new level: empty object list, all-grass grid, draw position
+    // 0,0 (so the placed object's xpos/ypos are the clicked cell).
+    if (ok)
+        ok = author_new_level();
+
+    if (ok)
+        ok = retry_until([]() { return key_settled(SDLK_T); },
+                         []() { return level_editor_testing_mode() == 0; });
+
+    // One warm-up stroke: a "Pick" toggle left armed by an earlier editor
+    // session is consumed by the first map click, and a pick would otherwise
+    // silently replace the brush chosen below.
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX, kMapCellY);
+
+    // Pick water out of the tile pane, then paint the probe cell with it.
+    if (ok)
+    {
+        eds().rowsdown = 0;
+        ok = retry_until(
+            []() { return click_settled(kTilePaneWaterX, kTilePaneWaterY); },
+            []() { return level_editor_testing_terrain_brush() == PIX_WATER1; });
+    }
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX, kMapCellY);
+
+    // Object mode, pane cell (0,0) as the brush, then place one on that cell.
+    if (ok)
+        ok = key_settled(SDLK_O) &&
+             wait_until([]() { return level_editor_testing_mode() == 1; },
+                        kEditorEditCeilingMs);
+    if (ok)
+    {
+        eds().rowsdown = 0;
+        ok = retry_until(
+            []() { return click_settled(kObjectPaneFirstX, kObjectPaneFirstY); },
+            []() {
+                return level_editor_testing_object_brush_family() == FAMILY_SOLDIER &&
+                       level_editor_testing_object_brush_order() ==
+                           static_cast<int>(Order::Living);
+            });
+    }
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX, kMapCellY);
+
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+} // namespace
+
+
+// File > Level > New, the three Level > Goals rows and Level > Details > Par
+// value are the editor's level-authoring menu. Each click is acknowledged by
+// the exact value it writes into the editor's own level, and the level is read
+// back after level_editor() returns.
+TEST(LevelEditorInteractions, level_menu_authors_new_level_goal_bits_and_par_value)
+{
+    EditorDecorStateGuard state_guard;   // enters with both dirty flags 0
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+
+    SDL_Thread* thread = SDL_CreateThread(
+        editor_menu_authoring_injector, "editor_menu_authoring", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)level_editor();
+
+    int injector_result = 1;
+    SDL_WaitThread(thread, &injector_result);
+
+    LevelRuntimeData* lvl = level_editor_testing_level();
+    ASSERT_NE(nullptr, lvl) << "the editor must have published its level";
+    const int type_after = static_cast<int>(lvl->world().type);
+    const std::string title_after = lvl->world().title;
+    const int par_after = static_cast<int>(lvl->world().par_value);
+    const int levelchanged_after = eds().levelchanged;
+    const int mode_after = level_editor_testing_mode();
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+
+    ASSERT_EQ(0, injector_result)
+        << "every scripted click must be consumed and acknowledged by the editor";
+    EXPECT_EQ(GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                  GameWorld::TYPE_MUST_DESTROY_GENERATORS |
+                  GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS,
+              type_after)
+        << "the three Goals rows each XOR one goal bit into world().type";
+    EXPECT_EQ(std::string("New Level"), title_after)
+        << "File > Level > New clears the level, which retitles it 'New Level'";
+    EXPECT_EQ(42, par_after)
+        << "Level > Details > Par value... stores the prompted integer";
+    EXPECT_EQ(1, levelchanged_after)
+        << "authoring a level through the menus dirties it";
+    EXPECT_EQ(1, mode_after)
+        << "T then O leaves the editor in Object mode";
+}
+
+
+// Terrain mode paints the clicked cell with the tile-pane brush; Object mode
+// places the object-pane brush there. Both are read back off the editor's own
+// level after the loop returns — the placed walker's snapped position is also
+// how the painted cell is identified.
+TEST(LevelEditorInteractions, terrain_brush_paints_and_object_brush_places_on_the_clicked_cell)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+
+    SDL_Thread* thread = SDL_CreateThread(
+        editor_paint_and_place_injector, "editor_paint_and_place", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)level_editor();
+
+    int injector_result = 1;
+    SDL_WaitThread(thread, &injector_result);
+
+    LevelRuntimeData* lvl = level_editor_testing_level();
+    ASSERT_NE(nullptr, lvl) << "the editor must have published its level";
+    const int levelchanged_after = eds().levelchanged;
+    const int current_floor_after = eds().current_floor;
+
+    picker_testing_yes_or_no_queue_clear();
+
+    ASSERT_EQ(0, injector_result)
+        << "every scripted click must be consumed and acknowledged by the editor";
+    ASSERT_EQ(1u, lvl->world().oblist.size())
+        << "one Object-mode click on the map places exactly one object";
+    const walker* placed = lvl->world().oblist.front().get();
+    ASSERT_NE(nullptr, placed) << "the placed entry must be a live walker";
+    EXPECT_EQ(FAMILY_SOLDIER, placed->family())
+        << "the object pane's first cell is the Living/soldier brush";
+    EXPECT_EQ(static_cast<int>(Order::Living), static_cast<int>(placed->query_order()))
+        << "the placed object should carry the brush's order";
+    EXPECT_EQ(current_floor_after, static_cast<int>(placed->floor()))
+        << "placement stamps the floor the editor is painting";
+    EXPECT_EQ(1, levelchanged_after) << "placing an object dirties the level";
+
+    // The paint stroke and the placement clicked the same map cell, so the
+    // walker's snapped position names the cell the terrain brush wrote.
+    const int cell_x = static_cast<int>(placed->xpos()) / GRID_SIZE;
+    const int cell_y = static_cast<int>(placed->ypos()) / GRID_SIZE;
+    smoother& sm = lvl->world().smoother_for_floor(0);
+    EXPECT_EQ(TYPE_WATER, sm.query_genre_x_y(cell_x, cell_y))
+        << "the tile pane's water brush must be written into the clicked cell "
+           "(a new level's grid is all grass)";
+    EXPECT_EQ(TYPE_GRASS, sm.query_genre_x_y(cell_x + 2, cell_y + 2))
+        << "only the clicked cell is painted; the grid two cells over stays grass";
+}
+
+
+namespace
+{
 static int editor_ai_cycle_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -1042,7 +1088,7 @@ TEST(LevelEditorInteractions, editor_exit_clicks_cannot_activate_the_main_menu)
 // so these tests script real SDL events and read the result from the editor's
 // function-local static AFTER the loop returns. The injector never writes
 // editor state; its one product write is world().end, the loop's documented
-// exit flag (same seam as level_editor_runs_and_handles_basic_input above).
+// exit flag (same seam as the menu-authoring test above).
 // ---------------------------------------------------------------------------
 
 // From picker_dialogs.cpp (TESTING).
@@ -1108,35 +1154,6 @@ bool push_checked_wheel(int notches)
     wheel.wheel.y = static_cast<float>(notches);
     wheel.wheel.integer_y = notches;
     return SDL_PushEvent(&wheel);
-}
-
-// Wait-on-condition helpers with generous ceilings. Each returns false if the
-// condition never arrives, so a broken editor fails the test instead of
-// hanging it.
-bool wait_for_trace_line(const char* category, const char* needle, Uint32 ceiling_ms)
-{
-    const Uint64 deadline = SDL_GetTicks() + ceiling_ms;
-    while (!trace_contains(category, needle))
-    {
-        if (SDL_GetTicks() >= deadline)
-            return false;
-        SDL_Delay(1);
-    }
-    return true;
-}
-
-// The editor has consumed everything we queued once SDL's queue is empty.
-bool wait_for_drained_event_queue(Uint32 ceiling_ms)
-{
-    const Uint64 deadline = SDL_GetTicks() + ceiling_ms;
-    while (SDL_HasEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP) ||
-           SDL_HasEvent(SDL_EVENT_MOUSE_WHEEL))
-    {
-        if (SDL_GetTicks() >= deadline)
-            return false;
-        SDL_Delay(1);
-    }
-    return true;
 }
 
 struct EditorScriptState
