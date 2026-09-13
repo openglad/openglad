@@ -2,6 +2,7 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/pixien.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/obmap_debug_draw.h>
 #include <openglad/gameplay/obmap.h>
@@ -107,6 +108,55 @@ std::array<unsigned char, 64> sample_pixels(unsigned char base = 32)
     for (size_t i = 0; i < p.size(); i++)
         p[i] = static_cast<unsigned char>(base + (i % 8));
     return p;
+}
+
+// Read one palette index back off the active render surface.
+int px_index(int x, int y)
+{
+    int idx = -1;
+    og::runtime::current_session->myscreen_->get_pixel(x, y, &idx);
+    return idx;
+}
+
+// get_pixel's index form walks the palette from register 0 and answers with the
+// FIRST register whose RGB matches the pixel, so a colour whose RGB is duplicated
+// lower down reads back as that lower index (ORANGE_END, for one, reads back as
+// 88). Expected values therefore go through here rather than through the colour
+// constant itself.
+int pal_readback_index(unsigned char color)
+{
+    int r = 0, g = 0, b = 0;
+    query_palette_reg(color, &r, &g, &b);
+    for (int i = 0; i < 256; i++)
+    {
+        int tr = 0, tg = 0, tb = 0;
+        query_palette_reg(static_cast<unsigned char>(i), &tr, &tg, &tb);
+        if (tr == r && tg == g && tb == b)
+            return i;
+    }
+    return -1;
+}
+
+// The 8-bit RGB a palette register paints with: the registers hold 6-bit VGA
+// values and the blit path scales them by 4.
+void pal_rgb8(unsigned char color, int* r, int* g, int* b)
+{
+    query_palette_reg(color, r, g, b);
+    *r *= 4;
+    *g *= 4;
+    *b *= 4;
+}
+
+// Row-major palette indices of a rect of the render surface, for golden-by-
+// reconstruction comparisons.
+std::vector<int> snapshot_indices(int x, int y, int w, int h)
+{
+    std::vector<int> out;
+    out.reserve(static_cast<std::size_t>(w) * static_cast<std::size_t>(h));
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+            out.push_back(px_index(x + i, y + j));
+    return out;
 }
 
 PixieData make_test_pixie_data(unsigned char frames = 1,
@@ -1009,46 +1059,577 @@ TEST(MassCoverage, pixien_and_level_render_paths) {
     render->draw_tile(0, 0, 0, vs);
 }
 
-// viewscreen.cpp uncovered
-TEST(MassCoverage, viewscreen_clear) { og::runtime::current_session->myscreen_->viewob[0]->clear(); }
-TEST(MassCoverage, viewscreen_view_team_default) { og::runtime::current_session->myscreen_->viewob[0]->view_team(); }
-TEST(MassCoverage, viewscreen_view_team_bounds) { og::runtime::current_session->myscreen_->viewob[0]->view_team(30, 30, 280, 170); }
+// viewscreen::clear(): zeroes the whole legacy videobuffer scratch, not a
+// prefix of it (src/interface/render/view.cpp viewscreen::clear).
+TEST(MassCoverage, viewscreen_clear_zeroes_the_whole_legacy_videobuffer) {
+    screen* s = og::runtime::current_session->myscreen_;
+    auto buf = s->getbuffer();
+    ASSERT_EQ(static_cast<std::size_t>(kUiCanvasW) * static_cast<std::size_t>(kUiCanvasH),
+              buf.size())
+        << "setup: the legacy scratch is sized to the fixed UI canvas";
 
-// video.cpp uncovered
-TEST(MassCoverage, video_set_fullscreen) { og::runtime::current_session->myscreen_->set_fullscreen(false); }
-TEST(MassCoverage, video_getbuffer) { (void)og::runtime::current_session->myscreen_->getbuffer(); }
-TEST(MassCoverage, video_clearbuffer_rect) { og::runtime::current_session->myscreen_->clearbuffer(1, 1, 20, 20); }
-TEST(MassCoverage, video_clear_window) { og::runtime::current_session->myscreen_->clear_window(); }
-TEST(MassCoverage, video_draw_rect_filled) { og::runtime::current_session->myscreen_->draw_rect_filled(10, 10, 20, 10, WHITE, 120); }
-TEST(MassCoverage, video_draw_button_rect) { SDL_Rect r{20, 20, 40, 20}; og::runtime::current_session->myscreen_->draw_button(r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, 1); }
-TEST(MassCoverage, video_draw_button_inverted_rect) { SDL_Rect r{20, 50, 40, 20}; og::runtime::current_session->myscreen_->draw_button_inverted(r.x, r.y, static_cast<Uint32>(r.w), static_cast<Uint32>(r.h)); }
-TEST(MassCoverage, video_putblack) { og::runtime::current_session->myscreen_->putblack(0, 0, 0, 0); }
-TEST(MassCoverage, video_fastbox_outline) { og::runtime::current_session->myscreen_->fastbox_outline(2, 2, 8, 8, DARK_GREEN); }
-TEST(MassCoverage, video_point) { og::runtime::current_session->myscreen_->point(5, 5, RED); }
-TEST(MassCoverage, video_pointb_offset) { og::runtime::current_session->myscreen_->pointb(320 + 2, DARK_BLUE); }
-TEST(MassCoverage, video_hor_line_tobuffer) { og::runtime::current_session->myscreen_->hor_line(2, 8, 12, WHITE, 1); }
-TEST(MassCoverage, video_hor_line_alpha) { og::runtime::current_session->myscreen_->hor_line_alpha(2, 9, 12, WHITE, 96); }
-TEST(MassCoverage, video_ver_line_tobuffer) { og::runtime::current_session->myscreen_->ver_line(2, 8, 12, WHITE, 1); }
-TEST(MassCoverage, video_do_cycle) { og::runtime::current_session->myscreen_->do_cycle(0, 1); }
+    buf[0] = 41;
+    buf[100] = 42;
+    buf[buf.size() - 1] = 43;
+    ASSERT_EQ(42, static_cast<int>(s->getbuffer()[100]))
+        << "setup: the probe bytes must land in the live buffer";
 
-TEST(MassCoverage, video_putdata) {
+    s->viewob[0]->clear();
+
+    ASSERT_EQ(0, static_cast<int>(s->getbuffer()[0]))
+        << "clear() must zero the first byte of the videobuffer";
+    ASSERT_EQ(0, static_cast<int>(s->getbuffer()[100]))
+        << "clear() must zero the interior of the videobuffer";
+    ASSERT_EQ(0, static_cast<int>(s->getbuffer()[buf.size() - 1]))
+        << "clear() must zero the whole videobuffer, not a leading run";
+}
+
+// viewscreen::view_team(): the no-argument form forwards to the fixed
+// VIEW_TEAM_LEFT/TOP/RIGHT/BOTTOM rect (20,2)-(280,198), flags redrawme, paints
+// the two-deep button bevel and writes the four BLACK column headers at
+// left+5/+80/+140/+190 on row top+3 (src/interface/render/view.cpp
+// viewscreen::view_team).
+TEST(MassCoverage, viewscreen_view_team_default_draws_the_fixed_panel_and_its_four_headers) {
+    reset_level_state();
+    screen* s = og::runtime::current_session->myscreen_;
+    const int kLeft = 20, kTop = 2, kRight = 280, kBottom = 198;
+
+    s->clearbuffer();
+    s->redrawme = 0;
+    s->viewob[0]->view_team();
+
+    ASSERT_EQ(1, static_cast<int>(s->redrawme))
+        << "view_team must flag the frame for redraw";
+    ASSERT_EQ(pal_readback_index(14), px_index(kLeft, 100))
+        << "the panel's left bevel must sit on the fixed VIEW_TEAM_LEFT column";
+    ASSERT_EQ(pal_readback_index(13), px_index(150, 100))
+        << "the panel face must be painted inside the fixed rect";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(kLeft - 1, 100))
+        << "nothing may be painted left of VIEW_TEAM_LEFT";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(kRight + 1, 100))
+        << "nothing may be painted right of VIEW_TEAM_RIGHT";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(150, kBottom + 1))
+        << "nothing may be painted below VIEW_TEAM_BOTTOM";
+
+    // Golden-by-reconstruction for the header row: the same bevel plus exactly
+    // these four strings, at exactly these offsets, in BLACK. An omitted or
+    // shifted header, or a different colour, makes the bands differ.
+    const std::vector<int> got = snapshot_indices(kLeft + 1, kTop + 1, kRight - kLeft - 1, 8);
+    s->clearbuffer();
+    s->draw_button(kLeft, kTop, kRight, kBottom, 2);
+    s->text_normal.write_xy(kLeft + 5, kTop + 3, "  Name  ", static_cast<unsigned char>(BLACK));
+    s->text_normal.write_xy(kLeft + 80, kTop + 3, "Health", static_cast<unsigned char>(BLACK));
+    s->text_normal.write_xy(kLeft + 140, kTop + 3, "Power", static_cast<unsigned char>(BLACK));
+    s->text_normal.write_xy(kLeft + 190, kTop + 3, "Level", static_cast<unsigned char>(BLACK));
+    const std::vector<int> expected = snapshot_indices(kLeft + 1, kTop + 1, kRight - kLeft - 1, 8);
+    ASSERT_EQ(expected, got)
+        << "the header row must be the four BLACK column labels on the panel bevel";
+}
+
+// viewscreen::view_team(left,top,right,bottom): the explicit rect is honoured --
+// the bevel lands on the given bounds and nothing outside them is touched.
+TEST(MassCoverage, viewscreen_view_team_honours_its_explicit_bounds) {
+    reset_level_state();
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+
+    s->viewob[0]->view_team(30, 30, 280, 170);
+
+    ASSERT_EQ(pal_readback_index(14), px_index(31, 31))
+        << "the inner bevel's left edge must follow the requested left bound";
+    ASSERT_EQ(pal_readback_index(13), px_index(150, 100))
+        << "the panel face must be painted inside the requested rect";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(20, 20))
+        << "the requested rect must not leak above/left of its top-left corner";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(29, 100))
+        << "the column just left of the requested left bound stays clear";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(150, 29))
+        << "the row just above the requested top bound stays clear";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(150, 171))
+        << "the row just below the requested bottom bound stays clear";
+}
+
+// sdl_video::set_fullscreen(bool) is deliberately inert (video_sdl.cpp, the
+// FIXME'd commented-out body): it must not resize the window or move the
+// session's window_w_/window_h_ or the canvas geometry.
+TEST(MassCoverage, video_set_fullscreen_is_inert_in_both_directions) {
+    screen* s = og::runtime::current_session->myscreen_;
+    const int win_w = static_cast<int>(og::runtime::current_session->window_w_);
+    const int win_h = static_cast<int>(og::runtime::current_session->window_h_);
+    const int cw = s->canvas_w();
+    const int ch = s->canvas_h();
+    const int wcw = s->world_canvas_w();
+    const int wch = s->world_canvas_h();
+
+    s->set_fullscreen(false);
+    ASSERT_EQ(win_w, static_cast<int>(og::runtime::current_session->window_w_))
+        << "set_fullscreen(false) must not touch the session window width";
+    ASSERT_EQ(win_h, static_cast<int>(og::runtime::current_session->window_h_))
+        << "set_fullscreen(false) must not touch the session window height";
+
+    s->set_fullscreen(true);
+    ASSERT_EQ(win_w, static_cast<int>(og::runtime::current_session->window_w_))
+        << "set_fullscreen(true) must not touch the session window width";
+    ASSERT_EQ(win_h, static_cast<int>(og::runtime::current_session->window_h_))
+        << "set_fullscreen(true) must not touch the session window height";
+    ASSERT_EQ(cw, s->canvas_w()) << "set_fullscreen must not move the active canvas width";
+    ASSERT_EQ(ch, s->canvas_h()) << "set_fullscreen must not move the active canvas height";
+    ASSERT_EQ(wcw, s->world_canvas_w()) << "set_fullscreen must not move the world canvas width";
+    ASSERT_EQ(wch, s->world_canvas_h()) << "set_fullscreen must not move the world canvas height";
+}
+
+// getbuffer() hands back the LIVE legacy videobuffer, sized to the fixed UI
+// canvas (video_sdl.cpp sdl_video::getbuffer; video_sdl.h videobuffer).
+TEST(MassCoverage, video_getbuffer_is_the_live_ui_sized_scratch) {
+    screen* s = og::runtime::current_session->myscreen_;
+    auto buf = s->getbuffer();
+    ASSERT_EQ(static_cast<std::size_t>(kUiCanvasW) * static_cast<std::size_t>(kUiCanvasH),
+              buf.size())
+        << "the legacy scratch is kUiCanvasW*kUiCanvasH, not the world canvas area";
+
+    buf[0] = 9;
+    buf[buf.size() - 1] = 11;
+    ASSERT_EQ(9, static_cast<int>(s->getbuffer()[0]))
+        << "getbuffer must alias one storage, not hand out a copy";
+    ASSERT_EQ(11, static_cast<int>(s->getbuffer()[buf.size() - 1]))
+        << "getbuffer must alias one storage across its whole extent";
+    ASSERT_EQ(buf.data(), s->getbuffer().data())
+        << "successive getbuffer calls must point at the same bytes";
+
+    std::fill(buf.begin(), buf.end(), static_cast<unsigned char>(0));
+}
+
+// clearbuffer(x,y,w,h) blacks EXACTLY that rect of the render surface
+// (video_sdl.cpp -> Screen::clear(x,y,w,h) -> SDL_FillSurfaceRect).
+TEST(MassCoverage, video_clearbuffer_rect_blacks_only_the_given_rect) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+    s->draw_rect_filled(0, 0, 40, 40, WHITE, 255);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(5, 5)) << "setup: the fill must land";
+
+    s->clearbuffer(1, 1, 20, 20);
+
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(5, 5))
+        << "the interior of the rect must be blacked";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(20, 20))
+        << "the rect's last pixel (x+w-1, y+h-1) must be blacked";
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(0, 0))
+        << "the row/column before the rect must survive";
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(21, 21))
+        << "the pixel just past the rect must survive";
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(30, 30))
+        << "clearbuffer(rect) must not black the whole surface";
+}
+
+// clear_window() blacks the whole render surface before uploading it to the
+// window texture (src/platform/sdl/sai2x.cpp Screen::clear_window). It does NOT
+// set window_is_black_ -- only a completed fadeblack does.
+TEST(MassCoverage, video_clear_window_blacks_the_whole_render_surface) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+    s->draw_rect_filled(0, 0, 40, 40, WHITE, 255);
+    s->draw_rect_filled(300, 190, 20, 10, WHITE, 255);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10)) << "setup: the top-left fill must land";
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(310, 195))
+        << "setup: the bottom-right fill must land";
+
+    s->clear_window();
+
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(10, 10))
+        << "clear_window must black the top-left of the surface";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(310, 195))
+        << "clear_window must black the far corner too, not a leading rect";
+}
+
+// draw_rect_filled(x,y,w,h,color,alpha) fills exactly w*h pixels from (x,y);
+// alpha 255 takes blend_pixel's opaque shortcut, so the fill reads back as the
+// exact palette index (video_sdl.cpp draw_rect_filled -> hor_line_alpha).
+TEST(MassCoverage, video_draw_rect_filled_covers_exactly_its_rect) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+
+    s->draw_rect_filled(10, 10, 20, 10, WHITE, 255);
+
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10)) << "the top-left corner is filled";
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(15, 15)) << "the interior is filled";
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(29, 19))
+        << "the last pixel (x+w-1, y+h-1) is filled";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(30, 19))
+        << "the column past x+w-1 stays clear";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(15, 20))
+        << "the row past y+h-1 stays clear";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(5, 5))
+        << "nothing outside the rect is painted";
+}
+
+// draw_button(x1,y1,x2,y2,border): top row 15, bottom 11, left 14, right 12,
+// and the recursion one pixel in ends on the face colour 13
+// (src/platform/sdl/video_sdl.cpp sdl_video::draw_button).
+TEST(MassCoverage, video_draw_button_paints_the_raised_bevel_and_face) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+
+    s->draw_button(20, 20, 59, 39, 1);
+
+    ASSERT_EQ(pal_readback_index(15), px_index(30, 20)) << "top edge is colour 15";
+    ASSERT_EQ(pal_readback_index(11), px_index(30, 39)) << "bottom edge is colour 11";
+    ASSERT_EQ(pal_readback_index(14), px_index(20, 30)) << "left edge is colour 14";
+    ASSERT_EQ(pal_readback_index(12), px_index(59, 30)) << "right edge is colour 12";
+    ASSERT_EQ(pal_readback_index(13), px_index(40, 30)) << "the face is colour 13";
+    ASSERT_EQ(pal_readback_index(13), px_index(30, 21))
+        << "the border-0 recursion fills the row inside the top edge with the face";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(19, 30))
+        << "nothing is painted left of x1";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(60, 30))
+        << "nothing is painted right of x2";
+}
+
+// draw_button_inverted(x,y,w,h) is draw_text_bar, i.e. the SUNKEN bar: face 12,
+// top 10, bottom 15, left 11, right 14 -- not the raised bevel with its colours
+// swapped (src/platform/sdl/video_sdl.cpp draw_button_inverted -> draw_text_bar).
+TEST(MassCoverage, video_draw_button_inverted_paints_the_sunken_text_bar) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+
+    s->draw_button_inverted(20, 50, 40, 20);
+
+    ASSERT_EQ(pal_readback_index(10), px_index(30, 50)) << "top edge is colour 10";
+    ASSERT_EQ(pal_readback_index(15), px_index(30, 69)) << "bottom edge is colour 15";
+    ASSERT_EQ(pal_readback_index(11), px_index(20, 60)) << "left edge is colour 11";
+    ASSERT_EQ(pal_readback_index(14), px_index(59, 60)) << "right edge is colour 14";
+    ASSERT_EQ(pal_readback_index(12), px_index(40, 60)) << "the face is colour 12";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(30, 70))
+        << "the bar ends at y+h-1";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(60, 60))
+        << "the bar ends at x+w-1";
+}
+
+// putblack(x,y,w,h) zeroes that rect of whatever buffer the session's legacy
+// videoptr_ points at, and is a no-op while that pointer is null -- which is
+// how production always leaves it (src/platform/sdl/video_sdl.cpp putblack;
+// src/platform/sdl/game_session.cpp, "only tests call putblack, after pointing
+// videoptr_ at a real buffer").
+TEST(MassCoverage, video_putblack_no_ops_until_videoptr_points_somewhere) {
+    screen* s = og::runtime::current_session->myscreen_;
+    const int cw = s->canvas_w();
+    auto buf = s->getbuffer();
+    std::fill(buf.begin(), buf.end(), static_cast<unsigned char>(7));
+
+    ASSERT_EQ(nullptr, og::runtime::current_session->videoptr_)
+        << "setup: production leaves the legacy direct-video pointer null";
+    s->putblack(2, 2, 8, 8);
+    ASSERT_EQ(7, static_cast<int>(buf[static_cast<std::size_t>(5 * cw + 5)]))
+        << "putblack must be a no-op while videoptr_ is null";
+
+    // Restores the null default even if an assertion below aborts the test.
+    struct VideoPtrScope final {
+        explicit VideoPtrScope(unsigned char* p) { og::runtime::current_session->videoptr_ = p; }
+        ~VideoPtrScope() { og::runtime::current_session->videoptr_ = nullptr; }
+    } scope(buf.data());
+
+    s->putblack(2, 2, 8, 8);
+    ASSERT_EQ(0, static_cast<int>(buf[static_cast<std::size_t>(2 * cw + 2)]))
+        << "the rect's first pixel must be zeroed";
+    ASSERT_EQ(0, static_cast<int>(buf[static_cast<std::size_t>(5 * cw + 5)]))
+        << "the rect's interior must be zeroed";
+    ASSERT_EQ(0, static_cast<int>(buf[static_cast<std::size_t>(9 * cw + 9)]))
+        << "the rect's last pixel (x+w-1, y+h-1) must be zeroed";
+    ASSERT_EQ(7, static_cast<int>(buf[static_cast<std::size_t>(10 * cw + 10)]))
+        << "the pixel past the rect must survive";
+    ASSERT_EQ(7, static_cast<int>(buf[static_cast<std::size_t>(1 * cw + 1)]))
+        << "the pixel before the rect must survive";
+    ASSERT_EQ(7, static_cast<int>(buf[static_cast<std::size_t>(5 * cw + 10)]))
+        << "putblack must not run the whole row";
+
+    std::fill(buf.begin(), buf.end(), static_cast<unsigned char>(0));
+}
+
+// fastbox_outline(x,y,w,h,color) is draw_box(x,y,x+w,y+h,color,0): the four
+// edges of the (x,y)-(x+w,y+h) box and NOTHING inside it
+// (src/platform/sdl/video_sdl.cpp sdl_video::fastbox_outline).
+TEST(MassCoverage, video_fastbox_outline_draws_edges_and_leaves_the_interior) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+
+    s->fastbox_outline(2, 2, 8, 8, DARK_GREEN);
+
+    const int green = pal_readback_index(DARK_GREEN);
+    ASSERT_EQ(green, px_index(2, 2)) << "top-left corner";
+    ASSERT_EQ(green, px_index(10, 10)) << "bottom-right corner sits at (x+w, y+h)";
+    ASSERT_EQ(green, px_index(6, 2)) << "top edge";
+    ASSERT_EQ(green, px_index(6, 10)) << "bottom edge";
+    ASSERT_EQ(green, px_index(2, 6)) << "left edge";
+    ASSERT_EQ(green, px_index(10, 6)) << "right edge";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(5, 5))
+        << "the outline must not fill the interior";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(11, 11))
+        << "nothing is painted past (x+w, y+h)";
+}
+
+// point(x,y,color) writes exactly one palette-indexed pixel via pointb
+// (src/platform/sdl/video_sdl.cpp sdl_video::point).
+TEST(MassCoverage, video_point_writes_exactly_one_pixel) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+
+    s->point(5, 5, RED);
+
+    ASSERT_EQ(pal_readback_index(RED), px_index(5, 5)) << "the requested pixel takes the colour";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(6, 5)) << "its right neighbour is untouched";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(4, 5)) << "its left neighbour is untouched";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(5, 6)) << "the row below is untouched";
+}
+
+// pointb(offset,color) splits a flat buffer offset into (offset % canvas_w,
+// offset / canvas_w) (src/platform/sdl/video_sdl.cpp pointb(int, unsigned char)).
+TEST(MassCoverage, video_pointb_offset_lands_on_the_row_the_canvas_width_implies) {
+    screen* s = og::runtime::current_session->myscreen_;
+    const int cw = s->canvas_w();
+    s->clearbuffer();
+
+    s->pointb(cw + 2, DARK_BLUE);
+
+    ASSERT_EQ(pal_readback_index(DARK_BLUE), px_index(2, 1))
+        << "offset canvas_w+2 is column 2 of row 1";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(2, 0))
+        << "row 0 must stay clear -- the offset was not divided by the canvas width";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(3, 1))
+        << "only the one pixel is written";
+}
+
+// hor_line(x,y,len,color,tobuffer=1) writes len pixels along row y, onto the
+// render surface via pointb (src/platform/sdl/video_sdl.cpp hor_line).
+TEST(MassCoverage, video_hor_line_tobuffer_spans_exactly_len_pixels_on_one_row) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+
+    s->hor_line(2, 8, 12, WHITE, 1);
+
+    const int white = pal_readback_index(WHITE);
+    const int black = pal_readback_index(PURE_BLACK);
+    ASSERT_EQ(white, px_index(2, 8)) << "the span starts at x";
+    ASSERT_EQ(white, px_index(13, 8)) << "the span ends at x+len-1";
+    ASSERT_EQ(black, px_index(14, 8)) << "the span must not reach x+len";
+    ASSERT_EQ(black, px_index(1, 8)) << "the span must not reach x-1";
+    ASSERT_EQ(black, px_index(2, 9)) << "the span stays on its own row";
+    ASSERT_EQ(black, px_index(2, 7)) << "the row above stays clear";
+}
+
+// hor_line_alpha(x,y,len,color,alpha) blends the span into the render surface:
+// alpha 255 is the opaque shortcut, alpha 0 leaves the destination alone, and an
+// intermediate alpha lands on dst + ((src-dst)*alpha >> 8) per channel
+// (src/platform/sdl/video_sdl.cpp hor_line_alpha -> pointb -> blend_pixel).
+TEST(MassCoverage, video_hor_line_alpha_blends_the_span_by_its_alpha) {
+    screen* s = og::runtime::current_session->myscreen_;
+    int wr = 0, wg = 0, wb = 0;
+    pal_rgb8(WHITE, &wr, &wg, &wb);
+
+    s->clearbuffer();
+    s->hor_line_alpha(2, 8, 12, WHITE, 255);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(2, 8))
+        << "alpha 255 writes the source colour unblended";
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(13, 8))
+        << "the opaque span ends at x+len-1";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(14, 8))
+        << "the opaque span must not overrun";
+
+    Uint8 r = 0, g = 0, b = 0;
+    s->clearbuffer();
+    s->hor_line_alpha(2, 9, 12, WHITE, 96);
+    s->get_pixel(5, 9, &r, &g, &b);
+    ASSERT_EQ((wr * 96) >> 8, static_cast<int>(r)) << "96/256 of WHITE over black, red channel";
+    ASSERT_EQ((wg * 96) >> 8, static_cast<int>(g)) << "96/256 of WHITE over black, green channel";
+    ASSERT_EQ((wb * 96) >> 8, static_cast<int>(b)) << "96/256 of WHITE over black, blue channel";
+    s->get_pixel(5, 10, &r, &g, &b);
+    ASSERT_EQ(0, static_cast<int>(r) + g + b) << "the row below the blended span stays black";
+
+    s->clearbuffer();
+    s->draw_rect_filled(0, 11, 20, 1, WHITE, 255);
+    s->hor_line_alpha(2, 11, 12, RED, 0);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(5, 11))
+        << "alpha 0 must leave the destination pixel exactly as it was";
+}
+
+// ver_line(x,y,len,color,tobuffer=1) writes len pixels DOWN column x
+// (src/platform/sdl/video_sdl.cpp ver_line).
+TEST(MassCoverage, video_ver_line_tobuffer_spans_exactly_len_pixels_down_one_column) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+
+    s->ver_line(2, 8, 12, WHITE, 1);
+
+    const int white = pal_readback_index(WHITE);
+    const int black = pal_readback_index(PURE_BLACK);
+    ASSERT_EQ(white, px_index(2, 8)) << "the span starts at y";
+    ASSERT_EQ(white, px_index(2, 19)) << "the span ends at y+len-1";
+    ASSERT_EQ(black, px_index(2, 20)) << "the span must not reach y+len";
+    ASSERT_EQ(black, px_index(2, 7)) << "the span must not reach y-1";
+    ASSERT_EQ(black, px_index(3, 8)) << "the span stays in its own column";
+}
+
+// do_cycle(0, maxmode) rotates the ORANGE_START..ORANGE_END and
+// WATER_START..WATER_END registers up by one, wrapping the old END entry round
+// into START (src/platform/sdl/video_sdl.cpp sdl_video::do_cycle).
+TEST(MassCoverage, video_do_cycle_rotates_the_orange_and_water_bands_by_one) {
+    screen* s = og::runtime::current_session->myscreen_;
+
+    // The rotation mutates process-wide palette state; put it back afterwards
+    // so the later pixel-index readbacks in this binary keep their palette.
+    std::array<std::array<int, 3>, 256> before{};
+    for (int i = 0; i < 256; i++)
+        query_palette_reg(static_cast<unsigned char>(i), &before[static_cast<std::size_t>(i)][0],
+                          &before[static_cast<std::size_t>(i)][1],
+                          &before[static_cast<std::size_t>(i)][2]);
+
+    s->do_cycle(0, 1);
+
+    const auto reg = [](unsigned char i) {
+        std::array<int, 3> c{};
+        query_palette_reg(i, &c[0], &c[1], &c[2]);
+        return c;
+    };
+    ASSERT_EQ(before[ORANGE_END], reg(ORANGE_START))
+        << "the old ORANGE_END entry must wrap round into ORANGE_START";
+    ASSERT_EQ(before[ORANGE_END - 1], reg(ORANGE_END))
+        << "every orange register must take its predecessor's colour";
+    ASSERT_EQ(before[ORANGE_START], reg(ORANGE_START + 1))
+        << "the rotation must cover the whole orange band, not just its ends";
+    ASSERT_EQ(before[WATER_END], reg(WATER_START))
+        << "the old WATER_END entry must wrap round into WATER_START";
+    ASSERT_EQ(before[WATER_END - 1], reg(WATER_END))
+        << "every water register must take its predecessor's colour";
+    ASSERT_EQ(before[100], reg(100))
+        << "registers outside the two cycling bands must not move";
+
+    for (int i = 0; i < 256; i++)
+        set_palette_reg(static_cast<unsigned char>(i), before[static_cast<std::size_t>(i)][0],
+                        before[static_cast<std::size_t>(i)][1],
+                        before[static_cast<std::size_t>(i)][2]);
+    ASSERT_EQ(before[ORANGE_START], reg(ORANGE_START)) << "teardown: the palette is restored";
+}
+
+// do_cycle(curmode != 0, maxmode) does nothing: the rotation is gated on
+// curmode % maxmode == 0 (src/platform/sdl/video_sdl.cpp sdl_video::do_cycle).
+TEST(MassCoverage, video_do_cycle_off_beat_leaves_the_palette_alone) {
+    screen* s = og::runtime::current_session->myscreen_;
+    std::array<int, 3> before{};
+    query_palette_reg(ORANGE_START, &before[0], &before[1], &before[2]);
+
+    s->do_cycle(1, 4);
+
+    std::array<int, 3> after{};
+    query_palette_reg(ORANGE_START, &after[0], &after[1], &after[2]);
+    ASSERT_EQ(before, after) << "only curmode % maxmode == 0 may rotate the palette";
+}
+
+// putdata(x,y,w,h,pixels) walks the source row-major and draws each NON-ZERO
+// index at (x+i, y+j); index 0 is transparent
+// (src/platform/sdl/video_sdl.cpp sdl_video::putdata).
+TEST(MassCoverage, video_putdata_blits_row_major_with_index_zero_transparent) {
+    screen* s = og::runtime::current_session->myscreen_;
     auto px = sample_pixels(50);
-    og::runtime::current_session->myscreen_->putdata(10, 10, 8, 8, px);
+    s->clearbuffer();
+
+    s->putdata(10, 10, 8, 8, px);
+
+    ASSERT_EQ(pal_readback_index(50), px_index(10, 10)) << "source[0] lands at (x,y)";
+    ASSERT_EQ(pal_readback_index(57), px_index(17, 10))
+        << "source[7] lands at the end of the first row";
+    ASSERT_EQ(pal_readback_index(50), px_index(10, 11))
+        << "source[8] starts the second row back at column x";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(9, 10)) << "nothing lands left of x";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(18, 10)) << "the block is only w wide";
+
+    // Index 0 must be skipped, not painted black over the destination.
+    auto holed = sample_pixels(50);
+    holed[0] = 0;
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    s->putdata(10, 10, 8, 8, holed);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
+        << "a zero source index must leave the destination pixel alone";
+    ASSERT_EQ(pal_readback_index(51), px_index(11, 10))
+        << "the neighbouring non-zero index still paints";
 }
 
-TEST(MassCoverage, video_putdata_alpha) {
+// putdata_alpha(x,y,w,h,pixels,alpha) blends the block in: alpha 255 is the
+// opaque shortcut, alpha 0 leaves the destination untouched
+// (src/platform/sdl/video_sdl.cpp putdata_alpha -> pointb -> blend_pixel).
+TEST(MassCoverage, video_putdata_alpha_honours_both_ends_of_its_alpha) {
+    screen* s = og::runtime::current_session->myscreen_;
     auto px = sample_pixels(60);
-    og::runtime::current_session->myscreen_->putdata_alpha(10, 10, 8, 8, px, 100);
+    s->clearbuffer();
+
+    s->putdata_alpha(10, 10, 8, 8, px, 255);
+    ASSERT_EQ(pal_readback_index(60), px_index(10, 10))
+        << "alpha 255 writes source[0] unblended at (x,y)";
+    ASSERT_EQ(pal_readback_index(62), px_index(12, 12))
+        << "alpha 255 writes source[18] unblended at (x+2,y+2)";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(9, 10))
+        << "the block does not spill left of x";
+
+    Uint8 r = 0, g = 0, b = 0;
+    s->clearbuffer();
+    s->putdata_alpha(10, 10, 8, 8, px, 100);
+    s->get_pixel(12, 12, &r, &g, &b);
+    int pr = 0, pg = 0, pb = 0;
+    pal_rgb8(62, &pr, &pg, &pb);
+    ASSERT_EQ((pr * 100) >> 8, static_cast<int>(r)) << "100/256 of the source over black, red";
+    ASSERT_EQ((pg * 100) >> 8, static_cast<int>(g)) << "100/256 of the source over black, green";
+    ASSERT_EQ((pb * 100) >> 8, static_cast<int>(b)) << "100/256 of the source over black, blue";
+
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    s->putdata_alpha(10, 10, 8, 8, px, 0);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(12, 12))
+        << "alpha 0 must leave the destination exactly as it was";
 }
 
-TEST(MassCoverage, video_putdatatext) {
+// putdatatext(x,y,w,h,pixels) fills one surface rect per non-zero source index
+// and skips index 0 (src/platform/sdl/video_sdl.cpp putdatatext).
+TEST(MassCoverage, video_putdatatext_blits_opaquely_with_index_zero_transparent) {
+    screen* s = og::runtime::current_session->myscreen_;
     auto px = sample_pixels(70);
-    og::runtime::current_session->myscreen_->putdatatext(10, 10, 8, 8, px);
+    px[0] = 0;
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10)) << "setup: the backdrop must land";
+
+    s->putdatatext(10, 10, 8, 8, px);
+
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
+        << "a zero source index must leave the backdrop showing";
+    ASSERT_EQ(pal_readback_index(71), px_index(11, 10))
+        << "source[1] paints its own index over the backdrop";
+    ASSERT_EQ(pal_readback_index(70), px_index(10, 11))
+        << "source[8] starts the second row back at column x";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(18, 10))
+        << "the block is only w wide";
 }
 
-TEST(MassCoverage, video_putdata_color) {
-    auto px = sample_pixels(248);
-    og::runtime::current_session->myscreen_->putdata(10, 10, 8, 8, px, DARK_GREEN);
+// putdata(x,y,w,h,pixels,color): source indices ABOVE 247 are replaced by
+// `color`; anything 1..247 keeps its own index
+// (src/platform/sdl/video_sdl.cpp putdata with the colour override).
+TEST(MassCoverage, video_putdata_color_overrides_only_indices_above_247) {
+    screen* s = og::runtime::current_session->myscreen_;
+
+    auto high = sample_pixels(248);  // 248..255, all above the 247 threshold
+    s->clearbuffer();
+    s->putdata(10, 10, 8, 8, high, DARK_GREEN);
+    ASSERT_EQ(pal_readback_index(DARK_GREEN), px_index(10, 10))
+        << "a 248 source index takes the override colour";
+    ASSERT_EQ(pal_readback_index(DARK_GREEN), px_index(12, 12))
+        << "every index above 247 takes the override colour";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(9, 10))
+        << "the override blit stays inside its block";
+
+    auto low = sample_pixels(50);  // 50..57, all at or below 247
+    s->clearbuffer();
+    s->putdata(10, 10, 8, 8, low, DARK_GREEN);
+    ASSERT_EQ(pal_readback_index(50), px_index(10, 10))
+        << "an index at or below 247 must keep its own colour, not the override";
+    ASSERT_EQ(pal_readback_index(57), px_index(17, 10))
+        << "the whole low-index row keeps its own colours";
 }
 
 TEST(MassCoverage, video_putdatatext_color) {
@@ -1193,3 +1774,4 @@ TEST(MassCoverage, obmap_debug_draw_expands_bounding_boxes_all_directions) {
     obmap_debug_draw(map, og::runtime::current_session->myscreen_);
     reset_level_state();
 }
+
