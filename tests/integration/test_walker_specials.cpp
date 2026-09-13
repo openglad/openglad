@@ -2,6 +2,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
@@ -200,520 +201,528 @@ public:
 };
 
 // ---------------------------------------------------------------------------
-// special() - exercises the massive family switch (lines 2293-3909)
-// Each family test covers a different switch case
+// special() and the two self-teleport helpers. The per-(family, special)
+// "does the cast actually DO its thing" cases live in the
+// *_drives_simulation block further down; what is left here is the shared
+// walker-level contract: where the teleport lands, what turn_undead returns,
+// what a family with no specials does, and the whole-registry sweep.
 // ---------------------------------------------------------------------------
 
-TEST_F(WalkerSpecials, soldier_charge)
+namespace {
+
+// Every draw is the top of its range (max_exclusive - 1). turn_undead's
+// resistance test is `next(range*40) > next(level*10)`, so a ceiling stream
+// makes the left side 959 and the right side 9 no matter how many draws
+// walker::attack consumes between the two undead -- the kill arm without a
+// seed hunt.
+class CeilingRandom : public IRandom
 {
-    walker* w = make_special_guy(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_lastx(w->stepsize());
-    w->set_lasty(0);
-    w->set_current_special(1); // charge
-    w->special();
+public:
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        return (max_exclusive == 0) ? 0 : (max_exclusive - 1);
+    }
+};
+
+// Installs a stream over the world's SimRandom -- the one living::act,
+// act_random, turn_undead, walker::attack and statistics::try_command
+// actually draw from. A GameContext rng reaches only walker construction and
+// combat math (walker_rng/combat_rng), so pushing a context RNG leaves these
+// branch picks to whatever a shuffled predecessor left in the LCG.
+class ScopedSimStream
+{
+public:
+    explicit ScopedSimStream(IRandom* rng) : rng_ptr_(rng)
+    {
+        og::sim::set_sim_random_override(&rng_ptr_);
+    }
+    ~ScopedSimStream() { og::sim::set_sim_random_override(nullptr); }
+    ScopedSimStream(const ScopedSimStream&) = delete;
+    ScopedSimStream& operator=(const ScopedSimStream&) = delete;
+
+private:
+    IRandom* rng_ptr_;
+};
+
+// The first live entity of a family, in oblist or fxlist (add_ob routes FX to
+// one, add_fx_ob to the other, and which one is not this test's business).
+walker* find_any_by_family(char family)
+{
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
+        if (uptr && uptr->family() == family && !uptr->dead())
+            return uptr.get();
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist)
+        if (uptr && uptr->family() == family && !uptr->dead())
+            return uptr.get();
+    return nullptr;
 }
 
-
-TEST_F(WalkerSpecials, soldier_boomerang)
+// A passable landing for the teleport-marker arm: farther than the 64 px the
+// marker path requires, and in-bounds for every level layout.
+bool find_far_passable_spot(walker* w, Sint32& out_x, Sint32& out_y)
 {
-    walker* w = make_special_guy(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(2); // boomerang
-    w->special();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    for (Sint32 x = 0; x < world.pixmaxx - w->sizex() - 2; x += GRID_SIZE)
+    {
+        for (Sint32 y = 0; y < world.pixmaxy - w->sizey() - 2; y += GRID_SIZE)
+        {
+            const Sint32 dx = x - w->xpos();
+            const Sint32 dy = y - w->ypos();
+            if (dx * dx + dy * dy <= 80 * 80)
+                continue;
+            if (world.query_passable(static_cast<float>(x), static_cast<float>(y), w))
+            {
+                out_x = x;
+                out_y = y;
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
-
-TEST_F(WalkerSpecials, soldier_whirlwind)
-{
-    walker* w = make_special_guy(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(3); // whirlwind
-    w->set_busy(0);
-    w->set_lastx(w->stepsize());
-    w->set_lasty(0);
-    w->special();
-}
+} // namespace
 
 
-TEST_F(WalkerSpecials, archer_fire_arrows)
-{
-    walker* w = make_special_guy(FAMILY_ARCHER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_lastx(w->stepsize());
-    w->set_lasty(0);
-    w->set_current_special(1); // fire arrows
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, archer_flurry)
-{
-    walker* w = make_special_guy(FAMILY_ARCHER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_lastx(w->stepsize());
-    w->set_lasty(0);
-    w->set_busy(0);
-    w->set_current_special(2); // flurry
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, archer_exploding)
-{
-    walker* w = make_special_guy(FAMILY_ARCHER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_lastx(w->stepsize());
-    w->set_lasty(0);
-    w->set_busy(0);
-    w->set_current_special(3); // exploding arrows
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, mage_teleport)
+// walker::teleport, marker arm: a live owned marker more than 64 px away is
+// the destination. The caster lands centered on it (center_on math) and the
+// marker spends one use, dying at zero.
+TEST_F(WalkerSpecials, teleport_marker_lands_centered_and_spends_a_use)
 {
     walker* w = make_special_guy(FAMILY_MAGE);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // teleport
-    w->special();
+    ASSERT_NE(nullptr, w) << "mage created";
+    auto& world = og::runtime::current_session->myscreen_->world();
 
-    // Direct teleport marker path (marker consumed at lifetime 1).
-    walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    ASSERT_TRUE(marker != nullptr) << "teleport marker created";
-    if (marker) {
-        marker->set_owner(w);
-        marker->set_dead(0);
-        marker->set_lifetime(1);
-        // Place marker somewhere passable and sufficiently far away; do not
-        // assume (x+96,y+96) is in-bounds or passable for every level.
-        Sint32 mx = std::min<Sint32>(w->xpos() + 96, og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex() - 2);
-        Sint32 my = std::min<Sint32>(w->ypos() + 96, og::runtime::current_session->myscreen_->world().pixmaxy - w->sizey() - 2);
-        if (!og::runtime::current_session->myscreen_->world().query_passable(static_cast<float>(mx), static_cast<float>(my), w))
+    walker* marker = world.add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, marker) << "teleport marker created";
+    marker->set_owner(w);
+    marker->set_dead(0);
+    marker->set_lifetime(1);
+
+    Sint32 mx = 0;
+    Sint32 my = 0;
+    ASSERT_TRUE(find_far_passable_spot(w, mx, my))
+        << "the loaded level must offer a passable cell more than 64 px away";
+    marker->setxy(mx, my);
+    const Sint32 expect_x = marker->xpos() + marker->sizex() / 2 - w->sizex() / 2;
+    const Sint32 expect_y = marker->ypos() + marker->sizey() / 2 - w->sizey() / 2;
+
+    ASSERT_TRUE(w->teleport()) << "a far, live, owned marker is a valid destination";
+    EXPECT_EQ(expect_x, static_cast<Sint32>(w->xpos()))
+        << "the caster lands centered on the marker in x";
+    EXPECT_EQ(expect_y, static_cast<Sint32>(w->ypos()))
+        << "the caster lands centered on the marker in y";
+    EXPECT_EQ(0, static_cast<int>(marker->lifetime()))
+        << "the trip spends one marker use";
+    EXPECT_EQ(1, static_cast<int>(marker->dead()))
+        << "a marker with no uses left dies";
+
+    delete w;
+    world.delete_objects();
+}
+
+
+// walker::teleport, near-marker arm: a marker within 64 px is not a
+// destination at all -- it keeps every use and the caster takes the random
+// blink instead. teleport_ranged then keeps its hop inside the range it was
+// given.
+TEST_F(WalkerSpecials, teleport_ignores_a_marker_within_64_px)
+{
+    walker* w = make_special_guy(FAMILY_MAGE);
+    ASSERT_NE(nullptr, w) << "mage created";
+    auto& world = og::runtime::current_session->myscreen_->world();
+    w->set_user(0);
+
+    walker* marker = world.add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, marker) << "near marker created";
+    marker->set_owner(w);
+    marker->set_dead(0);
+    marker->set_lifetime(5);
+    marker->setxy(static_cast<Sint32>(w->xpos() + 4), static_cast<Sint32>(w->ypos() + 4));
+    const Sint32 near_x = marker->xpos() + marker->sizex() / 2 - w->sizex() / 2;
+    const Sint32 near_y = marker->ypos() + marker->sizey() / 2 - w->sizey() / 2;
+
+    world.rng_.state_ = 7; // fixed blink destination
+    ASSERT_TRUE(w->teleport()) << "with no usable marker the random blink runs";
+    EXPECT_EQ(5, static_cast<int>(marker->lifetime()))
+        << "a marker within 64 px is skipped, not consumed";
+    EXPECT_EQ(0, static_cast<int>(marker->dead()))
+        << "a skipped marker stays alive";
+    EXPECT_FALSE(static_cast<Sint32>(w->xpos()) == near_x
+                 && static_cast<Sint32>(w->ypos()) == near_y)
+        << "the blink must not land the caster on the too-close marker";
+
+    const Sint32 from_x = w->xpos();
+    const Sint32 from_y = w->ypos();
+    world.rng_.state_ = 11; // fixed ranged-hop destination
+    ASSERT_TRUE(w->teleport_ranged(24)) << "a 24 px hop should find a clear cell";
+    EXPECT_GE(static_cast<Sint32>(w->xpos()), from_x - 24) << "the hop stays within range in x";
+    EXPECT_LE(static_cast<Sint32>(w->xpos()), from_x + 24) << "the hop stays within range in x";
+    EXPECT_GE(static_cast<Sint32>(w->ypos()), from_y - 24) << "the hop stays within range in y";
+    EXPECT_LE(static_cast<Sint32>(w->ypos()), from_y + 24) << "the hop stays within range in y";
+
+    delete w;
+    world.delete_objects();
+}
+
+
+// Archmage special 2 with the shifter held is chain lightning: ONE bolt,
+// charged from the MP pool and leashed to the nearest same-floor foe.
+TEST_F(WalkerSpecials, archmage_chain_lightning_spawns_one_leashed_bolt)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    ASSERT_NE(nullptr, arch) << "archmage created";
+    arch->setxy(120, 120);
+    arch->set_busy(0);
+    arch->set_shifter_down(1);
+    arch->set_current_special(2);
+    arch->stats()->set_max_magicpoints(1800);
+    arch->stats()->set_magicpoints(1800);
+    arch->stats()->set_special_cost(2, 0);
+    if (arch->myguy)
+        arch->myguy->intelligence = 220;
+
+    walker* near_foe = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* far_foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, near_foe) << "near foe created";
+    ASSERT_NE(nullptr, far_foe) << "far foe created";
+    near_foe->set_team_num(2);
+    far_foe->set_team_num(2);
+    near_foe->stats()->set_level(1);
+    far_foe->stats()->set_level(1);
+    near_foe->setxy(static_cast<Sint32>(arch->xpos() + 10), static_cast<Sint32>(arch->ypos()));
+    far_foe->setxy(static_cast<Sint32>(arch->xpos() + 40), static_cast<Sint32>(arch->ypos()));
+
+    const int chains_before = count_family_all_lists(FAMILY_CHAIN);
+    ASSERT_TRUE(arch->special()) << "chain lightning fires with foes in range";
+    EXPECT_EQ(chains_before + 1, count_family_all_lists(FAMILY_CHAIN))
+        << "one cast summons exactly one chain bolt";
+    walker* bolt = find_any_by_family(FAMILY_CHAIN);
+    ASSERT_NE(nullptr, bolt) << "the chain bolt is in the world";
+    EXPECT_EQ(near_foe, bolt->leader())
+        << "the bolt is leashed to the NEAREST same-floor foe";
+    EXPECT_GT(bolt->damage(), 0.0f) << "the bolt carries the MP pool as damage";
+    EXPECT_GT(arch->busy(), 0.0f) << "the cast leaves the archmage busy";
+
+    delete arch;
+    world.delete_objects();
+}
+
+
+// Archmage special 3 with the shifter held is the TRUE summon: one real fire
+// elemental, owned by the caster, on the caster's team, with a finite
+// lifetime (it is ammunition, not a recruit).
+TEST_F(WalkerSpecials, archmage_true_summon_places_one_owned_fire_elemental)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    ASSERT_NE(nullptr, arch) << "archmage created";
+    arch->setxy(120, 120);
+    arch->set_busy(0);
+    arch->set_shifter_down(1);
+    arch->set_current_special(3);
+    arch->stats()->set_max_magicpoints(1800);
+    arch->stats()->set_magicpoints(1800);
+    arch->stats()->set_special_cost(3, 0);
+    if (arch->myguy)
+        arch->myguy->intelligence = 220;
+
+    const int elementals_before = count_family_in_oblist(FAMILY_FIREELEMENTAL);
+    ASSERT_TRUE(arch->special()) << "the true summon fires with Int 220 and MP to spare";
+    EXPECT_EQ(elementals_before + 1, count_family_in_oblist(FAMILY_FIREELEMENTAL))
+        << "one cast summons exactly one fire elemental";
+    walker* elemental = find_first_alive_ob_by_family(FAMILY_FIREELEMENTAL);
+    ASSERT_NE(nullptr, elemental) << "the summoned elemental is in the world";
+    EXPECT_EQ(arch, elemental->owner()) << "the summon belongs to its summoner";
+    EXPECT_EQ(static_cast<int>(arch->team_num()), static_cast<int>(elemental->team_num()))
+        << "the summon joins the summoner's team";
+    EXPECT_GT(static_cast<int>(elemental->lifetime()), 0)
+        << "a true summon is ammunition: it has a finite lifetime";
+    EXPECT_GT(arch->busy(), 0.0f) << "summoning takes lots of time";
+
+    delete arch;
+    world.delete_objects();
+}
+
+
+// living::act's ACT_RANDOM "4 of 5 times" arm: both 1-in-5 rolls miss, the
+// walker already has a foe, so it snaps its facing down to an even step and
+// queues a 300-tick search. (The act_random() arm and its own commands are
+// pinned in test_walker_core_more.cpp.)
+TEST_F(WalkerSpecials, act_random_search_arm_snaps_facing_and_queues_300_tick_search)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* actor = make_special_guy(FAMILY_ORC, 1, 4);
+    walker* enemy = make_special_guy(FAMILY_SOLDIER, 2, 4);
+    ASSERT_NE(nullptr, actor) << "actor created";
+    ASSERT_NE(nullptr, enemy) << "enemy created";
+    actor->setxy(100, 100);
+    enemy->setxy(108, 100);
+    actor->set_foe(enemy);
+    actor->set_act_type(ACT_RANDOM);
+    // The exact pre-switch state act() needs: nothing animating, nothing
+    // queued, no pending turn, not busy, not frozen -- otherwise act()
+    // returns early from animate()/turn()/do_command() and never reaches the
+    // ACT_RANDOM arm. curdir == enddir == FACE_UP_RIGHT so the arm's own
+    // (enddir/2)*2 snap is observable.
+    actor->stats()->clear_command();
+    actor->stats()->set_frozen_delay(0);
+    actor->set_ani_type(ANI_WALK);
+    actor->set_busy(0);
+    actor->set_curdir(static_cast<signed char>(FACE_UP_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_UP_RIGHT));
+
+    {
+        // next(5) == 1 twice: the special roll misses and the act_random()
+        // roll misses, so the search arm runs.
+        FixedRandom miss_both_rolls(1u);
+        ScopedSimStream scoped(&miss_both_rolls);
+        ASSERT_TRUE(actor->act()) << "living::act's search arm returns 1";
+    }
+
+    ASSERT_EQ(1u, actor->stats()->commands.size())
+        << "the search arm queues exactly one command";
+    EXPECT_EQ(COMMAND_SEARCH, static_cast<int>(actor->stats()->commands.back().commandtype))
+        << "and that command is COMMAND_SEARCH";
+    EXPECT_EQ(300, static_cast<int>(actor->stats()->commands.back().commandcount))
+        << "with living::act's own 300-tick budget, not act_random's 200";
+    EXPECT_EQ(FACE_UP, static_cast<int>(actor->curdir()))
+        << "the arm snaps facing to an even step: (enddir/2)*2";
+    EXPECT_EQ(FACE_UP, static_cast<int>(actor->enddir()))
+        << "and parks enddir there too, so no turn is pending";
+
+    delete actor;
+    delete enemy;
+    world.delete_objects();
+}
+
+
+// walker::turn_undead: -1 when there is nothing in range, and otherwise the
+// number of UNDEAD foes whose resistance roll lost. The roll is
+// next(range*40) > next(level*10) off the world stream, so a floor stream
+// spares everyone and a ceiling stream destroys every undead -- and the
+// living orc standing between them is never a candidate either way.
+TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 3);
+    ASSERT_NE(nullptr, cleric) << "cleric created";
+    cleric->setxy(100, 100);
+
+    ASSERT_EQ(-1, static_cast<int>(cleric->turn_undead(3, 1)))
+        << "turn_undead returns -1 when no foe is in range at all";
+
+    walker* skel = world.add_ob(Order::Living, FAMILY_SKELETON);
+    walker* ghost = world.add_ob(Order::Living, FAMILY_GHOST);
+    walker* orc = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, skel) << "skeleton created";
+    ASSERT_NE(nullptr, ghost) << "ghost created";
+    ASSERT_NE(nullptr, orc) << "orc created";
+    for (walker* foe : {skel, ghost, orc})
+    {
+        foe->set_team_num(2);
+        foe->stats()->set_level(1);
+        foe->set_dead(0);
+    }
+    skel->setxy(static_cast<Sint32>(cleric->xpos() + 1), static_cast<Sint32>(cleric->ypos() + 1));
+    ghost->setxy(static_cast<Sint32>(cleric->xpos() + 2), static_cast<Sint32>(cleric->ypos() + 1));
+    orc->setxy(static_cast<Sint32>(cleric->xpos() + 3), static_cast<Sint32>(cleric->ypos() + 1));
+
+    {
+        // Every draw 0: `0 > 0` is false, so every undead resists.
+        FixedRandom floor_rng(0u);
+        ScopedSimStream scoped(&floor_rng);
+        ASSERT_EQ(0, static_cast<int>(cleric->turn_undead(24, 2)))
+            << "targets in range but every resistance roll held: 0 destroyed";
+    }
+    EXPECT_EQ(0, static_cast<int>(skel->dead())) << "a resisting skeleton survives";
+    EXPECT_EQ(0, static_cast<int>(ghost->dead())) << "a resisting ghost survives";
+
+    {
+        // Every draw max-1: 959 > 9, so every undead is destroyed.
+        CeilingRandom ceiling_rng;
+        ScopedSimStream scoped(&ceiling_rng);
+        ASSERT_EQ(2, static_cast<int>(cleric->turn_undead(24, 2)))
+            << "both undead lose the roll; the orc is not undead";
+    }
+    EXPECT_EQ(1, static_cast<int>(skel->dead())) << "the skeleton is destroyed";
+    EXPECT_FLOAT_EQ(0.0f, skel->stats()->hitpoints()) << "and zeroed out";
+    EXPECT_EQ(1, static_cast<int>(ghost->dead())) << "the ghost is destroyed";
+    EXPECT_FLOAT_EQ(0.0f, ghost->stats()->hitpoints()) << "and zeroed out";
+    EXPECT_EQ(0, static_cast<int>(orc->dead()))
+        << "turning is for the undead: the orc is untouched";
+
+    delete cleric;
+    world.delete_objects();
+}
+
+
+// core:faerie declares `specials = {}` (living-07-faerie.lua). Every
+// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), so a faerie
+// with an ordinary pool is refused at the cost gate (NoMP) before any
+// dispatch; hand it a pool it cannot possibly have in play and the dispatch
+// itself runs, finds no hook and declines. Either way nothing is spent: the
+// faerie's freezing sprinkle is a weapon, not a special.
+TEST_F(WalkerSpecials, faerie_has_no_special_and_spends_no_magic)
+{
+    walker* w = make_special_guy(FAMILY_FAERIE);
+    ASSERT_NE(nullptr, w) << "faerie created";
+    w->set_current_special(1);
+    EXPECT_EQ(static_cast<int>(kSpecialCostDisabled),
+              static_cast<int>(w->stats()->special_cost(1)))
+        << "an undeclared special slot keeps the disabled sentinel cost";
+
+    const float mp_before = w->stats()->magicpoints();
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    ASSERT_FALSE(w->special(&why)) << "a family with no specials cannot cast one";
+    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
+        << "the disabled sentinel cost puts the slot out of reach of any real pool";
+    EXPECT_FLOAT_EQ(mp_before, w->stats()->magicpoints())
+        << "a refused special spends no magic";
+
+    w->stats()->set_max_magicpoints(kSpecialCostDisabled + 1000);
+    w->stats()->set_magicpoints(kSpecialCostDisabled + 1000);
+    const float rich_mp_before = w->stats()->magicpoints();
+    why = walker::SpecialFailure::None;
+    ASSERT_FALSE(w->special(&why)) << "past the cost gate there is still no cast to run";
+    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why)
+        << "the dispatch ran and declined; not Dead/NoStats/NotLiving";
+    EXPECT_FLOAT_EQ(rich_mp_before, w->stats()->magicpoints())
+        << "a declined special spends no magic either";
+
+    delete w;
+}
+
+
+// Whole-registry sweep: every living family in the table below, every special
+// slot 1..5, with and without the shifter, cast from one fixed world state
+// with the world RNG re-seeded before each cast. `special()` returning true
+// is the one contract every slot shares, so all ten outcomes are pinned per
+// family as a bitmask (bit (slot-1)*2 + shifter). A slot that stops firing,
+// or one that starts firing where the family declares no such special, flips
+// a bit and names its family.
+//
+// This is a characterization pin over the whole registry, not a substitute
+// for the per-special tests: what each cast DOES is asserted by the
+// *_drives_simulation block further down, and those tests build their casters
+// the way the game does. A zero row here means no slot fires from this bare
+// add_ob caster -- because the family declares no specials at all (faerie,
+// big orc, golem, giant skeleton, tower), because it spawns mid-animation
+// (skeleton), or because its cast declines against this fixed neighbourhood
+// (elf, barbarian, the small slimes). Those rows still carry the cost-gate
+// assertion below, which is family-independent.
+TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
+{
+    struct SweepCase
+    {
+        char family;
+        const char* name;
+        unsigned expected_mask;
+    };
+
+    static const SweepCase kSweep[] = {
+        {FAMILY_SOLDIER, "soldier", 255u},        // slots 1-4, both shifters
+        {FAMILY_ARCHER, "archer", 63u},           // slots 1-3, both shifters
+        {FAMILY_CLERIC, "cleric", 2u},            // slot 1 shifted: mystic mace
+        {FAMILY_MAGE, "mage", 829u},              // 1 unshifted, 2/3/5 both
+        {FAMILY_ARCHMAGE, "archmage", 125u},      // 1 unshifted, 2/3 both, 4 unshifted
+        {FAMILY_ELF, "elf", 0u},                  // rock volleys decline here (see below)
+        {FAMILY_THIEF, "thief", 255u},            // slots 1-4, both shifters
+        {FAMILY_SKELETON, "skeleton", 0u},        // spawns in ANI_SKEL_GROW: mid-teleport
+        {FAMILY_FIREELEMENTAL, "fire elemental", 3u}, // slot 1, both shifters
+        {FAMILY_FAERIE, "faerie", 0u},            // declares no specials at all
+        {FAMILY_DRUID, "druid", 240u},            // slots 3-4, both shifters
+        {FAMILY_ORC, "orc", 3u},                  // slot 1, both shifters
+        {FAMILY_BARBARIAN, "barbarian", 0u},      // boulder declines here (see below)
+        {FAMILY_GHOST, "ghost", 3u},              // slot 1, both shifters
+        {FAMILY_SMALL_SLIME, "small slime", 0u},  // no room to grow beside the ally
+        {FAMILY_MEDIUM_SLIME, "medium slime", 0u},// no room to grow beside the ally
+        {FAMILY_SLIME, "slime", 3u},              // slot 1, both shifters
+        {FAMILY_BIG_ORC, "big orc", 0u},          // declares no specials at all
+        {FAMILY_GOLEM, "golem", 0u},              // declares no specials at all
+        {FAMILY_GIANT_SKELETON, "giant skeleton", 0u}, // declares no specials at all
+        {FAMILY_TOWER1, "tower", 0u},             // declares no specials at all
+    };
+
+    // The sweep builds its casters with add_ob, which does not load a level
+    // on its own: without this the grid is invalid when the test runs first
+    // in a filtered subset, and every passability probe answers differently.
+    ensure_level_loaded();
+    auto& world = og::runtime::current_session->myscreen_->world();
+
+    for (const SweepCase& sweep : kSweep)
+    {
+        world.delete_objects();
+
+        walker* caster = world.add_ob(Order::Living, sweep.family);
+        walker* ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+        walker* blood = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+        ASSERT_NE(nullptr, caster) << "sweep caster created for " << sweep.name;
+        ASSERT_NE(nullptr, ally) << "sweep ally created for " << sweep.name;
+        ASSERT_NE(nullptr, foe) << "sweep foe created for " << sweep.name;
+        ASSERT_NE(nullptr, blood) << "sweep corpse created for " << sweep.name;
+
+        caster->set_team_num(1);
+        ally->set_team_num(1);
+        foe->set_team_num(2);
+        caster->setxy(100, 100);
+        ally->setxy(104, 100);
+        foe->setxy(112, 100);
+        blood->setxy(106, 100);
+        caster->set_lastx(caster->stepsize());
+        caster->set_lasty(0);
+        caster->stats()->set_max_magicpoints(1500);
+        if (caster->myguy)
         {
-            bool found = false;
-            for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex() - 2 && !found; x += GRID_SIZE)
+            caster->myguy->intelligence = 180;
+            caster->myguy->strength = 180;
+            caster->myguy->constitution = 180;
+            caster->myguy->teamnum = 1;
+        }
+        blood->stats()->set_old_family(FAMILY_SOLDIER);
+        blood->set_team_num(1);
+
+        unsigned mask = 0;
+        for (int slot = 1; slot <= 5; ++slot)
+        {
+            for (int shift = 0; shift <= 1; ++shift)
             {
-                for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->world().pixmaxy - w->sizey() - 2; y += GRID_SIZE)
+                world.rng_.state_ = 2468013579u; // one fixed stream per cast
+                caster->set_current_special(static_cast<char>(slot));
+                caster->set_busy(0);
+                caster->set_shifter_down(static_cast<short>(shift));
+                caster->stats()->set_magicpoints(caster->stats()->max_magicpoints());
+                const float pool_before = caster->stats()->magicpoints();
+                walker::SpecialFailure why = walker::SpecialFailure::None;
+                if (caster->special(&why))
                 {
-                    const Sint32 dx = x - w->xpos();
-                    const Sint32 dy = y - w->ypos();
-                    if (dx * dx + dy * dy <= 64 * 64)
-                        continue;
-                    if (og::runtime::current_session->myscreen_->world().query_passable(static_cast<float>(x), static_cast<float>(y), w))
-                    {
-                        mx = x;
-                        my = y;
-                        found = true;
-                        break;
-                    }
+                    mask |= 1u << ((slot - 1) * 2 + shift);
+                }
+                else if (why == walker::SpecialFailure::NoMP)
+                {
+                    EXPECT_FLOAT_EQ(pool_before, caster->stats()->magicpoints())
+                        << "a slot refused at the cost gate must run no cast and "
+                           "spend nothing: " << sweep.name << " slot " << slot
+                        << " shifter " << shift;
                 }
             }
         }
-        marker->setxy(mx, my);
-        ASSERT_TRUE(w->teleport()) << "teleport with marker should succeed";
+        EXPECT_EQ(sweep.expected_mask, mask)
+            << "special() outcomes changed for family " << sweep.name
+            << " (bit (slot-1)*2+shifter)";
     }
 
-    // Marker-present but too-close path should go through fallback logic.
-    marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    ASSERT_TRUE(marker != nullptr) << "near marker created";
-    if (marker) {
-        marker->set_owner(w);
-        marker->set_dead(0);
-        marker->set_lifetime(5);
-        marker->setxy(w->xpos() + 4, w->ypos() + 4);
-        w->set_user(0);
-        (void)w->teleport();
-    }
-
-    (void)w->teleport_ranged(24);
-    og::runtime::current_session->myscreen_->world().delete_objects();
-}
-
-
-TEST_F(WalkerSpecials, mage_freeze)
-{
-    walker* w = make_special_guy(FAMILY_MAGE);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(2); // freeze time
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, mage_energy_wave)
-{
-    walker* w = make_special_guy(FAMILY_MAGE);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(3); // energy wave
-    w->set_lastx(w->stepsize());
-    w->set_lasty(0);
-    w->set_busy(0);
-    walker* mage_target = make_special_guy(FAMILY_ORC, 2, 2);
-    ASSERT_TRUE(mage_target != nullptr) << "mage target created";
-    mage_target->setxy(w->xpos() + 8, w->ypos() + 8);
-    int before_wave = count_family_all_lists(FAMILY_WAVE);
-    (void)w->special();
-    int after_wave = count_family_all_lists(FAMILY_WAVE);
-    ASSERT_TRUE(after_wave >= before_wave) << "energy wave path should run without removing waves";
-
-    // Exercise archmage heavy branches: marker teleport, chain lightning,
-    // summon variants, and mind-control.
-    og::runtime::current_session->myscreen_->world().delete_objects();
-    walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
-    ASSERT_TRUE(arch != nullptr) << "archmage created";
-    arch->setxy(120, 120);
-    arch->stats()->set_magicpoints(1800);
-    arch->stats()->set_max_magicpoints(1800);
-    arch->set_busy(0);
-    if (arch->myguy)
-        arch->myguy->intelligence = 220;
-    arch->stats()->set_special_cost(1, 0);
-    arch->stats()->set_special_cost(2, 0);
-    arch->stats()->set_special_cost(3, 0);
-    arch->stats()->set_special_cost(4, 0);
-
-    FixedRandom fixed_rng(1); // deterministic non-zero path for rng(20)
-    GameContext test_ctx;
-
-    test_ctx.rng = &fixed_rng;
-    push_test_context(&test_ctx);
-
-    // special 1, shifter_down: place teleport marker.
-    arch->set_current_special(1);
-    arch->set_shifter_down(1);
-    int markers_before = count_family_in_oblist(FAMILY_MARKER);
-    (void)arch->special();
-    int markers_after = count_family_in_oblist(FAMILY_MARKER);
-    ASSERT_TRUE(markers_after >= markers_before) << "marker path should not remove markers";
-
-    // special 2, normal: create explosion FX against a nearby foe.
-    walker* foe = make_special_guy(FAMILY_ORC, 2, 3);
-    ASSERT_TRUE(foe != nullptr) << "foe created for archmage special 2";
-    foe->setxy(arch->xpos() + 10, arch->ypos() + 10);
-    int explode_before = count_family_all_lists(FAMILY_EXPLOSION);
-    arch->set_current_special(2);
-    arch->set_shifter_down(0);
-    arch->set_busy(0);
-    (void)arch->special();
-    int explode_after = count_family_all_lists(FAMILY_EXPLOSION);
-    ASSERT_TRUE(explode_after >= explode_before) << "burst path should not reduce explosion count";
-
-    // special 2, shifter_down: chain lightning path should create FAMILY_CHAIN.
-    int chain_before = count_family_all_lists(FAMILY_CHAIN);
-    arch->set_current_special(2);
-    arch->set_shifter_down(1);
-    arch->set_busy(0);
-    (void)arch->special();
-    int chain_after = count_family_all_lists(FAMILY_CHAIN);
-    ASSERT_TRUE(chain_after >= chain_before) << "chain lightning path should not reduce chain FX count";
-
-    // special 3, shifter_down: true summon (fire elemental).
-    int fire_before = count_family_in_oblist(FAMILY_FIREELEMENTAL);
-    arch->set_current_special(3);
-    arch->set_shifter_down(1);
-    arch->set_busy(0);
-    (void)arch->special();
-    int fire_after = count_family_in_oblist(FAMILY_FIREELEMENTAL);
-    ASSERT_TRUE(fire_after >= fire_before) << "true summon path should not remove fire elementals";
-
-    // special 3, no shifter: illusion summon variant.
-    arch->stats()->set_magicpoints(1500);
-    int total_before = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
-    arch->set_current_special(3);
-    arch->set_shifter_down(0);
-    arch->set_busy(0);
-    (void)arch->special();
-    int total_after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
-    ASSERT_TRUE(total_after >= total_before) << "illusion summon path should not remove objects";
-
-    // special 4: mind-control should retarget a nearby foe to archmage team.
-    walker* control_target = find_first_alive_ob_by_family(FAMILY_ORC);
-    if (!control_target) {
-        control_target = make_special_guy(FAMILY_ORC, 3, 2);
-        ASSERT_TRUE(control_target != nullptr) << "control target created";
-        control_target->setxy(arch->xpos() + 5, arch->ypos() + 5);
-    }
-    arch->set_current_special(4);
-    arch->set_shifter_down(0);
-    arch->set_busy(0);
-    (void)arch->special();
-    ASSERT_TRUE(control_target->team_num() >= 0) << "mind-control path should leave target in a valid team";
-
-    pop_test_context();
-    og::runtime::current_session->myscreen_->world().delete_objects();
-
-    // Drive act() into ACT_RANDOM branches (including act_random()).
-    walker* actor = make_special_guy(FAMILY_ORC, 1, 4);
-    walker* enemy = make_special_guy(FAMILY_SOLDIER, 2, 4);
-    ASSERT_TRUE(actor != nullptr && enemy != nullptr) << "actor/enemy should be created for ACT_RANDOM";
-    if (actor && enemy) {
-        actor->setxy(100, 100);
-        enemy->setxy(108, 100);
-        actor->set_foe(enemy);
-        actor->set_ani_type(ANI_WALK);
-        actor->set_busy(0);
-        actor->stats()->clear_command();
-        actor->set_act_type(ACT_RANDOM);
-
-        // rng(4)==0 and rng(20)==1 -> take the act_random() path.
-        SequenceRandom seq_rng({0, 1, 0, 1, 0, 1});
-        GameContext random_ctx;
-    
-        random_ctx.rng = &seq_rng;
-        push_test_context(&random_ctx);
-        (void)actor->act();
-        ASSERT_TRUE(actor->act_type() == ACT_RANDOM) << "ACT_RANDOM path should preserve act type";
-        pop_test_context();
-
-        // rng(4)==1 -> take the alternate search branch.
-        FixedRandom nonzero_rng(1);
-        random_ctx.rng = &nonzero_rng;
-        push_test_context(&random_ctx);
-        actor->stats()->clear_command();
-        (void)actor->act();
-        ASSERT_TRUE(actor->act_type() == ACT_RANDOM) << "ACT_RANDOM alternate path should preserve act type";
-        pop_test_context();
-    }
-    delete actor;
-    delete enemy;
-
-    // Broad special() branch sweep for high-ROI families/special indices.
-    const char sweep_families[] = {
-        FAMILY_SOLDIER, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_MAGE, FAMILY_ARCHMAGE,
-        FAMILY_ELF, FAMILY_THIEF, FAMILY_SKELETON, FAMILY_FIREELEMENTAL, FAMILY_FAERIE,
-        FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN, FAMILY_GHOST,
-        FAMILY_SMALL_SLIME, FAMILY_MEDIUM_SLIME, FAMILY_SLIME,
-        FAMILY_BIG_ORC, FAMILY_GOLEM, FAMILY_GIANT_SKELETON, FAMILY_TOWER1
-    };
-    for (char fam : sweep_families) {
-        og::runtime::current_session->myscreen_->world().delete_objects();
-
-        walker* a = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, fam);
-        walker* ally = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-        walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-        walker* blood = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
-        ASSERT_TRUE(a != nullptr && ally != nullptr && foe2 != nullptr && blood != nullptr) << "special sweep objects should be created";
-        if (!(a && ally && foe2 && blood)) {
-            continue;
-        }
-
-        a->set_team_num(1);
-        ally->set_team_num(1);
-        foe2->set_team_num(2);
-        a->setxy(100, 100);
-        ally->setxy(104, 100);
-        foe2->setxy(112, 100);
-        blood->setxy(106, 100);
-        a->set_lastx(a->stepsize());
-        a->set_lasty(0);
-        a->set_busy(0);
-        a->stats()->set_magicpoints(1500);
-        a->stats()->set_max_magicpoints(1500);
-        if (a->myguy) {
-            a->myguy->intelligence = 180;
-            a->myguy->strength = 180;
-            a->myguy->constitution = 180;
-            a->myguy->teamnum = 1;
-        }
-	        blood->stats()->set_old_family(FAMILY_SOLDIER);
-	        blood->set_team_num(1);
-
-	        for (int sp = 1; sp <= 5; ++sp) {
-	            for (int shift = 0; shift <= 1; ++shift) {
-	                a->set_current_special(static_cast<char>(sp));
-	                a->set_busy(0);
-	                a->set_shifter_down(static_cast<short>(shift));
-	                a->stats()->set_magicpoints(a->stats()->max_magicpoints());
-	                (void)a->special();
-	            }
-	        }
-	    }
-
-    // Target uncovered archmage illusion case tables (rng(3/5/7/9) branches).
-    og::runtime::current_session->myscreen_->world().delete_objects();
-    walker* arch2 = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
-    ASSERT_TRUE(arch2 != nullptr) << "archmage branch sweeper created";
-    if (arch2) {
-        arch2->setxy(120, 120);
-        arch2->stats()->set_special_cost(3, 0);
-        arch2->stats()->set_max_magicpoints(2000);
-        GameContext arch2_ctx;
-    
-        const int mp_tiers[] = {120, 300, 700, 1200};
-        const int max_pick[] = {3, 5, 7, 9};
-        for (int t = 0; t < 4; ++t) {
-            for (Uint32 pick = 0; pick < static_cast<Uint32>(max_pick[t]); ++pick) {
-                SequenceRandom pick_rng({pick});
-                arch2_ctx.rng = &pick_rng;
-                push_test_context(&arch2_ctx);
-	                arch2->stats()->set_magicpoints(static_cast<float>(mp_tiers[t]));
-	                arch2->set_current_special(static_cast<char>(3));
-	                arch2->set_shifter_down(static_cast<short>(0));
-	                arch2->set_busy(0);
-	                (void)arch2->special();
-	                pop_test_context();
-	            }
-	        }
-    }
-
-    og::runtime::current_session->myscreen_->world().delete_objects();
-
-}
-
-
-TEST_F(WalkerSpecials, cleric_heal)
-{
-    walker* w = make_special_guy(FAMILY_CLERIC);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // heal
-    w->set_shifter_down(0);
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, cleric_raise_undead)
-{
-    walker* w = make_special_guy(FAMILY_CLERIC);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(2); // raise undead
-    w->special();
-
-    Sint32 none = w->turn_undead(3, 1);
-    ASSERT_EQ(-1, (int)none) << "turn_undead should return -1 when no foes are in range";
-
-    walker* skel = make_special_guy(FAMILY_SKELETON, 2, 1);
-    walker* ghost = make_special_guy(FAMILY_GHOST, 2, 1);
-    walker* orc = make_special_guy(FAMILY_ORC, 2, 1);
-    ASSERT_TRUE(skel != nullptr && ghost != nullptr && orc != nullptr) << "foes created";
-    if (skel && ghost && orc) {
-        skel->setxy(w->xpos() + 1, w->ypos() + 1);
-        ghost->setxy(w->xpos() + 2, w->ypos() + 1);
-        orc->setxy(w->xpos() + 3, w->ypos() + 1);
-        skel->set_team_num(2);
-        ghost->set_team_num(2);
-        orc->set_team_num(2);
-        skel->stats()->set_level(1);
-        ghost->stats()->set_level(1);
-        orc->stats()->set_level(1);
-        skel->set_dead(0);
-        ghost->set_dead(0);
-        orc->set_dead(0);
-
-        SequenceRandom seq_rng({39, 0, 39, 0, 39, 0});
-        GameContext test_ctx;
-    
-        test_ctx.rng = &seq_rng;
-        push_test_context(&test_ctx);
-        Sint32 killed = w->turn_undead(24, 2);
-        pop_test_context();
-        ASSERT_TRUE(killed >= -1) << "turn_undead should return a valid result";
-    }
-
-    delete skel;
-    delete ghost;
-    delete orc;
-}
-
-
-TEST_F(WalkerSpecials, elf_rocks)
-{
-    walker* w = make_special_guy(FAMILY_ELF);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // rocks
-    w->set_lastx(w->stepsize());
-    w->set_lasty(0);
-    w->set_busy(0);
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, elf_speed)
-{
-    walker* w = make_special_guy(FAMILY_ELF);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(2); // speed
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, elf_heal)
-{
-    walker* w = make_special_guy(FAMILY_ELF);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(3); // nature heal
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, thief_stealth)
-{
-    walker* w = make_special_guy(FAMILY_THIEF);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // stealth
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, thief_taunt)
-{
-    walker* w = make_special_guy(FAMILY_THIEF);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(2); // taunt
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, skeleton_tunnel)
-{
-    walker* w = make_special_guy(FAMILY_SKELETON);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // tunnel
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, fireelemental_explode)
-{
-    walker* w = make_special_guy(FAMILY_FIREELEMENTAL);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // explode
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, faerie_charm)
-{
-    walker* w = make_special_guy(FAMILY_FAERIE);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // charm
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, druid_plant_tree)
-{
-    walker* w = make_special_guy(FAMILY_DRUID);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // plant tree
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, druid_summon)
-{
-    walker* w = make_special_guy(FAMILY_DRUID);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(2); // summon animal
-    w->special();
-}
-
-
-TEST_F(WalkerSpecials, ghost_scare)
-{
-    walker* w = make_special_guy(FAMILY_GHOST);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_current_special(1); // scare
-    w->special();
+    world.delete_objects();
 }
 
 
