@@ -1,6 +1,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/render/pixie.h>
+#include <openglad/interface/render/text.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>
@@ -16,6 +17,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/core/test_trace.h>
 
 #include <gtest/gtest.h>
@@ -25,7 +27,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <list>
 #include <span>
 #include <string>
@@ -145,6 +149,49 @@ void pal_rgb8(unsigned char color, int* r, int* g, int* b)
     *r *= 4;
     *g *= 4;
     *b *= 4;
+}
+
+// Ink counts of the shipped 5x6 font (data/text.png) for the strings the text
+// cases draw: the number of pixels that come out in the requested colour. They
+// are goldens -- a blit that paints nothing, paints the wrong colour, or lays
+// the glyphs at the wrong pitch all read differently.
+inline constexpr int kGlyphInkA = 12;            // 'A'
+inline constexpr int kWordInkMass = 45;          // "mass"
+inline constexpr int kWordInk42 = 21;            // "42"
+inline constexpr int kWordInkShadowGlyph = 67;   // "shadow", glyph pass
+inline constexpr int kWordInkShadowShade = 54;   // "shadow", shadow pass not overdrawn
+inline constexpr int kWordInkCenter = 70;        // "center"
+
+// The shared font pixies are lazily-loaded statics that text_shutdown() frees,
+// so any case that draws text must be able to get them back regardless of the
+// order gtest picks. A text ctor reloads both when they are invalid.
+void ensure_font_loaded()
+{
+    text reload(TEXT_1);
+    (void)reload.sizex;
+}
+
+// How many pixels of a rect read back as `color`. Glyph and outline blits are
+// counted rather than probed pixel-by-pixel: the expected counts are the
+// shipped font's own ink, so a blit that paints nothing, paints the wrong
+// colour, or paints the wrong number of pixels all read differently.
+int count_index_in(int x, int y, int w, int h, unsigned char color)
+{
+    const int want = pal_readback_index(color);
+    int n = 0;
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+            if (px_index(x + i, y + j) == want)
+                n++;
+    return n;
+}
+
+// The per-channel blend the pointb/blend_pixel alpha path performs:
+// dest + ((src - dest) * alpha >> 8), in 8-bit channel values
+// (src/platform/sdl/video_sdl.cpp blend_pixel, 32bpp case).
+int alpha_blend8(int dest, int src, int alpha)
+{
+    return dest + (((src - dest) * alpha) >> 8);
 }
 
 // Row-major palette indices of a rect of the render surface, for golden-by-
@@ -1632,86 +1679,520 @@ TEST(MassCoverage, video_putdata_color_overrides_only_indices_above_247) {
         << "the whole low-index row keeps its own colours";
 }
 
-TEST(MassCoverage, video_putdatatext_color) {
-    auto px = sample_pixels(248);
-    og::runtime::current_session->myscreen_->putdatatext(10, 10, 8, 8, px, DARK_BLUE);
+// putdatatext(x,y,w,h,pixels,color): index 0 is transparent, source indices
+// ABOVE 247 are replaced by `color`, and 1..247 keep their own index
+// (src/platform/sdl/video_sdl.cpp putdatatext with the colour override).
+TEST(MassCoverage, video_putdatatext_color_overrides_only_indices_above_247) {
+    screen* s = og::runtime::current_session->myscreen_;
+
+    auto high = sample_pixels(248);  // 248..255, every index above the threshold
+    high[0] = 0;
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10)) << "setup: the backdrop must land";
+
+    s->putdatatext(10, 10, 8, 8, high, DARK_BLUE);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
+        << "a zero source index must leave the backdrop showing";
+    ASSERT_EQ(pal_readback_index(DARK_BLUE), px_index(11, 10))
+        << "a 249 source index takes the override colour";
+    ASSERT_EQ(pal_readback_index(DARK_BLUE), px_index(12, 12))
+        << "every index above 247 takes the override colour";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(18, 10))
+        << "the override blit is only w wide";
+
+    auto low = sample_pixels(70);  // 70..77, all at or below 247
+    s->clearbuffer();
+    s->putdatatext(10, 10, 8, 8, low, DARK_BLUE);
+    ASSERT_EQ(pal_readback_index(70), px_index(10, 10))
+        << "an index at or below 247 must keep its own colour, not the override";
+    ASSERT_EQ(pal_readback_index(71), px_index(11, 10))
+        << "the whole low-index row keeps its own colours";
 }
 
-TEST(MassCoverage, video_putbuffer_span) {
-    auto px = sample_pixels(40);
-    og::runtime::current_session->myscreen_->putbuffer(5, 5, 8, 8, 0, 0, 320, 200, px);
+// putbuffer(tile x,y,w,h, port x,y,endx,endy, pixels): an OPAQUE block blit
+// clipped to the port window -- a tile starting at or past portendx draws
+// nothing at all, and one straddling the right edge is cut at portendx
+// (src/platform/sdl/video_sdl.cpp sdl_video::putbuffer).
+TEST(MassCoverage, video_putbuffer_blits_the_block_clipped_to_the_port_window) {
+    screen* s = og::runtime::current_session->myscreen_;
+    auto px = sample_pixels(40);  // 40..47
+
+    s->clearbuffer();
+    s->putbuffer(5, 5, 8, 8, 0, 0, 320, 200, px);
+    ASSERT_EQ(pal_readback_index(40), px_index(5, 5)) << "source[0] lands at (x,y)";
+    ASSERT_EQ(pal_readback_index(44), px_index(9, 5)) << "source[4] lands four columns over";
+    ASSERT_EQ(pal_readback_index(40), px_index(5, 6)) << "the second row restarts at column x";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(4, 5)) << "the block does not spill left of x";
+
+    // portendx = 10 cuts the 8-wide tile after column 9.
+    s->clearbuffer();
+    s->putbuffer(5, 5, 8, 8, 0, 0, 10, 200, px);
+    ASSERT_EQ(pal_readback_index(44), px_index(9, 5)) << "the last in-window column is still drawn";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(10, 5))
+        << "the right edge must be clipped at portendx";
+
+    // The whole tile is outside the window: nothing is drawn.
+    s->clearbuffer();
+    s->putbuffer(5, 5, 8, 8, 0, 0, 4, 4, px);
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(5, 5))
+        << "a tile at or past portendx must draw nothing";
 }
 
-TEST(MassCoverage, video_putbuffer_alpha) {
-    auto px = sample_pixels(45);
-    og::runtime::current_session->myscreen_->putbuffer_alpha(5, 5, 8, 8, 0, 0, 320, 200, px, 90);
+// putbuffer_alpha(..., alpha) blends the clipped block onto the render surface
+// through pointb's alpha path; alpha 0 leaves the destination untouched
+// (src/platform/sdl/video_sdl.cpp sdl_video::putbuffer_alpha).
+TEST(MassCoverage, video_putbuffer_alpha_blends_the_block_at_the_given_alpha) {
+    screen* s = og::runtime::current_session->myscreen_;
+    auto px = sample_pixels(70);  // 70..77, all three channels non-zero
+
+    int pr = 0, pg = 0, pb = 0;
+    pal_rgb8(70, &pr, &pg, &pb);
+    int kr = 0, kg = 0, kb = 0;
+    pal_rgb8(PURE_BLACK, &kr, &kg, &kb);
+
+    s->clearbuffer();
+    s->putbuffer_alpha(5, 5, 8, 8, 0, 0, 320, 200, px, 90);
+    Uint8 r = 0, g = 0, b = 0;
+    s->get_pixel(5, 5, &r, &g, &b);
+    ASSERT_EQ(alpha_blend8(kr, pr, 90), static_cast<int>(r)) << "90/256 of the source over black, red";
+    ASSERT_EQ(alpha_blend8(kg, pg, 90), static_cast<int>(g)) << "90/256 of the source over black, green";
+    ASSERT_EQ(alpha_blend8(kb, pb, 90), static_cast<int>(b)) << "90/256 of the source over black, blue";
+
+    s->clearbuffer();
+    s->draw_rect_filled(5, 5, 8, 8, WHITE, 255);
+    s->putbuffer_alpha(5, 5, 8, 8, 0, 0, 320, 200, px, 0);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(5, 5))
+        << "alpha 0 must leave the destination exactly as it was";
+
+    s->clearbuffer();
+    s->putbuffer_alpha(5, 5, 8, 8, 0, 0, 4, 4, px, 90);
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(5, 5))
+        << "a tile at or past portendx must blend nothing";
 }
 
-TEST(MassCoverage, video_putbuffer_surface) {
+// putbuffer_surface(..., surface) blits the SDL surface onto the render
+// surface, clipped to the port window the same way the indexed form is
+// (src/platform/sdl/video_sdl.cpp sdl_video::putbuffer(SDL_Surface*)).
+TEST(MassCoverage, video_putbuffer_surface_blits_the_surface_clipped_to_the_port_window) {
+    screen* s = og::runtime::current_session->myscreen_;
     SDL_Surface* surf = SDL_CreateSurface(8, 8, SDL_PIXELFORMAT_XRGB8888);
-    ASSERT_TRUE(surf != nullptr) << "surface alloc";
-    og::runtime::current_session->myscreen_->putbuffer_surface(5, 5, 8, 8, 0, 0, 320, 200, surf);
+    ASSERT_NE(nullptr, surf) << "setup: the source surface must allocate";
+    ASSERT_TRUE(SDL_SetSurfaceBlendMode(surf, SDL_BLENDMODE_NONE))
+        << "setup: the source must copy, not blend: " << SDL_GetError();
+    ASSERT_TRUE(SDL_FillSurfaceRect(surf, nullptr, SDL_MapSurfaceRGB(surf, 200, 100, 50)))
+        << "setup: the source must be filled: " << SDL_GetError();
+
+    s->clearbuffer();
+    s->putbuffer_surface(5, 5, 8, 8, 0, 0, 320, 200, surf);
+    Uint8 r = 0, g = 0, b = 0;
+    s->get_pixel(5, 5, &r, &g, &b);
+    ASSERT_EQ(200, static_cast<int>(r)) << "the surface's red lands at (x,y)";
+    ASSERT_EQ(100, static_cast<int>(g)) << "the surface's green lands at (x,y)";
+    ASSERT_EQ(50, static_cast<int>(b)) << "the surface's blue lands at (x,y)";
+    s->get_pixel(12, 12, &r, &g, &b);
+    ASSERT_EQ(200, static_cast<int>(r)) << "the whole 8x8 block is blitted";
+    s->get_pixel(4, 5, &r, &g, &b);
+    ASSERT_EQ(0, static_cast<int>(r)) << "the blit does not spill left of x";
+
+    s->clearbuffer();
+    s->putbuffer_surface(5, 5, 8, 8, 0, 0, 4, 4, surf);
+    s->get_pixel(5, 5, &r, &g, &b);
+    ASSERT_EQ(0, static_cast<int>(r) + static_cast<int>(g) + static_cast<int>(b))
+        << "a surface at or past portendx must draw nothing";
+
     SDL_DestroySurface(surf);
 }
 
-TEST(MassCoverage, video_walkputbuffer) {
-    auto px = sample_pixels(30);
-    og::runtime::current_session->myscreen_->walkputbuffer(10, 10, 8, 8, 0, 0, 320, 200, px, 8);
+// walkputbuffer(...,teamcolor): index 0 is transparent, source indices ABOVE
+// 247 become teamcolor + (255 - index) -- the team ramp -- and 1..247 paint as
+// themselves; the block is clipped to the port window
+// (src/platform/sdl/video_sdl.cpp sdl_video::walkputbuffer).
+TEST(MassCoverage, video_walkputbuffer_team_recolours_only_indices_above_247) {
+    screen* s = og::runtime::current_session->myscreen_;
+
+    auto low = sample_pixels(30);  // 30..37
+    low[0] = 0;
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    s->walkputbuffer(10, 10, 8, 8, 0, 0, 320, 200, low, 8);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
+        << "a zero source index must leave the backdrop showing";
+    ASSERT_EQ(pal_readback_index(31), px_index(11, 10))
+        << "an index at or below 247 paints as itself, not through the team ramp";
+    ASSERT_EQ(pal_readback_index(30), px_index(10, 11))
+        << "the second row restarts at column x";
+
+    auto high = sample_pixels(248);  // 248..255
+    s->clearbuffer();
+    s->walkputbuffer(10, 10, 8, 8, 0, 0, 320, 200, high, 8);
+    ASSERT_EQ(pal_readback_index(15), px_index(10, 10))
+        << "248 must become teamcolor + (255 - 248) = 15";
+    ASSERT_EQ(pal_readback_index(14), px_index(11, 10))
+        << "249 must become teamcolor + (255 - 249) = 14";
+
+    // portendx = 14 cuts the 8-wide sprite after column 13.
+    s->clearbuffer();
+    s->walkputbuffer(10, 10, 8, 8, 0, 0, 14, 200, low, 8);
+    ASSERT_EQ(pal_readback_index(33), px_index(13, 10)) << "the last in-window column is drawn";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(14, 10))
+        << "the right edge must be clipped at portendx";
 }
 
-TEST(MassCoverage, video_walkputbuffer_flash) {
-    auto px = sample_pixels(30);
-    og::runtime::current_session->myscreen_->walkputbuffer_flash(10, 10, 8, 8, 0, 0, 320, 200, px, 8);
-}
+// walkputbuffer_flash paints each pixel's palette RGB BRIGHTENED (+100 per
+// channel, or 255 once the channel is already above 155) instead of the raw
+// palette colour (src/platform/sdl/video_sdl.cpp sdl_video::walkputbuffer_flash).
+TEST(MassCoverage, video_walkputbuffer_flash_brightens_every_channel) {
+    screen* s = og::runtime::current_session->myscreen_;
+    // 8..15 spans the grey ramp: index 8 is dark enough that +100 is visible,
+    // index 15 is already past 155 so it has to clamp instead.
+    auto px = sample_pixels(8);
+    px[0] = 0;
 
-TEST(MassCoverage, video_walkputbuffertext) {
-    auto px = sample_pixels(30);
-    og::runtime::current_session->myscreen_->walkputbuffertext(10, 10, 8, 8, 0, 0, 320, 200, px, 8);
-}
+    const auto brighten = [](int channel) { return channel > 155 ? 255 : channel + 100; };
+    int dr = 0, dg = 0, db = 0;
+    pal_rgb8(8, &dr, &dg, &db);
+    ASSERT_GE(155, dr) << "setup: index 8 must be below the clamp so +100 is observable";
+    int br = 0, bg = 0, bb = 0;
+    pal_rgb8(15, &br, &bg, &bb);
+    ASSERT_LT(155, br) << "setup: index 15 must be above the clamp";
 
-TEST(MassCoverage, video_walkputbuffertext_alpha) {
-    auto px = sample_pixels(30);
-    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(10, 10, 8, 8, 0, 0, 320, 200, px, 8, 80);
-}
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    s->walkputbuffer_flash(10, 10, 8, 8, 0, 0, 320, 200, px, 8);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
+        << "a zero source index must leave the backdrop showing";
 
-TEST(MassCoverage, video_walkputbuffer_mode) {
-    auto px = sample_pixels(30);
-    og::runtime::current_session->myscreen_->walkputbuffer(10, 10, 8, 8, 0, 0, 320, 200, px, 8, OUTLINE_MODE, 12, RED, SHIFT_LEFT);
-}
-
-TEST(MassCoverage, video_swap) { og::runtime::current_session->myscreen_->swap(); }
-
-TEST(MassCoverage, video_get_pixel_rgb) {
+    s->clearbuffer();
+    s->walkputbuffer_flash(10, 10, 8, 8, 0, 0, 320, 200, px, 8);
     Uint8 r = 0, g = 0, b = 0;
-    og::runtime::current_session->myscreen_->get_pixel(1, 1, &r, &g, &b);
+    s->get_pixel(10, 11, &r, &g, &b);  // source[8] == 8, the second row's first pixel
+    ASSERT_EQ(brighten(dr), static_cast<int>(r)) << "the flash blit brightens red by 100";
+    ASSERT_EQ(brighten(dg), static_cast<int>(g)) << "the flash blit brightens green by 100";
+    ASSERT_EQ(brighten(db), static_cast<int>(b)) << "the flash blit brightens blue by 100";
+
+    s->get_pixel(17, 10, &r, &g, &b);  // source[7] == 15, already past the clamp
+    ASSERT_EQ(255, static_cast<int>(r)) << "a channel already above 155 clamps to 255";
+
+    // Control: the plain blit paints the same source pixel unbrightened.
+    s->clearbuffer();
+    s->walkputbuffer(10, 10, 8, 8, 0, 0, 320, 200, px, 8);
+    Uint8 r2 = 0, g2 = 0, b2 = 0;
+    s->get_pixel(10, 11, &r2, &g2, &b2);
+    ASSERT_EQ(dr, static_cast<int>(r2)) << "control: the plain blit paints the raw palette red";
+    ASSERT_NE(static_cast<int>(r2), static_cast<int>(r))
+        << "the flash blit must not paint the same colour as the plain one";
 }
 
-TEST(MassCoverage, video_get_pixel_index_xy) {
-    int idx = 0;
-    (void)og::runtime::current_session->myscreen_->get_pixel(1, 1, &idx);
+// walkputbuffertext: the per-pixel FillSurfaceRect variant text glyphs go
+// through -- index 0 transparent, indices above 247 through the team ramp
+// (src/platform/sdl/video_sdl.cpp sdl_video::walkputbuffertext).
+TEST(MassCoverage, video_walkputbuffertext_blits_with_index_zero_transparent) {
+    screen* s = og::runtime::current_session->myscreen_;
+
+    auto low = sample_pixels(30);
+    low[0] = 0;
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    s->walkputbuffertext(10, 10, 8, 8, 0, 0, 320, 200, low, 8);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
+        << "a zero source index must leave the backdrop showing";
+    ASSERT_EQ(pal_readback_index(31), px_index(11, 10))
+        << "an index at or below 247 paints as itself";
+
+    auto high = sample_pixels(248);
+    s->clearbuffer();
+    s->walkputbuffertext(10, 10, 8, 8, 0, 0, 320, 200, high, 8);
+    ASSERT_EQ(pal_readback_index(15), px_index(10, 10))
+        << "248 must become teamcolor + (255 - 248) = 15";
+    ASSERT_EQ(pal_readback_index(14), px_index(11, 10))
+        << "249 must become teamcolor + (255 - 249) = 14";
+
+    s->clearbuffer();
+    s->walkputbuffertext(10, 10, 8, 8, 0, 0, 4, 4, low, 8);
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(10, 10))
+        << "a block at or past portendx must draw nothing";
 }
 
-TEST(MassCoverage, video_get_pixel_offset) { (void)og::runtime::current_session->myscreen_->get_pixel(321); }
-TEST(MassCoverage, video_save_screenshot) { (void)og::runtime::current_session->myscreen_->save_screenshot(); }
+// walkputbuffertext_alpha uses the source block as a STENCIL only: every
+// non-zero source pixel is blended in `teamcolor` at `alpha`, whatever index it
+// held, and zero pixels are left alone
+// (src/platform/sdl/video_sdl.cpp sdl_video::walkputbuffertext_alpha -- this is
+// what text::write_char_xy_alpha relies on to tint a whole glyph one colour).
+TEST(MassCoverage, video_walkputbuffertext_alpha_blends_teamcolor_through_the_source_stencil) {
+    screen* s = og::runtime::current_session->myscreen_;
+    auto px = sample_pixels(30);  // 30..37
+    px[0] = 0;
 
-TEST(MassCoverage, video_fade_between24) {
+    // alpha 255 takes blend_pixel's opaque shortcut, so the painted index is
+    // exactly teamcolor -- the source index never reaches the surface.
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    s->walkputbuffertext_alpha(10, 10, 8, 8, 0, 0, 320, 200, px, RED, 255);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
+        << "a zero source index must leave the backdrop showing";
+    ASSERT_EQ(pal_readback_index(RED), px_index(11, 10))
+        << "a non-zero source pixel is painted in teamcolor";
+    ASSERT_NE(pal_readback_index(31), px_index(11, 10))
+        << "the source index is a stencil, not a colour";
+
+    // A partial alpha blends teamcolor over whatever was there.
+    int wr = 0, wg = 0, wb = 0;
+    pal_rgb8(WHITE, &wr, &wg, &wb);
+    int rr = 0, rg = 0, rb = 0;
+    pal_rgb8(RED, &rr, &rg, &rb);
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    s->walkputbuffertext_alpha(10, 10, 8, 8, 0, 0, 320, 200, px, RED, 80);
+    Uint8 r = 0, g = 0, b = 0;
+    s->get_pixel(11, 10, &r, &g, &b);
+    ASSERT_EQ(alpha_blend8(wr, rr, 80), static_cast<int>(r)) << "80/256 of teamcolor over white, red";
+    ASSERT_EQ(alpha_blend8(wg, rg, 80), static_cast<int>(g)) << "80/256 of teamcolor over white, green";
+    ASSERT_EQ(alpha_blend8(wb, rb, 80), static_cast<int>(b)) << "80/256 of teamcolor over white, blue";
+
+    s->clearbuffer();
+    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
+    s->walkputbuffertext_alpha(10, 10, 8, 8, 0, 0, 320, 200, px, RED, 0);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(11, 10))
+        << "alpha 0 must leave the destination exactly as it was";
+}
+
+// walkputbuffer(...,OUTLINE_MODE,invisibility,outline,shifttype) paints the
+// silhouette's rim in `outline` and the interior in its own colour: every edge
+// pixel of the block, plus every TRANSPARENT pixel that touches a solid one
+// (src/platform/sdl/video_sdl.cpp sdl_video::walkputbuffer, case OUTLINE_MODE).
+TEST(MassCoverage, video_walkputbuffer_outline_mode_rims_the_silhouette_in_the_outline_colour) {
+    screen* s = og::runtime::current_session->myscreen_;
+    auto solid = sample_pixels(30);  // 30..37, every pixel opaque
+
+    s->clearbuffer();
+    s->walkputbuffer(10, 10, 8, 8, 0, 0, 320, 200, solid, 8, OUTLINE_MODE, 12, RED, SHIFT_LEFT);
+    ASSERT_EQ(pal_readback_index(RED), px_index(10, 10)) << "the left column is rim";
+    ASSERT_EQ(pal_readback_index(RED), px_index(17, 10)) << "the right column is rim";
+    ASSERT_EQ(pal_readback_index(RED), px_index(10, 17)) << "the bottom row is rim";
+    ASSERT_EQ(pal_readback_index(31), px_index(11, 11))
+        << "an interior pixel keeps its own colour";
+
+    // Control: the plain blit paints that same rim pixel as its source index.
+    s->clearbuffer();
+    s->walkputbuffer(10, 10, 8, 8, 0, 0, 320, 200, solid, 8);
+    ASSERT_EQ(pal_readback_index(30), px_index(10, 10))
+        << "control: without OUTLINE_MODE the corner is the source colour";
+
+    // A single solid pixel at (2,2): its transparent left neighbour becomes rim,
+    // a transparent pixel with no solid neighbour stays untouched.
+    std::array<unsigned char, 64> speck{};
+    speck[2 * 8 + 2] = 30;
+    s->clearbuffer();
+    s->walkputbuffer(10, 10, 8, 8, 0, 0, 320, 200, speck, 8, OUTLINE_MODE, 12, RED, SHIFT_LEFT);
+    ASSERT_EQ(pal_readback_index(30), px_index(12, 12))
+        << "the solid interior pixel keeps its own colour";
+    ASSERT_EQ(pal_readback_index(RED), px_index(11, 12))
+        << "a transparent pixel touching the silhouette becomes rim";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(15, 15))
+        << "a transparent pixel with no solid neighbour is left alone";
+}
+
+// swap() presents the whole ACTIVE canvas, and every present clears the
+// "window shows black" flag. Note the route: screen::swap() goes through the
+// platform bridge's present_frame (src/interface/screen.cpp:954,
+// src/platform/sdl/game_session.cpp make_sdl_platform_bridge) to
+// Screen::swap, which is the single present site (src/platform/sdl/sai2x.cpp:2485);
+// sdl_video::swap is only the fallback when no bridge is installed.
+TEST(MassCoverage, video_swap_presents_the_whole_canvas) {
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s->window_is_black())
+        << "setup: every integration test starts from a black window";
+
+    s->clearbuffer();
+    s->draw_rect_filled(0, 0, 40, 40, WHITE, 255);
+    s->swap();
+    ASSERT_FALSE(s->window_is_black()) << "swap() must present the composed canvas";
+}
+
+// get_pixel(x,y,&r,&g,&b) answers with the surface RGB (the 6-bit palette
+// register scaled by 4) and zeroes the whole trio out of bounds
+// (src/platform/sdl/video_sdl.cpp sdl_video::get_pixel).
+TEST(MassCoverage, video_get_pixel_rgb_reads_the_palette_rgb_and_zeroes_out_of_bounds) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+    s->point(1, 1, WHITE);
+
+    int pr = 0, pg = 0, pb = 0;
+    pal_rgb8(WHITE, &pr, &pg, &pb);
+    Uint8 r = 0, g = 0, b = 0;
+    s->get_pixel(1, 1, &r, &g, &b);
+    ASSERT_EQ(pr, static_cast<int>(r)) << "the painted pixel's red is the palette register times 4";
+    ASSERT_EQ(pg, static_cast<int>(g)) << "the painted pixel's green is the palette register times 4";
+    ASSERT_EQ(pb, static_cast<int>(b)) << "the painted pixel's blue is the palette register times 4";
+
+    int kr = 0, kg = 0, kb = 0;
+    pal_rgb8(PURE_BLACK, &kr, &kg, &kb);
+    s->get_pixel(2, 1, &r, &g, &b);
+    ASSERT_EQ(kr, static_cast<int>(r)) << "an unpainted neighbour reads back as the cleared colour";
+
+    r = 7;
+    g = 7;
+    b = 7;
+    s->get_pixel(-1, -1, &r, &g, &b);
+    ASSERT_EQ(0, static_cast<int>(r)) << "an out-of-bounds read must zero red";
+    ASSERT_EQ(0, static_cast<int>(g)) << "an out-of-bounds read must zero green";
+    ASSERT_EQ(0, static_cast<int>(b)) << "an out-of-bounds read must zero blue";
+}
+
+// get_pixel(x,y,&index) reverse-maps the surface RGB to the first palette
+// register with that RGB, returning it AND writing the out-parameter
+// (src/platform/sdl/video_sdl.cpp sdl_video::get_pixel(int,int,int*)).
+TEST(MassCoverage, video_get_pixel_index_returns_and_writes_the_palette_index) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+    s->point(1, 1, DARK_GREEN);
+
+    int idx = -1;
+    ASSERT_EQ(pal_readback_index(DARK_GREEN), s->get_pixel(1, 1, &idx))
+        << "the painted pixel must reverse-map to its palette index";
+    ASSERT_EQ(pal_readback_index(DARK_GREEN), idx)
+        << "the out-parameter must carry the same index the call returned";
+
+    idx = -1;
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), s->get_pixel(2, 1, &idx))
+        << "an unpainted neighbour reverse-maps to the cleared colour";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), idx) << "...in the out-parameter too";
+}
+
+// get_pixel(offset) splits a linear offset by the ACTIVE canvas width and
+// rejects offsets outside the surface (src/platform/sdl/video_sdl.cpp
+// sdl_video::get_pixel(int)).
+TEST(MassCoverage, video_get_pixel_offset_splits_the_offset_by_the_canvas_width) {
+    screen* s = og::runtime::current_session->myscreen_;
+    const int cw = s->canvas_w();
+    const int ch = s->canvas_h();
+    s->clearbuffer();
+    s->point(1, 1, RED);
+    s->point(3, 2, DARK_GREEN);
+
+    ASSERT_EQ(pal_readback_index(RED), s->get_pixel(cw + 1))
+        << "offset cw+1 must be row 1, column 1";
+    ASSERT_EQ(pal_readback_index(DARK_GREEN), s->get_pixel(2 * cw + 3))
+        << "offset 2*cw+3 must be row 2, column 3";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), s->get_pixel(1))
+        << "offset 1 is row 0, column 1 -- still unpainted";
+    ASSERT_EQ(0, s->get_pixel(-1)) << "a negative offset is rejected";
+    ASSERT_EQ(0, s->get_pixel(cw * ch)) << "one past the last pixel is rejected";
+}
+// save_screenshot() composes the frame, writes it to the user write directory
+// and reports whether the write succeeded (src/platform/sdl/video_sdl.cpp
+// sdl_video::save_screenshot).
+TEST(MassCoverage, video_save_screenshot_writes_one_image_and_reports_success) {
+    screen* s = og::runtime::current_session->myscreen_;
+    const std::filesystem::path dir(get_user_path());
+    std::error_code ec;
+    ASSERT_TRUE(std::filesystem::exists(dir, ec))
+        << "setup: the per-run write directory must exist: " << dir.string();
+
+    const auto shots = [&dir]() {
+        std::vector<std::string> out;
+        std::error_code iter_ec;
+        for (const std::filesystem::directory_entry& entry :
+             std::filesystem::directory_iterator(dir, iter_ec))
+        {
+            const std::string name = entry.path().filename().string();
+            if (name.rfind("screenshot", 0) == 0)
+                out.push_back(name);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    };
+
+    const std::vector<std::string> before = shots();
+    ASSERT_TRUE(s->save_screenshot()) << "save_screenshot must report the write succeeded";
+
+    const std::vector<std::string> after = shots();
+    ASSERT_EQ(before.size() + 1, after.size())
+        << "exactly one new screenshot must appear in " << dir.string();
+
+    // Never leave proof media behind (AGENTS.md, "PR screenshots").
+    for (const std::string& name : after)
+    {
+        if (std::find(before.begin(), before.end(), name) == before.end())
+            std::filesystem::remove(dir / name, ec);
+    }
+    ASSERT_EQ(before, shots()) << "the case must leave the write directory as it found it";
+}
+
+// FadeBetween24(surface,from,to,amount) writes
+// ((fadeDuration-amount)*from + amount*to)/fadeDuration per channel into the
+// surface, with fadeDuration = 500 (src/platform/sdl/video_sdl.cpp
+// sdl_video::FadeBetween24; the constant is set in both sdl_video ctors).
+TEST(MassCoverage, video_fade_between24_mixes_the_two_frames_by_amount) {
+    screen* scr = og::runtime::current_session->myscreen_;
+    constexpr int kFadeDuration = 500;
     SDL_Surface* s = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
-    ASSERT_TRUE(s != nullptr) << "surface alloc";
+    ASSERT_NE(nullptr, s) << "setup: the fade target must allocate";
+    ASSERT_EQ(4 * 4 * 4, s->pitch * s->h) << "setup: the mix buffers must match the surface";
+
     std::array<Uint8, 4 * 4 * 4> from{};
     std::array<Uint8, 4 * 4 * 4> to{};
-    og::runtime::current_session->myscreen_->fade_between24(s, from.data(), to.data(), 10);
+    to.fill(0xFF);
+
+    Uint8 r = 0, g = 0, b = 0, a = 0;
+    scr->fade_between24(s, from.data(), to.data(), 10);
+    ASSERT_TRUE(SDL_ReadSurfacePixel(s, 0, 0, &r, &g, &b, &a)) << SDL_GetError();
+    ASSERT_EQ(255 * 10 / kFadeDuration, static_cast<int>(r))
+        << "amount 10 of 500 must give 10/500 of the destination frame";
+    ASSERT_EQ(255 * 10 / kFadeDuration, static_cast<int>(g)) << "...on every channel";
+    ASSERT_TRUE(SDL_ReadSurfacePixel(s, 3, 3, &r, &g, &b, &a)) << SDL_GetError();
+    ASSERT_EQ(255 * 10 / kFadeDuration, static_cast<int>(r)) << "...and for every pixel";
+
+    scr->fade_between24(s, from.data(), to.data(), kFadeDuration);
+    ASSERT_TRUE(SDL_ReadSurfacePixel(s, 0, 0, &r, &g, &b, &a)) << SDL_GetError();
+    ASSERT_EQ(255, static_cast<int>(r)) << "a full amount must land on the destination frame";
+
+    from.fill(0x80);
+    scr->fade_between24(s, from.data(), to.data(), 0);
+    ASSERT_TRUE(SDL_ReadSurfacePixel(s, 0, 0, &r, &g, &b, &a)) << SDL_GetError();
+    ASSERT_EQ(0x80, static_cast<int>(r)) << "amount 0 must leave the source frame";
+
     SDL_DestroySurface(s);
 }
 
-TEST(MassCoverage, video_fade_between) {
-    SDL_Surface* a = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
-    SDL_Surface* b = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
-    SDL_Surface* d = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
-    ASSERT_TRUE(a && b && d) << "surfaces alloc";
-    (void)og::runtime::current_session->myscreen_->fade_between(a, b, d);
-    SDL_DestroySurface(a);
-    SDL_DestroySurface(b);
-    SDL_DestroySurface(d);
+// fade_between(from,to,dest) under TESTING runs no animation: it blits `to`
+// into dest (and into `from`, the historical contract), traces the skip and
+// returns 1 (src/platform/sdl/video_sdl.cpp FadeBetween, the #ifdef TESTING
+// branch -- the reason menu tests settle on frames instead of waiting on fades).
+TEST(MassCoverage, video_fade_between_lands_on_the_new_frame_without_animating) {
+    screen* s = og::runtime::current_session->myscreen_;
+    SDL_Surface* from = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
+    SDL_Surface* to = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
+    SDL_Surface* dest = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
+    ASSERT_NE(nullptr, from) << "setup: the old frame must allocate";
+    ASSERT_NE(nullptr, to) << "setup: the new frame must allocate";
+    ASSERT_NE(nullptr, dest) << "setup: the destination must allocate";
+    ASSERT_TRUE(SDL_FillSurfaceRect(from, nullptr, SDL_MapSurfaceRGB(from, 0, 0, 0)))
+        << SDL_GetError();
+    ASSERT_TRUE(SDL_FillSurfaceRect(to, nullptr, SDL_MapSurfaceRGB(to, 255, 0, 255)))
+        << SDL_GetError();
+    ASSERT_TRUE(SDL_FillSurfaceRect(dest, nullptr, SDL_MapSurfaceRGB(dest, 0, 0, 0)))
+        << SDL_GetError();
+
+    trace_clear();
+    ASSERT_EQ(1, s->fade_between(from, to, dest)) << "an uninterrupted fade reports 1";
+    ASSERT_TRUE(trace_contains("video", "FadeBetween: skipping animation (test mode)"))
+        << "under TESTING the fade must be a single blit, not an animation";
+
+    Uint8 r = 0, g = 0, b = 0, a = 0;
+    ASSERT_TRUE(SDL_ReadSurfacePixel(dest, 0, 0, &r, &g, &b, &a)) << SDL_GetError();
+    ASSERT_EQ(255, static_cast<int>(r)) << "the destination must end on the new frame's red";
+    ASSERT_EQ(0, static_cast<int>(g)) << "the destination must end on the new frame's green";
+    ASSERT_EQ(255, static_cast<int>(b)) << "the destination must end on the new frame's blue";
+
+    ASSERT_TRUE(SDL_ReadSurfacePixel(from, 0, 0, &r, &g, &b, &a)) << SDL_GetError();
+    ASSERT_EQ(255, static_cast<int>(r))
+        << "the old surface advances to the new frame too (the historical contract)";
+
+    SDL_DestroySurface(from);
+    SDL_DestroySurface(to);
+    SDL_DestroySurface(dest);
 }
 
 TEST(MassCoverage, video_fadeblack)
@@ -1725,14 +2206,196 @@ TEST(MassCoverage, video_fadeblack)
     ASSERT_EQ(1, scr.fadeblack(false));
     ASSERT_EQ(1, scr.fadeblack(true));
 }
-TEST(MassCoverage, video_darken_screen) { og::runtime::current_session->myscreen_->darken_screen(); }
+// darken_screen() blends PURE_BLACK at alpha 100 over EVERY pixel of the
+// active canvas (src/platform/sdl/video_sdl.cpp sdl_video::darken_screen).
+TEST(MassCoverage, video_darken_screen_blends_black_over_the_whole_canvas) {
+    screen* s = og::runtime::current_session->myscreen_;
+    const int cw = s->canvas_w();
+    const int ch = s->canvas_h();
+    s->clearbuffer();
+    s->draw_rect_filled(0, 0, static_cast<Uint32>(cw), static_cast<Uint32>(ch), WHITE, 255);
+    ASSERT_EQ(pal_readback_index(WHITE), px_index(cw - 1, ch - 1))
+        << "setup: the backdrop must cover the far corner";
 
-// text.cpp uncovered
-TEST(MassCoverage, text_shutdown) { text_shutdown(); }
-TEST(MassCoverage, text_write_xy_color) { og::runtime::current_session->myscreen_->text_normal.write_xy(5, 5, "mass", WHITE); }
-TEST(MassCoverage, text_write_xy_printf) { og::runtime::current_session->myscreen_->text_normal.write_xy(5, 12, WHITE, "%s", "fmt"); }
-TEST(MassCoverage, text_write_xy_shadow) { og::runtime::current_session->myscreen_->text_normal.write_xy_shadow(5, 20, WHITE, "%s", "shadow"); }
-TEST(MassCoverage, text_write_xy_center) { og::runtime::current_session->myscreen_->text_normal.write_xy_center(80, 40, WHITE, "%s", "center"); }
+    int wr = 0, wg = 0, wb = 0;
+    pal_rgb8(WHITE, &wr, &wg, &wb);
+    int kr = 0, kg = 0, kb = 0;
+    pal_rgb8(PURE_BLACK, &kr, &kg, &kb);
+    const int expect_r = alpha_blend8(wr, kr, 100);
+    const int expect_g = alpha_blend8(wg, kg, 100);
+    const int expect_b = alpha_blend8(wb, kb, 100);
+    ASSERT_LT(expect_r, wr) << "setup: the blend must be a darkening, not a no-op";
+
+    s->darken_screen();
+
+    Uint8 r = 0, g = 0, b = 0;
+    s->get_pixel(10, 10, &r, &g, &b);
+    ASSERT_EQ(expect_r, static_cast<int>(r)) << "100/256 of black over the backdrop, red";
+    ASSERT_EQ(expect_g, static_cast<int>(g)) << "100/256 of black over the backdrop, green";
+    ASSERT_EQ(expect_b, static_cast<int>(b)) << "100/256 of black over the backdrop, blue";
+
+    s->get_pixel(cw - 1, ch - 1, &r, &g, &b);
+    ASSERT_EQ(expect_r, static_cast<int>(r))
+        << "the far corner must be darkened too -- the pass covers the whole canvas";
+}
+
+// text.cpp
+// text_shutdown() frees the shared letters1/letters_big pixies: PixieData
+// becomes invalid, safe_glyph_span answers {} and every glyph write is a no-op
+// that returns 0 -- until the next text ctor lazily reloads both
+// (src/interface/render/text.cpp:48-67, 70-84, 109-113; pixie_data.cpp free()).
+TEST(MassCoverage, text_shutdown_frees_the_shared_font_until_a_text_ctor_reloads_it) {
+    screen* s = og::runtime::current_session->myscreen_;
+    ensure_font_loaded();
+    const int sx = s->text_normal.sizex;
+    const int sy = s->text_normal.sizey;
+    ASSERT_EQ(5, sx) << "setup: the shipped small font is 5 wide";
+    ASSERT_EQ(6, sy) << "setup: the shipped small font is 6 tall";
+
+    s->clearbuffer();
+    ASSERT_EQ(1, s->text_normal.write_char_xy(5, 5, 'A', WHITE))
+        << "setup: a loaded font reports the glyph painted";
+    ASSERT_EQ(kGlyphInkA, count_index_in(5, 5, sx + 2, sy + 2, WHITE))
+        << "setup: the 'A' glyph's ink";
+
+    text_shutdown();
+
+    s->clearbuffer();
+    ASSERT_EQ(0, s->text_normal.write_char_xy(5, 5, 'A', WHITE))
+        << "a freed font has no glyph span, so the write reports nothing painted";
+    ASSERT_EQ(0, count_index_in(5, 5, sx + 2, sy + 2, WHITE))
+        << "...and no pixel is touched";
+
+    // The rest of this binary draws text: the shared pixies must come back, and
+    // reloading them here is exactly how the product recovers.
+    text reloaded(TEXT_1);
+    s->clearbuffer();
+    ASSERT_EQ(1, s->text_normal.write_char_xy(5, 5, 'A', WHITE))
+        << "a later text ctor must reload the shared font";
+    ASSERT_EQ(kGlyphInkA, count_index_in(5, 5, sx + 2, sy + 2, WHITE))
+        << "the reloaded font paints the same glyph";
+}
+
+// write_xy(x,y,str,color) paints glyph i at x + i*(sizex+1) in `color`
+// (src/interface/render/text.cpp write_xy).
+TEST(MassCoverage, text_write_xy_lays_each_glyph_one_advance_apart_in_the_given_colour) {
+    screen* s = og::runtime::current_session->myscreen_;
+    ensure_font_loaded();
+    const int sx = s->text_normal.sizex;
+    const int sy = s->text_normal.sizey;
+    const int box_w = 4 * (sx + 1) + 4;
+
+    s->clearbuffer();
+    ASSERT_EQ(1, s->text_normal.write_xy(5, 5, "mass", WHITE)) << "write_xy reports 1";
+    const std::vector<int> painted = snapshot_indices(3, 5, box_w, sy);
+    ASSERT_EQ(kWordInkMass, count_index_in(3, 5, box_w, sy, WHITE))
+        << "the four glyphs' ink must be painted in the requested colour";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(3, 5))
+        << "nothing is painted left of x";
+
+    // Golden by reconstruction: the same pixels as four single-glyph writes at
+    // x + i*(sizex+1). A wrong advance, a wrong colour or a missing glyph all
+    // break this.
+    s->clearbuffer();
+    const char* word = "mass";
+    for (int i = 0; i < 4; i++)
+    {
+        ASSERT_EQ(1, s->text_normal.write_char_xy(5 + i * (sx + 1), 5, word[i], WHITE))
+            << "setup: glyph " << i << " must paint";
+    }
+    ASSERT_EQ(snapshot_indices(3, 5, box_w, sy), painted)
+        << "write_xy must advance by sizex+1 per glyph";
+
+    s->clearbuffer();
+    s->text_normal.write_xy(5, 5, "mass", DARK_GREEN);
+    ASSERT_EQ(kWordInkMass, count_index_in(3, 5, box_w, sy, DARK_GREEN))
+        << "the colour argument reaches the glyph pixels";
+    ASSERT_EQ(0, count_index_in(3, 5, box_w, sy, WHITE))
+        << "...and nothing is left in the previous colour";
+}
+
+// write_xy(x,y,color,fmt,...) formats through vsnprintf, paints via
+// write_formatted and returns len*(sizex+1); a null format paints nothing and
+// returns 0 (src/interface/render/text.cpp TEXT_VFORMAT, write_formatted).
+TEST(MassCoverage, text_write_xy_printf_expands_the_format_and_returns_the_advance) {
+    screen* s = og::runtime::current_session->myscreen_;
+    ensure_font_loaded();
+    const int sx = s->text_normal.sizex;
+    const int sy = s->text_normal.sizey;
+
+    s->clearbuffer();
+    ASSERT_EQ(2 * (sx + 1), s->text_normal.write_xy(5, 12, WHITE, "%d", 42))
+        << "the printf form returns strlen(formatted) * (sizex+1)";
+    const std::vector<int> formatted = snapshot_indices(5, 12, 2 * (sx + 1), sy);
+    ASSERT_EQ(kWordInk42, count_index_in(5, 12, 2 * (sx + 1), sy, WHITE))
+        << "the formatted digits must be painted";
+
+    // "%d" with 42 has to produce exactly the glyphs of the literal "42".
+    s->clearbuffer();
+    s->text_normal.write_xy(5, 12, "42", WHITE);
+    ASSERT_EQ(snapshot_indices(5, 12, 2 * (sx + 1), sy), formatted)
+        << "%d must expand to the digits, not paint the format string";
+
+    s->clearbuffer();
+    const char* no_format = nullptr;
+    ASSERT_EQ(0, s->text_normal.write_xy(5, 12, WHITE, no_format))
+        << "a null format string must return 0";
+    ASSERT_EQ(0, count_index_in(5, 12, 2 * (sx + 1), sy, WHITE))
+        << "...and paint nothing";
+}
+
+// write_xy_shadow paints each glyph twice: a (x-1,y+1) copy in PURE_BLACK+2
+// first, the glyph in `color` on top (src/interface/render/text.cpp
+// write_formatted, shadow branch).
+TEST(MassCoverage, text_write_xy_shadow_paints_an_offset_copy_under_each_glyph) {
+    screen* s = og::runtime::current_session->myscreen_;
+    ensure_font_loaded();
+    const int sx = s->text_normal.sizex;
+    const int sy = s->text_normal.sizey;
+    const int box_w = 6 * (sx + 1) + 2;
+    const int box_h = sy + 2;
+    constexpr unsigned char kShadowColor = static_cast<unsigned char>(PURE_BLACK + 2);
+
+    s->clearbuffer();
+    ASSERT_EQ(6 * (sx + 1), s->text_normal.write_xy_shadow(5, 20, WHITE, "%s", "shadow"))
+        << "the shadowed form returns the same advance as the plain one";
+    const std::vector<int> shadowed = snapshot_indices(4, 20, box_w, box_h);
+    ASSERT_EQ(kWordInkShadowGlyph, count_index_in(4, 20, box_w, box_h, WHITE))
+        << "the glyph pass paints in the requested colour";
+    ASSERT_EQ(kWordInkShadowShade, count_index_in(4, 20, box_w, box_h, kShadowColor))
+        << "the shadow pass paints in PURE_BLACK+2 (what the glyph pass does not cover)";
+
+    // Golden by reconstruction: shadow string at (x-1,y+1), glyphs on top.
+    s->clearbuffer();
+    s->text_normal.write_xy(4, 21, "shadow", kShadowColor);
+    s->text_normal.write_xy(5, 20, "shadow", WHITE);
+    ASSERT_EQ(snapshot_indices(4, 20, box_w, box_h), shadowed)
+        << "the shadow must sit one left and one down from the glyph, under it";
+}
+
+// write_xy_center(cx,y,...) starts the string at cx - len*(sizex+1)/2 and
+// returns 1 (src/interface/render/text.cpp write_formatted, center branch).
+TEST(MassCoverage, text_write_xy_center_starts_half_the_string_left_of_the_anchor) {
+    screen* s = og::runtime::current_session->myscreen_;
+    ensure_font_loaded();
+    const int sx = s->text_normal.sizex;
+    const int sy = s->text_normal.sizey;
+    const int base = 80 - 6 * (sx + 1) / 2;
+
+    s->clearbuffer();
+    ASSERT_EQ(1, s->text_normal.write_xy_center(80, 40, WHITE, "%s", "center"))
+        << "the centered form returns 1";
+    const std::vector<int> centered = snapshot_indices(0, 40, 160, sy);
+    ASSERT_EQ(kWordInkCenter, count_index_in(0, 40, 160, sy, WHITE))
+        << "the six glyphs' ink must be painted";
+    ASSERT_EQ(0, count_index_in(0, 40, base, sy, WHITE))
+        << "nothing may be painted left of cx - len*(sizex+1)/2";
+
+    s->clearbuffer();
+    s->text_normal.write_xy(base, 40, "center", WHITE);
+    ASSERT_EQ(snapshot_indices(0, 40, 160, sy), centered)
+        << "the centered run must be the plain run started at the computed base";
+}
 TEST(MassCoverage, text_write_xy_center_alpha) { og::runtime::current_session->myscreen_->text_normal.write_xy_center_alpha(80, 46, WHITE, 100, "%s", "alpha"); }
 TEST(MassCoverage, text_write_xy_center_shadow) { og::runtime::current_session->myscreen_->text_normal.write_xy_center_shadow(80, 52, WHITE, "%s", "center-shadow"); }
 TEST(MassCoverage, text_write_xy_default) { og::runtime::current_session->myscreen_->text_normal.write_xy(5, 58, "default"); }
@@ -1774,4 +2437,5 @@ TEST(MassCoverage, obmap_debug_draw_expands_bounding_boxes_all_directions) {
     obmap_debug_draw(map, og::runtime::current_session->myscreen_);
     reset_level_state();
 }
+
 
