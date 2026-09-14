@@ -83,7 +83,6 @@ struct SessionState {
     // Render/palette state (Batch 6) — moved from pal32.cpp/video.cpp.
     std::array<unsigned char, 768> curpal_ = {};
     std::array<unsigned char, 768> temppal_ = {};
-    unsigned char* videoptr_ = nullptr;
     // BRIGHTNESS (cfg graphics/brightness, DISPLAY subscreen): the gamma
     // steps set_palette() re-applies to curpal_ on EVERY palette set. This
     // used to be viewscreen::gamma, a per-view member nothing re-applied —

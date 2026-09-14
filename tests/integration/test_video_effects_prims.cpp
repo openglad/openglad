@@ -1012,9 +1012,6 @@ TEST(VideoEffectsPrims, canvas_dims_follow_window_and_keep_ui_fixed)
     ASSERT_EQ(200, scr()->canvas_h());
     ASSERT_EQ(expected.w, scr()->world_canvas_w());
     ASSERT_EQ(expected.h, scr()->world_canvas_h());
-
-    // The legacy scratch buffer is sized to the canvas area (the old 64000).
-    ASSERT_EQ(static_cast<std::size_t>(320) * 200, scr()->videobuffer.size());
 }
 
 TEST(VideoEffectsPrims, world_ui_canvas_routing_isolates_draws_at_split_dims)

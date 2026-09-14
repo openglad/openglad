@@ -21,8 +21,6 @@
 extern void putpixel(SDL_Surface* surface, int x, int y, Uint32 pixel);
 extern void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha);
 
-// videoptr lives in GameSession — access via current_session->videoptr_.
-
 namespace
 {
 struct SurfaceDeleter {
@@ -365,58 +363,6 @@ TEST(VideoPixelOps, null_render_line_guard_is_a_no_op)
     EXPECT_EQ(nullptr, E_Screen->render);
 }
 
-
-// putblack zeroes videoptr_[x + y*canvas_w] for the requested rect, but only
-// where 0 < curpoint < canvas_size -- so index 0 survives (the historical
-// `curpoint > 0` quirk), a fully negative rect writes nothing at all, and a
-// rect hanging off the bottom-right clears exactly the one cell still inside.
-TEST(VideoPixelOps, video_putblack_zeroes_only_the_in_range_rect_cells)
-{
-    // Legacy putblack writes to `videoptr`. In the original DOS codebase this
-    // was linear VGA memory. Override it in tests to ensure it remains safe.
-    unsigned char* saved = og::runtime::current_session->videoptr_;
-    struct VideoPtrRestore
-    {
-        unsigned char* saved;
-        ~VideoPtrRestore() { og::runtime::current_session->videoptr_ = saved; }
-    } restore{saved};
-    auto buffer = std::make_unique<std::array<unsigned char, 64000>>();
-    buffer->fill(42);
-    og::runtime::current_session->videoptr_ = buffer->data();
-
-    screen* const s = og::runtime::current_session->myscreen_;
-    ASSERT_NE(nullptr, s);
-    ASSERT_EQ(320, s->canvas_w())
-        << "the offsets below assume the classic 320x200 canvas";
-    ASSERT_EQ(200, s->canvas_h());
-
-    s->putblack(0, 0, 10, 10);
-    EXPECT_EQ(42, static_cast<int>((*buffer)[0]))
-        << "offset 0 is never cleared: the guard is curpoint > 0";
-    EXPECT_EQ(0, static_cast<int>((*buffer)[1])) << "the rest of row 0 is cleared";
-    EXPECT_EQ(0, static_cast<int>((*buffer)[9 + 9 * 320]))
-        << "the bottom-right cell of the rect is cleared";
-    EXPECT_EQ(42, static_cast<int>((*buffer)[10]))
-        << "the column just past the rect is left alone";
-    EXPECT_EQ(42, static_cast<int>((*buffer)[10 * 320]))
-        << "the row just past the rect is left alone";
-
-    buffer->fill(42);
-    s->putblack(-10, -10, 10, 10);
-    EXPECT_TRUE(std::all_of(buffer->begin(), buffer->end(),
-                            [](unsigned char v) { return v == 42; }))
-        << "a rect entirely above/left of the canvas writes nothing";
-
-    buffer->fill(42);
-    s->putblack(319, 199, 5, 5);
-    EXPECT_EQ(0, static_cast<int>((*buffer)[63999]))
-        << "the single in-range cell of an overhanging rect is cleared";
-    EXPECT_EQ(42, static_cast<int>((*buffer)[63998]))
-        << "its neighbour is outside the rect and survives";
-    EXPECT_EQ(1, std::count(buffer->begin(), buffer->end(),
-                            static_cast<unsigned char>(0)))
-        << "exactly one cell was cleared";
-}
 
 
 // darken_screen blends PURE_BLACK over every canvas pixel at alpha 100, and

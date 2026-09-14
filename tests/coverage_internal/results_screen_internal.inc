@@ -43,8 +43,6 @@ int results_screen_test_exercise_internal()
         std::map<std::string, int> current_levels = save.current_levels;
         std::map<std::string, std::set<int>> completed_levels =
             save.completed_levels;
-        std::vector<unsigned char> framebuffer =
-            og::runtime::current_session->myscreen_->videobuffer;
 
         ~SharedStateGuard()
         {
@@ -52,8 +50,6 @@ int results_screen_test_exercise_internal()
             save.current_campaign = std::move(current_campaign);
             save.current_levels = std::move(current_levels);
             save.completed_levels = std::move(completed_levels);
-            og::runtime::current_session->myscreen_->videobuffer =
-                std::move(framebuffer);
         }
     } shared_state{save};
     const auto capture_guy_region = [&] {

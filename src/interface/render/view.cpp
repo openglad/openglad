@@ -448,12 +448,6 @@ std::unique_ptr<viewscreen> viewscreen::make_camera(screen* screenp)
 // Destruct the viewscreen and its variables
 viewscreen::~viewscreen() = default;
 
-void viewscreen::clear()
-{
-	auto& vb = active_screen()->videobuffer;
-	vb.assign(vb.size(), 0);
-}
-
 // Fractional camera height at render frame i of n (i in 1..n-1; t = 1 is
 // never evaluated — the final frame takes the untouched integer path, so
 // endpoint exactness is structural, not numeric).

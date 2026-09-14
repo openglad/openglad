@@ -128,8 +128,6 @@ public:
     virtual void clearbuffer(int x, int y, int w, int h) = 0;
     virtual void clear_window() = 0;
 
-    virtual std::span<unsigned char> getbuffer() = 0;
-    virtual void putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize) = 0;
     virtual void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) = 0;
     virtual void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag) = 0;
     virtual void fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) = 0;
@@ -334,8 +332,6 @@ public:
 
     virtual void darken_screen() = 0;
 
-    virtual void swap() = 0;
-
     // Canvas routing (see the CanvasTarget block above).
     // canvas_w/canvas_h are the ACTIVE canvas dimensions: all offset-based
     // plot arithmetic (offset = x + y*canvas_w) and full-frame present rects
@@ -478,9 +474,6 @@ public:
     virtual std::array<unsigned char, 768>& redpalette_ref() = 0;
     virtual std::array<unsigned char, 768>& bluepalette_ref() = 0;
     virtual std::array<unsigned char, 768>& dospalette_ref() = 0;
-    // Legacy scratch buffer sized to the canvas area (kUiCanvasW*kUiCanvasH
-    // by default) — a vector so a future world-canvas resize can re-size it.
-    virtual std::vector<unsigned char>& videobuffer_ref() = 0;
     virtual short& cyclemode_ref() = 0;
     virtual text& text_normal_ref() = 0;
     virtual text& text_big_ref() = 0;

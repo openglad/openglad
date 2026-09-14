@@ -1,4 +1,5 @@
 #include <openglad/interface/screen.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/text.h>
@@ -495,10 +496,9 @@ TEST(MassCoverage, screen_query_object_passable_reads_obmap_occupancy) {
 
     reset_level_state();
 }
-// clear(): the render canvas is blanked AND every live view's legacy
-// videobuffer is zeroed (src/interface/screen.cpp screen::clear -> clearbuffer
-// + viewob[i]->clear(); src/interface/render/view.cpp viewscreen::clear).
-TEST(MassCoverage, screen_clear_blanks_the_canvas_and_every_view_buffer) {
+// clear(): the render canvas is blanked (src/interface/screen.cpp
+// screen::clear -> clearbuffer).
+TEST(MassCoverage, screen_clear_blanks_the_canvas) {
     screen* s = og::runtime::current_session->myscreen_;
     s->ready_for_battle(1);
 
@@ -508,17 +508,11 @@ TEST(MassCoverage, screen_clear_blanks_the_canvas_and_every_view_buffer) {
     ASSERT_EQ(static_cast<int>(RED), painted)
         << "setup: the probe pixel must be painted before clear() is asked to blank it";
 
-    std::span<unsigned char> buf = s->getbuffer();
-    ASSERT_LT(std::size_t{100}, buf.size()) << "setup: the legacy videobuffer must be allocated";
-    buf[100] = 42;
-
     s->clear();
 
     painted = -1;
     s->get_pixel(5, 5, &painted);
     ASSERT_EQ(0, painted) << "clear() must blank the render canvas";
-    ASSERT_EQ(0, static_cast<int>(s->getbuffer()[100]))
-        << "clear() must run viewob[i]->clear() and zero the legacy videobuffer";
 }
 
 // redraw(): composes a world frame and runs the per-view chrome pass, which
@@ -1206,31 +1200,6 @@ TEST(MassCoverage, pixien_and_level_render_paths) {
     render->draw_tile(0, 0, 0, vs);
 }
 
-// viewscreen::clear(): zeroes the whole legacy videobuffer scratch, not a
-// prefix of it (src/interface/render/view.cpp viewscreen::clear).
-TEST(MassCoverage, viewscreen_clear_zeroes_the_whole_legacy_videobuffer) {
-    screen* s = og::runtime::current_session->myscreen_;
-    auto buf = s->getbuffer();
-    ASSERT_EQ(static_cast<std::size_t>(kUiCanvasW) * static_cast<std::size_t>(kUiCanvasH),
-              buf.size())
-        << "setup: the legacy scratch is sized to the fixed UI canvas";
-
-    buf[0] = 41;
-    buf[100] = 42;
-    buf[buf.size() - 1] = 43;
-    ASSERT_EQ(42, static_cast<int>(s->getbuffer()[100]))
-        << "setup: the probe bytes must land in the live buffer";
-
-    s->viewob[0]->clear();
-
-    ASSERT_EQ(0, static_cast<int>(s->getbuffer()[0]))
-        << "clear() must zero the first byte of the videobuffer";
-    ASSERT_EQ(0, static_cast<int>(s->getbuffer()[100]))
-        << "clear() must zero the interior of the videobuffer";
-    ASSERT_EQ(0, static_cast<int>(s->getbuffer()[buf.size() - 1]))
-        << "clear() must zero the whole videobuffer, not a leading run";
-}
-
 // viewscreen::view_team(): the no-argument form forwards to the fixed
 // VIEW_TEAM_LEFT/TOP/RIGHT/BOTTOM rect (20,2)-(280,198), flags redrawme, paints
 // the two-deep button bevel and writes the four BLACK column headers at
@@ -1323,27 +1292,6 @@ TEST(MassCoverage, video_set_fullscreen_is_inert_in_both_directions) {
     ASSERT_EQ(ch, s->canvas_h()) << "set_fullscreen must not move the active canvas height";
     ASSERT_EQ(wcw, s->world_canvas_w()) << "set_fullscreen must not move the world canvas width";
     ASSERT_EQ(wch, s->world_canvas_h()) << "set_fullscreen must not move the world canvas height";
-}
-
-// getbuffer() hands back the LIVE legacy videobuffer, sized to the fixed UI
-// canvas (video_sdl.cpp sdl_video::getbuffer; video_sdl.h videobuffer).
-TEST(MassCoverage, video_getbuffer_is_the_live_ui_sized_scratch) {
-    screen* s = og::runtime::current_session->myscreen_;
-    auto buf = s->getbuffer();
-    ASSERT_EQ(static_cast<std::size_t>(kUiCanvasW) * static_cast<std::size_t>(kUiCanvasH),
-              buf.size())
-        << "the legacy scratch is kUiCanvasW*kUiCanvasH, not the world canvas area";
-
-    buf[0] = 9;
-    buf[buf.size() - 1] = 11;
-    ASSERT_EQ(9, static_cast<int>(s->getbuffer()[0]))
-        << "getbuffer must alias one storage, not hand out a copy";
-    ASSERT_EQ(11, static_cast<int>(s->getbuffer()[buf.size() - 1]))
-        << "getbuffer must alias one storage across its whole extent";
-    ASSERT_EQ(buf.data(), s->getbuffer().data())
-        << "successive getbuffer calls must point at the same bytes";
-
-    std::fill(buf.begin(), buf.end(), static_cast<unsigned char>(0));
 }
 
 // clearbuffer(x,y,w,h) blacks EXACTLY that rect of the render surface
@@ -1449,46 +1397,6 @@ TEST(MassCoverage, video_draw_button_inverted_paints_the_sunken_text_bar) {
         << "the bar ends at y+h-1";
     ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(60, 60))
         << "the bar ends at x+w-1";
-}
-
-// putblack(x,y,w,h) zeroes that rect of whatever buffer the session's legacy
-// videoptr_ points at, and is a no-op while that pointer is null -- which is
-// how production always leaves it (src/platform/sdl/video_sdl.cpp putblack;
-// src/platform/sdl/game_session.cpp, "only tests call putblack, after pointing
-// videoptr_ at a real buffer").
-TEST(MassCoverage, video_putblack_no_ops_until_videoptr_points_somewhere) {
-    screen* s = og::runtime::current_session->myscreen_;
-    const int cw = s->canvas_w();
-    auto buf = s->getbuffer();
-    std::fill(buf.begin(), buf.end(), static_cast<unsigned char>(7));
-
-    ASSERT_EQ(nullptr, og::runtime::current_session->videoptr_)
-        << "setup: production leaves the legacy direct-video pointer null";
-    s->putblack(2, 2, 8, 8);
-    ASSERT_EQ(7, static_cast<int>(buf[static_cast<std::size_t>(5 * cw + 5)]))
-        << "putblack must be a no-op while videoptr_ is null";
-
-    // Restores the null default even if an assertion below aborts the test.
-    struct VideoPtrScope final {
-        explicit VideoPtrScope(unsigned char* p) { og::runtime::current_session->videoptr_ = p; }
-        ~VideoPtrScope() { og::runtime::current_session->videoptr_ = nullptr; }
-    } scope(buf.data());
-
-    s->putblack(2, 2, 8, 8);
-    ASSERT_EQ(0, static_cast<int>(buf[static_cast<std::size_t>(2 * cw + 2)]))
-        << "the rect's first pixel must be zeroed";
-    ASSERT_EQ(0, static_cast<int>(buf[static_cast<std::size_t>(5 * cw + 5)]))
-        << "the rect's interior must be zeroed";
-    ASSERT_EQ(0, static_cast<int>(buf[static_cast<std::size_t>(9 * cw + 9)]))
-        << "the rect's last pixel (x+w-1, y+h-1) must be zeroed";
-    ASSERT_EQ(7, static_cast<int>(buf[static_cast<std::size_t>(10 * cw + 10)]))
-        << "the pixel past the rect must survive";
-    ASSERT_EQ(7, static_cast<int>(buf[static_cast<std::size_t>(1 * cw + 1)]))
-        << "the pixel before the rect must survive";
-    ASSERT_EQ(7, static_cast<int>(buf[static_cast<std::size_t>(5 * cw + 10)]))
-        << "putblack must not run the whole row";
-
-    std::fill(buf.begin(), buf.end(), static_cast<unsigned char>(0));
 }
 
 // fastbox_outline(x,y,w,h,color) is draw_box(x,y,x+w,y+h,color,0): the four
@@ -2121,8 +2029,7 @@ TEST(MassCoverage, video_walkputbuffer_outline_mode_rims_the_silhouette_in_the_o
 // "window shows black" flag. Note the route: screen::swap() goes through the
 // platform bridge's present_frame (src/interface/screen.cpp:954,
 // src/platform/sdl/game_session.cpp make_sdl_platform_bridge) to
-// Screen::swap, which is the single present site (src/platform/sdl/sai2x.cpp:2485);
-// sdl_video::swap is only the fallback when no bridge is installed.
+// Screen::swap, which is the single present site (src/platform/sdl/sai2x.cpp:2485).
 TEST(MassCoverage, video_swap_presents_the_whole_canvas) {
     screen* s = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(s->window_is_black())
@@ -2132,6 +2039,52 @@ TEST(MassCoverage, video_swap_presents_the_whole_canvas) {
     s->draw_rect_filled(0, 0, 40, 40, WHITE, 255);
     s->swap();
     ASSERT_FALSE(s->window_is_black()) << "swap() must present the composed canvas";
+}
+
+// screen::swap() presents through PlatformBridge::present_frame and NOWHERE
+// else: there is no second present path. Every platform root installs a bridge
+// before a screen exists (src/platform/sdl/game_session.cpp
+// make_sdl_platform_bridge; src/platform/platform_headless.cpp), so an empty
+// bridge means "no present" -- not "fall back to the video layer". A second
+// present site is exactly what the fade-ownership rule forbids
+// (include/openglad/platform/sai2x.h window_is_black).
+TEST(MassCoverage, screen_swap_presents_only_through_the_platform_bridge) {
+    screen* s = og::runtime::current_session->myscreen_;
+
+    // Restores the real bridge even if an assertion below aborts the test.
+    struct PlatformBridgeGuard final {
+        PlatformBridge saved = platform_bridge();
+        ~PlatformBridgeGuard() { set_platform_bridge(std::move(saved)); }
+    } bridge_guard;
+
+    // Half 1: the installed bridge is the ONLY present site.
+    int presents = 0;
+    PlatformBridge counting;
+    counting.present_frame = [&presents]() { ++presents; };
+    set_platform_bridge(std::move(counting));
+
+    s->testing_reset_window_state();
+    ASSERT_TRUE(s->window_is_black())
+        << "setup: testing_reset_window_state must re-arm the black-window flag";
+    s->clearbuffer();
+    s->draw_rect_filled(0, 0, 40, 40, WHITE, 255);
+
+    s->swap();
+    ASSERT_EQ(1, presents) << "swap() must call the bridge's present_frame exactly once";
+    ASSERT_TRUE(s->window_is_black())
+        << "nothing may be presented behind the bridge's back: only the real "
+           "SDL present (Screen::swap) clears window_is_black";
+
+    // Half 2: with no present_frame there is no present at all.
+    set_platform_bridge(PlatformBridge{});
+    s->testing_reset_window_state();
+    ASSERT_TRUE(s->window_is_black()) << "setup: the flag is re-armed before the empty-bridge swap";
+
+    s->swap();
+    ASSERT_EQ(1, presents) << "the replaced bridge must not still be called";
+    ASSERT_TRUE(s->window_is_black())
+        << "with no present_frame installed swap() must present nothing (no "
+           "sdl_video::swap fallback)";
 }
 
 // get_pixel(x,y,&r,&g,&b) answers with the surface RGB (the 6-bit palette

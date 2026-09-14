@@ -39,18 +39,11 @@ static std::unique_ptr<walker> make_npc_walker(char family, unsigned char team)
     return w;
 }
 
-TEST(ViewLifecycle, viewscreen_construct_destruct_and_clear)
+TEST(ViewLifecycle, viewscreen_construct_and_destruct)
 {
     // Constructing a standalone viewscreen should allocate/destroy radar cleanly.
     auto vs = std::make_unique<viewscreen>(0, 0, 320, 200, 0);
     ASSERT_TRUE(vs->myradar != nullptr) << "viewscreen should create a radar";
-
-    // Exercise viewscreen::clear() which writes into myscreen->videobuffer.
-    og::runtime::current_session->myscreen_->videobuffer[0] = 123;
-    og::runtime::current_session->myscreen_->videobuffer[63999] = 77;
-    vs->clear();
-    ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->videobuffer[0]) << "clear should zero videobuffer[0]";
-    ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->videobuffer[63999]) << "clear should zero videobuffer[63999]";
 }
 
 

@@ -92,8 +92,6 @@ static inline int active_canvas_w() { return E_Screen ? E_Screen->canvas_w() : k
 static inline int active_canvas_h() { return E_Screen ? E_Screen->canvas_h() : kUiCanvasH; }
 
 
-// videoptr lives in GameSession — access via current_session->videoptr_.
-
 std::unique_ptr<Screen> E_Screen;
 
 static void video_init_palettes(sdl_video& v)
@@ -409,11 +407,6 @@ void sdl_video::set_fullscreen(bool enable_fullscreen)
     update_overscan_setting();*/
 }
 
-std::span<unsigned char> sdl_video::getbuffer()
-{
-	return videobuffer;
-}
-
 void sdl_video::clearbuffer()
 {
     E_Screen->clear();
@@ -627,26 +620,6 @@ void sdl_video::darken_screen()
 }
 
 
-
-void sdl_video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize)
-{
-	Sint32 curx, cury;
-	Sint32 curpoint;
-
-	if (!og::runtime::current_session->videoptr_) return;  // no direct video buffer to clear
-
-	const Sint32 cw = active_canvas_w();
-	const Sint32 canvas_size = cw * active_canvas_h();
-	for(cury = starty;cury < starty +ysize;cury++)
-	{
-		for (curx = startx; curx < startx +xsize; curx++)
-		{
-			curpoint = (curx + (cury*cw));
-			if (curpoint > 0 && curpoint < canvas_size)
-				og::runtime::current_session->videoptr_[curpoint] = 0;
-		}
-	}
-}
 
 // This version of fastbox writes directly to screen memory;
 // The following version, with an extra parameter, writes to
@@ -2830,12 +2803,6 @@ void sdl_video::buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,
                              Sint32 viewwidth, Sint32 viewheight)
 {
 	E_Screen->swap(viewstartx,viewstarty,viewwidth,viewheight);
-}
-
-//buffers: like buffer_to_screen but automaticaly swaps the entire screen
-void sdl_video::swap(void)
-{
-	buffer_to_screen(0,0,active_canvas_w(),active_canvas_h());
 }
 
 int sdl_video::canvas_w() const

@@ -483,16 +483,6 @@ void screen::clear_window()
     video_impl_->clear_window();
 }
 
-std::span<unsigned char> screen::getbuffer()
-{
-    return video_impl_->getbuffer();
-}
-
-void screen::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize)
-{
-    video_impl_->putblack(startx, starty, xsize, ysize);
-}
-
 void screen::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
                      unsigned char color)
 {
@@ -953,14 +943,16 @@ void screen::darken_screen()
 
 void screen::swap()
 {
+    // Presents only through the platform bridge: every platform root installs
+    // one before a screen exists (game_session.cpp make_sdl_platform_bridge,
+    // platform_headless.cpp), and Screen::swap in sai2x.cpp is the single
+    // present site. No fallback: a second present path is exactly what the
+    // fade-ownership rule (sai2x.h window_is_black) forbids.
     const PlatformBridge& bridge = platform_bridge();
     if (bridge.present_frame)
     {
         bridge.present_frame();
-        return;
     }
-
-    video_impl_->swap();
 }
 
 void screen::get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b)
@@ -1138,7 +1130,6 @@ screen::screen(GameWorld& world, std::unique_ptr<video> video_impl, short howman
     , redpalette(video_impl_->redpalette_ref())
     , bluepalette(video_impl_->bluepalette_ref())
     , dospalette(video_impl_->dospalette_ref())
-    , videobuffer(video_impl_->videobuffer_ref())
     , cyclemode(video_impl_->cyclemode_ref())
     , text_normal(video_impl_->text_normal_ref())
     , text_big(video_impl_->text_big_ref())
@@ -1839,16 +1830,11 @@ LevelRuntimeData::IoError screen::save_level_with_error()
 
 void screen::clear()
 {
-	unsigned short i;
-
 	//buffers: PORT:  for (i=0;i<64000;i++)
 	//buffers: PORT:  {
 	//buffers: PORT:         videobuffer[i] = 0;
 	//buffers: PORT:  }
 	clearbuffer();
-
-	for (i=0; i < numviews; i ++)
-		viewob[i]->clear();
 }
 
 // REDRAW -- This function moves through the data on the grid (map)

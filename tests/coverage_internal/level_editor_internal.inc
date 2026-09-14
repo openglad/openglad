@@ -1823,16 +1823,6 @@ int level_editor_test_exercise_internal_helpers()
         check(scr != nullptr && scr->viewob[0] != nullptr);
         if (scr != nullptr && scr->viewob[0] != nullptr)
         {
-            struct FramebufferGuard
-            {
-                screen& scr;
-                std::vector<unsigned char> saved;
-
-                explicit FramebufferGuard(screen& scr_)
-                    : scr(scr_), saved(scr_.videobuffer) {}
-
-                ~FramebufferGuard() { scr.videobuffer = std::move(saved); }
-            } framebuffer_guard(*scr);
             const auto capture_framebuffer = [&] {
                 const int width = scr->canvas_w();
                 const int height = scr->canvas_h();
@@ -2090,15 +2080,6 @@ int level_editor_test_nameless_selection_panel_rows()
     data.level->set_draw_pos(0, 0);
     eds().current_floor = 0;
     eds().decor_mode = false;
-
-    struct FramebufferGuard
-    {
-        screen& scr;
-        std::vector<unsigned char> saved;
-
-        explicit FramebufferGuard(screen& scr_) : scr(scr_), saved(scr_.videobuffer) {}
-        ~FramebufferGuard() { scr.videobuffer = std::move(saved); }
-    } framebuffer_guard(*scr);
 
     // One 8-pixel text row of the info box, sampled strictly INSIDE the box
     // the panel draws at draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2): x1=241,
