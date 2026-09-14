@@ -421,9 +421,25 @@ TEST(WalkerCoreMore, walker_act_generate_zero_vector_and_hp_cap_paths)
     current_game->world->rng_.state_ = 18;
 
     gen->set_act_type(ACT_GENERATE);
-    (void)gen->act();
-    ASSERT_EQ(1, static_cast<int>(gen->lastx())) << "act_generate should force lastx=1 when random step vector is zero";
-    ASSERT_EQ((int)gen->stats()->max_hitpoints(), (int)gen->stats()->hitpoints()) << "act_generate should clamp hitpoints at max";
+    const float busy_before = gen->busy();
+    ASSERT_FALSE(gen->act())
+        << "walker::act's ACT_GENERATE arm breaks out of the switch and returns 0";
+    ASSERT_FLOAT_EQ(1.0f, gen->lastx())
+        << "act_generate forces lastx=1 when the random step vector is zero";
+    ASSERT_FLOAT_EQ(0.0f, gen->lasty())
+        << "and leaves lasty at the zero the RNG rolled";
+    // The spawn consequence: init_fire(1, 0) aims the post east and starts its
+    // attack animation, which is what releases the spawn on a later tick.
+    ASSERT_EQ(FACE_RIGHT, static_cast<int>(gen->enddir()))
+        << "init_fire turns the generator onto the heading act_generate rolled";
+    ASSERT_EQ(ANI_ATTACK, static_cast<int>(gen->ani_type()))
+        << "init_fire starts the generator's attack animation";
+    ASSERT_FLOAT_EQ(busy_before + gen->fire_frequency(), gen->busy())
+        << "init_fire charges the full fire_frequency cooldown";
+    ASSERT_FLOAT_EQ(10.0f, gen->stats()->hitpoints())
+        << "the per-spawn +1 regen is clamped back to max_hitpoints (10)";
+    ASSERT_FLOAT_EQ(10.0f, gen->stats()->max_hitpoints())
+        << "and the cap itself is untouched";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -959,8 +975,11 @@ TEST(WalkerCoreMore, walker_round6_act_guard_faces_wakes_and_fires_directionally
             << "face_delta snaps curdir at the foe";
         ASSERT_EQ(FACE_RIGHT, static_cast<int>(actor->enddir()))
             << "face_delta snaps enddir too, so the pivot is not undone next tick";
-        ASSERT_GT(actor->lastx(), 0.0f)
-            << "face_delta points the firing heading east, not at the spawn default";
+        ASSERT_FLOAT_EQ(16.0f * actor->stepsize(), actor->lastx())
+            << "face_delta writes the foe's x delta SCALED by stepsize as the "
+               "firing heading -- a heading at the wrong scale aims the shot wrong";
+        ASSERT_FLOAT_EQ(0.0f, actor->lasty())
+            << "the foe is due east, so the firing heading carries no y";
         ASSERT_EQ(ACT_RANDOM, static_cast<int>(actor->act_type()))
             << "a genuine sighting wakes the guard out of ACT_GUARD";
         const QueuedCommand fire = queued_command(actor);
@@ -1409,11 +1428,75 @@ TEST(WalkerCoreMore, walker_round11_friendliness_owner_chain_and_difficulty_path
             << "owner-chain unit must use its root's roster color "
             << static_cast<int>(team);
 
-    // set_difficulty default branch path for non-generator orders.
+    // living::set_difficulty on a hostile-team soldier: core:soldier's Lua
+    // set_difficulty hook runs og.apply_difficulty_scaling(self, level, 13, 8,
+    // 5, 2), so max_hp gains 13 * level^2, then the team != 0 arm scales by the
+    // difficulty percent (pinned at 100 here so the two stages stay separable).
+    const short old_difficulty = world.difficulty;
+    world.difficulty = 100;
     actor->set_team_num(1);
     const float hp_before = actor->stats()->max_hitpoints();
+    const float mp_before = actor->stats()->max_magicpoints();
+    const float dmg_before = actor->damage();
     actor->set_difficulty(4);
-    ASSERT_TRUE(actor->stats()->max_hitpoints() > 0.0f && actor->stats()->max_hitpoints() != hp_before) << "set_difficulty should apply default non-generator scaling path";
+    ASSERT_FLOAT_EQ(hp_before + 13.0f * 16.0f, actor->stats()->max_hitpoints())
+        << "level 4 adds 13 * 4^2 hitpoints at 100% difficulty";
+    ASSERT_FLOAT_EQ(mp_before + 8.0f * 16.0f, actor->stats()->max_magicpoints())
+        << "level 4 adds 8 * 4^2 magicpoints at 100% difficulty";
+    ASSERT_FLOAT_EQ(dmg_before + 5.0f * 4.0f, actor->damage())
+        << "damage scales linearly in level, not quadratically";
+    ASSERT_EQ(2, (int)actor->weapons_left())
+        << "the soldier hook also restocks (level + 1) / 2 weapons";
+    world.difficulty = old_difficulty;
+}
+
+
+// living::act's ACT_RANDOM "4 of 5 times" arm, no-foe leg (living.cpp: the
+// else branch after `if (foe())` / `else if (!rng.next(2))`): a searching
+// living that finds nobody queues COMMAND_RANDOM_WALK with a 20-tick budget,
+// which try_command translates into a COMMAND_WALK carrying a random unit
+// step. Nothing else pinned this leg.
+TEST(WalkerCoreMore, living_act_search_arm_without_a_foe_queues_a_random_walk)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor) << "actor created";
+    actor->set_team_num(1);
+    actor->setxy(104, 104);
+    ASSERT_EQ(1u, world.oblist.size())
+        << "the actor is alone: there is no foe for the search to find";
+
+    // Every scripted draw is 1, so the arm is pinned without depending on how
+    // many draws the pre-switch housekeeping makes: next(5) != 0 skips the
+    // special roll, next(5) != 0 skips the act_random roll (so the 4-of-5
+    // search arm runs), next(2) != 0 skips the find_far_foe retry, and
+    // try_command's two next(3) unit-step rolls both yield 1 - 1 == 0.
+    ScopedSimRandom search_rng({1, 1, 1, 1, 1, 1, 1, 1});
+    ready_to_act(actor, ACT_RANDOM, FACE_UP);
+
+    ASSERT_TRUE(actor->act())
+        << "the 4-of-5 search arm returns 1 whether or not it found a foe";
+    ASSERT_EQ(nullptr, actor->foe())
+        << "an empty world leaves the searcher with no foe at all";
+
+    const QueuedCommand queued = queued_command(actor);
+    ASSERT_EQ(COMMAND_WALK, queued.type)
+        << "COMMAND_RANDOM_WALK is translated into a COMMAND_WALK by try_command";
+    ASSERT_EQ(20, queued.count)
+        << "the foe-less random walk carries a 20-tick budget";
+    // add_command's zero-vector rule: a COMMAND_WALK rolled as (0, 0) would
+    // stand still forever, so it is rewritten to (1, 1).
+    ASSERT_EQ(1, queued.com1)
+        << "a (0,0) random walk is rewritten to a real step on x";
+    ASSERT_EQ(1, queued.com2)
+        << "a (0,0) random walk is rewritten to a real step on y";
+    ASSERT_EQ(ACT_RANDOM, static_cast<int>(actor->act_type()))
+        << "a fruitless search never changes the act type";
+
+    world.delete_objects();
 }
 
 
@@ -1438,9 +1521,12 @@ TEST(WalkerCoreMore, walker_round8_death_obmap_cleanup_and_act_control_fallthrou
     w->set_ani_type(ANI_WALK);
     w->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(w->act()) << "ACT_CONTROL path should return true";
-    ASSERT_TRUE(w->busy() <= 1.0f) << "act should decrement busy when positive";
-    ASSERT_EQ(0, (int)w->attack_lunge()) << "act should clamp attack_lunge to zero";
-    ASSERT_EQ(0, (int)w->hit_recoil()) << "act should clamp hit_recoil to zero";
+    ASSERT_FLOAT_EQ(1.0f, w->busy())
+        << "act burns exactly one tick of the firing delay (2.0 - 1.0)";
+    ASSERT_FLOAT_EQ(0.0f, w->attack_lunge())
+        << "0.2 - 0.4 would go negative, so act clamps attack_lunge to exactly 0";
+    ASSERT_FLOAT_EQ(0.0f, w->hit_recoil())
+        << "0.2 - 0.6 would go negative, so act clamps hit_recoil to exactly 0";
 
     // death() must unregister the corpse from the collision map BEFORE anything
     // else: leaving it registered is the stale-pointer bug the branch exists
