@@ -39,6 +39,42 @@ TEST(GuyCalcs, calculate_exp_level_3)
 }
 
 
+// The XP ladder documented in the live half of the comment block in
+// src/gameplay/guy.cpp (calculate_exp): levels 1..10 and the step law that
+// makes the curve quadratic rather than the "about 10000 per level" the
+// superseded 2013 table claims. Levels 4-9 are pinned nowhere else, so any
+// retune of the 8000/2000/4000 terms silently re-prices hiring, training,
+// the results-screen XP bar and save-load re-levelling unless this fails.
+TEST(GuyCalcs, calculate_exp_ladder_matches_the_documented_table)
+{
+    static constexpr int kLadder[] = {
+        0,        // level 1
+        10000,    // level 2
+        26000,    // level 3
+        48000,    // level 4
+        76000,    // level 5
+        110000,   // level 6
+        150000,   // level 7
+        196000,   // level 8
+        248000,   // level 9
+        306000,   // level 10
+    };
+
+    for (int level = 1; level <= 10; ++level) {
+        ASSERT_EQ(kLadder[level - 1], (int)calculate_exp(level))
+            << "level " << level << " threshold must match the ladder documented in guy.cpp";
+    }
+
+    // step(L) = calculate_exp(L) - calculate_exp(L-1) = 6000*L - 2000.
+    for (int level = 2; level <= 10; ++level) {
+        const int step = (int)calculate_exp(level) - (int)calculate_exp(level - 1);
+        ASSERT_EQ(6000 * level - 2000, step)
+            << "the level-" << level << " step must cost exactly 6000 more than the level-"
+            << (level - 1) << " step";
+    }
+}
+
+
 TEST(GuyCalcs, calculate_exp_monotonic_extended)
 {
     for (int i = 1; i < 20; i++) {
