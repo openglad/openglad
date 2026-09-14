@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+#include <functional>
+
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -50,9 +52,11 @@ bool read_file(const std::filesystem::path& path, std::string& out)
     return true;
 }
 
-void run_one_scenario(const og::parity::ScenarioSpec& spec)
+void run_one_scenario(const og::parity::ScenarioSpec& spec,
+                     const std::function<void(GameWorld&)>& observe_final_world = {})
 {
-    const og::parity::RunOutcome outcome = og::parity::run_scenario(spec);
+    const og::parity::RunOutcome outcome =
+        og::parity::run_scenario(spec, observe_final_world);
     // An unloaded level still dumps — as an empty arena — so a broken PhysFS
     // search path used to read as every golden drifting at once. Say what
     // actually happened before comparing anything.
@@ -219,7 +223,9 @@ OG_PARITY_TEST(exit_trigger_scen9302)
 OG_PARITY_TEST(tick_cadence_scen9301)
 OG_PARITY_TEST(rng_seed_stable_scen99)
 OG_PARITY_TEST(scripted_input_scen9301)
-OG_PARITY_TEST(snapshot_dirty_bits_scen9301)
+// snapshot_dirty_bits_scen9301 is hand-written below: the canary measures
+// a row by running `Parity.<scenario_id>` and nothing else, so the row's
+// own test has to BE the dirty-bit check, not just the dump compare.
 OG_PARITY_TEST(z_stair_up_scen9301)
 OG_PARITY_TEST(z_fall_through_air_scen9301)
 OG_PARITY_TEST(z_fall_two_story_scen9301)
@@ -600,13 +606,14 @@ TEST(Parity, treasure_exit_open_prompt_facts)
         << "treasure_exit_open_prompt_scen99 facts failed: " << facts.message;
 }
 
-// Subsystem 12, pinned as the invariant its name promises: a dirty-bit DELTA
-// merged over a keyframe baseline must reproduce exactly the state a full
-// keyframe capture of the same world produces. Nothing else under
-// tests/parity/ builds a snapshot, so without this the row was 50 ticks of an
-// empty arena compared against itself — true for every possible break of the
-// snapshot path.
-TEST(Parity, snapshot_dirty_bits_delta_merge_matches_a_full_capture)
+// Subsystem 12, hand-written so that the row's OWN test — the one the
+// mutation canary runs as `Parity.snapshot_dirty_bits_scen9301` — carries the
+// rule the row is named for. It does both halves: run_one_scenario's dump
+// compare (the Invariant determinism arm plus the facts), and the dirty-bit
+// invariant itself — a DELTA captured over a keyframe baseline, merged by
+// apply_delta, must reproduce exactly what a full keyframe capture of the
+// same world produces. Nothing else under tests/parity/ builds a snapshot.
+TEST(Parity, snapshot_dirty_bits_scen9301)
 {
     const og::parity::ScenarioSpec* spec =
         find_scenario("snapshot_dirty_bits_scen9301");
@@ -620,32 +627,29 @@ TEST(Parity, snapshot_dirty_bits_delta_merge_matches_a_full_capture)
     std::uint32_t merged_hash = 0;
     std::uint32_t full_hash = 0;
 
-    const og::parity::RunOutcome outcome = og::parity::run_scenario(
-        *spec, [&](GameWorld& world) {
-            og::sim::WorldSnapshot baseline =
-                og::sim::capture_keyframe_snapshot(world);
-            baseline_entities = baseline.oblist.size();
+    run_one_scenario(*spec, [&](GameWorld& world) {
+        og::sim::WorldSnapshot baseline =
+            og::sim::capture_keyframe_snapshot(world);
+        baseline_entities = baseline.oblist.size();
 
-            world.tick();
+        world.tick();
 
-            const og::sim::WorldSnapshot delta = og::sim::capture_snapshot(world);
-            og::sim::apply_delta(baseline, delta);
-            merged_entities = baseline.oblist.size();
-            merged_hash = og::sim::compute_snapshot_hash(baseline);
+        const og::sim::WorldSnapshot delta = og::sim::capture_snapshot(world);
+        og::sim::apply_delta(baseline, delta);
+        merged_entities = baseline.oblist.size();
+        merged_hash = og::sim::compute_snapshot_hash(baseline);
 
-            const og::sim::WorldSnapshot full =
-                og::sim::capture_keyframe_snapshot(world);
-            full_entities = full.oblist.size();
-            full_hash = og::sim::compute_snapshot_hash(full);
-            observed = true;
-        });
+        const og::sim::WorldSnapshot full =
+            og::sim::capture_keyframe_snapshot(world);
+        full_entities = full.oblist.size();
+        full_hash = og::sim::compute_snapshot_hash(full);
+        observed = true;
+    });
 
     ASSERT_TRUE(observed) << "the run never reached the observation hook";
     // The arena must be populated, or the merge invariant is vacuous.
-    ASSERT_EQ(2u, outcome.dump.walkers.size())
-        << "the row must run two spawned soldiers, not an empty arena";
     ASSERT_EQ(2u, baseline_entities)
-        << "the keyframe baseline must carry both live entities";
+        << "the row must run two spawned soldiers, not an empty arena";
     EXPECT_EQ(full_entities, merged_entities)
         << "merging the dirty-bit delta must keep every live entity — a "
            "zeroed dirty mask is apply_delta's REMOVAL sentinel";

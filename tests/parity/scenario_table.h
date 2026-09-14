@@ -1200,19 +1200,16 @@ inline constexpr Mutation kMut_exit_neuter = {
     "Zeroes the east/west step inside walker::walkstep. The K_RIGHT soldier remains at its spawn xpos and never reaches the exit pad, so WalkerPositionMoved(SOLDIER,623,224) flips."
 };
 
-// Stays on the determinism anchor on purpose. The canary measures a row by
-// running `Parity.<scenario_id>` and nothing else, so a pin moved onto
-// world_snapshot.cpp's dirty-mask capture would leave THIS row green (the
-// Invariant arm re-runs the dumper; it never builds a snapshot) — a pin with
-// no teeth. The dirty-bit rule itself is pinned by
-// Parity.snapshot_dirty_bits_delta_merge_matches_a_full_capture, which goes
-// red for `snapshot.dirty_mask[i] = 0;`.
+// Points at the dirty-bit capture itself, which is what the row is named for:
+// TEST(Parity, snapshot_dirty_bits_scen9301) is hand-written and does the
+// keyframe + delta merge, so the canary's per-row `Parity.<scenario_id>`
+// filter sees this break.
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/game_world.cpp", 1692,
-    "level_done = 2;",
-    "level_done = []{ static int _n = 0; return _n++; }();",
-    "Uses a static-counter level_done assignment so successive run_scenario() captures differ. The value flows into the snapshot and breaks dual-capture byte equality, flipping the Invariant determinism check.",
-    "    ending = 0;"
+    "src/gameplay/world_snapshot.cpp", 2466,
+    "snapshot.dirty_mask[i] = entity.dirty_mask_word(i);",
+    "snapshot.dirty_mask[i] = 0;",
+    "Captures an all-zero dirty mask for every entity of a non-keyframe snapshot. A zero mask is apply_delta's REMOVAL sentinel, so merging the delta over the keyframe baseline drops every live entity and the merged snapshot no longer matches a full capture.",
+    "        for (std::size_t i = 0; i < og::sim::kEntitySnapshotDirtyMaskWords; ++i)"
 };
 
 // Per-special mutations. Each one points at the named family's

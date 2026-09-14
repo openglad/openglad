@@ -16,7 +16,9 @@
 
 #include <atomic>
 #include <cstring>
+#include <format>
 #include <map>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <vector>
@@ -222,6 +224,25 @@ int count_fade_between_traces()
 }
 
 
+// The results panel's pages, rows and totals are drawn text; the TESTING
+// traces placed at those draw sites are their only observable, so this counts
+// the ones that match a substring.
+int count_result_traces(const char* substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int found = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "results" &&
+            entry.message.find(substring) != std::string::npos)
+        {
+            ++found;
+        }
+    }
+    return found;
+}
+
+
 // Every button press the results loop CONSUMES answers with SOUND_BOW
 // (results_screen.cpp, the do_ok/do_retry/do_overview/do_troops arms), so a
 // counting soundob is the free proof that an injected click landed on a
@@ -279,11 +300,16 @@ struct ScopedBowCounter
 
 } // namespace
 
-// The OVERVIEW/TROOPS tab clicks and the OK click must each be consumed by a
-// results-panel button, and OK — not the injector's failsafe — must be what
-// ends the loop. #237 ownership rides along: the panel is a context switch,
-// so it owns exactly three fades and leaves a black window behind.
-TEST(ResultsScreenFullUi, overview_and_troops_clicks_land_and_ok_click_exits)
+// A click in troops_rect selects the TROOPS page (mode = 1) and a click in
+// overview_rect selects the OVERVIEW page (mode = 0) — the two draw different
+// pages, and which one a press selected is what the "page mode=N" trace at
+// each handler reports. The injector presses TROOPS, OVERVIEW three times and
+// TROOPS again, so the panel must report exactly two mode=1 and three mode=0
+// selections; the bow counter cannot tell the two tabs apart. OK — not the
+// injector's failsafe — must be what ends the loop. #237 ownership rides
+// along: the panel is a context switch, so it owns exactly three fades and
+// leaves a black window behind.
+TEST(ResultsScreenFullUi, overview_and_troops_clicks_select_their_page)
 {
     CanvasRoutingGuard canvas_guard;
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
@@ -398,6 +424,11 @@ TEST(ResultsScreenFullUi, overview_and_troops_clicks_land_and_ok_click_exits)
     EXPECT_EQ(6, bows)
         << "each injected press (TROOPS, OVERVIEW x3, TROOPS, OK) must be "
            "consumed by a results button, not fall between the rects";
+    EXPECT_EQ(2, count_result_traces("page mode=1"))
+        << "the two TROOPS presses must each select the troops page";
+    EXPECT_EQ(3, count_result_traces("page mode=0"))
+        << "the three OVERVIEW presses must each select the overview page — "
+           "a tab handler that no longer writes its page still plays its bow";
     EXPECT_TRUE(trace_contains("results", "exit ok_click"))
         << "the OK button is what ends the panel";
     EXPECT_FALSE(trace_contains("results", "exit world_end"))
@@ -416,11 +447,12 @@ TEST(ResultsScreenFullUi, overview_and_troops_clicks_land_and_ok_click_exits)
 }
 
 
-// The TROOPS tab press and the OK press must both be consumed by a button,
+// The TROOPS tab press must SELECT the troops page (mode = 1, reported by the
+// "page mode=N" trace at the handler), the page must then draw troop rows,
 // the wheel events must be drained by the loop's scroll accumulator
 // (results_screen.cpp `scroll -= get_and_reset_scroll_amount()`), and OK —
 // not the failsafe — must end the panel.
-TEST(ResultsScreenFullUi, troop_scroll_clicks_and_wheel_are_consumed_by_the_panel)
+TEST(ResultsScreenFullUi, troops_press_opens_the_troop_page_and_drains_the_wheel)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -511,6 +543,12 @@ TEST(ResultsScreenFullUi, troop_scroll_clicks_and_wheel_are_consumed_by_the_pane
     ASSERT_TRUE(!retry) << "scrolling and OK should not request retry";
     EXPECT_EQ(2, bows)
         << "the TROOPS press and the OK press must both land on a button";
+    EXPECT_EQ(1, count_result_traces("page mode=1"))
+        << "the single TROOPS press must select the troops page";
+    EXPECT_EQ(0, count_result_traces("page mode=0"))
+        << "nothing in this flow presses OVERVIEW";
+    EXPECT_GT(count_result_traces("troop_row Troop0 "), 0)
+        << "the troops page must actually draw its rows";
     EXPECT_EQ(0, get_and_reset_scroll_amount())
         << "the panel loop must have drained every injected wheel event";
     EXPECT_TRUE(trace_contains("results", "exit ok_click"))
@@ -519,12 +557,15 @@ TEST(ResultsScreenFullUi, troop_scroll_clicks_and_wheel_are_consumed_by_the_pane
         << "the injector's world().end failsafe must never be the exit";
 }
 
-// The defeat overview prints "<defeated> of <total> Foes Defeated", where
-// both halves come from get_num_foes() — living, undead walkers whose team is
-// not the viewer's — counted over the live level and over a freshly loaded
-// copy of the same level. The drawn string has no test seam; what is pinned
-// here is that counting rule by value, plus the OK exit.
-TEST(ResultsScreenFullUi, defeat_overview_counts_foes_and_ok_click_exits)
+// The defeat overview prints "<defeated> of <total> Foes Defeated": total is
+// get_num_foes() over a FRESHLY LOADED copy of the level, defeated is that
+// total minus get_num_foes() over the LIVE level, and only the ending != 0
+// arm prints the total at all (the victory arm prints the defeated count
+// alone). The drawn line is text, so the "overview_foes" trace at each arm is
+// its observable; this test pins the whole traced triple for a defeat, after
+// planting three extra live foes so a total-only or live-only reader is off
+// by exactly those three. The counting rule itself is pinned by value first.
+TEST(ResultsScreenFullUi, defeat_overview_reports_defeated_of_total_foes)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -563,6 +604,35 @@ TEST(ResultsScreenFullUi, defeat_overview_counts_foes_and_ok_click_exits)
             << "a viewer on a third team counts every other living walker";
     }
 
+    // The live world carries whatever earlier cases left in it, so the two
+    // inputs of the overview line are measured the way results_screen
+    // measures them — live level for what is LEFT, a fresh load of the same
+    // level for the TOTAL — and then three extra foes are planted, which must
+    // move "defeated" down by exactly three.
+    screen& live = *og::runtime::current_session->myscreen_;
+    const short my_team = live.save_data.my_team;
+    const int live_foes_before = get_num_foes(live.level_runtime_data(), my_team);
+    int fresh_total = 0;
+    {
+        LevelRuntimeData original(live.level_runtime_data().world().id);
+        original.load();
+        fresh_total = get_num_foes(original, my_team);
+    }
+
+    std::vector<walker*> planted;
+    for (int i = 0; i < 3; ++i)
+    {
+        walker* extra = live.level_runtime_data().world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, extra) << "expected a planted foe for the overview count";
+        extra->set_team_num(static_cast<unsigned char>(my_team + 1));
+        planted.push_back(extra);
+    }
+    ASSERT_EQ(live_foes_before + 3, get_num_foes(live.level_runtime_data(), my_team))
+        << "the three planted foes must be visible to the live count";
+    const std::string expected_foe_line = std::format(
+        "overview_foes ending=1 line={} of {} Foes",
+        fresh_total - (live_foes_before + 3), fresh_total);
+
     results_screen_testing_set_force_full(true);
 
     int bows = 0;
@@ -583,10 +653,17 @@ TEST(ResultsScreenFullUi, defeat_overview_counts_foes_and_ok_click_exits)
     }
 
     results_screen_testing_set_force_full(false);
+    for (walker* extra : planted)
+        live.level_runtime_data().world().remove_ob(extra);
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
     ASSERT_TRUE(!retry) << "defeat OK path should not request retry";
     EXPECT_EQ(1, bows) << "the OK press must land on the OK button";
+    EXPECT_TRUE(trace_contains("results", expected_foe_line.c_str()))
+        << "a defeat overview must print <total - live> of <total> foes; "
+           "expected \"" << expected_foe_line << "\"";
+    EXPECT_EQ(0, count_result_traces("overview_foes ending=0"))
+        << "a defeat must not take the victory arm's defeated-only line";
     EXPECT_TRUE(trace_contains("results", "exit ok_click"))
         << "the OK button is what ends the defeat panel";
     EXPECT_FALSE(trace_contains("results", "exit world_end"))
@@ -672,11 +749,14 @@ TEST(ResultsScreenFullUi, networked_results_suppress_local_retry)
 }
 
 // Re-winning a level that is already in completed_levels must pay no time
-// bonus (results_screen.cpp: every bonuscash[i] and allbonuscash are forced
-// to 0, which suppresses the "+ N Time Bonus" line). The fixture puts a
-// PAYABLE bonus on the table first — a level tick well under the limit — so
-// the win genuinely enters the zeroing arm, and pins the OK exit.
-TEST(ResultsScreenFullUi, completed_victory_enters_the_already_won_bonus_arm)
+// bonus: results_screen forces every bonuscash[i] and allbonuscash to 0,
+// which suppresses the "+ N Time Bonus" line. allbonuscash is a local that
+// only leaves the function as drawn text, so the "time_bonus total=U
+// completed=D" trace taken right after the zeroing arm is its observable.
+// Both legs run on the SAME fixture — a clock that would pay 280 — so the
+// already-won run must report total=0 and the identical un-completed run
+// must report total=280; a reader that always zeroes fails the second leg.
+TEST(ResultsScreenFullUi, completed_victory_zeroes_the_time_bonus)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -729,10 +809,47 @@ TEST(ResultsScreenFullUi, completed_victory_enters_the_already_won_bonus_arm)
 
     ASSERT_TRUE(!retry) << "completed victory OK path should not request retry";
     EXPECT_EQ(1, bows) << "the OK press must land on the OK button";
+    EXPECT_TRUE(trace_contains("results", "time_bonus total=0 completed=1"))
+        << "a level already in completed_levels pays no time bonus";
     EXPECT_TRUE(trace_contains("results", "exit ok_click"))
         << "the OK button is what ends the panel";
     EXPECT_FALSE(trace_contains("results", "exit world_end"))
         << "the injector's world().end failsafe must never be the exit";
+
+    // Positive control on the identical fixture: with the level no longer
+    // completed the same clock must pay its 280, so "always zero" is not a
+    // passing reading of the rule either.
+    screen_ref.save_data.completed_levels.clear();
+    ASSERT_FALSE(screen_ref.save_data.is_level_completed(screen_ref.save_data.scen_num))
+        << "the control leg must be a first win";
+    ASSERT_EQ(280u, get_time_bonus(0)) << "the control leg keeps the same clock";
+    screen_ref.world().end = 0;
+    results_screen_testing_set_force_full(true);
+
+    int control_bows = 0;
+    bool control_retry = true;
+    {
+        ScopedBowCounter clicks;
+        ResultsThreadState st{};
+        SDL_Thread* thread = SDL_CreateThread(results_ui_ok_injector, "results_first_win_ok_injector", &st);
+        ASSERT_TRUE(thread != nullptr) << "failed to create control OK injector thread";
+
+        trace_clear();
+        control_retry = results_screen(0, 2, before, after);
+
+        int rc = 0;
+        SDL_WaitThread(thread, &rc);
+        control_bows = clicks.bows();
+        ASSERT_TRUE(st.started && st.finished) << "control OK injector should run";
+    }
+
+    results_screen_testing_set_force_full(false);
+    og::runtime::current_session->myscreen_->world().end = saved_end;
+
+    EXPECT_FALSE(control_retry) << "the control OK path should not request retry";
+    EXPECT_EQ(1, control_bows) << "the control OK press must land on the OK button";
+    EXPECT_TRUE(trace_contains("results", "time_bonus total=280 completed=0"))
+        << "a first win on the same clock must be paid its 280 time bonus";
     screen_ref.save_data.completed_levels.clear();
 }
 
@@ -1000,12 +1117,15 @@ TEST(ResultsScreenFullUi, classic_mvp_ignores_foreign_company_team)
     screen_ref.world().end = saved_end;
 }
 
-// The TROOPS presses and the OK press must each be consumed by a panel
-// button, and OK must be what ends the loop — the troop page's own rows
-// (a level-up's gained special, a negative XP gain) are text-only and have
-// no test seam, so what is pinned here is that the page was actually opened
-// and dismissed by the clicks this test injects.
-TEST(ResultsScreenFullUi, troop_detail_tab_presses_land_and_ok_click_exits)
+// The TROOPS page draws one row per troop: a troop whose after-exp is below
+// its before-exp shows a NEGATIVE XP gain (the red bar drawn leftwards), and
+// a troop that gained a level shows the special names it earned from
+// screen::special_name. Those rows are text and bars with no other seam, so
+// the per-drawn-row "troop_row <name> xp=<+/-N> special=<name>" trace is what
+// is pinned here: Bruise (level 5 -> 4) must report a negative gain and Glyph
+// (level 3 -> 4) must report the Arcane Burst it gained. OK — not the
+// injector's failsafe — must end the page.
+TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -1097,6 +1217,18 @@ TEST(ResultsScreenFullUi, troop_detail_tab_presses_land_and_ok_click_exits)
     ASSERT_TRUE(!retry) << "troop detail OK path should not request retry";
     EXPECT_EQ(5, bows)
         << "four TROOPS presses and the OK press must all land on a button";
+    EXPECT_EQ(4, count_result_traces("page mode=1"))
+        << "each TROOPS press must select the troops page";
+    EXPECT_GT(count_result_traces("troop_row Bruise xp=-"), 0)
+        << "a troop that fell from level 5 to level 4 must render a NEGATIVE "
+           "XP gain, not its absolute value";
+    EXPECT_EQ(0, count_result_traces("troop_row Bruise xp=+"))
+        << "the lost level must never read as a gain";
+    EXPECT_GT(count_result_traces("troop_row Glyph xp=+"), 0)
+        << "the level-up troop must render a positive XP gain";
+    EXPECT_GT(count_result_traces("special=Arcane Burst"), 0)
+        << "a gained level must name the special it earned, read from "
+           "screen::special_name[family][slot]";
     EXPECT_TRUE(trace_contains("results", "exit ok_click"))
         << "the OK button is what ends the troop page";
     EXPECT_FALSE(trace_contains("results", "exit world_end"))

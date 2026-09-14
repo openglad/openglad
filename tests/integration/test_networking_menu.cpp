@@ -1,5 +1,6 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -820,6 +821,12 @@ struct NetworkingEmptyRoomListState
     bool refresh_ran = false;
     bool no_room_rows_appeared = false;
     bool returned_to_main_menu = false;
+    // Legacy-screen frames drawn after the empty result arrived. The
+    // networking screen runs its own loop, so wait_for_menu_frames can never
+    // be satisfied inside it; og::input_native::yield_count() counts the
+    // loop's own per-frame sleep_ms instead (CLAUDE.md: a screen that is not
+    // engine-hosted has its own oracle).
+    unsigned long settle_frames = 0;
     // Counts the bridge's list_relay_rooms calls; the empty row set only
     // means anything once a discovery request has actually been made.
     std::atomic<int>* list_calls = nullptr;
@@ -1039,9 +1046,18 @@ int networking_empty_room_list_injector(void* data)
     }
     if (!state->refresh_ran)
         fprintf(stderr, "  [test] the room refresh never called the bridge\n");
-    // Bounded: if this screen ever stops being engine-hosted the settle
-    // still ends, and the row read below is what the test judges.
-    wait_for_menu_frames(2, 1000);
+    // Settle on the LEGACY loop's own frames: this screen is not engine
+    // hosted, so wait_for_menu_frames would only ever time out here. Each
+    // networking frame ends in og::input_native::sleep_ms, so two more yields
+    // are two more frames drawn with the empty result in hand.
+    const unsigned long yields_before = og::input_native::yield_count();
+    const Uint64 settle_deadline = SDL_GetTicks() + 1000;
+    while (SDL_GetTicks() < settle_deadline &&
+           og::input_native::yield_count() < yields_before + 2)
+    {
+        SDL_Delay(5);
+    }
+    state->settle_frames = og::input_native::yield_count() - yields_before;
     state->no_room_rows_appeared = !has_interactable("network_room_0");
 
     if (has_interactable("network_back"))
@@ -1592,6 +1608,9 @@ TEST(NetworkingMenu, empty_room_list_comes_from_a_refresh_that_ran)
            "empty room list that was never requested is not an empty result";
     EXPECT_GE(list_calls.load(), 1)
         << "the refresh must reach the bridge's list_relay_rooms fallback";
+    EXPECT_GE(state.settle_frames, 2u)
+        << "the legacy networking loop must have drawn at least two more "
+           "frames with the empty result before the rows were read";
     ASSERT_TRUE(state.no_room_rows_appeared)
         << "a successful EMPTY result draws no ACTIVE GAMES rows";
     ASSERT_TRUE(state.returned_to_main_menu);
