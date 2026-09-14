@@ -41,18 +41,6 @@ bool pile_holds(const std::list<walker*>& cell, const walker* w)
 
 } // namespace
 
-TEST(SimEntity, default_construction)
-{
-    og::sim::SimEntity e;
-    ASSERT_TRUE(e.xpos() == 0);
-    ASSERT_TRUE(e.ypos() == 0);
-    ASSERT_TRUE(e.entity_id() == 0);
-    ASSERT_TRUE(e.dead() == 0);
-    ASSERT_TRUE(e.user() == -1);
-    ASSERT_TRUE(e.team_num() == 0);
-    ASSERT_TRUE(e.real_team_num() == 255);
-}
-
 // Every position/size setter stores the value AND marks its dirty bit: the
 // delta writer ships only marked fields (world_snapshot.cpp copies
 // dirty_mask_word() into the entity snapshot), so a setter that forgets its
@@ -162,7 +150,12 @@ TEST(SimEntity, state_flags_store_and_mark_their_dirty_bits)
         << "dirty bits are per field — set_dead must not mark FLIGHT_LEFT";
 }
 
-TEST(SimEntity, event_log_binding)
+// The context is the CHANNEL sim code pushes through: every sound, banner and
+// redraw request in gameplay is `current_game->sim_events->push(...)`, and the
+// runtime drains the log it bound. So the pins read the BOUND log directly —
+// a push that came back out of current_game->sim_events would be satisfied by
+// a context bound to any log at all, including one nobody drains.
+TEST(SimEntity, event_log_binding_routes_pushes_to_the_bound_log)
 {
     GameWorld world(7);
     GameplayContext game_ctx;
@@ -170,19 +163,30 @@ TEST(SimEntity, event_log_binding)
 
     og::sim::SimEventLog log;
     game_ctx.sim_events = &log;
+    log.current_tick_ = 9;
 
-    GameplayContext* prev = current_game;
+    GameplayContext* const prev = current_game;
     current_game = &game_ctx;
 
-    ASSERT_TRUE(current_game != nullptr);
-    ASSERT_TRUE(current_game->world == &world);
-    ASSERT_TRUE(current_game->sim_events == &log);
-
-    current_game->sim_events->push(og::sim::EventKind::PlaySound, 42);
-    ASSERT_TRUE(current_game->sim_events->size() == 1);
-    ASSERT_TRUE(current_game->sim_events->events()[0].a == 42);
-
+    ASSERT_NE(nullptr, current_game) << "the context must be installed";
+    current_game->sim_events->push(og::sim::EventKind::PlaySound, 42, 7);
+    current_game->sim_events->push_notification("ARENA", 60, 2);
     current_game = prev;
+
+    ASSERT_EQ(2u, log.size())
+        << "both pushes must land in the log the context bound, not elsewhere";
+    EXPECT_EQ(og::sim::EventKind::PlaySound, log.events()[0].kind);
+    EXPECT_EQ(42u, log.events()[0].a) << "the sound id rides in a";
+    EXPECT_EQ(7u, log.events()[0].b);
+    EXPECT_EQ(9u, log.events()[0].tick)
+        << "push stamps the log's current tick, so the drain knows the frame";
+    EXPECT_EQ(-1, log.events()[0].target_player)
+        << "an unaddressed event broadcasts to every view";
+    EXPECT_EQ(og::sim::EventKind::Notification, log.events()[1].kind);
+    EXPECT_EQ("ARENA", log.events()[1].text) << "the banner text rides along";
+    EXPECT_EQ(60u, log.events()[1].a) << "the duration override rides in a";
+    EXPECT_EQ(2, log.events()[1].target_player)
+        << "a seat-addressed banner keeps its addressee";
 }
 
 // ---------------------------------------------------------------------------
@@ -190,17 +194,32 @@ TEST(SimEntity, event_log_binding)
 // Verify walker can be created without SDL, without pixieN rendering data.
 // ---------------------------------------------------------------------------
 
-TEST(SimEntity, walker_headless_construction)
+// The headless contract, and the identity sentinels the sim reads off a
+// brand-new entity: a walker built with no PixieData carries NO render
+// component at all (that is what lets the dedicated server and every unit
+// group link gameplay without SDL), and it comes up as an UNOWNED NPC —
+// user() == -1 is the "npc" test in walker_movement.cpp and the
+// "seat may claim this body" test in sim_input_handler/sim_control_policy,
+// while real_team_num() == 255 is the "not a charmed foe" sentinel
+// (walker.cpp). A fresh entity defaulting to user 0 / team 0 would hand
+// player 0 control of every object the level spawns.
+TEST(SimEntity, walker_headless_construction_is_an_unowned_npc_with_no_render)
 {
     walker w;  // No PixieData — headless mode
 
-    ASSERT_TRUE(w.xpos() == 0);
-    ASSERT_TRUE(w.ypos() == 0);
-    ASSERT_TRUE(w.dead() == 0);
-    ASSERT_TRUE(w.user() == -1);
-    ASSERT_TRUE(!w.has_render());
-    ASSERT_TRUE(w.bmp_data() == nullptr);
-    ASSERT_TRUE(w.render_component() == nullptr);
+    EXPECT_FALSE(w.has_render())
+        << "a walker built without PixieData must stay render-free";
+    EXPECT_EQ(nullptr, w.bmp_data());
+    EXPECT_EQ(nullptr, w.render_component());
+
+    EXPECT_EQ(0, w.xpos());
+    EXPECT_EQ(0, w.ypos());
+    EXPECT_EQ(0, w.dead());
+    EXPECT_EQ(0u, w.entity_id()) << "ids are handed out by the world, not the ctor";
+    EXPECT_EQ(-1, w.user()) << "a fresh body is an NPC until a seat claims it";
+    EXPECT_EQ(0, w.team_num());
+    EXPECT_EQ(255, w.real_team_num())
+        << "255 is the 'no charm/no original team' sentinel";
 }
 
 // walker::setxy is the position AUTHORITY (walker_movement.cpp): it writes
@@ -287,15 +306,38 @@ TEST(SimEntity, sim_random_lcg_arithmetic_is_pinned)
     EXPECT_EQ(lcg_step(after_one), world.rng_.state_);
 }
 
-TEST(SimEntity, walker_headless_stats)
+// Every statistics setter routes its dirty mark to the OWNING walker
+// (statistics::mark_dirty, stats.cpp): the delta writer reads the walker's
+// mask, so a stat whose mark never reaches the owner is a hitpoint change no
+// networked mirror ever sees (the HUD bar freezes on the joiner's screen).
+TEST(SimEntity, walker_stats_route_their_dirty_marks_to_the_owning_walker)
 {
     walker w;
-    statistics* st = w.stats();
-    ASSERT_TRUE(st != nullptr);
-    st->set_hitpoints(50);
-    st->set_max_hitpoints(100);
-    ASSERT_TRUE(st->hitpoints() == 50);
-    ASSERT_TRUE(st->max_hitpoints() == 100);
+    statistics* const st = w.stats();
+    ASSERT_NE(nullptr, st) << "a headless walker still owns its statistics";
+
+    w.clear_dirty();
+    st->set_hitpoints(50.0f);
+    EXPECT_FLOAT_EQ(50.0f, st->hitpoints());
+    EXPECT_TRUE(w.is_dirty(og::dirty::BIT_HITPOINTS))
+        << "set_hitpoints must mark HITPOINTS on the owning walker";
+    EXPECT_FALSE(w.is_dirty(og::dirty::BIT_MAX_HITPOINTS))
+        << "stat marks are per field — set_hitpoints must not mark MAX";
+
+    st->set_max_hitpoints(100.0f);
+    EXPECT_FLOAT_EQ(100.0f, st->max_hitpoints());
+    EXPECT_TRUE(w.is_dirty(og::dirty::BIT_MAX_HITPOINTS))
+        << "set_max_hitpoints must mark MAX_HITPOINTS on the owner";
+
+    // adjust_* is set(current + delta), so it carries the mark too.
+    w.clear_dirty();
+    EXPECT_EQ(0u, w.dirty_mask_word(0));
+    EXPECT_EQ(0u, w.dirty_mask_word(1));
+    st->adjust_hitpoints(-20.0f);
+    EXPECT_FLOAT_EQ(30.0f, st->hitpoints())
+        << "adjust_hitpoints adds the delta to the stored value";
+    EXPECT_TRUE(w.is_dirty(og::dirty::BIT_HITPOINTS))
+        << "a damage adjustment must ship in the next delta";
 }
 
 TEST(SimEntity, walker_headless_frame_tracking)

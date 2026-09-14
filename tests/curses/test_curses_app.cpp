@@ -401,10 +401,14 @@ TEST(CursesClock, now_tracks_steady_clock_and_sleep_ms_blocks)
     og::curses::SteadyClock clock;
 
     // sleep_ms(0) is the documented no-sleep case (clock.cpp's early return).
+    // The ceiling is deliberately loose: sleep_for(0ms) returns at once too,
+    // so no tooth lives here — only a guard against a catastrophic "sleep_ms(0)
+    // parks the frame" regression. A tight wall-clock bound would buy nothing
+    // and flake on a loaded CI box.
     const std::uint64_t zero_before = clock.now_ms();
     clock.sleep_ms(0);
-    EXPECT_LT(clock.now_ms() - zero_before, 20u)
-        << "sleep_ms(0) must return without sleeping";
+    EXPECT_LT(clock.now_ms() - zero_before, 500u)
+        << "sleep_ms(0) must return without parking the frame";
 
     // sleep_ms(n) must really block: this is the pacing the level loop and the
     // lobby spend their frame budget on.

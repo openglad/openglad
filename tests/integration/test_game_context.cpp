@@ -138,9 +138,14 @@ TEST(GameContext, production_rng_stays_in_bounds_and_actually_varies)
         ASSERT_TRUE(val < 10) << "ProductionRandom::next(10) should return [0,9]";
         seen.insert(val);
     }
-    // A `next` that always returns 0 satisfies the bound. It must draw.
-    ASSERT_GE(seen.size(), 2u)
-        << "ProductionRandom::next(10) must vary across 100 draws, not return a constant";
+    // A `next` that always returns 0 satisfies the bound, and a `next` that
+    // alternates between two values satisfies "at least 2 distinct". 100 draws
+    // over 10 buckets miss more than five buckets only with probability far
+    // below any flake budget, so a real generator clears this and a degenerate
+    // one (constant, toggling, stuck low bit) does not.
+    ASSERT_GE(seen.size(), 5u)
+        << "ProductionRandom::next(10) must spread across 100 draws, not "
+           "return a constant or cycle a couple of values";
     ASSERT_EQ(0, static_cast<int>(rng.next(0))) << "ProductionRandom::next(0) should return 0";
 }
 

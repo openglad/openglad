@@ -172,8 +172,14 @@ TEST(Input, gameplay_ui_pointer_mapping_tracks_the_active_canvas_contract)
     EXPECT_FALSE(window_point_in_active_canvas(1.0f, 200.0f));
     EXPECT_TRUE(window_point_in_gameplay_ui_canvas(1.0f, 200.0f));
     const auto strip = window_to_gameplay_ui_canvas(1.0f, 200.0f);
-    EXPECT_NEAR(0.5f, strip.first, 0.6f)
+    // Exactly (px - vp.x) * 320 / vp.w with the HUD's own (0, 0, 640, 400):
+    // 1 * 320 / 640 and 200 * 200 / 400. A +-0.6 window around 0.5 accepted
+    // everything from -0.1 to 1.1, including the negative x the message
+    // claimed to rule out.
+    EXPECT_FLOAT_EQ(0.5f, strip.first)
         << "the left strip maps to the HUD's own left edge, not a negative x";
+    EXPECT_FLOAT_EQ(100.0f, strip.second)
+        << "the y maps through the HUD rectangle's own height";
 }
 
 
