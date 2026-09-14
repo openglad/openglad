@@ -450,13 +450,18 @@ inline std::int16_t lobby_next_selectable_team(
 struct LobbyState {
     LobbySettings settings;
     std::uint8_t host_player_id = 0xff;
-    // Echo of the most recent StartGame denial (protocol v8, [NET-R3]):
-    // 0 = none, else a StartDenialReason value. Recorded by the LobbyServer
-    // so every peer (including a remote host elected on a dedicated server)
-    // can render the precise reason instead of a poll timeout.
+    // Recipient-specific echo of the most recent StartGame verdict for the
+    // peer receiving this state (protocol v8, [NET-R3]): 0 = none, else a
+    // StartDenialReason value. Like last_join_request_id this is filled in
+    // per recipient — the LobbyServer records the verdict in the REQUESTER's
+    // peer state and echoes it to that peer alone, so another machine's
+    // denial can never appear to answer this peer's request. The canonical
+    // server state keeps this zero. A remote host elected on a dedicated
+    // server reads its own reason here instead of waiting for a poll timeout.
     std::uint8_t last_start_denial = 0;
-    // Correlates that echo with the host's latest StartGame request (protocol
-    // v9). Zero means no correlated request has been processed.
+    // Correlates that echo with the recipient's own latest StartGame request
+    // (protocol v9). Zero means no correlated request has been processed for
+    // this peer; the canonical server state keeps it zero.
     std::uint32_t last_start_request_id = 0;
     std::vector<LobbyPlayer> players;
     // Recipient-specific ownership proof (protocol v9). The server fills this

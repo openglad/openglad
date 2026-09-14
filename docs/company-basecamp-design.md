@@ -247,7 +247,11 @@ ready without supplying a hero. A machine with no active seat remains
 connected as a spectator, has no **READY** action, and does not consume player
 capacity or a gameplay binding; any **ADD PLAYER** slot reactivates its dormant
 stable seat token. Start validation checks participating machines and returns a specific
-denial when the roster cannot satisfy the requested local views.
+denial when the roster cannot satisfy the requested local views. Every start
+request is answered, and the denial is echoed to the requesting machine only
+(never to the rest of the lobby), so a machine can only ever read the verdict
+for its own request; a start request from a machine that is not the host is
+denied `NotHost`.
 
 ### 4.4 Ownership and controls
 

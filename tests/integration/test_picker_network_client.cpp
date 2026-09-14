@@ -11576,7 +11576,10 @@ TEST(PickerNetworkClient,
         << "answered (denied), not abandoned";
     EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
               elected_host->last_start_denial());
-    EXPECT_EQ(1u, lobby_server.state().last_start_request_id);
+    // The verdict echo is recipient-specific, so the server's canonical state
+    // no longer carries the answered id; the correlation is pinned on the
+    // client instead — start_request_pending() only drops when the echo's
+    // last_start_request_id equals THIS client's pending id (1).
 
     // (1) The host goes silent: its socket stays open (nothing is torn
     // down), but lobby_server is no longer pumped, so the request gets
@@ -11642,9 +11645,10 @@ TEST(PickerNetworkClient,
         << "answered, not abandoned";
     EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
               elected_host->last_start_denial());
-    EXPECT_EQ(3u, lobby_server.state().last_start_request_id)
-        << "the request the server answered is the fresh GO's (id 3), not "
-           "the abandoned one (id 2)";
+    // The request the server answered is the fresh GO's (id 3), not the
+    // abandoned one (id 2): the id-2 echo the server also emits when it
+    // catches up cannot release this wait, because the client's matcher
+    // requires the echo's request id to equal its pending id.
     EXPECT_FALSE(g_start_game_requested);
     EXPECT_FALSE(lobby_server.consume_start_game_requested());
 }
@@ -11755,7 +11759,9 @@ TEST(PickerNetworkClient,
     EXPECT_EQ(og::ui::StartRequestOutcome::None,
               elected_host->start_request_outcome())
         << "answered (denied), not abandoned";
-    EXPECT_EQ(1u, lobby_server->state().last_start_request_id);
+    // As above: the id-1 correlation is pinned by the pending flag dropping,
+    // since the verdict echo is recipient-specific and no longer visible in
+    // the server's canonical state.
 
     // GO, then the link dies mid-wait: the server process goes away with the
     // request in flight (this is `go_menu`'s `while (pending) poll` loop).

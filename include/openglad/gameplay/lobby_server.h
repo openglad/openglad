@@ -148,6 +148,13 @@ private:
         // state rather than canonical LobbyState so another client's broadcast
         // can never appear to acknowledge this peer's in-flight declaration.
         std::uint32_t last_join_request_id = 0;
+        // Recipient-specific StartGame verdict, peer state for the same reason
+        // as last_join_request_id: another peer's echo can never appear to
+        // resolve this peer's in-flight StartGame request. The canonical
+        // LobbyState keeps both zeros; send_state/broadcast_state personalize
+        // the copy each peer receives.
+        std::uint8_t last_start_denial = 0;
+        std::uint32_t last_start_request_id = 0;
     };
 
     [[nodiscard]] std::uint8_t effective_team_mask() const noexcept;
@@ -170,7 +177,9 @@ private:
     [[nodiscard]] std::size_t remaining_team_capacity(PeerId peer_id) const noexcept;
     // Server-authoritative StartGame gate (§4.3), evaluated in order:
     //   1. local_session_ lobbies pass unconditionally (solo/split-screen GO);
-    //   2. the requester must be the elected host peer (else NotHost);
+    //   2. the requester must be the elected host peer (else NotHost — this
+    //      is the ONE implementation of the host rule, so a non-host StartGame
+    //      is answered with a NotHost echo to that requester, never dropped);
     //   3. every non-host peer with joined seats must be ready (else
     //      MachinesNotReady);
     //   4. at least one deployed character across all machines (else
@@ -178,7 +187,7 @@ private:
     //   5. the owner-injected start gate, when set, must return None (else
     //      its reason — StageFailed for a failed MatchStage).
     // On denial the lobby lock is NEVER engaged; the caller records the reason
-    // in LobbyState::last_start_denial and echoes it.
+    // in the REQUESTER's ConnectedPeerState and echoes it to that peer alone.
     [[nodiscard]] bool start_allowed(PeerId requester,
                                      StartDenialReason& reason) const noexcept;
     void rebuild_state();
