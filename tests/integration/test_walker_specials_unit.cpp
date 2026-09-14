@@ -10,6 +10,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
@@ -64,6 +65,18 @@ walker* add_marker(SpecialsFixture& fx, walker* owner, int x, int y, int life)
     return m;
 }
 
+// The world LCG (og::sim::SimRandom::next), replicated here with its own
+// literal constants so the expectations below are an INDEPENDENT oracle: a
+// blink that stopped drawing from the world stream, drew in a different
+// order, or scaled a draw differently lands somewhere else than this says.
+std::uint32_t lcg_next(std::uint32_t& state, std::uint32_t max_exclusive)
+{
+    if (max_exclusive == 0)
+        return 0;
+    state = state * 1103515245u + 12345u;
+    return (state >> 16) % max_exclusive;
+}
+
 } // namespace
 
 TEST(WalkerSpecialsUnit, walker_specials_r11_special_and_teleport_paths)
@@ -72,29 +85,75 @@ TEST(WalkerSpecialsUnit, walker_specials_r11_special_and_teleport_paths)
     living* w = add_living(fx, FAMILY_CLERIC, 0);
     ASSERT_TRUE(w != nullptr);
 
+    // Each refusal names the reason it refused for, so a gate that stopped
+    // guarding (or started guarding for the wrong reason) is visible.
+    walker::SpecialFailure why = walker::SpecialFailure::None;
     w->set_dead(1);
-    ASSERT_TRUE(!w->special());
+    ASSERT_FALSE(w->special(&why)) << "a corpse must not cast";
+    EXPECT_EQ(walker::SpecialFailure::Dead, why)
+        << "the corpse gate, not some later one, is what refused";
     w->set_dead(0);
 
     walker* weapon = fx.level.add_ob(Order::Weapon, FAMILY_ARROW);
-    ASSERT_TRUE(weapon != nullptr);
-    if (weapon) {
-        weapon->set_dead(0);
-        ASSERT_TRUE(!weapon->special());
-    }
+    ASSERT_NE(nullptr, weapon);
+    weapon->set_dead(0);
+    why = walker::SpecialFailure::None;
+    ASSERT_FALSE(weapon->special(&why)) << "a weapon has no special";
+    // A freshly created arrow carries no magic points, so the MP gate is the
+    // one that refuses it here — the order gate behind it is pinned by
+    // special_reports_why_it_refused, which pays the arrow's cost first.
+    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
+        << "the refusal names the gate that actually stopped the cast";
 
-    // marker teleport success with marker expiry (lines 86-90)
+    // Marker teleport: the blink lands CENTERED on the marker (center_on's
+    // math), spends one of the marker's lifetimes and kills it at zero.
     w->setxy(20, 20);
     walker* marker = add_marker(fx, w, 140, 140, 1);
-    ASSERT_TRUE(marker != nullptr);
+    ASSERT_NE(nullptr, marker);
+    const int expect_x = 140 + marker->sizex() / 2 - w->sizex() / 2;
+    const int expect_y = 140 + marker->sizey() / 2 - w->sizey() / 2;
     ASSERT_TRUE(w->teleport());
-    ASSERT_TRUE(marker->dead() == 1);
+    EXPECT_EQ(expect_x, static_cast<int>(w->xpos()))
+        << "the marker blink centers the caster on the marker";
+    EXPECT_EQ(expect_y, static_cast<int>(w->ypos()))
+        << "the marker blink centers the caster on the marker";
+    EXPECT_EQ(1, static_cast<int>(marker->dead()))
+        << "a one-life marker is spent by the blink that used it";
 
-    // no marker path: random passable placement
+    // No marker (the one above is spent): one world-LCG draw per axis,
+    // scaled to the grid — the caster lands on that cell's pixel origin.
+    GameWorld& world = fx.level.world();
+    world.rng_.state_ = 12345u;
+    std::uint32_t expect_state = 12345u;
+    const int cell_x = static_cast<int>(
+        lcg_next(expect_state, static_cast<std::uint32_t>(world.grid.w)));
+    const int cell_y = static_cast<int>(
+        lcg_next(expect_state, static_cast<std::uint32_t>(world.grid.h)));
     ASSERT_TRUE(w->teleport());
+    EXPECT_EQ(cell_x * GRID_SIZE, static_cast<int>(w->xpos()))
+        << "the markerless blink lands on the drawn grid cell's origin";
+    EXPECT_EQ(cell_y * GRID_SIZE, static_cast<int>(w->ypos()))
+        << "the markerless blink lands on the drawn grid cell's origin";
+    EXPECT_EQ(expect_state, world.rng_.state_)
+        << "one draw per axis and no more: a single-floor level takes no "
+           "floor draw (the byte-identical-stream gate)";
 
-    // ranged teleport success path
-    (void)w->teleport_ranged(40);
+    // Ranged hop: both axes are drawn in [-range, range) around the CURRENT
+    // position, from the same world stream.
+    world.rng_.state_ = 777u;
+    std::uint32_t ranged_state = 777u;
+    const int ranged_x =
+        static_cast<int>(lcg_next(ranged_state, 80u)) - 40 + w->xpos();
+    const int ranged_y =
+        static_cast<int>(lcg_next(ranged_state, 80u)) - 40 + w->ypos();
+    ASSERT_TRUE(w->teleport_ranged(40))
+        << "an open landing spot inside the range must be accepted";
+    EXPECT_EQ(ranged_x, static_cast<int>(w->xpos()))
+        << "teleport_ranged offsets x by next(2*range) - range";
+    EXPECT_EQ(ranged_y, static_cast<int>(w->ypos()))
+        << "teleport_ranged offsets y by next(2*range) - range";
+    EXPECT_EQ(ranged_state, world.rng_.state_)
+        << "exactly one draw per axis";
 }
 
 TEST(WalkerSpecialsUnit, walker_specials_r11_turn_undead_paths)

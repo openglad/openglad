@@ -56,17 +56,20 @@ static void expect_pane(viewscreen* vs, signed char mode, int x, int y, int w,
     EXPECT_EQ(y + h, (int)vs->endy) << what << " endy";
 }
 
+// 1p inset modes: kOnePlayerInsetX/Y[mode] (view_layout.h) inset the pane
+// symmetrically inside the 320x200 classic canvas, so the pane is
+// (ix, iy, 320-2*ix, 200-2*iy). Each mode is pinned on all four edges; the
+// width alone cannot tell a Y-axis regression from a correct layout.
 TEST_F(ViewResize, 1p_panels)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 must exist; a silent return here "
+                              "let the whole case pass on a missing pane";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     og::runtime::current_session->myscreen_->numviews = 1;
     vs->mynum = 0;
 
-    vs->resize(PREF_VIEW_PANELS);
-    ASSERT_TRUE(vs->xloc == 44) << "1p panels xloc";
-    ASSERT_TRUE(vs->xview == 232) << "1p panels xview";
+    expect_pane(vs, PREF_VIEW_PANELS, 44, 12, 232, 176, "1p PANELS");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->resize(PREF_VIEW_FULL);
@@ -76,13 +79,13 @@ TEST_F(ViewResize, 1p_panels)
 TEST_F(ViewResize, 1p_view1)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 must exist; a silent return here "
+                              "let the whole case pass on a missing pane";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     og::runtime::current_session->myscreen_->numviews = 1;
     vs->mynum = 0;
 
-    vs->resize(PREF_VIEW_1);
-    ASSERT_TRUE(vs->xview == 192) << "1p view1 xview";
+    expect_pane(vs, PREF_VIEW_1, 64, 28, 192, 144, "1p VIEW_1");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->resize(PREF_VIEW_FULL);
@@ -92,13 +95,13 @@ TEST_F(ViewResize, 1p_view1)
 TEST_F(ViewResize, 1p_view2)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 must exist; a silent return here "
+                              "let the whole case pass on a missing pane";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     og::runtime::current_session->myscreen_->numviews = 1;
     vs->mynum = 0;
 
-    vs->resize(PREF_VIEW_2);
-    ASSERT_TRUE(vs->xview == 148) << "1p view2 xview";
+    expect_pane(vs, PREF_VIEW_2, 86, 44, 148, 112, "1p VIEW_2");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->resize(PREF_VIEW_FULL);
@@ -108,13 +111,13 @@ TEST_F(ViewResize, 1p_view2)
 TEST_F(ViewResize, 1p_view3)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 must exist; a silent return here "
+                              "let the whole case pass on a missing pane";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     og::runtime::current_session->myscreen_->numviews = 1;
     vs->mynum = 0;
 
-    vs->resize(PREF_VIEW_3);
-    ASSERT_TRUE(vs->xview == 108) << "1p view3 xview";
+    expect_pane(vs, PREF_VIEW_3, 106, 60, 108, 80, "1p VIEW_3");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->resize(PREF_VIEW_FULL);
@@ -126,25 +129,18 @@ TEST_F(ViewResize, 1p_view3)
 TEST_F(ViewResize, 2p_player0_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 must exist; a silent return here "
+                              "let the whole case pass on a missing pane";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     short old_mynum = vs->mynum;
     og::runtime::current_session->myscreen_->numviews = 2;
     vs->mynum = 0;
 
     vs->resize(PREF_VIEW_FULL);
-    vs->resize(PREF_VIEW_PANELS);
-    ASSERT_TRUE(vs->xloc == 4) << "2p p0 panels xloc";
-    ASSERT_TRUE(vs->xview == 152) << "2p p0 panels xview";
-
-    vs->resize(PREF_VIEW_1);
-    ASSERT_TRUE(vs->xview == 152) << "2p p0 view1 xview";
-
-    vs->resize(PREF_VIEW_2);
-    ASSERT_TRUE(vs->xview == 152) << "2p p0 view2 xview";
-
-    vs->resize(PREF_VIEW_3);
-    ASSERT_TRUE(vs->xview == 152) << "2p p0 view3 xview";
+    expect_pane(vs, PREF_VIEW_PANELS, 4, 16, 152, 168, "2p p0 PANELS");
+    expect_pane(vs, PREF_VIEW_1, 4, 32, 152, 136, "2p p0 VIEW_1");
+    expect_pane(vs, PREF_VIEW_2, 4, 48, 152, 104, "2p p0 VIEW_2");
+    expect_pane(vs, PREF_VIEW_3, 4, 64, 152, 72, "2p p0 VIEW_3");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->mynum = old_mynum;

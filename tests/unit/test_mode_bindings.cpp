@@ -24,6 +24,7 @@
 #include "../test_game_world_fixture.h"
 #include "unit_pack_store_guard.h"
 
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -781,11 +782,12 @@ TEST(ModeBindings, spawn_spot_clear_probes_without_eating)
     ASSERT_NE(nullptr, blocker);
 
     // The whole point of the binding: it must NOT take the obmap route
-    // (query_passable / ob_pass_check), which dispatches eat_me and fires
-    // collide(). Park two things on the probed spot that the two routes
-    // disagree about — an enemy weapon (ob_pass_check collides with it and
-    // reports blocked; spawn_spot_blocked_by only blocks on door/tree/
-    // boulder weapons) and a treasure (which ob_pass_check would eat).
+    // (query_passable / ob_pass_check), which fires collide() and hands
+    // treasures to eat_me. Park two things on the probed spot that the two
+    // routes disagree about — an enemy weapon (ob_pass_check collides with
+    // it and reports blocked; spawn_spot_blocked_by only blocks on
+    // door/tree/boulder weapons) and a treasure (never a spawn blocker,
+    // and a spot the eating route would run eat_me over).
     walker* enemy_shot = fx.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_NE(nullptr, enemy_shot);
     enemy_shot->set_team_num(1);
@@ -794,7 +796,8 @@ TEST(ModeBindings, spawn_spot_clear_probes_without_eating)
     walker* drop = fx.world().add_fx_ob(Order::Treasure, FAMILY_SILVER_BAR);
     ASSERT_NE(nullptr, drop);
     drop->setxy(224, 224);
-    const std::size_t fx_before = fx.world().fxlist.size();
+    const std::uint32_t prober_id = prober->entity_id();
+    const std::uint32_t drop_id = drop->entity_id();
 
     fx.run_on_load(
         "    local w = og.oblist()[1]\n"
@@ -808,11 +811,21 @@ TEST(ModeBindings, spawn_spot_clear_probes_without_eating)
     EXPECT_TRUE(fx.logged("blocked\t0")) << fx.script_errors();
     EXPECT_TRUE(fx.logged("floored\t1"))
         << "the floor-explicit arm answers the same: " << fx.script_errors();
-    EXPECT_FALSE(drop->dead()) << "the placement probe ate the drop";
-    EXPECT_EQ(fx_before, fx.world().fxlist.size())
-        << "the placement probe consumed an fx entity";
-    EXPECT_FALSE(prober->exit_latched())
-        << "the placement probe latched a pad contact";
+
+    // run_on_load ticked the world; pointers taken before it are not
+    // guaranteed to survive, so re-find by entity id rather than reading the
+    // ones captured above.
+    ASSERT_NE(nullptr, fx.world().find_by_id(prober_id))
+        << "the prober outlives the probe";
+    ASSERT_NE(nullptr, fx.world().find_by_id(drop_id))
+        << "the probed treasure outlives the probe";
+    // NOT pinned here: "the drop was not eaten" and "nothing collided". This
+    // fixture registers no treasure family hooks, so eat_me is a no-op, and
+    // the same tick that runs on_load clears collide_ob again before it
+    // returns — both were dead negatives that no break could make fire. The
+    // `open` pin above is what separates the two routes: the enemy weapon on
+    // that spot is a collide target for ob_pass_check but not a spawn
+    // blocker, so the eating route answers 0 there where this one answers 1.
 }
 
 TEST(ModeBindings, scrub_corpse_stain_kills_nearby_drops)

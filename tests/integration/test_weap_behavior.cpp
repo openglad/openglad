@@ -540,8 +540,6 @@ TEST(WeapBehavior, weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofs
     walker* w = make_weapon(FAMILY_KNIFE);
     auto dead_living = make_living(FAMILY_SOLDIER, 1);
     ASSERT_TRUE(w && dead_living) << "weapon and dead living created";
-    if (!(w && dead_living))
-        return;
 
     dead_living->set_dead(1);
     w->set_foe(dead_living.get());
@@ -552,7 +550,11 @@ TEST(WeapBehavior, weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofs
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_TREE_M1;
     w->set_act_type(ACT_RANDOM);
 
-    (void)w->act();
+    // The return is part of the contract, not noise to discard: weap::act's
+    // ACT_RANDOM arm reports the stray weapon and returns 1. Only the
+    // unknown-act default arm returns 0, which
+    // weap_act_control_generate_guard_and_default_paths pins next door.
+    ASSERT_TRUE(w->act()) << "weap::act handles the ACT_RANDOM arm";
     ASSERT_TRUE(w->foe() == nullptr && w->leader() == nullptr) << "dead foe/leader should be cleared";
     ASSERT_TRUE(w->owner() == w) << "dead owner should be cleared then default to self";
     ASSERT_EQ(4, (int)w->lineofsight()) << "trees tile should decrement lineofsight";
@@ -568,8 +570,6 @@ TEST(WeapBehavior, weap_act_control_generate_guard_and_default_paths)
     walker* guard = make_weapon(FAMILY_KNIFE);
     walker* unknown = make_weapon(FAMILY_KNIFE);
     ASSERT_TRUE(control && gen && guard && unknown) << "weapons created";
-    if (!(control && gen && guard && unknown))
-        return;
 
     control->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(control->act()) << "ACT_CONTROL should return true";
@@ -594,8 +594,6 @@ TEST(WeapBehavior, weap_death_is_idempotent)
 {
     walker* w = make_weapon(FAMILY_KNIFE);
     ASSERT_TRUE(w != nullptr) << "weapon created";
-    if (!w)
-        return;
     w->set_dead(1);
     ASSERT_TRUE(w->death()) << "first death() call should succeed";
     ASSERT_TRUE(!w->death()) << "second death() call should short-circuit";
@@ -620,17 +618,10 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* rock_w = make_weapon(FAMILY_ROCK);
     ASSERT_TRUE(rock_w != nullptr) << "rock weapon created";
-    if (!rock_w)
-        return;
     auto* rock = static_cast<weap*>(rock_w);
 
     const WeaponFamilyDescriptor* rock_desc = get_weapon_family_descriptor(FAMILY_ROCK);
     ASSERT_TRUE(rock_desc != nullptr && og::test::has_on_death(*rock_desc)) << "rock descriptor callback exists";
-    if (!(rock_desc && og::test::has_on_death(*rock_desc)))
-    {
-        og::runtime::current_session->myscreen_->world().remove_ob(rock_w);
-        return;
-    }
 
     rock->setxy(64, 64);
     rock->set_lastx(GRID_SIZE);
@@ -705,32 +696,100 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
 }
 
 
-TEST(WeapBehavior, weapon_animate_handles_out_of_range_facing_and_cycle)
+TEST(WeapBehavior, weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
     // weap::animate() and the weapon-family on_animate callbacks index the
-    // animation table with curdir/cycle, which can arrive out of range from a
-    // snapshot. These must be bounded (facing clamp + sequence sentinel) rather
-    // than reading out of bounds. ARROW exercises the default branch; TREE and
-    // GLOW exercise the on_animate callbacks.
-    walker* arrow_w = make_weapon(FAMILY_ARROW);
-    walker* tree_w = make_weapon(FAMILY_TREE);
-    walker* glow_w = make_weapon(FAMILY_GLOW);
+    // animation table with curdir/cycle/ani_type, which can arrive out of
+    // range from a snapshot. The rule is not merely "does not crash" (a
+    // sanitizer-only oracle): an out-of-range FACING is clamped to row 0, an
+    // out-of-range CYCLE restarts the row at its first frame, and an
+    // out-of-range ani_type is clamped to the family's legal case. Each row
+    // of the probe table below carries its own first frame, so a clamp that
+    // picked any other row reads back as a different frame.
+    walker* arrow_w = make_weapon(FAMILY_ARROW);   // C++ default branch
+    walker* tree_w = make_weapon(FAMILY_TREE);     // tree_blood_on_animate
+    walker* glow_w = make_weapon(FAMILY_GLOW);     // glow_on_animate
     ASSERT_TRUE(arrow_w && tree_w && glow_w);
-    if (!(arrow_w && tree_w && glow_w))
-        return;
 
-    for (walker* w : {arrow_w, tree_w, glow_w})
+    // Each weapon gets its own 32-row table (32 rows = facing 0..7 of
+    // ani_type 0..3, so the glow pulse row exists). The row the clamp is
+    // supposed to pick holds frame 1; EVERY other row holds frame 2. So the
+    // three outcomes are distinguishable: 1 = the expected row, 2 = some
+    // other row, 0 = the animate never wrote a frame at all.
+    // (set_frame refuses a frame past the sprite's frame count, which is why
+    // the probe frames are small rather than row-numbered.)
+    constexpr int kHotFrame = 1;
+    constexpr int kColdFrame = 2;
+    // glow clamps ani_type 40 down to the pulse case (2) and indexes
+    // facing + type * NUM_FACINGS; arrow and tree clamp to type 0 / row 0.
+    const int glow_row = 2 * NUM_FACINGS;
+    static signed char probe_frames[3][32][2];
+    static const signed char* probe_rows[3][32] = {};
+    const int hot_row[3] = {0, 0, glow_row};
+    walker* const probes[3] = {arrow_w, tree_w, glow_w};
+    for (int i = 0; i < 3; ++i)
     {
-        ASSERT_GT(w->ani_count, 0) << "real weapon records its table length";
-        w->set_curdir(static_cast<char>(100));
-        w->set_cycle(static_cast<signed char>(120));
-        w->set_ani_type(static_cast<char>(40));
-        (void)w->animate(); // must not crash / read OOB (verified under sanitizers)
-        w->set_curdir(static_cast<char>(-7));
-        w->set_cycle(static_cast<signed char>(-3));
-        (void)w->animate();
+        ASSERT_GT(probes[i]->ani_count, 0) << "real weapon records its table length";
+        for (int r = 0; r < 32; ++r)
+        {
+            probe_frames[i][r][0] =
+                static_cast<signed char>(r == hot_row[i] ? kHotFrame : kColdFrame);
+            probe_frames[i][r][1] = -1;
+            probe_rows[i][r] = probe_frames[i][r];
+        }
+        probes[i]->ani = probe_rows[i];
+        probes[i]->ani_count = 32;
+    }
+
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        // Pass 0: facing/cycle far above the table. Pass 1: negative, which
+        // the C++ reads through (unsigned char) and the Lua through og.u8 —
+        // 249, still out of range, still row 0.
+        const char dir = pass == 0 ? static_cast<char>(100) : static_cast<char>(-7);
+        const signed char cyc =
+            pass == 0 ? static_cast<signed char>(120) : static_cast<signed char>(-3);
+        for (walker* w : {arrow_w, tree_w, glow_w})
+        {
+            w->set_curdir(dir);
+            w->set_cycle(cyc);
+            w->set_ani_type(static_cast<char>(40));
+        }
+        const int glow_lifetime_before = static_cast<int>(glow_w->lifetime());
+
+        ASSERT_TRUE(arrow_w->animate()) << "pass " << pass;
+        ASSERT_TRUE(tree_w->animate()) << "pass " << pass;
+        ASSERT_TRUE(glow_w->animate()) << "pass " << pass;
+
+        EXPECT_EQ(kHotFrame, static_cast<int>(arrow_w->frame()))
+            << "pass " << pass
+            << ": the default branch clamps the facing to row 0 and the cycle "
+               "to that row's first frame";
+        EXPECT_EQ(0, static_cast<int>(arrow_w->cycle()))
+            << "pass " << pass
+            << ": a one-frame row wraps the advanced cycle back to 0";
+        EXPECT_EQ(0, static_cast<int>(arrow_w->ani_type()))
+            << "pass " << pass << ": the default branch always animates type 0";
+
+        EXPECT_EQ(kHotFrame, static_cast<int>(tree_w->frame()))
+            << "pass " << pass << ": tree_blood_on_animate clamps to row 0 too";
+        EXPECT_EQ(0, static_cast<int>(tree_w->cycle()))
+            << "pass " << pass << ": the sentinel resets the tree cycle";
+        EXPECT_EQ(0, static_cast<int>(tree_w->ani_type()))
+            << "pass " << pass << ": ani_type > 1 is clamped to 0 for a tree";
+
+        EXPECT_EQ(kHotFrame, static_cast<int>(glow_w->frame()))
+            << "pass " << pass
+            << ": glow clamps ani_type to the pulse case, so the row is "
+               "facing 0 of type 2 — not the raw facing";
+        EXPECT_EQ(0, static_cast<int>(glow_w->cycle()))
+            << "pass " << pass << ": the sentinel resets the glow cycle";
+        EXPECT_EQ(2, static_cast<int>(glow_w->ani_type()))
+            << "pass " << pass << ": ani_type > 2 is clamped to the pulse case";
+        EXPECT_EQ(glow_lifetime_before - 1, static_cast<int>(glow_w->lifetime()))
+            << "pass " << pass << ": every glow animate burns one lifetime tick";
     }
 
     og::runtime::current_session->myscreen_->world().remove_ob(arrow_w);

@@ -423,6 +423,17 @@ TEST(Sai2xScaler, present_rect_falls_back_unscaled_and_otherwise_scales_by_outpu
     const Uint32 blue = SDL_MapSurfaceRGB(fullscreen.render, 20, 20, 220);
     ASSERT_TRUE(SDL_FillSurfaceRect(fullscreen.render, &left, red));
     ASSERT_TRUE(SDL_FillSurfaceRect(fullscreen.render, &right, blue));
+    // A narrow green stripe inside the left half is the RATIO probe. The
+    // red|blue seam alone only says "scaled or not": it leaves the output at
+    // any scale past ~1.5x, so a 1.5x and a 4x present look the same to it
+    // (a 4x present was green on this test before the stripe existed).
+    // A 6-pixel stripe has a POSITION, and its position is linear in the
+    // scale, so where it lands IS the ratio.
+    constexpr int kStripeX = 60;  // clear of the red/blue seam probes
+    constexpr int kStripeW = 6;
+    const SDL_Rect stripe{kStripeX, 0, kStripeW, fullscreen.canvas_h()};
+    const Uint32 green = SDL_MapSurfaceRGB(fullscreen.render, 20, 200, 20);
+    ASSERT_TRUE(SDL_FillSurfaceRect(fullscreen.render, &stripe, green));
 
     const std::vector<Uint8> before(
         static_cast<const Uint8*>(fullscreen.render->pixels),
@@ -449,6 +460,17 @@ TEST(Sai2xScaler, present_rect_falls_back_unscaled_and_otherwise_scales_by_outpu
     };
     const std::array<int, 3> expect_red{220, 20, 20};
     const std::array<int, 3> expect_blue{20, 20, 220};
+    const std::array<int, 3> expect_green{20, 200, 20};
+    // Canvas x -> output x. The renderer's own logical presentation already
+    // fits the 320x200 canvas to the output (factor output_w/canvas_w); the
+    // present rect's scale multiplies that. `scale` 1 is therefore the
+    // UNSCALED branch's mapping and 2 the density-2 branch's.
+    const auto out_x = [&](int canvas_x, int scale) {
+        return canvas_x * scale * output_w / canvas_w;
+    };
+    // The stripe's 2x image must land inside the output for the probes below
+    // to mean anything.
+    ASSERT_LT(out_x(kStripeX + kStripeW, 2), output_w);
 
     // Logical metrics unavailable: the rect is used UNSCALED, so the canvas
     // maps 1:1 onto the output and the seam sits at the middle.
@@ -459,6 +481,12 @@ TEST(Sai2xScaler, present_rect_falls_back_unscaled_and_otherwise_scales_by_outpu
         << "unscaled present: the left half of the canvas is on the left";
     EXPECT_EQ(expect_blue, presented_rgb(output_w * 3 / 4, output_h / 2))
         << "unscaled present: the right half of the canvas is on the right";
+    EXPECT_EQ(expect_green,
+              presented_rgb(out_x(kStripeX + kStripeW / 2, 1), output_h / 2))
+        << "unscaled present: the stripe sits at its own canvas x";
+    EXPECT_EQ(expect_red,
+              presented_rgb(out_x(kStripeX + kStripeW / 2, 2), output_h / 2))
+        << "unscaled present: and nowhere near the 2x position";
 
     // Logical window half the renderer output (density 2): the same canvas
     // is presented at 2x, pushing the seam off the right edge.
@@ -469,6 +497,21 @@ TEST(Sai2xScaler, present_rect_falls_back_unscaled_and_otherwise_scales_by_outpu
         << "2x present: the left quarter of the canvas covers the left half";
     EXPECT_EQ(expect_red, presented_rgb(output_w * 3 / 4, output_h / 2))
         << "2x present: the seam is pushed off the right edge";
+    // The ratio itself, not merely "some scale > 1": the stripe's middle has
+    // to land at exactly twice the output x the unscaled present put it at.
+    // That single probe holds the scale inside about +/-5% (the stripe is 6
+    // canvas pixels wide), so a 1.5x or a 2.5x present reads red there; the
+    // two guards a stripe-width out on either side then catch a present that
+    // smeared or offset the stripe instead of scaling it.
+    EXPECT_EQ(expect_green,
+              presented_rgb(out_x(kStripeX + kStripeW / 2, 2), output_h / 2))
+        << "2x present: the stripe lands at exactly twice its unscaled x";
+    EXPECT_EQ(expect_red,
+              presented_rgb(out_x(kStripeX - kStripeW, 2), output_h / 2))
+        << "2x present: nothing green short of the stripe's 2x position";
+    EXPECT_EQ(expect_red,
+              presented_rgb(out_x(kStripeX + 2 * kStripeW, 2), output_h / 2))
+        << "2x present: nothing green past the stripe's 2x position";
 
     // Secondary: presentation is read-only on the CPU canvas either way.
     EXPECT_EQ(0, std::memcmp(

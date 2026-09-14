@@ -33,6 +33,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
@@ -382,6 +383,10 @@ struct ShotState {
   int saw_page1_last_row = kUnread;
   int saw_page2_row_a = kUnread;
   int saw_page2_row_b = kUnread;
+  // Backups (§2.4): one row per snapshot, same row-window shape as the
+  // company list (company_backups_rewire's `visible`).
+  int saw_backup_row_2 = kUnread;
+  int saw_backup_row_3 = kUnread;
 };
 
 // Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
@@ -829,6 +834,11 @@ int backups_injector(void *data) {
     interact("company_bak_0");
     if (wait_for_interactable("backup_row_0", 5000)) {
       SDL_Delay(1500);
+      // One row per snapshot, read off the live button table in the same
+      // settled frame the shot is filmed: three backups fill rows 0..2 and
+      // the view offers no fourth row.
+      state->saw_backup_row_2 = has_interactable("backup_row_2") ? 1 : 0;
+      state->saw_backup_row_3 = has_interactable("backup_row_3") ? 1 : 0;
       state->captures += capture_frame("backups");
       interact("back");
     }
@@ -848,6 +858,14 @@ int backups_injector(void *data) {
 TEST(UxShots, f_backups) {
   trace_clear();
   CompanySlotCleanup cleanup{{"uxbk1"}};
+  // Start from no snapshots so the sequence numbers below are the ones this
+  // test made (a crashed earlier run could otherwise leave uxbk1 backups
+  // behind and shift every seq).
+  for (const og::data::CompanyBackupInfo &stale :
+       og::data::list_company_backups("uxbk1"))
+    (void)og::data::delete_company_backup("uxbk1", stale.seq);
+  ASSERT_TRUE(og::data::list_company_backups("uxbk1").empty())
+      << "the backups view is filmed over a known snapshot set";
   // Three snapshots at different levels/timestamps.
   for (int i = 0; i < 3; ++i) {
     SaveData sd;
@@ -880,6 +898,22 @@ TEST(UxShots, f_backups) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  EXPECT_EQ(1, state.saw_backup_row_2)
+      << "§2.4: three snapshots fill backup rows 0..2";
+  EXPECT_EQ(0, state.saw_backup_row_3)
+      << "§2.4: and the view offers no fourth row";
+  // The ORDER the rows carry, which the filmed pixels cannot say: the view
+  // draws st->backups straight through, and list_company_backups hands it
+  // back newest seq first. Snapshot i was taken at level 1+2i, so
+  // newest-first means seq 3/2/1 carrying scen_num 5/3/1 — reverse the sort
+  // and every one of these three rows moves.
+  std::vector<std::pair<int, int>> listed;
+  for (const og::data::CompanyBackupInfo &info :
+       og::data::list_company_backups("uxbk1")) {
+    listed.push_back({info.seq, static_cast<int>(info.header.scen_num)});
+  }
+  EXPECT_EQ((std::vector<std::pair<int, int>>{{3, 5}, {2, 3}, {1, 1}}), listed)
+      << "list_company_backups orders the rows newest seq first";
 }
 
 // --- 7-9. base camp: populated / empty / paged ------------------------------
@@ -1058,10 +1092,16 @@ void run_basecamp_seat_growth_shot(SeatGrowthShot &shot) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(shot.state.finished);
-  ASSERT_GE(shot.state.captures, 1);
+  // Exactly one frame: this injector films once, after the rail finished
+  // growing. An inequality would accept a duplicated shot silently.
+  ASSERT_EQ(1, shot.state.captures);
 }
 
-void run_basecamp_shot(NamedShot &shot, int (*injector)(void *)) {
+// `expected_captures` is the number of frames THIS injector films: one for
+// every single-shot flow, two for the pager. An inequality here would let a
+// flow that never reached its second screen pass.
+void run_basecamp_shot(NamedShot &shot, int (*injector)(void *),
+                       int expected_captures = 1) {
   declare_local_seats(1);
   SDL_Thread *thread = SDL_CreateThread(injector, "ux_bc", &shot);
   ASSERT_TRUE(thread != nullptr);
@@ -1072,7 +1112,7 @@ void run_basecamp_shot(NamedShot &shot, int (*injector)(void *)) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(shot.state.finished);
-  ASSERT_GE(shot.state.captures, 1);
+  ASSERT_EQ(expected_captures, shot.state.captures);
 }
 
 TEST(UxShots, g_basecamp_solo) {
@@ -2595,13 +2635,13 @@ TEST(UxShots, i_basecamp_paged) {
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
   NamedShot shot;
   shot.name = "basecamp_paged_p1";
-  run_basecamp_shot(shot, &basecamp_paged_injector);
-  // Page 1 and page 2 — two states, two frames. The third capture this used
-  // to take was page 2 again, 120ms later: a byte-identical duplicate that
-  // proved nothing and cost a reviewer a comparison. The second frame is now
-  // taken only after the pager TRACED the page it landed on, so two captures
-  // means two pages and not one page filmed twice.
-  ASSERT_EQ(2, shot.state.captures);
+  run_basecamp_shot(shot, &basecamp_paged_injector, 2);
+  // Page 1 and page 2 — two states, two frames (the `2` handed to
+  // run_basecamp_shot above). The third capture this used to take was page 2
+  // again, 120ms later: a byte-identical duplicate that proved nothing and
+  // cost a reviewer a comparison. The second frame is now taken only after
+  // the pager TRACED the page it landed on, so two captures means two pages
+  // and not one page filmed twice.
   EXPECT_EQ(1, shot.state.page2_reached)
       << "roster_page_next must advance the Base Camp roster to page 2";
   EXPECT_EQ(1, shot.state.saw_page1_last_row)

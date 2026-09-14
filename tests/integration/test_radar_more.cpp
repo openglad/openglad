@@ -122,7 +122,11 @@ private:
 // grid cell. draw() returns the literal 1 on every path including the error
 // path, so the return value alone pins nothing: every colour below is read
 // back out of r.bmp (the bake) and off the painted canvas (the blips).
-TEST_F(RadarMore, radar_bakes_every_terrain_family_and_blips_each_order)
+// The row-0 table carries ONE representative of each terrain FAMILY the bake
+// distinguishes (grass/tree/pavement/floor/dirt/cliff/carpet/wall/water/
+// shore/wallside/torch), not every case label of that switch — which is what
+// the name says.
+TEST_F(RadarMore, radar_bakes_representative_terrain_families_and_blips_each_order)
 {
     FixedRandom fixed_rng(0); // rng(3) -> 0: the jittered ramps sit on base
     GameContext c;

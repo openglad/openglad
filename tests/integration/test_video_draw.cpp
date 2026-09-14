@@ -96,14 +96,26 @@ int vd_plan_text(const text& font, int x, int y, std::string_view message,
     const int glyph_h = static_cast<int>(font.letters->h);
     const auto stride =
         static_cast<std::size_t>(glyph_w) * static_cast<std::size_t>(glyph_h);
+    // Pre-pass, before a single byte is read: safe_glyph_span() would silently
+    // substitute '?' past the end of the font, which would make the plan a lie
+    // rather than a failure -- and reading the missing glyph's row anyway
+    // (what the old non-fatal EXPECT_LT did) walks off the pixie buffer before
+    // the failure is reported. Bail with -1 so the caller's pin on the stamped
+    // count goes red too.
+    for (std::size_t i = 0; i < message.size(); ++i)
+    {
+        const auto letter = static_cast<unsigned char>(message[i]);
+        if (static_cast<int>(letter) >= static_cast<int>(font.letters->frames))
+        {
+            ADD_FAILURE() << "glyph '" << message[i]
+                          << "' must exist without the '?' fallback";
+            return -1;
+        }
+    }
     int stamped = 0;
     for (std::size_t i = 0; i < message.size(); ++i)
     {
         const auto letter = static_cast<unsigned char>(message[i]);
-        // safe_glyph_span() would silently substitute '?' past the end of the
-        // font, which would make the plan a lie rather than a failure.
-        EXPECT_LT(static_cast<int>(letter), static_cast<int>(font.letters->frames))
-            << "glyph '" << message[i] << "' must exist without the '?' fallback";
         const unsigned char* glyph =
             font.letters->data.get() + static_cast<std::size_t>(letter) * stride;
         const int origin_x = x + static_cast<int>(i) * (glyph_w + 1);
@@ -948,6 +960,16 @@ TEST(VideoDraw, text_write_xy_inks_every_glyph_byte_in_the_requested_colour)
 
     s->clearbuffer();
     font.write_xy(10, 10, message, WHITE);
+
+    // issue #259: every drawing entry point re-reads the glyph box off the
+    // pixie in hand (text::sync_geometry). The small font's bottom glyph row
+    // is blank for this string, so a sizey that came back one short would
+    // paint an identical canvas -- the cached box itself has to be pinned
+    // against the font, here, on text_normal.
+    EXPECT_EQ(glyph_w, static_cast<int>(font.sizex))
+        << "write_xy must sync the cached glyph width from the font pixie";
+    EXPECT_EQ(glyph_h, static_cast<int>(font.sizey))
+        << "write_xy must sync the cached glyph height from the font pixie";
 
     // The oracle is the font asset itself: each non-zero glyph byte must show
     // up as WHITE (the glyph bytes are all in the >247 team-colour band, which
