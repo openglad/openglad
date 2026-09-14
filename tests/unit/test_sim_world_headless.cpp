@@ -9,6 +9,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 
 #include <gtest/gtest.h>
 
@@ -848,19 +849,21 @@ TEST(SimWorldHeadless, life_gem_halves_when_permadeath_is_off)
 //
 // These tests pin GameWorld::rng_ (og::sim::SimRandom is a plain LCG with a
 // public state_) and assert OBSERVABLE outcomes: explosion positions, foe
-// choices, and the RNG state left behind. They deliberately install no RNG
-// spy. og::sim::set_sim_random_override is only consulted by callers that
-// compiled SimRandom::next — it is inline in game_world.h — WITH -DTESTING,
-// and og_unit_sim links og_game, whose walker.cpp / living.cpp /
-// game_world.cpp live in og_gameplay and are built WITHOUT it (only
-// og_game_test gets TESTING; cmake/OpenGladTests.cmake). A spy installed from
-// this TU can therefore never observe a draw made by sim code, and every
-// assertion about what it recorded would be vacuously true.
+// choices, and the RNG state left behind. That is a deliberate choice, not a
+// workaround: these three sites are about a BOUND that must never be absurd,
+// and SimRandom::next returns early for a bound of 0 WITHOUT advancing state_
+// (game_world.h), so "state_ is untouched across the call" is a direct proof
+// that no wrapped ~4e9 bound was ever requested — a wrapped bound always costs
+// a step. A scripted stream would answer a value for both bounds and hide
+// exactly the difference under test.
 //
-// Reading the state instead is strictly better here: SimRandom::next returns
-// early for a bound of 0 WITHOUT advancing state_ (game_world.h:56), so
-// "state_ is untouched" is a direct, spy-free proof that no absurd bound was
-// ever requested — a wrapped ~4e9 bound always costs a step.
+// Scripting the sim stream IS available here — og::sim::set_sim_random_override
+// is an unconditional gameplay hook, so ScopedSimRandom (tests/
+// test_sim_random_scope.h) steers draws made inside og_gameplay-compiled code
+// in this headless unit binary too; see
+// sim_random_override_steers_generator_death_scatter_in_a_unit_group below.
+// Use the guard when you want a scripted stream or a recording spy, and the
+// state pin when you want the real LCG at a known point, as here.
 
 namespace rng_bound {
 
@@ -905,7 +908,8 @@ struct Explosion
 // would have said.
 std::vector<Explosion> blow_up_generator(short size_x, short size_y,
                                          std::uint32_t pin_state,
-                                         std::uint32_t* end_state = nullptr)
+                                         std::uint32_t* end_state = nullptr,
+                                         IRandom* sim_override = nullptr)
 {
     TestGameWorld t;
 
@@ -926,8 +930,15 @@ std::vector<Explosion> blow_up_generator(short size_x, short size_y,
     // stream below is only what the death scatter itself asks for.)
     t.world().rng_.state_ = pin_state;
 
-    gen->set_dead(1);
-    gen->death();
+    {
+        // Installed around the action under test only, so setup never spends
+        // scripted values. A null `sim_override` installs a ref that resolves
+        // to nullptr, i.e. the real LCG — what every caller but the override
+        // test wants.
+        ScopedSimRandom scripted(sim_override);
+        gen->set_dead(1);
+        gen->death();
+    }
 
     for (const auto& uptr : t.world().oblist)
     {
@@ -1216,6 +1227,100 @@ TEST(SimWorldHeadless, foe_search_unchanged_for_non_negative_invisibility)
     EXPECT_TRUE(lucky.far_found)
         << "a cloak roll of 0 acquires the bearer; that is the legacy 1-in-15";
     EXPECT_EQ(rng_bound::kZeroRollPinStepped, lucky.state_after_far);
+}
+
+// --- The sim RNG override reaches og_gameplay-compiled draws ----------------
+//
+// og::sim::set_sim_random_override is an unconditional gameplay hook: the
+// declarations and the check inside SimRandom::next carry no `#ifdef TESTING`,
+// so there is exactly ONE body of that function in the tree and every draw in
+// every binary consults the hook.
+//
+// TRAP for whoever edits this: the draw MUST be made from og_gameplay-compiled
+// code — here walker::death's generator scatter. A `world.rng_.next(...)`
+// called from THIS translation unit would go through this TU's own inline copy
+// of SimRandom::next, which honoured the override even before the hook became
+// unconditional; such a test is green before the fix and proves nothing.
+//
+// walker.cpp's Order::Generator death arm draws three times per explosion —
+// next(max(sizex-8,0)), next(max(sizey-8,0)) for setxy and next(3) for the
+// frame — over four explosions. A 24x24 sprite makes both span bounds 16, so
+// the recorded bound list is order-independent even though the two setxy
+// arguments are evaluated in an unspecified order.
+namespace {
+
+class RecordingRandom final : public IRandom
+{
+public:
+    explicit RecordingRandom(std::uint32_t answer) : answer_(answer) {}
+
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        bounds.push_back(max_exclusive);
+        return (max_exclusive == 0) ? 0 : (answer_ % max_exclusive);
+    }
+
+    std::vector<std::uint32_t> bounds;
+
+private:
+    std::uint32_t answer_;
+};
+
+} // namespace
+
+TEST(SimWorldHeadless, sim_random_override_steers_generator_death_scatter_in_a_unit_group)
+{
+    RecordingRandom spy(5);
+    std::uint32_t end_state = 0;
+    const std::vector<rng_bound::Explosion> blown =
+        rng_bound::blow_up_generator(24, 24, rng_bound::kPin, &end_state, &spy);
+
+    ASSERT_EQ(4u, blown.size()) << "a dying generator always emits 4 explosions";
+
+    const std::vector<std::uint32_t> expected_bounds{16, 16, 3, 16, 16, 3,
+                                                     16, 16, 3, 16, 16, 3};
+    EXPECT_EQ(expected_bounds, spy.bounds)
+        << "every scatter draw walker::death makes must reach the installed"
+           " sim override: two span bounds of max(24-8,0) and one frame bound"
+           " of 3, per explosion";
+
+    for (std::size_t i = 0; i < blown.size(); ++i)
+    {
+        EXPECT_EQ(129, blown[i].x)
+            << "explosion " << i << ": 120 + spy(16)=5 + 4";
+        EXPECT_EQ(129, blown[i].y)
+            << "explosion " << i << ": (120 + 4) + spy(16)=5";
+    }
+
+    EXPECT_EQ(rng_bound::kPin, end_state)
+        << "the override answers ahead of the LCG step, so the world stream"
+           " never advances while a spy is installed";
+}
+
+// The guard's nesting contract: set_sim_random_override hands back the ref it
+// replaced, and ~ScopedSimRandom puts exactly that ref back — so an inner
+// guard restores the outer one and the outermost restores "no override".
+TEST(SimWorldHeadless, scoped_sim_random_restores_the_previous_override)
+{
+    FixedRandom a(1);
+    FixedRandom b(2);
+
+    ASSERT_EQ(nullptr, og::sim::sim_random_override())
+        << "no test may leak an override into this one";
+    {
+        ScopedSimRandom outer(&a);
+        ASSERT_EQ(&a, og::sim::sim_random_override())
+            << "the outer guard installs its own RNG";
+        {
+            ScopedSimRandom inner(&b);
+            EXPECT_EQ(&b, og::sim::sim_random_override())
+                << "the inner guard shadows the outer one";
+        }
+        EXPECT_EQ(&a, og::sim::sim_random_override())
+            << "the inner guard must restore the OUTER override, not nullptr";
+    }
+    EXPECT_EQ(nullptr, og::sim::sim_random_override())
+        << "the outermost guard restores 'no override'";
 }
 
 // --- Freeze-time foe census (#231) ---

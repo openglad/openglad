@@ -58,8 +58,19 @@ struct GameContext {
 GameContext& ctx();
 
 #ifdef TESTING
-// Test-only context overrides that snapshot and restore the active session
-// context (primarily RNG/input).
+// Test-only context override. push_test_context snapshots ctx().rng and
+// ctx().input ONCE per session (a second push before the matching pop does not
+// re-snapshot), then assigns ctx().rng from context->rng -- only when that is
+// non-null -- and ctx().input from context->input, and installs
+// &context->rng as the GAMEPLAY rng override: walker construction
+// (walker_rng()), combat rolls (combat_rng()) and autotiling.
+//
+// It does NOT touch the SIMULATION stream. living::act, act_random,
+// act_guard, walker::death and statistics::try_command draw from
+// current_game->world->rng_ (og::sim::SimRandom); script that with
+// ScopedSimRandom (tests/test_sim_random_scope.h), which is the only way in.
+//
+// pop_test_context restores the snapshot and clears the gameplay override.
 void push_test_context(GameContext* context);
 void pop_test_context();
 #endif

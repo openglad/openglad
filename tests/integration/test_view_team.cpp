@@ -109,7 +109,6 @@ extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 extern std::atomic<int> g_test_game_frame_ticks;
-namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 namespace og::ui {
 void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
                                         const button* buttons,

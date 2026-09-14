@@ -441,15 +441,14 @@ RunOutcome run_scenario(const ScenarioSpec& spec,
         {
             set_gameplay_rng_override(gameplay);
             set_cosmetic_rng_override(cosmetic);
-#ifdef TESTING
+            // Master drew AI cadence and the sim stream from the same libc
+            // rand(); routing both overrides at the same slot is what the
+            // goldens encode.
             og::sim::set_sim_random_override(gameplay);
-#endif
         }
         ~RngOverrideGuard()
         {
-#ifdef TESTING
             og::sim::set_sim_random_override(nullptr);
-#endif
             set_cosmetic_rng_override(nullptr);
             set_gameplay_rng_override(nullptr);
         }

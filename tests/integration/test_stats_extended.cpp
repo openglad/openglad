@@ -25,8 +25,10 @@ static std::unique_ptr<walker> create_living(char family)
 }
 
 // The sim RNG behind stats.cpp's rng() helper is GameWorld::rng_, not the
-// GameContext one; og::sim::set_sim_random_override is the TESTING seam that
-// scripts it (include/openglad/gameplay/game_world.h).
+// GameContext one -- two independent streams. og::sim::set_sim_random_override
+// is the unconditional gameplay hook that scripts the sim one
+// (include/openglad/gameplay/game_world.h); the shared guard for it is
+// ScopedSimRandom in tests/test_sim_random_scope.h.
 namespace
 {
 struct ScopedSimRandom

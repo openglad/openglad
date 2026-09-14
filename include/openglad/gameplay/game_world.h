@@ -41,10 +41,16 @@ namespace og::script { class WorldScripts; }
 
 namespace og::sim {
 
-#ifdef TESTING
+// Test hook, unconditional like g_test_link_loss_window_ms_override (the unit
+// groups link the production component libraries, so a TESTING-only hook would
+// leave TWO bodies of the inline SimRandom::next in one program and the draws
+// inside og_gameplay would ignore it). One body everywhere; the cost in
+// production is one thread_local read and a null branch per sim draw. Tests
+// install it through ScopedSimRandom (tests/test_sim_random_scope.h); the
+// parity runner points it at the same slot as the gameplay override.
+// set_sim_random_override returns the ref it replaced, so guards can nest.
 IRandom* sim_random_override();
-void set_sim_random_override(IRandom** rng_ref);
-#endif
+IRandom** set_sim_random_override(IRandom** rng_ref);
 
 // Simple LCG random number generator.
 // Given the same seed, produces the same deterministic sequence.
@@ -54,10 +60,8 @@ public:
 
     std::uint32_t next(std::uint32_t max_exclusive) override {
         if (max_exclusive == 0) return 0;
-#ifdef TESTING
         if (IRandom* override_rng = sim_random_override())
             return override_rng->next(max_exclusive);
-#endif
         // LCG: same constants as glibc.
         state_ = state_ * 1103515245u + 12345u;
         return (state_ >> 16) % max_exclusive;
@@ -66,9 +70,8 @@ public:
     std::uint32_t state_;
 };
 
-#ifdef TESTING
+// Test hook, unconditional for the same reason (0 = the production ceiling).
 extern std::int32_t g_test_level_tick_limit_override;
-#endif
 
 } // namespace og::sim
 
