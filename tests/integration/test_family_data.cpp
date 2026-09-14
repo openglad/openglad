@@ -96,15 +96,20 @@ public:
 TEST_F(FamilyDataFixture, walker_init_matches_registry)
 {
     init_family_registry();
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_)
+        << "the integration screen (and its loader) is the creation path under test";
+    int checked = 0;
     for (int fam = 0; fam < NUM_FAMILIES; fam++)
     {
         auto* d = get_family_descriptor(fam);
         guy g(fam);
         g.teamnum = 0;
         auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
-        if (!w) continue;
 
         char msg[128];
+        std::snprintf(msg, sizeof(msg), "family %d must create a walker", fam);
+        ASSERT_NE(nullptr, w.get()) << msg;
+        ++checked;
 
         std::snprintf(msg, sizeof(msg), "family %d default_weapon mismatch", fam);
         ASSERT_EQ(d->default_weapon, static_cast<int>(w->default_weapon())) << msg;
@@ -118,7 +123,11 @@ TEST_F(FamilyDataFixture, walker_init_matches_registry)
         std::snprintf(msg, sizeof(msg), "family %d fire_mp_cost mismatch", fam);
         ASSERT_EQ(d->combat.fire_mp_cost, w->stats()->weapon_cost()) << msg;
     }
-    if (og::runtime::current_session->myscreen_) og::runtime::current_session->myscreen_->world().delete_objects();
+    // Without this, a create_walker_owned that fails for EVERY family would
+    // finish the loop having compared nothing and still be green.
+    ASSERT_EQ(NUM_FAMILIES, checked)
+        << "every core living family must round-trip through guy_create_walker_owned";
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
 
@@ -126,7 +135,8 @@ TEST_F(FamilyDataFixture, walker_init_matches_registry)
 TEST(FamilyData, special_names_match_screen)
 {
     init_family_registry();
-    if (!og::runtime::current_session->myscreen_) return;
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_)
+        << "the screen carries the special-name tables this test compares against";
 
     for (int fam = 0; fam < NUM_FAMILIES; fam++)
     {

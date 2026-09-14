@@ -40,6 +40,28 @@ TEST(Version, git_hash_is_a_short_sha_or_nogit)
         << "git hash " << h << " is neither a short sha nor nogit";
 }
 
+// "nogit" is the legitimate stamp for a build with no history (a source
+// tarball), but on a git checkout it is a LYING stamp — and the format test
+// above accepts it, so a broken hash probe (wrong working directory, a
+// quoting regression, git missing from the image) would otherwise ship
+// "v2.N nogit" unnoticed. Opt in on the same signal minor_matches_history
+// uses: the CI test lane exports OG_EXPECT_VERSION_MINOR from
+// `git rev-list --count HEAD`, which only a tree WITH git history can do.
+TEST(Version, git_hash_is_a_real_sha_when_the_tree_has_history)
+{
+    const char* has_history = std::getenv("OG_EXPECT_VERSION_MINOR");
+    if (has_history == nullptr || *has_history == '\0')
+    {
+        GTEST_SKIP() << "OG_EXPECT_VERSION_MINOR unset; nothing proves this "
+                     << "build tree has git history, so \"nogit\" is legal";
+    }
+    const std::string h(og::version::git_hash());
+    EXPECT_TRUE(std::regex_match(h, std::regex(R"(^[0-9a-f]{8}\+?$)")))
+        << "the tree has git history (OG_EXPECT_VERSION_MINOR=" << has_history
+        << ") but the build stamped '" << h
+        << "': a git checkout must never stamp nogit";
+}
+
 TEST(Version, stamp_is_the_menu_line)
 {
     EXPECT_EQ("v" + std::string(og::version::string()) + " " +

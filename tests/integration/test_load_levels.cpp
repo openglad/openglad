@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
@@ -91,12 +92,27 @@ TEST(LoadLevels, load_multiple_levels) {
         og::runtime::current_session->myscreen_->save_data.numplayers = 1;
         og::runtime::current_session->myscreen_->save_data.save("test_level_multi");
 
-        short result = load_saved_game("test_level_multi", og::runtime::current_session->myscreen_);
-        (void)result;
+        const std::string msg = "level " + std::to_string(level);
 
-        char msg[80];
-        snprintf(msg, 80, "level %d should load successfully", level);
-        ASSERT_TRUE(trace_contains("game", "level loaded")) << msg;
+        // load_saved_game_with_error distinguishes the load this test exists
+        // for from the silent fallback: a level whose format fails to parse
+        // rewrites scen_num to the campaign's first level and still traces
+        // "level loaded", which is why the old trace-substring oracle stayed
+        // green for the version-6 levels (3, 4, 8) it was written to guard.
+        const LoadSavedGameError err = load_saved_game_with_error(
+            "test_level_multi", og::runtime::current_session->myscreen_);
+        ASSERT_EQ(LoadSavedGameError::None, err)
+            << msg << " must load on its own, with no fallback";
+        ASSERT_EQ(level,
+                  static_cast<int>(og::runtime::current_session->myscreen_->world().id))
+            << msg << " should be the level that ended up loaded";
+        ASSERT_TRUE(trace_contains(
+            "game", ("level loaded: scen" + std::to_string(level)).c_str()))
+            << msg << " should trace its own id as loaded";
+        ASSERT_TRUE(og::runtime::current_session->myscreen_->world().grid.valid())
+            << msg << " should load a valid terrain grid";
+        ASSERT_FALSE(og::runtime::current_session->myscreen_->world().oblist.empty())
+            << msg << " should load its authored objects";
 
         // Clean up loaded objects before loading the next level
         og::runtime::current_session->myscreen_->world().delete_objects();

@@ -251,57 +251,20 @@ TEST(InputActions, input_state_clear)
     ASSERT_TRUE(!state.quit_requested);
 }
 
-// ---------------------------------------------------------------------------
-// Key combination patterns used in gameplay
-// ---------------------------------------------------------------------------
-
-TEST(InputActions, shift_plus_yell_combo)
-{
-    // Shift+Yell triggers "summon defense" behavior
-    PlayerInput pi = {};
-    pi.held[static_cast<int>(InputAction::Shift)] = true;
-    pi.pressed[static_cast<int>(InputAction::Yell)] = true;
-
-    ASSERT_TRUE(pi.is_held(InputAction::Shift));
-    ASSERT_TRUE(pi.was_pressed(InputAction::Yell));
-    ASSERT_TRUE(!pi.is_held(InputAction::Cheat));
-}
-
-TEST(InputActions, cheat_plus_switch_combo)
-{
-    // Cheat+Switch triggers "change team" behavior
-    PlayerInput pi = {};
-    pi.held[static_cast<int>(InputAction::Cheat)] = true;
-    pi.pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-
-    ASSERT_TRUE(pi.is_held(InputAction::Cheat));
-    ASSERT_TRUE(pi.was_pressed(InputAction::SwitchChar));
-}
-
-TEST(InputActions, cheat_blocks_normal_switch)
-{
-    // When Cheat is held, normal switch should be blocked by game logic
-    // (The actual blocking logic is in viewscreen::process_input, but
-    // the input layer correctly reports both keys)
-    PlayerInput pi = {};
-    pi.held[static_cast<int>(InputAction::Cheat)] = true;
-    pi.pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-
-    // Both are correctly reported
-    ASSERT_TRUE(pi.is_held(InputAction::Cheat));
-    ASSERT_TRUE(pi.was_pressed(InputAction::SwitchChar));
-}
-
-TEST(InputActions, shift_modifies_switch_direction)
-{
-    // Shift+Switch goes backward through character list
-    PlayerInput pi = {};
-    pi.held[static_cast<int>(InputAction::Shift)] = true;
-    pi.pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-
-    ASSERT_TRUE(pi.is_held(InputAction::Shift));
-    ASSERT_TRUE(pi.was_pressed(InputAction::SwitchChar));
-}
+// The four "key combination" cases that used to sit here (shift_plus_yell_combo,
+// cheat_plus_switch_combo, cheat_blocks_normal_switch,
+// shift_modifies_switch_direction) were removed: each wrote two slots of a
+// plain PlayerInput and read the same two slots back through the inline
+// is_held/was_pressed accessors, so every gameplay rule their names promised
+// could be deleted from sim_process_player_input without turning them red.
+// The rules live where they are actually decided, in tests/integration/
+// test_sim_input_handler.cpp:
+//   Shift+Yell summon/release -> SimInputHandler.sim_input_shift_yell_summon_and_release
+//   Cheat gates SwitchChar    -> SimInputHandler.sim_input_cheat_gates_and_command_queue_skip_movement_block
+//   Shift reverses the cycle  -> SimInputHandler.sim_input_switch_char_forward_and_reverse_paths
+//                                SimInputHandler.sim_input_switch_char_wraparound_forward_and_reverse
+// The accessors themselves stay pinned by player_input_is_held /
+// player_input_was_pressed above.
 
 // ---------------------------------------------------------------------------
 // Edge cases

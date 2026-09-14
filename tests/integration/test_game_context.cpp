@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <set>
 #include <string_view>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -128,13 +129,18 @@ TEST(GameContext, push_test_context_overrides_rng)
 // IRandom implementations
 // ---------------------------------------------------------------------------
 
-TEST(GameContext, production_rng_stays_in_bounds)
+TEST(GameContext, production_rng_stays_in_bounds_and_actually_varies)
 {
     ProductionRandom rng;
+    std::set<Uint32> seen;
     for (int i = 0; i < 100; i++) {
         Uint32 val = rng.next(10);
         ASSERT_TRUE(val < 10) << "ProductionRandom::next(10) should return [0,9]";
+        seen.insert(val);
     }
+    // A `next` that always returns 0 satisfies the bound. It must draw.
+    ASSERT_GE(seen.size(), 2u)
+        << "ProductionRandom::next(10) must vary across 100 draws, not return a constant";
     ASSERT_EQ(0, static_cast<int>(rng.next(0))) << "ProductionRandom::next(0) should return 0";
 }
 
@@ -250,14 +256,32 @@ TEST(GameContext, player_input_move_directions)
 }
 
 
-TEST(GameContext, input_state_from_sdl_captures_held)
+TEST(GameContext, input_state_from_sdl_overwrites_every_held_bit_from_sdl)
 {
-    // This test verifies input_state_from_sdl() populates from the
-    // actual SDL keyboard state. Since no keys are pressed in the test
-    // environment, all should be false.
+    // The sampler OWNS the held array: it writes every bit from
+    // isPlayerHoldingKey and resets timer_wait_request, so stale bits from the
+    // previous frame cannot survive. Pre-dirty the state first -- asserting
+    // "everything is false" on a fresh InputState is also satisfied by a
+    // sampler with an empty body.
     InputState state;
+    state.players[0].held[static_cast<int>(InputKey::Fire)] = true;
+    state.players[1].held[static_cast<int>(InputKey::Left)] = true;
+    state.players[MAX_PLAYERS - 1].held[static_cast<int>(InputKey::Up)] = true;
+    state.timer_wait_request = 4;
+
     input_state_from_sdl(state);
 
+    ASSERT_EQ(kNoTimerWaitRequest, state.timer_wait_request)
+        << "the sampler must reset the timer_wait request every frame";
+    ASSERT_FALSE(state.players[0].held[static_cast<int>(InputKey::Fire)])
+        << "a stale held bit must be overwritten by the SDL sample";
+    ASSERT_FALSE(state.players[1].held[static_cast<int>(InputKey::Left)])
+        << "a stale held bit must be overwritten by the SDL sample";
+    ASSERT_FALSE(state.players[MAX_PLAYERS - 1].held[static_cast<int>(InputKey::Up)])
+        << "a stale held bit must be overwritten by the SDL sample";
+
+    // No keys are pressed in the test environment, so the whole sample is
+    // false once it has actually been taken.
     for (int p = 0; p < MAX_PLAYERS; p++) {
         for (int k = 0; k < NUM_INPUT_KEYS; k++) {
             ASSERT_TRUE(!state.players[p].held[k]) << "no keys should be held in test environment";

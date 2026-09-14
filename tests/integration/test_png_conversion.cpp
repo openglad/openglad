@@ -194,8 +194,19 @@ TEST(PngConversion, level_load_produces_valid_grid)
     bool loaded = level.load();
     ASSERT_TRUE(loaded) << "Level 1 should load successfully";
     ASSERT_TRUE(level.world().grid.valid()) << "Level 1 grid should be valid after load";
-    ASSERT_GT(level.world().pixmaxx, 0) << "Level 1 pixmaxx should be positive";
-    ASSERT_GT(level.world().pixmaxy, 0) << "Level 1 pixmaxy should be positive";
+    // src/resources/level_file_io.cpp:450-451 - a successful load derives the
+    // pixel extents from the grid as pixmaxx = grid.w * GRID_SIZE and
+    // pixmaxy = grid.h * GRID_SIZE (GRID_SIZE == 16). scen1's grid is 40x60
+    // (PngConversion.scenario_grid_loads pins the same dims from the PNG), so
+    // a transposed axis or a dropped scale is an exact-value failure here.
+    EXPECT_EQ(40, static_cast<int>(level.world().grid.w))
+        << "scen1's loaded grid is 40 tiles wide";
+    EXPECT_EQ(60, static_cast<int>(level.world().grid.h))
+        << "scen1's loaded grid is 60 tiles tall";
+    EXPECT_EQ(40 * GRID_SIZE, level.world().pixmaxx)
+        << "pixmaxx must be grid.w * GRID_SIZE";
+    EXPECT_EQ(60 * GRID_SIZE, level.world().pixmaxy)
+        << "pixmaxy must be grid.h * GRID_SIZE";
 }
 
 TEST(PngConversion, text_sprite_dimensions)
@@ -205,14 +216,6 @@ TEST(PngConversion, text_sprite_dimensions)
     ASSERT_EQ(125, static_cast<int>(data.frames)) << "text.png should have 125 frames";
     ASSERT_EQ(5, static_cast<int>(data.w)) << "text.png should be 5px wide";
     ASSERT_EQ(6, static_cast<int>(data.h)) << "text.png frame height should be 6px";
-}
-
-TEST(PngConversion, stale_campaign_overwritten)
-{
-    CampaignFixture fixture;
-
-    PixieData grid = read_pixie_file("scen1.png");
-    ASSERT_TRUE(grid.valid()) << "scen1.png should be loadable after campaign restore";
 }
 
 #ifdef __linux__

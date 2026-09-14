@@ -519,19 +519,60 @@ TEST(MenuModel, relay_room_button_labels_show_code_and_host)
     EXPECT_EQ("GLAD-XKCD  An Extrem", truncated);
 }
 
-TEST(MenuModel, host_picker_lobby_client_accepts_direct_only_and_relay_options)
+// The host factory guards the port range and hands back a client that has
+// not touched the network yet: no server, no roster, no pending start, and —
+// unlike the interface default — always a networked session.
+TEST(MenuModel, host_picker_lobby_client_guards_the_port_and_starts_idle)
 {
+    // The guard is 1..65535 inclusive, pinned on both sides of both edges.
+    for (const int bad_port : {0, -1, 65536})
+    {
+        og::ui::PickerHostGameOptions bad;
+        bad.port = bad_port;
+        EXPECT_THROW((void)og::ui::create_host_picker_lobby_client(bad),
+                     std::invalid_argument)
+            << "port " << bad_port << " is outside 1-65535 and must be refused";
+    }
+    for (const int edge_port : {1, 65535})
+    {
+        og::ui::PickerHostGameOptions edge;
+        edge.port = edge_port;
+        EXPECT_NO_THROW((void)og::ui::create_host_picker_lobby_client(edge))
+            << "port " << edge_port << " is inside the range and must be taken";
+    }
+
     og::ui::PickerHostGameOptions direct_only;
     direct_only.port = 12345;
     auto direct_client = og::ui::create_host_picker_lobby_client(direct_only);
-    EXPECT_TRUE(direct_client != nullptr);
+    ASSERT_NE(nullptr, direct_client);
 
     og::ui::PickerHostGameOptions with_relay;
     with_relay.port = 23456;
     with_relay.enable_relay = true;
     with_relay.relay_base_url = "https://relay.example";
     auto relay_client = og::ui::create_host_picker_lobby_client(with_relay);
-    EXPECT_TRUE(relay_client != nullptr);
+    ASSERT_NE(nullptr, relay_client);
+    EXPECT_NE(direct_client.get(), relay_client.get())
+        << "each call must build its own client";
+
+    // State BEFORE initialize_from_save(): nothing is connected, so nothing
+    // may claim otherwise. (The relay round-trip itself has no pre-initialize
+    // observable; it is covered by test_picker_network_client.cpp.)
+    for (og::ui::IPickerLobbyClient* client :
+         {direct_client.get(), relay_client.get()})
+    {
+        EXPECT_TRUE(client->is_networked_session())
+            << "a host client is always a networked session (the interface "
+               "default is false)";
+        EXPECT_FALSE(client->host_controls_visible())
+            << "there is no server yet, so no host controls";
+        EXPECT_TRUE(client->lobby_players().empty())
+            << "an uninitialized host client has no roster";
+        EXPECT_FALSE(client->start_request_pending())
+            << "no start has been requested yet";
+        EXPECT_FALSE(client->request_start_game())
+            << "a host with no transport cannot start a game";
+    }
 }
 
 TEST(MenuModel, host_status_lines_show_lan_only_for_real_direct_transport)

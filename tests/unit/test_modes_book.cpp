@@ -1283,8 +1283,10 @@ TEST_F(ModesBookTest, roll_on_the_last_field_wraps_to_the_first)
 
 // The SHIPPED provider (make_campaign_providers' default): wall-clock
 // seeded, so the tests pin its RANGE contract — 1..n for every n, and the
-// defensive floor under a malformed ask — never a sequence.
-TEST_F(ModesBookTest, default_random_pick_answers_inside_the_range)
+// defensive floor under a malformed ask — never a sequence. The range alone
+// is satisfied by a roll that stopped rolling (a constant 1 always deals the
+// first arena), so the distribution is pinned too.
+TEST_F(ModesBookTest, default_random_pick_rolls_and_stays_inside_the_range)
 {
     const hooks::CampaignProviders providers =
         og::data::make_campaign_providers(save_);
@@ -1302,6 +1304,17 @@ TEST_F(ModesBookTest, default_random_pick_answers_inside_the_range)
     EXPECT_EQ(1, providers.random_pick(0))
         << "the defensive floor (the binding rejects n < 1 first)";
     EXPECT_EQ(1, providers.random_pick(-4));
+
+    // It ROLLS. 64 draws over 40 arenas: a live generator lands on at least
+    // five distinct fields with probability 1 - ~1e-30, while a provider that
+    // answers a constant (or steps a fixed cycle of one) collapses to one.
+    std::set<int> distinct;
+    for (int draw = 0; draw < 64; draw++)
+        distinct.insert(providers.random_pick(kArenaCount));
+    EXPECT_GE(distinct.size(), std::size_t{5})
+        << "64 draws over " << kArenaCount
+        << " arenas must not collapse onto one field — the shipped roll is a "
+           "seeded generator, not a constant";
 }
 
 // ---------------------------------------------------------------------------

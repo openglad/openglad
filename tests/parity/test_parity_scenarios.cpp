@@ -6,8 +6,12 @@
 #include "state_dump.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/world_snapshot.h>
 
 #include <gtest/gtest.h>
+
+#include <functional>
 
 #include <array>
 #include <filesystem>
@@ -48,17 +52,21 @@ bool read_file(const std::filesystem::path& path, std::string& out)
     return true;
 }
 
-void run_one_scenario(const og::parity::ScenarioSpec& spec)
+void run_one_scenario(const og::parity::ScenarioSpec& spec,
+                     const std::function<void(GameWorld&)>& observe_final_world = {})
 {
-    const og::parity::RunOutcome outcome = og::parity::run_scenario(spec);
+    const og::parity::RunOutcome outcome =
+        og::parity::run_scenario(spec, observe_final_world);
     // An unloaded level still dumps — as an empty arena — so a broken PhysFS
     // search path used to read as every golden drifting at once. Say what
     // actually happened before comparing anything.
     //
-    // Exempt on purpose are the four rows that point at the three-byte
-    // "FSS"-header-only fixture — snapshot_dirty_bits_scen9301 and the three
-    // Z-axis arenas — which has never loaded and is not meant to: they build
-    // their whole arena from floor_paints + spawns instead. The exemption used
+    // Exempt on purpose are the rows that point at the three-byte
+    // "FSS"-header-only fixture — the three Z-axis arenas — which has never
+    // loaded and is not meant to: they build their whole arena from
+    // floor_paints + spawns instead. (snapshot_dirty_bits_scen9301 used to be
+    // the fourth; it now loads the real scen1.fss and spawns its own
+    // soldiers.) The exemption used
     // to key on is_branch_internal, which is a different set: there are FIVE
     // branch-internal rows, and the fifth (treasure_exit_open_prompt_scen99)
     // loads the real scen1.fss like everything else.
@@ -215,7 +223,9 @@ OG_PARITY_TEST(exit_trigger_scen9302)
 OG_PARITY_TEST(tick_cadence_scen9301)
 OG_PARITY_TEST(rng_seed_stable_scen99)
 OG_PARITY_TEST(scripted_input_scen9301)
-OG_PARITY_TEST(snapshot_dirty_bits_scen9301)
+// snapshot_dirty_bits_scen9301 is hand-written below: the canary measures
+// a row by running `Parity.<scenario_id>` and nothing else, so the row's
+// own test has to BE the dirty-bit check, not just the dump compare.
 OG_PARITY_TEST(z_stair_up_scen9301)
 OG_PARITY_TEST(z_fall_through_air_scen9301)
 OG_PARITY_TEST(z_fall_two_story_scen9301)
@@ -594,6 +604,58 @@ TEST(Parity, treasure_exit_open_prompt_facts)
                                    outcome.dump);
     EXPECT_TRUE(facts.ok)
         << "treasure_exit_open_prompt_scen99 facts failed: " << facts.message;
+}
+
+// Subsystem 12, hand-written so that the row's OWN test — the one the
+// mutation canary runs as `Parity.snapshot_dirty_bits_scen9301` — carries the
+// rule the row is named for. It does both halves: run_one_scenario's dump
+// compare (the Invariant determinism arm plus the facts), and the dirty-bit
+// invariant itself — a DELTA captured over a keyframe baseline, merged by
+// apply_delta, must reproduce exactly what a full keyframe capture of the
+// same world produces. Nothing else under tests/parity/ builds a snapshot.
+TEST(Parity, snapshot_dirty_bits_scen9301)
+{
+    const og::parity::ScenarioSpec* spec =
+        find_scenario("snapshot_dirty_bits_scen9301");
+    ASSERT_NE(spec, nullptr)
+        << "snapshot_dirty_bits_scen9301 missing from kScenarios";
+
+    bool observed = false;
+    std::size_t baseline_entities = 0;
+    std::size_t merged_entities = 0;
+    std::size_t full_entities = 0;
+    std::uint32_t merged_hash = 0;
+    std::uint32_t full_hash = 0;
+
+    run_one_scenario(*spec, [&](GameWorld& world) {
+        og::sim::WorldSnapshot baseline =
+            og::sim::capture_keyframe_snapshot(world);
+        baseline_entities = baseline.oblist.size();
+
+        world.tick();
+
+        const og::sim::WorldSnapshot delta = og::sim::capture_snapshot(world);
+        og::sim::apply_delta(baseline, delta);
+        merged_entities = baseline.oblist.size();
+        merged_hash = og::sim::compute_snapshot_hash(baseline);
+
+        const og::sim::WorldSnapshot full =
+            og::sim::capture_keyframe_snapshot(world);
+        full_entities = full.oblist.size();
+        full_hash = og::sim::compute_snapshot_hash(full);
+        observed = true;
+    });
+
+    ASSERT_TRUE(observed) << "the run never reached the observation hook";
+    // The arena must be populated, or the merge invariant is vacuous.
+    ASSERT_EQ(2u, baseline_entities)
+        << "the row must run two spawned soldiers, not an empty arena";
+    EXPECT_EQ(full_entities, merged_entities)
+        << "merging the dirty-bit delta must keep every live entity — a "
+           "zeroed dirty mask is apply_delta's REMOVAL sentinel";
+    EXPECT_EQ(full_hash, merged_hash)
+        << "keyframe + dirty-bit delta must reproduce the same world state a "
+           "full capture of that world produces";
 }
 
 // Phase 01 new gtests --------------------------------------------------------

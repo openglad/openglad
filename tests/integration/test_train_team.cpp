@@ -51,7 +51,76 @@ struct TrainState {
     bool started;
     bool finished;
     bool saw_train_menu;
+    // The stat-button handshake: what the WORKING copy held before the
+    // click, what it held after it was consumed, and the price the screen
+    // then quoted. 0/-1 mean "the click was never proven consumed".
+    short original_strength = -1;
+    short original_dexterity = -1;
+    short strength_after_click = -1;
+    short dexterity_after_click = -1;
+    std::uint32_t cost_after_clicks = 0;
+    bool charged_before_accept = false;
 };
+
+// Read the live TrainSession on the MENU thread — the injector must never
+// touch picker state from its own thread.
+static bool main_thread_train_stats(short& strength, short& dexterity,
+                                    std::uint32_t& cost)
+{
+    bool ok = false;
+    const bool ran = run_on_main_thread([&]() {
+        og::ui::TrainSession* session = pks().train_session;
+        if (!session || session->empty())
+            return;
+        strength = session->working_copy().strength;
+        dexterity = session->working_copy().dexterity;
+        cost = session->current_cost();
+        ok = true;
+    });
+    return ran && ok;
+}
+
+// One verified stat click: press, then poll the working copy (re-clicking on
+// the dropped-press pattern, bounded) until it has moved by exactly +1.
+// ButtonAction::IncreaseStat -> TrainSession::increase_stat raises the
+// working copy by one and quotes a price; nothing is charged until accept.
+static bool train_click_stat_step(const char* button_id, bool dexterity,
+                                  short& before_out, short& after_out,
+                                  std::uint32_t& cost_out)
+{
+    short str_now = 0, dex_now = 0;
+    std::uint32_t cost = 0;
+    if (!main_thread_train_stats(str_now, dex_now, cost))
+        return false;
+    const short before = dexterity ? dex_now : str_now;
+
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    interact(button_id);
+    Uint64 last_click = SDL_GetTicks();
+    for (;;) {
+        if (!main_thread_train_stats(str_now, dex_now, cost))
+            return false;
+        const short now = dexterity ? dex_now : str_now;
+        if (now == before + 1) {
+            before_out = before;
+            after_out = now;
+            cost_out = cost;
+            return true;
+        }
+        if (now != before)
+            return false;  // moved by something other than this click
+        if (SDL_GetTicks() >= deadline) {
+            fprintf(stderr, "  [test] %s never reached %d (stuck at %d)\n",
+                    button_id, before + 1, now);
+            return false;
+        }
+        if (SDL_GetTicks() - last_click >= 300) {
+            interact(button_id);
+            last_click = SDL_GetTicks();
+        }
+        SDL_Delay(20);
+    }
+}
 
 static int train_injector(void* data)
 {
@@ -81,15 +150,26 @@ static int train_injector(void* data)
         state->saw_train_menu = true;
         SDL_Delay(500);
 
-        // Try increasing strength
+        // Strength: the click is proven by the working copy moving +1.
         fprintf(stderr, "  [test] clicking inc_str\n");
-        interact("inc_str");
-        SDL_Delay(300);
+        (void)train_click_stat_step("inc_str", /*dexterity=*/false,
+                                    state->original_strength,
+                                    state->strength_after_click,
+                                    state->cost_after_clicks);
 
-        // Try increasing dexterity
+        // Dexterity: same handshake on the other stat row.
         fprintf(stderr, "  [test] clicking inc_dex\n");
-        interact("inc_dex");
-        SDL_Delay(300);
+        (void)train_click_stat_step("inc_dex", /*dexterity=*/true,
+                                    state->original_dexterity,
+                                    state->dexterity_after_click,
+                                    state->cost_after_clicks);
+
+        // Nothing is charged until ACCEPT: the wallet is still whole here.
+        (void)run_on_main_thread([state]() {
+            state->charged_before_accept =
+                og::runtime::current_session->myscreen_->save_data.totalcash
+                != 50000u;
+        });
 
         // Open details across several classes to exercise detail rendering branches.
         for (int i = 0; i < 5; i++) {
@@ -190,7 +270,7 @@ TEST(TrainTeam, train_team) {
         newest_company_stamp() + 1))
         << "save0 must be seeded as the most recent company on disk";
 
-    TrainState state = { false, false, false };
+    TrainState state{};
     SDL_Thread* thread = SDL_CreateThread(train_injector, "train_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -209,6 +289,33 @@ TEST(TrainTeam, train_team) {
         << "the flow must have run on the company this test seeded";
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
+
+    // Each stat press was consumed by TrainSession::increase_stat: the
+    // WORKING copy moved by exactly one, and the screen then quoted a price.
+    ASSERT_GE(state.original_strength, 0)
+        << "the inc_str press was never consumed by the train session";
+    EXPECT_EQ(state.original_strength + 1, state.strength_after_click)
+        << "STR + raises the working copy's strength by exactly one";
+    ASSERT_GE(state.original_dexterity, 0)
+        << "the inc_dex press was never consumed by the train session";
+    EXPECT_EQ(state.original_dexterity + 1, state.dexterity_after_click)
+        << "DEX + raises the working copy's dexterity by exactly one";
+    EXPECT_GT(state.cost_after_clicks, 0u)
+        << "two raised stats must be quoted at a non-zero training cost";
+
+    // ... and BACK charged nothing: the cost is only taken on accept, and the
+    // real roster member keeps its original stats.
+    EXPECT_FALSE(state.charged_before_accept)
+        << "training must not charge the company before ACCEPT";
+    SaveData& after = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_EQ(50000u, after.totalcash)
+        << "leaving the train screen with BACK must not spend a coin";
+    ASSERT_NE(nullptr, after.team_list[0].get())
+        << "the trained roster slot must still hold its member";
+    EXPECT_EQ(state.original_strength, after.team_list[0]->strength)
+        << "an unaccepted raise must never reach the real roster member";
+    EXPECT_EQ(state.original_dexterity, after.team_list[0]->dexterity)
+        << "an unaccepted raise must never reach the real roster member";
 }
 
 // WP7 shuffle seed 9: TrainTeam.train_team ran on a company some other test
@@ -262,7 +369,7 @@ TEST(TrainTeam, train_team_runs_on_the_open_company_not_a_stray_slot)
     ASSERT_TRUE(seed_open_company(save_data, "trainopen", base_s + 2000))
         << "the company under test must be written as the most recent one";
 
-    TrainState state = { false, false, false };
+    TrainState state{};
     SDL_Thread* thread =
         SDL_CreateThread(train_injector, "train_stray_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";

@@ -83,13 +83,18 @@ TEST(ScrollViewLayout, gladiator_scen1_gets_the_gutter)
     EXPECT_EQ(320, l.blit_w) << "full-screen blit stays full-screen";
 }
 
-TEST(ScrollViewLayout, long_intro_widens_its_blit_but_stays_on_screen)
+TEST(ScrollViewLayout, long_intro_blit_widens_to_exactly_the_widened_frame)
 {
+    // The widen arm is `blit_w = frame_x2 + 1 - blit_x` and NOTHING else: the
+    // campaign intro's 244x119 rect at (36,28) becomes exactly 263 wide, not
+    // "at least wide enough" and not "out to the screen edge" (284).
     const ScrollViewLayout l = intro_layout(34);
     EXPECT_TRUE(l.scrollable);
-    EXPECT_EQ(298, l.frame_x2);
-    EXPECT_GE(l.blit_w, 298 + 1 - 36) << "blit must cover the gutter";
-    EXPECT_LE(l.blit_x + l.blit_w, 320);
+    EXPECT_EQ(298, l.frame_x2) << "240px box + the 18px gutter";
+    EXPECT_EQ(36, l.blit_x) << "the widen arm never moves the blit origin";
+    EXPECT_EQ(263, l.blit_w) << "frame_x2 + 1 - blit_x, exactly";
+    EXPECT_EQ(28, l.blit_y) << "the caller's y is untouched";
+    EXPECT_EQ(119, l.blit_h) << "the caller's height is untouched";
 }
 
 TEST(ScrollViewLayout, controls_sit_inside_the_widened_frame_and_are_disjoint)
@@ -140,11 +145,20 @@ TEST(ScrollViewLayout, thumb_never_leaves_the_track)
     }
 }
 
-TEST(ScrollViewLayout, thumb_keeps_a_grabbable_minimum_height)
+TEST(ScrollViewLayout, thumb_height_is_proportional_and_floors_at_six)
 {
+    // thumb_h = track.h * 14 / num_lines, floored at the 6px grab minimum.
+    // 200 lines computes 64*14/200 = 4 and the floor lifts it to exactly 6 --
+    // not to the track height, and not to some other minimum.
     const ScrollViewLayout l = scenario_layout(200);
     EXPECT_TRUE(l.scrollable);
-    EXPECT_GE(l.thumb.h, 6);
+    EXPECT_EQ(6, l.thumb.h) << "a 200-line briefing gets exactly the 6px floor";
+    EXPECT_EQ(64, l.track.h) << "the track the thumb is measured against";
+
+    // 28 lines sits above the floor, so the proportional rule itself is pinned
+    // on the same case: 64*14/28 = 32.
+    EXPECT_EQ(32, scenario_layout(28).thumb.h)
+        << "track.h * 14 / num_lines when it clears the 6px floor";
 }
 
 TEST(ScrollViewLayout, out_of_range_linesdown_is_clamped)

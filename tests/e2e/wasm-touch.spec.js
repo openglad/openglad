@@ -510,12 +510,43 @@ test.describe('Touch overlay activation', () => {
     });
     await expect(wrap).toBeHidden();
 
+    // Re-arm a SINGLE-LINE prompt first. Without it the deactivate leg below
+    // starts from an already-hidden wrapper (the multiline prompt hid it), so
+    // it can never observe a visible->hidden transition and a shell that
+    // ignored active:false would stay green.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('openglad-text-input', {
+          detail: {
+            active: true,
+            initialValue: 'x',
+            maxBytes: 28,
+            prompt: 'JOIN ROOM CODE',
+            multiline: false,
+          },
+        }),
+      );
+    });
+    await expect(wrap).toBeVisible();
+    expect(
+      await page.evaluate(() => window.__opengladTextInputActive),
+    ).toBe(true);
+
+    // stop_text_input() (src/interface/input/native_input.cpp) dispatches
+    // active:false: the shell must hide the wrapper, clear the seam flag and
+    // blur the field regardless of the previous prompt's multiline flag.
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent('openglad-text-input', { detail: { active: false } }),
       );
     });
     await expect(wrap).toBeHidden();
+    expect(
+      await page.evaluate(() => window.__opengladTextInputActive),
+    ).toBe(false);
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.id ?? ''))
+      .not.toBe('og-text-entry');
   });
 
   test('room-code prompt: DOM typing mirrors into the canvas, Enter accepts, CANCEL restores', async ({
@@ -1126,13 +1157,33 @@ test.describe('Touch gameplay controls', () => {
       test.skip(true, 'Module.SDL3.audioContext is not exposed');
       return;
     }
-    // --autoplay-policy=user-gesture-required should keep it suspended until
-    // a real gesture, but not every engine build enforces the policy (this
-    // headless Chromium boots the context 'running'). The meaningful,
-    // engine-independent contract: after the first touch gesture the context
-    // is running. When the engine DOES enforce the policy (real iOS Safari,
-    // WebKit), the pre-gesture 'suspended' assertion adds the unlock proof.
+    // --autoplay-policy=user-gesture-required should keep it suspended until a
+    // real gesture, but not every engine build enforces the policy (this
+    // headless Chromium boots the context 'running').
     expect(['suspended', 'running']).toContain(initial);
+
+    // A 'running' context makes the gesture irrelevant: unlockAudioContext()
+    // (web/shell.html:796-808) only resumes when state === 'suspended', so
+    // deleting the shell's pointerdown/touchend listeners entirely would leave
+    // a 'toBe("running")' poll green. Suspend first so the gesture is
+    // load-bearing, and spy on resume() so the resume is ATTRIBUTED to the
+    // gesture: SDL's own silence-timer resume happens outside any DOM event,
+    // where window.event is unset, and that is exactly the out-of-gesture
+    // resume iOS Safari rejects.
+    await page.evaluate(async () => {
+      const sdl = window.Module && (window.Module.SDL3 || window.Module.SDL2);
+      const ctx = sdl.audioContext;
+      window.__pwResumeCalls = [];
+      const realResume = ctx.resume.bind(ctx);
+      ctx.resume = function () {
+        window.__pwResumeCalls.push(window.event ? window.event.type : 'none');
+        return realResume();
+      };
+      if (ctx.state === 'running') {
+        await ctx.suspend();
+      }
+    });
+    await expect.poll(audioState, { timeout: 10_000 }).toBe('suspended');
 
     const box = await page.locator('#canvas').boundingBox();
     if (!box) {
@@ -1140,6 +1191,22 @@ test.describe('Touch gameplay controls', () => {
     }
     await page.touchscreen.tap(box.x + box.width / 2, box.y + 10);
 
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            (window.__pwResumeCalls || []).some(
+              (type) => type === 'pointerdown' || type === 'touchend',
+            ),
+          ),
+        {
+          message:
+            'the first touch gesture must resume the AudioContext from inside '
+            + 'its own pointerdown/touchend handler',
+          timeout: 10_000,
+        },
+      )
+      .toBe(true);
     await expect.poll(audioState, { timeout: 10_000 }).toBe('running');
   });
 });

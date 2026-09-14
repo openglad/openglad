@@ -1936,7 +1936,11 @@ TEST_F(ModesSoccer, wall_bounce_reflects_the_blocked_axis)
     EXPECT_EQ(326, fx.ball_cx()) << "bounced step lands 4 px back";
 }
 
-TEST_F(ModesSoccer, fast_contact_damages_capped_and_rebounds)
+// The contact-damage RULE, read off the ball itself (run_flight is the only
+// caller that ever sets the ball's damage): 1 damage per px/tick of L1
+// speed, capped at T.dmg_cap = 12 (D7). Both halves get their own stage —
+// a 20 px/tick ball clamps to 12, a 5 px/tick ball deals exactly 5.
+TEST_F(ModesSoccer, contact_damage_is_one_per_px_capped_at_twelve)
 {
     SoccerWorld fx;
     fx.tick(1);
@@ -1944,30 +1948,66 @@ TEST_F(ModesSoccer, fast_contact_damages_capped_and_rebounds)
     fx.thaw_kickoff();
     // Victim parked in the path; ball at 20 px/tick stages the 12 cap.
     fx.green->setxy(352, 456);  // center (360, 464)
+    ASSERT_EQ(0.0f, fx.ball()->damage()) << "an untouched ball damages nobody";
     const float hp_before = fx.green->stats()->hitpoints();
     fx.set_ball(330, 464, 20 * 256, 0);
     fx.tick(1);
 
     const float dealt = hp_before - fx.green->stats()->hitpoints();
+    EXPECT_EQ(12.0f, fx.ball()->damage())
+        << "20 px/tick of L1 speed clamps to the T.dmg_cap ceiling of 12";
     EXPECT_GT(dealt, 0.0f) << "contact at speed deals damage";
     EXPECT_LE(dealt, 12.0f) << "1 per px/tick, capped at 12 (D7)";
     EXPECT_LT(fx.var(kSocBallVx), 0) << "ball rebounds off the victim";
     // Restitution halves the speed (x256/2), then friction.
     EXPECT_LT(std::abs(fx.var(kSocBallVx)), 20 * 128);
+
+    // Below the cap the damage IS the speed: 5 px/tick lands 5. Staged so
+    // the pre-step L1 (15) is outside kick_radius 12 — no walk-in kick — and
+    // the single 5 px sub-step brings the center to L1 10, inside hit_radius.
+    fx.green->setxy(352, 456);
+    fx.set_ball(345, 464, 5 * 256, 0);
+    fx.tick(1);
+    EXPECT_EQ(5.0f, fx.ball()->damage())
+        << "1 damage per px/tick of L1 speed below the cap";
+    EXPECT_LT(fx.var(kSocBallVx), 0) << "the sub-cap hit rebounds too";
 }
 
-TEST_F(ModesSoccer, slow_contact_deals_no_damage)
+// The speed GATE, staged so it is the only thing between the ball and the
+// victim: at exactly T.fast_fp (2 px/tick) a ball that ends its step inside
+// hit_radius neither damages, nor attacks, nor rebounds; one px/tick faster,
+// from the same spots, it does all three.
+TEST_F(ModesSoccer, contact_below_the_speed_gate_does_nothing)
 {
     SoccerWorld fx;
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     fx.thaw_kickoff();
-    fx.green->setxy(352, 456);
+    // Soldier center (369, 464). Pre-step ball center 356: L1 13, outside
+    // kick_radius 12, so run_kicks does not fire and the velocity survives.
+    fx.green->setxy(361, 456);
     const float hp_before = fx.green->stats()->hitpoints();
-    // 2 px/tick == the fast threshold: at it, no damage fires.
-    fx.set_ball(356, 476, 2 * 256, 0);
+    fx.set_ball(356, 464, 2 * 256, 0);
     fx.tick(1);
-    EXPECT_EQ(hp_before, fx.green->stats()->hitpoints());
+
+    EXPECT_EQ(358, fx.ball_cx()) << "one 2 px sub-step: L1 11, inside reach";
+    EXPECT_EQ(0.0f, fx.ball()->damage())
+        << "at the threshold the ball never becomes a weapon";
+    EXPECT_EQ(hp_before, fx.green->stats()->hitpoints())
+        << "and the victim takes nothing";
+    EXPECT_GT(fx.var(kSocBallVx), 0) << "no rebound at the threshold";
+    EXPECT_EQ(0, fx.var(kSocLastKicker)) << "nothing touched the ball";
+
+    // One px/tick faster, same geometry: the gate opens.
+    fx.green->setxy(361, 456);
+    fx.set_ball(356, 464, 3 * 256, 0);
+    fx.tick(1);
+
+    EXPECT_EQ(3.0f, fx.ball()->damage())
+        << "just past T.fast_fp the ball damages 1 per px/tick";
+    EXPECT_LT(fx.var(kSocBallVx), 0) << "the hit rebounds the ball";
+    EXPECT_LT(fx.green->stats()->hitpoints(), hp_before)
+        << "and the victim loses hit points";
 }
 
 TEST_F(ModesSoccer, last_kicker_is_immune_during_flight)

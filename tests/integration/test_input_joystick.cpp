@@ -308,12 +308,24 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
     e.jhat.value = SDL_HAT_UP;
     ASSERT_TRUE(j.getPress(KEY_UP, e)) << "hat up should press KEY_UP";
     ASSERT_TRUE(j.getRelease(KEY_UP, e)) << "hat up should release KEY_UP";
+    // KEY_DOWN still carries the axis index 1 from the NEG_AXIS arm above;
+    // both cardinals must name hat 0, the hat this event reports.
+    j.key_index[KEY_RIGHT] = 0;
+    j.key_index[KEY_DOWN] = 0;
     e.jhat.value = SDL_HAT_RIGHT;
-    (void)j.getPress(KEY_RIGHT, e);
-    (void)j.getRelease(KEY_RIGHT, e);
+    ASSERT_TRUE(j.getPress(KEY_RIGHT, e)) << "hat right should press KEY_RIGHT";
+    ASSERT_TRUE(j.getRelease(KEY_RIGHT, e)) << "hat right should release KEY_RIGHT";
+    ASSERT_FALSE(j.getPress(KEY_DOWN, e))
+        << "hat right must not press the HAT_DOWN mapping";
+    ASSERT_FALSE(j.getRelease(KEY_DOWN, e))
+        << "hat right must not release the HAT_DOWN mapping";
     e.jhat.value = SDL_HAT_DOWN;
-    (void)j.getPress(KEY_DOWN, e);
-    (void)j.getRelease(KEY_DOWN, e);
+    ASSERT_TRUE(j.getPress(KEY_DOWN, e)) << "hat down should press KEY_DOWN";
+    ASSERT_TRUE(j.getRelease(KEY_DOWN, e)) << "hat down should release KEY_DOWN";
+    ASSERT_FALSE(j.getPress(KEY_RIGHT, e))
+        << "hat down must not press the HAT_RIGHT mapping";
+    ASSERT_FALSE(j.getRelease(KEY_RIGHT, e))
+        << "hat down must not release the HAT_RIGHT mapping";
 
     j.key_type[KEY_UP_LEFT] = JoyData::HAT_UP_LEFT;
     ASSERT_TRUE(!j.getPress(KEY_UP_LEFT, e)) << "diagonal hat mapping should be ignored for press";

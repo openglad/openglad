@@ -946,6 +946,13 @@ TEST(CompanyList, corrupt_torn_and_active_guards_never_switch)
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished);
+    // The torn row's OPEN action must SURFACE the body-load failure, not
+    // silently no-op: open_company_slot reports SaveDataIoError::ReadFailed
+    // for a 164-byte body claiming listsize 2, and the row action pops it up
+    // through save_error_string(). This is the pin that proves the click on
+    // company_row_0 was consumed at all.
+    ASSERT_TRUE(trace_contains("popup", "LOAD COMPANY: read_failed"))
+        << "the torn row must surface the load error, not silently no-op";
     ASSERT_TRUE(trace_contains("popup", "COMPANY FILE DAMAGED"))
         << "the corrupt row must popup instead of opening";
     ASSERT_TRUE(trace_contains("popup", "THIS COMPANY IS OPEN - SWITCH FIRST"))
@@ -1224,12 +1231,12 @@ TEST(CompanyList, backup_row_level_titles_follow_the_mount_guard)
     info.header.scen_num = 2;
     info.header.valid = true;
 
-    // Mounted + scenario present: "L2 <title <= 14ch>".
+    // Mounted + scenario present: "L<n> " + the scenario title with its
+    // "<n>. " prefix stripped and clipped to 14 chars. Gladiator scen2 is
+    // "THROUGH TALWOOD FOREST", so the row reads exactly "L2 THROUGH TALWOO".
     const og::ui::BackupRowText mounted = og::ui::format_backup_row(info);
-    EXPECT_TRUE(mounted.level.rfind("L2 ", 0) == 0)
-        << "got: " << mounted.level;
-    EXPECT_LE(mounted.level.size(), std::string("L2 ").size() + 14u)
-        << "title must clip to 14 chars (§2.4)";
+    EXPECT_EQ("L2 THROUGH TALWOO", mounted.level)
+        << "mounted scen2 title, prefix-stripped and clipped to 14 (§2.4)";
 
     // Mounted + scenario missing: the "Level N" fallback is dropped.
     info.header.scen_num = 9999;

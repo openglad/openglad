@@ -525,9 +525,18 @@ TEST(CursesNetwork, host_lobby_builds_over_inprocess_transport)
     FakeClock clock;
     lobby->poll(term, clock);
 
-    // The host registered itself; status reflects at least the host player.
-    const std::vector<std::string> lines = lobby->status_lines();
-    ASSERT_FALSE(lines.empty());
+    // The host registered itself on its own LobbyServer: exactly one player,
+    // flagged host, and the status band carries the roster it produced.
+    ASSERT_EQ(1u, lobby->players().size())
+        << "the host must register itself on its own LobbyServer";
+    EXPECT_TRUE(lobby->players().front().is_host)
+        << "the sole registered player is the host";
+    EXPECT_TRUE(status_contains(*lobby, "Players: 1"))
+        << "the status band reports the roster census";
+    EXPECT_TRUE(status_contains(*lobby, "[host]"))
+        << "the host's own row is marked [host]";
+    EXPECT_TRUE(status_contains(*lobby, "[you]"))
+        << "the host's own row is marked [you]";
     EXPECT_GT(term.present_count(), 0) << "poll() renders the lobby";
 }
 
@@ -1074,9 +1083,20 @@ TEST(CursesNetwork, cancel_tears_down_cleanly)
     HeadlessTerminal term(24, 80);
     FakeClock clock;
     lobby->poll(term, clock);
+    ASSERT_TRUE(status_contains(*lobby, "Players: 1"))
+        << "the lobby must hold a roster BEFORE the cancel, or the teardown "
+           "pins below prove nothing";
 
-    // Cancel should not crash, and a subsequent poll reports no start.
+    // cancel() sets cancelled_ AND runs teardown(): the roster is dropped and
+    // the band falls back to the pre-roster line.
     lobby->cancel();
+    EXPECT_TRUE(lobby->cancelled()) << "cancel() marks the lobby cancelled";
+    EXPECT_TRUE(lobby->players().empty())
+        << "teardown drops the lobby state";
+    EXPECT_FALSE(status_contains(*lobby, "Players:"))
+        << "the torn-down lobby no longer reports a roster";
+    EXPECT_TRUE(status_contains(*lobby, "Waiting for players..."))
+        << "a torn-down host lobby falls back to the pre-roster band";
     EXPECT_FALSE(lobby->poll(term, clock))
         << "a cancelled lobby never negotiates a start";
     // No session can be taken after cancel.
@@ -1097,8 +1117,22 @@ TEST(CursesNetwork, esc_key_cancels_lobby)
 
     HeadlessTerminal term(24, 80);
     FakeClock clock;
+    lobby->poll(term, clock);
+    ASSERT_TRUE(status_contains(*lobby, "Players: 1"))
+        << "the lobby must hold a roster before Esc, or the teardown pins "
+           "below prove nothing";
+
     term.push_special(KeyCode::Escape);
     EXPECT_FALSE(lobby->poll(term, clock)) << "Esc cancels and returns false";
+    // Escape is 'q''s twin in the key switch: cancel() -> cancelled_ + teardown().
+    EXPECT_TRUE(lobby->cancelled()) << "Esc must cancel the lobby";
+    EXPECT_EQ(lobby->take_session(), nullptr)
+        << "no session can be taken from a cancelled lobby";
+    EXPECT_TRUE(lobby->players().empty()) << "Esc tears the lobby state down";
+    EXPECT_FALSE(status_contains(*lobby, "Players:"))
+        << "the torn-down lobby no longer reports a roster";
+    EXPECT_TRUE(status_contains(*lobby, "Waiting for players..."))
+        << "a torn-down host lobby falls back to the pre-roster band";
 }
 
 TEST(CursesNetwork, run_curses_lobby_returns_default_result_when_cancelled)
@@ -1182,6 +1216,30 @@ TEST(CursesNetwork, joiner_start_request_is_noop)
     }
     EXPECT_FALSE(host_started);
     EXPECT_FALSE(join_started);
+    EXPECT_EQ(host_lobby->take_session(), nullptr);
+    EXPECT_EQ(join_lobby->take_session(), nullptr);
+    EXPECT_TRUE(status_contains(*host_lobby, "Players: 2"))
+        << "liveness control: both machines really shared this lobby";
+
+    // The client-side guard is what this test exists for, and this is where it
+    // SHOWS. request_start() on a joiner must not even allocate a request id:
+    // the server silently drops a non-host StartGame (lobby_server.cpp: "A
+    // non-host StartGame stays silently ignored"), so a joiner that got as far
+    // as sending one is left holding pending_start_request_id_ == 1 -- the very
+    // id the HOST's first request carries. The next denial echo meant for the
+    // host would then be rendered on the joiner's band as its own.
+    host_lobby->request_start();  // request id 1, denied: the joiner is unready
+    for (int i = 0; i < 100; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "Waiting for other machines"))
+        << "control: the host's own denial is correlated to the host";
+    EXPECT_FALSE(status_contains(*join_lobby, "Waiting for other machines"))
+        << "the host's denial must not be mis-correlated onto a joiner that "
+           "never put a start request on the wire";
+    EXPECT_FALSE(status_contains(*join_lobby, "Only the host can start"))
+        << "no start denial of any kind may echo back to the joiner";
     EXPECT_EQ(host_lobby->take_session(), nullptr);
     EXPECT_EQ(join_lobby->take_session(), nullptr);
 }
@@ -2092,21 +2150,29 @@ TEST(CursesNetwork, host_input_propagates_to_joiner_mirror)
     const std::uint32_t host_avatar = game.host_session->followed_entity_id();
     ASSERT_NE(host_avatar, 0u);
 
-    auto joiner_view_of_host = [&]() -> std::pair<int, int> {
-        const walker* w = game.join_session->mirror_world().find_by_id(host_avatar);
-        return w ? std::pair<int, int>{w->xpos(), w->ypos()}
-                 : std::pair<int, int>{-1, -1};
-    };
-    const std::pair<int, int> before = joiner_view_of_host();
-    ASSERT_NE(before.first, -1) << "the joiner must see the host's avatar";
+    {
+        const walker* w =
+            game.join_session->mirror_world().find_by_id(host_avatar);
+        ASSERT_NE(nullptr, w) << "the joiner must see the host's avatar";
+    }
 
     // The host drives its avatar; try several directions until the joiner's
-    // mirror reflects movement (open ground exists around the spawn).
+    // mirror reflects movement (open ground exists around the spawn). The
+    // avatar must STILL BE THERE under the same id at every sample -- a
+    // replication break that drops it used to read as "moved".
     const InputAction dirs[] = {InputAction::MoveRight, InputAction::MoveDown,
                                 InputAction::MoveLeft, InputAction::MoveUp};
     bool moved = false;
+    InputAction moved_dir = InputAction::MoveRight;
+    std::pair<int, int> dir_start{0, 0};
+    std::pair<int, int> after{0, 0};
     for (InputAction dir : dirs) {
-        const std::pair<int, int> dir_start = joiner_view_of_host();
+        {
+            const walker* w =
+                game.join_session->mirror_world().find_by_id(host_avatar);
+            ASSERT_NE(nullptr, w) << "the host avatar left the joiner's mirror";
+            dir_start = {w->xpos(), w->ypos()};
+        }
         for (int i = 0; i < 40 && !moved; ++i) {
             InputState host_in;
             host_in.players[0].held[static_cast<int>(dir)] = true;
@@ -2116,14 +2182,41 @@ TEST(CursesNetwork, host_input_propagates_to_joiner_mirror)
             game.join_session->send_input(idle);
             game.host_session->advance();
             game.join_session->advance();
-            if (joiner_view_of_host() != dir_start)
+            const walker* w =
+                game.join_session->mirror_world().find_by_id(host_avatar);
+            ASSERT_NE(nullptr, w)
+                << "the host avatar left the joiner's mirror at frame " << i;
+            const std::pair<int, int> now{w->xpos(), w->ypos()};
+            if (now != dir_start) {
                 moved = true;
+                moved_dir = dir;
+                after = now;
+            }
         }
         if (moved)
             break;
     }
-    EXPECT_TRUE(moved)
+    ASSERT_TRUE(moved)
         << "the host's movement should propagate to the joiner's mirror world";
+
+    // ...and it propagates along the PRESSED axis (PlayerInput::move_x/move_y:
+    // Right +x, Left -x, Down +y, Up -y). The orthogonal axis stays unpinned.
+    switch (moved_dir) {
+    case InputAction::MoveRight:
+        EXPECT_GT(after.first, dir_start.first) << "MoveRight must increase x";
+        break;
+    case InputAction::MoveLeft:
+        EXPECT_LT(after.first, dir_start.first) << "MoveLeft must decrease x";
+        break;
+    case InputAction::MoveDown:
+        EXPECT_GT(after.second, dir_start.second) << "MoveDown must increase y";
+        break;
+    case InputAction::MoveUp:
+        EXPECT_LT(after.second, dir_start.second) << "MoveUp must decrease y";
+        break;
+    default:
+        FAIL() << "unexpected direction";
+    }
 }
 
 TEST(CursesNetwork, take_session_is_idempotent)
@@ -2928,10 +3021,16 @@ TEST(CursesNetwork, host_kick_key_removes_the_peer_and_tells_it_why)
     EXPECT_FALSE(status_contains(*join_lobby, "Connecting..."))
         << "a kicked client is not connecting to anything";
     // 80 columns is the floor: the hint must not lose its tail now that it
-    // carries two more keys.
-    EXPECT_LE(std::string("[s] start [</>] seat [t] team [r] ready [c] ctrl "
-                          "[k] kick [d] leave [q] quit").size(),
-              80u);
+    // carries two more keys. Read the RENDERED bottom row -- HeadlessTerminal
+    // drops out-of-bounds cells, so a hint grown past column 79 loses its tail
+    // here and nowhere else.
+    const std::string hint_row = host_term.text_row(host_term.rows() - 1);
+    EXPECT_NE(std::string::npos, hint_row.find("[s] start"))
+        << "hint row: " << hint_row;
+    EXPECT_NE(std::string::npos, hint_row.find("[k] kick"))
+        << "hint row: " << hint_row;
+    EXPECT_NE(std::string::npos, hint_row.find("[q] quit"))
+        << "the hint's tail was clipped at 80 columns; hint row: " << hint_row;
     EXPECT_TRUE(status_contains(*host_lobby, "Kicked M"))
         << "the host names the machine it removed, in the shared row label";
     EXPECT_FALSE(host_lobby->connection_alert().has_value())

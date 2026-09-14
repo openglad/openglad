@@ -2212,3 +2212,77 @@ int level_editor_testing_default_maxrows()
 {
     return static_cast<int>(kDefaultBackgrounds.size() / 4);
 }
+
+// Scalar editor state the injector may poll while the loop is running. Same
+// discipline as level_editor_testing_terrain_smoothing() above: each of these
+// is a single scalar the editor writes ONLY in response to a click or key the
+// injector itself sent, so an injector that waits for its own edit to land is
+// not racing a concurrent writer. Never poll the level's strings or containers
+// this way -- read those after level_editor() has returned.
+int level_editor_testing_level_type()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return static_cast<int>(g_level_editor_testing_data->level->world().type);
+}
+
+int level_editor_testing_level_par_value()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return static_cast<int>(g_level_editor_testing_data->level->world().par_value);
+}
+
+// 0 = Terrain, 1 = Object, 2 = Select (the Mode enumerator order).
+int level_editor_testing_mode()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return static_cast<int>(g_level_editor_testing_data->mode);
+}
+
+int level_editor_testing_terrain_brush()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->terrain_brush.terrain;
+}
+
+int level_editor_testing_object_brush_order()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return static_cast<int>(g_level_editor_testing_data->object_brush.order);
+}
+
+int level_editor_testing_object_brush_family()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->object_brush.family;
+}
+
+int level_editor_testing_object_brush_team()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->object_brush.team;
+}
+
+// The object brush's authored level (']' raises, '[' lowers, never below 1)
+// and its grid-snap flag ('g' toggles it in Object/Select mode). Same read
+// discipline as level_editor_testing_object_brush_team() above: each is a
+// single scalar the editor writes only from the key handler, so the injector
+// that sent the key may poll for its own edit to land.
+int level_editor_testing_object_brush_level()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->object_brush.level;
+}
+
+bool level_editor_testing_object_brush_snap_to_grid()
+{
+    return g_level_editor_testing_data != nullptr &&
+           g_level_editor_testing_data->object_brush.snap_to_grid;
+}

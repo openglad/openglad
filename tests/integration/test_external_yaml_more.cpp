@@ -176,21 +176,27 @@ TEST(ExternalYamlMore, external_yaml_scanner_tokens_variety)
 }
 
 
+// Documents the SCANNER itself rejects. The layer matters: yaml_parser_scan
+// only tokenises, so a document that is merely ill-FORMED (an unclosed flow
+// sequence, mismatched delimiters) scans clean and is refused one layer up by
+// yaml_parser_parse — those two live in ExternalYaml.parse_error_path. What
+// belongs here is lexical: an unterminated quote, illegal tab indentation, a
+// malformed alias token. Every one of them must fail AND must have produced
+// tokens before failing, so the failure is a real scan error and not an
+// initialisation refusal.
 TEST(ExternalYamlMore, external_yaml_scanner_error_unclosed_quote)
 {
-    const std::string input = "a: \"unterminated\n";
-    int tokens = 0;
-    ASSERT_TRUE(!scan_yaml_tokens(input, &tokens)) << "scanner should fail on unterminated quote";
-
     const std::vector<std::string> bad = {
-        "a:\n\t- badtab\n",          // illegal tab indentation
-        "flow: [1, 2, 3\n",          // unclosed flow sequence
-        "map: {a: 1, b: [2, 3}\n",   // mismatched delimiters
-        "alias: *\n"                 // malformed alias token
+        "a: \"unterminated\n",        // unterminated double-quoted scalar
+        "a:\n\t- badtab\n",           // illegal tab indentation
+        "alias: *\n"                  // malformed alias token
     };
     for (const auto& doc : bad) {
         int n = 0;
-        (void)scan_yaml_tokens(doc, &n);
+        ASSERT_FALSE(scan_yaml_tokens(doc, &n))
+            << "the scanner must reject: " << doc;
+        ASSERT_GT(n, 0)
+            << "the scanner reached the error after emitting tokens: " << doc;
     }
 }
 

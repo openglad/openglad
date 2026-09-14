@@ -111,7 +111,7 @@ TEST(PerViewZoomMath, step_scale_num_and_cycle_bounds)
                   viewscreen::kViewZoomStepCount - 1));
 }
 
-TEST(PerViewZoomMath, composed_pct_delegation_is_identical_to_steps)
+TEST(PerViewZoomMath, composed_pct_delegation_and_off_grid_percents)
 {
     // The steps math is the pct math at pct = steps*10 — the mechanism that
     // makes zoom OFF for every view byte-identical by construction.
@@ -127,6 +127,21 @@ TEST(PerViewZoomMath, composed_pct_delegation_is_identical_to_steps)
                 EXPECT_EQ(a.h, b.h) << w << "x" << h << " steps " << steps;
                 EXPECT_EQ(0, b.w % 4) << "scaler-safe width";
             }
+
+    // The loop above can only ever see multiples of ten, so it cannot notice a
+    // pct function that snaps its argument to the steps grid. Composed per-view
+    // percents are NOT multiples of ten (global 0.5 x view 0.9 = 45), and they
+    // must derive their own canvas: base 320x200 * 100 / pct, width floored to
+    // a multiple of four.
+    const og::WorldCanvasDims at45 =
+        og::compute_zoom_canvas_dims_pct(640, 400, og::compose_zoom_pct(5, 9));
+    EXPECT_EQ(45, og::compose_zoom_pct(5, 9)) << "the composed percent itself";
+    EXPECT_EQ(708, at45.w) << "320*100/45 = 711 -> floored to 708, not 800 (pct 40)";
+    EXPECT_EQ(444, at45.h) << "200*100/45 = 444";
+
+    const og::WorldCanvasDims at95 = og::compute_zoom_canvas_dims_pct(640, 400, 95);
+    EXPECT_EQ(336, at95.w) << "320*100/95 = 336, not 352 (pct 90)";
+    EXPECT_EQ(210, at95.h) << "200*100/95 = 210";
 }
 
 TEST(PerViewZoomMath, composed_pct_canvas_and_clamps)

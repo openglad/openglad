@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 // Forward declarations from src/runtime/level_data.cpp (now using OgFile&)
@@ -155,7 +156,7 @@ TEST(LevelDataLoadVersions, level_data_load_version2_truncated_object_payload_fa
 }
 
 
-TEST(LevelDataLoadVersions, level_data_load_version2_invalid_family_fails_object_creation)
+TEST(LevelDataLoadVersions, level_data_load_version2_out_of_range_family_falls_back_to_soldier)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -173,9 +174,16 @@ TEST(LevelDataLoadVersions, level_data_load_version2_invalid_family_fails_object
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_2(rw, &data);
-    // Some loaders tolerate unknown family values by clamping/defaulting, so
-    // this isn't guaranteed to fail. We mainly want to ensure it doesn't crash.
-    ASSERT_EQ(1, (int)ok) << "load_version_2 should not crash on unknown family values";
+    // create_walker_owned keeps the legacy "bad living family" fallback: an
+    // out-of-range Living family byte yields a soldier, not a null.
+    ASSERT_EQ(1, (int)ok) << "load_version_2 should accept an out-of-range family byte";
+    ASSERT_EQ(1u, data.world().oblist.size()) << "the record should load exactly one walker into oblist";
+    ASSERT_TRUE(data.world().fxlist.empty()) << "a Living record should not land in fxlist";
+    ASSERT_TRUE(data.world().weaplist.empty()) << "a Living record should not land in weaplist";
+    ASSERT_EQ(FAMILY_SOLDIER, data.world().oblist.front()->family())
+        << "family 255 should fall back to FAMILY_SOLDIER";
+    ASSERT_EQ(static_cast<int>(Order::Living), static_cast<int>(data.world().oblist.front()->query_order()))
+        << "the fallback should keep the record's Living order";
 }
 
 
@@ -273,15 +281,25 @@ TEST(LevelDataLoadVersions, level_data_load_version3_truncates_long_description_
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
-    append_u8(bytes, 1);  // numlines
+    append_u8(bytes, 2);  // numlines
     append_u8(bytes, 200); // width > oneline[80], triggers truncation/discard loop
     for (int i = 0; i < 200; i++)
         append_u8(bytes, 'x');
+    // A second line the parser can only reach if the 121 over-long bytes of the
+    // first line were read and discarded (the stream has no seek back).
+    append_u8(bytes, 3);
+    append_u8(bytes, 'e');
+    append_u8(bytes, 'n');
+    append_u8(bytes, 'd');
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_3(rw, &data);
     ASSERT_EQ(1, (int)ok) << "load_version_3 should succeed with truncated description line";
-    ASSERT_TRUE(!data.description.empty()) << "description should contain at least one line";
+    ASSERT_EQ(2u, data.description.size()) << "both description lines should be stored";
+    ASSERT_EQ(std::string(79, 'x'), data.description.front())
+        << "a 200-byte line should be clamped to 79 bytes plus the NUL";
+    ASSERT_EQ(std::string("end"), data.description.back())
+        << "the following line only parses if the 121 over-long bytes were discarded";
 }
 
 
@@ -291,15 +309,24 @@ TEST(LevelDataLoadVersions, level_data_load_version4_truncates_long_description_
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
-    append_u8(bytes, 1);  // numlines
+    append_u8(bytes, 2);  // numlines
     append_u8(bytes, 120); // width > oneline[80], triggers truncation/discard loop
     for (int i = 0; i < 120; i++)
         append_u8(bytes, 'x');
+    // Reachable only once the 41 over-long bytes of the first line are consumed.
+    append_u8(bytes, 3);
+    append_u8(bytes, 'e');
+    append_u8(bytes, 'n');
+    append_u8(bytes, 'd');
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_4(rw, &data);
     ASSERT_EQ(1, (int)ok) << "load_version_4 should succeed with truncated description line";
-    ASSERT_TRUE(!data.description.empty()) << "description should contain at least one line";
+    ASSERT_EQ(2u, data.description.size()) << "both description lines should be stored";
+    ASSERT_EQ(std::string(79, 'x'), data.description.front())
+        << "a 120-byte line should be clamped to 79 bytes plus the NUL";
+    ASSERT_EQ(std::string("end"), data.description.back())
+        << "the following line only parses if the 41 over-long bytes were discarded";
 }
 
 

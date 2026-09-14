@@ -7,6 +7,7 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 #include <memory>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -25,6 +26,15 @@ static std::unique_ptr<walker> make_living_guy(char family, unsigned char team =
     if (w)
         w->setxy(100, 100);
     return w;
+}
+
+// The frames of one sentinel-terminated animation row, as ints.
+static std::vector<int> explode_row(const signed char* seq)
+{
+    std::vector<int> row;
+    for (int i = 0; i < 128 && seq[i] != -1; ++i)
+        row.push_back(static_cast<int>(seq[i]));
+    return row;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,11 +111,10 @@ TEST(EffectAct, hits_no_overlap)
 }
 
 
-TEST(EffectAct, hits_adjacent)
-{
-    bool r = hits(0, 0, 10, 10, 10, 0, 10, 10);
-    (void)r; // exactly touching, behavior may vary
-}
+// EffectAct.hits_adjacent (an x-edge-touching hits() call whose result was
+// discarded with `(void)r;`) was merged into EffectExtended.hits_exact_touching
+// in test_effect_extended.cpp, which pins the identical shape with
+// ASSERT_EQ(1, ...); EffectMorePaths.effect_round11_... pins the y edge.
 
 
 TEST(EffectAct, hits_contained2)
@@ -119,75 +128,201 @@ TEST(EffectAct, hits_contained2)
 // effect::act - various effect families
 // ---------------------------------------------------------------------------
 
-TEST(EffectAct, explosion)
+// effect::act() advances drawcycle by exactly 1 every tick and, while
+// ani_type != ANI_WALK, delegates to animate(). core:explosion declares no
+// on_act and has loops_animation = false, so its ANI_EXPLODE row runs out,
+// animate() resets ani_type to ANI_WALK at the -1 sentinel, and the NEXT act
+// kills the effect.
+TEST(EffectAct, explosion_act_advances_drawcycle_animates_then_dies)
 {
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
-    if (!fx) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_NE(nullptr, fx) << "explosion effect spawned";
+    ASSERT_NE(nullptr, fx->ani) << "the explosion family carries an animation table";
     fx->setxy(100, 100);
     fx->set_ani_type(ANI_EXPLODE);
+    fx->set_curdir(static_cast<char>(FACE_RIGHT));
+    fx->set_cycle(0);
+    fx->set_drawcycle(0);
+
+    const signed char* seq = fx->ani[FACE_RIGHT + ANI_EXPLODE * NUM_FACINGS];
+    ASSERT_NE(nullptr, seq) << "the ANI_EXPLODE row exists for FACE_RIGHT";
+    const std::vector<int> row = explode_row(seq);
+    ASSERT_GT(row.size(), 1u) << "the explode row has several distinct frames to walk";
+
+    std::vector<int> shown;
+    ASSERT_TRUE(fx->act()) << "a mid-animation effect delegates to animate() and lives on";
+    shown.push_back(static_cast<int>(fx->frame()));
+    EXPECT_EQ(1, static_cast<int>(fx->drawcycle()))
+        << "effect::act advances drawcycle by exactly 1 every tick";
+    EXPECT_EQ(1, static_cast<int>(fx->cycle()))
+        << "animate() advances the animation cycle by exactly 1";
+    EXPECT_EQ(0, fx->dead()) << "the explosion is still animating";
+
+    int ticks = 0;
+    while (fx->ani_type() != ANI_WALK && ticks < 128)
+    {
+        fx->act();
+        shown.push_back(static_cast<int>(fx->frame()));
+        ++ticks;
+    }
+    ASSERT_LT(ticks, 128) << "a non-looping effect's animation must run out and reset ani_type";
+    EXPECT_EQ(row, shown)
+        << "every act showed the next frame of ani[curdir + ANI_EXPLODE*NUM_FACINGS]";
+    EXPECT_EQ(1 + ticks, static_cast<int>(fx->drawcycle()))
+        << "drawcycle advanced by exactly one per act across the whole animation";
+    EXPECT_EQ(0, fx->dead()) << "reaching ANI_WALK does not itself kill the effect";
+
     fx->act();
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    EXPECT_EQ(1, fx->dead())
+        << "an effect whose animation has run out dies on its next act";
+
+    world.delete_objects();
 }
 
 
-TEST(EffectAct, magic_shield)
+// magic_shield_on_act (packs/core/lib/effect_shield.lua): center_on(owner)
+// then offset by the fixed 16-step orbit table at index drawcycle % 16.
+// effect::act bumps drawcycle 0 -> 1 BEFORE the hook, so the first step is
+// ORBIT[1] = (-9, -22). guard_tail then ages the shield by one tick.
+TEST(EffectAct, magic_shield_orbit_step_and_ageing)
 {
-    auto owner = make_living_guy(FAMILY_MAGE, 0);
-    if (!owner) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-    if (!fx) return;
-    fx->setxy(100, 100);
+    auto owner = make_living_guy(FAMILY_MAGE, 0);
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    ASSERT_NE(nullptr, fx) << "magic shield spawned";
     fx->set_owner(owner.get());
+    fx->set_team_num(owner->team_num());
     fx->set_lifetime(100);
     fx->stats()->set_hitpoints(100);
-    fx->act();
+    fx->set_drawcycle(0);
 
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    // The orbit is applied from center_on(owner), so take the centred position
+    // as the baseline, then park the shield somewhere else: a hook that stops
+    // orbiting is then distinguishable from one that orbits correctly.
+    fx->center_on(owner.get());
+    const float bx = fx->worldx();
+    const float by = fx->worldy();
+    fx->setxy(100, 100);
+
+    ASSERT_TRUE(fx->act()) << "magic_shield_on_act handles the tick itself";
+    EXPECT_EQ(1, static_cast<int>(fx->drawcycle()))
+        << "effect::act advances drawcycle by exactly 1 before the family hook";
+    EXPECT_FLOAT_EQ(bx - 9.0f, fx->worldx())
+        << "the shield sits at owner-centre + ORBIT_X[drawcycle % 16]";
+    EXPECT_FLOAT_EQ(by - 22.0f, fx->worldy())
+        << "the shield sits at owner-centre + ORBIT_Y[drawcycle % 16]";
+    EXPECT_EQ(100, fx->lifetime() + 1)
+        << "guard_tail ages the shield by exactly one tick while its hitpoints hold";
+    EXPECT_FLOAT_EQ(100.0f, fx->stats()->hitpoints())
+        << "with no foe weapons and no foes in range the shield loses no hitpoints";
+    EXPECT_EQ(0, fx->dead()) << "a shield with an owner, hitpoints and lifetime survives";
+
+    world.delete_objects();
 }
 
 
 TEST(EffectAct, magic_shield_no_owner)
 {
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-    if (!fx) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    ASSERT_NE(nullptr, fx) << "magic shield spawned";
     fx->setxy(100, 100);
     fx->set_owner(nullptr);
-    fx->act();
-    // Should die since no owner
-    ASSERT_TRUE(fx->dead() == 1) << "shield without owner dies";
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    fx->set_lifetime(100);
+    fx->stats()->set_hitpoints(100);
+    ASSERT_TRUE(fx->act()) << "magic_shield_on_act handles the tick itself";
+    ASSERT_EQ(1, fx->dead()) << "an ownerless shield dies on its first act";
+
+    world.delete_objects();
 }
 
 
-TEST(EffectAct, boomerang)
+// boomerang_on_act: same orbit table as the shield, but the radius is scaled
+// by (drawcycle + 4) / 48. drawcycle 10 is bumped to 11 by effect::act, so the
+// step is ORBIT[11] = (22, 9) * 15/48 = (6.875, 2.8125) from owner centre.
+TEST(EffectAct, boomerang_orbit_radius_scales_with_drawcycle)
 {
-    auto owner = make_living_guy(FAMILY_SOLDIER, 0);
-    if (!owner) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOOMERANG);
-    if (!fx) return;
-    fx->setxy(100, 100);
+    auto owner = make_living_guy(FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
+    ASSERT_NE(nullptr, fx) << "boomerang spawned";
     fx->set_owner(owner.get());
+    fx->set_team_num(owner->team_num());
     fx->set_lifetime(100);
     fx->stats()->set_hitpoints(100);
     fx->set_drawcycle(10);
-    fx->act();
 
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    fx->center_on(owner.get());
+    const float bx = fx->worldx();
+    const float by = fx->worldy();
+    fx->setxy(100, 100);
+
+    ASSERT_TRUE(fx->act()) << "boomerang_on_act handles the tick itself";
+    EXPECT_EQ(11, static_cast<int>(fx->drawcycle()))
+        << "effect::act advances drawcycle by exactly 1 before the family hook";
+    EXPECT_FLOAT_EQ(bx + 6.875f, fx->worldx())
+        << "orbit x = ORBIT_X[11] * (drawcycle + 4) / 48 from the owner's centre";
+    EXPECT_FLOAT_EQ(by + 2.8125f, fx->worldy())
+        << "orbit y = ORBIT_Y[11] * (drawcycle + 4) / 48 from the owner's centre";
+    EXPECT_EQ(100, fx->lifetime() + 1)
+        << "guard_tail ages the blade by exactly one tick";
+    EXPECT_EQ(0, fx->dead()) << "a blade under the drawcycle cap survives";
+
+    world.delete_objects();
 }
 
 
+// Zardus's 2002 cap: a boomerang whose byte-sized drawcycle passes 253 is
+// retired instead of wrapping back onto its owner. Both sides of the boundary
+// are pinned so a cap that never fires (and a cap that fires a tick early)
+// are both caught.
 TEST(EffectAct, boomerang_expired)
 {
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOOMERANG);
-    if (!fx) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    auto owner = make_living_guy(FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
+
+    walker* alive = world.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
+    ASSERT_NE(nullptr, alive) << "control boomerang spawned";
+    alive->setxy(100, 100);
+    alive->set_owner(owner.get());
+    alive->set_team_num(owner->team_num());
+    alive->set_lifetime(100);
+    alive->stats()->set_hitpoints(100);
+    alive->set_drawcycle(252);
+    alive->act();
+    ASSERT_EQ(253, static_cast<int>(alive->drawcycle()));
+    EXPECT_EQ(0, alive->dead()) << "drawcycle 253 is still inside the > 253 cap";
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
+    ASSERT_NE(nullptr, fx) << "expiring boomerang spawned";
     fx->setxy(100, 100);
-    fx->set_owner(nullptr);
-    fx->set_drawcycle(254);
-    fx->act();
-    ASSERT_TRUE(fx->dead() == 1) << "expired boomerang dies";
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    fx->set_owner(owner.get());
+    fx->set_team_num(owner->team_num());
+    fx->set_lifetime(100);
+    fx->stats()->set_hitpoints(100);
+    fx->set_drawcycle(253);
+    ASSERT_TRUE(fx->act()) << "boomerang_on_act handles the tick itself";
+    ASSERT_EQ(254, static_cast<int>(fx->drawcycle()));
+    ASSERT_EQ(1, fx->dead())
+        << "a boomerang past drawcycle 253 dies even with a live owner";
+
+    world.delete_objects();
 }
 
 // Regression: a freshly-spawned boomerang must SPIRAL OUTWARD from its owner as
@@ -298,50 +433,92 @@ TEST(EffectAct, archmage_bonus_view_is_periodic_not_every_tick)
     auto arch = make_living_guy(FAMILY_ARCHMAGE, 0);
     ASSERT_TRUE(arch != nullptr) << "archmage created";
     if (!arch) return;
+    ASSERT_EQ(3, static_cast<int>(arch->stats()->level()))
+        << "make_living_guy upgrades to level 3, so the grant period is 40 - 3 = 37";
     arch->set_view_all(0);
     arch->set_drawcycle(0);
 
     for (int tick = 0; tick < 20 && !arch->dead(); ++tick)
         arch->act();
 
-    EXPECT_GT(static_cast<int>(arch->drawcycle()), 0)
-        << "the headless sim must advance a living's drawcycle each tick";
-    EXPECT_LT(static_cast<int>(arch->view_all()), 5)
-        << "archmage bonus-viewing must fire PERIODICALLY (~every temp ticks), "
-           "not every single tick (which the frozen drawcycle caused)";
+    EXPECT_EQ(20, static_cast<int>(arch->drawcycle()))
+        << "the headless sim advances a living's drawcycle by exactly 1 per act";
+
+    // living::act decays view_all by 1 every tick BEFORE the family hook runs,
+    // so the grant is observable as a single 1 on exactly the tick whose
+    // post-bump drawcycle is a multiple of the period, and 0 on its neighbours.
+    ASSERT_FALSE(arch->dead()) << "the archmage survived the warm-up ticks";
+    arch->set_view_all(0);
+    arch->set_drawcycle(35);
+    arch->act();
+    EXPECT_EQ(36, static_cast<int>(arch->drawcycle()));
+    EXPECT_EQ(0, static_cast<int>(arch->view_all()))
+        << "drawcycle 36 is not a multiple of 37: no bonus view";
+    arch->act();
+    EXPECT_EQ(37, static_cast<int>(arch->drawcycle()));
+    EXPECT_EQ(1, static_cast<int>(arch->view_all()))
+        << "exactly one bonus-view grant on drawcycle 37 for a level-3 archmage";
+    arch->act();
+    EXPECT_EQ(38, static_cast<int>(arch->drawcycle()));
+    EXPECT_EQ(0, static_cast<int>(arch->view_all()))
+        << "the grant decays away and does NOT repeat on the following tick "
+           "(the frozen-drawcycle regression made it fire every tick)";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
 
-TEST(EffectAct, cloud)
+// cloud on_act (packs/core/lib/effect_cloud.lua): a live cloud ages by one
+// tick and, when it has no queued command, rolls a non-zero (xd, yd) drift and
+// QUEUES a COMMAND_WALK. The walk is executed on later ticks, so tick 1 leaves
+// the cloud where it stood.
+TEST(EffectAct, cloud_ages_and_queues_its_drift_walk)
 {
-    auto owner = make_living_guy(FAMILY_DRUID, 0);
-    if (!owner) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CLOUD);
-    if (!fx) return;
+    auto owner = make_living_guy(FAMILY_DRUID, 0);
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_CLOUD);
+    ASSERT_NE(nullptr, fx) << "cloud spawned";
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
     fx->set_team_num(0);
     fx->set_lifetime(50);
     fx->stats()->set_hitpoints(50);
-    fx->act();
+    fx->stats()->clear_command();
+    ASSERT_FALSE(fx->stats()->has_commands()) << "a fresh cloud starts with an empty queue";
 
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    ASSERT_TRUE(fx->act()) << "cloud on_act handles the tick itself";
+    EXPECT_EQ(49, fx->lifetime()) << "a live cloud ages by exactly one tick";
+    EXPECT_TRUE(fx->stats()->has_commands())
+        << "a cloud with no queued command queues its drift walk on the first tick";
+    EXPECT_EQ(100, static_cast<int>(fx->xpos()))
+        << "the drift walk is QUEUED on tick 1, not executed";
+    EXPECT_EQ(100, static_cast<int>(fx->ypos()))
+        << "the drift walk is QUEUED on tick 1, not executed";
+    EXPECT_EQ(0, fx->dead()) << "a cloud with lifetime left survives";
+
+    world.delete_objects();
 }
 
 
 TEST(EffectAct, cloud_expired)
 {
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CLOUD);
-    if (!fx) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_CLOUD);
+    ASSERT_NE(nullptr, fx) << "cloud spawned";
     fx->setxy(100, 100);
     fx->set_owner(fx);
     fx->set_lifetime(0);
-    fx->act();
-    ASSERT_TRUE(fx->dead() == 1) << "expired cloud dies";
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    ASSERT_TRUE(fx->act()) << "cloud on_act handles the tick itself";
+    ASSERT_EQ(1, fx->dead()) << "a cloud with no lifetime left dies on its next act";
+    EXPECT_EQ(0, fx->lifetime()) << "the expired branch does not age the cloud further";
+
+    world.delete_objects();
 }
 
 
@@ -391,18 +568,40 @@ TEST(EffectAct, cloud_wedged_against_wall_keeps_moving)
 }
 
 
-TEST(EffectAct, ghost_scare)
+// ghost_scare on_act rides its caster (center_on(owner)) and then returns
+// false, delegating to effect::act's default path: with ani_type ANI_WALK the
+// scare cloud ends its own life that same tick. The caster is moved AWAY from
+// the cloud first, so a hook that stops riding is observable.
+TEST(EffectAct, ghost_scare_rides_its_caster_then_expires)
 {
-    auto owner = make_living_guy(FAMILY_GHOST, 0);
-    if (!owner) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
-    if (!fx) return;
+    auto owner = make_living_guy(FAMILY_GHOST, 0);
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
+    ASSERT_NE(nullptr, fx) << "ghost scare spawned";
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
-    fx->act();
+    owner->setxy(200, 150);
+    ASSERT_EQ(ANI_WALK, static_cast<int>(fx->ani_type()))
+        << "add_fx_ob leaves the scare on the walk animation";
 
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    const int centred_x = owner->xpos() + owner->sizex() / 2 - fx->sizex() / 2;
+    const int centred_y = owner->ypos() + owner->sizey() / 2 - fx->sizey() / 2;
+    ASSERT_NE(centred_x, static_cast<int>(fx->xpos()))
+        << "the scare starts away from its caster so a no-op act is visible";
+
+    fx->act();
+    EXPECT_EQ(centred_x, static_cast<int>(fx->xpos()))
+        << "the scare cloud rides its caster (center_on(owner))";
+    EXPECT_EQ(centred_y, static_cast<int>(fx->ypos()))
+        << "the scare cloud rides its caster (center_on(owner))";
+    EXPECT_EQ(1, fx->dead())
+        << "on_act returns false, so an ANI_WALK scare dies on effect::act's default path";
+
+    world.delete_objects();
 }
 
 
@@ -410,24 +609,96 @@ TEST(EffectAct, ghost_scare)
 // effect::animate
 // ---------------------------------------------------------------------------
 
-TEST(EffectAct, effect_animate_explosion)
+// effect::animate(): frame = ani[dir + ani_type*NUM_FACINGS][cycle], cycle
+// advances by 1, and for a loops_animation = false family (core:explosion) the
+// -1 sentinel resets ani_type to ANI_WALK.
+TEST(EffectAct, effect_animate_explosion_reads_the_row_and_ends_at_the_sentinel)
 {
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
-    if (!fx) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_NE(nullptr, fx) << "explosion effect spawned";
+    ASSERT_NE(nullptr, fx->ani) << "the explosion family carries an animation table";
     fx->setxy(100, 100);
     fx->set_ani_type(ANI_EXPLODE);
-    fx->animate();
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    fx->set_curdir(static_cast<char>(FACE_RIGHT));
+    fx->set_cycle(0);
+
+    const signed char* seq = fx->ani[FACE_RIGHT + ANI_EXPLODE * NUM_FACINGS];
+    ASSERT_NE(nullptr, seq) << "the ANI_EXPLODE row exists for FACE_RIGHT";
+    const std::vector<int> row = explode_row(seq);
+    ASSERT_GT(row.size(), 1u) << "the explode row has several distinct frames to walk";
+
+    std::vector<int> shown;
+    ASSERT_TRUE(fx->animate()) << "animate() reports it drew a frame";
+    shown.push_back(static_cast<int>(fx->frame()));
+    EXPECT_EQ(1, static_cast<int>(fx->cycle())) << "the cycle advances by exactly 1";
+
+    int steps = 1;
+    while (fx->ani_type() != ANI_WALK && steps < 128)
+    {
+        ASSERT_TRUE(fx->animate()) << "animate() keeps drawing until the sentinel";
+        shown.push_back(static_cast<int>(fx->frame()));
+        ++steps;
+    }
+    ASSERT_LT(steps, 128)
+        << "a non-looping effect's animation ends by resetting ani_type to ANI_WALK";
+    EXPECT_EQ(static_cast<int>(row.size()), steps)
+        << "the animation is exactly as long as the sentinel-terminated row";
+    EXPECT_EQ(row, shown)
+        << "frame is read from ani[curdir + ani_type*NUM_FACINGS][cycle] on every step";
+
+    world.delete_objects();
 }
 
 
-TEST(EffectAct, effect_animate_magic_shield)
+// core:magic_shield declares loops_animation = true, so animate() takes the
+// looping branch: the cycle wraps back to 0 at the -1 sentinel and ani_type is
+// never reset.
+TEST(EffectAct, effect_animate_magic_shield_loops_without_resetting_ani_type)
 {
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-    if (!fx) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    ASSERT_NE(nullptr, fx) << "magic shield spawned";
+    ASSERT_NE(nullptr, fx->ani) << "the shield family carries an animation table";
     fx->setxy(100, 100);
-    fx->animate();
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    fx->set_ani_type(static_cast<char>(ANI_WALK));
+    fx->set_curdir(static_cast<char>(FACE_RIGHT));
+    fx->set_cycle(0);
+
+    const signed char* seq = fx->ani[FACE_RIGHT + ANI_WALK * NUM_FACINGS];
+    ASSERT_NE(nullptr, seq) << "the ANI_WALK row exists for FACE_RIGHT";
+    const std::vector<int> row = explode_row(seq);
+    const int len = static_cast<int>(row.size());
+    ASSERT_GT(len, 0) << "the walk row has at least one frame";
+
+    std::vector<int> shown;
+    ASSERT_TRUE(fx->animate()) << "animate() reports it drew a frame";
+    shown.push_back(static_cast<int>(fx->frame()));
+    EXPECT_EQ(len > 1 ? 1 : 0, static_cast<int>(fx->cycle()))
+        << "the cycle advances by 1, wrapping immediately on a one-frame row";
+
+    int steps = 1;
+    while (fx->cycle() != 0 && steps < 128)
+    {
+        ASSERT_TRUE(fx->animate());
+        ASSERT_EQ(ANI_WALK, static_cast<int>(fx->ani_type()))
+            << "a looping effect never resets its ani_type";
+        shown.push_back(static_cast<int>(fx->frame()));
+        ++steps;
+    }
+    ASSERT_LT(steps, 128) << "a looping animation wraps its cycle back to 0";
+    EXPECT_EQ(len, steps)
+        << "the wrap happens exactly at the sequence sentinel, after one pass";
+    EXPECT_EQ(row, shown)
+        << "every step showed the next frame of ani[curdir + ANI_WALK*NUM_FACINGS]";
+    EXPECT_EQ(ANI_WALK, static_cast<int>(fx->ani_type()))
+        << "loops_animation = true never resets ani_type";
+
+    world.delete_objects();
 }
 
 
@@ -468,35 +739,111 @@ TEST(EffectAct, effect_animate_handles_malicious_indices_safely)
 // effect::death
 // ---------------------------------------------------------------------------
 
-TEST(EffectAct, effect_death_explosion)
+// explosion_on_death (packs/core/lib/effect_bomb.lua): every non-FX,
+// non-treasure walker on the same floor within 15 + compute_explosion_range
+// (Manhattan, on xpos/ypos) is shoved with COMMAND_WALK and attacked; anything
+// outside that radius is untouched. A level-3 owner gives range 16 => 31 px.
+TEST(EffectAct, effect_death_explosion_blasts_only_inside_its_radius)
 {
-    auto owner = make_living_guy(FAMILY_MAGE, 0);
-    if (!owner) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
-    if (!fx) return;
+    auto owner = make_living_guy(FAMILY_MAGE, 0);
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
+    ASSERT_EQ(3, static_cast<int>(owner->stats()->level()))
+        << "a level-3 owner yields explosion range 16, i.e. a 31 px blast";
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_NE(nullptr, fx) << "explosion spawned";
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
     fx->set_team_num(0);
-    fx->stats()->set_level(5);
-    fx->set_dead(1);
-    fx->death();
+    fx->set_skip_exit(0);
+    fx->set_damage(40.0f);
 
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    walker* near_ob = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, near_ob) << "near target created";
+    near_ob->set_team_num(1);
+    near_ob->setxy(124, 100);   // Manhattan 24 <= 31
+    near_ob->stats()->clear_command();
+    // hit_response clears commands for a NEW foe, so pre-seed the relationship
+    // (the same reason EffectMorePaths.effect_death_explosion_shoves_nearby_targets
+    // gives) and the shove stays queued deterministically.
+    near_ob->set_foe(owner.get());
+    const float near_hp = near_ob->stats()->hitpoints();
+
+    walker* far_ob = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, far_ob) << "far target created";
+    far_ob->set_team_num(1);
+    far_ob->setxy(100, 164);    // Manhattan 64 > 31
+    far_ob->stats()->clear_command();
+    far_ob->set_foe(owner.get());
+    const float far_hp = far_ob->stats()->hitpoints();
+
+    fx->set_dead(1);
+    ASSERT_TRUE(fx->death()) << "the blast runs once";
+
+    EXPECT_TRUE(near_ob->stats()->has_commands())
+        << "a target inside the blast radius is shoved with COMMAND_WALK";
+    EXPECT_LT(near_ob->stats()->hitpoints(), near_hp)
+        << "a target inside the blast radius is attacked";
+    EXPECT_FALSE(far_ob->stats()->has_commands())
+        << "a target outside the blast radius is never shoved";
+    EXPECT_FLOAT_EQ(far_hp, far_ob->stats()->hitpoints())
+        << "a target outside the blast radius takes no damage";
+    EXPECT_FALSE(fx->death())
+        << "the death_called guard makes a second death() a no-op";
+
+    world.delete_objects();
 }
 
 
-TEST(EffectAct, effect_death_ghost_scare)
+// ghost_scare on_death: every LIVING foe within og.scare_radius(owner.level)
+// of the CASTER (level 3 => 80 px Manhattan) is forced into a flee-walk;
+// friendlies and out-of-range foes are left alone.
+TEST(EffectAct, effect_death_ghost_scare_frights_only_foes_in_radius)
 {
-    auto owner = make_living_guy(FAMILY_GHOST, 0);
-    if (!owner) return;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
 
-    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
-    if (!fx) return;
+    auto owner = make_living_guy(FAMILY_GHOST, 0);
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
+    ASSERT_EQ(3, static_cast<int>(owner->stats()->level()))
+        << "a level-3 caster scares within 50 + 10*3 = 80 px";
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
+    ASSERT_NE(nullptr, fx) << "ghost scare spawned";
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
-    fx->set_dead(1);
-    fx->death();
+    fx->set_team_num(owner->team_num());
 
-    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, foe) << "in-range foe created";
+    foe->set_team_num(1);
+    foe->setxy(140, 100);       // Manhattan 40 from the caster <= 80
+    foe->stats()->clear_command();
+
+    walker* ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, ally) << "ally created";
+    ally->set_team_num(0);
+    ally->setxy(120, 100);      // well inside the radius, but friendly
+    ally->stats()->clear_command();
+
+    walker* far_foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, far_foe) << "out-of-range foe created";
+    far_foe->set_team_num(1);
+    far_foe->setxy(100, 300);   // Manhattan 200 > 80
+    far_foe->stats()->clear_command();
+
+    fx->set_dead(1);
+    ASSERT_TRUE(fx->death()) << "the scare runs once";
+
+    EXPECT_TRUE(foe->stats()->has_commands())
+        << "a foe inside the scare radius is forced into a flee-walk";
+    EXPECT_FALSE(ally->stats()->has_commands())
+        << "friendlies are never frightened by their own ghost";
+    EXPECT_FALSE(far_foe->stats()->has_commands())
+        << "a foe outside the scare radius is untouched";
+
+    world.delete_objects();
 }

@@ -252,6 +252,18 @@ TEST(GparserUnit, gparser_load_settings_parses_mapping_sequence_and_alias)
     ASSERT_EQ("off", local_cfg.get_setting("sound", "sound"));
     ASSERT_EQ("eagle", local_cfg.get_setting("graphics", "render"));
     ASSERT_EQ("off", local_cfg.get_setting("graphics", "fullscreen"));
+
+    // The anchored mapping applies under its own key...
+    ASSERT_EQ("off", local_cfg.get_setting("defaults", "gore"))
+        << "an anchored mapping is an ordinary category";
+    // ...and the ALIAS resolves to the same mapping node, so the aliasing key
+    // becomes a second category carrying the same pairs.
+    ASSERT_EQ("off", local_cfg.get_setting("alias_use", "gore"))
+        << "a YAML alias must resolve to the anchored mapping";
+    // A SEQUENCE value is neither scalar nor mapping: apply_settings_document
+    // skips it, so no category is created for it at all.
+    ASSERT_EQ(0u, local_cfg.data.count("listcat"))
+        << "a sequence value must contribute no settings category";
 }
 
 TEST(GparserUnit, gparser_load_settings_reports_malformed_yaml_after_open)

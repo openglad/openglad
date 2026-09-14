@@ -8,9 +8,15 @@
 #include <openglad/legacy/base.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/interface/render/view.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <cstddef>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -32,6 +38,66 @@ static std::unique_ptr<walker> make_walker_at(char family, short x, short y, uns
     return w;
 }
 
+namespace {
+
+screen& test_screen()
+{
+    return *og::runtime::current_session->myscreen_;
+}
+
+GameWorld& test_world()
+{
+    return og::runtime::current_session->myscreen_->world();
+}
+
+// Paint one base-grid cell, addressed in PIXEL coords like the sim's own
+// passability/damage entry points.
+void set_grid_tile(short px, short py, unsigned char tile)
+{
+    GameWorld& w = test_world();
+    ASSERT_TRUE(w.grid.valid()) << "grid must be allocated before painting a tile";
+    const int gx = px / GRID_SIZE;
+    const int gy = py / GRID_SIZE;
+    ASSERT_TRUE(gx >= 0 && gy >= 0 && gx < w.grid.w && gy < w.grid.h)
+        << "tile coordinate must be inside the grid";
+    w.grid.data[static_cast<std::size_t>(gx + w.grid.w * gy)] = tile;
+}
+
+unsigned char grid_tile(short px, short py)
+{
+    GameWorld& w = test_world();
+    const int gx = px / GRID_SIZE;
+    const int gy = py / GRID_SIZE;
+    return w.grid.data[static_cast<std::size_t>(gx + w.grid.w * gy)];
+}
+
+// A decor plane matching the grid's dims (the only shape the sim consults).
+void allocate_decor_plane()
+{
+    GameWorld& w = test_world();
+    ASSERT_TRUE(w.grid.valid()) << "grid must exist before a decor plane";
+    w.decor.free();
+    w.decor.frames = 1;
+    w.decor.w = w.grid.w;
+    w.decor.h = w.grid.h;
+    const std::size_t size =
+        static_cast<std::size_t>(w.decor.w) * static_cast<std::size_t>(w.decor.h);
+    w.decor.data = std::make_unique<unsigned char[]>(size);
+    for (std::size_t i = 0; i < size; ++i)
+        w.decor.data[i] = DECOR_NONE;
+}
+
+void set_decor_tile(short px, short py, unsigned char decor_id)
+{
+    GameWorld& w = test_world();
+    ASSERT_TRUE(w.decor.valid()) << "decor plane must be allocated first";
+    const int gx = px / GRID_SIZE;
+    const int gy = py / GRID_SIZE;
+    w.decor.data[static_cast<std::size_t>(gx + w.decor.w * gy)] = decor_id;
+}
+
+} // namespace
+
 TEST(ScreenExtended, network_fixture_advances_empty_tick)
 {
     og::sim::test::NetworkTestConfig config;
@@ -50,36 +116,123 @@ TEST(ScreenExtended, network_fixture_advances_empty_tick)
 // add_ob / remove_ob
 // ---------------------------------------------------------------------------
 
+// add_ob(order, family, atstart) must build a walker of EXACTLY that
+// order/family and file it into the list the order selects
+// (GameWorld::add_ob / add_to_list).
 TEST(ScreenExtended, screen_add_ob_living)
 {
-    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "add_ob should succeed";
-    w->setxy(50, 50);
-    w->set_dead(1); // mark for cleanup
+    GameWorld& world = test_world();
+    const std::size_t ob_before = world.oblist.size();
+    const std::size_t weap_before = world.weaplist.size();
+    const int living_before = world.living_count;
+
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w) << "add_ob(Living, SOLDIER) must construct a walker";
+    EXPECT_EQ(static_cast<int>(Order::Living), static_cast<int>(w->query_order()))
+        << "add_ob must build the order it was asked for";
+    EXPECT_EQ(FAMILY_SOLDIER, static_cast<int>(w->family()))
+        << "add_ob must build the family it was asked for";
+    EXPECT_EQ(ob_before + 1u, world.oblist.size())
+        << "a non-Weapon order is filed into oblist";
+    EXPECT_EQ(w, world.oblist.back().get())
+        << "atstart=false appends at the BACK of oblist";
+    EXPECT_EQ(weap_before, world.weaplist.size())
+        << "a Living must never land in weaplist";
+    EXPECT_EQ(living_before + 1, world.living_count)
+        << "add_ob(Living, ...) increments living_count";
+
+    ASSERT_EQ(1, world.remove_ob(w)) << "cleanup: the walker was in oblist";
+    EXPECT_EQ(living_before, world.living_count)
+        << "remove_ob(Living) hands living_count back";
 }
 
 
 TEST(ScreenExtended, screen_add_ob_weapon)
 {
-    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
-    ASSERT_TRUE(w != nullptr) << "add_ob weapon should succeed";
-    w->set_dead(1);
+    GameWorld& world = test_world();
+    const std::size_t ob_before = world.oblist.size();
+    const std::size_t weap_before = world.weaplist.size();
+
+    walker* w = world.add_ob(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, w) << "add_ob(Weapon, KNIFE) must construct a walker";
+    EXPECT_EQ(static_cast<int>(Order::Weapon), static_cast<int>(w->query_order()))
+        << "add_ob must build the order it was asked for";
+    EXPECT_EQ(FAMILY_KNIFE, static_cast<int>(w->family()))
+        << "add_ob must build the family it was asked for";
+    EXPECT_EQ(weap_before + 1u, world.weaplist.size())
+        << "Order::Weapon is the one order add_ob routes to weaplist";
+    EXPECT_EQ(w, world.weaplist.back().get())
+        << "the weapon is appended to weaplist";
+    EXPECT_EQ(ob_before, world.oblist.size())
+        << "a weapon must never be filed into oblist";
+
+    ASSERT_EQ(1, world.remove_ob(w)) << "cleanup: the weapon was in weaplist";
 }
 
 
+// The third argument is `bool atstart`, and the front-insertion it asks for
+// has to be observable (add_to_list's push_front arm).
 TEST(ScreenExtended, screen_add_ob_treasure)
 {
-    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Treasure, FAMILY_STAIN, 1);
-    ASSERT_TRUE(w != nullptr) << "add_ob treasure should succeed";
-    w->set_dead(1);
+    GameWorld& world = test_world();
+    world.delete_objects();
+
+    walker* sibling = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, sibling)
+        << "a sibling walker makes front vs back distinguishable";
+
+    walker* stain = world.add_ob(Order::Treasure, FAMILY_STAIN, /*atstart=*/true);
+    ASSERT_NE(nullptr, stain) << "add_ob(Treasure, STAIN) must construct a walker";
+    EXPECT_EQ(static_cast<int>(Order::Treasure), static_cast<int>(stain->query_order()))
+        << "add_ob must build the order it was asked for";
+    EXPECT_EQ(FAMILY_STAIN, static_cast<int>(stain->family()))
+        << "add_ob must build the family it was asked for";
+    ASSERT_EQ(std::size_t{2}, world.oblist.size()) << "a Treasure goes into oblist";
+    EXPECT_EQ(stain, world.oblist.front().get())
+        << "atstart=true pushes the new walker to the FRONT of oblist";
+    EXPECT_EQ(sibling, world.oblist.back().get())
+        << "the incumbent keeps its place at the back";
+
+    walker* tail = world.add_ob(Order::Treasure, FAMILY_STAIN, /*atstart=*/false);
+    ASSERT_NE(nullptr, tail);
+    ASSERT_EQ(std::size_t{3}, world.oblist.size());
+    EXPECT_EQ(tail, world.oblist.back().get())
+        << "atstart=false appends, so the flag is really read";
+    EXPECT_EQ(stain, world.oblist.front().get())
+        << "the front-inserted treasure is still at the front";
+
+    world.delete_objects();
 }
 
 
+// add_ob routes EVERY non-Weapon order (FX included) to oblist; fxlist has
+// exactly one door, add_fx_ob.
 TEST(ScreenExtended, screen_add_ob_effect)
 {
-    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_EXPLOSION);
-    ASSERT_TRUE(w != nullptr) << "add_ob effect should succeed";
-    w->set_dead(1);
+    GameWorld& world = test_world();
+    world.delete_objects();
+
+    walker* w = world.add_ob(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_NE(nullptr, w) << "add_ob(FX, EXPLOSION) must construct a walker";
+    EXPECT_EQ(static_cast<int>(Order::FX), static_cast<int>(w->query_order()))
+        << "add_ob must build the order it was asked for";
+    EXPECT_EQ(FAMILY_EXPLOSION, static_cast<int>(w->family()))
+        << "add_ob must build the family it was asked for";
+    EXPECT_EQ(std::size_t{1}, world.oblist.size())
+        << "add_ob files an FX into oblist, not fxlist";
+    EXPECT_EQ(w, world.oblist.back().get());
+    EXPECT_EQ(std::size_t{0}, world.fxlist.size())
+        << "add_ob must never feed fxlist";
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_NE(nullptr, fx) << "add_fx_ob must construct a walker";
+    EXPECT_EQ(std::size_t{1}, world.fxlist.size())
+        << "add_fx_ob is the fxlist door";
+    EXPECT_EQ(fx, world.fxlist.back().get());
+    EXPECT_EQ(std::size_t{1}, world.oblist.size())
+        << "add_fx_ob must not also append to oblist";
+
+    world.delete_objects();
 }
 
 
@@ -87,38 +240,67 @@ TEST(ScreenExtended, screen_add_ob_effect)
 // query_grid_passable - extended tests for all terrain types
 // ---------------------------------------------------------------------------
 
+// query_grid_passable scans the footprint's cells: walkable ground is true,
+// a wall byte under the footprint is false, and out-of-range / null is false.
 TEST(ScreenExtended, screen_query_grid_passable_walking)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    if (!l) return;
+    ASSERT_NE(nullptr, l) << "the session must own a loader";
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
-    if (!w) return;
+    ASSERT_NE(nullptr, w) << "the loader must create the probe soldier";
     w->setxy(100, 100);
 
-    // Test various grid positions
-    short result = og::runtime::current_session->myscreen_->world().query_grid_passable(100, 100, w.get());
-    (void)result;
+    GameWorld& world = test_world();
+    world.create_new_grid(); // 40x60, all grass
 
-    result = og::runtime::current_session->myscreen_->world().query_grid_passable(50, 50, w.get());
-    (void)result;
+    ASSERT_TRUE(world.query_grid_passable(100, 100, w.get()))
+        << "grass under the footprint is walkable";
+    ASSERT_TRUE(world.query_grid_passable(50, 50, w.get()))
+        << "grass under the footprint is walkable";
+    ASSERT_TRUE(world.query_grid_passable(200, 150, w.get()))
+        << "grass under the footprint is walkable";
 
-    result = og::runtime::current_session->myscreen_->world().query_grid_passable(200, 150, w.get());
-    (void)result;
+    set_grid_tile(100, 100, PIX_H_WALL1);
+    ASSERT_FALSE(world.query_grid_passable(100, 100, w.get()))
+        << "a wall byte under the footprint makes the spot impassable";
+    ASSERT_TRUE(world.query_grid_passable(200, 150, w.get()))
+        << "the wall must only block the cells it covers";
 
+    ASSERT_FALSE(world.query_grid_passable(-1, 50, w.get()))
+        << "a negative coordinate is out of range";
+    ASSERT_FALSE(world.query_grid_passable(100, 100, nullptr))
+        << "a null walker is never passable";
 }
 
 
+// The weapon-specific arm: PIX_TREE_B1 lets Order::Weapon through while it
+// blocks a ground living, and walls stop both.
 TEST(ScreenExtended, screen_query_grid_passable_weapon)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    if (!l) return;
-    auto w = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE);
-    if (!w) return;
-    w->setxy(100, 100);
+    ASSERT_NE(nullptr, l) << "the session must own a loader";
+    auto knife = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, knife) << "the loader must create the probe knife";
+    auto soldier = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier) << "the loader must create the contrast soldier";
+    knife->setxy(100, 100);
+    soldier->setxy(100, 100);
 
-    short result = og::runtime::current_session->myscreen_->world().query_grid_passable(100, 100, w.get());
-    (void)result;
+    GameWorld& world = test_world();
+    world.create_new_grid();
 
+    ASSERT_TRUE(world.query_grid_passable(100, 100, knife.get()))
+        << "grass passes a weapon";
+
+    set_grid_tile(100, 100, PIX_TREE_B1);
+    ASSERT_TRUE(world.query_grid_passable(100, 100, knife.get()))
+        << "PIX_TREE_B1 lets Order::Weapon through";
+    ASSERT_FALSE(world.query_grid_passable(100, 100, soldier.get()))
+        << "the same tree base blocks a ground living -- the rule is order-specific";
+
+    set_grid_tile(100, 100, PIX_H_WALL1);
+    ASSERT_FALSE(world.query_grid_passable(100, 100, knife.get()))
+        << "a wall stops a weapon too";
 }
 
 
@@ -126,17 +308,33 @@ TEST(ScreenExtended, screen_query_grid_passable_weapon)
 // query_passable
 // ---------------------------------------------------------------------------
 
+// query_passable = query_grid_passable AND query_object_passable: a body
+// standing on the target spot makes it impassable even over clear ground.
 TEST(ScreenExtended, screen_query_passable_living)
 {
-    auto w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
-    if (!w) return;
+    GameWorld& world = test_world();
+    world.delete_objects();
+    world.create_new_grid();
 
-    short result = og::runtime::current_session->myscreen_->world().query_passable(100, 100, w.get());
-    (void)result;
+    auto seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
+    ASSERT_NE(nullptr, seeker) << "the probe walker must be created";
 
-    result = og::runtime::current_session->myscreen_->world().query_passable(50, 50, w.get());
-    (void)result;
+    ASSERT_TRUE(world.query_passable(100, 100, seeker.get()))
+        << "clear grass with nobody on it is passable";
 
+    walker* blocker = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, blocker) << "the blocking body must be created";
+    blocker->set_team_num(0); // same team: collide() must not start a fight
+    blocker->setxy(100, 100); // registers it in the obmap
+
+    ASSERT_FALSE(world.query_passable(100, 100, seeker.get()))
+        << "a living body on the spot makes query_passable refuse";
+    ASSERT_TRUE(world.query_grid_passable(100, 100, seeker.get()))
+        << "the grid half is still clear -- only the object half refused";
+    ASSERT_TRUE(world.query_passable(50, 50, seeker.get()))
+        << "a spot the blocker does not occupy stays passable";
+
+    world.delete_objects();
 }
 
 
@@ -144,17 +342,64 @@ TEST(ScreenExtended, screen_query_passable_living)
 // first_of extended (various order types)
 // ---------------------------------------------------------------------------
 
+// screen::first_of scans world_.oblist ONLY, for the first non-dead walker
+// matching order+family. add_ob(Weapon, ...) files into weaplist, which
+// first_of never sees -- so the knife has to be placed in oblist by hand.
 TEST(ScreenExtended, screen_first_of_weapon)
 {
-    walker* result = og::runtime::current_session->myscreen_->first_of(Order::Weapon, FAMILY_KNIFE);
-    (void)result; // may be null if no knives exist
+    GameWorld& world = test_world();
+    world.delete_objects();
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Weapon, FAMILY_KNIFE))
+        << "an empty oblist yields no first_of";
+
+    loader* l = test_screen().myloader;
+    ASSERT_NE(nullptr, l) << "the session must own a loader";
+    auto knife = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, knife) << "the loader must create the knife";
+    walker* knife_ptr = knife.get();
+    world.oblist.push_back(std::move(knife));
+
+    ASSERT_EQ(knife_ptr, test_screen().first_of(Order::Weapon, FAMILY_KNIFE))
+        << "first_of returns the oblist walker matching order+family";
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Weapon, FAMILY_ARROW))
+        << "a different weapon family must not match";
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Treasure, FAMILY_KNIFE))
+        << "a different order must not match";
+
+    walker* in_weaplist = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, in_weaplist) << "the weaplist arrow must be created";
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Weapon, FAMILY_ARROW))
+        << "first_of never sees weaplist, only oblist";
+
+    knife_ptr->set_dead(1);
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Weapon, FAMILY_KNIFE))
+        << "first_of skips dead walkers";
+
+    world.delete_objects();
 }
 
 
 TEST(ScreenExtended, screen_first_of_treasure)
 {
-    walker* result = og::runtime::current_session->myscreen_->first_of(Order::Treasure, FAMILY_STAIN);
-    (void)result;
+    GameWorld& world = test_world();
+    world.delete_objects();
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Treasure, FAMILY_STAIN))
+        << "an empty oblist yields no first_of";
+
+    walker* stain = world.add_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, stain) << "the stain must be created";
+    ASSERT_EQ(stain, test_screen().first_of(Order::Treasure, FAMILY_STAIN))
+        << "add_ob files a Treasure into oblist, where first_of looks";
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Treasure, FAMILY_GOLD_BAR))
+        << "a different treasure family must not match";
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Living, FAMILY_STAIN))
+        << "a different order must not match";
+
+    stain->set_dead(1);
+    ASSERT_EQ(nullptr, test_screen().first_of(Order::Treasure, FAMILY_STAIN))
+        << "first_of skips dead walkers";
+
+    world.delete_objects();
 }
 
 
@@ -162,14 +407,10 @@ TEST(ScreenExtended, screen_first_of_treasure)
 // save_data access
 // ---------------------------------------------------------------------------
 
-TEST(ScreenExtended, screen_save_data_score)
-{
-    Uint32 old_score = og::runtime::current_session->myscreen_->save_data.m_score[0];
-    og::runtime::current_session->myscreen_->save_data.m_score[0] += 100;
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.m_score[0] > old_score) << "score should increase";
-    og::runtime::current_session->myscreen_->save_data.m_score[0] = old_score; // restore
-}
-
+// (ScreenExtended.screen_save_data_score was deleted: it added 100 to the
+// POD SaveData::m_score[] array and asserted the array grew, running no
+// product code at all. The real rule -- the mission score folds into
+// m_totalscore exactly once per win, then resets -- is pinned below.)
 
 TEST(ScreenExtended, screen_endgame_clears_mission_score_after_payout)
 {
@@ -406,11 +647,43 @@ TEST(ScreenExtended, level_win_snapshots_one_company_backup)
 // do_notify
 // ---------------------------------------------------------------------------
 
+// screen::do_notify routes the line to the view whose control == who, and
+// broadcasts to EVERY view only when no view owns `who`.
 TEST(ScreenExtended, screen_do_notify_with_walker)
 {
+    screen& s = test_screen();
+    const short saved_views = s.numviews;
+    s.reset(2); // two views, so routing and broadcasting differ
+    ASSERT_EQ(2, static_cast<int>(s.numviews)) << "reset(2) must field two views";
+    ASSERT_NE(nullptr, s.viewob[0]);
+    ASSERT_NE(nullptr, s.viewob[1]);
+
     auto w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
-    if (!w) return;
-    og::runtime::current_session->myscreen_->do_notify("Test notification", w.get());
+    ASSERT_NE(nullptr, w) << "the notifier walker must be created";
+
+    s.viewob[0]->control = w.get();
+    s.viewob[1]->control = nullptr;
+    s.viewob[0]->clear_text();
+    s.viewob[1]->clear_text();
+
+    s.do_notify("Owned line", w.get());
+    EXPECT_EQ("Owned line", s.viewob[0]->textlist[0])
+        << "do_notify writes the line to the view whose control is `who`";
+    EXPECT_EQ("", s.viewob[1]->textlist[0])
+        << "a view that does not control `who` must not receive the line";
+
+    s.viewob[0]->clear_text();
+    s.viewob[1]->clear_text();
+    s.do_notify("Broadcast line", nullptr);
+    EXPECT_EQ("Broadcast line", s.viewob[0]->textlist[0])
+        << "with no owning view the line broadcasts to every view";
+    EXPECT_EQ("Broadcast line", s.viewob[1]->textlist[0])
+        << "with no owning view the line broadcasts to every view";
+
+    s.viewob[0]->control = nullptr;
+    s.viewob[0]->clear_text();
+    s.viewob[1]->clear_text();
+    s.reset(saved_views);
 }
 
 
@@ -418,37 +691,70 @@ TEST(ScreenExtended, screen_do_notify_with_walker)
 // find functions with populated lists
 // ---------------------------------------------------------------------------
 
+// find_near_foe walks the obmap spiral around the seeker and returns the
+// first hostile Living it meets; a friendly body at the same spot is not a
+// foe (and the find_far_foe fallback finds none either).
 TEST(ScreenExtended, screen_find_near_foe_with_enemies)
 {
+    GameWorld& world = test_world();
+    world.delete_objects();
+    // pixmaxx/pixmaxy bound the spiral: with a 0-sized level the very first
+    // probe is out of range and find_near_foe degrades to find_far_foe.
+    world.create_new_grid();
+
     auto seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
-    auto enemy = make_walker_at(FAMILY_ORC, 70, 50, 1);
-    if (!seeker || !enemy) {
-        return;
-    }
+    ASSERT_NE(nullptr, seeker) << "the seeker must be created";
 
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
+    // add_ob so the orc is a tracked oblist entity, and setxy so it is
+    // registered in the obmap pile the spiral actually walks.
+    walker* enemy = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, enemy) << "the enemy must be created";
+    enemy->set_team_num(1);
+    enemy->setxy(70, 50);
 
-    walker* found = og::runtime::current_session->myscreen_->world().find_near_foe(seeker.get());
-    (void)found;
+    ASSERT_EQ(enemy, world.find_near_foe(seeker.get()))
+        << "the team-1 orc 20px away is the seeker's near foe";
 
-    og::runtime::current_session->myscreen_->world().oblist.pop_back();
+    enemy->set_team_num(0); // same body, same spot, friendly now
+    ASSERT_EQ(nullptr, world.find_near_foe(seeker.get()))
+        << "team equality is what makes a body a foe";
+
+    world.delete_objects();
 }
 
 
+// find_far_foe scans oblist and returns the CLOSEST non-dead hostile Living
+// (the name is historical: distance starts at 10000 and takes the minimum).
 TEST(ScreenExtended, screen_find_far_foe_with_enemies)
 {
+    GameWorld& world = test_world();
+    world.delete_objects();
+
     auto seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
-    auto enemy = make_walker_at(FAMILY_ORC, 200, 150, 1);
-    if (!seeker || !enemy) {
-        return;
-    }
+    ASSERT_NE(nullptr, seeker) << "the seeker must be created";
+    ASSERT_EQ(nullptr, world.find_far_foe(seeker.get()))
+        << "an empty oblist holds no foe";
 
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
+    auto far_enemy = make_walker_at(FAMILY_ORC, 200, 150, 1);
+    ASSERT_NE(nullptr, far_enemy) << "the far enemy must be created";
+    walker* far_ptr = far_enemy.get();
+    world.oblist.push_back(std::move(far_enemy));
+    ASSERT_EQ(far_ptr, world.find_far_foe(seeker.get()))
+        << "the only hostile living in oblist is the answer";
 
-    walker* found = og::runtime::current_session->myscreen_->world().find_far_foe(seeker.get());
-    (void)found;
+    // Pushed AFTER the far one, so list order cannot explain the result.
+    auto near_enemy = make_walker_at(FAMILY_ORC, 70, 50, 1);
+    ASSERT_NE(nullptr, near_enemy) << "the near enemy must be created";
+    walker* near_ptr = near_enemy.get();
+    world.oblist.push_back(std::move(near_enemy));
+    ASSERT_EQ(near_ptr, world.find_far_foe(seeker.get()))
+        << "find_far_foe keeps the MINIMUM distance_to_ob";
 
-    og::runtime::current_session->myscreen_->world().oblist.pop_back();
+    near_ptr->set_dead(1);
+    ASSERT_EQ(far_ptr, world.find_far_foe(seeker.get()))
+        << "a dead hostile is skipped";
+
+    world.delete_objects();
 }
 
 
@@ -456,13 +762,58 @@ TEST(ScreenExtended, screen_find_far_foe_with_enemies)
 // damage_tile extended
 // ---------------------------------------------------------------------------
 
+// damage_tile chars PIX_GRASS1..4 to PIX_GRASS1_DAMAGED and returns the
+// resulting byte; a non-grass tile comes back unchanged; a decorated cell or
+// an out-of-range coordinate returns 0 and writes nothing.
 TEST(ScreenExtended, screen_damage_tile_various)
 {
-    // Test various positions
-    char r1 = og::runtime::current_session->myscreen_->damage_tile(50, 50);
-    char r2 = og::runtime::current_session->myscreen_->damage_tile(100, 100);
-    char r3 = og::runtime::current_session->myscreen_->damage_tile(200, 150);
-    (void)r1; (void)r2; (void)r3;
+    GameWorld& world = test_world();
+    world.create_new_grid();
+
+    static constexpr short kSpots[3][2] = {{50, 50}, {100, 100}, {200, 150}};
+    for (const auto& spot : kSpots)
+    {
+        set_grid_tile(spot[0], spot[1], PIX_GRASS4);
+        ASSERT_EQ(static_cast<int>(PIX_GRASS1_DAMAGED),
+                  static_cast<int>(static_cast<unsigned char>(
+                      test_screen().damage_tile(spot[0], spot[1]))))
+            << "grass must char to PIX_GRASS1_DAMAGED and be returned";
+        ASSERT_EQ(static_cast<int>(PIX_GRASS1_DAMAGED),
+                  static_cast<int>(grid_tile(spot[0], spot[1])))
+            << "the grid byte itself must be rewritten";
+    }
+
+    set_grid_tile(100, 100, PIX_WALL2);
+    ASSERT_EQ(static_cast<int>(PIX_WALL2),
+              static_cast<int>(static_cast<unsigned char>(
+                  test_screen().damage_tile(100, 100))))
+        << "a non-grass tile is returned unchanged";
+    ASSERT_EQ(static_cast<int>(PIX_WALL2), static_cast<int>(grid_tile(100, 100)))
+        << "a non-grass tile is not rewritten";
+
+    // The range guard is in CELL units (xloc / GRID_SIZE), so -1 still maps
+    // to cell 0: a genuinely out-of-range probe needs a whole cell of slack.
+    ASSERT_EQ(0, static_cast<int>(test_screen().damage_tile(-GRID_SIZE, 50)))
+        << "a negative cell coordinate returns 0";
+    ASSERT_EQ(0, static_cast<int>(test_screen().damage_tile(
+                     static_cast<short>(world.grid.w * GRID_SIZE), 50)))
+        << "a cell coordinate past the grid width returns 0";
+
+    // Decor shields the ground (legacy combined tiles never charred).
+    set_grid_tile(200, 150, PIX_GRASS4);
+    allocate_decor_plane();
+    set_decor_tile(200, 150, DECOR_PEBBLES);
+    ASSERT_EQ(0, static_cast<int>(test_screen().damage_tile(200, 150)))
+        << "a decorated cell is exempt from the transform and reports 0";
+    ASSERT_EQ(static_cast<int>(PIX_GRASS4), static_cast<int>(grid_tile(200, 150)))
+        << "the shielded grass byte must be intact";
+    set_grid_tile(50, 50, PIX_GRASS4);
+    ASSERT_EQ(static_cast<int>(PIX_GRASS1_DAMAGED),
+              static_cast<int>(static_cast<unsigned char>(
+                  test_screen().damage_tile(50, 50))))
+        << "an undecorated cell on the same decor plane still chars";
+
+    world.decor.free(); // leave the level as the siblings expect it
 }
 
 
@@ -507,19 +858,6 @@ TEST(ScreenExtended, screen_find_nearest_player_and_draw_panels)
 
     og::runtime::current_session->myscreen_->world().oblist.pop_back();
     og::runtime::current_session->myscreen_->world().oblist.pop_back();
-}
-
-
-TEST(ScreenExtended, screen_get_scen_title_paths_and_null_foe_guards)
-{
-    const char* missing = og::runtime::current_session->myscreen_->get_scen_title("definitely_missing_scen_file", og::runtime::current_session->myscreen_);
-    ASSERT_TRUE((std::string(missing) == "ERROR" || std::string(missing) == "none")) << "missing scenario title should return a fallback title";
-
-    // Existing campaign levels may have varying metadata, but this path should not crash.
-    (void)og::runtime::current_session->myscreen_->get_scen_title("level1", og::runtime::current_session->myscreen_);
-
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_near_foe(nullptr) == nullptr) << "find_near_foe should guard nullptr";
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(nullptr) == nullptr) << "find_far_foe should guard nullptr";
 }
 
 
@@ -607,4 +945,30 @@ TEST_F(ScreenExtendedFixture, screen_get_scen_title_with_error_typed_paths)
     title.clear();
     err = og::runtime::current_session->myscreen_->get_scen_title_with_error("typed_title_missing_file", title);
     ASSERT_EQ(static_cast<int>(screen::ScenarioTitleError::OpenReadFailed), static_cast<int>(err)) << "missing file should return OpenReadFailed";
+}
+
+
+// screen::get_scen_title maps EVERY ScenarioTitleError to the literal
+// "none" and otherwise hands back the stored title. (This replaces the old
+// ScreenExtended.screen_get_scen_title_paths_and_null_foe_guards, whose
+// `== "ERROR" || == "none"` accepted a fallback string the product never
+// produces and left the success path unasserted; it needs the fixture's
+// typed_title_valid file, hence the move into ScreenExtendedFixture.)
+TEST_F(ScreenExtendedFixture, screen_get_scen_title_paths_and_null_foe_guards)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+
+    ASSERT_STREQ("none", s->get_scen_title("definitely_missing_scen_file", s))
+        << "a missing scenario file falls back to exactly \"none\"";
+    ASSERT_STREQ("none", s->get_scen_title("typed_title_bad_header", s))
+        << "an InvalidHeader error falls back to exactly \"none\"";
+    ASSERT_STREQ("none", s->get_scen_title("typed_title_truncated", s))
+        << "a ReadFailed error falls back to exactly \"none\"";
+    ASSERT_STREQ("Typed Test Title", s->get_scen_title("typed_title_valid", s))
+        << "a readable scenario file yields its stored title";
+
+    ASSERT_EQ(nullptr, s->world().find_near_foe(nullptr))
+        << "find_near_foe must guard nullptr";
+    ASSERT_EQ(nullptr, s->world().find_far_foe(nullptr))
+        << "find_far_foe must guard nullptr";
 }

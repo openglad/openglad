@@ -2666,27 +2666,84 @@ TEST(MenuEngine, company_backups_spec_shape_and_nav_variants)
             << "empty shape highlight must settle on BACK";
     }
 
-    // Draw smoke over the headless screen buffer: the null-state and
-    // zero-snapshot shapes (both draw NO BACKUPS YET + the retention title)
-    // and a populated two-page state with a corrupt row + the "p/N"
-    // indicator. The flows pin behavior; this pins that every content branch
-    // draws.
+    // The content pass, branch by branch, read off the headless screen
+    // buffer. company_backups_draw_content always inks the retention title
+    // strip and the LEVEL/SAVED headers in WHITE, then EITHER "NO BACKUPS
+    // YET" centred in ORANGE_START (null state / zero snapshots) OR
+    // DARK_BLUE rows plus, when the snapshots span pages, the WHITE "p/N"
+    // strip at (140,176) (src/interface/ui/menu_screen_specs.cpp). Each
+    // branch gets its own positive AND negative pin, so a draw_content that
+    // early-returns -- or draws the wrong branch -- goes red.
     ASSERT_TRUE(spec.draw_content != nullptr);
+    screen* const output = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, output);
+    const auto ink = [output](int y0, int y1, int wanted) {
+        int count = 0;
+        for (int y = y0; y < y1; ++y) {
+            for (int x = 0; x < 320; ++x) {
+                int pixel = 0;
+                output->get_pixel(x, y, &pixel);
+                if (pixel == wanted)
+                    ++count;
+            }
+        }
+        return count;
+    };
+    // Bands, each holding exactly one of the pass's writes.
+    constexpr int kChromeY0 = 6;    // the title strip (8) + headers (16)
+    constexpr int kChromeY1 = 25;
+    constexpr int kNoticeY0 = 88;   // "NO BACKUPS YET" centred at y=90
+    constexpr int kNoticeY1 = 100;
+    constexpr int kRowsY0 = 26;     // DARK_BLUE rows at y = 27 + 15r
+    constexpr int kRowsY1 = 160;
+    constexpr int kPagerY0 = 174;   // the "p/N" strip at (140,176)
+    constexpr int kPagerY1 = 186;
+
+    output->clearbuffer();
     spec.draw_content(nullptr);
+    const int null_chrome = ink(kChromeY0, kChromeY1, WHITE);
+    EXPECT_GT(null_chrome, 0)
+        << "the null state still inks the retention title and headers";
+    EXPECT_GT(ink(kNoticeY0, kNoticeY1, ORANGE_START), 0)
+        << "the null state must say NO BACKUPS YET";
+    EXPECT_EQ(0, ink(kRowsY0, kRowsY1, DARK_BLUE))
+        << "the null state has no rows to list";
+    EXPECT_EQ(0, ink(kPagerY0, kPagerY1, WHITE))
+        << "the null state has no page strip";
     {
         og::ui::CompanyBackupsScreenState state;
         state.slot = "wp3bkdraw";
         state.company_name = "BACKUP DRAW BAND";
         state.page = og::ui::PageModel::make(0, 10);
+        output->clearbuffer();
         spec.draw_content(&state);
+        EXPECT_GT(ink(kChromeY0, kChromeY1, WHITE), 0)
+            << "an empty list still names the company it belongs to";
+        EXPECT_GT(ink(kNoticeY0, kNoticeY1, ORANGE_START), 0)
+            << "a company with no level wins must say NO BACKUPS YET";
+        EXPECT_EQ(0, ink(kRowsY0, kRowsY1, DARK_BLUE))
+            << "an empty list draws no rows";
+        EXPECT_EQ(0, ink(kPagerY0, kPagerY1, WHITE))
+            << "a single (empty) page draws no page strip";
+
         for (int i = 0; i < 15; ++i) {
             state.backups.push_back(make_backup_info(
                 "wp3bkdraw", 15 - i, 1000 - i, i < 12));
         }
         state.page = og::ui::PageModel::make(15, 10);
         state.page.page = 1;
+        output->clearbuffer();
         spec.draw_content(&state);
+        EXPECT_GT(ink(kChromeY0, kChromeY1, WHITE), 0)
+            << "the populated list keeps its title and headers";
+        EXPECT_EQ(0, ink(kNoticeY0, kNoticeY1, ORANGE_START))
+            << "a populated list must NOT claim there are no backups";
+        EXPECT_GT(ink(kRowsY0, kRowsY1, DARK_BLUE), 0)
+            << "page 2 must list its snapshot rows (corrupt ones included)";
+        EXPECT_GT(ink(kPagerY0, kPagerY1, WHITE), 0)
+            << "a multi-page list must ink its p/N strip";
     }
+    output->clearbuffer();
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 // in-test: TYPE_SCRIPTED + direct ModeState field writes (the og.* bindings
 // are the production writers; every renderer here reads the same fields).
 
+#include <cstdint>
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
@@ -1057,6 +1058,16 @@ TEST(ModeUi, respawn_camera_focus_follows_scripted_entries)
     walker* old_control = v->control;
     v->control = hero;
 
+    // The corpse-only camera first, so the fallback below has an EXACT value
+    // to land on: viewscreen::refresh centres the control's own render
+    // position when classic_respawn_camera_focus yields nothing
+    // (src/interface/render/view.cpp). The hero is dead and stationary at
+    // (64,64), so its interpolated render position is stable.
+    s->redraw();
+    const Sint32 corpse_topx = v->topx;
+    EXPECT_EQ(64 - (v->xview - hero->sizex()) / 2, corpse_topx)
+        << "the corpse camera centres the control's own position";
+
     og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.team = 0;
@@ -1072,13 +1083,23 @@ TEST(ModeUi, respawn_camera_focus_follows_scripted_entries)
         400 - (v->xview - hero->sizex()) / 2;
     EXPECT_EQ(expected_topx, focused_topx)
         << "scripted-world respawn entries must steer the camera (D14)";
+    EXPECT_NE(corpse_topx, focused_topx)
+        << "the fixture must actually move the camera off the corpse";
 
-    // An entry without a recorded destination keeps the corpse focus.
-    s->world().respawn.respawn_queue[0].x = -1;
-    s->world().respawn.respawn_queue[0].y = -1;
-    s->redraw();
-    EXPECT_NE(focused_topx, v->topx)
-        << "a destination-less entry must fall back to the corpse camera";
+    // An entry without a recorded destination keeps the corpse focus. Pinning
+    // the EXACT corpse camera is what makes this leg bite: a dropped
+    // `entry.x < 0 || entry.y < 0` guard would centre the (-1,-1) sentinel,
+    // which is just as different from 400 as 64 is.
+    const std::int16_t negative_cases[3][2] = {{-1, -1}, {-1, 300}, {400, -1}};
+    for (const auto& negative : negative_cases)
+    {
+        s->world().respawn.respawn_queue[0].x = negative[0];
+        s->world().respawn.respawn_queue[0].y = negative[1];
+        s->redraw();
+        EXPECT_EQ(corpse_topx, v->topx)
+            << "a destination-less entry (" << negative[0] << ","
+            << negative[1] << ") must give back the exact corpse camera";
+    }
 
     s->world().respawn.respawn_queue.clear();
     v->control = old_control;

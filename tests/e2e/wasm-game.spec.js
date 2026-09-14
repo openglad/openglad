@@ -378,6 +378,65 @@ async function restoreDisplayDefaultsDuringGameplay(page, runtimeLogs) {
 
 // Helper: check if a screenshot buffer has non-trivial content
 // (i.e., not a solid black or single-color rectangle)
+// A dead wasm runtime does NOT stop requestAnimationFrame, and the browser
+// keeps compositing the last painted frame forever, so neither frame counters
+// nor "the canvas is not blank" can see a freeze. These are the signals that
+// can: the global ABORT flag and the "Aborted" pageerror/console text
+// (tests/e2e/wasm-networking.spec.js:114-125), plus the engine-side
+// render-sample sequence that only a live gameplay pump advances.
+async function expectNoWasmAbort(page, errors, context) {
+  const abortFlag = await page.evaluate(() => Boolean(window.ABORT));
+  expect(abortFlag, `wasm ABORT flag raised during: ${context}`).toBe(false);
+  const abortMessages = errors.filter((line) => /\bAborted\b/i.test(line));
+  expect(abortMessages, `wasm abort reported during: ${context}`).toEqual([]);
+}
+
+async function captureRegion(page, region) {
+  return await getCanvasGameRegionScreenshot(
+    page,
+    region.x,
+    region.y,
+    region.w,
+    region.h,
+  );
+}
+
+// Capture a region only once it has stopped changing: two consecutive
+// captures a few frames apart must be byte-identical. The picker redraws
+// every frame from deterministic state, so a settled region is a reliable
+// reference for later "the screen really changed" comparisons.
+async function captureSettledRegion(page, region, description, timeoutMs = 20_000) {
+  let settled = null;
+  await expect
+    .poll(
+      async () => {
+        const first = await captureRegion(page, region);
+        await page.waitForTimeout(250);
+        const second = await captureRegion(page, region);
+        if (first.equals(second)) {
+          settled = first;
+          return true;
+        }
+        return false;
+      },
+      { message: `region should settle: ${description}`, timeout: timeoutMs },
+    )
+    .toBe(true);
+  if (!settled) {
+    throw new Error(`region never settled: ${description}`);
+  }
+  return settled;
+}
+
+async function waitForRegionToLeave(page, region, baseline, message, timeoutMs = 20_000) {
+  await expect
+    .poll(async () => (await captureRegion(page, region)).equals(baseline), {
+      message,
+      timeout: timeoutMs,
+    })
+    .toBe(false);
+}
+
 function hasVisualContent(buffer) {
   return buffer.length > MIN_NON_TRIVIAL_PNG_BYTES;
 }
@@ -976,29 +1035,46 @@ test.describe('Game Interaction', () => {
     assertNoRuntimeErrors(errors, 'SAI default restore');
   });
 
-  test('keyboard input does not crash the game', async ({ page }) => {
+  // The freeze class this sweep exists for is an Asyncify deadlock with NO
+  // abort: waitForRenderedFrames counts the TEST's own requestAnimationFrame
+  // ticker, which keeps ticking on a dead runtime, and "canvas visible" /
+  // "#loading hidden" never change either. Run the sweep on a live gameplay
+  // session so the engine's own render-sample sequence is the liveness oracle,
+  // and pin the abort flag explicitly.
+  test('keyboard input neither aborts the wasm runtime nor stalls the engine', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
 
+    await page.addInitScript(() => {
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladSkipIntroForTests = true;
+    });
     await page.goto('/play.html');
     await waitForGameLoad(page);
     assertNoRuntimeErrors(errors, 'initial load before keyboard input');
 
-    // Focus the canvas
-    await focusCanvas(page);
-    await waitForRenderedFrames(page, 2);
-    assertNoRuntimeErrors(errors, 'canvas focus');
+    await startSeededSinglePlayerFromPicker(page);
+    await expectNoWasmAbort(page, errors, 'picker-to-gameplay transition');
 
-    // Send various keyboard inputs
+    // Render samples are published only during gameplay, so this is the
+    // point where a stalled engine becomes observable.
+    await waitForGameplayRenderSamples(page, 5, 15_000);
+
     const keys = ['Enter', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'];
     for (const key of keys) {
-      await page.keyboard.press(key);
-      await waitForRenderedFrames(page, 1);
+      await page.keyboard.press(key, { delay: 75 });
+      // The engine must still be pumping frames AFTER this key.
+      await waitForGameplayRenderSamples(page, 5, 15_000);
       assertNoRuntimeErrors(errors, `keyboard input: ${key}`);
+      await expectNoWasmAbort(page, errors, `keyboard input: ${key}`);
     }
 
-    await waitForRenderedFrames(page, 8);
-    assertNoRuntimeErrors(errors, 'post-input render frames');
+    await waitForGameplayRenderSamples(page, 20, 15_000);
+    assertNoRuntimeErrors(errors, 'post-input engine frames');
+    await expectNoWasmAbort(page, errors, 'post-input engine frames');
 
     // Canvas should still be visible (game didn't crash)
     const canvas = page.locator('#canvas');
@@ -1012,61 +1088,115 @@ test.describe('Game Interaction', () => {
     assertNoRuntimeErrors(errors, 'final keyboard interaction assertions');
   });
 
-  test('canvas continues rendering after interaction', async ({ page }) => {
+  // "The canvas is not blank afterwards" is satisfied by a completely frozen
+  // canvas (the browser keeps compositing the last painted frame), so the
+  // oracle here is the engine's own clock: __opengladLatestRenderSample.tick
+  // must have moved past its pre-input value.
+  test('the engine keeps ticking after interaction', async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.addInitScript(() => {
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladSkipIntroForTests = true;
+    });
     await page.goto('/play.html');
     await waitForGameLoad(page);
 
-    // Take initial screenshot
-    const before = await getCanvasScreenshot(page);
+    await startSeededSinglePlayerFromPicker(page);
+    await waitForGameplayRenderSamples(page, 5, 15_000);
 
-    // Focus and send input
-    await focusCanvas(page);
-    await waitForRenderedFrames(page, 2);
+    const tickBefore = await page.evaluate(
+      () => window.__opengladLatestRenderSample?.tick ?? null,
+    );
+    expect(tickBefore, 'gameplay must publish a render sample').not.toBeNull();
 
-    // Press Enter to potentially advance past menu
-    await page.keyboard.press('Enter');
-    await waitForRenderedFrames(page, 4);
+    // 'd' is player 1's web RIGHT binding — a real gameplay input, not a
+    // player-2 arrow key.
+    await page.keyboard.press('d', { delay: 75 });
 
-    // Canvas should still have content
-    const after = await getCanvasScreenshot(page);
-    expect(hasVisualContent(after)).toBe(true);
+    await waitForGameplayRenderSamples(page, 20, 15_000);
+    const sampleAfter = await page.evaluate(
+      () => window.__opengladLatestRenderSample,
+    );
+    expect(
+      sampleAfter.tick,
+      'the sim clock must advance after input, not merely leave pixels on screen',
+    ).toBeGreaterThan(tickBefore);
+    await expectNoWasmAbort(page, errors, 'post-interaction rendering');
+
+    // Keep the "something is actually painted" smoke floor.
+    expect(hasVisualContent(await getCanvasScreenshot(page))).toBe(true);
+    assertNoRuntimeErrors(errors, 'post-interaction rendering');
   });
 
-  test('game navigation changes canvas content', async ({ page }) => {
+  // "The two captures differ" was satisfied with no navigation at all: without
+  // __opengladSkipIntroForTests the first capture is the auto-advancing intro,
+  // and ArrowDown/Enter are player-2 bindings that picker nav (player 1 only)
+  // never reads. Pin the real rule instead — a settled menu does NOT drift on
+  // its own, and player 1's DOWN + FIRE replaces it with the door's screen.
+  test('picker activation replaces the menu screen, and nothing moves without input', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.addInitScript(() => {
+      window.__opengladSkipIntroForTests = true;
+    });
     await page.goto('/play.html');
     await waitForGameLoad(page);
+    await waitForPickerReady(page);
 
-    // Take screenshot of initial state (main menu)
-    const menuScreenshot = await getCanvasScreenshot(page);
+    // Emscripten only forwards keyboard input after a real canvas click; use
+    // the inert corner openWebDisplayOptions uses rather than focusCanvas().
+    await clickCanvasGameCoord(page, 10, 10);
 
-    // Focus canvas and interact
-    await focusCanvas(page);
-    await waitForRenderedFrames(page, 2);
+    // The main menu's headline band on the 320x200 UI reference grid.
+    const HEADLINE_REGION = { x: 60, y: 18, w: 200, h: 18 };
+    const menuFace = await captureSettledRegion(
+      page,
+      HEADLINE_REGION,
+      'main-menu headline',
+    );
 
-    // Main menu starts with the first entry focused (Begin/Continue).
-    // ArrowDown moves focus to the second entry (Options), and Enter opens it.
-    // Expected transition: options/menu overlay redraws the canvas.
-    await page.keyboard.press('ArrowDown');
-    await waitForRenderedFrames(page, 2);
-    await page.keyboard.press('Enter');
-    await waitForRenderedFrames(page, 6);
-    // Whatever Enter opened is a main-menu door, and on web those fade for a
-    // real second (#237). Capturing inside the fade grabs a solid-black frame
-    // that hasVisualContent() rejects — settle past it first.
-    await page.waitForTimeout(1_500);
-    await waitForRenderedFrames(page, 2);
+    // CONTROL: with no key pressed the settled menu must stay byte-identical.
+    // Without this, "the pixels changed" proves nothing about the key.
+    await waitForRenderedFrames(page, 4);
+    expect(
+      (await captureRegion(page, HEADLINE_REGION)).equals(menuFace),
+      'the settled main menu must not drift without input',
+    ).toBe(true);
 
-    // Take screenshot after navigation
-    const afterScreenshot = await getCanvasScreenshot(page);
+    // Picker nav reads player 1's bindings only: S is DOWN and Z is FIRE
+    // (kWebFourDirFireKey). Two rows down from the top is GAME SETTINGS.
+    await pressPickerKey(page, 's');
+    await pressPickerKey(page, 's');
+    // Main-menu doors fade a real second on web (#237); settle past both legs.
+    await pressPickerKey(page, 'z', 1_500);
 
-    // Both screenshots should have content
-    expect(hasVisualContent(menuScreenshot)).toBe(true);
-    expect(hasVisualContent(afterScreenshot)).toBe(true);
-
-    // The screenshots should differ (game responded to input)
-    // Compare the raw PNG buffers - they should not be identical
-    const differ = !menuScreenshot.equals(afterScreenshot);
-    expect(differ).toBe(true);
+    await waitForRegionToLeave(
+      page,
+      HEADLINE_REGION,
+      menuFace,
+      'FIRE on a highlighted door must replace the main menu headline',
+    );
+    const doorFace = await captureSettledRegion(
+      page,
+      HEADLINE_REGION,
+      'opened door headline',
+    );
+    expect(
+      doorFace.equals(menuFace),
+      'the opened door must settle on its own screen, not fall back to the menu',
+    ).toBe(false);
+    // PNG-size "is anything painted" is only calibrated for the full canvas;
+    // a 200x18 band of flat menu grey compresses under the floor even when it
+    // is real content. Keep the smoke floor where it means something.
+    expect(hasVisualContent(await getCanvasScreenshot(page))).toBe(true);
+    assertNoRuntimeErrors(errors, 'picker door activation');
   });
 });
 

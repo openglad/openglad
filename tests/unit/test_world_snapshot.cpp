@@ -820,57 +820,58 @@ TEST(WorldSnapshot, guy_linkage_is_not_dirty_mask_tracked)
     EXPECT_FALSE(guy_id_in_field_table);
 }
 
-TEST(WorldSnapshot, guy_linkage_uses_negative_sentinel_for_unlinked_entities)
+// The sentinel is a PRODUCT rule on both legs, not a header initialiser:
+// capture stamps kNoGuyId exactly when the entity has no guy, and apply
+// links every OTHER id — including 0, the first id the allocator hands out
+// (guy.cpp guy_id_counter counts from 0). Treating 0 as "unlinked" would
+// silently orphan the first player character of every session.
+TEST(WorldSnapshot, guy_linkage_treats_only_the_negative_sentinel_as_unlinked)
 {
-    og::sim::EntitySnapshot npc_snapshot;
-    og::sim::GuySnapshot guy_snapshot;
-    guy_snapshot.guy_id = 0;
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
 
-    EXPECT_EQ(og::sim::kNoGuyId, npc_snapshot.guy_id);
-    EXPECT_NE(guy_snapshot.guy_id, npc_snapshot.guy_id);
-}
+    walker* const npc = source.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, npc);
+    npc->setxy(64, 64);
+    ASSERT_EQ(nullptr, npc->myguy) << "the probe entity owns no guy";
+    const std::uint32_t entity_id = npc->entity_id();
 
-TEST(WorldSnapshot, world_snapshot_can_hold_world_and_guy_state)
-{
-    og::sim::WorldSnapshot snapshot;
-    snapshot.tick_count = 42;
-    snapshot.rng_state = 1234;
-    snapshot.level_tick_count = 7;
-    snapshot.current_palette_id = 1;
-    snapshot.pending_exit_prompt = true;
-    snapshot.paused = true;
-    snapshot.pause_player_index = 2;
-    snapshot.grid_width = 8;
-    snapshot.grid_height = 8;
-    snapshot.grid_dirty = true;
-    snapshot.grid_full_resend = false;
-    snapshot.grid_dirty_tiles.push_back({3, 4, 5});
-    snapshot.removed_entity_ids.push_back(17);
-
-    og::sim::GuySnapshot guy_snapshot;
-    guy_snapshot.guy_id = 9;
-    guy_snapshot.name = "Aldo";
-    guy_snapshot.exp = 123;
-    guy_snapshot.scen_damage = 4.5f;
-    snapshot.guy_snapshots.push_back(guy_snapshot);
-
-    og::sim::EntitySnapshot entity_snapshot;
-    entity_snapshot.guy_id = 9;
-    entity_snapshot.entity_id = 17;
-    entity_snapshot.order = Order::Living;
-    entity_snapshot.family = 3;
-    entity_snapshot.special_cost[0] = 11;
-    snapshot.oblist.push_back(entity_snapshot);
-
-    ASSERT_EQ(1u, snapshot.guy_snapshots.size());
-    EXPECT_EQ(9, snapshot.guy_snapshots.front().guy_id);
-    EXPECT_EQ("Aldo", snapshot.guy_snapshots.front().name);
+    og::sim::WorldSnapshot snapshot = og::sim::capture_keyframe_snapshot(source);
     ASSERT_EQ(1u, snapshot.oblist.size());
-    EXPECT_EQ(17u, snapshot.oblist.front().entity_id);
-    EXPECT_EQ(9, snapshot.oblist.front().guy_id);
-    EXPECT_EQ(11u, snapshot.oblist.front().special_cost[0]);
-    ASSERT_EQ(1u, snapshot.grid_dirty_tiles.size());
-    EXPECT_EQ(5u, snapshot.grid_dirty_tiles.front().value);
+    EXPECT_EQ(og::sim::kNoGuyId, snapshot.oblist.front().guy_id)
+        << "capture must stamp the sentinel for a guy-less entity";
+
+    // Guy id 0 is a REAL id: apply must look it up and link it.
+    snapshot.oblist.front().guy_id = 0;
+    og::sim::GuySnapshot zero_guy;
+    zero_guy.guy_id = 0;
+    zero_guy.name = "Zero";
+    zero_guy.family = static_cast<std::int8_t>(FAMILY_SOLDIER);
+    zero_guy.level = 4;
+    snapshot.guy_snapshots.push_back(zero_guy);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, snapshot));
+
+    walker* linked = mirror.find_by_id(entity_id);
+    ASSERT_NE(nullptr, linked);
+    ASSERT_NE(nullptr, linked->myguy)
+        << "guy id 0 is a real id — apply must link it, not read it as "
+           "'unlinked'";
+    EXPECT_EQ(0, linked->myguy->id);
+    EXPECT_EQ("Zero", linked->myguy->name);
+    EXPECT_EQ(4, linked->myguy->level);
+
+    // And the sentinel itself really does unlink, on the same mirror.
+    snapshot.oblist.front().guy_id = og::sim::kNoGuyId;
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, snapshot));
+    linked = mirror.find_by_id(entity_id);
+    ASSERT_NE(nullptr, linked);
+    EXPECT_EQ(nullptr, linked->myguy)
+        << "kNoGuyId must leave the entity unlinked";
 }
 
 TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)

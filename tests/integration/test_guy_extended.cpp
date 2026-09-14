@@ -11,6 +11,52 @@
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 int MAX(int a, int b);
+Uint32 calculate_exp(Sint32 level);
+
+namespace {
+
+screen* guy_test_screen()
+{
+    return og::runtime::current_session->myscreen_;
+}
+
+// Families that register no `level_up` hook in packs/core take
+// guy::upgrade_to_level's DEFAULT branch (src/gameplay/guy.cpp:421-429):
+// apply_level_up() adds kDefaultLevelUpGains{8,6,8,8,1} * level_diff to the
+// family's own base_stats, and only then is level/exp written. Pinning the
+// level alone cannot tell that branch from a no-op, so every axis is pinned.
+void expect_default_level_up_to_5(short family, const char* who)
+{
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    ASSERT_NE(nullptr, fd) << who << " must be a registered family";
+    const int base_str = fd->base_stats[StatAxis::Strength];
+    const int base_dex = fd->base_stats[StatAxis::Dexterity];
+    const int base_con = fd->base_stats[StatAxis::Constitution];
+    const int base_int = fd->base_stats[StatAxis::Intelligence];
+    const int base_armor = fd->base_stats[StatAxis::Armor];
+
+    guy g(family);
+    const int level_diff = 5 - static_cast<int>(g.level);
+    ASSERT_EQ(4, level_diff) << who << " starts at level 1, so upgrading to 5 is a 4-level diff";
+
+    g.upgrade_to_level(5, true);
+
+    EXPECT_EQ(base_str + 8 * level_diff, (int)g.strength)
+        << who << ": default gains add 8 STR per level to the family base";
+    EXPECT_EQ(base_dex + 6 * level_diff, (int)g.dexterity)
+        << who << ": default gains add 6 DEX per level to the family base";
+    EXPECT_EQ(base_con + 8 * level_diff, (int)g.constitution)
+        << who << ": default gains add 8 CON per level to the family base";
+    EXPECT_EQ(base_int + 8 * level_diff, (int)g.intelligence)
+        << who << ": default gains add 8 INT per level to the family base";
+    EXPECT_EQ(base_armor + 1 * level_diff, (int)g.armor)
+        << who << ": default gains add 1 armor per level to the family base";
+    ASSERT_EQ(5, (int)g.level) << who << ": upgrade_to_level writes the requested level";
+    ASSERT_EQ((int)calculate_exp(5), (int)g.exp)
+        << who << ": set_xp=true stamps the level-5 point on the exp curve";
+}
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // upgrade_to_level - exercises the big family switch (lines 323-456)
@@ -59,11 +105,10 @@ TEST(GuyExtended, guy_upgrade_skeleton)
 }
 
 
-TEST(GuyExtended, guy_upgrade_cleric)
+TEST(GuyExtended, guy_upgrade_cleric_takes_the_default_level_up_gains)
 {
-    guy g(FAMILY_CLERIC);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.level == 5) << "cleric level should be 5";
+    // packs/core/families/living-05-cleric.lua registers no level_up hook.
+    expect_default_level_up_to_5(FAMILY_CLERIC, "cleric");
 }
 
 
@@ -83,11 +128,10 @@ TEST(GuyExtended, guy_upgrade_faerie)
 }
 
 
-TEST(GuyExtended, guy_upgrade_slime)
+TEST(GuyExtended, guy_upgrade_slime_takes_the_default_level_up_gains)
 {
-    guy g(FAMILY_SMALL_SLIME);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.level == 5) << "slime level should be 5";
+    // packs/core/families/living-08-slime.lua registers no level_up hook.
+    expect_default_level_up_to_5(FAMILY_SMALL_SLIME, "small slime");
 }
 
 
@@ -99,11 +143,10 @@ TEST(GuyExtended, guy_upgrade_thief)
 }
 
 
-TEST(GuyExtended, guy_upgrade_ghost)
+TEST(GuyExtended, guy_upgrade_ghost_takes_the_default_level_up_gains)
 {
-    guy g(FAMILY_GHOST);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.level == 5) << "ghost level should be 5";
+    // packs/core/families/living-12-ghost.lua registers no level_up hook.
+    expect_default_level_up_to_5(FAMILY_GHOST, "ghost");
 }
 
 
@@ -145,31 +188,95 @@ TEST(GuyExtended, guy_upgrade_archmage)
 
 TEST(GuyExtended, guy_update_derived_stats_soldier)
 {
-    guy g(FAMILY_SOLDIER);
-    g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
-    ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
-    ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP should be positive";
-    ASSERT_TRUE(w->stats()->max_magicpoints() >= 0) << "MP should be non-negative";
-    ASSERT_TRUE(w->stats()->heal_per_round() >= 0) << "heal_per_round should be non-negative";
-    ASSERT_TRUE(w->stats()->magic_per_round() >= 0) << "magic_per_round should be non-negative";
+    // The soldier's loader row (packs/core/families/living-00-soldier.lua):
+    // base stats 12/6/12/8, armor 9, and combat.hp 120 / melee_damage 20.
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd) << "soldier must be a registered family";
+    ASSERT_FLOAT_EQ(120.0f, fd->combat.hp) << "loader HP row the bonus is added to";
+    ASSERT_FLOAT_EQ(20.0f, fd->combat.melee_damage) << "loader melee damage row";
+
+    guy g3(FAMILY_SOLDIER);
+    g3.upgrade_to_level(3, true);
+    ASSERT_EQ(28, (int)g3.strength) << "12 + 2 levels * 8";
+    ASSERT_EQ(28, (int)g3.constitution) << "12 + 2 levels * 8";
+    ASSERT_EQ(24, (int)g3.intelligence) << "8 + 2 levels * 8";
+    ASSERT_EQ(18, (int)g3.dexterity) << "6 + 2 levels * 6";
+
+    auto w3 = guy_create_walker_owned(g3, guy_test_screen());
+    ASSERT_NE(nullptr, w3) << "create_walker should succeed";
+
+    // guy::update_derived_stats, src/gameplay/guy.cpp:470-554.
+    EXPECT_FLOAT_EQ(214.0f, w3->stats()->max_hitpoints())
+        << "120 loader HP + get_hp_bonus() (10 + 3*28)";
+    EXPECT_FLOAT_EQ(214.0f, w3->stats()->hitpoints())
+        << "a fresh guy starts at full health";
+    EXPECT_FLOAT_EQ(82.0f, w3->stats()->max_magicpoints())
+        << "MP has no loader base: get_mp_bonus() is 10 + 3*24 on its own";
+    EXPECT_FLOAT_EQ(82.0f, w3->stats()->magicpoints())
+        << "a fresh guy starts at full magic";
+    EXPECT_FLOAT_EQ(27.0f, w3->damage())
+        << "20 loader damage + get_damage_bonus() (28/4)";
+    EXPECT_FLOAT_EQ(11.0f, w3->stats()->armor())
+        << "armor has no loader base: it is the guy's own armor (9 + 2 levels * 1)";
+
+    // Regen: (con + str/6 + 1020) = 1052 is below one REGEN(4000) step, so
+    // the integer part is 0 and the whole budget lands in the delay divisor.
+    EXPECT_FLOAT_EQ(0.0f, w3->stats()->heal_per_round())
+        << "1052 < REGEN, so no whole hit point per round";
+    EXPECT_EQ(3, w3->stats()->max_heal_delay()) << "REGEN / (1052 + 1)";
+    EXPECT_EQ(0, w3->stats()->current_heal_delay()) << "a fresh guy starts without healing";
+    // (int*45 + dex*15 + 200) = 1550, likewise below one REGEN step.
+    EXPECT_FLOAT_EQ(0.0f, w3->stats()->magic_per_round())
+        << "1550 < REGEN, so no whole magic point per round";
+    EXPECT_EQ(2, w3->stats()->max_magic_delay()) << "REGEN / (1550 + 1)";
+    EXPECT_EQ(0, w3->stats()->current_magic_delay()) << "a fresh guy starts without regen";
+
+    // The same loader row at level 1: only the stat-derived half moved.
+    guy g1(FAMILY_SOLDIER);
+    auto w1 = guy_create_walker_owned(g1, guy_test_screen());
+    ASSERT_NE(nullptr, w1) << "create_walker should succeed for the level-1 baseline";
+    EXPECT_FLOAT_EQ(166.0f, w1->stats()->max_hitpoints()) << "120 + (10 + 3*12)";
+    EXPECT_FLOAT_EQ(34.0f, w1->stats()->max_magicpoints()) << "10 + 3*8";
+    EXPECT_EQ(6, w1->stats()->max_magic_delay()) << "REGEN / (650 + 1): less INT regenerates slower";
+    EXPECT_FLOAT_EQ(48.0f,
+                    w3->stats()->max_hitpoints() - w1->stats()->max_hitpoints())
+        << "the level-3 HP lead is exactly 3 * the constitution lead (16)";
 }
 
 
 TEST(GuyExtended, guy_update_derived_stats_all_families)
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    const short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
-    for (int i = 0; i < 14; i++) {
-        guy g(families[i]);
+    int checked = 0;
+    for (short family : families) {
+        const FamilyDescriptor* fd = get_family_descriptor(family);
+        ASSERT_NE(nullptr, fd) << "family " << family << " must be registered";
+        guy g(family);
         g.upgrade_to_level(3, true);
-        auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
-        if (w) {
-            ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP should be positive for all families";
-        }
+        auto w = guy_create_walker_owned(g, guy_test_screen());
+        ASSERT_NE(nullptr, w) << "create_walker should succeed for family " << family;
+
+        // Every derived value is the family's OWN loader row plus that
+        // family's own stats; one row read fourteen times fails here.
+        EXPECT_FLOAT_EQ(fd->combat.hp + 10.0f + 3.0f * (float)g.constitution,
+                        w->stats()->max_hitpoints())
+            << fd->name << ": loader HP + get_hp_bonus()";
+        EXPECT_FLOAT_EQ(w->stats()->max_hitpoints(), w->stats()->hitpoints())
+            << fd->name << ": a fresh guy starts at full health";
+        EXPECT_FLOAT_EQ(10.0f + 3.0f * (float)g.intelligence,
+                        w->stats()->max_magicpoints())
+            << fd->name << ": MP is get_mp_bonus() alone (no loader base)";
+        EXPECT_FLOAT_EQ(fd->combat.melee_damage + (float)g.strength / 4.0f,
+                        w->damage())
+            << fd->name << ": loader damage + get_damage_bonus()";
+        EXPECT_FLOAT_EQ((float)g.armor, w->stats()->armor())
+            << fd->name << ": armor is the guy's own armor score";
+        ++checked;
     }
+    ASSERT_EQ(14, checked) << "every listed family must have been checked";
 }
 
 
@@ -179,15 +286,24 @@ TEST(GuyExtended, guy_update_derived_stats_all_families)
 
 TEST(GuyExtended, guy_query_heart_value_all_families)
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    const short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
-    for (int i = 0; i < 14; i++) {
-        guy g(families[i]);
-        Sint32 val = g.query_heart_value();
-        ASSERT_TRUE(val > 0) << "heart value should be positive for base stats";
+    int checked = 0;
+    for (short family : families) {
+        const FamilyDescriptor* fd = get_family_descriptor(family);
+        ASSERT_NE(nullptr, fd) << "family " << family << " must be registered";
+        guy g(family);
+        // Every stat delta against a base-stat twin is 0, so the cost curves
+        // contribute nothing and the value is exactly the hiring cost
+        // (src/gameplay/guy.cpp:288-327) -- the identity
+        // GuyCalcs.guy_query_heart_value_base pins for the soldier's 250.
+        EXPECT_EQ(fd->hiring_cost, (int)g.query_heart_value())
+            << fd->name << ": a base-stat recruit is worth exactly its hiring cost";
+        ++checked;
     }
+    ASSERT_EQ(14, checked) << "every listed family must have been priced";
 }
 
 
@@ -286,6 +402,12 @@ TEST(GuyExtended, guy_unknown_family_fallback_and_zero_heart_value)
 
 TEST(GuyExtended, guy_update_derived_stats_clamps_speed_and_regen_delays)
 {
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd) << "soldier must be a registered family";
+    // The clamps only ENGAGE above the loader row, so pin what they start from.
+    ASSERT_FLOAT_EQ(4.0f, fd->combat.stepsize) << "loader stepsize row";
+    ASSERT_FLOAT_EQ(6.0f, fd->combat.fire_delay) << "loader fire-delay row";
+
     guy g(FAMILY_SOLDIER);
     g.dexterity = 3000;
     g.constitution = 3000;
@@ -293,17 +415,24 @@ TEST(GuyExtended, guy_update_derived_stats_clamps_speed_and_regen_delays)
     g.intelligence = 3000;
     g.level = 1;
 
-    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
-    ASSERT_TRUE(w != nullptr) << "walker should be created";
-    if (!w)
-        return;
+    auto w = guy_create_walker_owned(g, guy_test_screen());
+    ASSERT_NE(nullptr, w) << "walker should be created";
 
-    ASSERT_TRUE(w->stepsize() <= 12.0f) << "stepsize should clamp to 12";
-    ASSERT_TRUE(w->fire_frequency() >= 1.0f) << "fire_frequency should clamp to minimum 1";
-    ASSERT_TRUE(w->stats()->heal_per_round() > 0) << "high stats should increase heal_per_round";
-    ASSERT_TRUE(w->stats()->magic_per_round() > 0) << "high stats should increase magic_per_round";
-    ASSERT_TRUE(w->stats()->max_heal_delay() >= 2) << "max_heal_delay should respect minimum clamp";
-    ASSERT_TRUE(w->stats()->max_magic_delay() >= 2) << "max_magic_delay should respect minimum clamp";
+    // src/gameplay/guy.cpp:490-499: both bonuses are applied, then clamped.
+    EXPECT_FLOAT_EQ(12.0f, w->stepsize())
+        << "4 + get_speed_bonus() (3000/54) clamps down to exactly 12";
+    EXPECT_FLOAT_EQ(12.0f, w->normal_stepsize())
+        << "normal_stepsize follows the clamped stepsize";
+    EXPECT_FLOAT_EQ(1.0f, w->fire_frequency())
+        << "6 - get_fire_frequency_bonus() (3000/47) clamps up to exactly 1";
+
+    // Heal budget (con + str/6 + 1020) = 4520: one whole REGEN(4000) step,
+    // leaving 520 as the delay divisor.
+    EXPECT_FLOAT_EQ(1.0f, w->stats()->heal_per_round()) << "4520 / REGEN = 1 whole step";
+    EXPECT_EQ(7, w->stats()->max_heal_delay()) << "REGEN / (520 + 1)";
+    // Magic budget (int*45 + dex*15 + 200) = 180200: 45 whole steps, 200 left.
+    EXPECT_FLOAT_EQ(45.0f, w->stats()->magic_per_round()) << "180200 / REGEN = 45 whole steps";
+    EXPECT_EQ(19, w->stats()->max_magic_delay()) << "REGEN / (200 + 1)";
 }
 
 

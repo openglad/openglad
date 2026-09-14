@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <cstddef>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -378,35 +379,97 @@ TEST(VideoFade, video_fadebetween_honors_surface_lock_requirements)
 }
 
 
-TEST(VideoFade, video_fadebetween_success_path_smoke)
+// A completed cross-dissolve leaves BOTH the destination and the old surface
+// showing the NEW frame (video_sdl.cpp:3893-3907 — the second blit is the
+// historical contract callers rely on to reuse `old` as the next fade's
+// starting image). `r != 0` alone was satisfied by the transparent-black
+// stand-in bug, which returned 1 while writing nothing into dest.
+TEST(VideoFade, video_fadebetween_lands_both_surfaces_on_the_new_frame)
 {
     SurfacePtr dest = make_surface(320, 200);
     SurfacePtr old_ok = make_surface(320, 200);
     SurfacePtr new_ok = make_surface(320, 200);
-    ASSERT_TRUE(dest != nullptr && old_ok != nullptr && new_ok != nullptr) << "surfaces created";
-    if (!(dest && old_ok && new_ok))
-        return;
+    ASSERT_NE(nullptr, dest) << "destination surface created";
+    ASSERT_NE(nullptr, old_ok) << "old surface created";
+    ASSERT_NE(nullptr, new_ok) << "new surface created";
 
-    SDL_FillSurfaceRect(old_ok.get(), nullptr, SDL_MapSurfaceRGB(old_ok.get(), 10, 20, 30));
-    SDL_FillSurfaceRect(new_ok.get(), nullptr, SDL_MapSurfaceRGB(new_ok.get(), 200, 180, 160));
+    const Uint32 old_fill = SDL_MapSurfaceRGB(old_ok.get(), 10, 20, 30);
+    const Uint32 new_fill = SDL_MapSurfaceRGB(new_ok.get(), 200, 180, 160);
+    const Uint32 dest_fill = SDL_MapSurfaceRGB(dest.get(), 255, 0, 255);
+    SDL_FillSurfaceRect(old_ok.get(), nullptr, old_fill);
+    SDL_FillSurfaceRect(new_ok.get(), nullptr, new_fill);
+    // A third colour in dest, so "wrote nothing" cannot pass as "wrote the
+    // new frame".
+    SDL_FillSurfaceRect(dest.get(), nullptr, dest_fill);
+    ASSERT_NE(new_fill, dest_fill);
+    ASSERT_NE(new_fill, old_fill);
 
-    int r = og::runtime::current_session->myscreen_->fade_between(old_ok.get(), new_ok.get(), dest.get());
-    ASSERT_TRUE(r != 0) << "FadeBetween should succeed for matching 32bpp surfaces";
+    const int r = og::runtime::current_session->myscreen_->fade_between(
+        old_ok.get(), new_ok.get(), dest.get());
+    ASSERT_EQ(1, r) << "FadeBetween reports 1 for matching 32bpp surfaces";
+
+    const auto* const dest_px = static_cast<const Uint32*>(dest->pixels);
+    const auto* const old_px = static_cast<const Uint32*>(old_ok->pixels);
+    const std::size_t stride = static_cast<std::size_t>(dest->pitch) / 4u;
+    const std::size_t last =
+        stride * static_cast<std::size_t>(dest->h - 1) +
+        static_cast<std::size_t>(dest->w - 1);
+
+    EXPECT_EQ(new_fill, dest_px[0])
+        << "the destination must end the fade on the new frame";
+    EXPECT_EQ(new_fill, dest_px[last])
+        << "the whole destination surface advances, not just the first pixel";
+    EXPECT_EQ(new_fill, old_px[0])
+        << "the old surface advances to the new frame (historical contract)";
+    EXPECT_EQ(new_fill, old_px[last])
+        << "the whole old surface advances too";
 }
 
 
-TEST(VideoFade, video_fadebetween24_smoke)
+// FadeBetween24 is the per-frame mixer: for each pixel it writes the three
+// colour bytes as ((fadeDuration - amount) * from + amount * to) /
+// fadeDuration and SKIPS the fourth (padding) byte. fadeDuration is 500, so
+// amount 250 is the exact midpoint between 0 and 255 -> 127.
+TEST(VideoFade, video_fadebetween24_mixes_three_bytes_and_skips_the_fourth)
 {
     SurfacePtr s = make_surface(320, 200);
-    ASSERT_TRUE(s != nullptr) << "surface created";
-    if (!s)
-        return;
+    ASSERT_NE(nullptr, s) << "surface created";
 
     const Uint32 size = static_cast<Uint32>(s->pitch) * static_cast<Uint32>(s->h);
-    std::vector<Uint8> from(size, 0);
-    std::vector<Uint8> to(size, 255);
+    const std::vector<Uint8> from(size, 0);
+    const std::vector<Uint8> to(size, 255);
+    auto* const bytes = static_cast<Uint8*>(s->pixels);
 
-    og::runtime::current_session->myscreen_->fade_between24(s.get(), from.data(), to.data(), 1);
+    // Every byte 0xFF, so an untouched padding byte is distinguishable from a
+    // mixed one at any amount.
+    SDL_FillSurfaceRect(s.get(), nullptr, 0xFFFFFFFFu);
+    ASSERT_EQ(0xFFu, bytes[3]);
+
+    og::runtime::current_session->myscreen_->fade_between24(
+        s.get(), from.data(), to.data(), 250);
+    EXPECT_EQ(127, static_cast<int>(bytes[0])) << "first pixel, byte 0";
+    EXPECT_EQ(127, static_cast<int>(bytes[1])) << "first pixel, byte 1";
+    EXPECT_EQ(127, static_cast<int>(bytes[2])) << "first pixel, byte 2";
+    EXPECT_EQ(0xFF, static_cast<int>(bytes[3]))
+        << "the fourth byte of each pixel is skipped";
+    EXPECT_EQ(127, static_cast<int>(bytes[size - 4]))
+        << "the loop runs to the end of the surface";
+    EXPECT_EQ(127, static_cast<int>(bytes[size - 2]));
+    EXPECT_EQ(0xFF, static_cast<int>(bytes[size - 1]))
+        << "the last pixel's padding byte is skipped too";
+
+    // The two endpoints of the ratio.
+    og::runtime::current_session->myscreen_->fade_between24(
+        s.get(), from.data(), to.data(), 500);
+    EXPECT_EQ(255, static_cast<int>(bytes[0])) << "amount == fadeDuration is `to`";
+    EXPECT_EQ(255, static_cast<int>(bytes[size - 2]));
+
+    og::runtime::current_session->myscreen_->fade_between24(
+        s.get(), from.data(), to.data(), 0);
+    EXPECT_EQ(0, static_cast<int>(bytes[0])) << "amount == 0 is `from`";
+    EXPECT_EQ(0, static_cast<int>(bytes[size - 2]));
+    EXPECT_EQ(0xFF, static_cast<int>(bytes[3]))
+        << "no amount ever writes the padding byte";
 }
 
 // The fade-ownership oracle's two remaining verdicts.

@@ -5,8 +5,11 @@
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <list>
+#include <string>
 
 namespace {
 
@@ -34,12 +37,20 @@ TEST(PhysfsWrappers, physfs_wrapper_init_deinit_roundtrip_restore_state)
     restore_unit_filesystem();
 }
 
-TEST(PhysfsWrappers, og_file_physfs_and_stdio_constructor_paths)
+// og::io::og_open_write picks its backend by what PhysFS will accept: a
+// VFS-relative name opens a PhysFS write handle under the current write dir,
+// and a path PhysFS refuses (an absolute filesystem path) falls back to an
+// unbuffered stdio FILE*. Each branch is proven by WHERE the byte landed:
+// only a PhysFS-backed handle can create a file inside the write dir, and
+// only the stdio fallback can create one outside it.
+TEST(PhysfsWrappers, og_open_write_uses_physfs_inside_the_write_dir_and_stdio_outside)
 {
     namespace fs = std::filesystem;
     const fs::path base = fs::temp_directory_path() / "openglad_unit_ogfile_ctor";
     const fs::path abs_stdio = fs::temp_directory_path() / "openglad_unit_ctor_stdio.bin";
     std::error_code ec;
+    fs::remove_all(base, ec);
+    fs::remove(abs_stdio, ec);
     fs::create_directories(base, ec);
     ASSERT_TRUE(!ec);
 
@@ -49,30 +60,52 @@ TEST(PhysfsWrappers, og_file_physfs_and_stdio_constructor_paths)
         ASSERT_TRUE(og::io::physfs_init("og_unit_tests"));
     }
     ASSERT_TRUE(og::io::physfs_set_write_dir(base.string()));
+    // Mounted as well as written to, so physfs_enumerate_files_sorted has a
+    // search path to answer from.
+    ASSERT_TRUE(og::resources::mount(base.string().c_str(), nullptr, 1));
 
-    return; // SIMULATED FATAL ASSERT: mounts destroyed, write dir redirected, no restore
+    // (a) PhysFS branch: a relative name resolves against the write dir.
     auto physfs_file = og::io::og_open_write("unit_ctor_physfs.bin");
-    ASSERT_TRUE(physfs_file != nullptr);
-    if (physfs_file)
-    {
-        const unsigned char b = 11;
-        ASSERT_TRUE(og::io::og_write_exact(*physfs_file, &b, 1, 1));
-    }
-    (void)og::io::physfs_enumerate_files_sorted("");
-
-    // Absolute filesystem path should bypass PhysFS openWrite and hit stdio fallback.
-    auto stdio_file = og::io::og_open_write(abs_stdio.string().c_str());
-    ASSERT_TRUE(stdio_file != nullptr);
-    if (stdio_file)
-    {
-        const unsigned char b = 22;
-        ASSERT_TRUE(og::io::og_write_exact(*stdio_file, &b, 1, 1));
-    }
-
-    // PhysFS refuses to change the write dir while write handles are open.
+    ASSERT_NE(nullptr, physfs_file) << "a VFS-relative name opens a PhysFS write handle";
+    const unsigned char physfs_byte = 11;
+    ASSERT_TRUE(og::io::og_write_exact(*physfs_file, &physfs_byte, 1, 1));
     physfs_file.reset();
+
+    ASSERT_TRUE(fs::exists(base / "unit_ctor_physfs.bin"))
+        << "the PhysFS handle wrote INSIDE the write dir";
+    EXPECT_EQ(std::uintmax_t{1}, fs::file_size(base / "unit_ctor_physfs.bin"))
+        << "og_write_exact wrote exactly one byte through the PhysFS backend";
+    {
+        std::ifstream in(base / "unit_ctor_physfs.bin", std::ios::binary);
+        ASSERT_TRUE(in.good());
+        const int got = in.get();
+        EXPECT_EQ(11, got) << "the byte handed to og_write_exact";
+    }
+
+    const std::list<std::string> listing = og::io::physfs_enumerate_files_sorted("");
+    EXPECT_NE(listing.end(),
+              std::find(listing.begin(), listing.end(), std::string("unit_ctor_physfs.bin")))
+        << "the enumerator answers from the mounted search path";
+
+    // (b) stdio fallback: PhysFS refuses an absolute filesystem path, and
+    // abs_stdio lives OUTSIDE the write dir, so only stdio can have made it.
+    auto stdio_file = og::io::og_open_write(abs_stdio.string().c_str());
+    ASSERT_NE(nullptr, stdio_file) << "an absolute path falls back to stdio";
+    const unsigned char stdio_byte = 22;
+    ASSERT_TRUE(og::io::og_write_exact(*stdio_file, &stdio_byte, 1, 1));
     stdio_file.reset();
 
+    ASSERT_TRUE(fs::exists(abs_stdio))
+        << "the stdio fallback wrote OUTSIDE the PhysFS write dir";
+    EXPECT_EQ(std::uintmax_t{1}, fs::file_size(abs_stdio));
+    {
+        std::ifstream in(abs_stdio, std::ios::binary);
+        ASSERT_TRUE(in.good());
+        const int got = in.get();
+        EXPECT_EQ(22, got) << "the byte handed to og_write_exact";
+    }
+
+    EXPECT_TRUE(og::resources::unmount(base.string().c_str()));
     fs::remove(base / "unit_ctor_physfs.bin", ec);
     fs::remove(abs_stdio, ec);
     fs::remove_all(base, ec);

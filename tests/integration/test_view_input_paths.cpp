@@ -255,6 +255,84 @@ TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
 }
 
 
+// viewscreen::process_input routes SwitchSpecial to the sim handler, which
+// steps current_special by one on the press edge, holds it for as long as the
+// key stays down (the changedspec debounce), and wraps back to 1 when the next
+// slot is not a real special for this family/level. Folded in from the retired
+// ViewInputMorePaths file, which pressed the raw TAB keycode through input()
+// where nothing dispatches it.
+TEST(ViewInputPaths, view_input_special_switch_cycles_the_current_special)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+    KeyStateGuard ks;
+
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v) << "view should exist";
+    v->mynum = 0;
+    v->my_team = 0;
+
+    auto control = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    ASSERT_TRUE(control != nullptr) << "walker should be created";
+    walker* const controlp = control.get();
+    controlp->set_act_type(ACT_CONTROL);
+    controlp->set_user(0);
+    controlp->stats()->set_level(30); // every slot unlocked by level
+    controlp->set_current_special(1);
+    s->world().oblist.push_back(std::move(control));
+    v->control = controlp;
+
+    // Slot 2 is a real special, slot 3 is not: the wrap is then observable.
+    struct SpecialNameGuard
+    {
+        screen& s;
+        std::string saved2, saved3;
+        explicit SpecialNameGuard(screen& scr)
+            : s(scr), saved2(scr.special_name[FAMILY_SOLDIER][2]),
+              saved3(scr.special_name[FAMILY_SOLDIER][3])
+        {
+            s.special_name[FAMILY_SOLDIER][2] = "TEST SPECIAL";
+            s.special_name[FAMILY_SOLDIER][3] = "NONE";
+        }
+        ~SpecialNameGuard()
+        {
+            s.special_name[FAMILY_SOLDIER][2] = saved2;
+            s.special_name[FAMILY_SOLDIER][3] = saved3;
+        }
+    } special_guard(*s);
+
+    InputState released = {};
+    InputState pressed = {};
+    pressed.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
+    pressed.players[0].held[static_cast<int>(InputAction::SwitchSpecial)] = true;
+
+    // Release first: an earlier test in this binary may have left the
+    // changedspec latch set.
+    v->process_input(released);
+    ASSERT_EQ(1, (int)controlp->current_special()) << "starting slot";
+
+    v->process_input(pressed);
+    EXPECT_EQ(2, (int)controlp->current_special())
+        << "the press edge steps to the next special";
+
+    // Held, not re-pressed: the debounce holds the choice.
+    v->process_input(pressed);
+    EXPECT_EQ(2, (int)controlp->current_special())
+        << "a held SwitchSpecial must not keep cycling";
+
+    // Release, press again: slot 3 is "NONE", so it wraps to 1.
+    v->process_input(released);
+    v->process_input(pressed);
+    EXPECT_EQ(1, (int)controlp->current_special())
+        << "a slot with no special behind it wraps back to 1";
+
+    // Leave the latch released for the next test in this binary.
+    v->process_input(released);
+    v->control = nullptr;
+}
+
+
 TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
 {
     TeamListSwap swap;
@@ -276,6 +354,7 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     ASSERT_TRUE(control && teammate && enemy) << "walkers should be created";
 
     walker* controlp = control.get();
+    walker* teammatep = teammate.get();
     walker* enemyp = enemy.get();
 
     controlp->set_user(0);
@@ -287,39 +366,90 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
     v->control = controlp;
 
+    // The cheat team-hop moves save_data AND the world; put both back however
+    // the assertions below land.
+    struct TeamStateGuard
+    {
+        screen& s;
+        short saved_save_team;
+        short saved_world_team;
+        explicit TeamStateGuard(screen& scr)
+            : s(scr), saved_save_team(scr.save_data.my_team),
+              saved_world_team(scr.world().my_team)
+        {
+        }
+        ~TeamStateGuard()
+        {
+            s.save_data.my_team = saved_save_team;
+            s.world().my_team = saved_world_team;
+        }
+    } team_guard(*og::runtime::current_session->myscreen_);
+
     // Hold cheat key so cheat branch executes.
     // input() now reads from ctx().input, so populate it.
     ks.set(SDLK_C, true);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
-    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
     e.key.repeat = false;
 
-    // Cheat+switch: rotate to next team that has a living unit.
+    // Clear any Cheat+Switch debounce an earlier test in this binary left
+    // latched (a frame with SwitchChar released is what releases it).
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = false;
+    e.key.key = SDLK_UNKNOWN;
+    v->input(e);
+
+    // Cheat+switch: rotate to the next team that has a living unit. The only
+    // other team here is the ORC's team 1, and the hop must commit BOTH the
+    // save slot and the world (a half-committed hop used to park the seat on
+    // a team it never reached).
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     e.key.key = SDLK_TAB;
     v->input(e);
-    ASSERT_TRUE(v->control != nullptr) << "control should remain valid after cheat-switch";
+    EXPECT_EQ(1, (int)og::runtime::current_session->myscreen_->save_data.my_team)
+        << "cheat+switch must hop the seat to the only other living team";
+    EXPECT_EQ(1, (int)og::runtime::current_session->myscreen_->world().my_team)
+        << "the world's team must move with the save slot";
+    EXPECT_EQ(ACT_CONTROL, (int)enemyp->act_type())
+        << "the landed-on walker becomes the seat's controlled fighter";
+    EXPECT_EQ(0, (int)enemyp->user())
+        << "the landed-on walker is claimed by this player";
 
     // Reset switch press for subsequent calls
     ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = false;
 
-    // Cheat+F12: eliminate enemy living units.
+    // Cheat+F12: eliminate every living unit the control is not friendly to.
     enemyp->stats()->set_hitpoints(25);
     e.key.key = SDLK_F12;
     v->input(e);
-    ASSERT_TRUE(v->control != nullptr) << "cheat F12 path should keep control valid";
+    EXPECT_NE(0, (int)enemyp->death_called())
+        << "cheat+F12 must kill the enemy living unit";
+    EXPECT_LE(enemyp->stats()->hitpoints(), 0.0f)
+        << "the killed unit's hitpoints are driven to zero or below";
+    EXPECT_EQ(0, (int)teammatep->death_called())
+        << "cheat+F12 must spare friendly living units";
 
-    // Cheat level tuning keys.
+    // Cheat level tuning keys: ']' raises the level by exactly one, '[' lowers
+    // it by exactly one.
     const int level_before = v->control->stats()->level();
     e.key.key = SDLK_RIGHTBRACKET;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->level() >= level_before) << "right bracket should not lower level";
+    EXPECT_EQ(level_before + 1, v->control->stats()->level())
+        << "']' must raise the control's level by one";
 
     e.key.key = SDLK_LEFTBRACKET;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->level() >= 1) << "left bracket should keep level >= 1";
+    EXPECT_EQ(level_before, v->control->stats()->level())
+        << "'[' must lower the control's level by one";
+
+    // And the floor: '[' at level 1 leaves it at 1.
+    v->control->stats()->set_level(1);
+    e.key.key = SDLK_LEFTBRACKET;
+    v->input(e);
+    EXPECT_EQ(1, v->control->stats()->level())
+        << "'[' must never take the control below level 1";
+    v->control->stats()->set_level(static_cast<short>(level_before));
 
     // Extra cheat keys for additional input branches.
     const int freeze_before = og::runtime::current_session->myscreen_->world().enemy_freeze;
@@ -327,10 +457,22 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     v->input(e);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().enemy_freeze >= freeze_before + 50) << "F1 should increase enemy freeze time";
 
+    // F2 spawns exactly one magic-shield FX, owned by the control, on the
+    // control's team, with a 200-tick lifetime (cheat_handler.cpp).
     const size_t ob_count_before = og::runtime::current_session->myscreen_->world().oblist.size();
     e.key.key = SDLK_F2;
     v->input(e);
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().oblist.size() >= ob_count_before) << "F2 should keep oblist valid";
+    GameWorld& cheat_world = og::runtime::current_session->myscreen_->world();
+    ASSERT_EQ(ob_count_before + 1, cheat_world.oblist.size())
+        << "F2 must add exactly one object";
+    walker* const shield = cheat_world.oblist.back().get();
+    ASSERT_NE(nullptr, shield);
+    EXPECT_EQ(FAMILY_MAGIC_SHIELD, (int)shield->family())
+        << "F2 spawns the magic shield";
+    EXPECT_EQ(v->control, shield->owner()) << "the shield is owned by the control";
+    EXPECT_EQ((int)v->control->team_num(), (int)shield->team_num())
+        << "the shield joins the control's team";
+    EXPECT_EQ(200, (int)shield->lifetime()) << "the shield lives 200 ticks";
 
     const bool flying_before = v->control->stats()->query_bit_flags(BIT_FLYING) != 0;
     e.key.key = SDLK_F;

@@ -283,9 +283,21 @@ TEST(MapgenDeterminism, different_seed_differs)
 
 TEST(MapgenDeterminism, position_hash_pure_and_salted)
 {
-    EXPECT_EQ(position_hash(42u, 7, 9, 1), position_hash(42u, 7, 9, 1));
+    // Purity pinned against a VALUE, not against itself: these three digests
+    // are the shipped murmur3-style finalizer's answers, so a re-tuned mix
+    // (or a dropped term) is caught even when the inequalities below survive.
+    EXPECT_EQ(0x9e6f1795u, position_hash(42u, 7, 9, 1));
+    EXPECT_EQ(0x6173b8c8u, position_hash(42u, 7, 10, 1));
+    EXPECT_EQ(0xbcf3d16du, position_hash(42u, 9, 7, 1));
+
+    // All four inputs reach the mix, and x/y are NOT interchangeable — every
+    // scatter keys its cell choice on both axes.
     EXPECT_NE(position_hash(42u, 7, 9, 1), position_hash(43u, 7, 9, 1));
     EXPECT_NE(position_hash(42u, 7, 9, 1), position_hash(42u, 8, 9, 1));
+    EXPECT_NE(position_hash(42u, 7, 9, 1), position_hash(42u, 7, 10, 1))
+        << "the y term must reach the mix";
+    EXPECT_NE(position_hash(42u, 7, 9, 1), position_hash(42u, 9, 7, 1))
+        << "x and y must not be transposable";
     EXPECT_NE(position_hash(42u, 7, 9, 1), position_hash(42u, 7, 9, 2));
 }
 

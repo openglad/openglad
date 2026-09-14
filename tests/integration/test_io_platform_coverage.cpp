@@ -596,6 +596,11 @@ TEST(IoPlatformCoverage, platform_io_batch3_mount_switch_and_listing_filters)
     ASSERT_TRUE(std::find(levels.begin(), levels.end(), 987) != levels.end()) << "list_levels should include strict positive scen id";
     ASSERT_TRUE(std::find(levels.begin(), levels.end(), 0) == levels.end()) << "list_levels should reject scen0";
     ASSERT_TRUE(std::find(levels_v.begin(), levels_v.end(), 987) != levels_v.end()) << "list_levels_v should include strict positive scen id";
+    ASSERT_TRUE(std::find(levels_v.begin(), levels_v.end(), 0) == levels_v.end()) << "list_levels_v should reject scen0";
+    // Both listers sort before returning (platform_io_common.cpp result.sort()
+    // / std::sort): the editor's level list is shown in this order.
+    ASSERT_TRUE(std::is_sorted(levels.begin(), levels.end())) << "list_levels returns ascending scen ids";
+    ASSERT_TRUE(std::is_sorted(levels_v.begin(), levels_v.end())) << "list_levels_v returns ascending scen ids";
 
     // delete_level early return path when no mounted campaign.
     set_mounted_campaign_for_testing("");
@@ -749,12 +754,34 @@ TEST(IoPlatformCoverage, platform_io_delete_level_nonempty_campaign_path)
         ASSERT_TRUE(f != nullptr) << "create pix file";
         if (f) std::fclose(f);
     }
+    // Control pair: a neighbouring level that must survive the delete.
+    {
+        std::FILE* f = std::fopen((temp_scen / "scen322.fss").string().c_str(), "wb");
+        ASSERT_TRUE(f != nullptr) << "create neighbour scen file";
+        if (f) std::fclose(f);
+    }
+    {
+        std::FILE* f = std::fopen((temp_pix / "scen0322.png").string().c_str(), "wb");
+        ASSERT_TRUE(f != nullptr) << "create neighbour pix file";
+        if (f) std::fclose(f);
+    }
 
     ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::zip_contents_with_error(temp_root.string(), archive.string()))) << "seed campaign archive should be created";
 
     const std::string prev = get_mounted_campaign();
     set_mounted_campaign_for_testing(id);
     delete_level(321);
+
+    // delete_level unpacks the package, drops the level's scenario+terrain
+    // files and REPACKS: read the repacked archive back to prove what it now
+    // holds, rather than trusting the call.
+    cleanup_unpacked_campaign();
+    ASSERT_TRUE(unpack_campaign(id)) << "the repacked campaign archive must still unpack";
+    EXPECT_FALSE(fs::exists(temp_scen / "scen321.fss")) << "delete_level drops the scenario file";
+    EXPECT_FALSE(fs::exists(temp_pix / "scen0321.png")) << "delete_level drops the terrain file";
+    EXPECT_TRUE(fs::exists(temp_scen / "scen322.fss")) << "other levels keep their scenario file";
+    EXPECT_TRUE(fs::exists(temp_pix / "scen0322.png")) << "other levels keep their terrain file";
+
     set_mounted_campaign_for_testing(prev);
 
     cleanup_unpacked_campaign();
@@ -977,17 +1004,43 @@ TEST(IoPlatformCoverage, platform_io_restore_defaults_and_load_campaign_unmount_
     const fs::path user_cfg = fs::path(user) / "cfg";
     std::error_code ec;
 
+    const fs::path shipped_cfg = fs::path(get_asset_path()) / "cfg" / "openglad.yaml";
+    const fs::path shipped_campaign =
+        fs::path(get_asset_path()) / "builtin" / "gladiator.glad";
+    ASSERT_TRUE(fs::is_regular_file(shipped_cfg))
+        << "the asset tree must ship cfg/openglad.yaml as the restore source";
+    ASSERT_TRUE(fs::is_regular_file(shipped_campaign))
+        << "the asset tree must ship builtin/gladiator.glad as the restore source";
+
     // Force copy_file error branches by removing destination parent directories.
     fs::remove_all(user_campaigns, ec);
     fs::remove_all(user_cfg, ec);
     restore_default_campaigns();
     restore_default_settings();
 
+    // A copy into a missing parent fails through the error_code branch and
+    // must not conjure the destination directory back into existence.
+    EXPECT_FALSE(fs::exists(user_cfg / "openglad.yaml"))
+        << "restore_default_settings writes nothing when its parent dir is gone";
+    EXPECT_FALSE(fs::exists(user_campaigns / "gladiator.glad"))
+        << "restore_default_campaigns writes nothing when its parent dir is gone";
+
     // Then exercise success branches by recreating destination parents.
     fs::create_directories(user_campaigns, ec);
     fs::create_directories(user_cfg, ec);
     restore_default_campaigns();
     restore_default_settings();
+
+    // Both restores copy the shipped bytes verbatim into the user dir.
+    ASSERT_TRUE(fs::is_regular_file(user_cfg / "openglad.yaml"))
+        << "restore_default_settings reinstalls the shipped cfg";
+    EXPECT_EQ(fs::file_size(shipped_cfg), fs::file_size(user_cfg / "openglad.yaml"))
+        << "restore_default_settings copies the shipped cfg verbatim";
+    ASSERT_TRUE(fs::is_regular_file(user_campaigns / "gladiator.glad"))
+        << "restore_default_campaigns reinstalls the builtin set";
+    EXPECT_EQ(fs::file_size(shipped_campaign),
+              fs::file_size(user_campaigns / "gladiator.glad"))
+        << "restore_default_campaigns copies the builtin package verbatim";
 
     const std::string prev = get_mounted_campaign();
     set_mounted_campaign_for_testing("definitely.not.a.campaign");

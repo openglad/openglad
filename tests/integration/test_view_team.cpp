@@ -413,6 +413,7 @@ struct ViewState {
     bool started;
     bool finished;
     bool saw_view_menu;
+    bool clicked_back;
 };
 
 static int view_team_injector(void* data)
@@ -431,7 +432,7 @@ static int view_team_injector(void* data)
     if (wait_for_base_camp_roster(kViewMenuTransitionTimeoutMs)) {
         state->saw_view_menu = true;
         fprintf(stderr, "  [test] clicking back from the base camp\n");
-        interact_match("back", is_strip_back);
+        state->clicked_back = interact_match("back", is_strip_back);
     }
 
     // Always try to unwind so picker_main cannot deadlock on failed interactions.
@@ -461,7 +462,7 @@ TEST(ViewTeam, view_team) {
 
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    ViewState state = { false, false, false };
+    ViewState state = { false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(view_team_injector, "view_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -477,6 +478,21 @@ TEST(ViewTeam, view_team) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_view_menu)
+        << "CONTINUE must open the base-camp roster (roster rows + GO/BACK strip)";
+    ASSERT_TRUE(state.clicked_back)
+        << "the base camp's command strip must offer a BACK control to click";
+    // The base camp really ran its entry composition (create_team_menu's
+    // zone fetch), so the roster the injector saw was this screen's, not a
+    // stale button table left behind by an earlier screen.
+    ASSERT_TRUE(trace_contains("zone", "entry_fetch"))
+        << "CONTINUE must enter the base-camp screen, not merely redraw";
+    // NOTE: with g_picker_max_mainmenu_calls == 1 the main menu does NOT
+    // reappear after the back-out (picker_main leaves for good), so the
+    // main-menu door cannot be this test's BACK oracle. The
+    // CONTINUE -> BACK -> main menu round trip is pinned by
+    // BackToMainmenu.continue_then_back_returns_to_mainmenu, which runs the
+    // loop twice on purpose.
 }
 
 
@@ -4141,8 +4157,14 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_the_rail)
 // ---------------------------------------------------------------------------
 // Empty-state treatment: the fixed View Team-style grey roster panel remains
 // visible with zero rows and the content pass centers the ORANGE line inside
-// it. The null install renders the empty shape on both hooks; smoke + coverage
-// (the panel itself is verified by capture).
+// it.
+//
+// The panel is draw_button(8,28,311,160,2,1) — a two-ring bevel (top 15,
+// left 14, right 12, bottom 11) around a flat face of 13 — and the empty
+// line is write_xy_center(160, 92, ORANGE_START, "NO SOLDIERS - HIRE YOUR
+// FIRST"), which the 6px advance centers starting at x=73. Both are read back
+// off the canvas here, and the null install and an installed-but-empty state
+// are required to paint the panel band IDENTICALLY.
 // ---------------------------------------------------------------------------
 TEST(ViewTeam, base_camp_empty_state_draws_framed_panel)
 {
@@ -4153,17 +4175,88 @@ TEST(ViewTeam, base_camp_empty_state_draws_framed_panel)
     ASSERT_NE(nullptr, spec.draw_background);
     ASSERT_NE(nullptr, spec.draw_content);
 
+    screen* const output = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, output);
+
     // Null state == zero visible rows == the empty-roster shape.
     og::ui::install_base_camp_state_for_screen(nullptr);
+    output->fastbox(0, 0, 320, 200, PURE_BLACK);
     spec.draw_background(nullptr);
+
+    // The panel's own chrome, drawn regardless of state.
+    const auto pixel = [&](int x, int y) {
+        int index = -1;
+        output->get_pixel(x, y, &index);
+        return index;
+    };
+    EXPECT_EQ(15, pixel(9, 28)) << "panel top bevel";
+    EXPECT_EQ(14, pixel(8, 29)) << "panel left bevel";
+    EXPECT_EQ(12, pixel(311, 29)) << "panel right bevel";
+    EXPECT_EQ(11, pixel(9, 160)) << "panel bottom bevel";
+    EXPECT_EQ(13, pixel(160, 140)) << "panel grey face";
+    EXPECT_EQ(13, pixel(20, 50)) << "panel grey face";
+
     spec.draw_content(nullptr);
+
+    text& font = output->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    ASSERT_EQ(5, (int)font.sizex) << "the 5x5 text font sets the 6px advance";
+    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                               static_cast<std::size_t>(font.sizey);
+    const auto expect_empty_state_glyph = [&](char letter, int x, int y) {
+        const unsigned char* const glyph =
+            font.letters->data.get() +
+            static_cast<std::size_t>(static_cast<unsigned char>(letter)) *
+                stride;
+        int opaque = 0;
+        for (Sint32 row = 0; row < font.sizey; ++row)
+            for (Sint32 col = 0; col < font.sizex; ++col)
+            {
+                if (glyph[static_cast<std::size_t>(row * font.sizex + col)] == 0)
+                    continue;
+                ++opaque;
+                EXPECT_EQ(static_cast<int>(ORANGE_START), pixel(x + col, y + row))
+                    << "empty-state '" << letter << "' pixel " << col << ","
+                    << row;
+            }
+        EXPECT_GT(opaque, 0) << "glyph has ink to check";
+    };
+    // "NO SOLDIERS - HIRE YOUR FIRST" is 29 characters on a 6px advance, so
+    // centering on x=160 starts it at 73 and ends the last glyph at 241.
+    constexpr int kEmptyLineY = 92;
+    constexpr int kEmptyLineX = 73;
+    expect_empty_state_glyph('N', kEmptyLineX, kEmptyLineY);
+    expect_empty_state_glyph('T', kEmptyLineX + 28 * 6, kEmptyLineY);
+
+    // No roster row is inked: the first row's name cell is bare face.
+    for (Sint32 row = 0; row < font.sizey; ++row)
+        for (Sint32 col = 0; col < font.sizex; ++col)
+            EXPECT_EQ(13, pixel(88 + col, 47 + row))
+                << "an empty roster must not ink a row name (" << col << ","
+                << row << ")";
+
+    // Capture the whole panel band for the identity comparison below.
+    const auto capture_panel = [&] {
+        std::vector<int> band;
+        band.reserve(304 * 133);
+        for (int y = 28; y <= 160; ++y)
+            for (int x = 8; x <= 311; ++x)
+                band.push_back(pixel(x, y));
+        return band;
+    };
+    const std::vector<int> null_band = capture_panel();
 
     // An installed-but-empty state windows zero rows and draws the same
     // shape (the page model clamps to an empty slot list).
     og::ui::BaseCampScreenState empty_state;
     og::ui::install_base_camp_state_for_screen(&empty_state);
+    output->fastbox(0, 0, 320, 200, PURE_BLACK);
     spec.draw_background(&empty_state);
     spec.draw_content(&empty_state);
+    EXPECT_EQ(null_band, capture_panel())
+        << "an installed-but-empty state must paint the same empty panel as "
+           "the null install";
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
 

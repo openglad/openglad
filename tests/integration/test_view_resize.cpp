@@ -2,6 +2,8 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 
+#include <string>
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
@@ -36,6 +38,23 @@ protected:
         game_->relayout_views();
     }
 };
+
+// resize(whatmode) is only done when all four edges landed: xloc/yloc and the
+// width/height it projects, plus the endx/endy it derives (view.cpp
+// resize(x,y,w,h)). A pane checked on x alone hides every y-axis regression,
+// which is exactly what the split/column layouts encode.
+static void expect_pane(viewscreen* vs, signed char mode, int x, int y, int w,
+                        int h,
+                        const std::string& what)
+{
+    vs->resize(mode);
+    EXPECT_EQ(x, (int)vs->xloc) << what << " xloc";
+    EXPECT_EQ(y, (int)vs->yloc) << what << " yloc";
+    EXPECT_EQ(w, (int)vs->xview) << what << " xview";
+    EXPECT_EQ(h, (int)vs->yview) << what << " yview";
+    EXPECT_EQ(x + w, (int)vs->endx) << what << " endx";
+    EXPECT_EQ(y + h, (int)vs->endy) << what << " endy";
+}
 
 TEST_F(ViewResize, 1p_panels)
 {
@@ -133,23 +152,24 @@ TEST_F(ViewResize, 2p_player0_all)
 }
 
 
+// 2p inset modes, right pane: x = right_x+3 = 164 and w = half_w-7 = 152 are
+// mode-invariant, so the Y projection is the only thing that separates the
+// four modes — y = 16*mode, h = 200-2*y (view_layout.h split_vertical_inset).
+// Every mode is pinned on all four values.
 TEST_F(ViewResize, 2p_player1_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 should exist";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     short old_mynum = vs->mynum;
     og::runtime::current_session->myscreen_->numviews = 2;
     vs->mynum = 1;
 
     vs->resize(PREF_VIEW_FULL);
-    vs->resize(PREF_VIEW_PANELS);
-    ASSERT_TRUE(vs->xloc == 164) << "2p p1 panels xloc";
-    ASSERT_TRUE(vs->xview == 152) << "2p p1 panels xview";
-
-    vs->resize(PREF_VIEW_1);
-    vs->resize(PREF_VIEW_2);
-    vs->resize(PREF_VIEW_3);
+    expect_pane(vs, PREF_VIEW_PANELS, 164, 16, 152, 168, "2p p1 PANELS");
+    expect_pane(vs, PREF_VIEW_1, 164, 32, 152, 136, "2p p1 VIEW_1");
+    expect_pane(vs, PREF_VIEW_2, 164, 48, 152, 104, "2p p1 VIEW_2");
+    expect_pane(vs, PREF_VIEW_3, 164, 64, 152, 72, "2p p1 VIEW_3");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->mynum = old_mynum;
@@ -159,23 +179,23 @@ TEST_F(ViewResize, 2p_player1_all)
 
 // --- 3-player mode ---
 
+// 3p inset modes: three fixed-margin columns of width (320-20)/3 = 100.
+// mynum 0 is the LEFT column at x=4; y/h come from the same
+// split_vertical_inset ladder as 2p (view_layout.h).
 TEST_F(ViewResize, 3p_player0_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 should exist";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     short old_mynum = vs->mynum;
     og::runtime::current_session->myscreen_->numviews = 3;
     vs->mynum = 0;
 
     vs->resize(PREF_VIEW_FULL);
-    vs->resize(PREF_VIEW_PANELS);
-    ASSERT_TRUE(vs->xloc == 4) << "3p p0 panels xloc";
-    ASSERT_TRUE(vs->xview == 100) << "3p p0 panels xview";
-
-    vs->resize(PREF_VIEW_1);
-    vs->resize(PREF_VIEW_2);
-    vs->resize(PREF_VIEW_3);
+    expect_pane(vs, PREF_VIEW_PANELS, 4, 16, 100, 168, "3p p0 PANELS");
+    expect_pane(vs, PREF_VIEW_1, 4, 32, 100, 136, "3p p0 VIEW_1");
+    expect_pane(vs, PREF_VIEW_2, 4, 48, 100, 104, "3p p0 VIEW_2");
+    expect_pane(vs, PREF_VIEW_3, 4, 64, 100, 72, "3p p0 VIEW_3");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->mynum = old_mynum;
@@ -183,22 +203,22 @@ TEST_F(ViewResize, 3p_player0_all)
 }
 
 
+// 3p mynum 1 is the RIGHT column: x = 4 + 2*100 + 12 = 216 (view_layout.h
+// col_x). Width and the whole y ladder are pinned too.
 TEST_F(ViewResize, 3p_player1_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 should exist";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     short old_mynum = vs->mynum;
     og::runtime::current_session->myscreen_->numviews = 3;
     vs->mynum = 1;
 
     vs->resize(PREF_VIEW_FULL);
-    vs->resize(PREF_VIEW_PANELS);
-    ASSERT_TRUE(vs->xloc == 216) << "3p p1 panels xloc";
-
-    vs->resize(PREF_VIEW_1);
-    vs->resize(PREF_VIEW_2);
-    vs->resize(PREF_VIEW_3);
+    expect_pane(vs, PREF_VIEW_PANELS, 216, 16, 100, 168, "3p p1 PANELS");
+    expect_pane(vs, PREF_VIEW_1, 216, 32, 100, 136, "3p p1 VIEW_1");
+    expect_pane(vs, PREF_VIEW_2, 216, 48, 100, 104, "3p p1 VIEW_2");
+    expect_pane(vs, PREF_VIEW_3, 216, 64, 100, 72, "3p p1 VIEW_3");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->mynum = old_mynum;
@@ -206,22 +226,22 @@ TEST_F(ViewResize, 3p_player1_all)
 }
 
 
+// 3p mynum 2 is the MIDDLE column: x = 4 + 100 + 8 = 112 (view_layout.h
+// col_x). Width and the whole y ladder are pinned too.
 TEST_F(ViewResize, 3p_player2_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 should exist";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     short old_mynum = vs->mynum;
     og::runtime::current_session->myscreen_->numviews = 3;
     vs->mynum = 2;
 
     vs->resize(PREF_VIEW_FULL);
-    vs->resize(PREF_VIEW_PANELS);
-    ASSERT_TRUE(vs->xloc == 112) << "3p p2 panels xloc";
-
-    vs->resize(PREF_VIEW_1);
-    vs->resize(PREF_VIEW_2);
-    vs->resize(PREF_VIEW_3);
+    expect_pane(vs, PREF_VIEW_PANELS, 112, 16, 100, 168, "3p p2 PANELS");
+    expect_pane(vs, PREF_VIEW_1, 112, 32, 100, 136, "3p p2 VIEW_1");
+    expect_pane(vs, PREF_VIEW_2, 112, 48, 100, 104, "3p p2 VIEW_2");
+    expect_pane(vs, PREF_VIEW_3, 112, 64, 100, 72, "3p p2 VIEW_3");
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->mynum = old_mynum;
@@ -231,17 +251,29 @@ TEST_F(ViewResize, 3p_player2_all)
 
 // --- 4-player mode ---
 
+// 4p is quadrants in EVERY mode (compute_view_layout's default arm). At
+// 320x200: half_w=159, half_h=99, right_x=161, bottom_y=101, so the seats sit
+// at (0,0) (161,0) (0,101) (161,101), each 159x99. Pinned per seat AND per
+// mode, because the default arm must ignore the mode entirely.
 TEST_F(ViewResize, 4p_all_players)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 should exist";
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     short old_mynum = vs->mynum;
     og::runtime::current_session->myscreen_->numviews = 4;
 
+    const signed char modes[5] = {PREF_VIEW_FULL, PREF_VIEW_PANELS, PREF_VIEW_1,
+                           PREF_VIEW_2, PREF_VIEW_3};
     for (int p = 0; p < 4; p++) {
         vs->mynum = static_cast<short>(p);
-        vs->resize(PREF_VIEW_FULL);
+        const int want_x = (p == 1 || p == 3) ? 161 : 0;
+        const int want_y = (p >= 2) ? 101 : 0;
+        for (int m = 0; m < 5; ++m) {
+            const std::string what =
+                "4p seat " + std::to_string(p) + " mode " + std::to_string(m);
+            expect_pane(vs, modes[m], want_x, want_y, 159, 99, what);
+        }
     }
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;

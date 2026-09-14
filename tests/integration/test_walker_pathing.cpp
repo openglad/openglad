@@ -4,6 +4,8 @@
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/view.h>
@@ -57,58 +59,124 @@ static walker* make_guy(char family, unsigned char team)
     return w.release();
 }
 
-TEST(WalkerPathing, walker_pathfinding_follow_and_draw_path_smoke)
+TEST(WalkerPathing, find_path_to_foe_routes_east_and_each_follow_walks_one_stepsize)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
+
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
+    ASSERT_TRUE(world.myobmap != nullptr) << "pathfinding requires an obmap";
 
     walker* a = make_guy(FAMILY_SOLDIER, 0);
     walker* b = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(a != nullptr) << "attacker should be created";
     ASSERT_TRUE(b != nullptr) << "target should be created";
 
-    a->set_foe(b);
+    a->setxy(32, 32);
     b->setxy(96, 32);
+    a->set_foe(b);
+    // Keep the corridor clear of the two bodies themselves (the sibling
+    // direct-solver case does the same): what is under test is the route, not
+    // how A* squeezes past the actor and its own goal.
+    ASSERT_TRUE(world.myobmap->remove(a));
+    ASSERT_TRUE(world.myobmap->remove(b));
 
     a->find_path_to_foe();
-    // Solve can fail depending on map/obstacles; main goal is to execute logic.
-    if (!a->path_to_foe.empty())
-    {
-        // Follow a few nodes.
-        for (int i = 0; i < 5; i++)
-            a->follow_path_to_foe();
+    ASSERT_FALSE(a->path_to_foe.empty())
+        << "an open grass grid must yield a route to a foe four cells east";
+    for (PathState node : a->path_to_foe)
+        EXPECT_EQ(32, GET_STATE_Y(node))
+            << "a due-east foe on open ground gets a straight-line route";
+    EXPECT_EQ(96, GET_STATE_X(a->path_to_foe.back()))
+        << "the route ends on the foe's cell";
+    EXPECT_EQ(32, GET_STATE_X(a->path_to_foe.front()))
+        << "the route opens on the actor's own cell";
+    EXPECT_EQ(5u, a->path_to_foe.size())
+        << "the actor's cell plus the four cells east of it";
 
-        draw_walker_path(*a, v);
-    }
+    // follow_path_to_foe walks ONE stepsize toward the next node per call and
+    // stops; the node is only erased once the walker's own cell reaches it.
+    // curdir must already match the hop or walk() turns in place instead.
+    a->set_curdir(FACE_RIGHT);
+    a->set_stepsize(2);
+    const short x_before = a->xpos();
+    for (int i = 0; i < 5; i++)
+        a->follow_path_to_foe();
+    EXPECT_EQ(x_before + 10, static_cast<int>(a->xpos()))
+        << "five follows at stepsize 2 advance exactly ten pixels east";
+    EXPECT_EQ(32, static_cast<int>(a->ypos())) << "and never leave the row";
+    EXPECT_EQ(4u, a->path_to_foe.size())
+        << "only the already-reached opening node is erased: x=42 still aligns "
+           "to cell x=32, so the 48 node is not reached yet";
+
+    draw_walker_path(*a, v);
 
     delete a;
     delete b;
 }
 
 
-TEST(WalkerPathing, walker_damage_numbers_and_compute_outline_smoke)
+TEST(WalkerPathing, compute_outline_state_machine_and_draw_ages_damage_numbers)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
 
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
+
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker should be created";
 
-    // Damage numbers only draw for the controlling walker.
+    // Damage numbers only draw for the controlling walker, and only when the
+    // effect is enabled (it ships OFF).
+    const bool damage_numbers_were_on = cfg.is_on("effects", "damage_numbers");
+    cfg.apply_setting("effects", "damage_numbers", "on");
     v->control = w;
-    w->damage_numbers.emplace_back(w->xpos(), w->ypos(), 12.0f, 55);
+    w->damage_numbers.clear();
+    // created_tick == the current sim tick makes the ageing loop advance by
+    // exactly one step, whatever tick the binary happens to be on.
+    w->damage_numbers.emplace_back(static_cast<float>(w->xpos()),
+                                   static_cast<float>(w->ypos()), 12.0f, 55,
+                                   world.tick_count_);
+    ASSERT_EQ(1u, w->damage_numbers.size());
+    const float y_before = w->damage_numbers.front().y;
+    ASSERT_FLOAT_EQ(1.0f, w->damage_numbers.front().t)
+        << "a fresh damage number starts with a full lifetime";
 
-    // Outline mode changes based on these fields.
+    // compute_outline from outline 0 with all three effects up: the else arm
+    // tests invisibility FIRST, so the team colour wins over flight and
+    // invulnerability.
+    w->set_outline(0);
     w->set_invisibility_left(1);
     w->set_invulnerable_left(1);
     w->set_flight_left(1);
     w->compute_outline(v->control);
+    ASSERT_EQ(40, static_cast<int>(w->outline()))
+        << "outline 0 + invisibility -> the walker's team colour";
 
-    // Draw should update and consume damage numbers over time.
-    (void)draw_walker(*w, v);
+    // draw_walker runs the state machine again, and the team-colour arm tests
+    // invulnerability FIRST -- so the same three flags now resolve elsewhere.
+    ASSERT_TRUE(draw_walker(*w, v)) << "a live walker draws";
+    EXPECT_EQ(static_cast<int>(OUTLINE_INVULNERABLE),
+              static_cast<int>(w->outline()))
+        << "team colour + invulnerability -> OUTLINE_INVULNERABLE";
+
+    // ... and the same draw aged the damage number by exactly one step.
+    ASSERT_EQ(1u, w->damage_numbers.size())
+        << "a number with lifetime left is not erased";
+    EXPECT_FLOAT_EQ(0.95f, w->damage_numbers.front().t)
+        << "one draw step costs 0.05 of the number's lifetime";
+    EXPECT_FLOAT_EQ(y_before - 1.5f, w->damage_numbers.front().y)
+        << "and floats it 1.5px up the screen";
 
     // Restore view control.
     v->control = nullptr;
+    cfg.apply_setting("effects", "damage_numbers",
+                      damage_numbers_were_on ? "on" : "off");
+    delete w;
 }
 
 TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
@@ -169,6 +237,9 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
 
 TEST(WalkerPathing, round10_follow_path_node_erase_and_normalize_paths)
 {
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
+
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker should be created";
     if (!w)
@@ -190,13 +261,22 @@ TEST(WalkerPathing, round10_follow_path_node_erase_and_normalize_paths)
     w->follow_path_to_foe();
     ASSERT_TRUE(w->path_to_foe.empty()) << "follow_path_to_foe should erase already-reached node";
 
-    // Diagonal node -> normalize dx/dy and walkstep branch.
+    // Diagonal node -> normalize dx/dy and walkstep branch. curdir must already
+    // face the hop, or walk() takes its changed-direction arm and turns in
+    // place (which `>= x_before` would have accepted as movement).
     w->path_to_foe.clear();
     w->path_to_foe.push_back(make_state(48, 48));
+    w->set_stepsize(2);
+    w->set_curdir(FACE_DOWN_RIGHT);
     const short x_before = w->xpos();
     const short y_before = w->ypos();
     w->follow_path_to_foe();
-    ASSERT_TRUE(w->xpos() >= x_before && w->ypos() >= y_before) << "follow_path_to_foe should move toward diagonal next node";
+    EXPECT_EQ(x_before + 2, static_cast<int>(w->xpos()))
+        << "the diagonal hop normalises to +1 and walksteps one stepsize east";
+    EXPECT_EQ(y_before + 2, static_cast<int>(w->ypos()))
+        << "...and one stepsize south";
+    EXPECT_EQ(1u, w->path_to_foe.size())
+        << "the node is two pixels closer, not reached: it stays on the path";
 
     delete w;
 }

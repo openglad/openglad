@@ -36,6 +36,28 @@ static void teardown()
         og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
+static GameWorld& world()
+{
+    return og::runtime::current_session->myscreen_->world();
+}
+
+// A fresh, fully passable arena. delete_objects() is what guarantees an
+// obmap (GameWorld::delete_objects) and create_new_grid() fills 40x60 cells
+// with the four PIX_GRASS tiles -- every one of them passable. Without both,
+// walker::walk() can never advance xpos and a movement oracle is untestable.
+// Declare it FIRST in a test so its destructor runs after the owned walkers.
+struct ScopedArena
+{
+    ScopedArena()
+    {
+        world().delete_objects();
+        world().create_new_grid();
+    }
+    ~ScopedArena() { world().delete_objects(); }
+    ScopedArena(const ScopedArena&) = delete;
+    ScopedArena& operator=(const ScopedArena&) = delete;
+};
+
 // sim_find_next_control: finds player character first
 TEST(SimInputHandler, sim_find_next_control_player_first)
 {
@@ -186,16 +208,31 @@ TEST(SimInputHandler, respawning_dead_hero_does_not_switch_to_teammate)
 }
 
 
-// sim_process_player_input: movement via held keys
-TEST(SimInputHandler, sim_input_movement)
+// sim_process_player_input: a held direction must reach walker::walkstep,
+// which records lastx = 1*stepsize and then asks living::walk to move.
+// living::walk only steps when the walker ALREADY faces that way; off-facing
+// it just posts enddir (an ACT_CONTROL walker with no queued command is
+// deliberately not turned here -- living::act owns that turn), so the tick
+// records the vector and the intended facing without moving.
+TEST(SimInputHandler, sim_input_held_direction_walksteps_and_advances_one_stepsize)
 {
+    ScopedArena arena;
     auto w = make_living(0);
-    ASSERT_TRUE(w != nullptr) << "walker should be created";
+    ASSERT_NE(nullptr, w) << "walker should be created";
     w->setxy(100, 100);
     walker* control = w.get();
     control->set_user(0);
     control->set_act_type(ACT_CONTROL);
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
+    control->set_curdir(static_cast<signed char>(FACE_UP)); // deliberately NOT facing right
+    control->set_enddir(static_cast<char>(FACE_UP));
+    control->set_lastx(0.0f);
+    control->set_lasty(0.0f);
+    world().oblist.push_back(std::move(w));
+
+    const float step = control->stepsize();
+    ASSERT_GT(step, 0.0f) << "precondition: a soldier walks a non-zero stepsize";
+    const short x_before = control->xpos();
+    const short y_before = control->ypos();
 
     InputState input;
     input.clear();
@@ -207,14 +244,28 @@ TEST(SimInputHandler, sim_input_movement)
     og::sim::SimEventLog log;
 
     sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
 
-    // Walker should have attempted to walk right
-    // (exact position change depends on stepsize, but walkstep should have been called)
-    ASSERT_TRUE(control != nullptr) << "control should still be set";
+    ASSERT_FLOAT_EQ(step, control->lastx())
+        << "MoveRight must reach walkstep(1,0), which records lastx = 1*stepsize";
+    ASSERT_FLOAT_EQ(0.0f, control->lasty())
+        << "a purely horizontal step records lasty = 0*stepsize";
+    ASSERT_EQ(FACE_RIGHT, static_cast<int>(control->enddir()))
+        << "off-facing, living::walk posts the held direction as enddir";
+    ASSERT_EQ(FACE_UP, static_cast<int>(control->curdir()))
+        << "an ACT_CONTROL walker with no queued command is not turned by walk()";
+    ASSERT_EQ(x_before, control->xpos())
+        << "living::walk's changing-direction branch never moves the walker";
 
-    teardown();
+    // Facing the way it is already headed, the same input steps.
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    sim_process_player_input(
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+
+    ASSERT_EQ(static_cast<short>(x_before + step), control->xpos())
+        << "facing right, one held MoveRight advances exactly one stepsize";
+    ASSERT_EQ(y_before, control->ypos())
+        << "a horizontal step must not move the walker vertically";
 }
 
 
@@ -401,36 +452,73 @@ TEST(SimInputHandler, sim_input_shift_yell_summon_and_release)
 }
 
 
-TEST(SimInputHandler, sim_input_frozen_and_user_mismatch_early_returns)
+// Both early returns sit ABOVE the movement/action block, so the proof that
+// either one fired is that a held MoveRight never reaches walkstep: lastx
+// stays 0 and xpos never moves. The frozen arm additionally owes the seat
+// the #222 "FROZEN!" cue when it eats a Fire press.
+TEST(SimInputHandler, sim_input_frozen_and_user_mismatch_drop_movement_and_cue)
 {
+    ScopedArena arena;
     auto w = make_living(0);
-    ASSERT_TRUE(w != nullptr) << "walker should be created";
+    ASSERT_NE(nullptr, w) << "walker should be created";
     walker* control = w.get();
     control->set_act_type(ACT_CONTROL);
-    control->set_user(1);
-    control->stats()->set_frozen_delay(2);
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
+    control->set_user(1); // seat 0 does not own this walker
+    control->setxy(100, 100);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT)); // already facing: a walkstep WOULD move
+    control->set_enddir(static_cast<char>(FACE_RIGHT));
+    control->set_lastx(0.0f);
+    control->set_lasty(0.0f);
+    control->stats()->set_frozen_delay(0);
+    world().oblist.push_back(std::move(w));
+
+    const short x_before = control->xpos();
 
     InputState input;
     input.clear();
+    input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     SimInputDebounce debounce = {};
     std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "user mismatch should return current control early";
+    ASSERT_FLOAT_EQ(0.0f, control->lastx())
+        << "a walker owned by another seat must never walkstep for seat 0";
+    ASSERT_EQ(x_before, control->xpos())
+        << "the user-mismatch early return happens above the movement block";
+    ASSERT_EQ(0u, log.size()) << "the mismatch return emits nothing";
 
+    // Now the seat owns it, but the hero is iced.
     control->set_user(0);
+    control->stats()->set_frozen_delay(2);
+    input.players[0].pressed[static_cast<int>(InputAction::Fire)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
+    log.clear();
+
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.new_control == control) << "frozen control should still be returned";
     ASSERT_EQ(1, control->stats()->frozen_delay()) << "frozen delay should decrement";
+    ASSERT_FLOAT_EQ(0.0f, control->lastx())
+        << "a frozen hero drops every movement key on the floor";
+    ASSERT_EQ(x_before, control->xpos())
+        << "the frozen early return happens above the movement block";
+    ASSERT_FLOAT_EQ(0.0f, control->busy())
+        << "a frozen hero never reaches init_fire, so busy stays 0";
 
-    teardown();
+    // #222: the eaten Fire press is answered with a throttled clang + cue.
+    ASSERT_EQ(2u, log.size()) << "the frozen cue is one sound plus one notification";
+    int frozen_notifications = 0;
+    for (const auto& event : log.events())
+    {
+        if (event.kind == og::sim::EventKind::Notification && event.text == "FROZEN!")
+            frozen_notifications++;
+    }
+    ASSERT_EQ(1, frozen_notifications)
+        << "#222: a Fire press swallowed by the freeze must tell the seat why";
 }
 
 
@@ -530,22 +618,34 @@ TEST(SimInputHandler, sim_input_switch_char_error_and_default_action_paths)
 }
 
 
-TEST(SimInputHandler, sim_input_bonus_rounds_and_pressed_held_actions_paths)
+// One tick does THREE things here and each leaves its own mark:
+//   * the bonus round decrements and repeats the last step (walker::walk),
+//   * the Fire press runs init_fire (ANI_WALK -> ANI_ATTACK, busy += fire_frequency),
+//   * the held MoveRight runs walkstep (lastx = 1*stepsize, one more step forward).
+TEST(SimInputHandler, sim_input_bonus_round_repeat_fire_and_walkstep_all_land_in_one_tick)
 {
+    ScopedArena arena;
     auto control_up = make_living(0, 0);
-    ASSERT_TRUE(control_up != nullptr) << "control should be created";
-    if (!control_up)
-        return;
+    ASSERT_NE(nullptr, control_up) << "control should be created";
 
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
     control->setxy(100, 100);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    control->set_enddir(static_cast<char>(FACE_RIGHT)); // init_fire refuses a control walker mid-turn
     control->set_lastx(control->stepsize());
     control->set_lasty(0.0f);
+    control->set_ani_type(static_cast<char>(ANI_WALK));
+    control->set_busy(0.0f);
     control->set_bonus_rounds(2);
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
 
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    world().oblist.push_back(std::move(control_up));
+
+    const float step = control->stepsize();
+    ASSERT_GT(step, 0.0f) << "precondition: a soldier walks a non-zero stepsize";
+    ASSERT_GT(control->fire_frequency(), 0.0f) << "precondition: firing costs busy time";
+    const short x_before = control->xpos();
 
     InputState input;
     input.clear();
@@ -560,13 +660,18 @@ TEST(SimInputHandler, sim_input_bonus_rounds_and_pressed_held_actions_paths)
     og::sim::SimEventLog log;
 
     const SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.new_control == control) << "processing should return same control";
     ASSERT_EQ(1, (int)control->bonus_rounds()) << "bonus rounds should decrement each tick";
-
-    teardown();
+    ASSERT_EQ(static_cast<short>(x_before + 2 * step), control->xpos())
+        << "the bonus-round repeat and the held MoveRight each move one stepsize";
+    ASSERT_FLOAT_EQ(step, control->lastx())
+        << "walkstep(1,0) records lastx = 1*stepsize";
+    ASSERT_EQ(ANI_ATTACK, static_cast<int>(control->ani_type()))
+        << "a Fire press on an ANI_WALK walker switches it to the attack animation";
+    ASSERT_FLOAT_EQ(control->fire_frequency(), control->busy())
+        << "init_fire charges exactly one fire_frequency of busy time";
 }
 
 
@@ -697,14 +802,26 @@ TEST(SimInputHandler, sim_input_switch_char_no_candidate_keeps_old_control_and_t
 }
 
 
-TEST(SimInputHandler, sim_input_special_and_fire_paths)
+// The Fire arm of the movement/action block is observable: init_fire lifts
+// an ANI_WALK walker into ANI_ATTACK and charges fire_frequency of busy.
+// The whole block is gated on an EMPTY command queue, so the same input with
+// a queued command must leave both marks untouched.
+TEST(SimInputHandler, sim_input_fire_press_attacks_and_a_queued_command_suppresses_it)
 {
+    ScopedArena arena;
     auto control_up = make_living(0, 0);
-    ASSERT_TRUE(control_up != nullptr) << "control should be created";
+    ASSERT_NE(nullptr, control_up) << "control should be created";
 
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    control->set_enddir(static_cast<char>(FACE_RIGHT)); // init_fire refuses a control walker mid-turn
+    control->set_lastx(1.0f); // init_fire aims by lastx/lasty, not curdir alone
+    control->set_lasty(0.0f);
+    control->set_ani_type(static_cast<char>(ANI_WALK));
+    control->set_busy(0.0f);
+    world().oblist.push_back(std::move(control_up));
+    ASSERT_GT(control->fire_frequency(), 0.0f) << "precondition: firing costs busy time";
 
     InputState input;
     input.clear();
@@ -718,17 +835,26 @@ TEST(SimInputHandler, sim_input_special_and_fire_paths)
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "special/fire paths should preserve control";
+    ASSERT_EQ(ANI_ATTACK, static_cast<int>(control->ani_type()))
+        << "a Fire press runs walker::init_fire, which leaves ANI_WALK for ANI_ATTACK";
+    ASSERT_FLOAT_EQ(control->fire_frequency(), control->busy())
+        << "init_fire charges exactly one fire_frequency of busy time";
 
+    // Same keys, but the walker is busy executing a queued command.
+    control->set_ani_type(static_cast<char>(ANI_WALK));
+    control->set_busy(0.0f);
     control->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
-    result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
-    ASSERT_TRUE(result.new_control == control) << "non-empty command queue path should return control";
+    ASSERT_TRUE(control->stats()->has_commands()) << "precondition: command queue is non-empty";
 
-    teardown();
+    result = sim_process_player_input(
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+    ASSERT_TRUE(result.new_control == control) << "non-empty command queue path should return control";
+    ASSERT_EQ(ANI_WALK, static_cast<int>(control->ani_type()))
+        << "a queued command skips the whole movement/action block, so Fire never fires";
+    ASSERT_FLOAT_EQ(0.0f, control->busy())
+        << "no init_fire means no busy charge while a command is queued";
 }
 
 
@@ -864,15 +990,21 @@ TEST(SimInputHandler, sim_input_switch_special_valid_advance_and_shift_yell_defa
 }
 
 
-TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
+// The yell branches, the movement/action block and the idle-animate branch,
+// each pinned by the state it writes. (The switch-character walk that used to
+// live here duplicated sim_input_switch_char_forward_selects_next_friendly
+// and sim_input_switch_char_wraparound_forward_and_reverse, which pin the
+// selected walker AND its hp; it asserted only control_hp_changed, so it is
+// gone.)
+TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
 {
-    teardown();
+    ScopedArena arena;
     auto control_up = make_living(0, 0);
     auto ally_after_up = make_living(0, -1);
     auto ally_before_up = make_living(0, -1);
-    ASSERT_TRUE(control_up != nullptr) << "control should be created";
-    ASSERT_TRUE(ally_after_up != nullptr) << "ally after should be created";
-    ASSERT_TRUE(ally_before_up != nullptr) << "ally before should be created";
+    ASSERT_NE(nullptr, control_up) << "control should be created";
+    ASSERT_NE(nullptr, ally_after_up) << "ally after should be created";
+    ASSERT_NE(nullptr, ally_before_up) << "ally before should be created";
 
     walker* control = control_up.get();
     walker* ally_after = ally_after_up.get();
@@ -881,20 +1013,26 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
     control->stats()->set_level(30);
     control->set_current_special(1);
     control->set_yo_delay(0);
+    control->setxy(100, 100);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
     control->set_ani_type(ANI_ATTACK); // forces animate() branch
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
     control->set_cycle(0);
-    // Create local mutable animation data (global tables are const)
-    static signed char test_wrap_seq[] = {0, -1};
+    // Create local mutable animation data (global tables are const).
+    // THREE frames, not one: set_frame_from_current_walk_animation() clamps
+    // cycle back to 0 the moment it passes the sentinel, so a 1-frame row
+    // makes "the idle-animate branch ran" indistinguishable from "it never
+    // ran". With {0, 1, -1} the branch leaves cycle == 1 and frame == 1.
+    static signed char test_wrap_seq[] = {0, 1, -1};
     static const signed char * test_wrap_rows[] = {test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq,
                                                     test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq,
                                                     test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq,
                                                     test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq};
     control->ani = test_wrap_rows; // force animation wrap in idle branch
 
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_before_up));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_after_up));
+    world().oblist.push_back(std::move(ally_before_up));
+    world().oblist.push_back(std::move(control_up));
+    world().oblist.push_back(std::move(ally_after_up));
 
     SimInputDebounce debounce = {};
     std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
@@ -904,30 +1042,14 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
     InputState input;
     SimInputResult result;
 
-    // Forward switch character.
-    input.clear();
-    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-    result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
-    ASSERT_TRUE(result.control_hp_changed) << "forward switch should report hp";
-
-    // Reset latch and reverse switch character.
-    input.clear();
-    result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
-    input.clear();
-    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
-    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-    result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
-    ASSERT_TRUE(result.control_hp_changed) << "reverse switch should report hp";
-
     // Switch special advance.
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "switch special should preserve control";
+    ASSERT_EQ(2, control->current_special())
+        << "a named, level-unlocked next special is what SwitchSpecial advances to";
 
     // Plain yell.
     input.clear();
@@ -957,6 +1079,15 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
     ASSERT_EQ(0, control->action()) << "default shift+yell branch should reset unknown actions";
 
     // Movement/action block with walk and fire/special branches.
+    control->set_ani_type(static_cast<char>(ANI_WALK));
+    control->set_busy(0.0f);
+    control->set_lastx(1.0f); // init_fire aims by the last vector, not curdir alone
+    control->set_lasty(0.0f);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    control->set_enddir(static_cast<char>(FACE_RIGHT)); // init_fire refuses a control walker mid-turn
+    const float step = control->stepsize();
+    ASSERT_GT(step, 0.0f) << "precondition: a soldier walks a non-zero stepsize";
+    const short x_before = control->xpos();
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
     input.players[0].pressed[static_cast<int>(InputAction::Fire)] = true;
@@ -964,23 +1095,41 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
     input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "movement/action branch should keep control";
+    ASSERT_FLOAT_EQ(step, control->lastx())
+        << "the held direction reaches walkstep(1,0), which records lastx = 1*stepsize";
+    ASSERT_EQ(static_cast<short>(x_before + step), control->xpos())
+        << "a walker already facing right advances exactly one stepsize";
+    ASSERT_EQ(ANI_ATTACK, static_cast<int>(control->ani_type()))
+        << "the Fire press in the same tick runs init_fire";
 
-    // Idle animation branch (no walk input).
+    // Idle animation branch (no walk input): with no movement vector and
+    // BIT_ANIMATE set, the handler cycles the walk animation by one frame.
+    control->set_ani_type(static_cast<char>(ANI_WALK));
+    control->set_cycle(0);
+    control->set_frame(0);
     input.clear();
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "idle animate branch should keep control";
+    ASSERT_EQ(1, static_cast<int>(control->cycle()))
+        << "no movement + BIT_ANIMATE advances the walk cycle by exactly one";
+    ASSERT_EQ(1, static_cast<int>(control->frame()))
+        << "the advanced cycle is pushed into frame via the walk animation row";
 
-    // Mismatch user early return line.
+    // Mismatch user early return line: the same idle tick must now change
+    // nothing at all.
     control->set_user(1);
+    control->set_cycle(0);
+    control->set_frame(0);
     input.clear();
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "user mismatch path should return control";
+    ASSERT_EQ(0, static_cast<int>(control->cycle()))
+        << "a walker owned by another seat never reaches the idle-animate branch";
 
-    teardown();
     (void)ally_after;
     (void)ally_before;
 }
@@ -988,21 +1137,25 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
 
 TEST(SimInputHandler, sim_input_cheat_gates_and_command_queue_skip_movement_block)
 {
-    teardown();
+    ScopedArena arena;
     auto control_up = make_living(0, 0);
     auto ally_up = make_living(0, -1);
-    ASSERT_TRUE(control_up != nullptr && ally_up != nullptr) << "control and ally should be created";
-    if (!(control_up && ally_up))
-        return;
+    ASSERT_NE(nullptr, control_up) << "control should be created";
+    ASSERT_NE(nullptr, ally_up) << "ally should be created";
 
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
     control->set_yo_delay(0);
     control->set_current_special(1);
     control->stats()->set_level(30);
+    control->setxy(100, 100);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT)); // already facing: a walkstep WOULD move
+    control->set_enddir(static_cast<char>(FACE_RIGHT));
+    control->set_lastx(0.0f);
+    control->set_lasty(0.0f);
 
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
+    world().oblist.push_back(std::move(control_up));
+    world().oblist.push_back(std::move(ally_up));
 
     SimInputDebounce debounce = {};
     std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
@@ -1021,21 +1174,25 @@ TEST(SimInputHandler, sim_input_cheat_gates_and_command_queue_skip_movement_bloc
 
     // With queued command, movement/action block should be skipped.
     control->stats()->force_command(COMMAND_FOLLOW, 5, 0, 0);
+    ASSERT_TRUE(control->stats()->has_commands()) << "precondition: command queue is non-empty";
+    const short x_before = control->xpos();
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "queued-command path should preserve control";
+    ASSERT_FLOAT_EQ(0.0f, control->lastx())
+        << "a walker executing a queued command must ignore MoveRight (no walkstep)";
+    ASSERT_EQ(x_before, control->xpos())
+        << "the whole movement/action block is gated on an empty command queue";
 
     // Cheat should also block both yell branches.
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.notify_text.empty()) << "cheat-held yell should not emit notifications";
-
-    teardown();
 }
 
 
@@ -1202,19 +1359,25 @@ TEST(SimInputHandler, sim_input_assigns_unowned_control_and_clears_commands)
 
 TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
 {
-    teardown();
+    ScopedArena arena;
     auto w_up = make_living(0, 0);
-    ASSERT_TRUE(w_up != nullptr) << "walker should be created";
-    if (!w_up)
-        return;
+    ASSERT_NE(nullptr, w_up) << "walker should be created";
 
     walker* control = w_up.get();
     control->setxy(100, 100);
     control->set_act_type(ACT_CONTROL);
     control->set_bonus_rounds(1);
-    control->set_lastx(1);
-    control->set_lasty(0);
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w_up));
+    // walker::walk() repeats the LAST step, which a real walkstep recorded as
+    // 1*stepsize; the walker must already face that way or walk() only turns.
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    control->set_enddir(static_cast<char>(FACE_RIGHT));
+    control->set_lastx(control->stepsize());
+    control->set_lasty(0.0f);
+    world().oblist.push_back(std::move(w_up));
+
+    const float step = control->stepsize();
+    ASSERT_GT(step, 0.0f) << "precondition: a soldier walks a non-zero stepsize";
+    const short x_before = control->xpos();
 
     InputState input;
     input.clear();
@@ -1223,10 +1386,24 @@ TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.new_control == control) << "control should stay active";
     ASSERT_EQ(0, (int)control->bonus_rounds()) << "bonus rounds should decrement";
+    ASSERT_EQ(static_cast<short>(x_before + step), control->xpos())
+        << "a bonus round with a non-zero last vector REPEATS the step via walker::walk()";
 
-    teardown();
+    // Negative twin: same bonus round, but no last movement vector to repeat.
+    control->setxy(100, 100);
+    control->set_bonus_rounds(1);
+    control->set_lastx(0.0f);
+    control->set_lasty(0.0f);
+    const short still_x = control->xpos();
+
+    result = sim_process_player_input(
+        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+
+    ASSERT_EQ(0, (int)control->bonus_rounds()) << "the bonus round is spent either way";
+    ASSERT_EQ(still_x, control->xpos())
+        << "a zero last vector means the bonus round has nothing to repeat";
 }

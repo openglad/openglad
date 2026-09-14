@@ -591,6 +591,11 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 			allbonuscash = 0;
 		}
 	}
+	// allbonuscash is a local that only reaches the screen as drawn text, so
+	// the "already won pays no time bonus" rule has no other observable.
+	TRACE("results", "time_bonus total=%u completed=%d",
+	      static_cast<unsigned>(allbonuscash),
+	      static_cast<int>(save_data.is_level_completed(save_data.scen_num)));
 	
     // Now show the results
     
@@ -796,12 +801,16 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
        {
            og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
            mode = 0;
+           // Which PAGE a tab press selected has no other observable: the
+           // bow counts presses, not the page they opened.
+           TRACE("results", "page mode=%d", mode);
        }
        // Troops
        else if(do_troops)
        {
            og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
            mode = 1;
+           TRACE("results", "page mode=%d", mode);
        }
        
         retvalue = 0;
@@ -944,10 +953,16 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             }
 
             BEGIN_IF_IN_SCROLL_AREA;
+            // The foe line is drawn text with no other observable, so each
+            // arm composes the line ONCE and traces the very string it
+            // writes: changing either arm's wording, its numbers or which
+            // arm an ending takes all move the trace with the pixels.
             if(ending == 0)
             {
                 std::string buf = std::format("{}", num_foes_total - num_foes_left);
-                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s Foes         ", buf.c_str());
+                std::string foe_line = std::format("{} Foes         ", buf);
+                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s", foe_line.c_str());
+                TRACE("results", "overview_foes ending=%d line=%s", ending, foe_line.c_str());
                 std::string spaces(buf.size(), ' ');
                 mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Defeated", spaces.c_str());
             }
@@ -955,7 +970,9 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             {
                 std::string buf = std::format("{}", num_foes_total - num_foes_left);
                 std::string buf2 = std::format("{}", num_foes_total);
-                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s of %s Foes         ", buf.c_str(), buf2.c_str());
+                std::string foe_line = std::format("{} of {} Foes         ", buf, buf2);
+                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s", foe_line.c_str());
+                TRACE("results", "overview_foes ending=%d line=%s", ending, foe_line.c_str());
                 std::string spaces(buf.size(), ' ');
                 std::string spaces2(buf2.size(), ' ');
                 mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s    %s      Defeated", spaces.c_str(), spaces2.c_str());
@@ -1019,6 +1036,27 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	                int x = area.x + 12;
 	                
 	                int tallies = troops[troop_idx].get_tallies();
+	                // Hoisted out of the alive branch below so the TROOPS
+	                // page's only observable — this trace — reads the very
+	                // value the XP bar is drawn from.
+	                float gain = 60.0f * troops[troop_idx].get_XP_gain();
+#ifdef TESTING
+	                {
+	                    std::string row_special;
+	                    if(troops[troop_idx].gained_level())
+	                    {
+	                        std::vector<std::string> row_specials =
+	                            troops[troop_idx].get_gained_specials();
+	                        if(!row_specials.empty())
+	                            row_special = row_specials.front();
+	                    }
+	                    BEGIN_IF_IN_SCROLL_AREA;
+	                    TRACE("results", "troop_row %s xp=%+.0f special=%s",
+	                          troops[troop_idx].get_name().c_str(), gain,
+	                          row_special.empty()? "none" : row_special.c_str());
+	                    END_IF_IN_SCROLL_AREA;
+	                }
+#endif
 	                
 	                BEGIN_IF_IN_SCROLL_AREA;
 	                int name_w = mytext.write_xy(x, y, PURE_BLACK, "%s", troops[troop_idx].get_name().c_str());
@@ -1054,7 +1092,6 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	                    mytext.write_xy(x, y, DARK_GREEN, "EXP");
 	                    x += 20;
 	                    float base = 60.0f * troops[troop_idx].get_XP_base();
-	                    float gain = 60.0f * troops[troop_idx].get_XP_gain();
 	                    if(gain >= 0)
 	                    {
 	                        og::runtime::current_session->myscreen_->fastbox(x, y, static_cast<Sint32>(base), barH, DARK_GREEN);

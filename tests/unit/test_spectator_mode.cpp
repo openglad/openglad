@@ -3,25 +3,30 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/input_state.h>
 
-// --- Spectator mode: numviews calculation ---
+// --- Spectator mode: how many viewscreens a battle opens ---
+// og::ui::spectator_view_count is the ONE implementation of the rule the
+// battle loader (src/platform/sdl/game.cpp) and Base Camp's ready_for_battle
+// (src/interface/ui/picker_team_build.cpp) both read: numplayers == 0 is a
+// camera-only spectator battle and still opens exactly one view.
 
-TEST(SpectatorMode, spectator_numviews_calculation)
+TEST(SpectatorMode, spectator_view_count_gives_the_camera_one_view)
 {
     SaveData save;
 
-    // In spectator mode, the game should use 1 view even though numplayers==0
     og::ui::set_player_count(save, 0);
-    short numviews = (save.numplayers == 0) ? 1 : save.numplayers;
-    ASSERT_TRUE(numviews == 1);
+    EXPECT_TRUE(og::ui::is_spectator_mode(save))
+        << "numplayers 0 is spectator mode";
+    EXPECT_EQ(1, og::ui::spectator_view_count(save))
+        << "spectator mode still opens ONE viewscreen for the camera";
 
-    // Normal modes
-    og::ui::set_player_count(save, 1);
-    numviews = (save.numplayers == 0) ? 1 : save.numplayers;
-    ASSERT_TRUE(numviews == 1);
-
-    og::ui::set_player_count(save, 3);
-    numviews = (save.numplayers == 0) ? 1 : save.numplayers;
-    ASSERT_TRUE(numviews == 3);
+    for (const int count : {1, 2, 3, 4})
+    {
+        og::ui::set_player_count(save, count);
+        EXPECT_FALSE(og::ui::is_spectator_mode(save))
+            << "count " << count << " is not spectator mode";
+        EXPECT_EQ(static_cast<short>(count), og::ui::spectator_view_count(save))
+            << "count " << count << ": one viewscreen per player";
+    }
 }
 
 // --- Spectator mode: cleared InputState has expected defaults ---

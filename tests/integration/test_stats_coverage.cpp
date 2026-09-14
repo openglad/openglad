@@ -2,6 +2,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 
@@ -87,34 +88,6 @@ TEST(StatsCoverage, stats_batch2_command_edge_paths_smoke)
 }
 
 
-TEST(StatsCoverage, stats_round6_block_query_switches_all_directions)
-{
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
-
-    w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
-
-    for (int dir = 0; dir < 8; dir++)
-    {
-        w->set_curdir(static_cast<char>(dir));
-        (void)w->stats()->right_blocked();
-        (void)w->stats()->right_forward_blocked();
-        (void)w->stats()->right_back_blocked();
-        (void)w->stats()->forward_blocked();
-    }
-
-    // Invalid dir defaults.
-    w->set_curdir(static_cast<char>(120));
-    (void)w->stats()->right_blocked();
-    (void)w->stats()->right_forward_blocked();
-    (void)w->stats()->right_back_blocked();
-    (void)w->stats()->forward_blocked();
-}
-
-
 TEST(StatsCoverage, stats_round6_walk_clamp_extremes_and_empty_queue_paths)
 {
     walker w;
@@ -122,108 +95,100 @@ TEST(StatsCoverage, stats_round6_walk_clamp_extremes_and_empty_queue_paths)
 
     s.commands.clear();
     s.add_command(COMMAND_WALK, 1, -99, 99);
-    ASSERT_TRUE(!s.commands.empty()) << "add_command should append walk command";
-    if (!s.commands.empty())
-    {
-        ASSERT_EQ(-1, (int)s.commands.back().com1) << "add_command should clamp com1 to -1";
-        ASSERT_EQ(1, (int)s.commands.back().com2) << "add_command should clamp com2 to +1";
-    }
+    ASSERT_FALSE(s.commands.empty()) << "add_command should append walk command";
+    ASSERT_EQ(-1, (int)s.commands.back().com1) << "add_command should clamp com1 to -1";
+    ASSERT_EQ(1, (int)s.commands.back().com2) << "add_command should clamp com2 to +1";
 
     s.force_command(COMMAND_WALK, 1, -88, 88);
-    ASSERT_TRUE(!s.commands.empty()) << "force_command should prepend walk command";
-    if (!s.commands.empty())
-    {
-        ASSERT_EQ(-1, (int)s.commands.front().com1) << "force_command should clamp com1 to -1";
-        ASSERT_EQ(1, (int)s.commands.front().com2) << "force_command should clamp com2 to +1";
-    }
+    ASSERT_FALSE(s.commands.empty()) << "force_command should prepend walk command";
+    ASSERT_EQ(-1, (int)s.commands.front().com1) << "force_command should clamp com1 to -1";
+    ASSERT_EQ(1, (int)s.commands.front().com2) << "force_command should clamp com2 to +1";
+
+    // set_command's non-random branch forwards the command type unchanged
+    // (the random-walk branch would have rewritten it to COMMAND_WALK).
+    s.commands.clear();
+    s.set_command(COMMAND_SET_WEAPON, 1);
+    ASSERT_FALSE(s.commands.empty()) << "set_command should enqueue a non-random command";
+    ASSERT_EQ((int)COMMAND_SET_WEAPON, (int)s.commands.front().commandtype)
+        << "set_command must keep a non-random command's type, not rewrite it to WALK";
 
     s.commands.clear();
     ASSERT_EQ(0, (int)s.do_command()) << "do_command should return 0 for empty queue";
 }
 
 
-TEST(StatsCoverage, stats_round7a_command_clamps_and_direction_switches)
-{
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
-
-    w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
-
-    // Explicitly hit both +/- clamp sides in add/force command.
-    w->stats()->add_command(COMMAND_WALK, 1, -9, 9);
-    ASSERT_TRUE(!w->stats()->commands.empty()) << "walk command added";
-    if (!w->stats()->commands.empty())
-    {
-        const command& c = w->stats()->commands.back();
-        ASSERT_EQ(-1, (int)c.com1) << "add_command should clamp x to -1";
-        ASSERT_EQ(1, (int)c.com2) << "add_command should clamp y to +1";
-    }
-    w->stats()->force_command(COMMAND_WALK, 1, -8, 8);
-    ASSERT_TRUE(!w->stats()->commands.empty()) << "forced walk command added";
-    if (!w->stats()->commands.empty())
-    {
-        const command& c = w->stats()->commands.front();
-        ASSERT_EQ(-1, (int)c.com1) << "force_command should clamp x to -1";
-        ASSERT_EQ(1, (int)c.com2) << "force_command should clamp y to +1";
-    }
-
-    // set_command non-random branch.
-    w->stats()->set_command(COMMAND_SET_WEAPON, 1);
-    ASSERT_TRUE(!w->stats()->commands.empty()) << "set_command should enqueue non-random command";
-
-    // Drive the direction switches using explicit FACE_* constants.
-    const char dirs[] = {
-        FACE_UP, FACE_UP_RIGHT, FACE_RIGHT, FACE_DOWN_RIGHT,
-        FACE_DOWN, FACE_DOWN_LEFT, FACE_LEFT, FACE_UP_LEFT
-    };
-    for (char dir : dirs)
-    {
-        w->set_curdir(dir);
-        (void)w->stats()->right_blocked();
-        (void)w->stats()->right_forward_blocked();
-        (void)w->stats()->right_back_blocked();
-        (void)w->stats()->forward_blocked();
-    }
-}
-
-
-TEST(StatsCoverage, stats_round7a_follow_and_die_do_command_paths)
+// COMMAND_FOLLOW has two give-up arms and they are NOT interchangeable: with a
+// foe in hand the follower drops the leader and reports 0, and with no leader
+// available at all it also zeroes the count and reports 0. Both used to be
+// `(void)do_command()`. COMMAND_DIE's delete_me tail rounds the test out.
+TEST(StatsCoverage, follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(actor != nullptr) << "actor created";
-    if (!actor)
-        return;
-
+    ASSERT_NE(nullptr, actor) << "actor created";
     actor->setxy(64, 64);
 
-    // Follow with no eligible leader: find_follow_leader() null -> command count zero path.
+    // With every view control cleared, find_follow_leader() has nothing to
+    // return: the command count is zeroed, the queue drains, result is 0.
+    screen* const scr = og::runtime::current_session->myscreen_;
+    const short saved_numviews = scr->numviews;
+    walker* const saved_control = scr->viewob[0] ? scr->viewob[0]->control : nullptr;
+    ASSERT_NE(nullptr, scr->viewob[0]) << "view 0 must exist to steer find_follow_leader";
+    scr->viewob[0]->control = nullptr;
+    scr->numviews = 1;
+
     actor->stats()->clear_command();
-    actor->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
-    (void)actor->stats()->do_command();
+    actor->set_foe(nullptr);
+    actor->set_leader(nullptr);
+    actor->stats()->force_command(COMMAND_FOLLOW, 3, 0, 0);
+    ASSERT_EQ(0, (int)actor->stats()->do_command())
+        << "COMMAND_FOLLOW with no leader available must report failure";
+    ASSERT_EQ(nullptr, actor->leader()) << "no leader was adopted";
+    ASSERT_TRUE(actor->stats()->commands.empty())
+        << "the no-leader arm zeroes commandcount, so the command is popped even though it asked for 3 rounds";
 
-    // Follow with foe set: immediate early stop path in COMMAND_FOLLOW.
+    // With a foe the follower refuses to follow at all: leader dropped,
+    // count zeroed, result 0 -- even when a leader IS available.
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(foe != nullptr) << "foe created";
-    if (foe)
-    {
-        foe->set_team_num(1);
-        foe->setxy(96, 64);
-        actor->set_foe(foe);
-        actor->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
-        (void)actor->stats()->do_command();
-        actor->set_foe(nullptr);
-    }
+    ASSERT_NE(nullptr, foe) << "foe created";
+    foe->set_team_num(1);
+    foe->setxy(96, 64);
 
-    // COMMAND_DIE in do_command with commandcount < 2.
+    walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, leader) << "leader created";
+    leader->setxy(400, 400);
+    scr->viewob[0]->control = leader;
+
+    actor->stats()->clear_command();  // note: this clears the leader too
+    actor->set_foe(foe);
+    actor->set_leader(leader);
+    ASSERT_EQ(leader, actor->leader()) << "the foe arm starts WITH a leader in hand";
+    actor->stats()->force_command(COMMAND_FOLLOW, 3, 0, 0);
+    ASSERT_EQ(0, (int)actor->stats()->do_command())
+        << "COMMAND_FOLLOW with a foe in hand must report failure";
+    ASSERT_EQ(nullptr, actor->leader()) << "the foe arm drops the leader";
+    ASSERT_TRUE(actor->stats()->commands.empty())
+        << "the foe arm zeroes commandcount, so the command is popped";
+
+    actor->set_foe(nullptr);
+    scr->viewob[0]->control = saved_control;
+    scr->numviews = saved_numviews;
+
+    // COMMAND_DIE with commandcount < 2 marks the walker for deletion.
     actor->set_dead(0);
     actor->stats()->set_delete_me(0);
+    actor->stats()->clear_command();
     actor->stats()->force_command(COMMAND_DIE, 1, 0, 0);
-    (void)actor->stats()->do_command();
-    ASSERT_TRUE(actor->stats()->delete_me() == 1) << "COMMAND_DIE do_command should set delete_me";
+    ASSERT_EQ(1, (int)actor->stats()->do_command()) << "COMMAND_DIE reports success";
+    ASSERT_EQ(1, (int)actor->stats()->delete_me()) << "COMMAND_DIE do_command should set delete_me";
+
+    // ... and a COMMAND_DIE with more rounds left does NOT, yet.
+    actor->stats()->set_delete_me(0);
+    actor->stats()->clear_command();
+    actor->stats()->force_command(COMMAND_DIE, 5, 0, 0);
+    ASSERT_EQ(1, (int)actor->stats()->do_command()) << "COMMAND_DIE reports success";
+    ASSERT_EQ(0, (int)actor->stats()->delete_me())
+        << "COMMAND_DIE only deletes on its LAST round (commandcount < 2)";
 }

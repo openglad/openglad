@@ -118,9 +118,19 @@ TEST(HelpParsing, help_fill_help_array_reads_multiple_lines)
     og::runtime::current_session->help_end_of_file_ = 0;
 
     short n = fill_help_array(arr, file);
-    ASSERT_TRUE(n >= 2) << "fill_help_array should read at least 2 lines";
+    // The loader returns the index at which EOF first showed up, so a
+    // three-line file is exactly 3 -- a loader that stops one line early at
+    // EOF would drop the last line of every help file.
+    ASSERT_EQ(3, static_cast<int>(n))
+        << "fill_help_array must report all three lines of the fixture";
     ASSERT_STREQ("line1", arr[0]) << "line 0 should match";
     ASSERT_STREQ("line2", arr[1]) << "line 1 should match";
+    ASSERT_STREQ("line3", arr[2])
+        << "the final line before EOF must survive the read";
+    ASSERT_STREQ("", arr[3])
+        << "the EOF slot is written empty, not left with stale bytes";
+    ASSERT_EQ(1, og::runtime::current_session->help_end_of_file_)
+        << "the EOF latch is what ended the fill";
 }
 
 TEST(HelpParsing, help_read_one_line_returns_an_exact_width_record)

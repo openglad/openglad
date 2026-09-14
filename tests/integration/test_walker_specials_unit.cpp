@@ -10,6 +10,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <algorithm>
+#include <cstdlib>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
@@ -100,17 +101,47 @@ TEST(WalkerSpecialsUnit, walker_specials_r11_turn_undead_paths)
 {
     SpecialsFixture fx;
     living* cleric = add_living(fx, FAMILY_CLERIC, 0);
-    ASSERT_TRUE(cleric != nullptr);
+    ASSERT_NE(nullptr, cleric);
 
-    // No targets branch -> -1
-    ASSERT_TRUE(cleric->turn_undead(40, 5) == -1);
+    // No foe in range at all -> the "nothing to turn" sentinel, not 0.
+    ASSERT_EQ(-1, cleric->turn_undead(40, 5))
+        << "turn_undead must distinguish 'no targets' from 'nobody resisted'";
 
-    // Undead target in range triggers kill path.
+    // The resistance roll is `world rng next(range*40) > next(level*10)`, drawn
+    // from the world LCG (SimRandom), NOT from the fixture's IRandom.
     living* skeleton = add_living(fx, FAMILY_SKELETON, 1);
+    ASSERT_NE(nullptr, skeleton);
     skeleton->setxy(100, 96);
     skeleton->stats()->set_level(1);
-    const std::int32_t killed = cleric->turn_undead(40, 5);
-    ASSERT_TRUE(killed >= 0);
+
+    // Winning roll: state 1 draws 838 from next(1600) then 6 from next(10).
+    fx.level.world().rng_.state_ = 1u;
+    ASSERT_EQ(1, cleric->turn_undead(40, 5))
+        << "838 > 6 must turn the skeleton and count it";
+    EXPECT_EQ(1, static_cast<int>(skeleton->dead()))
+        << "a turned undead is marked dead";
+
+    // Losing roll on a fresh skeleton: state 0 draws 0 then 6, so 0 > 6 fails.
+    living* survivor = add_living(fx, FAMILY_SKELETON, 1);
+    ASSERT_NE(nullptr, survivor);
+    survivor->setxy(104, 96);
+    survivor->stats()->set_level(1);
+    fx.level.world().rng_.state_ = 0u;
+    ASSERT_EQ(0, cleric->turn_undead(40, 5))
+        << "a lost roll leaves the undead standing but still counts as targets";
+    EXPECT_EQ(0, static_cast<int>(survivor->dead()))
+        << "a resisted turn must not kill";
+
+    // A living (non-undead) foe in range is never turned, whatever the roll.
+    living* orc = add_living(fx, FAMILY_ORC, 1);
+    ASSERT_NE(nullptr, orc);
+    orc->setxy(108, 96);
+    orc->stats()->set_level(1);
+    survivor->set_dead(1); // leave only the orc in range
+    fx.level.world().rng_.state_ = 1u;
+    ASSERT_EQ(0, cleric->turn_undead(40, 5))
+        << "turn_undead only touches is_undead families";
+    EXPECT_EQ(0, static_cast<int>(orc->dead()));
 }
 
 // ---------------------------------------------------------------------------
@@ -383,16 +414,28 @@ TEST(WalkerSpecialsUnit, teleport_ranged_stays_on_floor_and_off_obstacles)
     skeleton->setxy(12 * GRID_SIZE, 12 * GRID_SIZE);
     skeleton->set_flight_left(30); // flight must not bless boulder landings
 
+    int hops = 0;
     for (std::uint32_t seed = 1; seed <= 30; ++seed)
     {
         skeleton->setxy(12 * GRID_SIZE, 12 * GRID_SIZE);
         w.rng_.state_ = seed * 40503u + 3u;
-        if (!skeleton->teleport_ranged(90))
-            continue;
+        ASSERT_TRUE(skeleton->teleport_ranged(90))
+            << "200 tries over a mostly-grass floor always find a spot, seed "
+            << seed;
+        ++hops;
         ASSERT_EQ(1, skeleton->floor())
             << "ranged escape hop must stay on the caster's floor, seed " << seed;
         EXPECT_TRUE(grounded_passable(w, skeleton)) << "seed " << seed;
+        EXPECT_LE(std::abs(skeleton->xpos() - 12 * GRID_SIZE), 90)
+            << "the hop must land inside +/-range on x, seed " << seed;
+        EXPECT_LE(std::abs(skeleton->ypos() - 12 * GRID_SIZE), 90)
+            << "the hop must land inside +/-range on y, seed " << seed;
+        EXPECT_EQ(30, skeleton->flight_left())
+            << "the ground-rules probe must restore flight_left, seed " << seed;
     }
+    ASSERT_EQ(30, hops)
+        << "every seed must actually hop: a teleport_ranged that always "
+           "refuses would otherwise run zero checks";
 }
 
 // Probe fidelity with ob_pass_check corner cases: BIT_NO_COLLIDE casters may

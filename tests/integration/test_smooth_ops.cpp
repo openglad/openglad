@@ -13,11 +13,32 @@ static PixieData make_center_pattern(unsigned char fill, unsigned char center,
                                      unsigned char upleft, unsigned char upright,
                                      unsigned char downleft, unsigned char downright);
 
-static void bind_zero_rng(smoother& s)
+static PixieData make_uniform_grid(int w, int h, unsigned char fill);
+static void set_tile(PixieData& pd, int x, int y, unsigned char v);
+
+// smoother::next_random() prefers gameplay_rng_override() over the smoother's
+// own borrowed rng_ (smooth.cpp), so pinning an EXACT autotile byte means
+// binding both to the same fixed generator for the life of the block.
+namespace {
+class ScopedFixedRng
 {
-    static FixedRandom rng0(0);
-    s.set_rng(&rng0);
-}
+public:
+    explicit ScopedFixedRng(Uint32 value) : rng_(value)
+    {
+        ctx_.rng = &rng_;
+        push_test_context(&ctx_);
+    }
+    ~ScopedFixedRng() { pop_test_context(); }
+    ScopedFixedRng(const ScopedFixedRng&) = delete;
+    ScopedFixedRng& operator=(const ScopedFixedRng&) = delete;
+
+    void bind(smoother& s) { s.set_rng(&rng_); }
+
+private:
+    FixedRandom rng_;
+    GameContext ctx_;
+};
+} // namespace
 
 // ---------------------------------------------------------------------------
 // smoother query_x_y
@@ -43,17 +64,24 @@ TEST(SmoothOps, smooth_query_x_y_negative)
 TEST(SmoothOps, smooth_query_x_y_with_grid)
 {
     // Use the level's grid
-    og::runtime::current_session->myscreen_->world().create_new_grid();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
     smoother s;
-    s.set_target(og::runtime::current_session->myscreen_->world().grid);
+    s.set_target(world.grid);
 
-    // Valid query
-    Sint32 result = s.query_x_y(0, 0);
-    ASSERT_TRUE(result >= 0) << "valid position returns non-negative";
+    // Exact bytes, one of them on a later row, so a constant return or a
+    // mis-strided index is caught (">= 0" accepted any of those).
+    world.grid.data[0] = PIX_WATER1;
+    world.grid.data[1] = PIX_DIRT_1;
+    world.grid.data[static_cast<std::size_t>(world.grid.w)] = PIX_COBBLE_1;
+
+    ASSERT_EQ((int)PIX_WATER1, (int)s.query_x_y(0, 0)) << "query_x_y(0,0) returns data[0]";
+    ASSERT_EQ((int)PIX_DIRT_1, (int)s.query_x_y(1, 0)) << "query_x_y(1,0) returns data[1]";
+    ASSERT_EQ((int)PIX_COBBLE_1, (int)s.query_x_y(0, 1))
+        << "query_x_y reads data[x + y*maxx]";
 
     // Out of bounds
-    result = s.query_x_y(9999, 9999);
-    ASSERT_EQ((int)PIX_GRASS1, (int)result) << "out of bounds returns PIX_GRASS1";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(9999, 9999)) << "out of bounds returns PIX_GRASS1";
 }
 
 
@@ -230,14 +258,28 @@ TEST(SmoothOps, smooth_query_genre_light_grass)
 
 TEST(SmoothOps, smooth_smooth_full_grid)
 {
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    smoother s;
-    bind_zero_rng(s);
-    s.set_target(og::runtime::current_session->myscreen_->world().grid);
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
 
-    // Should not crash
-    Sint32 result = s.smooth();
-    (void)result;
+    // Seed a grass variant the autotiler will NOT write back, so a smooth()
+    // that returns 1 without touching a tile is visible.
+    const int cells = world.grid.w * world.grid.h;
+    for (int i = 0; i < cells; ++i)
+        world.grid.data[static_cast<std::size_t>(i)] = PIX_GRASS3;
+
+    ScopedFixedRng rng0(0);
+    smoother s;
+    rng0.bind(s);
+    s.set_target(world.grid);
+
+    ASSERT_EQ(1, (int)s.smooth()) << "smooth() with a target autotiles the grid and returns 1";
+    for (int y = 0; y < world.grid.h; ++y)
+        for (int x = 0; x < world.grid.w; ++x)
+            ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(x, y))
+                << "every cell of an all-grass grid becomes grass_variants[0] at (" << x << "," << y << ")";
+
+    smoother untargeted;
+    ASSERT_EQ(0, (int)untargeted.smooth()) << "smooth() with no target returns 0";
 }
 
 
@@ -247,247 +289,283 @@ TEST(SmoothOps, smooth_smooth_full_grid)
 
 TEST(SmoothOps, smooth_smooth_single_grass)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    for (int i = 0; i < 25; i++)
-        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
+    PixieData pd = make_uniform_grid(5, 5, PIX_GRASS3);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
 
-    Sint32 result = s.smooth(2, 2);
-    (void)result;
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(2, 2))
+        << "grass with no water corner pattern takes grass_variants[rng(4)] == GRASS1";
+    ASSERT_EQ((int)PIX_GRASS3, (int)s.query_x_y(1, 2))
+        << "smooth(x,y) touches only the named cell";
 }
 
 
 TEST(SmoothOps, smooth_smooth_water_surrounded)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    // Fill with water
-    for (int i = 0; i < 25; i++)
-        pd.data[static_cast<std::size_t>(i)] = PIX_WATER1;
+    PixieData pd = make_uniform_grid(5, 5, PIX_WATER3);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
-    Sint32 result = s.smooth(2, 2);
-    (void)result;
+
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_WATER1, (int)s.query_x_y(2, 2))
+        << "water with around==TO_AROUND is body water: water_variants[rng(3)] == WATER1, never a shoreline tile";
+    ASSERT_EQ((int)PIX_WATER3, (int)s.query_x_y(1, 1))
+        << "smooth(x,y) touches only the named cell";
 }
 
 
 TEST(SmoothOps, smooth_smooth_wall_surrounded)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    for (int i = 0; i < 25; i++)
-        pd.data[static_cast<std::size_t>(i)] = PIX_H_WALL1;
+    PixieData pd = make_uniform_grid(5, 5, PIX_H_WALL1);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
-    Sint32 result = s.smooth(2, 2);
-    (void)result;
+
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_WALL3, (int)s.query_x_y(2, 2))
+        << "wall around==15 with wall at (x,y+2) AND wall at (x-1,y+1) selects WALL3";
+    ASSERT_EQ((int)PIX_H_WALL1, (int)s.query_x_y(1, 1))
+        << "smooth(x,y) touches only the named cell";
 }
 
 
 TEST(SmoothOps, smooth_smooth_grass_water_border)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    // Top half grass, bottom half water
-    for (int j = 0; j < 5; j++)
-        for (int i = 0; i < 5; i++)
-            pd.data[static_cast<std::size_t>(j*5+i)] = (j < 3) ? PIX_GRASS1 : PIX_WATER1;
+    // Top three rows grass, bottom two water -- seeded with variants neither
+    // arm writes back, so a no-op is visible on both sides of the seam.
+    PixieData pd = make_uniform_grid(5, 5, PIX_GRASS3);
+    for (int j = 3; j < 5; ++j)
+        for (int i = 0; i < 5; ++i)
+            set_tile(pd, i, j, PIX_WATER2);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
-    // Smooth the border cells
-    s.smooth(2, 2);
-    s.smooth(2, 3);
+
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(2, 2))
+        << "grass one row off the shore matches no corner-water pattern: grass_variants[0]";
+
+    ASSERT_EQ(1, (int)s.smooth(2, 3)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_WATER1, (int)s.query_x_y(2, 3))
+        << "water with around==(TO_DOWN|TO_LEFT|TO_RIGHT) is in the body list: water_variants[0]";
+
+    ASSERT_EQ((int)PIX_GRASS3, (int)s.query_x_y(0, 0)) << "unsmoothed grass cell is untouched";
+    ASSERT_EQ((int)PIX_WATER2, (int)s.query_x_y(0, 4)) << "unsmoothed water cell is untouched";
 }
 
 
 TEST(SmoothOps, smooth_smooth_tree_border)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    // Grass with a tree in the middle
-    for (int i = 0; i < 25; i++)
-        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
-    pd.data[12] = PIX_TREE_B1;
+    // Grass with a lone tree in the middle. The planted tile is TREE_M1, NOT
+    // the TREE_B1 the default arm writes, so a no-op arm goes red.
+    PixieData pd = make_uniform_grid(5, 5, PIX_GRASS1);
+    set_tile(pd, 2, 2, PIX_TREE_M1);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
-    s.smooth(2, 2);
+
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_TREE_B1, (int)s.query_x_y(2, 2))
+        << "a lone tree has around==0 and falls to the tree default arm: TREE_B1";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(1, 2))
+        << "smooth(x,y) touches only the named cell";
 }
 
 
 TEST(SmoothOps, smooth_smooth_dirt_border)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    // Left half dirt, right half grass
-    for (int j = 0; j < 5; j++)
-        for (int i = 0; i < 5; i++)
-            pd.data[static_cast<std::size_t>(j*5+i)] = (i < 3) ? PIX_DIRT_1 : PIX_GRASS1;
+    // Left three columns dirt, right two grass; both halves seeded with a byte
+    // the matching arm does NOT write back.
+    PixieData pd = make_uniform_grid(5, 5, PIX_GRASS2);
+    for (int j = 0; j < 5; ++j)
+        for (int i = 0; i < 3; ++i)
+            set_tile(pd, i, j, PIX_DIRTGRASS_UL1);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
-    s.smooth(2, 2);
-    s.smooth(3, 2);
+
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_DIRT_1, (int)s.query_x_y(2, 2))
+        << "dirt with around==(TO_UP|TO_DOWN|TO_LEFT)==13 takes dirt_by_surround[13] == DIRT_1";
+
+    ASSERT_EQ(1, (int)s.smooth(2, 0)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_DIRTGRASS_LL1, (int)s.query_x_y(2, 0))
+        << "a top-edge dirt cell reads its out-of-range up neighbour as grass: around==12 => DIRTGRASS_LL1";
+
+    ASSERT_EQ(1, (int)s.smooth(3, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(3, 2))
+        << "the grass side of the seam takes grass_variants[0]";
 }
 
 
 TEST(SmoothOps, smooth_smooth_carpet_border)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    // All carpet except edges
-    for (int i = 0; i < 25; i++)
-        pd.data[static_cast<std::size_t>(i)] = PIX_CARPET_M;
-    // Grass border
-    for (int i = 0; i < 5; i++) {
-        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
-        pd.data[static_cast<std::size_t>(20+i)] = PIX_GRASS1;
-        pd.data[static_cast<std::size_t>(i*5)] = PIX_GRASS1;
-        pd.data[static_cast<std::size_t>(i*5+4)] = PIX_GRASS1;
+    // Carpet interior seeded CARPET_M2 (a carpet byte the table never writes)
+    // inside a grass border, so the surrounded cell's CARPET_M is a real change.
+    PixieData pd = make_uniform_grid(5, 5, PIX_CARPET_M2);
+    for (int i = 0; i < 5; ++i) {
+        set_tile(pd, i, 0, PIX_GRASS1);
+        set_tile(pd, i, 4, PIX_GRASS1);
+        set_tile(pd, 0, i, PIX_GRASS1);
+        set_tile(pd, 4, i, PIX_GRASS1);
     }
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
-    s.smooth(2, 2);
-    s.smooth(1, 1);
-    s.smooth(3, 3);
+
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_CARPET_M, (int)s.query_x_y(2, 2))
+        << "carpet around==15 takes carpet_by_surround[15] == CARPET_M";
+
+    ASSERT_EQ(1, (int)s.smooth(1, 1)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_CARPET_UL, (int)s.query_x_y(1, 1))
+        << "carpet around==(TO_RIGHT|TO_DOWN)==6 takes carpet_by_surround[6] == CARPET_UL";
+
+    ASSERT_EQ(1, (int)s.smooth(3, 3)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_CARPET_LR, (int)s.query_x_y(3, 3))
+        << "carpet around==(TO_UP|TO_LEFT)==9 takes carpet_by_surround[9] == CARPET_LR";
 }
 
 
 TEST(SmoothOps, smooth_smooth_cobble_border)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    for (int i = 0; i < 25; i++)
-        pd.data[static_cast<std::size_t>(i)] = PIX_COBBLE_1;
-    pd.data[0] = PIX_GRASS1;
+    PixieData pd = make_uniform_grid(5, 5, PIX_COBBLE_1);
+    set_tile(pd, 0, 0, PIX_GRASS1);
 
+    // rng index 2: both the grass and cobble variant tables then move off the
+    // seeded byte, so a rng-ignoring arm (or a no-op) goes red.
+    ScopedFixedRng rng2(2);
     smoother s;
-    bind_zero_rng(s);
+    rng2.bind(s);
     s.set_target(pd);
-    s.smooth(0, 0);
-    s.smooth(1, 0);
-    s.smooth(0, 1);
+
+    ASSERT_EQ(1, (int)s.smooth(0, 0)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_GRASS3, (int)s.query_x_y(0, 0))
+        << "grass takes grass_variants[rng(4)==2] == GRASS3";
+
+    ASSERT_EQ(1, (int)s.smooth(1, 0)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_COBBLE_3, (int)s.query_x_y(1, 0))
+        << "cobble takes cobble_variants[rng(4)==2] == COBBLE_3";
+
+    ASSERT_EQ(1, (int)s.smooth(0, 1)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_COBBLE_3, (int)s.query_x_y(0, 1))
+        << "cobble is surround-independent: the same variant on the other edge cell";
 }
 
 
 TEST(SmoothOps, smooth_smooth_dark_grass_border)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    for (int j = 0; j < 5; j++)
-        for (int i = 0; i < 5; i++)
-            pd.data[static_cast<std::size_t>(j*5+i)] = (j < 3) ? PIX_GRASS_DARK_1 : PIX_GRASS1;
+    PixieData pd = make_uniform_grid(5, 5, PIX_GRASS2);
+    for (int j = 0; j < 3; ++j)
+        for (int i = 0; i < 5; ++i)
+            set_tile(pd, i, j, PIX_GRASS_DARK_1);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
-    s.smooth(2, 2);
-    s.smooth(2, 3);
+
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_GRASS_RUBBLE, (int)s.query_x_y(2, 2))
+        << "dark grass around==(TO_LEFT|TO_RIGHT|TO_UP)==11 takes grass_dark_bottom[0], then rng(20)==0 overrides it with rubble";
+
+    ASSERT_EQ(1, (int)s.smooth(2, 3)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(2, 3))
+        << "the plain-grass side of the seam takes grass_variants[0]";
 }
 
 
 TEST(SmoothOps, smooth_smooth_light_grass_border)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    for (int j = 0; j < 5; j++)
-        for (int i = 0; i < 5; i++)
-            pd.data[static_cast<std::size_t>(j*5+i)] = (j < 3) ? PIX_GRASS_LIGHT_1 : PIX_GRASS1;
+    PixieData pd = make_uniform_grid(5, 5, PIX_GRASS2);
+    for (int j = 0; j < 3; ++j)
+        for (int i = 0; i < 5; ++i)
+            set_tile(pd, i, j, PIX_GRASS_LIGHT_1);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
-    s.smooth(2, 2);
-    s.smooth(2, 3);
+
+    ASSERT_EQ(1, (int)s.smooth(2, 2)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_GRASS_LIGHT_BOTTOM, (int)s.query_x_y(2, 2))
+        << "light grass around==(TO_UP|TO_RIGHT|TO_LEFT)==11 takes grass_light_by_surround[11] == GRASS_LIGHT_BOTTOM";
+
+    ASSERT_EQ(1, (int)s.smooth(2, 3)) << "smooth(x,y) reports it wrote a tile";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(2, 3))
+        << "the plain-grass side of the seam takes grass_variants[0]";
 }
 
 
 TEST(SmoothOps, smooth_smooth_all_edges)
 {
-    PixieData pd;
-    pd.w = 5;
-    pd.h = 5;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    for (int i = 0; i < 25; i++)
-        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
+    // Seeded GRASS3, so every one of the 25 cells must MOVE to GRASS1: a
+    // skipped edge cell, or a write that lands outside the span, goes red.
+    PixieData pd = make_uniform_grid(5, 5, PIX_GRASS3);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
 
     // Smooth every cell including edges
     for (int y = 0; y < 5; y++)
         for (int x = 0; x < 5; x++)
-            s.smooth(x, y);
+            ASSERT_EQ(1, (int)s.smooth(x, y)) << "smooth reports a write at (" << x << "," << y << ")";
+
+    for (int y = 0; y < 5; y++)
+        for (int x = 0; x < 5; x++)
+            ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(x, y))
+                << "edge cells clamp out-of-range neighbours to grass, so every cell is GRASS1 at ("
+                << x << "," << y << ")";
 }
 
 
 TEST(SmoothOps, smooth_smooth_mixed_terrain)
 {
-    PixieData pd;
-    pd.w = 7;
-    pd.h = 7;
-    pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(49);
-    // Create a checkerboard of different terrain types
-    unsigned char types[] = { PIX_GRASS1, PIX_WATER1, PIX_DIRT_1, PIX_H_WALL1 };
+    // Create a checkerboard of different terrain types. Every cell's four
+    // cardinals differ from it, so around==0 everywhere; grass and dirt are
+    // seeded off their arms' output so a no-op smooth cannot hide.
+    const unsigned char types[4]    = { PIX_GRASS3, PIX_WATER2, PIX_DIRTGRASS_UL1, PIX_WALL2 };
+    const unsigned char expected[4] = { PIX_GRASS1, PIX_WATER2, PIX_DIRT_1,        PIX_WALL2 };
+
+    PixieData pd = make_uniform_grid(7, 7, PIX_GRASS3);
     for (int j = 0; j < 7; j++)
         for (int i = 0; i < 7; i++)
-            pd.data[static_cast<std::size_t>(j*7+i)] = types[(i+j)%4];
+            set_tile(pd, i, j, types[(i + j) % 4]);
 
+    ScopedFixedRng rng0(0);
     smoother s;
-    bind_zero_rng(s);
+    rng0.bind(s);
     s.set_target(pd);
 
     // Smooth the entire grid
     for (int y = 0; y < 7; y++)
         for (int x = 0; x < 7; x++)
-            s.smooth(x, y);
+            ASSERT_EQ(1, (int)s.smooth(x, y)) << "smooth reports a write at (" << x << "," << y << ")";
+
+    for (int y = 0; y < 7; y++)
+        for (int x = 0; x < 7; x++)
+            ASSERT_EQ((int)expected[(x + y) % 4], (int)s.query_x_y(x, y))
+                << "around==0 cell (" << x << "," << y << "): grass=>GRASS1, water keeps its tile, "
+                << "dirt=>dirt_by_surround[0], wall keeps herepix";
 }
 
 
@@ -498,15 +576,23 @@ TEST(SmoothOps, smooth_smooth_mixed_terrain)
 TEST(SmoothOps, smooth_reset)
 {
     smoother s;
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    s.set_target(og::runtime::current_session->myscreen_->world().grid);
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    s.set_target(world.grid);
 
-    Sint32 before = s.query_x_y(0, 0);
-    (void)before;
+    // Make the live cell distinguishable from reset()'s PIX_GRASS1 fallback.
+    world.grid.data[0] = PIX_WATER1;
+    ASSERT_TRUE(s.has_target()) << "set_target installs the non-owning grid view";
+    ASSERT_TRUE(s.targets(world.grid)) << "the view points at this grid";
+    ASSERT_EQ((int)PIX_WATER1, (int)s.query_x_y(0, 0)) << "reads the live grid before reset";
 
     s.reset();
-    Sint32 after = s.query_x_y(0, 0);
-    ASSERT_EQ((int)PIX_GRASS1, (int)after) << "after reset returns PIX_GRASS1";
+
+    ASSERT_FALSE(s.has_target()) << "reset drops the non-owning grid view (issue #12)";
+    ASSERT_FALSE(s.targets(world.grid)) << "a reset smoother no longer targets the grid";
+    ASSERT_EQ(0, (int)s.smooth()) << "smooth() with no target is a no-op returning 0";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0)) << "after reset queries fall back to PIX_GRASS1";
+    ASSERT_EQ((int)PIX_WATER1, (int)world.grid.data[0]) << "the reset smoother wrote nothing through the dropped view";
 
     run_smooth_branch_outputs_with_fixed_rng();
 }
@@ -593,7 +679,7 @@ TEST(SmoothOps, smooth_dark_grass_round7_branch_matrix_338_448)
         s.set_target(pd);
         test_ctx.rng = &fixed1; // pick one of the random dark variants
         s.smooth(1, 1);
-        ASSERT_TRUE(s.query_x_y(1, 1) >= PIX_GRASS_DARK_1 && s.query_x_y(1, 1) <= PIX_GRASS_DARK_4) << "left-middle/top-left branch should choose dark-grass variant";
+        ASSERT_EQ((int)PIX_GRASS_DARK_2, (int)s.query_x_y(1, 1)) << "left-middle/top-left branch takes grass_dark_variants[rng(4)==1] == DARK_2";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,

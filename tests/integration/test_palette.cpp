@@ -67,6 +67,15 @@ TEST(Palette, set_and_query_reg)
     ASSERT_EQ(1, r) << "set_palette_reg should update R";
     ASSERT_EQ(2, g) << "set_palette_reg should update G";
     ASSERT_EQ(3, b) << "set_palette_reg should update B";
+
+    // save_palette is the deliberate DOS-era no-op ("PORT: we don't have a
+    // palette to save", pal32.cpp): it must stay a no-op returning 0, and it
+    // must not disturb the registers we just installed.
+    EXPECT_EQ(0, save_palette(pal)) << "save_palette stays the DOS-era no-op";
+    query_palette_reg(10, &r, &g, &b);
+    EXPECT_EQ(1, r) << "save_palette must not touch the live palette (R)";
+    EXPECT_EQ(2, g) << "save_palette must not touch the live palette (G)";
+    EXPECT_EQ(3, b) << "save_palette must not touch the live palette (B)";
 }
 
 
@@ -74,18 +83,29 @@ TEST(Palette, adjust_clamps)
 {
     const RuntimePaletteGuard palette_guard;
     std::array<unsigned char, 768> pal{};
-    // A small known palette that will exercise both clamp directions.
+    // Register 0 exercises both clamp directions; register 1 carries a
+    // mid-range triple so the GAMMA MULTIPLIER itself is pinned and not just
+    // the additive term: curpal[i] = clamp(pal[i] * (100 + amount*10) / 100
+    // + amount, 0, 63).
     pal[0] = 0;
     pal[1] = 1;
     pal[2] = 63;
+    pal[3] = 10;
+    pal[4] = 20;
+    pal[5] = 30;
 
-    // Lighten: 63 stays clamped, low values increase.
+    // Lighten: 63 stays clamped, low values increase by exact amounts.
     adjust_palette(pal, 5);
     int r = -1, g = -1, b = -1;
     query_palette_reg(0, &r, &g, &b);
-    ASSERT_TRUE(r >= 5) << "adjust_palette should lighten low channel values";
-    ASSERT_TRUE(g >= 6) << "adjust_palette should lighten low channel values (g)";
-    ASSERT_EQ(63, b) << "adjust_palette should clamp at 63";
+    ASSERT_EQ(5, r) << "0 * 150 / 100 + 5 == 5";
+    ASSERT_EQ(6, g) << "1 * 150 / 100 + 5 == 6";
+    ASSERT_EQ(63, b) << "63 * 150 / 100 + 5 clamps at 63";
+
+    query_palette_reg(1, &r, &g, &b);
+    ASSERT_EQ(20, r) << "10 * 150 / 100 + 5 == 20 (the *10 gamma multiplier)";
+    ASSERT_EQ(35, g) << "20 * 150 / 100 + 5 == 35 (the *10 gamma multiplier)";
+    ASSERT_EQ(50, b) << "30 * 150 / 100 + 5 == 50 (the *10 gamma multiplier)";
 
     // Darken: all channels clamp at 0.
     adjust_palette(pal, -10);
@@ -93,6 +113,10 @@ TEST(Palette, adjust_clamps)
     ASSERT_EQ(0, r) << "adjust_palette should clamp at 0 (r)";
     ASSERT_EQ(0, g) << "adjust_palette should clamp at 0 (g)";
     ASSERT_EQ(0, b) << "adjust_palette should clamp at 0 (b)";
+    query_palette_reg(1, &r, &g, &b);
+    ASSERT_EQ(0, r) << "10 * 0 / 100 - 10 clamps at 0";
+    ASSERT_EQ(0, g) << "20 * 0 / 100 - 10 clamps at 0";
+    ASSERT_EQ(0, b) << "30 * 0 / 100 - 10 clamps at 0";
 }
 
 
@@ -118,13 +142,6 @@ TEST(Palette, cycle_basic)
     ASSERT_EQ(3, g) << "cycle_palette should rotate entry 1 from entry 2 (g)";
     ASSERT_EQ(4, b) << "cycle_palette should rotate entry 1 from entry 2 (b)";
 }
-
-TEST(Palette, save_palette_is_stubbed_out)
-{
-    std::array<unsigned char, 768> pal{};
-    ASSERT_EQ(0, save_palette(pal)) << "save_palette should remain a no-op in SDL-free tests";
-}
-
 
 TEST(PaletteExport, gpl_matches_runtime_palette)
 {

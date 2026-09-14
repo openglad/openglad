@@ -190,12 +190,29 @@ TEST_F(TowerProgressionTest, heal_regenerates_byte_identical_floor)
     EXPECT_FALSE(og::data::tower_floor_files_exist(id + 1));
 }
 
-TEST_F(TowerProgressionTest, ensure_level_available_ignores_the_gate)
+// At the Gate the picker-preview hook is a NO-OP: the Gate ships inside the
+// mounted tower.glad, and a user-dir scen700.fss / scen0700*.png would
+// shadow it and freeze the run (the D7 rule TowerPackage's member-list test
+// guards from the package side). SetUp's prune starts at 701, so prune 700
+// here too — the oracle must be the hook's own doing.
+TEST_F(TowerProgressionTest, ensure_level_available_writes_nothing_at_the_gate)
 {
+    (void)og::data::delete_tower_floor_files(og::kTowerGateLevel);
+    ASSERT_FALSE(og::data::tower_floor_files_exist(og::kTowerGateLevel));
+
     SaveData save;
     init_tower_save(save, og::kTowerGateLevel, 555u);
     tower().ensure_level_available(save); // the Gate ships in the .glad
-    EXPECT_FALSE(og::data::tower_floor_files_exist(og::kTowerFirstFloorLevel));
+
+    EXPECT_FALSE(og::data::tower_floor_files_exist(og::kTowerGateLevel))
+        << "the Gate must never be shadowed by a generated floor 0";
+    EXPECT_FALSE(fs::exists(fs::path(get_user_path()) / "scen" /
+                            std::format("scen{}.fss", og::kTowerGateLevel)))
+        << "no scen700.fss may appear in the user dir";
+    EXPECT_FALSE(og::data::tower_floor_files_exist(og::kTowerFirstFloorLevel))
+        << "and no floor 1 is provisioned by the preview hook either";
+
+    (void)og::data::delete_tower_floor_files(og::kTowerGateLevel);
 }
 
 // --- Provisioning-failure surfacing (RC-4): failed writes veto the GO. ------

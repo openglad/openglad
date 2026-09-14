@@ -50,7 +50,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_render_effects.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_decor_render.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stair_overlay.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_text_rendering.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_and_level_picker.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_sprite_uaf.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_intro_smoke.cpp
@@ -125,7 +124,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_buffers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_pixel_ops.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_modes_more.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_external_physfs_archivers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_editor_interactions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_input_more.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_help_parsing.cpp
@@ -158,7 +156,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_load_versions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_effect_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_core_more.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_view_input_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_text_input_ex_value.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_picker_detail_menu_driven.cpp
@@ -487,7 +484,6 @@ og_add_test_group(og_test_view FILES
     test_glad_hud.cpp
     test_sai2x_scaler.cpp
     test_view_input_paths.cpp
-    test_view_input_more_paths.cpp
     test_view_input_smoke.cpp
     test_view_input_prefs_and_redraw.cpp
     test_view_team.cpp
@@ -509,7 +505,6 @@ og_add_test_group(og_test_rendering FILES
     test_video_pixel_ops.cpp
     test_video_primitives.cpp
     test_text_render.cpp
-    test_text_rendering.cpp
     test_text_input_and_width.cpp
     test_text_input_ex_value.cpp
 )
@@ -633,7 +628,6 @@ og_add_test_group(og_test_smooth FILES
 og_add_test_group(og_test_external FILES
     test_external_libzip.cpp
     test_external_physfs_api_edges.cpp
-    test_external_physfs_archivers.cpp
     test_external_physfs_byteorder.cpp
     test_external_physfs_ops.cpp
     test_external_physfs_unicode.cpp

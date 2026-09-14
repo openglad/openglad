@@ -584,35 +584,6 @@ walker* uncamped_drumstick_on_pad(GameWorld& world, const PadSpot* pads,
     return nullptr;
 }
 
-walker* first_uncamped_drumstick(GameWorld& world)
-{
-    for (const auto& uptr : world.fxlist)
-    {
-        walker* fxob = uptr.get();
-        if (fxob == nullptr || fxob->dead() ||
-            fxob->query_order() != Order::Treasure ||
-            fxob->family() != FAMILY_DRUMSTICK)
-        {
-            continue;
-        }
-        bool camped = false;
-        for (const auto& obptr : world.oblist)
-        {
-            const walker* ob = obptr.get();
-            if (ob != nullptr && !ob->dead() &&
-                ob->query_order() == Order::Living &&
-                ob->xpos() / GRID_SIZE == fxob->xpos() / GRID_SIZE &&
-                ob->ypos() / GRID_SIZE == fxob->ypos() / GRID_SIZE)
-            {
-                camped = true;
-            }
-        }
-        if (!camped)
-            return fxob;
-    }
-    return nullptr;
-}
-
 }  // namespace
 
 TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
@@ -642,11 +613,27 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
         ASSERT_EQ(24, census(fx.world()).drum)
             << "THE CIRCLE authors 24 drumsticks";
 
+        // THE CIRCLE's item_pads rows, in manifest order (mode_levels.lua
+        // [300].item_pads): 24 drumsticks then 4 speed potions.
+        static constexpr PadSpot kCirclePads[] = {
+            {472, 40},  {504, 40},  {520, 56},  {472, 72},
+            {520, 88},  {520, 104}, {136, 440}, {72, 456},
+            {840, 456}, {56, 472},  {152, 472}, {824, 472},
+            {904, 472}, {120, 488}, {808, 488}, {872, 488},
+            {904, 488}, {56, 504},  {472, 872}, {504, 872},
+            {456, 888}, {488, 888}, {456, 920}, {536, 920},
+            {488, 56},  {88, 488},  {856, 488}, {488, 904},
+        };
+
         // Eat one drumstick that no seat is parked on; its pad is then the
         // only free pad of a family in deficit, so the respawn must land
         // exactly on its tile.
-        walker* victim = first_uncamped_drumstick(fx.world());
-        ASSERT_NE(nullptr, victim);
+        int victim_idx = -1;
+        walker* victim =
+            uncamped_drumstick_on_pad(fx.world(), kCirclePads, 28,
+                                      &victim_idx);
+        ASSERT_NE(nullptr, victim)
+            << "an uncamped non-last manifest pad must hold its drumstick";
         const int pad_tx = victim->xpos() / GRID_SIZE;
         const int pad_ty = victim->ypos() / GRID_SIZE;
         victim->set_dead(1);
@@ -665,10 +652,13 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
             << "the respawn centers on the eaten pad (" << pad_tx << ", "
             << pad_ty << ")";
         EXPECT_EQ(330, fx.world().mode.vars[kTdmItemLast]);
-        // The cursor advanced past the spawned pad — its value is the row
-        // index after the eaten pad, which may legitimately wrap to 0.
-        EXPECT_LT(fx.world().mode.vars[kTdmItemCursor], 28)
-            << "the rotation cursor (slot 17) stays inside the pad list";
+        // The eaten pad is the lone eligible row, so the walk from cursor 0
+        // lands exactly on it and leaves the cursor one past its manifest
+        // row — never 0, because the victim chooser skips the last row. A
+        // cursor written to any other slot reads back 0 here.
+        EXPECT_EQ(victim_idx + 1, fx.world().mode.vars[kTdmItemCursor])
+            << "the firing advances the rotation cursor (slot 17) one past "
+               "the refilled pad's manifest row";
         expect_no_script_errors(fx.world());
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }

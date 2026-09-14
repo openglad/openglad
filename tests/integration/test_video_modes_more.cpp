@@ -4,6 +4,7 @@
 #include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/io_common.h>
 #include <physfs.h>
@@ -429,6 +430,11 @@ TEST(VideoModesMore, enumerated_display_resolutions_are_unique_and_sorted)
     }
     EXPECT_EQ(expected_resolutions, resolutions)
         << "the selector must expose exactly SDL's safe physical modes";
+    // Both sides of that comparison come from SDL. If this driver enumerates
+    // no fullscreen mode at or above 640x400 they are both empty, and the
+    // comparison would also hold for a display_resolutions() that returned
+    // nothing unconditionally -- so say so instead of reporting a pass.
+    const bool resolution_rule_is_observable = !expected_resolutions.empty();
 
     const auto desktop = video.desktop_resolution();
     const auto usable = video.windowed_desktop_resolution();
@@ -447,6 +453,13 @@ TEST(VideoModesMore, enumerated_display_resolutions_are_unique_and_sorted)
             ? std::pair<int, int>{usable_bounds.w, usable_bounds.h}
             : std::pair<int, int>{0, 0};
     EXPECT_EQ(expected_usable, usable);
+
+    if (!resolution_rule_is_observable)
+        GTEST_SKIP() << "video driver '"
+                     << (driver != nullptr ? driver : "(none)")
+                     << "' enumerates no fullscreen mode at or above 640x400, "
+                        "so the resolution comparison above proves nothing "
+                        "here; the desktop/usable pins above still ran";
 }
 
 #ifdef __linux__
@@ -511,60 +524,192 @@ TEST(VideoModesMore, screenshot_open_failure_preserves_the_frame)
 }
 #endif
 
-TEST(VideoModesMore, video_putbuffer_surface_clipping_and_blit)
+// putbuffer_surface forwards to putbuffer(SDL_Surface*), which blits the tile
+// into the port CLIPPED to it: a tile entirely outside draws nothing, and a
+// tile hanging off an edge draws only the part that fits.
+TEST(VideoModesMore, putbuffer_surface_blits_the_tile_clipped_to_its_port)
 {
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_NE(nullptr, E_Screen->render);
+
     SurfacePtr surf = make_surface(32, 32);
-    ASSERT_TRUE(surf != nullptr) << "SDL surface created";
-    if (!surf)
-        return;
+    ASSERT_NE(nullptr, surf) << "SDL surface created";
+    ASSERT_TRUE(SDL_FillSurfaceRect(
+        surf.get(), nullptr, SDL_MapSurfaceRGB(surf.get(), 10, 20, 30)));
 
-    // Fill with a non-zero pattern so the blit does something.
-    SDL_FillSurfaceRect(surf.get(), nullptr, SDL_MapSurfaceRGB(surf.get(), 10, 20, 30));
+    const auto rgb = [s](int x, int y) {
+        Uint8 r = 0;
+        Uint8 g = 0;
+        Uint8 b = 0;
+        s->get_pixel(x, y, &r, &g, &b);
+        return std::array<int, 3>{static_cast<int>(r), static_cast<int>(g),
+                                  static_cast<int>(b)};
+    };
+    const std::array<int, 3> kTile{10, 20, 30};
+    const std::array<int, 3> kBlack{0, 0, 0};
 
-    // Early-out: tile outside clipping region.
-    og::runtime::current_session->myscreen_->putbuffer_surface(500, 500, 16, 16, 0, 0, 319, 199, surf.get());
+    s->clearbuffer();
+    const std::size_t bytes = static_cast<std::size_t>(E_Screen->render->pitch) *
+                              static_cast<std::size_t>(E_Screen->render->h);
+    const std::vector<Uint8> cleared(
+        static_cast<const Uint8*>(E_Screen->render->pixels),
+        static_cast<const Uint8*>(E_Screen->render->pixels) + bytes);
 
-    // Clip left/top.
-    og::runtime::current_session->myscreen_->putbuffer_surface(-5, -5, 16, 16, 0, 0, 319, 199, surf.get());
+    // Entirely outside the clipping region: not one byte changes.
+    s->putbuffer_surface(500, 500, 16, 16, 0, 0, 319, 199, surf.get());
+    EXPECT_EQ(0, std::memcmp(cleared.data(), E_Screen->render->pixels, bytes))
+        << "a tile past the port's right/bottom edge must draw nothing";
 
-    // Clip right/bottom.
-    og::runtime::current_session->myscreen_->putbuffer_surface(310, 190, 32, 32, 0, 0, 319, 199, surf.get());
+    // Unclipped: a 16x16 tile at (10,10) covers exactly (10..25, 10..25).
+    s->putbuffer_surface(10, 10, 16, 16, 0, 0, 319, 199, surf.get());
+    EXPECT_EQ(kTile, rgb(10, 10)) << "top-left of the unclipped tile";
+    EXPECT_EQ(kTile, rgb(25, 25)) << "bottom-right of the unclipped tile";
+    EXPECT_EQ(kBlack, rgb(9, 10)) << "one pixel left of the tile";
+    EXPECT_EQ(kBlack, rgb(26, 10)) << "one pixel right of the tile";
 
-    // No clipping.
-    og::runtime::current_session->myscreen_->putbuffer_surface(10, 10, 16, 16, 0, 0, 319, 199, surf.get());
+    // Clipped left/top: (-5,-5) draws source (5..15, 5..15) at (0..10, 0..10).
+    s->putbuffer_surface(-5, -5, 16, 16, 0, 0, 319, 199, surf.get());
+    EXPECT_EQ(kTile, rgb(0, 0)) << "the clipped tile starts at the port origin";
+    EXPECT_EQ(kTile, rgb(10, 0)) << "its last drawn column is 10, not 15";
+    EXPECT_EQ(kBlack, rgb(11, 0)) << "the clipped-away columns stay black";
+    EXPECT_EQ(kBlack, rgb(0, 11)) << "the clipped-away rows stay black";
+
+    // Clipped right/bottom: (310,190) with a 32x32 tile stops at the port.
+    s->putbuffer_surface(310, 190, 32, 32, 0, 0, 319, 199, surf.get());
+    EXPECT_EQ(kTile, rgb(310, 190)) << "top-left of the clipped tile";
+    EXPECT_EQ(kTile, rgb(318, 198)) << "last drawn pixel inside the port";
+    EXPECT_EQ(kBlack, rgb(319, 190)) << "the port's last column is excluded";
+    EXPECT_EQ(kBlack, rgb(310, 199)) << "the port's last row is excluded";
+
+    s->clearbuffer();
 }
 
-TEST(VideoModesMore, video_clipping_and_accel_surface_edge_paths)
+// Every buffered blit clips to its port: a tile fully outside draws nothing, a
+// zero-width tile is a no-op, and a (-4,-4) tile draws source (4..15, 4..15) at
+// (0..11, 0..11). create_accel_surface rejects a non-positive size and a span
+// too small for the requested tile.
+TEST(VideoModesMore, buffered_blits_clip_to_their_port_and_accel_surfaces_guard_sizes)
 {
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_NE(nullptr, E_Screen->render);
+    ASSERT_NE(CanvasTarget::GameplayUI, E_Screen->active_canvas())
+        << "the alpha pins below assume the legacy masked blend";
+
     std::array<unsigned char, 16 * 16> pixels{};
     pixels.fill(42);
     pixels[0] = 0;
     auto span = std::span<const unsigned char>(pixels.data(), pixels.size());
 
-    og::runtime::current_session->myscreen_->fastbox(10, 10, 4, 4, 12, 0);
+    const std::size_t bytes = static_cast<std::size_t>(E_Screen->render->pitch) *
+                              static_cast<std::size_t>(E_Screen->render->h);
+    const auto snapshot = [&]() {
+        return std::vector<Uint8>(
+            static_cast<const Uint8*>(E_Screen->render->pixels),
+            static_cast<const Uint8*>(E_Screen->render->pixels) + bytes);
+    };
+    int index = -1;
 
-    og::runtime::current_session->myscreen_->putbuffer(-4, -4, 16, 16, 0, 0, 319, 199, span);
-    og::runtime::current_session->myscreen_->putbuffer(400, 400, 16, 16, 0, 0, 319, 199, span);
-    og::runtime::current_session->myscreen_->putbuffer_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 128);
-    og::runtime::current_session->myscreen_->putbuffer_alpha(400, 400, 16, 16, 0, 0, 319, 199, span, 128);
-    og::runtime::current_session->myscreen_->putbuffer_alpha(10, 10, 0, 16, 0, 0, 319, 199, span, 128);
+    s->clearbuffer();
+    const std::vector<Uint8> cleared = snapshot();
 
-    EXPECT_EQ(nullptr, og::runtime::current_session->myscreen_->create_accel_surface(span, 0, 16));
-    EXPECT_EQ(nullptr, og::runtime::current_session->myscreen_->create_accel_surface(span.first(3), 4, 4));
-    void* surface = og::runtime::current_session->myscreen_->create_accel_surface(span, 16, 16);
+    // Off-port and degenerate blits paint nothing at all.
+    s->putbuffer(400, 400, 16, 16, 0, 0, 319, 199, span);
+    s->putbuffer_alpha(400, 400, 16, 16, 0, 0, 319, 199, span, 128);
+    s->putbuffer_alpha(10, 10, 0, 16, 0, 0, 319, 199, span, 128);
+    s->walkputbuffer_flash(400, 400, 16, 16, 0, 0, 319, 199, span, 40);
+    s->walkputbuffer_flash(10, 10, 0, 16, 0, 0, 319, 199, span, 40);
+    s->walkputbuffertext_alpha(400, 400, 16, 16, 0, 0, 319, 199, span, 40, 128);
+    s->walkputbuffertext_alpha(10, 10, 0, 16, 0, 0, 319, 199, span, 40, 128);
+    EXPECT_EQ(0, std::memcmp(cleared.data(), E_Screen->render->pixels, bytes))
+        << "off-port and zero-width blits must leave the canvas untouched";
+
+    // putbuffer clipped at the top-left corner.
+    s->putbuffer(-4, -4, 16, 16, 0, 0, 319, 199, span);
+    EXPECT_EQ(42, s->get_pixel(0, 0, &index));
+    EXPECT_EQ(42, index) << "the clipped tile starts at the port origin";
+    EXPECT_EQ(42, s->get_pixel(11, 11, &index))
+        << "twelve rows and columns of the tile survive the clip";
+    EXPECT_EQ(0, s->get_pixel(12, 0, &index))
+        << "column 12 is past the clipped tile";
+
+    // create_accel_surface guards.
+    EXPECT_EQ(nullptr, s->create_accel_surface(span, 0, 16))
+        << "a zero width has no surface";
+    EXPECT_EQ(nullptr, s->create_accel_surface(span.first(3), 4, 4))
+        << "a span smaller than width*height has no surface";
+    void* surface = s->create_accel_surface(span, 16, 16);
     ASSERT_NE(nullptr, surface);
-    og::runtime::current_session->myscreen_->destroy_accel_surface(surface);
-    og::runtime::current_session->myscreen_->destroy_accel_surface(nullptr);
+    s->destroy_accel_surface(surface);
+    s->destroy_accel_surface(nullptr);
 
-    og::runtime::current_session->myscreen_->walkputbuffer_flash(400, 400, 16, 16, 0, 0, 319, 199, span, 40);
-    og::runtime::current_session->myscreen_->walkputbuffer_flash(-4, -4, 16, 16, 0, 0, 319, 199, span, 40);
-    og::runtime::current_session->myscreen_->walkputbuffer_flash(310, 190, 16, 16, 0, 0, 319, 199, span, 40);
-    og::runtime::current_session->myscreen_->walkputbuffer_flash(10, 10, 0, 16, 0, 0, 319, 199, span, 40);
+    // walkputbuffer_flash brightens each palette colour by 100 per channel
+    // (saturating above 155) and writes it as raw RGB.
+    int pr = 0;
+    int pg = 0;
+    int pb = 0;
+    query_palette_reg(42, &pr, &pg, &pb);
+    const auto flashed = [](int channel) {
+        return channel > 155 ? 255 : channel + 100;
+    };
+    Uint8 r = 0;
+    Uint8 g = 0;
+    Uint8 b = 0;
+    s->clearbuffer();
+    s->walkputbuffer_flash(-4, -4, 16, 16, 0, 0, 319, 199, span, 40);
+    s->get_pixel(0, 0, &r, &g, &b);
+    EXPECT_EQ(flashed(pr * 4), static_cast<int>(r)) << "flash red at (0,0)";
+    EXPECT_EQ(flashed(pg * 4), static_cast<int>(g)) << "flash green at (0,0)";
+    EXPECT_EQ(flashed(pb * 4), static_cast<int>(b)) << "flash blue at (0,0)";
+    s->get_pixel(12, 0, &r, &g, &b);
+    EXPECT_EQ(0, static_cast<int>(r) + static_cast<int>(g) + static_cast<int>(b))
+        << "the clipped-away flash columns stay black";
+    // Clipped at the right edge: a 16-wide tile at 310 stops at 318.
+    s->walkputbuffer_flash(310, 190, 16, 16, 0, 0, 319, 199, span, 40);
+    s->get_pixel(318, 190, &r, &g, &b);
+    EXPECT_EQ(flashed(pr * 4), static_cast<int>(r)) << "flash red at (318,190)";
+    s->get_pixel(319, 190, &r, &g, &b);
+    EXPECT_EQ(0, static_cast<int>(r) + static_cast<int>(g) + static_cast<int>(b))
+        << "the port's last column is excluded";
 
-    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(400, 400, 16, 16, 0, 0, 319, 199, span, 40, 128);
-    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 40, 128);
-    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(310, 190, 16, 16, 0, 0, 319, 199, span, 40, 128);
-    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(10, 10, 0, 16, 0, 0, 319, 199, span, 40, 128);
+    // walkputbuffertext_alpha stamps the TEAM colour (not the sprite index),
+    // and at full alpha the blend is exactly that palette entry.
+    s->clearbuffer();
+    s->walkputbuffertext_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 40, 255);
+    EXPECT_EQ(40, s->get_pixel(0, 0, &index));
+    EXPECT_EQ(40, index) << "opaque text alpha writes the team colour itself";
+    EXPECT_EQ(40, s->get_pixel(11, 11, &index));
+    EXPECT_EQ(0, s->get_pixel(12, 0, &index))
+        << "column 12 is past the clipped tile";
+
+    // Half alpha over black halves every channel of that palette entry.
+    query_palette_reg(40, &pr, &pg, &pb);
+    s->clearbuffer();
+    s->walkputbuffertext_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 40, 128);
+    s->get_pixel(0, 0, &r, &g, &b);
+    EXPECT_EQ(pr * 2, static_cast<int>(r)) << "half-alpha text red";
+    EXPECT_EQ(pg * 2, static_cast<int>(g)) << "half-alpha text green";
+    EXPECT_EQ(pb * 2, static_cast<int>(b)) << "half-alpha text blue";
+    s->get_pixel(12, 0, &r, &g, &b);
+    EXPECT_EQ(0, static_cast<int>(r) + static_cast<int>(g) + static_cast<int>(b))
+        << "the clipped-away text columns stay black";
+
+    // putbuffer_alpha takes the same clip and halves the SPRITE colour.
+    query_palette_reg(42, &pr, &pg, &pb);
+    s->clearbuffer();
+    s->putbuffer_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 128);
+    s->get_pixel(0, 0, &r, &g, &b);
+    EXPECT_EQ(pr * 2, static_cast<int>(r)) << "half-alpha tile red";
+    EXPECT_EQ(pg * 2, static_cast<int>(g)) << "half-alpha tile green";
+    EXPECT_EQ(pb * 2, static_cast<int>(b)) << "half-alpha tile blue";
+    s->get_pixel(12, 0, &r, &g, &b);
+    EXPECT_EQ(0, static_cast<int>(r) + static_cast<int>(g) + static_cast<int>(b))
+        << "the clipped-away tile columns stay black";
+
+    s->clearbuffer();
 }
 
 TEST(VideoModesMore, generic_pixel_format_blitters_preserve_transparency_and_team_colors)
@@ -644,73 +789,190 @@ TEST(VideoModesMore, generic_pixel_format_blitters_preserve_transparency_and_tea
 }
 
 
-TEST(VideoModesMore, video_walkputbuffer_modes_invisible_outline_phantom)
+// The three non-NORMAL sprite modes each have their own pixel rule
+// (video_sdl.cpp):
+//   INVISIBLE - an `outline` colour wins on every edge cell and on every
+//               transparent cell touching ink; otherwise the cell is skipped
+//               when rng(invisibility) > 8 and drawn (team-remapped) when not.
+//   OUTLINE   - the same edge/adjacency rule, unconditionally.
+//   PHANTOM   - the sprite is a stencil: every opaque cell REPLACES the canvas
+//               pixel under it with a neighbouring canvas pixel (SHIFT_LEFT /
+//               RIGHT / RIGHT_RANDOM / RANDOM / BLOCKY) or with a lighter /
+//               darker palette index.
+// Every case below reads the painted pixel back, so a mode that fell through
+// to NORMAL is red.
+TEST(VideoModesMore, walkputbuffer_invisible_outline_and_phantom_modes_paint_exact_pixels)
 {
-    // A small sprite with edges and a transparent interior to exercise outline
-    // and transparency checks. Use some >247 indices to hit team color remap.
-    std::array<unsigned char, 8 * 8> sprite{};
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    ASSERT_EQ(320, s->canvas_w()) << "the phantom offset math assumes 320x200";
+    ASSERT_EQ(200, s->canvas_h());
+
+    // A ring sprite: opaque (250, i.e. team-remapped) border, transparent
+    // interior. With teamcolor 40 an opaque cell resolves to 40+(255-250)=45.
+    std::array<unsigned char, 8 * 8> ring{};
     for (int y = 0; y < 8; y++)
-    {
         for (int x = 0; x < 8; x++)
-        {
-            const bool edge = (x == 0 || y == 0 || x == 7 || y == 7);
-            sprite[static_cast<std::size_t>(y * 8 + x)] = edge ? static_cast<unsigned char>(250) : static_cast<unsigned char>(0);
-        }
-    }
-    auto span = std::span<const unsigned char>(sprite.data(), sprite.size());
+            ring[static_cast<std::size_t>(y * 8 + x)] =
+                (x == 0 || y == 0 || x == 7 || y == 7)
+                    ? static_cast<unsigned char>(250)
+                    : static_cast<unsigned char>(0);
+    auto ring_span = std::span<const unsigned char>(ring.data(), ring.size());
 
-    // Ensure get_pixel() has something to read (phantom modes sample from the screen).
-    og::runtime::current_session->myscreen_->clearbuffer();
-    og::runtime::current_session->myscreen_->putdata(0, 0, 8, 8, span);
-    og::runtime::current_session->myscreen_->swap();
+    IRandom* const old_rng = ctx().rng;
+    struct RngRestore
+    {
+        IRandom* saved;
+        ~RngRestore() { ctx().rng = saved; }
+    } rng_restore{old_rng};
 
-    IRandom* old_rng = ctx().rng;
+    s->clearbuffer();
+    int index = -1;
 
-    // INVISIBLE_MODE: cover both the "skip draw" and "draw" paths deterministically.
+    // INVISIBLE with an outline: every opaque cell of this ring is an edge
+    // cell, so it wears the outline before the rng gate is ever reached, and
+    // the transparent cells touching the ring wear it too.
     FixedRandom rng0(0);
-    ctx().rng = &rng0; // rng(1) -> 0
-    og::runtime::current_session->myscreen_->walkputbuffer(50, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(INVISIBLE_MODE), /*invisibility*/ 1,
-                            /*outline*/ 7, /*shifttype*/ 0);
-
-    FixedRandom rng9(9);
-    ctx().rng = &rng9; // rng(10) -> 9 (> 8)
-    og::runtime::current_session->myscreen_->walkputbuffer(60, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(INVISIBLE_MODE), /*invisibility*/ 10,
-                            /*outline*/ 7, /*shifttype*/ 0);
-
-    // OUTLINE_MODE: border-only drawing.
     ctx().rng = &rng0;
-    og::runtime::current_session->myscreen_->walkputbuffer(70, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(OUTLINE_MODE), /*invisibility*/ 0,
-                            /*outline*/ 7, /*shifttype*/ 0);
+    s->walkputbuffer(50, 50, 8, 8, 0, 0, 319, 199, ring_span, 40,
+                     static_cast<unsigned char>(INVISIBLE_MODE),
+                     /*invisibility*/ 1, /*outline*/ 7, /*shifttype*/ 0);
+    EXPECT_EQ(7, s->get_pixel(50, 50, &index));
+    EXPECT_EQ(7, index) << "an edge cell wears the outline colour";
+    EXPECT_EQ(7, s->get_pixel(51, 51, &index))
+        << "a transparent cell beside the ring wears the outline colour";
+    EXPECT_EQ(0, s->get_pixel(53, 53, &index))
+        << "a transparent interior cell with no ink beside it stays empty";
 
-    // PHANTOM_MODE: exercise shift type branches.
-    og::runtime::current_session->myscreen_->walkputbuffer(80, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
-                            /*outline*/ 0, static_cast<unsigned char>(SHIFT_LEFT));
-    og::runtime::current_session->myscreen_->walkputbuffer(90, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
-                            /*outline*/ 0, static_cast<unsigned char>(SHIFT_RIGHT));
-    og::runtime::current_session->myscreen_->walkputbuffer(100, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
-                            /*outline*/ 0, static_cast<unsigned char>(SHIFT_RIGHT_RANDOM));
-    og::runtime::current_session->myscreen_->walkputbuffer(110, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
-                            /*outline*/ 0, static_cast<unsigned char>(SHIFT_RANDOM));
-    og::runtime::current_session->myscreen_->walkputbuffer(120, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
-                            /*outline*/ 0, static_cast<unsigned char>(SHIFT_LIGHTER));
-    og::runtime::current_session->myscreen_->walkputbuffer(130, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
-                            /*outline*/ 0, static_cast<unsigned char>(SHIFT_DARKER));
-    og::runtime::current_session->myscreen_->walkputbuffer(140, 50, 8, 8, 0, 0, 319, 199, span, 40,
-                            static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
-                            /*outline*/ 0, static_cast<unsigned char>(SHIFT_BLOCKY));
+    // INVISIBLE without an outline, rng(1) == 0 <= 8: the cell is DRAWN, with
+    // the team remap applied.
+    s->walkputbuffer(60, 50, 8, 8, 0, 0, 319, 199, ring_span, 40,
+                     static_cast<unsigned char>(INVISIBLE_MODE),
+                     /*invisibility*/ 1, /*outline*/ 0, /*shifttype*/ 0);
+    EXPECT_EQ(45, s->get_pixel(60, 50, &index));
+    EXPECT_EQ(45, index) << "250 remaps to teamcolor + (255 - 250)";
 
-    ctx().rng = old_rng;
+    // INVISIBLE without an outline, rng(10) == 9 > 8: the cell is SKIPPED.
+    FixedRandom rng9(9);
+    ctx().rng = &rng9;
+    s->walkputbuffer(70, 50, 8, 8, 0, 0, 319, 199, ring_span, 40,
+                     static_cast<unsigned char>(INVISIBLE_MODE),
+                     /*invisibility*/ 10, /*outline*/ 0, /*shifttype*/ 0);
+    EXPECT_EQ(0, s->get_pixel(70, 50, &index))
+        << "rng(invisibility) > 8 must leave the canvas alone";
+
+    // OUTLINE: edge cells and the transparent cells beside them wear the
+    // outline; the empty interior does not.
+    ctx().rng = &rng0;
+    s->walkputbuffer(80, 50, 8, 8, 0, 0, 319, 199, ring_span, 40,
+                     static_cast<unsigned char>(OUTLINE_MODE),
+                     /*invisibility*/ 0, /*outline*/ 7, /*shifttype*/ 0);
+    EXPECT_EQ(7, s->get_pixel(80, 50, &index));
+    EXPECT_EQ(7, index) << "outline mode paints the ring itself";
+    EXPECT_EQ(7, s->get_pixel(81, 51, &index))
+        << "outline mode paints the transparent halo beside the ring";
+    EXPECT_EQ(0, s->get_pixel(83, 53, &index))
+        << "outline mode leaves the empty interior alone";
+
+    // --- PHANTOM ---------------------------------------------------------
+    // A 1x1 opaque stencil, so exactly one canvas pixel is replaced and the
+    // source of the replacement is unambiguous.
+    const std::array<unsigned char, 1> dot{250};
+    auto dot_span = std::span<const unsigned char>(dot.data(), dot.size());
+    const auto phantom = [&](int x, int y, unsigned char shift) {
+        s->walkputbuffer(x, y, 1, 1, 0, 0, 319, 199, dot_span, 40,
+                         static_cast<unsigned char>(PHANTOM_MODE),
+                         /*invisibility*/ 0, /*outline*/ 0, shift);
+    };
+
+    s->clearbuffer();
+    ctx().rng = &rng0;
+
+    // SHIFT_LEFT copies the pixel one to the LEFT. (Palette index 30 reads
+    // back as itself -- several low indices share an RGB triple, and
+    // get_pixel answers with the first match, so the sentinels are checked.)
+    s->pointb(119, 60, static_cast<unsigned char>(30));
+    s->pointb(120, 60, static_cast<unsigned char>(10));
+    ASSERT_EQ(30, s->get_pixel(119, 60, &index)) << "sentinel reads back";
+    ASSERT_EQ(10, s->get_pixel(120, 60, &index)) << "sentinel reads back";
+    phantom(120, 60, static_cast<unsigned char>(SHIFT_LEFT));
+    EXPECT_EQ(30, s->get_pixel(120, 60, &index));
+    EXPECT_EQ(30, index) << "SHIFT_LEFT samples buffoff - 1";
+
+    // SHIFT_RIGHT copies the pixel one to the RIGHT.
+    s->pointb(130, 60, static_cast<unsigned char>(10));
+    s->pointb(131, 60, static_cast<unsigned char>(30));
+    ASSERT_EQ(30, s->get_pixel(131, 60, &index)) << "sentinel reads back";
+    phantom(130, 60, static_cast<unsigned char>(SHIFT_RIGHT));
+    EXPECT_EQ(30, s->get_pixel(130, 60, &index));
+    EXPECT_EQ(30, index) << "SHIFT_RIGHT samples buffoff + 1";
+
+    // SHIFT_LIGHTER decrements the palette index (unless it is a multiple of 8
+    // or zero); SHIFT_DARKER increments it (unless it is a multiple of 7).
+    s->pointb(140, 60, static_cast<unsigned char>(10));
+    phantom(140, 60, static_cast<unsigned char>(SHIFT_LIGHTER));
+    EXPECT_EQ(9, s->get_pixel(140, 60, &index));
+    EXPECT_EQ(9, index) << "SHIFT_LIGHTER steps 10 down to 9";
+
+    s->pointb(150, 60, static_cast<unsigned char>(10));
+    phantom(150, 60, static_cast<unsigned char>(SHIFT_DARKER));
+    EXPECT_EQ(11, s->get_pixel(150, 60, &index));
+    EXPECT_EQ(11, index) << "SHIFT_DARKER steps 10 up to 11";
+
+    s->pointb(160, 60, static_cast<unsigned char>(8));
+    phantom(160, 60, static_cast<unsigned char>(SHIFT_LIGHTER));
+    EXPECT_EQ(8, s->get_pixel(160, 60, &index))
+        << "SHIFT_LIGHTER holds a ramp boundary (index % 8 == 0)";
+    s->pointb(170, 60, static_cast<unsigned char>(7));
+    phantom(170, 60, static_cast<unsigned char>(SHIFT_DARKER));
+    EXPECT_EQ(7, s->get_pixel(170, 60, &index))
+        << "SHIFT_DARKER holds a ramp boundary (index % 7 == 0)";
+
+    // The two rng-driven shifts: with rng(2) == 1 both sample one to the right.
+    FixedRandom rng1(1);
+    ctx().rng = &rng1;
+    s->pointb(180, 60, static_cast<unsigned char>(10));
+    s->pointb(181, 60, static_cast<unsigned char>(30));
+    ASSERT_EQ(10, s->get_pixel(180, 60, &index)) << "sentinel reads back";
+    phantom(180, 60, static_cast<unsigned char>(SHIFT_RIGHT_RANDOM));
+    EXPECT_EQ(30, s->get_pixel(180, 60, &index))
+        << "SHIFT_RIGHT_RANDOM picks its shift from rng(2)";
+
+    s->pointb(190, 60, static_cast<unsigned char>(10));
+    s->pointb(191, 60, static_cast<unsigned char>(30));
+    ASSERT_EQ(10, s->get_pixel(190, 60, &index)) << "sentinel reads back";
+    phantom(190, 60, static_cast<unsigned char>(SHIFT_RANDOM));
+    EXPECT_EQ(30, s->get_pixel(190, 60, &index))
+        << "SHIFT_RANDOM copies the RGB of buffoff + rng(2)";
+
+    // SHIFT_BLOCKY needs a 2x2 stencil: on even rows only odd columns copy
+    // (from two pixels left), on odd rows every column copies from the row
+    // above. Transparent cells are skipped outright.
+    const std::array<unsigned char, 4> block{0, 250, 250, 250};
+    auto block_span = std::span<const unsigned char>(block.data(), block.size());
+    s->pointb(199, 70, static_cast<unsigned char>(30));
+    s->pointb(200, 70, static_cast<unsigned char>(10));
+    s->pointb(201, 70, static_cast<unsigned char>(11));
+    s->pointb(200, 71, static_cast<unsigned char>(12));
+    s->pointb(201, 71, static_cast<unsigned char>(13));
+    ASSERT_EQ(30, s->get_pixel(199, 70, &index)) << "sentinel reads back";
+    ASSERT_EQ(11, s->get_pixel(201, 70, &index)) << "sentinel reads back";
+    ASSERT_EQ(12, s->get_pixel(200, 71, &index)) << "sentinel reads back";
+    ASSERT_EQ(13, s->get_pixel(201, 71, &index)) << "sentinel reads back";
+    s->walkputbuffer(200, 70, 2, 2, 0, 0, 319, 199, block_span, 40,
+                     static_cast<unsigned char>(PHANTOM_MODE), 0, 0,
+                     static_cast<unsigned char>(SHIFT_BLOCKY));
+    EXPECT_EQ(10, s->get_pixel(200, 70, &index))
+        << "a transparent stencil cell leaves the canvas pixel alone";
+    EXPECT_EQ(30, s->get_pixel(201, 70, &index))
+        << "an odd column on an even row copies from two pixels left";
+    EXPECT_EQ(10, s->get_pixel(200, 71, &index))
+        << "an odd row copies from the row above";
+    EXPECT_EQ(30, s->get_pixel(201, 71, &index))
+        << "an odd row copies from the row above, after it was rewritten";
+
+    s->clearbuffer();
 }
-
 
 TEST(VideoModesMore, video_save_screenshot_matches_active_canvas_smoothing)
 {

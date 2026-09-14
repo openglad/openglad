@@ -1,5 +1,7 @@
 #include "parity_runner.h"
 
+#include <functional>
+
 #include "scenario_runtime.h"
 
 #include <openglad/core/constants.h>
@@ -420,6 +422,12 @@ void emulate_classic_screen_flow(GameWorld& world,
 
 RunOutcome run_scenario(const ScenarioSpec& spec)
 {
+    return run_scenario(spec, {});
+}
+
+RunOutcome run_scenario(const ScenarioSpec& spec,
+                        const std::function<void(GameWorld&)>& observe_final_world)
+{
     RunOutcome out;
 
     std::srand(spec.rng_seed);
@@ -649,6 +657,11 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     for (const auto& ev : parity_events.events())
         out.coverage.event_kinds.insert(
             event_kind_symbol(static_cast<std::uint32_t>(ev.kind)));
+
+    // Harness-only seam, last of all: `out` is already complete, so an
+    // observer that ticks the world cannot change what this run reports.
+    if (observe_final_world)
+        observe_final_world(world);
 
     return out;
 }

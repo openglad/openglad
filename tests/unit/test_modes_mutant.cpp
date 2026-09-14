@@ -35,6 +35,7 @@
 
 #include "../modes_pack_fixture.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <format>
 #include <set>
@@ -1105,6 +1106,7 @@ TEST_F(ModesMutant, mutant_level_blink_is_clamped_to_160px_and_ignores_markers)
     marker->set_lifetime(5000);
     marker->set_ani_type(ANI_SPIN);
 
+    int best = 0;
     for (int blink = 0; blink < 4; ++blink)
     {
         int dx = 0;
@@ -1112,7 +1114,16 @@ TEST_F(ModesMutant, mutant_level_blink_is_clamped_to_160px_and_ignores_markers)
         blink_mage(rig.fx, mage, &dx, &dy);
         EXPECT_LE(dx, 160) << "blink " << blink;
         EXPECT_LE(dy, 160) << "blink " << blink;
+        EXPECT_GT(dx + dy, 0) << "blink " << blink << " did not move at all";
+        best = std::max(best, dx + dy);
     }
+    // Upper bounds alone are satisfied by a COLLAPSE: a teleport_range read
+    // as 4, an override that never calls teleport_ranged, or a ranged hop
+    // that fails its landing probes all leave dx=dy=0. The clamp is a real
+    // 160px hop (a marker recall would exceed 320), so pin the floor too.
+    EXPECT_GT(best, 64)
+        << "the clamp is a 160px hop, not a collapse to zero; best was "
+        << best;
 }
 
 TEST_F(ModesMutant, off_manifest_level_blink_keeps_core_marker_recall)
