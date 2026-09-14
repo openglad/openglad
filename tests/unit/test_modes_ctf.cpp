@@ -597,14 +597,30 @@ std::string run_strip_scenario_match(int flag_family, bool boxes_off,
 
 }  // namespace
 
-TEST_F(ModesCtf, map_units_on_matches_control_run)
+TEST_F(ModesCtf, map_units_on_fields_the_authored_cast)
 {
-    // The default boxes (all on) are byte-identical to a world that never
-    // touched them.
-    const std::string on = run_strip_scenario_match(flag_family_, false, 50);
-    const std::string control =
-        run_strip_scenario_match(flag_family_, false, 50);
-    ASSERT_EQ(on, control);
+    // kMapUnitsOn IS the stored default, so an explicit ON write can never
+    // be told from a control run by digest. What the box actually decides is
+    // lineup.map_units_fielded (packs/core/lib/lineup.lua), which gates
+    // strip_authored_troops: under ON the map's authored cast survives
+    // activation, and the resulting world differs from the OFF run.
+    ModesCtfWorld fx(kCtfLevelB);
+    StripScenarioActors actors = build_strip_scenario(fx, flag_family_);
+    fx.tick(50);
+
+    ASSERT_TRUE(fx.ctf_active());
+    EXPECT_FALSE(actors.hero->dead());
+    EXPECT_FALSE(actors.authored_friend->dead())
+        << "MAP UNITS ON fields the authored troop";
+    EXPECT_FALSE(actors.authored_enemy->dead())
+        << "and the opposing side's authored troop too";
+    EXPECT_FALSE(actors.friendly_gen->dead());
+    EXPECT_FALSE(actors.enemy_gen->dead());
+
+    const std::string on = digest_world(fx.world());
+    EXPECT_NE(on, run_strip_scenario_match(flag_family_, true, 50))
+        << "the OFF box must change the world it is compared against";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 TEST_F(ModesCtf, map_units_off_run_is_deterministic)
@@ -1917,15 +1933,29 @@ TEST_F(ModesCtf, generator_owned_spawns_stay_out_of_the_respawn_queue)
     fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
     walker* owned = fx.spawn_living(FAMILY_ORC, 0, 260, 200);
     owned->set_owner(keeper);
+    // The positive control: an UNOWNED bot on the same team, killed in the
+    // same tick. The scan must queue it — an empty queue would otherwise
+    // pass this test no matter why the owned corpse was skipped.
+    walker* sibling = fx.spawn_living(FAMILY_ORC, 0, 292, 200);
+    ASSERT_NE(nullptr, sibling);
     fx.world().ctf_requested_respawn_ticks = 10;
     fx.tick(1);
     ASSERT_TRUE(fx.ctf_active());
 
+    const std::uint32_t owned_id = owned->entity_id();
+    const std::uint32_t sibling_id = sibling->entity_id();
     owned->set_dead(1);
+    sibling->set_dead(1);
     fx.tick(1);
+    ASSERT_EQ(1u, fx.world().respawn.respawn_queue.size())
+        << "the unowned corpse alone is queued";
+    EXPECT_EQ(sibling_id,
+              fx.world().respawn.respawn_queue.front().walker_entity_id);
+    EXPECT_EQ(1, fx.world().respawn.respawn_queue.front().kind)
+        << "a non-roster corpse queues as an AI replacement";
     for (const auto& entry : fx.world().respawn.respawn_queue)
     {
-        EXPECT_NE(entry.walker_entity_id, owned->entity_id())
+        EXPECT_NE(entry.walker_entity_id, owned_id)
             << "an owned spawn is the generator's business, not the scan's";
     }
 }
@@ -2428,11 +2458,23 @@ TEST_F(ModesCtf, classic_world_never_sees_director_or_goto_and_rng_is_stable)
 
 TEST_F(ModesCtf, classic_world_emits_no_ctf_events)
 {
-    ModesCtfWorld fx(1);
+    // The negative only means something on a world that WOULD activate if
+    // the TYPE_SCRIPTED gate leaked: a CTF-bound level, two authored flags,
+    // a living on each side. `type = 0` is the only thing keeping the mode
+    // Lua out (the identical world with TYPE_SCRIPTED announces
+    // "CAPTURE THE FLAG! TO 3" — pinned by lazy_init_activates_two_team_map).
+    ModesCtfWorld fx(kCtfLevelA);
     fx.world().type = 0;
-    fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
-    fx.spawn_living(FAMILY_ORC, 1, 480, 800);
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 800);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
     fx.tick(50);
+    EXPECT_FALSE(fx.world().mode.init_attempted)
+        << "a classic world must not even attempt mode init";
+    EXPECT_FALSE(fx.world().mode.active);
+    EXPECT_EQ(0, fx.var(kSlotTeamMask)) << "no mode vars were written";
+    EXPECT_FALSE(fx.ctf_active());
     EXPECT_FALSE(has_notification(fx.events, "CAPTURE THE FLAG"));
     EXPECT_FALSE(has_notification(fx.events, "FLAG"));
 }

@@ -107,6 +107,21 @@ bool has_score_change(const og::sim::SimEventLog& log, std::uint32_t team,
     return false;
 }
 
+int count_score_change(const og::sim::SimEventLog& log, std::uint32_t team,
+                       std::uint32_t points)
+{
+    int count = 0;
+    for (const auto& ev : log.events())
+    {
+        if (ev.kind == og::sim::EventKind::ScoreChange && ev.a == team &&
+            ev.b == points)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
 bool has_script_error(GameWorld& world, const std::string& needle)
 {
     for (const auto& err : world.scripts().host().errors())
@@ -1266,15 +1281,37 @@ TEST_F(ModesOnslaught, taking_a_generator_pays_three_hundred)
 
 TEST_F(ModesOnslaught, a_floored_hit_pays_nothing)
 {
+    // The 300 is paid INSIDE the flip branch only. walker::attack refuses
+    // friendly fire before the gate ever runs (walker_combat.cpp
+    // is_friendly), so the same-team arm is unreachable from a real hit —
+    // the reachable no-pay arm is the guard window: a generator that just
+    // flipped takes its next lethal hit on the 1 hp floor and pays nobody.
     OnsWorld fx;
     fx.tick(1);
     ASSERT_TRUE(fx.ons_active());
+    ASSERT_EQ(0, fx.red_gen_a->team_num());
 
-    // Same-team smash: the hit floors at 1 hp, there is no flip and no pay.
-    fx.red->setxy(140, 340);
-    fx.smash(fx.red, fx.red_gen_a);
-    EXPECT_EQ(0, fx.red_gen_a->team_num());
-    EXPECT_EQ(0u, fx.world().m_score[0]);
+    fx.green->setxy(140, 340);
+    walker* red_hitter = fx.spawn_living(FAMILY_SOLDIER, 0, 116, 340);
+    ASSERT_NE(nullptr, red_hitter);
+    fx.smash(fx.green, fx.red_gen_a);
+    ASSERT_EQ(1, fx.red_gen_a->team_num()) << "the flip must land first";
+    ASSERT_EQ(1, count_score_change(fx.events, 1, 300))
+        << "the capture itself pays green exactly once";
+
+    // The guarded lethal hit: floored, no flip, no notification, no pay.
+    fx.smash(red_hitter, fx.red_gen_a);
+    EXPECT_EQ(1, fx.red_gen_a->team_num())
+        << "a fresh flip cannot flip back inside the guard window";
+    EXPECT_EQ(1.0f, fx.red_gen_a->stats()->hitpoints())
+        << "the guarded lethal hit clamps to the 1 hp floor";
+    EXPECT_FALSE(fx.red_gen_a->dead());
+    EXPECT_EQ(1, count_notifications(fx.events, "GREEN TAKES A TENT!"))
+        << "the floored hit announces nothing of its own";
+    EXPECT_FALSE(has_score_change(fx.events, 0, 300))
+        << "a floored hit pays the hitter's team nothing";
+    EXPECT_EQ(1, count_score_change(fx.events, 1, 300))
+        << "and it pays the holder nothing further";
 }
 
 TEST_F(ModesOnslaught, holding_a_waypoint_pays_fifty)

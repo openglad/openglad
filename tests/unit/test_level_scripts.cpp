@@ -316,14 +316,30 @@ TEST_F(LevelScriptsTest, generator_customize_spawn_dispatches)
 
 TEST_F(LevelScriptsTest, no_level_hooks_means_no_vm_activity)
 {
+    // The family hook is given a VOICE, so the negative below can actually
+    // fire: a dispatcher that entered the VM for level hooks, or called the
+    // family on_death outside a death, would log.
     register_pack_script(
         {"test.pack", "family_only.lua",
          "og.register_hooks('living', 'core:soldier', "
-         "{ on_death = function() return true end })\n"});
+         "{ on_death = function() og.log('family death') return true end })\n"});
     world.tick();
     world.tick();
-    EXPECT_TRUE(vm_log().empty());
+    EXPECT_TRUE(vm_log().empty())
+        << "a pack with no level hooks must not enter the VM per tick";
     EXPECT_TRUE(world.scripts().host().errors().empty());
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42))
+        << "no level hook kinds are installed for this level";
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(-1));
+
+    // Control: the chunk really loaded and the hook really is reachable —
+    // an actual death dispatches it exactly once.
+    walker* soldier = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    soldier->set_dead(1);
+    soldier->death();
+    ASSERT_EQ(1u, vm_log().size()) << "the family on_death must be reachable";
+    EXPECT_EQ("family death", vm_log()[0]);
 }
 
 // With no class packs installed there is no Lua at all, and the sim's hot

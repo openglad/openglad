@@ -390,31 +390,75 @@ TEST(ClassicRespawn, mode2_blocked_ai_respawn_retries_until_clear)
     EXPECT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
-TEST(ClassicRespawn, mode1_does_not_respawn_unowned_ai)
+TEST(ClassicRespawn, mode1_does_not_respawn_unowned_ai_even_when_authored)
 {
+    // The corpse carries an authored placement, so the ONLY term of
+    // classic_respawn_corpse_eligible still excluding it is the mode gate
+    // (ai_eligible requires respawn_mode == Everyone). Without the
+    // spawn point the empty queue below would prove nothing.
     ClassicArena arena(1);
     walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
     ASSERT_NE(nullptr, bot);
+    bot->set_spawn_point(480, 700, 0);
+    ASSERT_EQ(480, bot->spawn_x());
 
     arena.fx.kill(bot);
     arena.fx.tick();
 
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty())
         << "mode 1 respawns heroes only";
+
+    // Control: the identical corpse under mode 2 IS adopted, so the empty
+    // queue above is the mode gate and nothing else. (The mode-1 corpse was
+    // swept at the end of its tick — an unscheduled corpse does not survive
+    // it — so the control uses a fresh twin of the same shape.)
+    arena.world().respawn_mode = og::sim::kRespawnModeEveryone;
+    walker* twin = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
+    ASSERT_NE(nullptr, twin);
+    twin->set_spawn_point(480, 700, 0);
+    arena.fx.kill(twin);
+    arena.fx.tick();
+
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size())
+        << "mode 2 adopts exactly this corpse";
+    EXPECT_EQ(1, arena.world().respawn.respawn_queue[0].kind);
+    EXPECT_EQ(1, arena.world().respawn.respawn_queue[0].team);
+    EXPECT_EQ(480, arena.world().respawn.respawn_queue[0].x);
+    EXPECT_EQ(700, arena.world().respawn.respawn_queue[0].y);
 }
 
 TEST(ClassicRespawn, generator_owned_and_summoned_walkers_never_respawn)
 {
+    // The summon carries an authored placement too, so the owner clause is
+    // the ONLY term of ai_eligible excluding it — without the spawn point
+    // this case was a duplicate of
+    // runtime_spawns_without_authored_placement_never_respawn.
     ClassicArena arena(2);
     walker* summon = arena.fx.spawn_living(FAMILY_SKELETON, 1, 480, 700);
     ASSERT_NE(nullptr, summon);
     summon->set_owner(arena.enemy);
+    summon->set_spawn_point(480, 700, 0);
+    ASSERT_EQ(480, summon->spawn_x());
 
     summon->set_dead(1);
     arena.fx.tick();
 
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty())
         << "walkers with a live owner are the owner's business";
+
+    // Control: the same shape with no owner IS adopted. (The first corpse
+    // was swept at the end of its tick, so the control is a fresh twin.)
+    walker* orphan = arena.fx.spawn_living(FAMILY_SKELETON, 1, 480, 700);
+    ASSERT_NE(nullptr, orphan);
+    orphan->set_spawn_point(480, 700, 0);
+    orphan->set_dead(1);
+    arena.fx.tick();
+
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size())
+        << "an ownerless corpse with an authored placement is adopted";
+    EXPECT_EQ(1, arena.world().respawn.respawn_queue[0].kind);
+    EXPECT_EQ(480, arena.world().respawn.respawn_queue[0].x);
+    EXPECT_EQ(700, arena.world().respawn.respawn_queue[0].y);
 }
 
 TEST(ClassicRespawn, end_of_level_revives_pending_heroes_and_clears_queue)

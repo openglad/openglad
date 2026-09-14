@@ -320,13 +320,47 @@ TEST(ModeTick, erroring_mode_init_falls_classic_next_tick)
 TEST(ModeTick, run_tick_refuses_failed_init_world_when_called_directly)
 {
     ModeWorld fx;
-    fx.tick(1);  // no hooks: init attempted and failed, mode inactive
+    // The failed-init world is given a VOICE for every phase mode_run_tick
+    // could wrongly run: an erroring on_mode_init that logs before it dies
+    // (step 0 re-init), a logging on_mode_tick (step 3), and below a pending
+    // respawn timer (step 2, which has no mode.active check of its own).
+    fx.register_script(
+        "og.register_level_hooks(42, {\n"
+        "  on_mode_init = function(level)\n"
+        "    og.log('mode_init', level)\n"
+        "    error('boom')\n"
+        "  end,\n"
+        "  on_mode_tick = function(level, tick)\n"
+        "    og.log('mode_tick', tick)\n"
+        "  end,\n"
+        "})\n");
+    fx.tick(1);  // init attempted and failed, mode inactive
     ASSERT_TRUE(fx.world().mode.init_attempted);
     ASSERT_FALSE(fx.world().mode.active);
+    ASSERT_EQ(1, fx.log_count("mode_init\t42"));
+    ASSERT_EQ(0, fx.log_count("mode_tick\t"));
+
+    og::sim::RespawnEntry pending;
+    pending.kind = 1;
+    pending.team = 1;
+    pending.family = static_cast<std::uint8_t>(FAMILY_ORC);
+    pending.level = 1;
+    pending.ticks_left = 5;
+    pending.x = 200;
+    pending.y = 200;
+    fx.world().respawn.respawn_queue.push_back(pending);
+
     // GameWorld::tick's caller-side guard filters failed-init worlds out,
     // so the engine function's own inactive guard must hold for direct
     // callers too: no re-init, no phases, no win shape.
     og::sim::mode_run_tick(fx.world());
+    EXPECT_EQ(1, fx.log_count("mode_init\t42"))
+        << "step 0 must not re-dispatch on_mode_init";
+    EXPECT_EQ(0, fx.log_count("mode_tick\t"))
+        << "step 3 must not dispatch on_mode_tick on a failed-init world";
+    ASSERT_EQ(1u, fx.world().respawn.respawn_queue.size());
+    EXPECT_EQ(5, fx.world().respawn.respawn_queue[0].ticks_left)
+        << "step 2 never ran: the pending timer did not tick down";
     EXPECT_FALSE(fx.world().mode.active);
     EXPECT_FALSE(fx.world().game_ended);
 }
@@ -572,6 +606,14 @@ TEST(ModeTick, damage_gate_false_spares_a_zero_hp_target)
 // `true` is not a cancel either — it is an explicit "keep the amount".
 TEST(ModeTick, damage_gate_true_keeps_authored_amount)
 {
+    // The bare twin measures the authored amount; a boolean true must leave
+    // it byte-for-byte, not map it onto some other positive number.
+    GateRig bare;
+    const float bare_before = bare.hp();
+    bare.attacker->attack(bare.target);
+    const float authored_drop = bare_before - bare.hp();
+    ASSERT_GT(authored_drop, 0.0f);
+
     GateRig rig(
         "og.register_level_hooks(42, {\n"
         "  on_damage = function(target, attacker, amount)\n"
@@ -580,12 +622,22 @@ TEST(ModeTick, damage_gate_true_keeps_authored_amount)
         "})\n");
     const float before = rig.hp();
     rig.attacker->attack(rig.target);
-    EXPECT_LT(rig.hp(), before);
+    EXPECT_EQ(authored_drop, before - rig.hp())
+        << "true keeps the authored amount byte-for-byte";
+    EXPECT_TRUE(rig.fx.world().scripts().host().errors().empty())
+        << "a silently erroring gate must not pass as 'kept'";
 }
 
-// A non-number, non-boolean return keeps the amount rather than cancelling.
+// A non-number, non-boolean return keeps the amount rather than cancelling:
+// only a number replaces it, so a table counts as an absent hook.
 TEST(ModeTick, damage_gate_non_number_return_keeps_amount)
 {
+    GateRig bare;
+    const float bare_before = bare.hp();
+    bare.attacker->attack(bare.target);
+    const float authored_drop = bare_before - bare.hp();
+    ASSERT_GT(authored_drop, 0.0f);
+
     GateRig rig(
         "og.register_level_hooks(42, {\n"
         "  on_damage = function(target, attacker, amount)\n"
@@ -594,7 +646,10 @@ TEST(ModeTick, damage_gate_non_number_return_keeps_amount)
         "})\n");
     const float before = rig.hp();
     rig.attacker->attack(rig.target);
-    EXPECT_LT(rig.hp(), before);
+    EXPECT_EQ(authored_drop, before - rig.hp())
+        << "a table return keeps the authored amount byte-for-byte";
+    EXPECT_TRUE(rig.fx.world().scripts().host().errors().empty())
+        << "a table return must not be mis-handled into a Lua error";
 }
 
 // NaN compares false against everything, so the clamp's `v < 0` and
@@ -624,6 +679,12 @@ TEST(ModeTick, damage_gate_nan_replacement_is_treated_as_zero)
 
 TEST(ModeTick, damage_gate_error_keeps_authored_amount)
 {
+    GateRig bare;
+    const float bare_before = bare.hp();
+    bare.attacker->attack(bare.target);
+    const float authored_drop = bare_before - bare.hp();
+    ASSERT_GT(authored_drop, 0.0f);
+
     GateRig rig(
         "og.register_level_hooks(42, {\n"
         "  on_damage = function(target, attacker, amount)\n"
@@ -632,7 +693,15 @@ TEST(ModeTick, damage_gate_error_keeps_authored_amount)
         "})\n");
     const float before = rig.hp();
     rig.attacker->attack(rig.target);
-    EXPECT_LT(rig.hp(), before) << "R9: an erroring gate keeps the amount";
+    EXPECT_EQ(authored_drop, before - rig.hp())
+        << "R9: an erroring gate keeps the authored amount";
+    // And the hook really DID fire and error — level hooks never feed
+    // og::script::hooks::hook_failures(), so the per-world ScriptHost error
+    // store is the only place the dispatch is observable.
+    const auto& errs = rig.fx.world().scripts().host().errors();
+    ASSERT_EQ(1u, errs.size()) << "the gate must have been dispatched";
+    EXPECT_EQ("level:on_damage", errs[0].where);
+    EXPECT_NE(std::string::npos, errs[0].message.find("gate boom"));
 }
 
 // ---------------------------------------------------------------------------

@@ -829,20 +829,49 @@ TEST(CtfNetwork, multi_seat_peer_retains_every_seat_through_respawn)
     fixture.expect_clients_match_server();
 }
 
-TEST(CtfNetwork, bind_player_generic_claim_when_no_owner_tags)
+TEST(CtfNetwork, bind_player_generic_claim_takes_the_first_unclaimed_walker)
 {
-    // Classic shape: no myguy owner tags anywhere. The binding must fall back
-    // to the original first-unclaimed scan (regression guard).
+    // Classic shape: no myguy owner tags anywhere, so bind_player delegates
+    // to the legacy pool scan. With a SECOND eligible team walker appended
+    // to oblist the FIRST-unclaimed ordering the scan promises becomes
+    // observable: the earlier walker is claimed, the later one is not.
     NetworkTestFixture fixture({
         .player_count = 1,
         .level_id = 1,
     });
     fixture.load_level();
 
-    walker* control = fixture.server_control(0);
-    ASSERT_NE(nullptr, control);
-    EXPECT_EQ(0, control->user());
-    EXPECT_EQ(0, control->team_num());
+    walker* first = fixture.server_control(0);
+    ASSERT_NE(nullptr, first);
+    EXPECT_EQ(0, first->user());
+    EXPECT_EQ(0, first->team_num());
+
+    walker* second = nullptr;
+    fixture.with_server_context([&] {
+        second = fixture.server_world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, second);
+        second->setxy(static_cast<short>(first->xpos() + 32),
+                      static_cast<short>(first->ypos()));
+        second->set_team_num(first->team_num());
+        // Same pass of the scan as `first`: the first pass prefers walkers
+        // with a myguy, so the decoy must match whichever pass claimed the
+        // level's own walker. No owner tags on either.
+        if (first->myguy != nullptr)
+        {
+            second->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+            second->myguy->id = 73;
+        }
+    });
+    ASSERT_NE(nullptr, second);
+    ASSERT_NE(first, second);
+
+    fixture.rebind_players();
+
+    EXPECT_EQ(first, fixture.server_control(0))
+        << "the generic scan claims the FIRST unclaimed team walker";
+    EXPECT_EQ(0, first->user());
+    EXPECT_EQ(-1, second->user())
+        << "the later candidate stays unclaimed";
 }
 
 // [NET-R1] allied claimed-teammates-alive equivalence pin (§4.4/§4.8): under
