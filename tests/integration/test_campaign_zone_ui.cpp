@@ -3240,6 +3240,10 @@ int match_setup_wrong_id_injector(void* data)
 
 struct BlindCyclerState
 {
+    // false: the press names its landing with a trace ("acted_autosave").
+    // true: the same press with NO witness at all — the ladder then has only
+    // its re-check-before-re-press to keep the wheel from overshooting.
+    bool witnessless = false;
     bool opened = false;
     bool stepped = false;
     bool wheel_still_on_two = false;
@@ -3279,7 +3283,7 @@ int match_setup_blind_cycler_injector(void* data)
                 return wait_for_interactable_label_containing(
                     "zone_row_0", "TEAMS: 2", wait_ms);
             },
-            "acted_autosave");
+            state->witnessless ? nullptr : "acted_autosave");
         // Where the wheel actually stands once the ladder is done: one
         // press, one stop. An overshoot reads 3 or 4 here and this stays
         // false however the ladder reported.
@@ -3405,6 +3409,58 @@ TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
         << "exactly one attempt waited on a press that had already landed";
     EXPECT_EQ(0, g_click_ladder_click_retries)
         << "a landed press is never charged as a re-press";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The SAME rule for a row that publishes NO landing witness. Not every cycler
+// can name its landing — this one is asked to prove it without trying — and
+// for those the ladder's guard is the re-check it runs immediately before
+// every RE-press: the edge that arrived after the wait gave up is found
+// there, and the press is cancelled instead of sent.
+//
+// Without that re-check this flow presses a second time on a wheel that has
+// already moved, and TEAMS walks 4 -> 2 -> 3 (then 4) while the flow waits
+// for a face the row has gone by.
+TEST(CampaignZoneUi, match_setup_click_helper_recheck_saves_a_witnessless_cycler)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_edge_waits = 0;
+    g_click_ladder_edge_blinds = 0;
+
+    BlindCyclerState state;
+    state.witnessless = true;  // no landed_trace on the cycler press
+    SDL_Thread* thread = SDL_CreateThread(match_setup_blind_cycler_injector,
+                                          "zone_recheck_cycler", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.opened) << "the MATCH SETUP door still opens";
+    EXPECT_EQ(0, g_click_ladder_edge_blinds)
+        << "the injected blind must be consumed";
+    EXPECT_TRUE(state.stepped)
+        << "the re-check must report the late edge as an arrival";
+    EXPECT_TRUE(state.wheel_still_on_two)
+        << "a witnessless cycler must not be pressed again either: the "
+           "re-check found TEAMS: 2 before the re-press went out";
+    EXPECT_EQ(1, g_click_ladder_click_retries)
+        << "exactly one attempt expired with no witness and no edge";
+    EXPECT_EQ(1, g_click_ladder_edge_waits)
+        << "the second attempt waited instead of pressing, because the "
+           "re-check found the edge already there";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));

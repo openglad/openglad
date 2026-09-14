@@ -273,40 +273,6 @@ bool click_and_acknowledge_label_change(const std::string& id, int wait_ms)
     return changed && acknowledged;
 }
 
-// Click `id` until its label reads `want`. The press itself -- the
-// acknowledged pointer baseline before it, the acknowledgement after it, the
-// dropped-press accounting -- is tests/test_click_ladder.h's click_until_edge
-// now, one implementation of that rule instead of three (PR #245). The LAP is
-// still this file's, and deliberately so: these rows are cyclers, and the
-// guard that keeps a cycler from double-stepping here is the re-read of the
-// face BEFORE every press. If a press landed but its label was republished
-// only after the wait expired, the re-read sees the arrival and the flow stops
-// instead of pressing the wheel one stop PAST its target and then waiting for
-// a face the row has already gone by. (The shared ladder's own answer to this
-// is a landing TRACE; these rows publish none that arrives inside the wait --
-// "acted_autosave" was tried and observed NOT to reach the ladder on a starved
-// frame -- so the re-read is the witness that works.) Waiting for the TARGET
-// label rather than for any change is the stronger oracle the old helper
-// lacked: a label that moved to the wrong stop no longer counts as an arrival.
-bool click_until_label(const std::string& id, const std::string& want,
-                       int attempts = 3, int wait_ms = 2500)
-{
-    for (int lap = 0; lap < attempts; ++lap) {
-        if (interactable_label(id) == want)
-            return true;
-        if (click_until_edge(
-                id,
-                [&](int edge_wait_ms) {
-                    return wait_for_interactable_label(id, want, edge_wait_ms);
-                },
-                /*landed_trace=*/nullptr, /*attempts=*/1, wait_ms))
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
 // The zone submenu's rows compose "FACE - note" onto one button label, so
 // the camp-page waits match by substring (the test_campaign_zone_ui
 // idiom).
@@ -328,29 +294,6 @@ bool wait_for_interactable_label_containing(const std::string& id,
     }
     fprintf(stderr, "  [lineup] TIMEOUT waiting for '%s' label ~'%s'\n",
             id.c_str(), want.c_str());
-    return false;
-}
-
-// The substring twin of the above, same lap rule, same reason: its callers are
-// the zone submenu's TEAMS and FILL wheels.
-bool click_until_label_containing(const std::string& id,
-                                  const std::string& want, int attempts = 3,
-                                  int wait_ms = 2500)
-{
-    for (int lap = 0; lap < attempts; ++lap) {
-        if (interactable_label(id).find(want) != std::string::npos)
-            return true;
-        if (click_until_edge(
-                id,
-                [&](int edge_wait_ms) {
-                    return wait_for_interactable_label_containing(
-                        id, want, edge_wait_ms);
-                },
-                /*landed_trace=*/nullptr, /*attempts=*/1, wait_ms))
-        {
-            return true;
-        }
-    }
     return false;
 }
 
@@ -2169,7 +2112,8 @@ struct MacroRoundTripState
 // The acknowledged click, as a bounded ladder over a NAMED screen edge, is
 // tests/test_click_ladder.h's click_until_edge — this file used to carry a
 // third copy of the rule beside test_campaign_zone_ui.cpp's and
-// test_ctf_ui.cpp's. click_until_label_containing above covers a row whose own
+// test_ctf_ui.cpp's, and its two label ladders went the same way in PR #292.
+// The header's click_until_label_containing covers a row whose own
 // label moves; a door that opens another screen has no label change to wait
 // on, so it gets the same treatment against the edge that identifies the
 // destination. A press that evaporated on a starved frame then costs one

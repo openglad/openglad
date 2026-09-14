@@ -3507,6 +3507,13 @@ Sint32 change_ctf_caps()
        return MENU_OK;
    }
    og::ui::cycle_ctf_capture_limit(save);
+   // The landing witness for the injector ladders (tests/test_click_ladder.h):
+   // emitted synchronously inside the callback, BEFORE the label refresh and
+   // the autosave below, so a test can tell "the press never landed" from
+   // "the press landed on a face this wheel does not carry". Named
+   // ctf_caps_cycled rather than "ctf_caps %d" because the trace lookup is a
+   // substring match and the denial above already says "ctf_caps_denied".
+   TRACE("teams", "ctf_caps_cycled %d", static_cast<int>(save.ctf_capture_limit));
 
    refresh_scenariomenu_button_label(kScenarioMenuCtfCapsIndex,
                                      og::ui::format_ctf_score_label(save));
