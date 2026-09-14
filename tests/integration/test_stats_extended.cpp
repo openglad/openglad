@@ -395,9 +395,17 @@ TEST(StatsExtended, blocked_probes_pin_every_facing_offset_of_all_four_tables)
         {
             w.set_curdir(static_cast<signed char>(dir));
             for (int f = 0; f < 4; f++)
-                EXPECT_FALSE((st->*(fns[f].call))())
-                    << fns[f].name << " on open grass, dir " << dir
+            {
+                // The lookup and the pointer-to-member call are hoisted out
+                // of the assertion macro: GCC 13's -fsanitize=bounds reports
+                // a phantom out-of-range index on the macro-expanded form
+                // (CI ASan+UBSan lane, PR #292), with the same four probes.
+                const Fn& fn = fns[f];
+                const bool blocked = (st->*(fn.call))();
+                EXPECT_FALSE(blocked)
+                    << fn.name << " on open grass, dir " << dir
                     << ", placement " << placements[p];
+            }
         }
     }
 
@@ -424,8 +432,10 @@ TEST(StatsExtended, blocked_probes_pin_every_facing_offset_of_all_four_tables)
                         bool expected = (tx == cx && ty == cy);
                         if (dir == 8 && !default_arm_probes[f])
                             expected = false;
-                        EXPECT_EQ(expected, (st->*(fns[f].call))())
-                            << fns[f].name << " dir " << dir << " expects probe offset ("
+                        const Fn& fn = fns[f];
+                        const bool blocked = (st->*(fn.call))();
+                        EXPECT_EQ(expected, blocked)
+                            << fn.name << " dir " << dir << " expects probe offset ("
                             << dx << "," << dy << "); wall at tile (" << cx << "," << cy
                             << "), body at " << placements[p];
                     }
