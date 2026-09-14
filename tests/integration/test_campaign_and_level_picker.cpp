@@ -755,6 +755,113 @@ static int level_picker_delete_once_then_cancel_injector(void* data)
     return ok ? 0 : 1;
 }
 
+// ---------------------------------------------------------------------------
+// The press gate (src/interface/ui/level_picker.cpp:578-583).
+//
+// A REAL left press is one picker action: the loop counts it, then parks in
+// wait_for_mouse_release() -- polling get_input_events(POLL) at 1 ms -- and
+// processes nothing else until the button comes up. Every other level-picker
+// injector here drives the TESTING seam (level_picker_testing_click), which
+// never sets mymouse.left and so never reaches that gate; this probe is the
+// one that presses SDL's own button and holds it.
+constexpr Uint64 kLevelPickerHoldWindowMs = 150;
+
+struct LevelPickerHoldProbe
+{
+    std::uint64_t count_before_press = 0;
+    std::uint64_t count_after_press = 0;
+    std::uint64_t count_while_held_max = 0;
+    std::uint64_t count_after_release = 0;
+    Uint64 held_ms = 0;
+    bool left_while_held = false;
+};
+
+// press (counted) -> hold, with a seam click queued behind it -> release.
+// The seam click cannot be consumed while the picker is parked: the flag is
+// only exchanged at the top of the next iteration, which the release wait
+// gates. Delete the wait and the held button auto-repeats instead
+// (saw_left_release stays true while mymouse.left stays 1), so the count
+// climbs inside the hold window.
+static int level_picker_hold_then_release_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* probe = static_cast<LevelPickerHoldProbe*>(data);
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+    int row_x = 0;
+    int row_y = 0;
+    level_row_click_point(1, row_x, row_y);
+    if (!wait_for_level_picker_ready())
+        return 1;
+
+    probe->count_before_press = level_picker_testing_action_count();
+    if (!push_campaign_picker_mouse_event(
+            SDL_EVENT_MOUSE_BUTTON_DOWN, row_x, row_y))
+    {
+        level_picker_testing_click(-1, -1); // fail-safe abort, never a hang
+        return 2;
+    }
+    // The press is provably counted before the hold window opens, so the
+    // window observes the gate and not an unread event.
+    if (!wait_for_level_picker_counter(level_picker_testing_action_count,
+                                       probe->count_before_press))
+        return 3; // the waiter already aborted the picker
+    probe->count_after_press = level_picker_testing_action_count();
+    probe->count_while_held_max = probe->count_after_press;
+
+    // Queue the next action behind the held button. CANCEL, so that the
+    // click the gate holds back is also the one that ends the picker.
+    level_picker_testing_click(rect_center_x(layout.cancel),
+                               rect_center_y(layout.cancel));
+    const Uint64 hold_started = SDL_GetTicks();
+    while ((probe->held_ms = SDL_GetTicks() - hold_started) <
+           kLevelPickerHoldWindowMs)
+    {
+        const std::uint64_t now = level_picker_testing_action_count();
+        if (now > probe->count_while_held_max)
+            probe->count_while_held_max = now;
+        SDL_Delay(1);
+    }
+    probe->left_while_held = query_mouse_no_poll().left;
+
+    if (!push_campaign_picker_mouse_event(
+            SDL_EVENT_MOUSE_BUTTON_UP, row_x, row_y))
+    {
+        level_picker_testing_click(-1, -1);
+        return 4;
+    }
+    if (!wait_for_level_picker_counter(level_picker_testing_action_count,
+                                       probe->count_after_press))
+        return 5;
+    probe->count_after_release = level_picker_testing_action_count();
+    return 0;
+}
+
+// This is the only test that hands the shared MouseState a real held button,
+// so it must neither inherit nor leak one: a latched-down left button parks
+// the NEXT picker in its release wait for the whole 5 s poll limit.
+struct LevelPickerMouseGuard
+{
+    LevelPickerMouseGuard()
+    {
+        if (SDL_HasEvents(SDL_EVENT_MOUSE_BUTTON_DOWN,
+                          SDL_EVENT_MOUSE_BUTTON_UP))
+        {
+            ADD_FAILURE()
+                << "level picker inherited stale mouse-button events";
+        }
+        level_picker_testing_input_reset();
+    }
+
+    ~LevelPickerMouseGuard()
+    {
+        level_picker_testing_input_reset();
+        SDL_FlushEvents(SDL_EVENT_MOUSE_BUTTON_DOWN,
+                        SDL_EVENT_MOUSE_BUTTON_UP);
+        push_campaign_picker_mouse_event(SDL_EVENT_MOUSE_BUTTON_UP, 0, 0);
+        get_input_events(POLL);
+    }
+};
+
 TEST(CampaignAndLevelPicker,
      picker_helpers_and_ending_popups_and_early_exit)
 {
@@ -1420,6 +1527,66 @@ TEST(CampaignAndLevelPicker,
         << "a refused delete removes no level";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
+}
+
+// The press gate, end to end: level_picker.cpp:578-583 counts a real left
+// press as ONE action and then blocks in wait_for_mouse_release() until the
+// button comes up, so nothing queued behind it is processed while it is held.
+// Without that wait the loop re-reads the still-down button every iteration
+// (do_click = mymouse.left && saw_left_release, and saw_left_release only
+// ever turns ON), so a single physical press would fire an action per frame.
+TEST(CampaignAndLevelPicker,
+     level_picker_holds_further_actions_until_the_mouse_button_is_released)
+{
+    LevelPickerMouseGuard mouse_guard;
+
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    const std::vector<int> levels = list_levels_v();
+    ASSERT_GT(levels.size(), 1u)
+        << "the press lands on preview row 1, which needs a second level";
+    const int default_level = levels.front();
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    LevelPickerHoldProbe probe;
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_hold_then_release_injector, "level_picker_hold", &probe);
+    ASSERT_TRUE(thread != nullptr)
+        << "failed to create the level picker hold injector";
+    const int chosen =
+        pick_level(og::runtime::current_session->myscreen_, default_level,
+                   false);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    ASSERT_EQ(0, thread_result)
+        << "the press/hold/release handshake must complete: 1 = picker never "
+           "opened, 2/4 = SDL refused the button event, 3 = the press was "
+           "never counted, 5 = the held-back click never ran after release";
+    EXPECT_EQ(probe.count_before_press + 1, probe.count_after_press)
+        << "a real left press over a preview row is exactly one picker action";
+    EXPECT_TRUE(probe.left_while_held)
+        << "the probe window must run with the left button genuinely down";
+    EXPECT_GE(probe.held_ms, kLevelPickerHoldWindowMs)
+        << "the hold window must actually elapse before the release";
+    EXPECT_EQ(probe.count_after_press, probe.count_while_held_max)
+        << "while the left button is held, wait_for_mouse_release() must keep "
+           "the picker from processing ANY further action -- neither an "
+           "auto-repeat of the held press nor the click queued behind it";
+    EXPECT_EQ(probe.count_after_press + 1, probe.count_after_release)
+        << "on release the picker resumes and consumes the held-back click "
+           "exactly once";
+    EXPECT_EQ(default_level, chosen)
+        << "the held-back click was CANCEL, so the picker returns the default";
 }
 
 TEST(CampaignAndLevelPicker, level_picker_scroll_repositions_preview_entries)
