@@ -13,6 +13,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <ostream>
 #include <sstream>
 #include <string>
 
@@ -817,47 +819,158 @@ TEST(ScreenExtended, screen_damage_tile_various)
 }
 
 
-TEST(ScreenExtended, screen_multiview_lifecycle_paths)
+namespace
 {
-    og::runtime::current_session->myscreen_->ready_for_battle(2);
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->viewob[0] != nullptr && og::runtime::current_session->myscreen_->viewob[1] != nullptr) << "ready_for_battle(2) should initialize two views";
+struct PaneRect
+{
+    int x = 0, y = 0, w = 0, h = 0;
+    bool operator==(const PaneRect&) const = default;
+};
 
-    og::runtime::current_session->myscreen_->ready_for_battle(3);
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->viewob[0] != nullptr && og::runtime::current_session->myscreen_->viewob[1] != nullptr && og::runtime::current_session->myscreen_->viewob[2] != nullptr) << "ready_for_battle(3) should initialize three views";
+std::ostream& operator<<(std::ostream& os, const PaneRect& r)
+{
+    return os << '(' << r.x << ',' << r.y << ' ' << r.w << 'x' << r.h << ')';
+}
 
-    og::runtime::current_session->myscreen_->reset(4);
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->viewob[0] != nullptr && og::runtime::current_session->myscreen_->viewob[1] != nullptr &&
-                og::runtime::current_session->myscreen_->viewob[2] != nullptr && og::runtime::current_session->myscreen_->viewob[3] != nullptr) << "reset(4) should initialize four views";
+PaneRect pane_rect(const viewscreen& v)
+{
+    return {static_cast<int>(v.xloc), static_cast<int>(v.yloc),
+            static_cast<int>(v.xview), static_cast<int>(v.yview)};
+}
+} // namespace
 
-    og::runtime::current_session->myscreen_->reset(1);
+// ready_for_battle(n) / reset(n) publish n viewscreens: numviews == n, slots
+// 0..n-1 hold a view whose mynum is its own index, every higher slot is empty
+// (screen::cleanup resets all MAX_VIEWS before the rebuild), and each pane's
+// FULL-mode rect is the og::view_layout partition of the 320x200 world canvas
+// -- two side-by-side halves at 2, a full-height left half plus a stacked
+// right half at 3, quadrants at 4. A rebuild that leaks the previous view
+// set, numbers the panes wrong, or hands every seat the whole canvas fails
+// here instead of shipping overlapping split screens.
+TEST(ScreenExtended, screen_multiview_lifecycle_pins_numviews_and_every_pane_rect)
+{
+    screen& s = test_screen();
+    ASSERT_EQ(320, s.world_canvas_w()) << "the pinned rects below are the 320-wide canvas";
+    ASSERT_EQ(200, s.world_canvas_h()) << "the pinned rects below are the 200-tall canvas";
+
+    struct Case
+    {
+        const char* label;
+        short count;
+        bool via_reset;
+        PaneRect rects[4];
+    };
+    // half_w = 320/2-1 = 159, right_x = 320/2+1 = 161,
+    // half_h = 200/2-1 =  99, bottom_y = 200/2+1 = 101.
+    static const Case kCases[] = {
+        {"ready_for_battle(2)", 2, false,
+         {{0, 0, 159, 200}, {161, 0, 159, 200}, {}, {}}},
+        {"ready_for_battle(3)", 3, false,
+         {{0, 0, 159, 200}, {161, 0, 159, 99}, {161, 101, 159, 99}, {}}},
+        {"reset(4)", 4, true,
+         {{0, 0, 159, 99}, {161, 0, 159, 99}, {0, 101, 159, 99}, {161, 101, 159, 99}}},
+    };
+
+    for (const Case& c : kCases)
+    {
+        if (c.via_reset)
+            s.reset(c.count);
+        else
+            s.ready_for_battle(c.count);
+
+        ASSERT_EQ(static_cast<int>(c.count), static_cast<int>(s.numviews))
+            << c.label << ": numviews is the requested seat count";
+        for (int i = 0; i < MAX_VIEWS; i++)
+        {
+            if (i < c.count)
+            {
+                ASSERT_NE(nullptr, s.viewob[i])
+                    << c.label << ": seat " << i << " has a view";
+                EXPECT_EQ(i, static_cast<int>(s.viewob[i]->mynum))
+                    << c.label << ": view " << i << " carries its own seat number";
+            }
+            else
+            {
+                EXPECT_EQ(nullptr, s.viewob[i])
+                    << c.label << ": slot " << i
+                    << " must be cleared, not left over from the previous set";
+            }
+        }
+        for (int i = 0; i < c.count; i++)
+        {
+            // The constructor rect is immediately re-derived from each
+            // player's saved PREF_VIEW; ask for FULL explicitly so the pinned
+            // numbers are the layout partition and not a saved HUD inset.
+            s.viewob[i]->resize(PREF_VIEW_FULL);
+            EXPECT_EQ(c.rects[i], pane_rect(*s.viewob[i]))
+                << c.label << ": seat " << i << "'s FULL pane rect";
+            EXPECT_EQ(c.rects[i].x + c.rects[i].w, static_cast<int>(s.viewob[i]->endx))
+                << c.label << ": seat " << i << "'s endx is xloc + xview";
+            EXPECT_EQ(c.rects[i].y + c.rects[i].h, static_cast<int>(s.viewob[i]->endy))
+                << c.label << ": seat " << i << "'s endy is yloc + yview";
+        }
+    }
+
+    s.reset(1);
+    EXPECT_EQ(1, static_cast<int>(s.numviews)) << "and back to a single seat";
+    EXPECT_EQ(nullptr, s.viewob[1]) << "the second pane is gone again";
 }
 
 
-TEST(ScreenExtended, screen_find_nearest_player_and_draw_panels)
+// find_nearest_player returns the CLOSEST user-controlled walker, and
+// draw_panels(n) repaints the frame: it clears the buffer and runs the full
+// redraw(), whose draw_panel_chrome leg draws each non-FULL view's border.
+// That border is the observable -- a draw_panels that stops redrawing (or a
+// chrome leg that ignores the view pref) leaves the trace empty.
+TEST(ScreenExtended, screen_find_nearest_player_and_draw_panels_repaint_the_view_chrome)
 {
     auto seeker = make_walker_at(FAMILY_SOLDIER, 20, 20, 1);
     auto p1 = make_walker_at(FAMILY_ARCHER, 24, 20, 0);
     auto p2 = make_walker_at(FAMILY_MAGE, 200, 160, 0);
-    ASSERT_TRUE(seeker && p1 && p2) << "test walkers should be created";
-    if (!seeker || !p1 || !p2)
-    {
-        return;
-    }
+    ASSERT_NE(nullptr, seeker) << "the seeker walker must be created";
+    ASSERT_NE(nullptr, p1) << "the near player walker must be created";
+    ASSERT_NE(nullptr, p2) << "the far player walker must be created";
 
     walker* p1p = p1.get();
+    walker* p2p = p2.get();
 
     p1p->set_user(0);
     p2->set_user(1);
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(p1));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(p2));
+    screen& s = test_screen();
+    s.world().oblist.push_back(std::move(p1));
+    s.world().oblist.push_back(std::move(p2));
 
-    walker* nearest = og::runtime::current_session->myscreen_->world().find_nearest_player(seeker.get());
-    ASSERT_TRUE(nearest == p1p) << "nearest player should be the closest user-controlled walker";
+    EXPECT_EQ(p1p, s.world().find_nearest_player(seeker.get()))
+        << "nearest player should be the closest user-controlled walker";
+    // Positive control for that oracle: with the near player retired, the
+    // same call must fall through to the far one rather than to nullptr.
+    p1p->set_user(-1);
+    EXPECT_EQ(p2p, s.world().find_nearest_player(seeker.get()))
+        << "with no near user left, the far user-controlled walker wins";
+    p1p->set_user(0);
 
-    og::runtime::current_session->myscreen_->draw_panels(1);
+    s.ready_for_battle(1);
+    ASSERT_EQ(1, static_cast<int>(s.numviews)) << "one seat for the chrome pins below";
+    ASSERT_NE(nullptr, s.viewob[0]) << "and it has a view";
+    const signed char old_view_pref = s.viewob[0]->prefs[PREF_VIEW];
 
-    og::runtime::current_session->myscreen_->world().oblist.pop_back();
-    og::runtime::current_session->myscreen_->world().oblist.pop_back();
+    s.viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_PANELS;
+    trace_clear();
+    s.draw_panels(1);
+    EXPECT_TRUE(trace_contains("hud", "panel_border view=0"))
+        << "draw_panels must run the redraw that frames a panelled view";
+
+    // Negative control: a FULL-screen view has no border to draw, so the
+    // trace above is the pref-driven branch and not an unconditional emit.
+    s.viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_FULL;
+    trace_clear();
+    s.draw_panels(1);
+    EXPECT_FALSE(trace_contains("hud", "panel_border"))
+        << "a FULL view must not be framed";
+
+    s.viewob[0]->prefs[PREF_VIEW] = old_view_pref;
+    s.world().oblist.pop_back();
+    s.world().oblist.pop_back();
 }
 
 

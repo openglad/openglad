@@ -10,12 +10,22 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-// Test: Guy constructors create characters with correct family defaults
+// Test: Guy constructors create characters with correct family defaults.
+// The full per-family base-stat table lives in
+// GuyCalcs.guy_family_constructor_applies_each_familys_base_stat_block; this
+// case pins the family/name pairing plus the soldier's exact sheet, so a
+// constructor that hands every family the BEAST fallback {12,6,12,8,6} (armor
+// 6, not 9) is caught here too.
 TEST(Guy, creation) {
     guy soldier(FAMILY_SOLDIER);
     ASSERT_EQ(FAMILY_SOLDIER, soldier.family) << "soldier should have soldier family";
     ASSERT_STREQ("SOLDIER", soldier.name.c_str()) << "soldier should be named SOLDIER";
-    ASSERT_TRUE(soldier.strength > 0) << "soldier should have positive strength";
+    EXPECT_EQ(12, (int)soldier.strength) << "soldier base STR is 12";
+    EXPECT_EQ(6, (int)soldier.dexterity) << "soldier base DEX is 6";
+    EXPECT_EQ(12, (int)soldier.constitution) << "soldier base CON is 12";
+    EXPECT_EQ(8, (int)soldier.intelligence) << "soldier base INT is 8";
+    EXPECT_EQ(9, (int)soldier.armor) << "soldier base ARMOR is 9 (the BEAST fallback would be 6)";
+    EXPECT_EQ(1, (int)soldier.level) << "a fresh soldier is level 1";
 
     guy archer(FAMILY_ARCHER);
     ASSERT_EQ(FAMILY_ARCHER, archer.family) << "archer should have archer family";
