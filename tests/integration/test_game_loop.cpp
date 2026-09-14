@@ -5579,6 +5579,294 @@ void record(const char* name, int scen, WeatherKind kind, int frames,
     s->world().delete_objects();
 }
 
+// ---------------------------------------------------------------------------
+// P5 clinic scene: an AI cleric whose pool is too thin to price a heal.
+//
+// The rule under film (PR #292 P5): a HEAL that the engine's slot gate
+// approved must LAND. compute_heal_amount (src/core/combat_math.cpp) prices
+// the pool-scaled surcharge at (mp/4 + rand(mp/4))/2, which is 0 for every
+// trunc(mp) < 8, so before the fix heal_or_mace breaks out on `cost <= 0`,
+// heals nobody and returns false: a silent fizzle for a cast the gate let
+// through. Both tells of a landed heal are REPLICATED, which is what makes
+// this filmable at all — the EventKind::Notification "Cleric healed 1 man!"
+// that the display session turns into a viewport line (screen.cpp's
+// Notification arm -> viewscreen::set_display_text) and the patient's
+// mirrored hitpoints, drawn as the mini HP bar. The green heal number is not
+// replicated and never paints, so it is not the tell.
+//
+// The patient is the SEAT'S OWN walker, not "the first soldier on team 0":
+// gladiator level 1 deploys team-0 NPCs of its own beside the roster, the
+// camera follows the seat's control, and hurting the wrong soldier films an
+// empty field while the clinic happens off screen.
+//
+// Boundary pool = 3.0 MP. The HEAL slot's mp_cost is 2, so the pool must be
+// >= 2 or walker::special denies at the gate and nothing dispatches (that is
+// a different refusal, with nothing to film); at 3 the surcharge prices at 0,
+// which is exactly the (mp 3) pair P5's own regression test uses. Any pool in
+// [2,7] shows the same thing.
+//
+// FILM-ONLY CONSTRAINTS, all applied on the SERVER world (the authoritative
+// one; the mirror re-syncs from its snapshots every tick, so a mirror write
+// would just be overwritten):
+//   * the pool is re-pinned every frame, so regen can never carry it up out
+//     of the trunc(mp) < 8 band and turn the refusal into "it just needed a
+//     moment"; one tick's regen can still land before the cast, so the value
+//     AT the cast is 3 or a little more, never the pinned 3 exactly, and the
+//     scene says nothing about pool growth over time;
+//   * the patient's HP regen is stopped, so the HP bar in the film is flat
+//     unless a heal lands (regen would otherwise refill it slowly in the
+//     refusal cut too, and would make "the patient's HP rose" a lie).
+//     Zeroing heal_per_round is not enough: compute_regen_tick also adds a
+//     flat +1 whenever the heal delay reaches its ceiling, so the ceiling is
+//     pushed out of reach as well;
+//   * the cleric is re-anchored beside the patient every frame. It acts
+//     normally (ACT_RANDOM, one special roll in five), but an AI that wanders
+//     out of the 60 px heal_range takes the clinic off camera; the anchor is
+//     re-applied BEFORE the tick, so the cleric still steps, faces and
+//     animates on its own from there.
+struct ClericClinicResult
+{
+    int frames_run = 0;
+    bool saw_heal_line = false;
+    int heal_line_frame = -1;
+    std::string heal_line;
+    float patient_hp_frame0 = -1.0f;
+    float patient_max_hp = -1.0f;
+    float patient_hp_peak = -1.0f;
+    int cleric_patient_gap = -1;
+    int blank_frame = -1;
+};
+
+// The seat's own walker — the one the camera follows.
+walker* find_seat_control(GameWorld& w)
+{
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            a->query_order() == Order::Living && a->user() != -1)
+            return a;
+    return nullptr;
+}
+
+walker* find_team_family(GameWorld& w, unsigned char team, int family)
+{
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            a->query_order() == Order::Living &&
+            a->team_num() == team &&
+            a->family() == static_cast<char>(family))
+            return a;
+    return nullptr;
+}
+
+// Empty the level down to the clinic: the patient, the cleric, and ONE
+// hostile kept as a dormant sentinel rather than removed. A world with no
+// live hostile Living reads level_done == 2 on its first tick and wins the
+// level before frame 1 (game_world.cpp's `level_done == 2` arm); a dormant
+// walker never acts and never draws, but its arm of the same scan sets
+// level_done = 0, so it holds the level open for the whole film. Generators
+// go too — nothing may spawn into the recording.
+void clear_level_to_clinic(GameWorld& w, std::uint32_t patient_id,
+                           std::uint32_t cleric_id)
+{
+    std::vector<walker*> doomed;
+    walker* sentinel = nullptr;
+    for (auto& up : w.oblist)
+    {
+        walker* a = up.get();
+        if (a == nullptr || a->entity_id() == patient_id ||
+            a->entity_id() == cleric_id)
+            continue;
+        if (a->query_order() != Order::Living &&
+            a->query_order() != Order::Generator)
+            continue;
+        if (a->query_order() == Order::Living && sentinel == nullptr)
+        {
+            sentinel = a; // the level's own foe count needs one survivor
+            continue;
+        }
+        doomed.push_back(a);
+    }
+    for (walker* a : doomed)
+        w.remove_ob(a);
+    if (sentinel != nullptr)
+    {
+        sentinel->set_spawn_delay(65535);
+        sentinel->set_dormant(true);
+    }
+}
+
+// Freeze a walker's HP where it stands: compute_regen_tick adds per_round
+// every tick AND a flat +1 whenever current_heal_delay reaches max_heal_delay,
+// so the ceiling has to move out of reach too, or the bar creeps up on its own.
+void stop_hp_regen(walker* w)
+{
+    w->stats()->set_heal_per_round(0.0f);
+    w->stats()->set_current_heal_delay(0);
+    w->stats()->set_max_heal_delay(1000000000);
+}
+
+// A frame that composed at all has more than one colour in the viewport.
+bool viewport_is_blank(screen* s)
+{
+    viewscreen* vs = s->viewob[0].get();
+    Uint8 r0, g0, b0;
+    s->get_pixel(vs->xloc, vs->yloc, &r0, &g0, &b0);
+    for (int j = 0; j < vs->yview; j += 8)
+        for (int i = 0; i < vs->xview; i += 8)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(vs->xloc + i, vs->yloc + j, &r, &g, &b);
+            if (r != r0 || g != g0 || b != b0)
+                return false;
+        }
+    return true;
+}
+
+void record_cleric_low_magic_heal(ClericClinicResult& out, float pinned_mp,
+                                  int frames)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    build_save(s, "gladiator", 1, 1, {FAMILY_SOLDIER, FAMILY_CLERIC}, 4);
+    glad_init();
+    all_capture_effects_on();
+    // The patient's mini HP bar IS the film's motion; make the toggle
+    // explicit rather than leaning on the shipped default.
+    cfg.apply_setting("effects", "mini_hp_bar", "on");
+    force_weather(WeatherKind::None);
+
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            *og::runtime::current_game_session);
+    ASSERT_NE(nullptr, server) << "the clinic scene needs the authoritative "
+                                  "server world of the transport shadow";
+
+    walker* const server_patient = find_seat_control(server->world());
+    ASSERT_NE(nullptr, server_patient)
+        << "the seat's control walker is the patient and the camera subject";
+    walker* const server_cleric =
+        find_team_family(server->world(), 0, FAMILY_CLERIC);
+    ASSERT_NE(nullptr, server_cleric)
+        << "the roster's cleric must be in the world";
+    const std::uint32_t patient_id = server_patient->entity_id();
+    const std::uint32_t cleric_id = server_cleric->entity_id();
+
+    // Server first, mirror second (the force_weather / epic-battles
+    // precedent): the server decides, the mirror is only kept from painting a
+    // frame 0 that disagrees with it.
+    for (screen* target : {server, s})
+    {
+        GameWorld& w = target->world();
+        clear_level_to_clinic(w, patient_id, cleric_id);
+        // Losing a level-placed team-0 NPC is a SAVE_ALL loss on the levels
+        // that carry the bit, which would cut the film at frame 1 (the
+        // epic-battles scenes strip it for the same reason).
+        w.type = static_cast<char>(w.type & ~SCEN_TYPE_SAVE_ALL);
+        walker* patient = w.find_by_id(patient_id);
+        walker* cleric = w.find_by_id(cleric_id);
+        ASSERT_NE(nullptr, patient);
+        ASSERT_NE(nullptr, cleric);
+        patient->stats()->set_hitpoints(
+            0.2f * patient->stats()->max_hitpoints());
+        stop_hp_regen(patient);
+        cleric->stats()->set_magicpoints(pinned_mp);
+        // og.tuning(cleric).heal_range is 60 px (living-05-cleric.lua) and
+        // both the AI gate (check_special_ai) and the special itself acquire
+        // friends with it; deploy markers are further apart than that.
+        cleric->setxy(static_cast<std::int32_t>(patient->xpos()) + 20,
+                      static_cast<std::int32_t>(patient->ypos()));
+    }
+
+    const bool capturing = getenv("OG_FX_CAPTURE_DIR") != nullptr;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int f = 0; f < frames; f++)
+    {
+        // Re-find every frame: entity pointers do not survive a tick.
+        walker* const patient = server->world().find_by_id(patient_id);
+        walker* const cleric = server->world().find_by_id(cleric_id);
+        if (patient != nullptr && cleric != nullptr)
+        {
+            stop_hp_regen(patient);
+            cleric->stats()->set_magicpoints(pinned_mp);
+            cleric->setxy(static_cast<std::int32_t>(patient->xpos()) + 20,
+                          static_cast<std::int32_t>(patient->ypos()));
+            const long dx = static_cast<long>(cleric->xpos()) - patient->xpos();
+            const long dy = static_cast<long>(cleric->ypos()) - patient->ypos();
+            const int gap = static_cast<int>(std::lround(
+                std::sqrt(static_cast<double>(dx * dx + dy * dy))));
+            if (gap > out.cleric_patient_gap)
+                out.cleric_patient_gap = gap;
+        }
+
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        out.frames_run = f + 1;
+
+        if (capturing)
+        {
+            s->redraw();
+            s->swap();
+            // The dump happens BEFORE the rule assertion (and every frame,
+            // red run or not) so the "before" cut is written even on the run
+            // whose point is the refusal.
+            dump_viewport(s, "cleric_low_magic_heal", f);
+            if (out.blank_frame < 0 && viewport_is_blank(s))
+                out.blank_frame = f;
+        }
+
+        if (walker* mirror_patient = s->world().find_by_id(patient_id))
+        {
+            const float hp = mirror_patient->stats()->hitpoints();
+            if (f == 0)
+            {
+                out.patient_hp_frame0 = hp;
+                out.patient_max_hp = mirror_patient->stats()->max_hitpoints();
+                out.patient_hp_peak = hp;
+            }
+            else if (hp > out.patient_hp_peak)
+                out.patient_hp_peak = hp;
+        }
+
+        // The replicated tell, read where a player reads it: the display
+        // session's own viewport message feed.
+        viewscreen* const vs = s->viewob[0].get();
+        for (int i = 0; vs != nullptr && i < MAX_MESSAGES && !out.saw_heal_line;
+             i++)
+        {
+            if (vs->textlist[i].rfind("Cleric healed", 0) != 0)
+                continue;
+            out.saw_heal_line = true;
+            out.heal_line_frame = f;
+            out.heal_line = vs->textlist[i];
+        }
+
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+
+    if (capturing)
+    {
+        // The capture script reads these back to build its concat list (it
+        // holds the first heal frame; the refusal cut has none, i.e. -1).
+        printf("p5 clinic: frames=%d heal_frame=%d hp0=%.1f hp_peak=%.1f "
+               "hp_max=%.1f gap=%d line=\"%s\"\n",
+               out.frames_run, out.heal_line_frame,
+               static_cast<double>(out.patient_hp_frame0),
+               static_cast<double>(out.patient_hp_peak),
+               static_cast<double>(out.patient_max_hp),
+               out.cleric_patient_gap, out.heal_line.c_str());
+        fflush(stdout);
+    }
+
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
 } // namespace gameplay_rec
 
 TEST(GameLoop, zz_capture_real_gameplay)
@@ -5591,6 +5879,57 @@ TEST(GameLoop, zz_capture_real_gameplay)
     // Level 6 is the wateriest early level (terrain-scanned): shoreline
     // ripples and reflections show up in real combat there.
     gameplay_rec::record("gameplay_water", 6, WeatherKind::Clouds, 200, 0);
+}
+
+// The P5 clinic, filmed and pinned. Unlike its zz_capture siblings this one
+// SIMULATES unconditionally (only the PPM dump is gated on OG_FX_CAPTURE_DIR)
+// because it is also the session-level regression for P5: it pins that a
+// low-magic AI cleric's heal reaches the DISPLAY mirror as the replicated
+// notification and as a rising ally HP. It is red by design until the P5 fix
+// lands (the cast fizzles), which is the "before" the film records.
+TEST(GameLoop, zz_capture_cleric_low_magic_heal)
+{
+    const std::filesystem::path save0_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    og::test::ScopedPhysicalFileState save0_restore(save0_path);
+    ASSERT_TRUE(save0_restore.ready())
+        << "failed to snapshot save0: " << save0_restore.error().message();
+
+    gameplay_rec::ClericClinicResult clinic;
+    gameplay_rec::record_cleric_low_magic_heal(clinic, 3.0f, 240);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+
+    // --- setup sanity: the scene really staged what it claims to film ---
+    ASSERT_EQ(240, clinic.frames_run)
+        << "the clinic level must stay open for the whole recording";
+    ASSERT_LT(clinic.patient_hp_frame0, clinic.patient_max_hp)
+        << "the patient must reach the display mirror already hurt: "
+        << clinic.patient_hp_frame0 << " of " << clinic.patient_max_hp;
+    ASSERT_LT(clinic.cleric_patient_gap, 60)
+        << "the cleric must stay inside og.tuning heal_range (60 px) of the "
+           "patient for the whole scene, else the AI gate stops proposing a "
+           "heal; widest measured gap "
+        << clinic.cleric_patient_gap << " px";
+    ASSERT_EQ(-1, clinic.blank_frame)
+        << "frame " << clinic.blank_frame << " dumped a single-colour "
+           "viewport (nothing composed)";
+
+    // --- the P5 rule at the replicated surface ---
+    EXPECT_TRUE(clinic.saw_heal_line)
+        << "no \"Cleric healed\" notification reached the display session in "
+        << clinic.frames_run
+        << " frames: the AI cleric's heal was approved by the slot gate and "
+           "then fizzled (P5 — heal_or_mace breaks out on a zero surcharge)";
+    if (clinic.saw_heal_line)
+    {
+        EXPECT_EQ("Cleric healed 1 man!", clinic.heal_line)
+            << "one hurt ally in range must read as exactly one healed man";
+    }
+    EXPECT_GT(clinic.patient_hp_peak, clinic.patient_hp_frame0)
+        << "the patient's mirrored HP never rose above its frame-0 value "
+        << clinic.patient_hp_frame0
+        << " (this scene stops the patient's HP regen, so the only thing "
+           "that can raise it is a landed heal)";
 }
 
 TEST(GameLoop, zz_capture_splitscreen_gameplay)
