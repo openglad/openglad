@@ -206,6 +206,61 @@ std::vector<int> snapshot_indices(int x, int y, int w, int h)
     return out;
 }
 
+// The whole 256-entry palette, put back even when an assertion fires: a case
+// that rotates or writes palette registers otherwise cascades into every later
+// index readback in this binary.
+struct ScopedPalette
+{
+    std::array<std::array<int, 3>, 256> saved{};
+
+    ScopedPalette()
+    {
+        for (int i = 0; i < 256; i++)
+            query_palette_reg(static_cast<unsigned char>(i), &saved[static_cast<std::size_t>(i)][0],
+                              &saved[static_cast<std::size_t>(i)][1],
+                              &saved[static_cast<std::size_t>(i)][2]);
+    }
+    ~ScopedPalette()
+    {
+        for (int i = 0; i < 256; i++)
+            set_palette_reg(static_cast<unsigned char>(i), saved[static_cast<std::size_t>(i)][0],
+                            saved[static_cast<std::size_t>(i)][1],
+                            saved[static_cast<std::size_t>(i)][2]);
+    }
+    ScopedPalette(const ScopedPalette&) = delete;
+    ScopedPalette& operator=(const ScopedPalette&) = delete;
+};
+
+// screen::numviews and a view's PREF_VIEW are process-wide layout state that
+// later cases in this binary read; restore both on the way out, failure or not.
+struct ScopedViewPrefs
+{
+    screen* scr;
+    short saved_numviews;
+    std::array<signed char, 4> saved_pref{};
+    std::array<bool, 4> had_view{};
+
+    explicit ScopedViewPrefs(screen* s_)
+        : scr(s_), saved_numviews(s_->numviews)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            had_view[static_cast<std::size_t>(i)] = (scr->viewob[i] != nullptr);
+            if (had_view[static_cast<std::size_t>(i)])
+                saved_pref[static_cast<std::size_t>(i)] = scr->viewob[i]->prefs[PREF_VIEW];
+        }
+    }
+    ~ScopedViewPrefs()
+    {
+        for (int i = 0; i < 4; i++)
+            if (had_view[static_cast<std::size_t>(i)] && scr->viewob[i] != nullptr)
+                scr->viewob[i]->prefs[PREF_VIEW] = saved_pref[static_cast<std::size_t>(i)];
+        scr->numviews = saved_numviews;
+    }
+    ScopedViewPrefs(const ScopedViewPrefs&) = delete;
+    ScopedViewPrefs& operator=(const ScopedViewPrefs&) = delete;
+};
+
 PixieData make_test_pixie_data(unsigned char frames = 1,
                                unsigned char w = 2,
                                unsigned char h = 2,
@@ -232,15 +287,63 @@ TEST(MassCoverage, vbutton_ctor_func_code) {
     ASSERT_EQ(999, b.myfunc) << "func ctor should set myfunc";
 }
 
-TEST(MassCoverage, vbutton_ctor_family) {
-    vbutton b(3, 3, 20, 10, 1, 0, "gfx", 0, KEYSTATE_UNKNOWN);
-    ASSERT_TRUE(b.mypixie != nullptr) << "family ctor should allocate pixie";
+// The family ctor loads the Order::Button1 graphic for `family` and RESIZES
+// the button to it: the wide/high arguments are overwritten by the pixie's own
+// dimensions and xend/yend recomputed from them
+// (src/interface/ui/button.cpp, the family ctor).
+TEST(MassCoverage, vbutton_ctor_family_takes_its_size_from_the_family_graphic) {
+    vbutton b(3, 3, 20, 10, 1, 0, "gfx", FAMILY_NORMAL1, KEYSTATE_UNKNOWN);
+    ASSERT_NE(nullptr, b.mypixie.get()) << "family ctor should allocate pixie";
+    EXPECT_EQ(static_cast<int>(b.mypixie->sizex), static_cast<int>(b.width))
+        << "the passed width is discarded for the graphic's";
+    EXPECT_EQ(static_cast<int>(b.mypixie->sizey), static_cast<int>(b.height))
+        << "the passed height is discarded for the graphic's";
+    EXPECT_EQ(3 + static_cast<int>(b.width), static_cast<int>(b.xend))
+        << "xend follows the graphic width, not the passed one";
+    EXPECT_EQ(3 + static_cast<int>(b.height), static_cast<int>(b.yend))
+        << "yend follows the graphic height, not the passed one";
+
+    // Number-free proof that the passed size never survives: a second button
+    // asking for a wildly different box comes out the same size.
+    vbutton wide(3, 3, 77, 55, 1, 0, "gfx", FAMILY_NORMAL1, KEYSTATE_UNKNOWN);
+    EXPECT_EQ(static_cast<int>(b.width), static_cast<int>(wide.width))
+        << "two buttons on the same family graphic have the same width";
+    EXPECT_EQ(static_cast<int>(b.height), static_cast<int>(wide.height))
+        << "two buttons on the same family graphic have the same height";
+
+    // And that the family byte actually selects WHICH graphic: normal1.png is
+    // the 140x20 menu plate, butplus.png the 16x12 stepper.
+    vbutton plus(3, 3, 20, 10, 1, 0, "gfx", FAMILY_PLUS, KEYSTATE_UNKNOWN);
+    ASSERT_NE(nullptr, plus.mypixie.get()) << "family ctor should allocate pixie";
+    EXPECT_NE(static_cast<int>(b.width), static_cast<int>(plus.width))
+        << "a different family byte must load a different graphic";
 }
 
-TEST(MassCoverage, vbutton_set_graphic) {
+// set_graphic(family) is the same rule applied after construction: it replaces
+// the pixie and re-derives width/height/xend/yend from it
+// (src/interface/ui/button.cpp vbutton::set_graphic).
+TEST(MassCoverage, vbutton_set_graphic_resizes_the_button_to_the_new_graphic) {
     vbutton b(3, 3, 20, 10, 1, 0, "gfx2", KEYSTATE_UNKNOWN);
-    b.set_graphic(0);
-    ASSERT_TRUE(b.mypixie != nullptr) << "set_graphic should allocate pixie";
+    ASSERT_EQ(nullptr, b.mypixie.get()) << "setup: the plain ctor carries no graphic";
+    ASSERT_EQ(20, static_cast<int>(b.width)) << "setup: the plain ctor keeps the passed width";
+
+    b.set_graphic(FAMILY_PLUS);
+    ASSERT_NE(nullptr, b.mypixie.get()) << "set_graphic should allocate pixie";
+    const int plus_w = static_cast<int>(b.mypixie->sizex);
+    const int plus_h = static_cast<int>(b.mypixie->sizey);
+    EXPECT_EQ(plus_w, static_cast<int>(b.width)) << "set_graphic resizes to the graphic";
+    EXPECT_EQ(plus_h, static_cast<int>(b.height)) << "set_graphic resizes to the graphic";
+    EXPECT_EQ(3 + plus_w, static_cast<int>(b.xend)) << "xend is re-derived from the new width";
+    EXPECT_EQ(3 + plus_h, static_cast<int>(b.yend)) << "yend is re-derived from the new height";
+
+    // A second call swaps the graphic and the size again -- the button is not
+    // stuck on whatever it loaded first.
+    b.set_graphic(FAMILY_NORMAL1);
+    EXPECT_NE(plus_w, static_cast<int>(b.width)) << "set_graphic must reload, not keep the old size";
+    EXPECT_EQ(static_cast<int>(b.mypixie->sizex), static_cast<int>(b.width))
+        << "the new width is the new graphic's";
+    EXPECT_EQ(3 + static_cast<int>(b.width), static_cast<int>(b.xend))
+        << "xend follows the new width";
 }
 
 TEST(MassCoverage, vbutton_rightclick_buttons) {
@@ -425,6 +528,7 @@ TEST(MassCoverage, screen_redraw_runs_the_panel_chrome_pass) {
     screen* s = og::runtime::current_session->myscreen_;
     s->ready_for_battle(1);
     ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+    ScopedViewPrefs restore_views(s);
 
     s->viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_PANELS;
     trace_clear();
@@ -447,12 +551,12 @@ TEST(MassCoverage, screen_refresh_presents_the_canvas_and_skips_when_no_views) {
     s->ready_for_battle(1);
     ASSERT_TRUE(s->window_is_black())
         << "setup: every integration test starts from a black window";
+    ScopedViewPrefs restore_views(s);
 
-    const short saved_numviews = s->numviews;
     s->numviews = 0;
     s->refresh();
     ASSERT_TRUE(s->window_is_black()) << "refresh with no views must present nothing";
-    s->numviews = saved_numviews;
+    s->numviews = restore_views.saved_numviews;
 
     ASSERT_LT(0, static_cast<int>(s->numviews)) << "setup: at least one view must exist";
     s->clearbuffer();
@@ -633,6 +737,7 @@ TEST(MassCoverage, screen_draw_panels_repaints_through_redraw) {
     screen* s = og::runtime::current_session->myscreen_;
     s->ready_for_battle(1);
     ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
+    ScopedViewPrefs restore_views(s);
     s->viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_PANELS;
 
     trace_clear();
@@ -649,6 +754,7 @@ TEST(MassCoverage, screen_draw_panels_frames_every_non_full_view) {
     s->ready_for_battle(2);
     ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
     ASSERT_NE(nullptr, s->viewob[1].get()) << "setup: view 1 must exist";
+    ScopedViewPrefs restore_views(s);
 
     s->viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_PANELS;
     s->viewob[1]->prefs[PREF_VIEW] = PREF_VIEW_1;
@@ -999,9 +1105,7 @@ TEST(MassCoverage, find_follow_leader_prefers_active_multiview_control) {
 
 TEST(MassCoverage, pixie_render_paths) {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(vs != nullptr) << "viewscreen should exist";
-    if (!vs)
-        return;
+    ASSERT_NE(nullptr, vs) << "viewscreen should exist";
 
     PixieData data = make_test_pixie_data(1, 3, 2, 40);
     pixie p(data);
@@ -1070,9 +1174,7 @@ TEST(MassCoverage, pixie_backed_entity_constructors_set_orders_and_sizes) {
 
 TEST(MassCoverage, pixien_and_level_render_paths) {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(vs != nullptr) << "viewscreen should exist";
-    if (!vs)
-        return;
+    ASSERT_NE(nullptr, vs) << "viewscreen should exist";
 
     PixieData animated = make_test_pixie_data(3, 2, 1, 60);
     pixieN frames(animated, 1);
@@ -1094,9 +1196,7 @@ TEST(MassCoverage, pixien_and_level_render_paths) {
         tiles[static_cast<std::size_t>(i)] = make_test_pixie_data(1, 1, 1, static_cast<unsigned char>(i));
 
     auto render = create_sdl_level_render(tiles.data());
-    ASSERT_TRUE(render != nullptr) << "SDL level renderer should be created";
-    if (!render)
-        return;
+    ASSERT_NE(nullptr, render.get()) << "SDL level renderer should be created";
 
     render->draw_tile(0, 0, 0, vs);
     render->draw_tile(PIX_WATER1, 4, 4, vs);
@@ -1559,14 +1659,23 @@ TEST(MassCoverage, video_do_cycle_rotates_the_orange_and_water_bands_by_one) {
 // curmode % maxmode == 0 (src/platform/sdl/video_sdl.cpp sdl_video::do_cycle).
 TEST(MassCoverage, video_do_cycle_off_beat_leaves_the_palette_alone) {
     screen* s = og::runtime::current_session->myscreen_;
+    // A do_cycle that rotated off the beat would leave this binary's palette
+    // one step out for every later index readback, so the whole palette goes
+    // back on the way out whether the assertions below pass or fail.
+    ScopedPalette restore_palette;
     std::array<int, 3> before{};
     query_palette_reg(ORANGE_START, &before[0], &before[1], &before[2]);
+    std::array<int, 3> water_before{};
+    query_palette_reg(WATER_START, &water_before[0], &water_before[1], &water_before[2]);
 
     s->do_cycle(1, 4);
 
     std::array<int, 3> after{};
     query_palette_reg(ORANGE_START, &after[0], &after[1], &after[2]);
     ASSERT_EQ(before, after) << "only curmode % maxmode == 0 may rotate the palette";
+    std::array<int, 3> water_after{};
+    query_palette_reg(WATER_START, &water_after[0], &water_after[1], &water_after[2]);
+    ASSERT_EQ(water_before, water_after) << "the water band is gated on the same beat";
 }
 
 // putdata(x,y,w,h,pixels) walks the source row-major and draws each NON-ZERO
@@ -2066,7 +2175,6 @@ TEST(MassCoverage, video_get_pixel_index_returns_and_writes_the_palette_index) {
 TEST(MassCoverage, video_get_pixel_offset_splits_the_offset_by_the_canvas_width) {
     screen* s = og::runtime::current_session->myscreen_;
     const int cw = s->canvas_w();
-    const int ch = s->canvas_h();
     s->clearbuffer();
     s->point(1, 1, RED);
     s->point(3, 2, DARK_GREEN);
@@ -2077,8 +2185,23 @@ TEST(MassCoverage, video_get_pixel_offset_splits_the_offset_by_the_canvas_width)
         << "offset 2*cw+3 must be row 2, column 3";
     ASSERT_EQ(pal_readback_index(PURE_BLACK), s->get_pixel(1))
         << "offset 1 is row 0, column 1 -- still unpainted";
-    ASSERT_EQ(0, s->get_pixel(-1)) << "a negative offset is rejected";
-    ASSERT_EQ(0, s->get_pixel(cw * ch)) << "one past the last pixel is rejected";
+
+    // The row split is the whole rule, so it is pinned twice more, once with a
+    // painted pixel at the END of a row and once at the start of the next: an
+    // off-by-one in the width would swap these two readings.
+    s->point(cw - 1, 4, WHITE);
+    s->point(0, 5, YELLOW);
+    ASSERT_EQ(pal_readback_index(WHITE), s->get_pixel(5 * cw - 1))
+        << "offset 5*cw-1 is the last column of row 4";
+    ASSERT_EQ(pal_readback_index(YELLOW), s->get_pixel(5 * cw))
+        << "offset 5*cw is the first column of row 5";
+
+    // NOTE (test-teeth audit): the out-of-range arms (offset < 0, offset >=
+    // w*h) used to be pinned here as `ASSERT_EQ(0, ...)`. They cannot fail:
+    // with the guard removed, get_pixel(x,y) bounds-checks the same read and
+    // answers with the index of black, which IS 0. There is no observable that
+    // separates the guard from its absence through this API, so the
+    // documentation-strength assertions are gone rather than pretending.
 }
 // save_screenshot() composes the frame, writes it to the user write directory
 // and reports whether the write succeeded (src/platform/sdl/video_sdl.cpp
@@ -2961,8 +3084,7 @@ TEST(MassCoverage, text_write_char_xy_view_blits_at_the_view_origin) {
 TEST(MassCoverage, obmap_debug_draw_boxes_every_pile_and_every_walker) {
     reset_level_state();
     screen* s = og::runtime::current_session->myscreen_;
-    text& t = synced_text();
-    (void)t;
+    synced_text(); // the obmap pass writes its pile counts through text_normal
     ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
     ASSERT_EQ(0, s->viewob[0]->topx) << "setup: the camera must sit at the map origin";
     ASSERT_EQ(0, s->viewob[0]->topy) << "setup: the camera must sit at the map origin";
@@ -2981,7 +3103,7 @@ TEST(MassCoverage, obmap_debug_draw_boxes_every_pile_and_every_walker) {
     ASSERT_NE(team_index, label_index)
         << "setup: the two passes must be distinguishable on the canvas";
 
-    // Pass 1 in isolation: a pile in a cell the walker does not occupy. The
+    // Pass 1 in isolation: one pile in a cell the walker does not occupy. The
     // YELLOW box spans unhash(hash(200))=192 .. +OBRES and carries the pile
     // count centred inside it.
     obmap pile_only;
@@ -2996,6 +3118,22 @@ TEST(MassCoverage, obmap_debug_draw_boxes_every_pile_and_every_walker) {
     ASSERT_EQ(96, pile.miny) << "the pile box starts at unhash(hash(100))";
     ASSERT_EQ(128, pile.maxy) << "the pile box spans OBRES";
 
+    // EVERY pile, not just the first: a second, far-apart cell doubles both the
+    // ink and the bounding box. A loop that painted one entry and stopped reads
+    // back as the single box above.
+    obmap two_piles;
+    two_piles.pos_to_walker[{obmap::hash(200), obmap::hash(100)}].push_back(w);
+    two_piles.pos_to_walker[{obmap::hash(40), obmap::hash(40)}].push_back(w);
+    s->clearbuffer();
+    obmap_debug_draw(two_piles, s);
+    const IndexExtent piles = index_extent_on_canvas(label_index);
+    ASSERT_EQ(2 * (128 + 8), piles.count)
+        << "two occupied cells must draw two boxes and two \"1\" labels";
+    ASSERT_EQ(32, piles.minx) << "the second pile box starts at unhash(hash(40))";
+    ASSERT_EQ(224, piles.maxx) << "...and the first one still ends at unhash(hash(200))+OBRES";
+    ASSERT_EQ(32, piles.miny) << "the second pile box starts at unhash(hash(40))";
+    ASSERT_EQ(128, piles.maxy) << "...and the first one still ends at unhash(hash(100))+OBRES";
+
     // Pass 2 in isolation: obmap::add registers the walker's own cell, and the
     // walker box lands on it in the team colour.
     obmap map;
@@ -3009,6 +3147,33 @@ TEST(MassCoverage, obmap_debug_draw_boxes_every_pile_and_every_walker) {
     ASSERT_EQ(96, team.miny) << "the walker box starts at unhash(hash(100))";
     ASSERT_EQ(128, team.maxy) << "the walker box spans OBRES";
 
+    // EVERY walker, not just the first: a second body on another team gets its
+    // own box in its own colour, so a walker_to_pos loop that stopped after one
+    // entry leaves one of the two colours off the canvas entirely.
+    walker* w2 = add_sized_living(1, 200, 100, FAMILY_ORC);
+    ASSERT_NE(nullptr, w2) << "setup: the second walker must exist";
+    const int team2_index = pal_readback_index(w2->query_team_color());
+    ASSERT_NE(team_index, team2_index)
+        << "setup: the two walkers must be distinguishable on the canvas";
+    ASSERT_NE(label_index, team2_index)
+        << "setup: the second walker must be distinguishable from the pile pass";
+
+    obmap both;
+    both.add(w, 100, 100);
+    both.add(w2, 200, 100);
+    s->clearbuffer();
+    obmap_debug_draw(both, s);
+    const IndexExtent first = index_extent_on_canvas(team_index);
+    const IndexExtent second = index_extent_on_canvas(team2_index);
+    ASSERT_EQ(128, first.count) << "the first walker still gets its own 33x33 box";
+    ASSERT_EQ(96, first.minx) << "the first walker box sits on its own cell";
+    ASSERT_EQ(128, first.maxx) << "the first walker box sits on its own cell";
+    ASSERT_EQ(128, second.count) << "the second walker gets a box of its own";
+    ASSERT_EQ(192, second.minx) << "the second walker box starts at unhash(hash(200))";
+    ASSERT_EQ(224, second.maxx) << "the second walker box spans OBRES";
+    ASSERT_EQ(96, second.miny) << "the second walker box starts at unhash(hash(100))";
+    ASSERT_EQ(128, second.maxy) << "the second walker box spans OBRES";
+
     reset_level_state();
 }
 
@@ -3018,8 +3183,7 @@ TEST(MassCoverage, obmap_debug_draw_boxes_every_pile_and_every_walker) {
 TEST(MassCoverage, obmap_debug_draw_expands_bounding_boxes_all_directions) {
     reset_level_state();
     screen* s = og::runtime::current_session->myscreen_;
-    text& t = synced_text();
-    (void)t;
+    synced_text(); // the obmap pass writes its pile counts through text_normal
     ASSERT_NE(nullptr, s->viewob[0].get()) << "setup: view 0 must exist";
     ASSERT_EQ(0, s->viewob[0]->topx) << "setup: the camera must sit at the map origin";
     ASSERT_EQ(0, s->viewob[0]->topy) << "setup: the camera must sit at the map origin";
