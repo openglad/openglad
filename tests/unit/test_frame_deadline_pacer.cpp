@@ -126,14 +126,28 @@ TEST(FrameDeadlinePacer, IntervalZeroClampsToOne)
     EXPECT_EQ(d2.next_deadline_ms, 102u);
 }
 
-TEST(FrameDeadlinePacer, RenderIntervalWrapperAndTraceObserversAreExercised)
+TEST(FrameDeadlinePacer,
+     RenderIntervalIsTimerWaitTimes13_6msOverSpeedAndObserversReceiveRecords)
 {
     RuntimeTraceCaptureGuard guard;
 
-    EXPECT_FLOAT_EQ(og::core::render_tick_interval_ms(6, 1.0f),
-                    og::core::rounded_render_tick_interval_ms(6, 1.0f));
-    EXPECT_FLOAT_EQ(og::core::render_tick_interval_ms(12, 0.5f),
-                    og::core::rounded_render_tick_interval_ms(12, 0.5f));
+    // Absolute pins, not wrapper-vs-inline: render_tick_interval_ms forwards
+    // to rounded_render_tick_interval_ms, so comparing the two moves both
+    // sides together when the 13.6 ms tick constant, the speed division or
+    // the lround/clamp changes.
+    EXPECT_FLOAT_EQ(82.0f, og::core::render_tick_interval_ms(6, 1.0f))
+        << "6 ticks * 13.6 ms = 81.6 -> 82";
+    EXPECT_FLOAT_EQ(326.0f, og::core::render_tick_interval_ms(12, 0.5f))
+        << "12 * 13.6 = 163.2, / 0.5 = 326.4 -> 326";
+    EXPECT_FLOAT_EQ(1.0f, og::core::render_tick_interval_ms(1, 40.0f))
+        << "13.6 / 40 = 0.34 -> lround 0, clamped up to the 1 ms floor";
+    EXPECT_FLOAT_EQ(0.0f, og::core::render_tick_interval_ms(0, 1.0f))
+        << "no timer wait means no render interval at all (not the 1 ms floor)";
+    EXPECT_FLOAT_EQ(0.0f, og::core::render_tick_interval_ms(6, 0.0f))
+        << "a non-positive speed factor means no render interval";
+    EXPECT_FLOAT_EQ(og::core::rounded_render_tick_interval_ms(6, 1.0f),
+                    og::core::render_tick_interval_ms(6, 1.0f))
+        << "the .cpp wrapper is the header inline";
 
     std::vector<og::runtime::RuntimeTraceRecord> observed_traces;
     og::runtime::set_runtime_trace_observer(
@@ -223,22 +237,56 @@ TEST(FrameDeadlinePacer, UninitializedTickInitializesAndEmitsResync)
     EXPECT_EQ(RuntimeTraceCaptureGuard::count_events("frame_pacing", "pacer_resync"), 1);
 }
 
-TEST(FrameDeadlinePacer, ConfigureThenTickDeterministicWithInjectedClock)
+TEST(FrameDeadlinePacer, InjectedClockTimelineIsPinnedDecisionByDecision)
 {
-    og::core::FrameDeadlinePacer pacer_a;
-    og::core::FrameDeadlinePacer pacer_b;
-    pacer_a.configure(17u, 5u);
-    pacer_b.configure(17u, 5u);
-
-    const std::uint32_t timeline[] = {5u, 10u, 22u, 30u, 39u, 50u, 56u, 73u};
-    for (std::uint32_t now : timeline)
+    // configure(17, 5) anchors the first deadline at 22. Every entry below is
+    // the decision the pacer OWES at that clock reading -- pinned as literals,
+    // because two identically configured pacers reproduce a wrong answer just
+    // as faithfully as a right one. Note the slipped wakeups (25, 60): the
+    // deadline advances by exactly one interval from the OLD deadline, never
+    // by re-anchoring on `now`.
+    struct Step
     {
-        const auto a = pacer_a.tick(now);
-        const auto b = pacer_b.tick(now);
-        EXPECT_EQ(a.run_tick, b.run_tick) << "now=" << now;
-        EXPECT_EQ(a.run_render, b.run_render) << "now=" << now;
-        EXPECT_EQ(a.sleep_ms, b.sleep_ms) << "now=" << now;
-        EXPECT_EQ(a.next_deadline_ms, b.next_deadline_ms) << "now=" << now;
+        std::uint32_t now;
+        bool run_tick;
+        std::uint32_t sleep_ms;
+        std::uint32_t next_deadline_ms;
+    };
+    static constexpr Step kTimeline[] = {
+        {5u, false, 17u, 22u},   // configure's own anchor: 5 + 17
+        {10u, false, 12u, 22u},  // early wakeup: sleep the remainder
+        {25u, true, 0u, 39u},    // 3 ms late: 22 + 17, NOT 25 + 17
+        {30u, false, 9u, 39u},   // proves the deadline above was 39
+        {39u, true, 0u, 56u},    // exactly on time
+        {50u, false, 6u, 56u},
+        {60u, true, 0u, 73u},    // 4 ms late: 56 + 17, NOT 60 + 17
+        {73u, true, 0u, 90u},
+    };
+
+    og::core::FrameDeadlinePacer pacer;
+    pacer.configure(17u, 5u);
+    for (const Step& step : kTimeline)
+    {
+        const auto d = pacer.tick(step.now);
+        EXPECT_EQ(step.run_tick, d.run_tick) << "now=" << step.now;
+        EXPECT_EQ(step.run_tick, d.run_render)
+            << "render follows the tick decision, now=" << step.now;
+        EXPECT_EQ(step.sleep_ms, d.sleep_ms) << "now=" << step.now;
+        EXPECT_EQ(step.next_deadline_ms, d.next_deadline_ms)
+            << "now=" << step.now;
+    }
+
+    // Determinism: a second pacer fed the same clock owes the same pinned
+    // literals (compared against the table, never against the first pacer).
+    og::core::FrameDeadlinePacer replay;
+    replay.configure(17u, 5u);
+    for (const Step& step : kTimeline)
+    {
+        const auto d = replay.tick(step.now);
+        EXPECT_EQ(step.run_tick, d.run_tick) << "replay now=" << step.now;
+        EXPECT_EQ(step.sleep_ms, d.sleep_ms) << "replay now=" << step.now;
+        EXPECT_EQ(step.next_deadline_ms, d.next_deadline_ms)
+            << "replay now=" << step.now;
     }
 }
 

@@ -1,5 +1,8 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
@@ -23,53 +26,115 @@ static std::unique_ptr<walker> create_living(char family)
     return w;
 }
 
-TEST(WalkerMore, walker_misc_methods_smoke)
+namespace
 {
+// compute_base_damage is `d - sqrt(d)/2 + random(floor(sqrt(d)))`. Pinning an
+// exact damage number means pinning that draw, and the cheapest way to do it
+// without owning the RNG seam is a damage value whose sqrt floors to 1:
+// random(1) is 0 for every IRandom implementation. 2.25 -> 2.25 - 0.75 = 1.5,
+// which damage_to_hit_points rounds to exactly 2.
+inline constexpr float kRngFreeDamage = 2.25f;
+inline constexpr int kRngFreeHitPoints = 2;
+
+GameWorld& test_world()
+{
+    return og::runtime::current_session->myscreen_->world();
+}
+
+// An empty, fully passable 40x60 grass grid with nothing in the obmap.
+void open_empty_world()
+{
+    test_world().create_new_grid();
+    test_world().delete_objects();
+}
+} // namespace
+
+TEST(WalkerMore, walker_center_on_reset_and_small_state_accessors)
+{
+    open_empty_world();
+
     auto w = create_living(FAMILY_SOLDIER);
     auto nearby = create_living(FAMILY_ORC);
     ASSERT_TRUE(w != nullptr) << "create_walker(soldier) should succeed";
     ASSERT_TRUE(nearby != nullptr) << "create_walker(orc) should succeed";
-    nearby->setxy(64, 64);
+    // Park the orc far away so the eight-neighbour sweep below sees open ground.
+    nearby->setxy(320, 400);
+    w->setxy(80, 80);
 
-    // Basic movement helpers (should not crash).
-    w->move(1, 0);
-    w->worldmove(1.0f, 0.0f);
-    w->setworldxy(60.0f, 60.0f);
-    w->setxy(60, 60);
-    w->facing(61, 60);
-    w->turn(1);
+    // -------------------------------------------------------------------
+    // spaces_clear(): all eight neighbouring body-sized offsets on open ground.
+    // -------------------------------------------------------------------
+    ASSERT_EQ(8, w->spaces_clear())
+        << "an open grass grid with nothing else in the obmap leaves all 8 spaces clear";
 
-    // Path helpers and distance checks.
-    ASSERT_TRUE(w->distance_to_ob(w.get()) == 0) << "distance to self should be 0";
-    (void)w->distance_to_ob_center(w.get());
-    (void)w->get_current_angle();
-    (void)w->old_act_type();
-    (void)w->spaces_clear();
-    (void)w->query_team_color();
+    // team 0's palette ramp base; the outline/render paths key off this value.
+    ASSERT_EQ(40, static_cast<int>(w->query_team_color()))
+        << "team 0 ramp base is 16*team + 40";
 
-    // Order/family reassignment and simple state transitions.
+    // -------------------------------------------------------------------
+    // distance_to_ob is the SQUARED centre-corrected distance.
+    // -------------------------------------------------------------------
+    ASSERT_EQ(0, w->distance_to_ob(w.get())) << "distance to self should be 0";
+
+    // -------------------------------------------------------------------
+    // set_act_type/restore_act_type shuffle exactly one slot.
+    // -------------------------------------------------------------------
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    w->set_act_type(ACT_CONTROL);
     w->set_act_type(0);
-    (void)w->act_type();
+    ASSERT_EQ(0, static_cast<int>(w->act_type())) << "set_act_type writes the live slot";
+    ASSERT_EQ(ACT_CONTROL, static_cast<int>(w->old_act_type()))
+        << "set_act_type parks the previous act_type in old_act_type";
     w->set_old_act_type(1);
-    (void)w->restore_act_type();
-    (void)w->fire_check(1, 0);
+    ASSERT_EQ(1, static_cast<int>(w->restore_act_type()))
+        << "restore_act_type returns the parked act_type";
+    ASSERT_EQ(1, static_cast<int>(w->act_type()))
+        << "restore_act_type copies the parked act_type back into the live slot";
+
+    // -------------------------------------------------------------------
+    // center_on: our centre lands on the target's centre, exactly.
+    // -------------------------------------------------------------------
+    nearby->setxy(320, 400);
+    const int expected_x = nearby->xpos() + nearby->sizex() / 2 - w->sizex() / 2;
+    const int expected_y = nearby->ypos() + nearby->sizey() / 2 - w->sizey() / 2;
     w->center_on(nearby.get());
-    w->set_direct_frame(0);
-    // Avoid calling higher-level actions here (fire/teleport/turn_undead/etc.):
-    // they can spawn objects into `myscreen->level_runtime_data()` which outlive this test's
-    // locally-owned walkers and lead to UAF in later tests under ASan.
+    ASSERT_EQ(expected_x, static_cast<int>(w->xpos()))
+        << "center_on: target.x + target.sizex/2 - sizex/2";
+    ASSERT_EQ(expected_y, static_cast<int>(w->ypos()))
+        << "center_on: target.y + target.sizey/2 - sizey/2";
 
-    // Reset is a large code path; smoke it to improve coverage.
-    w->reset();
-    w->animate();
-    w->set_difficulty(2);
-
+    // -------------------------------------------------------------------
+    // reset(): the per-walker fields walker::reset actually writes.
+    // -------------------------------------------------------------------
+    w->set_dead(1);
+    w->set_death_called(1);
+    w->set_ignore(1);
+    w->set_flight_left(9);
+    w->set_regen_delay(37);
+    w->set_hurt_flash(true);
+    w->set_attack_lunge(1.0f);
+    w->set_hit_recoil(1.0f);
+    w->set_last_hitpoints(42.0f);
+    w->stats()->set_bit_flags(BIT_IMMORTAL, 1);
+    ASSERT_TRUE(w->reset()) << "reset reports success";
+    EXPECT_EQ(0, static_cast<int>(w->dead())) << "reset revives";
+    EXPECT_EQ(0, static_cast<int>(w->death_called())) << "reset clears death_called";
+    EXPECT_EQ(0, static_cast<int>(w->ignore())) << "reset makes us collidable again";
+    EXPECT_EQ(0, static_cast<int>(w->flight_left())) << "reset grounds us";
+    EXPECT_EQ(0, static_cast<int>(w->regen_delay())) << "reset clears the regen delay";
+    EXPECT_FALSE(w->hurt_flash()) << "reset clears the hurt flash";
+    EXPECT_FLOAT_EQ(0.0f, w->attack_lunge()) << "reset clears the lunge offset";
+    EXPECT_FLOAT_EQ(0.0f, w->hit_recoil()) << "reset clears the recoil offset";
+    EXPECT_FLOAT_EQ(0.0f, w->last_hitpoints()) << "reset clears last_hitpoints";
+    EXPECT_EQ(0u, static_cast<unsigned>(w->stats()->bit_flags()))
+        << "reset wipes every stat bit flag";
 }
 
 
-TEST(WalkerMore, walker_friendliness_and_attack_paths)
+TEST(WalkerMore, walker_friendliness_and_a_hostile_attack_lands_its_damage)
 {
+    open_empty_world();
+
     auto a = create_living(FAMILY_SOLDIER);
     auto b = create_living(FAMILY_SMALL_SLIME);
     ASSERT_TRUE(a != nullptr) << "create_walker(attacker) should succeed";
@@ -86,24 +151,46 @@ TEST(WalkerMore, walker_friendliness_and_attack_paths)
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     a->myguy->teamnum = 0;
     a->myguy->exp = 0;
+    a->myguy->total_hits = 0;
+    a->myguy->scen_hits = 0;
 
+    a->stats()->set_level(1);
+    b->stats()->set_level(1);
     b->stats()->set_armor(0);
     b->stats()->set_hitpoints(50);
     b->stats()->set_max_hitpoints(50);
 
-    (void)a->attack(b.get());
+    a->set_damage(kRngFreeDamage);
 
+    ASSERT_TRUE(a->attack(b.get())) << "a hostile living is a legal target";
+    EXPECT_FLOAT_EQ(48.0f, b->stats()->hitpoints())
+        << "50 hp - the 2-point post-reduction blow";
+    EXPECT_FLOAT_EQ(50.0f, b->last_hitpoints())
+        << "do_combat_damage stamps the pre-hit hp for the render/HUD delta";
+    EXPECT_EQ(50, b->regen_delay())
+        << "a landed blow delays the victim's hp regeneration by 50 ticks";
+    EXPECT_EQ(1, static_cast<int>(a->myguy->scen_hits))
+        << "a living target counts as one scenario hit";
+    EXPECT_EQ(1, static_cast<int>(a->myguy->total_hits))
+        << "...and one lifetime hit";
+    EXPECT_EQ(kRngFreeHitPoints, static_cast<int>(a->myguy->scen_damage))
+        << "the tally records the damage actually dealt";
+    EXPECT_EQ(18u, a->myguy->exp)
+        << "melee xp: 6 * 2 * poly(level_diff 0) / 20 = 18";
 }
 
 
-TEST(WalkerMore, walker_specials_and_render_paths_smoke)
+TEST(WalkerMore, walker_draw_paths_animate_step_and_query_next_to_probe)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
 
+    open_empty_world();
+
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker(soldier) should succeed";
     w->set_team_num(0);
+    w->setxy(160, 160);
 
     // Give the walker a guy so specials/XP paths have something to update.
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
@@ -111,16 +198,37 @@ TEST(WalkerMore, walker_specials_and_render_paths_smoke)
     w->stats()->set_magicpoints(999);
     w->stats()->set_max_magicpoints(999);
 
-    // Keep to deterministic, non-blocking paths in unit-test mode.
-    (void)w->query_next_to();
-    (void)draw_walker(*w, v);
-    (void)draw_walker_tile(*w, v);
-    w->animate();
-    w->set_difficulty(1);
-    w->set_direct_frame(0);
-    (void)w->query_team_color();
-    (void)w->old_act_type();
+    // Both render entry points report that they drew a live walker.
+    EXPECT_TRUE(draw_walker(*w, v)) << "a live, non-dormant walker draws";
+    EXPECT_TRUE(draw_walker_tile(*w, v)) << "the tile-mode blit draws too";
+    EXPECT_EQ(40, static_cast<int>(w->query_team_color()))
+        << "team 0 ramp base is 16*team + 40";
 
+    // animate() consumes exactly one frame of the current sequence.
+    w->set_ani_type(ANI_WALK);
+    w->set_curdir(FACE_RIGHT);
+    w->set_cycle(0);
+    ASSERT_TRUE(w->animate()) << "the walk sequence has frames to spend";
+    EXPECT_EQ(1, static_cast<int>(w->cycle()))
+        << "animate advances the cycle by exactly one";
+
+    // query_next_to probes ONE point derived from lastx/lasty. Note the quirk
+    // it pins: the y arm's `else` catches lasty == 0, so a walker facing due
+    // east probes (x + sizex, y - sizey) -- up AND right, not straight right.
+    w->set_lastx(1);
+    w->set_lasty(0);
+    ASSERT_FALSE(w->query_next_to()) << "nothing stands on the probe point yet";
+
+    auto blocker = create_living(FAMILY_ORC);
+    ASSERT_TRUE(blocker != nullptr) << "create_walker(orc) should succeed";
+    blocker->set_team_num(1);
+    blocker->setxy(static_cast<short>(w->xpos() + w->sizex()),
+                   static_cast<short>(w->ypos() - w->sizey()));
+    EXPECT_TRUE(w->query_next_to())
+        << "a body on the (x + sizex, y - sizey) probe point reads as next-to";
+
+    blocker->setxy(320, 400);
+    EXPECT_FALSE(w->query_next_to()) << "moving the body away clears the probe";
 }
 
 
@@ -251,14 +359,19 @@ TEST(WalkerMore, walker_myguy_move_and_weapon_heading_and_outline_named)
 
 TEST(WalkerMore, walker_init_fire_and_fire_check_gate_branches)
 {
+    // The open grid has to exist BEFORE the walkers do: obmap::move short-
+    // circuits when the coordinates are unchanged, so re-placing a walker at
+    // the coordinates it already holds would leave it out of the fresh obmap.
+    open_empty_world();
+
     auto w = create_living(FAMILY_SOLDIER);
     auto foe = create_living(FAMILY_ORC);
     ASSERT_TRUE(w && foe) << "walkers created";
-    if (!(w && foe))
-        return;
 
     w->setxy(80, 80);
     foe->setxy(96, 80);
+    w->set_team_num(0);
+    foe->set_team_num(1);
     w->set_foe(foe.get());
 
     // init_fire: control walker must not turn/fire when facing differs.
@@ -295,6 +408,38 @@ TEST(WalkerMore, walker_init_fire_and_fire_check_gate_branches)
     // fire_check: target direction mismatch with current facing.
     w->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!w->fire_check(1, 0)) << "fire_check should fail when targetdir differs from curdir";
+
+    // -------------------------------------------------------------------
+    // The positive control. Six refusals alone stay green for a regression
+    // that makes fire_check/init_fire ALWAYS deny (the guard-standoff class
+    // of bug), so pin the arm that must still say yes.
+    // -------------------------------------------------------------------
+    w->set_foe(foe.get());
+    // set_weapon_heading reads lastx/lasty, not curdir; keep them consistent
+    // or every probe shot flies due north off the map.
+    w->set_lastx(1);
+    w->set_lasty(0);
+    w->set_curdir(FACE_RIGHT);
+    w->set_enddir(FACE_RIGHT);
+    w->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    w->stats()->set_weapon_cost(0);
+    w->stats()->set_magicpoints(9999);
+    w->set_busy(0);
+    w->set_ani_type(ANI_WALK);
+    w->set_act_type(ACT_RANDOM);
+    w->set_dead(0);
+
+    walker::FireCheckDenial why = walker::FireCheckDenial::WallBlocked;
+    ASSERT_TRUE(w->fire_check(1, 0, &why))
+        << "a hostile foe one body-width east, in reach, faced and unobstructed, IS firable";
+    EXPECT_EQ(static_cast<int>(walker::FireCheckDenial::None), static_cast<int>(why))
+        << "a passing check reports no denial stage";
+    ASSERT_TRUE(w->init_fire(1, 0))
+        << "init_fire's ANI_WALK arm starts the attack animation";
+    EXPECT_EQ(ANI_ATTACK, static_cast<int>(w->ani_type()))
+        << "init_fire switches the walker into its attack animation";
+    EXPECT_GT(w->busy(), 0.0f)
+        << "init_fire charges the fire_frequency delay";
 }
 
 
@@ -353,29 +498,83 @@ TEST(WalkerMore, walker_round6_friendliness_null_dead_owner_chain_and_allied_mod
 }
 
 
-TEST(WalkerMore, walker_round6_act_fire_collision_attack_path)
+// act_fire's collision arm, reached the way the sim reaches it. Note that a
+// test CANNOT pre-seed collide_ob: both walker::act and weap::act clear it
+// before dispatching, so the only way into `if (collide_ob && !dead)
+// attack(collide_ob)` is for act_fire's own walk() to be blocked by a body --
+// the obmap calls collide() on the mover as it refuses the step.
+TEST(WalkerMore, walker_act_fire_collision_arm_attacks_the_blocking_body)
 {
-    auto weapon = create_living(FAMILY_ARROW);
-    auto target = create_living(FAMILY_ORC);
-    ASSERT_TRUE(weapon && target) << "walkers created";
-    if (!(weapon && target))
-        return;
+    open_empty_world();
+    GameWorld& world = test_world();
 
-    weapon->set_order_family(Order::Weapon, FAMILY_ARROW);
-    weapon->set_team_num(0);
+    walker* target = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(target != nullptr) << "target created";
     target->set_team_num(1);
+    target->setxy(200, 160);
+    target->stats()->set_armor(0);
     target->stats()->set_hitpoints(50);
-    weapon->set_lineofsight(5);
-    weapon->set_lastx(-1);
-    weapon->set_lasty(0);
-    weapon->setxy(0, GRID_SIZE * 4); // force walk() failure on next step
-    weapon->set_collide_ob(target.get());
-    weapon->stats()->set_bit_flags(BIT_IMMORTAL, 1); // keep weapon alive after collision branch
+    target->stats()->set_max_hitpoints(50);
 
-    const float hp_before = target->stats()->hitpoints();
+    // An IMMORTAL weapon parked one step west of the target body.
+    walker* weapon = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_TRUE(weapon != nullptr) << "weapon created";
+    ASSERT_EQ(Order::Weapon, weapon->query_order())
+        << "the collide arm lives on weap::act's ACT_FIRE case";
+    weapon->set_team_num(0);
+    weapon->set_lineofsight(5);       // remaining_range != 0, so we reach the walk
+    weapon->set_curdir(FACE_RIGHT);
+    weapon->set_lastx(2);
+    weapon->set_lasty(0);
+    weapon->set_ani_type(ANI_WALK);   // otherwise weap::act just animates
     weapon->set_act_type(ACT_FIRE);
-    ASSERT_TRUE(weapon->act()) << "act() should dispatch to act_fire";
-    ASSERT_TRUE(target->stats()->hitpoints() <= hp_before) << "collision branch should attack target";
+    weapon->stats()->set_hitpoints(100);
+    weapon->set_damage(kRngFreeDamage);  // an exact 2 hit points
+    weapon->stats()->set_bit_flags(BIT_IMMORTAL, 1);
+    // One pixel short of the target's box: the +2 step is what overlaps it.
+    ASSERT_TRUE(weapon->setxy(
+        static_cast<short>(target->xpos() - weapon->sizex() - 1),
+        static_cast<short>(160)));
+    weapon->set_lastx(6);
+
+    const short wx_before = weapon->xpos();
+    ASSERT_TRUE(weapon->act()) << "weap::act dispatches ACT_FIRE to act_fire";
+    EXPECT_EQ(wx_before, weapon->xpos())
+        << "the body refused the step: the weapon is still where it started";
+    EXPECT_FLOAT_EQ(48.0f, target->stats()->hitpoints())
+        << "50 hp - the 2-point post-reduction blow the collision arm deals";
+    EXPECT_FLOAT_EQ(50.0f, target->last_hitpoints())
+        << "the victim's pre-hit hp is stamped for the HUD delta";
+    EXPECT_EQ(0, static_cast<int>(weapon->dead()))
+        << "BIT_IMMORTAL keeps the weapon alive through its own collision";
+    EXPECT_EQ(4, static_cast<int>(weapon->lineofsight()))
+        << "act_fire spends one point of range per tick";
+
+    // The mortal twin: same collision, but the weapon dies on impact.
+    walker* mortal = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_TRUE(mortal != nullptr) << "second weapon created";
+    mortal->set_team_num(0);
+    mortal->set_lineofsight(5);
+    mortal->set_curdir(FACE_RIGHT);
+    mortal->set_lastx(2);
+    mortal->set_lasty(0);
+    mortal->set_ani_type(ANI_WALK);
+    mortal->set_act_type(ACT_FIRE);
+    mortal->stats()->set_hitpoints(100);
+    mortal->set_damage(kRngFreeDamage);
+    mortal->stats()->set_bit_flags(BIT_IMMORTAL, 0);
+    ASSERT_TRUE(mortal->setxy(
+        static_cast<short>(target->xpos() - mortal->sizex() - 1),
+        static_cast<short>(160)));
+    mortal->set_lastx(6);
+
+    ASSERT_TRUE(mortal->act()) << "weap::act dispatches ACT_FIRE to act_fire";
+    EXPECT_FLOAT_EQ(46.0f, target->stats()->hitpoints())
+        << "a second 2-point blow";
+    EXPECT_EQ(1, static_cast<int>(mortal->dead()))
+        << "a mortal weapon dies in the body it hit";
+
+    world.delete_objects();
 }
 
 
@@ -411,82 +610,147 @@ TEST(WalkerMore, walker_friendliness_null_dead_and_strict_team_paths)
 }
 
 
-TEST(WalkerMore, walker_batch2_misc_uncovered_paths_smoke)
+TEST(WalkerMore, walker_base_hooks_and_set_difficulty_scaling)
 {
+    open_empty_world();
+
     auto w = create_living(FAMILY_SOLDIER);
     auto t = create_living(FAMILY_ORC);
     ASSERT_TRUE(w && t) << "walkers created";
-    if (!(w && t))
-        return;
 
     // move_myguy_to(nullptr) small branch.
     w->move_myguy_to(nullptr);
+    EXPECT_EQ(nullptr, w->myguy) << "moving a myguy nowhere still clears ours";
 
-    // default virtual-like hooks that log and return fallback values.
-    ASSERT_TRUE(w->eat_me(t.get()) == 0) << "eat_me non-treasure fallback should return 0";
-    (void)w->do_summon(1, 5);
-    (void)w->check_special();
+    // The base class's "this family cannot do that" hook.
+    EXPECT_EQ(0, static_cast<int>(w->eat_me(t.get())))
+        << "eat_me non-treasure fallback should return 0";
 
-    // set_difficulty branches.
-    w->set_team_num(1);
-    w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    w->set_difficulty(3);
-    w->set_order_family(Order::Generator, FAMILY_TENT);
-    w->set_difficulty(3);
+    // -------------------------------------------------------------------
+    // walker::set_difficulty at a known difficulty percent. This is the BASE
+    // implementation, so the subject has to be a walker that does not override
+    // it: living::set_difficulty is a different rule (family Lua scaling, plus
+    // an A12a arm that scales myguy-less team-0 NPCs too).
+    // -------------------------------------------------------------------
+    GameWorld& world = test_world();
+    const auto old_difficulty = world.difficulty;
+    world.difficulty = 200;  // query_difficulty_percent() == 200
 
-    // act_generate / act_fire / act_guard / act_random smoke via public act().
-    w->set_order_family(Order::Generator, FAMILY_TENT);
-    w->stats()->set_level(5);
-    w->set_act_type(ACT_GENERATE);
-    (void)w->act();
-    w->set_order_family(Order::Weapon, FAMILY_ARROW);
-    w->set_lineofsight(1);
-    w->set_act_type(ACT_FIRE);
-    (void)w->act();
-    w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    w->set_act_type(ACT_GUARD);
-    (void)w->act();
-    w->set_act_type(ACT_RANDOM);
-    (void)w->act();
+    walker* subject = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_TRUE(subject != nullptr) << "difficulty subject created";
+
+    // The base class's other two "this family cannot do that" hooks. living
+    // overrides both (a cleric really does raise skeletons), so the no-op
+    // contract has to be read off a walker that does not.
+    EXPECT_EQ(nullptr, subject->do_summon(FAMILY_SKELETON, 5))
+        << "walker::do_summon is the base no-op: nothing is summoned";
+    EXPECT_FALSE(subject->check_special())
+        << "walker::check_special is the base no-op: no special is available";
+
+    // Player characters (team 0) are never scaled.
+    subject->set_team_num(0);
+    subject->stats()->set_max_hitpoints(70.0f);
+    subject->stats()->set_max_magicpoints(30.0f);
+    subject->set_damage(9.0f);
+    subject->set_difficulty(3);
+    EXPECT_FLOAT_EQ(70.0f, subject->stats()->max_hitpoints()) << "team 0 is exempt";
+    EXPECT_FLOAT_EQ(30.0f, subject->stats()->max_magicpoints()) << "team 0 is exempt";
+    EXPECT_FLOAT_EQ(9.0f, subject->damage()) << "team 0 is exempt";
+
+    // Every other team scales max hp / max mp / damage by the percent.
+    subject->set_team_num(1);
+    subject->set_difficulty(3);
+    EXPECT_FLOAT_EQ(140.0f, subject->stats()->max_hitpoints()) << "70 * 200 / 100";
+    EXPECT_FLOAT_EQ(60.0f, subject->stats()->max_magicpoints()) << "30 * 200 / 100";
+    EXPECT_FLOAT_EQ(18.0f, subject->damage()) << "9 * 200 / 100";
+
+    // A generator's hp is derived from scratch: 100 * level * percent / 100,
+    // written to BOTH hitpoints and max_hitpoints (the post is its own
+    // denominator, so act_generate's per-spawn regen has room to take).
+    subject->set_order_family(Order::Generator, FAMILY_TENT);
+    subject->set_difficulty(3);
+    EXPECT_FLOAT_EQ(600.0f, subject->stats()->hitpoints()) << "100 * 3 * 200 / 100";
+    EXPECT_FLOAT_EQ(600.0f, subject->stats()->max_hitpoints())
+        << "a generator's max_hitpoints tracks its hitpoints";
+
+    world.difficulty = old_difficulty;
+    world.delete_objects();
 }
 
 
-TEST(WalkerMore, walker_create_weapon_myguy_and_direction_and_cleric_branches)
+TEST(WalkerMore, walker_create_weapon_myguy_branch_vs_level_branch_and_cardinal_scaling)
 {
+    open_empty_world();
+    GameWorld& world = test_world();
+
+    // The unconfigured baseline this family's weapon starts from.
+    walker* probe = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_TRUE(probe != nullptr) << "baseline arrow created";
+    const float base_stepsize = probe->stepsize();
+    const int base_los = probe->lineofsight();
+    const float base_damage = probe->damage();
+    world.remove_ob(probe);
+
     auto shooter = create_living(FAMILY_CLERIC);
     ASSERT_TRUE(shooter != nullptr) << "shooter created";
-    if (!shooter)
-        return;
 
     shooter->set_team_num(0);
     shooter->stats()->set_level(4);
     shooter->set_current_weapon(FAMILY_ARROW);
     shooter->set_default_weapon(shooter->current_weapon());
 
-    // With myguy and cardinal direction, create_weapon takes the myguy stat branch
-    // and applies the cardinal-range scaling.
+    // Every weapon first takes damage * (level + 3) / 4.
+    const float leveled_damage = (base_damage * (4.0f + 3.0f)) / 4.0f;
+    // ... and then lineofsight += level / 3.
+    const int leveled_los = base_los + 4 / 3;
+
+    // With myguy and a CARDINAL heading, create_weapon takes the myguy stat
+    // branch (lineofsight += str/23 + dex/31, damage += str/7) and then applies
+    // the circular-range scaling (309/256) and the diagonal stepsize scaling
+    // (362/256).
     shooter->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
+    shooter->myguy->strength = 46;    // 46/23 = 2 sight, 46/7 = 6.571 damage
+    shooter->myguy->dexterity = 62;   // 62/31 = 2 sight
     shooter->set_lastx(shooter->stepsize());
     shooter->set_lasty(0);
     walker* w1 = shooter->create_weapon();
     ASSERT_TRUE(w1 != nullptr) << "weapon created (with myguy)";
 
-    // Without myguy and diagonal direction, create_weapon takes the else branch
-    // and skips the cardinal-range scaling.
+    // Without myguy and a DIAGONAL heading, create_weapon takes the else branch
+    // (damage *= level) and skips both cardinal scalings.
     shooter->clear_myguy();
     shooter->set_lastx(shooter->stepsize());
     shooter->set_lasty(shooter->stepsize());
     walker* w2 = shooter->create_weapon();
     ASSERT_TRUE(w2 != nullptr) << "weapon created (no myguy)";
 
-    // Cleric special-case: weapon is configured with glow-grow and extra lifetime.
-    if (w1) {
-        ASSERT_TRUE(w1->ani_type() == ANI_GLOWGROW) << "cleric weapon uses glowgrow";
-    }
+    // --- the two branches must NOT agree ---------------------------------
+    const int myguy_los = leveled_los + 46 / 23 + 62 / 31;
+    EXPECT_EQ((myguy_los * 309) / 256, w1->lineofsight())
+        << "myguy sight bonus, then the cardinal circular-range scaling";
+    EXPECT_EQ(leveled_los, w2->lineofsight())
+        << "no myguy bonus and no cardinal scaling on a diagonal shot";
+
+    EXPECT_FLOAT_EQ((base_stepsize * 362.0f) / 256.0f, w1->stepsize())
+        << "a cardinal shot's stepsize is scaled by 362/256";
+    EXPECT_FLOAT_EQ(base_stepsize, w2->stepsize())
+        << "a diagonal shot keeps the family stepsize";
+
+    EXPECT_FLOAT_EQ(leveled_damage + 46.0f / 7.0f, w1->damage())
+        << "the myguy branch adds strength/7 to damage";
+    EXPECT_FLOAT_EQ(leveled_damage * 4.0f, w2->damage())
+        << "the no-myguy branch multiplies damage by the caster level instead";
+
+    EXPECT_EQ(shooter.get(), w1->owner()) << "the weapon belongs to its caster";
+    EXPECT_EQ(0, static_cast<int>(w1->team_num())) << "and inherits its team";
+
+    // Cleric special-case: the family hook configures glow-grow (unguarded).
+    EXPECT_EQ(ANI_GLOWGROW, static_cast<int>(w1->ani_type()))
+        << "cleric weapon uses glowgrow";
+    EXPECT_EQ(ANI_GLOWGROW, static_cast<int>(w2->ani_type()))
+        << "the hook runs on the no-myguy branch too";
 
     // Clean up only what we spawned; don't wipe global state (view controls, etc.).
-    if (w1)
-        og::runtime::current_session->myscreen_->world().remove_ob(w1);
-    if (w2)
-        og::runtime::current_session->myscreen_->world().remove_ob(w2);
+    world.remove_ob(w1);
+    world.remove_ob(w2);
 }
