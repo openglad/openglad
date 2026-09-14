@@ -325,7 +325,7 @@ Body: `floors = world.floor_count()`; `tower = (world.type & GameWorld::TYPE_TOW
 Stair-overlay precedent ("core usability, deliberately not an effects toggle", view.cpp:1516-1523): no keyprefs slot (avoids the slot-8/9 garbage-sanitize hazard), no cfg key, no ButtonAction. Inside the PREF_FOES block (score_panel.cpp:567-631):
 - Compute `floor_label = floor_hud_label(s->world_, static_cast<int>(control->floor()))`; `show_floor = !floor_label.empty()`.
 - Box height: `Sint32 box_bottom = show_wave ? 24 : 16; if (show_floor) box_bottom += 8;` — replaces the literal in `draw_button(rm-57, tm+1, rm-2, tm + box_bottom, 1, 1)` (:588-589).
-- Row drawn AFTER the wave block (:630) at `tm + (show_wave ? 26 : 18)` (touch variant `+44+8`, mirroring the adjacent `#ifndef USE_TOUCH_INPUT` blocks byte-for-byte structurally), right-aligned with the wave idiom `max<Sint32>(lm, rm - 2 - 6*static_cast<Sint32>(floor_label.size()))`, color `text_color`; add `TRACE("hud", "floor %s", floor_label.c_str())`. NEXT WAVE keeps its position; single-floor frames are pixel-identical (label empty).
+- Row drawn AFTER the wave block (:630) at `tm + (show_wave ? 26 : 18)` (drawn once at floor_y; the 2013 `+44+8` touch variant and its `#ifndef USE_TOUCH_INPUT` fork were retired in PR #292), right-aligned with the wave idiom `max<Sint32>(lm, rm - 2 - 6*static_cast<Sint32>(floor_label.size()))`, color `text_color`; add `TRACE("hud", "floor %s", floor_label.c_str())`. NEXT WAVE keeps its position; single-floor frames are pixel-identical (label empty).
 
 ### 4.3 fps_overlay dynamic placement (fixes the :74 hardcode collision)
 

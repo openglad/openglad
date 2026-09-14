@@ -438,10 +438,11 @@ TEST(LevelEditorHelpers, basic_event_outcomes_report_exact_release_and_quit_stat
         << "a finger press is reported as MouseDown";
 
     // A finger release runs the same held-button bookkeeping as a mouse
-    // release. This is a desktop build (USE_TOUCH_INPUT is off), so
-    // handle_mouse_event has no finger case and no held button changes --
-    // the release must therefore name NO button, which is what stops a stray
-    // touch event from replaying the last left click's action.
+    // release. handle_mouse_event has no finger case -- finger events reach
+    // it through handle_events/handle_basic_editor_event as mouse events --
+    // so no held button changes here and the release must name NO button,
+    // which is what stops a stray touch event from replaying the last left
+    // click's action.
     mouse.left = true;
     mouse.right = false;
     editor.mouse_up_button = -1;
