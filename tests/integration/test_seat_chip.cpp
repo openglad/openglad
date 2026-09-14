@@ -21,6 +21,7 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
+#include <atomic>
 #include <string>
 
 // Forward declarations from picker.cpp.
@@ -110,7 +111,110 @@ struct SeatChipFlowState {
     bool editor_opened_on_chip = false;
     bool editor_opened_on_center = false;
     std::string founded_slot;
+    // Published by the test body the instant picker_main returns, read by the
+    // escape tail on the injector thread — hence atomic (peeking at
+    // g_picker_mainmenu_calls would be a race on a plain int the menu thread
+    // writes every frame).
+    std::atomic<bool> main_left{false};
 };
+
+// --- stages ----------------------------------------------------------------
+//
+// One injector, so the ids are 101..: the number in the failure names which
+// wait died. Every wait that the flow cannot continue past has one; the two
+// cycle traces deliberately do NOT abort (they are the test's pins, recorded
+// into the state and asserted by name in the body, and the rest of the flow
+// still tells the reviewer whether the click opened the editor instead).
+constexpr int kStageMainMenu = 101;
+constexpr int kStageMainMenuSettle = 102;
+constexpr int kStageCompanyName = 103;
+constexpr int kStageTeamMenu = 104;
+constexpr int kStageSeatCard = 105;
+constexpr int kStageSeatCardSettle = 106;
+constexpr int kStageChipClickOne = 107;
+constexpr int kStageChipOneSettle = 108;
+constexpr int kStageChipClickTwo = 109;
+constexpr int kStageChipTwoSettle = 110;
+constexpr int kStageCenterClick = 111;
+constexpr int kStageEditorSettle = 112;
+constexpr int kStageEditorReturn = 113;
+constexpr int kStageEditorReturnSettle = 114;
+
+// --- the escape tail -------------------------------------------------------
+//
+// A failed wait used to mean `return 0`: the injector died quietly while the
+// main thread stayed blocked inside picker_main on a screen nobody would ever
+// click out of, and og_test_basecamp burned to its 420 s group TIMEOUT with
+// rc=124, naming no test (B1). The tail says which wait died, then clicks its
+// way out of whatever screen is up, until the test body publishes main_left.
+// No wall-clock bound on purpose (openglad-test-integrity "Tests that hang"
+// §1; the precedent is tests/integration/test_pause_menu.cpp and G2's tail in
+// tests/integration/test_company_list.cpp): a tail that gave up would strand
+// the thread it exists to release.
+//
+// Which is why the exit id is a LIST, most specific first. The seat editor's
+// door is "seat_settings_back", NOT "back" — proven, not theorised: the
+// chip-zone planted break that proves this test's teeth opens the editor on
+// the chip click, and the first draft of this tail, which knew only "back",
+// spun there for the full 900 s.
+constexpr const char* kExitIds[] = {"back", "seat_settings_back", "quit"};
+
+int abort_flow(SeatChipFlowState* state, int stage)
+{
+    fprintf(stderr,
+            "  [test] FLOW ABORT at stage %d — unwinding so picker_main can "
+            "return\n",
+            stage);
+    int spins = 0;
+    while (!state->main_left.load()) {
+        for (const char* exit_id : kExitIds) {
+            if (has_interactable(exit_id)) {
+                interact(exit_id);
+                break;
+            }
+        }
+        (void)wait_for_menu_frames(1, 250);
+        // A screen with no exit this tail knows would otherwise be a silent
+        // spin. Every ~5 s, name what IS on screen, so the log says which
+        // screen stranded the flow instead of going quiet until the group
+        // timeout.
+        if (++spins % 20 == 0) {
+            std::string ids;
+            for (const std::string& id : get_button_ids())
+                ids += id + " ";
+            fprintf(stderr,
+                    "  [test] escape tail still spinning after %d frames; "
+                    "live ids: %s\n",
+                    spins, ids.c_str());
+        }
+    }
+    return stage;
+}
+
+// The exit click has nobody left to notice it, so it is a condition too:
+// re-sent one completed frame at a time until picker_main publishes
+// main_left, with every re-send logged. A dropped last press used to mean the
+// group timeout arriving through the happy path.
+int finish_flow(SeatChipFlowState* state, const char* exit_id)
+{
+    interact(exit_id);
+    int attempts = 1;
+    while (!state->main_left.load()) {
+        (void)wait_for_menu_frames(1, 250);
+        if (state->main_left.load())
+            break;
+        if (!has_interactable(exit_id))
+            continue;  // the screen took it; picker_main is unwinding
+        ++attempts;
+        fprintf(stderr,
+                "  [test] exit click '%s' not consumed — re-sending "
+                "(attempt %d)\n",
+                exit_id, attempts);
+        interact(exit_id);
+    }
+    state->finished = true;
+    return 0;
+}
 
 int seat_chip_injector(void* data)
 {
@@ -118,57 +222,72 @@ int seat_chip_injector(void* data)
     auto* state = static_cast<SeatChipFlowState*>(data);
     state->started = true;
 
+    // Every settle below is a CONDITION, never a clock: wait_for_menu_frames
+    // returns once run_menu_screen has COMPLETED that many frames, which is
+    // what proves the incoming screen composed. The flat 750 ms sleeps this
+    // replaced were waiting for a fadeblack animation that a TESTING build
+    // never runs (FadeBetween is a single SDL_BlitSurface — the #ifdef TESTING
+    // branch of src/platform/sdl/video_sdl.cpp).
     if (!wait_for_interactable("begin_new_game", 5000))
-        return 0;
-    SDL_Delay(750);
+        return abort_flow(state, kStageMainMenu);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageMainMenuSettle);
     interact("begin_new_game");
     if (!accept_generated_company_name())
-        return 0;
+        return abort_flow(state, kStageCompanyName);
     if (!wait_for_team_menu())
-        return 0;
+        return abort_flow(state, kStageTeamMenu);
     state->saw_base_camp = true;
     state->founded_slot = og::data::active_company_slot();
-    SDL_Delay(750);
     if (!wait_for_interactable("seat_card_0", 5000))
-        return 0;
-    SDL_Delay(300);
+        return abort_flow(state, kStageSeatCard);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageSeatCardSettle);
 
     // Chip click 1: the fresh solo seat starts on team 1; classic campaigns
     // expose all four teams, so the first cycle lands on team 2.
     fprintf(stderr, "  [test] chip click 1 on seat_card_0\n");
     if (!click_seat_card_chip("seat_card_0"))
-        return 0;
+        return abort_flow(state, kStageChipClickOne);
+    // The consumed-click handshake: the trace the product writes while
+    // DISPATCHING the chip click, then one completed frame so the screen the
+    // next click lands on has been rewired. Recorded, not aborted — an
+    // unconsumed chip click is the defect this test exists to catch, and the
+    // remaining clicks say whether the editor swallowed it instead.
     state->saw_first_cycle =
         wait_for_trace("basecamp", "seat_team player=1 team=2", 5000);
-    SDL_Delay(300);
+    if (!wait_for_menu_frames(1))
+        return abort_flow(state, kStageChipOneSettle);
     state->editor_opened_on_chip = has_interactable("seat_settings_back");
 
     // Chip click 2 cycles onward (2 -> 3): in-place cycling is repeatable.
     fprintf(stderr, "  [test] chip click 2 on seat_card_0\n");
     if (!click_seat_card_chip("seat_card_0"))
-        return 0;
+        return abort_flow(state, kStageChipClickTwo);
     state->saw_second_cycle =
         wait_for_trace("basecamp", "seat_team player=1 team=3", 5000);
-    SDL_Delay(300);
+    if (!wait_for_menu_frames(1))
+        return abort_flow(state, kStageChipTwoSettle);
     state->editor_opened_on_chip = state->editor_opened_on_chip ||
         has_interactable("seat_settings_back");
 
     // A center click (the P#/name region) still opens the seat editor.
     fprintf(stderr, "  [test] center click on seat_card_0\n");
-    interact("seat_card_0");
+    if (!interact("seat_card_0"))
+        return abort_flow(state, kStageCenterClick);
     state->editor_opened_on_center =
         wait_for_interactable("seat_settings_back", 5000);
     if (state->editor_opened_on_center) {
-        SDL_Delay(750);
+        if (!wait_for_menu_frames(2))
+            return abort_flow(state, kStageEditorSettle);
         interact("seat_settings_back");
         if (!wait_for_team_menu())
-            return 0;
-        SDL_Delay(300);
+            return abort_flow(state, kStageEditorReturn);
+        if (!wait_for_menu_frames(2))
+            return abort_flow(state, kStageEditorReturnSettle);
     }
 
-    interact("back");
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "back");
 }
 
 } // namespace
@@ -192,11 +311,16 @@ TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    // Release the escape tail before joining: it spins until this is set.
+    state.main_left.store(true);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    ASSERT_EQ(0, thread_result)
+        << "the injector stalled at stage " << thread_result;
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.saw_base_camp) << "flow must reach Base Camp";
     EXPECT_TRUE(state.saw_first_cycle)

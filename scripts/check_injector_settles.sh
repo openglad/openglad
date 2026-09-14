@@ -45,6 +45,8 @@ FILES=(
     tests/integration/test_picker_detail_menu_driven.cpp
     tests/integration/test_train_team.cpp
     tests/integration/test_company_list.cpp
+    tests/integration/test_seat_chip.cpp
+    tests/integration/test_fade_ownership.cpp
 )
 
 status=0
