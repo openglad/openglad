@@ -452,7 +452,7 @@ TEST(VideoPixelOps, darken_screen_dims_every_pixel_and_negative_fastbox_draws_no
     };
 
     s->darken_screen();
-    for (const auto [x, y] : {std::pair<int, int>{0, 0},
+    for (const auto& [x, y] : {std::pair<int, int>{0, 0},
                               std::pair<int, int>{160, 100},
                               std::pair<int, int>{319, 199}})
     {
