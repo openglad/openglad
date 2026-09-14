@@ -20,9 +20,8 @@
 
 #include <gtest/gtest.h>
 
-#include "zlib.h"
-
 #include "test_game_world_fixture.h"
+#include "test_zlib_helpers.h"
 
 namespace {
 
@@ -635,49 +634,8 @@ void fill_world_grid(GameWorld& world, std::uint8_t value)
                 value);
 }
 
-std::vector<std::uint8_t> zlib_compress_for_test(
-    const std::vector<std::uint8_t>& payload)
-{
-    std::vector<std::uint8_t> compressed(compressBound(static_cast<uLong>(payload.size())));
-    uLongf compressed_size = static_cast<uLongf>(compressed.size());
-    const int rc = compress2(compressed.data(),
-                             &compressed_size,
-                             payload.data(),
-                             static_cast<uLong>(payload.size()),
-                             Z_DEFAULT_COMPRESSION);
-    EXPECT_EQ(Z_OK, rc);
-    compressed.resize(static_cast<std::size_t>(compressed_size));
-    return compressed;
-}
-
-std::vector<std::uint8_t> zlib_decompress_for_test(
-    const std::uint8_t* data,
-    std::size_t size)
-{
-    z_stream stream{};
-    stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(data));
-    stream.avail_in = static_cast<uInt>(size);
-    EXPECT_EQ(Z_OK, inflateInit(&stream));
-
-    std::vector<std::uint8_t> output;
-    std::array<std::uint8_t, 256> chunk{};
-    int rc = Z_OK;
-    do
-    {
-        stream.next_out = chunk.data();
-        stream.avail_out = static_cast<uInt>(chunk.size());
-        rc = inflate(&stream, Z_NO_FLUSH);
-        if (rc != Z_OK) {
-            EXPECT_EQ(Z_STREAM_END, rc);
-        }
-        output.insert(output.end(),
-                      chunk.begin(),
-                      chunk.begin() + (chunk.size() - stream.avail_out));
-    } while (rc != Z_STREAM_END);
-
-    EXPECT_EQ(Z_OK, inflateEnd(&stream));
-    return output;
-}
+using og::test_zlib::deflate_for_test;
+using og::test_zlib::inflate_for_test;
 
 std::size_t payload_length_from_header_for_test(
     const std::vector<std::uint8_t>& bytes)
@@ -717,7 +675,7 @@ std::vector<std::uint8_t> decode_delta_payload_for_test(
                                          wire_payload + wire_payload_length);
     }
 
-    return zlib_decompress_for_test(wire_payload, wire_payload_length);
+    return inflate_for_test(wire_payload, wire_payload_length);
 }
 
 void append_u32_for_test(std::vector<std::uint8_t>& bytes,
@@ -1956,8 +1914,8 @@ TEST(WorldSnapshot, serialize_snapshot_roundtrip_preserves_keyframe_and_compress
     const std::size_t payload_length = payload_length_from_header_for_test(bytes);
     EXPECT_EQ(bytes.size(), og::sim::kTransportHeaderSize + payload_length);
     const std::vector<std::uint8_t> raw_payload =
-        zlib_decompress_for_test(bytes.data() + og::sim::kTransportHeaderSize,
-                                 payload_length);
+        inflate_for_test(bytes.data() + og::sim::kTransportHeaderSize,
+                         payload_length);
     ASSERT_FALSE(raw_payload.empty());
     EXPECT_EQ(og::sim::kSnapshotFormatVersion, raw_payload.front());
     EXPECT_LT(bytes.size(), keyframe.full_grid_data.size() / 2);
@@ -2206,7 +2164,7 @@ TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smal
     const std::vector<std::uint8_t> raw_payload =
         decode_delta_payload_for_test(bytes);
     const std::vector<std::uint8_t> recompressed =
-        zlib_compress_for_test(raw_payload);
+        deflate_for_test(raw_payload);
     if (payload_is_uncompressed)
         EXPECT_GE(recompressed.size(), raw_payload.size());
     else
@@ -2329,11 +2287,11 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_headers_and_format_version)
 
     const std::size_t payload_length = payload_length_from_header_for_test(bytes);
     std::vector<std::uint8_t> payload =
-        zlib_decompress_for_test(bytes.data() + og::sim::kTransportHeaderSize,
-                                 payload_length);
+        inflate_for_test(bytes.data() + og::sim::kTransportHeaderSize,
+                         payload_length);
     payload[0] = static_cast<std::uint8_t>(og::sim::kSnapshotFormatVersion + 1);
     const std::vector<std::uint8_t> corrupted_payload =
-        zlib_compress_for_test(payload);
+        deflate_for_test(payload);
 
     std::vector<std::uint8_t> bad_format;
     bad_format.reserve(og::sim::kTransportHeaderSize + corrupted_payload.size());
@@ -2360,6 +2318,53 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_headers_and_format_version)
     EXPECT_THROW(
         (void)og::sim::deserialize_snapshot(truncated),
         std::runtime_error);
+}
+
+// The corruption tests above hand the PRODUCT decoder a damaged payload; this
+// one hands the same damage to the TEST decoder they all decompress with.
+// The rule: og::test_zlib::inflate_for_test reports every non-success zlib rc
+// as a std::runtime_error and never spins. Three copies of this helper used to
+// loop until Z_STREAM_END with only a non-fatal EXPECT_EQ on the error code,
+// so the truncated leg (a) below -- the shape a real truncation regression
+// produces -- hung until the 600 s ctest timeout instead of failing.
+TEST(WorldSnapshot, test_inflate_helper_rejects_corrupt_and_truncated_streams)
+{
+    std::vector<std::uint8_t> payload(4096);
+    for (std::size_t i = 0; i < payload.size(); ++i)
+    {
+        payload[i] = static_cast<std::uint8_t>((i * 31u + (i >> 3)) & 0xffu);
+    }
+
+    const std::vector<std::uint8_t> stream = deflate_for_test(payload);
+    ASSERT_GE(stream.size(), std::size_t{128})
+        << "the varied payload must actually produce a multi-chunk zlib stream";
+
+    // (a) truncated: inflate consumes the input, then reports Z_BUF_ERROR
+    // because no further progress is possible. The old do/while looped here.
+    EXPECT_THROW((void)inflate_for_test(stream.data(), stream.size() / 2),
+                 std::runtime_error)
+        << "a truncated stream must fail fast, not spin to the ctest timeout";
+
+    // (b) bit-flipped mid-stream: Z_DATA_ERROR, or a bad adler32 at the end.
+    std::vector<std::uint8_t> flipped = stream;
+    for (std::size_t i = 0; i < 16; ++i)
+    {
+        flipped[stream.size() / 2 + i] ^= 0xffu;
+    }
+    EXPECT_THROW((void)inflate_for_test(flipped.data(), flipped.size()),
+                 std::runtime_error)
+        << "a corrupted stream must be reported as an error";
+
+    // (c) not a zlib stream at all: the header check fails on the first call.
+    const std::vector<std::uint8_t> garbage(64, 0xffu);
+    EXPECT_THROW((void)inflate_for_test(garbage.data(), garbage.size()),
+                 std::runtime_error)
+        << "a non-zlib buffer must be reported as an error";
+
+    // (d) control: the untouched stream still round-trips byte for byte, so
+    // the three throws above are the damage and not a helper that always fails.
+    EXPECT_EQ(payload, inflate_for_test(stream.data(), stream.size()))
+        << "a valid stream must inflate to exactly the deflated payload";
 }
 
 TEST(WorldSnapshot, deserialize_delta_rejects_bad_headers_and_malformed_payloads)
@@ -2394,7 +2399,7 @@ TEST(WorldSnapshot, deserialize_delta_rejects_bad_headers_and_malformed_payloads
     payload[0] = static_cast<std::uint8_t>(og::sim::kSnapshotFormatVersion + 1);
     const std::vector<std::uint8_t> corrupted_payload = payload_is_uncompressed
         ? payload
-        : zlib_compress_for_test(payload);
+        : deflate_for_test(payload);
     std::vector<std::uint8_t> bad_format;
     const std::size_t bad_payload_length =
         og::sim::kDeltaPayloadHeaderSize + corrupted_payload.size();
@@ -2425,7 +2430,7 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         (4U * 1024U * 1024U) + 1U, 0);
     oversized_payload[0] = og::sim::kSnapshotFormatVersion;
     const std::vector<std::uint8_t> oversized_compressed =
-        zlib_compress_for_test(oversized_payload);
+        deflate_for_test(oversized_payload);
     ASSERT_LT(oversized_compressed.size(),
               static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()));
 
