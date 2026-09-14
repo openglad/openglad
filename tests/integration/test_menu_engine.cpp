@@ -2938,11 +2938,9 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
         save.numplayers = 1;
         EXPECT_EQ(og::ui::RowState::Hidden,
                   hire->rows[2].state_override(context));
-#ifndef DISABLE_MULTIPLAYER
         save.numplayers = 2;
         EXPECT_EQ(og::ui::RowState::Visible,
                   hire->rows[2].state_override(context));
-#endif
     }
 
     // TRAIN: exit-bearing paths carry MENU_EXIT (the wrapper folds unless a
@@ -2958,6 +2956,13 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     EXPECT_TRUE(train->right_click_enabled);
     EXPECT_EQ(1, train->default_highlight);
     EXPECT_NE(nullptr, train->on_reset) << "the bug-A9 promotion resync";
+    // NO REWIRE TWIN. The train screen's only nav hook existed to relink
+    // around a hidden team cycler; the cycler is always visible, so the
+    // screen carries no rewire function at all and the engine's null guard
+    // is what runs. A second nav implementation registered here would be a
+    // rule twin with train_change_team_row_state.
+    EXPECT_EQ(nullptr, train->nav.rewire)
+        << "the train screen must keep exactly one nav rule";
     ASSERT_EQ(20, train->row_count);
     for (int i = 2; i < 14; ++i) {
         EXPECT_EQ((i % 2 == 0) ? FAMILY_MINUS : FAMILY_PLUS,
@@ -4397,7 +4402,6 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     EXPECT_EQ(untouched_highlight, defensive_highlight)
         << "an unavailable descriptor surface is a defensive no-op";
 
-#ifndef DISABLE_MULTIPLAYER
     // Each denial is separately observable and must avoid calling the next
     // layer — and every one of them is reached THROUGH A SLOT, because the
     // slot is the door. Rewind the debounce stamp so the capacity rule is
@@ -4452,7 +4456,6 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
         EXPECT_TRUE(trace_contains("popup", "ATTACH A GAMEPAD TO ADD SEATS"));
         input_hardware_state().single_seat_device = saved_device_class;
     }
-#endif
 }
 
 // §7.1: the seat editor's ZOOM + HUD rows flip the seat's runtime prefs

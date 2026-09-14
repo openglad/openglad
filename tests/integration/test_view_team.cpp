@@ -2353,9 +2353,6 @@ int lobby_full_slot_injector(void* data)
 // the door is the same one the retired [+] opened.
 TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP() << "this build seats one local player";
-#else
     trace_clear();
     FactoryMappingGuard mapping_guard;
 
@@ -2396,7 +2393,6 @@ TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
         << "the slot runs the add path itself, gates included";
     EXPECT_EQ(2, static_cast<int>(save.numplayers));
     save.reset();
-#endif
 }
 
 // LOBBY FULL. Sixteen seats in the lobby and one of them this machine's: the
@@ -2404,9 +2400,6 @@ TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
 // is eaten by the engine's Disabled gate — no add, no popup, no seat.
 TEST(ViewTeam, base_camp_lobby_full_slot_is_inert_under_a_real_click)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP() << "this build seats one local player";
-#else
     trace_clear();
     FactoryMappingGuard mapping_guard;
 
@@ -2454,7 +2447,6 @@ TEST(ViewTeam, base_camp_lobby_full_slot_is_inert_under_a_real_click)
         << "a dimmed slot must never reach the add path";
     EXPECT_FALSE(trace_contains("basecamp", "seat_add"));
     save.reset();
-#endif
 }
 
 TEST(ViewTeam, stable_seat_token_rejects_reindexed_display_handle)
@@ -3697,9 +3689,6 @@ TEST(ViewTeam, seat_settings_offline_p1_uses_profile1_when_roster_is_out_of_orde
 
 TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP() << "remove/spectate is not compiled into single-seat builds";
-#else
     InputHardwareSnapshotGuard input_guard;
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
@@ -3871,7 +3860,6 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
     og::ui::install_seat_settings_state_for_screen(nullptr);
-#endif
 }
 
 // Offline, the LAST seat cannot leave: there is nobody left to hand the
@@ -3881,9 +3869,6 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 // the last local seat there means spectating, which is a real thing to do.)
 TEST(ViewTeam, seat_settings_remove_never_asks_the_last_offline_seat)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP() << "remove/spectate is not compiled into single-seat builds";
-#else
     InputHardwareSnapshotGuard input_guard;
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
@@ -3932,7 +3917,6 @@ TEST(ViewTeam, seat_settings_remove_never_asks_the_last_offline_seat)
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
     og::ui::install_seat_settings_state_for_screen(nullptr);
-#endif
 }
 
 TEST(ViewTeam, base_camp_zero_seat_state_activates_through_the_first_slot)

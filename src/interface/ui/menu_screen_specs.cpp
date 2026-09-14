@@ -110,8 +110,6 @@ void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
 bool picker_hire_menu_engine_frame_tick(void* screen_state, int frame);
 void picker_hire_menu_engine_on_reset(void* screen_state);
 void picker_hire_menu_engine_draw_content(void* screen_state);
-void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
-                                     int& highlighted_button);
 void picker_train_menu_engine_on_reset(void* screen_state);
 void picker_train_menu_engine_draw_content(void* screen_state);
 Sint32 picker_train_menu_engine_on_spec_row(int row, void* screen_state);
@@ -860,15 +858,6 @@ const MenuScreenSpec& main_options_menu_screen_spec()
     };
     return spec;
 }
-
-// The legacy USE_TOUCH_INPUT => DISABLE_MULTIPLAYER mapping lived beside the
-// main-menu tables in picker.cpp. Keep it ahead of main-menu variant
-// selection so touch-only builds choose the no-MP spec.
-#ifdef USE_TOUCH_INPUT
-#ifndef DISABLE_MULTIPLAYER
-#define DISABLE_MULTIPLAYER
-#endif
-#endif
 
 // ---------------------------------------------------------------------------
 // MAIN MENU (§1.8 step 4, historically the heaviest 10a screen). The MP and
@@ -1990,17 +1979,12 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 // The team cycler is hidden for solo play (the legacy entry-time
 // `buttons[2].hidden = (numplayers == 1)` — numplayers can only change on
 // screens that are never open at the same time, so the per-frame gate is
-// entry-equivalent) and on DISABLE_MULTIPLAYER builds.
+// entry-equivalent).
 RowState hire_change_team_row_state(const MenuLabelContext& context)
 {
-#ifdef DISABLE_MULTIPLAYER
-    (void)context;
-    return RowState::Hidden;
-#else
     return (context.save != nullptr && context.save->numplayers == 1)
         ? RowState::Hidden
         : RowState::Visible;
-#endif
 }
 
 constexpr MenuButtonSpec kHireMenuRows[] = {
@@ -2040,16 +2024,11 @@ constexpr MenuButtonSpec kHireMenuRows[] = {
 // (exit_on_redraw stays false); a remote start propagates MENU_EXIT, and
 // the wrapper folds the exit exactly as the legacy loop did.
 
-// The team cycler only exists with multiplayer compiled in (the legacy
-// `buttons[18].hidden = true` under DISABLE_MULTIPLAYER).
+// The team cycler is always visible on the train screen.
 RowState train_change_team_row_state(const MenuLabelContext& context)
 {
     (void)context;
-#ifdef DISABLE_MULTIPLAYER
-    return RowState::Hidden;
-#else
     return RowState::Visible;
-#endif
 }
 
 constexpr MenuButtonSpec kTrainMenuRows[] = {
@@ -2637,9 +2616,6 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
 og::ui::SeatClaimability base_camp_seat_claimability()
 {
     og::ui::SeatClaimability claim;
-#ifdef DISABLE_MULTIPLAYER
-    claim.multiplayer_enabled = false;
-#endif
     claim.local_count = static_cast<int>(picker_lobby_local_seat_count());
     claim.local_seat_cap = og::input::local_seat_cap();
     claim.global_count = static_cast<int>(picker_lobby_players().size());
@@ -3454,12 +3430,7 @@ void seat_settings_rewire(button* buttons, int count,
 {
     if (buttons == nullptr || g_seat_settings_state == nullptr)
         return;
-    const int expected =
-#ifdef DISABLE_MULTIPLAYER
-        kSeatSettingsButtonCountNoMP;
-#else
-        kSeatSettingsButtonCountMP;
-#endif
+    const int expected = kSeatSettingsButtonCountMP;
     if (count < expected)
         return;
 
@@ -3492,14 +3463,12 @@ void seat_settings_rewire(button* buttons, int count,
                              player_hud_row_label(slot, PlayerHudRow::Foes));
     sync_seat_settings_label(buttons, kSeatSettingsHudScoreRow,
                              player_hud_row_label(slot, PlayerHudRow::Score));
-#ifndef DISABLE_MULTIPLAYER
     sync_seat_settings_label(
         buttons, kSeatSettingsRemoveIndex,
         picker_lobby_is_networked() &&
                 picker_lobby_local_seat_count() == 1
             ? "SPECTATE"
             : "REMOVE PLAYER");
-#endif
 
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
 }
@@ -3737,7 +3706,6 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
         return MENU_OK;
     }
 
-#ifndef DISABLE_MULTIPLAYER
     if (row == kSeatSettingsRemoveIndex) {
         const int active_count =
             static_cast<int>(picker_lobby_local_seat_count());
@@ -3771,7 +3739,6 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
               static_cast<int>(player.player_index) + 1, removed_slot + 1);
         return MENU_REDRAW;
     }
-#endif
     return MENU_OK;
 }
 
@@ -5300,7 +5267,6 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             // moved here unchanged — one implementation of the rule, gates
             // included. picker_lobby_add_local_seat is a build-limit
             // backstop only; the device cap is enforced HERE, by the door.
-#ifndef DISABLE_MULTIPLAYER
             const std::int64_t now_ms =
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now().time_since_epoch())
@@ -5359,7 +5325,6 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             base_camp_refresh_rows(*st);
             TRACE("basecamp", "seat_add local_count=%zu",
                   picker_lobby_local_seat_count());
-#endif
             return MENU_OK;
         }
 
@@ -6822,11 +6787,7 @@ const MenuScreenSpec& main_menu_screen_spec_nomp()
 
 const MenuScreenSpec& main_menu_screen_spec()
 {
-#ifndef DISABLE_MULTIPLAYER
     return main_menu_screen_spec_mp();
-#else
-    return main_menu_screen_spec_nomp();
-#endif
 }
 
 const MenuScreenSpec& seat_settings_menu_screen_spec_mp()
@@ -6847,11 +6808,7 @@ const MenuScreenSpec& seat_settings_menu_screen_spec_nomp()
 
 const MenuScreenSpec& seat_settings_menu_screen_spec()
 {
-#ifndef DISABLE_MULTIPLAYER
     return seat_settings_menu_screen_spec_mp();
-#else
-    return seat_settings_menu_screen_spec_nomp();
-#endif
 }
 
 void install_seat_settings_state_for_screen(
@@ -6938,8 +6895,10 @@ const MenuScreenSpec& train_menu_screen_spec()
         .row_count = static_cast<int>(std::size(kTrainMenuRows)),
         .buttons_accessor = &picker_trainmenu_buttons,
         .count_accessor = &picker_trainmenu_button_count,
-        .nav = {.kind = NavProgramKind::Rewire,
-                .rewire = &picker_train_menu_engine_rewire},
+        // No rewire: the hook's only body was the hidden-team-cycler
+        // relink, and the team cycler is always visible now. The engine
+        // null-checks the pointer (menu_screen_runner.cpp apply_nav_program).
+        .nav = {.kind = NavProgramKind::Rewire, .rewire = nullptr},
         .remote_start = RemoteStartScope::TeamBuildScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
         .default_highlight = 1,  // next, as the legacy loop

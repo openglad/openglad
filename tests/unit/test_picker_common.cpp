@@ -5835,7 +5835,7 @@ TEST(SeatRailSlots, placeholders_fill_every_slot_the_device_can_still_seat)
     EXPECT_EQ(1, base_camp_seat_rail_placeholder_count(SeatClaimability{
                      .local_count = 1, .local_seat_cap = 2,
                      .global_count = 1}));
-    // A DISABLE_MULTIPLAYER build: one seat, nothing beside it.
+    // A build with multiplayer off: one seat, nothing beside it.
     EXPECT_EQ(0, base_camp_seat_rail_placeholder_count(SeatClaimability{
                      .multiplayer_enabled = false, .local_count = 1}));
     // THE FULL LOBBY STILL SHOWS ITS SLOTS. The rail is this machine's
@@ -5870,7 +5870,7 @@ TEST(SeatRailSlots, claimability_answers_the_dimmed_face_question)
                      SeatClaimability{.local_count = 1, .global_count = 14}));
     EXPECT_EQ(0, seats_still_claimable(
                      SeatClaimability{.local_count = 1, .global_count = 16}));
-    // A DISABLE_MULTIPLAYER build has no second seat to offer at all.
+    // A build with multiplayer off has no second seat to offer at all.
     EXPECT_EQ(0, seats_still_claimable(
                      SeatClaimability{.multiplayer_enabled = false}));
 }

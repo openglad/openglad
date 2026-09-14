@@ -433,11 +433,10 @@ const MenuScreenSpec& view_scenario_menu_screen_spec();
 // LEVEL idiom); show_general_help() is the blocking wrapper.
 const MenuScreenSpec& help_menu_screen_spec();
 
-// The MP and no-MP main-menu specs share the same geometry.
-// DISABLE_MULTIPLAYER selects the compiled variant (including the
-// USE_TOUCH_INPUT mapping). The web/native fork inside each main spec is the
-// build-gated enabled/disabled QUIT row; HELP is present in both. Both specs
-// exist on every build so uncompiled shapes remain unit-testable.
+// The MP and no-MP main-menu specs share the same geometry. Every build
+// selects the MP one; the no-MP shape is unit-testable but unselectable.
+// The web/native fork inside each main spec is the build-gated
+// enabled/disabled QUIT row; HELP is present in both.
 const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
 const MenuScreenSpec& main_menu_screen_spec_mp();
 const MenuScreenSpec& main_menu_screen_spec_nomp();

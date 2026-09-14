@@ -1711,13 +1711,6 @@ TEST(MenuLayout, createmenu_basecamp_roster_capability_lattice_reachable)
 // dimmed LOBBY FULL face, or absent, and nothing else.
 TEST(MenuLayout, createmenu_basecamp_seat_rail_slot_matrix_labels_and_nav)
 {
-    // A build with no multiplayer has ONE seat and no door to a second, so
-    // its rail is one slot wide whatever the device could seat.
-#ifdef DISABLE_MULTIPLAYER
-    constexpr bool kMultiplayerCompiledIn = false;
-#else
-    constexpr bool kMultiplayerCompiledIn = true;
-#endif
     FactoryMappingGuard mapping_guard;
     EXPECT_EQ(11, kBaseCampSeatCardLabelBudget)
         << "70px slot face / 6px per character";
@@ -1798,9 +1791,8 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_slot_matrix_labels_and_nav)
             for (const bool lobby_full : {false, true})
             {
                 input_hardware_state().single_seat_device = phone;
-                const int slot_cap = (phone || !kMultiplayerCompiledIn)
-                    ? 1
-                    : kBaseCampSeatCardsPerPage;
+                const int slot_cap =
+                    phone ? 1 : kBaseCampSeatCardsPerPage;
 
                 og::ui::BaseCampScreenState state;
                 state.page = og::ui::PageModel::make(
@@ -1862,8 +1854,7 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_slot_matrix_labels_and_nav)
                     const bool is_card = slot < local_count;
                     const bool is_hidden = !is_card && slot >= slot_cap;
                     const bool is_full =
-                        !is_card && !is_hidden &&
-                        (lobby_full || !kMultiplayerCompiledIn);
+                        !is_card && !is_hidden && lobby_full;
 
                     EXPECT_EQ(is_hidden, face.hidden) << where;
                     ASSERT_NE(nullptr, spec.rows[ordinal].state_override);

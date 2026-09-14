@@ -377,11 +377,7 @@ inline constexpr int kSeatSettingsRemoveIndex = 5;
 inline constexpr int kSeatSettingsInputIndex = 6;
 inline constexpr int kSeatSettingsInputRowMP = 6;
 inline constexpr int kSeatSettingsInputRowNoMP = 5;
-#ifndef DISABLE_MULTIPLAYER
 inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowMP;
-#else
-inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowNoMP;
-#endif
 // §7.1 unified player screen: ZOOM (kPlayerScreenColBX, kPlayerScreenBand2Y)
 // and the RADAR/HP/FOES/SCORE stack (kPlayerScreenColCX, kPlayerScreenHudTopY
 // + 22px pitch) are APPENDED (index contract). Dispatch args are the MP row
@@ -406,19 +402,11 @@ inline constexpr int kSeatSettingsHudRadarRowNoMP = 7;
 inline constexpr int kSeatSettingsHudLifeRowNoMP = 8;
 inline constexpr int kSeatSettingsHudFoesRowNoMP = 9;
 inline constexpr int kSeatSettingsHudScoreRowNoMP = 10;
-#ifndef DISABLE_MULTIPLAYER
 inline constexpr int kSeatSettingsZoomRow = kSeatSettingsZoomRowMP;
 inline constexpr int kSeatSettingsHudRadarRow = kSeatSettingsHudRadarRowMP;
 inline constexpr int kSeatSettingsHudLifeRow = kSeatSettingsHudLifeRowMP;
 inline constexpr int kSeatSettingsHudFoesRow = kSeatSettingsHudFoesRowMP;
 inline constexpr int kSeatSettingsHudScoreRow = kSeatSettingsHudScoreRowMP;
-#else
-inline constexpr int kSeatSettingsZoomRow = kSeatSettingsZoomRowNoMP;
-inline constexpr int kSeatSettingsHudRadarRow = kSeatSettingsHudRadarRowNoMP;
-inline constexpr int kSeatSettingsHudLifeRow = kSeatSettingsHudLifeRowNoMP;
-inline constexpr int kSeatSettingsHudFoesRow = kSeatSettingsHudFoesRowNoMP;
-inline constexpr int kSeatSettingsHudScoreRow = kSeatSettingsHudScoreRowNoMP;
-#endif
 inline constexpr int kSeatSettingsButtonCountMP = 12;
 inline constexpr int kSeatSettingsButtonCountNoMP = 11;
 

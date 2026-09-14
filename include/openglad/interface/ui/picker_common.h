@@ -958,7 +958,7 @@ inline constexpr int kSeatRailGlobalSeatCap = 16;
 // now? Kept as data so the rail's chrome and the button's row state can never
 // disagree about the answer.
 struct SeatClaimability {
-    bool multiplayer_enabled = true;  // false in a DISABLE_MULTIPLAYER build
+    bool multiplayer_enabled = true;  // no build turns this off
     int local_count = 0;              // seats this machine already owns
     int local_seat_cap = MAX_PLAYERS; // og::input::local_seat_cap()
     int global_count = 0;             // seats across the whole lobby
