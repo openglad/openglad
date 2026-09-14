@@ -196,9 +196,13 @@ TEST(GloaderFuncs, gloader_create_generator)
 // set_derived_stats writes stepsize/lineofsight/damage/fire_frequency from
 // the family's OWN row of the loader tables (gloader.cpp). The old version of
 // this test read max_hitpoints(), which set_derived_stats never touches, so a
-// no-op body stayed green. Scramble the four fields it does write, call it,
-// and demand they come back to the values a freshly created walker of that
-// family carries.
+// no-op body stayed green.
+//
+// The oracle is the loader's own public tables read through the public slot
+// mapping — NOT a second walker. A reference walker comes out of
+// create_walker_owned, which calls this very function, so comparing the two
+// is a self-oracle: a wrong-slot read on any single field would agree with
+// itself and stay green.
 TEST(GloaderFuncs, gloader_set_derived_stats_writes_each_familys_own_row)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
@@ -210,8 +214,8 @@ TEST(GloaderFuncs, gloader_set_derived_stats_writes_each_familys_own_row)
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
         const int fam = families[i];
-        auto reference = l->create_walker_owned(Order::Living, fam);
-        ASSERT_NE(nullptr, reference.get()) << "reference walker for family " << fam;
+        const int idx = loader::slot_for(Order::Living, fam);
+        ASSERT_GE(idx, 0) << "family " << fam << " has a table slot";
         auto w = l->create_walker_owned(Order::Living, fam);
         ASSERT_NE(nullptr, w.get()) << "probe walker for family " << fam;
 
@@ -224,26 +228,32 @@ TEST(GloaderFuncs, gloader_set_derived_stats_writes_each_familys_own_row)
 
         l->set_derived_stats(w.get(), Order::Living, fam);
 
-        EXPECT_EQ(reference->normal_stepsize(), w->normal_stepsize())
+        EXPECT_EQ(l->stepsizes[static_cast<std::size_t>(idx)], w->stepsize())
             << "family " << fam << ": stepsize comes from that family's row";
-        EXPECT_EQ(reference->lineofsight(), w->lineofsight())
+        EXPECT_EQ(w->stepsize(), w->normal_stepsize())
+            << "family " << fam << ": normal_stepsize is seeded from stepsize";
+        EXPECT_EQ(l->lineofsight[static_cast<std::size_t>(idx)], w->lineofsight())
             << "family " << fam << ": line of sight comes from that family's row";
-        EXPECT_EQ(reference->damage(), w->damage())
+        EXPECT_EQ(l->damage[static_cast<std::size_t>(idx)], w->damage())
             << "family " << fam << ": melee damage comes from that family's row";
-        EXPECT_EQ(reference->fire_frequency(), w->fire_frequency())
+        EXPECT_EQ(l->fire_frequency[static_cast<std::size_t>(idx)], w->fire_frequency())
             << "family " << fam << ": fire frequency comes from that family's row";
     }
 
     // ... and the rows are really distinct: reading row 0 for every family
-    // would satisfy everything above.
+    // would satisfy everything above. BOTH probes are created as soldiers on
+    // purpose — only the set_derived_stats argument differs, so the difference
+    // below can come from nothing but the row this call selected.
     auto soldier = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, soldier.get());
-    auto elf = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
-    ASSERT_NE(nullptr, elf.get());
+    auto elf_row_probe = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, elf_row_probe.get());
     l->set_derived_stats(soldier.get(), Order::Living, FAMILY_SOLDIER);
-    l->set_derived_stats(elf.get(), Order::Living, FAMILY_ELF);
-    EXPECT_NE(soldier->lineofsight(), elf->lineofsight())
+    l->set_derived_stats(elf_row_probe.get(), Order::Living, FAMILY_ELF);
+    EXPECT_NE(soldier->lineofsight(), elf_row_probe->lineofsight())
         << "the soldier and elf rows differ, so set_derived_stats is row-selective";
+    EXPECT_NE(soldier->damage(), elf_row_probe->damage())
+        << "soldier melee damage differs from the elf's, so the damage read is row-selective too";
 }
 
 
