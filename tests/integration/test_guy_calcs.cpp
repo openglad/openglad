@@ -34,8 +34,8 @@ TEST(GuyCalcs, calculate_exp_level_2)
 TEST(GuyCalcs, calculate_exp_level_3)
 {
     // level 3: 8000 + 2000*2 + 4000*1 + calculate_exp(2) = 8000 + 4000 + 4000 + 10000 = 26000
-    Uint32 xp3 = calculate_exp(3);
-    ASSERT_TRUE(xp3 > 20000) << "level 3 should require > 20000 XP";
+    ASSERT_EQ(26000, (int)calculate_exp(3))
+        << "the level-3 XP threshold is exactly 26000 (8000 + 2000*2 + 4000*1 + 10000)";
 }
 
 
@@ -49,8 +49,9 @@ TEST(GuyCalcs, calculate_exp_monotonic_extended)
 
 TEST(GuyCalcs, calculate_exp_level_10)
 {
-    Uint32 xp10 = calculate_exp(10);
-    ASSERT_TRUE(xp10 > 100000) << "level 10 should require > 100000 XP";
+    // sum over k = 2..10 of 8000 + 2000*(k-1) + 4000*(k-2)
+    ASSERT_EQ(306000, (int)calculate_exp(10))
+        << "the level-10 XP threshold is exactly 306000";
 }
 
 
@@ -296,19 +297,60 @@ TEST(GuyCalcs, guy_upgrade_to_level_mage)
 }
 
 
-TEST(GuyCalcs, guy_upgrade_to_level_all_families)
+// Every playable family's level-up gain vector, pinned exactly. The Lua
+// level_up hook in packs/core/families/living-*.lua is what makes these
+// differ; a family with no hook falls back to kDefaultLevelUpGains{8,6,8,8,1}
+// (soldier, cleric, slime, ghost). If the hook dispatch in
+// guy::upgrade_to_level is lost, every hooked row below reads the default
+// vector instead and fails.
+TEST(GuyCalcs, guy_upgrade_to_level_applies_each_familys_gain_vector)
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
-                        FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
-                        FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
-                        FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN,
-                        FAMILY_ARCHMAGE, FAMILY_BIG_ORC, FAMILY_BARBARIAN };
-    for (int i = 0; i < 15; i++) {
-        guy g(families[i]);
-        short orig_str = g.strength;
-        g.upgrade_to_level(3);
-        ASSERT_EQ(3, (int)g.level) << "level should be 3";
-        ASSERT_TRUE(g.strength >= orig_str) << "strength should not decrease";
+    struct FamilyGains {
+        int family;
+        const char* label;
+        int str, dex, con, intel, armor;
+    };
+    static const FamilyGains kGains[] = {
+        {FAMILY_SOLDIER,       "soldier",       8,  6,  8,  8, 1},  // no hook: default
+        {FAMILY_ELF,           "elf",           6,  9,  6,  8, 1},
+        {FAMILY_ARCHER,        "archer",        4,  9,  8,  8, 1},
+        {FAMILY_MAGE,          "mage",          4,  6,  4, 16, 1},
+        {FAMILY_SKELETON,      "skeleton",      8, 12,  4,  4, 1},
+        {FAMILY_CLERIC,        "cleric",        8,  6,  8,  8, 1},  // no hook: default
+        {FAMILY_FIREELEMENTAL, "fire elemental",12,  6,  4,  8, 1},
+        {FAMILY_FAERIE,        "faerie",        4, 12,  4,  8, 1},
+        {FAMILY_SMALL_SLIME,   "small slime",   8,  6,  8,  8, 1},  // no hook: default
+        {FAMILY_THIEF,         "thief",         4, 12,  4,  8, 1},
+        {FAMILY_GHOST,         "ghost",         8,  6,  8,  8, 1},  // no hook: default
+        {FAMILY_DRUID,         "druid",         8,  3,  8, 12, 1},
+        {FAMILY_ORC,           "orc",          12,  3, 12,  4, 1},
+        {FAMILY_BIG_ORC,       "orc captain",  12,  3, 12,  4, 1},
+        {FAMILY_BARBARIAN,     "barbarian",    12,  3, 12,  4, 1},
+        {FAMILY_ARCHMAGE,      "archmage",      4,  6,  4, 16, 1},
+    };
+
+    for (const FamilyGains& row : kGains) {
+        guy g(row.family);
+        ASSERT_EQ(1, (int)g.level) << row.label << " starts at level 1";
+        const int orig_str = g.strength;
+        const int orig_dex = g.dexterity;
+        const int orig_con = g.constitution;
+        const int orig_int = g.intelligence;
+        const int orig_arm = g.armor;
+
+        g.upgrade_to_level(3);   // level_diff == 2
+
+        ASSERT_EQ(3, (int)g.level) << row.label << ": upgrade_to_level sets the level";
+        EXPECT_EQ(orig_str + 2 * row.str, (int)g.strength)
+            << row.label << ": STR gain is 2 levels * " << row.str;
+        EXPECT_EQ(orig_dex + 2 * row.dex, (int)g.dexterity)
+            << row.label << ": DEX gain is 2 levels * " << row.dex;
+        EXPECT_EQ(orig_con + 2 * row.con, (int)g.constitution)
+            << row.label << ": CON gain is 2 levels * " << row.con;
+        EXPECT_EQ(orig_int + 2 * row.intel, (int)g.intelligence)
+            << row.label << ": INT gain is 2 levels * " << row.intel;
+        EXPECT_EQ(orig_arm + 2 * row.armor, (int)g.armor)
+            << row.label << ": ARMOR gain is 2 levels * " << row.armor;
     }
 }
 
@@ -332,8 +374,14 @@ TEST(GuyCalcs, guy_upgrade_to_level_no_xp)
 TEST(GuyCalcs, guy_upgrade_level_10)
 {
     guy g(FAMILY_SOLDIER);
+    // A soldier has no Lua level_up hook, so nine levels of
+    // kDefaultLevelUpGains{8,6,8,8,1} land on the base {12,6,12,8,9}.
+    ASSERT_EQ(12, (int)g.strength) << "soldier base STR";
     g.upgrade_to_level(10);
     ASSERT_EQ(10, (int)g.level) << "level should be 10";
-    // STR gain: 8 * 9 levels * 1.0 = 72 + base 12 = 84
-    ASSERT_TRUE(g.strength > 50) << "soldier STR at level 10 should be > 50";
+    ASSERT_EQ(84, (int)g.strength) << "soldier STR at level 10 is 12 + 9*8";
+    EXPECT_EQ(60, (int)g.dexterity) << "soldier DEX at level 10 is 6 + 9*6";
+    EXPECT_EQ(84, (int)g.constitution) << "soldier CON at level 10 is 12 + 9*8";
+    EXPECT_EQ(80, (int)g.intelligence) << "soldier INT at level 10 is 8 + 9*8";
+    EXPECT_EQ(18, (int)g.armor) << "soldier ARMOR at level 10 is 9 + 9*1";
 }
