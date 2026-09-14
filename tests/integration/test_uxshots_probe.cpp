@@ -332,18 +332,6 @@ std::vector<RosterSeed> playtest_roster() {
   };
 }
 
-struct CompanySlotCleanup {
-  std::vector<std::string> slots;
-  ~CompanySlotCleanup() {
-    for (const std::string &slot : slots) {
-      for (const og::data::CompanyBackupInfo &backup :
-           og::data::list_company_backups(slot))
-        (void)og::data::delete_company_backup(slot, backup.seq);
-      (void)remove_user_file("save/" + slot + ".gtl");
-    }
-  }
-};
-
 // Remove every company file so the no-company main-menu variant shows.
 void reap_all_companies() {
   for (const og::data::CompanyInfo &info : og::data::list_companies()) {
@@ -477,7 +465,6 @@ int mainmenu_with_company_injector(void *data) {
 
 TEST(UxShots, b_mainmenu_with_company) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"uxmm1", "uxmm2"}};
   ASSERT_TRUE(seed_company_with_roster("uxmm1", "GREY WOLF COMPANY", 1000,
                                        playtest_roster()));
   ASSERT_TRUE(seed_company_with_roster("uxmm2", "IRON KETTLE BAND", 2000,
@@ -612,7 +599,6 @@ int seat_settings_injector(void *data) {
 
 TEST(UxShots, b2_seat_settings) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -703,7 +689,6 @@ TEST(UxShots, d_company_list) {
   // Exactly four companies exist while this shot is filmed, so the row
   // window below is a count and not an inequality.
   reap_all_companies();
-  CompanySlotCleanup cleanup{{"uxcl1", "uxcl2", "uxcl3", "uxcl4"}};
   ASSERT_TRUE(seed_company_with_roster("uxcl1", "GREY WOLF COMPANY", 1700000000,
                                        playtest_roster()));
   ASSERT_TRUE(seed_company("uxcl2", "THE COPPER SHIELDS", 1700086400));
@@ -790,7 +775,6 @@ TEST(UxShots, e_company_list_paged) {
   std::vector<std::string> slots;
   for (int i = 0; i < 11; ++i)
     slots.push_back("uxpg" + std::to_string(i));
-  CompanySlotCleanup cleanup{slots};
   const char *names[11] = {
       "GREY WOLF COMPANY", "THE COPPER SHIELDS", "RED LANTERN CREW",
       "OAKEN VANGUARD",    "SILVER FANG PACT",   "THE BLACK BANNERS",
@@ -857,7 +841,6 @@ int backups_injector(void *data) {
 
 TEST(UxShots, f_backups) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"uxbk1"}};
   // Start from no snapshots so the sequence numbers below are the ones this
   // test made (a crashed earlier run could otherwise leave uxbk1 backups
   // behind and shift every seq).
@@ -1117,7 +1100,6 @@ void run_basecamp_shot(NamedShot &shot, int (*injector)(void *),
 
 TEST(UxShots, g_basecamp_solo) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -1173,7 +1155,6 @@ struct SingleSeatDeviceGuard {
 
 TEST(UxShots, g2_basecamp_phone_single_seat) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -1194,7 +1175,6 @@ TEST(UxShots, g2_basecamp_phone_single_seat) {
 
 TEST(UxShots, h_basecamp_empty) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company("save0", "IRON KETTLE BAND", 1700259200));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
   NamedShot shot;
@@ -1219,7 +1199,6 @@ TEST(UxShots, h_basecamp_empty) {
 // on the panel's right rail.
 TEST(UxShots, i_basecamp_two_local_seats) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -1231,7 +1210,6 @@ TEST(UxShots, i_basecamp_two_local_seats) {
 
 TEST(UxShots, i_basecamp_three_local_seats) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -1243,7 +1221,6 @@ TEST(UxShots, i_basecamp_three_local_seats) {
 
 TEST(UxShots, i_basecamp_four_local_seats) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -1360,7 +1337,6 @@ int basecamp_placeholder_focus_injector(void *data) {
 
 TEST(UxShots, g3_basecamp_placeholder_focus) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -2235,7 +2211,6 @@ TEST(UxShots, n_view_level_staged) {
   g_view_level_first_frame.clear();
   g_menu_before_viewer_frame.clear();
   g_view_level_pan_phase_collided = false;
-  CompanySlotCleanup cleanup{{"save0"}};
   {
     SaveData sd;
     sd.reset();
@@ -2623,7 +2598,6 @@ TEST(UxShots, n_help_screen) {
 
 TEST(UxShots, i_basecamp_paged) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   std::vector<RosterSeed> roster = playtest_roster();
   roster.push_back({"WREN", FAMILY_ARCHER, 2, true});
   roster.push_back({"DUNCAN", FAMILY_SOLDIER, 1, true});

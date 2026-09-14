@@ -9,6 +9,7 @@ find_package(GTest REQUIRED)
 
 set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_trace_buffer.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_company_litter_guard.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_startup.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_combat_math.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_loader_and_walker.cpp
@@ -565,6 +566,7 @@ og_add_test_group(og_test_menu_engine FILES
 # picker_main injector flows for the §2.2-§2.5 feature screens live
 # here, never in og_test_menu_ui (~130s vs the 180s timeout).
 og_add_test_group(og_test_basecamp FILES
+    test_company_litter_guard.cpp
     test_company_list.cpp
     test_uxshots_probe.cpp
     test_networking_uxshots.cpp

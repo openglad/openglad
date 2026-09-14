@@ -2895,25 +2895,16 @@ TEST(PickerFuncs, get_saved_name_handles_legacy_truncated_and_named_slots)
     // [SAVE-R5] Raw-slot seeding must not leave stray companies behind: with
     // startup selection scanning save/ (design §3.5), leaked fixture slots
     // would become phantom "most recent company" candidates for other tests.
-    std::vector<std::string> seeded_slots;
-    struct SlotCleanup
-    {
-        std::vector<std::string>& slots;
-        ~SlotCleanup()
-        {
-            for (const std::string& slot : slots)
-                (void)remove_user_file("save/" + slot + ".gtl");
-        }
-    } cleanup{seeded_slots};
-
-    auto write_slot = [&seeded_slots](const std::string& slot,
-                                      const std::string& bytes) {
+    // The reaping half is structural now ([SAVE-R9] in
+    // tests/integration/integration_main.cpp); this test only has to write
+    // them.
+    auto write_slot = [](const std::string& slot,
+                         const std::string& bytes) {
         const std::string path = get_user_path() + "save/" + slot + ".gtl";
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         ASSERT_TRUE(out.good()) << "failed to open " << path;
         out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
         ASSERT_TRUE(out.good()) << "failed to write " << path;
-        seeded_slots.push_back(slot);
     };
 
     EXPECT_EQ("EMPTY SLOT", get_saved_name("__picker_missing_slot__"));

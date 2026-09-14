@@ -6,8 +6,10 @@
 //
 // Lives in the og_test_basecamp group (design G10: heavyweight Layer-F flows
 // never ride og_test_menu_ui). The binary gets a fresh temp config dir per
-// run; each test still seeds its own slots and reaps them so the flows stay
-// order-independent under --gtest_shuffle.
+// run; each test seeds its own slots and the harness reaps every non-baseline
+// company file and backup between tests ([SAVE-R9] in
+// tests/integration/integration_main.cpp), so the flows stay order-independent
+// under --gtest_shuffle without a teardown reaper of their own.
 
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
@@ -162,29 +164,6 @@ bool seed_corrupt_company(const std::string& slot)
     out << "not a save file";
     return static_cast<bool>(out);
 }
-
-// Reaps a test's slots (file + any backups) so list ordering stays
-// deterministic for every other test in the binary under shuffle.
-struct CompanySlotCleanup {
-    std::vector<std::string> slots;
-    ~CompanySlotCleanup()
-    {
-        for (const std::string& slot : slots) {
-            for (const og::data::CompanyBackupInfo& backup :
-                 og::data::list_company_backups(slot))
-                (void)og::data::delete_company_backup(slot, backup.seq);
-            (void)remove_user_file("save/" + slot + ".gtl");
-        }
-    }
-};
-
-struct ActiveCompanySlotRestore {
-    std::string slot = og::data::active_company_slot();
-    ~ActiveCompanySlotRestore()
-    {
-        (void)og::data::set_active_company_slot(slot);
-    }
-};
 
 struct FlowState {
     bool started = false;
@@ -641,8 +620,6 @@ int continue_corrupt_only_injector(void* data)
 // deliberately making the retired on-disk byte disagree.
 TEST(CompanyList, open_company_slot_preserves_live_player_mode)
 {
-    CompanySlotCleanup cleanup{{"runtimecountdirect"}};
-    ActiveCompanySlotRestore active_slot_restore;
     ASSERT_TRUE(seed_company("runtimecountdirect", "RUNTIME COUNT", 1000));
 
     for (int live_count = 0; live_count <= MAX_PLAYERS; ++live_count) {
@@ -671,8 +648,6 @@ TEST(CompanyList, open_company_slot_preserves_live_player_mode)
 // cannot import a stale client-local player count.
 TEST(CompanyList, open_most_recent_company_preserves_live_player_mode)
 {
-    CompanySlotCleanup cleanup{{"runtimecountcontinue"}};
-    ActiveCompanySlotRestore active_slot_restore;
     ASSERT_TRUE(seed_company(
         "runtimecountcontinue", "RUNTIME CONTINUE",
         INT64_C(400000000000000)));
@@ -703,7 +678,6 @@ TEST(CompanyList, open_most_recent_company_preserves_live_player_mode)
 TEST(CompanyList, open_row_zero_repoints_active_company)
 {
     trace_clear();
-    CompanySlotCleanup cleanup{{"wp3opena", "wp3openb"}};
     ASSERT_TRUE(seed_company("wp3opena", "ALPHA BAND", 1000));
     ASSERT_TRUE(seed_company("wp3openb", "BRAVO BAND", 2000));
 
@@ -744,7 +718,6 @@ TEST(CompanyList, open_row_zero_repoints_active_company)
 TEST(CompanyList, open_other_company_reseeds_lobby_and_autosave_targets_it)
 {
     trace_clear();
-    CompanySlotCleanup cleanup{{"wp7lobbya", "wp7lobbyb"}};
     // The opened company must be row 0 (most recent) even if an unrelated
     // test in this binary stamped a live wall-clock timestamp on save0.
     const std::int64_t now_s = og::data::company_clock_now_s();
@@ -833,7 +806,6 @@ TEST(CompanyList, open_other_company_reseeds_lobby_and_autosave_targets_it)
 // automatic"; §3.8 hook inventory: "difficulty/CTF setting callbacks").
 TEST(CompanyList, settings_mutation_autosaves_active_company)
 {
-    CompanySlotCleanup cleanup{{"wp7set"}};
     ASSERT_TRUE(seed_company("wp7set", "SETTINGS BAND", 3000));
     ASSERT_TRUE(og::data::set_active_company_slot("wp7set"));
 
@@ -882,7 +854,6 @@ TEST(CompanyList, delete_confirms_no_first_and_reaps_backups)
 {
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
-    CompanySlotCleanup cleanup{{"wp3dela", "wp3delb"}};
     ASSERT_TRUE(seed_company("wp3dela", "ALPHA BAND", 1000));
     ASSERT_TRUE(seed_company("wp3delb", "BRAVO BAND", 2000));
     ASSERT_TRUE(og::data::backup_company_now("wp3delb"))
@@ -926,7 +897,6 @@ TEST(CompanyList, corrupt_torn_and_active_guards_never_switch)
 {
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
-    CompanySlotCleanup cleanup{{"wp3guarda", "wp3guardt", "wp3guardc"}};
     ASSERT_TRUE(seed_company("wp3guarda", "ALPHA BAND", 2000));
     ASSERT_TRUE(seed_torn_company("wp3guardt", "TORN BAND", 4000));
     ASSERT_TRUE(seed_corrupt_company("wp3guardc"));
@@ -972,9 +942,6 @@ TEST(CompanyList, corrupt_torn_and_active_guards_never_switch)
 TEST(CompanyList, pagination_flips_pages_and_opens_windowed_row)
 {
     trace_clear();
-    CompanySlotCleanup cleanup;
-    for (int i = 0; i < 11; ++i)
-        cleanup.slots.push_back("wp3page" + std::to_string(i));
     for (int i = 0; i < 11; ++i) {
         ASSERT_TRUE(seed_company("wp3page" + std::to_string(i),
                                  "PAGE BAND " + std::to_string(i),
@@ -1010,7 +977,6 @@ TEST(CompanyList, backups_door_opens_empty_view_and_empty_delete_exits)
 {
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
-    CompanySlotCleanup cleanup{{"wp3lastd"}};
     ASSERT_TRUE(seed_company("wp3lastd", "LAST BAND", 1500));
     picker_testing_yes_or_no_queue_push(true);  // delete confirm: YES
 
@@ -1061,7 +1027,6 @@ TEST(CompanyList, restore_rewinds_and_opens_base_camp)
 {
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
-    CompanySlotCleanup cleanup{{"wp3resx"}};
     // OLD state -> snapshot (seq 1) -> NEW state: the restore rewinds NEW
     // back to OLD.
     ASSERT_TRUE(seed_company("wp3resx", "OLD GUARD", 5000));
@@ -1083,7 +1048,6 @@ TEST(CompanyList, restore_rewinds_and_opens_base_camp)
     SDL_WaitThread(thread, nullptr);
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
-    og::data::set_company_clock_for_tests(std::nullopt);
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_team_menu)
@@ -1125,7 +1089,6 @@ TEST(CompanyList, corrupt_backup_row_refuses_without_confirm)
 {
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
-    CompanySlotCleanup cleanup{{"wp3bkc"}};
     ASSERT_TRUE(seed_company("wp3bkc", "INTACT BAND", 5000));
     {
         // Bad-magic snapshot: lists as a CORRUPT row.
@@ -1173,7 +1136,6 @@ TEST(CompanyList, restore_recovers_corrupt_company)
 {
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
-    CompanySlotCleanup cleanup{{"wp3rcv"}};
     // Good state -> snapshot (seq 1) -> the company file gets corrupted.
     ASSERT_TRUE(seed_company("wp3rcv", "SAVED BAND", 4000));
     ASSERT_TRUE(og::data::backup_company_now("wp3rcv"));
@@ -1255,7 +1217,6 @@ TEST(CompanyList, backup_row_level_titles_follow_the_mount_guard)
 TEST(CompanyList, continue_torn_newest_pops_up_and_falls_back_to_list)
 {
     trace_clear();
-    CompanySlotCleanup cleanup{{"wp3ctg", "wp3ctt"}};
     ASSERT_TRUE(seed_company("wp3ctg", "GOOD BAND", 1000));
     ASSERT_TRUE(seed_torn_company("wp3ctt", "TORN BAND", 4000));
     // The good company is the one currently open (picker startup loads it).
@@ -1292,7 +1253,6 @@ TEST(CompanyList, continue_torn_newest_pops_up_and_falls_back_to_list)
 TEST(CompanyList, continue_corrupt_only_pops_up_and_never_switches)
 {
     trace_clear();
-    CompanySlotCleanup cleanup{{"wp3cfo"}};
     ASSERT_TRUE(seed_corrupt_company("wp3cfo"));
     const std::string slot_before = og::data::active_company_slot();
 

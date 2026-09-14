@@ -136,7 +136,6 @@ TEST(BackToMainmenu, continue_then_back_returns_to_mainmenu) {
     // Seed through the autosave choke point that stamps, and check after the
     // flow which company it actually got.
     ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 

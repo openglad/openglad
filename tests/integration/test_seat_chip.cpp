@@ -191,23 +191,13 @@ int seat_chip_injector(void* data)
 
 TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
 {
-    struct ClockReset {
-        ~ClockReset() { og::data::set_company_clock_for_tests(std::nullopt); }
-    } clock_reset;
-    struct FoundedCompanyCleanup {
-        std::string slot;
-        ~FoundedCompanyCleanup()
-        {
-            if (slot.empty() || slot == "save0")
-                return;
-            (void)og::data::set_active_company_slot("save0");
-            (void)og::data::delete_company(slot);
-        }
-    } company_cleanup;
-
     trace_clear();
     // Outrank any stray company created earlier in this process, even when
-    // the suite runs shuffled within the same second.
+    // the suite runs shuffled within the same second. This is SETUP, not
+    // teardown: the founded company must outrank the [SAVE-R5](c) stray
+    // slots. The clock pin, the founded company file and the live save's
+    // stamp all go back to the process baseline at the next reset
+    // ([SAVE-R9], tests/integration/integration_main.cpp).
     og::data::set_company_clock_for_tests(4102444800LL); // 2100-01-01 UTC
 
     SeatChipFlowState state;
@@ -222,7 +212,6 @@ TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
-    company_cleanup.slot = state.founded_slot;
 
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.saw_base_camp) << "flow must reach Base Camp";
@@ -235,4 +224,15 @@ TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
     EXPECT_TRUE(state.editor_opened_on_center)
         << "a card-center click must still open the seat editor";
     ASSERT_TRUE(state.finished) << "the complete flow should unwind";
+    // The founded company is what makes this test a [SAVE-R9] leaker: BEGIN
+    // NEW GAME repoints the active company to its own derived slug, so the
+    // file it leaves behind is not save0 and a teardown reaper had to know
+    // its name. Pinned rather than dropped with the reaper, because it is
+    // also the rule the flow's whole premise rests on.
+    ASSERT_FALSE(state.founded_slot.empty())
+        << "the injector must have read the active slot at Base Camp";
+    ASSERT_NE("save0", state.founded_slot)
+        << "BEGIN NEW GAME must repoint the active company to the slug it "
+           "derived from the generated name, not leave it on the default "
+           "save0";
 }

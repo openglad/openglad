@@ -264,17 +264,6 @@ og::sim::LobbyPlayer shot_seat(std::uint8_t index,
     return player;
 }
 
-// These shots seed save0 with a fresh company; leaving it behind reshuffles
-// the CompanyList suite's positional row clicks (most-recent-first order),
-// so each test reaps it on the way out — the probe's reap discipline.
-void reap_save0_company()
-{
-    for (const og::data::CompanyBackupInfo& backup :
-         og::data::list_company_backups("save0"))
-        (void)og::data::delete_company_backup("save0", backup.seq);
-    (void)remove_user_file("save/save0.gtl");
-}
-
 void seed_shot_save()
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -453,7 +442,6 @@ TEST(NetworkingUxShots, session_views_and_kick_confirm)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
     picker_testing_set_force_real_dialogs(false);
-    reap_save0_company();
 
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.finished);
@@ -566,7 +554,6 @@ TEST(NetworkingUxShots, basecamp_kicked_by_host_line_b)
     SDL_WaitThread(thread, nullptr);
     og::ui::install_active_picker_lobby_client(saved_client);
     cleanup_picker_state();
-    reap_save0_company();
 
     ASSERT_TRUE(state.finished);
     ASSERT_EQ(1, state.captures);

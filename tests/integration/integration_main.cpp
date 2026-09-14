@@ -63,6 +63,14 @@ void picker_testing_set_force_real_dialogs(bool enabled);
 void campaign_picker_testing_set_auto_accept(bool enabled);
 #endif
 
+// [SAVE-R9] Structural company-litter reap. Declared in
+// tests/test_company_cleanup.h; defined below, outside the anonymous
+// namespace, so tests/integration/test_company_litter_guard.cpp can drive
+// them directly.
+std::set<std::string>& integration_company_baseline_mutable();
+void seed_stray_company_slots(const std::string& csv);
+void reap_non_baseline_companies();
+
 namespace {
 
 void reset_integration_ui_state()
@@ -75,6 +83,50 @@ void reset_integration_ui_state()
     // process-wide slot (directly or via ScopedActiveCompany misuse) must not
     // leak it into later tests under --gtest_shuffle.
     (void)og::data::set_active_company_slot("save0");
+    // [SAVE-R9] Structural company-litter reap, plus the two in-memory
+    // company handles the same class of leak travels through.
+    //
+    // A company file a test writes is NOT inert once that test returns:
+    // CONTINUE opens the MOST RECENT company (design §2.1), so a leftover
+    // slot with a fresh (or pinned-future) last_played_unix_s re-targets the
+    // next test's whole session, and a leftover save/backups/<slot>.NNN.gtl
+    // re-targets a positional backup-row click. The per-test RAII convention
+    // for this rule already existed in twelve files and still missed both
+    // leakers in og_test_basecamp (test_seat_chip.cpp founded a company under
+    // a pinned 2100-01-01 clock; test_fade_ownership.cpp left save0 behind),
+    // which is exactly the argument [LOBBY-R1] below makes: a per-test guard
+    // cannot be the rule — this is.
+    //
+    // The rule: every save/*.gtl and every save/backups/*.gtl whose slot is
+    // not in the PROCESS BASELINE is deleted between tests.
+    //  - The baseline is snapshotted in main() right after
+    //    seed_stray_company_slots_from_env(), so the [SAVE-R5](c) stray-slot
+    //    diagnostic survives every reset (that tool exists to stay in the
+    //    list for the whole run) while nothing a test writes does.
+    //  - save0 IS reaped. integration_main.cpp writes no save0 (only the
+    //    slot reset above), so in a fresh per-PID config dir save0 does not
+    //    exist at the first OnTestStart; any save0 present at a test end is
+    //    that test's litter. The "save0 is the shared fixture" exemption was
+    //    a per-test-cleanup concept and has no meaning under a baseline.
+    //  - netsession.gtl is NOT reaped: [SAVE-R8]'s slot setter already
+    //    isolates it structurally and no leak of it is on file.
+    // Ordering: the reap runs before the current_session early return, so it
+    // also protects the handful of tests that run with no session.
+    reap_non_baseline_companies();
+    // The same leak travels in memory, not only on disk: a test that pins the
+    // company clock (set_company_clock_for_tests) or stamps the live save's
+    // last_played_unix_s hands the next company write that stamp, because
+    // SaveData::reset() does not clear the field. Un-pin and zero here rather
+    // than in src/: production writes either go through company_autosave
+    // (which re-stamps) or write a loaded company back to its own slot, so no
+    // product rule depends on reset() clearing it, and src/resources/
+    // save_data.cpp carries a parity mutation pin.
+    og::data::set_company_clock_for_tests(std::nullopt);
+    if (og::runtime::current_session != nullptr &&
+        og::runtime::current_session->myscreen_ != nullptr)
+    {
+        og::runtime::current_session->myscreen_->save_data.last_played_unix_s = 0;
+    }
     // [LOBBY-R1] The same treatment for the standalone picker lobby client.
     // It is created lazily by almost any picker seam and destroyed only here
     // or by an explicit picker_lobby_shutdown(); a survivor answers the next
@@ -377,14 +429,46 @@ std::mutex s_allbuttons_mutex;
 // test writes with a real-now stamp outranks it — the design's contract that
 // legitimate flows MUST stamp). The first seeded slot carries a one-soldier
 // roster so roster-adjacent leaks are observable too.
+//
+// Every seeded slot joins the [SAVE-R9] process baseline, so the reap between
+// tests never removes the diagnostic it is supposed to run against.
+//
+// What the tool is NOT: a promise that every test survives it. The positional
+// CompanyList row tests (open row 0, delete row 0, the backup rows) click a
+// row by INDEX into a most-recent-first list, so a stray above them
+// re-targets the click by design; each one then fails by NAME on its own
+// identity assertion (trace_contains("company_list", "open wp3openb"),
+// active_company_slot(), the save_name pin). That named failure IS the
+// diagnostic — the whole point of the tool is to make an order dependence
+// say which flow it broke. Do not try to make them stray-proof with stamps:
+// corrupt_torn_and_active_guards seeds a ts-0 torn row on purpose, and a zero
+// stamp can never outrank a stray.
 void seed_stray_company_slots_from_env()
 {
     const char* raw = std::getenv("OPENGLAD_TEST_SEED_STRAY_SLOTS");
     if (raw == nullptr || raw[0] == '\0')
         return;
+    seed_stray_company_slots(raw);
+}
+
+} // namespace
+
+std::set<std::string>& integration_company_baseline_mutable()
+{
+    static std::set<std::string> baseline;
+    return baseline;
+}
+
+const std::set<std::string>& integration_company_baseline()
+{
+    return integration_company_baseline_mutable();
+}
+
+void seed_stray_company_slots(const std::string& csv)
+{
     std::int64_t stamp = 1000000000; // 2001 — older than any real-now stamp
     bool with_soldier = true;
-    const std::string list(raw);
+    const std::string list(csv);
     for (std::size_t start = 0; start < list.size();)
     {
         std::size_t end = list.find(',', start);
@@ -413,11 +497,48 @@ void seed_stray_company_slots_from_env()
             std::fprintf(stderr, "stray-slot seed FAILED for '%s'\n",
                          slot.c_str());
         else
+        {
             std::fprintf(stderr, "stray-slot seeded: '%s'\n", slot.c_str());
+            integration_company_baseline_mutable().insert(slot);
+        }
     }
 }
 
-} // namespace
+// [SAVE-R9] Delete every company file and company backup whose slot is not in
+// the process baseline. See the rule block in reset_integration_ui_state().
+void reap_non_baseline_companies()
+{
+    const std::set<std::string>& baseline = integration_company_baseline();
+    for (const std::string& name : list_files("save"))
+    {
+        if (!name.ends_with(".gtl") || name == "netsession.gtl")
+            continue;
+        // Slot is the basename up to the FIRST dot, which folds the
+        // "<slot>.tmp.gtl" atomic-write staging files onto their own slot.
+        const std::string slot = name.substr(0, name.find('.'));
+        if (baseline.count(slot) != 0)
+            continue;
+        (void)remove_user_file("save/" + name);
+    }
+    for (const std::string& name : list_files("save/backups"))
+    {
+        if (!name.ends_with(".gtl"))
+            continue;
+        // Backup grammar (src/resources/company.cpp, parse_backup_seq):
+        // "<slot>.<SEQ>.gtl", so the slot is the name minus the last two
+        // dot-tokens and may itself contain dots.
+        const std::size_t gtl_dot = name.rfind('.');
+        if (gtl_dot == std::string::npos || gtl_dot == 0)
+            continue;
+        const std::size_t seq_dot = name.rfind('.', gtl_dot - 1);
+        if (seq_dot == std::string::npos)
+            continue;
+        const std::string slot = name.substr(0, seq_dot);
+        if (baseline.count(slot) != 0)
+            continue;
+        (void)remove_user_file("save/backups/" + name);
+    }
+}
 
 std::mutex& get_allbuttons_mutex()
 {
@@ -548,6 +669,18 @@ int main(int argc, char** argv)
     SDL_Init(SDL_INIT_VIDEO);
     io_init(argc, argv);
     seed_stray_company_slots_from_env();
+    // [SAVE-R9] Snapshot the process baseline: every company slot that exists
+    // BEFORE the first test runs is permanent and survives every reset. In a
+    // fresh per-PID config dir this is exactly the seeded stray set (usually
+    // empty); listing the directory rather than trusting the seeder also
+    // covers anything a future harness pre-write puts there.
+    for (const std::string& name : list_files("save"))
+    {
+        if (!name.ends_with(".gtl"))
+            continue;
+        integration_company_baseline_mutable().insert(
+            name.substr(0, name.find('.')));
+    }
     cfg.apply_setting("graphics", "overscan_percentage", "0");
 
     create_global_screen(1);
