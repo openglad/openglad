@@ -10,6 +10,15 @@
 // company file and backup between tests ([SAVE-R9] in
 // tests/integration/integration_main.cpp), so the flows stay order-independent
 // under --gtest_shuffle without a teardown reaper of their own.
+//
+// Two rules hold this file together, because every flow here clicks rows by
+// POSITION and blocks the main thread inside picker_main while it does:
+//  - expect_company_rows(...) states the exact list each flow is about to
+//    drive, at the top of the test, so a re-targeted click is a named failure
+//    here instead of a puzzle inside the flow;
+//  - abort_flow(...) + run_company_list_flow(...) mean a wait that dies ends
+//    the test with its stage id (ASSERT_EQ(0, rc)) instead of stranding
+//    picker_main and burning the group to its 420 s timeout (B1).
 
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
@@ -24,6 +33,8 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -171,6 +182,14 @@ struct FlowState {
     bool saw_team_menu = false;
     bool saw_load_hidden_after_empty = false;
     bool saw_continue_hidden_after_empty = false;
+    // Set by run_company_list_flow() the instant picker_main returns, read by
+    // the escape tail on the injector thread — hence atomic (the old habit of
+    // peeking at g_picker_mainmenu_calls, a plain int the menu thread writes
+    // every frame, is a data race).
+    std::atomic<bool> main_left{false};
+    // The stage the flow died at, mirrored out of abort_flow for the log; the
+    // authoritative copy is the injector's thread return code.
+    int stage = 0;
     // #237 derivation pins, counted around the real doors this flow already
     // drives. -1 means the injector never reached the read, which fails the
     // exact assertions in the test body.
@@ -197,6 +216,84 @@ int count_fade_between_traces()
     return fades;
 }
 
+// --- the escape tail -------------------------------------------------------
+//
+// Every wait below can fail, and a failed wait used to mean `return 0`: the
+// injector thread died quietly, the main thread stayed blocked inside
+// picker_main on a screen nobody would ever click out of, and the binary
+// burned to the 420 s group TIMEOUT with rc=124 — the most expensive red CI
+// can produce, and one that names no test. (B1: og_test_basecamp
+// --gtest_shuffle seed 7 hung exactly this way, in the backups view, inside
+// CompanyList.restore_rewinds_and_opens_base_camp.)
+//
+// The rule now: a failed wait returns abort_flow(state, kStage...), which
+// says which wait died and then clicks its way out — BACK when the live
+// screen publishes one, else QUIT — until run_company_list_flow's main_left
+// flag says picker_main has returned. The loop carries NO wall-clock bound on
+// purpose (openglad-test-integrity "Tests that hang" §1; the precedent is the
+// tail at tests/integration/test_pause_menu.cpp:3790): a tail that gave up
+// would leave the main thread blocked forever, which is the hang it exists to
+// prevent. Every flow test asserts ASSERT_EQ(0, rc), so a stranded flow is a
+// NAMED failure carrying the stage that stalled instead of a group timeout.
+//
+// Stage ids are <injector ordinal>*10 + <wait ordinal>: unique across the
+// file, so the number in the message says which wait of which flow died.
+constexpr int kStageOpenRowLoadDoor = 11;
+constexpr int kStageOpenRowRowZero = 12;
+constexpr int kStageOpenRowTeamMenu = 13;
+constexpr int kStageOpenOtherLoadDoor = 21;
+constexpr int kStageOpenOtherRowZero = 22;
+constexpr int kStageOpenOtherTeamMenu = 23;
+constexpr int kStageOpenOtherRosterRow = 24;
+constexpr int kStageDeleteLoadDoor = 31;
+constexpr int kStageDeleteRowOne = 32;
+constexpr int kStageGuardLoadDoor = 41;
+constexpr int kStageGuardRowTwo = 42;
+constexpr int kStagePageLoadDoor = 51;
+constexpr int kStagePageNext = 52;
+constexpr int kStagePageTeamMenu = 53;
+constexpr int kStageBackupsLoadDoor = 61;
+constexpr int kStageBackupsBkDoor = 62;
+constexpr int kStageBackupsEmptyView = 63;
+constexpr int kStageBackupsListReturn = 64;
+constexpr int kStageBackupsMainMenu = 65;
+constexpr int kStageRestoreLoadDoor = 71;
+constexpr int kStageRestoreBkDoor = 72;
+constexpr int kStageRestoreBackupRowMissing = 73;
+constexpr int kStageRestoreTeamMenu = 74;
+constexpr int kStageCorruptBkLoadDoor = 81;
+constexpr int kStageCorruptBkDoor = 82;
+constexpr int kStageCorruptBkRow = 83;
+constexpr int kStageCorruptBkListReturn = 84;
+constexpr int kStageRecoverLoadDoor = 91;
+constexpr int kStageRecoverBkDoor = 92;
+constexpr int kStageRecoverBackupRow = 93;
+constexpr int kStageRecoverTeamMenu = 94;
+constexpr int kStageContinueTornDoor = 101;
+constexpr int kStageContinueTornGoodRow = 102;
+constexpr int kStageContinueTornTeamMenu = 103;
+constexpr int kStageContinueCorruptDoor = 111;
+constexpr int kStageContinueCorruptRow = 112;
+constexpr int kStageContinueCorruptMainMenu = 113;
+
+int abort_flow(FlowState* state, int stage)
+{
+    state->stage = stage;
+    fprintf(stderr,
+            "  [test] FLOW ABORT at stage %d — unwinding so picker_main can "
+            "return\n",
+            stage);
+    while (!state->main_left.load()) {
+        if (has_interactable("back"))
+            interact("back");
+        else if (has_interactable("quit"))
+            interact("quit");
+        (void)wait_for_menu_frames(1, 250);
+    }
+    state->finished = true;
+    return stage;
+}
+
 // --- open flow -------------------------------------------------------------
 
 int open_row_injector(void* data)
@@ -205,30 +302,31 @@ int open_row_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStageOpenRowLoadDoor);
     SDL_Delay(750);  // menu-entry settle
     fprintf(stderr, "  [test] clicking LOAD\n");
     interact("load_company");
 
     // The Company List fades in (#237: LOAD is a main-menu door).
-    if (wait_for_interactable("company_row_0", 5000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] opening company row 0\n");
-        // #237 symmetry leg: opening a company leaves the list for Base Camp
-        // — a main-menu-boundary crossing, so it fades out and in like every
-        // other door off the main menu.
-        const int fades_before_open = count_fade_between_traces();
-        interact("company_row_0");
+    if (!wait_for_interactable("company_row_0", 5000))
+        return abort_flow(state, kStageOpenRowRowZero);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] opening company row 0\n");
+    // #237 symmetry leg: opening a company leaves the list for Base Camp
+    // — a main-menu-boundary crossing, so it fades out and in like every
+    // other door off the main menu.
+    const int fades_before_open = count_fade_between_traces();
+    interact("company_row_0");
 
-        if (wait_for_team_menu()) {
-            state->saw_team_menu = true;
-            SDL_Delay(750);
-            state->fades_added_by_open_row =
-                count_fade_between_traces() - fades_before_open;
-            fprintf(stderr, "  [test] clicking back from team menu\n");
-            interact("back");
-        }
-    }
+    if (!wait_for_team_menu())
+        return abort_flow(state, kStageOpenRowTeamMenu);
+    state->saw_team_menu = true;
+    SDL_Delay(750);
+    state->fades_added_by_open_row =
+        count_fade_between_traces() - fades_before_open;
+    fprintf(stderr, "  [test] clicking back from team menu\n");
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -242,28 +340,30 @@ int open_other_company_and_toggle_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStageOpenOtherLoadDoor);
     SDL_Delay(750);  // menu-entry settle
     interact("load_company");
 
-    if (wait_for_interactable("company_row_0", 5000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] opening row 0 (the NON-boot company)\n");
-        interact("company_row_0");
+    if (!wait_for_interactable("company_row_0", 5000))
+        return abort_flow(state, kStageOpenOtherRowZero);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] opening row 0 (the NON-boot company)\n");
+    interact("company_row_0");
 
-        if (wait_for_team_menu()) {
-            state->saw_team_menu = true;
-            SDL_Delay(750);
-            // One §3.8 roster mutation: bench roster row 0. The autosave this
-            // triggers must write the OPENED company's roster into the OPENED
-            // company's file.
-            fprintf(stderr, "  [test] toggling deploy on roster row 0\n");
-            interact("roster_dep_0");
-            SDL_Delay(400);
-            fprintf(stderr, "  [test] clicking back from base camp\n");
-            interact("back");
-        }
-    }
+    if (!wait_for_team_menu())
+        return abort_flow(state, kStageOpenOtherTeamMenu);
+    state->saw_team_menu = true;
+    SDL_Delay(750);
+    // One §3.8 roster mutation: bench roster row 0. The autosave this
+    // triggers must write the OPENED company's roster into the OPENED
+    // company's file.
+    fprintf(stderr, "  [test] toggling deploy on roster row 0\n");
+    if (!interact("roster_dep_0"))
+        return abort_flow(state, kStageOpenOtherRosterRow);
+    SDL_Delay(400);
+    fprintf(stderr, "  [test] clicking back from base camp\n");
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -277,30 +377,33 @@ int delete_rows_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStageDeleteLoadDoor);
     SDL_Delay(750);
     interact("load_company");
 
-    if (wait_for_interactable("company_row_1", 5000)) {
-        SDL_Delay(750);
-        // First X click: the queued NO leaves the company alone.
-        fprintf(stderr, "  [test] deleting row 0 (confirm NO)\n");
-        interact("company_del_0");
-        SDL_Delay(400);
-        // Second X click: the queued YES deletes it (+ its backups).
-        fprintf(stderr, "  [test] deleting row 0 (confirm YES)\n");
-        interact("company_del_0");
+    if (!wait_for_interactable("company_row_1", 5000))
+        return abort_flow(state, kStageDeleteRowOne);
+    SDL_Delay(750);
+    // First X click: the queued NO leaves the company alone.
+    fprintf(stderr, "  [test] deleting row 0 (confirm NO)\n");
+    interact("company_del_0");
+    SDL_Delay(400);
+    // Second X click: the queued YES deletes it (+ its backups).
+    fprintf(stderr, "  [test] deleting row 0 (confirm YES)\n");
+    interact("company_del_0");
 
-        // Poll the filesystem for the deletion, then leave.
-        int elapsed = 0;
-        while (elapsed < 5000 && user_file_exists("save/wp3delb.gtl")) {
-            SDL_Delay(50);
-            elapsed += 50;
-        }
-        SDL_Delay(400);
-        fprintf(stderr, "  [test] clicking back from the company list\n");
-        interact("back");
+    // Poll the filesystem for the deletion, then leave. A deletion that
+    // never lands is the test body's ASSERT_FALSE(user_file_exists) to
+    // report: BACK still works, so this leg never strands the main thread.
+    int elapsed = 0;
+    while (elapsed < 5000 && user_file_exists("save/wp3delb.gtl")) {
+        SDL_Delay(50);
+        elapsed += 50;
     }
+    SDL_Delay(400);
+    fprintf(stderr, "  [test] clicking back from the company list\n");
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -314,25 +417,26 @@ int guard_rows_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStageGuardLoadDoor);
     SDL_Delay(750);
     interact("load_company");
 
     // Rows (ts desc; corrupt sorts last with ts 0): 0 = torn, 1 = active
     // good company, 2 = corrupt.
-    if (wait_for_interactable("company_row_2", 5000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] opening the torn-body row\n");
-        interact("company_row_0");  // popup (trace-only), stays listed
-        SDL_Delay(400);
-        fprintf(stderr, "  [test] opening the corrupt row\n");
-        interact("company_row_2");  // popup COMPANY FILE DAMAGED
-        SDL_Delay(400);
-        fprintf(stderr, "  [test] deleting the active company's row\n");
-        interact("company_del_1");  // popup SWITCH FIRST, no confirm
-        SDL_Delay(400);
-        interact("back");
-    }
+    if (!wait_for_interactable("company_row_2", 5000))
+        return abort_flow(state, kStageGuardRowTwo);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] opening the torn-body row\n");
+    interact("company_row_0");  // popup (trace-only), stays listed
+    SDL_Delay(400);
+    fprintf(stderr, "  [test] opening the corrupt row\n");
+    interact("company_row_2");  // popup COMPANY FILE DAMAGED
+    SDL_Delay(400);
+    fprintf(stderr, "  [test] deleting the active company's row\n");
+    interact("company_del_1");  // popup SWITCH FIRST, no confirm
+    SDL_Delay(400);
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -346,25 +450,26 @@ int pagination_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStagePageLoadDoor);
     SDL_Delay(750);
     interact("load_company");
 
     // 11 companies span two eight-row pages: the pagers must be live.
-    if (wait_for_interactable("company_page_next", 5000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] flipping to page 2\n");
-        interact("company_page_next");
-        SDL_Delay(400);
-        // Page 2 starts with the 9th company in recency order.
-        fprintf(stderr, "  [test] opening the page-2 row\n");
-        interact("company_row_0");
-        if (wait_for_team_menu()) {
-            state->saw_team_menu = true;
-            SDL_Delay(750);
-            interact("back");
-        }
-    }
+    if (!wait_for_interactable("company_page_next", 5000))
+        return abort_flow(state, kStagePageNext);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] flipping to page 2\n");
+    interact("company_page_next");
+    SDL_Delay(400);
+    // Page 2 starts with the 9th company in recency order.
+    fprintf(stderr, "  [test] opening the page-2 row\n");
+    interact("company_row_0");
+    if (!wait_for_team_menu())
+        return abort_flow(state, kStagePageTeamMenu);
+    state->saw_team_menu = true;
+    SDL_Delay(750);
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -397,55 +502,53 @@ int backups_and_empty_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStageBackupsLoadDoor);
     SDL_Delay(750);
     // #237: LOAD is a main-menu door — the Company List crosses the boundary
     // and fades, and the main menu fades again behind it.
     const int fades_before_load = count_fade_between_traces();
     interact("load_company");
 
-    int fades_inside_list = -1;
-    if (wait_for_interactable("company_bak_0", 5000)) {
-        SDL_Delay(750);
-        state->fades_added_by_load_door =
-            count_fade_between_traces() - fades_before_load;
-        fprintf(stderr, "  [test] clicking the BK door\n");
-        // #237: the Backups view is opened from the open Company List — a
-        // nested run_menu_screen, which never fades whatever it is.
-        const int fades_before_backups = count_fade_between_traces();
-        interact("company_bak_0");  // §2.4: opens the (empty) Backups view
-        if (wait_for_backups_view()) {
-            SDL_Delay(750);  // menu-entry settle
-            state->fades_added_by_backups_door =
-                count_fade_between_traces() - fades_before_backups;
-            fprintf(stderr, "  [test] backing out of the empty backups view\n");
-            interact("back");
-        }
-        if (wait_for_interactable("company_del_0", 5000)) {
-            SDL_Delay(400);
-            // The return leg of the LOAD door: emptying the list exits the
-            // screen and re-presents the main menu. Nothing between here and
-            // the main menu fades (the confirm is trace-only under TESTING).
-            fades_inside_list = count_fade_between_traces();
-            fprintf(stderr,
-                    "  [test] deleting the last company (confirm YES)\n");
-            interact("company_del_0");  // empties the list -> screen exits
-        }
-    }
+    if (!wait_for_interactable("company_bak_0", 5000))
+        return abort_flow(state, kStageBackupsBkDoor);
+    SDL_Delay(750);
+    state->fades_added_by_load_door =
+        count_fade_between_traces() - fades_before_load;
+    fprintf(stderr, "  [test] clicking the BK door\n");
+    // #237: the Backups view is opened from the open Company List — a
+    // nested run_menu_screen, which never fades whatever it is.
+    const int fades_before_backups = count_fade_between_traces();
+    interact("company_bak_0");  // §2.4: opens the (empty) Backups view
+    if (!wait_for_backups_view())
+        return abort_flow(state, kStageBackupsEmptyView);
+    SDL_Delay(750);  // menu-entry settle
+    state->fades_added_by_backups_door =
+        count_fade_between_traces() - fades_before_backups;
+    fprintf(stderr, "  [test] backing out of the empty backups view\n");
+    interact("back");
+
+    if (!wait_for_interactable("company_del_0", 5000))
+        return abort_flow(state, kStageBackupsListReturn);
+    SDL_Delay(400);
+    // The return leg of the LOAD door: emptying the list exits the
+    // screen and re-presents the main menu. Nothing between here and
+    // the main menu fades (the confirm is trace-only under TESTING).
+    const int fades_inside_list = count_fade_between_traces();
+    fprintf(stderr, "  [test] deleting the last company (confirm YES)\n");
+    interact("company_del_0");  // empties the list -> screen exits
 
     // Back on a re-entered main menu whose gate must hide CONTINUE/LOAD.
-    if (wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
-        if (fades_inside_list >= 0) {
-            state->fades_added_by_load_return =
-                count_fade_between_traces() - fades_inside_list;
-        }
-        state->saw_load_hidden_after_empty = !has_interactable("load_company");
-        state->saw_continue_hidden_after_empty =
-            !has_interactable("continue_game");
-        fprintf(stderr, "  [test] quitting from the main menu\n");
-        interact("quit");
-    }
+    if (!wait_for_interactable("begin_new_game", 10000))
+        return abort_flow(state, kStageBackupsMainMenu);
+    SDL_Delay(750);
+    state->fades_added_by_load_return =
+        count_fade_between_traces() - fades_inside_list;
+    state->saw_load_hidden_after_empty = !has_interactable("load_company");
+    state->saw_continue_hidden_after_empty =
+        !has_interactable("continue_game");
+    fprintf(stderr, "  [test] quitting from the main menu\n");
+    interact("quit");
 
     state->finished = true;
     return 0;
@@ -459,31 +562,36 @@ int restore_backup_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStageRestoreLoadDoor);
     SDL_Delay(750);
     interact("load_company");
 
-    if (wait_for_interactable("company_bak_0", 5000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] opening the backups view\n");
-        interact("company_bak_0");
-        if (wait_for_interactable("backup_row_0", 5000)) {
-            SDL_Delay(750);  // menu-entry settle
-            // First click: the queued NO leaves everything alone.
-            fprintf(stderr, "  [test] restoring row 0 (confirm NO)\n");
-            interact("backup_row_0");
-            SDL_Delay(400);
-            // Second click: the queued YES rewinds and opens base camp.
-            fprintf(stderr, "  [test] restoring row 0 (confirm YES)\n");
-            interact("backup_row_0");
-            if (wait_for_team_menu()) {
-                state->saw_team_menu = true;
-                SDL_Delay(750);
-                fprintf(stderr, "  [test] clicking back from team menu\n");
-                interact("back");
-            }
-        }
-    }
+    if (!wait_for_interactable("company_bak_0", 5000))
+        return abort_flow(state, kStageRestoreBkDoor);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] opening the backups view\n");
+    interact("company_bak_0");
+    // The stranding wait: a company with NO snapshots opens an empty backups
+    // view where backup_row_0 can never appear, and the tail is what gets the
+    // main thread out of it (CompanyList.stranded_injector_escapes_the_
+    // backups_view drives exactly that).
+    if (!wait_for_interactable("backup_row_0", 5000))
+        return abort_flow(state, kStageRestoreBackupRowMissing);
+    SDL_Delay(750);  // menu-entry settle
+    // First click: the queued NO leaves everything alone.
+    fprintf(stderr, "  [test] restoring row 0 (confirm NO)\n");
+    interact("backup_row_0");
+    SDL_Delay(400);
+    // Second click: the queued YES rewinds and opens base camp.
+    fprintf(stderr, "  [test] restoring row 0 (confirm YES)\n");
+    interact("backup_row_0");
+    if (!wait_for_team_menu())
+        return abort_flow(state, kStageRestoreTeamMenu);
+    state->saw_team_menu = true;
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] clicking back from team menu\n");
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -495,28 +603,30 @@ int corrupt_backup_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStageCorruptBkLoadDoor);
     SDL_Delay(750);
     interact("load_company");
 
-    if (wait_for_interactable("company_bak_0", 5000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] opening the backups view\n");
-        interact("company_bak_0");
-        if (wait_for_interactable("backup_row_0", 5000)) {
-            SDL_Delay(750);
-            fprintf(stderr, "  [test] clicking the corrupt backup row\n");
-            interact("backup_row_0");  // popup (trace-only), no confirm
-            SDL_Delay(400);
-            fprintf(stderr, "  [test] backing out of the backups view\n");
-            interact("back");
-        }
-        if (wait_for_interactable("company_bak_0", 5000)) {
-            SDL_Delay(400);
-            fprintf(stderr, "  [test] backing out of the company list\n");
-            interact("back");
-        }
-    }
+    if (!wait_for_interactable("company_bak_0", 5000))
+        return abort_flow(state, kStageCorruptBkDoor);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] opening the backups view\n");
+    interact("company_bak_0");
+    if (!wait_for_interactable("backup_row_0", 5000))
+        return abort_flow(state, kStageCorruptBkRow);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] clicking the corrupt backup row\n");
+    interact("backup_row_0");  // popup (trace-only), no confirm
+    SDL_Delay(400);
+    fprintf(stderr, "  [test] backing out of the backups view\n");
+    interact("back");
+
+    if (!wait_for_interactable("company_bak_0", 5000))
+        return abort_flow(state, kStageCorruptBkListReturn);
+    SDL_Delay(400);
+    fprintf(stderr, "  [test] backing out of the company list\n");
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -528,27 +638,28 @@ int recover_corrupt_company_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("load_company", 5000);
+    if (!wait_for_interactable("load_company", 5000))
+        return abort_flow(state, kStageRecoverLoadDoor);
     SDL_Delay(750);
     interact("load_company");
 
     // Row 0 is the corrupt company; its BK door stays available (§2.3 —
     // restore-from-backup IS the recovery path).
-    if (wait_for_interactable("company_bak_0", 5000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] opening the corrupt company's backups\n");
-        interact("company_bak_0");
-        if (wait_for_interactable("backup_row_0", 5000)) {
-            SDL_Delay(750);
-            fprintf(stderr, "  [test] restoring the good backup (YES)\n");
-            interact("backup_row_0");  // queued YES
-            if (wait_for_team_menu()) {
-                state->saw_team_menu = true;
-                SDL_Delay(750);
-                interact("back");
-            }
-        }
-    }
+    if (!wait_for_interactable("company_bak_0", 5000))
+        return abort_flow(state, kStageRecoverBkDoor);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] opening the corrupt company's backups\n");
+    interact("company_bak_0");
+    if (!wait_for_interactable("backup_row_0", 5000))
+        return abort_flow(state, kStageRecoverBackupRow);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] restoring the good backup (YES)\n");
+    interact("backup_row_0");  // queued YES
+    if (!wait_for_team_menu())
+        return abort_flow(state, kStageRecoverTeamMenu);
+    state->saw_team_menu = true;
+    SDL_Delay(750);
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -562,24 +673,25 @@ int continue_torn_newest_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("continue_game", 5000);
+    if (!wait_for_interactable("continue_game", 5000))
+        return abort_flow(state, kStageContinueTornDoor);
     SDL_Delay(750);  // menu-entry settle
     fprintf(stderr, "  [test] clicking CONTINUE (torn newest)\n");
     interact("continue_game");
 
     // The failure popup is trace-only under TESTING; CONTINUE falls through
     // to the Company List (rows ts desc: 0 = torn newest, 1 = good previous).
-    if (wait_for_interactable("company_row_1", 5000)) {
-        SDL_Delay(750);  // menu-entry settle
-        fprintf(stderr, "  [test] opening the good row from the fallback list\n");
-        interact("company_row_1");
-        if (wait_for_team_menu()) {
-            state->saw_team_menu = true;
-            SDL_Delay(750);
-            fprintf(stderr, "  [test] clicking back from team menu\n");
-            interact("back");
-        }
-    }
+    if (!wait_for_interactable("company_row_1", 5000))
+        return abort_flow(state, kStageContinueTornGoodRow);
+    SDL_Delay(750);  // menu-entry settle
+    fprintf(stderr, "  [test] opening the good row from the fallback list\n");
+    interact("company_row_1");
+    if (!wait_for_team_menu())
+        return abort_flow(state, kStageContinueTornTeamMenu);
+    state->saw_team_menu = true;
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] clicking back from team menu\n");
+    interact("back");
 
     state->finished = true;
     return 0;
@@ -591,26 +703,73 @@ int continue_corrupt_only_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    wait_for_interactable("continue_game", 5000);
+    if (!wait_for_interactable("continue_game", 5000))
+        return abort_flow(state, kStageContinueCorruptDoor);
     SDL_Delay(750);
     fprintf(stderr, "  [test] clicking CONTINUE (corrupt only company)\n");
     interact("continue_game");
 
     // The fallback list presents the single CORRUPT row; BACK re-presents
     // the main menu (nothing opened, nothing switched).
-    if (wait_for_interactable("company_row_0", 5000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] backing out of the fallback list\n");
-        interact("back");
-    }
-    if (wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] quitting from the re-entered main menu\n");
-        interact("quit");
-    }
+    if (!wait_for_interactable("company_row_0", 5000))
+        return abort_flow(state, kStageContinueCorruptRow);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] backing out of the fallback list\n");
+    interact("back");
+
+    if (!wait_for_interactable("begin_new_game", 10000))
+        return abort_flow(state, kStageContinueCorruptMainMenu);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] quitting from the re-entered main menu\n");
+    interact("quit");
 
     state->finished = true;
     return 0;
+}
+
+// --- the flow harness -------------------------------------------------------
+
+// Owns the thread/picker_main/flag/join boilerplate every flow test repeated,
+// so no flow can forget to publish main_left and leave its own escape tail
+// spinning. Returns the injector's thread result: 0 on the happy path, the
+// stage id of the wait that stalled otherwise.
+int run_company_list_flow(int (*injector)(void*), FlowState& state,
+                          int max_mainmenu_calls = 1)
+{
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = max_mainmenu_calls;
+    SDL_Thread* thread = SDL_CreateThread(injector, "company_flow", &state);
+    if (thread == nullptr) {
+        g_picker_max_mainmenu_calls = 0;
+        fprintf(stderr, "  [test] SDL_CreateThread FAILED: %s\n",
+                SDL_GetError());
+        return -1;
+    }
+    picker_main(0, nullptr);
+    // Published BEFORE the join: an injector unwinding through abort_flow is
+    // blocked on exactly this flag.
+    state.main_left.store(true);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    return thread_result;
+}
+
+// Every flow below clicks rows by POSITION (company_row_0, company_del_1,
+// backup_row_0), so the list the flow is about to drive is a precondition of
+// the test, not an incidental. Asserting it at entry turns a re-targeted
+// click — a leaked company from another test, a [SAVE-R5](c) stray slot —
+// into a named failure at the top of this test instead of a mystery
+// somewhere inside the flow (or, before the escape tail, a group timeout).
+void expect_company_rows(const std::vector<std::string>& slots_in_row_order)
+{
+    std::vector<std::string> listed;
+    for (const og::data::CompanyInfo& info : og::data::list_companies())
+        listed.push_back(info.slot);
+    ASSERT_EQ(slots_in_row_order, listed)
+        << "the Company List rows this flow clicks by position must be "
+           "exactly these slots, in this order";
 }
 
 } // namespace
@@ -680,18 +839,11 @@ TEST(CompanyList, open_row_zero_repoints_active_company)
     trace_clear();
     ASSERT_TRUE(seed_company("wp3opena", "ALPHA BAND", 1000));
     ASSERT_TRUE(seed_company("wp3openb", "BRAVO BAND", 2000));
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3openb", "wp3opena"}));
 
     FlowState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(open_row_injector, "company_open", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc = run_company_list_flow(open_row_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_team_menu)
@@ -729,18 +881,12 @@ TEST(CompanyList, open_other_company_reseeds_lobby_and_autosave_targets_it)
     // Boot on company A: picker_main's startup sequence loads the ACTIVE
     // slot and seeds the lobby cache from it.
     ASSERT_TRUE(og::data::set_active_company_slot("wp7lobbya"));
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp7lobbyb", "wp7lobbya"}));
 
     FlowState state;
-    SDL_Thread* thread = SDL_CreateThread(
-        open_other_company_and_toggle_injector, "company_open_other", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc =
+        run_company_list_flow(open_other_company_and_toggle_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_team_menu)
@@ -858,21 +1004,14 @@ TEST(CompanyList, delete_confirms_no_first_and_reaps_backups)
     ASSERT_TRUE(seed_company("wp3delb", "BRAVO BAND", 2000));
     ASSERT_TRUE(og::data::backup_company_now("wp3delb"))
         << "the doomed company needs a backup to prove the reap";
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3delb", "wp3dela"}));
 
     picker_testing_yes_or_no_queue_push(false);  // first confirm: NO
     picker_testing_yes_or_no_queue_push(true);   // second confirm: YES
 
     FlowState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(delete_rows_injector, "company_delete", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc = run_company_list_flow(delete_rows_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_EQ(0, picker_testing_yes_or_no_queue_remaining())
@@ -902,18 +1041,12 @@ TEST(CompanyList, corrupt_torn_and_active_guards_never_switch)
     ASSERT_TRUE(seed_corrupt_company("wp3guardc"));
     // The good company is the ACTIVE one (picker startup loads it).
     ASSERT_TRUE(og::data::set_active_company_slot("wp3guarda"));
+    ASSERT_NO_FATAL_FAILURE(
+        expect_company_rows({"wp3guardt", "wp3guarda", "wp3guardc"}));
 
     FlowState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(guard_rows_injector, "company_guards", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc = run_company_list_flow(guard_rows_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     // The torn row's OPEN action must SURFACE the body-load failure, not
@@ -947,18 +1080,14 @@ TEST(CompanyList, pagination_flips_pages_and_opens_windowed_row)
                                  "PAGE BAND " + std::to_string(i),
                                  10000 - i));
     }
+    std::vector<std::string> expected_rows;
+    for (int i = 0; i < 11; ++i)
+        expected_rows.push_back("wp3page" + std::to_string(i));
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows(expected_rows));
 
     FlowState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(pagination_injector, "company_pages", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc = run_company_list_flow(pagination_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_team_menu);
@@ -978,19 +1107,14 @@ TEST(CompanyList, backups_door_opens_empty_view_and_empty_delete_exits)
     trace_clear();
     picker_testing_yes_or_no_queue_clear();
     ASSERT_TRUE(seed_company("wp3lastd", "LAST BAND", 1500));
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3lastd"}));
     picker_testing_yes_or_no_queue_push(true);  // delete confirm: YES
 
     FlowState state;
-    SDL_Thread* thread = SDL_CreateThread(backups_and_empty_injector,
-                                          "company_backups_door", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 2;  // the post-delete main menu re-presents
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    // max 2 main-menu calls: the post-delete main menu re-presents.
+    const int rc =
+        run_company_list_flow(backups_and_empty_injector, state, 2);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(trace_contains("company_list", "backups_door wp3lastd"))
@@ -1033,21 +1157,14 @@ TEST(CompanyList, restore_rewinds_and_opens_base_camp)
     ASSERT_TRUE(og::data::backup_company_now("wp3resx"));
     ASSERT_TRUE(seed_company("wp3resx", "NEW GUARD", 6000));
     og::data::set_company_clock_for_tests(777777);
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3resx"}));
 
     picker_testing_yes_or_no_queue_push(false);  // first confirm: NO
     picker_testing_yes_or_no_queue_push(true);   // second confirm: YES
 
     FlowState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(restore_backup_injector, "backup_restore", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc = run_company_list_flow(restore_backup_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_team_menu)
@@ -1082,6 +1199,55 @@ TEST(CompanyList, restore_rewinds_and_opens_base_camp)
         << "restore must re-stamp last-played with the (pinned) clock";
 }
 
+// B1, turned into a test. The og_test_basecamp seed-7 shuffle left a company
+// ahead of this flow's fixture, restore_backup_injector's backup_row_0 wait
+// died on a backups view that had no rows to click, the injector returned 0
+// — and picker_main sat in that view until the 420 s group TIMEOUT killed the
+// whole binary with rc=124, naming no test at all. The fixture below IS that
+// shape (a company with NO snapshots), driven by the SAME injector: what is
+// pinned here is the escape tail, i.e. that a stranded flow ends as a named,
+// bounded failure carrying the stage that stalled.
+TEST(CompanyList, stranded_injector_escapes_the_backups_view)
+{
+    trace_clear();
+    picker_testing_yes_or_no_queue_clear();
+    ASSERT_TRUE(seed_company("wp3strand", "STRANDED BAND", 5000));
+    ASSERT_TRUE(og::data::list_company_backups("wp3strand").empty())
+        << "the stranding shape is a company with no snapshots at all";
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3strand"}));
+
+    const auto started = std::chrono::steady_clock::now();
+    FlowState state;
+    const int rc = run_company_list_flow(restore_backup_injector, state);
+    const long long elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started)
+            .count();
+
+    ASSERT_EQ(kStageRestoreBackupRowMissing, rc)
+        << "a stranded injector must return the stage id of the wait that "
+           "died, not the happy path's 0";
+    ASSERT_TRUE(state.finished)
+        << "the escape tail owns the exit of a stranded flow, so it is the "
+           "tail that marks it finished";
+    ASSERT_TRUE(trace_contains("company_backups", "back"))
+        << "the tail must click BACK out of the empty backups view — that "
+           "click is what lets picker_main return";
+    ASSERT_FALSE(state.saw_team_menu)
+        << "nothing was restorable, so nothing may have opened into base camp";
+    ASSERT_FALSE(trace_contains("company_backups", "restored"))
+        << "an empty backups view has nothing to restore";
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header("wp3strand");
+    ASSERT_TRUE(header && header->valid);
+    EXPECT_EQ("STRANDED BAND", header->display_name)
+        << "the company the stranded flow gave up on must be untouched";
+    ASSERT_LT(elapsed_ms, 30000)
+        << "the stranded flow must unwind in seconds (it took " << elapsed_ms
+        << " ms); before the escape tail this shape ran to the 420 s group "
+           "timeout";
+}
+
 // §2.4 corrupt-backup rows: the click refuses up front (popup, no confirm
 // ever reached — the §3.7 step-0 API validation stays the real guard), the
 // company file is untouched, and the sub-view stays open.
@@ -1101,18 +1267,11 @@ TEST(CompanyList, corrupt_backup_row_refuses_without_confirm)
         corrupt << "not a backup";
         ASSERT_TRUE(corrupt.good());
     }
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3bkc"}));
 
     FlowState state;
-    SDL_Thread* thread = SDL_CreateThread(corrupt_backup_injector,
-                                          "backup_corrupt", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc = run_company_list_flow(corrupt_backup_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(trace_contains("popup", "BACKUP FILE DAMAGED"))
@@ -1140,19 +1299,13 @@ TEST(CompanyList, restore_recovers_corrupt_company)
     ASSERT_TRUE(seed_company("wp3rcv", "SAVED BAND", 4000));
     ASSERT_TRUE(og::data::backup_company_now("wp3rcv"));
     ASSERT_TRUE(seed_corrupt_company("wp3rcv"));
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3rcv"}));
     picker_testing_yes_or_no_queue_push(true);  // restore confirm: YES
 
     FlowState state;
-    SDL_Thread* thread = SDL_CreateThread(recover_corrupt_company_injector,
-                                          "backup_recover", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc =
+        run_company_list_flow(recover_corrupt_company_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_team_menu)
@@ -1221,18 +1374,11 @@ TEST(CompanyList, continue_torn_newest_pops_up_and_falls_back_to_list)
     ASSERT_TRUE(seed_torn_company("wp3ctt", "TORN BAND", 4000));
     // The good company is the one currently open (picker startup loads it).
     ASSERT_TRUE(og::data::set_active_company_slot("wp3ctg"));
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3ctt", "wp3ctg"}));
 
     FlowState state;
-    SDL_Thread* thread = SDL_CreateThread(continue_torn_newest_injector,
-                                          "continue_torn", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    const int rc = run_company_list_flow(continue_torn_newest_injector, state);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(trace_contains("popup", "CONTINUE:"))
@@ -1254,19 +1400,14 @@ TEST(CompanyList, continue_corrupt_only_pops_up_and_never_switches)
 {
     trace_clear();
     ASSERT_TRUE(seed_corrupt_company("wp3cfo"));
+    ASSERT_NO_FATAL_FAILURE(expect_company_rows({"wp3cfo"}));
     const std::string slot_before = og::data::active_company_slot();
 
     FlowState state;
-    SDL_Thread* thread = SDL_CreateThread(continue_corrupt_only_injector,
-                                          "continue_corrupt", &state);
-    ASSERT_TRUE(thread != nullptr);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 2;  // BACK re-presents the main menu
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    // max 2 main-menu calls: BACK re-presents the main menu.
+    const int rc =
+        run_company_list_flow(continue_corrupt_only_injector, state, 2);
+    ASSERT_EQ(0, rc) << "injector stalled at stage " << rc;
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(trace_contains("popup", "CONTINUE: COMPANY FILE DAMAGED"))

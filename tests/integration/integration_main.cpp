@@ -436,13 +436,15 @@ std::mutex s_allbuttons_mutex;
 // What the tool is NOT: a promise that every test survives it. The positional
 // CompanyList row tests (open row 0, delete row 0, the backup rows) click a
 // row by INDEX into a most-recent-first list, so a stray above them
-// re-targets the click by design; each one then fails by NAME on its own
-// identity assertion (trace_contains("company_list", "open wp3openb"),
-// active_company_slot(), the save_name pin). That named failure IS the
-// diagnostic — the whole point of the tool is to make an order dependence
-// say which flow it broke. Do not try to make them stray-proof with stamps:
-// corrupt_torn_and_active_guards seeds a ts-0 torn row on purpose, and a zero
-// stamp can never outrank a stray.
+// re-targets the click by design. Each one declares the exact list it is
+// about to drive at the top of the test (expect_company_rows in
+// tests/integration/test_company_list.cpp), so under this tool they fail by
+// NAME within seconds, at that precondition, and never hang: their injectors
+// unwind through abort_flow instead of stranding picker_main. That named
+// failure IS the diagnostic — the whole point of the tool is to make an order
+// dependence say which flow it broke. Do not try to make them stray-proof
+// with stamps: corrupt_torn_and_active_guards seeds a ts-0 torn row on
+// purpose, and a zero stamp can never outrank a stray.
 void seed_stray_company_slots_from_env()
 {
     const char* raw = std::getenv("OPENGLAD_TEST_SEED_STRAY_SLOTS");
