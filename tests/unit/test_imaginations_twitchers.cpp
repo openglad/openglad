@@ -67,11 +67,19 @@ constexpr float kEngageRange = 1.5f * 16.0f; // in CONTACT; a foe merely
 // died on the facing gate — sit-and-twitch, forever, with prey adjacent.
 constexpr int kWakeWindowTicks = 300;
 
-// Exerciser floors, so a net that observes nothing cannot pass. The shipped
-// seed-42 isle yields woken == 14 and checked == 26; these floors sit well
-// under those and enormously over zero (the census WAS zero before this net
-// counted posted subjects, which is exactly the hole they close).
-constexpr int kMinWoken = 10;
+// Exerciser counts, so a net that observes nothing cannot pass.
+//
+// The aggro pass is a pure load-time census (order, team, spawn delay and
+// stepsize of the placed cast), so its count is a property of scen 1 itself:
+// pinned EXACTLY. If a level edit adds or retires a mobile team-1 hostile,
+// retune this number to the new garrison size -- do not soften it back to a
+// floor.
+constexpr int kWokenHostiles = 14;
+// The far-from-foe census, by contrast, is the product of 1800 ticks of
+// float-valued sim, so it is a FLOOR (the shipped seed-42 isle observes 26
+// windows). It exists to stop the no-op oracle: the census WAS zero before
+// this net counted posted subjects. If the sim legitimately drops below this
+// floor, raise the sample count -- never lower the floor toward zero.
 constexpr int kMinCensusWindows = 12;
 
 walker* find_placed_living(GameWorld& world, int family, int tx, int ty)
@@ -195,8 +203,10 @@ TEST_F(ImaginationsTwitchers, no_living_jams_against_the_moat)
     // The exerciser must have subjects: scen 1 fields a garrison of mobile
     // zero-spawn-delay team-1 livings, and an aggro pass that woke none would
     // leave the whole net below with nothing to observe.
-    ASSERT_GE(woken, kMinWoken)
-        << "the aggro pass woke only " << woken << " mobile hostiles";
+    ASSERT_EQ(kWokenHostiles, woken)
+        << "the aggro pass woke " << woken
+        << " mobile hostiles; scen 1's garrison of mobile, zero-spawn-delay "
+           "team-1 livings is exactly " << kWokenHostiles;
 
     int checked = 0;
     for (int t = 0; t < kSamplePhaseTicks; ++t)

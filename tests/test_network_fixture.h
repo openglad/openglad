@@ -459,6 +459,11 @@ public:
             ASSERT_LT(std::chrono::steady_clock::now(), gate_deadline)
                 << "the #239 launch gate never opened: the server stayed at "
                    "tick 0 for the whole network timeout";
+            // Held gate: the server is waiting on a socket, not on us.
+            // Yield the core between retries — a bare spin burned a whole
+            // runner core for up to the full network timeout and made the
+            // very starvation it is polling for more likely.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 

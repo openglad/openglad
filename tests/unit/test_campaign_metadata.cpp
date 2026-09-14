@@ -299,8 +299,9 @@ TEST_F(CampaignMetadataTest, accessible_levels_and_the_gate)
 
     // Fresh company: entry level + the cursor, nothing else.
     std::vector<int> frontier = og::data::accessible_levels(save);
-    EXPECT_TRUE(std::binary_search(frontier.begin(), frontier.end(), 1));
-    EXPECT_TRUE(std::binary_search(frontier.begin(), frontier.end(), 3));
+    EXPECT_EQ((std::vector<int>{1, 3}), frontier)
+        << "a company that has cleared nothing sees exactly the campaign "
+           "entry level and the level its cursor sits on";
     EXPECT_TRUE(og::data::level_selection_allowed(save, 1));
     EXPECT_TRUE(og::data::level_selection_allowed(save, 3));
     EXPECT_FALSE(og::data::level_selection_allowed(save, 15))

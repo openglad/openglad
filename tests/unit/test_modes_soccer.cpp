@@ -1995,7 +1995,9 @@ TEST_F(ModesSoccer, contact_below_the_speed_gate_does_nothing)
         << "at the threshold the ball never becomes a weapon";
     EXPECT_EQ(hp_before, fx.green->stats()->hitpoints())
         << "and the victim takes nothing";
-    EXPECT_GT(fx.var(kSocBallVx), 0) << "no rebound at the threshold";
+    EXPECT_EQ(448, fx.var(kSocBallVx))
+        << "no rebound at the threshold: the 512 fp velocity only loses the "
+           "per-tick friction";
     EXPECT_EQ(0, fx.var(kSocLastKicker)) << "nothing touched the ball";
 
     // One px/tick faster, same geometry: the gate opens.

@@ -536,8 +536,18 @@ std::string manifest_expr_prefix()
         "packs/modes.core/lib/mode_levels.lua");
     EXPECT_FALSE(member.empty()) << "manifest member missing from the .glad";
     const std::string member_text(member.begin(), member.end());
-    return "(function() local M = (function() " +
-           member_text.substr(member_text.find("local M = {}")) +
+    const std::size_t body = member_text.find("local M = {}");
+    EXPECT_NE(std::string::npos, body)
+        << "the manifest no longer opens with 'local M = {}': the wrapper "
+           "this suite evaluates it through has to be regenerated too";
+    if (member.empty() || body == std::string::npos)
+    {
+        // A caller must not reach substr(npos) and die by exception. Hand
+        // back a prefix that cannot parse: every caller already asserts its
+        // eval_* returned a value, so each one fails on its own line.
+        return std::string();
+    }
+    return "(function() local M = (function() " + member_text.substr(body) +
            " end)() return ";
 }
 
@@ -1231,12 +1241,15 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
     const std::vector<std::uint8_t> member = og::resources::read_file(
         "packs/modes.core/lib/mode_levels.lua");
     ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
-    std::ifstream committed_in(
-        "campaigns/modes/packs/modes.core/lib/"
-        "mode_levels.lua",
-        std::ios::binary);
+    // Resolved from the configured campaigns root, never from the process
+    // cwd: this case used to pass only when it was launched from the repo
+    // root (ctest's working directory) and failed under any other runner.
+    const std::filesystem::path committed_path =
+        std::filesystem::path(OG_CAMPAIGNS_SOURCE_DIR) / "modes" / "packs" /
+        "modes.core" / "lib" / "mode_levels.lua";
+    std::ifstream committed_in(committed_path, std::ios::binary);
     ASSERT_TRUE(committed_in.good())
-        << "committed manifest missing from the repo";
+        << "committed manifest missing from the repo: " << committed_path;
     std::ostringstream committed_buf;
     committed_buf << committed_in.rdbuf();
     const std::string committed = committed_buf.str();
@@ -1254,10 +1267,7 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
     // Spot-check the data through the sandbox (same env key: the module's
     // global M is not visible — re-run returning fields instead).
     og::script::ScriptHost probe_host;
-    const std::string expr_prefix =
-        "(function() local M = (function() " +
-        member_text.substr(member_text.find("local M = {}")) +
-        " end)() return ";
+    const std::string expr_prefix = manifest_expr_prefix();
     const auto teams =
         probe_host.eval_integer(expr_prefix + "M.levels[822].teams end)()");
     ASSERT_TRUE(teams.has_value());

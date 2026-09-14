@@ -177,6 +177,26 @@ void align_before_cadence(GameWorld& world)
     world.tick_count_ = next - 1;
 }
 
+// Walker pointers do not survive a tick: re-find a subject by its stable
+// entity id instead. dead_list is searched too, because the scenario strip
+// MOVES its victims there and GameWorld::find_by_id deliberately does not
+// index corpses -- looking only in oblist would report a stripped troop as
+// "gone" and a kept one as found by accident.
+walker* refind(GameWorld& world, std::uint32_t id)
+{
+    if (id == 0)
+        return nullptr;
+    for (GameWorld::EntityList* list : {&world.oblist, &world.dead_list})
+    {
+        for (const auto& uptr : *list)
+        {
+            if (uptr != nullptr && uptr->entity_id() == id)
+                return uptr.get();
+        }
+    }
+    return nullptr;
+}
+
 int alive_on_team(GameWorld& world, int team)
 {
     int count = 0;
@@ -408,7 +428,8 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         fx.spawn_flag(flag_family_, 3, 480, 160);
         fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
         fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
-        walker* stripped = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
+        const std::uint32_t stripped_id =
+            fx.spawn_living(FAMILY_ORC, 3, 500, 200)->entity_id();
         fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
         fx.world().ctf_requested_map_units[3] = og::sim::kMapUnitsOff;
         fx.tick(1);
@@ -416,6 +437,12 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         ASSERT_TRUE(fx.ctf_active());
         EXPECT_EQ(5, fx.var(kSlotTeamMask)) << "active mask is {0, 2}";
         EXPECT_EQ(2, fx.var(kSlotTeamCount));
+        // Walker pointers do not survive a tick, so the strip's victim is
+        // re-found by its stable id: that CTF leaves the stripped corpse in
+        // oblist is the mode's own business, not a lifetime guarantee.
+        walker* const stripped = refind(fx.world(), stripped_id);
+        ASSERT_NE(nullptr, stripped)
+            << "the stripped troop is marked dead, never destroyed";
         EXPECT_TRUE(stripped->dead());
     }
     {
@@ -425,8 +452,10 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         fx.spawn_flag(flag_family_, 3, 480, 160);
         fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
         fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
-        walker* troop = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
-        walker* kept_hero = fx.spawn_hero(FAMILY_SOLDIER, 3, 520, 200, 7);
+        const std::uint32_t troop_id =
+            fx.spawn_living(FAMILY_ORC, 3, 500, 200)->entity_id();
+        const std::uint32_t kept_hero_id =
+            fx.spawn_hero(FAMILY_SOLDIER, 3, 520, 200, 7)->entity_id();
         fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
         fx.tick(1);
 
@@ -434,7 +463,11 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         EXPECT_EQ(1 + 4 + 8, fx.var(kSlotTeamMask))
             << "a deployed fighter keeps an OFF team on";
         EXPECT_EQ(3, fx.var(kSlotTeamCount));
+        walker* const kept_hero = refind(fx.world(), kept_hero_id);
+        ASSERT_NE(nullptr, kept_hero) << "roster walkers are never stripped";
         EXPECT_FALSE(kept_hero->dead()) << "roster walkers are never stripped";
+        walker* const troop = refind(fx.world(), troop_id);
+        ASSERT_NE(nullptr, troop) << "an on team keeps its troops";
         EXPECT_FALSE(troop->dead()) << "an on team keeps its troops";
     }
 }
@@ -497,6 +530,40 @@ StripScenarioActors build_strip_scenario(ModesCtfWorld& fx, int flag_family)
     actors.enemy_gen->setxy(448, 832);
     actors.enemy_gen->set_team_num(1);
     return actors;
+}
+
+struct StripScenarioIds
+{
+    std::uint32_t hero = 0;
+    std::uint32_t authored_friend = 0;
+    std::uint32_t friendly_gen = 0;
+    std::uint32_t authored_enemy = 0;
+    std::uint32_t enemy_gen = 0;
+};
+
+StripScenarioIds ids_of(const StripScenarioActors& actors)
+{
+    StripScenarioIds ids;
+    ids.hero = actors.hero->entity_id();
+    ids.authored_friend = actors.authored_friend->entity_id();
+    ids.friendly_gen = actors.friendly_gen->entity_id();
+    ids.authored_enemy = actors.authored_enemy->entity_id();
+    ids.enemy_gen = actors.enemy_gen->entity_id();
+    return ids;
+}
+
+// Re-find a subject after a tick and require it alive. A vanished entity
+// fails just as loudly as a dead one instead of dereferencing a stale
+// pointer.
+void expect_alive_by_id(GameWorld& world, std::uint32_t id, const char* what)
+{
+    walker* const w = refind(world, id);
+    if (w == nullptr)
+    {
+        ADD_FAILURE() << what << ": entity " << id << " left the world";
+        return;
+    }
+    EXPECT_FALSE(w->dead()) << what;
 }
 
 }  // namespace
@@ -605,17 +672,20 @@ TEST_F(ModesCtf, map_units_on_fields_the_authored_cast)
     // strip_authored_troops: under ON the map's authored cast survives
     // activation, and the resulting world differs from the OFF run.
     ModesCtfWorld fx(kCtfLevelB);
-    StripScenarioActors actors = build_strip_scenario(fx, flag_family_);
+    const StripScenarioIds ids =
+        ids_of(build_strip_scenario(fx, flag_family_));
     fx.tick(50);
 
     ASSERT_TRUE(fx.ctf_active());
-    EXPECT_FALSE(actors.hero->dead());
-    EXPECT_FALSE(actors.authored_friend->dead())
-        << "MAP UNITS ON fields the authored troop";
-    EXPECT_FALSE(actors.authored_enemy->dead())
-        << "and the opposing side's authored troop too";
-    EXPECT_FALSE(actors.friendly_gen->dead());
-    EXPECT_FALSE(actors.enemy_gen->dead());
+    // 50 ticks: the actor pointers from build_strip_scenario are stale, so
+    // every subject is re-found by its stable entity id.
+    expect_alive_by_id(fx.world(), ids.hero, "the roster hero");
+    expect_alive_by_id(fx.world(), ids.authored_friend,
+                       "MAP UNITS ON fields the authored troop");
+    expect_alive_by_id(fx.world(), ids.authored_enemy,
+                       "and the opposing side's authored troop too");
+    expect_alive_by_id(fx.world(), ids.friendly_gen, "the friendly generator");
+    expect_alive_by_id(fx.world(), ids.enemy_gen, "the enemy generator");
 
     const std::string on = digest_world(fx.world());
     EXPECT_NE(on, run_strip_scenario_match(flag_family_, true, 50))

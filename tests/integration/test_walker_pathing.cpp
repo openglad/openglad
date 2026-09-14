@@ -191,9 +191,8 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
 
     walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(actor != nullptr && foe != nullptr) << "pathing actors should be created";
-    if (!(actor && foe))
-        return;
+    ASSERT_NE(nullptr, actor) << "pathing actor should be created";
+    ASSERT_NE(nullptr, foe) << "pathing foe should be created";
 
     actor->set_team_num(0);
     foe->set_team_num(1);
@@ -210,26 +209,26 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
     EXPECT_TRUE(world.myobmap->obmap_get_list(64, 64).empty());
 
     GameplayPathfindingState* pathing = ensure_pathfinding_state(*current_game);
-    ASSERT_TRUE(pathing != nullptr) << "pathfinding state should be available";
-    if (!pathing)
-        return;
+    ASSERT_NE(nullptr, pathing) << "pathfinding state should be available";
 
     std::vector<PathState> path;
     float total_cost = 0.0f;
     pathing->solve_for(actor, make_state(actor->xpos(), actor->ypos()),
                        make_state(foe->xpos(), foe->ypos()), path, total_cost);
 
-    ASSERT_GE(path.size(), 2u) << "solver should produce a route on an open grid";
-    const std::size_t route_offset =
-        (GET_STATE_X(path.front()) == actor->xpos() && GET_STATE_Y(path.front()) == actor->ypos())
-            ? 1u
-            : 0u;
-    ASSERT_EQ(path.size(), 2u + route_offset);
-    EXPECT_EQ(GET_STATE_X(path[route_offset]), 48);
-    EXPECT_EQ(GET_STATE_Y(path[route_offset]), 48);
-    EXPECT_EQ(GET_STATE_X(path.back()), 64);
-    EXPECT_EQ(GET_STATE_Y(path.back()), 64);
-    EXPECT_NEAR(2.0f * 1.41421354f, total_cost, 0.001f);
+    // The solver's route OPENS on the start cell (the sibling
+    // find_path_to_foe case pins the same contract), so two diagonal hops
+    // from (32,32) to (64,64) are three nodes, not two.
+    ASSERT_EQ(3u, path.size())
+        << "the actor's own cell plus the two diagonal hops to the foe";
+    EXPECT_EQ(32, GET_STATE_X(path[0])) << "the route opens on the actor";
+    EXPECT_EQ(32, GET_STATE_Y(path[0])) << "the route opens on the actor";
+    EXPECT_EQ(48, GET_STATE_X(path[1])) << "one diagonal step south-east";
+    EXPECT_EQ(48, GET_STATE_Y(path[1])) << "one diagonal step south-east";
+    EXPECT_EQ(64, GET_STATE_X(path[2])) << "the route ends on the foe's cell";
+    EXPECT_EQ(64, GET_STATE_Y(path[2])) << "the route ends on the foe's cell";
+    EXPECT_NEAR(2.0f * 1.41421354f, total_cost, 0.001f)
+        << "two diagonal steps cost sqrt(2) each";
 
     world.delete_objects();
 }

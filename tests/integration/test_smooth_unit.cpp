@@ -125,8 +125,11 @@ TEST(SmoothUnit, smooth_branch_matrix_on_center_tile)
         set_neighbors(pd, PIX_CARPET_M2, PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M,
                       PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M);
         s.smooth(2, 2);
-        const unsigned char carpet_center = center_value(pd);
-        ASSERT_TRUE(carpet_center == PIX_CARPET_M || carpet_center == PIX_CARPET_M2);
+        // around == 15 (all four cardinal neighbours carpet) is the last row
+        // of carpet_by_surround, and that row is PIX_CARPET_M -- the M2
+        // centre under test is REPLACED by it, not preserved.
+        ASSERT_EQ(static_cast<unsigned char>(PIX_CARPET_M), center_value(pd))
+            << "a fully surrounded carpet tile smooths to the M centre";
     }
 
     // Wall arrow-slit variants.
@@ -854,7 +857,7 @@ TEST(SmoothUnit, smooth_r14_tree_dirt_and_dark_dirt_mask_matrix)
     pop_test_context();
 }
 
-TEST(SmoothUnit, smooth_r14_lines_903_full_smooth_reset_paths)
+TEST(SmoothUnit, smooth_without_a_target_returns_zero_and_reset_clears_it)
 {
     SeqRandom rng;
     GameContext gc;
@@ -863,14 +866,16 @@ TEST(SmoothUnit, smooth_r14_lines_903_full_smooth_reset_paths)
 
     smoother s;
 
-    // !mygrid guards.
-    ASSERT_TRUE(s.smooth() == 0);
+    // The !mygrid guard, both ways round.
+    ASSERT_EQ(0, s.smooth())
+        << "a smoother with no target refuses the whole-grid pass";
     PixieData pd = make_grid(PIX_COBBLE_1, 3, 3);
     s.set_target(pd);
-    ASSERT_TRUE(s.smooth() == 1);
+    ASSERT_EQ(1, s.smooth()) << "a targeted smoother runs the pass";
 
     s.reset();
-    ASSERT_TRUE(s.smooth() == 0);
+    ASSERT_EQ(0, s.smooth())
+        << "reset() drops the target, so the pass is refused again";
 
     pop_test_context();
 }
