@@ -59,6 +59,7 @@ void ready_screen_for_game_start(
     const og::ui::PickerLobbyGameStartConfig* lobby_config);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
 
 
 struct KeyBindingGuard
@@ -3591,7 +3592,16 @@ TEST(GameLoop, network_host_install_cross_control_on_keeps_shared_pool_steal)
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, local_transport_shadow_send_input_and_finish_tick_cover_active_paths)
+// What the two shadow pumps owe the caller, read off the AUTHORITATIVE world:
+// send_input fans one InputState out slot-for-slot to every local client and
+// carries timer_wait_request only on the display client (which the server
+// treats as the host peer); finish_tick runs exactly one authoritative step
+// per call while the display session lives, and none once it has ended.
+//
+// (The previous body set world().end = 1 before its only finish_tick, which
+// makes step_and_drain return at its first guard -- so it read back the flag it
+// had just written itself and nothing the pumps did was observed at all.)
+TEST(GameLoop, local_transport_shadow_send_input_reaches_the_server_and_finish_tick_steps_once)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -3609,16 +3619,123 @@ TEST(GameLoop, local_transport_shadow_send_input_and_finish_tick_cover_active_pa
     ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
     ASSERT_EQ(1u, og::runtime::local_transport_client_count(gameplay_session));
 
-    InputState input{};
-    input.quit_requested = true;
-    input.timer_wait_request = 4;
-    input.players[0].held[static_cast<int>(InputKey::Right)] = true;
-    input.players[0].pressed[static_cast<int>(InputKey::Fire)] = true;
-    og::runtime::local_transport_shadow_send_input(gameplay_session, input, 9u);
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(gameplay_session);
+    ASSERT_NE(nullptr, server_screen)
+        << "the local shadow hosts an authoritative server session";
 
+    std::uint32_t tick = 0;
+    const auto pump = [&](int frames) {
+        for (int i = 0; i < frames; ++i)
+        {
+            og::runtime::local_transport_shadow_send_input(
+                gameplay_session, InputState{}, tick++);
+            og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        }
+    };
+    // Bring the client online and let the seat bind.
+    pump(8);
+
+    const auto find_seat_walker = [&](int seat) -> walker* {
+        for (const auto& uptr : server_screen->world().oblist)
+        {
+            walker* const entity = uptr.get();
+            if (entity != nullptr && !entity->dead() &&
+                entity->query_order() == Order::Living &&
+                static_cast<int>(entity->user()) == seat)
+            {
+                return entity;
+            }
+        }
+        return nullptr;
+    };
+
+    // timer_wait_request rides the display client's envelope and the server
+    // applies the host peer's request to the authoritative world.
+    ASSERT_NE(4, static_cast<int>(server_screen->world().timer_wait))
+        << "the request under test must differ from the standing speed";
+    InputState speed_request{};
+    speed_request.timer_wait_request = 4;
+    og::runtime::local_transport_shadow_send_input(
+        gameplay_session, speed_request, tick++);
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_EQ(4, static_cast<int>(server_screen->world().timer_wait))
+        << "send_input must carry the display client's timer_wait_request to "
+           "the server";
+
+    // Held movement on input slot 0 must reach the server's seat-0 walker.
+    ASSERT_NE(nullptr, find_seat_walker(0)) << "seat 0 must own a server walker";
+    bool moved = false;
+    for (const int direction : {KEY_RIGHT, KEY_DOWN, KEY_LEFT, KEY_UP})
+    {
+        walker* const before = find_seat_walker(0);
+        ASSERT_NE(nullptr, before);
+        const short before_x = before->xpos();
+        const short before_y = before->ypos();
+        for (int i = 0; i < 15; ++i)
+        {
+            InputState move{};
+            move.players[0].held[direction] = true;
+            if (i == 0)
+                move.players[0].pressed[direction] = true;
+            og::runtime::local_transport_shadow_send_input(
+                gameplay_session, move, tick++);
+            og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        }
+        pump(1);  // release the key
+        walker* const after = find_seat_walker(0);
+        ASSERT_NE(nullptr, after);
+        if (after->xpos() != before_x || after->ypos() != before_y)
+        {
+            moved = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(moved)
+        << "send_input must route players[0] to the client bound with slot 0";
+
+    const auto count_shadow_event = [](
+        const std::vector<og::runtime::RuntimeTraceRecord>& traces,
+        const char* event) {
+        return static_cast<int>(std::count_if(
+            traces.begin(), traces.end(),
+            [event](const og::runtime::RuntimeTraceRecord& record) {
+                return record.category == "local_transport_shadow" &&
+                    record.event == event;
+            }));
+    };
+
+    // One finish_tick == exactly one authoritative step while the display lives.
+    og::runtime::set_runtime_trace_enabled(true);
+    og::runtime::clear_runtime_trace();
+    const std::uint32_t before_tick = server_screen->world().tick_count_;
+    og::runtime::local_transport_shadow_send_input(
+        gameplay_session, InputState{}, tick++);
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    const std::vector<og::runtime::RuntimeTraceRecord> live_traces =
+        og::runtime::copy_runtime_trace();
+    EXPECT_EQ(before_tick + 1u, server_screen->world().tick_count_)
+        << "finish_tick runs one authoritative step, not zero and not two";
+    EXPECT_EQ(1, count_shadow_event(live_traces, "finish_tick_authoritative_step"))
+        << "a live display session takes the authoritative-step path";
+    EXPECT_EQ(0, count_shadow_event(live_traces, "finish_tick_display_finished"))
+        << "a live display session must not short-circuit";
+
+    // ...and none once the display session has ended.
+    og::runtime::clear_runtime_trace();
+    const std::uint32_t ended_tick = server_screen->world().tick_count_;
     game_screen->world().end = 1;
     og::runtime::local_transport_shadow_finish_tick(gameplay_session);
-    EXPECT_EQ(1, static_cast<int>(game_screen->world().end));
+    const std::vector<og::runtime::RuntimeTraceRecord> ended_traces =
+        og::runtime::copy_runtime_trace();
+    og::runtime::set_runtime_trace_enabled(false);
+    og::runtime::clear_runtime_trace();
+    EXPECT_EQ(1, count_shadow_event(ended_traces, "finish_tick_display_finished"))
+        << "a finished display session short-circuits the step";
+    EXPECT_EQ(0, count_shadow_event(ended_traces, "finish_tick_authoritative_step"))
+        << "no authoritative step may run after the display session ended";
+    EXPECT_EQ(ended_tick, server_screen->world().tick_count_)
+        << "no authoritative step may run after the display session ended";
 
     og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().end = 0;
@@ -4895,6 +5012,28 @@ TEST(GameLoop, local_split_screen_background_player_exit_prompt_does_not_hang)
             session))
         << "player 2's exit prompt was never answered -> local game hangs";
 
+    // Cleared is not enough: a callback that answers every prompt with a
+    // hardcoded true (or never consults the player at all) also clears it, and
+    // in real play that yanks the party out of the level. Prove the queued
+    // answer was CONSUMED, and that the DECLINE was honoured.
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "the background client's callback must actually ask the player";
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "a declined exit must not end the level";
+    EXPECT_EQ(1, game_screen->world().id)
+        << "a declined exit must not load another level";
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(1, static_cast<int>(server_screen->save_data.scen_num))
+        << "a declined exit must not move the campaign cursor";
+    EXPECT_FALSE(server_screen->save_data.is_level_completed(1))
+        << "a declined exit must not record the level completed";
+    SaveData unchanged;
+    ASSERT_TRUE(unchanged.load("save0"));
+    EXPECT_EQ(1, static_cast<int>(unchanged.scen_num))
+        << "a declined exit must not autosave a moved cursor";
+
     picker_testing_yes_or_no_queue_clear();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
@@ -4939,6 +5078,43 @@ static int drive_accepted_exit_and_return_display_end(
         og::runtime::current_session->myscreen_->world().end);
 }
 
+// `end != 0` alone is satisfied by a defeat, and by an exit that ends the level
+// while losing its DESTINATION. An accepted exit runs the win fold
+// (og::progression::apply_win_fold via finalize_level_and_advance_cursor): the
+// finished level is recorded completed and both cursors point at the exit's
+// destination on the SERVER screen, which is then autosaved. Both the server
+// screen and the persisted file are pinned on purpose -- in local play the
+// display's LevelWin autosave is the LAST writer of save0, so a file-only pin
+// misses a server-side fold break, and a server-only pin misses a wrong
+// destination forwarded to the display.
+static void expect_exit_advanced_to_level_two(og::runtime::GameSession& session,
+                                              screen* game_screen)
+{
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().ending))
+        << "an accepted exit ends the level as a win, not a defeat";
+    EXPECT_EQ(1, game_screen->world().id)
+        << "the next level must never be loaded in-session";
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(2, static_cast<int>(server_screen->save_data.scen_num))
+        << "the server fold moves the cursor to the exit's destination";
+    EXPECT_EQ(2, server_screen->save_data.current_levels["gladiator"])
+        << "...and the per-campaign cursor with it";
+    EXPECT_TRUE(server_screen->save_data.is_level_completed(1))
+        << "the finished level is recorded completed";
+
+    SaveData persisted;
+    ASSERT_TRUE(persisted.load("save0"));
+    EXPECT_EQ("gladiator", persisted.current_campaign);
+    EXPECT_EQ(2, static_cast<int>(persisted.scen_num))
+        << "the autosave must persist the destination cursor";
+    EXPECT_EQ(2, persisted.current_levels["gladiator"]);
+    EXPECT_TRUE(persisted.is_level_completed(1))
+        << "the autosave must persist the completion";
+}
+
 TEST(GameLoop, exit_returns_to_continue_menu_single_player)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
@@ -4968,6 +5144,7 @@ TEST(GameLoop, exit_returns_to_continue_menu_single_player)
 
     EXPECT_NE(0, drive_accepted_exit_and_return_display_end(session, 0u))
         << "single-player exit must return to the Continue menu, not auto-advance";
+    expect_exit_advanced_to_level_two(session, game_screen);
 
     picker_testing_yes_or_no_queue_clear();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
@@ -5221,6 +5398,7 @@ TEST(GameLoop, exit_returns_to_continue_menu_local_two_player_host_player)
     // Player 1 (the display-driving player) takes the exit.
     EXPECT_NE(0, drive_accepted_exit_and_return_display_end(session, 0u))
         << "local split-screen exit (player 1) must return to the Continue menu";
+    expect_exit_advanced_to_level_two(session, game_screen);
 
     picker_testing_yes_or_no_queue_clear();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
@@ -5246,6 +5424,7 @@ TEST(GameLoop, exit_returns_to_continue_menu_local_two_player_second_player)
     // case reported: it must return to the menu, not jump to the next level.
     EXPECT_NE(0, drive_accepted_exit_and_return_display_end(session, 1u))
         << "local split-screen exit (player 2) must return to the Continue menu";
+    expect_exit_advanced_to_level_two(session, game_screen);
 
     picker_testing_yes_or_no_queue_clear();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
