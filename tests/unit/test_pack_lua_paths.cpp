@@ -2363,3 +2363,65 @@ TEST(PackLuaSlime, a_veteran_split_halves_the_experience_across_both_bodies)
         << "both halves are re-levelled from the halved experience";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
+
+// ---------------------------------------------------------------------------
+// core:magic_shield — the orbit table
+// ---------------------------------------------------------------------------
+
+// packs/core/lib/effect_shield.lua carries the shield/boomerang orbit as two
+// sixteen-entry constant tables (ORBIT_X/ORBIT_Y) plus `og.mod(drawcycle, 16)`.
+// That table IS the rule a player sees: the shield walks a 24-pixel circle
+// around its owner, clockwise from due north, and comes back to the top every
+// sixteen draw cycles. Nothing pinned the values — the only value-level witness
+// used to be a C++ twin of the table in effect.cpp that no sim path called, and
+// that twin is now deleted. Drive the live hook across drawcycle 0..16 and pin
+// every pair against the owner-derived anchor.
+TEST(PackLuaShield, the_orbit_is_the_sixteen_step_circle_from_due_north)
+{
+    og::test::mount_core_pack();
+    const EffectFamilyDescriptor* efd =
+        get_effect_family_descriptor(FAMILY_MAGIC_SHIELD);
+    ASSERT_NE(nullptr, efd);
+    ASSERT_TRUE(og::test::has_on_act(*efd))
+        << "core:magic_shield must declare on_act in Lua";
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* owner = spawn(w, Order::Living, FAMILY_CLERIC, 10, 10, 0);
+    ASSERT_NE(nullptr, owner);
+
+    walker* shield = spawn(w, Order::FX, FAMILY_MAGIC_SHIELD, 10, 10, 0);
+    ASSERT_NE(nullptr, shield);
+    shield->set_owner(owner);
+    shield->set_lifetime(1000);          // outlive the seventeen acts below
+    shield->stats()->set_hitpoints(100.0f);
+    shield->stats()->set_max_hitpoints(100.0f);
+
+    // magic_shield_on_act centres the shield on its owner and then adds the
+    // orbit offset, so every expected position is this anchor plus one pair.
+    const int anchor_x = owner->xpos() + owner->sizex() / 2 - shield->sizex() / 2;
+    const int anchor_y = owner->ypos() + owner->sizey() / 2 - shield->sizey() / 2;
+
+    // The sixteen steps, clockwise from due north (the live ORBIT_X/ORBIT_Y).
+    static constexpr int kOrbit[16][2] = {
+        {  0, -24}, { -9, -22}, {-17, -17}, {-22,  -9},
+        {-24,   0}, {-22,   9}, {-17,  17}, { -9,  22},
+        {  0,  24}, {  9,  22}, { 17,  17}, { 22,   9},
+        { 24,   0}, { 22,  -9}, { 17, -17}, {  9, -22},
+    };
+
+    for (int cycle = 0; cycle <= 16; cycle++) {
+        const int step = cycle % 16;     // drawcycle 16 wraps back onto step 0
+        shield->set_drawcycle(static_cast<unsigned char>(cycle));
+        ASSERT_TRUE(og::test::on_act(*efd, static_cast<effect*>(shield)))
+            << "the shield's on_act handles the tick at drawcycle " << cycle;
+        ASSERT_EQ(0, static_cast<int>(shield->dead()))
+            << "a fed shield with lifetime left survives drawcycle " << cycle;
+        EXPECT_EQ(anchor_x + kOrbit[step][0], static_cast<int>(shield->xpos()))
+            << "orbit step " << step << " (drawcycle " << cycle << "): x offset";
+        EXPECT_EQ(anchor_y + kOrbit[step][1], static_cast<int>(shield->ypos()))
+            << "orbit step " << step << " (drawcycle " << cycle << "): y offset";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}

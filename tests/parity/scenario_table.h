@@ -1180,7 +1180,7 @@ inline constexpr Mutation kMut_smoke_tick_freeze = {
 };
 
 inline constexpr Mutation kMut_effect_lifetime = {
-    "src/gameplay/effect.cpp", 96,
+    "src/gameplay/effect.cpp", 83,
     "set_dead(1);",
     "set_dead(0);",
     "Cancels the end-of-animation death in effect::act() so effects never expire; bomb/chain scenarios that rely on effects winding down see a residual effect count and flip EffectFamilyCount / dependent walker-death predicates."

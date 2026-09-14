@@ -79,57 +79,6 @@ TEST(EffectExtended, hits_zero_size)
 }
 
 
-// ---------------------------------------------------------------------------
-// orbit_offset extended tests
-// ---------------------------------------------------------------------------
-
-TEST(EffectExtended, orbit_offset_all_directions)
-{
-    for (int i = 0; i < 16; i++) {
-        float xd = 0, yd = 0;
-        orbit_offset(i, xd, yd);
-        // Each position should have some offset
-        ASSERT_TRUE(xd != 0 || yd != 0) << "orbit offset should be non-zero for all positions";
-    }
-}
-
-
-TEST(EffectExtended, orbit_offset_symmetry)
-{
-    // North and South should have opposite y values
-    float xn = 0, yn = 0, xs = 0, ys = 0;
-    orbit_offset(0, xn, yn);
-    orbit_offset(8, xs, ys);
-    ASSERT_TRUE(yn < 0) << "north should have negative y";
-    ASSERT_TRUE(ys > 0) << "south should have positive y";
-    ASSERT_EQ(0, static_cast<int>(xn)) << "north x should be 0";
-    ASSERT_EQ(0, static_cast<int>(xs)) << "south x should be 0";
-}
-
-
-// ---------------------------------------------------------------------------
-// compute_explosion_range extended tests
-// ---------------------------------------------------------------------------
-
-TEST(EffectExtended, compute_explosion_range_scaling)
-{
-    std::int32_t r1 = compute_explosion_range(1, 0);
-    std::int32_t r5 = compute_explosion_range(5, 0);
-    std::int32_t r10 = compute_explosion_range(10, 0);
-    ASSERT_TRUE(r5 > r1) << "range should increase with level";
-    ASSERT_TRUE(r10 > r5) << "range should increase with level";
-}
-
-
-TEST(EffectExtended, compute_explosion_range_clamp)
-{
-    std::int32_t r50 = compute_explosion_range(50, 0);
-    std::int32_t r100 = compute_explosion_range(100, 0);
-    ASSERT_EQ(96, (int)r50) << "level 50 should cap at 96";
-    ASSERT_EQ(96, (int)r100) << "level 100 should cap at 96";
-}
-
-
 TEST(EffectExtended, effect_ctor_defaults_and_owner_pointer_cleanup_in_act)
 {
     effect headless;

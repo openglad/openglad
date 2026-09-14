@@ -42,8 +42,6 @@ private:
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations for pure functions
-void orbit_offset(int drawcycle, float &xd, float &yd);
-Sint32 compute_explosion_range(Sint32 level, short skip_exit);
 bool hits(short x1, short y1, short w1, short h1,
           short x2, short y2, short w2, short h2);
 
@@ -66,76 +64,6 @@ static std::vector<int> explode_row(const signed char* seq)
         row.push_back(static_cast<int>(seq[i]));
     return row;
 }
-
-// ---------------------------------------------------------------------------
-// Pure functions: orbit_offset
-// ---------------------------------------------------------------------------
-
-// orbit_offset is a table read, not a formula: the 16 steps of the shield /
-// boomerang orbit live verbatim in src/gameplay/effect.cpp. "Non-zero" accepted
-// any scrambled table of non-zero constants, so pin the table itself — every
-// pair, in order. The radius is 24 on the axes and (+-9, +-22) / (+-17, +-17) /
-// (+-22, +-9) in between, walking clockwise from due north.
-TEST(EffectAct, orbit_offset_all_cycles)
-{
-    static constexpr int kOrbit[16][2] = {
-        {  0, -24}, { -9, -22}, {-17, -17}, {-22,  -9},
-        {-24,   0}, {-22,   9}, {-17,  17}, { -9,  22},
-        {  0,  24}, {  9,  22}, { 17,  17}, { 22,   9},
-        { 24,   0}, { 22,  -9}, { 17, -17}, {  9, -22},
-    };
-    for (int i = 0; i < 16; i++) {
-        float xd = -1.0f, yd = -1.0f;
-        orbit_offset(i, xd, yd);
-        EXPECT_FLOAT_EQ(static_cast<float>(kOrbit[i][0]), xd)
-            << "orbit step " << i << ": x offset";
-        EXPECT_FLOAT_EQ(static_cast<float>(kOrbit[i][1]), yd)
-            << "orbit step " << i << ": y offset";
-    }
-}
-
-
-TEST(EffectAct, orbit_offset_wraps)
-{
-    float xd1, yd1, xd2, yd2;
-    orbit_offset(0, xd1, yd1);
-    orbit_offset(16, xd2, yd2);
-    ASSERT_TRUE(xd1 == xd2) << "cycle 16 wraps to 0";
-    ASSERT_TRUE(yd1 == yd2) << "cycle 16 wraps to 0";
-}
-
-
-// ---------------------------------------------------------------------------
-// Pure functions: compute_explosion_range
-// ---------------------------------------------------------------------------
-
-TEST(EffectAct, explosion_range_basic2)
-{
-    Sint32 r = compute_explosion_range(10, 0);
-    ASSERT_EQ(40, (int)r) << "level 10 => range 40";
-}
-
-
-TEST(EffectAct, explosion_range_capped)
-{
-    Sint32 r = compute_explosion_range(100, 0);
-    ASSERT_EQ(96, (int)r) << "capped at 96";
-}
-
-
-TEST(EffectAct, explosion_range_min)
-{
-    Sint32 r = compute_explosion_range(1, 0);
-    ASSERT_EQ(16, (int)r) << "min is 16";
-}
-
-
-TEST(EffectAct, explosion_range_skip_exit)
-{
-    Sint32 r = compute_explosion_range(10, 1);
-    ASSERT_EQ(16, (int)r) << "skip_exit sets range to 0 then min caps to 16";
-}
-
 
 // ---------------------------------------------------------------------------
 // Pure functions: hits (collision detection)
