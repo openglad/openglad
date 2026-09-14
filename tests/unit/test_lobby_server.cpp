@@ -2,6 +2,7 @@
 #include <openglad/core/fnv1a.h>
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/pack_transfer.h>
 
 #include <gtest/gtest.h>
@@ -16,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -5125,4 +5127,69 @@ TEST(LobbyServer, seatless_remove_seat_still_echoes_the_authoritative_state)
     echoed.local_seat_ids.clear();
     echoed.local_peer_is_host = false;
     EXPECT_EQ(seatless, echoed);
+}
+
+// The two StartGame reply-correlation rules every lobby client shares
+// (og::sim::start_denial_matches_request / start_confirmation_matches_request,
+// src/gameplay/lobby_state.cpp). SDL, curses and the in-process picker client
+// each used to spell them out for themselves; this is the one truth table.
+TEST(LobbyState, start_correlation_matchers)
+{
+    // Denial: only a verdict echoed for THIS caller's own outstanding
+    // request resolves it.
+    og::sim::LobbyState denial;
+    denial.last_start_request_id = 40u;
+    denial.last_start_denial = og::sim::start_denial_reason_value(
+        og::sim::StartDenialReason::MachinesNotReady);
+
+    EXPECT_FALSE(og::sim::start_denial_matches_request(denial, 41u))
+        << "a denial echoed for request 40 must not resolve pending 41 — a "
+           "reply from an older GO attempt may already be queued";
+
+    denial.last_start_request_id = 41u;
+    EXPECT_TRUE(og::sim::start_denial_matches_request(denial, 41u))
+        << "the echo whose id IS the pending request resolves it";
+
+    EXPECT_FALSE(og::sim::start_denial_matches_request(denial, 0u))
+        << "a caller holding no pending request has nothing to resolve, even "
+           "when the state carries a real denial";
+
+    og::sim::LobbyState no_verdict = denial;
+    no_verdict.last_start_denial = og::sim::start_denial_reason_value(
+        og::sim::StartDenialReason::None);
+    EXPECT_FALSE(og::sim::start_denial_matches_request(no_verdict, 41u))
+        << "None is 'no denial recorded': a matching id alone must not "
+           "release the pending request, or every unrelated broadcast would";
+
+    // Confirmation: the accepted StartGame broadcast. A caller with no
+    // pending request is a FOLLOWER and must enter the level anyway.
+    og::sim::LobbyMessage confirmation;
+    confirmation.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 0u,
+        .request_id = 40u,
+    };
+
+    EXPECT_FALSE(
+        og::sim::start_confirmation_matches_request(confirmation, 41u))
+        << "an accepted request 40 must not resolve this caller's pending 41";
+    EXPECT_TRUE(og::sim::start_confirmation_matches_request(confirmation, 0u))
+        << "follower rule: a peer that never asked to start accepts the "
+           "host's accepted StartGame unconditionally";
+
+    std::get<og::sim::LobbyStartGameMessage>(confirmation.payload).request_id =
+        41u;
+    EXPECT_TRUE(
+        og::sim::start_confirmation_matches_request(confirmation, 41u))
+        << "the requester's own accepted request resolves its pending id";
+
+    og::sim::LobbyMessage not_a_start;
+    not_a_start.payload = og::sim::LobbyReadyMessage{
+        .player_index = 0u,
+        .ready = true,
+    };
+    EXPECT_FALSE(og::sim::start_confirmation_matches_request(not_a_start, 0u))
+        << "only a StartGame payload confirms a start — a Ready broadcast "
+           "must not drop a follower into the level";
+    EXPECT_FALSE(og::sim::start_confirmation_matches_request(not_a_start, 41u))
+        << "nor may it resolve a pending request";
 }

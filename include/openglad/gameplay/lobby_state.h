@@ -83,6 +83,33 @@ constexpr std::uint8_t start_denial_reason_value(StartDenialReason reason) noexc
     return static_cast<std::uint8_t>(reason);
 }
 
+struct LobbyState;
+struct LobbyMessage;
+
+// The two correlation rules every lobby client applies to a StartGame reply,
+// in ONE implementation (SDL, curses and the in-process picker client each
+// used to carry their own encoding of them).
+//
+// start_denial_matches_request: the recipient-scoped denial echo in `state`
+// resolves the caller's pending request only when the caller HAS one
+// (pending_request_id != 0), the echoed id is exactly that request, and the
+// echoed reason is not None. A denial from an older attempt, or a state with
+// no verdict in it, leaves the pending request outstanding.
+//
+// start_confirmation_matches_request: an accepted StartGame broadcast in
+// `message` resolves the caller's pending request when the ids match — and,
+// when the caller holds NO pending request (pending_request_id == 0), it is
+// accepted unconditionally. That second half is the FOLLOWER rule: a joiner
+// that never asked to start must still enter the level the host's accepted
+// request opened. A message that is not a StartGame never matches.
+[[nodiscard]] bool start_denial_matches_request(
+    const LobbyState& state,
+    std::uint32_t pending_request_id) noexcept;
+
+[[nodiscard]] bool start_confirmation_matches_request(
+    const LobbyMessage& message,
+    std::uint32_t pending_request_id) noexcept;
+
 // The lobby wire's copy of a roster character. It is deliberately a SUBSET of
 // `guy`: fields absent here (the `deployed` flag, the GTL v16 `campaign_tag`)
 // do not travel, so every consumer that rebuilds a roster from this struct

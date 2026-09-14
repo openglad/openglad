@@ -2359,12 +2359,8 @@ private:
                         og::sim::kInvalidLobbySeatId;
                     team_status_.clear();
                 }
-                if (pending_start_request_id_ != 0 &&
-                    state_->last_start_request_id ==
-                        pending_start_request_id_ &&
-                    state_->last_start_denial !=
-                        og::sim::start_denial_reason_value(
-                            og::sim::StartDenialReason::None))
+                if (og::sim::start_denial_matches_request(
+                        *state_, pending_start_request_id_))
                 {
                     switch (static_cast<og::sim::StartDenialReason>(
                         state_->last_start_denial))
@@ -2400,11 +2396,9 @@ private:
             }
             if (message.lobby_message &&
                 message.lobby_message->kind() == og::sim::LobbyMessageKind::StartGame) {
-                const auto& start =
-                    std::get<og::sim::LobbyStartGameMessage>(
-                        message.lobby_message->payload);
-                if (pending_start_request_id_ != 0 &&
-                    start.request_id != pending_start_request_id_)
+                if (!og::sim::start_confirmation_matches_request(
+                        *message.lobby_message,
+                        pending_start_request_id_))
                 {
                     break;
                 }
