@@ -504,8 +504,10 @@ TEST(CombatMath, xp_from_attack_saturates_instead_of_wrapping_negative)
 {
     // A level-1 attacker against a level-21 target: the value that showed up
     // as "45111.3 is outside the range of representable values" under UBSan.
+    // Pinned by VALUE: the saturation ceiling itself is what says the wrap is
+    // gone. (A `> 0` companion added nothing — every wrap this test exists to
+    // catch is negative, and EXPECT_EQ(32767) already excludes it.)
     const short xp = compute_xp_from_attack(-20, 20.0f);
-    EXPECT_GT(xp, 0) << "a huge reward must not come back negative";
     EXPECT_EQ(32767, xp) << "it saturates at the short ceiling";
 }
 

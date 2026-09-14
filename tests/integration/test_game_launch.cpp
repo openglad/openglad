@@ -101,7 +101,8 @@ TEST(GameLaunch, level_loading) {
     // so on their own they are satisfied by a load that returns an error. Pin
     // the outcome: a non-zero return, the trace that only the completed load
     // reaches, and a world that actually has the scenario's objects in it.
-    ASSERT_NE(0, static_cast<int>(result)) << "loading scen1 from save must succeed";
+    ASSERT_EQ(1, static_cast<int>(result))
+        << "load_saved_game returns exactly 1 on success (game.cpp)";
     ASSERT_TRUE(trace_contains("game", "load_saved_game")) << "load_saved_game trace should be logged";
     ASSERT_TRUE(trace_contains("game", "LevelRuntimeData::load")) << "LevelRuntimeData::load trace should be logged";
     ASSERT_TRUE(trace_contains("game", "level loaded: scen1"))

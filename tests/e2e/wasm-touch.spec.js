@@ -1168,15 +1168,31 @@ test.describe('Touch gameplay controls', () => {
     // a 'toBe("running")' poll green. Suspend first so the gesture is
     // load-bearing, and spy on resume() so the resume is ATTRIBUTED to the
     // gesture: SDL's own silence-timer resume happens outside any DOM event,
-    // where window.event is unset, and that is exactly the out-of-gesture
-    // resume iOS Safari rejects.
+    // and that is exactly the out-of-gesture resume iOS Safari rejects.
+    //
+    // The attribution comes from a capture-phase marker of our own rather than
+    // from the deprecated `window.event` (Chromium/WebKit only; undefined in
+    // Firefox, where every resume would have been reported as 'none'). Capture
+    // runs window -> document, and the shell installs its unlock listeners on
+    // `document` with { capture: true }, so the marker is already set when
+    // unlockAudioContext() calls resume(); a macrotask clears it once the whole
+    // dispatch is over, so the silence-timer resume still reports 'none'.
     await page.evaluate(async () => {
       const sdl = window.Module && (window.Module.SDL3 || window.Module.SDL2);
       const ctx = sdl.audioContext;
       window.__pwResumeCalls = [];
+      window.__pwGestureType = null;
+      const markGesture = (event) => {
+        window.__pwGestureType = event.type;
+        setTimeout(() => {
+          window.__pwGestureType = null;
+        }, 0);
+      };
+      window.addEventListener('pointerdown', markGesture, true);
+      window.addEventListener('touchend', markGesture, true);
       const realResume = ctx.resume.bind(ctx);
       ctx.resume = function () {
-        window.__pwResumeCalls.push(window.event ? window.event.type : 'none');
+        window.__pwResumeCalls.push(window.__pwGestureType || 'none');
         return realResume();
       };
       if (ctx.state === 'running') {

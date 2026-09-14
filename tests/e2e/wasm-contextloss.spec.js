@@ -204,8 +204,13 @@ test.describe('WebGL context loss recovery', () => {
       }
     });
 
-    // SaveData::save() -> sync_filesystem() logs this once FS.syncfs(false)
-    // has actually landed the save in IndexedDB (src/resources/platform_io.cpp).
+    // SaveData::save() -> sync_filesystem() logs this from FS.syncfs(false)'s
+    // success callback (src/resources/platform_io.cpp). It is a SEQUENCING
+    // gate, not a tooth: syncfs reports success for an empty or stubbed IDBFS
+    // mount too, so the line only says the autosave's sync has completed and
+    // the context may be killed. What proves the save actually reached
+    // IndexedDB is the post-reload pixel comparison at the end: the reloaded
+    // picker must come back on the with-company main menu.
     const idbfsSyncs = [];
     page.on('console', (msg) => {
       if (msg.text().includes('IDBFS saved to IndexedDB')) {
@@ -217,8 +222,10 @@ test.describe('WebGL context loss recovery', () => {
     // fresh-install main menu. Capturing it proves this band actually
     // distinguishes the two main-menu variants, so the post-reload
     // comparison below is not comparing a screen to itself.
+    // The project's own baseURL, never a second copy of it: playwright.config.js
+    // is the one place the dev server's port is written down.
     const cleanContext = await browser.newContext({
-      baseURL: 'http://localhost:8089',
+      baseURL: test.info().project.use.baseURL,
     });
     let freshMenu;
     try {
@@ -253,7 +260,9 @@ test.describe('WebGL context loss recovery', () => {
     ).toBe(false);
     await expect
       .poll(() => idbfsSyncs.length > 0, {
-        message: 'the company autosave must reach IndexedDB before the reload',
+        message:
+          "the company autosave's IDBFS sync must complete before the context "
+          + 'is killed (sequencing gate, not the persistence proof)',
         timeout: 20_000,
       })
       .toBe(true);

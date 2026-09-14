@@ -393,6 +393,10 @@ TEST(EffectMorePaths, effect_chain_lightning_hits_leader_and_spawns_explosion)
 }
 
 
+// explosion_on_death shoves every live same-floor walker in range away from
+// the centre with a forced COMMAND_WALK of min(2 + owner level / 15, 8) steps
+// along the sign of each axis delta, then attacks it. A hostile target that is
+// neither the owner nor an ally takes the FULL blast damage.
 TEST(EffectMorePaths, effect_death_explosion_shoves_nearby_targets)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -403,14 +407,12 @@ TEST(EffectMorePaths, effect_death_explosion_shoves_nearby_targets)
     GlobalContextGuard guard(&c);
 
     auto owner = make_living(FAMILY_THIEF, 1, 10);
-    ASSERT_TRUE(owner != nullptr) << "owner created";
-    if (!owner)
-        return;
+    ASSERT_NE(nullptr, owner) << "owner created";
+    ASSERT_EQ(10, static_cast<int>(owner->stats()->level()))
+        << "the shove distance is derived from the owner's level";
 
     walker* explosion = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
-    ASSERT_TRUE(explosion != nullptr) << "explosion created";
-    if (!explosion)
-        return;
+    ASSERT_NE(nullptr, explosion) << "explosion created";
 
     explosion->set_owner(owner.get());
     explosion->set_skip_exit(0);
@@ -418,24 +420,38 @@ TEST(EffectMorePaths, effect_death_explosion_shoves_nearby_targets)
     explosion->set_damage(40.0f);
 
     walker* target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(target != nullptr) << "target created";
-    if (target) {
-        target->set_team_num(2);
-        target->setxy(110, 100);
-        target->stats()->clear_command();
-        // effect::death(FAMILY_EXPLOSION) shoves via force_command(), but the
-        // subsequent attack triggers statistics::hit_response(), which may
-        // clear commands when the attacker is a "new" foe. Pre-seed the foe
-        // relationship so the shove command remains queued deterministically.
-        target->set_foe(owner.get());
-    }
+    ASSERT_NE(nullptr, target) << "target created";
+    target->set_team_num(2);
+    target->setxy(110, 100);   // 10 px due east: dx = +1, dy = 0
+    target->stats()->set_armor(0.0f);
+    target->stats()->set_max_hitpoints(200.0f);
+    target->stats()->set_hitpoints(200.0f);
+    target->stats()->clear_command();
+    // effect::death(FAMILY_EXPLOSION) shoves via force_command(), but the
+    // subsequent attack triggers statistics::hit_response(), which may
+    // clear commands when the attacker is a "new" foe. Pre-seed the foe
+    // relationship so the shove command remains queued deterministically.
+    target->set_foe(owner.get());
 
     explosion->set_dead(1);
-    (void)explosion->death();
+    ASSERT_TRUE(explosion->death()) << "the blast hook runs on the first death()";
 
-    if (target) {
-        ASSERT_TRUE(target->stats()->has_commands()) << "explosion should shove targets via COMMAND_WALK";
-    }
+    ASSERT_TRUE(target->stats()->has_commands())
+        << "a target inside the blast range is shoved";
+    EXPECT_EQ(COMMAND_WALK, target->stats()->commands.front().commandtype)
+        << "the shove is a forced walk";
+    EXPECT_EQ(1, target->stats()->commands.front().com1)
+        << "the shove points away from the blast centre on x";
+    EXPECT_EQ(0, target->stats()->commands.front().com2)
+        << "a target due east gets no y component";
+    EXPECT_EQ(2, target->stats()->commands.front().commandcount)
+        << "shove distance is min(2 + owner level / 15, 8) = 2 for a level-10 owner";
+    // Full (uncut) blast damage: compute_base_damage(40, FixedRandom(1)) =
+    // 40 - sqrt(40)/2 + 1 = 37.84, armor 0 takes nothing off, and
+    // damage_to_hit_points rounds that to 38.
+    EXPECT_FLOAT_EQ(162.0f, target->stats()->hitpoints())
+        << "a hostile, non-owner target takes the blast's full 40 damage";
+
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
@@ -803,6 +819,10 @@ TEST(EffectMorePaths, effect_batch4_chain_movement_negative_delta_branch)
 }
 
 
+// The homing arm clamps each axis independently: an axis whose delta is
+// SMALLER than one stepsize closes exactly, an axis whose delta is larger
+// moves exactly one stepsize. A ">" pin passed on a 1-px twitch; these are
+// the two exact landing coordinates.
 TEST(EffectMorePaths, effect_batch6_chain_small_delta_else_branches)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -810,9 +830,9 @@ TEST(EffectMorePaths, effect_batch6_chain_small_delta_else_branches)
     walker* owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
     walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     walker* chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
-    ASSERT_TRUE(owner != nullptr && leader != nullptr && chain != nullptr) << "owner/leader/chain created";
-    if (!(owner && leader && chain))
-        return;
+    ASSERT_NE(nullptr, owner) << "owner created";
+    ASSERT_NE(nullptr, leader) << "leader created";
+    ASSERT_NE(nullptr, chain) << "chain created";
 
     owner->set_team_num(1);
     leader->set_team_num(2);
@@ -826,11 +846,14 @@ TEST(EffectMorePaths, effect_batch6_chain_small_delta_else_branches)
     // X delta within stepsize (else sub-branch), Y delta larger than stepsize
     // (main sub-branch), while distance stays > 2*stepsize so movement branch runs.
     leader->setxy(106, 150);
-    const short before_x = chain->xpos();
-    const short before_y = chain->ypos();
-    (void)chain->act();
-    ASSERT_TRUE(chain->xpos() > before_x) << "small positive x delta should move right";
-    ASSERT_TRUE(chain->ypos() > before_y) << "large positive y delta should move down toward leader";
+    ASSERT_TRUE(chain->act()) << "chain_on_act consumes the tick";
+
+    EXPECT_EQ(106, static_cast<int>(chain->xpos()))
+        << "an x delta of 6 inside the 10-px step closes exactly, it is not overshot";
+    EXPECT_EQ(110, static_cast<int>(chain->ypos()))
+        << "a y delta of 50 is clamped to exactly one 10-px stepsize";
+    EXPECT_EQ(7, chain->lineofsight()) << "the movement arm spends one line of sight";
+    EXPECT_EQ(0, chain->dead()) << "a homing bolt with line of sight left survives the tick";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }

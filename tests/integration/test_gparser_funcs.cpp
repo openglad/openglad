@@ -233,7 +233,8 @@ TEST(GparserFuncs, gparser_load_settings_reapplies_built_in_defaults_over_stale_
     // A stale in-memory value that the mounted cfg/openglad.yaml does NOT
     // carry: the reload's built-in defaults block must overwrite it.
     cfg.apply_setting("graphics", "render", "sai");
-    (void)cfg.load_settings();
+    ASSERT_TRUE(cfg.load_settings())
+        << "the runner's mounted cfg/openglad.yaml must open and parse";
 
     ASSERT_EQ("normal", cfg.get_setting("graphics", "render"))
         << "load_settings re-applies graphics/render=normal before parsing, and the "
@@ -246,6 +247,65 @@ TEST(GparserFuncs, gparser_load_settings_reapplies_built_in_defaults_over_stale_
         << "load_settings must define effects/gore=on";
     ASSERT_EQ("6", cfg.get_setting("gameplay", "timer_wait"))
         << "load_settings must default the sim tick wait to DEFAULT_TIMER_WAIT";
+}
+
+
+// The teeth the sibling above cannot have: the runner's mounted
+// cfg/openglad.yaml itself carries `effects: gore: on` and `gameplay:
+// timer_wait: 6`, so a build that deleted those lines from the defaults block
+// (gparser.cpp) would still come back "on"/"6" from the PARSED file. Parse a
+// fixture that OMITS both keys and the only remaining source is the defaults
+// block — which is where every setting the shipped cfg predates has to come
+// from (a fresh install, or a user cfg written by an older build).
+TEST(GparserFuncs, gparser_load_settings_defaults_fill_keys_the_parsed_file_omits)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path fixture_dir = make_isolated_gparser_dir("defaults_fill");
+    const fs::path cfg_path = fixture_dir / "cfg" / "openglad.yaml";
+
+    // sound/sound: off is the witness that THIS file was parsed: it is the
+    // opposite of the built-in default, so reading "off" back proves the
+    // fixture won the search path and the defaults did not simply survive.
+    const char* yaml =
+        "sound:\n"
+        "  sound: off\n";
+    FILE* f = std::fopen(cfg_path.string().c_str(), "wb");
+    ASSERT_NE(nullptr, f) << "should open the fixture cfg/openglad.yaml for write";
+    ASSERT_EQ(std::strlen(yaml), std::fwrite(yaml, 1, std::strlen(yaml), f))
+        << "the whole fixture document must reach disk";
+    ASSERT_EQ(0, std::fclose(f));
+
+    {
+        ScopedPrependedMount fixture_mount(fixture_dir);
+        ASSERT_TRUE(fixture_mount.mounted())
+            << "the fixture directory must win the PhysFS search path";
+
+        cfg.data.clear();
+        // Stale values the defaults block must overwrite before parsing.
+        cfg.apply_setting("effects", "gore", "off");
+        cfg.apply_setting("gameplay", "timer_wait", "99");
+        ASSERT_TRUE(cfg.load_settings())
+            << "the fixture cfg/openglad.yaml must open and parse";
+    }
+    fs::remove_all(fixture_dir, ec);
+
+    ASSERT_EQ("off", cfg.get_setting("sound", "sound"))
+        << "the fixture file is the one that was parsed (it flips the default)";
+    ASSERT_EQ("on", cfg.get_setting("effects", "gore"))
+        << "effects/gore=on comes from the built-in defaults block alone: the "
+           "fixture carries no effects section";
+    ASSERT_EQ("6", cfg.get_setting("gameplay", "timer_wait"))
+        << "gameplay/timer_wait=6 (DEFAULT_TIMER_WAIT) likewise";
+    ASSERT_EQ("on", cfg.get_setting("graphics", "fullscreen"))
+        << "graphics/fullscreen=on likewise";
+
+    // Leave the global cfg holding the runner's real configuration again.
+    cfg.data.clear();
+    ASSERT_TRUE(cfg.load_settings())
+        << "the runner's mounted cfg must still load after the fixture";
+    ASSERT_EQ("on", cfg.get_setting("sound", "sound"))
+        << "the fixture is gone: the mounted cfg is authoritative again";
 }
 
 
@@ -305,7 +365,8 @@ TEST(GparserFuncs, gparser_load_settings_sequence_and_alias_event_paths)
             << "the fixture directory must win the PhysFS search path";
 
         cfg.data.clear();
-        (void)cfg.load_settings();
+        ASSERT_TRUE(cfg.load_settings())
+            << "the prepended fixture cfg/openglad.yaml must open and parse";
     }
     fs::remove_all(fixture_dir, ec);
 
