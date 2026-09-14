@@ -15,6 +15,7 @@
 #include "test_input_helpers.h"
 
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <format>
 #include <map>
@@ -37,6 +38,12 @@ struct ResultsThreadState
 {
     bool started = false;
     bool finished = false;
+    // The injector synchronised on a LIVE panel loop before its first press,
+    // and every press/wheel notch it sent was sampled by that loop: without
+    // these the panel's exact pins would read one short on a slow load and
+    // blame the product.
+    bool loop_seen = false;
+    bool clicks_delivered = true;
 };
 
 struct CanvasRoutingGuard
@@ -54,15 +61,143 @@ struct CanvasRoutingGuard
     }
 };
 
-static void inject_results_click(int game_x, int game_y, int delay_ms = 10)
+// ---------------------------------------------------------------------------
+// Injector synchronisation for the modal results panel (no wall-clock pacing).
+//
+// results_screen sleeps, pumps events and builds a fresh LevelRuntimeData
+// before its button loop is live, so a flat delay before the first press
+// RACES that load: on a loaded machine (and always on the coverage/ASan lanes)
+// a held-for-60 ms press can come and go before the loop ever samples the
+// mouse, and every exact pin below then reads one short.  The loop publishes
+// two TESTING seams for exactly this (results_screen.h):
+// results_screen_testing_loop_live() and results_screen_testing_frame_count(),
+// the latter bumped at the TOP of each iteration, before the mouse sample.
+// Every wait here is therefore a CONDITION with a failure bound, never a
+// settle, and every expiry prints why.
+// ---------------------------------------------------------------------------
+
+template <typename Pred>
+static bool results_wait(Pred pred, int timeout_ms)
+{
+    const Uint64 start = SDL_GetTicks();
+    while (!pred())
+    {
+        if (SDL_GetTicks() - start > static_cast<Uint64>(timeout_ms))
+            return false;
+        SDL_Delay(2);
+    }
+    return true;
+}
+
+// The panel is live and has begun at least one iteration — only then can a
+// synthetic press be sampled at all.
+static bool results_wait_for_live_loop(ResultsThreadState* st, const char* who)
+{
+    st->loop_seen = results_wait(
+        [] {
+            return results_screen_testing_loop_live() &&
+                   results_screen_testing_frame_count() >= 1;
+        },
+        5000);
+    if (!st->loop_seen)
+    {
+        std::fprintf(stderr,
+                     "[results injector] %s: the results loop never went live "
+                     "(live=%d frames=%d) within 5000 ms\n",
+                     who, results_screen_testing_loop_live() ? 1 : 0,
+                     results_screen_testing_frame_count());
+        std::fflush(stderr);
+    }
+    return st->loop_seen;
+}
+
+// A press is DELIVERED only once the loop has sampled it: write the button
+// down, then let the frame counter advance by two.  The counter is bumped at
+// the top of an iteration, so an iteration whose bump is observed after the
+// write is guaranteed to sample the write.  Then release and let it advance by
+// two again, so the release is sampled too and the next press arrives as a
+// fresh unpressed->pressed edge for the loop's `was_mouse_down` detector.
+// Each leg is bounded at 2 s; the "loop no longer live" escape is what lets
+// the OK press — the one that ENDS the loop — return.
+static bool inject_results_click(int game_x, int game_y, ResultsThreadState* st,
+                                 const char* who)
 {
     MouseState& mouse = query_mouse_no_poll();
     mouse.x = static_cast<float>(game_x);
     mouse.y = static_cast<float>(game_y);
     mouse.left = true;
-    SDL_Delay(static_cast<Uint32>(delay_ms < 60 ? 60 : delay_ms));
+    const int pressed_at = results_screen_testing_frame_count();
+    const bool press_seen = results_wait(
+        [pressed_at] {
+            return results_screen_testing_frame_count() >= pressed_at + 2 ||
+                   !results_screen_testing_loop_live();
+        },
+        2000);
     mouse.left = false;
-    SDL_Delay(20);
+    const int released_at = results_screen_testing_frame_count();
+    const bool release_seen =
+        press_seen && results_wait(
+                          [released_at] {
+                              return results_screen_testing_frame_count() >=
+                                         released_at + 2 ||
+                                     !results_screen_testing_loop_live();
+                          },
+                          2000);
+    if (!release_seen)
+    {
+        std::fprintf(stderr,
+                     "[results injector] %s: press at (%d,%d) was never sampled "
+                     "(press_seen=%d live=%d frames=%d)\n",
+                     who, game_x, game_y, press_seen ? 1 : 0,
+                     results_screen_testing_loop_live() ? 1 : 0,
+                     results_screen_testing_frame_count());
+        std::fflush(stderr);
+        st->clicks_delivered = false;
+    }
+    return release_seen;
+}
+
+// Same handshake for a wheel notch: push it, then let a whole iteration's
+// get_input_events(POLL) run so the loop's scroll accumulator drains it.
+static bool push_results_wheel(int notch, ResultsThreadState* st, const char* who)
+{
+    SDL_Event wheel{};
+    wheel.type = SDL_EVENT_MOUSE_WHEEL;
+    wheel.wheel.y = static_cast<float>(notch);
+    wheel.wheel.integer_y = notch;
+    SDL_PushEvent(&wheel);
+    const int pushed_at = results_screen_testing_frame_count();
+    const bool drained = results_wait(
+        [pushed_at] {
+            return results_screen_testing_frame_count() >= pushed_at + 2 ||
+                   !results_screen_testing_loop_live();
+        },
+        2000);
+    if (!drained)
+    {
+        std::fprintf(stderr,
+                     "[results injector] %s: wheel notch %d was never polled\n",
+                     who, notch);
+        std::fflush(stderr);
+        st->clicks_delivered = false;
+    }
+    return drained;
+}
+
+// Failure bound only: a button press is what must end the panel, so the
+// world().end write here is never the expected exit (each flow pins
+// "exit ok_click" and the ABSENCE of "exit world_end").
+static void results_failsafe_end(ResultsThreadState* st, const char* who)
+{
+    if (results_wait([] { return !results_screen_testing_loop_live(); }, 5000))
+        return;
+    std::fprintf(stderr,
+                 "[results injector] %s: the loop outlived every injected press; "
+                 "ending the world so the test fails on assertions\n",
+                 who);
+    std::fflush(stderr);
+    st->clicks_delivered = false;
+    og::runtime::current_session->myscreen_->world().end = 1;
 }
 
 static int results_ui_injector(void* data)
@@ -71,35 +206,22 @@ static int results_ui_injector(void* data)
     ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
     st->started = true;
 
-    SDL_Delay(140);
-
-    SDL_Event wheel{};
-    wheel.type = SDL_EVENT_MOUSE_WHEEL;
-    wheel.wheel.y = 1;
-    wheel.wheel.integer_y = 1;
-    SDL_PushEvent(&wheel);
-
-    wheel.wheel.y = -1;
-    wheel.wheel.integer_y = -1;
-    SDL_PushEvent(&wheel);
-
-    // Toggle tabs in the full results UI.
-    inject_results_click(220, 26, 10); // TROOPS
-    SDL_Delay(40);
-    for (int i = 0; i < 3; ++i)
+    if (results_wait_for_live_loop(st, "results_ui_injector"))
     {
-        inject_results_click(70, 26, 10);  // OVERVIEW
-        SDL_Delay(50);
+        push_results_wheel(1, st, "results_ui_injector");
+        push_results_wheel(-1, st, "results_ui_injector");
+
+        // Toggle tabs in the full results UI.
+        inject_results_click(220, 26, st, "TROOPS");
+        for (int i = 0; i < 3; ++i)
+            inject_results_click(70, 26, st, "OVERVIEW");
+        inject_results_click(220, 26, st, "TROOPS again");
+
+        // Exit via OK.
+        inject_results_click(130, 170, st, "OK");
     }
-    inject_results_click(220, 26, 10); // TROOPS again to execute both branches
-    SDL_Delay(40);
 
-    // Exit via OK.
-    inject_results_click(130, 170, 10);
-
-    // Failsafe in case click misses.
-    SDL_Delay(500);
-    og::runtime::current_session->myscreen_->world().end = 1;
+    results_failsafe_end(st, "results_ui_injector");
 
     st->finished = true;
     return 0;
@@ -111,35 +233,19 @@ static int results_ui_scroll_injector(void* data)
     ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
     st->started = true;
 
-    SDL_Delay(140);
-    inject_results_click(225, 26, 10); // TROOPS
-    SDL_Delay(40);
-
-    for (int i = 0; i < 12; ++i)
+    if (results_wait_for_live_loop(st, "results_ui_scroll_injector"))
     {
-        SDL_Event wheel{};
-        wheel.type = SDL_EVENT_MOUSE_WHEEL;
-        wheel.wheel.y = -1;
-        wheel.wheel.integer_y = -1;
-        SDL_PushEvent(&wheel);
-        SDL_Delay(15);
+        inject_results_click(225, 26, st, "TROOPS");
+
+        for (int i = 0; i < 12; ++i)
+            push_results_wheel(-1, st, "results_ui_scroll_injector");
+        for (int i = 0; i < 4; ++i)
+            push_results_wheel(1, st, "results_ui_scroll_injector");
+
+        inject_results_click(132, 171, st, "OK");
     }
 
-    for (int i = 0; i < 4; ++i)
-    {
-        SDL_Event wheel{};
-        wheel.type = SDL_EVENT_MOUSE_WHEEL;
-        wheel.wheel.y = 1;
-        wheel.wheel.integer_y = 1;
-        SDL_PushEvent(&wheel);
-        SDL_Delay(15);
-    }
-
-    SDL_Delay(80);
-    inject_results_click(132, 171, 10); // OK
-
-    SDL_Delay(400);
-    og::runtime::current_session->myscreen_->world().end = 1;
+    results_failsafe_end(st, "results_ui_scroll_injector");
 
     st->finished = true;
     return 0;
@@ -151,11 +257,10 @@ static int results_ui_ok_injector(void* data)
     ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
     st->started = true;
 
-    SDL_Delay(140);
-    inject_results_click(130, 170, 10); // OK
+    if (results_wait_for_live_loop(st, "results_ui_ok_injector"))
+        inject_results_click(130, 170, st, "OK");
 
-    SDL_Delay(300);
-    og::runtime::current_session->myscreen_->world().end = 1;
+    results_failsafe_end(st, "results_ui_ok_injector");
 
     st->finished = true;
     return 0;
@@ -167,15 +272,18 @@ static int results_ui_retry_injector(void* data)
     ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
     st->started = true;
 
-    SDL_Delay(140);
-    for (int i = 0; i < 6; ++i)
+    if (results_wait_for_live_loop(st, "results_ui_retry_injector"))
     {
-        inject_results_click(187, 171, 10); // RETRY
-        SDL_Delay(60);
+        for (int i = 0; i < 6; ++i)
+            inject_results_click(187, 171, st, "RETRY");
     }
 
-    SDL_Delay(300);
-    og::runtime::current_session->myscreen_->world().end = 1;
+    // The networked flow SUPPRESSES the retry button, so no press there can
+    // end the panel and ending the world is that test's expected exit — not a
+    // failsafe.  In the local flow the accepted prompt has already ended the
+    // loop by now, so this write never runs.
+    if (results_screen_testing_loop_live())
+        og::runtime::current_session->myscreen_->world().end = 1;
 
     st->finished = true;
     return 0;
@@ -187,17 +295,14 @@ static int results_ui_troops_then_ok_injector(void* data)
     ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
     st->started = true;
 
-    SDL_Delay(140);
-    for (int i = 0; i < 4; ++i)
+    if (results_wait_for_live_loop(st, "results_ui_troops_then_ok_injector"))
     {
-        inject_results_click(220, 26, 10); // TROOPS
-        SDL_Delay(70);
+        for (int i = 0; i < 4; ++i)
+            inject_results_click(220, 26, st, "TROOPS");
+        inject_results_click(130, 170, st, "OK");
     }
-    SDL_Delay(500);
-    inject_results_click(130, 170, 10); // OK
 
-    SDL_Delay(300);
-    og::runtime::current_session->myscreen_->world().end = 1;
+    results_failsafe_end(st, "results_ui_troops_then_ok_injector");
 
     st->finished = true;
     return 0;
@@ -414,7 +519,9 @@ TEST(ResultsScreenFullUi, overview_and_troops_clicks_select_their_page)
         int rc = 0;
         SDL_WaitThread(thread, &rc);
         bows = clicks.bows();
-        ASSERT_TRUE(st.started && st.finished) << "results UI injector should run";
+        ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the results UI injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     }
 
     results_screen_testing_set_force_full(false);
@@ -477,8 +584,6 @@ TEST(ResultsScreenFullUi, troops_press_opens_the_troop_page_and_drains_the_wheel
     {
         auto* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, (i % 2 == 0) ? FAMILY_MAGE : FAMILY_SOLDIER);
         ASSERT_TRUE(w != nullptr) << "expected walker for scrolling results test";
-        if (!w)
-            return;
         w->set_owned_myguy(std::make_unique<guy>((i % 2 == 0) ? FAMILY_MAGE : FAMILY_SOLDIER));
         w->myguy->name = std::string("Troop") + std::to_string(i);
         w->myguy->family = (i % 2 == 0) ? FAMILY_MAGE : FAMILY_SOLDIER;
@@ -534,7 +639,9 @@ TEST(ResultsScreenFullUi, troops_press_opens_the_troop_page_and_drains_the_wheel
         int rc = 0;
         SDL_WaitThread(thread, &rc);
         bows = clicks.bows();
-        ASSERT_TRUE(st.started && st.finished) << "scroll injector should run";
+        ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the scroll injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     }
 
     results_screen_testing_set_force_full(false);
@@ -649,7 +756,9 @@ TEST(ResultsScreenFullUi, defeat_overview_reports_defeated_of_total_foes)
         int rc = 0;
         SDL_WaitThread(thread, &rc);
         bows = clicks.bows();
-        ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+        ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the OK injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     }
 
     results_screen_testing_set_force_full(false);
@@ -699,7 +808,9 @@ TEST(ResultsScreenFullUi, retry_button_accepts_prompt_and_returns_retry)
     picker_testing_yes_or_no_queue_clear();
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
-    ASSERT_TRUE(st.started && st.finished) << "retry injector should run";
+    ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the retry injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     ASSERT_TRUE(retry) << "accepted retry prompt should request retry";
 }
 
@@ -742,8 +853,9 @@ TEST(ResultsScreenFullUi, networked_results_suppress_local_retry)
     session->networked_session_ = saved_networked;
     session->myscreen_->world().end = saved_end;
 
-    ASSERT_TRUE(st.started && st.finished)
-        << "networked retry injector should run";
+    ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the networked retry injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     EXPECT_FALSE(retry)
         << "a display-only network peer cannot roll back the committed result";
 }
@@ -801,7 +913,9 @@ TEST(ResultsScreenFullUi, completed_victory_zeroes_the_time_bonus)
         int rc = 0;
         SDL_WaitThread(thread, &rc);
         bows = clicks.bows();
-        ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+        ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the OK injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     }
 
     results_screen_testing_set_force_full(false);
@@ -840,7 +954,9 @@ TEST(ResultsScreenFullUi, completed_victory_zeroes_the_time_bonus)
         int rc = 0;
         SDL_WaitThread(thread, &rc);
         control_bows = clicks.bows();
-        ASSERT_TRUE(st.started && st.finished) << "control OK injector should run";
+        ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the control OK injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     }
 
     results_screen_testing_set_force_full(false);
@@ -907,7 +1023,9 @@ TEST(ResultsScreenFullUi, ctf_bots_win_omits_mvp_line)
 
     results_screen_testing_set_force_full(false);
 
-    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the OK injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     ASSERT_TRUE(!retry);
     EXPECT_TRUE(trace_contains("results", "mvp_none"))
         << "bots-win must leave the MVP unset (line omitted)";
@@ -976,7 +1094,9 @@ TEST(ResultsScreenFullUi, scripted_mode_win_scopes_mvp_and_draws_overview)
 
     results_screen_testing_set_force_full(false);
 
-    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the OK injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     ASSERT_TRUE(!retry);
     EXPECT_TRUE(trace_contains("results", "mvp_none"))
         << "bots-win must leave the MVP unset (line omitted)";
@@ -1039,7 +1159,9 @@ TEST(ResultsScreenFullUi, band_winner_banner_takes_its_fighter_ramp)
 
     results_screen_testing_set_force_full(false);
 
-    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the OK injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     ASSERT_TRUE(!retry);
     EXPECT_TRUE(trace_contains("results", "mode_winner_banner team=29 color=168"))
         << "the band winner banners in the TEAL ramp, not a wrapped cast";
@@ -1107,7 +1229,9 @@ TEST(ResultsScreenFullUi, classic_mvp_ignores_foreign_company_team)
     SDL_WaitThread(thread, &rc);
     results_screen_testing_set_force_full(false);
 
-    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the OK injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     ASSERT_FALSE(retry);
     EXPECT_TRUE(trace_contains("results", "mvp_pick name=REDMVP team=0"));
     EXPECT_FALSE(trace_contains("results", "YELLOWOPPONENT"));
@@ -1207,7 +1331,9 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
         int rc = 0;
         SDL_WaitThread(thread, &rc);
         bows = clicks.bows();
-        ASSERT_TRUE(st.started && st.finished) << "troop detail injector should run";
+        ASSERT_TRUE(st.started && st.finished && st.loop_seen && st.clicks_delivered)
+        << "the troop detail injector must reach a LIVE results loop and have every "
+           "press it sent sampled by that loop";
     }
 
     results_screen_testing_set_force_full(false);
@@ -1226,6 +1352,11 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
         << "the lost level must never read as a gain";
     EXPECT_GT(count_result_traces("troop_row Glyph xp=+"), 0)
         << "the level-up troop must render a positive XP gain";
+    EXPECT_EQ(count_result_traces("troop_row Bruise "),
+              count_result_traces("troop_row Glyph "))
+        << "this flow never scrolls, so both roster rows are inside the "
+           "scroll area on every drawn troops frame — a row that stops "
+           "drawing (or draws only on some frames) breaks the pair";
     EXPECT_GT(count_result_traces("special=Arcane Burst"), 0)
         << "a gained level must name the special it earned, read from "
            "screen::special_name[family][slot]";
