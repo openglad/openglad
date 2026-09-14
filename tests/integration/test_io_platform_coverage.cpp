@@ -608,6 +608,9 @@ TEST(IoPlatformCoverage, platform_io_batch3_mount_switch_and_listing_filters)
 
     std::remove((campaigns_dir / "batch3_filter_marker.glad").string().c_str());
     std::remove((campaigns_dir / "batch3_filter_marker.txt").string().c_str());
+    // The unsafe-id fixture is a real file too: leaving it behind puts a
+    // permanent ".."-bearing name in the user campaigns dir.
+    std::remove((campaigns_dir / "batch3..unsafe.glad").string().c_str());
     std::remove((scen_dir / "batch3_note.txt").string().c_str());
     std::remove((scen_dir / "foo.fss").string().c_str());
     std::remove((scen_dir / "scen0.fss").string().c_str());

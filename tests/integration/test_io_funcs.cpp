@@ -1,6 +1,8 @@
 #include <openglad/resources/io.h>
 #include <gtest/gtest.h>
 
+#include "test_save_state_guard.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -193,7 +195,11 @@ TEST(IoFuncs, io_list_files_enumerates_bare_names_under_a_mounted_dir)
 
 TEST(IoFuncs, io_get_mounted_campaign_reports_the_id_a_successful_mount_recorded)
 {
-    const std::string prev = get_mounted_campaign();
+    // Restore the real MOUNT, not just the id string: writing the id back
+    // would leave gladiator's archive in the PhysFS search path for every
+    // later test in this binary. The guard samples the id it must return to
+    // before the forced reset below.
+    og::test::ScopedCampaignMountState mount_guard;
 #ifdef TESTING
     // Start from a known state: a stale bogus id left by a sibling would make
     // the mount below fail in prev's unmount instead of exercising the record.
@@ -203,11 +209,6 @@ TEST(IoFuncs, io_get_mounted_campaign_reports_the_id_a_successful_mount_recorded
         << "the default campaign package should mount";
     ASSERT_EQ("gladiator", get_mounted_campaign())
         << "a successful mount records the mounted id";
-#ifdef TESTING
-    set_mounted_campaign_for_testing(prev);
-#else
-    (void)prev;
-#endif
 }
 
 

@@ -172,8 +172,10 @@ int name_guy_injector(void* data)
         }
         SDL_Delay(5);
     }
+    // No pacing gap between the two: SDL's event queue is FIFO, so the RETURN
+    // can never be seen before the text it accepts, and the
+    // text_input_is_active() handshake above already carried the wait.
     inject_text_input(a->text);
-    SDL_Delay(30);
     inject_key_press(SDLK_RETURN, 10);
     return 0;
 }

@@ -25,7 +25,7 @@ static int timed_dialog_injector(void* data)
     // clear_key_press_event() and BEFORE the wait loop, exactly so an
     // injector can stop guessing: anything sent once this is up is still
     // pending when the loop polls. Bounded, never a flat delay.
-    const Uint64 deadline = SDL_GetTicks() + 2000;
+    const Uint64 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
         if (trace_contains("dialog", "timed_dialog_open test timed dialog"))
@@ -45,8 +45,14 @@ static int timed_dialog_injector(void* data)
 
 // The rule is the early escape at picker_dialogs.cpp:135 -- a key press (or a
 // left click) ends the wait before delay_seconds runs out. Timing IS the
-// oracle here: without it the call simply sleeps out the full 5 s and every
+// oracle here: without it the call simply sleeps out the full delay and every
 // flag-based assertion stays green.
+//
+// The budget and the ceiling are deliberately far apart. A ceiling a hair
+// under the budget is the shape that flakes on the instrumented CI lanes
+// (coverage/ASan), where a 4-way-loaded pump can take seconds to deliver one
+// key: 20 s budget against a 10 s ceiling still fails loudly if the escape is
+// gone (the call would run 20 s) and costs nothing when it works.
 TEST(PickerTimedDialog, breaks_on_input)
 {
     (void)og::runtime::current_session->myscreen_; // ensure screen exists
@@ -57,7 +63,7 @@ TEST(PickerTimedDialog, breaks_on_input)
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     const Uint64 t0 = SDL_GetTicks();
-    timed_dialog("test timed dialog", 5.0f);
+    timed_dialog("test timed dialog", 20.0f);
     const Uint64 elapsed = SDL_GetTicks() - t0;
 
     int thread_result = 0;
@@ -69,7 +75,7 @@ TEST(PickerTimedDialog, breaks_on_input)
         << "the injector must have seen timed_dialog_open before pressing a key";
     ASSERT_TRUE(trace_contains("dialog", "timed_dialog_closed test timed dialog"))
         << "the dialog must close (and say so) rather than be abandoned";
-    ASSERT_LT(elapsed, 2000u)
-        << "a key press must break the 5 s wait, not run it out (took "
+    ASSERT_LT(elapsed, 10000u)
+        << "a key press must break the 20 s wait, not run it out (took "
         << elapsed << " ms)";
 }

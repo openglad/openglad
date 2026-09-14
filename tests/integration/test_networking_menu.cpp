@@ -1016,7 +1016,9 @@ int networking_empty_room_list_injector(void* data)
         return 0;
     }
 
-    SDL_Delay(300);
+    // Team build is engine-hosted: a COMPLETED frame proves the screen
+    // composed, where a flat 300 ms only proved time passed.
+    wait_for_menu_frames(2);
     interact("networking");
 
     if (!wait_for_interactable("network_room_value", 10000))
@@ -1026,8 +1028,8 @@ int networking_empty_room_list_injector(void* data)
     }
 
     state->saw_networking_menu = true;
-    SDL_Delay(150);
-
+    // No settle before the toggle: interact_until_label_contains is itself a
+    // consumed-click handshake (it re-clicks until the row READS "ON").
     state->enabled_room_code = interact_until_label_contains(
         "network_room_toggle", "ON");
 
@@ -1060,39 +1062,52 @@ int networking_empty_room_list_injector(void* data)
     state->settle_frames = og::input_native::yield_count() - yields_before;
     state->no_room_rows_appeared = !has_interactable("network_room_0");
 
-    if (has_interactable("network_back"))
-    {
-        SDL_Delay(150);
-        interact("network_back");
-    }
-
+    // Walk back out. Two rules here, both learned the hard way:
+    //
+    //  * PROBE, never wait: wait_for_interactable() prints
+    //    "[interact] TIMEOUT waiting for 'quit'" every time it expires, so
+    //    the old loop logged a TIMEOUT line on every GREEN run and taught a
+    //    reader to skip the one line that would mean something.
+    //    has_interactable() answers the same question silently.
+    //  * The gap after a click is a POLL FOR THE DESTINATION — the main
+    //    menu's QUIT — not a flat 150 ms: it returns the moment that screen
+    //    arrives, and only a click that genuinely landed somewhere else pays
+    //    the bound. Neither "the clicked row disappeared" nor "the button set
+    //    changed" works here, because a half-published transition satisfies
+    //    both and the loop then presses BACK a second time, one screen too
+    //    far — which walks back INTO a submenu and wedges the whole run.
     const Uint64 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
-        if (wait_for_interactable("quit", 250))
+        if (has_interactable("quit"))
         {
             state->returned_to_main_menu = true;
-            SDL_Delay(100);
+            // Presence is not readiness: run_menu_screen calls
+            // reset_mouse_click_tracking() as the screen starts, so a press
+            // injected between the button's publication and the loop's first
+            // frame is thrown away with the outgoing screen's events — and
+            // the run then spins in a menu nobody can leave. A COMPLETED
+            // frame is the proof that the loop is past that reset.
+            wait_for_menu_frames(2);
             interact("quit");
             break;
         }
 
-        if (wait_for_interactable("network_back", 150))
+        const char* const exit_row =
+            has_interactable("network_back") ? "network_back"
+            : has_interactable("back")       ? "back"
+                                             : nullptr;
+        if (exit_row == nullptr)
         {
-            interact("network_back");
-            SDL_Delay(150);
+            inject_key_press(SDLK_ESCAPE, 10);
+            SDL_Delay(20);
             continue;
         }
 
-        if (wait_for_interactable("back", 150))
-        {
-            interact("back");
-            SDL_Delay(150);
-            continue;
-        }
-
-        inject_key_press(SDLK_ESCAPE, 10);
-        SDL_Delay(50);
+        interact(exit_row);
+        const Uint64 arrived_by = SDL_GetTicks() + 1000;
+        while (!has_interactable("quit") && SDL_GetTicks() < arrived_by)
+            SDL_Delay(10);
     }
 
     state->finished = true;
