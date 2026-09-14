@@ -274,49 +274,72 @@ TEST(GloaderFuncs, gloader_set_walker)
     ASSERT_EQ((int)FAMILY_MAGE, (int)wp->family()) << "family should change to mage";
 
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure, Order::FX, Order::Generator, Order::Special};
+    int rewritten = 0;
     for (Order o : orders) {
         for (int fam = 0; fam < NUM_FAMILIES; fam++) {
             if (!l->graphics[static_cast<std::size_t>(PIX(o, fam))].valid()) {
                 continue;
             }
             walker* changed = l->set_walker(wp, o, static_cast<char>(fam));
-            ASSERT_TRUE(changed != nullptr) << "set_walker should return object";
-            ASSERT_TRUE(changed->stats() != nullptr) << "set_walker should leave stats valid";
+            ASSERT_EQ(wp, changed)
+                << "set_walker rewrites the walker it was handed, in place";
+            ASSERT_NE(nullptr, changed->stats()) << "set_walker leaves stats valid";
+            // The rewrite is the whole point: set_order_family must land both
+            // fields. (query_order() is the C++ class's own answer — `living`
+            // always says Living — so the stored order is read with order().)
+            EXPECT_TRUE(changed->order() == o)
+                << "set_walker must write the requested order";
+            EXPECT_EQ(fam, static_cast<int>(changed->family()))
+                << "set_walker must write the requested family";
+            EXPECT_EQ(l->act_types[static_cast<std::size_t>(PIX(o, fam))],
+                      changed->act_type())
+                << "set_walker re-seeds the act type from that row";
+            ++rewritten;
         }
     }
 
+    // The same graphics-table oracle the create_walker sweeps use: create_pixieN
+    // answers a pixie for EXACTLY the families with a valid graphics row, and
+    // nullptr for the rest. "More than zero were created" passed for a loader
+    // that built one pixie and dropped the other ~60.
     int pixie_created = 0;
+    int rows_with_art = 0;
     for (Order o : orders) {
         for (int fam = 0; fam < NUM_FAMILIES; fam++) {
+            const bool has_art =
+                l->graphics[static_cast<std::size_t>(PIX(o, fam))].valid();
+            if (has_art)
+                ++rows_with_art;
             auto p = l->create_pixieN_owned(o, static_cast<char>(fam));
+            EXPECT_EQ(has_art, p != nullptr)
+                << "order " << static_cast<int>(o) << " family " << fam
+                << ": create_pixieN must build exactly the rows with art";
             if (p) {
                 pixie_created++;
             }
         }
     }
-    ASSERT_TRUE(pixie_created > 0) << "create_pixieN sweep should create objects";
+    ASSERT_EQ(rows_with_art, pixie_created)
+        << "the pixie sweep must build one pixie per valid graphics row";
+    ASSERT_EQ(rows_with_art, rewritten)
+        << "the set_walker sweep must have visited the same rows";
+    ASSERT_GE(rows_with_art, 50)
+        << "the core art tables must not have emptied out under the sweep";
 }
 
 
 TEST(GloaderFuncs, gloader_invalid_family_clamp_paths)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
+    ASSERT_NE(nullptr, l) << "loader exists";
 
     auto living_w = l->create_walker_owned(Order::Living, NUM_FAMILIES + 5);
-    ASSERT_TRUE(living_w != nullptr) << "invalid living family should fall back to soldier";
-    if (!living_w)
-        return;
+    ASSERT_NE(nullptr, living_w.get()) << "invalid living family should fall back to soldier";
     ASSERT_EQ((int)FAMILY_SOLDIER, (int)living_w->family()) << "invalid living family should clamp to soldier";
 
     auto weapon_w = l->create_walker_owned(Order::Weapon, NUM_FAMILIES + 5);
-    ASSERT_TRUE(weapon_w != nullptr) << "invalid weapon family should clamp to 0 and still construct";
-    if (weapon_w)
-    {
-        ASSERT_EQ(0, (int)weapon_w->family()) << "invalid non-living family should clamp to family 0";
-    }
+    ASSERT_NE(nullptr, weapon_w.get()) << "invalid weapon family should clamp to 0 and still construct";
+    ASSERT_EQ(0, (int)weapon_w->family()) << "invalid non-living family should clamp to family 0";
 
     l->set_derived_stats(living_w.get(), Order::Living, NUM_FAMILIES + 9);
     ASSERT_TRUE(living_w->normal_stepsize() >= 0.0f) << "set_derived_stats should clamp invalid family safely";
@@ -330,16 +353,11 @@ TEST(GloaderFuncs, gloader_invalid_family_clamp_paths)
 TEST(GloaderFuncs, gloader_order_special_and_invalid_graphics_paths)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
+    ASSERT_NE(nullptr, l) << "loader exists";
 
     auto special = l->create_walker_owned(Order::Special, FAMILY_RESERVED_TEAM);
-    ASSERT_TRUE(special != nullptr) << "special order should build generic walker when graphics exist";
-    if (special)
-    {
-        ASSERT_TRUE(special->query_order() == Order::Special) << "special walker should keep special order";
-    }
+    ASSERT_NE(nullptr, special.get()) << "special order should build generic walker when graphics exist";
+    ASSERT_TRUE(special->query_order() == Order::Special) << "special walker should keep special order";
 
     // Cover the "invalid graphics -> popup + nullptr" branch deterministically.
     const int idx = PIX(Order::Special, FAMILY_RESERVED_TEAM);
@@ -361,14 +379,10 @@ TEST(GloaderFuncs, gloader_order_special_and_invalid_graphics_paths)
 TEST(GloaderFuncs, gloader_set_walker_descriptor_flag_and_default_paths)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
+    ASSERT_NE(nullptr, l) << "loader exists";
 
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "base walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w.get()) << "base walker created";
 
     // Weapon descriptor flags + lifetime + ani type paths.
     l->set_walker(w.get(), Order::Weapon, FAMILY_WAVE3);
@@ -732,9 +746,7 @@ TEST(GloaderFuncs, custom_spritesheet_rejects_path_traversal)
 TEST(GloaderFuncs, an_out_of_range_family_reads_the_orders_first_row)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
+    ASSERT_NE(nullptr, l) << "loader exists";
 
     const PixieData* living_zero = l->graphics_for(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(living_zero != nullptr) << "the soldier row is loaded";

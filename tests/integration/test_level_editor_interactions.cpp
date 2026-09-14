@@ -1314,7 +1314,11 @@ int editor_exit_phantom_injector(void* data)
         st->finished = true;
         return 1;
     }
-    SDL_Delay(750);
+    // Settle on COMPLETED main-menu frames, not on a clock: FadeBetween is a
+    // single blit under TESTING (scripts/check_injector_settles.sh), so the old
+    // flat 750 ms waited for an animation that never runs and proved nothing
+    // about the menu having composed.
+    wait_for_menu_frames(2);
     const int fades_before_door = count_fade_between_traces();
     interact("level_edit");
 
@@ -1365,7 +1369,7 @@ int editor_exit_phantom_injector(void* data)
     // activating BEGIN NEW GAME and opening the company-name-entry screen.
     if (wait_for_interactable("company_name_accept", 2500)) {
         st->phantom_fired = true;
-        SDL_Delay(750);
+        wait_for_menu_frames(2);  // settle on a COMPLETED name-entry frame
         interact("back");  // escape the name entry so the test cannot hang
         SDL_Delay(300);
         wait_for_interactable("level_edit", 10000);

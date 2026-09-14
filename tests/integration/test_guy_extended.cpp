@@ -20,40 +20,58 @@ screen* guy_test_screen()
     return og::runtime::current_session->myscreen_;
 }
 
-// Families that register no `level_up` hook in packs/core take
-// guy::upgrade_to_level's DEFAULT branch (src/gameplay/guy.cpp:421-429):
-// apply_level_up() adds kDefaultLevelUpGains{8,6,8,8,1} * level_diff to the
-// family's own base_stats, and only then is level/exp written. Pinning the
-// level alone cannot tell that branch from a no-op, so every axis is pinned.
-void expect_default_level_up_to_5(short family, const char* who)
+// guy::upgrade_to_level (src/gameplay/guy.cpp:417-434) dispatches the family's
+// Lua `level_up` hook if it has one and otherwise applies
+// kDefaultLevelUpGains{8,6,8,8,1}; either way the gains are added to the
+// family's OWN base_stats level_diff times, and only then are level and exp
+// written.
+//
+// Pinning `stat > base` could not tell one family's table from another's: the
+// elf's {6,9,6,8,1} and the default {8,6,8,8,1} both raise every axis. Each
+// row below therefore carries the family's exact per-level gains, taken from
+// its packs/core/families/*.lua `og.apply_level_up(guy, level_diff, ...)` call.
+struct LevelUpRow
 {
-    const FamilyDescriptor* fd = get_family_descriptor(family);
-    ASSERT_NE(nullptr, fd) << who << " must be a registered family";
+    short family;
+    const char* who;
+    int str, dex, con, intel, armor;
+};
+
+void expect_level_up_to_5(const LevelUpRow& row, bool set_xp)
+{
+    const FamilyDescriptor* fd = get_family_descriptor(row.family);
+    ASSERT_NE(nullptr, fd) << row.who << " must be a registered family";
     const int base_str = fd->base_stats[StatAxis::Strength];
     const int base_dex = fd->base_stats[StatAxis::Dexterity];
     const int base_con = fd->base_stats[StatAxis::Constitution];
     const int base_int = fd->base_stats[StatAxis::Intelligence];
     const int base_armor = fd->base_stats[StatAxis::Armor];
 
-    guy g(family);
+    guy g(row.family);
     const int level_diff = 5 - static_cast<int>(g.level);
-    ASSERT_EQ(4, level_diff) << who << " starts at level 1, so upgrading to 5 is a 4-level diff";
+    ASSERT_EQ(4, level_diff) << row.who << " starts at level 1, so upgrading to 5 is a 4-level diff";
 
-    g.upgrade_to_level(5, true);
+    g.upgrade_to_level(5, set_xp);
 
-    EXPECT_EQ(base_str + 8 * level_diff, (int)g.strength)
-        << who << ": default gains add 8 STR per level to the family base";
-    EXPECT_EQ(base_dex + 6 * level_diff, (int)g.dexterity)
-        << who << ": default gains add 6 DEX per level to the family base";
-    EXPECT_EQ(base_con + 8 * level_diff, (int)g.constitution)
-        << who << ": default gains add 8 CON per level to the family base";
-    EXPECT_EQ(base_int + 8 * level_diff, (int)g.intelligence)
-        << who << ": default gains add 8 INT per level to the family base";
-    EXPECT_EQ(base_armor + 1 * level_diff, (int)g.armor)
-        << who << ": default gains add 1 armor per level to the family base";
-    ASSERT_EQ(5, (int)g.level) << who << ": upgrade_to_level writes the requested level";
-    ASSERT_EQ((int)calculate_exp(5), (int)g.exp)
-        << who << ": set_xp=true stamps the level-5 point on the exp curve";
+    EXPECT_EQ(base_str + row.str * level_diff, (int)g.strength)
+        << row.who << ": " << row.str << " STR per level on top of the family base";
+    EXPECT_EQ(base_dex + row.dex * level_diff, (int)g.dexterity)
+        << row.who << ": " << row.dex << " DEX per level on top of the family base";
+    EXPECT_EQ(base_con + row.con * level_diff, (int)g.constitution)
+        << row.who << ": " << row.con << " CON per level on top of the family base";
+    EXPECT_EQ(base_int + row.intel * level_diff, (int)g.intelligence)
+        << row.who << ": " << row.intel << " INT per level on top of the family base";
+    EXPECT_EQ(base_armor + row.armor * level_diff, (int)g.armor)
+        << row.who << ": " << row.armor << " armor per level on top of the family base";
+    ASSERT_EQ(5, (int)g.level) << row.who << ": upgrade_to_level writes the requested level";
+    ASSERT_EQ(set_xp ? (int)calculate_exp(5) : 0, (int)g.exp)
+        << row.who << ": exp is stamped only when set_xp is true";
+}
+
+// The families whose Lua module registers no level_up hook at all.
+void expect_default_level_up_to_5(short family, const char* who)
+{
+    expect_level_up_to_5({family, who, 8, 6, 8, 8, 1}, /*set_xp=*/true);
 }
 
 }  // namespace
@@ -62,46 +80,55 @@ void expect_default_level_up_to_5(short family, const char* who)
 // upgrade_to_level - exercises the big family switch (lines 323-456)
 // ---------------------------------------------------------------------------
 
-TEST(GuyExtended, guy_upgrade_soldier)
+// The per-family level-up gains table, verbatim from packs/core/families:
+// a wrong row here (the elf reading the default {8,6,8,8,1}, say) fails on the
+// axis that differs. The three families with no hook at all get the default
+// row through the sibling tests below.
+TEST(GuyExtended, guy_upgrade_applies_each_familys_own_gain_table)
 {
-    guy g(FAMILY_SOLDIER);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.strength > get_family_descriptor(FAMILY_SOLDIER)->base_stats[0]) << "soldier str should increase";
-    ASSERT_TRUE(g.level == 5) << "level should be 5";
-    ASSERT_TRUE(g.exp > 0) << "exp should be set when set_xp=true";
+    const LevelUpRow rows[] = {
+        // family,              who,             str dex con int armor
+        {FAMILY_SOLDIER,        "soldier",         8,  6,  8,  8, 1},  // no hook: default
+        {FAMILY_ELF,            "elf",             6,  9,  6,  8, 1},
+        {FAMILY_ARCHER,         "archer",          4,  9,  8,  8, 1},
+        {FAMILY_MAGE,           "mage",            4,  6,  4, 16, 1},
+        {FAMILY_SKELETON,       "skeleton",        8, 12,  4,  4, 1},
+        {FAMILY_FIREELEMENTAL,  "fire elemental", 12,  6,  4,  8, 1},
+        {FAMILY_FAERIE,         "faerie",          4, 12,  4,  8, 1},
+        {FAMILY_THIEF,          "thief",           4, 12,  4,  8, 1},
+        {FAMILY_DRUID,          "druid",           8,  3,  8, 12, 1},
+        {FAMILY_ORC,            "orc",            12,  3, 12,  4, 1},
+        {FAMILY_BARBARIAN,      "barbarian",      12,  3, 12,  4, 1},
+        {FAMILY_ARCHMAGE,       "archmage",        4,  6,  4, 16, 1},
+    };
+    int checked = 0;
+    for (const LevelUpRow& row : rows) {
+        ASSERT_NO_FATAL_FAILURE(expect_level_up_to_5(row, /*set_xp=*/true))
+            << row.who;
+        ++checked;
+    }
+    ASSERT_EQ(12, checked) << "every listed family must have been upgraded";
+
+    // ... and the rows really are distinct, so a dispatch that lost the hook
+    // and gave everyone the default table cannot pass the loop above by luck.
+    guy soldier(FAMILY_SOLDIER);
+    guy skeleton(FAMILY_SKELETON);
+    const int soldier_dex_base = soldier.dexterity;
+    const int skeleton_dex_base = skeleton.dexterity;
+    soldier.upgrade_to_level(5, true);
+    skeleton.upgrade_to_level(5, true);
+    EXPECT_EQ(soldier_dex_base + 24, (int)soldier.dexterity)
+        << "the default table gives 6 DEX per level";
+    EXPECT_EQ(skeleton_dex_base + 48, (int)skeleton.dexterity)
+        << "the skeleton's own hook gives 12 DEX per level";
 }
 
 
-TEST(GuyExtended, guy_upgrade_elf)
+// set_xp = false leaves exp at 0 while the same gains are applied.
+TEST(GuyExtended, guy_upgrade_without_xp_leaves_exp_at_zero)
 {
-    guy g(FAMILY_ELF);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_ELF)->base_stats[1]) << "elf dex should increase significantly";
-}
-
-
-TEST(GuyExtended, guy_upgrade_archer)
-{
-    guy g(FAMILY_ARCHER);
-    g.upgrade_to_level(5, false);
-    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_ARCHER)->base_stats[1]) << "archer dex should increase";
-    ASSERT_EQ(0, (int)g.exp) << "exp should be 0 when set_xp=false";
-}
-
-
-TEST(GuyExtended, guy_upgrade_mage)
-{
-    guy g(FAMILY_MAGE);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.intelligence > get_family_descriptor(FAMILY_MAGE)->base_stats[3]) << "mage int should increase most";
-}
-
-
-TEST(GuyExtended, guy_upgrade_skeleton)
-{
-    guy g(FAMILY_SKELETON);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_SKELETON)->base_stats[1]) << "skeleton dex should increase";
+    expect_level_up_to_5({FAMILY_ARCHER, "archer", 4, 9, 8, 8, 1},
+                         /*set_xp=*/false);
 }
 
 
@@ -112,22 +139,6 @@ TEST(GuyExtended, guy_upgrade_cleric_takes_the_default_level_up_gains)
 }
 
 
-TEST(GuyExtended, guy_upgrade_fireelemental)
-{
-    guy g(FAMILY_FIREELEMENTAL);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.strength > get_family_descriptor(FAMILY_FIREELEMENTAL)->base_stats[0]) << "fire elem str should increase";
-}
-
-
-TEST(GuyExtended, guy_upgrade_faerie)
-{
-    guy g(FAMILY_FAERIE);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_FAERIE)->base_stats[1]) << "faerie dex should increase";
-}
-
-
 TEST(GuyExtended, guy_upgrade_slime_takes_the_default_level_up_gains)
 {
     // packs/core/families/living-08-slime.lua registers no level_up hook.
@@ -135,50 +146,10 @@ TEST(GuyExtended, guy_upgrade_slime_takes_the_default_level_up_gains)
 }
 
 
-TEST(GuyExtended, guy_upgrade_thief)
-{
-    guy g(FAMILY_THIEF);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_THIEF)->base_stats[1]) << "thief dex should increase";
-}
-
-
 TEST(GuyExtended, guy_upgrade_ghost_takes_the_default_level_up_gains)
 {
     // packs/core/families/living-12-ghost.lua registers no level_up hook.
     expect_default_level_up_to_5(FAMILY_GHOST, "ghost");
-}
-
-
-TEST(GuyExtended, guy_upgrade_druid)
-{
-    guy g(FAMILY_DRUID);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.intelligence > get_family_descriptor(FAMILY_DRUID)->base_stats[3]) << "druid int should increase";
-}
-
-
-TEST(GuyExtended, guy_upgrade_orc)
-{
-    guy g(FAMILY_ORC);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.strength > get_family_descriptor(FAMILY_ORC)->base_stats[0]) << "orc str should increase";
-}
-
-
-TEST(GuyExtended, guy_upgrade_barbarian)
-{
-    guy g(FAMILY_BARBARIAN);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.strength > get_family_descriptor(FAMILY_BARBARIAN)->base_stats[0]) << "barbarian str should increase";
-}
-
-
-TEST(GuyExtended, guy_upgrade_archmage)
-{
-    guy g(FAMILY_ARCHMAGE);
-    g.upgrade_to_level(5, true);
-    ASSERT_TRUE(g.intelligence > get_family_descriptor(FAMILY_ARCHMAGE)->base_stats[3]) << "archmage int should increase";
 }
 
 
@@ -307,13 +278,32 @@ TEST(GuyExtended, guy_query_heart_value_all_families)
 }
 
 
+// query_heart_value is the hiring cost plus a fixed premium per point of stat
+// above the family base (src/gameplay/guy.cpp:288-327). A base-stat soldier is
+// worth exactly its hiring cost; four default level-ups add 32 STR / 24 DEX /
+// 32 CON / 32 INT / 4 armor, and the value they buy is an exact number, not
+// merely "more".
+// The exact worth of a level-5 soldier: 250 hiring cost plus the
+// raise_stat_cost_curve premiums for +32 STR / +24 DEX / +32 CON / +32 INT /
+// +4 armor over the base row.
+static constexpr int kSoldierLevel5HeartValue = 27001;
+
 TEST(GuyExtended, guy_query_heart_value_upgraded)
 {
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd) << "soldier must be a registered family";
+
     guy g(FAMILY_SOLDIER);
-    Sint32 base_val = g.query_heart_value();
+    const Sint32 base_val = g.query_heart_value();
+    ASSERT_EQ(fd->hiring_cost, (int)base_val)
+        << "a base-stat soldier is worth exactly its hiring cost";
+
     g.upgrade_to_level(5, true);
-    Sint32 upgraded_val = g.query_heart_value();
-    ASSERT_TRUE(upgraded_val > base_val) << "upgraded guy should be worth more";
+    const Sint32 upgraded_val = g.query_heart_value();
+    EXPECT_EQ(kSoldierLevel5HeartValue, (int)upgraded_val)
+        << "the level-5 soldier's worth is the exact sum of its stat premiums";
+    EXPECT_GT(upgraded_val, base_val)
+        << "levelling can only raise a recruit's worth";
 }
 
 
@@ -369,19 +359,28 @@ TEST(GuyExtended, guy_copy_constructor_all_fields)
 // Derived stat bonus functions
 // ---------------------------------------------------------------------------
 
+// get_hp_bonus() is 10 + 3*constitution and get_mp_bonus() 10 + 3*intelligence
+// (src/gameplay/guy.cpp). "Bigger after +10" held for any increasing function,
+// including a wrong coefficient; pin the coefficient itself.
 TEST(GuyExtended, guy_derived_bonus_scaling)
 {
     guy g(FAMILY_SOLDIER);
-    float hp1 = g.get_hp_bonus();
-    g.constitution += 10;
-    float hp2 = g.get_hp_bonus();
-    ASSERT_TRUE(hp2 > hp1) << "more constitution should give more HP bonus";
+    const float hp1 = g.get_hp_bonus();
+    EXPECT_FLOAT_EQ(10.0f + 3.0f * (float)g.constitution, hp1)
+        << "the HP bonus is 10 + 3 * constitution";
+    g.constitution = static_cast<short>(g.constitution + 10);
+    const float hp2 = g.get_hp_bonus();
+    EXPECT_FLOAT_EQ(hp1 + 30.0f, hp2)
+        << "10 more constitution is worth exactly 30 more HP";
 
     guy g2(FAMILY_MAGE);
-    float mp1 = g2.get_mp_bonus();
-    g2.intelligence += 10;
-    float mp2 = g2.get_mp_bonus();
-    ASSERT_TRUE(mp2 > mp1) << "more intelligence should give more MP bonus";
+    const float mp1 = g2.get_mp_bonus();
+    EXPECT_FLOAT_EQ(10.0f + 3.0f * (float)g2.intelligence, mp1)
+        << "the MP bonus is 10 + 3 * intelligence";
+    g2.intelligence = static_cast<short>(g2.intelligence + 10);
+    const float mp2 = g2.get_mp_bonus();
+    EXPECT_FLOAT_EQ(mp1 + 30.0f, mp2)
+        << "10 more intelligence is worth exactly 30 more MP";
 }
 
 

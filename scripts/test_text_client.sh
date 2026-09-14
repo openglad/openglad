@@ -64,11 +64,54 @@ check_help_block() {
 check_help_block --help
 check_help_block -h
 
+# --probe-unsupported-warnings exists to EMIT the one-time headless warnings
+# (src/platform/text/platform_headless.cpp emit_headless_unsupported_warnings_probe,
+# which calls each unsupported API TWICE on purpose). An exit-status check alone
+# stays green for a probe that prints nothing, and for a std::call_once that has
+# degenerated into "warn on every call". Pin both: every warning present, and
+# each exactly once. stdout must stay empty — the probe reports on stderr and
+# starts no session.
+TMPPROBE_OUT=$(mktemp)
+TMPPROBE_ERR=$(mktemp)
+trap 'rm -f "$TMPOUT" "$TMPPROBE_OUT" "$TMPPROBE_ERR"; rm -rf "$TMPHOME"' EXIT
+
 if ! HOME="$TMPHOME" OPENGLAD_CONFIG_DIR="$TMPHOME/probe-config/" \
-    "$TEXT_BIN" --probe-unsupported-warnings > /dev/null 2>&1; then
+    "$TEXT_BIN" --probe-unsupported-warnings > "$TMPPROBE_OUT" 2> "$TMPPROBE_ERR"; then
     echo "FAIL: openglad_text --probe-unsupported-warnings exited non-zero" >&2
+    cat "$TMPPROBE_ERR" >&2
     exit 1
 fi
+
+if [ -s "$TMPPROBE_OUT" ]; then
+    echo "FAIL: --probe-unsupported-warnings wrote to stdout: $(cat "$TMPPROBE_OUT")" >&2
+    exit 1
+fi
+
+probe_warning_status=0
+while IFS= read -r needle; do
+    [ -n "$needle" ] || continue
+    count=$(grep -Fc -- "$needle" "$TMPPROBE_ERR" || true)
+    if [ "$count" != "1" ]; then
+        echo "FAIL: headless warning '$needle' appeared $count times, expected exactly 1" >&2
+        probe_warning_status=1
+    fi
+done <<'NEEDLES'
+level_data_draw_impl: not supported in headless mode
+create_level_render not supported in headless mode
+yes_or_no_prompt: not supported in headless mode, returning default
+get_input_events: not supported in headless mode
+find_follow_leader: not supported in headless mode
+load_map_data: not supported in headless mode
+load_decor_data: not supported in headless mode
+input_state_from_sdl: not supported in headless mode
+NEEDLES
+if [ $probe_warning_status -ne 0 ]; then
+    echo "--- probe stderr ---" >&2
+    cat "$TMPPROBE_ERR" >&2
+    exit 1
+fi
+
+echo "PASS: --probe-unsupported-warnings emits each headless warning exactly once"
 
 # Keep the script-level timeout below CTest's 60s test timeout so sanitizer
 # runs still have headroom under parallel load without masking real hangs.

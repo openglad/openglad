@@ -187,50 +187,86 @@ TEST(EffectChainAndDoor, effect_chain_hits_leader_spawns_explosion_and_secondary
     remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
 }
 
+// effect_chain.lua on_act opens with THREE independent kill conditions — no
+// leader, lineofsight < 1, no owner — each of which kills the bolt and returns
+// true (the hook handled the tick). A bolt that satisfies none of them, and
+// does not overlap its leader, must instead fly: burn one lineofsight and step
+// its full stepsize on each axis toward the leader.
+//
+// Every guard here is an assertion, not an early `return`: the old version
+// wrapped each arm in `if (ptr) { ... }`, so a level that handed back no
+// walkers passed the test without running a single check.
 TEST(EffectChainAndDoor, effect_chain_early_exit_and_movement_branches)
 {
-    ASSERT_TRUE(og::runtime::current_session->myscreen_ != nullptr) << "myscreen exists";
-    if (!og::runtime::current_session->myscreen_)
-        return;
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_) << "myscreen exists";
 
     LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
+    level.delete_objects();
 
-    // Missing leader should kill the chain immediately.
-    walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
-    ASSERT_TRUE(chain != nullptr) << "chain created";
-    if (chain) {
-        chain->set_owner(nullptr);
-        chain->set_leader(nullptr);
-        chain->set_lineofsight(0);
-        chain->set_dead(0);
-        (void)chain->act();
-        ASSERT_TRUE(chain->dead() == 1) << "chain without leader/owner should die";
-    }
-
-    // Non-hit movement path: chain should move toward leader and consume LOS.
     walker* owner = level.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* leader = level.add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(owner != nullptr && leader != nullptr) << "owner and leader created";
-    if (!(owner && leader))
-        return;
-
+    ASSERT_NE(nullptr, owner) << "owner created";
+    ASSERT_NE(nullptr, leader) << "leader created";
     owner->setxy(20, 20);
     leader->setxy(260, 180);
 
-    walker* moving_chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
-    ASSERT_TRUE(moving_chain != nullptr) << "moving chain created";
-    if (!moving_chain)
-        return;
+    // Arm 1: no leader (and no owner) at all.
+    walker* no_leader = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    ASSERT_NE(nullptr, no_leader) << "chain created";
+    no_leader->set_owner(nullptr);
+    no_leader->set_leader(nullptr);
+    no_leader->set_lineofsight(5);
+    no_leader->set_dead(0);
+    ASSERT_TRUE(no_leader->act()) << "the early-exit arm handles its own act";
+    EXPECT_EQ(1, no_leader->dead()) << "a bolt with no leader dies at once";
 
+    // Arm 2: a leader and an owner, but the line of sight is spent.
+    walker* no_los = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    ASSERT_NE(nullptr, no_los) << "chain created";
+    no_los->set_owner(owner);
+    no_los->set_leader(leader);
+    no_los->set_lineofsight(0);
+    no_los->set_dead(0);
+    no_los->setxy(40, 40);
+    ASSERT_TRUE(no_los->act()) << "the early-exit arm handles its own act";
+    EXPECT_EQ(1, no_los->dead()) << "lineofsight < 1 retires the bolt";
+    EXPECT_EQ(40, static_cast<int>(no_los->xpos()))
+        << "a retired bolt takes no movement step";
+
+    // Arm 3: a leader and line of sight, but no owner.
+    walker* no_owner = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    ASSERT_NE(nullptr, no_owner) << "chain created";
+    no_owner->set_owner(nullptr);
+    no_owner->set_leader(leader);
+    no_owner->set_lineofsight(5);
+    no_owner->set_dead(0);
+    no_owner->setxy(40, 40);
+    ASSERT_TRUE(no_owner->act()) << "the early-exit arm handles its own act";
+    EXPECT_EQ(1, no_owner->dead()) << "a bolt with no owner dies at once";
+
+    // The live control: all three conditions satisfied, leader far away, so
+    // the MOVEMENT branch runs. A step is min(stepsize, offset) on each axis;
+    // the leader is 220 px east and 140 px south, so both take a full step.
+    walker* moving_chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    ASSERT_NE(nullptr, moving_chain) << "moving chain created";
     moving_chain->set_owner(owner);
     moving_chain->set_leader(leader);
     moving_chain->set_lineofsight(5);
     moving_chain->setxy(40, 40);
-    const short x_before = moving_chain->xpos();
-    const short y_before = moving_chain->ypos();
-    (void)moving_chain->act();
-    ASSERT_TRUE(moving_chain->lineofsight() == 4) << "movement path should decrement lineofsight";
-    ASSERT_TRUE(moving_chain->xpos() != x_before || moving_chain->ypos() != y_before) << "movement path should move toward leader";
+
+    const float step = moving_chain->stepsize();
+    ASSERT_GT(step, 0.0f) << "the chain family carries a stepsize";
+    const float wx_before = moving_chain->worldx();
+    const float wy_before = moving_chain->worldy();
+
+    ASSERT_TRUE(moving_chain->act()) << "the movement arm handles its own act";
+    EXPECT_EQ(0, moving_chain->dead()) << "a flying bolt survives its step";
+    EXPECT_EQ(4, moving_chain->lineofsight())
+        << "one move burns exactly one lineofsight";
+    EXPECT_FLOAT_EQ(wx_before + step, moving_chain->worldx())
+        << "the bolt steps a full stepsize east toward its leader";
+    EXPECT_FLOAT_EQ(wy_before + step, moving_chain->worldy())
+        << "the bolt steps a full stepsize south toward its leader";
 
     level.delete_objects();
 }

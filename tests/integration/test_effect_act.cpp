@@ -5,9 +5,39 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/core/irandom.h>
 #include <gtest/gtest.h>
 #include <memory>
 #include <vector>
+
+namespace {
+
+// Combat damage rolls draw from gameplay_rng_override() before the world RNG
+// (src/gameplay/walker_combat.cpp combat_rng()). Scripting it to a constant is
+// what turns "the target lost SOME hit points" into an exact number.
+class ZeroRandom final : public IRandom
+{
+public:
+    Uint32 next(Uint32 /*max_exclusive*/) override { return 0; }
+};
+
+class ScopedCombatRandom
+{
+public:
+    explicit ScopedCombatRandom(IRandom* rng) : rng_(rng)
+    {
+        set_gameplay_rng_override(&rng_);
+    }
+    ~ScopedCombatRandom() { set_gameplay_rng_override(nullptr); }
+    ScopedCombatRandom(const ScopedCombatRandom&) = delete;
+    ScopedCombatRandom& operator=(const ScopedCombatRandom&) = delete;
+
+private:
+    IRandom* rng_;
+};
+
+}  // namespace
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -41,12 +71,26 @@ static std::vector<int> explode_row(const signed char* seq)
 // Pure functions: orbit_offset
 // ---------------------------------------------------------------------------
 
+// orbit_offset is a table read, not a formula: the 16 steps of the shield /
+// boomerang orbit live verbatim in src/gameplay/effect.cpp. "Non-zero" accepted
+// any scrambled table of non-zero constants, so pin the table itself — every
+// pair, in order. The radius is 24 on the axes and (+-9, +-22) / (+-17, +-17) /
+// (+-22, +-9) in between, walking clockwise from due north.
 TEST(EffectAct, orbit_offset_all_cycles)
 {
+    static constexpr int kOrbit[16][2] = {
+        {  0, -24}, { -9, -22}, {-17, -17}, {-22,  -9},
+        {-24,   0}, {-22,   9}, {-17,  17}, { -9,  22},
+        {  0,  24}, {  9,  22}, { 17,  17}, { 22,   9},
+        { 24,   0}, { 22,  -9}, { 17, -17}, {  9, -22},
+    };
     for (int i = 0; i < 16; i++) {
-        float xd = 0, yd = 0;
+        float xd = -1.0f, yd = -1.0f;
         orbit_offset(i, xd, yd);
-        ASSERT_TRUE(xd != 0 || yd != 0) << "orbit offset should be non-zero";
+        EXPECT_FLOAT_EQ(static_cast<float>(kOrbit[i][0]), xd)
+            << "orbit step " << i << ": x offset";
+        EXPECT_FLOAT_EQ(static_cast<float>(kOrbit[i][1]), yd)
+            << "orbit step " << i << ": y offset";
     }
 }
 
@@ -336,14 +380,12 @@ TEST(EffectAct, boomerang_expired)
 TEST(EffectAct, boomerang_spirals_outward_as_the_sim_ticks)
 {
     auto owner = make_living_guy(FAMILY_SOLDIER, 0);
-    ASSERT_TRUE(owner != nullptr) << "owner created";
-    if (!owner) return;
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
     owner->setxy(160, 160);
 
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(
         Order::FX, FAMILY_BOOMERANG);
-    ASSERT_TRUE(fx != nullptr) << "boomerang created";
-    if (!fx) return;
+    ASSERT_NE(nullptr, fx) << "boomerang created";
     fx->set_owner(owner.get());
     fx->set_team_num(owner->team_num());
     fx->set_lifetime(300);
@@ -363,16 +405,19 @@ TEST(EffectAct, boomerang_spirals_outward_as_the_sim_ticks)
     };
 
     float early_sq = 0.0f, late_sq = 0.0f;
+    int ticked = 0;
     for (int tick = 0; tick < 60 && !fx->dead(); ++tick)
     {
         fx->act();
+        ++ticked;
         if (tick == 5)
             early_sq = sq_dist_from_owner();
         late_sq = sq_dist_from_owner();
     }
 
-    EXPECT_GT(static_cast<int>(fx->drawcycle()), 0)
-        << "the headless sim must advance the boomerang's drawcycle each tick";
+    ASSERT_EQ(60, ticked) << "a 300-tick boomerang survives all 60 acts";
+    EXPECT_EQ(60, static_cast<int>(fx->drawcycle()))
+        << "effect::act advances the boomerang's drawcycle by exactly 1 per tick";
     EXPECT_GT(late_sq, early_sq)
         << "the boomerang must spiral OUTWARD from its owner over its lifetime, "
            "not hang stationary on the owner (the reported regression)";
@@ -387,14 +432,12 @@ TEST(EffectAct, boomerang_spirals_outward_as_the_sim_ticks)
 TEST(EffectAct, magic_shield_orbits_as_the_sim_ticks)
 {
     auto owner = make_living_guy(FAMILY_SOLDIER, 0);
-    ASSERT_TRUE(owner != nullptr) << "owner created";
-    if (!owner) return;
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
     owner->setxy(160, 160);
 
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(
         Order::FX, FAMILY_MAGIC_SHIELD);
-    ASSERT_TRUE(fx != nullptr) << "magic shield created";
-    if (!fx) return;
+    ASSERT_NE(nullptr, fx) << "magic shield created";
     fx->set_owner(owner.get());
     fx->set_team_num(owner->team_num());
     fx->set_lifetime(300);
@@ -403,22 +446,32 @@ TEST(EffectAct, magic_shield_orbits_as_the_sim_ticks)
     ASSERT_EQ(0, static_cast<int>(fx->drawcycle()));
 
     float x_early = 0.0f, y_early = 0.0f, x_late = 0.0f, y_late = 0.0f;
+    int ticked = 0;
     for (int tick = 0; tick < 12 && !fx->dead(); ++tick)
     {
         fx->act();
+        ++ticked;
         if (tick == 1) { x_early = static_cast<float>(fx->worldx());
                          y_early = static_cast<float>(fx->worldy()); }
         if (tick == 9) { x_late = static_cast<float>(fx->worldx());
                          y_late = static_cast<float>(fx->worldy()); }
     }
 
-    EXPECT_GT(static_cast<int>(fx->drawcycle()), 0)
-        << "the headless sim must advance the shield's drawcycle each tick";
+    ASSERT_EQ(12, ticked) << "a 300-tick shield survives all 12 acts";
+    EXPECT_EQ(12, static_cast<int>(fx->drawcycle()))
+        << "effect::act advances the shield's drawcycle by exactly 1 per tick";
+
+    // The shield rides ORBIT[drawcycle % 16] around a stationary owner, so the
+    // displacement between two ticks is the difference of two table entries:
+    // tick 1 lands on drawcycle 2 = (-17, -17) and tick 9 on drawcycle 10 =
+    // (17, 17), i.e. exactly (+34, +34). "Moved more than 10 px" accepted any
+    // wandering; this accepts only the table.
     const float dx = x_late - x_early;
     const float dy = y_late - y_early;
-    EXPECT_GT(dx * dx + dy * dy, 100.0f)
-        << "the magic shield must ORBIT its owner over time, not hang at one "
-           "fixed point (the same drawcycle freeze that hung the boomerang)";
+    EXPECT_FLOAT_EQ(34.0f, dx)
+        << "ORBIT[10].x - ORBIT[2].x = 17 - (-17): the shield walks the table";
+    EXPECT_FLOAT_EQ(34.0f, dy)
+        << "ORBIT[10].y - ORBIT[2].y = 17 - (-17): the shield walks the table";
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
@@ -431,8 +484,7 @@ TEST(EffectAct, magic_shield_orbits_as_the_sim_ticks)
 TEST(EffectAct, archmage_bonus_view_is_periodic_not_every_tick)
 {
     auto arch = make_living_guy(FAMILY_ARCHMAGE, 0);
-    ASSERT_TRUE(arch != nullptr) << "archmage created";
-    if (!arch) return;
+    ASSERT_NE(nullptr, arch.get()) << "archmage created";
     ASSERT_EQ(3, static_cast<int>(arch->stats()->level()))
         << "make_living_guy upgrades to level 3, so the grant period is 40 - 3 = 37";
     arch->set_view_all(0);
@@ -743,6 +795,13 @@ TEST(EffectAct, effect_animate_handles_malicious_indices_safely)
 // non-treasure walker on the same floor within 15 + compute_explosion_range
 // (Manhattan, on xpos/ypos) is shoved with COMMAND_WALK and attacked; anything
 // outside that radius is untouched. A level-3 owner gives range 16 => 31 px.
+// A bare add_ob(Living, ORC) carries no guy, so its armor row is 0 and the
+// armor roll subtracts nothing; the blast's 40 damage becomes
+// compute_base_damage(40, rng -> 0) = 40 - sqrt(40)/2 = 36.8377, which
+// damage_to_hit_points floors (36.8377 + 0.5) to 37 hit points.
+static constexpr float kOrcArmor = 0.0f;
+static constexpr float kExplosionHitPoints = 37.0f;
+
 TEST(EffectAct, effect_death_explosion_blasts_only_inside_its_radius)
 {
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -752,6 +811,12 @@ TEST(EffectAct, effect_death_explosion_blasts_only_inside_its_radius)
     ASSERT_NE(nullptr, owner.get()) << "owner created";
     ASSERT_EQ(3, static_cast<int>(owner->stats()->level()))
         << "a level-3 owner yields explosion range 16, i.e. a 31 px blast";
+
+    // Damage rolls draw from the combat RNG; scripted to 0 the blast's damage
+    // is exactly compute_base_damage(40) = 40 - sqrt(40)/2, so the hit is an
+    // exact number of hit points rather than "fewer than before".
+    ZeroRandom zero_rng;
+    ScopedCombatRandom scoped_rng(&zero_rng);
 
     walker* fx = world.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     ASSERT_NE(nullptr, fx) << "explosion spawned";
@@ -763,6 +828,8 @@ TEST(EffectAct, effect_death_explosion_blasts_only_inside_its_radius)
 
     walker* near_ob = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_NE(nullptr, near_ob) << "near target created";
+    ASSERT_FLOAT_EQ(kOrcArmor, near_ob->stats()->armor())
+        << "the orc's loader armor row the reduction below is computed against";
     near_ob->set_team_num(1);
     near_ob->setxy(124, 100);   // Manhattan 24 <= 31
     near_ob->stats()->clear_command();
@@ -785,8 +852,9 @@ TEST(EffectAct, effect_death_explosion_blasts_only_inside_its_radius)
 
     EXPECT_TRUE(near_ob->stats()->has_commands())
         << "a target inside the blast radius is shoved with COMMAND_WALK";
-    EXPECT_LT(near_ob->stats()->hitpoints(), near_hp)
-        << "a target inside the blast radius is attacked";
+    EXPECT_FLOAT_EQ(near_hp - kExplosionHitPoints, near_ob->stats()->hitpoints())
+        << "a target inside the blast radius loses exactly the blast's damage "
+           "roll (scripted RNG), not merely 'some' hit points";
     EXPECT_FALSE(far_ob->stats()->has_commands())
         << "a target outside the blast radius is never shoved";
     EXPECT_FLOAT_EQ(far_hp, far_ob->stats()->hitpoints())

@@ -41,6 +41,7 @@ FILES=(
     tests/integration/test_pause_menu.cpp
     tests/integration/test_ctf_ui.cpp
     tests/integration/test_cloud_ui.cpp
+    tests/integration/test_level_editor_interactions.cpp
 )
 
 status=0
