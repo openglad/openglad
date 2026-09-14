@@ -120,12 +120,13 @@ private:
 // radar_block_for_pane is a pure function, so it gets a pure pin: the block
 // is anchored BOTTOM-right inside the pane, one margin in from both the right
 // and the bottom edge, and the y it returns is a function of pane_endy alone.
-// PR #292 deleted the never-compiled USE_TOUCH_INPUT arm that anchored the
-// editor's minimap to the pane TOP (and with it the pane_yloc/force_lower
-// parameters); the surviving placement is what this pins. Every other radar
-// placement assertion in the suite (test_camera_view.cpp, test_game_loop.cpp)
-// derives its expectation by calling this same function, so a change to the
-// formula moves both sides there and only this test sees it.
+// PR #292 deleted the retired touch-build arm that anchored the editor's
+// minimap to the pane TOP, and with it the two placement parameters only
+// that arm ever read; the surviving placement is what this pins. Every
+// other radar placement assertion in the suite (test_camera_view.cpp,
+// test_game_loop.cpp) derives its expectation by calling this same
+// function, so a change to the formula moves both sides there and only
+// this test sees it.
 TEST(RadarBlockGeometry, block_sits_one_margin_in_from_the_pane_bottom_right)
 {
     // No preset defines REDUCE_OVERSCAN, so the margin is the 4 px fork.
@@ -139,7 +140,7 @@ TEST(RadarBlockGeometry, block_sits_one_margin_in_from_the_pane_bottom_right)
         << "x is one margin in from the pane's right edge";
     EXPECT_EQ(180 - 30 - 4, block.y)
         << "y is one margin UP from the pane's bottom edge -- not the top "
-           "anchor the retired touch arm used";
+           "anchor the retired build arm used";
     EXPECT_EQ(block.y + block.h + block.margin, 180)
         << "the block's bottom edge plus its margin is exactly pane_endy";
 

@@ -3921,7 +3921,7 @@ Sint32 level_editor()
 				mx = static_cast<Sint32>(mymouse.x);
 				my = static_cast<Sint32>(mymouse.y);
             
-            // Holding off menu items
+            // Holding on menu items
             bool mouse_on_menu = data.mouse_on_menus(mx, my);
             bool old_mouse_on_menu = data.mouse_on_menus(eds().mouse_last_x, eds().mouse_last_y);
             bool off_menu = !mouse_on_menu && !old_mouse_on_menu;
