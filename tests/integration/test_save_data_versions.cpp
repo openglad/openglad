@@ -2059,8 +2059,8 @@ TEST(SaveDataVersions, save_data_v14_writer_retires_company_player_count)
 TEST(SaveDataVersions, save_data_load_does_not_adopt_legacy_player_count)
 {
     // Every value old writers could legally place at offset 132 remains
-    // readable, but none becomes the live count. Normal builds preserve the
-    // receiver; touch-only builds force their sole supported player count.
+    // readable, but none becomes the live count: the receiver's live count is
+    // always preserved; the legacy byte is never adopted.
     for (const unsigned char legacy_count :
          std::array<unsigned char, 5>{0, 1, 2, 3, 4}) {
         SCOPED_TRACE("legacy player count " +
@@ -2087,14 +2087,9 @@ TEST(SaveDataVersions, save_data_load_does_not_adopt_legacy_player_count)
             static_cast<unsigned char>((legacy_count + 2) % 5);
         loaded.numplayers = live_count;
         ASSERT_TRUE(loaded.load(slot));
-#ifdef USE_TOUCH_INPUT
-        EXPECT_EQ(1, static_cast<int>(loaded.numplayers))
-            << "touch-only builds force their single supported live player";
-#else
         EXPECT_EQ(static_cast<int>(live_count),
                   static_cast<int>(loaded.numplayers))
             << "company loading must preserve the runtime seat projection";
-#endif
     }
 }
 
