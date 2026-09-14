@@ -2135,6 +2135,11 @@ bool is_spectator_mode(const SaveData& save)
     return save.numplayers == 0;
 }
 
+short spectator_view_count(const SaveData& save)
+{
+    return is_spectator_mode(save) ? 1 : static_cast<short>(save.numplayers);
+}
+
 // --- Label formatting ---
 
 std::string format_difficulty_label(int difficulty)

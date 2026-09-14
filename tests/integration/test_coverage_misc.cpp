@@ -276,26 +276,83 @@ TEST(CoverageMisc, coverage_r17_walker_movement_and_act_cleanup)
     actor->stats()->clear_command();
     actor->stats()->set_frozen_delay(0);
     actor->set_act_type(ACT_CONTROL);
-    (void)actor->act();
+    actor->set_collide_ob(dead_foe);
+    const unsigned char drawcycle_before = actor->drawcycle();
+    // level.add_ob(Order::FX, ...) builds an `effect`, so effect::act runs
+    // (not walker::act -- walker::act's lunge/recoil decay is pinned by the
+    // sibling coverage_r18_walker_act_decay_cleanup_and_guard_branches).
+    // effect::act nulls every dead pointer it holds and clears the collision
+    // record BEFORE any branch and advances drawcycle so headless sims
+    // animate without a renderer; mid-animation (ani_type != ANI_WALK) it
+    // hands off to animate(), which steps the sequence one frame on and
+    // answers 1 instead of expiring the fx.
+    actor->set_ani_type(static_cast<char>(ANI_ATTACK));
+    actor->set_cycle(0);
+    EXPECT_TRUE(actor->act()) << "mid-animation, act hands off to animate()";
+    EXPECT_EQ(1, static_cast<int>(actor->cycle()))
+        << "animate() advanced exactly one frame";
+    EXPECT_EQ(nullptr, actor->foe()) << "a dead foe is dropped";
+    EXPECT_EQ(nullptr, actor->leader()) << "a dead leader is dropped";
+    EXPECT_EQ(nullptr, actor->owner()) << "a dead owner is dropped";
+    EXPECT_EQ(nullptr, actor->collide_ob())
+        << "act starts each tick with no collision";
+    EXPECT_EQ(static_cast<unsigned char>(drawcycle_before + 1),
+              actor->drawcycle())
+        << "the headless sim advances drawcycle itself";
+    EXPECT_FALSE(actor->dead())
+        << "mid-animation, the fx has not expired yet";
 
+    // At ANI_WALK with nothing left to animate the fx expires, and the
+    // shipped blast (packs/core/lib/effect_bomb.lua explosion_on_death)
+    // attributes an ownerless explosion to itself.
+    actor->set_ani_type(static_cast<char>(ANI_WALK));
+    EXPECT_FALSE(actor->act()) << "an expiring fx answers 0";
+    EXPECT_TRUE(actor->dead()) << "an fx with no animation left expires";
+    EXPECT_EQ(actor, actor->owner())
+        << "an ownerless explosion owns its own blast";
+    actor->set_dead(0); // the movement legs below need a live walker
+    actor->set_owner(nullptr);
+
+    // walkstep answers 0 when the full step, the baby step AND the fallbacks
+    // all leave the map, and it leaves the walker where it stood. Bottom-left
+    // corner, heading down-left: both axes are off the map.
     assign_basic_ani(actor);
+    const short bottom = static_cast<short>(fx.level.world().pixmaxy - 1);
     actor->set_user(-1);
-    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.world().pixmaxy - 1));
+    actor->setxy(static_cast<short>(0), bottom);
     actor->set_curdir(FACE_DOWN_LEFT);
-    (void)actor->walkstep(-1.0f, 1.0f);
+    EXPECT_FALSE(actor->walkstep(-1.0f, 1.0f))
+        << "npc leg: both cardinal fallbacks leave the map too";
+    EXPECT_EQ(0, actor->xpos()) << "npc leg: did not move";
+    EXPECT_EQ(bottom, actor->ypos()) << "npc leg: did not move";
 
     actor->set_user(0);
-    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.world().pixmaxy - 1));
+    actor->setxy(static_cast<short>(0), bottom);
     actor->set_curdir(FACE_DOWN_LEFT);
-    (void)actor->walkstep(-1.0f, 1.0f);
+    EXPECT_FALSE(actor->walkstep(-1.0f, 1.0f))
+        << "user leg: neither slide axis is passable";
+    EXPECT_EQ(0, actor->xpos()) << "user leg: did not move";
+    EXPECT_EQ(bottom, actor->ypos()) << "user leg: did not move";
 
+    // turn(): distance = curdir - target = 127 - 2 = 125 >= 4, so the turn is
+    // clockwise -- (127 + 1) % 8 == 0 == FACE_UP -- and the new facing rewrites
+    // lastx/lasty from stepsize (FAMILY_EXPLOSION is Order::FX, so the
+    // is_stationary branch is skipped).
     actor->set_curdir(127);
     actor->set_stepsize(2.0f);
-    (void)actor->turn(FACE_RIGHT);
+    ASSERT_TRUE(actor->turn(FACE_RIGHT));
+    EXPECT_EQ(FACE_UP, static_cast<int>(actor->curdir()))
+        << "one clockwise step off 127 lands on FACE_UP";
+    EXPECT_FLOAT_EQ(0.0f, actor->lastx()) << "FACE_UP has no x component";
+    EXPECT_FLOAT_EQ(-2.0f, actor->lasty()) << "FACE_UP is -stepsize in y";
 }
 
 TEST(CoverageMisc, coverage_r17_smooth_grass_water_and_dark_variants)
 {
+    // smoother::smooth rewrites the CENTRE tile from its neighbour genres and
+    // stores it, so every case is read back with query_x_y. The rng arms are
+    // the only draws, in this order: grass variant, grass variant, dark
+    // bottom, dark rubble.
     SeqRandom rng{1, 2, 0, 0, 1, 0};
     GameContext gc;
     gc.rng = &rng;
@@ -308,22 +365,29 @@ TEST(CoverageMisc, coverage_r17_smooth_grass_water_and_dark_variants)
     const int x = 4;
     const int y = 4;
 
+    // Water at upleft+upright+downleft+up+left: the UL arm (no rng draw).
     set_at(pd, x, y, PIX_GRASS1);
     set_at(pd, x - 1, y - 1, PIX_WATER1);
     set_at(pd, x + 1, y - 1, PIX_WATER1);
     set_at(pd, x - 1, y + 1, PIX_WATER1);
     set_at(pd, x, y - 1, PIX_WATER1);
     set_at(pd, x - 1, y, PIX_WATER1);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASSWATER_UL, s.query_x_y(x, y)) << "water UL arm";
 
+    // Cumulative: all eight neighbours are water now, and the FIRST arm in
+    // source order (LL) is the one that wins.
     set_at(pd, x, y, PIX_GRASS1);
     set_at(pd, x + 1, y - 1, PIX_WATER1);
     set_at(pd, x + 1, y + 1, PIX_WATER1);
     set_at(pd, x - 1, y + 1, PIX_WATER1);
     set_at(pd, x + 1, y, PIX_WATER1);
     set_at(pd, x, y + 1, PIX_WATER1);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASSWATER_LL, s.query_x_y(x, y))
+        << "all-water: the first arm (LL) wins";
 
+    // All grass: grass_variants[next_random(4)], twice -> draws 1 then 2.
     set_at(pd, x, y, PIX_GRASS1);
     set_at(pd, x - 1, y - 1, PIX_GRASS1);
     set_at(pd, x + 1, y - 1, PIX_GRASS1);
@@ -333,14 +397,22 @@ TEST(CoverageMisc, coverage_r17_smooth_grass_water_and_dark_variants)
     set_at(pd, x, y + 1, PIX_GRASS1);
     set_at(pd, x - 1, y, PIX_GRASS1);
     set_at(pd, x + 1, y, PIX_GRASS1);
-    s.smooth(x, y);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASS2, s.query_x_y(x, y)) << "grass_variants[1]";
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASS3, s.query_x_y(x, y)) << "grass_variants[2]";
 
+    // Dark grass with trees at upleft+up: the "bottom middle" arm, whose
+    // switch is on the genre BELOW. Grass below takes the grass case ->
+    // grass_dark_bottom[next_random(2)] = [0], then next_random(20) draws 0
+    // and the rubble overrides it.
     set_at(pd, x, y, PIX_GRASS_DARK_1);
     set_at(pd, x - 1, y - 1, PIX_TREE_B1);
     set_at(pd, x, y - 1, PIX_TREE_B1);
-    set_at(pd, x, y + 1, PIX_FLOOR1);
-    s.smooth(x, y);
+    set_at(pd, x, y + 1, PIX_GRASS1);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASS_RUBBLE, s.query_x_y(x, y))
+        << "bottom-middle over grass: the 1-in-20 rubble draw lands";
 
     pop_test_context();
 }
@@ -895,6 +967,9 @@ TEST(CoverageMisc, coverage_r18_level_data_resize_and_delete_cleanup_branches)
 
 TEST(CoverageMisc, coverage_r18_smooth_targeted_mask_branches)
 {
+    // Every arm is read back with query_x_y. This SeqRandom answers 0, 1, 2,
+    // 3, ... in order (each draw modulo the bound), so the four water arms
+    // below consume draws 0..3 and nothing before them draws at all.
     SeqRandom rng;
     GameContext gc;
     gc.rng = &rng;
@@ -906,49 +981,71 @@ TEST(CoverageMisc, coverage_r18_smooth_targeted_mask_branches)
     const int x = 4;
     const int y = 4;
 
-    // TYPE_GRASS water corner path (lines 232-233).
+    // TYPE_GRASS with water at upright+downright+downleft+right+down.
     set_at(pd, x, y, PIX_GRASS1);
     set_at(pd, x + 1, y - 1, PIX_WATER1);
     set_at(pd, x + 1, y + 1, PIX_WATER1);
     set_at(pd, x - 1, y + 1, PIX_WATER1);
     set_at(pd, x + 1, y, PIX_WATER1);
     set_at(pd, x, y + 1, PIX_WATER1);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASSWATER_LR, s.query_x_y(x, y)) << "water LR arm";
 
-    // Wall around masks: 3, 9, and default (2).
+    // TYPE_WALL is a switch on `around`. 3 and 9 are the two base cases; 2
+    // (TO_RIGHT) has no case at all, and the default leaves the tile as it
+    // was -- a legacy quirk, pinned as-is.
     set_neighbors_mask(pd, x, y, PIX_WALL2, PIX_WALL2, PIX_GRASS1, TO_UP | TO_RIGHT);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_WALLSIDE_L, s.query_x_y(x, y)) << "wall around == 3";
     set_neighbors_mask(pd, x, y, PIX_WALL2, PIX_WALL2, PIX_GRASS1, TO_UP | TO_LEFT);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_WALLSIDE_R, s.query_x_y(x, y)) << "wall around == 9";
     set_neighbors_mask(pd, x, y, PIX_WALL2, PIX_WALL2, PIX_GRASS1, TO_RIGHT);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_WALL2, s.query_x_y(x, y))
+        << "wall around == 2 has no case: the default keeps the tile";
 
-    // Water single-neighbor branches that depend on rng(2).
+    // TYPE_WATER single-neighbour arms, each a two-entry table indexed by
+    // next_random(2). Draws 0, 1, 0, 1 in this order.
     set_neighbors_mask(pd, x, y, PIX_WATER1, PIX_WATER1, PIX_GRASS1, TO_UP);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_WATERGRASS_LL, s.query_x_y(x, y)) << "watergrass_up[0]";
     set_neighbors_mask(pd, x, y, PIX_WATER1, PIX_WATER1, PIX_GRASS1, TO_DOWN);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_WATERGRASS_UR, s.query_x_y(x, y)) << "watergrass_down[1]";
     set_neighbors_mask(pd, x, y, PIX_WATER1, PIX_WATER1, PIX_GRASS1, TO_LEFT);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_WATERGRASS_UR, s.query_x_y(x, y)) << "watergrass_left[0]";
     set_neighbors_mask(pd, x, y, PIX_WATER1, PIX_WATER1, PIX_GRASS1, TO_RIGHT);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_WATERGRASS_LL, s.query_x_y(x, y)) << "watergrass_right[1]";
 
-    // Trees TO_AROUND rng switch and dark dirt TO_AROUND switch.
+    // TYPE_TREES TO_AROUND draws NO rng: with all eight corners trees it is
+    // PIX_TREE_M1 every time, so the repeat is a fixed point.
     set_neighbors_mask(pd, x, y, PIX_TREE_B1, PIX_TREE_B1, PIX_GRASS1, TO_AROUND);
     set_at(pd, x - 1, y - 1, PIX_TREE_B1);
     set_at(pd, x + 1, y - 1, PIX_TREE_B1);
     set_at(pd, x - 1, y + 1, PIX_TREE_B1);
     set_at(pd, x + 1, y + 1, PIX_TREE_B1);
-    s.smooth(x, y);
-    s.smooth(x, y);
-    s.smooth(x, y);
+    for (int rep = 0; rep < 3; ++rep)
+    {
+        ASSERT_EQ(1, s.smooth(x, y));
+        EXPECT_EQ(PIX_TREE_M1, s.query_x_y(x, y))
+            << "trees all-around, repeat " << rep << ": no rng, no drift";
+    }
 
+    // TYPE_DIRT_DARK is a straight table lookup on `around`.
     set_neighbors_mask(pd, x, y, PIX_DIRT_DARK_1, PIX_DIRT_DARK_1, PIX_GRASS1, TO_AROUND);
-    s.smooth(x, y);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_DIRT_DARK_1, s.query_x_y(x, y))
+        << "dirt_dark_by_surround[15]";
 
-    // set_x_y() no-grid guard (line 903).
+    // set_x_y()'s no-grid guard: smooth still answers 1 on a smoother with no
+    // target, and writes nothing (query_x_y answers its own PIX_GRASS1 guard).
     smoother empty;
-    (void)empty.smooth(0, 0);
+    EXPECT_FALSE(empty.has_target()) << "no target set";
+    EXPECT_EQ(1, empty.smooth(0, 0)) << "smooth(x, y) always answers 1";
+    EXPECT_FALSE(empty.has_target()) << "and never acquires one";
 
     pop_test_context();
 }
@@ -1118,23 +1215,55 @@ TEST(CoverageMisc, coverage_r19_walker_animate_attack_completion_branch)
     ASSERT_TRUE(self->cycle() == 0);
 }
 
-TEST(CoverageMisc, coverage_r19_walker_act_random_paths)
+// living::act's ACT_RANDOM arm. The sim draws from current_game->world->rng_
+// (SimRandom), NOT from the GameContext rng -- and this binary compiles
+// og_gameplay WITHOUT -DTESTING, so og::sim::set_sim_random_override is not
+// even linked in here. The stream is steered by seeding the LCG state
+// instead: state 1 answers next(5) = 3, next(5) = 1, next(2) = 1, which is
+// the "4 of 5" arm followed (when no foe is findable) by the RANDOM_WALK
+// branch. find_near_foe / find_far_foe draw only next(0), which never
+// advances the state.
+TEST(CoverageMisc, coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command)
 {
     R19Fixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0, 64, 64);
     living* foe = add_living(fx, FAMILY_ORC, 1, 120, 64);
-    ASSERT_TRUE(self && foe);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, foe);
 
     self->set_lineofsight(1);
     self->set_foe(nullptr);
     self->set_act_type(ACT_RANDOM);
-    SeqRandom rng_find_and_move{0, 1, 0};
-    (void)self->act();
+    // An ODD facing, so the arm's snap to an even facing is observable.
+    self->set_curdir(static_cast<signed char>(FACE_DOWN_RIGHT));
+    self->set_enddir(static_cast<char>(FACE_DOWN_RIGHT));
+    fx.level.world().rng_.state_ = 1u;
 
+    ASSERT_TRUE(self->act());
+    EXPECT_EQ(foe, self->foe())
+        << "with no foe the arm acquires the nearest hostile living";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(self->curdir()))
+        << "facing snaps to (enddir / 2) * 2";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(self->enddir()))
+        << "enddir snaps with it";
+    EXPECT_TRUE(self->stats()->has_commands())
+        << "COMMAND_SEARCH 300 is queued";
+
+    // With the only hostile dead, the foe is dropped at the top of act and
+    // cannot be re-acquired (find_far_foe skips dead walkers), so the arm
+    // falls to the RANDOM_WALK branch instead.
     foe->set_dead(1);
-    self->set_foe(nullptr);
-    SeqRandom rng_find_none{0, 1, 0};
-    (void)self->act();
+    self->set_foe(foe);
+    self->stats()->clear_command();
+    self->set_curdir(static_cast<signed char>(FACE_UP));
+    self->set_enddir(static_cast<char>(FACE_UP));
+    fx.level.world().rng_.state_ = 1u;
+
+    ASSERT_TRUE(self->act());
+    EXPECT_EQ(nullptr, self->foe())
+        << "a dead foe is dropped and never re-adopted";
+    EXPECT_TRUE(self->stats()->has_commands())
+        << "COMMAND_RANDOM_WALK 20 is queued instead";
 }
 } // namespace detail_coverage_r19
 
@@ -1288,28 +1417,41 @@ void set_neighbors_mask(PixieData& pd, int cx, int cy, unsigned char center,
 
 } // namespace
 
-TEST(CoverageMisc, coverage_r20_walker_act_random_no_foe_and_chase_paths)
+// walker::act's own ACT_RANDOM arm (a plain walker, so living::act's richer
+// version does not run): 3 of 4 times it adopts find_far_foe's answer and, IF
+// it has a foe, queues COMMAND_SEARCH 500 -- otherwise it queues nothing at
+// all. The sim draws from world.rng_ (see the r19 note above); state 1 answers
+// next(4) = 2, which is the 3-of-4 arm.
+TEST(CoverageMisc, coverage_r20_walker_act_random_queues_search_only_with_a_foe)
 {
     R20Fixture fx;
 
     walker* self = add_walker(fx, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    ASSERT_TRUE(self != nullptr);
+    ASSERT_NE(nullptr, self);
 
-    SequenceRandom rng_no_foe{0, 1, 1};
     self->set_foe(nullptr);
     self->set_lineofsight(1);
     self->set_act_type(ACT_RANDOM);
-    (void)self->act();
+    fx.level.world().rng_.state_ = 1u;
+    ASSERT_TRUE(self->act());
+    EXPECT_EQ(nullptr, self->foe())
+        << "alone in the world there is no far foe to adopt";
+    EXPECT_FALSE(self->stats()->has_commands())
+        << "no foe, no COMMAND_SEARCH: the arm queues nothing";
 
     walker* foe = add_walker(fx, Order::Living, FAMILY_ORC, 1, 220, 64);
-    ASSERT_TRUE(foe != nullptr);
+    ASSERT_NE(nullptr, foe);
     self->stats()->clear_command();
-    SequenceRandom rng_chase{0, 1, 1};
     self->set_foe(foe);
     self->set_lineofsight(1);
     self->set_collide_ob(foe);
-    (void)self->act();
-    ASSERT_TRUE(self->collide_ob() == nullptr);
+    fx.level.world().rng_.state_ = 1u;
+    ASSERT_TRUE(self->act());
+    EXPECT_EQ(nullptr, self->collide_ob())
+        << "act clears the collision record on entry";
+    EXPECT_EQ(foe, self->foe()) << "the standing foe is kept";
+    EXPECT_TRUE(self->stats()->has_commands())
+        << "with a foe the arm queues COMMAND_SEARCH 500";
 }
 
 TEST(CoverageMisc, coverage_r20_walker_movement_stationary_walkstep_walk_turn)
@@ -1369,6 +1511,11 @@ TEST(CoverageMisc, coverage_r20_level_data_add_paths_and_clear_reset)
     ASSERT_TRUE(fx.level.remove_ob(&dummy) == 0);
 }
 
+// TYPE_GRASS_DARK's `around`-driven arms. None of these neighbourhoods holds
+// trees or walls, so the early trees/wall arms are skipped and selection is by
+// `around` plus the GENRE of the open side. The grass-vs-water twins are the
+// load-bearing pairs: a swapped table entry cannot satisfy both halves.
+// ConstantRandom{1} makes every draw 1.
 TEST(CoverageMisc, coverage_r20_smooth_dark_grass_specific_branches)
 {
     ConstantRandom rng1{1};
@@ -1383,49 +1530,40 @@ TEST(CoverageMisc, coverage_r20_smooth_dark_grass_specific_branches)
     const int x = 3;
     const int y = 3;
 
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
-                       TO_UP | TO_DOWN | TO_LEFT);
-    s.smooth(x, y);
+    struct DarkCase
+    {
+        int mask;
+        unsigned char other;
+        int expect;
+        const char* why;
+    };
+    const DarkCase cases[] = {
+        {TO_UP | TO_DOWN | TO_LEFT, PIX_GRASS1, PIX_GRASS_DARK_R2,
+         "right middle -> grass_dark_right[1]"},
+        {TO_DOWN, PIX_GRASS1, PIX_GRASS_DARK_LL, "top alone, grass beside"},
+        {TO_LEFT | TO_DOWN, PIX_GRASS1, PIX_GRASS_DARK_LL,
+         "top right, grass to the right"},
+        {TO_LEFT | TO_DOWN, PIX_WATER1, PIX_GRASS_DARK_B2,
+         "top right, water to the right"},
+        {TO_DOWN, PIX_WATER1, PIX_GRASS_DARK_B1, "top alone, water beside"},
+        {TO_RIGHT | TO_UP, PIX_GRASS1, PIX_GRASS_DARK_UR,
+         "bottom left, grass to the left"},
+        {TO_RIGHT | TO_UP, PIX_WATER1, PIX_GRASS_DARK_B1,
+         "bottom left, water to the left"},
+        {TO_RIGHT, PIX_GRASS1, PIX_GRASS_DARK_UR, "left alone, grass left"},
+        {TO_RIGHT, PIX_WATER1, PIX_GRASS_DARK_B1, "left alone, water left"},
+        {TO_UP, PIX_GRASS1, PIX_GRASS_DARK_UR, "bottom alone, grass below"},
+        {TO_UP | TO_DOWN, PIX_GRASS1, PIX_GRASS_DARK_R2,
+         "center vertical -> grass_dark_right[1]"},
+    };
 
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
-                       TO_DOWN);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
-                       TO_LEFT | TO_DOWN);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_WATER1,
-                       TO_LEFT | TO_DOWN);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_WATER1,
-                       TO_DOWN);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
-                       TO_RIGHT | TO_UP);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_WATER1,
-                       TO_RIGHT | TO_UP);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
-                       TO_RIGHT);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_WATER1,
-                       TO_RIGHT);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
-                       TO_UP);
-    s.smooth(x, y);
-
-    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
-                       TO_UP | TO_DOWN);
-    s.smooth(x, y);
+    for (const DarkCase& c : cases)
+    {
+        set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1,
+                           c.other, c.mask);
+        ASSERT_EQ(1, s.smooth(x, y)) << c.why;
+        EXPECT_EQ(c.expect, s.query_x_y(x, y)) << c.why;
+    }
 
     pop_test_context();
 }

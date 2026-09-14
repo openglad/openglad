@@ -1156,6 +1156,14 @@ void set_player_count(SaveData& save, int count);
 // Returns true when numplayers == 0 (spectator / autoplay mode).
 bool is_spectator_mode(const SaveData& save);
 
+// How many viewscreens the battle opens for this save. Spectator mode still
+// needs ONE view for the camera to look through, so numplayers == 0 answers 1;
+// every other count answers itself. The single owner of that rule: both the
+// load path (src/platform/sdl/game.cpp) and Base Camp's ready_for_battle
+// (src/interface/ui/picker_team_build.cpp) call this instead of repeating the
+// conditional.
+short spectator_view_count(const SaveData& save);
+
 // --- Label formatting ---
 
 // Format the difficulty button label (e.g. "Difficulty: Battle").

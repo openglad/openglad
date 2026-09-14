@@ -2834,7 +2834,8 @@ Sint32 go_menu(Sint32 arg1)
 
         // Reset viewscreen prefs
         {
-            short numviews = (og::runtime::current_session->myscreen_->save_data.numplayers == 0) ? 1 : og::runtime::current_session->myscreen_->save_data.numplayers;
+            short numviews = og::ui::spectator_view_count(
+                og::runtime::current_session->myscreen_->save_data);
             og::runtime::current_session->myscreen_->ready_for_battle(numviews);
         }
 
