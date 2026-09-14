@@ -153,25 +153,56 @@ TEST(PickerCommon, calculate_train_cost_delta)
     guy trained(original);
 
     // No changes — zero cost
-    std::uint32_t cost = og::ui::calculate_train_cost(trained, original);
-    ASSERT_TRUE(cost == 0);
+    EXPECT_EQ(0u, og::ui::calculate_train_cost(trained, original))
+        << "an untouched sheet is free";
 
-    // Increase strength — positive cost
+    // The price of one axis is int(pow(delta, 1.85) * train_cost) over the
+    // FAMILY base, and the charge is the DIFFERENCE against what the member
+    // was already paid up to — never the sum. Soldier: base str 12, train
+    // cost 6 (packs/core/families/living-00-soldier.lua).
     trained.strength = static_cast<short>(original.strength + 5);
-    cost = og::ui::calculate_train_cost(trained, original);
-    ASSERT_TRUE(cost > 0);
+    EXPECT_EQ(117u, og::ui::calculate_train_cost(trained, original))
+        << "+5 strength on a base soldier = int(5^1.85 * 6)";
+
+    // Second step off an ALREADY-trained sheet: the old tier is refunded out
+    // of the new one, so 12->22 on top of 12->17 costs int(10^1.85*6) - 117.
+    guy trained_once(original);
+    trained_once.strength = static_cast<short>(original.strength + 5);
+    guy trained_twice(trained_once);
+    trained_twice.strength = static_cast<short>(original.strength + 10);
+    EXPECT_EQ(307u, og::ui::calculate_train_cost(trained_twice, trained_once))
+        << "the second +5 is int(10^1.85*6) - int(5^1.85*6), not the full tier";
+    EXPECT_EQ(424u, og::ui::calculate_train_cost(trained_twice, original))
+        << "priced from the base in one hop the same sheet costs int(10^1.85*6)";
 }
 
-TEST(PickerCommon, calculate_train_cost_no_downgrade)
+TEST(PickerCommon, lowered_stats_are_priced_at_the_original_never_refunded)
 {
     init_family_registry();
+    // The member is ALREADY trained (str 12 base -> 18), which is the only
+    // shape where the effective-stat clamp is observable: a sheet that drops
+    // one axis below what was paid for must not hand gold back against a
+    // raise on another axis.
     guy original(FAMILY_SOLDIER);
-    guy trained(original);
+    original.strength = static_cast<short>(original.strength + 6);
 
-    // Decrease strength below original — cost should be 0 (effective clamps to original)
-    trained.strength = static_cast<short>(original.strength - 3);
-    std::uint32_t cost = og::ui::calculate_train_cost(trained, original);
-    ASSERT_TRUE(cost == 0);
+    guy trained(original);
+    trained.strength = 15;                                        // 18 -> 15
+    trained.dexterity = static_cast<short>(original.dexterity + 2);  // 6 -> 8
+
+    // Only the dex raise is billed: int(2^1.85 * 10) = 36. Without the clamp
+    // the strength axis would contribute int(3^1.85*6) - int(6^1.85*6) = -120,
+    // the total would go negative and the function would answer 0.
+    EXPECT_EQ(36u, og::ui::calculate_train_cost(trained, original))
+        << "a lowered stat is priced at the original, never refunded "
+           "against the dexterity raise";
+
+    // Lowering alone is free (the clamp makes the sheet identical), which is
+    // what the old oracle checked — kept as the companion pin.
+    guy lowered(original);
+    lowered.strength = static_cast<short>(original.strength - 3);
+    EXPECT_EQ(0u, og::ui::calculate_train_cost(lowered, original))
+        << "a pure downgrade costs nothing and earns nothing";
 }
 
 TEST(PickerCommon, calculate_sell_value_matches_death_salvage_basis)
@@ -307,7 +338,7 @@ TEST(PickerCommon, train_session_empty_when_no_editable_lobby_slots)
 
 // --- create_recruit ---
 
-TEST(PickerCommon, create_recruit_unique_name)
+TEST(PickerCommon, create_recruit_routes_its_name_through_the_uniquifier)
 {
     init_family_registry();
     SaveData save;
@@ -315,27 +346,50 @@ TEST(PickerCommon, create_recruit_unique_name)
 
     std::srand(42);
     auto recruit1 = og::ui::create_recruit(FAMILY_SOLDIER, 0, save);
-    ASSERT_TRUE(recruit1 != nullptr);
-    ASSERT_TRUE(!recruit1->name.empty());
-    ASSERT_TRUE(recruit1->family == FAMILY_SOLDIER);
-    ASSERT_TRUE(recruit1->teamnum == 0);
-
-    // Add it to team, then create another — name should differ
-    std::string first_name = recruit1->name;
+    ASSERT_NE(nullptr, recruit1);
+    EXPECT_FALSE(recruit1->name.empty());
+    EXPECT_EQ(FAMILY_SOLDIER, recruit1->family);
+    EXPECT_EQ(0, recruit1->teamnum);
     og::ui::add_recruit_to_team(save, std::move(recruit1), 0);
 
-    auto recruit2 = og::ui::create_recruit(FAMILY_SOLDIER, 0, save);
-    ASSERT_TRUE(recruit2 != nullptr);
-    // If same random name comes up, get_unique_name should append a number or retry
-    // Either way, it should not match an existing team member
-    bool name_is_unique = true;
-    for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (save.team_list[static_cast<std::size_t>(i)] && save.team_list[static_cast<std::size_t>(i)]->name == recruit2->name) {
-            name_is_unique = false;
-            break;
-        }
+    // Two merely-different draws prove nothing, so force the COLLISION path:
+    // occupy every slime name the pool hands out and its "<name>2" form, the
+    // same rig get_unique_name_falls_back_to_numbered_duplicate uses. A
+    // create_recruit that drew a bare random name would land on one of the
+    // twelve occupied names; only the uniquifier can answer "<name>3".
+    SaveData full;
+    std::vector<std::string> slime_names;
+    std::srand(3);
+    for (int attempts = 0; attempts < 200 && slime_names.size() < 6; ++attempts) {
+        std::string name = og::ui::get_random_name(FAMILY_SLIME);
+        if (std::find(slime_names.begin(), slime_names.end(), name) == slime_names.end())
+            slime_names.push_back(name);
     }
-    ASSERT_TRUE(name_is_unique);
+    ASSERT_EQ(6u, slime_names.size());
+
+    int slot = 0;
+    for (const std::string& name : slime_names) {
+        full.team_list[static_cast<std::size_t>(slot)] = std::make_unique<guy>(FAMILY_SLIME);
+        full.team_list[static_cast<std::size_t>(slot)]->name = name;
+        ++slot;
+        full.team_list[static_cast<std::size_t>(slot)] = std::make_unique<guy>(FAMILY_SLIME);
+        full.team_list[static_cast<std::size_t>(slot)]->name = name + "2";
+        ++slot;
+    }
+    full.team_size = static_cast<unsigned char>(slot);
+    ASSERT_EQ(12, slot);
+
+    std::srand(3);
+    auto recruit = og::ui::create_recruit(FAMILY_SLIME, 0, full);
+    ASSERT_NE(nullptr, recruit);
+    EXPECT_EQ(FAMILY_SLIME, recruit->family);
+    EXPECT_EQ(0, recruit->teamnum);
+    EXPECT_TRUE(recruit->name.ends_with("3"))
+        << "create_recruit must name through get_unique_name, got "
+        << recruit->name;
+    for (int i = 0; i < full.team_size; ++i)
+        ASSERT_NE(full.team_list[static_cast<std::size_t>(i)]->name, recruit->name)
+            << "recruit collided with an existing member";
 }
 
 // --- reset_for_new_game ---
@@ -439,34 +493,6 @@ TEST(PickerCommon, difficulty_names)
 
 // --- get_random_name ---
 
-TEST(PickerCommon, get_random_name_all_families)
-{
-    std::srand(42);
-    for (int fam : og::ui::kAllowableGuys) {
-        const char* name = og::ui::get_random_name(static_cast<unsigned char>(fam));
-        ASSERT_TRUE(name != nullptr);
-        ASSERT_TRUE(std::strlen(name) > 0);
-    }
-}
-
-TEST(PickerCommon, get_random_name_covers_non_hirelist_and_default_families)
-{
-    std::srand(11);
-    const int families[] = {
-        FAMILY_ARCHMAGE,
-        FAMILY_BIG_ORC,
-        FAMILY_SLIME,
-        FAMILY_MEDIUM_SLIME,
-        199,
-    };
-
-    for (int family : families) {
-        const char* name = og::ui::get_random_name(static_cast<unsigned char>(family));
-        ASSERT_NE(nullptr, name);
-        EXPECT_GT(std::strlen(name), 0u);
-    }
-}
-
 namespace {
 
 std::vector<std::string> name_pool_of(int family)
@@ -480,6 +506,64 @@ std::vector<std::string> name_pool_of(int family)
 }
 
 } // namespace
+
+// Every hireable family draws from ITS OWN shipped pool: a descriptor that
+// went missing (and silently fell through to the soldier pool) is the break
+// this pins, not merely "some non-empty string came back".
+TEST(PickerCommon, get_random_name_draws_from_each_hireable_family_own_pool)
+{
+    init_family_registry();
+    std::srand(42);
+    for (int fam : og::ui::kAllowableGuys) {
+        const std::vector<std::string> pool = name_pool_of(fam);
+        ASSERT_FALSE(pool.empty()) << "family " << fam << " ships no names";
+        const std::set<std::string> allowed(pool.begin(), pool.end());
+        for (int i = 0; i < 20; ++i) {
+            const char* name =
+                og::ui::get_random_name(static_cast<unsigned char>(fam));
+            ASSERT_NE(nullptr, name);
+            EXPECT_EQ(1u, allowed.count(name))
+                << "family " << fam << " drew " << name
+                << ", which is not in its own pool";
+        }
+    }
+}
+
+// The aliases (archmage->mage, orc captain->orc, every slime->one list) and
+// the no-descriptor borrow, pinned THROUGH the draw entry point rather than
+// at descriptor level. "Nameless" is reachable only with no pool at all.
+TEST(PickerCommon, get_random_name_covers_non_hirelist_and_default_families)
+{
+    init_family_registry();
+    const std::vector<std::string> mage = name_pool_of(FAMILY_MAGE);
+    const std::vector<std::string> orc = name_pool_of(FAMILY_ORC);
+    const std::vector<std::string> slime = name_pool_of(FAMILY_SLIME);
+    const std::vector<std::string> soldier = name_pool_of(FAMILY_SOLDIER);
+    ASSERT_FALSE(mage.empty());
+    ASSERT_FALSE(orc.empty());
+    ASSERT_FALSE(slime.empty());
+    ASSERT_FALSE(soldier.empty());
+    const std::set<std::string> mage_set(mage.begin(), mage.end());
+    const std::set<std::string> orc_set(orc.begin(), orc.end());
+    const std::set<std::string> slime_set(slime.begin(), slime.end());
+    const std::set<std::string> soldier_set(soldier.begin(), soldier.end());
+
+    std::srand(11);
+    for (int i = 0; i < 100; ++i) {
+        EXPECT_EQ(1u, mage_set.count(og::ui::get_random_name(FAMILY_ARCHMAGE)))
+            << "the archmage borrows the mage names";
+        EXPECT_EQ(1u, orc_set.count(og::ui::get_random_name(FAMILY_BIG_ORC)))
+            << "the orc captain borrows the orc names";
+        EXPECT_EQ(1u, slime_set.count(og::ui::get_random_name(FAMILY_SLIME)))
+            << "every slime draws from the one slime list";
+        EXPECT_EQ(1u,
+                  slime_set.count(og::ui::get_random_name(FAMILY_MEDIUM_SLIME)))
+            << "every slime draws from the one slime list";
+        EXPECT_EQ(1u, soldier_set.count(og::ui::get_random_name(199)))
+            << "a family with no descriptor at all borrows the soldier pool "
+               "instead of answering the Nameless literal";
+    }
+}
 
 // Several families deliberately draw from the SAME name list: the archmage
 // from the mage names, the orc captain from the orc names, all three slimes
@@ -1228,29 +1312,45 @@ TEST(PickerCommon, train_session_set_team_clamps_and_lobby_revocation_invalidate
 
 // --- compute_derived_stats ---
 
+// The six sheet numbers the LINEUP/TRAIN pages print, pinned exactly against
+// the shipped formulas (picker_common.cpp compute_derived_stats over the
+// guy::get_*_bonus getters in guy.cpp): dropping any bonus term must go red.
 TEST(PickerCommon, compute_derived_stats)
 {
     init_family_registry();
     guy g(FAMILY_SOLDIER);
+    g.constitution = 10;
+    g.intelligence = 8;
+    g.strength = 12;
+    g.armor = 4;
+    g.dexterity = 47;
 
     auto ds = og::ui::compute_derived_stats(g, 100.0f, 20.0f, 5.0f, 8.0f);
-    // HP = ceil(100 + hp_bonus), MP = ceil(mp_bonus)
-    ASSERT_TRUE(ds.hp >= 100.0f);
-    ASSERT_TRUE(ds.mp >= 0.0f);
-    ASSERT_TRUE(ds.atk >= 20.0f);
-    ASSERT_TRUE(ds.def >= 0.0f);
-    ASSERT_TRUE(ds.spd >= 5.0f);
-    ASSERT_TRUE(ds.atk_spd > 0.0f);
+    EXPECT_FLOAT_EQ(140.0f, ds.hp) << "ceil(base_hp + 10 + 3*constitution)";
+    EXPECT_FLOAT_EQ(34.0f, ds.mp) << "ceil(10 + 3*intelligence)";
+    EXPECT_FLOAT_EQ(23.0f, ds.atk) << "base_damage + strength/4";
+    EXPECT_FLOAT_EQ(4.0f, ds.def) << "def is the armor stat itself";
+    EXPECT_FLOAT_EQ(5.0f + 47.0f / 54.0f, ds.spd)
+        << "base_stepsize + dexterity/54";
+    EXPECT_FLOAT_EQ(10.0f / 7.0f, ds.atk_spd)
+        << "10 / (base_fire_freq - dexterity/47)";
 }
 
 TEST(PickerCommon, compute_derived_stats_min_fire_freq)
 {
     init_family_registry();
     guy g(FAMILY_SOLDIER);
-    // base_fire_freq of 0 should be clamped to 1 to avoid div-by-zero
+    // base_fire_freq of 0 is clamped to EXACTLY 1, so the printed rate is
+    // 10/1 — not merely "something in (0, 10]".
     auto ds = og::ui::compute_derived_stats(g, 50.0f, 10.0f, 3.0f, 0.0f);
-    ASSERT_TRUE(ds.atk_spd > 0.0f);
-    ASSERT_TRUE(ds.atk_spd <= 10.0f);
+    EXPECT_FLOAT_EQ(10.0f, ds.atk_spd)
+        << "a zero base fire freq clamps to 1, so the display rate is 10/1";
+
+    // The public accessor carries the same 1.0f floor: soldier fire_delay 6
+    // minus 300/47 is negative and must still answer 1.
+    g.dexterity = 300;
+    EXPECT_FLOAT_EQ(1.0f, og::ui::derived_fire_delay(g))
+        << "derived_fire_delay floors at 1 tick";
 }
 
 // --- cycle_difficulty ---
@@ -5026,11 +5126,31 @@ TEST(ReadyGoSlot, state_6_client_ready_green_unready_action)
     }
 }
 
-TEST(ReadyGoSlot, labels_fit_the_68px_face_budget)
+TEST(ReadyGoSlot, every_label_the_formatter_emits_fits_the_68px_face_budget)
 {
-    // floor((68-8)/6) = 10 chars.
-    for (const char* label : {"GO", "READY", "UNREADY"})
-        EXPECT_LE(std::string_view(label).size(), 10u) << label;
+    // floor((68-8)/6) = 10 chars. Sweep the REAL formatter over its whole
+    // input space so a new (or lengthened) label cannot ship unmeasured.
+    std::set<std::string> labels;
+    for (const bool networked : {false, true})
+        for (const bool is_host : {false, true})
+            for (const bool my_ready : {false, true})
+                for (const bool all_ready : {false, true})
+                    for (const int global_deployed : {0, 3})
+                        for (const int own_deployed : {0, 3})
+                            for (const bool cross : {false, true})
+                                for (const bool spectator : {false, true}) {
+                                    const og::ui::ReadyGoPresentation p =
+                                        ready_go(networked, is_host, my_ready,
+                                                 all_ready, global_deployed,
+                                                 own_deployed, cross,
+                                                 spectator);
+                                    EXPECT_LE(p.label.size(), 10u)
+                                        << "label overflows the 68px face: "
+                                        << p.label;
+                                    labels.insert(p.label);
+                                }
+    EXPECT_EQ((std::set<std::string>{"GO", "READY", "UNREADY"}), labels)
+        << "the formatter's whole label vocabulary is measured here";
 }
 
 TEST(ReadyGoSlot, go_blockers_lists_unready_machines_only)
