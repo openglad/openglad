@@ -1236,7 +1236,7 @@ TEST(CursesNetwork, key_releases_do_not_start_or_cancel_lobby)
         << "control: the started host hands out its session";
 }
 
-TEST(CursesNetwork, joiner_start_request_is_noop)
+TEST(CursesNetwork, joiner_start_request_is_denied_as_not_host)
 {
     SaveData host_save;
     SaveData join_save;
@@ -1263,33 +1263,49 @@ TEST(CursesNetwork, joiner_start_request_is_noop)
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
     }
+    ASSERT_TRUE(status_contains(*host_lobby, "Players: 2"))
+        << "liveness control: both machines really shared this lobby";
 
-    // The user-visible action the PR #292 P8 transcript records: a joiner
-    // presses 's'. On this tree the key gate drops it before request_start()
-    // is even reached, and request_start() would refuse it again -- the band
-    // says nothing at all. The direct call keeps the old exercise intact.
+    // PR #292 P8, the contract this test exists for: the host rule has ONE
+    // implementation, LobbyServer's start_allowed(). The terminal client no
+    // longer gates the key, so a joiner's 's' really goes on the wire, the
+    // server answers THAT peer with StartDenialReason::NotHost, and the band
+    // says why. The press is the whole exercise -- no direct request_start()
+    // call -- because the key gate is half of what P8 removed.
     join_term.push_char(U's');
-    join_lobby->request_start();
     bool host_started = false;
     bool join_started = false;
     for (int i = 0; i < 50; ++i) {
         host_started = host_lobby->poll(host_term, clock) || host_started;
         join_started = join_lobby->poll(join_term, clock) || join_started;
     }
-    EXPECT_FALSE(host_started);
+    EXPECT_TRUE(status_contains(*join_lobby, "Only the host can start"))
+        << "the joiner's own press must be ANSWERED on the joiner's band, "
+           "not silently dropped:\n"
+        << join_term.dump();
+    EXPECT_FALSE(status_contains(*host_lobby, "Only the host can start"))
+        << "and the verdict for the joiner's request must not land on the "
+           "host's band:\n"
+        << host_term.dump();
+    EXPECT_FALSE(host_started) << "a denied request starts nothing";
     EXPECT_FALSE(join_started);
     EXPECT_EQ(host_lobby->take_session(), nullptr);
     EXPECT_EQ(join_lobby->take_session(), nullptr);
-    EXPECT_TRUE(status_contains(*host_lobby, "Players: 2"))
-        << "liveness control: both machines really shared this lobby";
 
-    // The client-side guard is what this test exists for, and this is where it
-    // SHOWS. request_start() on a joiner must not even allocate a request id:
-    // the server silently drops a non-host StartGame (lobby_server.cpp: "A
-    // non-host StartGame stays silently ignored"), so a joiner that got as far
-    // as sending one is left holding pending_start_request_id_ == 1 -- the very
-    // id the HOST's first request carries. The next denial echo meant for the
-    // host would then be rendered on the joiner's band as its own.
+    // The host's OWN request now draws a different verdict (the joiner is
+    // unready), and the two bands must stay apart: the echo is scoped to its
+    // requester, so neither machine ever renders the other's reason.
+    //
+    // Honest note on the teeth: after F1 the joiner's NotHost answer arrives
+    // in the same poll that sent it, so the joiner's pending id is already
+    // released when the host's denial goes out -- the mis-correlation this
+    // test used to chase cannot be staged from here any more. The requester
+    // SCOPING itself is pinned where it is decided:
+    // LobbyServer.denial_echo_is_scoped_to_its_requester (tests/unit) on the
+    // wire, and PickerNetworkClient.dedicated_server_guest_start_is_denied_
+    // not_host_without_touching_the_hosts_echo over real sockets. What this
+    // test pins is the CURSES end: the key reaches the wire, and the band
+    // renders this machine's own verdict.
     host_lobby->request_start();  // request id 1, denied: the joiner is unready
     for (int i = 0; i < 100; ++i) {
         host_lobby->poll(host_term, clock);
@@ -1304,12 +1320,13 @@ TEST(CursesNetwork, joiner_start_request_is_noop)
     capture_transcript(join_term, "p8-curses-join-" + p8_phase);
 
     EXPECT_TRUE(status_contains(*host_lobby, "Waiting for other machines"))
-        << "control: the host's own denial is correlated to the host";
+        << "control: the host's own denial is correlated to the host:\n"
+        << host_term.dump();
     EXPECT_FALSE(status_contains(*join_lobby, "Waiting for other machines"))
-        << "the host's denial must not be mis-correlated onto a joiner that "
-           "never put a start request on the wire";
-    EXPECT_FALSE(status_contains(*join_lobby, "Only the host can start"))
-        << "no start denial of any kind may echo back to the joiner";
+        << "the host's denial must not be mis-correlated onto the joiner";
+    EXPECT_TRUE(status_contains(*join_lobby, "Only the host can start"))
+        << "and the joiner's band still carries its OWN verdict:\n"
+        << join_term.dump();
     EXPECT_EQ(host_lobby->take_session(), nullptr);
     EXPECT_EQ(join_lobby->take_session(), nullptr);
 }
@@ -3257,12 +3274,18 @@ TEST(CursesNetwork, elected_host_start_key_works_on_a_dedicated_lobby)
             break;
     }
 
-    // The guest's own 's' is not a start: the server drops a non-host
-    // request, and nothing here pretends otherwise.
+    // The guest's own 's' is not a start: the server answers that peer with
+    // NotHost (PR #292 P8 -- it used to drop the request silently), so the
+    // match stays unstarted and the guest is TOLD why on its own band.
     guest_term.push_char(U's');
     pump(30);
     EXPECT_FALSE(elected_started) << "a guest cannot start the match";
     EXPECT_FALSE(guest_started);
+    EXPECT_TRUE(status_contains(*guest_lobby, "Only the host can start"))
+        << "the dedicated lobby's guest must get the reason, not silence:\n"
+        << guest_term.dump();
+    EXPECT_FALSE(status_contains(*elected_lobby, "Only the host can start"))
+        << "and the elected host must not render the guest's verdict";
 
     elected_term.push_char(U's');
     for (int i = 0; i < 400 && !(elected_started && guest_started); ++i)

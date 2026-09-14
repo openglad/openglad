@@ -1652,11 +1652,14 @@ public:
                 kick_selected_seat();
                 continue;
             }
-            // "Is host NOW" (§6), the kick's rule: on a dedicated lobby the
-            // elected host is a JOIN client, and it is the only machine the
-            // server's start gate obeys. request_start() re-checks.
-            if (local_player_is_host() &&
-                (key.is_enter() || key.is_char(U's') || key.is_char(U'S'))) {
+            // Every machine may PRESS start; the SERVER decides. The host
+            // rule has exactly one implementation -- LobbyServer's
+            // start_allowed() rule 2 -- and it answers a non-host requester
+            // with StartDenialReason::NotHost, which the denial switch below
+            // renders as "Only the host can start". A client-side "is host
+            // NOW" gate here would be a second home for that rule, and it is
+            // what used to leave a joiner's press with no feedback at all.
+            if (key.is_enter() || key.is_char(U's') || key.is_char(U'S')) {
                 request_start();
             }
             if (key.is_char(U'r') || key.is_char(U'R')) {
@@ -1781,11 +1784,15 @@ public:
 
     void request_start() override
     {
-        // "Is host NOW", exactly like the kick (§6): the machine that runs a
-        // dedicated lobby JOINED it, so keying the start on LobbyRole left
-        // the one machine the server would obey unable to press GO. The
-        // server gates on the host PEER, and that peer is this one.
-        if (!local_player_is_host() || !state_.has_value())
+        // No host check here: the server owns the host rule and answers a
+        // non-host StartGame with NotHost, which poll() renders on the band.
+        // Keying the start on LobbyRole (or on "is host NOW") left the one
+        // machine the server would obey -- the elected host of a dedicated
+        // lobby, which JOINED it -- unable to press GO, and left every other
+        // machine's press silently dropped. What stays is the per-peer
+        // plumbing this send needs: a lobby state to read a player index out
+        // of, a live link, and a local seat on it.
+        if (!state_.has_value())
             return;
         og::sim::ITransport* const client_link = server_link();
         if (client_link == nullptr)
