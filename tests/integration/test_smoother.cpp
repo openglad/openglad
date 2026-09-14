@@ -149,49 +149,57 @@ TEST(Smoother, smooth_uses_bound_rng_without_global_gameplay_context)
 }
 
 
-TEST(Smoother, smooth_covers_multiple_genres_and_around_masks)
+// This used to be 120 lines of `(void)s.smooth(1,1)` across every genre with
+// not one assertion. Each call now pins the tile it writes: the carpet and
+// light-grass tables, the four cobble variants, the grass/water corner, the
+// tree and dirt corner arms, the two watergrass pairs, and -- unique to this
+// test -- all four arrow-slit outcomes, which key off what sits ABOVE the slit.
+TEST(Smoother, smooth_writes_the_exact_tile_for_every_genre_and_around_mask)
 {
-    // smooth() depends on ctx().rng; provide deterministic sequencing.
-    SequenceRandom seq_rng({0, 1, 2, 3, 0, 1, 2, 3, 5, 0, 19, 0});
+    FixedRandom rng0(0);
     GameContext c;
-    c.rng = &seq_rng;
+    c.rng = &rng0;
     GlobalContextGuard guard(&c);
 
-    // Carpet and light grass: cover all 'around' mask cases 0..15.
+    static constexpr unsigned char kCarpet[16] = {
+        PIX_CARPET_SMALL_TINY, PIX_CARPET_SMALL_CUP, PIX_CARPET_SMALL_LEFT, PIX_CARPET_LL,
+        PIX_CARPET_SMALL_CAP,  PIX_CARPET_SMALL_VER, PIX_CARPET_UL,         PIX_CARPET_L,
+        PIX_CARPET_SMALL_RIGHT,PIX_CARPET_LR,        PIX_CARPET_SMALL_HOR,  PIX_CARPET_B,
+        PIX_CARPET_UR,         PIX_CARPET_R,         PIX_CARPET_U,          PIX_CARPET_M,
+    };
+    static constexpr unsigned char kLight[16] = {
+        PIX_GRASS_LIGHT_RIGHT,     PIX_GRASS_LIGHT_RIGHT_BOTTOM, PIX_GRASS_LIGHT_LEFT_TOP,  PIX_GRASS_LIGHT_LEFT_BOTTOM,
+        PIX_GRASS_LIGHT_RIGHT_TOP, PIX_GRASS_LIGHT_RIGHT,        PIX_GRASS_LIGHT_LEFT_TOP,  PIX_GRASS_LIGHT_LEFT,
+        PIX_GRASS_LIGHT_RIGHT_TOP, PIX_GRASS_LIGHT_RIGHT_BOTTOM, PIX_GRASS_LIGHT_TOP,       PIX_GRASS_LIGHT_BOTTOM,
+        PIX_GRASS_LIGHT_RIGHT_TOP, PIX_GRASS_LIGHT_RIGHT,        PIX_GRASS_LIGHT_TOP,       PIX_GRASS_LIGHT_1,
+    };
+
+    // Carpet and light grass: every 'around' mask 0..15.
     for (int mask = 0; mask < 16; mask++)
     {
+        SCOPED_TRACE(mask);
         PixieData grid = make_grid(3, 3, PIX_GRASS1);
         unsigned char* g = grid.data.get();
-
-        // Carpet
-        set_neighbors(g, 3, PIX_CARPET_M, PIX_CARPET_M, PIX_GRASS1, mask);
         smoother s;
-        s.set_target(grid);
-        (void)s.smooth(1, 1);
 
-        // Light grass
+        set_neighbors(g, 3, PIX_CARPET_M, PIX_CARPET_M, PIX_GRASS1, mask);
+        s.set_target(grid);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)kCarpet[mask], (int)g[1 + 1 * 3])
+            << "carpet mask " << mask << " must pick carpet_by_surround[mask]";
+
         set_neighbors(g, 3, PIX_GRASS_LIGHT_1, PIX_GRASS_LIGHT_1, PIX_GRASS1, mask);
         s.set_target(grid);
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)kLight[mask], (int)g[1 + 1 * 3])
+            << "light-grass mask " << mask << " must pick grass_light_by_surround[mask]";
     }
 
-    // Cobble: exercise rng(4) switch.
-    {
-        PixieData grid = make_grid(3, 3, PIX_GRASS1);
-        unsigned char* g = grid.data.get();
-        g[1 + 1 * 3] = PIX_COBBLE_1;
-        smoother s;
-        s.set_target(grid);
-        for (int i = 0; i < 4; i++)
-            (void)s.smooth(1, 1);
-    }
-
-    // Grass: diagonal water edge variants.
+    // Grass with water wrapping its lower-left: the shoreline corner tile.
     {
         PixieData grid = make_grid(3, 3, PIX_GRASS1);
         unsigned char* g = grid.data.get();
         g[1 + 1 * 3] = PIX_GRASS1; // center grass
-        // Water cluster lower-left for PIX_GRASSWATER_LL.
         g[0 + 0 * 3] = PIX_WATER1; // upleft
         g[0 + 1 * 3] = PIX_WATER1; // left
         g[0 + 2 * 3] = PIX_WATER1; // downleft
@@ -199,75 +207,111 @@ TEST(Smoother, smooth_covers_multiple_genres_and_around_masks)
         g[2 + 2 * 3] = PIX_WATER1; // downright
         smoother s;
         s.set_target(grid);
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)PIX_GRASSWATER_LL, (int)g[1 + 1 * 3])
+            << "water on upleft/left/downleft/down/downright is the LL shoreline";
     }
 
-    // Trees and dirt/dark dirt: exercise additional genre-specific branches.
+    // Trees and dirt/dark dirt corner arms.
     {
         PixieData grid = make_grid(3, 3, PIX_GRASS1);
         unsigned char* g = grid.data.get();
         smoother s;
 
-        // Trees: top-middle and surrounded-ish cases.
         set_neighbors(g, 3, PIX_TREE_M1, PIX_TREE_M1, PIX_GRASS1, TO_LEFT | TO_RIGHT | TO_DOWN);
         s.set_target(grid);
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)PIX_TREE_T1, (int)g[1 + 1 * 3])
+            << "trees with left+right+down are the top-middle canopy";
 
+        // Surrounded, but the diagonals are grass, so this is the right edge.
         set_neighbors(g, 3, PIX_TREE_M1, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
         s.set_target(grid);
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)PIX_TREE_MR, (int)g[1 + 1 * 3])
+            << "trees surrounded cardinally but open on the right diagonals are MR";
 
-        // Dirt: corner variants.
         set_neighbors(g, 3, PIX_DIRT_1, PIX_DIRT_1, PIX_GRASS1, TO_LEFT | TO_DOWN);
         s.set_target(grid);
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)PIX_DIRTGRASS_LL1, (int)g[1 + 1 * 3])
+            << "dirt with left+down is the lower-left dirt/grass corner";
 
-        // Dark dirt: corner variants.
         set_neighbors(g, 3, PIX_DIRT_DARK_1, PIX_DIRT_DARK_1, PIX_GRASS1, TO_RIGHT | TO_UP);
         s.set_target(grid);
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)PIX_DIRTGRASS_DARK_UR1, (int)g[1 + 1 * 3])
+            << "dark dirt with right+up is the upper-right dark-dirt/grass corner";
     }
 
-    // Water: exercise edge tile selection.
+    // Water shoreline pairs; rng 0 takes the first entry of each pair.
     {
         PixieData grid = make_grid(3, 3, PIX_GRASS1);
         unsigned char* g = grid.data.get();
         smoother s;
-        // Center water, only up is water => around == TO_UP
+
         set_neighbors(g, 3, PIX_WATER1, PIX_WATER1, PIX_GRASS1, TO_UP);
         s.set_target(grid);
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)g[1 + 1 * 3])
+            << "water with only an upstream neighbour is watergrass_up[0]";
 
-        // Only right is water => around == TO_RIGHT
         set_neighbors(g, 3, PIX_WATER1, PIX_WATER1, PIX_GRASS1, TO_RIGHT);
         s.set_target(grid);
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)g[1 + 1 * 3])
+            << "water with only a right neighbour is watergrass_right[0]";
     }
 
-    // Wall: arrow-slit selection based on what is above (grass/dark/stone/wood).
+    // Arrow slits re-skin themselves to match whatever is directly above.
     {
-        // 3x4 so y-1 and y+2 are in-bounds for some wall cases.
+        // 3x4 so y-1 and y+2 are in-bounds.
         PixieData grid = make_grid(3, 4, PIX_GRASS1);
         unsigned char* g = grid.data.get();
         smoother s;
         s.set_target(grid);
 
-        g[1 + 2 * 3] = PIX_WALL_ARROW_GRASS;
+        struct SlitCase { unsigned char above; unsigned char expect; const char* why; };
+        const SlitCase cases[] = {
+            {PIX_GRASS1,        PIX_WALL_ARROW_GRASS,      "grass above keeps the grass arrow wall"},
+            {PIX_GRASS_DARK_1,  PIX_WALL_ARROW_GRASS_DARK, "dark grass above switches to the dark arrow wall"},
+            {PIX_PAVEMENT1,     PIX_WALL4,                 "stone pavement above switches to the stone wall"},
+            {PIX_FLOOR1,        PIX_WALL_ARROW_FLOOR,      "wood floor above switches to the floor arrow wall"},
+        };
+        for (const auto& slit : cases)
+        {
+            SCOPED_TRACE(slit.why);
+            g[1 + 2 * 3] = PIX_WALL_ARROW_GRASS;
+            g[1 + 1 * 3] = slit.above;
+            ASSERT_EQ(1, s.smooth(1, 2)) << "smooth() reports it wrote a tile";
+            ASSERT_EQ((int)slit.expect, (int)g[1 + 2 * 3]) << slit.why;
+        }
+    }
+}
 
-        // Above is grass
-        g[1 + 1 * 3] = PIX_GRASS1;
-        (void)s.smooth(1, 2);
 
-        // Above is dark grass
-        g[1 + 1 * 3] = PIX_GRASS_DARK_1;
-        (void)s.smooth(1, 2);
+// push_test_context/pop_test_context are NOT nestable (pop clears the override
+// outright), so the cobble sweep gets its own context and its own test.
+TEST(Smoother, smooth_cobble_walks_every_variant_the_rng_indexes)
+{
+    static constexpr unsigned char kCobble[4] = {
+        PIX_COBBLE_1, PIX_COBBLE_2, PIX_COBBLE_3, PIX_COBBLE_4
+    };
+    SequenceRandom seq({0, 1, 2, 3});
+    GameContext c;
+    c.rng = &seq;
+    GlobalContextGuard guard(&c);
 
-        // Above is stone pavement
-        g[1 + 1 * 3] = PIX_PAVEMENT1;
-        (void)s.smooth(1, 2);
-
-        // Above is wood floor
-        g[1 + 1 * 3] = PIX_FLOOR1;
-        (void)s.smooth(1, 2);
+    PixieData grid = make_grid(3, 3, PIX_GRASS1);
+    unsigned char* g = grid.data.get();
+    smoother s;
+    s.set_target(grid);
+    for (int i = 0; i < 4; i++)
+    {
+        SCOPED_TRACE(i);
+        g[1 + 1 * 3] = PIX_COBBLE_1;
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
+        ASSERT_EQ((int)kCobble[i], (int)g[1 + 1 * 3])
+            << "cobble rng " << i << " must pick cobble_variants[" << i << "]";
     }
 }
