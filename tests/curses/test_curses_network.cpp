@@ -41,6 +41,7 @@
 #include <openglad/resources/save_data.h>
 
 #include "curses_mount_restore.h"
+#include "transcript_capture.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -1263,6 +1264,11 @@ TEST(CursesNetwork, joiner_start_request_is_noop)
         join_lobby->poll(join_term, clock);
     }
 
+    // The user-visible action the PR #292 P8 transcript records: a joiner
+    // presses 's'. On this tree the key gate drops it before request_start()
+    // is even reached, and request_start() would refuse it again -- the band
+    // says nothing at all. The direct call keeps the old exercise intact.
+    join_term.push_char(U's');
     join_lobby->request_start();
     bool host_started = false;
     bool join_started = false;
@@ -1289,6 +1295,14 @@ TEST(CursesNetwork, joiner_start_request_is_noop)
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
     }
+    // PR #292 P8 media: both bands at the moment the host's denial has
+    // settled -- the frame the before/after transcripts compare. Inert unless
+    // OG_FX_CAPTURE_DIR is set (tests/curses/transcript_capture.h), so this
+    // adds nothing to a normal run and asserts nothing here.
+    const std::string p8_phase = transcript_phase();
+    capture_transcript(host_term, "p8-curses-host-" + p8_phase);
+    capture_transcript(join_term, "p8-curses-join-" + p8_phase);
+
     EXPECT_TRUE(status_contains(*host_lobby, "Waiting for other machines"))
         << "control: the host's own denial is correlated to the host";
     EXPECT_FALSE(status_contains(*join_lobby, "Waiting for other machines"))
