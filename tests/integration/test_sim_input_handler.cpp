@@ -1394,3 +1394,52 @@ TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
     ASSERT_EQ(still_x, control->xpos())
         << "a zero last vector means the bonus round has nothing to repeat";
 }
+
+
+// The Shift modifier is a per-tick HELD state, not an edge: sim_process_player_input
+// republishes it on every tick from is_held(Shift) so the special dispatch below it
+// (and the HUD's SPC/ALT row) sees the modifier exactly while the key is down.
+// Until PR #292 this line sat inside a `#ifndef USE_TOUCH_INPUT` fork whose other
+// arm treated Shift as a one-shot action; the fork is gone and this is the rule.
+// The parity harness cannot pin it -- tests/parity/scenario_runtime.cpp sets
+// shifter_down itself before the tick -- so the pin lives here.
+TEST(SimInputHandler, sim_input_republishes_held_shift_as_shifter_down)
+{
+    ScopedArena arena;
+
+    auto control_up = make_living(0, 0);
+    ASSERT_TRUE(control_up != nullptr) << "control should be created";
+    walker* control = control_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->set_shifter_down(0);
+    control->stats()->commands.clear();
+    world().oblist.push_back(std::move(control_up));
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    InputState input;
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    sim_process_player_input(input.players[0], control, world(), 0, 0,
+                             debounce, special_names, &log);
+    ASSERT_EQ(1, static_cast<int>(control->shifter_down()))
+        << "a held Shift must raise shifter_down for the tick";
+
+    // The negative control: the same walker, one tick later, key released.
+    input.clear();
+    sim_process_player_input(input.players[0], control, world(), 0, 0,
+                             debounce, special_names, &log);
+    ASSERT_EQ(0, static_cast<int>(control->shifter_down()))
+        << "releasing Shift must lower shifter_down on the very next tick";
+
+    // Held again: the state follows the key every tick, it does not latch.
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    sim_process_player_input(input.players[0], control, world(), 0, 0,
+                             debounce, special_names, &log);
+    ASSERT_EQ(1, static_cast<int>(control->shifter_down()))
+        << "shifter_down tracks the held key on every tick";
+
+    teardown();
+}
