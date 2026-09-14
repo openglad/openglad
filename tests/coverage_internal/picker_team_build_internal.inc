@@ -7,7 +7,7 @@ void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 int picker_testing_yes_or_no_queue_remaining();
 
-int picker_team_build_testing_exercise_internal_paths()
+int picker_team_build_testing_exercise_internal_paths(int* checks_run)
 {
     struct TestLobbyClient final : og::ui::IPickerLobbyClient
     {
@@ -936,5 +936,9 @@ int picker_team_build_testing_exercise_internal_paths()
     pks().selected_menu_item = nullptr;
     pks().train_session = nullptr;
     pks().hire_session = nullptr;
+    // The caller pins this: "no check failed" (0) is indistinguishable from
+    // "no check ran" without it.
+    if (checks_run)
+        *checks_run = check_index;
     return failed_check == 0 ? 0 : -failed_check;
 }

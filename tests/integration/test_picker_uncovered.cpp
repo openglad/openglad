@@ -10,8 +10,11 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include <openglad/interface/native_input.h>
 #include "test_input_helpers.h"
 
+#include <atomic>
+#include <cstdio>
 #include <string>
 #include <array>
 #include <memory>
@@ -30,8 +33,11 @@ Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 void picker_request_start_game();
 void view_team(short left, short top, short right, short bottom);
-int picker_team_build_testing_exercise_internal_paths();
+int picker_team_build_testing_exercise_internal_paths(int* checks_run = nullptr);
 extern bool g_start_game_requested;
+// The exact number of check() calls in tests/coverage_internal/
+// picker_team_build_internal.inc. Bump it deliberately when you add one.
+inline constexpr int kPickerTeamBuildInternalCheckCount = 282;
 
 namespace
 {
@@ -124,24 +130,63 @@ struct OwnedButtonReplacementGuard
     }
 };
 
-int name_guy_injector(void*)
+// One listed roster row inside the view_team box: view_team starts at
+// top+3+6 = 19 for left/top = 10/10 and advances 6 px per listed member.
+std::set<int> view_team_row_colors(screen& scr, int row_top)
+{
+    std::set<int> colors;
+    for (int y = row_top; y < row_top + 6; ++y)
+    {
+        for (int x = 15; x < 300; ++x)
+        {
+            int index = 0;
+            scr.get_pixel(x, y, &index);
+            colors.insert(index);
+        }
+    }
+    return colors;
+}
+
+struct NameGuyInjectorArgs
+{
+    const char* text = nullptr;
+    std::atomic<bool> saw_editor{false};
+};
+
+// The rename modal is NOT engine-hosted (input_string_ex blocks in
+// get_input_events(WAIT)), so wait_for_menu_frames can never be satisfied
+// inside it. og::input_native::text_input_is_active() is the only observable
+// that the editor reached its loop and cleared the input state -- anything
+// injected before that is discarded. Bounded, never a flat delay.
+int name_guy_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    SDL_Delay(40);
+    NameGuyInjectorArgs* a = static_cast<NameGuyInjectorArgs*>(data);
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (SDL_GetTicks() < deadline)
+    {
+        if (og::input_native::text_input_is_active())
+        {
+            a->saw_editor.store(true, std::memory_order_relaxed);
+            break;
+        }
+        SDL_Delay(5);
+    }
+    inject_text_input(a->text);
+    SDL_Delay(30);
     inject_key_press(SDLK_RETURN, 10);
     return 0;
 }
 } // namespace
 
-TEST(PickerUncovered, picker_name_guy_paths)
+TEST(PickerUncovered, picker_name_guy_writes_accepted_text_and_only_a_roster_rename_saves)
 {
     PickerStateGuard guard;
-    // §3.8: a rename ACCEPT (Enter keeps the prefilled name = has_value) now
-    // runs the base-camp mutation tail, which lazily creates the local lobby
-    // client and seeds its cached roster with THIS test's guys. Any later
-    // picker loop's picker_lobby_poll() would rewrite save.team_list from
-    // that stale cache (the documented promote-test wedge) — shut the client
-    // down on every exit path.
+    // §3.8: a rename ACCEPT (has_value) runs the base-camp mutation tail,
+    // which lazily creates the local lobby client and seeds its cached roster
+    // with THIS test's guys. Any later picker loop's picker_lobby_poll() would
+    // rewrite save.team_list from that stale cache (the documented promote-test
+    // wedge) — shut the client down on every exit path.
     struct LobbyShutdownGuard {
         ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
     } lobby_guard;
@@ -150,23 +195,44 @@ TEST(PickerUncovered, picker_name_guy_paths)
     og::runtime::current_session->current_guy_ = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->current_guy_->name = "CURSORIG";
 
-    SDL_Thread* rename_current_thread = SDL_CreateThread(name_guy_injector, "picker_name_current", nullptr);
+    // arg == 0 names the hire screen's not-yet-hired recruit: nothing on the
+    // roster changed, so the §3.8 tail must NOT run. Start from a clean slate
+    // so the lazily created standalone client is the evidence.
+    picker_lobby_shutdown();
+    ASSERT_FALSE(picker_lobby_testing_standalone_client_alive())
+        << "setup: no standalone lobby client before the recruit rename";
+
+    NameGuyInjectorArgs recruit_args{"RENAMED0", {}};
+    SDL_Thread* rename_current_thread = SDL_CreateThread(name_guy_injector, "picker_name_current", &recruit_args);
     ASSERT_TRUE(rename_current_thread != nullptr) << "rename-current injector should be created";
     ASSERT_EQ(2, (int)name_guy(0)) << "name_guy(0) should return REDRAW";
     int thread_result = 0;
     SDL_WaitThread(rename_current_thread, &thread_result);
-    ASSERT_TRUE(og::runtime::current_session->current_guy_->name == "CURSORIG") << "return without text should preserve current guy name";
+    ASSERT_TRUE(recruit_args.saw_editor.load(std::memory_order_relaxed))
+        << "the recruit rename must actually open the text editor";
+    EXPECT_EQ("RENAMED0", og::runtime::current_session->current_guy_->name)
+        << "an accepted rename writes the typed text onto the guy on screen";
+    EXPECT_FALSE(picker_lobby_testing_standalone_client_alive())
+        << "renaming the hire screen's recruit is not a roster mutation: no "
+           "lobby sync, no autosave";
 
     TeamSlotGuard slot_guard(0);
     og::runtime::current_session->editguy_ = 0;
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_MAGE));
     og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAMORIG";
 
-    SDL_Thread* rename_team_thread = SDL_CreateThread(name_guy_injector, "picker_name_team", nullptr);
+    NameGuyInjectorArgs roster_args{"RENAMED1", {}};
+    SDL_Thread* rename_team_thread = SDL_CreateThread(name_guy_injector, "picker_name_team", &roster_args);
     ASSERT_TRUE(rename_team_thread != nullptr) << "rename-team injector should be created";
     ASSERT_EQ(2, (int)name_guy(1)) << "name_guy(1) should return REDRAW";
     SDL_WaitThread(rename_team_thread, &thread_result);
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.team_list[0]->name == "TEAMORIG") << "return without text should preserve team guy name";
+    ASSERT_TRUE(roster_args.saw_editor.load(std::memory_order_relaxed))
+        << "the roster rename must actually open the text editor";
+    EXPECT_EQ("RENAMED1", og::runtime::current_session->myscreen_->save_data.team_list[0]->name)
+        << "an accepted rename writes the typed text onto the roster member";
+    EXPECT_TRUE(picker_lobby_testing_standalone_client_alive())
+        << "§3.8: a ROSTER rename runs picker_base_camp_after_roster_mutation, "
+           "whose lobby roster push creates the local client";
 
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset();
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(nullptr);
@@ -174,7 +240,7 @@ TEST(PickerUncovered, picker_name_guy_paths)
 }
 
 
-TEST(PickerUncovered, picker_edit_guy_paths)
+TEST(PickerUncovered, picker_train_accept_debits_the_purse_and_writes_the_roster)
 {
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
@@ -194,9 +260,27 @@ TEST(PickerUncovered, picker_edit_guy_paths)
     og::ui::TrainSession session(og::runtime::current_session->myscreen_->save_data);
     ASSERT_TRUE(!session.empty()) << "session should not be empty";
 
+    // The soldier sits at its family base, so +1 STR is priced from delta 0
+    // to delta 1: pow(1, kStatCostExponent) * stat_costs[Strength] = 6 gold.
+    const FamilyDescriptor* const soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier) << "SOLDIER must have a descriptor";
+    const int str_before = og::runtime::current_session->myscreen_->save_data.team_list[0]->strength;
+    const std::uint32_t gold_before = og::runtime::current_session->myscreen_->save_data.m_totalcash[0];
+
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
-    ASSERT_TRUE(session.current_cost() > 0) << "cost should be positive after stat increase";
+    const std::uint32_t cost = session.current_cost();
+    ASSERT_EQ(static_cast<std::uint32_t>(soldier->stat_costs[StatAxis::Strength]), cost)
+        << "one point above the family base costs exactly one stat_costs unit";
     ASSERT_TRUE(session.accept()) << "accept should succeed with enough gold";
+
+    // accept() debits the wallet and statscopy's the working guy back onto the
+    // roster member; an accept that does neither used to pass this test.
+    EXPECT_EQ(str_before + 1,
+              (int)og::runtime::current_session->myscreen_->save_data.team_list[0]->strength)
+        << "accept writes the trained stat onto the roster member";
+    EXPECT_EQ(gold_before - cost,
+              og::runtime::current_session->myscreen_->save_data.m_totalcash[0])
+        << "accept charges the training price to the member's team purse";
 
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(nullptr);
     og::runtime::current_session->myscreen_->save_data.team_size = 0;
@@ -241,9 +325,18 @@ TEST(PickerUncovered, picker_team_wraps_on_negative_step)
     og::runtime::current_session->current_team_num_ = saved_team_num;
 }
 
+// The exerciser reports "no check failed" as 0 -- which is also what it
+// returns after running ZERO checks. Pin the count too, so an early return or
+// a guard that skips part of the ladder cannot silently turn ~140 product
+// assertions into none.
 TEST(PickerUncovered, picker_team_build_internal_paths)
 {
-    ASSERT_EQ(0, picker_team_build_testing_exercise_internal_paths());
+    int checks = -1;
+    ASSERT_EQ(0, picker_team_build_testing_exercise_internal_paths(&checks))
+        << "every internal check must pass (the value is the 1-based index of "
+           "the first failure, negated)";
+    ASSERT_EQ(kPickerTeamBuildInternalCheckCount, checks)
+        << "the exerciser must run its whole check ladder";
 }
 
 TEST(PickerUncovered, start_game_request_and_team_view_use_lobby_state)
@@ -278,8 +371,53 @@ TEST(PickerUncovered, start_game_request_and_team_view_use_lobby_state)
     scr->redrawme = 0;
     view_team(10, 10, 310, 100);
     EXPECT_EQ(1, scr->redrawme);
-    EXPECT_EQ("Red", save.team_list[0]->name);
-    EXPECT_EQ("Blue", save.team_list[3]->name);
+
+    // view_team lists every non-null slot, one 6 px row at a time, writing the
+    // name in the family-derived namecolor ((family+1)<<4)&255 and the stat
+    // line in BLACK. Two members are seated, so rows 0 and 1 carry ink and row
+    // 2 is bare box face. (The small font shades a glyph over its colour's
+    // five-entry ramp.)
+    const std::set<int> row0 = view_team_row_colors(*scr, 19);
+    const std::set<int> row1 = view_team_row_colors(*scr, 25);
+    const std::set<int> row2 = view_team_row_colors(*scr, 31);
+
+    const int soldier_ramp = ((FAMILY_SOLDIER + 1) << 4) & 255;   // 16
+    const int mage_ramp = ((FAMILY_MAGE + 1) << 4) & 255;         // 64
+    auto shades_in = [](const std::set<int>& row, int base) {
+        std::size_t n = 0;
+        for (int shade = 0; shade < 5; ++shade)
+            n += row.count(base + shade);
+        return n;
+    };
+
+    // Each listed member is named in its OWN family ramp and its stat line is
+    // written in BLACK; the rows do not share a colour, so a loop that drew
+    // one member twice, drew nothing, or used a fixed colour fails here.
+    EXPECT_EQ(3u, shades_in(row0, soldier_ramp))
+        << "slot 0 (a SOLDIER) is named in the family-derived ramp 16..20";
+    EXPECT_EQ(0u, shades_in(row0, mage_ramp))
+        << "and not in the mage's";
+    EXPECT_EQ(5u, shades_in(row1, mage_ramp))
+        << "slot 3 (a MAGE) is named in ITS ramp 64..68, one row below";
+    EXPECT_EQ(0u, shades_in(row1, soldier_ramp))
+        << "and not in the soldier's";
+    EXPECT_EQ(1u, row0.count(static_cast<int>(BLACK)))
+        << "the STR/DEX/CON/INT/ARM line is written in BLACK";
+    EXPECT_EQ(1u, row1.count(static_cast<int>(BLACK)))
+        << "for every listed member";
+
+    // Exact ink, so a dropped column or an extra one is visible too.
+    const std::set<int> expected_row0{0, 3, 13, 17, 18, 19, 160, 161, 162, 163, 164};
+    const std::set<int> expected_row1{13, 64, 65, 66, 67, 68, 160, 161, 162, 163, 164};
+    EXPECT_EQ(expected_row0, row0)
+        << "row 0 = box face 13 + the soldier name ramp + the BLACK stat and "
+           "level glyphs";
+    EXPECT_EQ(expected_row1, row1)
+        << "row 1 = box face 13 + the mage name ramp + the BLACK stat and "
+           "level glyphs";
+    EXPECT_EQ(std::set<int>{13}, row2)
+        << "only the two seated members are listed: the third row is bare box "
+           "face, with no phantom row for an empty slot";
 
     g_start_game_requested = false;
 }

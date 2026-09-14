@@ -108,7 +108,7 @@ TEST(PickerMenuNav, picker_handle_menu_nav_moves_and_skips_hidden_targets)
 }
 
 
-TEST(PickerMenuNav, picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke)
+TEST(PickerMenuNav, picker_handle_menu_nav_fire_dispatches_its_action_and_nav_expires)
 {
     disablePlayerJoystick(0);
     KeyBindingGuard b_fire(0, KEY_FIRE, SDLK_SPACE);
@@ -138,18 +138,28 @@ TEST(PickerMenuNav, picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke)
     ASSERT_TRUE(activated) << "fire with nav enabled should activate";
     ASSERT_EQ(4, (int)retvalue) << "activation without global vbuttons should return OK";
 
-    // Fire while nav enabled with global vbuttons path.
-    vbutton* primary_button = init_buttons(buttons, 1);
-    (void)primary_button;
+    // Fire while nav enabled with global vbuttons path: the highlighted
+    // vbutton's action really runs and ITS return reaches retvalue
+    // (ReturnMenu -> return_menu(arg) echoes the argument).
+    button action_buttons[] = {
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10,
+               button_action_id(ButtonAction::ReturnMenu), 1234, MenuNav{}, false),
+    };
+    vbutton* primary_button = init_buttons(action_buttons, 1);
+    ASSERT_TRUE(primary_button != nullptr) << "init_buttons must publish the vbutton";
+    highlighted = 0;
     retvalue = 0;
     ks.set(SDLK_SPACE, true);
     std::thread release_fire3(release_key_after, &ks, SDLK_SPACE, 10);
-    activated = handle_menu_nav(buttons, highlighted, retvalue, true);
+    activated = handle_menu_nav(action_buttons, highlighted, retvalue, true);
     release_fire3.join();
     ASSERT_TRUE(activated) << "fire with global vbuttons should activate";
+    ASSERT_EQ(1234, (int)retvalue)
+        << "the highlighted vbutton's action return must reach retvalue";
     clear_allbuttons();
 
-    // Smoke draw highlight routines under both nav states.
+    // Coverage-only: the highlight painters have no cheap pixel oracle here;
+    // they are exercised (not pinned) under both nav states.
     pks().menu_nav_enabled = false;
     draw_highlight_interior(buttons[0]);
     draw_highlight(buttons[0]);
@@ -157,11 +167,23 @@ TEST(PickerMenuNav, picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke)
     draw_highlight_interior(buttons[0]);
     draw_highlight(buttons[0]);
 
-    // Expiry branch (no press + timeout).
+    // Idle expiry: nav survives 4 s of silence and drops to MENU_NAV_DEFAULT
+    // (false in this build -- USE_CONTROLLER_INPUT is defined nowhere) after 5 s.
+    ks.set(SDLK_SPACE, false);
+    highlighted = 0;
+    retvalue = 0;
+    pks().menu_nav_enabled = true;
+    pks().menu_nav_enabled_time = og::input_native::ticks_ms() - 4000;
+    ASSERT_TRUE(!handle_menu_nav(buttons, highlighted, retvalue, false))
+        << "an idle poll activates nothing";
+    ASSERT_TRUE(pks().menu_nav_enabled) << "4 s of idle keeps menu nav on";
+
     pks().menu_nav_enabled = true;
     pks().menu_nav_enabled_time = og::input_native::ticks_ms() - 6000;
-    ks.set(SDLK_SPACE, false);
-    (void)handle_menu_nav(buttons, highlighted, retvalue, false);
+    ASSERT_TRUE(!handle_menu_nav(buttons, highlighted, retvalue, false))
+        << "an idle poll activates nothing";
+    ASSERT_TRUE(!pks().menu_nav_enabled)
+        << "more than 5 s of idle drops menu nav back to MENU_NAV_DEFAULT";
 }
 
 // Pin the TESTING capture hook: injector threads drive one keyboard-nav step

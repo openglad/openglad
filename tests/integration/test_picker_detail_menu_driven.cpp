@@ -4,6 +4,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/resources/company.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -158,37 +159,143 @@ struct PickerLobbyShutdownGuard
 {
     ~PickerLobbyShutdownGuard() { picker_lobby_shutdown(); }
 };
+
+struct CanvasRoutingGuard
+{
+    CanvasTarget target = E_Screen->active_canvas();
+    ~CanvasRoutingGuard() { E_Screen->set_active_canvas(target); }
+};
+
+// Palette-index ink counter. The picker paints indexed colours: the header
+// font (pix/textbig.png) is a single-index pixie whose lit pixels are exactly
+// RED (40), and the small font shades a glyph across its colour's five-entry
+// ramp, so DARK_BLUE body text lands in 72..76.
+std::size_t count_palette(int x1, int x2, int y1, int y2, int lo, int hi)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    std::size_t hits = 0;
+    for (int y = y1; y <= y2; ++y)
+        for (int x = x1; x <= x2; ++x)
+        {
+            int index = 0;
+            scr->get_pixel(x, y, &index);
+            if (index >= lo && index <= hi)
+                ++hits;
+        }
+    return hits;
+}
+
+// create_detail_menu's abilities panel: draw_dialog(5, 68, 315, 167,
+// "Character Special Abilities") plus render_family_abilities' left column
+// (DETAIL_LM = 11, detail_line_y(n) = 90 + 6n).
+constexpr int kAbilityHeaderX1 = 9;
+constexpr int kAbilityHeaderX2 = 311;
+constexpr int kAbilityHeaderY1 = 72;   // draw_dialog header field: y1+4
+constexpr int kAbilityHeaderY2 = 86;   //                          y1+18
+constexpr int kAbilityTextX1 = 11;
+constexpr int kAbilityTextX2 = 155;
+constexpr int kAbilityTextY1 = 88;
+constexpr int kAbilityTextY2 = 163;
 } // namespace
 
-TEST(PickerDetailMenuDriven, picker_detail_menu_back_exercises_many_family_descriptions)
+// create_detail_menu returns MENU_REDRAW from FOUR places (the two early-outs
+// for an unseated/empty slot, the promote branch, and the BACK tail), so the
+// return code alone proves nothing. Pin the painted frame: the loop must have
+// run, drawn the abilities dialog, and rendered the family's OWN ability text
+// (a family with no ability table paints the panel and no text at all).
+TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abilities_then_exits_on_back)
 {
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
+    PickerLobbyShutdownGuard lobby_guard;
+    CanvasRoutingGuard canvas_guard;
 
-    og::runtime::current_session->editguy_ = 0;
-    og::runtime::current_session->myscreen_->save_data.team_size = 1;
-    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
-    og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAM_SOLDIER";
-    og::runtime::current_session->myscreen_->save_data.team_list[0]->level = 10;
+    struct Case
+    {
+        int family;
+        const char* what;
+        bool has_ability_table;   // get_family_detail() knows this family
+    };
+    const Case cases[] = {
+        { FAMILY_SOLDIER,  "soldier",  true  },
+        { FAMILY_THIEF,    "thief",    true  },
+        { FAMILY_SKELETON, "skeleton", false },
+    };
 
-    og::runtime::current_session->current_guy_ = std::make_unique<guy>(*og::runtime::current_session->myscreen_->save_data.team_list[0]);
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::size_t soldier_ability_ink = 0;
+    std::size_t thief_ability_ink = 0;
 
-    KeyStateGuard ks;
-    std::atomic<bool> done{false};
-    prepare_detail_menu_mouse_click();
-    InjectorArgs args{&ks, false, &done};
-    SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_exit", &args);
-    ASSERT_TRUE(th != nullptr) << "injector thread started";
+    for (const Case& c : cases)
+    {
+        og::runtime::current_session->editguy_ = 0;
+        save.team_size = 1;
+        save.team_list[0].reset(new guy(c.family));
+        save.team_list[0]->name = "TEAM_GUY";
+        save.team_list[0]->level = 10;
+        og::runtime::current_session->current_guy_ =
+            std::make_unique<guy>(*save.team_list[0]);
 
-    Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
-    done.store(true, std::memory_order_relaxed);
-    int code = 0;
-    if (th)
+        E_Screen->set_active_canvas(CanvasTarget::UI);
+        SDL_FillSurfaceRect(E_Screen->render, nullptr, 0);
+
+        KeyStateGuard ks;
+        std::atomic<bool> done{false};
+        prepare_detail_menu_mouse_click();
+        InjectorArgs args{&ks, false, &done};
+        SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu,
+                                          "picker_detail_exit", &args);
+        ASSERT_TRUE(th != nullptr) << "injector thread started for " << c.what;
+
+        Sint32 r = create_detail_menu(save.team_list[0].get());
+        done.store(true, std::memory_order_relaxed);
+        int code = 0;
         SDL_WaitThread(th, &code);
-    clear_events();
+        clear_events();
 
-    // create_detail_menu exits back to the edit menu and always returns REDRAW.
-    ASSERT_EQ(2, (int)r) << "detail menu should return REDRAW on back";
+        // Exclude the two silent early-outs: the slot stayed seated and held
+        // a guy for the whole loop, so MENU_REDRAW came from the BACK click.
+        ASSERT_EQ(0, og::runtime::current_session->editguy_)
+            << "the parameter seats slot 0 for " << c.what;
+        ASSERT_TRUE(save.team_list[0] != nullptr)
+            << "slot 0 stayed seated for " << c.what;
+        ASSERT_EQ(2, (int)r) << "detail menu returns REDRAW on back for " << c.what;
+
+        const std::size_t header_red =
+            count_palette(kAbilityHeaderX1, kAbilityHeaderX2,
+                          kAbilityHeaderY1, kAbilityHeaderY2, RED, RED);
+        const std::size_t ability_ink =
+            count_palette(kAbilityTextX1, kAbilityTextX2,
+                          kAbilityTextY1, kAbilityTextY2,
+                          DARK_BLUE, DARK_BLUE + 4);
+        EXPECT_GT(header_red, 40u)
+            << "the detail loop must paint its 'Character Special Abilities' "
+               "header for " << c.what;
+        if (c.has_ability_table)
+        {
+            EXPECT_GT(ability_ink, 40u)
+                << "render_family_abilities must write the class line and "
+                   "ability text for " << c.what;
+        }
+        else
+        {
+            EXPECT_EQ(0u, ability_ink)
+                << "a family with no ability table paints the panel and no "
+                   "ability text (" << c.what << ")";
+        }
+
+        if (c.family == FAMILY_SOLDIER)
+            soldier_ability_ink = ability_ink;
+        if (c.family == FAMILY_THIEF)
+            thief_ability_ink = ability_ink;
+    }
+
+    EXPECT_NE(soldier_ability_ink, thief_ability_ink)
+        << "the panel text is derived from the seated family, not a fixed "
+           "block: a soldier and a thief do not read the same";
+
+    save.team_list[0].reset();
+    save.team_size = 0;
 }
 
 
@@ -782,8 +889,18 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_cancel_discards_pending_edi
     save.m_totalcash[0] = saved_cash;
 }
 
-TEST(PickerDetailMenuDriven, picker_family_name_copy_includes_archmage)
+// family_name_copy is picker.cpp's wrapper over og::ui::family_short_name,
+// which never returns nullptr -- so a null check pins nothing. Pin the label
+// each of its three branches produces.
+TEST(PickerDetailMenuDriven, picker_family_name_copy_labels_each_short_name_branch)
 {
-    const char* a = family_name_copy(FAMILY_ARCHMAGE);
-    ASSERT_TRUE(a != nullptr) << "family_name_copy should return a string";
+    // packs/core/families/living-17-archmage.lua: short_name = og.NIL, so the
+    // display name is the label.
+    EXPECT_STREQ("ARCHMAGE", family_name_copy(FAMILY_ARCHMAGE))
+        << "no pack short_name -> the descriptor's display name is the label";
+    // living-15-orc_captain.lua: name "ORC CAPTAIN", short_name "ORC CAP."
+    EXPECT_STREQ("ORC CAP.", family_name_copy(FAMILY_BIG_ORC))
+        << "a pack short_name wins over the display name";
+    EXPECT_STREQ("BEAST", family_name_copy(static_cast<short>(99)))
+        << "no descriptor at all -> BEAST";
 }

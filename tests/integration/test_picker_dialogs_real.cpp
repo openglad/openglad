@@ -2,6 +2,7 @@
 #include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include <openglad/core/test_trace.h>
 #include "test_input_helpers.h"
 
 #include <algorithm>
@@ -97,6 +98,77 @@ static int dialog_click_injector(void* data)
 }
 } // namespace
 
+// --- #259: the dialog header band -----------------------------------------
+// Geometry mirrors compute_dialog_bounds (src/interface/ui/picker_dialogs.cpp)
+// and sdl_video::draw_dialog: never hard-code the y, so a bounds change moves
+// the probe with the box instead of silently reading empty grey.
+namespace
+{
+constexpr int kDialogPixPerChar = 6;   // compute_dialog_bounds' PIX_PER_CHAR
+constexpr int kDialogTitlePitch = 9;   // its title pitch
+
+struct DialogBandGeometry
+{
+    int x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    int header_top = 0, header_bottom = 0;   // draw_dialog's header field
+    int body_top = 0, body_bottom = 0;       // draw_dialog's message field
+};
+
+DialogBandGeometry dialog_band_geometry(const char* title,
+                                        const std::vector<std::string>& lines)
+{
+    int w = static_cast<int>(strlen(title)) * kDialogTitlePitch;
+    for (const std::string& line : lines)
+        w = std::max(w, static_cast<int>(line.size()) * kDialogPixPerChar);
+    const int h = 30 + 10 * static_cast<int>(lines.size());
+
+    DialogBandGeometry g;
+    g.x1 = 160 - w / 2 - 12;
+    g.x2 = 160 + w / 2 + 12;
+    g.y1 = 80 - h / 2;
+    g.y2 = 80 + h / 2;
+    g.header_top = g.y1 + 4;
+    g.header_bottom = g.y1 + 18;
+    g.body_top = g.y1 + 20;
+    g.body_bottom = g.y2 - 4;
+    return g;
+}
+
+// The header font (pix/textbig.png) is a single-index pixie: every lit glyph
+// pixel carries palette entry 40, the pure red that draw_dialog asks for, and
+// the header bar under it is the neutral grey of palette entry 12. So "the
+// title is on screen" is exactly "red pixels inside the header field".
+std::size_t count_red(int x1, int x2, int y1, int y2)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    std::size_t red = 0;
+    for (int y = y1; y <= y2; ++y)
+        for (int x = x1; x <= x2; ++x)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            scr->get_pixel(x, y, &r, &g, &b);
+            if (r > 150 && g + 60 < r && b + 60 < r)
+                ++red;
+        }
+    return red;
+}
+
+std::size_t count_blue(int x1, int x2, int y1, int y2)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    std::size_t blue = 0;
+    for (int y = y1; y <= y2; ++y)
+        for (int x = x1; x <= x2; ++x)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            scr->get_pixel(x, y, &r, &g, &b);
+            if (b > 100 && r + 30 < b && g + 30 < b)
+                ++blue;
+        }
+    return blue;
+}
+} // namespace
+
 TEST(PickerDialogsReal, picker_dialogs_yes_or_no_queued_override_paths)
 {
     picker_testing_yes_or_no_queue_clear();
@@ -117,12 +189,23 @@ TEST(PickerDialogsReal, picker_dialogs_no_or_yes_default_paths)
 }
 
 
-TEST(PickerDialogsReal, picker_dialogs_popup_dialog_testmode_noop)
+// The TESTING early-return is the seam every popup oracle in the tree reads
+// (trace_contains("popup", ...) in test_picker_accessible_levels.cpp and
+// test_pause_menu.cpp). Pin its category AND its "<title>: <message>" format
+// here, where a change fails by name instead of silently detoothing them.
+TEST(PickerDialogsReal, picker_dialogs_popup_dialog_testmode_records_title_and_message)
 {
     vbutton* buttons_before = og::runtime::current_session->localbuttons_;
+    trace_clear();
     popup_dialog("Information", "This is a test popup\\nwith two lines.");
     ASSERT_EQ(buttons_before, og::runtime::current_session->localbuttons_)
         << "test-mode popup should return before installing dialog buttons";
+    EXPECT_TRUE(trace_contains("popup", "Information: This is a test popup"))
+        << "test-mode popups are recorded as '<title>: <message>' in trace "
+           "category 'popup'";
+    EXPECT_FALSE(trace_contains("popup", "Information: Some other popup"))
+        << "control: the probe reads the recorded text, not merely 'a popup "
+           "happened'";
 }
 
 
@@ -200,93 +283,41 @@ TEST(PickerDialogsReal, picker_dialogs_no_or_yes_real_dialog_click_no)
 }
 
 
-TEST(PickerDialogsReal, picker_dialogs_popup_dialog_real_click_ok)
+TEST(PickerDialogsReal, picker_dialogs_popup_dialog_real_blocks_and_paints_until_ok)
 {
     ViewportGuard viewport_guard;
     RealDialogsGuard real_dialogs_guard;
+    CanvasRoutingGuard canvas_guard;
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, 0);
 
     DialogThreadState st{false, false, 160, 140};
     SDL_Thread* thread = SDL_CreateThread(dialog_click_injector, "picker_popup_dialog", &st);
     ASSERT_TRUE(thread != nullptr) << "failed to create popup dialog injector";
 
+    const Uint64 t0 = SDL_GetTicks();
     popup_dialog("Information", "This is a real dialog\nwith two lines.");
+    const Uint64 elapsed = SDL_GetTicks() - t0;
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 
     ASSERT_TRUE(st.started && st.finished) << "popup dialog injector should run";
+    EXPECT_GE(elapsed, 100u)
+        << "with force_real_dialogs set, popup_dialog must block in its event "
+           "loop until the injected OK click (the injector sleeps 100 ms first)";
+
+    // The last frame drawn before the click was consumed is still on the UI
+    // canvas: the dialog painted its title and its wrapped message.
+    const DialogBandGeometry g = dialog_band_geometry(
+        "Information", {"This is a real dialog", "with two lines."});
+    const std::size_t header_red =
+        count_red(g.x1 + 4, g.x2 - 4, g.header_top, g.header_bottom);
+    const std::size_t body_blue =
+        count_blue(g.x1 + 4, g.x2 - 4, g.body_top, g.body_bottom);
+    EXPECT_GT(header_red, 40u) << "the real popup must paint its title";
+    EXPECT_GT(body_blue, 40u) << "and its wrapped message body";
 }
-
-// --- #259: the dialog header band -----------------------------------------
-// Geometry mirrors compute_dialog_bounds (src/interface/ui/picker_dialogs.cpp)
-// and sdl_video::draw_dialog: never hard-code the y, so a bounds change moves
-// the probe with the box instead of silently reading empty grey.
-namespace
-{
-constexpr int kDialogPixPerChar = 6;   // compute_dialog_bounds' PIX_PER_CHAR
-constexpr int kDialogTitlePitch = 9;   // its title pitch
-
-struct DialogBandGeometry
-{
-    int x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-    int header_top = 0, header_bottom = 0;   // draw_dialog's header field
-    int body_top = 0, body_bottom = 0;       // draw_dialog's message field
-};
-
-DialogBandGeometry dialog_band_geometry(const char* title,
-                                        const std::vector<std::string>& lines)
-{
-    int w = static_cast<int>(strlen(title)) * kDialogTitlePitch;
-    for (const std::string& line : lines)
-        w = std::max(w, static_cast<int>(line.size()) * kDialogPixPerChar);
-    const int h = 30 + 10 * static_cast<int>(lines.size());
-
-    DialogBandGeometry g;
-    g.x1 = 160 - w / 2 - 12;
-    g.x2 = 160 + w / 2 + 12;
-    g.y1 = 80 - h / 2;
-    g.y2 = 80 + h / 2;
-    g.header_top = g.y1 + 4;
-    g.header_bottom = g.y1 + 18;
-    g.body_top = g.y1 + 20;
-    g.body_bottom = g.y2 - 4;
-    return g;
-}
-
-// The header font (pix/textbig.png) is a single-index pixie: every lit glyph
-// pixel carries palette entry 40, the pure red that draw_dialog asks for, and
-// the header bar under it is the neutral grey of palette entry 12. So "the
-// title is on screen" is exactly "red pixels inside the header field".
-std::size_t count_red(int x1, int x2, int y1, int y2)
-{
-    screen* const scr = og::runtime::current_session->myscreen_;
-    std::size_t red = 0;
-    for (int y = y1; y <= y2; ++y)
-        for (int x = x1; x <= x2; ++x)
-        {
-            Uint8 r = 0, g = 0, b = 0;
-            scr->get_pixel(x, y, &r, &g, &b);
-            if (r > 150 && g + 60 < r && b + 60 < r)
-                ++red;
-        }
-    return red;
-}
-
-std::size_t count_blue(int x1, int x2, int y1, int y2)
-{
-    screen* const scr = og::runtime::current_session->myscreen_;
-    std::size_t blue = 0;
-    for (int y = y1; y <= y2; ++y)
-        for (int x = x1; x <= x2; ++x)
-        {
-            Uint8 r = 0, g = 0, b = 0;
-            scr->get_pixel(x, y, &r, &g, &b);
-            if (b > 100 && r + 30 < b && g + 30 < b)
-                ++blue;
-        }
-    return blue;
-}
-} // namespace
 
 TEST(PickerDialogsReal, dialog_header_paints_inside_its_own_field)
 {
