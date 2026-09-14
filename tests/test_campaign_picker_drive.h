@@ -41,9 +41,12 @@ std::uint64_t campaign_picker_testing_frame_count();
 inline constexpr Uint64 kCampaignPickerHandshakeMs = 5000;
 // ENTERING the browser is not a handshake on a live loop — it is real work
 // (pick_campaign enumerates every campaign, and every entry mount reinstalls
-// the class packs) that an instrumented lane can stretch for seconds. Its
-// ceiling is separate and generous for exactly that reason.
-inline constexpr Uint64 kCampaignPickerEntryMs = 15000;
+// the class packs) that an instrumented lane can stretch for seconds, so it
+// gets its own ceiling rather than the handshake's. The number is not a new
+// budget: it is the ceiling this wait already carried, carried over verbatim
+// from the local wait_for_counter_above that used to live in
+// tests/integration/test_campaign_sprite_uaf.cpp (kTimeoutMs = 8000).
+inline constexpr Uint64 kCampaignPickerEntryMs = 8000;
 // Poll tick, not a settle (scripts/check_injector_settles.sh, tier 2).
 inline constexpr Uint32 kCampaignPickerPollMs = 1;
 

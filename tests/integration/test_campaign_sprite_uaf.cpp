@@ -177,6 +177,11 @@ struct PickerInputResetGuard
     ~PickerInputResetGuard()
     {
         campaign_picker_testing_input_reset();
+        // Not the flush the body warns about: each body already polled its
+        // tail's release through reset_mouse_click_tracking() + pump before
+        // this guard unwinds, so what is left here is at most a lone press
+        // the browser never saw -- never a release whose loss would pin
+        // mouse_state.left true.
         SDL_FlushEvents(SDL_EVENT_MOUSE_BUTTON_DOWN,
                         SDL_EVENT_MOUSE_BUTTON_UP);
     }
