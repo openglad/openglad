@@ -214,6 +214,7 @@ enum class CaptureFocus {
     Player,  // unchanged demo behaviour
     Boss,    // follow the strongest live hostile
     Center,  // static wide shot of the map centre
+    Cell,    // static shot with the map cell (cell_x, cell_y) at the top-left
 };
 
 struct CaptureSettings {
@@ -223,14 +224,17 @@ struct CaptureSettings {
     int limit = 0;            // 0 ⇒ unlimited; otherwise stop after N dumps
     int session_index = 0;    // which grid cell to dump; -1 ⇒ the whole grid
     CaptureFocus focus = CaptureFocus::Player;
+    int cell_x = 0;           // Cell focus only: map cell the camera is aimed at
+    int cell_y = 0;
 
     [[nodiscard]] bool enabled() const noexcept { return !dir.empty(); }
 };
 
 // Re-aim the captured session's camera. Called once per rendered frame, before
 // the draw, with the session scope active.
-static void apply_capture_focus(screen& s, CaptureFocus focus)
+static void apply_capture_focus(screen& s, const CaptureSettings& capture)
 {
+    const CaptureFocus focus = capture.focus;
     if (focus == CaptureFocus::Player)
         return;
     viewscreen* view = s.viewob[0].get();
@@ -246,6 +250,23 @@ static void apply_capture_focus(screen& s, CaptureFocus focus)
             0, (s.world().pixmaxx - view->xview) / 2);
         s.level_visuals().topy = std::max(
             0, (s.world().pixmaxy - view->yview) / 2);
+        return;
+    }
+
+    if (focus == CaptureFocus::Cell) {
+        // Same free camera as Center, aimed by map cell instead of at the
+        // middle: a media recipe names the artefact it wants in frame by the
+        // grid coordinates the editor and the level PNG both use. The cell
+        // lands at the viewport's top-left, clamped so the camera never
+        // scrolls past the level into border fill.
+        view->control = nullptr;
+        view->following_ = false;
+        s.level_visuals().topx = std::clamp(
+            capture.cell_x * GRID_SIZE, 0,
+            std::max(0, s.world().pixmaxx - view->xview));
+        s.level_visuals().topy = std::clamp(
+            capture.cell_y * GRID_SIZE, 0,
+            std::max(0, s.world().pixmaxy - view->yview));
         return;
     }
 
@@ -275,6 +296,29 @@ static void apply_capture_focus(screen& s, CaptureFocus focus)
     }
 }
 
+// The `cell:<x>,<y>` focus form. Both coordinates are required and must be
+// non-negative decimal integers: a typo that silently aimed at cell 0,0 would
+// hand a media recipe a picture of the wrong corner of the map.
+static constexpr std::string_view kCellFocusPrefix = "cell:";
+
+static std::string capture_focus_error(std::string_view got)
+{
+    return std::format(
+        "OPENGLAD_DEMO_CAPTURE_FOCUS must be player, boss, center or "
+        "cell:<x>,<y>, got '{}'", got);
+}
+
+static int parse_cell_coordinate(std::string_view field, std::string_view whole)
+{
+    int value = 0;
+    const auto parsed = std::from_chars(
+        field.data(), field.data() + field.size(), value);
+    if (field.empty() || parsed.ec != std::errc{} ||
+        parsed.ptr != field.data() + field.size() || value < 0)
+        throw std::runtime_error(capture_focus_error(whole));
+    return value;
+}
+
 static CaptureSettings capture_settings_from_env()
 {
     CaptureSettings settings;
@@ -295,10 +339,17 @@ static CaptureSettings capture_settings_from_env()
             settings.focus = CaptureFocus::Boss;
         else if (name == "center")
             settings.focus = CaptureFocus::Center;
+        else if (name.starts_with(kCellFocusPrefix)) {
+            const std::string_view args = name.substr(kCellFocusPrefix.size());
+            const std::size_t comma = args.find(',');
+            if (comma == std::string_view::npos)
+                throw std::runtime_error(capture_focus_error(name));
+            settings.cell_x = parse_cell_coordinate(args.substr(0, comma), name);
+            settings.cell_y = parse_cell_coordinate(args.substr(comma + 1), name);
+            settings.focus = CaptureFocus::Cell;
+        }
         else
-            throw std::runtime_error(std::format(
-                "OPENGLAD_DEMO_CAPTURE_FOCUS must be player, boss or center, "
-                "got '{}'", name));
+            throw std::runtime_error(capture_focus_error(name));
     }
     return settings;
 }
@@ -1191,7 +1242,7 @@ int main(int argc, char* argv[])
 
                 if (capture_writer &&
                     (capture.session_index < 0 || i == capture.session_index))
-                    apply_capture_focus(*s, capture.focus);
+                    apply_capture_focus(*s, capture);
 
                 render_session_frame(
                     *s, demos[static_cast<size_t>(i)].session->session_surface_);
