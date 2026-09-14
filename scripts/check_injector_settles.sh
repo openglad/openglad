@@ -58,9 +58,8 @@
 # test_fairy_death.cpp, test_go_no_team.cpp, test_help.cpp,
 # test_level_editor_issue12_wall_crash.cpp, test_lineup_ui.cpp,
 # test_menu_engine.cpp, test_menu_pins.cpp, test_networking_menu.cpp,
-# test_networking_uxshots.cpp, test_overpowered_team.cpp,
-# test_picker_funcs.cpp, test_seat_chip.cpp, test_uxshots_probe.cpp,
-# test_view_team.cpp. Two more census hits are not settles and need no
+# test_networking_uxshots.cpp, test_picker_funcs.cpp,
+# test_seat_chip.cpp, test_uxshots_probe.cpp, test_view_team.cpp. Two more census hits are not settles and need no
 # conversion: test_menu_frame_wait.cpp's 750 sits inside a comment describing
 # the cargo cult, and tests/test_input_helpers.h's static_cast<Uint32>(delay_ms)
 # is a caller-chosen press hold. On top of that, every tier-1 file still carries
@@ -95,6 +94,7 @@ CONVERTED_FILES=(
     tests/integration/test_difficulty.cpp
     tests/integration/test_hire_team.cpp
     tests/integration/test_cloud_ui.cpp
+    tests/integration/test_overpowered_team.cpp
 )
 
 status=0
