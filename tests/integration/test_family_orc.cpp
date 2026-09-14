@@ -15,6 +15,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
+#include <string>
 #include <gtest/gtest.h>
 #include "test_gameplay_context_scope.h"
 #include "test_family_hook_dispatch.h"
@@ -122,44 +123,99 @@ TEST(FamilyOrc, family_big_orc_r15_level_up_and_orc_descriptor_hooks)
     ASSERT_TRUE(orc.promotion_new_level(5) == 1);
 }
 
-TEST(FamilyOrc, r15_special_howl_and_eat_paths)
+namespace {
+
+int count_sound_events(const og::sim::SimEventLog& log, std::uint32_t sound_id)
+{
+    int n = 0;
+    for (const auto& ev : log.events()) {
+        if (ev.kind == og::sim::EventKind::PlaySound && ev.a == sound_id)
+            n++;
+    }
+    return n;
+}
+
+int count_notifications(const og::sim::SimEventLog& log, const char* needle)
+{
+    int n = 0;
+    for (const auto& ev : log.events()) {
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find(needle) != std::string::npos)
+            n++;
+    }
+    return n;
+}
+
+} // namespace
+
+// The howl freezes every FOE in radius and nobody else, and the freeze it
+// applies is the tuning table's yell_stun_base.
+//
+// A level-0 orc against a constitution-0 foe takes BOTH og.rand0 calls in
+// living-14-orc.lua:36-38 down the n <= 0 shortcut (no draw at all), so
+// stun = max(0, 10 + 0 - 0) = 10 exactly, with no dependence on the world
+// RNG's state. That is what makes an exact pin possible here.
+TEST(FamilyOrc, r15_howl_freezes_foes_in_radius_and_spares_the_horde)
 {
     const FamilyDescriptor& orc = describe_family(FAMILY_ORC);
-    {
-        OrcR15Fixture fx;
-        living* self = add_living(fx, 1, FAMILY_ORC, 96, 96);
-        living* foe = add_living(fx, 0, FAMILY_SOLDIER, 112, 96);
-        ASSERT_TRUE(self && foe);
+    OrcR15Fixture fx;
+    living* self = add_living(fx, 1, FAMILY_ORC, 96, 96);
+    living* foe = add_living(fx, 0, FAMILY_SOLDIER, 112, 96);
+    living* packmate = add_living(fx, 1, FAMILY_ORC, 80, 96);
+    ASSERT_TRUE(self && foe && packmate);
 
-        foe->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-        foe->myguy->constitution = 18;
+    foe->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    foe->myguy->constitution = 0;
+    packmate->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    packmate->myguy->constitution = 0;
 
-        self->stats()->set_level(6);
-        self->set_busy(0);
-        self->set_current_special(1); // howl/freeze
-        ASSERT_TRUE(og::test::do_special(orc, self));
-        ASSERT_TRUE(self->busy() > 0);
-        ASSERT_TRUE(foe->stats()->frozen_delay() >= 0);
-        ASSERT_TRUE(fx.events.size() > 0);
-    }
+    self->stats()->set_level(0);
+    self->set_busy(0);
+    self->set_current_special(1); // howl/freeze
+    ASSERT_EQ(0, static_cast<int>(foe->stats()->frozen_delay()))
+        << "the foe starts unfrozen";
 
-    {
-        OrcR15Fixture fx;
-        living* self = add_living(fx, 1, FAMILY_ORC, 96, 96);
-        ASSERT_TRUE(self != nullptr);
-        self->set_current_special(2); // eat corpse
-        self->stats()->set_max_hitpoints(200.0f);
-        self->stats()->set_hitpoints(30.0f);
-        self->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
-        self->myguy->name = "R15 ORC";
-        cfg.apply_setting("effects", "heal_numbers", "on");
+    ASSERT_TRUE(og::test::do_special(orc, self)) << "the howl must go off";
 
-        walker* stain = add_stain(fx, 96, 96, 0, FAMILY_SOLDIER, 4);
-        ASSERT_TRUE(stain != nullptr);
-        ASSERT_TRUE(og::test::do_special(orc, self));
-        ASSERT_TRUE(stain->dead() == 1);
-        ASSERT_TRUE(self->stats()->hitpoints() <= self->stats()->max_hitpoints());
-    }
+    EXPECT_EQ(10, static_cast<int>(foe->stats()->frozen_delay()))
+        << "yell_stun_base 10 with both rolls at 0 freezes the foe for "
+           "exactly 10 ticks";
+    EXPECT_EQ(0, static_cast<int>(packmate->stats()->frozen_delay()))
+        << "a howl never freezes the orc's own team";
+    EXPECT_FLOAT_EQ(2.0f, self->busy())
+        << "howling costs the orc exactly 2 busy ticks";
+    EXPECT_EQ(1, count_sound_events(fx.events, SOUND_ROAR))
+        << "the howl is heard once";
+}
+
+// Eating a corpse converts the corpse's LEVEL into hitpoints at the tuning
+// table's corpse_heal_per_level, consumes the stain, and pays experience.
+TEST(FamilyOrc, r15_eating_a_corpse_heals_by_its_level_and_consumes_it)
+{
+    const FamilyDescriptor& orc = describe_family(FAMILY_ORC);
+    OrcR15Fixture fx;
+    living* self = add_living(fx, 1, FAMILY_ORC, 96, 96);
+    ASSERT_TRUE(self != nullptr);
+    self->set_current_special(2); // eat corpse
+    self->stats()->set_max_hitpoints(200.0f);
+    self->stats()->set_hitpoints(30.0f);
+    self->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    self->myguy->name = "R15 ORC";
+    self->myguy->exp = 0;
+    cfg.apply_setting("effects", "heal_numbers", "on");
+
+    walker* stain = add_stain(fx, 96, 96, 0, FAMILY_SOLDIER, 4);
+    ASSERT_TRUE(stain != nullptr);
+    ASSERT_TRUE(og::test::do_special(orc, self)) << "the corpse is in reach";
+
+    EXPECT_EQ(1, stain->dead()) << "the corpse is consumed";
+    EXPECT_FLOAT_EQ(50.0f, self->stats()->hitpoints())
+        << "30 hp + corpse level 4 * corpse_heal_per_level 5 == 50, well "
+           "under the 200 max so nothing is clamped away";
+    EXPECT_EQ(20u, self->myguy->exp)
+        << "eating pays corpse level * 5 experience";
+    EXPECT_EQ(1, count_notifications(fx.events, "ate a corpse"))
+        << "the meal is announced once";
 }
 
 TEST(FamilyOrc, r15_check_ai_and_guard_failures)

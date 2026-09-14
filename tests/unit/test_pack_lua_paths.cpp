@@ -117,6 +117,20 @@ walker* find_family(GameWorld& w, Order order, int family)
     return nullptr;
 }
 
+// The world RNG is the LCG og.rand draws from. Find a seed whose FIRST
+// rand(n) draw is `want`, so a test can steer a coin flip inside a hook
+// without duplicating the generator's formula.
+std::uint32_t seed_whose_first_draw_is(std::int32_t n, std::uint32_t want)
+{
+    for (std::uint32_t seed = 0; seed < 4096u; seed++) {
+        og::sim::SimRandom probe(seed);
+        if (probe.next(static_cast<std::uint32_t>(n)) == want)
+            return seed;
+    }
+    ADD_FAILURE() << "no seed produced the wanted first draw";
+    return 0;
+}
+
 // Notifications are sim events, so a hook whose only observable effect is a
 // message still has an assertable effect. Counting substring matches (rather
 // than asserting "some notification happened") is what makes the assertion
@@ -516,9 +530,20 @@ TEST(PackLuaCleric, a_heal_restores_a_wounded_friend_and_spends_magic)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// The magic-pool shortfall branch: a cleric whose remaining magic is under
-// the heal's cost heals a reduced amount instead of going negative.
-TEST(PackLuaCleric, a_heal_beyond_the_magic_pool_is_scaled_down_not_refused)
+// A pool too thin to PRICE a heal abandons the cast outright.
+//
+// compute_heal_amount (src/core/combat_math.cpp:97-105) builds the price
+// from base = trunc(mp)/4 + rand(trunc(mp)/4), cost = base/2. With mp = 3
+// the integer quarter is 0, so base and cost are both 0 and the hook's
+// `amount <= 0 or cost <= 0` break (living-05-cleric.lua:89) fires before
+// anything is healed or charged: heal_or_mace returns FALSE.
+//
+// Note for anyone tempted to reinstate a test for the "magicpoints < cost"
+// shortfall arm at lua:82-87: it is dead by arithmetic through this hook
+// (cost = base/2 <= trunc(mp)/4 < mp whenever mp >= 4, and mp < 4 breaks
+// out above), a faithful port of the equally dead C++ branch. The Lua is
+// left alone because parity goldens pin it byte for byte.
+TEST(PackLuaCleric, a_pool_too_thin_to_price_a_heal_refuses_and_spends_nothing)
 {
     og::test::mount_core_pack();
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
@@ -533,14 +558,53 @@ TEST(PackLuaCleric, a_heal_beyond_the_magic_pool_is_scaled_down_not_refused)
     hurt->stats()->set_max_hitpoints(900.0f);
     hurt->stats()->set_hitpoints(1.0f);
 
-    // Enough to cast, not enough to pay the full heal.
+    // Enough to cast (special_cost(1) == 2), not enough to price a heal.
     cleric->stats()->set_magicpoints(
         cleric->stats()->special_cost(1) + 1.0f);
+    ASSERT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints())
+        << "the arithmetic below is pinned to a pool of exactly 3";
     cleric->set_current_special(1);
 
-    (void)og::test::do_special(desc, cleric);
-    EXPECT_GE(cleric->stats()->magicpoints(), 0.0f)
-        << "a shortfall must not push the pool negative";
+    EXPECT_FALSE(og::test::do_special(desc, cleric))
+        << "trunc(3)/4 == 0 prices the heal at 0, so the cast is abandoned";
+    EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints())
+        << "an abandoned heal charges nothing";
+    EXPECT_FLOAT_EQ(1.0f, hurt->stats()->hitpoints())
+        << "an abandoned heal heals nobody";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The other side of the same gate: once the quarter is non-zero the heal
+// lands, and both the amount and the price are the exact numbers
+// compute_heal_amount derives. mp = 8 gives base = 8/4 + rand(2), and the
+// seeded world RNG makes that draw 0, so base = 2, cost = base/2 = 1 and
+// amount = base + level*5 = 2 + 100 = 102.
+TEST(PackLuaCleric, a_thin_pool_still_funds_a_scaled_heal)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* cleric = make_cleric(w, 20);
+    ASSERT_NE(nullptr, cleric);
+    walker* hurt = spawn(w, Order::Living, FAMILY_SOLDIER, 10, 10, 1);
+    ASSERT_NE(nullptr, hurt);
+    hurt->stats()->set_max_hitpoints(900.0f);
+    hurt->stats()->set_hitpoints(1.0f);
+
+    cleric->stats()->set_magicpoints(8.0f);
+    cleric->set_current_special(1);
+    // base = 8/4 + rand(2); steer that single draw to 0.
+    w.rng_ = og::sim::SimRandom(seed_whose_first_draw_is(2, 0));
+
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "a priced heal must land";
+    EXPECT_FLOAT_EQ(103.0f, hurt->stats()->hitpoints())
+        << "amount = base(2) + level*5(100) is added to the wounded friend";
+    EXPECT_FLOAT_EQ(7.0f, cleric->stats()->magicpoints())
+        << "and the caster pays cost = base/2 == 1, not the amount healed";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -723,20 +787,6 @@ TEST(PackLuaCleric,
 
 namespace {
 
-// The world RNG is the LCG og.rand draws from. Find a seed whose FIRST
-// rand(n) draw is `want`, so a test can steer a coin flip inside a hook
-// without duplicating the generator's formula.
-std::uint32_t seed_whose_first_draw_is(std::int32_t n, std::uint32_t want)
-{
-    for (std::uint32_t seed = 0; seed < 4096u; seed++) {
-        og::sim::SimRandom probe(seed);
-        if (probe.next(static_cast<std::uint32_t>(n)) == want)
-            return seed;
-    }
-    ADD_FAILURE() << "no seed produced the wanted first draw";
-    return 0;
-}
-
 // An archmage that has been hit, healthy enough not to teleport out, with a
 // foe in reach and the magic to answer. Returns the archmage.
 walker* wounded_archmage_setup(GameWorld& w, walker** foe_out)
@@ -903,19 +953,24 @@ TEST(PackLuaBarbarian, a_zero_step_summon_is_floored_to_one)
     barb->set_lastx(1.0f);
     barb->set_lasty(0.0f);
 
-    if (!og::test::do_special(desc, barb)) {
-        GTEST_SKIP() << "the barbarian special did not fire in this world";
-    }
-    bool saw_summon = false;
-    for (walker* ob : entities_of(w, Order::Weapon)) {
-        if (ob->owner() == barb &&
-            ob->family() == static_cast<char>(FAMILY_BOULDER)) {
-            saw_summon = true;
-            EXPECT_GE(ob->stepsize(), 1.0f)
-                << "a summon must never be given a zero step size";
-        }
-    }
-    EXPECT_TRUE(saw_summon) << "the barbarian special must throw a boulder";
+    ASSERT_TRUE(og::test::do_special(desc, barb))
+        << "a level-0 barbarian with 500 mp must still throw: busy is 0 and "
+           "fire() succeeds, so the hook has no reason to refuse";
+
+    ASSERT_EQ(1u, count_family(w, Order::Weapon, FAMILY_BOULDER))
+        << "the barbarian special throws exactly one boulder";
+    walker* boulder = find_family(w, Order::Weapon, FAMILY_BOULDER);
+    ASSERT_NE(nullptr, boulder);
+    EXPECT_EQ(barb, boulder->owner()) << "the thrower owns its boulder";
+    EXPECT_FLOAT_EQ(1.0f, boulder->stepsize())
+        << "level 0 * 2 == 0 is floored to exactly 1, never left at 0";
+    // lastx/lasty are rewritten from the FLOORED step (lua:45-54): every
+    // non-zero heading component becomes +/- stepsize, so the boulder moves
+    // one pixel per tick along its heading instead of standing still.
+    EXPECT_FLOAT_EQ(1.0f, boulder->lastx())
+        << "the horizontal component is rebuilt from the floored step";
+    EXPECT_FLOAT_EQ(1.0f, boulder->lasty())
+        << "so is the vertical one";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

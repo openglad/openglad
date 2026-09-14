@@ -2,6 +2,8 @@
 
 #include "test_family_lookup.h"
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/game_world.h>
+#include <cstddef>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
 #include <gtest/gtest.h>
@@ -20,6 +22,87 @@
 #include <openglad/interface/game_context.h>
 #include "test_gameplay_context_scope.h"
 #include "test_family_hook_dispatch.h"
+
+// ---------------------------------------------------------------------------
+// Shared oracles for the cleric's summon specials.
+//
+// Every raise/resurrect arm ends in a body standing where the corpse was, so
+// the observable is "which family appeared, on whose team, owned by whom" —
+// found by scanning the world's three entity lists (the Order -> list
+// mapping is not one-to-one, so scan all three and select on the entity's
+// own order).
+// ---------------------------------------------------------------------------
+namespace {
+
+walker* find_live_family(GameWorld& w, Order order, int family)
+{
+    for (const GameWorld::EntityList* list : {&w.oblist, &w.fxlist,
+                                              &w.weaplist}) {
+        for (const auto& ob : *list) {
+            if (ob != nullptr && ob->dead() == 0 &&
+                ob->query_order() == order &&
+                ob->family() == static_cast<char>(family))
+                return ob.get();
+        }
+    }
+    return nullptr;
+}
+
+std::size_t count_live_family(GameWorld& w, Order order, int family)
+{
+    std::size_t n = 0;
+    for (const GameWorld::EntityList* list : {&w.oblist, &w.fxlist,
+                                              &w.weaplist}) {
+        for (const auto& ob : *list) {
+            if (ob != nullptr && ob->dead() == 0 &&
+                ob->query_order() == order &&
+                ob->family() == static_cast<char>(family))
+                n++;
+        }
+    }
+    return n;
+}
+
+// nearby_corpse() (living-05-cleric.lua:52-62) accepts a bloodstain only
+// when its tile is PASSABLE and it sits within `max_distance` (Manhattan).
+// The caster's own body blocks the tile it stands on, so hard-coding an
+// offset would depend on sprite sizes; walk outward for the first spot that
+// satisfies both conditions instead.
+bool place_corpse_in_reach(GameWorld& w, walker* caster, walker* stain,
+                           std::int32_t max_distance)
+{
+    for (std::int32_t d = 1; d < max_distance; d++) {
+        const std::int32_t ring[4][2] = {{d, 0}, {0, d}, {-d, 0}, {0, -d}};
+        for (const auto& offset : ring) {
+            const float x = static_cast<float>(caster->xpos() + offset[0]);
+            const float y = static_cast<float>(caster->ypos() + offset[1]);
+            if (x < 0.0f || y < 0.0f)
+                continue;
+            stain->setxy(x, y);
+            if (caster->distance_to_ob(stain) < max_distance &&
+                w.query_passable(x, y, stain))
+                return true;
+        }
+    }
+    return false;
+}
+
+
+// The world RNG is the LCG the sim draws from. Find a seed whose FIRST
+// next(n) draw is `want`, so a test can steer one roll inside the sim
+// without duplicating the generator's formula.
+std::uint32_t seed_whose_first_draw_is(std::uint32_t n, std::uint32_t want)
+{
+    for (std::uint32_t seed = 0; seed < 4096u; seed++) {
+        og::sim::SimRandom probe(seed);
+        if (probe.next(n) == want)
+            return seed;
+    }
+    ADD_FAILURE() << "no seed produced the wanted first draw";
+    return 0;
+}
+
+} // namespace
 
 // --- From test_family_cleric_coverage_push.cpp ---
 
@@ -117,7 +200,10 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
 
 walker* add_stain(ClericFixture& fx, int x, int y, unsigned char team, char old_family)
 {
-    walker* stain = fx.level.add_ob(Order::Treasure, FAMILY_STAIN);
+    // fxlist, not oblist: GameWorld::find_nearest_blood (game_world.cpp:1259)
+    // only ever scans fxlist, which is where walker::death files a real
+    // bloodstain. A stain parked in oblist is a corpse no cleric can see.
+    walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     stain->set_team_num(team);
     stain->setxy(x, y);
     stain->stats()->set_old_family(old_family);
@@ -242,6 +328,7 @@ TEST(FamilyCleric, r11_resurrect_friendly_and_hostile_paths)
 {
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericFixture fx;
+    GameWorld& world = fx.level.world();
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     ASSERT_TRUE(cleric != nullptr);
 
@@ -254,14 +341,49 @@ TEST(FamilyCleric, r11_resurrect_friendly_and_hostile_paths)
     // no blood => false path
     ASSERT_TRUE(!og::test::do_special(desc, cleric));
 
-    // friendly blood resurrect path + exp penalty floor branch
-    (void)add_stain(fx, 88, 80, 0, FAMILY_SOLDIER);
+    // Friendly blood: the corpse's OLD family comes back, on the corpse's
+    // team, at half its transferred max HP, and the stain is consumed.
+    // The exp penalty is target_level^2 * 100 = 100 here, more than the
+    // cleric owns, so it floors at 0 before the flat +90 the resurrect pays.
+    walker* friendly_stain = add_stain(fx, 88, 80, 0, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, friendly_stain);
+    friendly_stain->stats()->set_level(1);
+    friendly_stain->stats()->set_max_hitpoints(100.0f);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, friendly_stain, 30))
+        << "no passable bloodstain spot inside resurrect_range";
     cleric->myguy->exp = 0;
-    (void)og::test::do_special(desc, cleric);
 
-    // hostile blood branch summons ghost
-    (void)add_stain(fx, 86, 84, 1, FAMILY_ORC);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "friendly blood inside resurrect_range must revive";
+    EXPECT_EQ(1, friendly_stain->dead()) << "the blood is spent";
+    walker* revived = find_live_family(world, Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, revived) << "the corpse's old family walks again";
+    EXPECT_EQ(0, static_cast<int>(revived->team_num()))
+        << "the revived body joins the blood's team";
+    EXPECT_FLOAT_EQ(50.0f, revived->stats()->hitpoints())
+        << "a resurrection returns at half of the transferred max HP";
+    EXPECT_EQ(90u, cleric->myguy->exp)
+        << "penalty 100 floors an exp-0 cleric at 0, then resurrect pays 90";
+
+    // Hostile blood: no revival, a ghost enslaved to the cleric instead.
+    walker* hostile_stain = add_stain(fx, 86, 84, 1, FAMILY_ORC);
+    ASSERT_NE(nullptr, hostile_stain);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, hostile_stain, 30));
+    ASSERT_EQ(0u, count_live_family(world, Order::Living, FAMILY_GHOST))
+        << "no ghost exists before the hostile cast";
+
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "hostile blood inside resurrect_range must raise a ghost";
+    EXPECT_EQ(1, hostile_stain->dead()) << "the blood is spent";
+    walker* ghost = find_live_family(world, Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, ghost) << "hostile blood becomes a ghost, not an orc";
+    EXPECT_EQ(cleric, ghost->owner()) << "the ghost serves its raiser";
+    EXPECT_EQ(0, static_cast<int>(ghost->team_num()))
+        << "and fights on the cleric's team";
+    EXPECT_EQ(0u, count_live_family(world, Order::Living, FAMILY_ORC))
+        << "hostile blood never revives the enemy it came from";
+    EXPECT_EQ(180u, cleric->myguy->exp)
+        << "the second resurrect pays another flat 90";
 }
 } // namespace detail_family_cleric_r11
 
@@ -305,7 +427,10 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
 
 walker* add_stain(ClericR12Fixture& fx, int x, int y, unsigned char team, char old_family)
 {
-    walker* stain = fx.level.add_ob(Order::Treasure, FAMILY_STAIN);
+    // fxlist, not oblist: GameWorld::find_nearest_blood (game_world.cpp:1259)
+    // only ever scans fxlist, which is where walker::death files a real
+    // bloodstain. A stain parked in oblist is a corpse no cleric can see.
+    walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     stain->set_team_num(team);
     stain->setxy(x, y);
     stain->stats()->set_old_family(old_family);
@@ -329,29 +454,66 @@ TEST(FamilyCleric, r12_ghost_raise_and_resurrect_penalty_paths)
     cleric->stats()->set_level(10);
     cleric->stats()->set_magicpoints(300.0f);
 
-    // Case 3: raise ghost success path.
+    GameWorld& world = fx.level.world();
+
+    // Case 3: raise ghost success path. RAISE GHOST pays a flat 60 exp, the
+    // stain is consumed, and the ghost answers to the cleric.
     cleric->set_current_special(3);
     cleric->set_shifter_down(0);
     walker* near_stain = add_stain(fx, 84, 80, 1, FAMILY_ORC);
     ASSERT_TRUE(near_stain != nullptr);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, near_stain, 30))
+        << "no passable bloodstain spot inside raise_ghost_range";
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "blood in reach must raise a ghost";
+    EXPECT_EQ(1, near_stain->dead()) << "the blood is spent";
+    walker* raised = find_live_family(world, Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, raised) << "a ghost rises from the blood";
+    EXPECT_EQ(cleric, raised->owner()) << "the ghost serves its raiser";
+    EXPECT_EQ(0, static_cast<int>(raised->team_num()))
+        << "and fights on the cleric's team";
+    EXPECT_EQ(61u, cleric->myguy->exp)
+        << "starting exp 1 plus the flat 60 a raise_ghost pays";
 
     // Case 3: shifter_down turn-undead busy fail.
     cleric->set_shifter_down(1);
     cleric->set_busy(2);
     ASSERT_TRUE(!og::test::do_special(desc, cleric));
+    EXPECT_EQ(61u, cleric->myguy->exp) << "a refused cast pays nothing";
     cleric->set_busy(0);
 
-    // Case 4: friendly resurrect with exp floor path.
+    // Case 4: friendly resurrect with exp floor path. The penalty is
+    // target_level^2 * 100 = 100, more than the 61 the cleric holds, so the
+    // exp floors at 0 before the flat +90 the resurrect itself pays.
     cleric->set_current_special(4);
     walker* friendly_stain = add_stain(fx, 82, 82, 0, FAMILY_SOLDIER);
     ASSERT_TRUE(friendly_stain != nullptr);
-    (void)og::test::do_special(desc, cleric);
+    friendly_stain->stats()->set_level(1);
+    friendly_stain->stats()->set_max_hitpoints(100.0f);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, friendly_stain, 30));
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "friendly blood in reach must revive";
+    EXPECT_EQ(1, friendly_stain->dead()) << "the blood is spent";
+    walker* revived = find_live_family(world, Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, revived) << "the corpse's old family walks again";
+    EXPECT_FLOAT_EQ(50.0f, revived->stats()->hitpoints())
+        << "a resurrection returns at half of the transferred max HP";
+    EXPECT_EQ(90u, cleric->myguy->exp)
+        << "61 is under the 100 penalty, so it floors at 0 and gains 90";
 
     // Case 4: hostile resurrect ghost path.
     walker* hostile_stain = add_stain(fx, 78, 82, 1, FAMILY_ORC);
     ASSERT_TRUE(hostile_stain != nullptr);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, hostile_stain, 30));
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "hostile blood in reach must raise a ghost";
+    EXPECT_EQ(1, hostile_stain->dead()) << "the blood is spent";
+    EXPECT_EQ(2u, count_live_family(world, Order::Living, FAMILY_GHOST))
+        << "the hostile corpse adds a SECOND ghost, it does not revive an orc";
+    EXPECT_EQ(0u, count_live_family(world, Order::Living, FAMILY_ORC))
+        << "hostile blood never revives the enemy it came from";
+    EXPECT_EQ(180u, cleric->myguy->exp)
+        << "the hostile resurrect pays the same flat 90 (no penalty arm)";
 
     // Case 1 heal branch with heal_numbers on and at least one ally damaged.
     living* ally = add_living(fx, 0, FAMILY_SOLDIER);
@@ -586,7 +748,10 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
 
 walker* add_stain(ClericR14Fixture& fx, int x, int y, unsigned char team, char old_family)
 {
-    walker* stain = fx.level.add_ob(Order::Treasure, FAMILY_STAIN);
+    // fxlist, not oblist: GameWorld::find_nearest_blood (game_world.cpp:1259)
+    // only ever scans fxlist, which is where walker::death files a real
+    // bloodstain. A stain parked in oblist is a corpse no cleric can see.
+    walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     stain->set_team_num(team);
     stain->setxy(x, y);
     stain->stats()->set_old_family(old_family);
@@ -637,36 +802,73 @@ TEST(FamilyCleric, r14_lines_110_132_160_heal_plural_and_mystic_mace_branches)
     ASSERT_GT(cleric->busy(), 0.0f);
 }
 
-TEST(FamilyCleric, r14_lines_187_189_192_203_206_243_246_turn_undead_and_raise_paths)
+// RAISE UNDEAD and RAISE GHOST each spend the nearest bloodstain on a body
+// that serves the raiser, and each pays its own flat experience; TURN UNDEAD
+// with nothing hostile to turn refuses.
+TEST(FamilyCleric, r14_raise_skeleton_then_ghost_then_turn_undead_with_no_foes)
 {
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR14Fixture fx;
+    GameWorld& world = fx.level.world();
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     ASSERT_TRUE(cleric != nullptr);
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     cleric->myguy->name = "UndeadTest";
     cleric->myguy->intelligence = 90;
+    cleric->myguy->exp = 0;
     cleric->stats()->set_level(10);
     cleric->stats()->set_magicpoints(300.0f);
 
     walker* stain = add_stain(fx, 84, 80, 1, FAMILY_ORC);
     ASSERT_TRUE(stain != nullptr);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, stain, 30))
+        << "no passable bloodstain spot inside raise_skeleton_range";
 
     cleric->set_current_special(2);
     cleric->set_shifter_down(0);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "blood in reach must raise a skeleton";
+    EXPECT_EQ(1, stain->dead()) << "the blood is spent";
+    walker* skeleton = find_live_family(world, Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, skeleton) << "a skeleton rises from the blood";
+    EXPECT_EQ(cleric, skeleton->owner()) << "the skeleton serves its raiser";
+    EXPECT_EQ(0, static_cast<int>(skeleton->team_num()))
+        << "and fights on the cleric's team";
+    EXPECT_EQ(45u, cleric->myguy->exp) << "raise_skeleton pays a flat 45";
 
+    // The first stain was consumed, so the ghost needs a second corpse.
+    walker* stain2 = add_stain(fx, 84, 80, 1, FAMILY_ORC);
+    ASSERT_TRUE(stain2 != nullptr);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, stain2, 30))
+        << "no passable bloodstain spot inside raise_ghost_range";
     cleric->set_current_special(3);
     cleric->set_shifter_down(0);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "a second corpse in reach must raise a ghost";
+    EXPECT_EQ(1, stain2->dead()) << "the second blood is spent";
+    walker* ghost = find_live_family(world, Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, ghost) << "a ghost rises from the second blood";
+    EXPECT_EQ(cleric, ghost->owner()) << "the ghost serves its raiser";
+    EXPECT_EQ(105u, cleric->myguy->exp)
+        << "45 for the skeleton plus the flat 60 a raise_ghost pays";
 
+    // shifter_down turns the same slot into TURN UNDEAD. The only undead in
+    // the world are the cleric's OWN summons, and turn_undead counts foes
+    // only, so find_foes_in_range reports no targets: walker::turn_undead
+    // answers -1 and the special refuses.
     cleric->set_shifter_down(1);
     cleric->set_busy(0);
-    (void)og::test::do_special(desc, cleric);
+    EXPECT_FALSE(og::test::do_special(desc, cleric))
+        << "turn undead with no hostile undead in range must refuse";
+    EXPECT_EQ(105u, cleric->myguy->exp) << "a refused turn pays nothing";
+    EXPECT_EQ(0, skeleton->dead())
+        << "and a cleric never turns its own risen servants";
 }
 
-TEST(FamilyCleric, r14_lines_291_302_304_306_311_325_resurrect_variants)
+// RESURRECT in all three shapes: friendly blood revives its old family,
+// hostile blood becomes an enslaved ghost, and blood out of reach refuses.
+TEST(FamilyCleric, r14_resurrect_revives_friendly_blood_and_enslaves_hostile_blood)
 {
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR14Fixture fx;
@@ -679,17 +881,53 @@ TEST(FamilyCleric, r14_lines_291_302_304_306_311_325_resurrect_variants)
     cleric->stats()->set_magicpoints(300.0f);
 
     cleric->set_current_special(4);
+    GameWorld& world = fx.level.world();
 
     walker* friendly_stain = add_stain(fx, 82, 82, 0, FAMILY_SOLDIER);
     ASSERT_TRUE(friendly_stain != nullptr);
-    (void)og::test::do_special(desc, cleric);
+    friendly_stain->stats()->set_level(1);
+    friendly_stain->stats()->set_max_hitpoints(100.0f);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, friendly_stain, 30));
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "friendly blood in reach must revive";
+    EXPECT_EQ(1, friendly_stain->dead()) << "the blood is spent";
+    walker* revived = find_live_family(world, Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, revived) << "the corpse's old family walks again";
+    EXPECT_EQ(0, static_cast<int>(revived->team_num()))
+        << "the revived body joins the blood's team";
+    EXPECT_FLOAT_EQ(50.0f, revived->stats()->hitpoints())
+        << "a resurrection returns at half of the transferred max HP";
+    EXPECT_EQ(90u, cleric->myguy->exp)
+        << "the 100 penalty floors an exp-1 cleric at 0, then +90";
 
     walker* hostile_stain = add_stain(fx, 78, 82, 1, FAMILY_ORC);
     ASSERT_TRUE(hostile_stain != nullptr);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, hostile_stain, 30));
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "hostile blood in reach must raise a ghost";
+    EXPECT_EQ(1, hostile_stain->dead()) << "the blood is spent";
+    walker* ghost = find_live_family(world, Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, ghost) << "hostile blood becomes a ghost, not an orc";
+    EXPECT_EQ(cleric, ghost->owner()) << "the ghost serves its raiser";
+    EXPECT_EQ(0u, count_live_family(world, Order::Living, FAMILY_ORC))
+        << "hostile blood never revives the enemy it came from";
+    EXPECT_EQ(180u, cleric->myguy->exp)
+        << "the hostile resurrect pays the same flat 90";
 
-    hostile_stain->setxy(600, 600);
-    ASSERT_TRUE(!og::test::do_special(desc, cleric));
+    // Out of reach: the third corpse is beyond resurrect_range, so nothing
+    // is raised and nothing is spent. (The first two stains are already
+    // dead, so this one is the nearest blood.)
+    walker* far_stain = add_stain(fx, 600, 600, 0, FAMILY_SOLDIER);
+    ASSERT_TRUE(far_stain != nullptr);
+    const std::size_t ghosts_before = count_live_family(world, Order::Living,
+                                                        FAMILY_GHOST);
+    ASSERT_TRUE(!og::test::do_special(desc, cleric))
+        << "blood outside resurrect_range must refuse";
+    EXPECT_EQ(0, far_stain->dead()) << "an out-of-reach corpse is untouched";
+    EXPECT_EQ(ghosts_before,
+              count_live_family(world, Order::Living, FAMILY_GHOST))
+        << "a refused resurrect summons nothing";
+    EXPECT_EQ(180u, cleric->myguy->exp) << "and pays nothing";
 }
 } // namespace detail_family_cleric_r14
 
@@ -751,7 +989,14 @@ walker* add_stain(ClericR15Fixture& fx, int x, int y, unsigned char team, char o
 
 } // namespace
 
-TEST(FamilyCleric, r15_low_magic_heal_branch_and_mystic_mace_guard)
+// A pool too thin to PRICE a heal abandons the cast: compute_heal_amount
+// (src/core/combat_math.cpp:97-105) builds base = trunc(mp)/4 + rand(...),
+// so at mp = 1 the integer quarter is 0 and cost is 0. The named "low-magic
+// adjustment" arm (living-05-cleric.lua:82-87) is NOT the branch this
+// reaches and is in fact unreachable for any positive pool, because
+// cost = base/2 < mp whenever base is non-zero; the hook instead breaks on
+// `cost <= 0` at lua:89 with nobody healed and nothing charged.
+TEST(FamilyCleric, r15_a_pool_too_thin_to_price_a_heal_refuses_and_mace_is_busy_gated)
 {
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR15Fixture fx;
@@ -761,20 +1006,34 @@ TEST(FamilyCleric, r15_low_magic_heal_branch_and_mystic_mace_guard)
     ASSERT_TRUE(cleric && ally);
 
     cleric->stats()->set_level(8);
-    cleric->stats()->set_magicpoints(1.0f); // force low-magic adjustment branch
+    cleric->stats()->set_magicpoints(1.0f); // trunc(1)/4 == 0: unpriceable
     ally->stats()->set_max_hitpoints(100.0f);
     ally->stats()->set_hitpoints(5.0f);
     cleric->set_current_special(1);
     cleric->set_shifter_down(0);
-    (void)og::test::do_special(desc, cleric);
 
+    ASSERT_TRUE(!og::test::do_special(desc, cleric))
+        << "a heal that prices at 0 is abandoned, not cast";
+    EXPECT_FLOAT_EQ(5.0f, ally->stats()->hitpoints())
+        << "an abandoned heal heals nobody";
+    EXPECT_FLOAT_EQ(1.0f, cleric->stats()->magicpoints())
+        << "an abandoned heal charges nothing";
+
+    // shifter_down turns the same slot into MYSTIC MACE, which is busy-gated.
     cleric->set_current_special(1);
     cleric->set_shifter_down(1);
     cleric->set_busy(1);
     ASSERT_TRUE(!og::test::do_special(desc, cleric));
+    EXPECT_FLOAT_EQ(1.0f, cleric->stats()->magicpoints())
+        << "a busy-refused mace charges nothing either";
 }
 
-TEST(FamilyCleric, r15_turn_undead_raise_and_resurrect_branches)
+// TURN UNDEAD destroys a hostile undead inside 4 px per caster level and
+// leaves the living alone. walker::turn_undead's roll is
+// next(range*40) > next(target_level*10); the target's level is 0, so the
+// right-hand draw returns 0 without advancing the LCG and a seeded
+// left-hand draw of 1 makes the turn land.
+TEST(FamilyCleric, r15_turn_undead_destroys_a_hostile_undead_in_range)
 {
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR15Fixture fx;
@@ -784,34 +1043,116 @@ TEST(FamilyCleric, r15_turn_undead_raise_and_resurrect_branches)
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     cleric->myguy->name = "R15 Cleric";
     cleric->myguy->intelligence = 90;
+    cleric->myguy->exp = 0;
     cleric->stats()->set_level(10);
     cleric->stats()->set_magicpoints(300.0f);
 
-    // Turn undead branch with valid undead target.
     living* undead = add_living(fx, 1, FAMILY_SKELETON, 92, 80);
-    ASSERT_TRUE(undead != nullptr);
+    living* breather = add_living(fx, 1, FAMILY_SOLDIER, 94, 80);
+    ASSERT_TRUE(undead && breather);
+
+    // The roll is next(range*40) > next(target_level*10), with
+    // range = turn_undead_range_per_level(4) * caster level(10) = 40. A
+    // level-0 target makes the right-hand draw next(0), which answers 0
+    // without advancing the LCG, so the one seeded draw decides the turn.
+    undead->stats()->set_level(0);
+    fx.level.world().rng_ =
+        og::sim::SimRandom(seed_whose_first_draw_is(40u * 40u, 1u));
+
     cleric->set_current_special(2);
     cleric->set_shifter_down(1);
-    (void)og::test::do_special(desc, cleric);
+    cleric->set_busy(0);
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "turn undead with a hostile undead in range must resolve";
 
-    // Raise skeleton and ghost from nearby blood.
+    EXPECT_EQ(1, undead->dead()) << "the hostile skeleton is turned";
+    EXPECT_EQ(0, breather->dead())
+        << "turning is only ever fatal to the undead";
+    EXPECT_EQ(3u, cleric->myguy->exp)
+        << "turning pays 3 experience per undead destroyed";
+}
+
+// The three corpse specials, each with its own summon, its own consumed
+// bloodstain and its own flat experience. The resurrect here takes the
+// SUBTRACT arm of the exp penalty (the cleric can afford it), the mirror of
+// the floor arm pinned in r12/r14.
+TEST(FamilyCleric, r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp)
+{
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
+    ClericR15Fixture fx;
+    GameWorld& world = fx.level.world();
+
+    living* cleric = add_living(fx, 0, FAMILY_CLERIC, 80, 80);
+    ASSERT_TRUE(cleric != nullptr);
+    cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
+    cleric->myguy->name = "R15 Cleric";
+    cleric->myguy->intelligence = 90;
+    cleric->myguy->exp = 0;
+    cleric->stats()->set_level(10);
+    cleric->stats()->set_magicpoints(300.0f);
+
+    // Raise skeleton from the nearest blood.
     walker* stain1 = add_stain(fx, 84, 80, 1, FAMILY_ORC);
-    walker* stain2 = add_stain(fx, 86, 80, 1, FAMILY_ORC);
-    ASSERT_TRUE(stain1 && stain2);
+    ASSERT_TRUE(stain1 != nullptr);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, stain1, 30));
     cleric->set_current_special(2);
     cleric->set_shifter_down(0);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "blood in reach must raise a skeleton";
+    EXPECT_EQ(1, stain1->dead()) << "the blood is spent";
+    walker* skeleton = find_live_family(world, Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, skeleton) << "a skeleton rises from the blood";
+    EXPECT_EQ(cleric, skeleton->owner()) << "the skeleton serves its raiser";
+    EXPECT_EQ(0, static_cast<int>(skeleton->team_num()))
+        << "and fights on the cleric's team";
+    EXPECT_EQ(45u, cleric->myguy->exp) << "raise_skeleton pays a flat 45";
+
+    // Raise ghost from a second corpse.
+    walker* stain2 = add_stain(fx, 86, 80, 1, FAMILY_ORC);
+    ASSERT_TRUE(stain2 != nullptr);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, stain2, 30));
     cleric->set_current_special(3);
     cleric->set_shifter_down(0);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "a second corpse in reach must raise a ghost";
+    EXPECT_EQ(1, stain2->dead()) << "the second blood is spent";
+    walker* ghost = find_live_family(world, Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, ghost) << "a ghost rises from the second blood";
+    EXPECT_EQ(cleric, ghost->owner()) << "the ghost serves its raiser";
+    EXPECT_EQ(105u, cleric->myguy->exp)
+        << "45 for the skeleton plus the flat 60 a raise_ghost pays";
 
-    // Resurrect both friendly and hostile stains.
+    // Friendly resurrect: the penalty (level^2 * 100 = 100) is affordable
+    // now, so it is SUBTRACTED rather than floored, then +90 is paid.
     walker* friendly_stain = add_stain(fx, 82, 82, 0, FAMILY_SOLDIER);
-    walker* hostile_stain = add_stain(fx, 78, 82, 1, FAMILY_ORC);
-    ASSERT_TRUE(friendly_stain && hostile_stain);
+    ASSERT_TRUE(friendly_stain != nullptr);
+    friendly_stain->stats()->set_level(1);
+    friendly_stain->stats()->set_max_hitpoints(100.0f);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, friendly_stain, 30));
     cleric->set_current_special(4);
     cleric->set_shifter_down(0);
-    (void)og::test::do_special(desc, cleric);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "friendly blood in reach must revive";
+    EXPECT_EQ(1, friendly_stain->dead()) << "the blood is spent";
+    walker* revived = find_live_family(world, Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, revived) << "the corpse's old family walks again";
+    EXPECT_FLOAT_EQ(50.0f, revived->stats()->hitpoints())
+        << "a resurrection returns at half of the transferred max HP";
+    EXPECT_EQ(95u, cleric->myguy->exp)
+        << "105 - 100 penalty + 90 resurrect: the affordable-penalty arm";
+
+    // Hostile resurrect: a second ghost, no orc, another flat 90.
+    walker* hostile_stain = add_stain(fx, 78, 82, 1, FAMILY_ORC);
+    ASSERT_TRUE(hostile_stain != nullptr);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, hostile_stain, 30));
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "hostile blood in reach must raise a ghost";
+    EXPECT_EQ(1, hostile_stain->dead()) << "the blood is spent";
+    EXPECT_EQ(2u, count_live_family(world, Order::Living, FAMILY_GHOST))
+        << "the hostile corpse adds a SECOND ghost";
+    EXPECT_EQ(0u, count_live_family(world, Order::Living, FAMILY_ORC))
+        << "hostile blood never revives the enemy it came from";
+    EXPECT_EQ(185u, cleric->myguy->exp)
+        << "the hostile resurrect pays the same flat 90 (no penalty arm)";
 }
 } // namespace detail_family_cleric_r15
