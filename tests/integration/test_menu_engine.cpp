@@ -4003,6 +4003,12 @@ TEST(MenuEngine, main_menu_draw_does_not_depend_on_company_name)
 
     screen* scr = og::runtime::current_session->myscreen_;
     scr->clearbuffer();
+    // In this raw-spec context the pixies are reset per test by
+    // integration_main.cpp and allbuttons_ may be empty, so the ink that is
+    // guaranteed on every main-menu frame is draw_build_stamp(). Hashing the
+    // cleared buffer first gives the blank reference the equality below needs:
+    // without it a draw_content that draws NOTHING would satisfy it.
+    const std::uint64_t blank = frame_hash();
     og::ui::set_main_menu_company_view_for_tests(true, "FIRST COMPANY");
     mp.draw_content(nullptr);
     const std::uint64_t first = frame_hash();
@@ -4011,7 +4017,12 @@ TEST(MenuEngine, main_menu_draw_does_not_depend_on_company_name)
     og::ui::set_main_menu_company_view_for_tests(
         true, "AN ENTIRELY DIFFERENT OVERLONG COMPANY NAME");
     mp.draw_content(nullptr);
-    EXPECT_EQ(first, frame_hash());
+    const std::uint64_t second = frame_hash();
+    EXPECT_EQ(first, second) << "the company name must not change the frame";
+    EXPECT_NE(blank, first)
+        << "draw_content must compose the frame (the build stamp at least)";
+    EXPECT_NE(blank, second)
+        << "draw_content must compose the frame (the build stamp at least)";
 
     // Mandatory restore (the shared-sweep contract): (true, "").
     og::ui::set_main_menu_company_view_for_tests(true, "");
