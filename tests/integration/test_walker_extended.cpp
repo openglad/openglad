@@ -68,22 +68,11 @@ TEST(WalkerExtended, walker_facing_down)
 }
 
 
-TEST(WalkerExtended, walker_facing_all_directions)
-{
-    auto w = create_living(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
-
-    // Test all 8 cardinal directions
-    w->facing(10, 0);     // right
-    w->facing(-10, 0);    // left
-    w->facing(0, -10);    // up
-    w->facing(0, 10);     // down
-    w->facing(10, -10);   // up-right
-    w->facing(-10, -10);  // up-left
-    w->facing(10, 10);    // down-right
-    w->facing(-10, 10);   // down-left
-
-}
+// walker_facing_all_directions used to live here: eight facing() calls whose
+// results were dropped on the floor. The eight principal vectors are pinned
+// exactly by WalkerMovementUnit.walker_movement_facing_thresholds
+// (tests/integration/test_walker_movement_unit.cpp, og_unit_entity), which
+// runs the same walker_movement.cpp facing() lines.
 
 
 // ---------------------------------------------------------------------------
@@ -95,11 +84,19 @@ TEST(WalkerExtended, walker_turn_basic)
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
+    w->set_stepsize(2.0f);
     w->set_curdir(FACE_UP);
-    w->turn(FACE_RIGHT);
-    // After turning, curdir should have changed
-    ASSERT_TRUE(w->curdir() != FACE_UP || w->curdir() == FACE_RIGHT) << "turn should change direction";
+    ASSERT_TRUE(w->turn(FACE_RIGHT)) << "turn() always reports it rotated";
 
+    // distance = curdir - target = FACE_UP - FACE_RIGHT = -2, which lands in
+    // [-4, 0) -> exactly one 45-degree step clockwise. turn() must never snap
+    // straight onto the target, and must never rotate the other way.
+    ASSERT_EQ(FACE_UP_RIGHT, (int)w->curdir())
+        << "turn(FACE_RIGHT) from FACE_UP rotates one step to FACE_UP_RIGHT";
+    ASSERT_FLOAT_EQ(2.0f, w->lastx())
+        << "the new FACE_UP_RIGHT heading sets lastx = +stepsize";
+    ASSERT_FLOAT_EQ(-2.0f, w->lasty())
+        << "the new FACE_UP_RIGHT heading sets lasty = -stepsize";
 }
 
 
@@ -108,11 +105,29 @@ TEST(WalkerExtended, walker_turn_all_targets)
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
+    w->set_stepsize(1.0f);
+
+    // From FACE_UP (0) the turn distance is -target. Targets 1..4 sit in
+    // [-4, 0) and rotate clockwise (+1 -> FACE_UP_RIGHT); every other target
+    // (including "turn to where I already face") rotates counter-clockwise
+    // (+7 mod 8 -> FACE_UP_LEFT).
+    const int expected_dir[8] = { FACE_UP_LEFT, FACE_UP_RIGHT, FACE_UP_RIGHT, FACE_UP_RIGHT,
+                                  FACE_UP_RIGHT, FACE_UP_LEFT, FACE_UP_LEFT, FACE_UP_LEFT };
+
     for (int dir = 0; dir < 8; dir++) {
         w->set_curdir(FACE_UP);
-        w->turn(static_cast<short>(dir));
+        w->set_lastx(0.0f);
+        w->set_lasty(0.0f);
+        ASSERT_TRUE(w->turn(static_cast<short>(dir))) << "turn() reports it rotated, target " << dir;
+        ASSERT_EQ(expected_dir[dir], (int)w->curdir())
+            << "turn from FACE_UP toward " << dir << " must land on one 45-degree step";
+        // Both landing facings are "up-ish": lasty is always -stepsize, lastx
+        // is +stepsize clockwise and -stepsize counter-clockwise.
+        ASSERT_FLOAT_EQ(expected_dir[dir] == FACE_UP_RIGHT ? 1.0f : -1.0f, w->lastx())
+            << "heading lastx for target " << dir;
+        ASSERT_FLOAT_EQ(-1.0f, w->lasty())
+            << "heading lasty for target " << dir;
     }
-
 }
 
 
@@ -139,12 +154,17 @@ TEST(WalkerExtended, walker_distance_to_other)
     ASSERT_TRUE(b != nullptr) << "create_walker should succeed";
 
     a->setxy(100, 100);
+
+    // distance_to_ob is Manhattan: abs(dx) + abs(dy), never squared, never halved.
     b->setxy(110, 100);
-
-    Sint32 d = a->distance_to_ob(b.get());
-    ASSERT_TRUE(d > 0) << "distance to nearby unit should be positive";
-    ASSERT_TRUE(d < 50) << "distance to 10px away should be < 50";
-
+    ASSERT_EQ(10, (int)a->distance_to_ob(b.get()))
+        << "10 px due east is a Manhattan distance of 10";
+    b->setxy(110, 105);
+    ASSERT_EQ(15, (int)a->distance_to_ob(b.get()))
+        << "dx 10 + dy 5 is 15, not the 11 a euclidean formula would give";
+    b->setxy(90, 95);
+    ASSERT_EQ(15, (int)a->distance_to_ob(b.get()))
+        << "negative deltas are taken in absolute value";
 }
 
 
@@ -155,12 +175,29 @@ TEST(WalkerExtended, walker_distance_to_ob_center)
     ASSERT_TRUE(a != nullptr) << "create_walker should succeed";
     ASSERT_TRUE(b != nullptr) << "create_walker should succeed";
 
+    a->set_sizex(8);
+    a->set_sizey(8);
+    b->set_sizex(10);
+    b->set_sizey(12);
     a->setxy(100, 100);
     b->setxy(110, 100);
 
-    Sint32 d = a->distance_to_ob_center(b.get());
-    ASSERT_TRUE(d > 0) << "center distance should be positive";
+    // xd = (tx - x) + (tsizex - sizex)/2 = 10 + 1 = 11
+    // yd = (ty - y) + (tsizey - sizey)/2 =  0 + 2 =  2
+    // result is the SQUARE of that offset: 121 + 4 = 125.
+    ASSERT_EQ(125, (int)a->distance_to_ob_center(b.get()))
+        << "center distance is squared and half-size corrected (11^2 + 2^2)";
 
+    // Same footprint on both sides: the half-size correction drops out and the
+    // result is the plain squared delta.
+    b->set_sizex(8);
+    b->set_sizey(8);
+    b->setxy(103, 104);
+    ASSERT_EQ(25, (int)a->distance_to_ob_center(b.get()))
+        << "equal sizes leave 3^2 + 4^2 = 25";
+
+    ASSERT_EQ(0, (int)a->distance_to_ob_center(a.get()))
+        << "an object is at zero center distance from itself";
 }
 
 
@@ -197,12 +234,28 @@ TEST(WalkerExtended, walker_get_current_angle)
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
+    // Literal radian constants, so a mutation of the switch in
+    // walker_movement.cpp cannot be mirrored by the expectation.
+    const float expected[8] = {
+        -1.57079633f,  // FACE_UP        -pi/2
+        -0.78539816f,  // FACE_UP_RIGHT  -pi/4
+         0.00000000f,  // FACE_RIGHT      0
+         0.78539816f,  // FACE_DOWN_RIGHT pi/4
+         1.57079633f,  // FACE_DOWN       pi/2
+         2.35619449f,  // FACE_DOWN_LEFT  3pi/4
+         3.14159265f,  // FACE_LEFT       pi
+         3.92699082f   // FACE_UP_LEFT    5pi/4
+    };
+
     for (int dir = 0; dir < 8; dir++) {
         w->set_curdir(static_cast<char>(dir));
-        float angle = w->get_current_angle();
-        (void)angle; // just verify no crash
+        EXPECT_NEAR(expected[dir], w->get_current_angle(), 1e-5f)
+            << "get_current_angle for facing " << dir;
     }
 
+    w->set_curdir(static_cast<char>(42));
+    EXPECT_NEAR(0.0f, w->get_current_angle(), 1e-6f)
+        << "an out-of-range facing falls back to the 0.0 default";
 }
 
 
@@ -238,9 +291,46 @@ TEST(WalkerExtended, walker_collide)
     ASSERT_TRUE(a != nullptr) << "create_walker should succeed";
     ASSERT_TRUE(b != nullptr) << "create_walker should succeed";
 
-    bool r = a->collide(b.get());
-    ASSERT_TRUE(r) << "collide should return true";
+    ASSERT_EQ(nullptr, a->collide_ob()) << "a fresh walker has no collision partner";
 
+    // living::collide always returns 1; the things it is FOR are recording the
+    // partner and, for a hostile one, opening fire.
+    ASSERT_TRUE(a->collide(b.get())) << "collide always reports handled";
+    ASSERT_EQ(b.get(), a->collide_ob()) << "collide records the object we hit";
+    ASSERT_EQ(nullptr, b->collide_ob()) << "collide records on the caller only, not the partner";
+
+    ASSERT_TRUE(a->collide(nullptr)) << "collide(nullptr) still reports handled";
+    ASSERT_EQ(nullptr, a->collide_ob()) << "collide(nullptr) clears the recorded partner";
+    // (collide_ob_id stays 0 here: these walkers are loader-owned and never
+    // joined a world, so entity_id() is 0 on both sides -- the pointer is the
+    // only honest oracle in this fixture.)
+
+    // Paired control on the "bumping a foe starts a swing" rule. Line the
+    // attacker up so init_fire() has nothing to turn toward and is not busy:
+    // the observable is the attack animation taking over from the walk one.
+    auto arm = [](walker* w) {
+        w->set_act_type(ACT_RANDOM);
+        w->set_curdir(FACE_RIGHT);
+        w->set_enddir(FACE_RIGHT);
+        w->set_lastx(1.0f);
+        w->set_lasty(0.0f);
+        w->set_busy(0.0f);
+        w->set_ani_type(ANI_WALK);
+    };
+
+    // Same team: bumping an ally must NOT start a swing.
+    a->set_team_num(0);
+    b->set_team_num(0);
+    arm(a.get());
+    ASSERT_TRUE(a->collide(b.get())) << "collide with an ally still reports handled";
+    ASSERT_EQ(b.get(), a->collide_ob()) << "the ally is still recorded as the partner";
+    ASSERT_EQ(ANI_WALK, (int)a->ani_type()) << "bumping an ally must not open fire";
+
+    // Hostile team: the same bump does start a swing.
+    b->set_team_num(1);
+    arm(a.get());
+    ASSERT_TRUE(a->collide(b.get())) << "collide with a foe reports handled";
+    ASSERT_EQ(ANI_ATTACK, (int)a->ani_type()) << "bumping a live foe opens fire";
 }
 
 
@@ -248,31 +338,111 @@ TEST(WalkerExtended, walker_collide)
 // walk / walkstep smoke tests
 // ---------------------------------------------------------------------------
 
-TEST(WalkerExtended, walker_walk_smoke)
+TEST(WalkerExtended, walker_walk_moves_turns_and_refuses_off_map)
 {
+    // walk() consults the grid; this binary loads no map of its own.
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
+    // The walker is a living, so living::walk(float,float) is the override
+    // under test: aligned -> move, misaligned -> record enddir and turn ONE
+    // 45-degree step (except for an uncommanded ACT_CONTROL walker).
+    w->set_act_type(ACT_RANDOM);
     w->setxy(100, 100);
 
-    w->walk(1, 0);
-    w->walk(0, 1);
-    w->walk(-1, 0);
-    w->walk(0, -1);
-    w->walk(0, 0); // special case
+    // Aligned with the requested heading and standing on open grass: move.
+    w->set_curdir(FACE_RIGHT);
+    ASSERT_TRUE(w->walk(1, 0)) << "an aligned walk onto passable ground succeeds";
+    ASSERT_EQ(101, (int)w->xpos()) << "the aligned walk advanced x by exactly 1";
+    ASSERT_EQ(100, (int)w->ypos()) << "the aligned walk left y alone";
 
+    w->set_curdir(FACE_DOWN);
+    w->set_cycle(0);
+    ASSERT_TRUE(w->walk(0, 1)) << "an aligned walk south succeeds";
+    ASSERT_EQ(101, (int)w->xpos()) << "walking south left x alone";
+    ASSERT_EQ(101, (int)w->ypos()) << "the aligned walk advanced y by exactly 1";
+    ASSERT_EQ(1, (int)w->cycle()) << "a walk that actually moved advances the walk cycle by one";
+
+    // curdir != facing(x,y): the misaligned branch records the goal facing in
+    // enddir and rotates exactly one step toward it. It must not snap, and it
+    // must not move the walker.
+    w->set_curdir(FACE_UP);
+    ASSERT_TRUE(w->walk(1, 0)) << "the changed-direction branch returns 1";
+    ASSERT_EQ(FACE_RIGHT, (int)w->enddir())
+        << "living::walk records facing(1,0) as the goal facing";
+    ASSERT_EQ(FACE_UP_RIGHT, (int)w->curdir())
+        << "living::walk turns one 45-degree step toward the goal, never straight onto it";
+    ASSERT_EQ(101, (int)w->xpos()) << "turning must not move the walker";
+    ASSERT_EQ(101, (int)w->ypos()) << "turning must not move the walker";
+
+    // The ACT_CONTROL exemption: a player walker with no queued command does
+    // NOT turn inside walk() (act() turns it), it only records enddir.
+    w->set_act_type(ACT_CONTROL);
+    ASSERT_TRUE(!w->stats()->has_commands()) << "fixture precondition: no queued commands";
+    w->set_curdir(FACE_UP);
+    ASSERT_TRUE(w->walk(0, 1)) << "the changed-direction branch returns 1 for control too";
+    ASSERT_EQ(FACE_DOWN, (int)w->enddir()) << "an uncommanded control walker still records enddir";
+    ASSERT_EQ(FACE_UP, (int)w->curdir())
+        << "an uncommanded ACT_CONTROL walker must not be turned by walk()";
+    w->set_act_type(ACT_RANDOM);
+
+    // Aligned, but the destination is off the west edge of the grid.
+    w->setxy(0, 50);
+    w->set_curdir(FACE_LEFT);
+    ASSERT_TRUE(!w->walk(-1, 0)) << "walking off the west edge returns 0";
+    ASSERT_EQ(0, (int)w->xpos()) << "the refused walk left the position untouched";
+    ASSERT_EQ(50, (int)w->ypos()) << "the refused walk left the position untouched";
 }
 
 
-TEST(WalkerExtended, walker_walkstep_smoke)
+TEST(WalkerExtended, walker_walkstep_records_heading_and_steps_by_stepsize)
 {
+    // walkstep() consults the grid; this binary loads no map of its own.
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
+    w->set_act_type(ACT_RANDOM);
+    w->set_stepsize(2.0f);
     w->setxy(100, 100);
 
-    w->walkstep(1, 0);
-    w->walkstep(0, 1);
-    w->walkstep(-1, -1);
+    // Aligned: walkstep records the heading and moves a full stepsize.
+    w->set_curdir(FACE_RIGHT);
+    ASSERT_TRUE(w->walkstep(1, 0)) << "aligned walkstep onto open grass succeeds";
+    ASSERT_FLOAT_EQ(2.0f, w->lastx()) << "walkstep stores lastx = dx * stepsize";
+    ASSERT_FLOAT_EQ(0.0f, w->lasty()) << "walkstep stores lasty = dy * stepsize";
+    ASSERT_EQ(102, (int)w->xpos()) << "walkstep advances x by a whole stepsize";
+    ASSERT_EQ(100, (int)w->ypos()) << "walkstep east leaves y alone";
 
+    // Not yet aligned: living::walk turns one step toward the goal and reports
+    // success, so this tick costs the step and nothing moves. Two ticks are
+    // needed to swing FACE_RIGHT -> FACE_DOWN.
+    ASSERT_TRUE(w->walkstep(0, 1)) << "a turning walkstep still reports success";
+    ASSERT_EQ(FACE_DOWN, (int)w->enddir()) << "the requested facing is recorded as the goal";
+    ASSERT_EQ(FACE_DOWN_RIGHT, (int)w->curdir())
+        << "the first turning walkstep rotates FACE_RIGHT one step toward FACE_DOWN";
+    ASSERT_EQ(102, (int)w->xpos()) << "the turning walkstep must not move x";
+    ASSERT_EQ(100, (int)w->ypos()) << "the turning walkstep must not move y";
+
+    ASSERT_TRUE(w->walkstep(0, 1)) << "the second turning walkstep also reports success";
+    ASSERT_EQ(FACE_DOWN, (int)w->curdir()) << "the second step completes the swing to FACE_DOWN";
+    ASSERT_EQ(100, (int)w->ypos()) << "still no movement while turning";
+
+    // Now aligned south: the same request moves a whole stepsize.
+    ASSERT_TRUE(w->walkstep(0, 1)) << "the aligned walkstep moves";
+    ASSERT_FLOAT_EQ(0.0f, w->lastx()) << "heading lastx for a due-south step";
+    ASSERT_FLOAT_EQ(2.0f, w->lasty()) << "heading lasty for a due-south step";
+    ASSERT_EQ(102, (int)w->xpos()) << "walking south leaves x alone";
+    ASSERT_EQ(102, (int)w->ypos()) << "walkstep advances y by a whole stepsize";
+
+    // Diagonal, aligned: both axes move a full stepsize.
+    w->set_curdir(FACE_UP_LEFT);
+    ASSERT_TRUE(w->walkstep(-1, -1)) << "aligned diagonal walkstep succeeds";
+    ASSERT_FLOAT_EQ(-2.0f, w->lastx()) << "diagonal heading lastx = -stepsize";
+    ASSERT_FLOAT_EQ(-2.0f, w->lasty()) << "diagonal heading lasty = -stepsize";
+    ASSERT_EQ(100, (int)w->xpos()) << "the diagonal step moved x back by a stepsize";
+    ASSERT_EQ(100, (int)w->ypos()) << "the diagonal step moved y back by a stepsize";
 }
 
 
