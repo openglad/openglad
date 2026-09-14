@@ -348,6 +348,118 @@ TEST(TextRender, write_xy_center_alpha_centres_the_run_and_honours_alpha)
 }
 
 
+// The plain formatted centring arm: write_xy_center subtracts half the run
+// width (len * (sizex + 1) / 2) from the x it is given, formats through
+// vsnprintf, paints each glyph with putdatatext and reports 1. Every dialog
+// caption and results-screen heading is placed by this number, so a centring
+// branch that collapsed to the raw x, or a format that dropped its argument,
+// must be visible.
+//
+// (Merged here from TextRendering.text_write_variants_cover_common_paths and
+// TextInputAndWidth.text_write_variants_smoke, which only checked that the
+// return value was 1 / positive -- both constants the arm returns whether or
+// not it painted anything.)
+TEST(TextRender, write_xy_center_centres_the_formatted_run_on_the_given_x)
+{
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    ASSERT_LT(font.sizex, 9) << "text_normal is the small monospaced font";
+
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 center_x = 160;
+    constexpr Sint32 y = 150;
+    const Sint32 advance = font.sizex + 1;
+    // "A2" -- two characters, so the run starts one advance left of center_x.
+    const Sint32 x0 = center_x - (2 * advance) / 2;
+
+    out->fastbox(x0 - 4, y - 2, 2 * advance + 8, font.sizey + 4,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_xy_center(center_x, y, ink, "%s%d", "A", 2))
+        << "the centred arm reports 1";
+    expect_glyph_at(out, font, x0, y, 'A', ink, background,
+                    GlyphInk::Recolored, "write_xy_center first glyph");
+    expect_glyph_at(out, font, x0 + advance, y, '2', ink, background,
+                    GlyphInk::Recolored,
+                    "write_xy_center second glyph (formatted argument)");
+    int left_of_run = -1;
+    out->get_pixel(x0 - 2, y, &left_of_run);
+    EXPECT_EQ(background, left_of_run)
+        << "nothing is painted left of the centred run's start";
+    out->clearbuffer();
+}
+
+
+// The direct single-glyph alpha arm (the damage/heal numbers draw through
+// write_xy_center_alpha, which delegates to this one per character). It
+// blends through walkputbuffertext_alpha, so at full coverage every lit font
+// byte lands as the caller's colour outright and at zero coverage the canvas
+// is untouched; it reports 1 for the glyph it painted.
+TEST(TextRender, write_char_xy_alpha_blends_one_glyph_at_the_given_coverage)
+{
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 x = 70;
+    constexpr Sint32 y = 168;
+    const Sint32 advance = font.sizex + 1;
+
+    const auto expect_alpha_glyph = [&](Sint32 gx, Sint32 gy, char letter,
+                                        int expected_lit, const char* what) {
+        const unsigned char* const glyph = glyph_bytes(font, letter);
+        int lit = 0;
+        for (Sint32 row = 0; row < font.sizey; ++row)
+            for (Sint32 col = 0; col < font.sizex; ++col)
+            {
+                const unsigned char source =
+                    glyph[static_cast<std::size_t>(row * font.sizex + col)];
+                int actual = -1;
+                out->get_pixel(gx + col, gy + row, &actual);
+                ASSERT_EQ(source == 0 ? background : expected_lit, actual)
+                    << what << ": glyph '" << letter << "' pixel " << col
+                    << "," << row;
+                if (source != 0)
+                    lit++;
+            }
+        ASSERT_GT(lit, 0) << what << ": '" << letter << "' has no ink at all";
+    };
+
+    out->fastbox(x - 2, y - 2, advance * 3 + 4, font.sizey + 4,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_char_xy_alpha(x, y, 'E', ink, 255))
+        << "the alpha glyph arm reports the glyph it painted";
+    expect_alpha_glyph(x, y, 'E', static_cast<int>(ink),
+                       "write_char_xy_alpha at full coverage");
+    int right_of_glyph = -1;
+    out->get_pixel(x + advance, y, &right_of_glyph);
+    EXPECT_EQ(background, right_of_glyph)
+        << "one glyph only, landing at the x it was given";
+
+    // Zero coverage must leave every pixel of the same box alone.
+    const Sint32 y2 = y + font.sizey + 4;
+    out->fastbox(x - 2, y2 - 2, advance * 3 + 4, font.sizey + 4,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_char_xy_alpha(x, y2, 'E', ink, 0))
+        << "the arm still reports 1 at zero coverage";
+    for (Sint32 row = 0; row < font.sizey; ++row)
+        for (Sint32 col = 0; col < advance * 3; ++col)
+        {
+            int actual = -1;
+            out->get_pixel(x - 2 + col, y2 + row, &actual);
+            ASSERT_EQ(background, actual)
+                << "alpha 0 must leave the canvas untouched at " << col << ","
+                << row;
+        }
+    out->clearbuffer();
+}
+
+
 // The shadowed centred arm is what the level banner uses: the glyph is laid
 // down twice, once in near-black one pixel down-left and once in the caller's
 // colour on top.

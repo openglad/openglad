@@ -901,7 +901,11 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         og::runtime::current_game_session = saved_game_session;
     }
 
-    return failed ? -failed_check : 0;
+    // On success report HOW MANY checks ran, not just "no failures": the
+    // caller pins that count, so an exerciser that returned early or a
+    // runtime-guarded block that skipped its checks cannot pass as a clean
+    // run. A failure is still the negated 1-based index of the first one.
+    return failed ? -failed_check : check_index;
 }
 
 } // namespace og::ui::detail

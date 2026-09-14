@@ -50,7 +50,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_render_effects.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_decor_render.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stair_overlay.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_text_rendering.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_and_level_picker.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_sprite_uaf.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_intro_smoke.cpp
@@ -508,7 +507,6 @@ og_add_test_group(og_test_rendering FILES
     test_video_pixel_ops.cpp
     test_video_primitives.cpp
     test_text_render.cpp
-    test_text_rendering.cpp
     test_text_input_and_width.cpp
     test_text_input_ex_value.cpp
 )

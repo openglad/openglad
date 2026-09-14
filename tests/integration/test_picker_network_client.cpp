@@ -7714,7 +7714,19 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
     ASSERT_TRUE(start_config.has_value());
     EXPECT_EQ(1, start_config->save_data.scen_num);
     EXPECT_EQ(1u, start_config->save_data.numplayers);
-    EXPECT_LE(start_config->save_data.team_list.size(), 1u);
+    // The GO was held until the roster echo landed (above), so the launch
+    // roster is deterministic: build_save_data_equivalent_from_state must
+    // carry the elected-host joiner's own synced fighter into it.
+    ASSERT_EQ(1u, start_config->save_data.team_list.size())
+        << "the relay joiner's own fighter must ride the launch roster";
+    // The roster round-trips through the wire, so the name comes back
+    // clamped to kMaxLobbyGuyNameLength (11) -- "Relay Joiner" minus its
+    // final character.
+    EXPECT_EQ(std::string("Relay Joiner").substr(
+                  0u, og::sim::kMaxLobbyGuyNameLength),
+              start_config->save_data.team_list[0].character.name);
+    EXPECT_EQ(0, start_config->save_data.team_list[0].character.teamnum);
+    EXPECT_EQ(0, start_config->save_data.team_list[0].owner_player_index);
     EXPECT_EQ(1, start_config->difficulty);
 
     ASSERT_NE(nullptr, active_game_session());
@@ -8083,11 +8095,31 @@ TEST(PickerNetworkClient,
     join_client->sync_roster_from_save();
     join_client->poll_and_apply();
 
+    // The positive half of the rule: a room-host migration is a
+    // room-management event, NOT a link loss. A client that tore its
+    // transport down on `host_changed` would also send no Join to the
+    // migrated peer, so the negative below needs this to mean anything.
+    EXPECT_TRUE(status_lines_contain_exact(
+        join_client->status_lines(), "Status: connected"))
+        << "host migration must not degrade the join client's own link";
+    EXPECT_FALSE(join_client->connection_alert().has_value())
+        << "a room-host change is not a connection alert";
+    EXPECT_FALSE(join_client->session_lost())
+        << "the session survives the original host leaving the room";
+    EXPECT_EQ("GLAD-XKCD", join_client->session_room_code())
+        << "the client stays in the same room across migration";
+
     const bool migrated_host_received_join = wait_until([&] {
         return !poll_lobby_messages(migrated_host_transport).empty();
     }, 500ms);
     EXPECT_FALSE(migrated_host_received_join)
         << "join client should stay targeted at the original authoritative peer";
+    // ...and the roster resend that produced the negative above did not
+    // degrade the link either.
+    EXPECT_TRUE(status_lines_contain_exact(
+        join_client->status_lines(), "Status: connected"))
+        << "the roster resend must leave the link connected";
+    EXPECT_FALSE(join_client->session_lost());
 
     join_client->shutdown();
 }
@@ -8308,8 +8340,20 @@ TEST(PickerNetworkClient, host_initialization_reports_direct_and_relay_failures)
     }
     catch (const std::runtime_error& error)
     {
+        // The fixture guarantees BOTH halves fail: the direct port is already
+        // bound by blocking_server, and the fake relay answers /api/create
+        // with 503 "room service down". build_host_transport_failure_message
+        // must report both, direct first.
         const std::string message = error.what();
-        EXPECT_FALSE(message.empty());
+        const auto direct_at = message.find("Direct: ");
+        const auto relay_at = message.find("\nRelay: ");
+        ASSERT_NE(std::string::npos, direct_at)
+            << "the bind failure must be reported: " << message;
+        ASSERT_NE(std::string::npos, relay_at)
+            << "the 503 room-create failure must be reported too: " << message;
+        EXPECT_EQ(0u, direct_at) << "the direct half leads: " << message;
+        EXPECT_NE(std::string::npos, message.find("room service down", relay_at))
+            << "the relay half carries the server's reason: " << message;
     }
 }
 
@@ -8405,11 +8449,23 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_EQ("Status: connecting", *join_client->connection_alert());
 }
 
+// The internal-helper exerciser reports the NUMBER of checks it ran on
+// success (a negative value is the 1-based index of the first failing check).
+// Pinning the count is what makes an exerciser that early-returns, or a
+// guarded block that silently skipped its checks, visible: "0 failures" is
+// equally true of a run that checked nothing.
+//
+// This literal moves deliberately whenever a check( site is added to or
+// removed from tests/coverage_internal/picker_lobby_network_internal.inc.
+inline constexpr int kExpectedInternalHelperChecks = 142;
+
 TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
 {
     EXPECT_EQ(
-        0,
-        og::ui::detail::picker_lobby_network_testing_exercise_internal_helpers());
+        kExpectedInternalHelperChecks,
+        og::ui::detail::picker_lobby_network_testing_exercise_internal_helpers())
+        << "negative = the index of the first failed check; a smaller "
+           "positive = a check block was skipped entirely";
 }
 
 // Explicit per-seat team choice + ready over a real host/join lobby: a

@@ -22,6 +22,13 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/render/pal32.h>
+#include <openglad/interface/game_loop_state.h>
+#include <openglad/gameplay/net_constants.h>
+#include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/net_transport_inprocess.h>
+#include <openglad/platform/game_loop.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -30,7 +37,9 @@
 #include <filesystem>
 #include <functional>
 #include <array>
+#include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,6 +49,10 @@ extern cfg_store cfg;
 // The GRAPHICS FX click handler (button.cpp), driven directly for the live
 // cyclemode pin.
 Sint32 toggle_color_cycling();
+
+// Level-start settings apply (glad_gameplay.cpp), driven directly: glad_init
+// calls exactly this to derive screen::cyclemode from cfg.
+void apply_level_start_global_settings(screen& game_screen);
 
 namespace
 {
@@ -580,6 +593,12 @@ TEST_F(RenderEffects, invisible_and_phantom_walkers_cast_neither)
     restore_world(vs);
 }
 
+// The ground-plane anchor (walker_draw.cpp ground_plane_anchor) must apply the
+// SAME lunge/recoil screen offsets draw_walker applies to the sprite, each
+// behind its own effects gate, so shadows/reflections/ripples track the drawn
+// body instead of staying nailed to the walker's world position. With
+// lunge = 1 at angle 0 that is +ATTACK_LUNGE_SIZE (5) px of x and with
+// recoil = 1 at angle 0 another +HIT_RECOIL_SIZE (3): +8 together, 0 in y.
 TEST_F(RenderEffects, shadow_anchor_follows_lunge_and_recoil_offsets)
 {
     viewscreen* vs = view0();
@@ -589,8 +608,6 @@ TEST_F(RenderEffects, shadow_anchor_follows_lunge_and_recoil_offsets)
     cfg.apply_setting("effects", "weather", "off");
     cfg.apply_setting("effects", "reflections", "off");
     cfg.apply_setting("effects", "shadows", "on");
-    // The shadow anchors where the SPRITE is drawn, so it must apply the
-    // same lunge/recoil offsets draw_walker does when those effects are on.
     cfg.apply_setting("effects", "attack_lunge", "on");
     cfg.apply_setting("effects", "hit_recoil", "on");
 
@@ -598,16 +615,84 @@ TEST_F(RenderEffects, shadow_anchor_follows_lunge_and_recoil_offsets)
     ASSERT_NE(nullptr, w);
     w->setxy(160, 120);
     vs->control = w;
+    ASSERT_NE(nullptr, w->bmp_data());
     ASSERT_TRUE(do_redraw(vs)); // establish camera geometry
+
+    // (1) The anchor arithmetic, gate by gate.
+    w->set_attack_lunge(0.0f);
+    w->set_hit_recoil(0.0f);
+    Sint32 rest_x = 0, rest_y = 0;
+    ground_plane_anchor(*w, vs, rest_x, rest_y);
+    Sint32 model_x = 0, model_y = 0;
+    ground_anchor(*w, vs, model_x, model_y);
+    ASSERT_EQ(model_x, rest_x)
+        << "with no offsets the anchor is the plain camera-relative position";
+    ASSERT_EQ(model_y, rest_y);
 
     w->set_attack_lunge(1.0f);
     w->set_attack_lunge_angle(0.0f);
     w->set_hit_recoil(1.0f);
     w->set_hit_recoil_angle(0.0f);
-    EXPECT_TRUE(draw_walker_shadow(*w, vs))
-        << "lunging/recoiling walker still casts a shadow";
+    Sint32 both_x = 0, both_y = 0;
+    ground_plane_anchor(*w, vs, both_x, both_y);
+    EXPECT_EQ(rest_x + 8, both_x)
+        << "lunge (+5) and recoil (+3) both shift the ground anchor";
+    EXPECT_EQ(rest_y, both_y) << "angle 0 is a pure +x shift";
+
+    cfg.apply_setting("effects", "attack_lunge", "off");
+    Sint32 recoil_only_x = 0, recoil_only_y = 0;
+    ground_plane_anchor(*w, vs, recoil_only_x, recoil_only_y);
+    EXPECT_EQ(rest_x + 3, recoil_only_x)
+        << "effects/attack_lunge off leaves only the recoil offset";
+    EXPECT_EQ(rest_y, recoil_only_y);
+
+    cfg.apply_setting("effects", "hit_recoil", "off");
+    Sint32 gated_x = 0, gated_y = 0;
+    ground_plane_anchor(*w, vs, gated_x, gated_y);
+    EXPECT_EQ(rest_x, gated_x)
+        << "both gates off: the anchor is back at the plain position";
+    EXPECT_EQ(rest_y, gated_y);
+
+    // (2) draw_walker_shadow really consumes that anchor: the same shadow,
+    // drawn twice over the same flat ground, lands exactly 8 px to the right
+    // once the offsets are live.
+    cfg.apply_setting("effects", "attack_lunge", "on");
+    cfg.apply_setting("effects", "hit_recoil", "on");
+    constexpr unsigned char kGround = 7;
+    const int box_x = rest_x - 2;
+    const int box_y = rest_y - 2;
+    const int box_w = w->sizex() + 16;
+    const int box_h = w->sizey() + 4;
+    std::vector<RGB> at_rest;
+    std::vector<RGB> shifted;
+    std::vector<RGB> resting_spot_after_shift;
+    {
+        ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+        scr()->fastbox(box_x, box_y, box_w, box_h, kGround);
+        w->set_attack_lunge(0.0f);
+        w->set_hit_recoil(0.0f);
+        ASSERT_TRUE(draw_walker_shadow(*w, vs))
+            << "a resting walker casts a shadow";
+        at_rest = grab_rect(rest_x, rest_y, w->sizex(), w->sizey());
+
+        scr()->fastbox(box_x, box_y, box_w, box_h, kGround);
+        w->set_attack_lunge(1.0f);
+        w->set_attack_lunge_angle(0.0f);
+        w->set_hit_recoil(1.0f);
+        w->set_hit_recoil_angle(0.0f);
+        ASSERT_TRUE(draw_walker_shadow(*w, vs))
+            << "a lunging/recoiling walker still casts a shadow";
+        shifted = grab_rect(rest_x + 8, rest_y, w->sizex(), w->sizey());
+        resting_spot_after_shift =
+            grab_rect(rest_x, rest_y, w->sizex(), w->sizey());
+    }
     w->set_attack_lunge(0.0f);
     w->set_hit_recoil(0.0f);
+
+    EXPECT_TRUE(rects_equal(at_rest, shifted))
+        << "the drawn shadow moves with the anchor: exactly +8 px in x";
+    EXPECT_FALSE(rects_equal(at_rest, resting_spot_after_shift))
+        << "and it left its resting position, so a shadow is really drawn";
 
     restore_world(vs);
 }
@@ -6272,29 +6357,131 @@ TEST_F(RenderEffects, color_cycling_on_is_the_classic_rotation)
     set_palette(scr()->ourpalette);
 }
 
-// OFF freezes the bands: the loop's guard skips do_cycle entirely, so lava
-// and water stop moving and the palette stays exactly where it was.
+namespace
+{
+// A ClientOnly local-transport shadow, the minimum game_frame_with_result()
+// needs to run real frames on the gameplay screen (the authoritative server
+// step is skipped in this mode, so an empty world cannot end the level
+// mid-test). Torn down on every exit path so nothing leaks into the rest of
+// the binary.
+class ScopedClientOnlyShadow
+{
+public:
+    ScopedClientOnlyShadow(og::runtime::GameSession& session,
+                           screen& gameplay_screen)
+        : session_(&session)
+    {
+        server_transport_ = og::sim::InProcessTransport::create_server();
+        server_transport_->accept_connections();
+        client_transport_ = server_transport_->create_client_transport();
+        og::runtime::reset_network_client_transport_shadow(
+            session,
+            gameplay_screen,
+            std::static_pointer_cast<og::sim::ITransport>(client_transport_),
+            client_transport_->local_peer_id(),
+            static_cast<std::size_t>(0u));
+    }
+    ~ScopedClientOnlyShadow()
+    {
+        og::runtime::clear_local_transport_shadow(*session_);
+    }
+    ScopedClientOnlyShadow(const ScopedClientOnlyShadow&) = delete;
+    ScopedClientOnlyShadow& operator=(const ScopedClientOnlyShadow&) = delete;
+
+private:
+    og::runtime::GameSession* session_;
+    std::shared_ptr<og::sim::InProcessTransport> server_transport_;
+    std::shared_ptr<og::sim::InProcessTransport> client_transport_;
+};
+
+og::runtime::GameSession* gameplay_session()
+{
+    if (og::runtime::current_game_session != nullptr)
+        return og::runtime::current_game_session;
+    return dynamic_cast<og::runtime::GameSession*>(og::runtime::current_session);
+}
+} // namespace
+
+// OFF freezes the bands. The rule lives in the FRAME, not in this test: once
+// per sim tick game_loop.cpp runs `if (s.cyclemode) s.do_cycle(...)`, and
+// cyclemode itself is derived from cfg by apply_level_start_global_settings.
+// So the guard is driven through a real game_frame_with_result() loop and the
+// flag through the real level-start seeding -- a local `if (cyclemode)` around
+// do_cycle would make "frozen" true by construction. The ON leg runs the same
+// harness so the frozen oracle cannot be a dead-path artifact.
 TEST_F(RenderEffects, color_cycling_off_freezes_the_bands)
 {
     EffectsCfgGuard guard;
-    const short saved_mode = scr()->cyclemode;
+    screen* const game_screen = scr();
+    const short saved_mode = game_screen->cyclemode;
+    const signed char saved_timer_wait = game_screen->world().timer_wait;
+
+    og::runtime::GameSession* const session = gameplay_session();
+    ASSERT_NE(nullptr, session) << "the frame loop needs a GameSession";
+
+    prepare_world();
+    game_screen->world().end = 0;
+    ScopedClientOnlyShadow shadow(*session, *game_screen);
+    ASSERT_TRUE(og::runtime::local_transport_active(*session))
+        << "game_frame_with_result bails out without a local transport";
 
     cfg.apply_setting("effects", "color_cycling", "off");
-    scr()->cyclemode = cfg.is_on("effects", "color_cycling") ? 1 : 0;
-    ASSERT_EQ(0, scr()->cyclemode);
+    apply_level_start_global_settings(*game_screen);
+    ASSERT_EQ(0, game_screen->cyclemode)
+        << "OFF must reach the live flag through the level-start seeding";
 
-    set_palette(scr()->ourpalette);
+    set_palette(game_screen->ourpalette);
     const std::array<unsigned char, 768> before =
         og::runtime::current_session->curpal_;
-    for (int tick = 0; tick < 4; ++tick)
-        if (scr()->cyclemode)
-            scr()->do_cycle(tick, 1);
+
+    constexpr std::uint32_t kTickMs =
+        static_cast<std::uint32_t>(og::sim::DEFAULT_SIM_TICK_MS);
+    std::uint32_t fake_now = 100000u;
+    int ticks = 0;
+    GameLoopFrameState st;
+    st.sim_pacer.configure(kTickMs, fake_now);
+    st.render_pacer.configure(kTickMs, fake_now);
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = kTickMs;
+    deps.now_ms = [&fake_now]() { return fake_now; };
+    deps.sleep_ms = [](std::uint32_t) {};
+    deps.after_act = [&ticks](screen&) { ++ticks; };
+
+    const auto run_frames = [&](int count) {
+        for (int i = 0; i < count; ++i)
+        {
+            fake_now += kTickMs;
+            ASSERT_EQ(GameFrameResult::Continue,
+                      game_frame_with_result(*game_screen, st, deps))
+                << "the frame loop must keep running";
+        }
+    };
+
+    run_frames(3);
+    ASSERT_EQ(3, ticks)
+        << "three sim ticks ran, so the frame's cycle guard was reached "
+           "three times";
     EXPECT_TRUE(std::equal(before.begin(), before.end(),
                            og::runtime::current_session->curpal_.begin()))
         << "with cycling off no palette index may move";
 
-    scr()->cyclemode = saved_mode;
-    set_palette(scr()->ourpalette);
+    cfg.apply_setting("effects", "color_cycling", "on");
+    apply_level_start_global_settings(*game_screen);
+    ASSERT_EQ(1, game_screen->cyclemode)
+        << "ON must reach the live flag through the same seeding";
+    ticks = 0;
+    run_frames(1);
+    ASSERT_EQ(1, ticks);
+    EXPECT_FALSE(std::equal(before.begin(), before.end(),
+                            og::runtime::current_session->curpal_.begin()))
+        << "the same frame rotates the bands when cycling is on";
+
+    game_screen->cyclemode = saved_mode;
+    game_screen->world().timer_wait = saved_timer_wait;
+    set_palette(game_screen->ourpalette);
+    restore_world(view0());
 }
 
 // The live toggle: clicking the GRAPHICS FX row flips cfg AND the live
