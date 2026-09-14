@@ -52,7 +52,7 @@
 #   done | grep -viE 'poll|SDL_Delay\(([0-9]|[1-9][0-9]|100)\)' | cut -d: -f1 | sort -u
 #
 # and subtract the names already in FILES and CONVERTED_FILES below. As of this
-# commit that leaves these ungated by either tier: test_back_to_mainmenu.cpp,
+# commit that leaves these ungated by either tier:
 # test_campaign_sprite_uaf.cpp, test_campaign_zone_ui.cpp,
 # test_canvas_scale.cpp, test_company_list.cpp, test_fade_ownership.cpp,
 # test_fairy_death.cpp, test_go_no_team.cpp, test_help.cpp,
@@ -95,6 +95,7 @@ CONVERTED_FILES=(
     tests/integration/test_hire_team.cpp
     tests/integration/test_cloud_ui.cpp
     tests/integration/test_overpowered_team.cpp
+    tests/integration/test_back_to_mainmenu.cpp
 )
 
 status=0
