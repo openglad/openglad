@@ -46,9 +46,9 @@ static void cleanup_picker_state()
 
 // newest_company_stamp() and seed_open_company() were written here and now
 // live in tests/test_company_cleanup.h beside ScopedCompanyFileCleanup: six
-// more og_test_menu_ui flows need the same two lines. (The third, the
-// CompanyClockRestore guard, is gone: [SAVE-R9] un-pins the company clock
-// between tests structurally.)
+// more og_test_menu_ui flows need the same two lines. (The third of them, the
+// clock-restore guard, is gone: [SAVE-R9] un-pins the company clock between
+// tests structurally.)
 
 // Test: Navigate to hire troops, browse characters with NEXT/PREV, then exit.
 //
