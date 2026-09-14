@@ -38,10 +38,6 @@
 
 using namespace og::modes_test;
 
-namespace og::script {
-extern std::int64_t g_test_world_instruction_budget;
-}
-
 namespace {
 
 // The mode-var slot map of lib/mode_onslaught_impl.lua (table S). A silent
@@ -1933,22 +1929,19 @@ TEST_F(ModesOnslaught, directed_generator_war_is_deterministic)
 
 TEST_F(ModesOnslaught, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
 {
-    og::script::g_test_world_instruction_budget = 500000;
-    {
-        OnsWorld fx;
-        fx.spawn_point(point_family_, 320, 320);
-        fx.spawn_point(point_family_, 320, 640);
-        fx.world().generator_rate = 1000;
-        fx.spawn_living(FAMILY_SOLDIER, 0, 200, 300, ACT_GUARD);
-        fx.spawn_living(FAMILY_SOLDIER, 1, 440, 300, ACT_GUARD);
-        fx.tick(1);  // init under the budget
-        ASSERT_TRUE(fx.world().mode.active);
-        fx.tick(45);  // 3 director cadences + census + waypoints + HUD
-        EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
-            << "a 10x-reduced budget must never trip";
-        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-    }
-    og::script::g_test_world_instruction_budget = 0;
+    const BudgetOverride budget(500000);
+    OnsWorld fx;
+    fx.spawn_point(point_family_, 320, 320);
+    fx.spawn_point(point_family_, 320, 640);
+    fx.world().generator_rate = 1000;
+    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 300, ACT_GUARD);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 440, 300, ACT_GUARD);
+    fx.tick(1);  // init under the budget
+    ASSERT_TRUE(fx.world().mode.active);
+    fx.tick(45);  // 3 director cadences + census + waypoints + HUD
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================

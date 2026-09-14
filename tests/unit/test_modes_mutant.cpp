@@ -44,10 +44,6 @@
 
 using namespace og::modes_test;
 
-namespace og::script {
-extern std::int64_t g_test_world_instruction_budget;
-}
-
 namespace {
 
 // The mode-var slot map of lib/mode_mutant_impl.lua (table S).

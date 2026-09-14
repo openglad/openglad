@@ -75,10 +75,6 @@ inline constexpr int kModesWaypointFamily = 14;
 
 using namespace og::modes_test;
 
-namespace og::script {
-extern std::int64_t g_test_world_instruction_budget;
-}
-
 namespace {
 
 inline constexpr int kAiCadence = 15;
@@ -2691,30 +2687,27 @@ TEST_F(ModesCtf, ctf_bot_match_is_deterministic_across_runs)
 // budget (500k vs the 5M production budget).
 TEST_F(ModesCtf, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
 {
-    og::script::g_test_world_instruction_budget = 500000;
-    {
-        ModesCtfWorld fx;
-        fx.spawn_flag(flag_family_, 0, 160, 128);
-        fx.spawn_flag(flag_family_, 1, 160, 800);
-        fx.spawn_point(point_family_, 320, 320);
-        fx.spawn_point(point_family_, 320, 480);
-        fx.spawn_point(point_family_, 160, 480);
-        fx.spawn_point(point_family_, 480, 480);
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(0, 224, 96);
-        fx.spawn_anchor(1, 96, 832);
-        fx.spawn_anchor(1, 224, 832);
-        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
-        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
-        fx.world().ctf_requested_respawn_ticks = 30;
-        fx.tick(1);  // init (the priciest single dispatch) under the budget
-        ASSERT_TRUE(fx.ctf_active());
-        fx.tick(45);  // 3 director cadences + all per-tick phases
-        EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
-            << "a 10x-reduced budget must never trip";
-        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-    }
-    og::script::g_test_world_instruction_budget = 0;
+    const BudgetOverride budget(500000);
+    ModesCtfWorld fx;
+    fx.spawn_flag(flag_family_, 0, 160, 128);
+    fx.spawn_flag(flag_family_, 1, 160, 800);
+    fx.spawn_point(point_family_, 320, 320);
+    fx.spawn_point(point_family_, 320, 480);
+    fx.spawn_point(point_family_, 160, 480);
+    fx.spawn_point(point_family_, 480, 480);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(0, 224, 96);
+    fx.spawn_anchor(1, 96, 832);
+    fx.spawn_anchor(1, 224, 832);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
+    fx.world().ctf_requested_respawn_ticks = 30;
+    fx.tick(1);  // init (the priciest single dispatch) under the budget
+    ASSERT_TRUE(fx.ctf_active());
+    fx.tick(45);  // 3 director cadences + all per-tick phases
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================

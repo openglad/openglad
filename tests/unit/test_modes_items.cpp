@@ -38,10 +38,6 @@
 
 using namespace og::modes_test;
 
-namespace og::script {
-extern std::int64_t g_test_world_instruction_budget;
-}
-
 namespace {
 
 // The mode-var item slots of the three consuming impls (tables S).
@@ -422,36 +418,33 @@ TEST_F(ModesItems, ctf_500_items_pass_fits_a_tenth_of_the_budget)
     // The D16 budget probe, re-run WITH the items pass: a full CTF mode
     // tick on the shipped scen500 row (7 pads, interval 300) must hold a
     // 10x-reduced instruction budget through census + spawn firings.
-    og::script::g_test_world_instruction_budget = 500000;
-    {
-        ModesCtfWorld fx(500);
-        fx.spawn_flag(flag_family_, 0, 160, 128);
-        fx.spawn_flag(flag_family_, 1, 160, 400);
-        fx.spawn_point(point_family_, 320, 240);
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(1, 96, 416);
-        fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
-        fx.spawn_living(FAMILY_SOLDIER, 1, 400, 300);
-        fx.tick(1);
-        ASSERT_TRUE(fx.ctf_active())
-            << "the shipped registration must bind manifest id 500";
-        EXPECT_EQ(1, fx.var(kCtfItemLast))
-            << "the ctf impl seeds ITEM_LAST (slot 63) at init";
+    const BudgetOverride budget(500000);
+    ModesCtfWorld fx(500);
+    fx.spawn_flag(flag_family_, 0, 160, 128);
+    fx.spawn_flag(flag_family_, 1, 160, 400);
+    fx.spawn_point(point_family_, 320, 240);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 96, 416);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 300);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ctf_active())
+        << "the shipped registration must bind manifest id 500";
+    EXPECT_EQ(1, fx.var(kCtfItemLast))
+        << "the ctf impl seeds ITEM_LAST (slot 63) at init";
 
-        // Interval 300: tick 330 is the first firing (programmatic world
-        // authors no treasures, so the row's 7 pads are all in deficit).
-        fx.tick(328);
-        EXPECT_EQ(0, census(fx.world()).respawnable());
-        fx.tick(1);
-        EXPECT_EQ(1, census(fx.world()).respawnable());
-        EXPECT_EQ(330, fx.var(kCtfItemLast));
+    // Interval 300: tick 330 is the first firing (programmatic world
+    // authors no treasures, so the row's 7 pads are all in deficit).
+    fx.tick(328);
+    EXPECT_EQ(0, census(fx.world()).respawnable());
+    fx.tick(1);
+    EXPECT_EQ(1, census(fx.world()).respawnable());
+    EXPECT_EQ(330, fx.var(kCtfItemLast));
 
-        EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
-            << "a 10x-reduced budget must never trip";
-        expect_no_script_errors(fx.world());
-        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-    }
-    og::script::g_test_world_instruction_budget = 0;
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip";
+    expect_no_script_errors(fx.world());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================
