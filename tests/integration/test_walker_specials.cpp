@@ -1,4 +1,5 @@
 #include <openglad/interface/game_context.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/resources/gloader.h>
@@ -194,29 +195,6 @@ static walker* find_first_alive_ob_by_family(char family)
     }
     return nullptr;
 }
-
-class SequenceRandom : public IRandom {
-public:
-    explicit SequenceRandom(std::initializer_list<Uint32> vals) : vals_(vals), idx_(0) {}
-    Uint32 next(Uint32 max_exclusive) override
-    {
-        if (max_exclusive == 0) {
-            return 0;
-        }
-        Uint32 v = 0;
-        if (!vals_.empty()) {
-            if (idx_ < vals_.size()) {
-                v = vals_[idx_++];
-            } else {
-                v = vals_.back();
-            }
-        }
-        return v % max_exclusive;
-    }
-private:
-    std::vector<Uint32> vals_;
-    size_t idx_;
-};
 
 class NoStatsWalker : public walker {
 public:
@@ -441,8 +419,14 @@ TEST_F(WalkerSpecials, archmage_chain_lightning_spawns_one_leashed_bolt)
     ASSERT_NE(nullptr, bolt) << "the chain bolt is in the world";
     EXPECT_EQ(near_foe, bolt->leader())
         << "the bolt is leashed to the NEAREST same-floor foe";
-    EXPECT_GT(bolt->damage(), 0.0f) << "the bolt carries the MP pool as damage";
-    EXPECT_GT(arch->busy(), 0.0f) << "the cast leaves the archmage busy";
+    // mp_pool_damage(slot 2) = min((1800 MP - 0 cost) / 2, kMpPoolDamageCap 600)
+    // -- the cap binds here -- and the same number is both the bolt's damage
+    // and the pool the cast spends.
+    EXPECT_FLOAT_EQ(600.0f, bolt->damage())
+        << "the bolt carries the capped MP pool as its damage";
+    EXPECT_FLOAT_EQ(1200.0f, arch->stats()->magicpoints())
+        << "and the archmage paid exactly that pool out of its 1800";
+    EXPECT_FLOAT_EQ(5.0f, arch->busy()) << "chain lightning costs 5 busy ticks";
 
     delete arch;
     world.delete_objects();
@@ -478,9 +462,17 @@ TEST_F(WalkerSpecials, archmage_true_summon_places_one_owned_fire_elemental)
     EXPECT_EQ(arch, elemental->owner()) << "the summon belongs to its summoner";
     EXPECT_EQ(static_cast<int>(arch->team_num()), static_cast<int>(elemental->team_num()))
         << "the summon joins the summoner's team";
-    EXPECT_GT(static_cast<int>(elemental->lifetime()), 0)
-        << "a true summon is ammunition: it has a finite lifetime";
-    EXPECT_GT(arch->busy(), 0.0f) << "summoning takes lots of time";
+    ASSERT_EQ(8, static_cast<int>(arch->stats()->level()))
+        << "fixture precondition: the lifetime below is this level's value";
+    // elemental_lifetime(8) = 200 + 60*8 = 680, below the 980 soft knee.
+    EXPECT_EQ(680, static_cast<int>(elemental->lifetime()))
+        << "a true summon is ammunition: it carries the level's exact lifetime";
+    EXPECT_TRUE(elemental->summoned())
+        << "and is flagged summoned, so it is never a SAVE_ALL casualty";
+    // halve_mp_surcharge(slot 3): half of the 1800 post-cost pool.
+    EXPECT_FLOAT_EQ(900.0f, arch->stats()->magicpoints())
+        << "the summon surcharge is half the post-cost pool";
+    EXPECT_FLOAT_EQ(15.0f, arch->busy()) << "summoning costs 15 busy ticks";
 
     delete arch;
     world.delete_objects();
@@ -739,18 +731,14 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
                 caster->set_busy(0);
                 caster->set_shifter_down(static_cast<short>(shift));
                 caster->stats()->set_magicpoints(caster->stats()->max_magicpoints());
-                const float pool_before = caster->stats()->magicpoints();
-                walker::SpecialFailure why = walker::SpecialFailure::None;
-                if (caster->special(&why))
+                // (The "a cost-gate refusal spends nothing" rule used to be
+                // asserted here under `why == NoMP`. It could not fail: every
+                // one-line break of the gate ALSO stops `why` from being NoMP,
+                // so the assertion simply stopped running. It is pinned
+                // falsifiably in WalkerSpecials.no_magic instead.)
+                if (caster->special())
                 {
                     mask |= 1u << ((slot - 1) * 2 + shift);
-                }
-                else if (why == walker::SpecialFailure::NoMP)
-                {
-                    EXPECT_FLOAT_EQ(pool_before, caster->stats()->magicpoints())
-                        << "a slot refused at the cost gate must run no cast and "
-                           "spend nothing: " << sweep.name << " slot " << slot
-                        << " shifter " << shift;
                 }
             }
         }
@@ -905,12 +893,21 @@ TEST_F(WalkerSpecials, no_magic)
     bool result = w->special();
     ASSERT_TRUE(!result) << "no magic should fail special";
 
-    // Exercise specific "not enough for selected special" index path.
+    // The cost gate, pinned so a one-line break of it is visible: a caster one
+    // point short of the SELECTED slot's cost is refused with NoMP -- before
+    // any family dispatch -- and pays nothing. Deleting the gate's `return`
+    // changes `why` (the cast runs on and declines, or succeeds), which is the
+    // observable; the pool then also moves.
     w->set_order_family(Order::Living, FAMILY_MAGE);
     w->set_current_special(4);
     w->stats()->set_special_cost(4, 50);
     w->stats()->set_magicpoints(49);
-    ASSERT_TRUE(!w->special()) << "insufficient MP for selected special index should fail";
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    ASSERT_TRUE(!w->special(&why)) << "insufficient MP for the selected slot must fail";
+    ASSERT_EQ(walker::SpecialFailure::NoMP, why)
+        << "and must fail AT THE COST GATE, not somewhere downstream";
+    ASSERT_FLOAT_EQ(49.0f, w->stats()->magicpoints())
+        << "a cost-gate refusal runs no cast and spends nothing";
 
     // Exercise base-class fallback implementations explicitly.
     ASSERT_EQ(-1, (int)w->walker::shove(nullptr, static_cast<short>(0), static_cast<short>(0))) << "base shove should return -1";
@@ -972,6 +969,10 @@ TEST_F(WalkerSpecials, character_death_drops_one_heart_and_one_stain)
     // Under SAVE_ALL a named team-my_team death ends the level and returns
     // before the bloodspot; this test is about the ordinary corpse. Permadeath
     // on (the default) keeps the gem at full legacy value.
+    // The level is loaded once per BINARY, so both knobs are restored below:
+    // leaving them clobbered would silently re-rule every later test.
+    const char saved_world_type = world.type;
+    const auto saved_keep_fallen_heroes = world.keep_fallen_heroes;
     world.type = static_cast<char>(world.type & ~SCEN_TYPE_SAVE_ALL);
     world.keep_fallen_heroes = 0;
 
@@ -1019,6 +1020,8 @@ TEST_F(WalkerSpecials, character_death_drops_one_heart_and_one_stain)
 
     delete w;
     world.delete_objects();
+    world.type = saved_world_type;
+    world.keep_fallen_heroes = saved_keep_fallen_heroes;
 }
 
 
@@ -1251,12 +1254,13 @@ TEST_F(WalkerSpecials, mage_wave_is_one_and_heartburst_is_one_per_foe)
     mage->stats()->set_magicpoints(1200);
     mage->stats()->set_special_cost(5, 0);
     const int bursts_before = count_order_family(Order::FX, FAMILY_EXPLOSION);
-    const float mp_before = mage->stats()->magicpoints();
     ASSERT_TRUE(mage->special()) << "heartburst fires with two foes in range";
     EXPECT_EQ(bursts_before + 2, count_order_family(Order::FX, FAMILY_EXPLOSION))
         << "heartburst is one explosion per acquired foe, not one per cast";
-    EXPECT_LT(mage->stats()->magicpoints(), mp_before)
-        << "each burst is paid for out of the caster's pool";
+    // mp_pool_damage(slot 5) = min((1200 - 0)/2, cap 600) = 600, split over the
+    // two foes as 300 each and debited once per burst: 1200 - 2*300 = 600.
+    EXPECT_FLOAT_EQ(600.0f, mage->stats()->magicpoints())
+        << "each burst is paid for out of the caster's pool, at pool/foes each";
     EXPECT_FLOAT_EQ(5.0f, mage->busy()) << "heartburst costs the caster 5 busy ticks";
 
     delete mage;
@@ -1362,12 +1366,10 @@ TEST_F(WalkerSpecials, archmage_mind_control_stats_name_path)
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     walker* foe3 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(arch != nullptr && foe != nullptr && foe2 != nullptr && foe3 != nullptr) << "arch and mind-control targets created";
-    if (!(arch && foe && foe2 && foe3)) {
-        delete arch;
-        og::runtime::current_session->myscreen_->world().delete_objects();
-        return;
-    }
+    ASSERT_NE(nullptr, arch) << "archmage created";
+    ASSERT_NE(nullptr, foe) << "first mind-control target created";
+    ASSERT_NE(nullptr, foe2) << "second mind-control target created";
+    ASSERT_NE(nullptr, foe3) << "third mind-control target created";
 
     arch->setxy(120, 120);
     foe->setxy(126, 120);
@@ -1394,16 +1396,51 @@ TEST_F(WalkerSpecials, archmage_mind_control_stats_name_path)
     foe->set_charm_left((0));
     foe2->set_charm_left((0));
     foe3->set_charm_left((0));
-    const float mp_before = arch->stats()->magicpoints();
+    ASSERT_NE(nullptr, current_game->sim_events) << "the notification channel exists";
+    current_game->sim_events->clear();
 
-    SequenceRandom seq_rng({1, 1, 1, 1, 1, 1, 1, 1});
-    GameContext test_ctx;
+    {
+        // Every draw mind_control makes is on the WORLD stream: og.rand(20)
+        // for the resist (non-zero = proper control, not the berserk arm) and
+        // compute_charm_duration's 25 + next(20 * level edge). A GameContext
+        // rng reaches neither, so the seeded stream goes here.
+        FixedRandom one_rng(1u);
+        ScopedSimStream scoped(&one_rng);
+        ASSERT_TRUE(arch->special()) << "mind control fires on three charmable foes";
+    }
 
-    test_ctx.rng = &seq_rng;
-    push_test_context(&test_ctx);
-    (void)arch->special();
-    pop_test_context();
-    ASSERT_TRUE(arch->stats()->magicpoints() < mp_before) << "mind-control should spend MP for controlled targets";
+    // Budget = post-cost pool (80) + 10, and each target costs 10: all three
+    // are controlled. The first is covered by the special's own cost, so the
+    // spend is (3 - 1) * 10 = 20 out of 80.
+    EXPECT_FLOAT_EQ(60.0f, arch->stats()->magicpoints())
+        << "extra targets cost 10 MP each; the first is free";
+    EXPECT_FLOAT_EQ(10.0f, arch->busy()) << "mind control costs 10 busy ticks";
+    for (walker* target : {foe, foe2, foe3})
+    {
+        EXPECT_EQ(static_cast<int>(arch->team_num()), static_cast<int>(target->team_num()))
+            << "a properly controlled foe joins the archmage's team";
+        EXPECT_EQ(2, static_cast<int>(target->real_team_num()))
+            << "and its old team is banked in real_team_num";
+        // charm_duration(edge 7 - 1 = 6) = 25 + next(120) = 26, under the knee.
+        EXPECT_EQ(26, static_cast<int>(target->charm_left()))
+            << "with the level edge's exact charm duration";
+        EXPECT_EQ(nullptr, target->foe())
+            << "control clears the foe so the convert picks a new one";
+    }
+
+    // The path this test is named for: an archmage with NO guy is announced by
+    // its statistics name, not by the generic family label.
+    bool announced = false;
+    for (const og::sim::Event& e : current_game->sim_events->events())
+    {
+        if (e.kind == og::sim::EventKind::Notification)
+        {
+            EXPECT_EQ(std::string("ARCH-NPC has controlled 3 men"), e.text)
+                << "a guy-less caster is announced by its statistics name";
+            announced = true;
+        }
+    }
+    EXPECT_TRUE(announced) << "mind control announces its haul";
 
     delete arch;
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -1555,9 +1592,8 @@ TEST_F(WalkerSpecials, cleric_mystic_mace_low_int_and_success_paths)
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 8);
-    ASSERT_TRUE(cleric != nullptr) << "cleric created";
-    if (!cleric)
-        return;
+    ASSERT_NE(nullptr, cleric) << "cleric created";
+    ASSERT_NE(nullptr, cleric->myguy) << "the Int gate reads the guy";
 
     cleric->set_current_special(1);
     cleric->set_shifter_down(1);
@@ -1565,24 +1601,31 @@ TEST_F(WalkerSpecials, cleric_mystic_mace_low_int_and_success_paths)
     cleric->set_busy(0);
     cleric->set_user(0);
 
-    if (cleric->myguy) {
-        cleric->myguy->intelligence = 40;
-    }
-    int shields_before = count_family_all_lists(FAMILY_MAGIC_SHIELD);
-    (void)cleric->special();
-    int shields_after_low_int = count_family_all_lists(FAMILY_MAGIC_SHIELD);
-    ASSERT_EQ(shields_before, shields_after_low_int) << "low-int mystic mace path should not create shield";
+    cleric->myguy->intelligence = 40;
+    const int shields_before = count_order_family(Order::FX, FAMILY_MAGIC_SHIELD);
+    const float mp_before = cleric->stats()->magicpoints();
+    ASSERT_FLOAT_EQ(500.0f, mp_before) << "fixture precondition: the pool the maths below use";
+    ASSERT_FALSE(cleric->special()) << "under the Int requirement the mace is refused";
+    ASSERT_EQ(shields_before, count_order_family(Order::FX, FAMILY_MAGIC_SHIELD))
+        << "a refused mace summons nothing";
+    ASSERT_FLOAT_EQ(mp_before, cleric->stats()->magicpoints())
+        << "and spends nothing";
 
-    if (cleric->myguy) {
-        cleric->myguy->intelligence = 120;
-    }
+    cleric->myguy->intelligence = 120;
     cleric->set_busy(0);
-    float mp_before = cleric->stats()->magicpoints();
-    (void)cleric->special();
-    int shields_after_success = count_family_all_lists(FAMILY_MAGIC_SHIELD);
-    ASSERT_TRUE(shields_after_success > shields_after_low_int) << "valid mystic mace cast should create shield fx";
-    ASSERT_TRUE(cleric->busy() > 0) << "valid mystic mace should set busy";
-    ASSERT_TRUE(cleric->stats()->magicpoints() < mp_before) << "valid mystic mace should spend magicpoints";
+    ASSERT_TRUE(cleric->special()) << "with the Int to pay for it the mace is summoned";
+    ASSERT_EQ(shields_before + 1, count_order_family(Order::FX, FAMILY_MAGIC_SHIELD))
+        << "exactly one mace per cast";
+    walker* mace = find_order_family(Order::FX, FAMILY_MAGIC_SHIELD);
+    ASSERT_NE(nullptr, mace) << "the mace is in the world";
+    EXPECT_EQ(cleric, mace->owner()) << "and belongs to its caster";
+    // spare = (500 MP - 0 cost) / 2 = 250: the mace's surcharge, its extra
+    // lifetime (100 + 250 = 350, under the 468 cap) and its extra charge.
+    EXPECT_EQ(350, static_cast<int>(mace->lifetime()))
+        << "mace_life_base + half the spare pool";
+    EXPECT_FLOAT_EQ(250.0f, cleric->stats()->magicpoints())
+        << "the mace surcharge is half the post-cost pool";
+    EXPECT_FLOAT_EQ(5.0f, cleric->busy()) << "and it costs 5 busy ticks";
 
     delete cleric;
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -1720,9 +1763,7 @@ TEST_F(WalkerSpecials, act_guard_and_low_magic_act_random_pin_what_they_queue)
 TEST_F(WalkerSpecials, guard_paths_and_teleport_failures)
 {
     walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
-    ASSERT_TRUE(w != nullptr) << "mage created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w) << "mage created";
 
     // dead guard
     w->set_dead(1);
@@ -1767,9 +1808,7 @@ TEST_F(WalkerSpecials, no_stats_guard)
 TEST_F(WalkerSpecials, unknown_family_and_teleport_ranged_fail_loop)
 {
     walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w) << "walker created";
 
     // special(): living + enough MP but missing descriptor callback -> return tail.
     w->set_order_family(Order::Living, 120);
@@ -1791,9 +1830,7 @@ TEST_F(WalkerSpecials, unknown_family_and_teleport_ranged_fail_loop)
 TEST_F(WalkerSpecials, success_returns_true_and_spends_mp)
 {
     walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w) << "walker created";
 
     w->set_order_family(Order::Living, FAMILY_MAGE);
     w->set_current_special(1); // teleport
@@ -1801,12 +1838,7 @@ TEST_F(WalkerSpecials, success_returns_true_and_spends_mp)
     w->stats()->set_magicpoints(50);
 
     walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    ASSERT_TRUE(marker != nullptr) << "teleport marker created";
-    if (!marker) {
-        delete w;
-        og::runtime::current_session->myscreen_->world().delete_objects();
-        return;
-    }
+    ASSERT_NE(nullptr, marker) << "teleport marker created";
 
     marker->set_owner(w);
     marker->set_dead(0);
@@ -1917,11 +1949,19 @@ TEST_F(WalkerSpecials, soldier_charge_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(1);
-    int cmds_before = static_cast<int>(w->stats()->commands.size());
+    const int cmds_before = static_cast<int>(w->stats()->commands.size());
     ASSERT_TRUE(w->special()) << "soldier charge should fire when forward is clear";
-    int cmds_after = static_cast<int>(w->stats()->commands.size());
+    ASSERT_EQ(cmds_before + 1, static_cast<int>(w->stats()->commands.size()))
+        << "charge enqueues exactly one order";
+    EXPECT_EQ(COMMAND_RUSH, static_cast<int>(w->stats()->commands.back().commandtype))
+        << "and that order is the rush";
+    EXPECT_EQ(3, static_cast<int>(w->stats()->commands.back().commandcount))
+        << "for the pack's three rush ticks";
+    EXPECT_EQ(1, static_cast<int>(w->stats()->commands.back().com1))
+        << "carrying lastx / stepsize as the x step";
+    EXPECT_EQ(0, static_cast<int>(w->stats()->commands.back().com2))
+        << "and lasty / stepsize as the y step";
     tick_world(48);
-    ASSERT_TRUE(cmds_after > cmds_before) << "charge should enqueue a rush command";
     delete w;
 }
 
@@ -1932,10 +1972,13 @@ TEST_F(WalkerSpecials, soldier_boomerang_drives_simulation)
     ASSERT_TRUE(w != nullptr) << "walker created";
     w->set_busy(0);
     w->set_current_special(2);
-    int before = count_family_all_lists(FAMILY_BOOMERANG);
+    const int before = count_order_family(Order::FX, FAMILY_BOOMERANG);
     ASSERT_TRUE(w->special()) << "soldier boomerang should fire";
-    int just_after = count_family_all_lists(FAMILY_BOOMERANG);
-    ASSERT_TRUE(just_after > before) << "boomerang FX should be spawned";
+    ASSERT_EQ(before + 1, count_order_family(Order::FX, FAMILY_BOOMERANG))
+        << "one cast throws exactly one boomerang";
+    walker* blade = find_order_family(Order::FX, FAMILY_BOOMERANG);
+    ASSERT_NE(nullptr, blade) << "the boomerang is in the world";
+    EXPECT_EQ(w, blade->owner()) << "and belongs to the thrower";
     tick_world(48);
     delete w;
 }
@@ -1949,11 +1992,18 @@ TEST_F(WalkerSpecials, soldier_whirlwind_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(3);
-    int cmds_before = static_cast<int>(w->stats()->commands.size());
+    const int cmds_before = static_cast<int>(w->stats()->commands.size());
     ASSERT_TRUE(w->special()) << "whirlwind should fire";
-    ASSERT_TRUE(w->busy() > 0) << "whirlwind should set busy on caster";
-    int cmds_after = static_cast<int>(w->stats()->commands.size());
-    ASSERT_TRUE(cmds_after > cmds_before) << "whirlwind should enqueue walk commands";
+    EXPECT_FLOAT_EQ(8.0f, w->busy()) << "whirlwind costs the caster 8 busy ticks";
+    ASSERT_EQ(cmds_before + 8, static_cast<int>(w->stats()->commands.size()))
+        << "whirlwind queues one walk per compass direction -- eight, not some";
+    int walk_orders = 0;
+    for (const auto& c : w->stats()->commands)
+    {
+        if (static_cast<int>(c.commandtype) == COMMAND_WALK)
+            walk_orders++;
+    }
+    EXPECT_EQ(8, walk_orders) << "and every one of them is a walk";
     tick_world(48);
     delete w;
 }
@@ -2027,10 +2077,24 @@ TEST_F(WalkerSpecials, archer_fire_arrows_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(1);
-    int cmds_before = static_cast<int>(w->stats()->commands.size());
+    const int cmds_before = static_cast<int>(w->stats()->commands.size());
     ASSERT_TRUE(w->special()) << "archer fire arrows should issue commands";
-    int cmds_after = static_cast<int>(w->stats()->commands.size());
-    ASSERT_TRUE(cmds_after > cmds_before) << "fire arrows should enqueue quick-fire commands";
+    // SET_WEAPON + one QUICK_FIRE per compass direction + RESET_WEAPON.
+    ASSERT_EQ(cmds_before + 10, static_cast<int>(w->stats()->commands.size()))
+        << "fire arrows queues exactly ten orders";
+    ASSERT_EQ(0, cmds_before) << "fixture precondition: the queue started empty";
+    std::vector<int> order_types;
+    for (const auto& c : w->stats()->commands)
+        order_types.push_back(static_cast<int>(c.commandtype));
+    const std::vector<int> expected_order_types = {
+        COMMAND_SET_WEAPON,  // swap to the fire arrow
+        COMMAND_QUICK_FIRE, COMMAND_QUICK_FIRE, COMMAND_QUICK_FIRE,
+        COMMAND_QUICK_FIRE, COMMAND_QUICK_FIRE, COMMAND_QUICK_FIRE,
+        COMMAND_QUICK_FIRE, COMMAND_QUICK_FIRE,  // one per compass direction
+        COMMAND_RESET_WEAPON  // and put the old weapon back
+    };
+    EXPECT_EQ(expected_order_types, order_types)
+        << "the volley is swap, eight quick-fires, swap back -- in that order";
     tick_world(48);
     delete w;
 }
@@ -2045,11 +2109,12 @@ TEST_F(WalkerSpecials, archer_barrage_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(2);
-    int arrows_before = count_family_in_weaplist(FAMILY_ARROW);
+    const int arrows_before = count_family_in_weaplist(FAMILY_ARROW);
     ASSERT_TRUE(w->special()) << "archer barrage should fire";
-    int arrows_after = count_family_in_weaplist(FAMILY_ARROW);
-    ASSERT_TRUE(arrows_after > arrows_before) << "barrage should add arrows to weaplist";
-    ASSERT_TRUE(w->busy() > 0) << "barrage should set busy";
+    ASSERT_EQ(arrows_before + 3, count_family_in_weaplist(FAMILY_ARROW))
+        << "a barrage is exactly three arrows, never one";
+    EXPECT_FLOAT_EQ(w->fire_frequency() * 2.0f, w->busy())
+        << "and it costs two fire cycles of busy";
     tick_world(48);
     delete w;
 }
@@ -2064,10 +2129,14 @@ TEST_F(WalkerSpecials, archer_exploding_bolt_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(3);
-    int bolts_before = count_family_in_weaplist(FAMILY_FIRE_ARROW);
+    const int bolts_before = count_family_in_weaplist(FAMILY_FIRE_ARROW);
     ASSERT_TRUE(w->special()) << "exploding bolt should fire";
-    int bolts_after = count_family_in_weaplist(FAMILY_FIRE_ARROW);
-    ASSERT_TRUE(bolts_after > bolts_before) << "exploding bolt should add fire arrow to weaplist";
+    ASSERT_EQ(bolts_before + 1, count_family_in_weaplist(FAMILY_FIRE_ARROW))
+        << "an exploding bolt is exactly one fire arrow";
+    walker* bolt = find_order_family(Order::Weapon, FAMILY_FIRE_ARROW);
+    ASSERT_NE(nullptr, bolt) << "the bolt is in the world";
+    EXPECT_EQ(5000, static_cast<int>(bolt->skip_exit()))
+        << "carrying the explode-on-impact sentinel that makes it 'exploding'";
     tick_world(48);
     delete w;
 }
@@ -2108,10 +2177,10 @@ TEST_F(WalkerSpecials, mage_warp_starburst_drives_simulation)
     w->set_busy(0);
     w->set_current_special(2);
     w->stats()->set_magicpoints(1500);
-    int fbs_before = count_family_in_weaplist(FAMILY_FIREBALL);
+    const int fbs_before = count_family_in_weaplist(FAMILY_FIREBALL);
     ASSERT_TRUE(w->special()) << "mage warp/starburst should fire";
-    int fbs_after = count_family_in_weaplist(FAMILY_FIREBALL);
-    ASSERT_TRUE(fbs_after > fbs_before) << "starburst should add fireballs to weaplist";
+    ASSERT_EQ(fbs_before + 8, count_family_in_weaplist(FAMILY_FIREBALL))
+        << "a starburst is one fireball per compass direction -- eight, not some";
     tick_world(48);
     delete w;
 }
@@ -2125,8 +2194,12 @@ TEST_F(WalkerSpecials, mage_freeze_time_drives_simulation)
     w->set_busy(0);
     w->set_current_special(3);
     og::runtime::current_session->myscreen_->world().enemy_freeze = 0;
+    ASSERT_EQ(4, static_cast<int>(w->stats()->level()))
+        << "fixture precondition: the bank below is this level's value";
     ASSERT_TRUE(w->special()) << "mage freeze time should fire (player path)";
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().enemy_freeze > 0) << "freeze time should set world enemy_freeze";
+    // freeze_base 20 + freeze_per_level 11 * level 4 == 64, under the 300 bank cap.
+    ASSERT_EQ(64, static_cast<int>(og::runtime::current_session->myscreen_->world().enemy_freeze))
+        << "an on-team mage banks exactly 20 + 11 * level of global time-stop";
     tick_world(48);
     delete w;
 }
@@ -2141,10 +2214,15 @@ TEST_F(WalkerSpecials, mage_energy_wave_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(4);
-    int waves_before = count_family_in_weaplist(FAMILY_WAVE);
+    const int waves_before = count_family_in_weaplist(FAMILY_WAVE);
     ASSERT_TRUE(w->special()) << "mage energy wave should fire";
-    int waves_after = count_family_in_weaplist(FAMILY_WAVE);
-    ASSERT_TRUE(waves_after > waves_before) << "energy wave should spawn FAMILY_WAVE in weaplist";
+    ASSERT_EQ(waves_before + 1, count_family_in_weaplist(FAMILY_WAVE))
+        << "one cast leaves exactly one wave behind";
+    walker* wave = find_order_family(Order::Weapon, FAMILY_WAVE);
+    ASSERT_NE(nullptr, wave) << "the wave is in the world";
+    EXPECT_EQ(w, wave->owner()) << "and belongs to the caster";
+    EXPECT_EQ(static_cast<int>(w->stats()->level()), static_cast<int>(wave->stats()->level()))
+        << "carrying the caster's level";
     tick_world(48);
     delete w;
 }
@@ -2152,8 +2230,12 @@ TEST_F(WalkerSpecials, mage_energy_wave_drives_simulation)
 
 TEST_F(WalkerSpecials, mage_heartburst_drives_simulation)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
     walker* w = make_special_guy(FAMILY_MAGE, 1, 5);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // One burst per acquired foe, so the neighbourhood has to hold exactly the
+    // foe this test puts in it.
+    world.delete_objects();
     w->setxy(100, 100);
     w->set_busy(0);
     w->set_current_special(5);
@@ -2166,12 +2248,18 @@ TEST_F(WalkerSpecials, mage_heartburst_drives_simulation)
     foe->setxy(w->xpos() + 8, w->ypos() + 8);
     foe->stats()->set_level(1);
 
-    int explosions_before = count_family_all_lists(FAMILY_EXPLOSION);
+    const int explosions_before = count_order_family(Order::FX, FAMILY_EXPLOSION);
     ASSERT_TRUE(w->special()) << "mage heartburst should fire when foes are present";
-    int explosions_after = count_family_all_lists(FAMILY_EXPLOSION);
-    ASSERT_TRUE(explosions_after > explosions_before) << "heartburst should spawn explosion FX";
+    ASSERT_EQ(explosions_before + 1, count_order_family(Order::FX, FAMILY_EXPLOSION))
+        << "heartburst is one explosion per acquired foe: one foe, one burst";
+    // mp_pool_damage(slot 5) = min((1500 - 0)/2, cap 600) = 600, split over the
+    // single foe and debited once: 1500 - 600 = 900.
+    EXPECT_FLOAT_EQ(900.0f, w->stats()->magicpoints())
+        << "and the whole pool is spent on that one burst";
+    EXPECT_FLOAT_EQ(5.0f, w->busy()) << "heartburst costs the caster 5 busy ticks";
     tick_world(48);
     delete w;
+    world.delete_objects();
 }
 
 
@@ -2204,17 +2292,22 @@ TEST_F(WalkerSpecials, skeleton_tunnel_drives_simulation)
 
 TEST_F(WalkerSpecials, cleric_heal_drives_simulation)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
     walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // The heal walks every wounded friend in range, so the neighbourhood has
+    // to hold exactly the two this test puts in it.
+    world.delete_objects();
     w->setxy(100, 100);
     w->set_busy(0);
     w->set_current_special(1);
     w->set_shifter_down(0);
     w->stats()->set_magicpoints(2000);
 
-    walker* ally1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* ally2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(ally1 != nullptr && ally2 != nullptr) << "allies created";
+    walker* ally1 = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* ally2 = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, ally1) << "first ally created";
+    ASSERT_NE(nullptr, ally2) << "second ally created";
     ally1->set_team_num(1);
     ally2->set_team_num(1);
     ally1->setxy(w->xpos() + 8, w->ypos() + 0);
@@ -2223,14 +2316,29 @@ TEST_F(WalkerSpecials, cleric_heal_drives_simulation)
     ally2->stats()->set_max_hitpoints(100);
     ally1->stats()->set_hitpoints(20);
     ally2->stats()->set_hitpoints(20);
-    const float ally1_hp_before = ally1->stats()->hitpoints();
-    const float ally2_hp_before = ally2->stats()->hitpoints();
 
-    ASSERT_TRUE(w->special()) << "cleric heal should fire with wounded allies";
-    ASSERT_TRUE(ally1->stats()->hitpoints() > ally1_hp_before
-                || ally2->stats()->hitpoints() > ally2_hp_before) << "heal should restore at least one ally's hitpoints";
+    {
+        // compute_heal_amount draws ONE number off the world stream per
+        // patient (base = mp/4 + next(mp/4)); a floor stream makes both draws
+        // 0, so every value below is arithmetic:
+        //   ally1: base 2000/4 = 500, cost 250, amount 500 + 5*5 = 525
+        //   ally2: base 1750/4 = 437, cost 218, amount 437 + 25 = 462
+        FixedRandom floor_rng(0u);
+        ScopedSimStream scoped(&floor_rng);
+        ASSERT_TRUE(w->special()) << "cleric heal should fire with wounded allies";
+    }
+    // EVERY wounded ally in range is healed, not merely one of them, and the
+    // second is healed out of the pool the first one left.
+    EXPECT_FLOAT_EQ(545.0f, ally1->stats()->hitpoints())
+        << "the first patient gets mp/4 + 5 * level";
+    EXPECT_FLOAT_EQ(482.0f, ally2->stats()->hitpoints())
+        << "the second is healed off the REDUCED pool, so it gets less";
+    // 2000 - 250 - 218 = 1532, then the HEAL slot's own 2 MP cost.
+    EXPECT_FLOAT_EQ(1530.0f, w->stats()->magicpoints())
+        << "the cleric paid base/2 per patient, plus the slot's own cost";
     tick_world(48);
     delete w;
+    world.delete_objects();
 }
 
 
@@ -2419,10 +2527,10 @@ TEST_F(WalkerSpecials, elf_rocks_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(1);
-    int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
+    const int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
     ASSERT_TRUE(w->special()) << "elf rocks should fire";
-    int rocks_after = count_family_in_weaplist(FAMILY_ROCK);
-    ASSERT_TRUE(rocks_after > rocks_before) << "elf rocks should add rocks to weaplist";
+    ASSERT_EQ(rocks_before + 2, count_family_in_weaplist(FAMILY_ROCK))
+        << "ROCKS throws exactly two rocks";
     tick_world(48);
     delete w;
 }
@@ -2437,10 +2545,10 @@ TEST_F(WalkerSpecials, elf_bouncing_rocks_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(2);
-    int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
+    const int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
     ASSERT_TRUE(w->special()) << "elf bouncing rocks should fire";
-    int rocks_after = count_family_in_weaplist(FAMILY_ROCK);
-    ASSERT_TRUE(rocks_after > rocks_before) << "bouncing rocks should add rocks to weaplist";
+    ASSERT_EQ(rocks_before + 2, count_family_in_weaplist(FAMILY_ROCK))
+        << "BOUNCING ROCKS throws exactly two rocks";
     tick_world(48);
     delete w;
 }
@@ -2455,10 +2563,10 @@ TEST_F(WalkerSpecials, elf_lots_of_rocks_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(3);
-    int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
+    const int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
     ASSERT_TRUE(w->special()) << "elf lots of rocks should fire";
-    int rocks_after = count_family_in_weaplist(FAMILY_ROCK);
-    ASSERT_TRUE(rocks_after > rocks_before) << "lots of rocks should add rocks to weaplist";
+    ASSERT_EQ(rocks_before + 3, count_family_in_weaplist(FAMILY_ROCK))
+        << "LOTS OF ROCKS throws exactly three rocks";
     tick_world(48);
     delete w;
 }
@@ -2474,10 +2582,10 @@ TEST_F(WalkerSpecials, elf_mega_rocks_drives_simulation)
     w->set_busy(0);
     w->set_current_special(4);
     w->stats()->set_magicpoints(2000);
-    int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
+    const int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
     ASSERT_TRUE(w->special()) << "elf mega rocks should fire";
-    int rocks_after = count_family_in_weaplist(FAMILY_ROCK);
-    ASSERT_TRUE(rocks_after > rocks_before) << "mega rocks should add rocks to weaplist";
+    ASSERT_EQ(rocks_before + 4, count_family_in_weaplist(FAMILY_ROCK))
+        << "MEGA ROCKS throws exactly four rocks";
     tick_world(48);
     delete w;
 }
@@ -2493,10 +2601,10 @@ TEST_F(WalkerSpecials, fire_elemental_starburst_drives_simulation)
     w->set_busy(0);
     w->set_current_special(1);
     w->stats()->set_magicpoints(2000);
-    int meteors_before = count_family_in_weaplist(FAMILY_METEOR);
+    const int meteors_before = count_family_in_weaplist(FAMILY_METEOR);
     ASSERT_TRUE(w->special()) << "fire elemental starburst should fire";
-    int meteors_after = count_family_in_weaplist(FAMILY_METEOR);
-    ASSERT_TRUE(meteors_after > meteors_before) << "starburst should add meteors to weaplist";
+    ASSERT_EQ(meteors_before + 8, count_family_in_weaplist(FAMILY_METEOR))
+        << "a starburst is one meteor per compass direction -- eight, not some";
     tick_world(48);
     delete w;
 }
@@ -2510,10 +2618,13 @@ TEST_F(WalkerSpecials, thief_drop_bomb_drives_simulation)
     w->set_busy(0);
     w->set_user(0);
     w->set_current_special(1);
-    int bombs_before = count_family_in_oblist(FAMILY_BOMB);
+    const int bombs_before = count_order_family(Order::FX, FAMILY_BOMB);
     ASSERT_TRUE(w->special()) << "thief drop bomb should fire";
-    int bombs_after = count_family_in_oblist(FAMILY_BOMB);
-    ASSERT_TRUE(bombs_after > bombs_before) << "drop bomb should spawn FAMILY_BOMB in oblist";
+    ASSERT_EQ(bombs_before + 1, count_order_family(Order::FX, FAMILY_BOMB))
+        << "one cast drops exactly one bomb";
+    walker* bomb = find_order_family(Order::FX, FAMILY_BOMB);
+    ASSERT_NE(nullptr, bomb) << "the bomb is in the world";
+    EXPECT_EQ(w, bomb->owner()) << "and belongs to the thief who dropped it";
     tick_world(48);
     delete w;
 }
@@ -2528,8 +2639,15 @@ TEST_F(WalkerSpecials, thief_cloak_drives_simulation)
     w->set_user(0);
     w->set_invisibility_left(0);
     w->set_current_special(2);
-    ASSERT_TRUE(w->special()) << "thief cloak should fire";
-    ASSERT_TRUE(w->invisibility_left() > 0) << "cloak should set invisibility_left";
+    {
+        // cloak gain = cloak_base 20 + og.rand(20) * level, drawn off the
+        // WORLD stream; a floor stream zeroes the roll and leaves the base.
+        FixedRandom floor_rng(0u);
+        ScopedSimStream scoped(&floor_rng);
+        ASSERT_TRUE(w->special()) << "thief cloak should fire";
+    }
+    ASSERT_EQ(20, static_cast<int>(w->invisibility_left()))
+        << "cloak banks exactly cloak_base on top of the 0 it started from";
     tick_world(48);
     delete w;
 }
@@ -2552,13 +2670,24 @@ TEST_F(WalkerSpecials, thief_taunt_drives_simulation)
     foe->stats()->set_level(1);
     foe->set_foe(nullptr);
 
-    SequenceRandom seq_rng({0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-    GameContext test_ctx;
-    test_ctx.rng = &seq_rng;
-    push_test_context(&test_ctx);
-    ASSERT_TRUE(w->special()) << "thief taunt should fire when foes are nearby";
-    pop_test_context();
-    ASSERT_TRUE(foe->foe() == w) << "taunt should retarget foe at thief";
+    ASSERT_EQ(0u, foe->stats()->commands.size()) << "fixture precondition: no orders yet";
+    {
+        // taunt's contest is og.rand(self.level) >= og.rand(foe.level) on the
+        // WORLD stream (a GameContext rng steers nothing), and the follow
+        // order's length is 10 + og.rand(self.level) on the same stream.
+        FixedRandom floor_rng(0u);
+        ScopedSimStream scoped(&floor_rng);
+        ASSERT_TRUE(w->special()) << "thief taunt should fire when foes are nearby";
+    }
+    EXPECT_EQ(w, foe->foe()) << "taunt retargets the foe at the thief";
+    EXPECT_EQ(w, foe->leader()) << "and makes the thief its leader";
+    ASSERT_EQ(1u, foe->stats()->commands.size())
+        << "a taunted foe is given exactly one order";
+    EXPECT_EQ(COMMAND_FOLLOW, static_cast<int>(foe->stats()->commands.front().commandtype))
+        << "and that order is to follow the thief";
+    EXPECT_EQ(10, static_cast<int>(foe->stats()->commands.front().commandcount))
+        << "for 10 + rand(level) ticks -- 10 on a floor stream";
+    EXPECT_FLOAT_EQ(2.0f, w->busy()) << "taunting costs the thief 2 busy ticks";
     tick_world(48);
     delete w;
 }
@@ -2615,10 +2744,19 @@ TEST_F(WalkerSpecials, thief_poison_cloud_drives_simulation)
     w->set_busy(0);
     w->set_user(0);
     w->set_current_special(4);
-    int clouds_before = count_family_all_lists(FAMILY_CLOUD);
+    const int clouds_before = count_order_family(Order::FX, FAMILY_CLOUD);
     ASSERT_TRUE(w->special()) << "thief poison cloud should fire";
-    int clouds_after = count_family_all_lists(FAMILY_CLOUD);
-    ASSERT_TRUE(clouds_after > clouds_before) << "poison cloud should spawn FAMILY_CLOUD";
+    const int clouds_after = count_order_family(Order::FX, FAMILY_CLOUD);
+    ASSERT_EQ(clouds_before + 1, clouds_after) << "one cast lays exactly one cloud";
+    walker* cloud = find_order_family(Order::FX, FAMILY_CLOUD);
+    ASSERT_NE(nullptr, cloud) << "the cloud is in the world";
+    EXPECT_EQ(w, cloud->owner()) << "and belongs to the thief";
+    // cloud_lifetime_base 40 + cloud_lifetime_per_level 3 * level 4 == 52.
+    EXPECT_EQ(52, static_cast<int>(cloud->lifetime()))
+        << "carrying the level's exact cloud lifetime";
+    EXPECT_EQ(4, static_cast<int>(cloud->damage()))
+        << "and the caster's level as its damage";
+    EXPECT_FLOAT_EQ(5.0f, w->busy()) << "laying the cloud costs 5 busy ticks";
     tick_world(48);
     delete w;
 }
@@ -2634,10 +2772,15 @@ TEST_F(WalkerSpecials, druid_grow_tree_drives_simulation)
     w->set_busy(0);
     w->set_current_special(1);
     w->stats()->set_magicpoints(2000);
-    int trees_before = count_family_in_weaplist(FAMILY_TREE);
+    const int trees_before = count_order_family(Order::Weapon, FAMILY_TREE);
     ASSERT_TRUE(w->special()) << "druid grow tree should fire";
-    int trees_after = count_family_in_weaplist(FAMILY_TREE);
-    ASSERT_TRUE(trees_after > trees_before) << "grow tree should add FAMILY_TREE to weaplist";
+    ASSERT_EQ(trees_before + 1, count_order_family(Order::Weapon, FAMILY_TREE))
+        << "one cast plants exactly one tree";
+    walker* tree = find_order_family(Order::Weapon, FAMILY_TREE);
+    ASSERT_NE(nullptr, tree) << "the tree is in the world";
+    EXPECT_EQ(w, tree->owner()) << "and belongs to the druid that planted it";
+    EXPECT_EQ(ANI_GROW, static_cast<int>(tree->ani_type()))
+        << "and it comes up growing";
     tick_world(48);
     delete w;
 }
@@ -2653,10 +2796,15 @@ TEST_F(WalkerSpecials, druid_summon_faerie_drives_simulation)
     w->set_busy(0);
     w->set_current_special(2);
     w->stats()->set_magicpoints(2000);
-    int faerie_before = count_family_in_oblist(FAMILY_FAERIE);
+    const int faerie_before = count_order_family(Order::Living, FAMILY_FAERIE);
     ASSERT_TRUE(w->special()) << "druid summon faerie should fire";
-    int faerie_after = count_family_in_oblist(FAMILY_FAERIE);
-    ASSERT_TRUE(faerie_after > faerie_before) << "summon faerie should add FAMILY_FAERIE to oblist";
+    ASSERT_EQ(faerie_before + 1, count_order_family(Order::Living, FAMILY_FAERIE))
+        << "one cast summons exactly one faerie";
+    walker* faerie = find_order_family(Order::Living, FAMILY_FAERIE);
+    ASSERT_NE(nullptr, faerie) << "the faerie is in the world";
+    EXPECT_EQ(w, faerie->owner()) << "and belongs to its summoner";
+    EXPECT_EQ(static_cast<int>(w->team_num()), static_cast<int>(faerie->team_num()))
+        << "on the summoner's team";
     tick_world(48);
     delete w;
 }
@@ -2671,7 +2819,11 @@ TEST_F(WalkerSpecials, druid_reveal_drives_simulation)
     w->set_view_all(0);
     w->set_current_special(3);
     ASSERT_TRUE(w->special()) << "druid reveal should fire";
-    ASSERT_TRUE(w->view_all() > 0) << "reveal should set view_all";
+    // view_all += level * 10 == 40 for this level-4 druid.
+    ASSERT_EQ(40, static_cast<int>(w->view_all()))
+        << "reveal banks exactly 10 ticks of sight per caster level";
+    EXPECT_FLOAT_EQ(w->fire_frequency() * 4.0f, w->busy())
+        << "and costs four fire cycles of busy";
     tick_world(48);
     delete w;
 }
@@ -2679,16 +2831,21 @@ TEST_F(WalkerSpecials, druid_reveal_drives_simulation)
 
 TEST_F(WalkerSpecials, druid_protection_drives_simulation)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
     walker* w = make_special_guy(FAMILY_DRUID, 1, 5);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // One ring per unprotected friend in range, so the neighbourhood has to
+    // hold exactly the two this test puts in it.
+    world.delete_objects();
     w->setxy(100, 100);
     w->set_busy(0);
     w->set_current_special(4);
     w->stats()->set_magicpoints(2000);
 
-    walker* ally1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* ally2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(ally1 != nullptr && ally2 != nullptr) << "allies created";
+    walker* ally1 = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* ally2 = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, ally1) << "first ally created";
+    ASSERT_NE(nullptr, ally2) << "second ally created";
     ally1->set_team_num(1);
     ally2->set_team_num(1);
     ally1->setxy(w->xpos() + 8, w->ypos() + 0);
@@ -2696,12 +2853,29 @@ TEST_F(WalkerSpecials, druid_protection_drives_simulation)
     ally1->stats()->set_level(2);
     ally2->stats()->set_level(2);
 
-    int prot_before = count_family_in_weaplist(FAMILY_CIRCLE_PROTECTION);
+    const int prot_before = count_order_family(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     ASSERT_TRUE(w->special()) << "druid protection should fire with friends nearby";
-    int prot_after = count_family_in_weaplist(FAMILY_CIRCLE_PROTECTION);
-    ASSERT_TRUE(prot_after > prot_before) << "protection should add FAMILY_CIRCLE_PROTECTION to weaplist";
+    // One ring per unprotected FRIEND -- never one per cast, and never one for
+    // the druid itself.
+    ASSERT_EQ(prot_before + 2, count_order_family(Order::Weapon, FAMILY_CIRCLE_PROTECTION))
+        << "two unprotected allies get two rings";
+    int owned_by_ally1 = 0;
+    int owned_by_ally2 = 0;
+    int owned_by_druid = 0;
+    for (auto& uptr : world.weaplist)
+    {
+        if (!uptr || uptr->family() != FAMILY_CIRCLE_PROTECTION)
+            continue;
+        if (uptr->owner() == ally1) owned_by_ally1++;
+        if (uptr->owner() == ally2) owned_by_ally2++;
+        if (uptr->owner() == w) owned_by_druid++;
+    }
+    EXPECT_EQ(1, owned_by_ally1) << "the first ally owns exactly one ring";
+    EXPECT_EQ(1, owned_by_ally2) << "the second ally owns exactly one ring";
+    EXPECT_EQ(0, owned_by_druid) << "the caster protects its friends, not itself";
     tick_world(48);
     delete w;
+    world.delete_objects();
 }
 
 
@@ -2754,9 +2928,14 @@ TEST_F(WalkerSpecials, orc_eat_corpse_drives_simulation)
     stain->stats()->set_level(3);
     stain->set_dead(0);
 
-    const float hp_before = w->stats()->hitpoints();
+    ASSERT_FLOAT_EQ(50.0f, w->stats()->hitpoints()) << "fixture precondition";
     ASSERT_TRUE(w->special()) << "orc eat corpse should fire";
-    ASSERT_TRUE(w->stats()->hitpoints() > hp_before) << "eat corpse should heal the orc";
+    EXPECT_EQ(1, static_cast<int>(stain->dead()))
+        << "the corpse is consumed by the meal";
+    // corpse_heal_per_level 5 * the corpse's level 3 == 15, on top of 50 and
+    // well under the 200 cap.
+    EXPECT_FLOAT_EQ(65.0f, w->stats()->hitpoints())
+        << "a corpse is worth 5 HP per level of the body that fell";
     tick_world(48);
     delete w;
 }
@@ -2795,10 +2974,16 @@ TEST_F(WalkerSpecials, barbarian_exploding_boulder_drives_simulation)
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(2);
-    int boulders_before = count_family_in_weaplist(FAMILY_BOULDER);
+    const int boulders_before = count_order_family(Order::Weapon, FAMILY_BOULDER);
     ASSERT_TRUE(w->special()) << "barbarian exploding boulder should fire";
-    int boulders_after = count_family_in_weaplist(FAMILY_BOULDER);
-    ASSERT_TRUE(boulders_after > boulders_before) << "exploding boulder should add FAMILY_BOULDER to weaplist";
+    ASSERT_EQ(boulders_before + 1, count_order_family(Order::Weapon, FAMILY_BOULDER))
+        << "one hurl adds exactly one boulder";
+    walker* boulder = find_order_family(Order::Weapon, FAMILY_BOULDER);
+    ASSERT_NE(nullptr, boulder) << "the boulder is in the world";
+    EXPECT_EQ(w, boulder->owner()) << "and belongs to the thrower";
+    EXPECT_EQ(5000, static_cast<int>(boulder->skip_exit()))
+        << "slot 2 is the EXPLODING boulder: it carries the 5000 sentinel";
+    EXPECT_FLOAT_EQ(11.0f, w->busy()) << "busy += 1 + slot * 5 == 11 for slot 2";
     tick_world(48);
     delete w;
 }
@@ -2815,13 +3000,23 @@ TEST_F(WalkerSpecials, archmage_teleport_drives_simulation)
     w->set_shifter_down(1);
     w->stats()->set_special_cost(1, 0);
     w->stats()->set_magicpoints(2000);
-    if (w->myguy)
-        w->myguy->intelligence = 200;
+    ASSERT_NE(nullptr, w->myguy) << "the marker's uses are read off the guy";
+    w->myguy->intelligence = 200;
 
-    int markers_before = count_family_in_oblist(FAMILY_MARKER);
+    const int markers_before = count_order_family(Order::FX, FAMILY_MARKER);
     ASSERT_TRUE(w->special()) << "archmage teleport (marker) should fire";
-    int markers_after = count_family_in_oblist(FAMILY_MARKER);
-    ASSERT_TRUE(markers_after > markers_before) << "marker placement path should spawn FAMILY_MARKER";
+    ASSERT_EQ(markers_before + 1, count_order_family(Order::FX, FAMILY_MARKER))
+        << "one cast plants exactly one marker";
+    walker* marker = find_order_family(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, marker) << "the marker is in the world";
+    EXPECT_EQ(w, marker->owner()) << "and belongs to the caster";
+    // A guy-backed caster reads its uses off Intelligence / 33 == 200 / 33 == 6.
+    EXPECT_EQ(6, static_cast<int>(marker->lifetime()))
+        << "the marker's uses come from the caster's Intelligence / 33";
+    EXPECT_FLOAT_EQ(8.0f, w->busy()) << "planting a marker costs 8 busy ticks";
+    // Marker surcharge: half the post-cost pool, out of 2000.
+    EXPECT_FLOAT_EQ(1000.0f, w->stats()->magicpoints())
+        << "and half the remaining pool";
     tick_world(48);
     delete w;
 }
@@ -2829,8 +3024,12 @@ TEST_F(WalkerSpecials, archmage_teleport_drives_simulation)
 
 TEST_F(WalkerSpecials, archmage_heartburst_drives_simulation)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
     walker* w = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // One burst per acquired foe, so the neighbourhood has to hold exactly the
+    // foe this test puts in it.
+    world.delete_objects();
     w->setxy(120, 120);
     w->set_busy(0);
     w->set_shifter_down(0);
@@ -2838,25 +3037,35 @@ TEST_F(WalkerSpecials, archmage_heartburst_drives_simulation)
     w->stats()->set_magicpoints(2000);
     w->stats()->set_special_cost(2, 0);
 
-    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(foe != nullptr) << "foe created";
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, foe) << "foe created";
     foe->set_team_num(2);
     foe->setxy(w->xpos() + 8, w->ypos() + 8);
     foe->stats()->set_level(1);
 
-    int explosions_before = count_family_all_lists(FAMILY_EXPLOSION);
+    const int explosions_before = count_order_family(Order::FX, FAMILY_EXPLOSION);
     ASSERT_TRUE(w->special()) << "archmage heartburst should fire when foes are present";
-    int explosions_after = count_family_all_lists(FAMILY_EXPLOSION);
-    ASSERT_TRUE(explosions_after > explosions_before) << "heartburst should spawn explosion FX";
+    ASSERT_EQ(explosions_before + 1, count_order_family(Order::FX, FAMILY_EXPLOSION))
+        << "heartburst is one explosion per acquired foe: one foe, one burst";
+    // mp_pool_damage(slot 2) = min((2000 - 0)/2, cap 600) = 600, all of it
+    // spent on the single burst.
+    EXPECT_FLOAT_EQ(1400.0f, w->stats()->magicpoints())
+        << "and the whole pool is spent on that one burst";
+    EXPECT_FLOAT_EQ(5.0f, w->busy()) << "heartburst costs the caster 5 busy ticks";
     tick_world(48);
     delete w;
+    world.delete_objects();
 }
 
 
 TEST_F(WalkerSpecials, archmage_summon_image_drives_simulation)
 {
+    auto& world = og::runtime::current_session->myscreen_->world();
     walker* w = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // The caster is loader-owned, so after this oblist holds exactly the
+    // phantom the cast conjures.
+    world.delete_objects();
     w->setxy(120, 120);
     w->set_busy(0);
     w->set_shifter_down(0);
@@ -2864,12 +3073,25 @@ TEST_F(WalkerSpecials, archmage_summon_image_drives_simulation)
     w->stats()->set_magicpoints(800);
     w->stats()->set_special_cost(3, 0);
 
-    int oblist_before = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
+    ASSERT_EQ(0u, world.oblist.size()) << "fixture precondition: an empty oblist";
+    // 800 post-cost MP is the 500..999 tier, whose table is seven families
+    // deep; seed 5 is the state whose first draw indexes the elf.
+    world.rng_.state_ = 5u;
     ASSERT_TRUE(w->special()) << "archmage summon image should fire";
-    int oblist_after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
-    ASSERT_TRUE(oblist_after > oblist_before) << "summon image should add a living entity to oblist";
+    ASSERT_EQ(1u, world.oblist.size()) << "one cast conjures exactly one phantom";
+    walker* phantom = world.oblist.front().get();
+    ASSERT_NE(nullptr, phantom) << "the phantom is in oblist";
+    EXPECT_EQ(FAMILY_ELF, static_cast<int>(phantom->family()))
+        << "this tier's table maps this roll to the elf";
+    EXPECT_EQ(Order::Living, phantom->order()) << "a phantom is a living, not an FX";
+    EXPECT_EQ(w, phantom->owner()) << "and belongs to its summoner";
+    EXPECT_EQ(static_cast<int>(w->team_num()), static_cast<int>(phantom->team_num()))
+        << "on the summoner's team";
+    EXPECT_TRUE(phantom->summoned())
+        << "a phantom is conjured ammunition, never a SAVE_ALL casualty";
     tick_world(48);
     delete w;
+    world.delete_objects();
 }
 
 

@@ -68,13 +68,6 @@ TEST(WalkerExtended, walker_facing_down)
 }
 
 
-// walker_facing_all_directions used to live here: eight facing() calls whose
-// results were dropped on the floor. The eight principal vectors are pinned
-// exactly by WalkerMovementUnit.walker_movement_facing_thresholds
-// (tests/integration/test_walker_movement_unit.cpp, og_unit_entity), which
-// runs the same walker_movement.cpp facing() lines.
-
-
 // ---------------------------------------------------------------------------
 // turn tests
 // ---------------------------------------------------------------------------
@@ -263,20 +256,47 @@ TEST(WalkerExtended, walker_get_current_angle)
 // act_type tests
 // ---------------------------------------------------------------------------
 
-TEST(WalkerExtended, walker_set_act_type)
+// walker::set_act_type is a ONE-DEEP UNDO STACK, not a setter: it banks the
+// OUTGOING act type in old_act_type before overwriting act_type, and
+// restore_act_type() puts the banked one back and reports it. Every seat
+// hand-off depends on exactly that pairing -- dropping a player parks the
+// seat on the AI with set_act_type(ACT_RANDOM) and the seat comes back with
+// restore_act_type() (src/gameplay/game_server.cpp, sim_input_handler.cpp).
+TEST(WalkerExtended, walker_set_act_type_banks_one_level_of_undo)
 {
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
-    w->set_act_type(ACT_CONTROL);
-    ASSERT_EQ(ACT_CONTROL, (int)w->act_type()) << "act type should be ACT_CONTROL";
+    // A known starting point, plus a sentinel in the bank that the first push
+    // must overwrite (set_act_type_state writes act_type WITHOUT banking).
+    w->set_act_type_state(ACT_GUARD);
+    w->set_old_act_type(ACT_SIT);
 
-    w->set_old_act_type(ACT_RANDOM);
-    ASSERT_EQ(ACT_RANDOM, (int)w->old_act_type()) << "old act type should be ACT_RANDOM";
+    ASSERT_EQ(ACT_CONTROL, (int)w->set_act_type(ACT_CONTROL))
+        << "set_act_type reports the act type it installed";
+    ASSERT_EQ(ACT_CONTROL, (int)w->act_type())
+        << "set_act_type installs the requested act type";
+    ASSERT_EQ(ACT_GUARD, (int)w->old_act_type())
+        << "set_act_type banks the OUTGOING act type, not the incoming one "
+           "and not the sentinel that was in the bank";
 
-    w->restore_act_type();
-    ASSERT_EQ(ACT_RANDOM, (int)w->act_type()) << "restored act type should be ACT_RANDOM";
+    // Pushing again keeps only the previous level: the ACT_GUARD that was
+    // banked first is gone for good.
+    ASSERT_EQ(ACT_RANDOM, (int)w->set_act_type(ACT_RANDOM))
+        << "set_act_type reports the act type it installed";
+    ASSERT_EQ(ACT_CONTROL, (int)w->old_act_type())
+        << "the undo bank is one deep: the second push banks ACT_CONTROL";
 
+    ASSERT_EQ(ACT_CONTROL, (int)w->restore_act_type())
+        << "restore_act_type reports the act type it restored";
+    ASSERT_EQ(ACT_CONTROL, (int)w->act_type())
+        << "restore_act_type installs the banked act type";
+    ASSERT_EQ(ACT_CONTROL, (int)w->old_act_type())
+        << "restore leaves the bank alone -- it is a restore, not a swap";
+    ASSERT_EQ(ACT_CONTROL, (int)w->restore_act_type())
+        << "so restoring twice is idempotent and never toggles back";
+    ASSERT_EQ(ACT_CONTROL, (int)w->act_type())
+        << "a second restore still leaves the banked act type installed";
 }
 
 
@@ -450,14 +470,63 @@ TEST(WalkerExtended, walker_walkstep_records_heading_and_steps_by_stepsize)
 // set_order_family test
 // ---------------------------------------------------------------------------
 
-TEST(WalkerExtended, walker_set_order_family)
+// set_order_family re-stamps BOTH halves of an entity's identity in one call
+// -- that is the whole point of it existing next to the two setters. The
+// loader stamps a fresh walker with it (src/resources/gloader.cpp set_walker)
+// and a snapshot re-stamps a recycled one with it
+// (src/gameplay/world_snapshot.cpp, which then compares order() and family()
+// against the wire to decide whether a slot was reused). walker::walkstep
+// reads the pair together -- its stationary short-circuit fires only for an
+// Order::Living walker whose FAMILY is a stationary one -- so one walkstep
+// proves both halves landed.
+TEST(WalkerExtended, walker_set_order_family_restamps_both_halves_of_the_identity)
 {
+    // walkstep() consults the grid; this binary loads no map of its own.
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
+    ASSERT_EQ(Order::Living, w->order()) << "fixture precondition";
+    ASSERT_EQ((int)FAMILY_SOLDIER, (int)w->family()) << "fixture precondition";
 
-    w->set_order_family(Order::Living, FAMILY_ARCHER);
-    ASSERT_EQ((int)FAMILY_ARCHER, (int)w->family()) << "family should be archer";
+    ASSERT_TRUE(w->set_order_family(Order::Living, FAMILY_ARCHER))
+        << "set_order_family reports it stamped the pair";
+    ASSERT_EQ((int)FAMILY_ARCHER, (int)w->family()) << "the family half was re-stamped";
+    ASSERT_EQ(Order::Living, w->order()) << "the order half was re-stamped as Living";
 
+    // A stationary family + the Living order: walkstep short-circuits, records
+    // the RAW delta (not delta * stepsize) and refuses to move.
+    w->setxy(100, 100);
+    w->set_stepsize(3.0f);
+    w->set_curdir(FACE_RIGHT);
+    ASSERT_TRUE(w->set_order_family(Order::Living, FAMILY_TOWER1))
+        << "set_order_family reports it stamped the pair";
+    ASSERT_EQ((int)FAMILY_TOWER1, (int)w->family()) << "the family half is now the tower";
+    ASSERT_TRUE(w->walkstep(1, 0)) << "a stationary walkstep reports success";
+    ASSERT_FLOAT_EQ(1.0f, w->lastx())
+        << "the stationary arm the new FAMILY selected records the raw delta";
+    ASSERT_EQ(100, (int)w->xpos()) << "a stationary family never moves";
+    ASSERT_EQ(100, (int)w->ypos()) << "a stationary family never moves";
+
+    // Same family, Weapon order: the short-circuit is gated on the ORDER
+    // field, so re-stamping it alone puts the very same walker back on the
+    // normal path -- stepsize-scaled heading and a real move.
+    ASSERT_TRUE(w->set_order_family(Order::Weapon, FAMILY_TOWER1))
+        << "set_order_family reports it stamped the pair";
+    ASSERT_EQ(Order::Weapon, w->order()) << "the order half changed to Weapon";
+    ASSERT_EQ((int)FAMILY_TOWER1, (int)w->family()) << "the family half is unchanged";
+    ASSERT_TRUE(w->walkstep(1, 0)) << "the non-stationary walkstep reports success";
+    ASSERT_FLOAT_EQ(3.0f, w->lastx())
+        << "off the stationary arm, walkstep records delta * stepsize";
+    ASSERT_EQ(103, (int)w->xpos()) << "and it steps a whole stepsize east";
+    ASSERT_EQ(100, (int)w->ypos()) << "walking east leaves y alone";
+
+    // The virtual query_order() is the C++ CLASS identity and is deliberately
+    // NOT the stamped field: a living object answers Living whatever
+    // set_order_family wrote, which is why snapshot reconciliation compares
+    // order() and never query_order().
+    ASSERT_EQ(Order::Living, w->query_order())
+        << "living::query_order is the class identity, not the stamped order";
 }
 
 

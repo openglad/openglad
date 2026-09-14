@@ -108,23 +108,84 @@ TEST(WalkerMovementUnit, walker_movement_walk_and_walkstep_edge_paths)
 {
     MovementFixture fx;
     walker* w = add_living(fx);
-    ASSERT_TRUE(w != nullptr);
+    ASSERT_NE(nullptr, w);
 
+    // Aligned with the requested heading and standing on open grass: walk()
+    // moves by exactly the delta it was handed and advances the walk cycle.
     w->set_curdir(FACE_RIGHT);
-    ASSERT_TRUE(w->walk(1.0f, 0.0f));
+    w->set_cycle(0);
+    ASSERT_TRUE(w->walk(1.0f, 0.0f)) << "an aligned walk onto grass succeeds";
+    ASSERT_EQ(65, w->xpos()) << "the aligned walk advanced x by exactly the delta";
+    ASSERT_EQ(64, w->ypos()) << "the aligned walk left y alone";
+    ASSERT_EQ(1, static_cast<int>(w->cycle()))
+        << "a walk that actually moved advances the walk cycle by one";
 
+    // Aligned, but the destination is off the west edge: refused, and nobody
+    // moves. The off-map guard returns before the passability probe, so a
+    // walker without BIT_ANIMATE does not cycle either.
     w->setxy(0, 0);
     w->set_curdir(FACE_LEFT);
-    ASSERT_TRUE(!w->walk(-1.0f, 0.0f));
+    w->set_cycle(0);
+    ASSERT_FALSE(w->walk(-1.0f, 0.0f)) << "walking off the west edge is refused";
+    ASSERT_EQ(0, w->xpos()) << "the refused walk moved nothing";
+    ASSERT_EQ(0, w->ypos()) << "the refused walk moved nothing";
+    ASSERT_EQ(0, static_cast<int>(w->cycle())) << "the refused walk did not cycle";
 
+    // walkstep() records the requested heading scaled by stepsize FIRST, then
+    // delegates to walk(). While curdir still disagrees with the request,
+    // walk() takes its changed-direction branch: it adopts the facing, reports
+    // success and moves nobody -- so a misaligned walkstep never reaches the
+    // blocked-move fallbacks, whatever user() says. (Those fallbacks are
+    // pinned by walker_movement_r11_walkstep_npc_fallback_and_user_slide.)
     w->set_user(-1);
-    (void)w->walkstep(-1.0f, -1.0f);
-    (void)w->walkstep(1.0f, -1.0f);
+    ASSERT_TRUE(w->walkstep(-1.0f, -1.0f)) << "a misaligned NPC walkstep reports success";
+    ASSERT_FLOAT_EQ(-1.0f, w->lastx()) << "walkstep records lastx = dx * stepsize";
+    ASSERT_FLOAT_EQ(-1.0f, w->lasty()) << "walkstep records lasty = dy * stepsize";
+    ASSERT_EQ(FACE_UP_LEFT, static_cast<int>(w->curdir()))
+        << "the base walker snaps straight onto the requested facing";
+    ASSERT_EQ(0, w->xpos()) << "a turning walkstep moves nothing";
+    ASSERT_EQ(0, w->ypos()) << "a turning walkstep moves nothing";
 
+    // NOW curdir agrees, so the very same request reaches the NPC fallback:
+    // it tries UP, then LEFT, both of which are off-map in the corner, and
+    // restores the entry facing before reporting failure.
+    ASSERT_FALSE(w->walkstep(-1.0f, -1.0f)) << "a cornered NPC walkstep fails";
+    ASSERT_EQ(0, w->xpos()) << "the failed fallback moved nothing";
+    ASSERT_EQ(0, w->ypos()) << "the failed fallback moved nothing";
+    ASSERT_EQ(FACE_UP_LEFT, static_cast<int>(w->curdir()))
+        << "walkstep restores the entry facing before returning";
+
+    // A fresh request is misaligned again: turn, do not step.
+    ASSERT_TRUE(w->walkstep(1.0f, -1.0f)) << "a misaligned NPC walkstep reports success";
+    ASSERT_FLOAT_EQ(1.0f, w->lastx()) << "walkstep records lastx = dx * stepsize";
+    ASSERT_FLOAT_EQ(-1.0f, w->lasty()) << "walkstep records lasty = dy * stepsize";
+    ASSERT_EQ(FACE_UP_RIGHT, static_cast<int>(w->curdir())) << "it adopted the new facing";
+    ASSERT_EQ(0, w->xpos()) << "a turning walkstep moves nothing";
+    ASSERT_EQ(0, w->ypos()) << "a turning walkstep moves nothing";
+
+    // A user walker takes the same turn-first path.
     w->set_user(0);
     w->setxy(0, 10);
-    (void)w->walkstep(-1.0f, -1.0f);
-    (void)w->walkstep(-1.0f, 1.0f);
+    ASSERT_TRUE(w->walkstep(-1.0f, -1.0f)) << "a misaligned user walkstep reports success";
+    ASSERT_EQ(FACE_UP_LEFT, static_cast<int>(w->curdir())) << "it adopted the new facing";
+    ASSERT_EQ(0, w->xpos()) << "a turning walkstep moves nothing";
+    ASSERT_EQ(10, w->ypos()) << "a turning walkstep moves nothing";
+
+    ASSERT_TRUE(w->walkstep(-1.0f, 1.0f)) << "a misaligned user walkstep reports success";
+    ASSERT_EQ(FACE_DOWN_LEFT, static_cast<int>(w->curdir())) << "it adopted the new facing";
+    ASSERT_EQ(0, w->xpos()) << "a turning walkstep moves nothing";
+    ASSERT_EQ(10, w->ypos()) << "a turning walkstep moves nothing";
+
+    // Aligned DOWN_LEFT against the west edge: the user slide gives up on the
+    // diagonal, slides one pixel south on the free axis, and STILL reports
+    // failure -- the slide's whole point is that it moves you on a step the
+    // return value calls refused.
+    ASSERT_FALSE(w->walkstep(-1.0f, 1.0f))
+        << "the user slide always reports the requested diagonal failed";
+    ASSERT_EQ(0, w->xpos()) << "x stayed: west of 0 is off-map";
+    ASSERT_EQ(11, w->ypos()) << "y slid exactly one pixel south";
+    ASSERT_EQ(FACE_DOWN_LEFT, static_cast<int>(w->curdir()))
+        << "walkstep restores the entry facing before returning";
 }
 } // namespace detail_walker_movement_push
 
@@ -439,25 +500,64 @@ TEST(WalkerMovementUnit, walker_movement_r12_stationary_slope_and_animate_paths)
     walker* mover = add_living(fx, FAMILY_SOLDIER);
     ASSERT_TRUE(station && mover);
 
+    // A stationary family short-circuits walkstep: it takes the requested
+    // facing, records the RAW delta (never delta * stepsize, which is what
+    // every other walker records) and never moves.
     station->set_stepsize(3.0f);
-    ASSERT_TRUE(station->walkstep(1.0f, 0.0f));
-    ASSERT_TRUE(station->lastx() == 1.0f);
-    ASSERT_TRUE(station->lasty() == 0.0f);
+    station->set_curdir(FACE_UP);
+    ASSERT_TRUE(station->walkstep(1.0f, 0.0f)) << "a stationary walkstep reports success";
+    ASSERT_FLOAT_EQ(1.0f, station->lastx())
+        << "a stationary family records the raw dx, not dx * stepsize";
+    ASSERT_FLOAT_EQ(0.0f, station->lasty())
+        << "a stationary family records the raw dy, not dy * stepsize";
+    ASSERT_EQ(FACE_RIGHT, static_cast<int>(station->curdir()))
+        << "the stationary arm still turns to face the request";
+    ASSERT_EQ(FACE_RIGHT, static_cast<int>(station->enddir()))
+        << "and copies that facing into enddir";
+    ASSERT_EQ(64, station->xpos()) << "a stationary family never moves";
+    ASSERT_EQ(64, station->ypos()) << "a stationary family never moves";
 
-    ASSERT_TRUE(mover->facing(2, 5) == FACE_DOWN);
-    ASSERT_TRUE(mover->facing(2, 1) == FACE_DOWN_RIGHT);
-    ASSERT_TRUE(mover->facing(2, -1) == FACE_UP_RIGHT);
-    ASSERT_TRUE(mover->facing(2, -5) == FACE_UP);
-    ASSERT_TRUE(mover->facing(-2, 5) == FACE_DOWN);
-    ASSERT_TRUE(mover->facing(-2, 1) == FACE_DOWN_LEFT);
-    ASSERT_TRUE(mover->facing(-2, -1) == FACE_UP_LEFT);
-    ASSERT_TRUE(mover->facing(-2, -5) == FACE_UP);
+    ASSERT_EQ(FACE_DOWN, static_cast<int>(mover->facing(2, 5)));
+    ASSERT_EQ(FACE_DOWN_RIGHT, static_cast<int>(mover->facing(2, 1)));
+    ASSERT_EQ(FACE_UP_RIGHT, static_cast<int>(mover->facing(2, -1)));
+    ASSERT_EQ(FACE_UP, static_cast<int>(mover->facing(2, -5)));
+    ASSERT_EQ(FACE_DOWN, static_cast<int>(mover->facing(-2, 5)));
+    ASSERT_EQ(FACE_DOWN_LEFT, static_cast<int>(mover->facing(-2, 1)));
+    ASSERT_EQ(FACE_UP_LEFT, static_cast<int>(mover->facing(-2, -1)));
+    ASSERT_EQ(FACE_UP, static_cast<int>(mover->facing(-2, -5)));
 
+    // walk()'s "invalid move" arm -- the destination is ON the map but
+    // impassable. This is the only place BIT_ANIMATE changes walk(): a
+    // BIT_ANIMATE walker keeps cycling its animation while it is stuck, a
+    // plain one freezes. Neither of them moves and neither reports success.
+    // (Walking off the edge returns EARLIER than this arm, so it can never
+    // reach it -- which is why the wall below is needed at all.)
     assign_basic_ani(mover);
+    station->setxy(300, 300); // out of the mover's way
+    auto& world = fx.level.world();
+    ASSERT_TRUE(world.grid.valid()) << "fixture precondition: the grid exists";
+    ASSERT_EQ(40, static_cast<int>(world.grid.w)) << "fixture precondition: grid width";
+    // Grid cell (5,4) is the one a 16x16 walker at (64,64) steps into when it
+    // walks one pixel east; make it a wall.
+    world.grid.data[5 + 40 * 4] = PIX_WALL2;
+
+    mover->setxy(64, 64);
+    mover->set_curdir(FACE_RIGHT);
+    mover->set_cycle(0);
+    mover->stats()->set_bit_flags(BIT_ANIMATE, 0);
+    ASSERT_FALSE(mover->walk(1.0f, 0.0f)) << "a walk into a wall is refused";
+    ASSERT_EQ(64, mover->xpos()) << "the refused walk moved nothing";
+    ASSERT_EQ(64, mover->ypos()) << "the refused walk moved nothing";
+    ASSERT_EQ(0, static_cast<int>(mover->cycle()))
+        << "without BIT_ANIMATE a blocked walk must not advance the cycle";
+
     mover->stats()->set_bit_flags(BIT_ANIMATE, 1);
-    mover->setxy(0, 0);
-    mover->set_curdir(FACE_LEFT);
-    ASSERT_TRUE(!mover->walk(-1.0f, 0.0f));
+    ASSERT_FALSE(mover->walk(1.0f, 0.0f))
+        << "BIT_ANIMATE does not make a blocked walk succeed";
+    ASSERT_EQ(64, mover->xpos()) << "the refused walk still moved nothing";
+    ASSERT_EQ(64, mover->ypos()) << "the refused walk still moved nothing";
+    ASSERT_EQ(1, static_cast<int>(mover->cycle()))
+        << "a BIT_ANIMATE walker animates in place, advancing the cycle by one";
 }
 
 TEST(WalkerMovementUnit, walker_movement_r12_walkstep_npc_and_user_slide_paths)
