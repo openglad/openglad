@@ -12,9 +12,11 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -139,6 +141,64 @@ void sync_client_to_world(og::sim::GameClient& client,
     client.poll_messages();
 }
 
+// The palette indices inside one view's rect, in row-major order: the
+// read-back oracle for "this draw landed in this view".
+std::vector<int> capture_view_rect(screen& scr, const viewscreen& vs)
+{
+    std::vector<int> pixels;
+    pixels.reserve(static_cast<std::size_t>(vs.xview) *
+                   static_cast<std::size_t>(vs.yview));
+    for (Sint32 y = vs.yloc; y < vs.endy; ++y)
+    {
+        for (Sint32 x = vs.xloc; x < vs.endx; ++x)
+        {
+            int color_index = 0;
+            scr.get_pixel(x, y, &color_index);
+            pixels.push_back(color_index);
+        }
+    }
+    return pixels;
+}
+
+struct RectBox
+{
+    Sint32 min_x = 0;
+    Sint32 min_y = 0;
+    Sint32 max_x = -1;
+    Sint32 max_y = -1;
+
+    bool empty() const { return max_x < min_x; }
+};
+
+// Bounding box (in screen coordinates) of every pixel that differs between a
+// baseline capture and a capture taken after the draw under test.
+RectBox changed_box(const std::vector<int>& before,
+                    const std::vector<int>& after,
+                    const viewscreen& vs)
+{
+    RectBox box;
+    box.min_x = vs.endx;
+    box.min_y = vs.endy;
+    box.max_x = -1;
+    box.max_y = -1;
+    if (before.size() != after.size())
+        return box;
+    for (std::size_t i = 0; i < before.size(); ++i)
+    {
+        if (before[i] == after[i])
+            continue;
+        const Sint32 x =
+            vs.xloc + static_cast<Sint32>(i % static_cast<std::size_t>(vs.xview));
+        const Sint32 y =
+            vs.yloc + static_cast<Sint32>(i / static_cast<std::size_t>(vs.xview));
+        box.min_x = std::min(box.min_x, x);
+        box.max_x = std::max(box.max_x, x);
+        box.min_y = std::min(box.min_y, y);
+        box.max_y = std::max(box.max_y, y);
+    }
+    return box;
+}
+
 } // namespace
 
 static walker* make_guy(char family, unsigned char team = 0)
@@ -155,34 +215,70 @@ static walker* make_guy(char family, unsigned char team = 0)
 // viewscreen::redraw(LevelRuntimeData*, bool) - the big grid rendering function
 // ---------------------------------------------------------------------------
 
-TEST(ViewRedraw, with_level_data)
+// redraw()'s refusal contract (view.cpp:1025-1043): no level data, or a live
+// world aimed at a fixed UI canvas, is refused outright; the World canvas with
+// a level renderer behind it proceeds.
+TEST(ViewRedraw, redraw_refuses_null_data_and_a_fixed_ui_canvas)
 {
     prepare_view_world();
 
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
 
-    bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
-    ASSERT_TRUE(result) << "redraw with level data should succeed";
+    EXPECT_FALSE(vs->redraw(nullptr, false))
+        << "redraw must refuse a null LevelRuntimeData";
+
+    ASSERT_FALSE(active->native_world_view_active())
+        << "no native world view here, so the UI canvas is a fixed one";
+    active->set_active_canvas(CanvasTarget::UI);
+    EXPECT_FALSE(vs->redraw(&active->level_runtime_data(), false))
+        << "redraw must refuse to rasterize a live world into a fixed UI canvas";
+
+    active->set_active_canvas(CanvasTarget::World);
+    EXPECT_TRUE(vs->redraw(&active->level_runtime_data(), false))
+        << "World canvas plus a level renderer: redraw proceeds";
 }
 
 
-TEST(ViewRedraw, with_control)
+// The un-interpolated twin of
+// redraw_uses_interpolated_control_position_for_camera_follow: a control that
+// really is in the world's lists survives sanitize_control_pointer, and the
+// camera centres on it (view.cpp:1050-1068).
+TEST(ViewRedraw, redraw_centers_the_camera_on_a_live_control)
 {
     prepare_view_world();
 
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
 
-    walker* w = make_guy(FAMILY_SOLDIER, 0);
-    if (!w) return;
+    walker* const w = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w) << "the control must exist in oblist";
     w->setxy(100, 100);
 
-    vs->control = w;
-    bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
-    ASSERT_TRUE(result) << "redraw with control should succeed";
-    vs->control = nullptr;
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(nullptr, 1.0f); // local path, alpha 1
 
+    vs->control = w;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false))
+        << "redraw with a live control should succeed";
+
+    EXPECT_EQ(w, vs->control)
+        << "a control present in oblist survives sanitize_control_pointer";
+    EXPECT_EQ(static_cast<Sint32>(
+                  100.0f - static_cast<float>(vs->xview - w->sizex()) / 2.0f),
+              vs->topx)
+        << "the camera centres horizontally on the control";
+    EXPECT_EQ(static_cast<Sint32>(
+                  100.0f - static_cast<float>(vs->yview - w->sizey()) / 2.0f),
+              vs->topy)
+        << "the camera centres vertically on the control";
+
+    vs->control = nullptr;
+    ASSERT_TRUE(active->world().remove_ob(w));
 }
 
 // Z-axis: a 3-floor world with the control on floor 1 exercises the multi-floor
@@ -193,7 +289,7 @@ TEST(ViewRedraw, multifloor_renders_faded_below_and_ghost_above)
     prepare_view_world();
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    ASSERT_NE(nullptr, vs);
 
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     world.create_new_grid();
@@ -216,11 +312,13 @@ TEST(ViewRedraw, multifloor_renders_faded_below_and_ghost_above)
     walker* mid = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* below = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* above = world.add_ob(Order::Living, FAMILY_SOLDIER);
-    if (mid) { mid->set_floor(1); mid->setxy(160, 120); }
-    if (below) { below->set_floor(0); below->setxy(80, 80); }
-    if (above) { above->set_floor(2); above->setxy(110, 110); }
+    ASSERT_NE(nullptr, mid) << "the camera-floor walker must exist";
+    ASSERT_NE(nullptr, below) << "the lower-floor walker must exist";
+    ASSERT_NE(nullptr, above) << "the upper-floor walker must exist";
+    mid->set_floor(1); mid->setxy(160, 120);
+    below->set_floor(0); below->setxy(80, 80);
+    above->set_floor(2); above->setxy(110, 110);
 
-    if (mid)
     {
         vs->control = mid;
 
@@ -656,41 +754,71 @@ TEST(ViewRedrawJitter, no_control_render_sample_reports_zero_control_coordinates
 }
 
 
-TEST(ViewRedraw, no_control)
+// With no control the camera comes from the level's own stored position
+// (view.cpp:1070-1075), and the shake/parallax shifts are undone before
+// redraw returns (view.cpp:1279), so the level position is what is left.
+TEST(ViewRedraw, no_control_takes_the_camera_from_the_level_position)
 {
     prepare_view_world();
 
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
 
-    og::runtime::current_session->myscreen_->level_visuals_.topx = 50;
-    og::runtime::current_session->myscreen_->level_visuals_.topy = 50;
+    active->level_visuals_.topx = 50;
+    active->level_visuals_.topy = 50;
+    vs->topx = -999;
+    vs->topy = -999;
 
     vs->control = nullptr;
-    bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
-    ASSERT_TRUE(result) << "redraw without control uses level data pos";
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false))
+        << "redraw without a control should succeed";
+    EXPECT_EQ(50, vs->topx)
+        << "no control: topx comes from the level's stored camera position";
+    EXPECT_EQ(50, vs->topy)
+        << "no control: topy comes from the level's stored camera position";
 
-    og::runtime::current_session->myscreen_->level_visuals_.topx = 0;
-    og::runtime::current_session->myscreen_->level_visuals_.topy = 0;
+    active->level_visuals_.topx = 0;
+    active->level_visuals_.topy = 0;
 }
 
 
-TEST(ViewRedraw, negative_pos)
+// A control near the map's top-left corner drives the camera NEGATIVE — the
+// case redraw() flags with xneg/yneg and fills with wall tiles. The control
+// must be in the world's lists or sanitize_control_pointer drops it and the
+// no-control branch runs instead (view.cpp:157-174).
+TEST(ViewRedraw, control_near_the_corner_drives_the_camera_negative)
 {
     prepare_view_world();
 
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
 
-    // Force negative topx/topy by positioning control near edge
-    walker* w = make_guy(FAMILY_SOLDIER, 0);
-    if (!w) return;
-    w->setxy(5, 5); // near edge, topx/topy may go negative
+    walker* const w = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w) << "the control must exist in oblist";
+    w->setxy(5, 5); // near the corner: the centred camera goes negative
+
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(nullptr, 1.0f);
 
     vs->control = w;
-    vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
-    vs->control = nullptr;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    EXPECT_EQ(w, vs->control) << "a live control is kept";
 
+    const Sint32 expect_topx = static_cast<Sint32>(
+        5.0f - static_cast<float>(vs->xview - w->sizex()) / 2.0f);
+    const Sint32 expect_topy = static_cast<Sint32>(
+        5.0f - static_cast<float>(vs->yview - w->sizey()) / 2.0f);
+    EXPECT_EQ(expect_topx, vs->topx) << "camera centres on the control";
+    EXPECT_EQ(expect_topy, vs->topy) << "camera centres on the control";
+    EXPECT_LT(vs->topx, 0) << "this is the negative-camera case";
+    EXPECT_LT(vs->topy, 0) << "this is the negative-camera case";
+
+    vs->control = nullptr;
+    ASSERT_TRUE(active->world().remove_ob(w));
 }
 
 
@@ -698,23 +826,51 @@ TEST(ViewRedraw, negative_pos)
 // viewscreen::draw_obs(LevelRuntimeData*)
 // ---------------------------------------------------------------------------
 
-TEST(ViewRedraw, view_draw_obs_with_level_data)
+// refresh() presents THIS view's rect (view.cpp:1356-1360): the window stops
+// being black, and the present vouches for (xloc,yloc,xview,yview) only — a
+// draw outside that rect stays unpresented. (The no-arg draw_obs() wrapper is
+// pinned in draw_obs_draws_the_living_and_skips_the_dead below.)
+TEST(ViewRedraw, refresh_presents_only_this_views_rect)
 {
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    vs->draw_obs(&og::runtime::current_session->myscreen_->level_runtime_data());
-}
-
-TEST(ViewRedraw, active_screen_refresh_and_draw_wrappers)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
     ASSERT_NE(nullptr, vs);
+    ASSERT_TRUE(E_Screen != nullptr);
 
-    og::runtime::current_session->myscreen_->world().create_new_grid();
+    active->set_active_canvas(CanvasTarget::World);
+    // A strict sub-rect of the canvas, so "outside this view" exists at all.
+    vs->resize(static_cast<short>(8), static_cast<short>(8),
+               static_cast<short>(64), static_cast<short>(64));
+
+    active->clearbuffer();
+    active->testing_reset_window_state();
+    std::string detail;
+    ASSERT_TRUE(E_Screen->testing_render_matches_presented(detail))
+        << "reset leaves the canvas counting as presented: " << detail;
+    ASSERT_TRUE(active->window_is_black());
+
+    // A mark inside the view's rect: refresh() presents it.
+    active->pointb(vs->xloc + 4, vs->yloc + 4, RED);
+    ASSERT_FALSE(E_Screen->testing_render_matches_presented(detail))
+        << "the mark must make the canvas differ from the presented frame";
     EXPECT_TRUE(vs->refresh());
-    EXPECT_TRUE(vs->draw_obs());
+    EXPECT_FALSE(active->window_is_black())
+        << "refresh() presents, so the window no longer shows black";
+    EXPECT_TRUE(E_Screen->testing_render_matches_presented(detail))
+        << "refresh() must present the rect holding this view's own draw: "
+        << detail;
+
+    // A mark outside it: refresh() must NOT vouch for it.
+    active->pointb(vs->endx + 4, vs->endy + 4, RED);
+    EXPECT_TRUE(vs->refresh());
+    EXPECT_FALSE(E_Screen->testing_render_matches_presented(detail))
+        << "refresh() must present only (xloc,yloc,xview,yview), not the "
+           "whole canvas";
+
+    active->clearbuffer();
+    active->relayout_views();
+    active->testing_reset_window_state();
 }
 
 TEST(ViewRedraw, damage_number_context_erases_one_index_without_touching_siblings)
@@ -735,21 +891,77 @@ TEST(ViewRedraw, damage_number_context_erases_one_index_without_touching_sibling
 }
 
 
-TEST(ViewRedraw, view_draw_obs_with_entities)
+// draw_obs() draws every non-dead walker in the world's lists through
+// draw_walker at worldx - topx + xloc (walker_draw.cpp:948), skips the dead
+// (view.cpp:1885-1890), and the no-arg overload runs the same draw against
+// active_screen()->level_runtime_data() (view.cpp:1863). Read back off the
+// canvas, so a draw_obs that iterated nothing cannot pass.
+TEST(ViewRedraw, draw_obs_draws_the_living_skips_the_dead_and_follows_the_camera)
 {
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    prepare_view_world();
 
-    og::runtime::current_session->myscreen_->world().create_new_grid();
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    active->set_active_canvas(CanvasTarget::World);
 
-    // Add a living entity
-    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    if (!w) return;
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(nullptr, 1.0f);
+
+    walker* const w = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w) << "the walker to draw must exist";
     w->setxy(100, 100);
 
-    vs->draw_obs(&og::runtime::current_session->myscreen_->level_runtime_data());
+    vs->topx = 0;
+    vs->topy = 0;
 
-    og::runtime::current_session->myscreen_->world().remove_ob(w);
+    // Baseline: the same call with the walker dead — everything draw_obs does
+    // besides this walker (floor effects) is in both captures.
+    w->set_dead(1);
+    active->clearbuffer();
+    ASSERT_TRUE(vs->draw_obs(&active->level_runtime_data()));
+    const std::vector<int> without_walker = capture_view_rect(*active, *vs);
+
+    w->set_dead(0);
+    active->clearbuffer();
+    ASSERT_TRUE(vs->draw_obs(&active->level_runtime_data()));
+    const std::vector<int> with_walker = capture_view_rect(*active, *vs);
+
+    ASSERT_NE(without_walker, with_walker)
+        << "a living walker must paint pixels a dead one does not";
+
+    const RectBox box = changed_box(without_walker, with_walker, *vs);
+    ASSERT_FALSE(box.empty()) << "the sprite must land inside the view";
+
+    // The same walker with the camera moved: the drawn pixels shift by exactly
+    // the camera delta, which is the projection rule itself.
+    vs->topx = 16;
+    vs->topy = 8;
+    w->set_dead(1);
+    active->clearbuffer();
+    ASSERT_TRUE(vs->draw_obs(&active->level_runtime_data()));
+    const std::vector<int> shifted_base = capture_view_rect(*active, *vs);
+    w->set_dead(0);
+    active->clearbuffer();
+    ASSERT_TRUE(vs->draw_obs(&active->level_runtime_data()));
+    const std::vector<int> shifted = capture_view_rect(*active, *vs);
+    const RectBox shifted_box = changed_box(shifted_base, shifted, *vs);
+    ASSERT_FALSE(shifted_box.empty()) << "the sprite must still be drawn";
+    EXPECT_EQ(box.min_x - 16, shifted_box.min_x)
+        << "screen x is worldx - topx + xloc";
+    EXPECT_EQ(box.min_y - 8, shifted_box.min_y)
+        << "screen y is worldy - topy + yloc";
+
+    // The no-arg wrapper draws the active screen's level: same pixels.
+    vs->topx = 0;
+    vs->topy = 0;
+    active->clearbuffer();
+    ASSERT_TRUE(vs->draw_obs());
+    EXPECT_EQ(with_walker, capture_view_rect(*active, *vs))
+        << "draw_obs() must delegate to active_screen()->level_runtime_data()";
+
+    ASSERT_TRUE(active->world().remove_ob(w));
 }
 
 
@@ -757,14 +969,44 @@ TEST(ViewRedraw, view_draw_obs_with_entities)
 // viewscreen::clear_text
 // ---------------------------------------------------------------------------
 
-TEST(ViewRedraw, view_clear_text)
+// clear_text() blanks EVERY slot on all four axes it owns — label, cycles,
+// expiry tick and stamp tick (view.cpp:1632-1641). A stale stamp or expiry
+// left behind is what resurrects a swept line on the next display_text().
+TEST(ViewRedraw, clear_text_blanks_every_slot_label_cycles_and_ticks)
 {
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
 
-    vs->set_display_text("Some text", 30);
+    const std::uint32_t saved_tick = active->world().tick_count_;
+    active->world().tick_count_ = 900u;
+
     vs->clear_text();
-    // Exercise the clear_text code path
+    vs->set_display_text("Some text", 30);
+    vs->set_display_text("And another", 7);
+    ASSERT_EQ("Some text", vs->textlist[0]);
+    ASSERT_EQ(30, static_cast<int>(vs->textcycles[0]));
+    ASSERT_EQ(900u, vs->text_stamp_ticks[0]);
+    ASSERT_EQ(929u, vs->text_expire_ticks[0]);
+    ASSERT_EQ("And another", vs->textlist[1]);
+    ASSERT_EQ(7, static_cast<int>(vs->textcycles[1]));
+
+    vs->clear_text();
+
+    for (int i = 0; i < MAX_MESSAGES; ++i)
+    {
+        EXPECT_TRUE(vs->textlist[i].empty())
+            << "clear_text must blank the label of slot " << i;
+        EXPECT_EQ(0, static_cast<int>(vs->textcycles[i]))
+            << "clear_text must zero the cycles of slot " << i;
+        EXPECT_EQ(0u, vs->text_expire_ticks[i])
+            << "clear_text must zero the expiry tick of slot " << i;
+        EXPECT_EQ(0u, vs->text_stamp_ticks[i])
+            << "clear_text must zero the stamp tick of slot " << i;
+    }
+
+    active->world().tick_count_ = saved_tick;
 }
 
 
@@ -772,13 +1014,51 @@ TEST(ViewRedraw, view_clear_text)
 // viewscreen::shift_text
 // ---------------------------------------------------------------------------
 
-TEST(ViewRedraw, view_shift_text)
+// shift_text(row) copies slots row+1.. down one and blanks the tail slot on
+// all four axes (view.cpp:1339-1354). A full feed makes both halves visible:
+// the ladder must move, and the vacated tail must not keep the old line.
+TEST(ViewRedraw, shift_text_moves_the_feed_up_and_blanks_the_tail_slot)
 {
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
 
-    vs->set_display_text("First message", 30);
+    const std::uint32_t saved_tick = active->world().tick_count_;
+    active->world().tick_count_ = 200u;
+
+    vs->clear_text();
+    for (int i = 0; i < MAX_MESSAGES; ++i)
+        vs->set_display_text("Line " + std::to_string(i), static_cast<short>(10 + i));
+    ASSERT_EQ("Line 0", vs->textlist[0]);
+    ASSERT_EQ("Line 4", vs->textlist[MAX_MESSAGES - 1]);
+
     vs->shift_text(0);
+
+    for (int i = 0; i < MAX_MESSAGES - 1; ++i)
+    {
+        EXPECT_EQ("Line " + std::to_string(i + 1), vs->textlist[i])
+            << "slot " << i << " must hold the line that was below it";
+        EXPECT_EQ(11 + i, static_cast<int>(vs->textcycles[i]))
+            << "the cycles travel with the line into slot " << i;
+        EXPECT_EQ(200u + static_cast<std::uint32_t>(10 + i),
+                  vs->text_expire_ticks[i])
+            << "the expiry tick travels with the line into slot " << i;
+        EXPECT_EQ(200u, vs->text_stamp_ticks[i])
+            << "the stamp tick travels with the line into slot " << i;
+    }
+
+    EXPECT_TRUE(vs->textlist[MAX_MESSAGES - 1].empty())
+        << "the vacated tail slot must be blank";
+    EXPECT_EQ(0, static_cast<int>(vs->textcycles[MAX_MESSAGES - 1]))
+        << "the vacated tail slot must have no cycles left";
+    EXPECT_EQ(0u, vs->text_expire_ticks[MAX_MESSAGES - 1])
+        << "the vacated tail slot must have no expiry left";
+    EXPECT_EQ(0u, vs->text_stamp_ticks[MAX_MESSAGES - 1])
+        << "the vacated tail slot must have no stamp left";
+
+    vs->clear_text();
+    active->world().tick_count_ = saved_tick;
 }
 
 
@@ -786,14 +1066,42 @@ TEST(ViewRedraw, view_shift_text)
 // viewscreen::display_text
 // ---------------------------------------------------------------------------
 
-TEST(ViewRedraw, view_display_text_with_cycles)
+// A multi-cycle line lives for exactly n ticks: set_display_text stamps
+// expiry at current_tick + n - 1 (view.cpp:1575-1579) and display_text keeps
+// the slot while current_tick <= expiry, sweeping it the tick after
+// (view.cpp:1306-1337).
+TEST(ViewRedraw, display_text_keeps_a_five_cycle_line_until_its_expiry_tick)
 {
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
 
+    const std::uint32_t saved_tick = active->world().tick_count_;
+    active->world().tick_count_ = 100u;
+
+    vs->clear_text();
     vs->set_display_text("Display me", 5);
+    EXPECT_EQ(5, static_cast<int>(vs->textcycles[0]));
+    EXPECT_EQ(104u, vs->text_expire_ticks[0])
+        << "a 5-cycle line stamped at tick 100 expires after tick 104";
+
     vs->display_text();
-    // Smoke-test the text draw path with a finite-duration message.
+    EXPECT_EQ("Display me", vs->textlist[0])
+        << "the line must survive its creation tick";
+
+    active->world().tick_count_ = 104u;
+    vs->display_text();
+    EXPECT_EQ("Display me", vs->textlist[0])
+        << "tick 104 is the line's last live tick";
+
+    active->world().tick_count_ = 105u;
+    vs->display_text();
+    EXPECT_TRUE(vs->textlist[0].empty())
+        << "the tick after expiry sweeps the line off the feed";
+
+    vs->clear_text();
+    active->world().tick_count_ = saved_tick;
 }
 
 TEST(ViewRedraw, view_refresh_display_text_refreshes_matching_overlay_within_same_tick)
@@ -1072,7 +1380,12 @@ TEST(ViewRedraw, damage_number_cache_prunes_removed_walkers)
         previous_damage_numbers.empty() ? "off" : previous_damage_numbers);
 }
 
-TEST(ViewRedraw, hit_flash_persists_across_repeated_redraws_in_same_tick)
+// A hurt-flashing walker is blitted through walkputbuffer_flash instead of
+// walkputbuffer (walker_draw.cpp:635-648) whenever cfg effects/hit_flash is
+// on, the render path never consumes the flag (sim-owned: see
+// scripts/check_render_no_sim_writes.sh), and with the setting off the flag
+// changes nothing on the canvas.
+TEST(ViewRedraw, hit_flash_brightens_the_blit_only_while_the_setting_is_on)
 {
     screen* const active = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, active);
@@ -1082,6 +1395,7 @@ TEST(ViewRedraw, hit_flash_persists_across_repeated_redraws_in_same_tick)
 
     active->world().create_new_grid();
     active->world().mysmoother.set_target(active->world().grid);
+    active->set_active_canvas(CanvasTarget::World);
 
     std::unique_ptr<walker> w(make_guy(FAMILY_SOLDIER, 0));
     ASSERT_NE(nullptr, w);
@@ -1090,16 +1404,48 @@ TEST(ViewRedraw, hit_flash_persists_across_repeated_redraws_in_same_tick)
         cfg.get_setting("effects", "hit_flash");
     cfg.apply_setting("effects", "hit_flash", "on");
 
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(nullptr, 1.0f);
+
+    const Sint32 saved_topx = vs->topx;
+    const Sint32 saved_topy = vs->topy;
+    vs->topx = 0;
+    vs->topy = 0;
+    w->setxy(100, 100);
+
     w->set_hurt_flash(true);
     vs->control = w.get();
 
-    (void)draw_walker(*w, vs);
-    EXPECT_TRUE(w->hurt_flash());
+    active->clearbuffer();
+    ASSERT_TRUE(draw_walker(*w, vs));
+    const std::vector<int> flashed = capture_view_rect(*active, *vs);
+    EXPECT_TRUE(w->hurt_flash())
+        << "the render path must not consume the sim-owned flash flag";
 
-    (void)draw_walker(*w, vs);
-    EXPECT_TRUE(w->hurt_flash());
+    active->clearbuffer();
+    ASSERT_TRUE(draw_walker(*w, vs));
+    EXPECT_EQ(flashed, capture_view_rect(*active, *vs))
+        << "a second draw in the same tick flashes identically";
+    EXPECT_TRUE(w->hurt_flash())
+        << "the render path must not consume the sim-owned flash flag";
+
+    w->set_hurt_flash(false);
+    active->clearbuffer();
+    ASSERT_TRUE(draw_walker(*w, vs));
+    const std::vector<int> plain = capture_view_rect(*active, *vs);
+    EXPECT_NE(flashed, plain)
+        << "hurt_flash must route the sprite through the brightened blit";
+
+    cfg.apply_setting("effects", "hit_flash", "off");
+    w->set_hurt_flash(true);
+    active->clearbuffer();
+    ASSERT_TRUE(draw_walker(*w, vs));
+    EXPECT_EQ(plain, capture_view_rect(*active, *vs))
+        << "with effects/hit_flash off the flag must change nothing drawn";
 
     vs->control = nullptr;
+    vs->topx = saved_topx;
+    vs->topy = saved_topy;
     cfg.apply_setting(
         "effects",
         "hit_flash",
