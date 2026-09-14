@@ -60,6 +60,11 @@ struct TrainState {
     short dexterity_after_click = -1;
     std::uint32_t cost_after_clicks = 0;
     bool charged_before_accept = false;
+    // DETAILS round trips (open + BACK) and NEXT presses that actually moved
+    // the session to another roster slot. Counted, never assumed: a press
+    // that the screen never consumed leaves these short.
+    int details_round_trips = 0;
+    int cycles = 0;
 };
 
 // Read the live TrainSession on the MENU thread — the injector must never
@@ -78,6 +83,136 @@ static bool main_thread_train_stats(short& strength, short& dexterity,
         ok = true;
     });
     return ran && ok;
+}
+
+// Baseline the pointer on the MENU thread before a press into an
+// engine-hosted screen. Both click paths detect an up->down EDGE, so a press
+// sent while the previous one's release is still standing is simply dropped;
+// the engine clears that flag when it changes screens, not when a legacy
+// submenu hands control back. Same shape as test_hire_team.cpp's
+// settle_pointer_between_clicks.
+static void settle_pointer_between_clicks()
+{
+    (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
+    wait_for_menu_frames(1);
+}
+
+// The roster slot the session is seated on, read on the MENU thread. This is
+// what NEXT (ButtonAction::CycleTeamGuy -> TrainSession::next_member) moves,
+// so it is the proof a NEXT press was consumed.
+static bool main_thread_train_slot(int& slot)
+{
+    bool ok = false;
+    const bool ran = run_on_main_thread([&]() {
+        og::ui::TrainSession* session = pks().train_session;
+        if (!session || session->empty())
+            return;
+        slot = session->current_slot();
+        ok = true;
+    });
+    return ran && ok;
+}
+
+// The DETAILS submenu is NOT engine-hosted: create_detail_menu (picker.cpp)
+// runs its own legacy loop, so while it is up run_menu_screen completes no
+// frame (wait_for_menu_frames can never settle) and pumps no main-thread task
+// (run_on_main_thread would burn its whole cancellation ceiling). Its own
+// oracle is the published button set: DETAILS swaps the twenty train rows for
+// BACK/PROMOTE, so "promote exists" is exactly "the details screen is up" --
+// read through get_button_ids(), which reports hidden rows too (PROMOTE is
+// hidden for a family with no promotion).
+static bool details_screen_is_open()
+{
+    for (const std::string& id : get_button_ids())
+        if (id == "promote")
+            return true;
+    return false;
+}
+
+static bool wait_for_details_screen(bool open, int timeout_ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    for (;;) {
+        if (details_screen_is_open() == open)
+            return true;
+        if (SDL_GetTicks() >= deadline) {
+            fprintf(stderr, "  [test] TIMEOUT waiting for the DETAILS screen "
+                            "to %s (%d ms)\n", open ? "open" : "close",
+                    timeout_ms);
+            return false;
+        }
+        SDL_Delay(10);
+    }
+}
+
+// A press across the DETAILS boundary needs its own pointer baseline. Both
+// loops detect a click as the up->down EDGE (picker_input.cpp, leftmouse:
+// `mymouse.left && !input_hw.picker_was_left_down`), and the legacy loop
+// never calls reset_mouse_click_tracking the way the engine does between
+// screens. So the press that opened DETAILS leaves picker_was_left_down TRUE
+// behind it, the next press shows no edge, and it is swallowed whole -- which
+// is what the flat SDL_Delay(300) settles here used to hide: the DETAILS and
+// BACK presses were mostly no-ops and nothing checked. Pushing a release
+// first, and letting the loop poll it, is the one way an outside thread can
+// clear that flag when no main-thread pump is running.
+static bool press_across_details_boundary(const char* button_id)
+{
+    int win_x = -1;
+    int win_y = -1;
+    if (!interact_window_point(button_id, win_x, win_y))
+        return false;
+    inject_mouse_up(win_x, win_y);   // clear the stale "pointer still down"
+    SDL_Delay(20);                   // one poll of the loop, not a settle
+    inject_click(win_x, win_y, 100);
+    return true;
+}
+
+// Press, then wait the WHOLE budget for the screen to change; re-press only
+// after the budget expired with nothing having happened at all. Deliberately
+// NOT the 300 ms re-click cadence the stat rows use: BACK exists on both
+// screens, so a second BACK sent just as the first one landed would walk out
+// of the train menu as well.
+static bool click_until_details_screen(const char* button_id, bool open)
+{
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        if (!press_across_details_boundary(button_id))
+            return false;
+        if (wait_for_details_screen(open, 10000))
+            return true;
+        fprintf(stderr, "  [test] '%s' left the screen unchanged; re-pressing\n",
+                button_id);
+    }
+    return false;
+}
+
+// One verified NEXT: press, then poll the seated slot (re-clicking on the
+// dropped-press cadence, bounded) until the session moves to another member.
+static bool train_click_next()
+{
+    int before = -1;
+    if (!main_thread_train_slot(before))
+        return false;
+    if (!interact("next"))
+        return false;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    Uint64 last_click = SDL_GetTicks();
+    for (;;) {
+        int now = before;
+        if (!main_thread_train_slot(now))
+            return false;
+        if (now != before)
+            return true;
+        if (SDL_GetTicks() >= deadline) {
+            fprintf(stderr, "  [test] NEXT never moved the session off slot "
+                            "%d\n", before);
+            return false;
+        }
+        if (SDL_GetTicks() - last_click >= 300) {
+            (void)interact("next");
+            last_click = SDL_GetTicks();
+        }
+        SDL_Delay(20);
+    }
 }
 
 // One verified stat click: press, then poll the working copy (re-clicking on
@@ -128,27 +263,28 @@ static int train_injector(void* data)
     TrainState* state = static_cast<TrainState*>(data);
     state->started = true;
 
-    // Wait for main menu
+    // Wait for main menu. Every settle here is a COMPLETED engine frame, not
+    // a clock: under TESTING FadeBetween is a single blit, so a flat delay
+    // waited for an animation that never runs and proved nothing about the
+    // incoming screen (scripts/check_injector_settles.sh).
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
     // Wait for team menu
-    SDL_Delay(500);
     wait_for_interactable("roster_row_0", 10000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     // Click the roster row body (§9.11: the row IS the train affordance)
     fprintf(stderr, "  [test] clicking roster_row_0 (§9.11 row-click train)\n");
     interact("roster_row_0");
 
     // Wait for train menu buttons
-    SDL_Delay(500);
     if (wait_for_interactable("inc_str", 10000)) {
         state->saw_train_menu = true;
-        SDL_Delay(500);
+        wait_for_menu_frames(2);
 
         // Strength: the click is proven by the working copy moving +1.
         fprintf(stderr, "  [test] clicking inc_str\n");
@@ -171,33 +307,40 @@ static int train_injector(void* data)
                 != 50000u;
         });
 
-        // Open details across several classes to exercise detail rendering branches.
+        // Open details across several classes to exercise detail rendering
+        // branches. Each leg is counted only when the screen actually
+        // changed, so a DETAILS door or a NEXT press the menu never consumed
+        // shows up as a short count in the test instead of as a green run.
         for (int i = 0; i < 5; i++) {
-            wait_for_interactable("details", 10000);
+            if (!wait_for_interactable("details", 10000))
+                break;
             fprintf(stderr, "  [test] clicking details (%d)\n", i + 1);
-            interact("details");
-            SDL_Delay(300);
-            wait_for_interactable("back", 10000);
+            if (!click_until_details_screen("details", /*open=*/true))
+                break;
             fprintf(stderr, "  [test] clicking back from details (%d)\n", i + 1);
-            interact("back");
-            SDL_Delay(300);
+            if (!click_until_details_screen("back", /*open=*/false))
+                break;
+            state->details_round_trips++;
+            wait_for_menu_frames(1);
 
             if (i < 4) {
                 fprintf(stderr, "  [test] clicking next (%d)\n", i + 1);
-                interact("next");
-                SDL_Delay(300);
+                if (!train_click_next())
+                    break;
+                state->cycles++;
             }
         }
 
         // Go back
+        settle_pointer_between_clicks();
         fprintf(stderr, "  [test] clicking back from train menu\n");
         interact("back");
     }
 
     // Back in team menu
-    SDL_Delay(500);
     wait_for_interactable("back", 10000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
+    settle_pointer_between_clicks();
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 
@@ -300,8 +443,26 @@ TEST(TrainTeam, train_team) {
         << "the inc_dex press was never consumed by the train session";
     EXPECT_EQ(state.original_dexterity + 1, state.dexterity_after_click)
         << "DEX + raises the working copy's dexterity by exactly one";
-    EXPECT_GT(state.cost_after_clicks, 0u)
-        << "two raised stats must be quoted at a non-zero training cost";
+    // The quote is knowable to the coin. This member is a level-10 ARCHMAGE
+    // still on its base stats with exp 0, so calculate_train_cost
+    // (picker_common.cpp) charges the level's whole XP debt --
+    // calculate_exp(10) == 306000, the unrolled recurrence
+    // sum(8000 + 2000*(k-1) + 4000*(k-2)) for k=2..10 in src/gameplay/guy.cpp
+    // (NOT the stale 115200 in that function's comment table) -- plus the
+    // first point of each raised stat, which costs pow(1, exponent) * its
+    // rate: STR 30 and DEX 20 from
+    // packs/core/families/living-17-archmage.lua.
+    EXPECT_EQ(306000u + 30u + 20u, state.cost_after_clicks)
+        << "STR +1 and DEX +1 on a base-stat level-10 archmage quote exactly "
+           "calculate_exp(10) + 30 + 20";
+
+    // DETAILS opened and closed once per member, and NEXT moved the session
+    // to another roster slot every time it was pressed.
+    EXPECT_EQ(5, state.details_round_trips)
+        << "every DETAILS press must open the detail screen and every BACK "
+           "must return to the train menu";
+    EXPECT_EQ(4, state.cycles)
+        << "each NEXT press must seat the train session on another member";
 
     // ... and BACK charged nothing: the cost is only taken on accept, and the
     // real roster member keeps its original stats.
@@ -451,6 +612,4 @@ TEST(TrainMenuDraw, draw_content_survives_the_member_vanishing_under_a_lobby_pol
     pks().train_session = nullptr;
     og::runtime::current_session->current_guy_.reset();
     save.reset();
-    SUCCEED() << "the draw pass returned instead of dereferencing a null "
-                 "original";
 }

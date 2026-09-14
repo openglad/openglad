@@ -850,18 +850,42 @@ TEST(CoverageMisc, coverage_r18_walker_movement_blocked_user_paths)
     user->set_curdir(FACE_UP);
     ASSERT_TRUE(!user->walkstep(0.0f, -1.0f));
 
-    // Hit user-slide branches where only one axis can move.
-    user->setxy(static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(10));
+    // User-slide branches: the diagonal is blocked but ONE axis is still free,
+    // so walkstep still reports failure (ret1/ret2 stay 0 -- the slide uses
+    // worldmove, not walk) while the walker slides one pixel along the open
+    // axis and its facing is restored to the direction it was asked for.
+    //
+    // The slide only happens if the open axis really is open, which means the
+    // walker's whole 16px footprint must fit: park it one footprint short of
+    // the bottom edge so the DOWN step overhangs and the RIGHT/LEFT step does
+    // not.
+    const short bottom_edge =
+        static_cast<short>(fx.level.world().pixmaxy - user->sizey() - 1);
+    const short right_edge =
+        static_cast<short>(fx.level.world().pixmaxx - user->sizex() - 1);
+
+    user->setxy(static_cast<short>(100), bottom_edge);
     user->set_curdir(FACE_DOWN_RIGHT);
-    (void)user->walkstep(1.0f, 1.0f);
+    ASSERT_TRUE(!user->walkstep(1.0f, 1.0f))
+        << "a slide is not a walk: walkstep still reports the blocked move";
+    ASSERT_EQ(101, (int)user->xpos()) << "down is blocked, so the user slides east one pixel";
+    ASSERT_EQ((int)bottom_edge, (int)user->ypos()) << "and does not move south at all";
+    ASSERT_EQ(FACE_DOWN_RIGHT, (int)user->curdir())
+        << "walkstep restores the entry facing after a slide";
 
-    user->setxy(static_cast<short>(10), static_cast<short>(fx.level.world().pixmaxy - 1));
+    user->setxy(static_cast<short>(100), bottom_edge);
     user->set_curdir(FACE_DOWN_LEFT);
-    (void)user->walkstep(-1.0f, 1.0f);
+    ASSERT_TRUE(!user->walkstep(-1.0f, 1.0f))
+        << "the mirrored slide reports the blocked move too";
+    ASSERT_EQ(99, (int)user->xpos()) << "down is blocked, so the user slides west one pixel";
+    ASSERT_EQ((int)bottom_edge, (int)user->ypos()) << "and does not move south at all";
 
-    user->setxy(static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(10));
+    user->setxy(right_edge, static_cast<short>(100));
     user->set_curdir(FACE_UP_RIGHT);
-    (void)user->walkstep(1.0f, -1.0f);
+    ASSERT_TRUE(!user->walkstep(1.0f, -1.0f))
+        << "the vertical slide reports the blocked move too";
+    ASSERT_EQ((int)right_edge, (int)user->xpos()) << "east is blocked, so the user does not move east";
+    ASSERT_EQ(99, (int)user->ypos()) << "and slides north one pixel instead";
 
     // Stationary family short-circuit in walk().
     walker* tower = add_living(fx, 32, 32);
@@ -907,13 +931,39 @@ TEST(CoverageMisc, coverage_r18_walker_act_decay_cleanup_and_guard_branches)
     ASSERT_TRUE(self->attack_lunge() == 0.0f);
     ASSERT_TRUE(self->hit_recoil() == 0.0f);
 
+    // ACT_GUARD arm: act_guard() acquires the near foe, face_delta() snaps all
+    // three facing channels at it, the sighting wakes the guard out of
+    // ACT_GUARD, and a directional COMMAND_FIRE carrying the foe delta is
+    // queued. The arm `break`s out of the switch, so act() itself returns 0.
     self->set_team_num(0);
     foe->set_dead(0);
     foe->set_team_num(1);
     self->setxy(64, 64);
     foe->setxy(72, 64);
+    self->set_lineofsight(8);       // 8 * GRID_SIZE >= the 8px gap: in sight
+    self->set_guard_hold_post(false);
+    self->set_curdir(FACE_UP);
+    self->set_enddir(FACE_UP);
     self->set_act_type(ACT_GUARD);
-    (void)self->act();
+
+    ASSERT_TRUE(!self->act())
+        << "walker::act's ACT_GUARD arm breaks out of the switch and returns 0";
+    ASSERT_TRUE(self->foe() == foe) << "act_guard acquires the near foe";
+    ASSERT_EQ(FACE_RIGHT, (int)self->curdir()) << "face_delta snaps curdir at the foe";
+    ASSERT_EQ(FACE_RIGHT, (int)self->enddir())
+        << "face_delta snaps enddir too, so the pivot is not undone next tick";
+    ASSERT_FLOAT_EQ(8.0f * self->stepsize(), self->lastx())
+        << "face_delta writes the foe delta SCALED by stepsize as the firing heading";
+    ASSERT_FLOAT_EQ(0.0f, self->lasty()) << "the foe is due east, so the heading has no y";
+    ASSERT_EQ(ACT_RANDOM, (int)self->act_type())
+        << "a genuine sighting wakes a non-hold-post guard out of ACT_GUARD";
+    ASSERT_TRUE(!self->stats()->commands.empty()) << "act_guard queues its parting shot";
+    ASSERT_EQ(COMMAND_FIRE, (int)self->stats()->commands.front().commandtype)
+        << "the parting shot is a COMMAND_FIRE";
+    ASSERT_EQ(8, (int)self->stats()->commands.front().com1)
+        << "the parting COMMAND_FIRE carries the foe's x delta";
+    ASSERT_EQ(0, (int)self->stats()->commands.front().com2)
+        << "the parting COMMAND_FIRE carries the foe's y delta";
 }
 
 TEST(CoverageMisc, coverage_r18_walker_animate_invalid_sequence_guard)
@@ -2036,16 +2086,78 @@ TEST(CoverageMisc, final_r16_stats_walker_level_data_and_picker_state)
     a->stats()->try_command(COMMAND_RANDOM_WALK, 1);
     ASSERT_TRUE(a->stats()->has_commands());
 
+    // The three right-hand-wall probes each read ONE cell, a single
+    // CHECK_STEP_SIZE pixel off the walker's facing. Pin each of them both
+    // ways: clear grass answers false, a wall dropped on exactly the cell that
+    // probe (and only that probe's offset) reaches answers true. A probe wired
+    // to the wrong offset -- or one that always answered false -- fails here.
+    a->setxy(64, 64);
+    GameWorld& probe_world = fx.level.world();
+    const int gw = probe_world.grid.w;
+    auto reset_grass = [&]() {
+        const int cells = gw * probe_world.grid.h;
+        for (int i = 0; i < cells; ++i)
+            probe_world.grid.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
+    };
+    auto wall_at_cell = [&](int cx, int cy) {
+        probe_world.grid.data[static_cast<std::size_t>(cx + cy * gw)] = PIX_H_WALL1;
+    };
+
+    // FACE_UP: right is +x, so the probe is (65, 64) -- cell (5,4) joins the
+    // footprint, cell (4,4) is shared with the unprobed origin.
+    reset_grass();
     a->set_curdir(FACE_UP);
-    (void)a->stats()->right_blocked();
+    ASSERT_TRUE(!a->stats()->right_blocked())
+        << "open grass to the right of a north-facing walker is not blocked";
+    wall_at_cell(5, 4);
+    ASSERT_TRUE(a->stats()->right_blocked())
+        << "a wall on the cell one step to the walker's right IS blocked";
+
+    // FACE_DOWN_LEFT: right-forward is -x, so the probe is (63, 64) -- cell (3,4).
+    reset_grass();
     a->set_curdir(FACE_DOWN_LEFT);
-    (void)a->stats()->right_forward_blocked();
+    ASSERT_TRUE(!a->stats()->right_forward_blocked())
+        << "open grass right-forward of a south-west-facing walker is not blocked";
+    wall_at_cell(3, 4);
+    ASSERT_TRUE(a->stats()->right_forward_blocked())
+        << "a wall on the right-forward cell IS blocked";
+
+    // FACE_RIGHT: right-back is (-x, +y), so the probe is (63, 65) -- cell (3,5).
+    reset_grass();
     a->set_curdir(FACE_RIGHT);
-    (void)a->stats()->right_back_blocked();
+    ASSERT_TRUE(!a->stats()->right_back_blocked())
+        << "open grass right-back of an east-facing walker is not blocked";
+    wall_at_cell(3, 5);
+    ASSERT_TRUE(a->stats()->right_back_blocked())
+        << "a wall on the right-back cell IS blocked";
+    reset_grass();
 
-    (void)a->walkstep(-1.0f, -1.0f);
-    (void)a->walkstep(1.0f, 1.0f);
+    // A living walks only along the way it already faces. Asked for a heading it
+    // is not on, living::walk records the target in enddir and spends the tick
+    // on a SINGLE turn() step of the 8-point compass -- from FACE_RIGHT (2)
+    // towards FACE_UP_LEFT (7) that is one counter-clockwise step to
+    // FACE_UP_RIGHT (1) -- and the walker does not move at all.
+    a->setxy(64, 64);
+    a->set_curdir(FACE_RIGHT);
+    a->set_enddir(FACE_RIGHT);
+    ASSERT_TRUE(a->walkstep(-1.0f, -1.0f))
+        << "a direction change is still a successful walkstep";
+    ASSERT_EQ(FACE_UP_LEFT, (int)a->enddir()) << "the requested heading is stored in enddir";
+    ASSERT_EQ(FACE_UP_RIGHT, (int)a->curdir())
+        << "turn() advances curdir exactly ONE step of the compass, not all the way";
+    ASSERT_EQ(64, (int)a->xpos()) << "the pivot tick must not move the walker";
+    ASSERT_EQ(64, (int)a->ypos()) << "the pivot tick must not move the walker";
 
+    // Once curdir matches the heading, the same call steps exactly stepsize()
+    // pixels on each axis.
+    a->set_curdir(FACE_UP_LEFT);
+    ASSERT_TRUE(a->walkstep(-1.0f, -1.0f)) << "the follow-up step is not blocked";
+    ASSERT_EQ(64 - (int)a->stepsize(), (int)a->xpos())
+        << "now facing north-west, walkstep moves exactly stepsize() pixels west";
+    ASSERT_EQ(64 - (int)a->stepsize(), (int)a->ypos())
+        << "and exactly stepsize() pixels north";
+
+    a->setxy(64, 64);
     ASSERT_TRUE(fx.level.find_near_foe(a) == b);
     std::int32_t howmany = 0;
     ASSERT_TRUE(!fx.level.find_foes_in_range(fx.level.world().oblist, 120, &howmany, a).empty());
@@ -2064,6 +2176,16 @@ TEST(CoverageMisc, final_r16_stats_walker_level_data_and_picker_state)
     client.main_i = 0;
     client.main_items = {&quit};
     client.after = og::ui::PickerScreen::Help;
+    const int handled_before = client.handled;
     og::ui::run_picker(client);
+    ASSERT_EQ(1, client.main_i)
+        << "run_picker presented the main menu exactly once before leaving";
+    ASSERT_EQ(handled_before, client.handled)
+        << "Quit is resolved by the picker state machine itself -- it is never "
+           "dispatched back to the client as a menu item";
+    ASSERT_EQ(0, client.run_calls) << "a Quit item never starts a game";
+    ASSERT_EQ(0, client.help_calls)
+        << "screen_after_game() is only consulted after a game, so the Help "
+           "setting must not fire on the way out";
 }
 } // namespace detail_final_coverage_r16

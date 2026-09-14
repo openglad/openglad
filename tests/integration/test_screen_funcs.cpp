@@ -59,6 +59,24 @@ void fill_grid(unsigned char tile)
         world().grid.data[i] = tile;
 }
 
+// A decor plane matching the grid's dims -- the only shape GameWorld consults
+// (damage_tile / query_grid_passable both gate on validity AND matching w/h).
+// create_new_grid() frees the decor plane, so this must run after it.
+void allocate_decor_plane(unsigned char fill)
+{
+    GameWorld& w = world();
+    ASSERT_TRUE(w.grid.valid()) << "grid must exist before a decor plane";
+    w.decor.free();
+    w.decor.frames = 1;
+    w.decor.w = w.grid.w;
+    w.decor.h = w.grid.h;
+    const std::size_t size =
+        static_cast<std::size_t>(w.decor.w) * static_cast<std::size_t>(w.decor.h);
+    w.decor.data = std::make_unique<unsigned char[]>(size);
+    for (std::size_t i = 0; i < size; ++i)
+        w.decor.data[i] = fill;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -67,6 +85,14 @@ void fill_grid(unsigned char tile)
 
 TEST(ScreenFuncs, screen_first_of_found)
 {
+    // Start from an empty world: without this, first_of could answer with a
+    // soldier a sibling test left in oblist and the push below would prove
+    // nothing.
+    world().delete_objects();
+    ASSERT_TRUE(world().oblist.empty()) << "the world starts empty for this test";
+    ASSERT_EQ(nullptr, scr().first_of(Order::Living, FAMILY_SOLDIER))
+        << "and first_of finds no soldier before we push one";
+
     auto w = create_living(FAMILY_SOLDIER);
 	    ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
@@ -306,6 +332,33 @@ TEST(ScreenFuncs, screen_damage_tile_smoke)
     ASSERT_EQ(1u, world().grid_dirty_tiles().size())
         << "a non-grass tile must not be folded into the dirty-tile list";
 
+    // Decor shields the ground: a decorated cell is exempt from the
+    // grass->charred transform and returns 0, which also skips the caller's
+    // dirty-tile fold. (create_new_grid frees the decor plane, so it has to be
+    // allocated after the reset below.)
+    world().create_new_grid();
+    world().clear_grid_dirty_tiles();
+    allocate_decor_plane(DECOR_NONE);
+    ASSERT_TRUE(world().decor.valid()) << "the decor plane is allocated";
+    world().grid.data[loc] = PIX_GRASS2;
+    world().decor.data[loc] = DECOR_BOULDER_1;
+
+    ASSERT_EQ(0, (int)scr().damage_tile(100, 100))
+        << "a decorated cell is exempt from the transform and returns 0";
+    ASSERT_EQ((int)PIX_GRASS2, (int)world().grid.data[loc])
+        << "the exempt cell's base byte must survive the hit unchanged";
+    ASSERT_TRUE(world().grid_dirty_tiles().empty())
+        << "an exempt cell must never be folded into the dirty-tile list";
+
+    // The exemption is the decor BYTE, not the cell: clear it and the very
+    // same hit chars the very same grass.
+    world().decor.data[loc] = DECOR_NONE;
+    ASSERT_EQ((int)PIX_GRASS1_DAMAGED, (int)(unsigned char)scr().damage_tile(100, 100))
+        << "with DECOR_NONE under it the same cell chars normally";
+    ASSERT_EQ(1u, world().grid_dirty_tiles().size())
+        << "and only then is the cell folded into the dirty-tile list";
+
+    world().decor.free();
     world().clear_grid_dirty_tiles();
     world().create_new_grid();
 }
@@ -367,12 +420,42 @@ TEST(ScreenFuncs, screen_query_grid_passable_flying)
 
 TEST(ScreenFuncs, screen_query_grid_passable_out_of_bounds)
 {
+    world().create_new_grid();
+
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
+    w->stats()->set_bit_flags(BIT_ETHEREAL, 0);
+    w->setxy(100, 100);
 
-    bool passable = og::runtime::current_session->myscreen_->world().query_grid_passable(-10, -10, w.get());
-    ASSERT_TRUE(!passable) << "out-of-bounds should not be passable";
+    // Positive control on the same grid and the same walker: without it a
+    // query_grid_passable that answered false for EVERYTHING would pass this
+    // test.
+    ASSERT_TRUE(world().query_grid_passable(100, 100, w.get()))
+        << "an in-bounds cell of a fresh all-grass grid must be passable";
 
+    ASSERT_FALSE(world().query_grid_passable(-10, -10, w.get()))
+        << "a negative origin is rejected by the bounds guard";
+    // The guard bites on the FOOTPRINT, not the origin: x itself is still on
+    // the map here, x + sizex is not.
+    ASSERT_TRUE(world().pixmaxx > 0) << "the world reports its pixel width";
+    ASSERT_FALSE(world().query_grid_passable(
+                     static_cast<float>(world().pixmaxx - 1), 100, w.get()))
+        << "a footprint hanging past pixmaxx is rejected";
+    ASSERT_FALSE(world().query_grid_passable(
+                     100, static_cast<float>(world().pixmaxy - 1), w.get()))
+        << "a footprint hanging past pixmaxy is rejected";
+
+    // The bounds guard runs BEFORE the ethereal exemption, so not even a ghost
+    // may stand off the map.
+    w->stats()->set_bit_flags(BIT_ETHEREAL, 1);
+    ASSERT_FALSE(world().query_grid_passable(-10, -10, w.get()))
+        << "BIT_ETHEREAL is a wall exemption, never a map-edge exemption";
+    w->stats()->set_bit_flags(BIT_ETHEREAL, 0);
+
+    ASSERT_FALSE(world().query_grid_passable(100, 100, nullptr))
+        << "a null walker has no footprint to test";
+
+    world().create_new_grid();
 }
 
 
@@ -415,7 +498,11 @@ TEST(ScreenFuncs, screen_find_far_foe_smoke)
 // find_near_foe tests
 // ---------------------------------------------------------------------------
 
-TEST(ScreenFuncs, screen_find_near_foe_smoke)
+// find_near_foe walks the obmap in an outward spiral and returns the first
+// hostile it MEETS. That is a different rule from find_far_foe, which scans the
+// whole oblist and returns the NEAREST hostile -- so the two disagree, and the
+// disagreement is what this test pins.
+TEST(ScreenFuncs, screen_find_near_foe_returns_the_spirals_first_hostile_not_the_nearest)
 {
     world().delete_objects();
 
@@ -428,7 +515,8 @@ TEST(ScreenFuncs, screen_find_near_foe_smoke)
         << "with nothing in the world the spiral must fall through to nullptr";
 
     // 140,100 sits in the first obmap cell the spiral probes (one obmapres
-    // step east of the seeker), so acquisition here is deterministic.
+    // (32px) step east of the seeker's own cell), so acquisition here is
+    // deterministic.
     walker* other = spawn_in_world(FAMILY_SOLDIER, 0, 140, 100);
     ASSERT_NE(nullptr, other) << "create other should succeed";
 
@@ -438,6 +526,20 @@ TEST(ScreenFuncs, screen_find_near_foe_smoke)
     other->set_team_num(1);
     ASSERT_EQ(other, world().find_near_foe(seeker.get()))
         << "the same walker on the opposing team IS the foe the spiral returns";
+
+    // The discriminator. `decoy` stands 24px from the seeker, `other` 40px --
+    // but the decoy's obmap cell is north-west of the seeker and the spiral
+    // starts due east, so the spiral meets `other` first. A find_near_foe that
+    // had quietly become `return find_far_foe(ob);` would answer `decoy` here.
+    walker* decoy = spawn_in_world(FAMILY_SOLDIER, 1, 88, 88);
+    ASSERT_NE(nullptr, decoy) << "create decoy should succeed";
+    ASSERT_EQ(24, seeker->distance_to_ob(decoy)) << "the decoy really is the nearer foe";
+    ASSERT_EQ(40, seeker->distance_to_ob(other)) << "and the spiral's first hit is farther";
+
+    ASSERT_EQ(decoy, world().find_far_foe(seeker.get()))
+        << "find_far_foe, the distance oracle, picks the nearer foe";
+    ASSERT_EQ(other, world().find_near_foe(seeker.get()))
+        << "find_near_foe picks by spiral order, not by distance";
 
     seeker.reset();
     world().delete_objects();

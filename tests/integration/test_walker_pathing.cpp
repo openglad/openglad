@@ -241,8 +241,6 @@ TEST(WalkerPathing, round10_follow_path_node_erase_and_normalize_paths)
 
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker should be created";
-    if (!w)
-        return;
 
     using State = typename decltype(w->path_to_foe)::value_type;
     auto make_state = [](int x, int y) -> State {
