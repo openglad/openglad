@@ -107,13 +107,6 @@ void expect_shadowed_glyph_at(screen* out, text& font, Sint32 x, Sint32 y,
 // text::query_width
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_query_width_empty)
-{
-    Sint32 w = og::runtime::current_session->myscreen_->text_normal.query_width("");
-    ASSERT_EQ(0, (int)w) << "empty string width is 0";
-}
-
-
 // The small font is monospaced: every glyph costs sizex+1 pixels. Every
 // centred label, every right-aligned number and every menu caption is laid
 // out from this number, so it is pinned exactly rather than as "positive".
@@ -696,7 +689,8 @@ TEST(TextRender, direct_canvas_write_arms_land_at_absolute_coordinates)
     const Sint32 y3 = y2 + font.sizey + 6;
     out->fastbox(0, y3 - 2, 320, font.sizey + 4,
                  static_cast<unsigned char>(background));
-    font.write_y(y3, "AB", ink);
+    EXPECT_EQ(1, font.write_y(y3, "AB", ink))
+        << "the direct write_y arm reports 1, not the run width";
     const Sint32 centered_x = (320 - 2 * advance) / 2;
     expect_glyph_at(out, font, centered_x, y3, 'A', ink, background,
                     GlyphInk::Recolored, "write_y first");

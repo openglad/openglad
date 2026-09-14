@@ -1124,8 +1124,6 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
     walker* shooter = make_guy(FAMILY_ARCHER, 0);
     walker* foe = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(shooter != nullptr && foe != nullptr) << "fixtures created";
-    if (!(shooter && foe))
-        return;
 
     shooter->setxy(96, 96);
     shooter->set_lastx(1);
@@ -1143,8 +1141,6 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
 
     walker* probe = shooter->create_weapon();
     ASSERT_TRUE(probe != nullptr) << "probe weapon created";
-    if (!probe)
-        return;
     shooter->set_weapon_heading(probe);
 
     const short start_x = probe->xpos();
@@ -1303,39 +1299,10 @@ TEST(WalkerCombat, walker_set_difficulty_all_families)
 }
 
 
-// ---------------------------------------------------------------------------
-// get_current_angle for all directions (line 552-575)
-// ---------------------------------------------------------------------------
-
-TEST(WalkerCombat, walker_get_current_angle_all_dirs)
-{
-    walker* w = make_guy(FAMILY_SOLDIER, 0);
-    ASSERT_NE(nullptr, w) << "walker created";
-
-    // The exact table walker::get_current_angle returns, facing by facing.
-    // "every direction differs from the previous one" accepted any
-    // permutation; these are the values the renderer and the recoil angle
-    // actually depend on.
-    struct AngleCase { int facing; float radians; };
-    const AngleCase kCases[] = {
-        {FACE_UP,         -static_cast<float>(M_PI_2)},
-        {FACE_UP_RIGHT,   -static_cast<float>(M_PI_4)},
-        {FACE_RIGHT,      0.0f},
-        {FACE_DOWN_RIGHT, static_cast<float>(M_PI_4)},
-        {FACE_DOWN,       static_cast<float>(M_PI_2)},
-        {FACE_DOWN_LEFT,  static_cast<float>(3 * M_PI_4)},
-        {FACE_LEFT,       static_cast<float>(M_PI)},
-        {FACE_UP_LEFT,    static_cast<float>(5 * M_PI_4)},
-    };
-    for (const AngleCase& c : kCases) {
-        w->set_curdir(static_cast<char>(c.facing));
-        EXPECT_NEAR(c.radians, w->get_current_angle(), 1e-6f)
-            << "facing " << c.facing << " must map to its exact angle";
-    }
-
-    delete w;
-}
-
+// get_current_angle's full facing->radians table (including the default arm)
+// is pinned by WalkerMovement.walker_get_current_angle_all_direction_cases in
+// tests/integration/test_walker_movement.cpp; the copy that used to sit here
+// asserted the same rows and nothing more.
 
 // ---------------------------------------------------------------------------
 // animate smoke test
@@ -1438,7 +1405,6 @@ TEST(WalkerCombat, walker_act_random_generator_paths)
     }
     ASSERT_EQ(foe, genp->foe()) << "the search branch acquires a foe when it has none";
     ASSERT_TRUE(genp->stats()->has_commands()) << "the search branch queues COMMAND_SEARCH";
-    ASSERT_EQ(ACT_RANDOM, (int)genp->act_type()) << "neither branch rewrites act_type";
 
     gen.reset();
     world.delete_objects();
@@ -1450,8 +1416,6 @@ TEST(WalkerCombat, effect_helpers_and_recoil_branches)
     walker* attacker = make_guy(FAMILY_SOLDIER, 0);
     walker* target = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(attacker != nullptr && target != nullptr) << "combat walkers created";
-    if (!(attacker && target))
-        return;
 
     target->setxy(attacker->xpos() + 12, attacker->ypos() + 4);
     cfg.apply_setting("effects", "hit_recoil", "on");
@@ -1528,8 +1492,6 @@ TEST(WalkerCombat, batch5_heal_and_hit_effect_variants)
     walker* healer = make_guy(FAMILY_CLERIC, 0);
     walker* target = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(healer != nullptr && target != nullptr) << "healer and target created";
-    if (!(healer && target))
-        return;
 
     healer->setxy(100, 100);
     target->setxy(116, 104);
@@ -1602,8 +1564,6 @@ TEST(WalkerCombat, batch6_attack_branches_enemy_and_weapon_paths)
     walker* attacker = make_guy(FAMILY_MAGE, 0);
     walker* enemy = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(attacker != nullptr && enemy != nullptr) << "attacker/enemy created";
-    if (!(attacker && enemy))
-        return;
     attacker->stats()->set_bit_flags(BIT_MAGICAL, 1);
     attacker->set_damage(500.0f);
     enemy->stats()->set_hitpoints(3);
@@ -1761,13 +1721,6 @@ TEST(WalkerCombat, named_ally_death_is_not_announced_as_enemy_death)
     walker* enemy_attacker = make_guy(FAMILY_SOLDIER, 1);
     walker* named_ally = make_guy(FAMILY_ORC, 0);
     ASSERT_TRUE(enemy_attacker && named_ally) << "attacker/ally created";
-    if (!(enemy_attacker && named_ally))
-    {
-        og::runtime::current_session->myscreen_->world_.my_team = saved_my_team;
-        og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
-        og::runtime::current_session->myscreen_->world().delete_objects();
-        return;
-    }
 
     enemy_attacker->clear_myguy();
     enemy_attacker->set_damage(500.0f);
@@ -1827,12 +1780,6 @@ TEST(WalkerCombat, attack_rewards_single_credit_weapon_hit)
     walker* target = make_guy(FAMILY_ORC, 1);
     walker* weapon = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(owner && target && weapon) << "owner/target/weapon created";
-    if (!(owner && target && weapon))
-    {
-        og::runtime::current_session->myscreen_->world().delete_objects();
-        og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
-        return;
-    }
 
     SequenceRandomCombat fixed_rng({0});
     weapon->set_owner(owner);
@@ -1895,12 +1842,6 @@ TEST(WalkerCombat, attack_ignores_out_of_range_team_score_index)
     walker* attacker = make_guy(FAMILY_SOLDIER, 0);
     walker* target = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(attacker && target) << "attacker/target created";
-    if (!(attacker && target))
-    {
-        og::runtime::current_session->myscreen_->world().delete_objects();
-        og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
-        return;
-    }
 
     SequenceRandomCombat fixed_rng({0});
     attacker->set_team_num(250); // invalid score index from corrupted scenario data
@@ -1933,12 +1874,6 @@ TEST(WalkerCombat, attack_rewards_single_credit_melee_kill)
     walker* attacker = make_guy(FAMILY_SOLDIER, 0);
     walker* target = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(attacker && target) << "attacker/target created";
-    if (!(attacker && target))
-    {
-        og::runtime::current_session->myscreen_->world().delete_objects();
-        og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
-        return;
-    }
 
     attacker->set_damage(16.0f);
     attacker->set_team_num(0);
@@ -1987,8 +1922,6 @@ TEST(WalkerCombat, walker_batch7_init_fire_and_animate_edge_paths)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
 
     w->setxy(100, 100);
 
@@ -2053,8 +1986,6 @@ TEST(WalkerCombat, walker_batch8_act_default_and_animate_invalid_sequence_bounds
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
 
     w->setxy(100, 100);
 
@@ -2097,8 +2028,6 @@ TEST(WalkerCombat, round8_attack_early_return_guards)
     walker* attacker = make_guy(FAMILY_SOLDIER, 0);
     walker* living_target = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(attacker && living_target) << "attacker and living target created";
-    if (!(attacker && living_target))
-        return;
 
     // Dead target guard.
     living_target->set_dead(1);

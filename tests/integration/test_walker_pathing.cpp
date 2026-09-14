@@ -192,8 +192,6 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
     walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(actor != nullptr && foe != nullptr) << "pathing actors should be created";
-    if (!(actor && foe))
-        return;
 
     actor->set_team_num(0);
     foe->set_team_num(1);
@@ -211,8 +209,6 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
 
     GameplayPathfindingState* pathing = ensure_pathfinding_state(*current_game);
     ASSERT_TRUE(pathing != nullptr) << "pathfinding state should be available";
-    if (!pathing)
-        return;
 
     std::vector<PathState> path;
     float total_cost = 0.0f;
@@ -242,8 +238,6 @@ TEST(WalkerPathing, round10_follow_path_node_erase_and_normalize_paths)
 
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker should be created";
-    if (!w)
-        return;
 
     using State = typename decltype(w->path_to_foe)::value_type;
     auto make_state = [](int x, int y) -> State {

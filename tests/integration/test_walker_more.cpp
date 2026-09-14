@@ -238,8 +238,6 @@ TEST(WalkerMore, walker_myguy_move_and_weapon_heading_and_outline_named)
     auto target = create_living(FAMILY_ORC);
     ASSERT_TRUE(owner != nullptr) << "owner created";
     ASSERT_TRUE(target != nullptr) << "target created";
-    if (!owner || !target)
-        return;
 
     // -----------------------------------------------------------------------
     // myguy ownership/view helpers
@@ -282,13 +280,9 @@ TEST(WalkerMore, walker_myguy_move_and_weapon_heading_and_outline_named)
     // -----------------------------------------------------------------------
     loader* l = og::runtime::current_session->myscreen_->myloader;
     ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
 
     auto weapon = l->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     ASSERT_TRUE(weapon != nullptr) << "weapon created";
-    if (!weapon)
-        return;
     weapon->set_stepsize(0); // waver becomes 0
 
     // Use explicit xpos/ypos because set_weapon_heading uses them directly.
@@ -438,8 +432,10 @@ TEST(WalkerMore, walker_init_fire_and_fire_check_gate_branches)
         << "init_fire's ANI_WALK arm starts the attack animation";
     EXPECT_EQ(ANI_ATTACK, static_cast<int>(w->ani_type()))
         << "init_fire switches the walker into its attack animation";
-    EXPECT_GT(w->busy(), 0.0f)
-        << "init_fire charges the fire_frequency delay";
+    // busy was zeroed above and init_fire's charge is `busy += fire_frequency()`
+    // (walker.cpp), so the delay it leaves is knowable to the frame.
+    EXPECT_FLOAT_EQ(w->fire_frequency(), w->busy())
+        << "init_fire charges exactly one fire_frequency of delay";
 }
 
 
@@ -450,8 +446,6 @@ TEST(WalkerMore, walker_round6_friendliness_null_dead_owner_chain_and_allied_mod
     auto owner_a = create_living(FAMILY_MAGE);
     auto owner_b = create_living(FAMILY_ORC);
     ASSERT_TRUE(a && b && owner_a && owner_b) << "walkers created";
-    if (!(a && b && owner_a && owner_b))
-        return;
 
     // Null target guard.
     ASSERT_EQ(0, (int)a->is_friendly(nullptr)) << "is_friendly should return 0 for null target";
@@ -583,8 +577,6 @@ TEST(WalkerMore, walker_friendliness_null_dead_and_strict_team_paths)
     auto a = create_living(FAMILY_SOLDIER);
     auto b = create_living(FAMILY_ORC);
     ASSERT_TRUE(a && b) << "walkers created";
-    if (!(a && b))
-        return;
 
     a->set_team_num(0);
     b->set_team_num(1);

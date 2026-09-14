@@ -57,6 +57,45 @@ static walker* newest_of(const GameWorld::EntityList& list, Order order, int fam
 static int gem_count()   { return count_of(death_world().oblist, Order::Treasure, FAMILY_LIFE_GEM); }
 static int stain_count() { return count_of(death_world().fxlist, Order::Treasure, FAMILY_STAIN); }
 
+// The hearts, bloodspots, slime offspring and parting shots a death drops are
+// real entities in the SHARED world. Every check below is delta-based and so
+// survives residue, but residue left in oblist/fxlist/weaplist is order
+// coupling waiting to happen for every later test in this binary: each test
+// takes its own spawn back out. add_ob/add_fx_ob append and nothing here
+// removes entities, so the tail past the recorded size IS what this test
+// spawned.
+class ScopedDeathSpawns
+{
+public:
+    ScopedDeathSpawns()
+        : obs_(death_world().oblist.size()),
+          fxs_(death_world().fxlist.size()),
+          weaps_(death_world().weaplist.size()),
+          deads_(death_world().dead_list.size())
+    {}
+    ScopedDeathSpawns(const ScopedDeathSpawns&) = delete;
+    ScopedDeathSpawns& operator=(const ScopedDeathSpawns&) = delete;
+    ~ScopedDeathSpawns()
+    {
+        trim(death_world().oblist, obs_);
+        trim(death_world().fxlist, fxs_);
+        trim(death_world().weaplist, weaps_);
+        trim(death_world().dead_list, deads_);
+    }
+
+private:
+    static void trim(GameWorld::EntityList& list, std::size_t keep)
+    {
+        while (list.size() > keep)
+            list.pop_back();
+    }
+
+    std::size_t obs_;
+    std::size_t fxs_;
+    std::size_t weaps_;
+    std::size_t deads_;
+};
+
 // The one rule every ordinary family shares: a guy-owned walker's death drops
 // exactly one team-colored life gem into oblist, and the family descriptor's
 // leaves_bloodspot decides whether exactly one FAMILY_STAIN joins fxlist.
@@ -64,6 +103,7 @@ static void check_family_death(const char* label, char family, unsigned char tea
                                int expected_stain_delta)
 {
     SCOPED_TRACE(label);
+    ScopedDeathSpawns spawns;
     auto w = make_guy(family, team);
     ASSERT_NE(nullptr, w.get()) << label << ": guy_create_walker_owned must build a walker";
     ASSERT_NE(nullptr, w->myguy) << label << ": a guy-owned walker carries its myguy";
@@ -139,6 +179,7 @@ TEST(WalkerDeath, soldier_and_kin_drop_heart_and_bloodspot)
 // still drops.
 TEST(WalkerDeath, skeleton)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_guy(FAMILY_SKELETON, 0);
     ASSERT_NE(nullptr, w.get()) << "skeleton walker must be built";
     const int gems_before = gem_count();
@@ -159,6 +200,7 @@ TEST(WalkerDeath, skeleton)
 // so no bloodspot is generated.
 TEST(WalkerDeath, fire_elemental2)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_guy(FAMILY_FIREELEMENTAL, 0);
     ASSERT_NE(nullptr, w.get()) << "fire elemental walker must be built";
     w->stats()->set_magicpoints(999.0f);
@@ -186,6 +228,7 @@ TEST(WalkerDeath, fire_elemental2)
 // small slime is the end of the chain and splits into nothing.
 TEST(WalkerDeath, small_slime)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_guy(FAMILY_SMALL_SLIME, 0);
     ASSERT_NE(nullptr, w.get()) << "small slime walker must be built";
     const int small_before = count_of(death_world().oblist, Order::Living, FAMILY_SMALL_SLIME);
@@ -211,6 +254,7 @@ TEST(WalkerDeath, small_slime)
 // the dying blob's hp restored to max.
 TEST(WalkerDeath, medium_slime)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_loaded(FAMILY_MEDIUM_SLIME);
     ASSERT_NE(nullptr, w.get()) << "medium slime walker must be built";
     w->set_team_num(2);
@@ -244,6 +288,7 @@ TEST(WalkerDeath, medium_slime)
 // slime_on_death -> split_on_death(LIVING_MEDIUM_SLIME).
 TEST(WalkerDeath, large_slime)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_loaded(FAMILY_SLIME);
     ASSERT_NE(nullptr, w.get()) << "large slime walker must be built";
     w->set_team_num(1);
@@ -269,6 +314,7 @@ TEST(WalkerDeath, large_slime)
 // living-12-ghost.lua: leaves_bloodspot = false.
 TEST(WalkerDeath, ghost)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_guy(FAMILY_GHOST, 0);
     ASSERT_NE(nullptr, w.get()) << "ghost walker must be built";
     const int stains_before = stain_count();
@@ -287,6 +333,7 @@ TEST(WalkerDeath, ghost)
 // position, plus the keep_fallen_heroes halving and the no-myguy control.
 TEST(WalkerDeath, myguy_present)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_guy(FAMILY_SOLDIER, 3);
     ASSERT_NE(nullptr, w.get()) << "soldier walker must be built";
     ASSERT_TRUE(w->myguy != nullptr) << "should have myguy from guy::create_walker_owned";
@@ -342,6 +389,7 @@ TEST(WalkerDeath, myguy_present)
 // The gem/stain inherit team_num(), not a hardcoded team 0.
 TEST(WalkerDeath, orc)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_guy(FAMILY_ORC, 1);
     ASSERT_NE(nullptr, w.get()) << "orc walker must be built";
     const int stains_before = stain_count();
@@ -367,6 +415,7 @@ TEST(WalkerDeath, orc)
 
 TEST(WalkerDeath, double_call)
 {
+    ScopedDeathSpawns spawns;
     auto w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_NE(nullptr, w.get()) << "soldier walker must be built";
     w->set_dead(1);

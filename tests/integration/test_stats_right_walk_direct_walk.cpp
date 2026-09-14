@@ -64,19 +64,15 @@ TEST(StatsRightWalkDirectWalk, stats_right_walk_turn_right_adds_walk_command_all
 
     statistics* st = w.stats();
     ASSERT_TRUE(st != nullptr) << "stats exists";
-    if (!st)
-        return;
 
     // For each desired enddir, choose an initial value such that (enddir+2)%8 == desired.
     for (int desired = 0; desired < 8; desired++)
     {
         st->clear_command();
         w.set_enddir(static_cast<char>((desired + 6) % 8)); // desired-2 mod 8
-        (void)st->right_walk();
+        ASSERT_TRUE(st->right_walk()) << "right_walk returns true on the right_back_blocked turn-right path";
 
         ASSERT_TRUE(!st->commands.empty()) << "right_walk should add a command when right_back_blocked";
-        if (st->commands.empty())
-            continue;
 
         const command& c = st->commands.front();
         ASSERT_EQ(COMMAND_WALK, static_cast<int>(c.commandtype)) << "right_walk should enqueue COMMAND_WALK";
@@ -116,8 +112,6 @@ TEST(StatsRightWalkDirectWalk, stats_direct_walk_grid_passability_branches)
 
     statistics* st = w.stats();
     ASSERT_TRUE(st != nullptr) << "stats exists";
-    if (!st)
-        return;
 
     // A) Diagonal blocked, x blocked, y blocked -> return 0.
     set_all_tiles(PIX_GRASS1);

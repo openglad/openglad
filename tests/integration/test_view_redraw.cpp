@@ -766,6 +766,13 @@ TEST(ViewRedraw, no_control_takes_the_camera_from_the_level_position)
     viewscreen* const vs = active->viewob[0].get();
     ASSERT_NE(nullptr, vs);
 
+    // The viewscreen and the level camera are shared with every later test in
+    // this binary: remember both and put them back.
+    const Sint32 level_topx_before = active->level_visuals_.topx;
+    const Sint32 level_topy_before = active->level_visuals_.topy;
+    const Sint32 vs_topx_before = vs->topx;
+    const Sint32 vs_topy_before = vs->topy;
+
     active->level_visuals_.topx = 50;
     active->level_visuals_.topy = 50;
     vs->topx = -999;
@@ -779,8 +786,10 @@ TEST(ViewRedraw, no_control_takes_the_camera_from_the_level_position)
     EXPECT_EQ(50, vs->topy)
         << "no control: topy comes from the level's stored camera position";
 
-    active->level_visuals_.topx = 0;
-    active->level_visuals_.topy = 0;
+    active->level_visuals_.topx = level_topx_before;
+    active->level_visuals_.topy = level_topy_before;
+    vs->topx = vs_topx_before;
+    vs->topy = vs_topy_before;
 }
 
 

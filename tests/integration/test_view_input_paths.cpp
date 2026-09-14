@@ -455,7 +455,9 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     const int freeze_before = og::runtime::current_session->myscreen_->world().enemy_freeze;
     e.key.key = SDLK_F1;
     v->input(e);
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().enemy_freeze >= freeze_before + 50) << "F1 should increase enemy freeze time";
+    EXPECT_EQ(freeze_before + 50,
+              og::runtime::current_session->myscreen_->world().enemy_freeze)
+        << "cheat+F1 adds exactly 50 to the enemy freeze timer";
 
     // F2 spawns exactly one magic-shield FX, owned by the control, on the
     // control's team, with a 200-tick lifetime (cheat_handler.cpp).
@@ -482,7 +484,8 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     const float hp_before = v->control->stats()->hitpoints();
     e.key.key = SDLK_H;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->hitpoints() >= hp_before + 100.0f) << "h key should increase hitpoints";
+    EXPECT_FLOAT_EQ(hp_before + 100.0f, v->control->stats()->hitpoints())
+        << "cheat+'h' adds exactly 100 hitpoints to the control";
 
     const bool inv_before = v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0;
     e.key.key = SDLK_I;
@@ -492,12 +495,16 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     const float mp_before = v->control->stats()->magicpoints();
     e.key.key = SDLK_M;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->magicpoints() >= mp_before + 150.0f) << "m key should increase magicpoints";
+    EXPECT_FLOAT_EQ(mp_before + 150.0f, v->control->stats()->magicpoints())
+        << "cheat+'m' adds exactly 150 magicpoints to the control";
 
     const int speed_bonus_before = v->control->speed_bonus_left();
     e.key.key = SDLK_S;
     v->input(e);
-    ASSERT_TRUE(v->control->speed_bonus_left() >= speed_bonus_before + 20) << "s key should increase speed bonus";
+    EXPECT_EQ(speed_bonus_before + 20, v->control->speed_bonus_left())
+        << "cheat+'s' adds exactly 20 to the control's speed bonus";
+    EXPECT_FLOAT_EQ(v->control->normal_stepsize(), v->control->speed_bonus())
+        << "cheat+'s' also sets the bonus step to the normal stepsize";
 
     ks.set(SDLK_C, false);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
