@@ -100,7 +100,7 @@ TEST(WalkerMovement, walker_facing_all_16_vectors)
 TEST(WalkerMovement, walker_facing_threshold_boundaries_round6)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    if (!w) return;
+    ASSERT_NE(nullptr, w) << "soldier walker created";
 
     // x == 0 branch
     ASSERT_EQ(FACE_DOWN, (int)w->facing(0, 1)) << "facing(0,+) should be FACE_DOWN";
@@ -281,21 +281,32 @@ TEST(WalkerMovement, walker_walkstep_zero)
 }
 
 
+// The user slide's four cardinal arms are `break` with dx == dy == 0: a player
+// who walks straight into a wall does NOT slide along it. The distinguishing
+// observable is the animation cycle - the slide loop advances it once per
+// stepsize unit it moves, so a cardinal break must leave it exactly where it
+// was, with the walker unmoved and oldcurdir restored.
 TEST(WalkerMovement, walker_walkstep_user_slide_cardinal_break_path_round5)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w) << "walker created";
 
     w->set_user(0);
     w->set_stepsize(2.0f);
     w->setxy(0, 24); // left edge forces blocked cardinal movement
     w->set_curdir(FACE_LEFT);
+    w->set_cycle(0);
 
-    const bool moved = w->walkstep(-1, 0);
-    ASSERT_TRUE(!moved) << "blocked cardinal user movement should keep slide dx/dy at zero and fail";
+    ASSERT_FALSE(w->walkstep(-1, 0))
+        << "blocked cardinal user movement keeps slide dx/dy at zero and fails";
+    ASSERT_EQ(0, w->xpos()) << "a cardinal break never slides horizontally";
+    ASSERT_EQ(24, w->ypos()) << "a cardinal break never slides vertically";
+    ASSERT_EQ(FACE_LEFT, (int)w->curdir()) << "walkstep restores oldcurdir";
+    ASSERT_EQ(0, (int)w->cycle())
+        << "the cardinal arm never enters the slide loop, so no frame is cycled";
+    ASSERT_FLOAT_EQ(-2.0f, w->lastx()) << "lastx = x*stepsize, stored before any walk";
+    ASSERT_FLOAT_EQ(0.0f, w->lasty()) << "lasty = y*stepsize, stored before any walk";
 }
 
 
@@ -688,34 +699,70 @@ TEST(WalkerMovement, round9_user_cardinal_slide_break_and_offmap_guards)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w) << "walker created";
 
-    // User + cardinal blocked move: dx/dy stays 0 in slide switch and returns false.
+    // User + cardinal blocked move: dx/dy stays 0 in the slide switch, so the
+    // walker holds its exact tile and its facing.
     w->set_user(0);
     w->set_stepsize(1.0f);
     w->setxy(0, 16);
     w->set_curdir(FACE_LEFT);
-    ASSERT_TRUE(!w->walkstep(-1, 0)) << "blocked cardinal user slide should fail";
+    w->set_cycle(0);
+    ASSERT_FALSE(w->walkstep(-1, 0)) << "a blocked cardinal user slide fails";
+    ASSERT_EQ(0, w->xpos()) << "the blocked axis holds";
+    ASSERT_EQ(16, w->ypos()) << "the cardinal arm never slides";
+    ASSERT_EQ(FACE_LEFT, (int)w->curdir()) << "walkstep restores oldcurdir";
+    ASSERT_EQ(0, (int)w->cycle()) << "no slide means no cycled frame";
 
-    // walk(0,0) early-return path.
-    ASSERT_TRUE(w->walk(0, 0)) << "walk(0,0) should return success";
+    // walk(0, 0) for a LIVING: living::walk has no zero-step guard, so
+    // facing(0,0) == FACE_UP makes a standstill a turn order. It reports
+    // success, moves nothing, and rotates exactly one 45-degree step toward
+    // FACE_UP (FACE_LEFT + 1 == FACE_UP_LEFT, the shorter way round).
+    ASSERT_TRUE(w->walk(0, 0)) << "walk(0,0) reports success";
+    ASSERT_EQ(0, w->xpos()) << "walk(0,0) moves nothing";
+    ASSERT_EQ(16, w->ypos()) << "walk(0,0) moves nothing";
+    ASSERT_EQ(FACE_UP, (int)w->enddir())
+        << "facing(0,0) is FACE_UP, so a standstill aims the walker north";
+    ASSERT_EQ(FACE_UP_LEFT, (int)w->curdir())
+        << "turn() rotates one step per call, FACE_LEFT -> FACE_UP_LEFT";
+    ASSERT_EQ(0, (int)w->cycle()) << "a turn does not advance the walk cycle";
 
-    // Off-map guard in walk().
+    // The base walker::walk DOES carry that zero-step guard, and only a
+    // non-living reaches it: it returns success with the facing untouched.
+    {
+        PixieData px(1, 1, 1, new unsigned char[1]{0});
+        walker nonliving(px);
+        nonliving.setxy(32, 32);
+        nonliving.set_curdir(FACE_LEFT);
+        nonliving.set_cycle(0);
+        ASSERT_TRUE(nonliving.walk(0, 0)) << "walker::walk(0,0) reports success";
+        ASSERT_EQ(FACE_LEFT, (int)nonliving.curdir())
+            << "the zero-step guard returns before any re-facing";
+        ASSERT_EQ(0, (int)nonliving.cycle())
+            << "the zero-step guard returns before any animation";
+    }
+
+    w->set_curdir(FACE_LEFT);
+
+    // Off-map guard in walk(): the step is refused BEFORE the passability
+    // check, so nothing moves and nothing animates.
     w->setxy(0, 0);
     w->set_curdir(FACE_LEFT);
-    ASSERT_TRUE(!w->walk(-1, 0)) << "walk should fail when target is off map";
+    ASSERT_FALSE(w->walk(-1, 0)) << "walk fails when the target is off map";
+    ASSERT_EQ(0, w->xpos()) << "an off-map step moves nothing";
+    ASSERT_EQ(0, w->ypos()) << "an off-map step moves nothing";
+    ASSERT_EQ(0, (int)w->cycle()) << "an off-map step cycles no frame";
 }
 
 
+// walk()'s blocked arm is gated on BIT_ANIMATE: a blocked walker that animates
+// regardless still cycles one frame, and one that does not holds its cycle.
+// Both arms move nothing - the cycle is the whole observable difference.
 TEST(WalkerMovement, round9_blocked_animate_angle_and_turn_default_paths)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w) << "walker created";
 
     // Force an in-bounds blocked move and keep animation active.
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
@@ -723,13 +770,27 @@ TEST(WalkerMovement, round9_blocked_animate_angle_and_turn_default_paths)
     w->set_curdir(FACE_RIGHT);
     // Moving from (1,1) one tile right targets tile (2,1).
     og::runtime::current_session->myscreen_->world().grid.data[1 * og::runtime::current_session->myscreen_->world().grid.w + 2] = PIX_TREE_M1;
-    ASSERT_TRUE(!w->walk(1, 0)) << "blocked movement should fail while still executing animate-on-block path";
+    w->set_cycle(0);
+    ASSERT_FALSE(w->walk(1, 0)) << "the blocked in-bounds step fails";
+    ASSERT_EQ(GRID_SIZE, w->xpos()) << "a blocked step moves nothing";
+    ASSERT_EQ(GRID_SIZE, w->ypos()) << "a blocked step moves nothing";
+    ASSERT_EQ(1, (int)w->cycle())
+        << "BIT_ANIMATE cycles exactly one frame on the blocked step";
 
-    // get_current_angle switch branches.
-    w->set_curdir(FACE_UP);
-    ASSERT_TRUE(w->get_current_angle() < 0.0f) << "FACE_UP angle should be negative";
+    // Negative control: the same blocked step without BIT_ANIMATE holds the
+    // cycle where it was.
+    w->stats()->set_bit_flags(BIT_ANIMATE, 0);
+    w->set_cycle(0);
+    ASSERT_FALSE(w->walk(1, 0)) << "the blocked in-bounds step still fails";
+    ASSERT_EQ(0, (int)w->cycle())
+        << "without BIT_ANIMATE a blocked step cycles no frame";
+    w->stats()->set_bit_flags(BIT_ANIMATE, 1);
+
+    // get_current_angle's out-of-range default arm. (The exact per-facing
+    // ladder is pinned by WalkerMovement.walker_get_current_angle_all_direction_cases.)
     w->set_curdir(99);
-    ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should use default angle";
+    ASSERT_FLOAT_EQ(0.0f, w->get_current_angle())
+        << "an out-of-range facing uses the default angle";
 
     // Classic invalid curdir handling keeps the modulo result and falls through
     // to the default last-vector branch instead of clamping to a valid facing.
@@ -835,35 +896,14 @@ TEST(WalkerMovement, walker_create_weapon_mage)
 }
 
 
-TEST(WalkerMovement, round6_blocked_animate_and_default_angle_turn)
-{
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    walker* w = make_guy(FAMILY_SOLDIER, 0);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
-
-    // Blocked walk + BIT_ANIMATE branch.
-    og::runtime::current_session->myscreen_->world().grid.data[1] = PIX_TREE_M1;
-
-    w->setxy(0, 0);
-    w->set_sizex(1);
-    w->set_sizey(1);
-    w->set_curdir(FACE_LEFT);
-    w->stats()->set_bit_flags(BIT_ANIMATE, 1);
-    ASSERT_FALSE(w->walk(-1, 0));
-    ASSERT_EQ(0, w->xpos());
-    ASSERT_EQ(0, w->ypos());
-
-    // get_current_angle default branch.
-    w->set_curdir(static_cast<char>(99));
-    ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should map to angle 0";
-
-    // Classic modulo turn from an invalid positive direction lands on FACE_DOWN.
-    w->set_curdir(static_cast<char>(99));
-    ASSERT_TRUE(w->turn(FACE_UP));
-    ASSERT_EQ(FACE_DOWN, w->curdir());
-}
+// round6_blocked_animate_and_default_angle_turn lived here. Every row it had
+// is pinned, exactly, by a sibling: its "blocked walk + BIT_ANIMATE" row never
+// reached the animate arm at all (walking west from x == 0 returns on walk()'s
+// off-map guard, which is pinned by round9_user_cardinal_slide_break_and_offmap_guards,
+// and the real BIT_ANIMATE gate is pinned by
+// round9_blocked_animate_angle_and_turn_default_paths); the angle default is
+// pinned by walker_get_current_angle_all_direction_cases; and the (99 + 1) % 8
+// turn is pinned by facing_buckets_and_npc_fallback_component_walks.
 
 
 // ---------------------------------------------------------------------------
@@ -1185,10 +1225,15 @@ public:
     {
         results_ = std::deque<bool>(vals.begin(), vals.end());
     }
+    void set_walk_result_sequence(const std::vector<bool>& vals)
+    {
+        results_ = std::deque<bool>(vals.begin(), vals.end());
+    }
 
     bool walk(float x, float y) override
     {
         calls_.push_back({x, y});
+        call_dirs_.push_back(static_cast<short>(curdir()));
         if (results_.empty())
             return false;
         const bool r = results_.front();
@@ -1198,7 +1243,11 @@ public:
 
     std::size_t call_count() const { return calls_.size(); }
     const std::vector<std::pair<float, float>>& calls() const { return calls_; }
-    void clear_calls() { calls_.clear(); }
+    // The facing walkstep had set when each walk() attempt was made: the NPC
+    // fallback arms turn before they walk, and that turn is invisible in the
+    // deltas alone.
+    const std::vector<short>& call_dirs() const { return call_dirs_; }
+    void clear_calls() { calls_.clear(); call_dirs_.clear(); }
     void set_forced_facing(short dir)
     {
         forced_facing_ = dir;
@@ -1216,6 +1265,7 @@ public:
 private:
     std::deque<bool> results_;
     std::vector<std::pair<float, float>> calls_;
+    std::vector<short> call_dirs_;
     short forced_facing_ = FACE_UP;
     bool use_forced_facing_ = false;
 };
@@ -1226,43 +1276,99 @@ static PixieData one_px_for_scripted()
 }
 } // namespace
 
+// Every arm of walkstep's NPC fallback switch, pinned by the exact walk()
+// attempts it makes: the full step, the one-unit baby step, and then the
+// fallback(s) - each with the facing the arm turned to first. A cardinal arm
+// turns 90 degrees clockwise-of-blocked (UP->LEFT, RIGHT->UP, DOWN->RIGHT,
+// LEFT->DOWN) and walks one stepsize that way; a diagonal arm walks its two
+// components separately, vertical first, and returns ret1 || ret2.
 TEST(WalkerMovement, round6_scripted_walkstep_switch_coverage)
 {
     PixieData px = one_px_for_scripted();
     ScriptedWalkWalker w(px);
     w.set_stepsize(1.0f);
-
-    // NPC fallback switch: first two attempts fail, case body executes.
     w.set_user(-1);
-    w.set_walk_results({false, false, true});
-    ASSERT_TRUE(w.walkstep(0, -1)) << "FACE_UP npc fallback should return ret1";
 
-    w.set_walk_results({false, false, true});
-    ASSERT_TRUE(w.walkstep(1, 0)) << "FACE_RIGHT npc fallback should return ret1";
+    // A facing no arm below ever turns to, so every recorded facing that is
+    // not the sentinel was written by the arm under test.
+    const short kSentinel = FACE_DOWN_RIGHT;
 
-    w.set_walk_results({false, false, true});
-    ASSERT_TRUE(w.walkstep(0, 1)) << "FACE_DOWN npc fallback should return ret1";
+    struct Attempt { float x; float y; int dir; };
+    struct Row {
+        const char* name;
+        float dx, dy;
+        std::vector<bool> results;
+        bool expected_return;
+        std::vector<Attempt> attempts;
+    };
+    const std::vector<Row> rows = {
+        {"FACE_UP falls back to a full step FACE_LEFT",
+         0, -1, {false, false, true}, true,
+         {{0, -1, kSentinel}, {0, -1, kSentinel}, {-1, 0, FACE_LEFT}}},
+        {"FACE_RIGHT falls back to a full step FACE_UP",
+         1, 0, {false, false, true}, true,
+         {{1, 0, kSentinel}, {1, 0, kSentinel}, {0, -1, FACE_UP}}},
+        {"FACE_DOWN falls back to a full step FACE_RIGHT",
+         0, 1, {false, false, true}, true,
+         {{0, 1, kSentinel}, {0, 1, kSentinel}, {1, 0, FACE_RIGHT}}},
+        {"FACE_LEFT falls back to a full step FACE_DOWN",
+         -1, 0, {false, false, true}, true,
+         {{-1, 0, kSentinel}, {-1, 0, kSentinel}, {0, 1, FACE_DOWN}}},
+        {"FACE_UP_RIGHT walks UP then RIGHT and returns ret2",
+         1, -1, {false, false, false, true}, true,
+         {{1, -1, kSentinel}, {1, -1, kSentinel},
+          {0, -1, FACE_UP}, {1, 0, FACE_RIGHT}}},
+        {"FACE_DOWN_RIGHT walks DOWN then RIGHT and returns ret1",
+         1, 1, {false, false, true, false}, true,
+         {{1, 1, kSentinel}, {1, 1, kSentinel},
+          {0, 1, FACE_DOWN}, {1, 0, FACE_RIGHT}}},
+        {"FACE_DOWN_LEFT walks DOWN then LEFT and returns ret2",
+         -1, 1, {false, false, false, true}, true,
+         {{-1, 1, kSentinel}, {-1, 1, kSentinel},
+          {0, 1, FACE_DOWN}, {-1, 0, FACE_LEFT}}},
+        {"FACE_UP_LEFT walks UP then LEFT and returns ret1",
+         -1, -1, {false, false, true, false}, true,
+         {{-1, -1, kSentinel}, {-1, -1, kSentinel},
+          {0, -1, FACE_UP}, {-1, 0, FACE_LEFT}}},
+        {"a diagonal arm whose two components both fail returns false",
+         1, -1, {false, false, false, false}, false,
+         {{1, -1, kSentinel}, {1, -1, kSentinel},
+          {0, -1, FACE_UP}, {1, 0, FACE_RIGHT}}},
+    };
 
-    w.set_walk_results({false, false, true});
-    ASSERT_TRUE(w.walkstep(-1, 0)) << "FACE_LEFT npc fallback should return ret1";
+    for (const auto& row : rows)
+    {
+        w.set_curdir(static_cast<signed char>(kSentinel));
+        w.set_walk_result_sequence(row.results);
+        w.clear_calls();
+        ASSERT_EQ(row.expected_return, w.walkstep(row.dx, row.dy))
+            << row.name << ": walkstep returns ret1 || ret2";
+        ASSERT_EQ(row.attempts.size(), w.calls().size())
+            << row.name << ": exact number of walk attempts";
+        for (std::size_t i = 0; i < row.attempts.size(); ++i)
+        {
+            EXPECT_FLOAT_EQ(row.attempts[i].x, w.calls()[i].first)
+                << row.name << ": attempt " << i << " dx";
+            EXPECT_FLOAT_EQ(row.attempts[i].y, w.calls()[i].second)
+                << row.name << ": attempt " << i << " dy";
+            EXPECT_EQ(row.attempts[i].dir, (int)w.call_dirs()[i])
+                << row.name << ": attempt " << i << " was walked facing";
+        }
+        ASSERT_EQ(kSentinel, (int)w.curdir())
+            << row.name << ": walkstep restores oldcurdir";
+    }
 
-    // Diagonal NPC fallbacks (ret1/ret2 dual-call path).
-    w.set_walk_results({false, false, false, true});
-    ASSERT_TRUE(w.walkstep(1, -1)) << "FACE_UP_RIGHT npc fallback should return ret2";
-
-    w.set_walk_results({false, false, true, false});
-    ASSERT_TRUE(w.walkstep(1, 1)) << "FACE_DOWN_RIGHT npc fallback should return ret1";
-
-    w.set_walk_results({false, false, false, true});
-    ASSERT_TRUE(w.walkstep(-1, 1)) << "FACE_DOWN_LEFT npc fallback should return ret2";
-
-    w.set_walk_results({false, false, true, false});
-    ASSERT_TRUE(w.walkstep(-1, -1)) << "FACE_UP_LEFT npc fallback should return ret1";
-
-    // User slide switch cardinal branch (dx/dy stays zero and returns false).
+    // A user never reaches that switch: the cardinal slide arm breaks with
+    // dx == dy == 0, so only the two ordinary attempts are made.
     w.set_user(0);
+    w.set_curdir(static_cast<signed char>(kSentinel));
     w.set_walk_results({false, false});
-    ASSERT_TRUE(!w.walkstep(0, -1)) << "user cardinal blocked path should return false";
+    w.clear_calls();
+    ASSERT_FALSE(w.walkstep(0, -1)) << "a user's blocked cardinal step fails";
+    ASSERT_EQ(2u, w.calls().size())
+        << "the user cardinal arm makes no fallback walk at all";
+    ASSERT_EQ(kSentinel, (int)w.call_dirs()[0]) << "the full step keeps our facing";
+    ASSERT_EQ(kSentinel, (int)w.call_dirs()[1]) << "the baby step keeps our facing";
 }
 
 

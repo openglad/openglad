@@ -176,11 +176,27 @@ TEST(WalkerUnit, walker_friendliness_and_distance_paths)
 
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     b->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    // The two distance measures are deliberately different rules:
+    // distance_to_ob is MANHATTAN (|dx| + |dy|) and body-size blind, while
+    // distance_to_ob_center is the SQUARED separation of the two body centers.
     a->setxy(64, 64);
     b->setxy(96, 64);
+    ASSERT_EQ(32, a->distance_to_ob(b)) << "|96-64| + |64-64| == 32";
+    ASSERT_EQ(1024, a->distance_to_ob_center(b)) << "32*32 + 0*0 == 1024";
 
-    ASSERT_TRUE(a->distance_to_ob(b) > 0);
-    ASSERT_TRUE(a->distance_to_ob_center(b) >= 0);
+    b->setxy(96, 88);
+    ASSERT_EQ(56, a->distance_to_ob(b))
+        << "Manhattan adds the two axes (32 + 24), it does not hypotenuse them";
+    ASSERT_EQ(1600, a->distance_to_ob_center(b)) << "32*32 + 24*24 == 1600";
+
+    // Only the center measure shifts when the target's body grows.
+    b->set_sizex(32);
+    ASSERT_EQ(56, a->distance_to_ob(b)) << "Manhattan is body-size blind";
+    ASSERT_EQ(2176, a->distance_to_ob_center(b))
+        << "the +(32-16)/2 center offset makes it (32+8)^2 + 24^2";
+    b->set_sizex(16);
+    b->setxy(96, 64);
+
     ASSERT_TRUE(!a->is_friendly(b));
     ASSERT_TRUE(a->is_friendly_to_team(0));
 
@@ -228,7 +244,10 @@ TEST(WalkerUnit, walker_death_save_all_and_misc_paths)
     walker misc;
     misc.set_order_family(Order::Generator, FAMILY_TENT);
     ASSERT_TRUE(misc.fire_check(1, 0));
-    (void)misc.eat_me(nullptr);
+    // Only a treasure can be eaten: the base walker refuses every eater,
+    // including none at all.
+    ASSERT_FALSE(misc.eat_me(nullptr)) << "a non-treasure is never consumed";
+    ASSERT_FALSE(misc.eat_me(&misc)) << "a real eater does not change that";
     ASSERT_TRUE(misc.do_summon(0, 0) == nullptr);
     ASSERT_TRUE(!misc.check_special());
 }
@@ -319,6 +338,7 @@ TEST(WalkerUnit, walker_r11_myguy_move_and_init_fire_paths)
     ASSERT_TRUE(a && b);
 
     a->move_myguy_to(nullptr);
+    ASSERT_TRUE(a->myguy == nullptr) << "moving a myguy we do not own is a no-op";
 
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     a->move_myguy_to(b);
@@ -329,22 +349,45 @@ TEST(WalkerUnit, walker_r11_myguy_move_and_init_fire_paths)
     a->move_myguy_to(b);
     ASSERT_TRUE(a->myguy == nullptr);
 
-    // init_fire: control-turn guard branch
+    // init_fire aims first: a request in another direction records the wanted
+    // facing in enddir, and the player-controlled walker refuses to auto-turn
+    // (the control stick owns its facing), so the shot does not start.
     a->set_curdir(FACE_LEFT);
     a->set_enddir(FACE_LEFT);
     a->set_act_type(ACT_CONTROL);
-    ASSERT_TRUE(!a->init_fire(1, 0));
+    a->set_busy(0.0f);
+    ASSERT_FALSE(a->init_fire(1, 0)) << "ACT_CONTROL never auto-turns to fire";
+    ASSERT_EQ(FACE_RIGHT, (int)a->enddir())
+        << "the wanted facing is still recorded for the player's own turn";
+    ASSERT_EQ(FACE_LEFT, (int)a->curdir()) << "the refusal leaves us facing as we were";
+    ASSERT_FLOAT_EQ(0.0f, a->busy()) << "a refused shot costs no firing delay";
 
-    // busy branch (don't require return value here; ACT_CONTROL turn handling can vary with facing state)
+    // The busy gate, reached only once facing already matches: a walker still
+    // recovering from its last shot refuses and is charged nothing.
+    a->set_curdir(FACE_RIGHT);
+    a->set_enddir(FACE_RIGHT);
     a->set_act_type(ACT_RANDOM);
-    a->set_busy(1);
-    (void)a->init_fire(1, 0);
-
-    // ANI_WALK branch + animate call
-    a->set_busy(0);
     a->set_ani_type(ANI_WALK);
+    a->set_fire_frequency(4.0f);
+    a->set_busy(1.0f);
+    ASSERT_FALSE(a->init_fire(1, 0)) << "a busy walker cannot start a shot";
+    ASSERT_FLOAT_EQ(1.0f, a->busy()) << "the refusal adds no fire_frequency";
+    ASSERT_EQ(ANI_WALK, a->ani_type()) << "the refusal starts no attack animation";
+
+    // Free and already facing the target: the ANI_WALK arm charges exactly one
+    // fire_frequency, restarts the cycle at 0 and animates the first attack
+    // frame (cycle 0 -> 1).
+    a->set_busy(0.0f);
+    a->set_curdir(FACE_DOWN);
+    a->set_enddir(FACE_DOWN);
+    a->set_ani_type(ANI_WALK);
+    a->set_cycle(7);
     assign_basic_ani(a);
-    ASSERT_TRUE(a->init_fire(0, 1));
+    ASSERT_TRUE(a->init_fire(0, 1)) << "a free, aimed walker starts its shot";
+    ASSERT_EQ(ANI_ATTACK, a->ani_type()) << "ANI_WALK swaps to ANI_ATTACK";
+    ASSERT_FLOAT_EQ(4.0f, a->busy()) << "init_fire charges exactly one fire_frequency";
+    ASSERT_EQ(1, (int)a->cycle())
+        << "the attack restarts at cycle 0 and animate() advances it one frame";
 }
 
 TEST(WalkerUnit, walker_r11_fire_check_create_weapon_and_angles)
@@ -455,8 +498,10 @@ TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
 
     // animate guards
     w->ani = nullptr;
-    ASSERT_TRUE(!w->animate());
+    ASSERT_FALSE(w->animate()) << "a walker with no animation table cannot animate";
 
+    // One mid-sequence ANI_ATTACK step: the cycle advances by exactly one and
+    // the animation is still running, so the attack has not released yet.
     assign_basic_ani(w);
     w->set_ani_type(ANI_ATTACK);
     w->set_curdir(FACE_RIGHT);
@@ -466,44 +511,99 @@ TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
     w->set_lastx(1);
     w->set_lasty(0);
     w->set_foe(foe);
-    (void)w->animate();
+    ASSERT_TRUE(w->animate()) << "a mid-sequence animate reports the animation running";
+    ASSERT_EQ(ANI_ATTACK, w->ani_type()) << "the attack is not finished after one frame";
+    ASSERT_EQ(1, static_cast<int>(w->cycle()))
+        << "animate advances the cycle by exactly one frame";
 
-    // query/restore helpers
-    w->set_old_act_type(ACT_GUARD);
-    ASSERT_TRUE(w->old_act_type() == ACT_GUARD);
+    // set_act_type banks whatever we were doing as old_act_type - it is the
+    // setter, not the caller, that remembers - and restore_act_type goes back
+    // to it.
+    w->set_act_type(ACT_GUARD);
+    ASSERT_EQ(ACT_GUARD, w->act_type());
     w->set_act_type(ACT_CONTROL);
-    ASSERT_TRUE(w->act_type() == ACT_CONTROL);
-    (void)w->restore_act_type();
+    ASSERT_EQ(ACT_CONTROL, w->act_type());
+    ASSERT_EQ(ACT_GUARD, w->old_act_type())
+        << "set_act_type banks the act it replaced, whatever was in old_act_type before";
+    ASSERT_EQ(ACT_GUARD, w->restore_act_type())
+        << "restore_act_type returns the act it restored";
+    ASSERT_EQ(ACT_GUARD, w->act_type()) << "and puts it back on the walker";
 
-    // collide, spaces, center, set_difficulty, friendliness and owner-chain paths
+    // collide records who we hit.
     ASSERT_TRUE(w->collide(foe));
-    (void)w->spaces_clear();
-    w->center_on(foe);
+    ASSERT_EQ(foe, w->collide_ob()) << "collide records the object we ran into";
 
+    // spaces_clear counts the passable neighbours of the eight cells around
+    // us, never our own cell.
+    foe->setxy(300, 300);
+    w->setxy(96, 96);
+    ASSERT_EQ(8, w->spaces_clear()) << "all eight neighbours of open ground are clear";
+    fx.level.world().grid.data[static_cast<std::size_t>(6 * fx.level.world().grid.w + 7)] =
+        PIX_TREE_M1;
+    ASSERT_EQ(7, w->spaces_clear()) << "one blocked neighbour drops the count by one";
+
+    // center_on puts OUR center on the target's center, so the offset is the
+    // difference of the two half-sizes.
+    foe->set_sizex(32);
+    foe->set_sizey(8);
+    w->center_on(foe);
+    ASSERT_EQ(308, w->xpos()) << "300 + 32/2 - 16/2";
+    ASSERT_EQ(296, w->ypos()) << "300 + 8/2 - 16/2";
+
+    // Difficulty scaling: a generator's post strength IS its HP bar
+    // denominator, and both take the percentage.
+    fx.level.world().difficulty = 150;
     w->set_order_family(Order::Generator, FAMILY_TENT);
     w->set_difficulty(5);
+    ASSERT_FLOAT_EQ(750.0f, w->stats()->hitpoints()) << "100 * 5 * 150 / 100";
+    ASSERT_FLOAT_EQ(750.0f, w->stats()->max_hitpoints())
+        << "a generator's max HP tracks its strength, or its bar has no fraction";
+
+    // A non-generator scales only if it is NOT a player character (team 0).
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    w->set_team_num(0);
+    w->stats()->set_max_hitpoints(200.0f);
+    w->set_damage(10.0f);
+    w->set_difficulty(2);
+    ASSERT_FLOAT_EQ(200.0f, w->stats()->max_hitpoints())
+        << "difficulty never scales a player character";
+    ASSERT_FLOAT_EQ(10.0f, w->damage()) << "difficulty never scales a player character";
     w->set_team_num(1);
     w->set_difficulty(2);
+    ASSERT_FLOAT_EQ(300.0f, w->stats()->max_hitpoints()) << "200 * 150 / 100";
+    ASSERT_FLOAT_EQ(15.0f, w->damage()) << "10 * 150 / 100";
 
+    // Alliance follows the OWNER CHAIN: a walker we own is friendly to us even
+    // though its own team colour differs, and stops being so the moment the
+    // chain is cut.
     walker* owned = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 100, 100);
     owned->set_owner(w);
-    w->set_owner(w); // self-loop guard branch
-    ASSERT_TRUE(!w->is_friendly(nullptr));
-    (void)w->is_friendly(owned);
+    w->set_owner(w); // self-loop guard branch: the chain walk must terminate
+    ASSERT_EQ(0, w->is_friendly(nullptr)) << "a null target is never friendly";
+    ASSERT_EQ(1, w->is_friendly(owned))
+        << "the owner chain resolves both heads to us, whatever the owned team";
+    owned->set_owner(nullptr);
+    ASSERT_EQ(0, w->is_friendly(owned))
+        << "with the chain cut, team 1 and team 0 are enemies again";
+    owned->set_owner(w);
     w->set_dead(1);
-    ASSERT_TRUE(!w->is_friendly_to_team(0));
+    ASSERT_EQ(0, w->is_friendly_to_team(0)) << "a corpse is friendly to nobody";
+    ASSERT_EQ(0, w->is_friendly_to_team(1)) << "not even to its own colour";
 
+    // Team colour is the only alliance authority: neither allied_mode nor a
+    // saved-character myguy pointer makes different colours friendly.
     w->set_dead(0);
     w->set_owner(nullptr);
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     fx.level.world().allied_mode = 1;
-    (void)w->is_friendly_to_team(0);
+    ASSERT_EQ(0, w->is_friendly_to_team(0))
+        << "allied_mode plus a myguy must not befriend another colour";
+    ASSERT_EQ(1, w->is_friendly_to_team(1)) << "our own colour stays friendly";
 
     // do_summon/check_special fallback and eat_me logging path
     ASSERT_TRUE(w->do_summon(1, 1) == nullptr);
     ASSERT_TRUE(!w->check_special());
-    (void)w->eat_me(foe);
+    ASSERT_FALSE(w->eat_me(foe)) << "a living is not food";
 }
 
 TEST(WalkerUnit, walker_r11_fire_query_next_to_and_outline_branches)
@@ -645,15 +745,72 @@ TEST(WalkerUnit, walker_r11_act_and_animate_extra_cases)
     w->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(w->act());
 
+    // ACT_GENERATE's spawn cadence is one comparison of two draws:
+    // next(level*3) * rate > next(300 + living*8) * 100. Seeded so the first
+    // draw loses, a generator tick does nothing at all.
     w->set_act_type(ACT_GENERATE);
     w->stats()->set_level(50);
     w->stats()->set_hitpoints(10.0f);
-    w->stats()->set_max_hitpoints(10.0f);
-    (void)w->act();
+    w->stats()->set_max_hitpoints(20.0f);
+    w->set_ani_type(ANI_WALK);
+    w->set_busy(0.0f);
+    w->set_curdir(FACE_LEFT);
+    w->set_enddir(FACE_LEFT);
+    w->set_lastx(0.0f);
+    w->set_lasty(0.0f);
+    w->stats()->clear_command();
+    fx.level.world().living_count = 0;
+    fx.level.world().generator_rate = 100;
+    fx.level.world().rng_.state_ = 1u; // next(150) == 38, next(300) == 126
+    ASSERT_FALSE(w->act()) << "the ACT_GENERATE arm breaks out of the switch, returning 0";
+    ASSERT_FLOAT_EQ(10.0f, w->stats()->hitpoints())
+        << "a losing cadence draw spawns nothing and regenerates nothing";
+    ASSERT_EQ(ANI_WALK, w->ani_type()) << "and starts no firing animation";
+    ASSERT_EQ(2524885223u, fx.level.world().rng_.state_)
+        << "a losing tick still costs exactly the two cadence draws";
 
+    // Seeded so the first draw wins: the spawn heading is (1 - next(3)) per
+    // axis, the generator starts its firing animation, and the post heals
+    // exactly one HP (capped at max).
+    fx.level.world().rng_.state_ = 2u; // 76 > 17, then next(3) == 2, next(3) == 1
+    ASSERT_FALSE(w->act()) << "a spawning ACT_GENERATE tick still returns 0";
+    ASSERT_FLOAT_EQ(-1.0f, w->lastx()) << "lastx = 1 - next(3) == -1";
+    ASSERT_FLOAT_EQ(0.0f, w->lasty()) << "lasty = 1 - next(3) == 0";
+    ASSERT_EQ(ANI_ATTACK, w->ani_type()) << "a spawning generator starts its fire animation";
+    ASSERT_FLOAT_EQ(11.0f, w->stats()->hitpoints())
+        << "a spawn tick regenerates exactly one HP while under max";
+    ASSERT_EQ(2993822286u, fx.level.world().rng_.state_)
+        << "cadence pair plus the two heading draws, in that order";
+
+    // ACT_RANDOM, 3 times in 4: keep hunting with a long COMMAND_SEARCH.
+    w->set_ani_type(ANI_WALK);
     w->set_act_type(ACT_RANDOM);
     w->set_foe(foe);
-    (void)w->act();
+    w->stats()->clear_command();
+    fx.level.world().rng_.state_ = 1u; // next(4) == 2, so not the random walk
+    ASSERT_TRUE(w->act()) << "the search arm reports it acted";
+    ASSERT_EQ(1u, w->stats()->commands.size()) << "exactly one order is queued";
+    EXPECT_EQ(COMMAND_SEARCH, w->stats()->commands.front().commandtype)
+        << "a foe in hand means search, not wander";
+    EXPECT_EQ(500, w->stats()->commands.front().commandcount)
+        << "the search runs for 500 ticks";
+    EXPECT_EQ(1103527590u, fx.level.world().rng_.state_)
+        << "the search arm costs exactly one draw";
+
+    // 1 in 4, then 1 in 20: try the family special first, and only wander when
+    // there is no special to cast. Duration and heading come from the same
+    // stream (their draw ORDER is the compiler's argument order, so the stream
+    // position is pinned rather than the individual parameters).
+    w->set_specials_disabled(true);
+    w->stats()->clear_command();
+    fx.level.world().rng_.state_ = 189u; // next(4) == 0, next(20) == 0
+    ASSERT_TRUE(w->act()) << "the random-walk arm reports it acted";
+    ASSERT_EQ(1u, w->stats()->commands.size()) << "exactly one order is queued";
+    EXPECT_EQ(COMMAND_WALK, w->stats()->commands.front().commandtype)
+        << "the 1-in-80 arm wanders instead of searching";
+    EXPECT_EQ(62712830u, fx.level.world().rng_.state_)
+        << "two gate draws plus the walk's duration and two heading draws";
+    w->set_specials_disabled(false);
 
     // A frozen walker burns exactly one freeze tick and returns before the
     // busy drain and before its act arm runs.
@@ -823,17 +980,52 @@ TEST(WalkerUnit, walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_compl
     ASSERT_EQ(ANI_WALK, w->ani_type());
     ASSERT_EQ(0, w->cycle());
 
+    // A finished TELE_OUT on a family with no teleport handler simply stops:
+    // back to the walk cycle, and the animation reports itself over.
     w->set_ani_type(ANI_TELE_OUT);
     w->set_cycle(4);
     w->set_curdir(FACE_RIGHT);
-    (void)w->animate();
+    ASSERT_FALSE(w->animate())
+        << "the default TELE_OUT arm reports the animation stopped";
+    ASSERT_EQ(ANI_WALK, w->ani_type()) << "and settles back on the walk animation";
+    ASSERT_EQ(0, w->cycle()) << "restarting the walk cycle from frame 0";
 
+    // ACT_FIRE burns exactly one unit of the weapon's remaining range per tick.
     w->set_ani_type(ANI_WALK);
     w->set_act_type(ACT_FIRE);
-    ASSERT_TRUE(w->act());
+    w->set_lineofsight(6);
+    ASSERT_TRUE(w->act()) << "a weapon's act always reports it acted";
+    ASSERT_EQ(5, w->lineofsight()) << "each ACT_FIRE tick spends one unit of range";
 
+    // ACT_GUARD with nobody to find: no foe, no order, and act() falls out of
+    // the switch with 0.
     w->set_act_type(ACT_GUARD);
-    (void)w->act();
+    w->set_foe(nullptr);
+    w->stats()->clear_command();
+    ASSERT_FALSE(w->act()) << "the ACT_GUARD arm breaks, so act() returns 0";
+    ASSERT_EQ(nullptr, w->foe()) << "an empty level offers the guard no foe";
+    ASSERT_FALSE(w->stats()->has_commands())
+        << "a guard with no foe issues no order";
+
+    // An enemy inside the guard's sight: it acquires the foe, turns to face
+    // it, WAKES to ACT_RANDOM and queues its parting shot at the foe's delta.
+    walker* intruder = add_ob(fx, Order::Living, FAMILY_ORC, 1, 128, 96);
+    ASSERT_NE(nullptr, intruder);
+    w->set_lineofsight(6);
+    w->set_act_type(ACT_GUARD);
+    w->set_curdir(FACE_UP);
+    w->stats()->clear_command();
+    ASSERT_FALSE(w->act()) << "the guard arm still returns 0";
+    ASSERT_EQ(intruder, w->foe()) << "the guard acquires the nearest foe";
+    ASSERT_EQ(FACE_RIGHT, (int)w->curdir()) << "and turns to face it";
+    ASSERT_EQ(ACT_RANDOM, w->act_type())
+        << "a guard that genuinely sights a foe wakes instead of staying a statue";
+    ASSERT_EQ(1u, w->stats()->commands.size()) << "exactly one order is queued";
+    EXPECT_EQ(COMMAND_FIRE, w->stats()->commands.front().commandtype)
+        << "the parting order is a shot";
+    EXPECT_EQ(32, w->stats()->commands.front().com1)
+        << "aimed by the foe's x delta, not due north";
+    EXPECT_EQ(0, w->stats()->commands.front().com2) << "and its y delta";
 }
 } // namespace detail_walker_r14
 
