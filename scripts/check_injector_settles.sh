@@ -53,7 +53,7 @@
 #
 # and subtract the names already in FILES and CONVERTED_FILES below. As of this
 # commit that leaves these ungated by either tier:
-# test_campaign_sprite_uaf.cpp, test_campaign_zone_ui.cpp,
+# test_campaign_zone_ui.cpp,
 # test_canvas_scale.cpp, test_company_list.cpp, test_fade_ownership.cpp,
 # test_fairy_death.cpp, test_go_no_team.cpp, test_help.cpp,
 # test_level_editor_issue12_wall_crash.cpp, test_lineup_ui.cpp,
@@ -96,6 +96,7 @@ CONVERTED_FILES=(
     tests/integration/test_cloud_ui.cpp
     tests/integration/test_overpowered_team.cpp
     tests/integration/test_back_to_mainmenu.cpp
+    tests/integration/test_campaign_sprite_uaf.cpp
 )
 
 status=0

@@ -15,6 +15,7 @@
 #include "test_company_cleanup.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include "test_campaign_picker_drive.h"
 
 #include <algorithm>
 #include <atomic>
@@ -36,11 +37,6 @@ bool sort_scen(const std::string& first, const std::string& second);
 // campaign_picker.cpp helper
 int toInt(const std::string& s);
 int campaign_picker_testing_exercise_entry_draw_paths();
-void campaign_picker_testing_input_reset();
-void campaign_picker_testing_abort();
-void campaign_picker_testing_set_auto_accept(bool enabled);
-std::uint64_t campaign_picker_testing_entered_count();
-std::uint64_t campaign_picker_testing_action_count();
 // results_screen.cpp helper
 void show_ending_popup(int ending, int nextlevel);
 // Deterministic dialog answers used by the level picker.
@@ -101,11 +97,6 @@ void level_row_click_point(int row, int& x, int& y)
     y = og::ui::level_picker_row_y(row) + layout.radar_dy + 10;
 }
 } // namespace
-
-// Defined below; declared here so the injector can handshake on them.
-bool wait_for_campaign_picker_counter(
-    std::uint64_t (*counter)(), std::uint64_t baseline);
-bool wait_for_campaign_picker_event_consumed(Uint32 event_type);
 
 // Holds 'q' down for pick_campaign's input loop. The picker's entry setup
 // (campaign enumeration — every entry mount reinstalls the class packs)
@@ -189,82 +180,6 @@ static int hold_q_key_for_picker(void* data)
     if (re_pressed)
         keys[sc] = false;
     return 0;
-}
-
-bool wait_for_campaign_picker_counter(
-    std::uint64_t (*counter)(), std::uint64_t baseline)
-{
-    constexpr Uint64 kHandshakeTimeoutMs = 5000;
-    const Uint64 started_at = SDL_GetTicks();
-    while (counter() <= baseline)
-    {
-        if (SDL_GetTicks() - started_at >= kHandshakeTimeoutMs)
-        {
-            campaign_picker_testing_abort();
-            return false;
-        }
-        SDL_Delay(1);
-    }
-    return true;
-}
-
-bool wait_for_campaign_picker_ready()
-{
-    return wait_for_campaign_picker_counter(
-        campaign_picker_testing_entered_count, 0);
-}
-
-bool wait_for_campaign_picker_event_consumed(Uint32 event_type)
-{
-    constexpr Uint64 kHandshakeTimeoutMs = 5000;
-    const Uint64 started_at = SDL_GetTicks();
-    while (SDL_HasEvent(event_type))
-    {
-        if (SDL_GetTicks() - started_at >= kHandshakeTimeoutMs)
-        {
-            campaign_picker_testing_abort();
-            return false;
-        }
-        SDL_Delay(1);
-    }
-    return true;
-}
-
-bool push_campaign_picker_mouse_event(Uint32 event_type, int x, int y)
-{
-    SDL_Event event{};
-    event.type = event_type;
-    event.button.button = SDL_BUTTON_LEFT;
-    event.button.down = event_type == SDL_EVENT_MOUSE_BUTTON_DOWN;
-    event.button.clicks = 1;
-    event.button.x = static_cast<float>(x);
-    event.button.y = static_cast<float>(y);
-    return SDL_PushEvent(&event);
-}
-
-bool click_campaign_picker_action(int x, int y)
-{
-    const std::uint64_t action_before =
-        campaign_picker_testing_action_count();
-    if (!push_campaign_picker_mouse_event(
-            SDL_EVENT_MOUSE_BUTTON_DOWN, x, y))
-    {
-        campaign_picker_testing_abort();
-        return false;
-    }
-
-    const bool acknowledged = wait_for_campaign_picker_counter(
-        campaign_picker_testing_action_count, action_before);
-    if (!push_campaign_picker_mouse_event(
-            SDL_EVENT_MOUSE_BUTTON_UP, x, y))
-    {
-        campaign_picker_testing_abort();
-        return false;
-    }
-    const bool released =
-        wait_for_campaign_picker_event_consumed(
-            SDL_EVENT_MOUSE_BUTTON_UP);
-    return acknowledged && released;
 }
 
 struct CampaignPickerInputGuard
