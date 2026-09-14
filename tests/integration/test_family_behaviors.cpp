@@ -21,6 +21,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/combat_math.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 #include <cmath>
 #include <algorithm>
 #include "test_family_hook_dispatch.h"
@@ -552,22 +553,6 @@ public:
     }
 private:
     Uint32 value_;
-};
-
-// og.rand draws from current_game->world->rng_, NOT from GameContext::rng, so
-// a scripted IRandom only steers a family callback through this seam.
-class ScopedSimRandom
-{
-public:
-    explicit ScopedSimRandom(IRandom* rng) : rng_(rng)
-    {
-        og::sim::set_sim_random_override(&rng_);
-    }
-    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimRandom(const ScopedSimRandom&) = delete;
-    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
-private:
-    IRandom* rng_;
 };
 
 // Soldier: foe within 20-75 → true; outside → false
@@ -2365,8 +2350,9 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
         // og.rand(20) == 0 is the RESIST roll; a constant 1 takes the charm
         // arm. This generator used to be constructed and never installed, so
         // the "favorable deterministic RNG" in the message below was a claim
-        // about the world's own stream. Install it on the seam that actually
-        // feeds og.rand.
+        // about the world's own stream. og.rand draws from
+        // current_game->world->rng_, NOT from GameContext::rng, so only the
+        // sim guard actually steers a family callback.
         ConstRandomFamily rng_nonzero(1);
         ScopedSimRandom steer(&rng_nonzero);
         ASSERT_TRUE(og::test::do_special(*thief_fd, thief))

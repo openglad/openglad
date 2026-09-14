@@ -10,6 +10,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 
 #include <algorithm>
 #include <list>
@@ -39,6 +40,12 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team = 0, 
     return w;
 }
 
+// A written RNG script for the world's SimRandom -- the stream living::act,
+// act_random, act_guard, death() and statistics::try_command actually draw
+// from, reached with ScopedSimRandom. A GameContext rng reaches only walker
+// construction and combat math (walker_rng/combat_rng), so pushing a context
+// RNG leaves the AI branch picks to whatever a shuffled predecessor left in
+// the LCG.
 class SequenceRandom : public IRandom
 {
 public:
@@ -56,28 +63,6 @@ public:
 private:
     std::vector<std::uint32_t> values_;
     std::size_t index_;
-};
-
-// Installs a written RNG script over the world's SimRandom -- the stream
-// living::act, act_random, act_guard, death() and statistics::try_command
-// actually draw from. A GameContext rng reaches only walker construction
-// and combat math (walker_rng/combat_rng), so pushing a context RNG leaves
-// the AI branch picks to whatever a shuffled predecessor left in the LCG.
-class ScopedSimRandom
-{
-public:
-    explicit ScopedSimRandom(std::initializer_list<std::uint32_t> values)
-        : seq_(values), seq_ptr_(&seq_)
-    {
-        og::sim::set_sim_random_override(&seq_ptr_);
-    }
-    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimRandom(const ScopedSimRandom&) = delete;
-    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
-
-private:
-    SequenceRandom seq_;
-    IRandom* seq_ptr_;
 };
 
 // The head of a walker's command queue: which AI arm just ran, and with what
@@ -347,7 +332,8 @@ TEST(WalkerCoreMore, walker_act_guard_and_random_branch_paths)
         // delegates to living::act_random(), which finds no foe in an empty
         // level and queues its wander (COMMAND_RANDOM_WALK expands to
         // COMMAND_WALK) for exactly 40 ticks.
-        ScopedSimRandom rng_seq({1, 0, 0});
+        SequenceRandom rng_seq_values({1, 0, 0});
+        ScopedSimRandom rng_seq(&rng_seq_values);
 
         ready_to_act(actor.get(), ACT_RANDOM);
         actor->set_foe(nullptr);
@@ -374,7 +360,8 @@ TEST(WalkerCoreMore, walker_act_guard_and_random_branch_paths)
         // the orc carries BIT_NO_RANGED: act_random acquires it, fire_check
         // denies the shot, and the orc turns one clockwise step toward it and
         // queues its 200-tick search.
-        ScopedSimRandom rng_seq({1, 0, 0});
+        SequenceRandom rng_seq_values({1, 0, 0});
+        ScopedSimRandom rng_seq(&rng_seq_values);
 
         ready_to_act(actor.get(), ACT_RANDOM, FACE_UP);
         actor->set_foe(nullptr);
@@ -482,7 +469,8 @@ TEST(WalkerCoreMore, walker_act_guard_else_and_act_random_turn_walk_paths)
 
     // 1-in-5 special roll misses, 1-in-5 act_random() roll hits, then
     // act_random's next(80) is non-zero so the preset foe is kept.
-    ScopedSimRandom rng_seq({1, 0, 7});
+    SequenceRandom rng_seq_values({1, 0, 7});
+    ScopedSimRandom rng_seq(&rng_seq_values);
 
     ready_to_act(actor.get(), ACT_RANDOM, FACE_UP);
     actor->set_foe(foe.get());
@@ -666,7 +654,8 @@ TEST(WalkerCoreMore, walker_round5_act_random_arms_queue_their_own_command)
     actor->set_lineofsight(20);
 
     {
-        ScopedSimRandom rng_no_foe({1, 0, 0});
+        SequenceRandom rng_no_foe_values({1, 0, 0});
+        ScopedSimRandom rng_no_foe(&rng_no_foe_values);
         ready_to_act(actor, ACT_RANDOM);
         actor->set_foe(nullptr);
         ASSERT_FALSE(actor->act())
@@ -697,7 +686,8 @@ TEST(WalkerCoreMore, walker_round5_act_random_arms_queue_their_own_command)
     // Blocked-shot arm: BIT_NO_RANGED denies fire_check, so the orc only turns.
     {
         actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-        ScopedSimRandom rng_turn({1, 0, 7});
+        SequenceRandom rng_turn_values({1, 0, 7});
+        ScopedSimRandom rng_turn(&rng_turn_values);
         ready_to_act(actor, ACT_RANDOM, FACE_UP);
         actor->set_foe(foe);
         ASSERT_FALSE(actor->act())
@@ -724,7 +714,8 @@ TEST(WalkerCoreMore, walker_round5_act_random_arms_queue_their_own_command)
             << "fire_check must pass from this setup or the arm is unreachable "
                "(denial stage " << static_cast<int>(denial) << ")";
 
-        ScopedSimRandom rng_fire({1, 0, 7});
+        SequenceRandom rng_fire_values({1, 0, 7});
+        ScopedSimRandom rng_fire(&rng_fire_values);
         ready_to_act(actor, ACT_RANDOM, FACE_RIGHT);
         actor->set_foe(foe);
         ASSERT_FALSE(actor->act())
@@ -964,7 +955,8 @@ TEST(WalkerCoreMore, walker_round6_act_guard_faces_wakes_and_fires_directionally
 
     // A posted guard facing away sights the foe 16px east of it.
     {
-        ScopedSimRandom guard_rng({7});
+        SequenceRandom guard_rng_values({7});
+        ScopedSimRandom guard_rng(&guard_rng_values);
         ready_to_act(actor, ACT_GUARD, FACE_UP);
         actor->set_guard_hold_post(false);
         actor->set_foe(nullptr);
@@ -990,7 +982,8 @@ TEST(WalkerCoreMore, walker_round6_act_guard_faces_wakes_and_fires_directionally
 
     // Hold-post guard: same sighting, same facing turn, but it never wakes.
     {
-        ScopedSimRandom guard_rng({7});
+        SequenceRandom guard_rng_values({7});
+        ScopedSimRandom guard_rng(&guard_rng_values);
         ready_to_act(actor, ACT_GUARD, FACE_UP);
         actor->set_guard_hold_post(true);
         actor->set_foe(nullptr);
@@ -1008,7 +1001,8 @@ TEST(WalkerCoreMore, walker_round6_act_guard_faces_wakes_and_fires_directionally
     // act_random() blocked-ranged arm: fire_check denied -> turn only.
     {
         actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-        ScopedSimRandom blocked_rng({1, 0, 7});
+        SequenceRandom blocked_rng_values({1, 0, 7});
+        ScopedSimRandom blocked_rng(&blocked_rng_values);
         ready_to_act(actor, ACT_RANDOM, FACE_UP);
         actor->set_foe(foe);
         ASSERT_FALSE(actor->act())
@@ -1024,7 +1018,8 @@ TEST(WalkerCoreMore, walker_round6_act_guard_faces_wakes_and_fires_directionally
     // act_random() clear-shot arm: init_fire + COMMAND_FIRE.
     {
         actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
-        ScopedSimRandom fire_rng({1, 0, 7});
+        SequenceRandom fire_rng_values({1, 0, 7});
+        ScopedSimRandom fire_rng(&fire_rng_values);
         ready_to_act(actor, ACT_RANDOM, FACE_RIGHT);
         actor->set_foe(foe);
         ASSERT_FALSE(actor->act())
@@ -1272,7 +1267,8 @@ TEST(WalkerCoreMore, walker_round7b_base_act_guard_random_and_death_paths)
     actor->set_lineofsight(40);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     {
-        ScopedSimRandom rng_fire({0, 1, 7});
+        SequenceRandom rng_fire_values({0, 1, 7});
+        ScopedSimRandom rng_fire(&rng_fire_values);
         ready_to_act(actor, ACT_RANDOM, FACE_UP);
         actor->set_foe(foe);
         ASSERT_FALSE(actor->act())
@@ -1299,7 +1295,8 @@ TEST(WalkerCoreMore, walker_round7b_base_act_guard_random_and_death_paths)
 
     // Base walker::act_random()'s 3-of-4 arm: next(4) != 0 -> far-foe search.
     {
-        ScopedSimRandom rng_search({1});
+        SequenceRandom rng_search_values({1});
+        ScopedSimRandom rng_search(&rng_search_values);
         ready_to_act(actor, ACT_RANDOM, FACE_UP);
         actor->set_foe(nullptr);
         ASSERT_TRUE(actor->act())
@@ -1474,7 +1471,8 @@ TEST(WalkerCoreMore, living_act_search_arm_without_a_foe_queues_a_random_walk)
     // special roll, next(5) != 0 skips the act_random roll (so the 4-of-5
     // search arm runs), next(2) != 0 skips the find_far_foe retry, and
     // try_command's two next(3) unit-step rolls both yield 1 - 1 == 0.
-    ScopedSimRandom search_rng({1, 1, 1, 1, 1, 1, 1, 1});
+    SequenceRandom search_rng_values({1, 1, 1, 1, 1, 1, 1, 1});
+    ScopedSimRandom search_rng(&search_rng_values);
     ready_to_act(actor, ACT_RANDOM, FACE_UP);
 
     ASSERT_TRUE(actor->act())

@@ -52,9 +52,13 @@ protected:
     {
         init_all_registries();
         og::script::clear_pack_scripts();
-        // The rand0 stream-position proofs read the world's real LCG state;
-        // make sure no earlier test left a thread-local override installed.
-        og::sim::set_sim_random_override(nullptr);
+        // The rand0 stream-position proofs read the world's real LCG state,
+        // so a leaked thread-local override would route the draw away from
+        // rng_ and make them prove nothing. Every installer in tests/ is now
+        // a restoring scope guard (tests/test_sim_random_scope.h), so a leak
+        // here is a bug to surface, not to mop up.
+        ASSERT_EQ(nullptr, og::sim::sim_random_override())
+            << "an earlier test leaked a sim RNG override";
     }
     void TearDown() override { og::script::clear_pack_scripts(); }
 

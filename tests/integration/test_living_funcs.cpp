@@ -13,6 +13,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 #include <cstdint>
 #include <memory>
 
@@ -68,21 +69,6 @@ struct ControlledWorld
     }
 };
 
-// living::shove draws current_game->world->rng_.next(3) unconditionally and
-// reads 0 as "we got shoved instead", so an unseeded draw decides the verdict.
-// GameContext::rng does NOT reach sim code; og::sim::set_sim_random_override
-// is the seam SimRandom::next() consults.
-struct ScopedSimRandom
-{
-    IRandom* rng_ = nullptr;
-    explicit ScopedSimRandom(IRandom* rng) : rng_(rng)
-    {
-        og::sim::set_sim_random_override(&rng_);
-    }
-    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimRandom(const ScopedSimRandom&) = delete;
-    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
-};
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -310,6 +296,9 @@ TEST(LivingFuncs, living_shove_force_queues_walk_on_passable_step_and_refuses_bl
 {
     ControlledWorld world;
     FixedRandom never_shoved_back{1}; // next(3) == 1: we are not the shovee
+    // living::shove draws current_game->world->rng_.next(3) unconditionally
+    // and reads 0 as "we got shoved instead", so an unseeded draw decides the
+    // verdict. GameContext::rng does NOT reach sim code; the sim guard does.
     ScopedSimRandom sim_rng{&never_shoved_back};
 
     auto a = create_living(FAMILY_SOLDIER);

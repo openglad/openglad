@@ -11,6 +11,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 
 #include <memory>
 #include <vector>
@@ -45,7 +46,7 @@ private:
 // statistics draws every AI coin off current_game->world->rng_ (stats.cpp
 // rng()), NOT GameContext::rng -- a context RNG would leave rng(300),
 // the path-check cadence and the ATTACK duration to whatever the LCG
-// happened to hold. This installs a written script over that stream.
+// happened to hold. ScopedSimRandom installs one of these over that stream.
 class SequenceRandom final : public IRandom
 {
 public:
@@ -63,23 +64,6 @@ public:
 private:
     std::vector<std::uint32_t> values_;
     std::size_t index_ = 0;
-};
-
-class ScopedSimRandom
-{
-public:
-    explicit ScopedSimRandom(std::initializer_list<std::uint32_t> values)
-        : seq_(values), seq_ptr_(&seq_)
-    {
-        og::sim::set_sim_random_override(&seq_ptr_);
-    }
-    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimRandom(const ScopedSimRandom&) = delete;
-    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
-
-private:
-    SequenceRandom seq_;
-    IRandom* seq_ptr_;
 };
 
 static std::unique_ptr<walker> make_walker(char family)
@@ -371,7 +355,8 @@ TEST(StatsMorePaths, stats_set_command_die_and_hit_response_early_returns)
 
     // !rng(3), so check_special()'s special() never fires and the arms below
     // observe hit_response alone.
-    ScopedSimRandom scripted({1, 1, 1, 1, 1, 1, 1, 1});
+    SequenceRandom scripted_values({1, 1, 1, 1, 1, 1, 1, 1});
+    ScopedSimRandom scripted(&scripted_values);
 
     // set_command(COMMAND_DIE) logging branch.
     target->stats()->commands.clear();
@@ -968,7 +953,8 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_
     //
     // find_foes_in_range scans world.oblist, so the pair has to LIVE in the
     // world; make_walker's owned walkers are invisible to it.
-    ScopedSimRandom scripted({1, 1, 1, 1, 1, 1, 1, 1});
+    SequenceRandom scripted_values({1, 1, 1, 1, 1, 1, 1, 1});
+    ScopedSimRandom scripted(&scripted_values);
     walker* melee = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* prey = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_NE(nullptr, melee) << "melee fixtures created";

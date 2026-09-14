@@ -10,6 +10,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -239,25 +240,12 @@ public:
     }
 };
 
-// Installs a stream over the world's SimRandom -- the one living::act,
-// act_random, turn_undead, walker::attack and statistics::try_command
-// actually draw from. A GameContext rng reaches only walker construction and
-// combat math (walker_rng/combat_rng), so pushing a context RNG leaves these
-// branch picks to whatever a shuffled predecessor left in the LCG.
-class ScopedSimStream
-{
-public:
-    explicit ScopedSimStream(IRandom* rng) : rng_ptr_(rng)
-    {
-        og::sim::set_sim_random_override(&rng_ptr_);
-    }
-    ~ScopedSimStream() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimStream(const ScopedSimStream&) = delete;
-    ScopedSimStream& operator=(const ScopedSimStream&) = delete;
-
-private:
-    IRandom* rng_ptr_;
-};
+// ScopedSimRandom (tests/test_sim_random_scope.h) installs a stream over the
+// world's SimRandom -- the one living::act, act_random, turn_undead,
+// walker::attack and statistics::try_command actually draw from. A GameContext
+// rng reaches only walker construction and combat math (walker_rng/
+// combat_rng), so pushing a context RNG leaves these branch picks to whatever
+// a shuffled predecessor left in the LCG.
 
 // The first live entity of a family, in oblist or fxlist (add_ob routes FX to
 // one, add_fx_ob to the other, and which one is not this test's business).
@@ -512,7 +500,7 @@ TEST_F(WalkerSpecials, act_random_search_arm_snaps_facing_and_queues_300_tick_se
         // next(5) == 1 twice: the special roll misses and the act_random()
         // roll misses, so the search arm runs.
         FixedRandom miss_both_rolls(1u);
-        ScopedSimStream scoped(&miss_both_rolls);
+        ScopedSimRandom scoped(&miss_both_rolls);
         ASSERT_TRUE(actor->act()) << "living::act's search arm returns 1";
     }
 
@@ -569,7 +557,7 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
     {
         // Every draw 0: `0 > 0` is false, so every undead resists.
         FixedRandom floor_rng(0u);
-        ScopedSimStream scoped(&floor_rng);
+        ScopedSimRandom scoped(&floor_rng);
         ASSERT_EQ(0, static_cast<int>(cleric->turn_undead(24, 2)))
             << "targets in range but every resistance roll held: 0 destroyed";
     }
@@ -579,7 +567,7 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
     {
         // Every draw max-1: 959 > 9, so every undead is destroyed.
         CeilingRandom ceiling_rng;
-        ScopedSimStream scoped(&ceiling_rng);
+        ScopedSimRandom scoped(&ceiling_rng);
         ASSERT_EQ(2, static_cast<int>(cleric->turn_undead(24, 2)))
             << "both undead lose the roll; the orc is not undead";
     }
@@ -1405,7 +1393,7 @@ TEST_F(WalkerSpecials, archmage_mind_control_stats_name_path)
         // compute_charm_duration's 25 + next(20 * level edge). A GameContext
         // rng reaches neither, so the seeded stream goes here.
         FixedRandom one_rng(1u);
-        ScopedSimStream scoped(&one_rng);
+        ScopedSimRandom scoped(&one_rng);
         ASSERT_TRUE(arch->special()) << "mind control fires on three charmable foes";
     }
 
@@ -1705,7 +1693,7 @@ TEST_F(WalkerSpecials, act_guard_and_low_magic_act_random_pin_what_they_queue)
     {
         // The only draw on this path is act_guard's COMMAND_FIRE count.
         FixedRandom one_rng(1u);
-        ScopedSimStream scoped(&one_rng);
+        ScopedSimRandom scoped(&one_rng);
         ASSERT_FALSE(guard->act())
             << "the ACT_GUARD arm breaks out of the switch, so act() returns 0";
     }
@@ -1744,7 +1732,7 @@ TEST_F(WalkerSpecials, act_guard_and_low_magic_act_random_pin_what_they_queue)
         // Every draw 0: next(5) == 0 picks the special arm, and inside
         // act_random next(80) == 0 re-acquires (finding nothing).
         FixedRandom floor_rng(0u);
-        ScopedSimStream scoped(&floor_rng);
+        ScopedSimRandom scoped(&floor_rng);
         ASSERT_TRUE(randomer->act()) << "the low-magic ACT_RANDOM arm returns 1";
     }
     ASSERT_EQ(1u, randomer->stats()->commands.size())
@@ -2324,7 +2312,7 @@ TEST_F(WalkerSpecials, cleric_heal_drives_simulation)
         //   ally1: base 2000/4 = 500, cost 250, amount 500 + 5*5 = 525
         //   ally2: base 1750/4 = 437, cost 218, amount 437 + 25 = 462
         FixedRandom floor_rng(0u);
-        ScopedSimStream scoped(&floor_rng);
+        ScopedSimRandom scoped(&floor_rng);
         ASSERT_TRUE(w->special()) << "cleric heal should fire with wounded allies";
     }
     // EVERY wounded ally in range is healed, not merely one of them, and the
@@ -2643,7 +2631,7 @@ TEST_F(WalkerSpecials, thief_cloak_drives_simulation)
         // cloak gain = cloak_base 20 + og.rand(20) * level, drawn off the
         // WORLD stream; a floor stream zeroes the roll and leaves the base.
         FixedRandom floor_rng(0u);
-        ScopedSimStream scoped(&floor_rng);
+        ScopedSimRandom scoped(&floor_rng);
         ASSERT_TRUE(w->special()) << "thief cloak should fire";
     }
     ASSERT_EQ(20, static_cast<int>(w->invisibility_left()))
@@ -2676,7 +2664,7 @@ TEST_F(WalkerSpecials, thief_taunt_drives_simulation)
         // WORLD stream (a GameContext rng steers nothing), and the follow
         // order's length is 10 + og.rand(self.level) on the same stream.
         FixedRandom floor_rng(0u);
-        ScopedSimStream scoped(&floor_rng);
+        ScopedSimRandom scoped(&floor_rng);
         ASSERT_TRUE(w->special()) << "thief taunt should fire when foes are nearby";
     }
     EXPECT_EQ(w, foe->foe()) << "taunt retargets the foe at the thief";
@@ -2717,7 +2705,7 @@ TEST_F(WalkerSpecials, thief_charm_drives_simulation)
         // off the WORLD stream -- a GameContext rng steers nothing here. Any
         // non-zero draw is a successful charm.
         FixedRandom one_rng(1u);
-        ScopedSimStream scoped(&one_rng);
+        ScopedSimRandom scoped(&one_rng);
         ASSERT_TRUE(w->special()) << "thief charm should fire on a charmable foe";
     }
     // A successful charm does ALL of this, not any one of it.
@@ -2900,7 +2888,7 @@ TEST_F(WalkerSpecials, orc_howl_drives_simulation)
         // WORLD stream (og.rand0 never sees a GameContext rng), so a floor
         // stream zeroes both rolls and the stun is exactly the base 10.
         FixedRandom floor_rng(0u);
-        ScopedSimStream scoped(&floor_rng);
+        ScopedSimRandom scoped(&floor_rng);
         ASSERT_TRUE(w->special()) << "orc howl should fire";
     }
     EXPECT_EQ(10, static_cast<int>(foe->stats()->frozen_delay()))
@@ -3120,7 +3108,7 @@ TEST_F(WalkerSpecials, archmage_mind_control_drives_simulation)
         // proper control, not the berserk arm) and compute_charm_duration's
         // 25 + next(20*edge). A context rng reaches neither.
         FixedRandom one_rng(1u);
-        ScopedSimStream scoped(&one_rng);
+        ScopedSimRandom scoped(&one_rng);
         ASSERT_TRUE(w->special()) << "archmage mind control should fire";
     }
     // Proper control, not berserk: the foe joins the CASTER's team.

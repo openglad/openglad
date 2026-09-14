@@ -8,6 +8,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/core/constants.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 
 #include <memory>
 #include <vector>
@@ -60,22 +61,6 @@ public:
 private:
     std::vector<Uint32> vals_;
     size_t idx_;
-};
-
-// og.rand / og.rand0 draw from current_game->world->rng_, NOT from
-// GameContext::rng; this is the only seam that scripts the sim stream.
-class ScopedSimRandom
-{
-public:
-    explicit ScopedSimRandom(IRandom* rng) : rng_(rng)
-    {
-        og::sim::set_sim_random_override(&rng_);
-    }
-    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimRandom(const ScopedSimRandom&) = delete;
-    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
-private:
-    IRandom* rng_;
 };
 
 // walker::center_on(target) puts `self`'s top-left here.
@@ -282,6 +267,8 @@ TEST(EffectMorePaths, effect_cloud_queues_walk_then_executes_the_drift_step)
     // Installed AFTER create_new_grid so the grid roll does not eat the script.
     // xd = rand(3) - 1 = 1, yd = rand(3) - 1 = 1, then rand(20) = 4 steps.
     SequenceRandom seq_rng({2, 2, 4});
+    // og.rand / og.rand0 draw from current_game->world->rng_, NOT from
+    // GameContext::rng, so the script has to go in through the sim guard.
     ScopedSimRandom sim_rng(&seq_rng);
 
     auto owner = make_living(FAMILY_DRUID, 1);
