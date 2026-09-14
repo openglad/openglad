@@ -39,17 +39,33 @@
 #   (poll_interval, kHirePollMs, static_cast<Uint32>(poll_interval)).
 #   SDL_Delay(300), SDL_Delay(500), SDL_Delay(750) and named settle constants
 #   such as SDL_Delay(kUiSettleMs) all fail: a settle spelled as a constant is
-#   still a clock. A file listed in tier 2 stays listed in tier 1 as well —
-#   the tier-1 rule is implied by the tier-2 rule, and the redundancy costs
-#   nothing.
+#   still a clock. Tier 2 implies tier 1 (no argument it accepts is 750), so a
+#   file may be listed in both or in tier 2 alone — tests/test_click_ladder.h
+#   is tier 2 only.
 #
 # A file graduates from pending to tier 1 to tier 2 as its conversion lands;
-# move its name out of the pending list below in the same commit. Still
-# pending (flat settles, not yet gated at all): test_company_list.cpp,
-# test_lineup_ui.cpp, test_campaign_zone_ui.cpp, test_uxshots_probe.cpp,
-# test_view_team.cpp, test_networking_menu.cpp, test_networking_uxshots.cpp,
-# test_seat_chip.cpp, test_back_to_mainmenu.cpp, test_campaign_sprite_uaf.cpp,
-# test_overpowered_team.cpp. The gate must never pass by looking away.
+# move its name out of the pending list below in the same commit. That list is
+# a census snapshot, not a hand-kept guess — regenerate it with
+#
+#   for f in $(grep -rl SDL_Delay tests/); do
+#       grep -on 'SDL_Delay([^)]*)' "$f" | sed "s|^|$f:|"
+#   done | grep -viE 'poll|SDL_Delay\(([0-9]|[1-9][0-9]|100)\)' | cut -d: -f1 | sort -u
+#
+# and subtract the names already in FILES and CONVERTED_FILES below. As of this
+# commit that leaves these ungated by either tier: test_back_to_mainmenu.cpp,
+# test_campaign_sprite_uaf.cpp, test_campaign_zone_ui.cpp,
+# test_canvas_scale.cpp, test_company_list.cpp, test_fade_ownership.cpp,
+# test_fairy_death.cpp, test_go_no_team.cpp, test_help.cpp,
+# test_level_editor_issue12_wall_crash.cpp, test_lineup_ui.cpp,
+# test_menu_engine.cpp, test_menu_pins.cpp, test_networking_menu.cpp,
+# test_networking_uxshots.cpp, test_overpowered_team.cpp,
+# test_picker_funcs.cpp, test_seat_chip.cpp, test_uxshots_probe.cpp,
+# test_view_team.cpp. Two more census hits are not settles and need no
+# conversion: test_menu_frame_wait.cpp's 750 sits inside a comment describing
+# the cargo cult, and tests/test_input_helpers.h's static_cast<Uint32>(delay_ms)
+# is a caller-chosen press hold. On top of that, every tier-1 file still carries
+# its own sub-750 settles, which tier 1 by construction does not look at. The
+# gate must never pass — or describe itself — by looking away.
 #
 # Wired into the build as a dependency of og_game_test (CMakeLists.txt,
 # beside check_vendor_leaks), so a reintroduced settle fails the test build
