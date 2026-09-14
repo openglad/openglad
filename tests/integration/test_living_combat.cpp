@@ -29,24 +29,55 @@ static std::unique_ptr<walker> make_living(char family, short level = 3)
 // set_difficulty for all families - exercises the big switch (living.cpp)
 // ---------------------------------------------------------------------------
 
-TEST(LivingCombat, living_set_difficulty_levels)
+TEST(LivingCombat, living_set_difficulty_raises_max_hp_and_refills_to_full)
 {
     char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
 
+    loader* l = og::runtime::current_session->myscreen_->myloader;
+    ASSERT_NE(nullptr, l) << "loader is required to build the per-family walkers";
+
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const short saved_difficulty = world.difficulty;
+    // 100% is the identity difficulty: living::set_difficulty skips the percent
+    // rescale entirely for a team-0 walker, so the family scaling is the only
+    // thing moving max_hitpoints below.
+    world.difficulty = 100;
+
     for (int i = 0; i < 14; i++) {
         for (int level = 1; level <= 5; level++) {
-            loader* l = og::runtime::current_session->myscreen_->myloader;
-            if (!l) continue;
             auto w = l->create_walker_owned(Order::Living, families[i]);
-            if (w) {
-                static_cast<living*>(w.get())->set_difficulty(static_cast<std::uint32_t>(level));
-                ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP positive for all families at all levels";
-            }
+            ASSERT_NE(nullptr, w.get()) << "family " << (int)families[i] << " walker created";
+            w->set_team_num(0);
+            const float before = w->stats()->max_hitpoints();
+            static_cast<living*>(w.get())->set_difficulty(static_cast<std::uint32_t>(level));
+            EXPECT_GT(w->stats()->max_hitpoints(), before)
+                << "set_difficulty must add hp*level^2 (family " << (int)families[i]
+                << ", level " << level << ")";
+            EXPECT_FLOAT_EQ(w->stats()->max_hitpoints(), w->stats()->hitpoints())
+                << "set_difficulty refills to full (family " << (int)families[i]
+                << ", level " << level << ")";
         }
     }
+
+    // Exact anchor: the soldier family hook is
+    // og.apply_difficulty_scaling(self, level, 13.0, ...) (living-00-soldier.lua),
+    // and guy.cpp apply_difficulty_scaling adds hp * level^2 == 13 * 9 at level 3.
+    auto soldier = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier.get()) << "soldier anchor walker created";
+    soldier->set_team_num(0);
+    const float soldier_before = soldier->stats()->max_hitpoints();
+    static_cast<living*>(soldier.get())->set_difficulty(3u);
+    EXPECT_FLOAT_EQ(soldier_before + 13.0f * 9.0f, soldier->stats()->max_hitpoints())
+        << "soldier difficulty-3 scaling is exactly +13*3^2 max hitpoints";
+    EXPECT_FLOAT_EQ(soldier->stats()->max_hitpoints(), soldier->stats()->hitpoints())
+        << "soldier is refilled to its new maximum";
+    EXPECT_EQ(2, (int)soldier->weapons_left())
+        << "soldier set_difficulty resets weapons_left to (level+1)/2";
+
+    world.difficulty = saved_difficulty;
 }
 
 
@@ -54,7 +85,7 @@ TEST(LivingCombat, living_set_difficulty_levels)
 // check_special for all families - exercises the big switch (~143 lines)
 // ---------------------------------------------------------------------------
 
-TEST(LivingCombat, living_check_special_all_families)
+TEST(LivingCombat, living_check_special_denies_disabled_specials_and_falls_back_to_special_one)
 {
     char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
@@ -63,12 +94,26 @@ TEST(LivingCombat, living_check_special_all_families)
 
     for (int i = 0; i < 14; i++) {
         auto w = make_living(families[i]);
-        if (w) {
-            w->stats()->set_magicpoints(100);
-            w->stats()->set_max_magicpoints(100);
-            bool result = static_cast<living*>(w.get())->check_special();
-            (void)result; // just exercise the code path
-        }
+        ASSERT_NE(nullptr, w.get()) << "family " << (int)families[i] << " walker created";
+        living* lv = static_cast<living*>(w.get());
+        w->stats()->set_magicpoints(100);
+        w->stats()->set_max_magicpoints(100);
+
+        // Gate 1: the placed-NPC specials_disabled flag is an unconditional no,
+        // for every family, before any hook is consulted.
+        w->set_specials_disabled(true);
+        EXPECT_FALSE(lv->check_special())
+            << "specials_disabled must deny the AI a special (family " << (int)families[i] << ")";
+        w->set_specials_disabled(false);
+
+        // Gate 2: an unaffordable current_special is reset to the default 1.
+        w->set_current_special(4);
+        w->stats()->set_special_cost(4, 200);
+        w->stats()->set_magicpoints(0);
+        (void)lv->check_special();  // the family AI hook's verdict is world state dependent
+        EXPECT_EQ(1, (int)w->current_special())
+            << "check_special resets an unaffordable special to 1 (family "
+            << (int)families[i] << ")";
     }
 }
 
@@ -87,21 +132,67 @@ TEST(LivingCombat, living_act_control)
 }
 
 
-TEST(LivingCombat, living_act_random)
+TEST(LivingCombat, living_act_guard_wakes_and_fires_only_when_a_foe_is_in_sight)
 {
-    auto w = make_living(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    w->set_act_type(ACT_RANDOM);
-    w->act();
-}
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    world.create_new_grid();
 
-
-TEST(LivingCombat, living_act_guard)
-{
     auto w = make_living(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
+    ASSERT_NE(nullptr, w.get()) << "guard created";
+
+    w->set_team_num(0);
     w->set_act_type(ACT_GUARD);
-    w->act();
+    w->set_ani_type(ANI_WALK);
+    w->set_action(0);
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_enddir(static_cast<char>(FACE_RIGHT));
+    w->set_lineofsight(4);
+    w->setxy(100, 100);
+    w->set_foe(nullptr);
+    w->stats()->clear_command();
+
+    // No foe in the level: walker::act_guard returns 0 and living::act's
+    // ACT_GUARD arm falls through the switch to `return 0`.
+    EXPECT_FALSE(w->act()) << "living::act returns 0 on the ACT_GUARD arm";
+    EXPECT_EQ(nullptr, w->foe()) << "an empty level leaves the guard with no foe";
+    EXPECT_EQ(ACT_GUARD, (int)w->act_type()) << "no sighting => no wake";
+    EXPECT_FALSE(w->stats()->has_commands()) << "no foe => act_guard queues nothing";
+
+    walker* orc = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, orc) << "hostile orc created";
+    orc->set_team_num(1);
+    orc->setxy(120, 100);
+
+    w->stats()->clear_command();
+    EXPECT_FALSE(w->act()) << "living::act still returns 0 on the ACT_GUARD arm";
+    EXPECT_EQ(orc, w->foe()) << "act_guard latches find_near_foe's result";
+    EXPECT_EQ(FACE_RIGHT, (int)w->curdir())
+        << "act_guard face_delta()s toward a foe inside lineofsight*GRID_SIZE";
+    EXPECT_EQ(ACT_RANDOM, (int)w->act_type())
+        << "the 2026-07-11 wake rule converts a sighted non-hold-post guard to ACT_RANDOM";
+    ASSERT_TRUE(w->stats()->has_commands()) << "act_guard queues a parting COMMAND_FIRE";
+    EXPECT_EQ(COMMAND_FIRE, (int)w->stats()->commands.front().commandtype)
+        << "the queued command is a fire, not a walk";
+    EXPECT_EQ(20, (int)w->stats()->commands.front().com1)
+        << "directional guard fire carries the foe x-delta";
+    EXPECT_EQ(0, (int)w->stats()->commands.front().com2)
+        << "directional guard fire carries the foe y-delta";
+
+    // A hold-post guard sights the same foe, fires, and stays posted.
+    w->set_act_type(ACT_GUARD);
+    w->set_guard_hold_post(true);
+    w->set_foe(nullptr);
+    w->stats()->clear_command();
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_enddir(static_cast<char>(FACE_RIGHT));
+    EXPECT_FALSE(w->act()) << "living::act returns 0 on the ACT_GUARD arm";
+    EXPECT_EQ(orc, w->foe()) << "hold-post guards still acquire foes";
+    EXPECT_EQ(ACT_GUARD, (int)w->act_type()) << "npc_flags bit 1 (hold post) blocks the wake";
+    ASSERT_TRUE(w->stats()->has_commands()) << "hold-post guards still fire";
+    EXPECT_EQ(COMMAND_FIRE, (int)w->stats()->commands.front().commandtype)
+        << "hold-post guard queues COMMAND_FIRE";
+    w->set_guard_hold_post(false);
 }
 
 
@@ -142,30 +233,61 @@ TEST(LivingCombat, living_act_lifetime_expires_without_owner)
 }
 
 
-TEST(LivingCombat, living_act_fire_elemental_drain_heals_self_with_owner_resources)
+TEST(LivingCombat, living_act_fire_elemental_drain_charges_owner_and_heals_only_on_a_full_toll)
 {
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    world.create_new_grid();
+
     auto owner = make_living(FAMILY_MAGE);
     auto summoned = make_living(FAMILY_FIREELEMENTAL);
-    ASSERT_TRUE(owner && summoned) << "walkers created";
-    if (!(owner && summoned))
-        return;
+    ASSERT_NE(nullptr, owner.get()) << "owner created";
+    ASSERT_NE(nullptr, summoned.get()) << "summoned elemental created";
 
     summoned->set_owner(owner.get());
-    summoned->set_lifetime(5);
     summoned->set_dead(0);
+    summoned->set_ani_type(ANI_WALK);
+    // ACT_CONTROL returns straight out of living::act's switch, so nothing
+    // after the on_act_living hook can touch these numbers.
+    summoned->set_act_type(ACT_CONTROL);
 
-    // Hurt the elemental so it runs the drain logic.
+    // Paid toll: owner at 20/30 hp (>= max/3) and 10 mp (>= 3).
+    summoned->set_lifetime(5);
     summoned->stats()->set_max_hitpoints(10);
     summoned->stats()->set_hitpoints(5);
-
+    summoned->set_regen_delay(100);  // freeze the elemental's own hp regen tick
     owner->stats()->set_max_hitpoints(30);
-    owner->stats()->set_hitpoints(20);  // >= max/3 => can pay hp
-    owner->stats()->set_magicpoints(10); // >= 3 => can pay mp
+    owner->stats()->set_hitpoints(20);
+    owner->stats()->set_magicpoints(10);
 
-    const float hp_before = summoned->stats()->hitpoints();
     (void)summoned->act();
 
-    ASSERT_TRUE(summoned->stats()->hitpoints() >= hp_before) << "fire elemental should heal when owner pays toll";
+    EXPECT_FLOAT_EQ(19.0f, owner->stats()->hitpoints())
+        << "the drain charges the living owner exactly 1 hp";
+    EXPECT_FLOAT_EQ(7.0f, owner->stats()->magicpoints())
+        << "the drain charges the living owner exactly 3 mp";
+    EXPECT_FLOAT_EQ(6.0f, summoned->stats()->hitpoints())
+        << "both tolls paid => the elemental heals exactly 1 hp";
+    EXPECT_EQ(4, (int)summoned->lifetime())
+        << "a paid toll burns only living::act's own lifetime tick";
+
+    // Unpaid mp toll: the hp toll is still taken, no heal, extra lifetime burn.
+    summoned->set_lifetime(5);
+    summoned->stats()->set_hitpoints(5);
+    summoned->set_regen_delay(100);
+    owner->stats()->set_hitpoints(20);
+    owner->stats()->set_magicpoints(2);  // < 3 => mp toll cannot be paid
+
+    (void)summoned->act();
+
+    EXPECT_FLOAT_EQ(19.0f, owner->stats()->hitpoints())
+        << "the hp toll is taken before the mp toll is even tested";
+    EXPECT_FLOAT_EQ(2.0f, owner->stats()->magicpoints())
+        << "an owner below 3 mp is not charged mp";
+    EXPECT_FLOAT_EQ(5.0f, summoned->stats()->hitpoints())
+        << "an unpaid toll heals the elemental nothing";
+    EXPECT_EQ(3, (int)summoned->lifetime())
+        << "an unpaid toll burns an extra lifetime tick on top of act's own";
 }
 
 
@@ -199,23 +321,46 @@ TEST(LivingCombat, living_facing_all_directions)
 // shove between allies
 // ---------------------------------------------------------------------------
 
-TEST(LivingCombat, living_shove_movement)
+TEST(LivingCombat, living_shove_injects_walk_only_when_the_baby_step_is_passable)
 {
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    world.create_new_grid();
+
     auto a = make_living(FAMILY_SOLDIER);
     auto b = make_living(FAMILY_SOLDIER);
-    ASSERT_TRUE(a != nullptr) << "a created";
-    ASSERT_TRUE(b != nullptr) << "b created";
+    ASSERT_NE(nullptr, a.get()) << "shover created";
+    ASSERT_NE(nullptr, b.get()) << "shovee created";
 
+    living* shover = static_cast<living*>(a.get());
     a->set_team_num(0);
     b->set_team_num(0);
     a->setxy(100, 100);
     b->setxy(105, 100);
+    b->stats()->clear_command();
 
-    // Shove in all cardinal directions
-    static_cast<living*>(a.get())->shove(b.get(), 1, 0);
-    static_cast<living*>(a.get())->shove(b.get(), -1, 0);
-    static_cast<living*>(a.get())->shove(b.get(), 0, 1);
-    static_cast<living*>(a.get())->shove(b.get(), 0, -1);
+    // LCG seed 1: the first next(3) draw is 2, so the "make sure WE don't get
+    // shoved" 1-in-3 gate lets the shove through.
+    world.rng_.state_ = 1;
+    EXPECT_EQ(1, (int)shover->shove(b.get(), 1, 0))
+        << "an allied, non-ACT_CONTROL target on passable ground is shoved";
+    ASSERT_TRUE(b->stats()->has_commands()) << "shove force-queues a walk on the target";
+    EXPECT_EQ(COMMAND_WALK, (int)b->stats()->commands.front().commandtype)
+        << "the injected command is COMMAND_WALK";
+    EXPECT_EQ(4, (int)b->stats()->commands.front().commandcount)
+        << "shove injects exactly 4 walk iterations";
+    EXPECT_EQ(1, (int)b->stats()->commands.front().com1) << "shove carries the x delta";
+    EXPECT_EQ(0, (int)b->stats()->commands.front().com2) << "shove carries the y delta";
+
+    // 2026-07-10 livelock fix: when the injected baby step is terrain-blocked
+    // the target's queue is left alone instead of being stolen every tick.
+    b->stats()->clear_command();
+    b->setxy(0, 100);
+    world.rng_.state_ = 1;
+    EXPECT_EQ(0, (int)shover->shove(b.get(), -1, 0))
+        << "a shove whose baby step leaves the map is refused";
+    EXPECT_FALSE(b->stats()->has_commands())
+        << "a refused shove must not clear or replace the target's own command queue";
 }
 
 
@@ -223,20 +368,42 @@ TEST(LivingCombat, living_shove_movement)
 // living walk with multiple families
 // ---------------------------------------------------------------------------
 
-TEST(LivingCombat, living_walk_all_families)
+TEST(LivingCombat, living_walk_moves_on_matched_facing_and_only_turns_otherwise)
 {
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    world.create_new_grid();
+
     char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC };
 
     for (int i = 0; i < 6; i++) {
         auto w = make_living(families[i]);
-        if (w) {
-            w->setxy(100, 100);
-            static_cast<living*>(w.get())->walk(1, 0);
-            static_cast<living*>(w.get())->walk(-1, 0);
-            static_cast<living*>(w.get())->walk(0, 1);
-            static_cast<living*>(w.get())->walk(0, -1);
-        }
+        ASSERT_NE(nullptr, w.get()) << "family " << (int)families[i] << " walker created";
+        living* lv = static_cast<living*>(w.get());
+        w->set_act_type(ACT_RANDOM);
+        w->setxy(100, 100);
+
+        // Facing already matches the requested step: living::walk worldmove()s.
+        w->set_curdir(static_cast<signed char>(lv->facing(1, 0)));
+        w->set_enddir(static_cast<char>(lv->facing(1, 0)));
+        const int x0 = (int)w->xpos();
+        const int y0 = (int)w->ypos();
+        ASSERT_TRUE(lv->walk(1.0f, 0.0f)) << "family " << (int)families[i] << " walks east";
+        EXPECT_EQ(x0 + 1, (int)w->xpos())
+            << "matched-facing walk moves one pixel east (family " << (int)families[i] << ")";
+        EXPECT_EQ(y0, (int)w->ypos())
+            << "an east step must not move y (family " << (int)families[i] << ")";
+
+        // Facing differs: living::walk only records the new enddir and turns.
+        w->set_curdir(static_cast<signed char>(FACE_UP));
+        const int x1 = (int)w->xpos();
+        EXPECT_TRUE(lv->walk(1.0f, 0.0f)) << "family " << (int)families[i] << " turns east";
+        EXPECT_EQ(FACE_RIGHT, (int)w->enddir())
+            << "a mismatched walk records the requested facing (family "
+            << (int)families[i] << ")";
+        EXPECT_EQ(x1, (int)w->xpos())
+            << "a turn-only walk must not move (family " << (int)families[i] << ")";
     }
 }
 
@@ -633,14 +800,18 @@ TEST(LivingCombat, living_act_command_execution_and_autoattackable_edges)
     ASSERT_TRUE(r) << "act should return true when command execution returns non-zero";
 
     walker* non_auto_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* auto_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_DOOR);
     walker* non_attackable = og::runtime::current_session->myscreen_->world().add_ob(Order::Treasure, FAMILY_GOLD_BAR);
-    ASSERT_TRUE(non_auto_weap != nullptr && non_attackable != nullptr) << "walkers created";
-    if (non_auto_weap)
-        (void)walkerIsAutoAttackable(non_auto_weap);
-    if (non_attackable)
-    {
-        ASSERT_TRUE(!walkerIsAutoAttackable(non_attackable)) << "non-living non-generator non-weapon should not be auto-attackable";
-    }
+    ASSERT_NE(nullptr, non_auto_weap) << "knife weapon created";
+    ASSERT_NE(nullptr, auto_weap) << "door weapon created";
+    ASSERT_NE(nullptr, non_attackable) << "treasure created";
+    // Order::Weapon defers to the weapon family descriptor, both ways round.
+    EXPECT_FALSE(walkerIsAutoAttackable(non_auto_weap))
+        << "knife declares is_auto_attackable=false (weapon-00-knife.lua)";
+    EXPECT_TRUE(walkerIsAutoAttackable(auto_weap))
+        << "door declares is_auto_attackable=true (weapon-18-door.lua)";
+    EXPECT_FALSE(walkerIsAutoAttackable(non_attackable))
+        << "non-living non-generator non-weapon should not be auto-attackable";
 }
 
 
@@ -661,21 +832,95 @@ TEST(LivingCombat, living_round7_act_random_and_do_action_targeted_branches)
     foe->setxy(120, 100);
     actor->set_lineofsight(40);
     actor->set_foe(foe.get());
+    actor->set_ani_type(ANI_WALK);
+    actor->set_action(0);
+    // fire_check aims via lastx/lasty and denies on a facing mismatch, so keep
+    // the heading and the facing pointing at the foe (due east).
+    actor->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_RIGHT));
+    actor->set_lastx(1.0f);
+    actor->set_lasty(0.0f);
     GameWorld& world = og::runtime::current_session->myscreen_->world();
 
-    // living::act_random fire_check true path through act() dispatch.
+    // The ACT_RANDOM arm of living::act draws next(5) twice before it decides.
+    // LCG seed 6 yields 4 then 0, which is the one seed arm that reaches
+    // living::act_random; seed 1 yields 3 then 1 and takes the 4-of-5
+    // "snap facing and search" arm instead. Both are pinned below.
+
+    // living::act_random, fire_check true path through act() dispatch.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     actor->set_act_type(ACT_RANDOM);
-    world.rng_.state_ = 1;
+    actor->stats()->clear_command();
+    actor->set_foe(foe.get());
+    world.rng_.state_ = 6;
     bool ok = actor->act();
-    ASSERT_TRUE(ok) << "living act_random should succeed for in-range foe";
+    // living::act's `act_random(); break;` arm falls out of the switch to
+    // `return 0` — the queued command, not the return value, is the observable.
+    EXPECT_FALSE(ok) << "living::act discards act_random's 1 on the 1-in-5 arm";
+    ASSERT_TRUE(actor->stats()->has_commands()) << "act_random must queue something";
+    EXPECT_EQ(COMMAND_FIRE, (int)actor->stats()->commands.front().commandtype)
+        << "an allowed fire_check makes act_random set_command(COMMAND_FIRE)";
+    EXPECT_EQ(20, (int)actor->stats()->commands.front().com1)
+        << "COMMAND_FIRE carries the foe x-delta";
+    EXPECT_EQ(0, (int)actor->stats()->commands.front().com2)
+        << "COMMAND_FIRE carries the foe y-delta";
 
     // living::act_random fire_check false path -> turn + COMMAND_SEARCH.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     actor->set_act_type(ACT_RANDOM);
+    actor->stats()->clear_command();
+    actor->set_foe(foe.get());
+    actor->set_ani_type(ANI_WALK);  // the fire arm above left us mid-attack animation
+    actor->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_RIGHT));
+    world.rng_.state_ = 6;
+    ok = actor->act();
+    EXPECT_FALSE(ok) << "living::act discards act_random's 1 on the 1-in-5 arm";
+    ASSERT_TRUE(actor->stats()->has_commands()) << "the blocked arm must queue something";
+    EXPECT_EQ(COMMAND_SEARCH, (int)actor->stats()->commands.front().commandtype)
+        << "a denied fire_check makes act_random fall through to COMMAND_SEARCH";
+    EXPECT_EQ(200, (int)actor->stats()->commands.front().commandcount)
+        << "the act_random search is queued for 200 iterations";
+
+    // The 4-of-5 arm of living::act's ACT_RANDOM case: snap the facing to an
+    // even direction and search for 300.
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    actor->set_act_type(ACT_RANDOM);
+    actor->stats()->clear_command();
+    actor->set_foe(foe.get());
+    actor->set_ani_type(ANI_WALK);
+    actor->set_curdir(static_cast<signed char>(FACE_DOWN_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_DOWN_RIGHT));
     world.rng_.state_ = 1;
     ok = actor->act();
-    ASSERT_TRUE(ok) << "living act_random should still succeed when ranged attack is blocked";
+    ASSERT_TRUE(ok) << "the 4-of-5 ACT_RANDOM arm returns 1";
+    EXPECT_EQ(FACE_RIGHT, (int)actor->curdir())
+        << "the 4-of-5 arm snaps curdir to (enddir/2)*2 (FACE_DOWN_RIGHT -> FACE_RIGHT)";
+    EXPECT_EQ(FACE_RIGHT, (int)actor->enddir())
+        << "the 4-of-5 arm snaps enddir to the same even facing";
+    ASSERT_TRUE(actor->stats()->has_commands()) << "the 4-of-5 arm queues a search";
+    EXPECT_EQ(COMMAND_SEARCH, (int)actor->stats()->commands.front().commandtype)
+        << "the 4-of-5 arm queues COMMAND_SEARCH";
+    EXPECT_EQ(300, (int)actor->stats()->commands.front().commandcount)
+        << "the 4-of-5 search is queued for 300 iterations";
+
+    // Same arm with no foe at all: seed 1's third draw is odd, so it takes the
+    // random-walk branch rather than the find_far_foe branch.
+    actor->set_act_type(ACT_RANDOM);
+    actor->stats()->clear_command();
+    actor->set_foe(nullptr);
+    actor->set_ani_type(ANI_WALK);
+    foe->set_team_num(0);  // friendly => find_near_foe/find_far_foe find nobody
+    world.rng_.state_ = 1;
+    ok = actor->act();
+    ASSERT_TRUE(ok) << "the foeless 4-of-5 arm returns 1";
+    EXPECT_EQ(nullptr, actor->foe()) << "no hostile in the level => no foe is latched";
+    ASSERT_TRUE(actor->stats()->has_commands()) << "the foeless arm queues a random walk";
+    EXPECT_EQ(COMMAND_WALK, (int)actor->stats()->commands.front().commandtype)
+        << "COMMAND_RANDOM_WALK is rewritten into a COMMAND_WALK with random deltas";
+    EXPECT_EQ(20, (int)actor->stats()->commands.front().commandcount)
+        << "the foeless random walk is queued for 20 iterations";
+    foe->set_team_num(1);
 
     // living::do_action default branch.
     actor->set_action(static_cast<char>(99));
@@ -790,7 +1035,8 @@ TEST(LivingCombat, living_round10_facing_and_action_follow_branch_matrix)
         leader->set_foe(leader_foe);
         leader->setxy(actor->xpos() + 8, actor->ypos() + 8);
         ASSERT_TRUE(!lv->do_action()) << "ACTION_FOLLOW should return false after adopting leader foe";
-        ASSERT_TRUE(actor->foe() == nullptr || actor->foe() == leader_foe) << "ACTION_FOLLOW with leader foe should remain stable";
+        ASSERT_EQ(leader, actor->leader()) << "ACTION_FOLLOW latches find_nearest_player as the leader";
+        ASSERT_EQ(leader_foe, actor->foe()) << "ACTION_FOLLOW adopts the leader's foe";
     }
 
     // do_action ACTION_FOLLOW with leader and no foe enqueues follow command.
