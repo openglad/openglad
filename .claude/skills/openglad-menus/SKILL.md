@@ -185,19 +185,48 @@ GO / SET LEVEL / SET CAMPAIGN.
 - Layout/nav: `tests/integration/test_menu_layout.cpp` pins geometry, label budgets, and
   nav graphs (including hidden variants). Re-pin in the same commit as any
   layout change.
-- Injector flows (`tests/integration/test_ctf_ui.cpp` etc.): interact by button id, never
-  coordinates; `wait_for_interactable` before clicking; `SDL_Delay(750)` after
-  fadeblack-prone waits; and `SDL_Delay(300)` after ANY label/trace wait
-  before the next `interact` — the click press is still held when the label
+- Injector flows (`tests/integration/test_ctf_ui.cpp` etc.): interact by button
+  id, never coordinates; `wait_for_interactable` before clicking; settle with
+  `wait_for_menu_frames(n)` on engine-hosted screens — there is NO fade to
+  wait for under TESTING (`FadeBetween` is a single blit), so a flat settle
+  waits for an animation that never runs and proves nothing about the
+  incoming screen. A screen `run_menu_screen` does not host can never satisfy
+  `wait_for_menu_frames`, so use its own oracle: the blocking `input_string_ex`
+  editor through `og::input_native::text_input_is_active()`, the help viewer
+  through `og::input_native::yield_count()`, the campaign picker through the
+  campaign picker's counters (entered / action / frame).
+- Prove every click was CONSUMED by the value, label or trace it writes, read
+  on the menu thread via `run_on_main_thread` — never by counting the clicks
+  you sent, and never with a flat delay: the press is still held when a label
   flips, and a second press without a release is silently dropped (symptom:
-  menus that "refuse" to exit, long hangs).
+  menus that "refuse" to exit, long hangs). The ladders do this for you (see
+  below), and `click_cycle_step` in `test_options_menu.cpp` is the reference
+  for a cycle row. A flat `SDL_Delay` settle fails
+  `scripts/check_injector_settles.sh` (a dependency of `og_game_test`): tier 1
+  bans a literal `SDL_Delay(750)`, tier 2 — the fully converted files — allows
+  only a poll tick (a literal <= 100 ms or an argument spelled with `poll`),
+  so a settle hidden behind a named constant fails too.
+- An injector driving a BLOCKING menu must never bound its escape tail by
+  wall clock: `run_pause_menu` and friends return only when something clicks
+  their way out, so a tail that stops clicking guarantees the hang it exists
+  to prevent. Loop until the main thread signals it left the screen (an
+  atomic set after the menu call returns), clicking whatever exit the current
+  screen publishes — BACK as well as RESUME, since the player sub-screen
+  publishes no RESUME (`tests/integration/test_pause_menu.cpp`).
 - The id `back` is shared by several screens: disambiguate with
   `wait_for_interactable_at("back", x, y)` using each screen's unique
   geometry.
-- Under ASan frame-stretch (and heavy load) single clicks get swallowed
-  by menu transitions: use the bounded-retry `click_until_label` idiom
-  (see test_ctf_ui.cpp) — click, wait briefly for the expected label,
-  retry a capped number of times — instead of one click + long wait.
+- Under ASan frame-stretch (and heavy load) single clicks get swallowed by
+  menu transitions: use the shared, acknowledged click ladder in
+  `tests/test_click_ladder.h` — `click_until_edge` for an on-screen edge,
+  `click_and_acknowledge_trace` for a named trace, and the label ladders
+  built on them (`click_until_label`, `click_until_label_containing`) —
+  instead of one click + a long wait. Do not write a fourth copy of the
+  idiom; one implementation per rule. Toggle safety is the reason the ladder
+  is bounded and acknowledged: a press is re-sent ONLY with evidence it did
+  not land (no witness — trace, label or edge — AND the edge still absent at
+  re-press time), because re-pressing a cycler that did land walks it past
+  the face you wanted.
 - `popup_dialog` under TESTING is trace-only — assert via
   `trace_contains("popup", ...)`, nothing to dismiss.
 - Flow tests overwrite `save/save0.gtl`; write your own save first and restore
