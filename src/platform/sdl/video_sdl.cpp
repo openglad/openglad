@@ -1222,6 +1222,15 @@ void sdl_video::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32
 }
 
 
+// The text ink rule (2002, video.cpp putdatatext): a font byte above 247 is ink
+// and lands as the caller's colour; any other non-zero byte is a literal palette
+// index and keeps itself. Shared by putdatatext(color) and
+// walkputbuffertext_alpha so the opaque and alpha text paths cannot drift.
+static inline unsigned char text_ink(unsigned char source, unsigned char color)
+{
+	return source > 247 ? color : source;
+}
+
 void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata)
 {
         Sint32 curx, cury;
@@ -1289,10 +1298,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
                         if (!curcolor)
   	                      	continue;
 				//if (curcolor>=248) curcolor = color+(curcolor-248);
-	        if (curcolor>247)
-	        {
-		        curcolor = color;
-	        }
+			curcolor = text_ink(curcolor, color);
 			scolor = static_cast<int>(palette_color_lut(E_Screen->render)[curcolor]);
 
             rect.x = curx;
@@ -2478,10 +2484,8 @@ void sdl_video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty
                         curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
                         if (!curcolor)
                                 continue;
-                        if (curcolor > static_cast<unsigned char>(247))
-                                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
-                        
-                        pointb(curx + walkerstartx, cury + walkerstarty, teamcolor, alpha);
+                        curcolor = text_ink(curcolor, teamcolor);
+                        pointb(curx + walkerstartx, cury + walkerstarty, curcolor, alpha);
                 }
                 walkoff += walkshift;
         }

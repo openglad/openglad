@@ -289,8 +289,10 @@ TEST(TextRender, write_xy_center_alpha_centres_the_run_and_honours_alpha)
     const Sint32 x0 = center_x - (2 * advance) / 2;
 
     // Fully opaque: every lit font byte becomes the ink, transparent bytes
-    // keep the background. walkputbuffertext_alpha passes the caller's colour
-    // straight to the blend, so even the font's literal bytes land as ink.
+    // keep the background. walkputbuffertext_alpha applies the text ink rule
+    // -- an ink byte (>247) lands as the caller's colour, a literal palette
+    // byte keeps itself -- and text_normal has no literal bytes, so every lit
+    // pixel of this font comes out as `ink`.
     constexpr Sint32 y = 100;
     out->fastbox(x0 - 4, y, 2 * advance + 8, font.sizey,
                  static_cast<unsigned char>(background));
@@ -387,9 +389,11 @@ TEST(TextRender, write_xy_center_centres_the_formatted_run_on_the_given_x)
 
 // The direct single-glyph alpha arm (the damage/heal numbers draw through
 // write_xy_center_alpha, which delegates to this one per character). It
-// blends through walkputbuffertext_alpha, so at full coverage every lit font
-// byte lands as the caller's colour outright and at zero coverage the canvas
-// is untouched; it reports 1 for the glyph it painted.
+// blends through walkputbuffertext_alpha, which applies the text ink rule:
+// every ink byte (>247) lands as the caller's colour and a literal palette
+// byte keeps itself. text_normal has no literal bytes, so at full coverage
+// every lit pixel of this font comes out as `ink`; at zero coverage the canvas
+// is untouched. It reports 1 for the glyph it painted.
 TEST(TextRender, write_char_xy_alpha_blends_one_glyph_at_the_given_coverage)
 {
     screen* const out = og::runtime::current_session->myscreen_;
@@ -449,6 +453,76 @@ TEST(TextRender, write_char_xy_alpha_blends_one_glyph_at_the_given_coverage)
                 << "alpha 0 must leave the canvas untouched at " << col << ","
                 << row;
         }
+    out->clearbuffer();
+}
+
+
+// The one rule, two blitters pin: text::write_char_xy paints through
+// putdatatext(..., color) and text::write_char_xy_alpha paints through
+// walkputbuffertext_alpha. Both are text blitters and both must apply the same
+// 2002 ink rule (ink >247 -> the caller's colour, a literal palette byte keeps
+// itself), so at alpha 255 the two paths must produce IDENTICAL pixels for the
+// same glyph on the same background -- for the small font AND the big one.
+// text_big's ink is literal palette bytes, so before the shared text_ink helper
+// the alpha path flattened the whole glyph to the caller's colour while the
+// opaque path kept the font's own colours: this test is the twin that catches
+// the two paths drifting apart.
+TEST(TextRender, alpha_glyphs_share_the_opaque_text_ink_rule)
+{
+    screen* const out = og::runtime::current_session->myscreen_;
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 y = 40;
+
+    const auto check_font = [&](text& font, const char* what) {
+        ASSERT_NE(nullptr, font.letters) << what << ": font not loaded";
+        ASSERT_TRUE(font.letters->valid()) << what << ": font not loaded";
+        const Sint32 w = font.sizex;
+        const Sint32 h = font.sizey;
+        const Sint32 x_opaque = 20;
+        const Sint32 x_alpha = 20 + w + 8;
+
+        out->fastbox(x_opaque - 2, y - 2, (w + 8) * 2 + 4, h + 4,
+                     static_cast<unsigned char>(background));
+        EXPECT_EQ(1, font.write_char_xy(x_opaque, y, 'E', ink))
+            << what << ": the opaque glyph arm reports the glyph it painted";
+        EXPECT_EQ(1, font.write_char_xy_alpha(x_alpha, y, 'E', ink, 255))
+            << what << ": the alpha glyph arm reports the glyph it painted";
+
+        const unsigned char* const glyph = glyph_bytes(font, 'E');
+        int lit = 0;
+        for (Sint32 row = 0; row < h; ++row)
+            for (Sint32 col = 0; col < w; ++col)
+            {
+                int index_opaque = -1;
+                int index_alpha = -1;
+                out->get_pixel(x_opaque + col, y + row, &index_opaque);
+                out->get_pixel(x_alpha + col, y + row, &index_alpha);
+                ASSERT_EQ(index_opaque, index_alpha)
+                    << what << ": the opaque and alpha text paths disagree at "
+                    << col << "," << row << " (source byte "
+                    << static_cast<int>(
+                           glyph[static_cast<std::size_t>(row * w + col)])
+                    << ")";
+                if (glyph[static_cast<std::size_t>(row * w + col)] != 0)
+                {
+                    ASSERT_NE(background, index_alpha)
+                        << what << ": an inked source byte painted nothing at "
+                        << col << "," << row;
+                    lit++;
+                }
+                else
+                {
+                    ASSERT_EQ(background, index_alpha)
+                        << what << ": a transparent source byte painted at "
+                        << col << "," << row;
+                }
+            }
+        ASSERT_GT(lit, 0) << what << ": 'E' has no ink at all";
+    };
+
+    check_font(out->text_normal, "text_normal");
+    check_font(out->text_big, "text_big");
     out->clearbuffer();
 }
 

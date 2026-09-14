@@ -747,9 +747,9 @@ TEST(VideoExtra, walkputbuffertext_alpha_blends_the_source_shape_at_the_given_al
 {
     screen* const s = scr();
     ASSERT_NE(nullptr, s);
-    // The implementation plots `teamcolor` (not the source byte) through the
-    // alpha pointb, so the sprite is filled with the team colour here and the
-    // pins below are about the SHAPE and the ALPHA, which are the rule.
+    // kTeam fills the block, so both arms of the text ink rule (ink >247 ->
+    // teamcolor, a literal byte -> itself) land on the same index here; the
+    // pins below are about SHAPE and ALPHA.
     constexpr unsigned char kTeam = 40;
     unsigned char testbmp[16*16];
     memset(testbmp, kTeam, sizeof(testbmp));

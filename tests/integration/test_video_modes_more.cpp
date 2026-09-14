@@ -104,6 +104,24 @@ static std::pair<int, int> saved_image_dimensions(const std::filesystem::path& p
     return {0, 0};
 }
 
+// get_pixel's index form walks the palette from register 0 and answers with the
+// FIRST register whose RGB matches the pixel, so a colour whose RGB is
+// duplicated lower down reads back as that lower index. Expected indices
+// therefore go through here rather than through the raw source byte.
+static int pal_readback_index(unsigned char color)
+{
+    int r = 0, g = 0, b = 0;
+    query_palette_reg(color, &r, &g, &b);
+    for (int i = 0; i < 256; i++)
+    {
+        int tr = 0, tg = 0, tb = 0;
+        query_palette_reg(static_cast<unsigned char>(i), &tr, &tg, &tb);
+        if (tr == r && tg == g && tb == b)
+            return i;
+    }
+    return -1;
+}
+
 struct ScreenshotStateRestore
 {
     ~ScreenshotStateRestore()
@@ -641,6 +659,10 @@ TEST(VideoModesMore, buffered_blits_clip_to_their_port_and_accel_surfaces_guard_
     std::array<unsigned char, 16 * 16> pixels{};
     pixels.fill(42);
     pixels[0] = 0;
+    // Source byte 1 is font INK (>247); every other non-zero byte is the
+    // literal palette index 42. The two arms of the text ink rule therefore
+    // both land inside the (310,190) blit below.
+    pixels[1] = 251;
     auto span = std::span<const unsigned char>(pixels.data(), pixels.size());
 
     const std::size_t bytes = static_cast<std::size_t>(E_Screen->render->pitch) *
@@ -714,18 +736,23 @@ TEST(VideoModesMore, buffered_blits_clip_to_their_port_and_accel_surfaces_guard_
     EXPECT_EQ(0, static_cast<int>(r) + static_cast<int>(g) + static_cast<int>(b))
         << "the port's last column is excluded";
 
-    // walkputbuffertext_alpha stamps the TEAM colour (not the sprite index),
-    // and at full alpha the blend is exactly that palette entry.
+    // walkputbuffertext_alpha keeps a literal source byte (<=247) as itself;
+    // only ink (>247) takes the team colour. At full alpha the blend is
+    // exactly that palette entry. This clipped corner sees only literal 42s.
+    const int literal_index = pal_readback_index(42);
     s->clearbuffer();
     s->walkputbuffertext_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 40, 255);
-    EXPECT_EQ(40, s->get_pixel(0, 0, &index));
-    EXPECT_EQ(40, index) << "opaque text alpha writes the team colour itself";
-    EXPECT_EQ(40, s->get_pixel(11, 11, &index));
+    EXPECT_EQ(literal_index, s->get_pixel(0, 0, &index));
+    EXPECT_EQ(literal_index, index)
+        << "a literal source byte keeps itself, it is not repainted in teamcolor";
+    EXPECT_EQ(literal_index, s->get_pixel(11, 11, &index));
+    EXPECT_NE(pal_readback_index(40), literal_index)
+        << "control: teamcolor 40 and the literal byte 42 are distinguishable";
     EXPECT_EQ(0, s->get_pixel(12, 0, &index))
         << "column 12 is past the clipped tile";
 
     // Half alpha over black halves every channel of that palette entry.
-    query_palette_reg(40, &pr, &pg, &pb);
+    query_palette_reg(42, &pr, &pg, &pb);
     s->clearbuffer();
     s->walkputbuffertext_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 40, 128);
     s->get_pixel(0, 0, &r, &g, &b);
@@ -745,14 +772,14 @@ TEST(VideoModesMore, buffered_blits_clip_to_their_port_and_accel_surfaces_guard_
     // tile's own top-left corner is skipped and (311,190) is the first stamp.
     s->clearbuffer();
     s->walkputbuffertext_alpha(310, 190, 16, 16, 0, 0, 319, 199, span, 40, 255);
-    EXPECT_EQ(40, s->get_pixel(311, 190, &index))
-        << "the tile draws from its own x inside the port";
-    EXPECT_EQ(40, s->get_pixel(318, 190, &index))
-        << "the last column inside the port is drawn";
+    EXPECT_EQ(pal_readback_index(40), s->get_pixel(311, 190, &index))
+        << "source byte 251 is ink: it lands as teamcolor 40 at the tile's own x";
+    EXPECT_EQ(literal_index, s->get_pixel(318, 190, &index))
+        << "the last column inside the port is drawn, and keeps its literal byte";
     EXPECT_EQ(0, s->get_pixel(319, 190, &index))
         << "portendx is exclusive: column 319 is clipped away";
-    EXPECT_EQ(40, s->get_pixel(311, 198, &index))
-        << "the last row inside the port is drawn";
+    EXPECT_EQ(literal_index, s->get_pixel(311, 198, &index))
+        << "the last row inside the port is drawn, and keeps its literal byte";
     EXPECT_EQ(0, s->get_pixel(311, 199, &index))
         << "portendy is exclusive: row 199 is clipped away";
 

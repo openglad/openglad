@@ -2023,33 +2023,44 @@ TEST(MassCoverage, video_walkputbuffertext_blits_with_index_zero_transparent) {
         << "a block at or past portendx must draw nothing";
 }
 
-// walkputbuffertext_alpha uses the source block as a STENCIL only: every
-// non-zero source pixel is blended in `teamcolor` at `alpha`, whatever index it
-// held, and zero pixels are left alone
-// (src/platform/sdl/video_sdl.cpp sdl_video::walkputbuffertext_alpha -- this is
-// what text::write_char_xy_alpha relies on to tint a whole glyph one colour).
-TEST(MassCoverage, video_walkputbuffertext_alpha_blends_teamcolor_through_the_source_stencil) {
+// walkputbuffertext_alpha is the alpha form of putdatatext(..., color) and
+// applies the same 2002 text ink rule before blending: source byte 0 is
+// transparent, a font INK byte (>247) lands as `teamcolor`, and any other
+// non-zero byte is a literal palette index that keeps itself -- then whatever
+// byte came out of that rule is blended at `alpha`
+// (src/platform/sdl/video_sdl.cpp text_ink + sdl_video::walkputbuffertext_alpha;
+// this is what text::write_char_xy_alpha draws the damage/heal numbers with).
+TEST(MassCoverage, video_walkputbuffertext_alpha_applies_the_text_ink_rule_then_blends) {
     screen* s = og::runtime::current_session->myscreen_;
     auto px = sample_pixels(30);  // 30..37
-    px[0] = 0;
+    px[0] = 0;                    // transparent
+    px[1] = 251;                  // font ink: must come out as teamcolor
+    // px[2] is 32: a literal palette index that must come out as itself.
+    ASSERT_EQ(32, static_cast<int>(px[2])) << "px[2] is the literal-byte probe";
+    ASSERT_NE(pal_readback_index(RED), pal_readback_index(32))
+        << "control: the literal byte and teamcolor are distinguishable";
 
     // alpha 255 takes blend_pixel's opaque shortcut, so the painted index is
-    // exactly teamcolor -- the source index never reaches the surface.
+    // exactly the byte the ink rule produced.
     s->clearbuffer();
     s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
     s->walkputbuffertext_alpha(10, 10, 8, 8, 0, 0, 320, 200, px, RED, 255);
     ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
         << "a zero source index must leave the backdrop showing";
     ASSERT_EQ(pal_readback_index(RED), px_index(11, 10))
-        << "a non-zero source pixel is painted in teamcolor";
-    ASSERT_NE(pal_readback_index(31), px_index(11, 10))
-        << "the source index is a stencil, not a colour";
+        << "ink (>247) lands as teamcolor";
+    ASSERT_EQ(pal_readback_index(32), px_index(12, 10))
+        << "a literal byte keeps itself";
+    ASSERT_NE(pal_readback_index(RED), px_index(12, 10))
+        << "a literal byte is not repainted in teamcolor";
 
-    // A partial alpha blends teamcolor over whatever was there.
+    // A partial alpha blends the rule's output over whatever was there.
     int wr = 0, wg = 0, wb = 0;
     pal_rgb8(WHITE, &wr, &wg, &wb);
     int rr = 0, rg = 0, rb = 0;
     pal_rgb8(RED, &rr, &rg, &rb);
+    int lr = 0, lg = 0, lb = 0;
+    pal_rgb8(32, &lr, &lg, &lb);
     s->clearbuffer();
     s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
     s->walkputbuffertext_alpha(10, 10, 8, 8, 0, 0, 320, 200, px, RED, 80);
@@ -2058,6 +2069,10 @@ TEST(MassCoverage, video_walkputbuffertext_alpha_blends_teamcolor_through_the_so
     ASSERT_EQ(alpha_blend8(wr, rr, 80), static_cast<int>(r)) << "80/256 of teamcolor over white, red";
     ASSERT_EQ(alpha_blend8(wg, rg, 80), static_cast<int>(g)) << "80/256 of teamcolor over white, green";
     ASSERT_EQ(alpha_blend8(wb, rb, 80), static_cast<int>(b)) << "80/256 of teamcolor over white, blue";
+    s->get_pixel(12, 10, &r, &g, &b);
+    ASSERT_EQ(alpha_blend8(wr, lr, 80), static_cast<int>(r)) << "80/256 of the literal byte over white, red";
+    ASSERT_EQ(alpha_blend8(wg, lg, 80), static_cast<int>(g)) << "80/256 of the literal byte over white, green";
+    ASSERT_EQ(alpha_blend8(wb, lb, 80), static_cast<int>(b)) << "80/256 of the literal byte over white, blue";
 
     s->clearbuffer();
     s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);

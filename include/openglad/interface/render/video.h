@@ -256,6 +256,10 @@ public:
                                    Sint32 portstartx, Sint32 portstarty,
                                    Sint32 portendx, Sint32 portendy,
                                    std::span<const unsigned char> sourceptr, unsigned char teamcolor) = 0;
+    // The alpha form of putdatatext(..., color) behind the sprite clipper: font
+    // ink (>247) lands as `teamcolor`, a literal palette byte keeps itself, 0 is
+    // transparent, each pixel blended at `alpha`. The damage/heal numbers
+    // (text::write_char_xy_alpha) are its only caller.
     virtual void walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                                          Sint32 walkerwidth, Sint32 walkerheight,
                                          Sint32 portstartx, Sint32 portstarty,
@@ -263,8 +267,9 @@ public:
                                          std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) = 0;
 
     // Full-color, team-recolored sprite blit with a global alpha (for faded
-    // lower floors / ghosted upper floors). Unlike walkputbuffertext_alpha
-    // (single-color), this preserves the sprite's real colors.
+    // lower floors / ghosted upper floors). Unlike walkputbuffertext_alpha (a
+    // text blitter: ink bytes land as one colour), this preserves the sprite's
+    // real colours and applies the team ramp.
     virtual void walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                                      Sint32 walkerwidth, Sint32 walkerheight,
                                      Sint32 portstartx, Sint32 portstarty,
