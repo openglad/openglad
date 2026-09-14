@@ -2040,20 +2040,16 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_slot_matrix_labels_and_nav)
 // Design §2.2: the seat editor's INPUT cycler needed a band of its own —
 // the y=30 band is exactly full (three columns x=12/116/214, widths
 // 98/92/90, 6px gutters, shared right edge 304), so the cycler rides the
-// y=54 band. Pin both build variants: geometry, no overlaps,
+// y=54 band. Pin the shipped table: geometry, no overlaps,
 // closed+reachable nav, and the face budget for the widest short mapping
 // name.
 TEST(MenuLayout, seat_settings_input_row_layout_and_nav)
 {
-    for (const og::ui::MenuScreenSpec* spec :
-         {&og::ui::seat_settings_menu_screen_spec_mp(),
-          &og::ui::seat_settings_menu_screen_spec_nomp()})
     {
-        const bool mp = spec->row_count == kSeatSettingsButtonCountMP;
-        const char* const variant =
-            mp ? "seat_settings_mp" : "seat_settings_nomp";
-        const int input_row =
-            mp ? kSeatSettingsInputRowMP : kSeatSettingsInputRowNoMP;
+        const og::ui::MenuScreenSpec* const spec =
+            &og::ui::seat_settings_menu_screen_spec();
+        const char* const variant = "seat_settings";
+        const int input_row = kSeatSettingsInputRow;
 
         std::vector<button> rows;
         og::ui::materialize_menu_buttons(*spec, rows);
@@ -2097,10 +2093,8 @@ TEST(MenuLayout, seat_settings_input_row_layout_and_nav)
         // middle column (x=116); the four HUD toggles stack right of the
         // binding panel (x=12..208) at x=214 on a 22px pitch, top-aligned
         // with the panel at y=78 and clearing the y=169 command band.
-        const int zoom_row =
-            mp ? kSeatSettingsZoomRowMP : kSeatSettingsZoomRowNoMP;
-        const int radar_row =
-            mp ? kSeatSettingsHudRadarRowMP : kSeatSettingsHudRadarRowNoMP;
+        const int zoom_row = kSeatSettingsZoomRow;
+        const int radar_row = kSeatSettingsHudRadarRow;
         const button& zoom = rows[static_cast<std::size_t>(zoom_row)];
         EXPECT_EQ("seat_zoom", zoom.id) << variant;
         EXPECT_EQ(116, zoom.x) << variant;
@@ -4057,11 +4051,11 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
     og::ui::materialize_menu_buttons(og::ui::pause_player_menu_screen_spec(),
                                      pause_rows);
     std::vector<button> seat_rows;
-    og::ui::materialize_menu_buttons(og::ui::seat_settings_menu_screen_spec_mp(),
+    og::ui::materialize_menu_buttons(og::ui::seat_settings_menu_screen_spec(),
                                      seat_rows);
     ASSERT_EQ(og::ui::kPausePlayerButtonCount,
               static_cast<int>(pause_rows.size()));
-    ASSERT_EQ(kSeatSettingsButtonCountMP, static_cast<int>(seat_rows.size()));
+    ASSERT_EQ(kSeatSettingsButtonCount, static_cast<int>(seat_rows.size()));
 
     const auto& p = pause_rows;
     const auto& s = seat_rows;
@@ -4069,13 +4063,13 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
     // Column A: DIRECTION, INPUT, and (seat) TEAM share one left edge.
     for (const button* b :
          {&p[og::ui::kPausePlayerModeIndex], &p[og::ui::kPausePlayerInputIndex],
-          &s[kSeatSettingsModeIndex], &s[kSeatSettingsInputRowMP],
+          &s[kSeatSettingsModeIndex], &s[kSeatSettingsInputRow],
           &s[kSeatSettingsTeamIndex]})
         EXPECT_EQ(kPlayerScreenColAX, b->x) << b->id;
     // Column B: REMAP and ZOOM share a left edge and end at the panel edge.
     for (const button* b :
          {&p[og::ui::kPausePlayerRemapIndex], &p[og::ui::kPausePlayerZoomIndex],
-          &s[kSeatSettingsRemapIndex], &s[kSeatSettingsZoomRowMP]})
+          &s[kSeatSettingsRemapIndex], &s[kSeatSettingsZoomRow]})
     {
         EXPECT_EQ(kPlayerScreenColBX, b->x) << b->id;
         EXPECT_EQ(kPlayerScreenPanelRightX, b->x + b->sizex) << b->id;
@@ -4087,8 +4081,8 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
           &p[og::ui::kPausePlayerHudLifeIndex],
           &p[og::ui::kPausePlayerHudFoesIndex],
           &p[og::ui::kPausePlayerHudScoreIndex],
-          &s[kSeatSettingsResetIndex], &s[kSeatSettingsHudRadarRowMP],
-          &s[kSeatSettingsHudScoreRowMP]})
+          &s[kSeatSettingsResetIndex], &s[kSeatSettingsHudRadarRow],
+          &s[kSeatSettingsHudScoreRow]})
     {
         EXPECT_EQ(kPlayerScreenColCX, b->x) << b->id;
         EXPECT_EQ(kPlayerScreenColCX + kPlayerScreenColCW, b->x + b->sizex)
@@ -4118,12 +4112,12 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
         {og::ui::kPausePlayerModeIndex, kSeatSettingsModeIndex},
         {og::ui::kPausePlayerRemapIndex, kSeatSettingsRemapIndex},
         {og::ui::kPausePlayerResetIndex, kSeatSettingsResetIndex},
-        {og::ui::kPausePlayerInputIndex, kSeatSettingsInputRowMP},
-        {og::ui::kPausePlayerZoomIndex, kSeatSettingsZoomRowMP},
-        {og::ui::kPausePlayerHudRadarIndex, kSeatSettingsHudRadarRowMP},
-        {og::ui::kPausePlayerHudLifeIndex, kSeatSettingsHudLifeRowMP},
-        {og::ui::kPausePlayerHudFoesIndex, kSeatSettingsHudFoesRowMP},
-        {og::ui::kPausePlayerHudScoreIndex, kSeatSettingsHudScoreRowMP},
+        {og::ui::kPausePlayerInputIndex, kSeatSettingsInputRow},
+        {og::ui::kPausePlayerZoomIndex, kSeatSettingsZoomRow},
+        {og::ui::kPausePlayerHudRadarIndex, kSeatSettingsHudRadarRow},
+        {og::ui::kPausePlayerHudLifeIndex, kSeatSettingsHudLifeRow},
+        {og::ui::kPausePlayerHudFoesIndex, kSeatSettingsHudFoesRow},
+        {og::ui::kPausePlayerHudScoreIndex, kSeatSettingsHudScoreRow},
         {og::ui::kPausePlayerRemoveIndex, kSeatSettingsRemoveIndex},
     };
     for (const auto& [pi, si] : shared)

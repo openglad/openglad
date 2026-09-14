@@ -361,8 +361,7 @@ inline constexpr int kCreateMenuButtonCount = 73;
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
 // A clicked owned Base Camp seat resolves its stable LobbySeatId to a dense
-// machine-local controller profile each frame. Multiplayer-disabled builds
-// omit REMOVE/SPECTATE but keep the first five ordinals unchanged.
+// machine-local controller profile each frame.
 inline constexpr int kSeatSettingsBackIndex = 0;
 inline constexpr int kSeatSettingsTeamIndex = 1;
 inline constexpr int kSeatSettingsModeIndex = 2;
@@ -370,45 +369,27 @@ inline constexpr int kSeatSettingsRemapIndex = 3;
 inline constexpr int kSeatSettingsResetIndex = 4;
 inline constexpr int kSeatSettingsRemoveIndex = 5;
 // The INPUT cycler (design §2.2) is APPENDED so ordinals 0..5 and the
-// default_highlight stay put. Its MenuSpecRow arg is 6 in BOTH tables; the
-// multiplayer-disabled table has no REMOVE row, so the same row materializes
-// one slot earlier there. kSeatSettingsInputRow is the position the label
-// sync and the nav links use; kSeatSettingsInputIndex is the dispatch arg.
+// default_highlight stay put. kSeatSettingsInputRow is the position the
+// label sync and the nav links use, kSeatSettingsInputIndex is the dispatch
+// arg, and the two agree because the table below is the only variant.
 inline constexpr int kSeatSettingsInputIndex = 6;
-inline constexpr int kSeatSettingsInputRowMP = 6;
-inline constexpr int kSeatSettingsInputRowNoMP = 5;
-inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowMP;
+inline constexpr int kSeatSettingsInputRow = 6;
 // §7.1 unified player screen: ZOOM (kPlayerScreenColBX, kPlayerScreenBand2Y)
 // and the RADAR/HP/FOES/SCORE stack (kPlayerScreenColCX, kPlayerScreenHudTopY
-// + 22px pitch) are APPENDED (index contract). Dispatch args are the MP row
-// positions; the no-MP table has no REMOVE row, so each appended row
-// materializes one slot earlier (the seat_input precedent).
+// + 22px pitch) are APPENDED (index contract).
 inline constexpr int kSeatSettingsZoomIndex = 7;
 inline constexpr int kSeatSettingsHudRadarIndex = 8;
 inline constexpr int kSeatSettingsHudLifeIndex = 9;
 inline constexpr int kSeatSettingsHudFoesIndex = 10;
 inline constexpr int kSeatSettingsHudScoreIndex = 11;
-// Both build variants of each table exist on every build (tests pin the
-// uncompiled shape), so nav links inside each table use its EXPLICIT row
-// positions; the unsuffixed aliases select the compiled variant for the
-// label sync and dispatch.
-inline constexpr int kSeatSettingsZoomRowMP = 7;
-inline constexpr int kSeatSettingsHudRadarRowMP = 8;
-inline constexpr int kSeatSettingsHudLifeRowMP = 9;
-inline constexpr int kSeatSettingsHudFoesRowMP = 10;
-inline constexpr int kSeatSettingsHudScoreRowMP = 11;
-inline constexpr int kSeatSettingsZoomRowNoMP = 6;
-inline constexpr int kSeatSettingsHudRadarRowNoMP = 7;
-inline constexpr int kSeatSettingsHudLifeRowNoMP = 8;
-inline constexpr int kSeatSettingsHudFoesRowNoMP = 9;
-inline constexpr int kSeatSettingsHudScoreRowNoMP = 10;
-inline constexpr int kSeatSettingsZoomRow = kSeatSettingsZoomRowMP;
-inline constexpr int kSeatSettingsHudRadarRow = kSeatSettingsHudRadarRowMP;
-inline constexpr int kSeatSettingsHudLifeRow = kSeatSettingsHudLifeRowMP;
-inline constexpr int kSeatSettingsHudFoesRow = kSeatSettingsHudFoesRowMP;
-inline constexpr int kSeatSettingsHudScoreRow = kSeatSettingsHudScoreRowMP;
-inline constexpr int kSeatSettingsButtonCountMP = 12;
-inline constexpr int kSeatSettingsButtonCountNoMP = 11;
+// One table, so each appended row's position IS its dispatch arg: the nav
+// links inside the table, the label sync and the dispatch share these.
+inline constexpr int kSeatSettingsZoomRow = 7;
+inline constexpr int kSeatSettingsHudRadarRow = 8;
+inline constexpr int kSeatSettingsHudLifeRow = 9;
+inline constexpr int kSeatSettingsHudFoesRow = 10;
+inline constexpr int kSeatSettingsHudScoreRow = 11;
+inline constexpr int kSeatSettingsButtonCount = 12;
 
 // --- §7.1 unified player-screen grid ---------------------------------------
 // One geometry behind BOTH player screens (Base Camp seat settings and the

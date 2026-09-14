@@ -860,11 +860,11 @@ const MenuScreenSpec& main_options_menu_screen_spec()
 }
 
 // ---------------------------------------------------------------------------
-// MAIN MENU (§1.8 step 4, historically the heaviest 10a screen). The MP and
-// no-MP specs share one centered primary stack. HELP and QUIT are a stable
-// footer on both platforms. QUIT is build-gated as an enabled native row or
-// a disabled web row at the same materialized index, so geometry and nav
-// stay identical across all four variants.
+// MAIN MENU (§1.8 step 4, historically the heaviest 10a screen). One
+// centered primary stack, with HELP and QUIT a stable footer on both
+// platforms. QUIT is build-gated as an enabled native row or a disabled web
+// row at the same materialized index, so geometry and nav stay identical
+// across both platform variants.
 //
 // redraw_mainmenu's raw allbuttons_[N] writes became bindings (§1.6):
 //   [0] pixie face               -> art_family row (FAMILY_NORMAL1 — the
@@ -954,10 +954,10 @@ void main_menu_nav_rewire(button* buttons, int count, int& /*highlighted*/)
 
 // --- Main-menu vertical grid (§2.1) ---
 //
-// One block feeds BOTH tables below: the MP and no-MP variants are meant to
-// be geometrically identical, and hand-typed twins drift the moment one of
-// them is edited alone. The primary action group (BEGIN, the CONTINUE|LOAD
-// row, LEVEL EDITOR) is fixed at the top on the classic 4px gutter;
+// One block derives the whole column, so a hand-typed constant can never
+// drift out from under the row it places. The primary action group (BEGIN,
+// the CONTINUE|LOAD row, LEVEL EDITOR) is fixed at the top on the classic
+// 4px gutter;
 // everything under it is derived from the footer, and the footer is placed
 // off the build stamp.
 constexpr int kMainMenuDoorH = 15;       // every full-width door below the pair
@@ -992,7 +992,7 @@ static_assert(kMainMenuFooterY - (kMainMenuCloudY + kMainMenuDoorH) ==
                   kMainMenuSettingsBreak,
               "the settings pair must sit centred in its slack");
 
-constexpr MenuButtonSpec kMainMenuRowsMP[] = {
+constexpr MenuButtonSpec kMainMenuRows[] = {
     {.id = "begin_new_game", .label = "",
      .x = 80, .y = 55, .w = 140, .h = 20,
      .action = ButtonAction::BeginMenu, .arg = 1,
@@ -1045,65 +1045,6 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     // Appended tail: LOAD then the mutually exclusive no-company note.
-    {.id = "load_company", .label = "LOAD",
-     .x = 152, .y = 79, .w = 68, .h = 20,
-     .action = ButtonAction::CreateLoadMenu, .arg = 0,
-     .nav = {.up = 0, .down = 2, .left = 1},
-     .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    {.id = "no_company_note", .label = "NO COMPANY YET",
-     .x = 80, .y = 79, .w = 140, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = 7,
-     .state_override = &main_menu_no_company_note_state,
-     .hidden = true},
-    // #155 CLOUD: always visible (reachable with zero companies — the fresh
-    // browser restore flow is the point). The second settings row, directly
-    // under GAME SETTINGS and the same full width. Appended after the note,
-    // so its materialized ordinal is 8 on every variant (exactly one QUIT
-    // row survives materialization).
-    {.id = "cloud", .label = "CLOUD SAVES",
-     .x = 80, .y = kMainMenuCloudY, .w = 140, .h = kMainMenuDoorH,
-     .action = ButtonAction::MenuSpecRow, .arg = 8,
-     .nav = {.up = 3, .down = 4}},
-};
-
-constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
-    {.id = "begin_new_game", .label = "",
-     .x = 80, .y = 55, .w = 140, .h = 20,
-     .action = ButtonAction::BeginMenu, .arg = 1,
-     .nav = {.down = 1},
-     .art_family = FAMILY_NORMAL1},
-    {.id = "continue_game", .label = "CONTINUE",
-     .x = 80, .y = 79, .w = 68, .h = 20,
-     .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 2, .right = 6},
-     .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    {.id = "level_edit", .label = "Level Editor",
-     .x = 80, .y = kMainMenuLevelEditY, .w = 140, .h = kMainMenuDoorH,
-     .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 3}},
-    // Two full-width doors named in full; DIFFICULTY went to the Base Camp
-    // command strip and the grey SETTINGS caption went with it. The pair is
-    // centered in the 54px between LEVEL EDITOR (bottom y=118) and the footer
-    // (y=172): 10px of canvas above and below the 34px group.
-    {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = kMainMenuOptionsY, .w = 140, .h = kMainMenuDoorH,
-     .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 2, .down = 8}},
-    {.id = "help", .label = "HELP",
-     .x = 80, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
-     .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 8, .down = 0, .right = 5}},
-    {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 152, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
-     .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 8, .down = 0, .left = 4},
-     .build = MenuBuildGate::NativeOnly},
-    {.id = "quit", .label = "QUIT ",
-     .x = 152, .y = kMainMenuFooterY, .w = 68, .h = kMainMenuDoorH,
-     .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 8, .down = 0, .left = 4},
-     .state_override = &main_menu_web_quit_state,
-     .build = MenuBuildGate::WebOnly},
     {.id = "load_company", .label = "LOAD",
      .x = 152, .y = 79, .w = 68, .h = 20,
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
@@ -3229,7 +3170,7 @@ RowState seat_settings_zoom_row_state(const MenuLabelContext& /*context*/)
 // ZOOM rides the y=54 band beside INPUT; the RADAR/HP/FOES/SCORE stack sits
 // right of the binding panel at x=214 on a 22px pitch, sharing the panel's
 // y=78..161 span. Appended after seat_input (index contract).
-constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
+constexpr MenuButtonSpec kSeatSettingsRows[] = {
     {.id = "seat_settings_back", .label = "BACK",
      .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 8, .w = 50, .h = 15,
@@ -3240,7 +3181,7 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .x = kPlayerScreenColAX, .y = kPlayerScreenBottomBandY,
      .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsInputRowMP,
+     .nav = {.up = kSeatSettingsInputRow,
              .down = kSeatSettingsBackIndex,
              .right = kSeatSettingsRemoveIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
@@ -3248,14 +3189,14 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsInputRowMP,
+             .down = kSeatSettingsInputRow,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
      .x = kPlayerScreenColBX, .y = kPlayerScreenBand1Y,
      .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsZoomRowMP,
+             .down = kSeatSettingsZoomRow,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
@@ -3263,12 +3204,12 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsHudRadarRowMP,
+             .down = kSeatSettingsHudRadarRow,
              .left = kSeatSettingsRemapIndex}},
     {.id = "seat_remove", .label = "REMOVE PLAYER",
      .x = 166, .y = kPlayerScreenBottomBandY, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemoveIndex,
-     .nav = {.up = kSeatSettingsHudScoreRowMP,
+     .nav = {.up = kSeatSettingsHudScoreRow,
              .down = kSeatSettingsBackIndex,
              .left = kSeatSettingsTeamIndex},
      .state_override = &seat_settings_remove_row_state},
@@ -3278,136 +3219,51 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
      .nav = {.up = kSeatSettingsModeIndex,
              .down = kSeatSettingsTeamIndex,
-             .right = kSeatSettingsZoomRowMP}},
+             .right = kSeatSettingsZoomRow}},
     {.id = "seat_zoom", .label = "ZOOM: GAME",
      .x = kPlayerScreenColBX, .y = kPlayerScreenBand2Y,
      .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
      .nav = {.up = kSeatSettingsRemapIndex,
-             .down = kSeatSettingsHudRadarRowMP,
-             .left = kSeatSettingsInputRowMP},
+             .down = kSeatSettingsHudRadarRow,
+             .left = kSeatSettingsInputRow},
      .state_override = &seat_settings_zoom_row_state},
     {.id = "seat_hud_radar", .label = "RADAR: ON",
      .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
      .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
      .nav = {.up = kSeatSettingsResetIndex,
-             .down = kSeatSettingsHudLifeRowMP,
-             .left = kSeatSettingsZoomRowMP}},
+             .down = kSeatSettingsHudLifeRow,
+             .left = kSeatSettingsZoomRow}},
     {.id = "seat_hud_life", .label = "HP: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
      .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
-     .nav = {.up = kSeatSettingsHudRadarRowMP,
-             .down = kSeatSettingsHudFoesRowMP,
-             .left = kSeatSettingsInputRowMP}},
+     .nav = {.up = kSeatSettingsHudRadarRow,
+             .down = kSeatSettingsHudFoesRow,
+             .left = kSeatSettingsInputRow}},
     {.id = "seat_hud_foes", .label = "FOES: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
      .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
-     .nav = {.up = kSeatSettingsHudLifeRowMP,
-             .down = kSeatSettingsHudScoreRowMP,
-             .left = kSeatSettingsInputRowMP}},
+     .nav = {.up = kSeatSettingsHudLifeRow,
+             .down = kSeatSettingsHudScoreRow,
+             .left = kSeatSettingsInputRow}},
     {.id = "seat_hud_score", .label = "SCORE: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
      .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
-     .nav = {.up = kSeatSettingsHudFoesRowMP,
+     .nav = {.up = kSeatSettingsHudFoesRow,
              .down = kSeatSettingsRemoveIndex,
-             .left = kSeatSettingsInputRowMP}},
+             .left = kSeatSettingsInputRow}},
 };
 
-constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
-    {.id = "seat_settings_back", .label = "BACK",
-     .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 8, .w = 50, .h = 15,
-     .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
-     .nav = {.up = kSeatSettingsTeamIndex,
-             .down = kSeatSettingsModeIndex}},
-    {.id = "seat_team", .label = "TEAM 1",
-     .x = 91, .y = kPlayerScreenBottomBandY, .w = 138, .h = 18,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsInputRowNoMP,
-             .down = kSeatSettingsBackIndex}},
-    {.id = "seat_direction", .label = "4-DIRECTION",
-     .x = kPlayerScreenColAX, .y = kPlayerScreenBand1Y,
-     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
-     .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsInputRowNoMP,
-             .right = kSeatSettingsRemapIndex}},
-    {.id = "seat_remap", .label = "REMAP",
-     .x = kPlayerScreenColBX, .y = kPlayerScreenBand1Y,
-     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
-     .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsZoomRowNoMP,
-             .left = kSeatSettingsModeIndex,
-             .right = kSeatSettingsResetIndex}},
-    {.id = "seat_reset", .label = "RESET",
-     .x = kPlayerScreenColCX, .y = kPlayerScreenBand1Y,
-     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
-     .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsHudRadarRowNoMP,
-             .left = kSeatSettingsRemapIndex}},
-    {.id = "seat_input", .label = "INPUT: WASD",
-     .x = kPlayerScreenColAX, .y = kPlayerScreenBand2Y,
-     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
-     .nav = {.up = kSeatSettingsModeIndex,
-             .down = kSeatSettingsTeamIndex,
-             .right = kSeatSettingsZoomRowNoMP}},
-    {.id = "seat_zoom", .label = "ZOOM: GAME",
-     .x = kPlayerScreenColBX, .y = kPlayerScreenBand2Y,
-     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
-     .nav = {.up = kSeatSettingsRemapIndex,
-             .down = kSeatSettingsHudRadarRowNoMP,
-             .left = kSeatSettingsInputRowNoMP},
-     .state_override = &seat_settings_zoom_row_state},
-    {.id = "seat_hud_radar", .label = "RADAR: ON",
-     .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
-     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
-     .nav = {.up = kSeatSettingsResetIndex,
-             .down = kSeatSettingsHudLifeRowNoMP,
-             .left = kSeatSettingsZoomRowNoMP}},
-    {.id = "seat_hud_life", .label = "HP: ON",
-     .x = kPlayerScreenColCX,
-     .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
-     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
-     .nav = {.up = kSeatSettingsHudRadarRowNoMP,
-             .down = kSeatSettingsHudFoesRowNoMP,
-             .left = kSeatSettingsInputRowNoMP}},
-    {.id = "seat_hud_foes", .label = "FOES: ON",
-     .x = kPlayerScreenColCX,
-     .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
-     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
-     .nav = {.up = kSeatSettingsHudLifeRowNoMP,
-             .down = kSeatSettingsHudScoreRowNoMP,
-             .left = kSeatSettingsInputRowNoMP}},
-    {.id = "seat_hud_score", .label = "SCORE: ON",
-     .x = kPlayerScreenColCX,
-     .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
-     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
-     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
-     .nav = {.up = kSeatSettingsHudFoesRowNoMP,
-             .down = kSeatSettingsTeamIndex,
-             .left = kSeatSettingsInputRowNoMP}},
-};
-
-static_assert(static_cast<int>(std::size(kSeatSettingsRowsMP))
-                  == kSeatSettingsButtonCountMP,
-              "seat settings MP ordinals are the layout contract");
-static_assert(static_cast<int>(std::size(kSeatSettingsRowsNoMP))
-                  == kSeatSettingsButtonCountNoMP,
-              "seat settings no-MP ordinals are the layout contract");
+static_assert(static_cast<int>(std::size(kSeatSettingsRows))
+                  == kSeatSettingsButtonCount,
+              "seat settings ordinals are the layout contract");
 
 void sync_seat_settings_label(button* buttons, int index,
                               const std::string& label)
@@ -3430,7 +3286,7 @@ void seat_settings_rewire(button* buttons, int count,
 {
     if (buttons == nullptr || g_seat_settings_state == nullptr)
         return;
-    const int expected = kSeatSettingsButtonCountMP;
+    const int expected = kSeatSettingsButtonCount;
     if (count < expected)
         return;
 
@@ -6771,44 +6627,19 @@ void set_main_menu_company_view_for_tests(bool present, std::string display_name
     g_main_menu_company_view.display_name = std::move(display_name);
 }
 
-const MenuScreenSpec& main_menu_screen_spec_mp()
-{
-    static const MenuScreenSpec spec = make_main_menu_spec(
-        kMainMenuRowsMP, static_cast<int>(std::size(kMainMenuRowsMP)));
-    return spec;
-}
-
-const MenuScreenSpec& main_menu_screen_spec_nomp()
-{
-    static const MenuScreenSpec spec = make_main_menu_spec(
-        kMainMenuRowsNoMP, static_cast<int>(std::size(kMainMenuRowsNoMP)));
-    return spec;
-}
-
 const MenuScreenSpec& main_menu_screen_spec()
 {
-    return main_menu_screen_spec_mp();
-}
-
-const MenuScreenSpec& seat_settings_menu_screen_spec_mp()
-{
-    static constexpr MenuScreenSpec spec = make_seat_settings_spec(
-        kSeatSettingsRowsMP,
-        static_cast<int>(std::size(kSeatSettingsRowsMP)));
-    return spec;
-}
-
-const MenuScreenSpec& seat_settings_menu_screen_spec_nomp()
-{
-    static constexpr MenuScreenSpec spec = make_seat_settings_spec(
-        kSeatSettingsRowsNoMP,
-        static_cast<int>(std::size(kSeatSettingsRowsNoMP)));
+    static const MenuScreenSpec spec = make_main_menu_spec(
+        kMainMenuRows, static_cast<int>(std::size(kMainMenuRows)));
     return spec;
 }
 
 const MenuScreenSpec& seat_settings_menu_screen_spec()
 {
-    return seat_settings_menu_screen_spec_mp();
+    static constexpr MenuScreenSpec spec = make_seat_settings_spec(
+        kSeatSettingsRows,
+        static_cast<int>(std::size(kSeatSettingsRows)));
+    return spec;
 }
 
 void install_seat_settings_state_for_screen(

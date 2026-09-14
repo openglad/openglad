@@ -3023,8 +3023,6 @@ void TrainSession::clamp_working_stats()
 
 int seats_still_claimable(const SeatClaimability& claim)
 {
-    if (!claim.multiplayer_enabled)
-        return 0;
     const int local_room = claim.local_seat_cap - claim.local_count;
     const int global_room = claim.global_cap - claim.global_count;
     return std::max(0, std::min(local_room, global_room));
@@ -3032,8 +3030,6 @@ int seats_still_claimable(const SeatClaimability& claim)
 
 int base_camp_seat_rail_slot_cap(const SeatClaimability& claim)
 {
-    if (!claim.multiplayer_enabled)
-        return 1;
     return std::clamp(claim.local_seat_cap, 1, kSeatRailSlots);
 }
 

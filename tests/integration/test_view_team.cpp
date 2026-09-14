@@ -2735,7 +2735,7 @@ TEST(ViewTeam, base_camp_seat_rail_shows_only_this_machines_seats)
     };
     og::ui::install_seat_settings_state_for_screen(&editor_state);
     const og::ui::MenuScreenSpec& editor_spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, editor_spec.on_spec_row);
     ASSERT_NE(nullptr, editor_spec.nav.rewire);
 
@@ -3464,7 +3464,7 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, spec.draw_content);
     ASSERT_NE(nullptr, spec.nav.rewire);
 
@@ -3544,10 +3544,10 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
         seat_view0->prefs[PREF_LIFE] = PREF_LIFE_TEXT;  // legacy => ON
         seat_view0->view_zoom_step_ = 2;
         spec.nav.rewire(buttons, count, highlighted);
-        EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRowMP].label);
-        EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRowMP].label)
+        EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRow].label);
+        EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRow].label)
             << "legacy TEXT displays as ON";
-        EXPECT_EQ("ZOOM: 0.8X", buttons[kSeatSettingsZoomRowMP].label);
+        EXPECT_EQ("ZOOM: 0.8X", buttons[kSeatSettingsZoomRow].label);
         seat_view0->prefs[PREF_RADAR] = old_radar;
         seat_view0->prefs[PREF_LIFE] = old_life;
         seat_view0->view_zoom_step_ = old_zoom;
@@ -3657,7 +3657,7 @@ TEST(ViewTeam, seat_settings_offline_p1_uses_profile1_when_roster_is_out_of_orde
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
     int highlighted = kSeatSettingsModeIndex;
@@ -3722,7 +3722,7 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     og::ui::install_seat_settings_state_for_screen(&state);
 
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, spec.on_spec_row);
     ASSERT_NE(nullptr, spec.frame_tick);
     button* buttons = spec.buttons_accessor();
@@ -3888,7 +3888,7 @@ TEST(ViewTeam, seat_settings_remove_never_asks_the_last_offline_seat)
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, spec.on_spec_row);
 
     // A YES is queued: if the row asked, it would remove the seat.
