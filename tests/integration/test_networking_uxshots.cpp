@@ -13,6 +13,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -466,7 +467,55 @@ struct LineBShotState
 {
     bool finished = false;
     int captures = 0;
+    int alert_pixels = -1;
+    int healthy_pixels = -1;
 };
+
+// Line B is one 8px text row inked by strip_text(10, 17, line_b, color), and
+// the alert "KICKED BY HOST" is 14 glyphs at 6px each -- so x in [10, 94) is
+// entirely inside the readability strip strip_text paints behind the text,
+// never raw backdrop. Count that band's ink in the ALERT colour (ORANGE_START)
+// and in the healthy-census colour (WHITE): the alert must own line B, and no
+// healthy text may share the band.
+//
+// query_palette_reg reports 6-bit components (the same /4 scaling
+// sdl_video::get_pixel(x, y, index) uses), so the screen's 8-bit readback is
+// scaled to match.
+void count_line_b_ink(LineBShotState* state)
+{
+    screen* scr = og::runtime::current_session->myscreen_;
+    int alert_r = 0, alert_g = 0, alert_b = 0;
+    int healthy_r = 0, healthy_g = 0, healthy_b = 0;
+    query_palette_reg(ORANGE_START, &alert_r, &alert_g, &alert_b);
+    query_palette_reg(WHITE, &healthy_r, &healthy_g, &healthy_b);
+
+    int alert_pixels = 0;
+    int healthy_pixels = 0;
+    {
+        PresentedFramePause frame_pause;
+        if (!frame_pause.acquired())
+            return;
+        const int band_bottom = 17 + scr->text_normal.sizey;
+        for (int y = 17; y < band_bottom; ++y)
+        {
+            for (int x = 10; x < 94; ++x)
+            {
+                Uint8 r = 0, g = 0, b = 0;
+                scr->get_pixel(x, y, &r, &g, &b);
+                const int qr = r / 4, qg = g / 4, qb = b / 4;
+                if (qr == alert_r && qg == alert_g && qb == alert_b)
+                    ++alert_pixels;
+                else if (qr == healthy_r && qg == healthy_g &&
+                         qb == healthy_b)
+                    ++healthy_pixels;
+            }
+        }
+    }
+    fprintf(stderr, "  [netshot] line B: alert=%d healthy=%d\n", alert_pixels,
+            healthy_pixels);
+    state->alert_pixels = alert_pixels;
+    state->healthy_pixels = healthy_pixels;
+}
 
 int basecamp_kicked_injector(void* data)
 {
@@ -476,6 +525,7 @@ int basecamp_kicked_injector(void* data)
     {
         SDL_Delay(1500);
         state->captures += capture_frame("basecamp_kicked_by_host");
+        count_line_b_ink(state);
         SDL_Delay(200);
         interact("back");
     }
@@ -520,4 +570,12 @@ TEST(NetworkingUxShots, basecamp_kicked_by_host_line_b)
 
     ASSERT_TRUE(state.finished);
     ASSERT_EQ(1, state.captures);
+    // menu_screen_specs.cpp's networked line-B path: compose_base_camp_line_b
+    // is fed picker_lobby_connection_alert(), and an alert outranks both the
+    // healthy census and any toast -- drawn in ORANGE_START, which is what
+    // tells a kicked joiner why the lobby changed.
+    EXPECT_GT(state.alert_pixels, 0)
+        << "the KICKED BY HOST alert must own line B in the alert colour";
+    EXPECT_EQ(0, state.healthy_pixels)
+        << "no healthy (WHITE) census text may share the line-B band";
 }
