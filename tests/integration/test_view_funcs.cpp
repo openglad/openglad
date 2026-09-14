@@ -63,6 +63,10 @@ TEST(ViewFuncs, compute_hp_color_low)
 {
     unsigned char c = compute_hp_color(20.0f, 100.0f);
     ASSERT_EQ((int)LOW_HP_COLOR, (int)c) << "low HP should return LOW_HP_COLOR";
+    // The hp == 0 end of the same band (folded in from ViewDraw's
+    // c > 0 ranges test, which every HP colour constant satisfied).
+    ASSERT_EQ((int)LOW_HP_COLOR, (int)compute_hp_color(0.0f, 100.0f))
+        << "a dead bar is still the low-HP colour";
 }
 
 
@@ -125,8 +129,20 @@ TEST(ViewFuncs, viewscreen_set_display_text)
     vs->clear_text();
 
     vs->set_display_text("Hello", 10);
-    ASSERT_TRUE(!vs->textlist[0].empty()) << "textlist[0] should not be empty after set_display_text";
+    ASSERT_EQ("Hello", vs->textlist[0])
+        << "set_display_text must put THIS line in the first free slot";
     ASSERT_EQ(10, (int)vs->textcycles[0]) << "textcycles[0] should be 10";
+
+    // A second line takes the NEXT free slot with its OWN cycle count; it
+    // must not overwrite slot 0 (folded in from ViewDraw's assertion-free
+    // set_display_text_twice).
+    vs->set_display_text("Goodbye", 20);
+    ASSERT_EQ("Hello", vs->textlist[0])
+        << "a second line must not overwrite the first";
+    ASSERT_EQ(10, (int)vs->textcycles[0]) << "slot 0 keeps its own cycles";
+    ASSERT_EQ("Goodbye", vs->textlist[1])
+        << "successive lines occupy successive slots";
+    ASSERT_EQ(20, (int)vs->textcycles[1]) << "slot 1 carries its own cycles";
 }
 
 

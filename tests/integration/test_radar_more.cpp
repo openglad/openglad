@@ -56,6 +56,35 @@ static void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
                                         static_cast<unsigned char>(gh), buf);
 }
 
+// Palette index the radar actually painted at a grid cell.
+int blip_index_at(const radar& r, int grid_x, int grid_y)
+{
+    int index = 0;
+    og::runtime::current_session->myscreen_->get_pixel(
+        r.xloc + grid_x - r.radarx, r.yloc + grid_y - r.radary, &index);
+    return index;
+}
+
+std::array<int, 3> blip_rgb_at(const radar& r, int grid_x, int grid_y)
+{
+    Uint8 red = 0;
+    Uint8 green = 0;
+    Uint8 blue = 0;
+    og::runtime::current_session->myscreen_->get_pixel(
+        r.xloc + grid_x - r.radarx, r.yloc + grid_y - r.radary,
+        &red, &green, &blue);
+    return {red, green, blue};
+}
+
+std::array<int, 3> palette_rgb(int index)
+{
+    int red = 0;
+    int green = 0;
+    int blue = 0;
+    query_palette_reg(static_cast<unsigned char>(index), &red, &green, &blue);
+    return {red * 4, green * 4, blue * 4};
+}
+
 // These radar pixel tests were authored against the historical 320x200
 // viewport. Keep that exact geometry local to this suite so non-16:10 display
 // aspects cannot move the probes, then restore the live canvas after each test.
@@ -88,9 +117,14 @@ private:
 };
 } // namespace
 
-TEST_F(RadarMore, radar_update_and_draw_covers_key_paths)
+// The radar bake is a pinned tile -> palette table (radar.cpp:838-1015) and
+// the blip pass paints each visible entity's team/descriptor colour at its
+// grid cell. draw() returns the literal 1 on every path including the error
+// path, so the return value alone pins nothing: every colour below is read
+// back out of r.bmp (the bake) and off the painted canvas (the blips).
+TEST_F(RadarMore, radar_bakes_every_terrain_family_and_blips_each_order)
 {
-    FixedRandom fixed_rng(1);
+    FixedRandom fixed_rng(0); // rng(3) -> 0: the jittered ramps sit on base
     GameContext c;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
@@ -98,84 +132,159 @@ TEST_F(RadarMore, radar_update_and_draw_covers_key_paths)
     LevelRuntimeData d(1);
     d.create_new_grid();
 
-    // Place representative tiles to cover many radar::update() switch cases.
-    const std::vector<unsigned char> tiles = {
-        PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4,
-        PIX_GRASS_DARK_1, PIX_GRASS_DARK_2, PIX_GRASS_DARK_3, PIX_GRASS_DARK_4,
-        PIX_GRASS_DARK_LL, PIX_GRASS_DARK_UR, PIX_GRASS_RUBBLE,
-        PIX_GRASS_LIGHT_1, PIX_GRASS_LIGHT_TOP, PIX_GRASS_LIGHT_RIGHT, PIX_GRASS_LIGHT_BOTTOM,
-        PIX_TREE_M1, PIX_TREE_T1, PIX_TREE_B1,
-        PIX_PAVEMENT1, PIX_COBBLE_1, PIX_FLOOR1,
-        PIX_DIRT_1, PIX_DIRT_DARK_1,
-        PIX_CLIFF_TOP, PIX_CARPET_M, PIX_H_WALL1,
-        PIX_WATER1, PIX_WATERGRASS_LL, PIX_GRASSWATER_LL,
-        PIX_WALLSIDE1, PIX_TORCH1,
-    };
-    int idx = 0;
-    for (int y = 0; y < d.world().grid.h && idx < (int)tiles.size(); y++)
-        for (int x = 0; x < d.world().grid.w && idx < (int)tiles.size(); x++)
-            set_tile(d, x, y, tiles[static_cast<std::size_t>(idx++)]);
+    // Cobble everywhere (bakes 17) as the reference "bare terrain" — it must
+    // not be a white, or the white weapon blip below would be invisible
+    // against it. Row 0 then carries one representative of every switch arm.
+    for (int y = 0; y < d.world().grid.h; y++)
+        for (int x = 0; x < d.world().grid.w; x++)
+            set_tile(d, x, y, PIX_COBBLE_1);
 
-    // Place a few objects to exercise radar::draw object filtering and colors.
+    struct TileColor { unsigned char tile; int color; const char* what; };
+    const std::vector<TileColor> row0 = {
+        {PIX_GRASS1,             COLOR_GREEN + 3,  "grass 1"},
+        {PIX_GRASS2,             COLOR_GREEN + 4,  "grass 2"},
+        {PIX_GRASS3,             COLOR_GREEN + 5,  "grass 3"},
+        {PIX_GRASS4,             COLOR_GREEN + 5,  "grass 4"},
+        {PIX_GRASS_DARK_1,       COLOR_GREEN + 3,  "dark grass 1"},
+        {PIX_GRASS_DARK_2,       COLOR_GREEN + 4,  "dark grass 2"},
+        {PIX_GRASS_DARK_3,       COLOR_GREEN + 5,  "dark grass 3"},
+        {PIX_GRASS_DARK_4,       COLOR_GREEN + 5,  "dark grass 4"},
+        {PIX_GRASS_DARK_LL,      COLOR_GREEN + 3,  "dark grass LL (jittered)"},
+        {PIX_GRASS_DARK_UR,      COLOR_GREEN + 3,  "dark grass UR (jittered)"},
+        {PIX_GRASS_RUBBLE,       COLOR_GREEN + 3,  "grass rubble (jittered)"},
+        {PIX_GRASS_LIGHT_1,      COLOR_GREEN + 3,  "light grass (jittered)"},
+        {PIX_GRASS_LIGHT_TOP,    COLOR_GREEN + 3,  "light grass top"},
+        {PIX_GRASS_LIGHT_RIGHT,  COLOR_GREEN + 3,  "light grass right"},
+        {PIX_GRASS_LIGHT_BOTTOM, COLOR_GREEN + 3,  "light grass bottom"},
+        {PIX_TREE_M1,            COLOR_TREES,      "tree middle (jittered)"},
+        {PIX_TREE_T1,            COLOR_TREES,      "tree top (jittered)"},
+        {PIX_TREE_B1,            COLOR_BROWN + 6,  "tree trunk"},
+        {PIX_PAVEMENT1,          17,               "pavement"},
+        {PIX_COBBLE_1,           17,               "cobble"},
+        {PIX_FLOOR1,             COLOR_BROWN + 4,  "wood floor"},
+        {PIX_DIRT_1,             COLOR_BROWN + 5,  "dirt path"},
+        {PIX_DIRT_DARK_1,        COLOR_BROWN + 5,  "dark dirt path"},
+        {PIX_CLIFF_TOP,          COLOR_BROWN + 6,  "cliff"},
+        {PIX_CARPET_M,           COLOR_PURPLE + 4, "carpet"},
+        {PIX_H_WALL1,            24,               "wall"},
+        {PIX_WATER1,             COLOR_BLUE + 2,   "water"},
+        {PIX_WATERGRASS_LL,      COLOR_BLUE + 2,   "water/grass shore"},
+        {PIX_GRASSWATER_LL,      COLOR_BLUE + 2,   "grass/water shore"},
+        {PIX_WALLSIDE1,          COLOR_WHITE - 1,  "wall side"},
+        {PIX_TORCH1,             COLOR_FIRE,       "torch"},
+    };
+    ASSERT_LE(static_cast<int>(row0.size()), d.world().grid.w)
+        << "the sample row must fit the grid";
+    for (int x = 0; x < static_cast<int>(row0.size()); x++)
+        set_tile(d, x, 0, row0[static_cast<std::size_t>(x)].tile);
+
+    // Entities live in rows 2 and 4, clear of the baked sample row.
     walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* friend_living = d.add_ob(Order::Living, FAMILY_ELF);
     walker* enemy_living = d.add_ob(Order::Living, FAMILY_ORC);
+    walker* gen = d.add_ob(Order::Generator, FAMILY_TENT);
     walker* life_gem = d.add_fx_ob(Order::Treasure, FAMILY_LIFE_GEM);
     walker* exit_fx = d.add_fx_ob(Order::Treasure, FAMILY_EXIT);
     walker* gold_fx = d.add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
     walker* weapon = d.add_weap_ob(Order::Weapon, FAMILY_ARROW);
-    walker* gen = d.add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, friend_living);
+    ASSERT_NE(nullptr, enemy_living);
+    ASSERT_NE(nullptr, gen);
+    ASSERT_NE(nullptr, life_gem);
+    ASSERT_NE(nullptr, exit_fx);
+    ASSERT_NE(nullptr, gold_fx);
+    ASSERT_NE(nullptr, weapon);
 
-    if (control) {
-        control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
-        control->set_team_num(1);
-        control->set_view_all(5); // can_see path
-    }
-    if (friend_living) {
-        friend_living->setxy(GRID_SIZE * 3, GRID_SIZE * 2);
-        friend_living->set_team_num(1);
-    }
-    if (enemy_living) {
-        enemy_living->setxy(GRID_SIZE * 4, GRID_SIZE * 2);
-        enemy_living->set_team_num(2);
-        enemy_living->set_invisibility_left(0);
-    }
-    if (weapon) {
-        weapon->setxy(GRID_SIZE * 5, GRID_SIZE * 2);
-        weapon->set_team_num(2);
-    }
-    if (gen) {
-        gen->setxy(GRID_SIZE * 6, GRID_SIZE * 2);
-        gen->set_team_num(2);
-    }
-    if (life_gem) {
-        life_gem->setxy(GRID_SIZE * 2, GRID_SIZE * 4);
-        life_gem->set_team_num(0);
-        life_gem->set_dead(0);
-    }
-    if (exit_fx) {
-        exit_fx->setxy(GRID_SIZE * 3, GRID_SIZE * 4);
-        exit_fx->stats()->set_level(2);
-        exit_fx->set_dead(0);
-    }
-    if (gold_fx) {
-        gold_fx->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
-        gold_fx->set_dead(0);
-    }
+    constexpr int kControlX = 2, kFriendX = 3, kEnemyX = 4, kWeaponX = 5,
+                  kGenX = 6, kRowLiving = 2;
+    constexpr int kGemX = 2, kExitX = 3, kGoldX = 4, kRowTreasure = 4;
+
+    control->setxy(GRID_SIZE * kControlX, GRID_SIZE * kRowLiving);
+    control->set_team_num(1);
+    control->set_view_all(5); // treasure sight: the can_see path
+    friend_living->setxy(GRID_SIZE * kFriendX, GRID_SIZE * kRowLiving);
+    friend_living->set_team_num(1);
+    enemy_living->setxy(GRID_SIZE * kEnemyX, GRID_SIZE * kRowLiving);
+    enemy_living->set_team_num(2);
+    enemy_living->set_invisibility_left(0);
+    weapon->setxy(GRID_SIZE * kWeaponX, GRID_SIZE * kRowLiving);
+    weapon->set_team_num(2);
+    gen->setxy(GRID_SIZE * kGenX, GRID_SIZE * kRowLiving);
+    gen->set_team_num(2);
+    life_gem->setxy(GRID_SIZE * kGemX, GRID_SIZE * kRowTreasure);
+    life_gem->set_team_num(0);
+    life_gem->set_dead(0);
+    exit_fx->setxy(GRID_SIZE * kExitX, GRID_SIZE * kRowTreasure);
+    exit_fx->stats()->set_level(2);
+    exit_fx->set_dead(0);
+    gold_fx->setxy(GRID_SIZE * kGoldX, GRID_SIZE * kRowTreasure);
+    gold_fx->set_dead(0);
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
-    if (!vs)
-        return;
+    ASSERT_NE(nullptr, vs) << "viewscreen exists";
     walker* saved_control = vs->control;
     const short saved_radarstart = vs->radarstart;
     vs->control = control;
-    vs->radarstart = 0; // force radar::start path on first draw
+    vs->radarstart = 0; // force the radar::start path on the first draw
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
     r.force_lower_position = true;
     r.start(&d);
-    ASSERT_TRUE(r.draw(&d) == 1) << "radar draw should succeed";
+
+    // --- the bake: every switch arm lands its pinned palette index --------
+    ASSERT_EQ(static_cast<std::size_t>(d.world().grid.w) *
+                  static_cast<std::size_t>(d.world().grid.h),
+              r.bmp.size())
+        << "the bake must cover the whole grid";
+    for (int x = 0; x < static_cast<int>(row0.size()); x++)
+        EXPECT_EQ(row0[static_cast<std::size_t>(x)].color,
+                  static_cast<int>(r.bmp[static_cast<std::size_t>(x)]))
+            << "radar bake colour for " << row0[static_cast<std::size_t>(x)].what
+            << " (tile id "
+            << static_cast<int>(row0[static_cast<std::size_t>(x)].tile) << ")";
+    EXPECT_EQ(17, static_cast<int>(r.bmp[static_cast<std::size_t>(
+                  kRowLiving * d.world().grid.w)]))
+        << "the untouched rows keep the cobble colour";
+
+    // --- the blips: each order paints its own colour at its own cell ------
+    ASSERT_EQ(1, r.draw(&d)) << "radar draw should succeed";
+    ASSERT_EQ(0, r.radarx) << "the control clamps the radar window to origin";
+    ASSERT_EQ(0, r.radary);
+
+    // Blips are compared as PALETTE RGB, not index: the palette holds several
+    // aliases of the same colour, so an index comparison against the canvas
+    // is not the rule the radar implements.
+    const std::array<int, 3> bare_terrain = blip_rgb_at(r, 20, 20);
+    EXPECT_EQ(palette_rgb(17), bare_terrain)
+        << "the cobble reference cell must reach the canvas unpainted";
+
+    const std::array<int, 3> friend_color =
+        palette_rgb(friend_living->query_team_color());
+    const std::array<int, 3> enemy_color =
+        palette_rgb(enemy_living->query_team_color());
+    EXPECT_NE(friend_color, enemy_color)
+        << "the two team colours must differ or the pins below are vacuous";
+    EXPECT_NE(friend_color, bare_terrain) << "team 1 must show against cobble";
+    EXPECT_NE(enemy_color, bare_terrain) << "team 2 must show against cobble";
+
+    EXPECT_EQ(friend_color, blip_rgb_at(r, kFriendX, kRowLiving))
+        << "a living blips in its own team colour";
+    EXPECT_EQ(enemy_color, blip_rgb_at(r, kEnemyX, kRowLiving))
+        << "an enemy living blips in ITS team colour";
+    EXPECT_EQ(palette_rgb(COLOR_WHITE), blip_rgb_at(r, kWeaponX, kRowLiving))
+        << "an in-flight weapon blips white — the catch-all arm of the "
+           "per-order colour switch, not a team colour";
+    EXPECT_EQ(palette_rgb(gen->query_team_color() + 1),
+              blip_rgb_at(r, kGenX, kRowLiving))
+        << "a generator blips one index above its team colour";
+
+    EXPECT_EQ(palette_rgb(COLOR_YELLOW), blip_rgb_at(r, kGoldX, kRowTreasure))
+        << "the gold bar blips at its descriptor colour (jitter roll 0)";
+    EXPECT_EQ(palette_rgb(COLOR_CYAN), blip_rgb_at(r, kExitX, kRowTreasure))
+        << "the exit blips at its descriptor colour (jitter roll 0)";
+    EXPECT_EQ(bare_terrain, blip_rgb_at(r, kGemX, kRowTreasure))
+        << "the colourless life gem leaves the baked terrain alone";
 
     vs->control = saved_control;
     vs->radarstart = saved_radarstart;
@@ -645,34 +754,6 @@ private:
     EffectFamilyDescriptor descriptor_;
 };
 
-// Palette index the radar actually painted at a grid cell.
-int blip_index_at(const radar& r, int grid_x, int grid_y)
-{
-    int index = 0;
-    og::runtime::current_session->myscreen_->get_pixel(
-        r.xloc + grid_x - r.radarx, r.yloc + grid_y - r.radary, &index);
-    return index;
-}
-
-std::array<int, 3> blip_rgb_at(const radar& r, int grid_x, int grid_y)
-{
-    Uint8 red = 0;
-    Uint8 green = 0;
-    Uint8 blue = 0;
-    og::runtime::current_session->myscreen_->get_pixel(
-        r.xloc + grid_x - r.radarx, r.yloc + grid_y - r.radary,
-        &red, &green, &blue);
-    return {red, green, blue};
-}
-
-std::array<int, 3> palette_rgb(int index)
-{
-    int red = 0;
-    int green = 0;
-    int blue = 0;
-    query_palette_reg(static_cast<unsigned char>(index), &red, &green, &blue);
-    return {red * 4, green * 4, blue * 4};
-}
 } // namespace
 
 // #267: descriptor landmarks can be acting Order::FX entities in oblist,
