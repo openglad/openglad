@@ -5,6 +5,7 @@
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/core/util.h>
 
 #include <gtest/gtest.h>
 
@@ -1697,34 +1698,13 @@ TEST(NetTransport,
         og::sim::deserialize_control_change_message(control_change).has_value());
 }
 
-TEST(NetTransport, interface_is_mockable_and_preserves_message_buffers)
-{
-    MockTransport transport;
-    transport.accept_connections();
-    EXPECT_TRUE(transport.accepting_connections());
-
-    transport.set_connected_peers({7u, 11u});
-    const std::vector<og::sim::PeerId> peers = transport.connected_peers();
-    EXPECT_EQ((std::vector<og::sim::PeerId>{7u, 11u}), peers);
-
-    const std::array<std::uint8_t, 3> outbound = {0xaa, 0xbb, 0xcc};
-    transport.send(7u, outbound.data(), outbound.size());
-    ASSERT_EQ(1u, transport.sent_messages().size());
-    EXPECT_EQ(7u, transport.sent_messages().front().peer_id);
-    EXPECT_EQ((std::vector<std::uint8_t>{0xaa, 0xbb, 0xcc}),
-              transport.sent_messages().front().data);
-
-    transport.queue_received(11u, {0x10, 0x20});
-    const std::vector<og::sim::ReceivedMessage> received = transport.poll();
-    ASSERT_EQ(1u, received.size());
-    EXPECT_EQ(11u, received.front().peer_id);
-    EXPECT_EQ((std::vector<std::uint8_t>{0x10, 0x20}), received.front().data);
-    EXPECT_TRUE(transport.poll().empty());
-
-    transport.disconnect(11u);
-    EXPECT_EQ((std::vector<og::sim::PeerId>{11u}),
-              transport.disconnected_peers());
-}
+// (Removed: NetTransport.interface_is_mockable_and_preserves_message_buffers
+// exercised only MockTransport's own overrides -- accept_connections, send,
+// poll and disconnect are all pure virtual on ITransport -- so it read back
+// vectors the mock had just stored and no product break could redden it.
+// ITransport's real logic is pinned by
+// NetTransport.default_broadcast_sends_payload_to_all_connected_peers and
+// NetTransport.default_poll_typed_decodes_raw_messages.)
 
 TEST(NetTransport, game_client_send_input_uses_raw_fallback)
 {
@@ -1999,14 +1979,42 @@ TEST(NetTransportJitter, held_input_suppresses_automatic_heartbeat_cadence)
     client.poll_messages();
     transport.clear_sent_messages();
 
+    // A heartbeat is DUE: 2100 ms is past the 2 s cadence, and the sibling
+    // NetTransport.game_client_sends_automatic_heartbeats_when_idle proves an
+    // idle client emits one at exactly this elapsed value.
+    client.testing_set_last_outbound_activity_elapsed_ms(2100.0f);
+
     InputState input{};
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     client.send_input(input, 1u);
-    transport.clear_sent_messages();
 
-    client.testing_set_last_outbound_activity_elapsed_ms(1000.0f);
+    // The seat's own frame goes out, and it is the input, not a heartbeat.
+    ASSERT_EQ(1u, transport.sent_messages().size())
+        << "send_input must emit exactly one frame";
+    {
+        const auto expected = og::sim::serialize_input(1u, input);
+        EXPECT_EQ((std::vector<std::uint8_t>(expected.begin(), expected.end())),
+                  transport.sent_messages().front().data)
+            << "the frame is the Input frame (MockTransport has no typed path)";
+    }
+
+    // send_input records outbound activity, so the overdue heartbeat is now
+    // suppressed: a client already talking adds no heartbeat frames.
+    transport.clear_sent_messages();
     client.poll_messages();
-    EXPECT_TRUE(transport.sent_messages().empty());
+    EXPECT_TRUE(transport.sent_messages().empty())
+        << "input activity must suppress the 2 s heartbeat";
+
+    // Paired control: with no input this tick the same overdue clock DOES
+    // emit a heartbeat, so the oracle above is capable of firing.
+    transport.clear_sent_messages();
+    client.testing_set_last_outbound_activity_elapsed_ms(2100.0f);
+    client.poll_messages();
+    ASSERT_EQ(1u, transport.sent_messages().size())
+        << "an idle overdue client still heartbeats";
+    EXPECT_TRUE(
+        og::sim::deserialize_heartbeat_message(transport.sent_messages()[0].data)
+            .has_value());
 }
 
 TEST(NetTransport, game_client_notifies_when_server_is_gone_for_too_long)
@@ -3616,11 +3624,21 @@ TEST(NetTransport, delta_snapshot_arrival_preserves_in_flight_render_alpha)
 
 TEST(NetTransportJitter, interpolation_alpha_uses_rounded_timer_wait_interval)
 {
+    // The interval is ROUNDED to whole milliseconds -- the same value the
+    // pacer schedules on (sim_cadence) -- so the mirror's alpha reaches 1.0
+    // on the tick boundary, not a fraction of a millisecond early.
+    EXPECT_FLOAT_EQ(14.0f, og::core::rounded_render_tick_interval_ms(1, 1.0f))
+        << "1 * 13.6 ms rounds to 14, not 13";
+    EXPECT_FLOAT_EQ(82.0f, og::core::rounded_render_tick_interval_ms(6, 1.0f))
+        << "6 * 13.6 ms rounds to 82, not 81";
+
     MockTransport transport;
     TestGameWorld fixture;
 
-    fixture.world().timer_wait = 6;
-    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS - 1u;
+    // timer_wait 1: rounding moves the interval a detectable amount
+    // (14 vs 13.6 vs a truncated 13), which timer_wait 6 does not.
+    fixture.world().timer_wait = 1;
+    fixture.world().tick_count_ = 1u;
     transport.queue_received(
         7u,
         og::sim::serialize_snapshot(
@@ -3629,8 +3647,11 @@ TEST(NetTransportJitter, interpolation_alpha_uses_rounded_timer_wait_interval)
     og::sim::GameClient client(transport, 7u);
     client.poll_messages();
 
-    client.testing_set_render_interpolation_elapsed_ms(41.0f);
-    EXPECT_NEAR(0.5f, client.render_interpolation_alpha(1.0f), 0.02f);
+    client.testing_set_render_interpolation_elapsed_ms(7.0f);
+    // 7 / 14 == 0.500 exactly; an unrounded 13.6 gives 0.5147 and a
+    // truncated 13 gives 0.538 -- both outside this tolerance.
+    EXPECT_NEAR(0.5f, client.render_interpolation_alpha(1.0f), 0.005f)
+        << "half of the ROUNDED 14 ms interval is alpha 0.5";
 }
 
 TEST(NetTransport,

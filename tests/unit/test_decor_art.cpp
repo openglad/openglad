@@ -12,6 +12,7 @@
  * range (walkputbuffer would repaint it with the team color).
  */
 #include <openglad/core/decordefs.h>
+#include <openglad/interface/base.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/our_palette.h>
 #include <openglad/gameplay/pixie_data.h>
@@ -20,6 +21,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstring>
+#include <iterator>
 #include <string>
 
 namespace {
@@ -105,6 +109,32 @@ constexpr FidelityRow kFidelity[] = {
     {"16dbraz.png", "16floor.png", "16braz1.png", 0}, // shape stencil: exact
 };
 
+// THE art table: the id -> pix file pairing load_decor_data (graphlib.cpp)
+// must reproduce, in the persisted-byte order of decordefs.h. `flame` marks
+// the fire sprites that are allowed into the cycled ORANGE band.
+struct DecorArtRow
+{
+    unsigned char id;
+    const char* file;
+    bool flame;
+};
+
+constexpr DecorArtRow kDecorArt[] = {
+    {DECOR_TORCH1, "16dtorch1.png", true},
+    {DECOR_TORCH2, "16dtorch2.png", true},
+    {DECOR_TORCH3, "16dtorch3.png", true},
+    {DECOR_BRAZIER, "16dbraz.png", true},
+    {DECOR_BOULDER_1, "16dstone1.png", false},
+    {DECOR_BOULDER_2, "16dstone2.png", false},
+    {DECOR_BOULDER_3, "16dstone3.png", false},
+    {DECOR_BOULDER_4, "16dstone4.png", false},
+    {DECOR_PEBBLES, "16dpebble.png", false},
+    {DECOR_COLUMN_BOTTOM, "16colm0.png", false},
+    {DECOR_COLUMN_TOP, "16colm1.png", false},
+    {DECOR_SHRUB, "16dshrub.png", false},
+    {DECOR_BONES, "16dbones.png", false},
+};
+
 } // namespace
 
 TEST(DecorArt, composites_reproduce_the_legacy_combined_tiles)
@@ -147,20 +177,7 @@ TEST(DecorArt, composites_reproduce_the_legacy_combined_tiles)
 
 TEST(DecorArt, palette_budgets_pin_transparency_and_cycled_band_rules)
 {
-    const struct
-    {
-        const char* file;
-        bool flame; // fire sprites keep pixels in the cycled ORANGE band
-    } rows[] = {
-        {"16dtorch1.png", true},  {"16dtorch2.png", true},
-        {"16dtorch3.png", true},  {"16dbraz.png", true},
-        {"16dstone1.png", false}, {"16dstone2.png", false},
-        {"16dstone3.png", false}, {"16dstone4.png", false},
-        {"16dpebble.png", false}, {"16dshrub.png", false},
-        {"16dbones.png", false},  {"16colm0.png", false},
-        {"16colm1.png", false},
-    };
-    for (const auto& row : rows)
+    for (const DecorArtRow& row : kDecorArt)
     {
         const std::string label = row.file;
         const PixieData p = load16(row.file);
@@ -201,14 +218,49 @@ TEST(DecorArt, palette_budgets_pin_transparency_and_cycled_band_rules)
     }
 }
 
-// The registry ids the art table (graphlib.cpp load_decor_data) maps onto are
-// persisted bytes in shipped decor planes; re-pin the count here so an id
-// renumbering that would silently shuffle every level's decor art fails fast.
-TEST(DecorArt, decor_id_space_matches_the_art_table)
+// load_decor_data is what actually wires a persisted decor byte to a sprite.
+// Read the table it fills and compare every slot's pixels against the file
+// that id is contracted to hold: a swapped read_pixie_file line, a dropped
+// slot, or an appended id with no art row all fail here. (The id VALUES
+// themselves are pinned by Decor.registry_ids_and_contract_are_pinned in the
+// same binary; this case pins the ART, which that one never touches.)
+TEST(DecorArt, load_decor_data_fills_every_id_with_its_contracted_sprite)
 {
-    ASSERT_EQ(14, static_cast<int>(DECOR_MAX));
-    ASSERT_EQ(1, static_cast<int>(DECOR_TORCH1));
-    ASSERT_EQ(9, static_cast<int>(DECOR_PEBBLES));
-    ASSERT_EQ(11, static_cast<int>(DECOR_COLUMN_TOP));
-    ASSERT_EQ(13, static_cast<int>(DECOR_BONES));
+    ASSERT_EQ(14, static_cast<int>(DECOR_MAX)) << "append-only id space";
+    ASSERT_EQ(static_cast<std::size_t>(DECOR_MAX) - 1u, std::size(kDecorArt))
+        << "every decor id except DECOR_NONE must have exactly one art row";
+
+    // Every id in 1..DECOR_MAX-1 appears exactly once in the art table.
+    for (int id = 1; id < static_cast<int>(DECOR_MAX); ++id)
+    {
+        int rows_for_id = 0;
+        for (const DecorArtRow& row : kDecorArt)
+        {
+            if (static_cast<int>(row.id) == id)
+                ++rows_for_id;
+        }
+        EXPECT_EQ(1, rows_for_id) << "decor id " << id << " art rows";
+    }
+
+    PixieData slots[DECOR_MAX];
+    load_decor_data(slots);
+
+    EXPECT_FALSE(slots[DECOR_NONE].valid())
+        << "slot 0 (DECOR_NONE) must stay empty";
+
+    for (const DecorArtRow& row : kDecorArt)
+    {
+        const int id = static_cast<int>(row.id);
+        ASSERT_TRUE(slots[id].valid())
+            << "slot " << id << " must be loaded from " << row.file;
+        EXPECT_EQ(16, static_cast<int>(slots[id].w)) << row.file;
+        EXPECT_EQ(16, static_cast<int>(slots[id].h)) << row.file;
+        EXPECT_EQ(1, static_cast<int>(slots[id].frames)) << row.file;
+
+        const PixieData want = load16(row.file);
+        ASSERT_TRUE(want.valid()) << row.file;
+        EXPECT_EQ(0, std::memcmp(slots[id].data.get(), want.data.get(),
+                                 static_cast<std::size_t>(kTilePixels)))
+            << "slot " << id << " must hold the pixels of " << row.file;
+    }
 }

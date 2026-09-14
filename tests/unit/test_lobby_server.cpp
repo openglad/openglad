@@ -1864,8 +1864,9 @@ TEST(LobbyServer, settings_change_reteams_out_of_range_players)
     server.poll_incoming_messages();
 
     ASSERT_EQ(2u, server.state().players.size());
-    EXPECT_GE(server.state().players[1].team, 0);
-    EXPECT_NE(3, server.state().players[1].team);
+    EXPECT_EQ(0, server.state().players[1].team)
+        << "a stranded seat lands on lobby_first_selectable_team(mask 0b0111) "
+           "== 0, deterministically -- not merely 'somewhere in range'";
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
     ASSERT_EQ(2u, transport.sent_messages().size());

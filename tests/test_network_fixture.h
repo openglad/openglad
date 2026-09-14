@@ -424,11 +424,25 @@ public:
     {
         ensure_initial_sync();
 
-        for (std::uint32_t tick_index = 0; tick_index < tick_count; ++tick_index)
+        // #239 LAUNCH GATE, over a real socket: initial_sync() returns as soon
+        // as the CLIENTS have sent their ready frames, but the server only
+        // learns of them when it next polls, so the opening steps of a
+        // websocket run are spent on a held gate and tick nothing at all. Left
+        // alone, a loaded runner burned the whole budget that way and the run
+        // "succeeded" having simulated zero ticks (every client mirror agreed
+        // with a server frozen at tick 0). Those steps are handshake, not
+        // simulation: retry them on the clock instead of charging them to the
+        // caller's tick budget. The retry is scoped to the level-start window
+        // — the gate is level-start-only — and to websocket transports, so a
+        // caller that deliberately steps under a mid-level pause or a
+        // declining apply_polled_inputs keeps today's semantics exactly.
+        const auto gate_deadline =
+            std::chrono::steady_clock::now() + config_.network_timeout;
+
+        for (std::uint32_t done = 0; done < tick_count;)
         {
-            const std::uint32_t next_tick =
-                server_world_.world().tick_count_ + 1;
-            send_client_inputs(next_tick);
+            const std::uint32_t before = server_world_.world().tick_count_;
+            send_client_inputs(before + 1);
             step_server_once();
             poll_clients_for_server_tick();
             // A failed catch-up wait already burned the full network timeout;
@@ -436,6 +450,15 @@ public:
             // into an hour-long run. Stop at the first fatal failure.
             if (::testing::Test::HasFatalFailure())
                 return;
+            if (server_world_.world().tick_count_ != before ||
+                !uses_websocket_transport() || before != 0)
+            {
+                ++done;
+                continue;
+            }
+            ASSERT_LT(std::chrono::steady_clock::now(), gate_deadline)
+                << "the #239 launch gate never opened: the server stayed at "
+                   "tick 0 for the whole network timeout";
         }
     }
 

@@ -891,6 +891,12 @@ TEST(NetTransportInProcess, network_fixture_loads_ticks_and_keeps_client_in_sync
     });
 
     fixture.run();
+    // expect_clients_match_server() is satisfied by a tick-0 mirror of a
+    // tick-0 server, so pin that the run actually simulated.
+    ASSERT_EQ(10u, fixture.server_world().tick_count_)
+        << "the fixture must actually simulate 10 ticks";
+    ASSERT_EQ(10u, fixture.client(0).last_seen_server_tick())
+        << "the mirror must have applied tick 10";
     fixture.expect_clients_match_server();
 }
 
@@ -1622,6 +1628,14 @@ TEST(NetTransportInProcess, network_fixture_keeps_two_clients_in_sync)
     fixture.initial_sync();
     fixture.step_ticks(3);
 
+    // Two frozen mirrors of a frozen server "match": pin the simulation.
+    ASSERT_EQ(3u, fixture.server_world().tick_count_)
+        << "three steps must simulate three ticks";
+    for (std::size_t i = 0; i < 2; ++i)
+    {
+        EXPECT_EQ(3u, fixture.client(i).last_seen_server_tick())
+            << "client " << i << " must have applied tick 3";
+    }
     fixture.expect_clients_match_server();
 }
 
@@ -1639,6 +1653,15 @@ TEST(NetTransportInProcess, network_fixture_keeps_four_clients_in_sync)
     fixture.initial_sync();
     fixture.step_ticks(3);
 
+    // Same hole at four seats: four mirrors that never received a delta are
+    // "in sync" with a server that never produced one.
+    ASSERT_EQ(3u, fixture.server_world().tick_count_)
+        << "three steps must simulate three ticks";
+    for (std::size_t i = 0; i < 4; ++i)
+    {
+        EXPECT_EQ(3u, fixture.client(i).last_seen_server_tick())
+            << "client " << i << " must have applied tick 3";
+    }
     fixture.expect_clients_match_server();
 }
 
