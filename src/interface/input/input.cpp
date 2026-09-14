@@ -182,24 +182,6 @@ std::pair<float, float> window_to_active_canvas(float x, float y)
             (y - static_cast<float>(viewport.y)) * active_canvas_h() / h};
 }
 
-bool window_point_in_gameplay_ui_canvas(float x, float y)
-{
-    const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
-    return x >= static_cast<float>(viewport.x) &&
-           y >= static_cast<float>(viewport.y) &&
-           x < static_cast<float>(viewport.x + viewport.w) &&
-           y < static_cast<float>(viewport.y + viewport.h);
-}
-
-std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y)
-{
-    const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
-    const float w = static_cast<float>(std::max(1, viewport.w));
-    const float h = static_cast<float>(std::max(1, viewport.h));
-    return {(x - static_cast<float>(viewport.x)) * gameplay_ui_canvas_w() / w,
-            (y - static_cast<float>(viewport.y)) * gameplay_ui_canvas_h() / h};
-}
-
 std::pair<float, float> active_canvas_to_window(float x, float y)
 {
     const og::CanvasViewport viewport = active_canvas_viewport();

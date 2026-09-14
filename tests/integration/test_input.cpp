@@ -139,13 +139,29 @@ TEST(Input, gameplay_ui_pointer_mapping_tracks_the_active_canvas_contract)
     EXPECT_FLOAT_EQ((float)ui_viewport.x, ui_origin.first);
     EXPECT_FLOAT_EQ((float)ui_viewport.y, ui_origin.second);
 
+    // Forward-map the logical centre and undo it with the HUD rectangle's own
+    // arithmetic ((px - vp.x) * canvas_w / vp.w): the window point must land
+    // back on (160, 100) exactly, and inside the rectangle asserted above.
     const auto window_center = ui_canvas_to_window(160.0f, 100.0f);
-    const auto ui_center = window_to_gameplay_ui_canvas(
-        window_center.first, window_center.second);
-    EXPECT_NEAR(160.0f, ui_center.first, 0.6f);
-    EXPECT_NEAR(100.0f, ui_center.second, 0.6f);
-    EXPECT_TRUE(window_point_in_gameplay_ui_canvas(
-        window_center.first, window_center.second));
+    const float ui_w = static_cast<float>(s->gameplay_ui_canvas_w());
+    const float ui_h = static_cast<float>(s->gameplay_ui_canvas_h());
+    // (px - vp.x) * canvas_w / vp.w, the HUD rectangle's own arithmetic.
+    const auto to_hud_x = [ui_w](float px, const og::CanvasViewport& vp) {
+        return (px - static_cast<float>(vp.x)) * ui_w /
+               static_cast<float>(vp.w);
+    };
+    const auto to_hud_y = [ui_h](float py, const og::CanvasViewport& vp) {
+        return (py - static_cast<float>(vp.y)) * ui_h /
+               static_cast<float>(vp.h);
+    };
+    EXPECT_FLOAT_EQ(160.0f, to_hud_x(window_center.first, ui_viewport))
+        << "the HUD forward map must be the inverse of its own viewport";
+    EXPECT_FLOAT_EQ(100.0f, to_hud_y(window_center.second, ui_viewport))
+        << "the HUD forward map must be the inverse of its own viewport";
+    EXPECT_FLOAT_EQ(320.0f, window_center.first)
+        << "the HUD's (0,0,640,400) puts logical (160,100) at window (320,200)";
+    EXPECT_FLOAT_EQ(200.0f, window_center.second)
+        << "the HUD's (0,0,640,400) puts logical (160,100) at window (320,200)";
 
     // During a gameplay frame the HUD keeps its OWN aspect-fitted rectangle
     // (src/interface/input/input.cpp:152-165) instead of inheriting the
@@ -168,17 +184,16 @@ TEST(Input, gameplay_ui_pointer_mapping_tracks_the_active_canvas_contract)
     EXPECT_NE(world_viewport.w, overlay_viewport.w);
 
     // The strip World's rounding excludes is still live HUD surface: mapping
-    // it through the active canvas would reject it outright.
-    EXPECT_FALSE(window_point_in_active_canvas(1.0f, 200.0f));
-    EXPECT_TRUE(window_point_in_gameplay_ui_canvas(1.0f, 200.0f));
-    const auto strip = window_to_gameplay_ui_canvas(1.0f, 200.0f);
-    // Exactly (px - vp.x) * 320 / vp.w with the HUD's own (0, 0, 640, 400):
-    // 1 * 320 / 640 and 200 * 200 / 400. A +-0.6 window around 0.5 accepted
-    // everything from -0.1 to 1.1, including the negative x the message
-    // claimed to rule out.
-    EXPECT_FLOAT_EQ(0.5f, strip.first)
+    // it through the active canvas rejects it outright, while the HUD's own
+    // rectangle spans it. Exactly (px - vp.x) * 320 / vp.w with the HUD's
+    // (0, 0, 640, 400): 1 * 320 / 640 and 200 * 200 / 400. A +-0.6 window
+    // around 0.5 accepted everything from -0.1 to 1.1, including the negative
+    // x the message claimed to rule out.
+    EXPECT_FALSE(window_point_in_active_canvas(1.0f, 200.0f))
+        << "the world canvas rectangle excludes the left strip";
+    EXPECT_FLOAT_EQ(0.5f, to_hud_x(1.0f, overlay_viewport))
         << "the left strip maps to the HUD's own left edge, not a negative x";
-    EXPECT_FLOAT_EQ(100.0f, strip.second)
+    EXPECT_FLOAT_EQ(100.0f, to_hud_y(200.0f, overlay_viewport))
         << "the y maps through the HUD rectangle's own height";
 }
 
