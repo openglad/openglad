@@ -77,20 +77,67 @@ TEST(Input, gameplay_ui_pointer_mapping_tracks_the_active_canvas_contract)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, s);
-    const CanvasTarget saved_target = s->active_canvas();
+    ASSERT_NE(nullptr, E_Screen);
+    // Everything this test changes -- active canvas, world zoom canvas, and
+    // the fitted window viewport -- is restored even on a fatal assertion.
     struct CanvasGuard
     {
         screen* value;
         CanvasTarget target;
-        ~CanvasGuard() { value->set_active_canvas(target); }
-    } guard{s, saved_target};
+        int win_w = 0;
+        int win_h = 0;
+        float window_w = og::runtime::current_session->window_w_;
+        float window_h = og::runtime::current_session->window_h_;
+        float overscan = og::runtime::current_session->overscan_percentage_;
+        CanvasGuard(screen* v, CanvasTarget t) : value(v), target(t)
+        {
+            SDL_GetWindowSize(E_Screen->window, &win_w, &win_h);
+        }
+        ~CanvasGuard()
+        {
+            E_Screen->discard_gameplay_ui_frame();
+            E_Screen->set_world_zoom(og::kZoomStepsMax,
+                                     og::WorldScaleMode::Integer, win_w, win_h);
+            value->set_active_canvas(target);
+            og::runtime::current_session->window_w_ = window_w;
+            og::runtime::current_session->window_h_ = window_h;
+            og::runtime::current_session->overscan_percentage_ = overscan;
+            update_overscan_setting();
+            value->relayout_views();
+        }
+    } guard{s, s->active_canvas()};
 
+    // Put the world canvas on dimensions the HUD does NOT share: at zoom 0.9
+    // the scaler-safe rounding makes World 352x222, whose aspect differs from
+    // the fixed 320x200 overlay, so the two fitted rectangles cannot coincide.
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 400;
+    og::runtime::current_session->overscan_percentage_ = 0.0f;
+    update_overscan_setting();
+    E_Screen->set_world_zoom(9, og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(352, s->world_canvas_w()) << "precondition: a split world canvas";
+    ASSERT_EQ(222, s->world_canvas_h());
+    ASSERT_EQ(320, s->gameplay_ui_canvas_w()) << "the HUD stays at classic density";
+    ASSERT_EQ(200, s->gameplay_ui_canvas_h());
+    ASSERT_NE(s->world_canvas_w(), s->gameplay_ui_canvas_w())
+        << "precondition: the two canvases must differ for the branches to differ";
+
+    // While UI is the active canvas the HUD mapping IS the active mapping.
     s->set_active_canvas(CanvasTarget::UI);
     const og::CanvasViewport ui_viewport = gameplay_ui_canvas_viewport();
     EXPECT_EQ(active_canvas_viewport().x, ui_viewport.x);
     EXPECT_EQ(active_canvas_viewport().y, ui_viewport.y);
     EXPECT_EQ(active_canvas_viewport().w, ui_viewport.w);
     EXPECT_EQ(active_canvas_viewport().h, ui_viewport.h);
+    EXPECT_EQ(0, ui_viewport.x) << "320x200 fills a 640x400 viewport exactly";
+    EXPECT_EQ(0, ui_viewport.y);
+    EXPECT_EQ(640, ui_viewport.w);
+    EXPECT_EQ(400, ui_viewport.h);
+
+    // An absolute anchor, so a round trip cannot cancel a wrong rectangle out.
+    const auto ui_origin = ui_canvas_to_window(0.0f, 0.0f);
+    EXPECT_FLOAT_EQ((float)ui_viewport.x, ui_origin.first);
+    EXPECT_FLOAT_EQ((float)ui_viewport.y, ui_origin.second);
 
     const auto window_center = ui_canvas_to_window(160.0f, 100.0f);
     const auto ui_center = window_to_gameplay_ui_canvas(
@@ -100,12 +147,33 @@ TEST(Input, gameplay_ui_pointer_mapping_tracks_the_active_canvas_contract)
     EXPECT_TRUE(window_point_in_gameplay_ui_canvas(
         window_center.first, window_center.second));
 
-    // During a gameplay frame the HUD uses its independently fitted overlay
-    // canvas even though world rendering is active.
+    // During a gameplay frame the HUD keeps its OWN aspect-fitted rectangle
+    // (src/interface/input/input.cpp:152-165) instead of inheriting the
+    // world canvas's rounded one -- otherwise every touch target is skewed.
     s->set_active_canvas(CanvasTarget::World);
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active())
+        << "a split world canvas must allocate the fixed HUD overlay";
     const og::CanvasViewport overlay_viewport = gameplay_ui_canvas_viewport();
-    EXPECT_GT(overlay_viewport.w, 0);
-    EXPECT_GT(overlay_viewport.h, 0);
+    const og::CanvasViewport world_viewport = active_canvas_viewport();
+    EXPECT_EQ(ui_viewport.x, overlay_viewport.x)
+        << "the World-frame HUD rectangle is the same one the UI frame used";
+    EXPECT_EQ(ui_viewport.y, overlay_viewport.y);
+    EXPECT_EQ(ui_viewport.w, overlay_viewport.w);
+    EXPECT_EQ(ui_viewport.h, overlay_viewport.h);
+    EXPECT_EQ(3, world_viewport.x) << "352x222 fits with a horizontal letterbox";
+    EXPECT_EQ(634, world_viewport.w);
+    EXPECT_NE(world_viewport.x, overlay_viewport.x)
+        << "inheriting the world rectangle would offset every touch target";
+    EXPECT_NE(world_viewport.w, overlay_viewport.w);
+
+    // The strip World's rounding excludes is still live HUD surface: mapping
+    // it through the active canvas would reject it outright.
+    EXPECT_FALSE(window_point_in_active_canvas(1.0f, 200.0f));
+    EXPECT_TRUE(window_point_in_gameplay_ui_canvas(1.0f, 200.0f));
+    const auto strip = window_to_gameplay_ui_canvas(1.0f, 200.0f);
+    EXPECT_NEAR(0.5f, strip.first, 0.6f)
+        << "the left strip maps to the HUD's own left edge, not a negative x";
 }
 
 
