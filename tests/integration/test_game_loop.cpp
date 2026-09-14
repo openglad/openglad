@@ -8388,8 +8388,7 @@ TEST(GameLoop, host_and_join_soccer_camera_insets_on_a_one_seat_machine)
         const auto [block_w, block_h] = radar_block_extents(
             display->world().grid.w, display->world().grid.h);
         const RadarBlock block = radar_block_for_pane(
-            pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
-            /*force_lower=*/false);
+            pane.x + pane.w, pane.y + pane.h, block_w, block_h);
         EXPECT_EQ(block.x, display->camera_view_->xloc);
         EXPECT_EQ(block.y - block.margin - block.h,
                   display->camera_view_->yloc);
@@ -8443,8 +8442,7 @@ TEST(GameLoop, host_and_join_basketball_camera_is_compact)
         const auto [block_w, block_h] = radar_block_extents(
             display->world().grid.w, display->world().grid.h);
         const RadarBlock radar = radar_block_for_pane(
-            pane.y, pane.x + pane.w, pane.y + pane.h, block_w, block_h,
-            /*force_lower=*/false);
+            pane.x + pane.w, pane.y + pane.h, block_w, block_h);
         EXPECT_EQ(radar.x, display->camera_view_->xloc);
         EXPECT_EQ(radar.y - radar.margin - radar.h,
                   display->camera_view_->yloc);

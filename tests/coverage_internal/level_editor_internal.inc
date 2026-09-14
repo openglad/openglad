@@ -1426,12 +1426,12 @@ int level_editor_test_exercise_internal_helpers()
         data.mode = Mode::Terrain;
         data.reset_mode_buttons();
         data.update_menu_buttons();
-        data.pan_buttons.insert(&data.panLeftButton);
-        data.pan_buttons.insert(&data.panRightButton);
-        data.pan_buttons.insert(&data.panUpButton);
-        data.pan_buttons.insert(&data.panDownButton);
         check(data.mouse_on_menus(data.terrainSmoothButton.area.x + 1, data.terrainSmoothButton.area.y + 1));
-        check(data.mouse_on_menus(data.panLeftButton.area.x + 1, data.panUpButton.area.y + 1));
+        // The bottom-left strip the retired touch pan buttons used to claim
+        // (x 9..54, y 149..194 -- PR #292 deleted the feature) is plain world:
+        // mouse_on_menus must NOT swallow a click there, or every terrain
+        // stroke in that corner would be eaten by a phantom menu.
+        check(!data.mouse_on_menus(10, 160));
         check(!data.mouse_on_menus(200, 170));
 
         data.current_menu.clear();
@@ -1904,10 +1904,6 @@ int level_editor_test_exercise_internal_helpers()
             data.reset_mode_buttons();
             const auto gore_overrides_before = cfg.overrides;
             cfg.apply_override("effects", "gore", "on");
-            data.pan_buttons.insert(&data.panLeftButton);
-            data.pan_buttons.insert(&data.panRightButton);
-            data.pan_buttons.insert(&data.panUpButton);
-            data.pan_buttons.insert(&data.panDownButton);
             MouseState& panel_mouse = query_mouse_no_poll();
             panel_mouse.left = false;
             panel_mouse.right = false;

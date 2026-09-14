@@ -1150,7 +1150,6 @@ TEST(ModeUi, radar_landmark_families_blip_without_treasure_sight)
     vs->radarstart = 0;
 
     radar r(vs, test_screen(), 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     trace_clear();
@@ -1220,7 +1219,6 @@ TEST(ModeUi, radar_ping_families_take_the_loud_blip_path)
     vs->radarstart = 0;
 
     radar r(vs, test_screen(), 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     trace_clear();
@@ -1282,7 +1280,6 @@ TEST(ModeUi, radar_draws_beacon_blips_in_beacon_team_color)
     vs->radarstart = 0;
 
     radar r(vs, test_screen(), 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     trace_clear();

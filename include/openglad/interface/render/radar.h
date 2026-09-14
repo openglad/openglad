@@ -51,12 +51,10 @@ struct RadarBlock
 // the unclamped RADAR_X/RADAR_Y.
 [[nodiscard]] std::pair<int, int> radar_block_extents(int grid_w, int grid_h);
 
-// The w x h block anchored inside a view pane whose top edge is pane_yloc and
-// whose right/bottom edges are pane_endx/pane_endy. force_lower is the level
-// editor's minimap placement (touch builds only).
-[[nodiscard]] RadarBlock radar_block_for_pane(int pane_yloc, int pane_endx,
-                                              int pane_endy, int w, int h,
-                                              bool force_lower);
+// The w x h block anchored bottom-right inside a view pane whose right/bottom
+// edges are pane_endx/pane_endy.
+[[nodiscard]] RadarBlock radar_block_for_pane(int pane_endx, int pane_endy,
+                                              int w, int h);
 
 class radar
 {
@@ -89,7 +87,6 @@ class radar
 		// override) changes; single-floor levels never leave floor 0, so
 		// their radar stays pixel-identical to the pre-Z renderer.
 		short bmp_floor_ = 0;
-		bool force_lower_position;
 		short xview = 0;
 		short yview = 0;
 	protected:
