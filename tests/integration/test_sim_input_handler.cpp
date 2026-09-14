@@ -1399,8 +1399,9 @@ TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
 // The Shift modifier is a per-tick HELD state, not an edge: sim_process_player_input
 // republishes it on every tick from is_held(Shift) so the special dispatch below it
 // (and the HUD's SPC/ALT row) sees the modifier exactly while the key is down.
-// Until PR #292 this line sat inside a `#ifndef USE_TOUCH_INPUT` fork whose other
-// arm treated Shift as a one-shot action; the fork is gone and this is the rule.
+// Until PR #292 this line sat inside a retired touch-build `#ifndef` fork whose
+// other arm treated Shift as a one-shot action; the fork is gone and this is the
+// rule.
 // The parity harness cannot pin it -- tests/parity/scenario_runtime.cpp sets
 // shifter_down itself before the tick -- so the pin lives here.
 TEST(SimInputHandler, sim_input_republishes_held_shift_as_shifter_down)

@@ -2103,8 +2103,8 @@ TEST_F(GladHud, score_panel_floor_row_absent_single_floor)
 // The TEAM/FOES counter box is anchored to the TOP of its pane: TEAM at
 // (rm-55, tm+2), FOES at (rm-55, tm+10), inside the box tm+1..tm+16. The
 // 2013 touch build drew both rows 52 px lower (`tm+2 + 44 + 8`) behind a
-// `#ifndef USE_TOUCH_INPUT` fork that no configured build ever selected; the
-// fork is retired (PR #292), so the surviving arm is the only geometry and
+// retired touch-build `#ifndef` fork that no configured build ever selected;
+// the fork is gone (PR #292), so the surviving arm is the only geometry and
 // the band 52 px below it must stay empty.
 TEST_F(GladHud, team_row_sits_at_the_pane_top)
 {
