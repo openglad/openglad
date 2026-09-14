@@ -232,25 +232,6 @@ bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs) {
 // silently agreeing with it.
 constexpr int kUnread = -9;
 
-// Poll the trace buffer from an injector thread. The engine screens trace
-// their own state transitions ("page p/N" from company_list and basecamp), so
-// this is the consumption proof for a click whose effect the button table
-// cannot show: a dropped press leaves the trace absent and the wait fails.
-bool wait_for_trace(const char *category, const char *substring,
-                    int timeout_ms) {
-  int elapsed = 0;
-  const int poll_interval = 25;
-  while (elapsed < timeout_ms) {
-    if (trace_contains(category, substring))
-      return true;
-    SDL_Delay(static_cast<Uint32>(poll_interval));
-    elapsed += poll_interval;
-  }
-  fprintf(stderr, "  [uxshot] TIMEOUT waiting for trace %s/'%s' (%d ms)\n",
-          category, substring, timeout_ms);
-  return false;
-}
-
 // do_outline is a vbutton field, not part of Interactable. The Company List
 // stamps it on the ACTIVE company's row (company_list_rewire), which is where
 // list_companies' newest-first ORDER becomes visible on screen. -1 = no such

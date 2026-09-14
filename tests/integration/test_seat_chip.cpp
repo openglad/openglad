@@ -64,22 +64,6 @@ bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
     return false;
 }
 
-bool wait_for_trace(const char* category, const char* substring,
-                    int timeout_ms)
-{
-    int elapsed = 0;
-    const int poll_interval = 50;
-    while (elapsed < timeout_ms) {
-        if (trace_contains(category, substring))
-            return true;
-        SDL_Delay(poll_interval);
-        elapsed += poll_interval;
-    }
-    fprintf(stderr, "  [interact] TIMEOUT waiting for trace %s/%s (%d ms)\n",
-            category, substring, timeout_ms);
-    return false;
-}
-
 // The sanctioned coordinate injector, aimed at the card's team-square
 // region instead of the button center: last-few-pixels of the face, well
 // inside the chip zone (card_x+46 .. card right edge), mapped through the

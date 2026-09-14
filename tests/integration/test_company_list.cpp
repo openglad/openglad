@@ -236,45 +236,102 @@ int count_fade_between_traces()
 // prevent. Every flow test asserts ASSERT_EQ(0, rc), so a stranded flow is a
 // NAMED failure carrying the stage that stalled instead of a group timeout.
 //
-// Stage ids are <injector ordinal>*10 + <wait ordinal>: unique across the
+// Stage ids are <injector ordinal>*100 + <wait ordinal>: unique across the
 // file, so the number in the message says which wait of which flow died.
-constexpr int kStageOpenRowLoadDoor = 11;
-constexpr int kStageOpenRowRowZero = 12;
-constexpr int kStageOpenRowTeamMenu = 13;
-constexpr int kStageOpenOtherLoadDoor = 21;
-constexpr int kStageOpenOtherRowZero = 22;
-constexpr int kStageOpenOtherTeamMenu = 23;
-constexpr int kStageOpenOtherRosterRow = 24;
-constexpr int kStageDeleteLoadDoor = 31;
-constexpr int kStageDeleteRowOne = 32;
-constexpr int kStageGuardLoadDoor = 41;
-constexpr int kStageGuardRowTwo = 42;
-constexpr int kStagePageLoadDoor = 51;
-constexpr int kStagePageNext = 52;
-constexpr int kStagePageTeamMenu = 53;
-constexpr int kStageBackupsLoadDoor = 61;
-constexpr int kStageBackupsBkDoor = 62;
-constexpr int kStageBackupsEmptyView = 63;
-constexpr int kStageBackupsListReturn = 64;
-constexpr int kStageBackupsMainMenu = 65;
-constexpr int kStageRestoreLoadDoor = 71;
-constexpr int kStageRestoreBkDoor = 72;
-constexpr int kStageRestoreBackupRowMissing = 73;
-constexpr int kStageRestoreTeamMenu = 74;
-constexpr int kStageCorruptBkLoadDoor = 81;
-constexpr int kStageCorruptBkDoor = 82;
-constexpr int kStageCorruptBkRow = 83;
-constexpr int kStageCorruptBkListReturn = 84;
-constexpr int kStageRecoverLoadDoor = 91;
-constexpr int kStageRecoverBkDoor = 92;
-constexpr int kStageRecoverBackupRow = 93;
-constexpr int kStageRecoverTeamMenu = 94;
-constexpr int kStageContinueTornDoor = 101;
-constexpr int kStageContinueTornGoodRow = 102;
-constexpr int kStageContinueTornTeamMenu = 103;
-constexpr int kStageContinueCorruptDoor = 111;
-constexpr int kStageContinueCorruptRow = 112;
-constexpr int kStageContinueCorruptMainMenu = 113;
+// Every wait in every injector has one — settles included — because a wait
+// that fails without a stage is a flow that clicks on into a stalled pump.
+constexpr int kStageOpenRowLoadDoor = 101;
+constexpr int kStageOpenRowLoadDoorSettle = 102;
+constexpr int kStageOpenRowRowZero = 103;
+constexpr int kStageOpenRowRowZeroSettle = 104;
+constexpr int kStageOpenRowTeamMenu = 105;
+constexpr int kStageOpenRowTeamMenuSettle = 106;
+constexpr int kStageOpenOtherLoadDoor = 201;
+constexpr int kStageOpenOtherLoadDoorSettle = 202;
+constexpr int kStageOpenOtherRowZero = 203;
+constexpr int kStageOpenOtherRowZeroSettle = 204;
+constexpr int kStageOpenOtherTeamMenu = 205;
+constexpr int kStageOpenOtherTeamMenuSettle = 206;
+constexpr int kStageOpenOtherRosterRow = 207;
+constexpr int kStageOpenOtherDeployTrace = 208;
+constexpr int kStageOpenOtherDeploySettle = 209;
+constexpr int kStageDeleteLoadDoor = 301;
+constexpr int kStageDeleteLoadDoorSettle = 302;
+constexpr int kStageDeleteRowOne = 303;
+constexpr int kStageDeleteRowOneSettle = 304;
+constexpr int kStageDeleteConfirmNo = 305;
+constexpr int kStageDeleteConfirmNoSettle = 306;
+constexpr int kStageDeleteReapSettle = 307;
+constexpr int kStageGuardLoadDoor = 401;
+constexpr int kStageGuardLoadDoorSettle = 402;
+constexpr int kStageGuardRowTwo = 403;
+constexpr int kStageGuardRowTwoSettle = 404;
+constexpr int kStageGuardTornPopup = 405;
+constexpr int kStageGuardTornSettle = 406;
+constexpr int kStageGuardCorruptPopup = 407;
+constexpr int kStageGuardCorruptSettle = 408;
+constexpr int kStageGuardActivePopup = 409;
+constexpr int kStageGuardActiveSettle = 410;
+constexpr int kStagePageLoadDoor = 501;
+constexpr int kStagePageLoadDoorSettle = 502;
+constexpr int kStagePageNext = 503;
+constexpr int kStagePageNextSettle = 504;
+constexpr int kStagePageFlipped = 505;
+constexpr int kStagePageFlippedSettle = 506;
+constexpr int kStagePageTeamMenu = 507;
+constexpr int kStagePageTeamMenuSettle = 508;
+constexpr int kStageBackupsLoadDoor = 601;
+constexpr int kStageBackupsLoadDoorSettle = 602;
+constexpr int kStageBackupsBkDoor = 603;
+constexpr int kStageBackupsBkDoorSettle = 604;
+constexpr int kStageBackupsEmptyView = 605;
+constexpr int kStageBackupsEmptyViewSettle = 606;
+constexpr int kStageBackupsViewBack = 607;
+constexpr int kStageBackupsListReturn = 608;
+constexpr int kStageBackupsListReturnSettle = 609;
+constexpr int kStageBackupsMainMenu = 610;
+constexpr int kStageBackupsMainMenuSettle = 611;
+constexpr int kStageRestoreLoadDoor = 701;
+constexpr int kStageRestoreLoadDoorSettle = 702;
+constexpr int kStageRestoreBkDoor = 703;
+constexpr int kStageRestoreBkDoorSettle = 704;
+constexpr int kStageRestoreBackupRowMissing = 705;
+constexpr int kStageRestoreBackupRowSettle = 706;
+constexpr int kStageRestoreConfirmNo = 707;
+constexpr int kStageRestoreConfirmNoSettle = 708;
+constexpr int kStageRestoreTeamMenu = 709;
+constexpr int kStageRestoreTeamMenuSettle = 710;
+constexpr int kStageCorruptBkLoadDoor = 801;
+constexpr int kStageCorruptBkLoadDoorSettle = 802;
+constexpr int kStageCorruptBkDoor = 803;
+constexpr int kStageCorruptBkDoorSettle = 804;
+constexpr int kStageCorruptBkRow = 805;
+constexpr int kStageCorruptBkRowSettle = 806;
+constexpr int kStageCorruptBkPopup = 807;
+constexpr int kStageCorruptBkPopupSettle = 808;
+constexpr int kStageCorruptBkViewBack = 809;
+constexpr int kStageCorruptBkListReturn = 810;
+constexpr int kStageCorruptBkListReturnSettle = 811;
+constexpr int kStageRecoverLoadDoor = 901;
+constexpr int kStageRecoverLoadDoorSettle = 902;
+constexpr int kStageRecoverBkDoor = 903;
+constexpr int kStageRecoverBkDoorSettle = 904;
+constexpr int kStageRecoverBackupRow = 905;
+constexpr int kStageRecoverBackupRowSettle = 906;
+constexpr int kStageRecoverTeamMenu = 907;
+constexpr int kStageRecoverTeamMenuSettle = 908;
+constexpr int kStageContinueTornDoor = 1001;
+constexpr int kStageContinueTornDoorSettle = 1002;
+constexpr int kStageContinueTornGoodRow = 1003;
+constexpr int kStageContinueTornGoodRowSettle = 1004;
+constexpr int kStageContinueTornTeamMenu = 1005;
+constexpr int kStageContinueTornTeamMenuSettle = 1006;
+constexpr int kStageContinueCorruptDoor = 1101;
+constexpr int kStageContinueCorruptDoorSettle = 1102;
+constexpr int kStageContinueCorruptRow = 1103;
+constexpr int kStageContinueCorruptRowSettle = 1104;
+constexpr int kStageContinueCorruptMainMenu = 1105;
+constexpr int kStageContinueCorruptMainMenuSettle = 1106;
 
 int abort_flow(FlowState* state, int stage)
 {
@@ -294,6 +351,77 @@ int abort_flow(FlowState* state, int stage)
     return stage;
 }
 
+// --- the exit click ---------------------------------------------------------
+//
+// A flow's LAST click has nobody left to notice it. The injector returns the
+// instant it is sent, so a press the engine dropped — one that landed on the
+// frame a screen was rewiring itself, which the flat settles used to make
+// unlikely by sheer idleness rather than by any rule — leaves picker_main
+// blocked on a screen nobody will ever click again. That is the rc=124 group
+// timeout of B1 arriving through the one door abort_flow does not cover: the
+// happy path. (Seen once, non-deterministically, in a full og_test_basecamp
+// run of the converted file: "clicking back from base camp" was the last line
+// in the log for 870 s.)
+//
+// So the exit click is a CONDITION too: re-sent, one completed frame per
+// attempt, until the main thread publishes main_left. Bounded by that flag
+// and never by a clock — a tail that gave up would strand the very thread it
+// exists to release — and every re-send is logged, so a dropped press leaves
+// evidence instead of a mystery.
+int finish_flow(FlowState* state, const char* exit_id)
+{
+    interact(exit_id);
+    int attempts = 1;
+    while (!state->main_left.load()) {
+        (void)wait_for_menu_frames(1, 250);
+        if (state->main_left.load())
+            break;
+        if (!has_interactable(exit_id))
+            continue;  // the screen took it; picker_main is unwinding
+        ++attempts;
+        fprintf(stderr,
+                "  [test] exit click '%s' not consumed — re-sending "
+                "(attempt %d)\n",
+                exit_id, attempts);
+        interact(exit_id);
+    }
+    state->finished = true;
+    return 0;
+}
+
+// --- settles and handshakes -------------------------------------------------
+//
+// Every wait below is a CONDITION, never a clock. The flows used to settle
+// each screen with a flat 750 ms sleep ("menu-entry settle") and each
+// click-to-click gap with a 400 ms one, on the authority of a fade that does
+// not exist in a TESTING build (FadeBetween is a single SDL_BlitSurface
+// — the #ifdef TESTING branch of src/platform/sdl/video_sdl.cpp). Those 48
+// sleeps proved nothing: not that the incoming screen had composed, not that
+// the click before them had been consumed. Two shapes replace them:
+//
+//  - the screen settle: wait_for_interactable(id) says the button table
+//    carries the id, wait_for_menu_frames(2) says run_menu_screen has
+//    COMPLETED that many frames with it — the incoming screen really
+//    composed, which is what the sleep was pretending to guarantee;
+//
+//  - the consumed-click handshake: after a click whose effect the button
+//    table cannot show (a confirm, a popup, a page flip, a deploy toggle),
+//    wait_for_trace(category, text) on the line the product writes while
+//    DISPATCHING that click, then completed frames so the next click lands on
+//    a rewired screen. A press the engine dropped leaves the trace absent and
+//    fails the wait by name, where the sleep used to hand the next click to
+//    whatever screen happened to be up.
+//
+// Both settles wait for TWO frames, not one. The dispatch trace is written
+// while the press is being handled, which is before the matching mouse-UP has
+// necessarily been drained; the first completed frame can be the one that was
+// already mid-flight when that UP arrived. Two completions put a whole frame
+// between the previous click's release and the next press, so no frame ever
+// sees an UP and a DOWN of two different clicks in one input drain.
+//
+// Both shapes route a failure through abort_flow with their own stage id, so
+// no wait in this file can pass — or die — silently.
+
 // --- open flow -------------------------------------------------------------
 
 int open_row_injector(void* data)
@@ -304,14 +432,16 @@ int open_row_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStageOpenRowLoadDoor);
-    SDL_Delay(750);  // menu-entry settle
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageOpenRowLoadDoorSettle);
     fprintf(stderr, "  [test] clicking LOAD\n");
     interact("load_company");
 
     // The Company List fades in (#237: LOAD is a main-menu door).
     if (!wait_for_interactable("company_row_0", 5000))
         return abort_flow(state, kStageOpenRowRowZero);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageOpenRowRowZeroSettle);
     fprintf(stderr, "  [test] opening company row 0\n");
     // #237 symmetry leg: opening a company leaves the list for Base Camp
     // — a main-menu-boundary crossing, so it fades out and in like every
@@ -322,14 +452,12 @@ int open_row_injector(void* data)
     if (!wait_for_team_menu())
         return abort_flow(state, kStageOpenRowTeamMenu);
     state->saw_team_menu = true;
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageOpenRowTeamMenuSettle);
     state->fades_added_by_open_row =
         count_fade_between_traces() - fades_before_open;
     fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "back");
 }
 
 // --- cross-company lobby re-seed flow (WP7 must-fix) -----------------------
@@ -342,31 +470,37 @@ int open_other_company_and_toggle_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStageOpenOtherLoadDoor);
-    SDL_Delay(750);  // menu-entry settle
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageOpenOtherLoadDoorSettle);
     interact("load_company");
 
     if (!wait_for_interactable("company_row_0", 5000))
         return abort_flow(state, kStageOpenOtherRowZero);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageOpenOtherRowZeroSettle);
     fprintf(stderr, "  [test] opening row 0 (the NON-boot company)\n");
     interact("company_row_0");
 
     if (!wait_for_team_menu())
         return abort_flow(state, kStageOpenOtherTeamMenu);
     state->saw_team_menu = true;
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageOpenOtherTeamMenuSettle);
     // One §3.8 roster mutation: bench roster row 0. The autosave this
     // triggers must write the OPENED company's roster into the OPENED
     // company's file.
     fprintf(stderr, "  [test] toggling deploy on roster row 0\n");
     if (!interact("roster_dep_0"))
         return abort_flow(state, kStageOpenOtherRosterRow);
-    SDL_Delay(400);
+    // The toggle's own dispatch trace is the consumption proof: the opened
+    // company's single soldier is deployed, so row 0 benches it
+    // (src/interface/ui/menu_screen_specs.cpp, base_camp deploy row).
+    if (!wait_for_trace("basecamp", "deploy slot=0 off", 5000))
+        return abort_flow(state, kStageOpenOtherDeployTrace);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageOpenOtherDeploySettle);
     fprintf(stderr, "  [test] clicking back from base camp\n");
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "back");
 }
 
 // --- delete flow -----------------------------------------------------------
@@ -379,16 +513,25 @@ int delete_rows_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStageDeleteLoadDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageDeleteLoadDoorSettle);
     interact("load_company");
 
     if (!wait_for_interactable("company_row_1", 5000))
         return abort_flow(state, kStageDeleteRowOne);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageDeleteRowOneSettle);
     // First X click: the queued NO leaves the company alone.
     fprintf(stderr, "  [test] deleting row 0 (confirm NO)\n");
     interact("company_del_0");
-    SDL_Delay(400);
+    // The confirm prompt is trace-only under TESTING and fires inside the row
+    // dispatch, so this line IS "the first X was consumed"; without it the
+    // second X could land before the first had been dispatched and the queued
+    // NO would answer nothing.
+    if (!wait_for_trace("confirm", "DELETE COMPANY?", 5000))
+        return abort_flow(state, kStageDeleteConfirmNo);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageDeleteConfirmNoSettle);
     // Second X click: the queued YES deletes it (+ its backups).
     fprintf(stderr, "  [test] deleting row 0 (confirm YES)\n");
     interact("company_del_0");
@@ -401,12 +544,12 @@ int delete_rows_injector(void* data)
         SDL_Delay(50);
         elapsed += 50;
     }
-    SDL_Delay(400);
+    // One completed frame after the reap: the post-delete re-scan rewires the
+    // row buttons, and BACK below is clicked by position.
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageDeleteReapSettle);
     fprintf(stderr, "  [test] clicking back from the company list\n");
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "back");
 }
 
 // --- guard flow (torn body, corrupt header, active-slot delete) ------------
@@ -419,27 +562,37 @@ int guard_rows_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStageGuardLoadDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageGuardLoadDoorSettle);
     interact("load_company");
 
     // Rows (ts desc; corrupt sorts last with ts 0): 0 = torn, 1 = active
     // good company, 2 = corrupt.
     if (!wait_for_interactable("company_row_2", 5000))
         return abort_flow(state, kStageGuardRowTwo);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageGuardRowTwoSettle);
     fprintf(stderr, "  [test] opening the torn-body row\n");
     interact("company_row_0");  // popup (trace-only), stays listed
-    SDL_Delay(400);
+    // Each guard click is proven by ITS OWN refusal popup before the next one
+    // is sent: three clicks into the same screen, three distinct traces.
+    if (!wait_for_trace("popup", "LOAD COMPANY: read_failed", 5000))
+        return abort_flow(state, kStageGuardTornPopup);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageGuardTornSettle);
     fprintf(stderr, "  [test] opening the corrupt row\n");
     interact("company_row_2");  // popup COMPANY FILE DAMAGED
-    SDL_Delay(400);
+    if (!wait_for_trace("popup", "COMPANY FILE DAMAGED", 5000))
+        return abort_flow(state, kStageGuardCorruptPopup);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageGuardCorruptSettle);
     fprintf(stderr, "  [test] deleting the active company's row\n");
     interact("company_del_1");  // popup SWITCH FIRST, no confirm
-    SDL_Delay(400);
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    if (!wait_for_trace("popup", "THIS COMPANY IS OPEN - SWITCH FIRST", 5000))
+        return abort_flow(state, kStageGuardActivePopup);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageGuardActiveSettle);
+    return finish_flow(state, "back");
 }
 
 // --- pagination flow --------------------------------------------------------
@@ -452,27 +605,32 @@ int pagination_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStagePageLoadDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStagePageLoadDoorSettle);
     interact("load_company");
 
     // 11 companies span two eight-row pages: the pagers must be live.
     if (!wait_for_interactable("company_page_next", 5000))
         return abort_flow(state, kStagePageNext);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStagePageNextSettle);
     fprintf(stderr, "  [test] flipping to page 2\n");
     interact("company_page_next");
-    SDL_Delay(400);
+    // The page indicator trace is the consumed-click proof AND the retarget
+    // proof: company_row_0 below means the 9th company only on page 2.
+    if (!wait_for_trace("company_list", "page 2/2", 5000))
+        return abort_flow(state, kStagePageFlipped);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStagePageFlippedSettle);
     // Page 2 starts with the 9th company in recency order.
     fprintf(stderr, "  [test] opening the page-2 row\n");
     interact("company_row_0");
     if (!wait_for_team_menu())
         return abort_flow(state, kStagePageTeamMenu);
     state->saw_team_menu = true;
-    SDL_Delay(750);
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStagePageTeamMenuSettle);
+    return finish_flow(state, "back");
 }
 
 // --- backups door + delete-last flow ---------------------------------------
@@ -504,7 +662,8 @@ int backups_and_empty_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStageBackupsLoadDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageBackupsLoadDoorSettle);
     // #237: LOAD is a main-menu door — the Company List crosses the boundary
     // and fades, and the main menu fades again behind it.
     const int fades_before_load = count_fade_between_traces();
@@ -512,7 +671,8 @@ int backups_and_empty_injector(void* data)
 
     if (!wait_for_interactable("company_bak_0", 5000))
         return abort_flow(state, kStageBackupsBkDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageBackupsBkDoorSettle);
     state->fades_added_by_load_door =
         count_fade_between_traces() - fades_before_load;
     fprintf(stderr, "  [test] clicking the BK door\n");
@@ -522,15 +682,21 @@ int backups_and_empty_injector(void* data)
     interact("company_bak_0");  // §2.4: opens the (empty) Backups view
     if (!wait_for_backups_view())
         return abort_flow(state, kStageBackupsEmptyView);
-    SDL_Delay(750);  // menu-entry settle
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageBackupsEmptyViewSettle);
     state->fades_added_by_backups_door =
         count_fade_between_traces() - fades_before_backups;
     fprintf(stderr, "  [test] backing out of the empty backups view\n");
     interact("back");
+    // The sub-view's own BACK trace: the list buttons coming back proves a
+    // screen is up, this proves it was THIS click that left the sub-view.
+    if (!wait_for_trace("company_backups", "back", 5000))
+        return abort_flow(state, kStageBackupsViewBack);
 
     if (!wait_for_interactable("company_del_0", 5000))
         return abort_flow(state, kStageBackupsListReturn);
-    SDL_Delay(400);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageBackupsListReturnSettle);
     // The return leg of the LOAD door: emptying the list exits the
     // screen and re-presents the main menu. Nothing between here and
     // the main menu fades (the confirm is trace-only under TESTING).
@@ -541,17 +707,15 @@ int backups_and_empty_injector(void* data)
     // Back on a re-entered main menu whose gate must hide CONTINUE/LOAD.
     if (!wait_for_interactable("begin_new_game", 10000))
         return abort_flow(state, kStageBackupsMainMenu);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageBackupsMainMenuSettle);
     state->fades_added_by_load_return =
         count_fade_between_traces() - fades_inside_list;
     state->saw_load_hidden_after_empty = !has_interactable("load_company");
     state->saw_continue_hidden_after_empty =
         !has_interactable("continue_game");
     fprintf(stderr, "  [test] quitting from the main menu\n");
-    interact("quit");
-
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "quit");
 }
 
 // --- backups restore flows --------------------------------------------------
@@ -564,12 +728,14 @@ int restore_backup_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStageRestoreLoadDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRestoreLoadDoorSettle);
     interact("load_company");
 
     if (!wait_for_interactable("company_bak_0", 5000))
         return abort_flow(state, kStageRestoreBkDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRestoreBkDoorSettle);
     fprintf(stderr, "  [test] opening the backups view\n");
     interact("company_bak_0");
     // The stranding wait: a company with NO snapshots opens an empty backups
@@ -578,23 +744,25 @@ int restore_backup_injector(void* data)
     // backups_view drives exactly that).
     if (!wait_for_interactable("backup_row_0", 5000))
         return abort_flow(state, kStageRestoreBackupRowMissing);
-    SDL_Delay(750);  // menu-entry settle
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRestoreBackupRowSettle);
     // First click: the queued NO leaves everything alone.
     fprintf(stderr, "  [test] restoring row 0 (confirm NO)\n");
     interact("backup_row_0");
-    SDL_Delay(400);
+    if (!wait_for_trace("confirm", "REWIND TO THIS BACKUP?", 5000))
+        return abort_flow(state, kStageRestoreConfirmNo);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRestoreConfirmNoSettle);
     // Second click: the queued YES rewinds and opens base camp.
     fprintf(stderr, "  [test] restoring row 0 (confirm YES)\n");
     interact("backup_row_0");
     if (!wait_for_team_menu())
         return abort_flow(state, kStageRestoreTeamMenu);
     state->saw_team_menu = true;
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRestoreTeamMenuSettle);
     fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "back");
 }
 
 int corrupt_backup_injector(void* data)
@@ -605,31 +773,37 @@ int corrupt_backup_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStageCorruptBkLoadDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageCorruptBkLoadDoorSettle);
     interact("load_company");
 
     if (!wait_for_interactable("company_bak_0", 5000))
         return abort_flow(state, kStageCorruptBkDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageCorruptBkDoorSettle);
     fprintf(stderr, "  [test] opening the backups view\n");
     interact("company_bak_0");
     if (!wait_for_interactable("backup_row_0", 5000))
         return abort_flow(state, kStageCorruptBkRow);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageCorruptBkRowSettle);
     fprintf(stderr, "  [test] clicking the corrupt backup row\n");
     interact("backup_row_0");  // popup (trace-only), no confirm
-    SDL_Delay(400);
+    if (!wait_for_trace("popup", "BACKUP FILE DAMAGED", 5000))
+        return abort_flow(state, kStageCorruptBkPopup);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageCorruptBkPopupSettle);
     fprintf(stderr, "  [test] backing out of the backups view\n");
     interact("back");
+    if (!wait_for_trace("company_backups", "back", 5000))
+        return abort_flow(state, kStageCorruptBkViewBack);
 
     if (!wait_for_interactable("company_bak_0", 5000))
         return abort_flow(state, kStageCorruptBkListReturn);
-    SDL_Delay(400);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageCorruptBkListReturnSettle);
     fprintf(stderr, "  [test] backing out of the company list\n");
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "back");
 }
 
 int recover_corrupt_company_injector(void* data)
@@ -640,29 +814,30 @@ int recover_corrupt_company_injector(void* data)
 
     if (!wait_for_interactable("load_company", 5000))
         return abort_flow(state, kStageRecoverLoadDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRecoverLoadDoorSettle);
     interact("load_company");
 
     // Row 0 is the corrupt company; its BK door stays available (§2.3 —
     // restore-from-backup IS the recovery path).
     if (!wait_for_interactable("company_bak_0", 5000))
         return abort_flow(state, kStageRecoverBkDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRecoverBkDoorSettle);
     fprintf(stderr, "  [test] opening the corrupt company's backups\n");
     interact("company_bak_0");
     if (!wait_for_interactable("backup_row_0", 5000))
         return abort_flow(state, kStageRecoverBackupRow);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRecoverBackupRowSettle);
     fprintf(stderr, "  [test] restoring the good backup (YES)\n");
     interact("backup_row_0");  // queued YES
     if (!wait_for_team_menu())
         return abort_flow(state, kStageRecoverTeamMenu);
     state->saw_team_menu = true;
-    SDL_Delay(750);
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageRecoverTeamMenuSettle);
+    return finish_flow(state, "back");
 }
 
 // --- CONTINUE failure fallback (§2.9 flow 2) --------------------------------
@@ -675,7 +850,8 @@ int continue_torn_newest_injector(void* data)
 
     if (!wait_for_interactable("continue_game", 5000))
         return abort_flow(state, kStageContinueTornDoor);
-    SDL_Delay(750);  // menu-entry settle
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageContinueTornDoorSettle);
     fprintf(stderr, "  [test] clicking CONTINUE (torn newest)\n");
     interact("continue_game");
 
@@ -683,18 +859,17 @@ int continue_torn_newest_injector(void* data)
     // to the Company List (rows ts desc: 0 = torn newest, 1 = good previous).
     if (!wait_for_interactable("company_row_1", 5000))
         return abort_flow(state, kStageContinueTornGoodRow);
-    SDL_Delay(750);  // menu-entry settle
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageContinueTornGoodRowSettle);
     fprintf(stderr, "  [test] opening the good row from the fallback list\n");
     interact("company_row_1");
     if (!wait_for_team_menu())
         return abort_flow(state, kStageContinueTornTeamMenu);
     state->saw_team_menu = true;
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageContinueTornTeamMenuSettle);
     fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
-
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "back");
 }
 
 int continue_corrupt_only_injector(void* data)
@@ -705,7 +880,8 @@ int continue_corrupt_only_injector(void* data)
 
     if (!wait_for_interactable("continue_game", 5000))
         return abort_flow(state, kStageContinueCorruptDoor);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageContinueCorruptDoorSettle);
     fprintf(stderr, "  [test] clicking CONTINUE (corrupt only company)\n");
     interact("continue_game");
 
@@ -713,18 +889,17 @@ int continue_corrupt_only_injector(void* data)
     // the main menu (nothing opened, nothing switched).
     if (!wait_for_interactable("company_row_0", 5000))
         return abort_flow(state, kStageContinueCorruptRow);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageContinueCorruptRowSettle);
     fprintf(stderr, "  [test] backing out of the fallback list\n");
     interact("back");
 
     if (!wait_for_interactable("begin_new_game", 10000))
         return abort_flow(state, kStageContinueCorruptMainMenu);
-    SDL_Delay(750);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, kStageContinueCorruptMainMenuSettle);
     fprintf(stderr, "  [test] quitting from the re-entered main menu\n");
-    interact("quit");
-
-    state->finished = true;
-    return 0;
+    return finish_flow(state, "quit");
 }
 
 // --- the flow harness -------------------------------------------------------
