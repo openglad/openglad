@@ -288,6 +288,7 @@ TEST(FamilyCleric, r11_turn_and_raise_paths)
 {
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericFixture fx;
+    GameWorld& world = fx.level.world();
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     ASSERT_TRUE(cleric != nullptr);
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
@@ -304,10 +305,31 @@ TEST(FamilyCleric, r11_turn_and_raise_paths)
     cleric->set_shifter_down(0);
     ASSERT_TRUE(!og::test::do_special(desc, cleric));
 
-    // add nearby blood and summon skeleton success path
+    // RAISE UNDEAD success: a bloodstain on a passable tile inside
+    // raise_skeleton_range (60). The old body parked the stain at a
+    // hard-coded (88, 80) and `(void)`-cast the cast, so a refusal on
+    // passability looked identical to a summon -- and the raise-ghost
+    // negatives below only held BECAUSE of that hidden refusal.
     walker* stain = add_stain(fx, 88, 80, 1, FAMILY_SOLDIER);
     ASSERT_TRUE(stain != nullptr);
-    (void)og::test::do_special(desc, cleric);
+    ASSERT_TRUE(place_corpse_in_reach(world, cleric, stain, 60))
+        << "no passable bloodstain spot inside raise_skeleton_range";
+    const short blood_x = stain->xpos();
+    const short blood_y = stain->ypos();
+    cleric->myguy->exp = 0;
+
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "blood on a passable tile inside range must raise a skeleton";
+    EXPECT_EQ(1, stain->dead()) << "the blood is spent by the raise";
+    walker* risen = find_live_family(world, Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, risen) << "a skeleton must be standing where the blood was";
+    EXPECT_EQ(cleric, risen->owner()) << "the skeleton serves its raiser";
+    EXPECT_EQ(0, static_cast<int>(risen->team_num()))
+        << "the skeleton fights on the cleric's team, not the corpse's";
+    EXPECT_EQ(blood_x, risen->xpos()) << "the skeleton rises at the bloodstain";
+    EXPECT_EQ(blood_y, risen->ypos()) << "the skeleton rises at the bloodstain";
+    EXPECT_EQ(45u, cleric->myguy->exp)
+        << "a raised skeleton pays its cleric a flat 45 experience";
 
     // case 3 raise ghost distance fail + no blood
     cleric->set_current_special(3);
@@ -570,9 +592,39 @@ TEST(FamilyCleric, family_mage_r12_descriptor_paths)
     ASSERT_TRUE(og::test::do_special(mage, self));
     ASSERT_TRUE(self->ani_type() == ANI_TELE_OUT);
 
-    // do_special case 5 branch with no targets can fail.
+    // do_special case 5 is heartburst. It used to be `(void)`-cast under a
+    // comment claiming "no targets", but the teleport-out branch above had
+    // already carried the caster 576 px away from the orc -- so the call was
+    // refusing for a reason the test never stated. Put the foe back inside the
+    // 80 + 2 * level = 96 pixel reach and pin the burst the cast plants.
     self->set_current_special(5);
-    (void)og::test::do_special(mage, self);
+    foe->setxy(static_cast<short>(self->xpos() + 8), self->ypos());
+    ASSERT_GE(96, self->distance_to_ob(foe))
+        << "the foe must sit inside heartburst's reach for this arm";
+    self->stats()->set_magicpoints(500.0f);
+    self->stats()->set_special_cost(5, 100);
+    const float busy_before_burst = self->busy();
+    ASSERT_EQ(0u, count_live_family(fx.level.world(), Order::FX, FAMILY_EXPLOSION))
+        << "no burst exists before the cast";
+    ASSERT_TRUE(og::test::do_special(mage, self))
+        << "heartburst must fire when a foe sits inside its range";
+    ASSERT_EQ(1u, count_live_family(fx.level.world(), Order::FX, FAMILY_EXPLOSION))
+        << "one foe in range means exactly one burst";
+    walker* burst = find_live_family(fx.level.world(), Order::FX, FAMILY_EXPLOSION);
+    ASSERT_NE(nullptr, burst) << "heartburst plants an explosion on its target";
+    EXPECT_EQ(self, burst->owner()) << "the burst belongs to the caster";
+    EXPECT_EQ(ANI_EXPLODE, static_cast<int>(burst->ani_type()))
+        << "the burst plays ANI_EXPLODE";
+    EXPECT_EQ(100, static_cast<int>(burst->skip_exit()))
+        << "skip_exit 100 is the legacy 'do not hurt the caster' marker";
+    // The burst pool is (500 MP - 100 slot cost) / 2 = 200, split across the
+    // one foe, and the caster pays that pool out of its own magic.
+    EXPECT_FLOAT_EQ(200.0f, burst->damage())
+        << "each burst carries mp_pool_damage / foe_count";
+    EXPECT_FLOAT_EQ(300.0f, self->stats()->magicpoints())
+        << "the caster pays exactly the damage each burst carries";
+    EXPECT_FLOAT_EQ(busy_before_burst + 5.0f, self->busy())
+        << "heartburst costs the caster 5 ticks of busy";
 }
 
 TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)

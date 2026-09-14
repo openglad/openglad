@@ -298,50 +298,43 @@ TEST(SessionRaii, session_scope_nested_activation)
     cfg2.rng_seed = 222;
     og::runtime::GameSession session2(cfg2);
 
-    screen* baseline = og::runtime::current_session->myscreen_;
+    // myscreen_ is nullptr on every session in this screenless binary, so the
+    // old `current_session->myscreen_ == baseline` tail was nullptr == nullptr
+    // and stayed green under a ~SessionScope that restored nothing. The
+    // session identity pointer is the oracle that actually moves.
+    og::runtime::SessionState* const baseline_session = og::runtime::current_session;
+    og::runtime::GameSession* const baseline_game_session =
+        og::runtime::current_game_session;
 
     {
         auto scope1 = session1.activate();
-        // session1's context should be active
         IRandom* rng1 = ctx().rng;
-        ASSERT_TRUE(rng1 == session1.ctx_.rng);
+        ASSERT_EQ(&session1, og::runtime::current_session)
+            << "the outer activate() must install session1 as current_session";
+        ASSERT_EQ(session1.ctx_.rng, rng1)
+            << "ctx() must resolve to session1's own generator";
 
         {
             auto scope2 = session2.activate();
-            // session2's context should now be active
             IRandom* rng2 = ctx().rng;
-            ASSERT_TRUE(rng2 == session2.ctx_.rng);
-            ASSERT_TRUE(rng2 != rng1);
+            ASSERT_EQ(&session2, og::runtime::current_session)
+                << "the inner activate() must install session2 as current_session";
+            ASSERT_EQ(session2.ctx_.rng, rng2)
+                << "ctx() must resolve to session2's own generator";
+            ASSERT_NE(rng1, rng2)
+                << "the two sessions must not share one generator";
         }
-        // After inner scope: session1 should be active again
-        ASSERT_TRUE(ctx().rng == rng1);
+
+        ASSERT_EQ(&session1, og::runtime::current_session)
+            << "~SessionScope must restore the OUTER session, not the baseline";
+        ASSERT_EQ(rng1, ctx().rng)
+            << "ctx() must follow current_session back to session1";
     }
-    // After outer scope: baseline restored
-    ASSERT_TRUE(og::runtime::current_session->myscreen_ == baseline);
-}
 
-TEST(SessionRaii, session_frame_state_independence)
-{
-    og::runtime::GameSession::Config session_cfg;
-    session_cfg.allocate_screen = false;
-    session_cfg.allocate_prefs = false;
-    session_cfg.install_legacy_globals = false;
-
-    og::runtime::GameSession session1(session_cfg);
-    og::runtime::GameSession session2(session_cfg);
-
-    // Modify frame states independently
-    session1.frame_state_.done = true;
-    session1.frame_state_.currentcycle = 42;
-
-    session2.frame_state_.done = false;
-    session2.frame_state_.currentcycle = 7;
-
-    // Verify they're independent
-    ASSERT_TRUE(session1.frame_state_.done == true);
-    ASSERT_TRUE(session1.frame_state_.currentcycle == 42);
-    ASSERT_TRUE(session2.frame_state_.done == false);
-    ASSERT_TRUE(session2.frame_state_.currentcycle == 7);
+    ASSERT_EQ(baseline_session, og::runtime::current_session)
+        << "the outer ~SessionScope must restore the enclosing session";
+    ASSERT_EQ(baseline_game_session, og::runtime::current_game_session)
+        << "the outer ~SessionScope must restore the enclosing game session";
 }
 
 TEST(SessionRaii, twelve_sessions_coexist)
@@ -368,11 +361,11 @@ TEST(SessionRaii, twelve_sessions_coexist)
         sessions.push_back(std::make_unique<og::runtime::GameSession>(session_cfg));
     }
 
-    // All 12 sessions exist simultaneously
-    ASSERT_EQ(static_cast<size_t>(N), sessions.size());
+    // (`sessions.size() == N` and `make_unique != nullptr` pinned this test's
+    // own push_back loop, not the product; dropped.)
     for (int i = 0; i < N; i++) {
-        ASSERT_NE(nullptr, sessions[static_cast<size_t>(i)]);
-        ASSERT_NE(nullptr, sessions[static_cast<size_t>(i)]->ctx_.rng);
+        ASSERT_NE(nullptr, sessions[static_cast<size_t>(i)]->ctx_.rng)
+            << "session " << i << ": allocate_seeded_rng must leave ctx_.rng set";
     }
 
     // Each session has independent RNG state
@@ -397,24 +390,26 @@ TEST(SessionRaii, twelve_sessions_coexist)
     ASSERT_EQ(static_cast<size_t>(N), unique_values.size())
         << "twelve distinct seeds must give twelve distinct first draws";
 
-    // Each session has independent frame state
-    for (int i = 0; i < N; i++) {
-        sessions[static_cast<size_t>(i)]->frame_state_.currentcycle =
-            static_cast<short>(i);
-    }
-    for (int i = 0; i < N; i++) {
-        ASSERT_TRUE(sessions[static_cast<size_t>(i)]->frame_state_.currentcycle ==
-                  static_cast<short>(i));
-    }
+    // (The frame_state_.currentcycle write/read-back loop that used to sit
+    // here was a plain-struct self-oracle: no product logic ran between the
+    // store and the load. The per-session RNG values above already prove the
+    // twelve sessions hold independent state.)
 
     sessions.clear();
     ASSERT_EQ(baseline_session, og::runtime::current_session)
         << "destroying every session must leave the enclosing session current";
 }
 
-TEST(SessionRaii, session_state_modification_isolation)
+TEST(SessionRaii, draws_on_one_session_do_not_advance_another_sessions_stream)
 {
-    // Modify state in one session, verify others are unaffected.
+    // Rule: each GameSession owns its generator, so 100 draws taken while
+    // session A is active leave session B's stream sitting at seed 2's draw 0.
+    //
+    // The old body compared session_b against a same-seed session_b_fresh --
+    // a constructor that dropped cfg.rng_seed entirely keeps those two equal,
+    // so the comparison stayed green. Pin B against the generator the product
+    // is required to build, SeededRandom(2), and pin A's own seed as the
+    // negative control.
     og::runtime::GameSession::Config session_cfg;
     session_cfg.allocate_screen = false;
     session_cfg.allocate_prefs = false;
@@ -427,7 +422,7 @@ TEST(SessionRaii, session_state_modification_isolation)
     session_cfg.rng_seed = 2;
     og::runtime::GameSession session_b(session_cfg);
 
-    // Consume RNG values from session A
+    // Burn 100 draws on A.
     {
         auto scope = session_a.activate();
         for (int i = 0; i < 100; i++) {
@@ -435,23 +430,32 @@ TEST(SessionRaii, session_state_modification_isolation)
         }
     }
 
-    // Session B's RNG should be unaffected - first value should match
-    // a fresh session with seed 2
-    session_cfg.rng_seed = 2;
-    og::runtime::GameSession session_b_fresh(session_cfg);
-
-    Uint32 b_val, b_fresh_val;
+    Uint32 b_val = 0;
     {
         auto scope = session_b.activate();
+        ASSERT_EQ(session_b.ctx_.rng, ctx().rng)
+            << "activate() must install session B's own generator";
         b_val = ctx().rng->next(1000);
     }
-    {
-        auto scope = session_b_fresh.activate();
-        b_fresh_val = ctx().rng->next(1000);
-    }
-    ASSERT_TRUE(b_val == b_fresh_val);
 
-    // Session A's frame state changes don't affect B
-    session_a.frame_state_.done = true;
-    ASSERT_TRUE(session_b.frame_state_.done == false);
+    SeededRandom expect_b(2u);
+    const Uint32 want_b = expect_b.next(1000);
+    EXPECT_EQ(want_b, b_val)
+        << "session B must still be at SeededRandom(2)'s draw 0 after 100 draws on A";
+
+    SeededRandom expect_a(1u);
+    EXPECT_NE(expect_a.next(1000), b_val)
+        << "session B must not be drawing from session A's seed-1 stream";
+
+    // A's stream really did move: its 101st draw is seed 1's 101st, not its 1st.
+    SeededRandom expect_a_stream(1u);
+    for (int i = 0; i < 100; i++)
+        expect_a_stream.next(1000);
+    Uint32 a_val = 0;
+    {
+        auto scope = session_a.activate();
+        a_val = ctx().rng->next(1000);
+    }
+    EXPECT_EQ(expect_a_stream.next(1000), a_val)
+        << "session A's generator advanced by exactly the 100 draws taken on it";
 }
