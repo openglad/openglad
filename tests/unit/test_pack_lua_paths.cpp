@@ -530,20 +530,31 @@ TEST(PackLuaCleric, a_heal_restores_a_wounded_friend_and_spends_magic)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// A pool too thin to PRICE a heal abandons the cast outright.
+// A pool too thin to PRICE a heal still lands the level bonus.
 //
 // compute_heal_amount (src/core/combat_math.cpp:97-105) builds the price
 // from base = trunc(mp)/4 + rand(trunc(mp)/4), cost = base/2. With mp = 3
-// the integer quarter is 0, so base and cost are both 0 and the hook's
-// `amount <= 0 or cost <= 0` break (living-05-cleric.lua:89) fires before
-// anything is healed or charged: heal_or_mace returns FALSE.
+// the integer quarter is 0, so base and cost are both 0 — but the amount is
+// base + level*5, which at level 20 is 100. The rule (P5): the HEAL slot's
+// declared mp_cost is the FLOOR of a heal, and cost is only the surcharge
+// for the pool-scaled part, so a surcharge that prices at zero still lands
+// base + level*5 instead of fizzling. Before the fix the hook's
+// `amount <= 0 or cost <= 0` break abandoned the cast, which made every
+// cleric with 2..7 MP silently refuse a special the engine's mp_cost gate
+// had already approved.
 //
-// Note for anyone tempted to reinstate a test for the "magicpoints < cost"
-// shortfall arm at lua:82-87: it is dead by arithmetic through this hook
-// (cost = base/2 <= trunc(mp)/4 < mp whenever mp >= 4, and mp < 4 breaks
-// out above), a faithful port of the equally dead C++ branch. The Lua is
-// left alone because parity goldens pin it byte for byte.
-TEST(PackLuaCleric, a_pool_too_thin_to_price_a_heal_refuses_and_spends_nothing)
+// The old note here claimed the Lua was "left alone because parity goldens
+// pin it byte for byte". Measured: the only heal-executing parity row
+// (special_cleric_heal_ally_scen99) casts from a 600-MP pool, where
+// trunc(mp)/4 >= 1 and nothing in this region runs, so the fix moves zero
+// goldens (267/267).
+//
+// Note on the pool: og::test::do_special dispatches the Lua hook directly,
+// bypassing walker::special's own slot charge, so the caster's pool is
+// untouched here — Lua charges cost == 0. The engine-path price (2 MP on a
+// true return) is pinned by
+// FamilyCleric.r15_the_slot_price_is_the_floor_of_a_heal.
+TEST(PackLuaCleric, a_pool_too_thin_to_price_a_heal_still_lands_the_level_bonus)
 {
     og::test::mount_core_pack();
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
@@ -564,13 +575,51 @@ TEST(PackLuaCleric, a_pool_too_thin_to_price_a_heal_refuses_and_spends_nothing)
     ASSERT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints())
         << "the arithmetic below is pinned to a pool of exactly 3";
     cleric->set_current_special(1);
+    const std::uint32_t rng_before = w.rng_.state_;
+
+    ASSERT_TRUE(og::test::do_special(desc, cleric))
+        << "a heal the engine gate approved must land even when its "
+           "pool-scaled surcharge prices at zero";
+    EXPECT_FLOAT_EQ(101.0f, hurt->stats()->hitpoints())
+        << "amount = base(0) + level*5(100) is added to the wounded friend";
+    EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints())
+        << "Lua charges cost == 0 here; the slot's own 2 MP is taken by "
+           "walker::special, which og::test::do_special bypasses";
+    EXPECT_EQ(rng_before, w.rng_.state_)
+        << "rand(0) answers 0 without advancing the sim stream, so a "
+           "zero-quarter heal must draw nothing";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The surviving guard: amount itself must be positive. At level 0 with a
+// pool of 3 there is no base and no level bonus, so the loop breaks, nobody
+// is healed and heal_or_mace returns false (no "Cleric healed" message, no
+// charge). Deleting `if amount <= 0 then break end` turns a 0-hp non-event
+// into a reported heal.
+TEST(PackLuaCleric, a_level_zero_caster_below_four_mp_heals_nobody)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* cleric = make_cleric(w, 0);
+    ASSERT_NE(nullptr, cleric);
+    walker* hurt = spawn(w, Order::Living, FAMILY_SOLDIER, 10, 10, 1);
+    ASSERT_NE(nullptr, hurt);
+    hurt->stats()->set_max_hitpoints(900.0f);
+    hurt->stats()->set_hitpoints(1.0f);
+
+    cleric->stats()->set_magicpoints(3.0f);
+    cleric->set_current_special(1);
 
     EXPECT_FALSE(og::test::do_special(desc, cleric))
-        << "trunc(3)/4 == 0 prices the heal at 0, so the cast is abandoned";
-    EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints())
-        << "an abandoned heal charges nothing";
+        << "base 0 plus level*5 == 0 is not a heal";
     EXPECT_FLOAT_EQ(1.0f, hurt->stats()->hitpoints())
-        << "an abandoned heal heals nobody";
+        << "a zero-amount heal must not touch the wounded friend";
+    EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints())
+        << "and it must not be charged for";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
