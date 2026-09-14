@@ -5975,6 +5975,412 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
         });
 }
 
+
+// ---------------------------------------------------------------------------
+// PR #292 / P1 render scene: the floating damage and heal numbers, which are
+// the ONLY production consumers of the alpha text path
+// (draw_damage_number -> text::write_xy_center_alpha -> write_char_xy_alpha ->
+// screen::walkputbuffertext_alpha). The scene draws five numbers over flat
+// backing strips and pins, per number:
+//   * the exact glyph stencil of the shipped small font -- every inked font
+//     pixel is painted and every un-inked pixel of the padded box still shows
+//     the backing colour (a blit that paints nothing, paints the wrong pitch
+//     or smears the whole box all read differently);
+//   * every painted pixel is one of the eight shades of the number's own
+//     colour band [colour, colour+7] -- true both for today's flat
+//     `teamcolor` plot and for a `curcolor` ramp (colour+0..colour+4 for the
+//     small font's 251..255 source bytes), and false the moment a number is
+//     painted out of its band;
+//   * alpha is honoured: the t=0.5 row is, pixel for pixel, the SAME band
+//     shade as its opaque twin drawn at alpha 127, never the opaque plot.
+// The legal colours are not hardcoded: each is probed off the live palette
+// through draw_rect_filled, which is the very same pointb(colour, alpha)
+// primitive walkputbuffertext_alpha plots with, so the pins hold whatever
+// surface format and palette the run has.
+// It doubles as the capture seam for the PR's before/after stills: with
+// OG_FX_CAPTURE_DIR set it dumps damage_numbers_alpha/000.ppm through the
+// same fx_capture::dump_frame the effect scenes use (no GTEST_SKIP -- the
+// oracle runs on every ordinary ctest run).
+// ---------------------------------------------------------------------------
+
+namespace p1_damage_numbers
+{
+
+// Backing colour for the strips the numbers are drawn over: a flat, known
+// colour makes "this pixel was painted" an exact inequality instead of a
+// guess about the terrain underneath.
+inline constexpr unsigned char kBacking = PURE_BLACK;
+
+// draw_walker advances a freshly pushed number by exactly one sim tick before
+// drawing it (walker_draw.cpp damage_number_advance_steps: last_advance_tick
+// is max on first sight, so the step count is current - created + 1 == 1),
+// which costs t 0.05 and moves it 1.5px up. The scene therefore pushes
+// t + 0.05 and reads the glyph box 1.5px above where it pushed.
+inline constexpr float kAdvanceT = 0.05f;
+inline constexpr float kAdvanceY = 1.5f;
+
+// The production damage-number colours the sim pushes (walker_combat.cpp
+// do_heal_effects / do_hit_effects): green 56 for heals -- the render gate
+// keys the heal_numbers setting off that exact value -- orange 235 for the
+// attacker's own copy of a hit, RED for the target's.
+inline constexpr unsigned char kHealColor = 56;
+inline constexpr unsigned char kAttackerColor = 235;
+
+// draw_damage_number's alpha for a number at t = 0.5:
+// static_cast<Uint8>(0.5f * 255.0f) == 127. Anything at t >= 1.0f is plotted
+// at 255 -- and the gap is a real trap: 1.05f - 0.05f rounds to 0.99999994,
+// one ulp BELOW 1.0f, which would quietly plot at 254. The opaque rows are
+// therefore pushed a comfortable 0.1 clear of the boundary and the pin below
+// is on `t >= 1.0f`, the predicate the product actually reads.
+inline constexpr Uint8 kHalfAlphaValue = 127;
+
+// A colour band as the live palette and surface actually paint it: shades
+// 0..7 are the legal ones, shade 8 is the first one outside the band and is
+// only ever used to prove the band pin can fail.
+inline constexpr std::size_t kBandSize = 8;
+inline constexpr std::size_t kProbeSize = kBandSize + 1;
+
+struct BandProbe
+{
+    std::array<RGB, kProbeSize> opaque{};
+    std::array<RGB, kProbeSize> half{};
+};
+
+struct NumberSpec
+{
+    const char* glyphs;      // what "%.0f" prints for `value`
+    float value;
+    unsigned char color;
+    float push_t;            // t BEFORE draw_walker's one-tick advance
+    bool opaque;             // does it reach draw_damage_number at t >= 1?
+};
+
+} // namespace p1_damage_numbers
+
+TEST_F(RenderEffects, damage_number_glyphs_paint_in_the_requested_band)
+{
+    using namespace p1_damage_numbers;
+
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+
+    // EffectsCfgGuard's contract: a key it found set comes back verbatim, a
+    // key that had no value comes back at its production default (off for
+    // damage numbers, on for heal numbers).
+    const std::string entry_damage = cfg.get_setting("effects", "damage_numbers");
+    const std::string entry_heal = cfg.get_setting("effects", "heal_numbers");
+    const std::string expect_damage = entry_damage.empty() ? "off" : entry_damage;
+    const std::string expect_heal = entry_heal.empty() ? "on" : entry_heal;
+
+    {
+        EffectsCfgGuard guard;
+        prepare_world();
+        all_effects_off();
+        scr()->world().set_weather(WeatherKind::None);
+        fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+        cfg.apply_setting("effects", "mini_hp_bar", "off");
+        cfg.apply_setting("effects", "hit_flash", "off");
+        cfg.apply_setting("effects", "damage_numbers", "on");
+        cfg.apply_setting("effects", "heal_numbers", "on");
+
+        GameWorld& world = scr()->world();
+        world.tick_count_ = 60u;
+        walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, w);
+        w->setxy(static_cast<short>(160), static_cast<short>(120));
+        vs->control = w;
+
+        effects_reset_for_testing();
+        ASSERT_TRUE(do_redraw(vs)) << "setup: the scene must render once";
+        ASSERT_TRUE(w->damage_numbers.empty())
+            << "setup: the settling redraw must not invent numbers";
+
+        // ---- what the live palette paints, through the plot primitive ----
+        // draw_rect_filled -> hor_line_alpha -> pointb(colour, alpha) is the
+        // exact call walkputbuffertext_alpha makes per source pixel, so a
+        // 1x1 probe over the backing colour answers "what does shade N of
+        // this band look like on this surface" without assuming a format.
+        const RGB backing_rgb = [&] {
+            scr()->draw_rect_filled(vs->xloc, vs->yloc, 1, 1, kBacking, 255);
+            return px(vs->xloc, vs->yloc);
+        }();
+        const auto probe_band = [&](unsigned char color) {
+            BandProbe probe;
+            for (std::size_t k = 0; k < kProbeSize; k++)
+            {
+                const unsigned char shade =
+                    static_cast<unsigned char>(color + k);
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    const Uint8 a = pass == 0 ? Uint8{255} : kHalfAlphaValue;
+                    scr()->draw_rect_filled(vs->xloc, vs->yloc, 1, 1,
+                                            kBacking, 255);
+                    EXPECT_TRUE(same(backing_rgb, px(vs->xloc, vs->yloc)))
+                        << "probe: the backing must clear between shades";
+                    scr()->draw_rect_filled(vs->xloc, vs->yloc, 1, 1, shade, a);
+                    (pass == 0 ? probe.opaque : probe.half)[k] =
+                        px(vs->xloc, vs->yloc);
+                }
+            }
+            return probe;
+        };
+
+        text& font = scr()->text_normal_ref();
+        (void)font.query_width("99"); // sync_geometry: the lazy font pixie
+        const int gw = font.sizex;
+        const int gh = font.sizey;
+        const int advance = gw + 1;
+        ASSERT_LT(0, gw) << "setup: the small font must be loaded";
+        ASSERT_LT(0, gh) << "setup: the small font must be loaded";
+        ASSERT_NE(nullptr, font.letters) << "setup: font pixie data";
+        ASSERT_TRUE(font.letters->valid()) << "setup: font pixie data";
+
+        // The five numbers: the three production colours at full alpha, then
+        // the same "99" twice in heal green, opaque and at half alpha, so the
+        // blended row has an exact same-stencil reference.
+        const NumberSpec specs[] = {
+            {"12", 12.0f, kHealColor, 1.1f, true},
+            {"34", 34.0f, kAttackerColor, 1.1f, true},
+            {"7", 7.0f, RED, 1.1f, true},
+            {"99", 99.0f, kHealColor, 1.1f, true},
+            {"99", 99.0f, kHealColor, 0.55f, false},
+        };
+        constexpr std::size_t kCount = sizeof(specs) / sizeof(specs[0]);
+        constexpr std::size_t kOpaqueRef = 3; // the alpha row's twin
+        constexpr std::size_t kHalfAlpha = 4;
+
+        std::vector<BandProbe> bands;
+        for (std::size_t i = 0; i < kCount; i++)
+        {
+            bands.push_back(probe_band(specs[i].color));
+            const BandProbe& probe = bands.back();
+            for (std::size_t k = 0; k < kProbeSize; k++)
+                ASSERT_FALSE(same(backing_rgb, probe.opaque[k]))
+                    << "setup: colour " << int(specs[i].color) << " shade +"
+                    << k << " must differ from the backing, or a painted "
+                       "pixel is indistinguishable from an unpainted one";
+            for (std::size_t k = 0; k < kBandSize; k++)
+            {
+                ASSERT_FALSE(same(probe.opaque[kBandSize], probe.opaque[k]))
+                    << "setup: colour " << int(specs[i].color)
+                    << " + 8 must look different from shade +" << k
+                    << ", or an out-of-band plot is unobservable";
+                ASSERT_FALSE(same(probe.half[k], probe.opaque[k]))
+                    << "setup: colour " << int(specs[i].color) << " shade +"
+                    << k << " at alpha " << int(kHalfAlphaValue)
+                    << " must look different from the opaque plot, or an "
+                       "ignored alpha is unobservable";
+            }
+        }
+
+        // Screen layout: one row of numbers along the top of the viewport,
+        // clear of the soldier in the middle. Positions are chosen on screen
+        // and pushed back through the camera, so the boxes cannot drift with
+        // the viewport geometry.
+        const int row_y = vs->yloc + 12;
+        std::vector<int> box_x(kCount, 0);
+        std::vector<int> box_y(kCount, 0);
+        std::vector<int> box_w(kCount, 0);
+
+        for (std::size_t i = 0; i < kCount; i++)
+        {
+            const int len =
+                static_cast<int>(std::string(specs[i].glyphs).size());
+            const int center_x =
+                vs->xloc + static_cast<int>(vs->xview) *
+                               static_cast<int>(i + 1) /
+                               static_cast<int>(kCount + 1);
+            // Undo the camera and the one-tick advance so the number LANDS on
+            // (center_x, row_y).
+            const float push_x = static_cast<float>(center_x + vs->topx - vs->xloc);
+            const float push_y =
+                static_cast<float>(row_y + vs->topy - vs->yloc) + kAdvanceY;
+
+            auto& dn = w->damage_numbers.emplace_back(
+                push_x, push_y, specs[i].value, specs[i].color,
+                world.tick_count_);
+            dn.t = specs[i].push_t;
+
+            const auto [sx, sy] = vs->project_world_point_to_gameplay_ui(
+                push_x - static_cast<float>(vs->topx) + static_cast<float>(vs->xloc),
+                push_y - kAdvanceY - static_cast<float>(vs->topy) +
+                    static_cast<float>(vs->yloc));
+            ASSERT_EQ(center_x, sx)
+                << "setup: number " << i << " must land on the chosen column";
+            ASSERT_EQ(row_y, sy)
+                << "setup: number " << i << " must land on the chosen row";
+
+            box_w[i] = len * advance;
+            box_x[i] = sx - box_w[i] / 2; // text::write_formatted's centering
+            box_y[i] = sy;
+        }
+        ASSERT_EQ(kCount, w->damage_numbers.size())
+            << "setup: every number must be queued";
+
+        // Wipe the probe pixel: the dumped frame must show the scene, not
+        // the measurement.
+        ASSERT_TRUE(do_redraw(vs)) << "setup: the probe wipe must render";
+        ASSERT_EQ(kCount, w->damage_numbers.size())
+            << "setup: the wipe redraw must not draw or expire the numbers";
+
+        // Flat backing strip under each box, padded by 2px.
+        constexpr int kPad = 2;
+        for (std::size_t i = 0; i < kCount; i++)
+        {
+            ASSERT_LE(static_cast<int>(vs->xloc), box_x[i] - kPad)
+                << "setup: box " << i << " must sit inside the viewport";
+            ASSERT_GE(static_cast<int>(vs->endx), box_x[i] + box_w[i] + kPad)
+                << "setup: box " << i << " must sit inside the viewport";
+            ASSERT_LE(static_cast<int>(vs->yloc), box_y[i] - kPad)
+                << "setup: box " << i << " must sit inside the viewport";
+            ASSERT_GE(static_cast<int>(vs->endy), box_y[i] + gh + kPad)
+                << "setup: box " << i << " must sit inside the viewport";
+            scr()->draw_rect_filled(box_x[i] - kPad, box_y[i] - kPad,
+                                    static_cast<Uint32>(box_w[i] + 2 * kPad),
+                                    static_cast<Uint32>(gh + 2 * kPad),
+                                    kBacking, 255);
+        }
+        for (std::size_t i = 0; i < kCount; i++)
+            for (int j = -kPad; j < gh + kPad; j++)
+                for (int k = -kPad; k < box_w[i] + kPad; k++)
+                    ASSERT_TRUE(same(backing_rgb,
+                                     px(box_x[i] + k, box_y[i] + j)))
+                        << "setup: the backing strip under box " << i
+                        << " must be flat at (" << k << "," << j << ")";
+
+        // The single render pass under test.
+        ASSERT_TRUE(draw_walker(*w, vs)) << "the control walker must draw";
+        ASSERT_EQ(kCount, w->damage_numbers.size())
+            << "no number may expire on its first frame";
+        {
+            std::size_t i = 0;
+            for (const auto& dn : w->damage_numbers)
+            {
+                EXPECT_FLOAT_EQ(specs[i].push_t - kAdvanceT, dn.t)
+                    << "number " << i << " must have advanced exactly one tick";
+                if (specs[i].opaque)
+                    EXPECT_LE(1.0f, dn.t)
+                        << "number " << i
+                        << " must reach the plot at full alpha";
+                else
+                    EXPECT_FLOAT_EQ(0.5f, dn.t)
+                        << "number " << i
+                        << " must reach the plot at the half-alpha t";
+                i++;
+            }
+        }
+
+        // ---- oracle 1: the exact stencil, inside the exact colour band ----
+        std::vector<std::vector<std::pair<int, int>>> ink(kCount);
+        std::vector<std::vector<std::size_t>> ink_shade(kCount);
+        for (std::size_t i = 0; i < kCount; i++)
+        {
+            const BandProbe& probe = bands[i];
+            const int len =
+                static_cast<int>(std::string(specs[i].glyphs).size());
+            const int stride = box_w[i] + 2 * kPad;
+            std::vector<unsigned char> stencil(
+                static_cast<std::size_t>(stride) *
+                    static_cast<std::size_t>(gh + 2 * kPad),
+                0u);
+            int inked = 0;
+            for (int c = 0; c < len; c++)
+            {
+                const std::size_t glyph_size =
+                    static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh);
+                const std::size_t off =
+                    static_cast<std::size_t>(
+                        static_cast<unsigned char>(specs[i].glyphs[c])) *
+                    glyph_size;
+                const unsigned char* glyph = font.letters->data.get() + off;
+                for (int gy = 0; gy < gh; gy++)
+                    for (int gx = 0; gx < gw; gx++)
+                    {
+                        if (!glyph[static_cast<std::size_t>(gy * gw + gx)])
+                            continue;
+                        const int sx = c * advance + gx + kPad;
+                        const int sy = gy + kPad;
+                        stencil[static_cast<std::size_t>(sy * stride + sx)] = 1u;
+                        inked++;
+                    }
+            }
+            ASSERT_LE(8, inked)
+                << "setup: the shipped font must ink at least 8 pixels for \""
+                << specs[i].glyphs << "\"";
+
+            int painted = 0;
+            for (int j = 0; j < gh + 2 * kPad; j++)
+                for (int k = 0; k < stride; k++)
+                {
+                    const RGB got = px(box_x[i] - kPad + k, box_y[i] - kPad + j);
+                    if (!stencil[static_cast<std::size_t>(j * stride + k)])
+                    {
+                        ASSERT_TRUE(same(backing_rgb, got))
+                            << "number " << i << " (\"" << specs[i].glyphs
+                            << "\"): un-inked pixel (" << k << "," << j
+                            << ") must keep the backing colour, got ("
+                            << int(got.r) << "," << int(got.g) << ","
+                            << int(got.b) << ")";
+                        continue;
+                    }
+                    const bool half = (i == kHalfAlpha);
+                    const std::array<RGB, kProbeSize>& table =
+                        half ? probe.half : probe.opaque;
+                    std::size_t shade = kProbeSize;
+                    for (std::size_t q = 0; q < kBandSize; q++)
+                        if (same(table[q], got))
+                        {
+                            shade = q;
+                            break;
+                        }
+                    ASSERT_GT(kBandSize, shade)
+                        << "number " << i << " (\"" << specs[i].glyphs
+                        << "\"): pixel (" << k << "," << j << ") painted ("
+                        << int(got.r) << "," << int(got.g) << "," << int(got.b)
+                        << "), which is no shade of colour "
+                        << int(specs[i].color) << "'s band "
+                        << int(specs[i].color) << ".."
+                        << int(specs[i].color) + 7 << " plotted at alpha "
+                        << (half ? int(kHalfAlphaValue) : 255);
+                    ink[i].emplace_back(k, j);
+                    ink_shade[i].push_back(shade);
+                    painted++;
+                }
+            ASSERT_EQ(inked, painted)
+                << "number " << i << " must paint its whole glyph stencil";
+        }
+
+        // ---- oracle 2: alpha is honoured, shade for shade ----
+        // Same glyphs, same colour, two alphas: every pixel of the t=0.5 row
+        // must be its opaque twin's shade drawn at alpha 127, which the setup
+        // pins is a different colour from the opaque plot of that shade.
+        ASSERT_EQ(ink[kOpaqueRef].size(), ink[kHalfAlpha].size())
+            << "the alpha row must ink the same stencil as its opaque twin";
+        for (std::size_t p = 0; p < ink[kOpaqueRef].size(); p++)
+        {
+            ASSERT_EQ(ink[kOpaqueRef][p], ink[kHalfAlpha][p])
+                << "the two rows must ink the same offsets";
+            EXPECT_EQ(ink_shade[kOpaqueRef][p], ink_shade[kHalfAlpha][p])
+                << "pixel " << p << " of the half-alpha number must be the "
+                   "same band shade as its opaque twin, blended";
+        }
+
+        // Capture seam for the PR's before/after stills
+        // (scripts/media/capture_pr292.sh). The oracle above ran either way.
+        if (getenv("OG_FX_CAPTURE_DIR"))
+            fx_capture::dump_frame(vs, "damage_numbers_alpha", 0);
+
+        w->damage_numbers.clear();
+        effects_reset_for_testing();
+        restore_world(vs);
+    }
+
+    EXPECT_EQ(expect_damage, cfg.get_setting("effects", "damage_numbers"))
+        << "the scene must leave effects/damage_numbers as it found it";
+    EXPECT_EQ(expect_heal, cfg.get_setting("effects", "heal_numbers"))
+        << "the scene must leave effects/heal_numbers as it found it";
+}
+
 // Pin the TESTING capture hook in screen::buffer_to_screen: with OG_DUMP_DIR
 // set, every 3rd presented frame lands as a P6 PPM. scripts/fx_review's menu
 // tours depend on this (blocking menu loops never return to a test loop).
