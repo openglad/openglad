@@ -477,8 +477,11 @@ TEST(StatsCommands, stats_do_command_die_sets_delete_me)
     w->set_dead(1); // avoid log spam; COMMAND_DIE expects a dead controller
     w->stats()->set_delete_me(0);
     w->stats()->force_command(COMMAND_DIE, 1, 0, 0);
-    (void)w->stats()->do_command();
-    ASSERT_TRUE(w->stats()->delete_me() == 1) << "COMMAND_DIE should set delete_me when count < 2";
+    ASSERT_EQ(1, w->stats()->do_command())
+        << "a command that ran reports 1 — the COMMAND_DIE arm never clears result";
+    ASSERT_EQ(1, w->stats()->delete_me()) << "COMMAND_DIE should set delete_me when count < 2";
+    ASSERT_TRUE(w->stats()->commands.empty())
+        << "the one-iteration command is popped after it runs";
 }
 
 
@@ -635,6 +638,31 @@ TEST(StatsCommands, stats_blocked_helpers_probe_the_exact_cell_for_every_facing)
                 }
         }
     }
+
+    // Folded in from StatsMorePaths.stats_forward_and_side_blocked_invalid_
+    // direction_defaults (deleted): its four "all open" answers for an
+    // out-of-range facing are the degenerate corner of the matrix above, and
+    // its one claim of its own was what right_walk() does on top of them.
+    // Kept with the deleted test's own setup — a fresh grid and a fresh
+    // walker — rather than reusing the actor the matrix just walled in.
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    auto invalid_facing = make_walker(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, invalid_facing) << "walker created";
+    ASSERT_TRUE(invalid_facing->setxy(static_cast<std::int32_t>(GRID_SIZE * 4),
+                                      static_cast<std::int32_t>(GRID_SIZE * 4)))
+        << "actor placed on open ground";
+    invalid_facing->set_curdir(static_cast<signed char>(127));
+    invalid_facing->set_enddir(static_cast<char>(127));
+    EXPECT_FALSE(invalid_facing->stats()->forward_blocked())
+        << "an invalid curdir probes our own open cell: nothing forward-blocked";
+    EXPECT_FALSE(invalid_facing->stats()->right_blocked())
+        << "an invalid curdir probes our own open cell: nothing right-blocked";
+    EXPECT_FALSE(invalid_facing->stats()->right_forward_blocked())
+        << "the 45-degree helper refuses to probe an invalid curdir at all";
+    EXPECT_FALSE(invalid_facing->stats()->right_back_blocked())
+        << "the 135-degree helper refuses to probe an invalid curdir at all";
+    EXPECT_TRUE(invalid_facing->stats()->right_walk())
+        << "right_walk still reports a step with an invalid facing";
 }
 
 

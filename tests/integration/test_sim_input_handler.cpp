@@ -528,8 +528,6 @@ TEST(SimInputHandler, sim_input_switch_char_forward_and_reverse_paths)
     auto w2_up = make_living(0, -1);
     auto w3_up = make_living(0, -1);
     ASSERT_TRUE(w1_up && w2_up && w3_up) << "walkers should be created";
-    if (!(w1_up && w2_up && w3_up))
-        return;
 
     walker* w1 = w1_up.get();
     walker* w2 = w2_up.get();
@@ -1007,8 +1005,6 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     ASSERT_NE(nullptr, ally_before_up) << "ally before should be created";
 
     walker* control = control_up.get();
-    walker* ally_after = ally_after_up.get();
-    walker* ally_before = ally_before_up.get();
     control->set_act_type(ACT_CONTROL);
     control->stats()->set_level(30);
     control->set_current_special(1);
@@ -1129,9 +1125,6 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     ASSERT_TRUE(result.new_control == control) << "user mismatch path should return control";
     ASSERT_EQ(0, static_cast<int>(control->cycle()))
         << "a walker owned by another seat never reaches the idle-animate branch";
-
-    (void)ally_after;
-    (void)ally_before;
 }
 
 
@@ -1232,8 +1225,6 @@ TEST(SimInputHandler, sim_input_dead_control_reassigns_to_next_alive)
     auto dead_control_up = make_living(0, 0);
     auto replacement_up = make_living(0, -1);
     ASSERT_TRUE(dead_control_up != nullptr && replacement_up != nullptr) << "walkers should be created";
-    if (!(dead_control_up && replacement_up))
-        return;
 
     walker* control = dead_control_up.get();
     walker* replacement = replacement_up.get();
@@ -1270,13 +1261,9 @@ TEST(SimInputHandler, sim_input_switch_char_skips_ineligible_candidates_then_sel
     auto taken_up = make_living(0, 2);           // user already taken
     auto good_up = make_living(0, -1);           // first valid candidate
     ASSERT_TRUE(control_up && enemy_up && charmed_up && taken_up && good_up) << "walkers should be created";
-    if (!(control_up && enemy_up && charmed_up && taken_up && good_up))
-        return;
 
     auto nonliving = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     ASSERT_TRUE(nonliving != nullptr) << "nonliving candidate should be created";
-    if (!nonliving)
-        return;
 
     walker* control = control_up.get();
     walker* good = good_up.get();

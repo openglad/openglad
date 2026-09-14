@@ -309,22 +309,11 @@ TEST(StatsMorePaths, stats_do_command_set_reset_weapon_and_search_without_foe)
 }
 
 
-TEST(StatsMorePaths, stats_forward_and_side_blocked_invalid_direction_defaults)
-{
-    auto w = make_walker(FAMILY_SOLDIER);
-    ASSERT_NE(nullptr, w.get()) << "walker created";
-
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    w->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
-    w->set_curdir(static_cast<char>(127));
-    w->set_enddir(static_cast<char>(127));
-
-    ASSERT_FALSE(w->stats()->forward_blocked()) << "invalid curdir should fall back to no forward block";
-    ASSERT_FALSE(w->stats()->right_blocked()) << "invalid curdir should fall back to no right block";
-    ASSERT_FALSE(w->stats()->right_forward_blocked()) << "invalid curdir should fall back to no right-forward block";
-    ASSERT_FALSE(w->stats()->right_back_blocked()) << "invalid curdir should fall back to no right-back block";
-    ASSERT_TRUE(w->stats()->right_walk()) << "invalid direction fallback in right_walk should still return true";
-}
+// The invalid-direction defaults of forward_blocked/right_blocked/
+// right_forward_blocked/right_back_blocked, and what right_walk() does on top
+// of them, now live in ONE place: StatsCommands.stats_blocked_helpers_probe_
+// the_exact_cell_for_every_facing (test_stats_commands.cpp), which pins the
+// probed CELL for every facing instead of just the all-open answers.
 
 
 TEST(StatsMorePaths, stats_add_and_force_command_walk_clamp_and_zero_fallback)

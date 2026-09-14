@@ -59,6 +59,13 @@ int idx(int x, int y)
     return scr()->get_pixel(x, y, &index);
 }
 
+// An untouched pixel is compared as a raw RGB triple, never as a palette
+// index: get_pixel's reverse-palette scan answers 0 both for a genuinely
+// cleared pixel AND for any colour that is not in the palette at all, so
+// `idx(neighbour) == 0` would also accept a break that smeared an
+// off-palette blend across the neighbourhood.
+constexpr RGB kCleared{0, 0, 0};
+
 // A bright opaque ground to blend against.
 void ground_box(int x, int y, int w, int h)
 {
@@ -79,10 +86,10 @@ TEST(VideoExtra, pointb_inks_exactly_the_named_pixel)
     s->pointb(50, 50, kInk);
     EXPECT_EQ(static_cast<int>(kInk), idx(50, 50))
         << "pointb must write the palette colour to exactly that pixel";
-    EXPECT_EQ(0, idx(51, 50)) << "the pixel to the right must stay cleared";
-    EXPECT_EQ(0, idx(49, 50)) << "the pixel to the left must stay cleared";
-    EXPECT_EQ(0, idx(50, 51)) << "the pixel below must stay cleared";
-    EXPECT_EQ(0, idx(50, 49)) << "the pixel above must stay cleared";
+    EXPECT_EQ(kCleared, px(51, 50)) << "the pixel to the right must stay cleared";
+    EXPECT_EQ(kCleared, px(49, 50)) << "the pixel to the left must stay cleared";
+    EXPECT_EQ(kCleared, px(50, 51)) << "the pixel below must stay cleared";
+    EXPECT_EQ(kCleared, px(50, 49)) << "the pixel above must stay cleared";
     s->clearbuffer();
 }
 
@@ -105,6 +112,19 @@ TEST(VideoExtra, pointb_alpha_blends_toward_the_colour_between_ground_and_opaque
     EXPECT_NE(ground, blended) << "a half-alpha plot must change the pixel";
     EXPECT_NE(opaque, blended)
         << "a half-alpha plot must not land on the opaque colour";
+    // The PROPORTION, not just "somewhere between": blend_pixel computes
+    // dst + (((src - dst) * alpha) >> 8) per channel, so ink 100 (180,96,180)
+    // at alpha 128 over ground 7 (224,224,224) is
+    //   224 + ((180-224)*128 >> 8) = 202,  224 + ((96-224)*128 >> 8) = 160.
+    // A blend that used alpha/2 (a stray `>> 9`) would land on (213,192,213)
+    // and still sit strictly between the two endpoints, so the inequalities
+    // above cannot see it.
+    EXPECT_EQ((RGB{202, 160, 202}), blended)
+        << "alpha 128 is exactly dst + ((src-dst)*128 >> 8) per channel";
+    s->pointb(68, 50, kInk, 64);
+    EXPECT_EQ((RGB{213, 192, 213}), px(68, 50))
+        << "and alpha 64 moves exactly a quarter of the way -- two points fix"
+           " the blend's slope";
 
     // The two endpoints are exact: alpha 0 keeps the ground, alpha 255 is the
     // opaque write.
@@ -130,8 +150,8 @@ TEST(VideoExtra, pointb_rgb_writes_that_exact_triple)
     EXPECT_EQ(200, r) << "the direct-RGB overload writes red verbatim";
     EXPECT_EQ(100, g) << "the direct-RGB overload writes green verbatim";
     EXPECT_EQ(50, b) << "the direct-RGB overload writes blue verbatim";
-    EXPECT_EQ(0, idx(71, 50)) << "and only that one pixel";
-    EXPECT_EQ(0, idx(70, 51)) << "and only that one pixel";
+    EXPECT_EQ(kCleared, px(71, 50)) << "and only that one pixel";
+    EXPECT_EQ(kCleared, px(70, 51)) << "and only that one pixel";
     s->clearbuffer();
 }
 
@@ -155,10 +175,10 @@ TEST(VideoExtra, hor_line_inks_exactly_length_cells_and_both_overloads_agree)
     EXPECT_EQ(static_cast<int>(kInk), idx(10, 10)) << "the first cell is inked";
     EXPECT_EQ(static_cast<int>(kInk), idx(59, 10))
         << "all 50 cells are inked (x .. x+length-1)";
-    EXPECT_EQ(0, idx(60, 10)) << "length is exclusive at the far end";
-    EXPECT_EQ(0, idx(9, 10)) << "nothing is inked before x";
-    EXPECT_EQ(0, idx(10, 11)) << "a horizontal line must not ink the row below";
-    EXPECT_EQ(0, idx(10, 9)) << "a horizontal line must not ink the row above";
+    EXPECT_EQ(kCleared, px(60, 10)) << "length is exclusive at the far end";
+    EXPECT_EQ(kCleared, px(9, 10)) << "nothing is inked before x";
+    EXPECT_EQ(kCleared, px(10, 11)) << "a horizontal line must not ink the row below";
+    EXPECT_EQ(kCleared, px(10, 9)) << "a horizontal line must not ink the row above";
 
     // The 5-arg form with tobuffer=1 draws the same run, and tobuffer=0
     // forwards to the 4-arg form (video_sdl.cpp hor_line).
@@ -212,11 +232,11 @@ TEST(VideoExtra, ver_line_inks_exactly_length_cells_downward_and_both_overloads_
     EXPECT_EQ(static_cast<int>(kInk), idx(10, 10)) << "the first cell is inked";
     EXPECT_EQ(static_cast<int>(kInk), idx(10, 59))
         << "all 50 cells run downward (y .. y+length-1)";
-    EXPECT_EQ(0, idx(10, 60)) << "length is exclusive at the bottom";
-    EXPECT_EQ(0, idx(10, 9)) << "nothing above y is inked";
-    EXPECT_EQ(0, idx(11, 10))
+    EXPECT_EQ(kCleared, px(10, 60)) << "length is exclusive at the bottom";
+    EXPECT_EQ(kCleared, px(10, 9)) << "nothing above y is inked";
+    EXPECT_EQ(kCleared, px(11, 10))
         << "a vertical line must not run across the row (transposed blit)";
-    EXPECT_EQ(0, idx(59, 10))
+    EXPECT_EQ(kCleared, px(59, 10))
         << "a vertical line must not run across the row (transposed blit)";
 
     s->ver_line(20, 10, 50, kInk, 1);
@@ -384,10 +404,10 @@ TEST(VideoExtra, fastbox_outline_draws_the_border_and_leaves_the_interior)
     EXPECT_EQ(static_cast<int>(kInk), idx(30, 40)) << "bottom edge";
     EXPECT_EQ(static_cast<int>(kInk), idx(10, 25)) << "left edge";
     EXPECT_EQ(static_cast<int>(kInk), idx(50, 25)) << "right edge";
-    EXPECT_EQ(0, idx(30, 25)) << "the interior must stay untouched (outline, not fill)";
-    EXPECT_EQ(0, idx(11, 11)) << "the interior must stay untouched (outline, not fill)";
-    EXPECT_EQ(0, idx(51, 10)) << "nothing past the right edge";
-    EXPECT_EQ(0, idx(10, 41)) << "nothing past the bottom edge";
+    EXPECT_EQ(kCleared, px(30, 25)) << "the interior must stay untouched (outline, not fill)";
+    EXPECT_EQ(kCleared, px(11, 11)) << "the interior must stay untouched (outline, not fill)";
+    EXPECT_EQ(kCleared, px(51, 10)) << "nothing past the right edge";
+    EXPECT_EQ(kCleared, px(10, 41)) << "nothing past the bottom edge";
     s->clearbuffer();
 }
 
@@ -404,8 +424,8 @@ TEST(VideoExtra, point_forwards_to_the_buffer_plot)
     s->point(50, 50, kInk);
     EXPECT_EQ(static_cast<int>(kInk), idx(50, 50))
         << "point() must reach the buffer through pointb()";
-    EXPECT_EQ(0, idx(51, 50)) << "and touch nothing else";
-    EXPECT_EQ(0, idx(50, 51)) << "and touch nothing else";
+    EXPECT_EQ(kCleared, px(51, 50)) << "and touch nothing else";
+    EXPECT_EQ(kCleared, px(50, 51)) << "and touch nothing else";
     s->clearbuffer();
 }
 
@@ -428,7 +448,7 @@ TEST(VideoExtra, putbuffer_copies_the_tile_opaquely_including_index_zero)
     const RGB ground = px(50, 50);
     s->putbuffer(50, 50, 16, 16, kPortX0, kPortY0, kPortX1, kPortY1, span);
 
-    EXPECT_EQ(0, idx(50, 50))
+    EXPECT_EQ(kCleared, px(50, 50))
         << "tiles copy opaquely: source index 0 overwrites the ground";
     EXPECT_EQ(static_cast<int>(kInk), idx(51, 50)) << "the tile byte is copied verbatim";
     EXPECT_EQ(static_cast<int>(kInk), idx(65, 65)) << "the whole 16x16 tile is copied";
@@ -564,10 +584,10 @@ TEST(VideoExtra, walkputbuffer_left_clip_drops_the_hidden_columns_without_shifti
         << "the sprite's source column 8 lands on the port's left edge";
     EXPECT_EQ(static_cast<int>(kRightHalf), idx(7, 50))
         << "the visible half is exactly 8 columns wide";
-    EXPECT_EQ(0, idx(8, 50)) << "the clipped columns must not shift into view";
+    EXPECT_EQ(kCleared, px(8, 50)) << "the clipped columns must not shift into view";
     EXPECT_EQ(static_cast<int>(kRightHalf), idx(7, 65))
         << "every row of the visible half draws";
-    EXPECT_EQ(0, idx(7, 66)) << "and no row past the sprite's last";
+    EXPECT_EQ(kCleared, px(7, 66)) << "and no row past the sprite's last";
     for (int x = 0; x < 20; x++)
         EXPECT_NE(static_cast<int>(kLeftHalf), idx(x, 50))
             << "the clipped-off source columns must not be drawn, at x=" << x;
@@ -593,12 +613,12 @@ TEST(VideoExtra, walkputbuffer_right_clip_stops_at_the_exclusive_port_edge)
         << "the sprite's left half draws in full";
     EXPECT_EQ(static_cast<int>(kRightHalf), idx(318, 50))
         << "source column 8 lands on the last column inside the port";
-    EXPECT_EQ(0, idx(319, 50)) << "portendx is exclusive: column 319 is untouched";
+    EXPECT_EQ(kCleared, px(319, 50)) << "portendx is exclusive: column 319 is untouched";
     EXPECT_EQ(static_cast<int>(kRightHalf), idx(318, 65))
         << "every row draws the same clipped width";
-    EXPECT_EQ(0, idx(0, 51))
+    EXPECT_EQ(kCleared, px(0, 51))
         << "the clipped columns must not wrap onto the next row";
-    EXPECT_EQ(0, idx(0, 50)) << "nothing is drawn at the far left";
+    EXPECT_EQ(kCleared, px(0, 50)) << "nothing is drawn at the far left";
     s->clearbuffer();
 }
 
@@ -631,12 +651,12 @@ TEST(VideoExtra, walkputbuffer_top_clip_draws_the_lower_source_rows_at_the_port_
         << "the sprite's source row 8 lands on the port's top edge";
     EXPECT_EQ(static_cast<int>(kBottomHalf), idx(50, 7))
         << "the visible half is exactly 8 rows tall";
-    EXPECT_EQ(0, idx(50, 8))
+    EXPECT_EQ(kCleared, px(50, 8))
         << "the clipped rows must not shift the sprite down the port";
     EXPECT_EQ(static_cast<int>(kBottomHalf), idx(65, 7))
         << "every column of the visible rows draws";
-    EXPECT_EQ(0, idx(49, 0)) << "nothing is drawn left of the sprite's x";
-    EXPECT_EQ(0, idx(66, 0)) << "nothing is drawn past the sprite's 16th column";
+    EXPECT_EQ(kCleared, px(49, 0)) << "nothing is drawn left of the sprite's x";
+    EXPECT_EQ(kCleared, px(66, 0)) << "nothing is drawn past the sprite's 16th column";
     for (int y = 0; y < 20; y++)
         EXPECT_NE(static_cast<int>(kTopHalf), idx(50, y))
             << "the clipped-off source rows must not be drawn, at y=" << y;
@@ -680,8 +700,11 @@ TEST(VideoExtra, video_walkputbuffer_clips_at_the_port_bottom_edge)
     scr->clearbuffer();
     scr->walkputbuffer(kSpriteX, kSpriteY, 16, 16, 0, 0, 319, 199,
                        span, 40, NORMAL_MODE, 0, 0, 0);
-    EXPECT_EQ(kSpriteColor, scr->get_pixel(kSpriteX, kPortBottom, &index));
-    EXPECT_EQ(kSpriteColor, scr->get_pixel(kSpriteX, kSpriteY + 15, &index));
+    EXPECT_EQ(kSpriteColor, scr->get_pixel(kSpriteX, kPortBottom, &index))
+        << "with the port extended to 199, the row the clip removed draws";
+    EXPECT_EQ(kSpriteColor, scr->get_pixel(kSpriteX, kSpriteY + 15, &index))
+        << "and so does the sprite's own last row: the zeros above were the"
+           " port clip, not a sprite that never drew";
     scr->clearbuffer();
 }
 
@@ -786,8 +809,8 @@ TEST(VideoExtra, clearbuffer_rect_zeroes_only_that_rectangle)
     ASSERT_EQ(static_cast<int>(kPaint), idx(110, 110)) << "control: painted";
 
     s->clearbuffer(10, 10, 100, 100);
-    EXPECT_EQ(0, idx(10, 10)) << "the rect's first pixel is cleared";
-    EXPECT_EQ(0, idx(109, 109))
+    EXPECT_EQ(kCleared, px(10, 10)) << "the rect's first pixel is cleared";
+    EXPECT_EQ(kCleared, px(109, 109))
         << "the rect's last pixel (x+w-1, y+h-1) is cleared";
     EXPECT_EQ(static_cast<int>(kPaint), idx(9, 10))
         << "the column left of the rect must survive";

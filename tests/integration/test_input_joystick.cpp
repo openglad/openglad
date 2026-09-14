@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <format>
 #include <string>
 #include <thread>
@@ -1390,33 +1392,39 @@ TEST(InputJoystick, ensure_unique_seat_mapping_resolves_add_seat_collision)
 namespace
 {
 // Neutralizes a wedged virtual axis after `delay_ms` so an unbounded spin
-// (the pre-fix behavior) exits and the suite stays bounded. Cancellable so
-// the fixed path does not have to wait out the delay.
+// (the pre-fix behavior) exits and the suite stays bounded. The wait is a
+// condition-variable deadline, not a polled sleep: cancellation is a state
+// change the waiter observes at once, so the fixed path (which cancels in the
+// destructor) never pays a sleep quantum and the deadline is the only clock
+// in the helper.
 struct AxisWatchdog
 {
     SDL_Joystick* pad;
     int axis;
-    int delay_ms;
-    std::atomic<bool> cancel{false};
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool cancel = false;
     std::thread thread;
 
     AxisWatchdog(SDL_Joystick* pad_, int axis_, int delay_ms_)
-        : pad(pad_), axis(axis_), delay_ms(delay_ms_)
+        : pad(pad_), axis(axis_)
     {
-        thread = std::thread([this]() {
-            for (int waited = 0; waited < delay_ms; waited += 50)
-            {
-                if (cancel.load())
-                    return;
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            }
+        thread = std::thread([this, delay_ms_]() {
+            std::unique_lock<std::mutex> lock(mutex);
+            if (cv.wait_for(lock, std::chrono::milliseconds(delay_ms_),
+                            [this] { return cancel; }))
+                return;  // cancelled: the call under test returned on its own
             SDL_SetJoystickVirtualAxis(pad, axis, 0);
         });
     }
 
     ~AxisWatchdog()
     {
-        cancel.store(true);
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            cancel = true;
+        }
+        cv.notify_all();
         thread.join();
     }
 };

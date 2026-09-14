@@ -124,17 +124,51 @@ TEST(GuyCalcs, guy_family_constructor_mage)
 }
 
 
-TEST(GuyCalcs, guy_family_constructor_all_families)
+// guy::guy(int) copies the family descriptor's `stats` block verbatim (the
+// `stats = { ... }` table in packs/core/families/living-*.lua) into
+// strength/dexterity/constitution/intelligence/armor/level, and the
+// descriptor's `name` into the guy's name. Pin the whole block per family:
+// a constructor that reads the wrong StatAxis, that swaps two axes, or that
+// falls through to the BEAST default {12,6,12,8,6} fails here instead of
+// shipping a character sheet nobody checked.
+TEST(GuyCalcs, guy_family_constructor_applies_each_familys_base_stat_block)
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
-                        FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
-                        FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
-                        FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
-    for (int i = 0; i < 14; i++) {
-        guy g(families[i]);
-        ASSERT_EQ((int)families[i], (int)g.family) << "family should match constructor arg";
-        ASSERT_EQ(1, (int)g.level) << "all families start at level 1";
-        ASSERT_TRUE(g.strength > 0) << "strength should be positive";
+    struct BaseStats {
+        int family;
+        const char* name;
+        int str, dex, con, intel, armor;
+    };
+    static const BaseStats kBase[] = {
+        {FAMILY_SOLDIER,       "SOLDIER",      12,  6, 12,  8,  9},
+        {FAMILY_ELF,           "ELF",           5, 14,  5, 12,  8},
+        {FAMILY_ARCHER,        "ARCHER",        6, 12,  6, 10,  5},
+        {FAMILY_MAGE,          "MAGE",          4,  6,  4, 16,  5},
+        {FAMILY_SKELETON,      "SKELETON",      9, 14,  9,  6,  6},
+        {FAMILY_CLERIC,        "CLERIC",        6,  7,  6, 14,  7},
+        {FAMILY_FIREELEMENTAL, "ELEMENTAL",    14, 10, 14, 14,  9},
+        {FAMILY_FAERIE,        "FAERIE",        3,  8,  3, 14,  2},
+        {FAMILY_SMALL_SLIME,   "SLIME",        18,  2, 18,  7,  6},
+        {FAMILY_THIEF,         "THIEF",         9, 12, 12, 10,  5},
+        {FAMILY_GHOST,         "GHOST",         6, 12, 18, 10, 15},
+        {FAMILY_DRUID,         "DRUID",         7,  8, 14, 12,  7},
+        {FAMILY_ORC,           "ORC",          18,  8, 16,  5, 11},
+        {FAMILY_BIG_ORC,       "ORC CAPTAIN",  18,  8, 16,  5, 11},
+        {FAMILY_BARBARIAN,     "BARBARIAN",    14,  5, 14,  8,  8},
+        {FAMILY_ARCHMAGE,      "ARCHMAGE",      4,  6,  4, 16,  5},
+    };
+
+    for (const BaseStats& row : kBase) {
+        guy g(row.family);
+        ASSERT_EQ(row.family, (int)g.family) << row.name << ": family matches the constructor arg";
+        ASSERT_STREQ(row.name, g.name.c_str()) << row.name << ": the descriptor name is copied in";
+        EXPECT_EQ(row.str, (int)g.strength) << row.name << ": base STR";
+        EXPECT_EQ(row.dex, (int)g.dexterity) << row.name << ": base DEX";
+        EXPECT_EQ(row.con, (int)g.constitution) << row.name << ": base CON";
+        EXPECT_EQ(row.intel, (int)g.intelligence) << row.name << ": base INT";
+        EXPECT_EQ(row.armor, (int)g.armor) << row.name << ": base ARMOR";
+        EXPECT_EQ(1, (int)g.level) << row.name << ": every family starts at level 1";
+        EXPECT_EQ(0, (int)g.exp) << row.name << ": a fresh guy has no XP";
+        EXPECT_EQ(0, (int)g.kills) << row.name << ": a fresh guy has no kills";
     }
 }
 
@@ -273,28 +307,12 @@ TEST(GuyCalcs, guy_query_heart_value_different_families)
 // upgrade_to_level tests
 // ---------------------------------------------------------------------------
 
-TEST(GuyCalcs, guy_upgrade_to_level_basic)
-{
-    guy g(FAMILY_SOLDIER);
-    short orig_str = g.strength;
-    g.upgrade_to_level(5);
-    ASSERT_EQ(5, (int)g.level) << "level should be 5 after upgrade";
-    ASSERT_TRUE(g.strength > orig_str) << "strength should increase after leveling";
-    ASSERT_TRUE(g.exp > 0) << "XP should be set after leveling";
-}
-
-
-TEST(GuyCalcs, guy_upgrade_to_level_mage)
-{
-    guy g(FAMILY_MAGE);
-    short orig_int = g.intelligence;
-    short orig_str = g.strength;
-    g.upgrade_to_level(5);
-    // Mage gets 2x INT scaling, 0.5x STR scaling
-    short int_gain = g.intelligence - orig_int;
-    short str_gain = g.strength - orig_str;
-    ASSERT_TRUE(int_gain > str_gain) << "mage INT gain should exceed STR gain";
-}
+// guy_upgrade_to_level_basic ("strength went up, exp > 0") and
+// guy_upgrade_to_level_mage ("INT gain > STR gain") are folded into
+// guy_upgrade_to_level_applies_each_familys_gain_vector below, which pins
+// every axis of every family's gain vector exactly -- including the mage row
+// {4,6,4,16,1} the inequality was gesturing at -- plus the default set_xp
+// arm those two shared.
 
 
 // Every playable family's level-up gain vector, pinned exactly. The Lua
@@ -341,6 +359,8 @@ TEST(GuyCalcs, guy_upgrade_to_level_applies_each_familys_gain_vector)
         g.upgrade_to_level(3);   // level_diff == 2
 
         ASSERT_EQ(3, (int)g.level) << row.label << ": upgrade_to_level sets the level";
+        EXPECT_EQ((int)calculate_exp(3), (int)g.exp)
+            << row.label << ": set_xp defaults to true, so XP lands on the level-3 threshold";
         EXPECT_EQ(orig_str + 2 * row.str, (int)g.strength)
             << row.label << ": STR gain is 2 levels * " << row.str;
         EXPECT_EQ(orig_dex + 2 * row.dex, (int)g.dexterity)

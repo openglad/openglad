@@ -385,6 +385,33 @@ static bool reset_pointer_on_menu_thread()
     return run_on_main_thread([] { reset_mouse_click_tracking(); });
 }
 
+// The settle for the DETAIL menu, which is a legacy loop: it is not
+// run_menu_screen-hosted, so no engine frame can ever complete inside it
+// (wait_for_menu_frames would time out) and it never drains the main-thread
+// task queue (run_on_main_thread would burn its whole ceiling). What the next
+// click actually needs is the pointer EDGE: leftmouse() mints a click only on
+// an unpressed->pressed transition (src/interface/ui/picker_input.cpp), so the
+// press that opened this screen must have been sampled as RELEASED before a
+// fresh press can be seen at all. That is a state, and this waits for the
+// state — bounded, and normally satisfied on the first read, where the flat
+// SDL_Delay(300) it replaces spent 300 ms proving nothing.
+static bool wait_for_released_pointer_edge(int timeout_ms = 2000)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (SDL_GetTicks() < deadline)
+    {
+        const auto& hw = input_hardware_state();
+        if (!hw.picker_was_left_down && hw.mouse.left == 0)
+            return true;
+        SDL_Delay(2);
+    }
+    fprintf(stderr,
+            "  [test] the pointer never returned to a released edge within "
+            "%d ms\n",
+            timeout_ms);
+    return false;
+}
+
 template <typename Predicate>
 static bool wait_for_menu_thread_condition(Predicate&& predicate,
                                            int timeout_ms = 10000)
@@ -415,6 +442,9 @@ struct TrainPromoteFlowState
     bool saw_promote = false;
     bool back_in_train_menu = false;
     bool pointer_edges_acknowledged = true;
+    // Every settle in the flow was a CONDITION that came true (a completed
+    // engine frame, a released pointer edge), not a clock that ran out.
+    bool settles_observed = true;
 };
 
 // Drives the REAL nesting: train menu -> DETAILS -> promote -> back in the
@@ -431,7 +461,10 @@ static int train_menu_promote_injector(void* data)
         return 0;
     }
     state->saw_train_menu = true;
-    SDL_Delay(300);
+    // No settle before this: reset_pointer_on_menu_thread() IS one. It posts
+    // to the menu thread's task queue, which run_menu_screen drains at the top
+    // of a frame, so its return proves a frame ran — strictly more than a
+    // flat delay proved.
     state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("details");
 
@@ -440,7 +473,7 @@ static int train_menu_promote_injector(void* data)
         return 0;
     }
     state->saw_promote = true;
-    SDL_Delay(300);
+    state->settles_observed &= wait_for_released_pointer_edge();
     interact("promote");
 
     // The promotion returns MENU_REDRAW straight into the train menu;
@@ -450,7 +483,6 @@ static int train_menu_promote_injector(void* data)
         return 0;
     }
     state->back_in_train_menu = true;
-    SDL_Delay(300);
 
     short strength_before = 0;
     state->pointer_edges_acknowledged &= run_on_main_thread([&] {
@@ -491,6 +523,8 @@ struct DetailPromoteFlowState
     std::atomic<bool> finished{false};
     bool saw_promote = false;
     bool clicked_promote = false;
+    // See TrainPromoteFlowState::settles_observed.
+    bool settles_observed = true;
 };
 
 // Gated on the affordance, never on a flat delay: on the unfixed tree the
@@ -504,10 +538,11 @@ static int detail_menu_promote_injector(void* data)
 
     if (wait_for_interactable("promote", 10000)) {
         state->saw_promote = true;
-        SDL_Delay(300);
         // No run_on_main_thread() settle here: create_detail_menu is a legacy
         // loop, not a run_menu_screen spec, so it never pumps the injector
-        // task queue and the post would burn its whole 15 s ceiling.
+        // task queue and the post would burn its whole 15 s ceiling. The
+        // released-pointer edge is the condition this click needs.
+        state->settles_observed = wait_for_released_pointer_edge();
         state->clicked_promote = interact("promote");
     }
     if (!state->clicked_promote) {
@@ -563,6 +598,8 @@ TEST(PickerDetailMenuDriven, detail_menu_promotes_after_a_lobby_poll_rebuilds_th
 
     ASSERT_TRUE(state.saw_promote)
         << "the promote affordance must survive the roster rebuild";
+    ASSERT_TRUE(state.settles_observed)
+        << "the injector's settle must be a condition that came true";
     ASSERT_TRUE(state.clicked_promote);
     ASSERT_EQ(2, (int)r) << "promote returns REDRAW";
     ASSERT_TRUE(save.team_list[0] != nullptr)
@@ -610,6 +647,8 @@ TEST(PickerDetailMenuDriven, train_menu_details_promote_survives_redraw_and_acce
     ASSERT_TRUE(state.back_in_train_menu)
         << "promotion should return to the train menu";
     ASSERT_TRUE(state.pointer_edges_acknowledged);
+    ASSERT_TRUE(state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
     ASSERT_EQ(2, (int)r) << "train menu BACK should return REDRAW";
 
     // The real team member is an Archmage and ACCEPT did not revert it.
@@ -632,6 +671,8 @@ struct TrainPromoteScriptState
     bool saw_promote = false;
     bool back_in_train_menu = false;
     bool pointer_edges_acknowledged = true;
+    // See TrainPromoteFlowState::settles_observed.
+    bool settles_observed = true;
     // Optional extra steps performed back in the train menu after the
     // promotion, before BACK.
     bool do_stat_edit = false;
@@ -653,7 +694,10 @@ static int train_menu_promote_script_injector(void* data)
         return 0;
     }
     state->saw_train_menu = true;
-    SDL_Delay(300);
+    // No settle before this: reset_pointer_on_menu_thread() IS one. It posts
+    // to the menu thread's task queue, which run_menu_screen drains at the top
+    // of a frame, so its return proves a frame ran — strictly more than a
+    // flat delay proved.
     state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("details");
 
@@ -662,10 +706,10 @@ static int train_menu_promote_script_injector(void* data)
         return 0;
     }
     state->saw_promote = true;
-    SDL_Delay(300);
     // The legacy detail loop runs synchronously inside the train menu's
-    // button callback, so it cannot drain the menu-screen task queue. Its
-    // query_mouse() loop has already consumed the DETAILS release here.
+    // button callback, so it cannot drain the menu-screen task queue. Wait on
+    // the pointer edge it leaves behind instead.
+    state->settles_observed &= wait_for_released_pointer_edge();
     interact("promote");
 
     // "accept" only exists in the train menu, so this waits out the return
@@ -674,8 +718,13 @@ static int train_menu_promote_script_injector(void* data)
         state->finished.store(true, std::memory_order_relaxed);
         return 0;
     }
+    // The pre-fix revert window is a number of picker_lobby_poll()s, and the
+    // train screen polls the lobby once per engine frame
+    // (train_menu_screen_spec, .polls_lobby = true). Five COMPLETED frames is
+    // therefore five real polls; the flat 500 ms it replaces was a guess that
+    // any ran at all.
     state->back_in_train_menu = true;
-    SDL_Delay(500); // several poll iterations — the pre-fix revert window
+    state->settles_observed &= wait_for_menu_frames(5);
 
     if (state->do_stat_edit) {
         short strength_before = 0;
@@ -719,7 +768,6 @@ static int train_menu_exit_injector(void* data)
     auto* state = static_cast<TrainPromoteScriptState*>(data);
     if (wait_for_interactable("details", 10000)) {
         state->saw_train_menu = true;
-        SDL_Delay(300);
         state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
         interact("back");
     }
@@ -780,6 +828,8 @@ TEST(PickerDetailMenuDriven, train_menu_promote_alone_persists_on_exit_and_reent
     ASSERT_TRUE(state.saw_promote) << "details menu should offer promote";
     ASSERT_TRUE(state.back_in_train_menu);
     ASSERT_TRUE(state.pointer_edges_acknowledged);
+    ASSERT_TRUE(state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
 
     // Family AND the promotion's stats survived the exit.
     ASSERT_TRUE(save.team_list[0] != nullptr);
@@ -801,6 +851,8 @@ TEST(PickerDetailMenuDriven, train_menu_promote_alone_persists_on_exit_and_reent
 
     ASSERT_TRUE(reenter_state.saw_train_menu);
     ASSERT_TRUE(reenter_state.pointer_edges_acknowledged);
+    ASSERT_TRUE(reenter_state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
     ASSERT_TRUE(og::runtime::current_session->current_guy_ != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE,
               (int)og::runtime::current_session->current_guy_->family);
@@ -837,6 +889,8 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_stat_edit_keeps_both)
     ASSERT_TRUE(state.saw_promote);
     ASSERT_TRUE(state.back_in_train_menu);
     ASSERT_TRUE(state.pointer_edges_acknowledged);
+    ASSERT_TRUE(state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
 
     ASSERT_TRUE(save.team_list[0] != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)
@@ -876,6 +930,8 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_cancel_discards_pending_edi
     ASSERT_TRUE(state.saw_promote);
     ASSERT_TRUE(state.back_in_train_menu);
     ASSERT_TRUE(state.pointer_edges_acknowledged);
+    ASSERT_TRUE(state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
 
     ASSERT_TRUE(save.team_list[0] != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)

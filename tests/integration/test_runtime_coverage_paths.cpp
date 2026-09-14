@@ -1993,8 +1993,6 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     bystander->stats()->set_hitpoints(50.0f);
     bystander->stats()->set_max_hitpoints(50.0f);
     bystander->setxy(200, 200);
-    if (!(ally && hostile))
-        return;
     ally->set_act_type(ACT_CONTROL);
     hostile->set_act_type(ACT_CONTROL);
 
@@ -2005,8 +2003,6 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     // Dead linked object used for pointer cleanup.
     walker* dead_link = add_living(2);
     ASSERT_TRUE(dead_link != nullptr) << "dead link created";
-    if (!dead_link)
-        return;
     dead_link->set_dead(1);
     ally->set_owner(dead_link);
     ally->set_collide_ob(dead_link);

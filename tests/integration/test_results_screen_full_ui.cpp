@@ -119,6 +119,17 @@ static bool results_wait_for_live_loop(ResultsThreadState* st, const char* who)
 // fresh unpressed->pressed edge for the loop's `was_mouse_down` detector.
 // Each leg is bounded at 2 s; the "loop no longer live" escape is what lets
 // the OK press — the one that ENDS the loop — return.
+//
+// THE MouseState SEAM, deliberate and TESTING-only: the fields written below
+// live in the one global MouseState the panel's own loop samples, and this
+// injector writes them from OFF that thread with no lock. There is no test
+// hook to take instead — the panel reads query_mouse()'s struct directly, so
+// synchronising the write would mean a mutex in src/interface for the benefit
+// of tests alone. What orders the two threads is the atomic frame counter:
+// the write lands, then this thread waits for the counter to advance twice,
+// and only an iteration that started after the write can be the one it reads.
+// The same pattern (and the same reasoning) is in
+// tests/integration/test_tower_run.cpp.
 static bool inject_results_click(int game_x, int game_y, ResultsThreadState* st,
                                  const char* who)
 {

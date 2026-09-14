@@ -366,21 +366,38 @@ TEST(VideoModesMore, no_screen_paths_return_the_documented_canvas_defaults)
     EXPECT_EQ(CanvasTarget::UI, video.last_presented_canvas());
 }
 
-TEST(VideoModesMore, enumerated_display_resolutions_are_unique_and_sorted)
+// The DISPLAY selector's three product rules, in the order they can be
+// observed here:
+//  * display_resolutions() is exactly SDL's fullscreen mode list for this
+//    window's display, in physical pixels, filtered to >= 640x400, deduped
+//    and sorted strictly descending -- and EMPTY when this topology forbids
+//    an exclusive mode switch or SDL enumerates nothing that qualifies.
+//  * desktop_resolution() is the desktop mode's physical pixel size.
+//  * windowed_desktop_resolution() is the display's usable bounds.
+// The last two are pinned unconditionally (their SDL sources are asserted
+// non-degenerate first, so the comparisons cannot pass on a pair of zeroes);
+// the mode-list comparison is honest about the drivers that enumerate no
+// mode at all and says so instead of reporting a pass.
+TEST(VideoModesMore, display_selector_reports_sdls_modes_the_desktop_and_the_usable_bounds)
 {
     ASSERT_NE(nullptr, E_Screen);
     ASSERT_NE(nullptr, E_Screen->window);
     sdl_video video(false);
     const std::vector<std::pair<int, int>> resolutions =
         video.display_resolutions();
-    EXPECT_TRUE(std::is_sorted(
-        resolutions.begin(), resolutions.end(), std::greater<>()));
-    EXPECT_EQ(resolutions.end(),
-              std::adjacent_find(resolutions.begin(), resolutions.end()));
+    // Strictly descending subsumes "sorted" and "unique" in one pass: equal
+    // neighbours (a lost dedupe) and an out-of-order pair both fail here.
+    for (std::size_t i = 1; i < resolutions.size(); ++i)
+    {
+        EXPECT_GT(resolutions[i - 1], resolutions[i])
+            << "entry " << i << " must be strictly smaller than its predecessor";
+    }
     for (const auto& [width, height] : resolutions)
     {
-        EXPECT_GE(width, 640);
-        EXPECT_GE(height, 400);
+        EXPECT_GE(width, 640)
+            << "modes narrower than the classic 2x window are filtered out";
+        EXPECT_GE(height, 400)
+            << "modes shorter than the classic 2x window are filtered out";
     }
 
     int display_count = 0;
@@ -444,7 +461,15 @@ TEST(VideoModesMore, enumerated_display_resolutions_are_unique_and_sorted)
         desktop_mode != nullptr
             ? og::platform::display_mode_pixel_size(*desktop_mode)
             : std::pair<int, int>{0, 0};
-    EXPECT_EQ(expected_desktop, desktop);
+    // Assert the SDL side is a real screen size FIRST: without this the
+    // comparison below would also hold for a desktop_resolution() that had
+    // been reduced to `return {0, 0};`.
+    ASSERT_GT(expected_desktop.first, 0)
+        << "SDL must report a desktop mode for this driver";
+    ASSERT_GT(expected_desktop.second, 0)
+        << "SDL must report a desktop mode for this driver";
+    EXPECT_EQ(expected_desktop, desktop)
+        << "desktop_resolution() is the desktop mode's physical pixel size";
 
     SDL_Rect usable_bounds{};
     const std::pair<int, int> expected_usable =
@@ -452,8 +477,22 @@ TEST(VideoModesMore, enumerated_display_resolutions_are_unique_and_sorted)
                 usable_bounds.w > 0 && usable_bounds.h > 0
             ? std::pair<int, int>{usable_bounds.w, usable_bounds.h}
             : std::pair<int, int>{0, 0};
-    EXPECT_EQ(expected_usable, usable);
+    ASSERT_GT(expected_usable.first, 0)
+        << "SDL must report usable bounds for this driver";
+    ASSERT_GT(expected_usable.second, 0)
+        << "SDL must report usable bounds for this driver";
+    EXPECT_EQ(expected_usable, usable)
+        << "windowed_desktop_resolution() is the display's usable bounds";
+    // Windowed sizing must never be offered a resolution the desktop cannot
+    // hold, so the usable bounds never exceed the desktop itself.
+    EXPECT_LE(expected_usable.first, expected_desktop.first)
+        << "the usable width fits inside the desktop";
+    EXPECT_LE(expected_usable.second, expected_desktop.second)
+        << "the usable height fits inside the desktop";
 
+    // Only the mode-LIST rule is unobservable on such a driver; the desktop
+    // and usable-bounds rules above have already run and are reported by the
+    // skip message.
     if (!resolution_rule_is_observable)
         GTEST_SKIP() << "video driver '"
                      << (driver != nullptr ? driver : "(none)")
@@ -696,6 +735,26 @@ TEST(VideoModesMore, buffered_blits_clip_to_their_port_and_accel_surfaces_guard_
     s->get_pixel(12, 0, &r, &g, &b);
     EXPECT_EQ(0, static_cast<int>(r) + static_cast<int>(g) + static_cast<int>(b))
         << "the clipped-away text columns stay black";
+
+    // The FAR edges of the same blitter: a 16-wide/16-tall tile at (310,190)
+    // runs past portendx 319 and portendy 199, so walkputbuffertext_alpha's
+    // right-edge arm (xmax = portendx - walkerstartx) and bottom-edge arm
+    // (ymax = portendy - walkerstarty) both fire. Columns 310..318 and rows
+    // 190..198 draw; column 319 and row 199 are excluded, because portendx /
+    // portendy are exclusive. Source byte 0 is the transparent one, so the
+    // tile's own top-left corner is skipped and (311,190) is the first stamp.
+    s->clearbuffer();
+    s->walkputbuffertext_alpha(310, 190, 16, 16, 0, 0, 319, 199, span, 40, 255);
+    EXPECT_EQ(40, s->get_pixel(311, 190, &index))
+        << "the tile draws from its own x inside the port";
+    EXPECT_EQ(40, s->get_pixel(318, 190, &index))
+        << "the last column inside the port is drawn";
+    EXPECT_EQ(0, s->get_pixel(319, 190, &index))
+        << "portendx is exclusive: column 319 is clipped away";
+    EXPECT_EQ(40, s->get_pixel(311, 198, &index))
+        << "the last row inside the port is drawn";
+    EXPECT_EQ(0, s->get_pixel(311, 199, &index))
+        << "portendy is exclusive: row 199 is clipped away";
 
     // putbuffer_alpha takes the same clip and halves the SPRITE colour.
     query_palette_reg(42, &pr, &pg, &pb);

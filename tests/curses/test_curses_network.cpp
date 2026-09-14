@@ -537,7 +537,8 @@ TEST(CursesNetwork, host_lobby_builds_over_inprocess_transport)
         << "the host's own row is marked [host]";
     EXPECT_TRUE(status_contains(*lobby, "[you]"))
         << "the host's own row is marked [you]";
-    EXPECT_GT(term.present_count(), 0) << "poll() renders the lobby";
+    EXPECT_EQ(1, term.present_count())
+        << "one poll composes and presents the lobby exactly once";
 }
 
 TEST(CursesNetwork, internal_helpers_cover_message_and_session_paths)
@@ -1157,26 +1158,81 @@ TEST(CursesNetwork, run_curses_lobby_returns_default_result_when_cancelled)
     EXPECT_TRUE(lobby->cancelled());
 }
 
+// Key RELEASES take no part in the lobby: CursesLobbyImpl::poll skips every
+// released key before any action arm is reached (src/platform/curses/
+// curses_network.cpp, `if (key.is_release()) continue;`).
+//
+// Polling ONCE after the releases could never have proved the 's'/Enter arms
+// dead: a start needs a server round trip, so a single poll answers "no start"
+// whether or not releases are filtered. This drives the whole start machinery
+// instead — a ready joiner and the same 200-poll budget the sibling press test
+// uses — and then presses 's' on the SAME lobby as a positive control, so
+// "nothing happened" cannot be blamed on a lobby that could never have started.
 TEST(CursesNetwork, key_releases_do_not_start_or_cancel_lobby)
 {
-    SaveData save;
-    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
     auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
 
-    auto lobby = make_host_lobby_over_transport_for_testing(save, 1, server, host_client);
-    ASSERT_NE(lobby, nullptr);
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+    ASSERT_NE(host_lobby, nullptr);
+    ASSERT_NE(join_lobby, nullptr);
 
-    HeadlessTerminal term(24, 80);
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
     FakeClock clock;
-    term.push_char_release(U's');
-    term.push_char_release(U'q');
-    term.push_special_release(KeyCode::Enter);
-    EXPECT_FALSE(lobby->poll(term, clock));
-    EXPECT_FALSE(lobby->cancelled());
-    EXPECT_EQ(lobby->take_session(), nullptr);
+
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
+
+    // The negative arm: every key that acts on a PRESS, delivered as a release.
+    host_term.push_char_release(U's');
+    host_term.push_char_release(U'q');
+    host_term.push_special_release(KeyCode::Enter);
+    host_term.push_char_release(U'd');
+    host_term.push_special_release(KeyCode::Escape);
+
+    bool started_on_releases = false;
+    for (int i = 0; i < 200; ++i) {
+        started_on_releases =
+            host_lobby->poll(host_term, clock) || started_on_releases;
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_FALSE(started_on_releases)
+        << "a released 's'/Enter must not negotiate a start";
+    EXPECT_FALSE(host_lobby->cancelled())
+        << "a released 'q'/Esc/'d' must not cancel the lobby";
+    EXPECT_EQ(host_lobby->take_session(), nullptr)
+        << "no session is handed out on key releases";
+    EXPECT_EQ(join_lobby->take_session(), nullptr)
+        << "the joiner sees no start either";
+
+    // The paired positive control: the identical lobby, one PRESS of 's'.
+    host_term.push_char(U's');
+    bool host_started = false;
+    bool join_started = false;
+    for (int i = 0; i < 200 && !(host_started && join_started); ++i) {
+        host_started = host_lobby->poll(host_term, clock) || host_started;
+        join_started = join_lobby->poll(join_term, clock) || join_started;
+    }
+    EXPECT_TRUE(host_started)
+        << "control: a PRESSED 's' on this very lobby does start the game, so "
+           "the release arms above were pressing a live key";
+    EXPECT_TRUE(join_started) << "control: the joiner observes the start";
+    EXPECT_NE(host_lobby->take_session(), nullptr)
+        << "control: the started host hands out its session";
 }
 
 TEST(CursesNetwork, joiner_start_request_is_noop)
