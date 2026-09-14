@@ -15,6 +15,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/gloader.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -559,22 +560,70 @@ public:
 #define BUT_ARMOR 4
 #define BUT_LEVEL 5
 
+namespace {
+
+// True when `name` is one of THAT family's own recruit names. The pool is the
+// descriptor's `names` list (packs/core/families/*.lua) and is the only thing
+// og::ui::get_random_name draws from; both of its fallbacks -- borrowing the
+// soldier pool for a poolless/unknown family, and the literal "Nameless" when
+// there is no pool at all (src/interface/ui/picker_common.cpp:573-584) --
+// fail this for every family that ships a pool of its own.
+bool name_is_in_family_pool(unsigned char family, const char* name)
+{
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    if (fd == nullptr || fd->name_pool == nullptr || fd->name_pool_size <= 0)
+        return false;
+    for (int i = 0; i < fd->name_pool_size; ++i) {
+        if (fd->name_pool[i] != nullptr &&
+            std::strcmp(fd->name_pool[i], name) == 0)
+            return true;
+    }
+    return false;
+}
+
+// The training-star formula, ((55 / cost) * 5) / 11 asterisks, with the
+// cost == 0 arm that means "this axis is not trainable"
+// (src/interface/ui/picker_team_build.cpp:1639-1643).
+std::string expected_training_stars(std::int32_t cost)
+{
+    if (cost == 0)
+        return std::string();
+    const int rating = ((55 / cost) * 5) / 11;
+    if (rating < 0 || rating > 5)
+        return std::string();
+    return std::string(static_cast<std::size_t>(rating), '*');
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // get_class_description tests
 // ---------------------------------------------------------------------------
 
 TEST(PickerFuncs, get_class_description_soldier)
 {
-    std::string desc = get_class_description(FAMILY_SOLDIER);
-    ASSERT_TRUE(!desc.empty()) << "soldier description should not be empty";
-    ASSERT_TRUE(desc.find("Soldier") != std::string::npos || desc.find("soldier") != std::string::npos || desc.find("fighter") != std::string::npos || desc.size() > 10) << "soldier description should contain useful text";
+    // get_class_description hands back the family's OWN descriptor->description
+    // (picker_team_build.cpp:1627-1632); the soldier blurb is the HIRE screen
+    // text in packs/core/families/living-00-soldier.lua.
+    const std::string desc = get_class_description(FAMILY_SOLDIER);
+    EXPECT_NE(std::string::npos, desc.find("Your basic grunt"))
+        << "the soldier blurb opens with its own line, got: " << desc;
+    EXPECT_NE(std::string::npos, desc.find("Special: Charge"))
+        << "the soldier blurb names the soldier special, got: " << desc;
+    EXPECT_NE(desc, get_class_description(FAMILY_MAGE))
+        << "a lookup that hands every family the same text is not a lookup";
 }
 
 
 TEST(PickerFuncs, get_class_description_mage)
 {
-    std::string desc = get_class_description(FAMILY_MAGE);
-    ASSERT_TRUE(!desc.empty()) << "mage description should not be empty";
+    const std::string desc = get_class_description(FAMILY_MAGE);
+    EXPECT_NE(std::string::npos, desc.find("fireballs"))
+        << "the mage blurb names its ranged attack, got: " << desc;
+    EXPECT_NE(std::string::npos, desc.find("Special: Teleport"))
+        << "the mage blurb names the mage special, got: " << desc;
+    EXPECT_NE(desc, get_class_description(FAMILY_SOLDIER))
+        << "the mage must not be handed the soldier's blurb";
 }
 
 
@@ -585,10 +634,20 @@ TEST(PickerFuncs, get_class_description_all_families)
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN,
                         FAMILY_ARCHMAGE, FAMILY_BIG_ORC };
+    // Every listed family owns its blurb: the three slimes are the only core
+    // families that share one text and only FAMILY_SMALL_SLIME is listed, so
+    // sixteen families must yield sixteen distinct descriptions. A registry
+    // that hands the same (or a neighbour's) entry to everyone collapses the
+    // set and fails here while every HIRE screen is wrong.
+    std::set<std::string> seen;
     for (int i = 0; i < 16; i++) {
-        std::string desc = get_class_description(families[i]);
-        ASSERT_TRUE(!desc.empty()) << "every family should have a description";
+        const std::string desc = get_class_description(families[i]);
+        ASSERT_FALSE(desc.empty())
+            << "family " << int(families[i]) << " has no description";
+        seen.insert(desc);
     }
+    ASSERT_EQ(16u, seen.size())
+        << "every listed family needs its own blurb";
 }
 
 
@@ -598,9 +657,16 @@ TEST(PickerFuncs, get_class_description_all_families)
 
 TEST(PickerFuncs, family_name_copy_soldier)
 {
+    // family_short_name falls back to the descriptor's `name` when short_name
+    // is unset, and to the literal "BEAST" when the family is not registered
+    // (picker_common.cpp:421-427) -- "BEAST" is non-null and non-empty, so
+    // only the exact label proves the soldier resolved.
     const char* name = family_name_copy(FAMILY_SOLDIER);
-    ASSERT_TRUE(name != nullptr) << "soldier name should not be null";
-    ASSERT_TRUE(strlen(name) > 0) << "soldier name should not be empty";
+    ASSERT_NE(nullptr, name) << "soldier short label";
+    EXPECT_STREQ("SOLDIER", name)
+        << "the soldier ships short_name = og.NIL, so the roster label is its name";
+    EXPECT_STREQ("SOLDIER", get_family_string(FAMILY_SOLDIER))
+        << "the full label is the same string for the soldier";
 }
 
 
@@ -628,14 +694,21 @@ TEST(PickerFuncs, family_name_copy_all_families)
 
 TEST(PickerFuncs, get_training_cost_rating_returns_stars)
 {
+    // The soldier's train costs are {STR 6, DEX 10, CON 6, INT 25, ARMOR 50}
+    // (living-00-soldier.lua:148-149) and the rating is ((55 / cost) * 5) / 11
+    // asterisks, so the whole row is a fixed string. "" passes every
+    // non-null/length check, which is why the exact faces are pinned.
     const char* rating = get_training_cost_rating(FAMILY_SOLDIER, BUT_STR);
-    ASSERT_TRUE(rating != nullptr) << "rating should not be null";
-    // Rating is 0-5 asterisks
-    size_t len = strlen(rating);
-    ASSERT_TRUE(len <= 5) << "rating should be at most 5 characters";
-    for (size_t i = 0; i < len; i++) {
-        ASSERT_TRUE(rating[i] == '*') << "rating should only contain asterisks";
-    }
+    ASSERT_NE(nullptr, rating) << "rating should not be null";
+    EXPECT_STREQ("****", rating) << "STR costs 6: four stars";
+    EXPECT_STREQ("**", get_training_cost_rating(FAMILY_SOLDIER, BUT_DEX))
+        << "DEX costs 10: two stars";
+    EXPECT_STREQ("****", get_training_cost_rating(FAMILY_SOLDIER, BUT_CON))
+        << "CON costs 6: four stars";
+    EXPECT_STREQ("", get_training_cost_rating(FAMILY_SOLDIER, BUT_INT))
+        << "INT costs 25: the rating rounds to no star at all";
+    EXPECT_STREQ("", get_training_cost_rating(FAMILY_SOLDIER, BUT_ARMOR))
+        << "ARMOR costs 50: no star";
 }
 
 
@@ -643,21 +716,50 @@ TEST(PickerFuncs, get_training_cost_rating_varies_by_stat)
 {
     // Soldier STR cost is 6 (cheap), INT cost is 25 (expensive)
     const char* str_rating = get_training_cost_rating(FAMILY_SOLDIER, BUT_STR);
+    const char* dex_rating = get_training_cost_rating(FAMILY_SOLDIER, BUT_DEX);
     const char* int_rating = get_training_cost_rating(FAMILY_SOLDIER, BUT_INT);
-    // Cheaper stats should have more stars
-    ASSERT_TRUE(strlen(str_rating) >= strlen(int_rating)) << "cheaper stat should have >= stars";
+    ASSERT_NE(nullptr, str_rating);
+    ASSERT_NE(nullptr, dex_rating);
+    ASSERT_NE(nullptr, int_rating);
+    // Strictly more, not ">=": a rating function that returned "" for every
+    // axis satisfies 0 >= 0 while the cheap-stat rule it claims is gone.
+    EXPECT_GT(strlen(str_rating), strlen(dex_rating))
+        << "STR (6) is cheaper than DEX (10) and must score strictly more";
+    EXPECT_GT(strlen(dex_rating), strlen(int_rating))
+        << "DEX (10) is cheaper than INT (25) and must score strictly more";
+    // The ordering pinned at its three anchors.
+    EXPECT_STREQ("****", str_rating);
+    EXPECT_STREQ("**", dex_rating);
+    EXPECT_STREQ("", int_rating);
 }
 
 
 TEST(PickerFuncs, get_training_cost_rating_all_families)
 {
     for (int fam = 0; fam <= FAMILY_ARCHMAGE; fam++) {
+        const FamilyDescriptor* fd = get_family_descriptor(fam);
+        // Every id up to the archmage is a core-pack family; a registry that
+        // handed back no descriptors used to sweep every line of this loop
+        // and still pass on "not null and at most 5 chars".
+        ASSERT_NE(nullptr, fd) << "family " << fam << " must be registered";
         for (int stat = 0; stat < 5; stat++) {
-            const char* rating = get_training_cost_rating(static_cast<unsigned char>(fam), stat);
-            ASSERT_TRUE(rating != nullptr) << "rating should not be null";
-            ASSERT_TRUE(strlen(rating) <= 5) << "rating should be at most 5 chars";
+            const char* rating =
+                get_training_cost_rating(static_cast<unsigned char>(fam), stat);
+            ASSERT_NE(nullptr, rating) << fam << '/' << stat;
+            EXPECT_EQ(expected_training_stars(fd->stat_costs[stat]),
+                      std::string(rating))
+                << "family " << fam << " axis " << stat << " costs "
+                << fd->stat_costs[stat];
         }
     }
+
+    // The two guard arms of the same function.
+    EXPECT_STREQ("", get_training_cost_rating(FAMILY_SOLDIER, -1))
+        << "a negative axis is not an axis";
+    EXPECT_STREQ("", get_training_cost_rating(FAMILY_SOLDIER, StatAxis::Count))
+        << "one past the last axis is not an axis";
+    EXPECT_STREQ("", get_training_cost_rating(250, BUT_STR))
+        << "an unregistered family has no training prices";
 }
 
 TEST(PickerFuncs, player_control_summary_rejects_bad_slots_and_clips_long_key_names)
@@ -692,8 +794,15 @@ TEST(PickerFuncs, get_random_name_returns_nonempty)
 {
     srand(42);
     const char* name = og::ui::get_random_name(FAMILY_SOLDIER);
-    ASSERT_TRUE(name != nullptr) << "random name should not be null";
-    ASSERT_TRUE(strlen(name) > 0) << "random name should not be empty";
+    ASSERT_NE(nullptr, name) << "random name should not be null";
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd) << "the soldier must be registered";
+    ASSERT_GT(fd->name_pool_size, 0) << "the soldier ships a recruit pool";
+    // The no-pool fallback returns the literal "Nameless" and both fallbacks
+    // pass non-null/non-empty; only pool membership proves the draw came from
+    // this family's own list.
+    EXPECT_TRUE(name_is_in_family_pool(FAMILY_SOLDIER, name))
+        << "drew a name that is not in the soldier pool: " << name;
 }
 
 
@@ -704,43 +813,75 @@ TEST(PickerFuncs, get_random_name_all_families)
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
+    // None of the three poolless core families (golem, giant skeleton, tower)
+    // is listed, so every one of these fourteen must draw from its OWN pool.
+    // The soldier-pool fallback firing for all fourteen -- an unloaded class
+    // pack -- used to be invisible here.
     for (int i = 0; i < 14; i++) {
+        const FamilyDescriptor* fd = get_family_descriptor(families[i]);
+        ASSERT_NE(nullptr, fd) << "family " << int(families[i]);
+        ASSERT_GT(fd->name_pool_size, 0)
+            << "family " << int(families[i]) << " ships a recruit pool";
         const char* name = og::ui::get_random_name(families[i]);
-        ASSERT_TRUE(name != nullptr) << "random name should not be null for any family";
-        ASSERT_TRUE(strlen(name) > 0) << "random name should not be empty for any family";
+        ASSERT_NE(nullptr, name) << "family " << int(families[i]);
+        EXPECT_TRUE(name_is_in_family_pool(families[i], name))
+            << "family " << int(families[i]) << " drew a foreign name: " << name;
     }
 
-    std::string unique = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
-    ASSERT_TRUE(!unique.empty()) << "unique name should not be empty";
+    const std::string unique = og::ui::get_unique_name(
+        FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
+    EXPECT_TRUE(name_is_in_family_pool(FAMILY_SOLDIER, unique.c_str()))
+        << "an uncollided unique draw is a plain soldier pool name: " << unique;
 }
 
 
 // ---------------------------------------------------------------------------
-// has_name_in_team tests
+// get_unique_name (the roster dedup rule) tests
 // ---------------------------------------------------------------------------
 
-TEST(PickerFuncs, has_name_in_team_empty)
+// The old test seeded a recruit called "TestName" -- a string that is in no
+// name pool, so no collision could ever happen -- and then asserted only that
+// the result was non-empty. A get_unique_name that ignored the roster outright
+// passed. This one MAKES the collision happen: get_random_name draws from the
+// ambient std::rand stream, so replaying the seed replays the first draw, and
+// that exact name is put on the team before the second call.
+TEST(PickerFuncs, get_unique_name_redraws_a_name_already_on_the_team)
 {
-    // Save and clear team
-    const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
-    og::runtime::current_session->myscreen_->save_data.team_size = static_cast<unsigned char>(0);
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char orig_size = save.team_size;
+    std::unique_ptr<guy> orig_first = std::move(save.team_list[0]);
 
-    // Use get_unique_name to verify name dedup works on empty team
-    std::string name1 = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
-    ASSERT_TRUE(!name1.empty()) << "unique name should not be empty on empty team";
+    srand(42);
+    const std::string drawn = og::ui::get_random_name(FAMILY_SOLDIER);
+    ASSERT_TRUE(name_is_in_family_pool(FAMILY_SOLDIER, drawn.c_str()))
+        << "the seeded draw must be a soldier pool name: " << drawn;
 
-    guy* g = new guy(FAMILY_SOLDIER);
-    g->name = "TestName";
-    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(g);
-    og::runtime::current_session->myscreen_->save_data.team_size = static_cast<unsigned char>(1);
+    // Empty roster: nothing to collide with, so the first draw is returned
+    // untouched (picker_common.cpp:586-610).
+    save.team_size = static_cast<unsigned char>(0);
+    srand(42);
+    EXPECT_EQ(drawn, og::ui::get_unique_name(FAMILY_SOLDIER, save))
+        << "an empty team takes the first draw";
 
-    // get_unique_name should return a name different from existing "TestName"
-    // (though it may not collide anyway since random names vary)
-    std::string name2 = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
-    ASSERT_TRUE(!name2.empty()) << "unique name should not be empty";
+    // Same seed, but now that name is already on the roster.
+    guy* seeded = new guy(FAMILY_SOLDIER);
+    seeded->name = drawn;
+    save.team_list[0].reset(seeded);
+    save.team_size = static_cast<unsigned char>(1);
 
-    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(nullptr);
-    og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
+    srand(42);
+    const std::string unique = og::ui::get_unique_name(FAMILY_SOLDIER, save);
+    EXPECT_NE(drawn, unique)
+        << "a name already on the team must not be handed out again";
+    // Ten redraws are available before the numbered-suffix tail, so a healthy
+    // redraw loop lands on another POOL name. (The suffix tail itself is
+    // pinned by PickerCommon.get_unique_name_falls_back_to_numbered_duplicate;
+    // a loop that never redrew would fall straight into it and fail here.)
+    EXPECT_TRUE(name_is_in_family_pool(FAMILY_SOLDIER, unique.c_str()))
+        << "the redraw is still a soldier pool name, got: " << unique;
+
+    save.team_list[0] = std::move(orig_first);
+    save.team_size = orig_size;
 }
 
 
@@ -4250,13 +4391,58 @@ static int picker_spritesheet_select_first_pack_injector(void*)
 } // namespace
 
 
-TEST_F(SpriteSheetPicker, config_round_trip)
+// The old body wrote a key into cfg and read it back, which only proved that
+// a std::map remembers what it was told -- nothing in the sprite-sheet product
+// could break it. What the setting is FOR is apply_sprite_sheet_setting()
+// (src/resources/io/platform_io_common.cpp:207-240): an unsafe pack name is
+// scrubbed and nothing mounts, a pack that is not on disk refuses, and a real
+// pack mounts over pix/ and bumps the sprite-source generation so loaders
+// rebuild.
+TEST_F(SpriteSheetPicker, apply_sprite_sheet_setting_mounts_only_real_safe_packs)
 {
-    cfg.apply_setting("graphics", "sprite_sheet", "my-pack");
-    ASSERT_EQ("my-pack", cfg.get_setting("graphics", "sprite_sheet"));
+    // The fixture already left the setting cleared and unmounted.
+    const unsigned gen_at_rest = og::resources::sprite_source_generation();
+
+    // (1) A well-formed name with no directory behind it must refuse.
+    cfg.apply_setting("graphics", "sprite_sheet", "zz_missing_pack");
+    EXPECT_FALSE(apply_sprite_sheet_setting())
+        << "a pack that is not on disk must not mount";
+    EXPECT_EQ(gen_at_rest, og::resources::sprite_source_generation())
+        << "a refused mount changes no sprite source";
+
+    // (2) A name that tries to escape extra_pix/ is scrubbed to "", which is
+    // the already-unmounted state: the call succeeds and mounts NOTHING.
+    cfg.apply_setting("graphics", "sprite_sheet", "../evil");
+    EXPECT_TRUE(apply_sprite_sheet_setting())
+        << "an unsafe pack name is ignored, not an error";
+    EXPECT_TRUE(reassert_sprite_sheet_mount())
+        << "reassert is the documented no-op when no sheet is mounted";
+    EXPECT_EQ(gen_at_rest, og::resources::sprite_source_generation())
+        << "an unsafe name must mount nothing at all";
+
+    // (3) A real directory under extra_pix/ mounts and bumps the generation,
+    // and clearing the setting unmounts and bumps it again.
+    namespace fs = std::filesystem;
+    const fs::path pack_dir =
+        fs::path(get_user_path()) / "extra_pix" / "zz_cfg_rt";
+    std::error_code ec;
+    fs::remove_all(pack_dir, ec);
+    ASSERT_TRUE(fs::create_directories(pack_dir, ec))
+        << "the test pack directory must be created";
+
+    cfg.apply_setting("graphics", "sprite_sheet", "zz_cfg_rt");
+    EXPECT_TRUE(apply_sprite_sheet_setting())
+        << "a real pack directory mounts";
+    const unsigned gen_mounted = og::resources::sprite_source_generation();
+    EXPECT_NE(gen_at_rest, gen_mounted)
+        << "mounting a sheet must mark every sprite loader stale";
 
     cfg.apply_setting("graphics", "sprite_sheet", "");
-    ASSERT_EQ("", cfg.get_setting("graphics", "sprite_sheet"));
+    EXPECT_TRUE(apply_sprite_sheet_setting()) << "clearing unmounts";
+    EXPECT_NE(gen_mounted, og::resources::sprite_source_generation())
+        << "unmounting the sheet must mark the loaders stale again";
+
+    fs::remove_all(pack_dir, ec);
 }
 
 
