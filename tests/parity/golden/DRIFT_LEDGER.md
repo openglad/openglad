@@ -472,8 +472,11 @@ Each row's flip was measured twice: by the staged-packs fast path (copy the
 pinned pack file aside, `_apply_mutation.py` on `build/ci-test/packs/...`,
 `parity_runner_smoke --evaluate-facts`, restore, `cmp`) and by
 `run_mutation_canary.sh --scenario <id>`, which prints `predicate_flips=1`
-naming the index in the table above and `canary: OK` for all nine. A full
-`--all` re-measure is NOT claimed here: it costs about
+naming the index in the table above and `canary: OK` for all nine at
+`0a151cb8` (the commit that added the facts; ~51 s per row). The same fast
+path run on the tree BEFORE that commit is the control: all nine reported
+`predicate_flips=0`, which is what PREDICATE-TOOTHLESS means. A full `--all`
+re-measure is NOT claimed here: it costs about
 2 h 28 m under the current script and belongs to the CI-lane item (Q11) that
 puts the canary in CI; what is claimed is that the nine rows named in this
 section, plus the seventeen orphan pins attached in the same wave, each flip a
