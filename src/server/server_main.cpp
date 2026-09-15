@@ -378,12 +378,7 @@ int main(int argc, char* argv[])
         // Rewire the adopted level's sim context from the stage's private
         // save/events onto this session's (the stage's context died with
         // take()).
-        level_data.set_sim_context(
-            &active_save,
-            &level_data.world().enemy_freeze,
-            session.ctx_.sim_events.get(),
-            session.ctx_.rng,
-            &cfg);
+        level_data.set_sim_context(&active_save, session.ctx_.sim_events.get(), &cfg);
         session.game_.world = &level_data.world();
         session.game_.save = &active_save;
 

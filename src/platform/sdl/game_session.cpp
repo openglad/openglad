@@ -230,12 +230,9 @@ GameSession::GameSession(const Config& session_cfg)
         myscreen_->set_render_interpolation_speed_factor(
             g_game_speed_factor_);
         game_.save = &myscreen_->save_data;
-        myscreen_->level_runtime_data().set_sim_context(
-            &myscreen_->save_data,
-            &myscreen_->world().enemy_freeze,
-            ctx_.sim_events.get(),
-            ctx_.rng,
-            &cfg);
+        myscreen_->level_runtime_data().set_sim_context(&myscreen_->save_data,
+                                                        ctx_.sim_events.get(),
+                                                        &cfg);
 
         // Ensure this session's curpal_ matches the screen's palette.
         // video_init_palettes() populates video::ourpalette per-instance,

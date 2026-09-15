@@ -9,6 +9,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 #include <cstddef>
 #include <memory>
 
@@ -25,24 +26,10 @@ static std::unique_ptr<walker> create_living(char family)
 }
 
 // The sim RNG behind stats.cpp's rng() helper is GameWorld::rng_, not the
-// GameContext one; og::sim::set_sim_random_override is the TESTING seam that
-// scripts it (include/openglad/gameplay/game_world.h).
+// GameContext one -- two independent streams. ScopedSimRandom
+// (tests/test_sim_random_scope.h) is the way to script the sim one.
 namespace
 {
-struct ScopedSimRandom
-{
-    FixedRandom fixed;
-    IRandom* ptr;
-    explicit ScopedSimRandom(std::uint32_t value)
-        : fixed(value), ptr(&fixed)
-    {
-        og::sim::set_sim_random_override(&ptr);
-    }
-    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimRandom(const ScopedSimRandom&) = delete;
-    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
-};
-
 // walker/pixie store raw pointers into PixieData buffers; keep the data alive.
 PixieData one_px()
 {
@@ -273,7 +260,8 @@ TEST(StatsExtended, do_command_attack_that_can_shoot_forces_a_fire_command_and_f
     w->set_busy(0.0f);
 
     // force_command(COMMAND_FIRE, rng(5), ...) draws from the sim RNG.
-    ScopedSimRandom scripted(3); // rng(5) == 3
+    FixedRandom scripted_source(3); // rng(5) == 3
+    ScopedSimRandom scripted(&scripted_source);
 
     w->stats()->clear_command();
     w->stats()->add_command(COMMAND_ATTACK, 5, 0, 0);
@@ -467,7 +455,8 @@ TEST(StatsExtended, hit_response_from_a_new_attacker_retargets_both_ways_and_cle
 
     // rng(3) == 1, so check_special()'s `!rng(3)` gate stays shut and no
     // special fires; this test is about the retarget block only.
-    ScopedSimRandom scripted(1);
+    FixedRandom scripted_source(1);
+    ScopedSimRandom scripted(&scripted_source);
 
     w->set_team_num(0);
     attacker->set_team_num(1);

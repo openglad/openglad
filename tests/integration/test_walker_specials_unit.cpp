@@ -24,9 +24,7 @@ namespace {
 struct SpecialsFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SpecialsFixture()
@@ -35,7 +33,7 @@ struct SpecialsFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -43,7 +41,6 @@ living* add_living(SpecialsFixture& fx, char family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(96, 96);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -224,7 +221,6 @@ living* add_actor(SpecialsFixture& fx, char family, unsigned char team,
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_team_num(team);

@@ -340,8 +340,7 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(
     s->server_rng_ptr_ = &sw.rng_;
     // Rewire the adopted level's sim context from the stage's private
     // save/events onto this session's.
-    s->server_level_->set_sim_context(&s->server_save_, &sw.enemy_freeze,
-                                      &s->server_events_, s->server_rng_ptr_, &cfg);
+    s->server_level_->set_sim_context(&s->server_save_, &s->server_events_, &cfg);
     s->server_ctx_.world = &sw;
     s->server_ctx_.save = &s->server_save_;
     s->server_ctx_.sim_events = &s->server_events_;
@@ -361,8 +360,7 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(
         level, true, &headless_level_data_hooks());
     GameWorld& cw = s->client_level_->world();
     s->client_rng_ptr_ = &cw.rng_;
-    s->client_level_->set_sim_context(&s->client_save_, &cw.enemy_freeze,
-                                      &s->client_events_, s->client_rng_ptr_, &cfg);
+    s->client_level_->set_sim_context(&s->client_save_, &s->client_events_, &cfg);
     s->client_ctx_.world = &cw;
     s->client_ctx_.save = &s->client_save_;
     s->client_ctx_.sim_events = &s->client_events_;

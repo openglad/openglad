@@ -599,8 +599,7 @@ private:
         explicit FixtureWorld(int level_id)
             : level(level_id, true, &sdl_level_data_hooks())
         {
-            level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                                  &level.world().rng_, &cfg);
+            level.set_sim_context(&save, &events, &cfg);
             gc.rng = &level.world().rng_;
         }
 

@@ -92,7 +92,10 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // appends a recipient-specific u8 count plus u32 local_seat_ids, providing
 // authoritative ownership without trusting display names. LobbySettings gains
 // an authored CTF-team-mask u8. StartGame carries a u32 request_id echoed by
-// its confirmation or LobbyState's u32 last_start_request_id on denial. Join
+// its confirmation or LobbyState's u32 last_start_request_id on denial; that
+// denial echo is recipient-specific (layout unchanged) — the server fills
+// last_start_denial/last_start_request_id only in the copy sent to the peer
+// whose StartGame produced the verdict. Join
 // likewise carries a u32 request_id plus a resume-after-level flag, and
 // LobbyState appends the recipient's u32 last_join_request_id and host-peer
 // flag after local_seat_ids. The resume flag is the only Join form retained

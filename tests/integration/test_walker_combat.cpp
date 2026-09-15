@@ -12,6 +12,7 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -92,9 +93,10 @@ static GameWorld& combat_world()
 //     override that push_test_context installs from a GameContext;
 //   * every AI cadence draw (walker::act, act_random, act_generate,
 //     act_guard) and every Lua hook that calls og.* math go through
-//     GameWorld::rng_, which consults ONLY og::sim::set_sim_random_override.
-// A test that pins an exact damage number needs the first; a test that pins
-// which AI branch ran needs the second.
+//     GameWorld::rng_, which consults ONLY the sim override, installed by
+//     ScopedSimRandom (tests/test_sim_random_scope.h).
+// A test that pins an exact damage number needs the first (ScopedCombatRandom
+// below); a test that pins which AI branch ran needs the second.
 class ScopedCombatRandom {
 public:
     explicit ScopedCombatRandom(IRandom* rng) { ctx_.rng = rng; push_test_context(&ctx_); }
@@ -103,19 +105,6 @@ public:
     ScopedCombatRandom& operator=(const ScopedCombatRandom&) = delete;
 private:
     GameContext ctx_;
-};
-
-class ScopedSimRandom {
-public:
-    explicit ScopedSimRandom(IRandom* rng) : rng_(rng)
-    {
-        og::sim::set_sim_random_override(&rng_);
-    }
-    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimRandom(const ScopedSimRandom&) = delete;
-    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
-private:
-    IRandom* rng_;
 };
 
 // First Notification whose text is a "<something> DIED!" death toast.

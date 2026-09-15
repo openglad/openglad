@@ -34,6 +34,7 @@
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include "test_gameplay_context_scope.h"
+#include "test_sim_random_scope.h"
 #include "test_family_hook_dispatch.h"
 
 // --- From test_coverage_r17.cpp ---
@@ -63,7 +64,6 @@ struct SeqRandom final : IRandom {
 struct R17Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     ScopedGameplayContext gameplay;
@@ -74,7 +74,7 @@ struct R17Fixture {
     {
         init_family_registry();
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
 
         push_test_context(&gc);
@@ -90,7 +90,6 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -109,7 +108,6 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -571,16 +569,14 @@ public:
 struct MovementFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     MovementFixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -600,7 +596,6 @@ walker* add_living(MovementFixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -828,7 +823,6 @@ TEST(CoverageMisc, coverage_r18_family_cleric_check_special_default_false)
     MovementFixture fx;
     living self;
     self.set_order_family(Order::Living, FAMILY_CLERIC);
-    bind_test_entity_sim_context(fx.level, &self);
     self.set_current_special(1);
     self.stats()->set_max_magicpoints(100.0f);
     self.stats()->set_magicpoints(1.0f);
@@ -1150,7 +1144,6 @@ struct SeqRandom final : IRandom {
 struct R19Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     ScopedGameplayContext gameplay;
@@ -1161,7 +1154,7 @@ struct R19Fixture {
     {
         init_family_registry();
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
 
         push_test_context(&gc);
@@ -1177,7 +1170,6 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -1266,13 +1258,18 @@ TEST(CoverageMisc, coverage_r19_walker_animate_attack_completion_branch)
 }
 
 // living::act's ACT_RANDOM arm. The sim draws from current_game->world->rng_
-// (SimRandom), NOT from the GameContext rng -- and this binary compiles
-// og_gameplay WITHOUT -DTESTING, so og::sim::set_sim_random_override is not
-// even linked in here. The stream is steered by seeding the LCG state
-// instead: state 1 answers next(5) = 3, next(5) = 1, next(2) = 1, which is
-// the "4 of 5" arm followed (when no foe is findable) by the RANDOM_WALK
-// branch. find_near_foe / find_far_foe draw only next(0), which never
-// advances the state.
+// (SimRandom), NOT from the GameContext rng that R19Fixture installs through
+// push_test_context -- those are two independent streams. This test steers the
+// sim stream by seeding the LCG state, which is the idiom when you want the
+// REAL generator at a known point: state 1 answers next(5) = 3, next(5) = 1,
+// next(2) = 1, which is the "4 of 5" arm followed (when no foe is findable) by
+// the RANDOM_WALK branch. find_near_foe / find_far_foe draw only next(0),
+// which never advances the state.
+//
+// A scripted stream is available in this binary too (the override hook is
+// unconditional, so it reaches og_gameplay-compiled draws even though
+// og_gameplay is built without -DTESTING): see the ScopedSimRandom sibling
+// below.
 TEST(CoverageMisc, coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command)
 {
     R19Fixture fx;
@@ -1315,6 +1312,89 @@ TEST(CoverageMisc, coverage_r19_living_act_random_acquires_a_foe_and_queues_a_co
     EXPECT_TRUE(self->stats()->has_commands())
         << "COMMAND_RANDOM_WALK 20 is queued instead";
 }
+
+// The same ACT_RANDOM arm, driven by a SCRIPTED sim stream instead of a seeded
+// LCG. og::sim::set_sim_random_override is an unconditional gameplay hook (no
+// `#ifdef TESTING` on the declarations or on the check inside
+// SimRandom::next), so ScopedSimRandom steers draws made inside
+// og_gameplay-compiled code even in this binary, which links og_gameplay built
+// WITHOUT -DTESTING.
+//
+// The two draws are living.cpp's `rng_.next(5)` guards: the first (the 1-in-5
+// special roll) answered 3, the second (the 1-in-5 act_random roll) answered 1,
+// which lands on the "4 of 5" arm. There is no third draw: the foe is findable,
+// so the arm queues COMMAND_SEARCH, and find_near_foe's own roll is next(0),
+// which SimRandom::next answers before it ever consults the override.
+namespace {
+
+class ActRandomSpy final : public IRandom
+{
+public:
+    ActRandomSpy(std::initializer_list<std::uint32_t> answers)
+        : answers_(answers)
+    {
+    }
+
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        bounds.push_back(max_exclusive);
+        if (max_exclusive == 0)
+            return 0;
+        const std::uint32_t v = answers_.empty()
+            ? 0u
+            : answers_[idx_++ % answers_.size()];
+        return v % max_exclusive;
+    }
+
+    std::vector<std::uint32_t> bounds;
+
+private:
+    std::vector<std::uint32_t> answers_;
+    std::size_t idx_ = 0;
+};
+
+} // namespace
+
+TEST(CoverageMisc, sim_random_override_reaches_living_act_random_in_og_unit_entity)
+{
+    R19Fixture fx;
+    living* self = add_living(fx, FAMILY_SOLDIER, 0, 64, 64);
+    living* foe = add_living(fx, FAMILY_ORC, 1, 120, 64);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, foe);
+
+    self->set_lineofsight(1);
+    self->set_foe(nullptr);
+    self->set_act_type(ACT_RANDOM);
+    // An ODD facing, so the arm's snap to an even facing is observable.
+    self->set_curdir(static_cast<signed char>(FACE_DOWN_RIGHT));
+    self->set_enddir(static_cast<char>(FACE_DOWN_RIGHT));
+    fx.level.world().rng_.state_ = 1u;
+
+    ActRandomSpy spy{3, 1};
+    {
+        ScopedSimRandom scripted(&spy);
+        ASSERT_TRUE(self->act());
+    }
+
+    const std::vector<std::uint32_t> expected_bounds{5, 5};
+    EXPECT_EQ(expected_bounds, spy.bounds)
+        << "both of living::act's ACT_RANDOM guard draws must reach the"
+           " installed sim override, and nothing else may draw";
+    EXPECT_EQ(foe, self->foe())
+        << "answers 3 then 1 select the '4 of 5' arm, which acquires the"
+           " nearest hostile living";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(self->curdir()))
+        << "facing snaps to (enddir / 2) * 2";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(self->enddir()))
+        << "enddir snaps with it";
+    EXPECT_TRUE(self->stats()->has_commands())
+        << "COMMAND_SEARCH 300 is queued";
+    EXPECT_EQ(1u, fx.level.world().rng_.state_)
+        << "the override answers ahead of the LCG step, so the world stream"
+           " must not have advanced at all";
+}
+
 } // namespace detail_coverage_r19
 
 // --- From test_coverage_r20.cpp ---
@@ -1366,7 +1446,6 @@ struct SequenceRandom final : IRandom {
 struct R20Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     ConstantRandom rng{1};
     ScopedGameplayContext gameplay;
@@ -1379,7 +1458,7 @@ struct R20Fixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
 
         gc.rng = &rng;
 
@@ -1396,7 +1475,6 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(order, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -1418,7 +1496,6 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -1734,7 +1811,6 @@ struct SeqRandom final : IRandom {
 struct FinalR16Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{1};
     ScopedGameplayContext gameplay;
@@ -1747,7 +1823,7 @@ struct FinalR16Fixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
 
         push_test_context(&gc);
@@ -1763,7 +1839,6 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -1782,7 +1857,6 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);

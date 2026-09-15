@@ -1012,10 +1012,7 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
         s->server_rng_ptr_ = &adopted_world->rng_;
         // Rewire the adopted level's sim context from the stage's private
         // save/events onto this session's.
-        s->server_level_->set_sim_context(&s->server_save_,
-                                          &adopted_world->enemy_freeze,
-                                          &s->server_events_,
-                                          s->server_rng_ptr_, &cfg);
+        s->server_level_->set_sim_context(&s->server_save_, &s->server_events_, &cfg);
         // The staged announcements (level on_load, mode init — tick-1
         // stamped) ride into the live log; the launch gate holds the first
         // drain until every seeded peer confirms ready.
@@ -1059,9 +1056,7 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     if (!adopt_stage)
     {
         s->server_rng_ptr_ = &sw.rng_;
-        s->server_level_->set_sim_context(&s->server_save_, &sw.enemy_freeze,
-                                          &s->server_events_,
-                                          s->server_rng_ptr_, &cfg);
+        s->server_level_->set_sim_context(&s->server_save_, &s->server_events_, &cfg);
     }
     s->server_ctx_.world = &sw;
     s->server_ctx_.save = &s->server_save_;
@@ -1101,8 +1096,7 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
         level, true, &headless_level_data_hooks());
     GameWorld& cw = s->client_level_->world();
     s->client_rng_ptr_ = &cw.rng_;
-    s->client_level_->set_sim_context(&s->client_save_, &cw.enemy_freeze,
-                                      &s->client_events_, s->client_rng_ptr_, &cfg);
+    s->client_level_->set_sim_context(&s->client_save_, &s->client_events_, &cfg);
     s->client_ctx_.world = &cw;
     s->client_ctx_.save = &s->client_save_;
     s->client_ctx_.sim_events = &s->client_events_;
@@ -1356,8 +1350,7 @@ std::unique_ptr<JoinCursesSession> JoinCursesSession::create(
         level, true, &headless_level_data_hooks());
     GameWorld& cw = s->client_level_->world();
     s->client_rng_ptr_ = &cw.rng_;
-    s->client_level_->set_sim_context(&s->client_save_, &cw.enemy_freeze,
-                                      &s->client_events_, s->client_rng_ptr_, &cfg);
+    s->client_level_->set_sim_context(&s->client_save_, &s->client_events_, &cfg);
     s->client_ctx_.world = &cw;
     s->client_ctx_.save = &s->client_save_;
     s->client_ctx_.sim_events = &s->client_events_;
@@ -1652,11 +1645,14 @@ public:
                 kick_selected_seat();
                 continue;
             }
-            // "Is host NOW" (§6), the kick's rule: on a dedicated lobby the
-            // elected host is a JOIN client, and it is the only machine the
-            // server's start gate obeys. request_start() re-checks.
-            if (local_player_is_host() &&
-                (key.is_enter() || key.is_char(U's') || key.is_char(U'S'))) {
+            // Every machine may PRESS start; the SERVER decides. The host
+            // rule has exactly one implementation -- LobbyServer's
+            // start_allowed() rule 2 -- and it answers a non-host requester
+            // with StartDenialReason::NotHost, which the denial switch below
+            // renders as "Only the host can start". A client-side "is host
+            // NOW" gate here would be a second home for that rule, and it is
+            // what used to leave a joiner's press with no feedback at all.
+            if (key.is_enter() || key.is_char(U's') || key.is_char(U'S')) {
                 request_start();
             }
             if (key.is_char(U'r') || key.is_char(U'R')) {
@@ -1781,11 +1777,15 @@ public:
 
     void request_start() override
     {
-        // "Is host NOW", exactly like the kick (§6): the machine that runs a
-        // dedicated lobby JOINED it, so keying the start on LobbyRole left
-        // the one machine the server would obey unable to press GO. The
-        // server gates on the host PEER, and that peer is this one.
-        if (!local_player_is_host() || !state_.has_value())
+        // No host check here: the server owns the host rule and answers a
+        // non-host StartGame with NotHost, which poll() renders on the band.
+        // Keying the start on LobbyRole (or on "is host NOW") left the one
+        // machine the server would obey -- the elected host of a dedicated
+        // lobby, which JOINED it -- unable to press GO, and left every other
+        // machine's press silently dropped. What stays is the per-peer
+        // plumbing this send needs: a lobby state to read a player index out
+        // of, a live link, and a local seat on it.
+        if (!state_.has_value())
             return;
         og::sim::ITransport* const client_link = server_link();
         if (client_link == nullptr)
@@ -2352,12 +2352,8 @@ private:
                         og::sim::kInvalidLobbySeatId;
                     team_status_.clear();
                 }
-                if (pending_start_request_id_ != 0 &&
-                    state_->last_start_request_id ==
-                        pending_start_request_id_ &&
-                    state_->last_start_denial !=
-                        og::sim::start_denial_reason_value(
-                            og::sim::StartDenialReason::None))
+                if (og::sim::start_denial_matches_request(
+                        *state_, pending_start_request_id_))
                 {
                     switch (static_cast<og::sim::StartDenialReason>(
                         state_->last_start_denial))
@@ -2393,11 +2389,9 @@ private:
             }
             if (message.lobby_message &&
                 message.lobby_message->kind() == og::sim::LobbyMessageKind::StartGame) {
-                const auto& start =
-                    std::get<og::sim::LobbyStartGameMessage>(
-                        message.lobby_message->payload);
-                if (pending_start_request_id_ != 0 &&
-                    start.request_id != pending_start_request_id_)
+                if (!og::sim::start_confirmation_matches_request(
+                        *message.lobby_message,
+                        pending_start_request_id_))
                 {
                     break;
                 }

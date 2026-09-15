@@ -37,9 +37,3 @@ private:
     GameplayContext context_;
     GameplayContext* previous_ = nullptr;
 };
-
-inline void bind_test_entity_sim_context(LevelRuntimeData& level, walker* entity)
-{
-    (void)level;
-    (void)entity;
-}

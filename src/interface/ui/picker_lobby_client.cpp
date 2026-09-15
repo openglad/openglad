@@ -864,11 +864,11 @@ private:
                         && message.lobby_message->kind()
                             == og::sim::LobbyMessageKind::StartGame)
                     {
-                        const auto& start = std::get<
-                            og::sim::LobbyStartGameMessage>(
-                                message.lobby_message->payload);
-                        if (start_request_pending_ &&
-                            start.request_id != pending_start_request_id_)
+                        if (!og::sim::start_confirmation_matches_request(
+                                *message.lobby_message,
+                                start_request_pending_
+                                    ? pending_start_request_id_
+                                    : 0))
                         {
                             break;
                         }

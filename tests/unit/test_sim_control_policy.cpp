@@ -74,16 +74,14 @@ struct ControlPolicyFixture
 {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     ControlPolicyFixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 
     GameWorld& world() { return level.world(); }
@@ -102,7 +100,6 @@ struct ControlPolicyFixture
     {
         auto w = std::make_unique<walker>();
         w->set_order_family(Order::Living, FAMILY_SOLDIER);
-        bind_test_entity_sim_context(level, w.get());
         w->setxy(80, 80);
         w->set_sizex(16);
         w->set_sizey(16);

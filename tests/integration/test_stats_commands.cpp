@@ -10,6 +10,7 @@
 #include <openglad/legacy/pixdefs.h>
 #include <openglad/core/irandom.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 #include <memory>
 #include <string_view>
 #include <cstdint>
@@ -45,21 +46,6 @@ struct ScopedArena
 // from GameContext::rng, so the sim-random override is the only way to pin
 // hit_response's `!rng(3)` special roll, fire()'s waver draw and
 // direct_walk's add_command(COMMAND_ATTACK, 30 + rng(25)).
-struct ScopedSimRandom
-{
-    explicit ScopedSimRandom(std::uint32_t value)
-        : fixed_(value), ptr_(&fixed_)
-    {
-        og::sim::set_sim_random_override(&ptr_);
-    }
-    ~ScopedSimRandom() { og::sim::set_sim_random_override(nullptr); }
-    ScopedSimRandom(const ScopedSimRandom&) = delete;
-    ScopedSimRandom& operator=(const ScopedSimRandom&) = delete;
-
-    FixedRandom fixed_;
-    IRandom* ptr_;
-};
-
 // xpos/ypos are the truncated snapshot of the authoritative float world
 // position and stepsize is fractional (a level-3 soldier walks 4.33px), so
 // every movement expectation is computed the way the sim computes it.
@@ -136,7 +122,8 @@ TEST(StatsCommands, stats_do_command_walk_steps_once_and_counts_down)
 TEST(StatsCommands, stats_do_command_fire_denied_without_foe_and_spends_busy_when_allowed)
 {
     ScopedArena arena;
-    ScopedSimRandom rng(1);
+    FixedRandom rng_source(1);
+    ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, w) << "walker created";
     ASSERT_TRUE(w->setxy(static_cast<std::int32_t>(GRID_SIZE * 10), static_cast<std::int32_t>(GRID_SIZE * 10))) << "actor placed on open grass";
@@ -257,7 +244,8 @@ TEST(StatsCommands, stats_do_command_search_without_a_live_foe_abandons_the_orde
 TEST(StatsCommands, stats_do_command_rush_takes_three_steps_and_shoves_the_collider)
 {
     ScopedArena arena;
-    ScopedSimRandom rng(1);
+    FixedRandom rng_source(1);
+    ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, w) << "walker created";
     ASSERT_TRUE(w->setxy(static_cast<std::int32_t>(GRID_SIZE * 10), static_cast<std::int32_t>(GRID_SIZE * 10))) << "actor placed on open grass";
@@ -310,7 +298,8 @@ TEST(StatsCommands, stats_do_command_rush_takes_three_steps_and_shoves_the_colli
 TEST(StatsCommands, stats_do_command_quick_fire_walks_and_fires_in_one_tick)
 {
     ScopedArena arena;
-    ScopedSimRandom rng(1);
+    FixedRandom rng_source(1);
+    ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_ARCHER);
     ASSERT_NE(nullptr, w) << "walker created";
     ASSERT_TRUE(w->setxy(static_cast<std::int32_t>(GRID_SIZE * 10), static_cast<std::int32_t>(GRID_SIZE * 10))) << "actor placed on open grass";
@@ -348,7 +337,8 @@ TEST(StatsCommands, stats_do_command_quick_fire_walks_and_fires_in_one_tick)
 TEST(StatsCommands, stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot)
 {
     ScopedArena arena;
-    ScopedSimRandom rng(1);
+    FixedRandom rng_source(1);
+    ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, w) << "walker created";
     ASSERT_TRUE(w->setxy(static_cast<std::int32_t>(GRID_SIZE * 10), static_cast<std::int32_t>(GRID_SIZE * 10))) << "actor placed on open grass";
@@ -405,7 +395,8 @@ TEST(StatsCommands, stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_
 TEST(StatsCommands, stats_do_command_right_walk_distance_gate_picks_the_walker)
 {
     ScopedArena arena;
-    ScopedSimRandom rng(1);
+    FixedRandom rng_source(1);
+    ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
     auto foe = make_walker(FAMILY_ORC);
     ASSERT_NE(nullptr, w) << "walker created";
@@ -674,7 +665,8 @@ TEST(StatsCommands, stats_hit_response_all_families)
 {
     ScopedArena arena;
     // rng(3) != 0 keeps hit_response out of the check_special() special roll.
-    ScopedSimRandom rng(1);
+    FixedRandom rng_source(1);
+    ScopedSimRandom rng(&rng_source);
 
     char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
@@ -883,7 +875,8 @@ TEST(StatsCommands, stats_walk_to_foe_no_foe_resets_distances)
 TEST(StatsCommands, stats_yell_for_help_flees_and_recruits_friends)
 {
     ScopedArena arena;
-    ScopedSimRandom rng(1);
+    FixedRandom rng_source(1);
+    ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
     auto enemy = make_walker(FAMILY_ORC);
     ASSERT_NE(nullptr, w) << "walker created";

@@ -34,9 +34,7 @@ namespace {
 struct LevelFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{1};
     ScopedGameplayContext gameplay;
 
     LevelFixture()
@@ -45,7 +43,7 @@ struct LevelFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -55,7 +53,6 @@ walker* add_to_list(LevelFixture& fx, WalkerList& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->setxy(x, y);
@@ -235,9 +232,7 @@ namespace {
 struct LevelR11Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{1};
     ScopedGameplayContext gameplay;
 
     LevelR11Fixture()
@@ -246,7 +241,7 @@ struct LevelR11Fixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -256,7 +251,6 @@ walker* add_to(LevelR11Fixture& fx, WalkerList& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -456,15 +450,6 @@ private:
     std::size_t pos_;
 };
 
-struct MaxRandom : IRandom {
-    std::uint32_t next(std::uint32_t max_exclusive) override
-    {
-        if (max_exclusive <= 1)
-            return 0;
-        return max_exclusive - 1;
-    }
-};
-
 bool write_bytes(const std::filesystem::path& p, const std::vector<unsigned char>& bytes)
 {
     std::error_code ec;
@@ -491,16 +476,14 @@ struct ScopedFileRemover {
 struct LevelR12Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    MaxRandom rng;
     ScopedGameplayContext gameplay;
 
     LevelR12Fixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -510,7 +493,6 @@ walker* add_to(LevelR12Fixture& fx, WalkerList& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -1037,10 +1019,8 @@ TEST(LevelDataUnit, level_data_r15_ctor_hooks_add_paths_and_clear)
         << "the headless ctor must not create a renderer";
 
     SaveData save;
-    std::int32_t freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
-    level_non_headless.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+    level_non_headless.set_sim_context(&save, &events, &cfg);
 
     walker* living = level_non_headless.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* fxob = level_non_headless.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
@@ -1087,11 +1067,9 @@ TEST(LevelDataUnit, level_data_r16_external_world_teardown_detaches_level)
 {
     LevelRuntimeData level(9510, true);
     SaveData save;
-    std::int32_t freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     level.create_new_grid();
-    level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+    level.set_sim_context(&save, &events, &cfg);
 
     {
         GameWorld external_world;

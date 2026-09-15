@@ -154,8 +154,7 @@ struct LoadedLongseasonLevel
         , gameplay(level, save, events, cfg)
     {
         level.world().rng_.state_ = seed;
-        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                              &level.world().rng_, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &level.world().rng_;
         push_test_context(&gc);
         loaded = level.load();

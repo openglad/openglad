@@ -29,7 +29,6 @@ enum class Order : unsigned char;
 class screen;
 class statistics;
 class SaveData;
-class IRandom;
 class cfg_store;
 struct LevelDataHooks;
 namespace og::sim { class SimEventLog; }
@@ -272,11 +271,14 @@ public:
     const LevelVisuals& level_visuals() const { return *static_cast<const LevelVisuals*>(level_visuals_); }
     void attach_world(GameWorld* world);
 
-    // Legacy transitional hook kept for call-site compatibility. Snapshot
-    // application still needs a per-world gameplay context, so this stores the
-    // world/save/events/config bindings used to rebuild one on demand.
-    void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
-                         og::sim::SimEventLog* events, IRandom* rng,
+    // Binds save/events/config into the world's gameplay-context bindings and
+    // stores them, so LevelRuntimeData::attach_world can re-apply them to
+    // whichever world is attached next (the world-swap path used by screen.cpp
+    // and the snapshot mirrors).
+    // It does NOT touch the enemy freeze (GameWorld::enemy_freeze is the live
+    // field — write it directly) and it does NOT steer the sim RNG
+    // (GameWorld::rng_; scripted in tests through ScopedSimRandom).
+    void set_sim_context(SaveData* save, og::sim::SimEventLog* events,
                          cfg_store* config);
 
 private:

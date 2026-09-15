@@ -108,9 +108,9 @@ IRandom* sim_random_override()
         : nullptr;
 }
 
-void set_sim_random_override(IRandom** rng_ref)
+IRandom** set_sim_random_override(IRandom** rng_ref)
 {
-    g_sim_random_override_ref = rng_ref;
+    return std::exchange(g_sim_random_override_ref, rng_ref);
 }
 } // namespace og::sim
 
