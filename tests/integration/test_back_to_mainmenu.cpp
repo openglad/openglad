@@ -269,7 +269,6 @@ TEST(BackToMainmenu, continue_then_back_returns_to_mainmenu) {
     trace_clear();
 
     ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
     ASSERT_NO_FATAL_FAILURE(seed_continue_company());
@@ -361,7 +360,6 @@ TEST(BackToMainmenu, a_leg_that_gives_up_frees_the_main_thread) {
     trace_clear();
 
     ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
     ASSERT_NO_FATAL_FAILURE(seed_continue_company());
