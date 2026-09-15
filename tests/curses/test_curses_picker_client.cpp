@@ -91,18 +91,11 @@ struct PickerFixture {
     HeadlessTerminal& t() { return term; }
     SaveData& save() { return client.save_data(); }
 
-    // §3.8: hire/train/deploy mutations AUTOSAVE the active slot now, so a
-    // fixture test can leave a company file behind — which would pollute
-    // the company-list tests' row ordering under any test order. Reap the
-    // fixture slot's file (the active slot may have been repointed by an
-    // open flow, so reap both).
-    ~PickerFixture()
-    {
-        (void)remove_user_file("save/" + config.save_name + ".gtl");
-        (void)remove_user_file(
-            "save/" + og::data::active_company_slot() + ".gtl");
-        og::data::set_active_company_slot("save0");
-    }
+    // The fixture owns nothing on disk. §3.8 hire/train/deploy mutations do
+    // AUTOSAVE the active slot, and an open flow does repoint it, but the
+    // harness puts the slot back ([SAVE-R8]) and reaps every company artifact
+    // the test wrote ([SAVE-R9]) between tests — tests/curses/curses_test_main.cpp,
+    // pinned by tests/curses/test_curses_company_litter_guard.cpp.
 };
 
 // Select the item at 0-based selectable index `n` from the current menu:
@@ -1580,15 +1573,6 @@ bool seed_curses_company(const std::string& slot, const std::string& name,
     return sd.save_with_error(slot) == SaveDataIoError::None;
 }
 
-struct CursesSlotCleanup {
-    std::vector<std::string> slots;
-    ~CursesSlotCleanup()
-    {
-        for (const std::string& slot : slots)
-            (void)remove_user_file("save/" + slot + ".gtl");
-    }
-};
-
 std::string unique_curses_company_slot(std::string_view stem)
 {
     static std::uint64_t sequence = 0;
@@ -1622,170 +1606,6 @@ void enter_prompt_number(HeadlessTerminal& term, int number)
     term.push_special(KeyCode::Enter);
 }
 
-// Own only one collision-proof company slot. Cleanup removes that slot's
-// documented artifacts and backups, never the surrounding save shelf.
-class CursesCompanyArtifactCleanup
-{
-public:
-    explicit CursesCompanyArtifactCleanup(std::string slot)
-        : slot_(std::move(slot))
-    {
-        std::error_code ec;
-        const std::filesystem::path backup_directory =
-            std::filesystem::path(get_user_path()) /
-            "save" / "backups";
-        backup_directory_existed_ =
-            std::filesystem::exists(backup_directory, ec);
-        if (ec)
-            return;
-
-        const std::filesystem::path save_directory =
-            std::filesystem::path(get_user_path()) / "save";
-        for (const std::string_view suffix : artifact_suffixes()) {
-            const bool exists = std::filesystem::exists(
-                save_directory /
-                    (slot_ + std::string(suffix)),
-                ec);
-            if (ec || exists)
-                return;
-        }
-
-        if (backup_directory_existed_) {
-            std::filesystem::directory_iterator entries(
-                backup_directory, ec);
-            if (ec)
-                return;
-            const std::string prefix = slot_ + ".";
-            for (const std::filesystem::directory_entry& entry :
-                 entries) {
-                if (entry.path().filename().string().starts_with(
-                        prefix))
-                    return;
-            }
-        }
-        owned_ = true;
-    }
-
-    ~CursesCompanyArtifactCleanup()
-    {
-        if (owned_)
-            (void)cleanup();
-    }
-
-    bool ready() const { return owned_; }
-
-    bool cleanup()
-    {
-        if (!owned_)
-            return false;
-        if (cleaned_)
-            return true;
-
-        for (const og::data::CompanyBackupInfo& backup :
-             og::data::list_company_backups(slot_)) {
-            (void)og::data::delete_company_backup(
-                slot_, backup.seq);
-        }
-        const auto& suffixes = artifact_suffixes();
-        for (const std::string_view suffix : suffixes) {
-            (void)remove_user_file(
-                "save/" + slot_ + std::string(suffix));
-        }
-
-        const std::filesystem::path backup_directory =
-            std::filesystem::path(get_user_path()) /
-            "save" / "backups";
-        bool backup_cleanup_ok = true;
-        std::error_code iteration_error;
-        if (std::filesystem::exists(
-                backup_directory, iteration_error) &&
-            !iteration_error) {
-            std::vector<std::filesystem::path> matching_backups;
-            std::filesystem::directory_iterator entries(
-                backup_directory, iteration_error);
-            if (!iteration_error) {
-                const std::string prefix = slot_ + ".";
-                for (const std::filesystem::directory_entry& entry :
-                     entries) {
-                    if (entry.path().filename().string().starts_with(
-                            prefix)) {
-                        matching_backups.push_back(entry.path());
-                    }
-                }
-            }
-            backup_cleanup_ok = !iteration_error;
-            for (const std::filesystem::path& path :
-                 matching_backups) {
-                std::error_code artifact_error;
-                (void)std::filesystem::remove(
-                    path, artifact_error);
-                backup_cleanup_ok =
-                    !artifact_error && backup_cleanup_ok;
-            }
-        } else if (iteration_error) {
-            backup_cleanup_ok = false;
-        }
-
-        std::error_code remove_error;
-        if (!backup_directory_existed_)
-            (void)std::filesystem::remove(
-                backup_directory, remove_error);
-        std::error_code exists_error;
-        const bool company_artifact_remains =
-            std::any_of(
-                suffixes.begin(), suffixes.end(),
-                [this](std::string_view suffix) {
-                    return user_file_exists(
-                        "save/" + slot_ +
-                        std::string(suffix));
-                });
-        bool backup_artifact_remains = false;
-        std::error_code verify_error;
-        if (std::filesystem::exists(
-                backup_directory, verify_error) &&
-            !verify_error) {
-            std::filesystem::directory_iterator entries(
-                backup_directory, verify_error);
-            if (!verify_error) {
-                const std::string prefix = slot_ + ".";
-                for (const std::filesystem::directory_entry& entry :
-                     entries) {
-                    backup_artifact_remains =
-                        backup_artifact_remains ||
-                        entry.path().filename().string().starts_with(
-                            prefix);
-                }
-            }
-        }
-        const bool unexpected_directory =
-            !backup_directory_existed_ &&
-            std::filesystem::exists(
-                backup_directory, exists_error);
-        const bool cleanup_ok =
-            backup_cleanup_ok && !remove_error &&
-            !exists_error && !verify_error &&
-            !company_artifact_remains &&
-            !backup_artifact_remains &&
-            !unexpected_directory;
-        cleaned_ = cleanup_ok;
-        return cleanup_ok;
-    }
-
-private:
-    static const std::vector<std::string_view>& artifact_suffixes()
-    {
-        static const std::vector<std::string_view> suffixes{
-            ".gtl", ".tmp.gtl", ".gtl.restoretmp",
-            ".gtl.restoretmp.tmp", ".gtl.tmp"};
-        return suffixes;
-    }
-
-    std::string slot_;
-    bool backup_directory_existed_ = false;
-    bool owned_ = false;
-    bool cleaned_ = false;
-};
-
 } // namespace
 
 TEST(CursesPickerClient,
@@ -1794,8 +1614,6 @@ TEST(CursesPickerClient,
     {
         const std::string corrupt_slot =
             unique_curses_company_slot("curses-corrupt-company");
-        CursesCompanyArtifactCleanup cleanup(corrupt_slot);
-        ASSERT_TRUE(cleanup.ready());
         const std::filesystem::path corrupt_path =
             std::filesystem::path(get_user_path()) /
             "save" / (corrupt_slot + ".gtl");
@@ -1826,14 +1644,11 @@ TEST(CursesPickerClient,
                   std::string::npos);
         EXPECT_TRUE(std::filesystem::exists(corrupt_path));
         EXPECT_TRUE(term.input_exhausted());
-        EXPECT_TRUE(cleanup.cleanup());
     }
 
     {
         const std::string active_slot =
             unique_curses_company_slot("curses-active-company");
-        CursesCompanyArtifactCleanup cleanup(active_slot);
-        ASSERT_TRUE(cleanup.ready());
         ASSERT_TRUE(seed_curses_company(
             active_slot, "ACTIVE COMPANY", 9000));
         const int active_row =
@@ -1865,7 +1680,6 @@ TEST(CursesPickerClient,
                       std::string::npos);
             EXPECT_TRUE(term.input_exhausted());
         }
-        EXPECT_TRUE(cleanup.cleanup());
     }
 }
 
@@ -1874,7 +1688,6 @@ TEST(CursesPickerClient,
 // so the state machine proceeds to team build.
 TEST(CursesPickerClient, company_list_open_repoints_slot)
 {
-    CursesSlotCleanup cleanup{{"wp3curb", "wp3cura"}};
     ASSERT_TRUE(seed_curses_company("wp3curb", "BRAVO BAND", 6000));
     ASSERT_TRUE(seed_curses_company("wp3cura", "ALPHA BAND", 5000));
 
@@ -1892,7 +1705,6 @@ TEST(CursesPickerClient, company_list_open_repoints_slot)
 
 TEST(CursesPickerClient, company_list_rejects_an_out_of_range_row)
 {
-    CursesSlotCleanup cleanup{{"wp3cur-invalid"}};
     ASSERT_TRUE(seed_curses_company(
         "wp3cur-invalid", "INVALID ROW TEST", 9000));
 
@@ -1915,7 +1727,6 @@ TEST(CursesPickerClient, company_list_rejects_an_out_of_range_row)
 // level-win products).
 TEST(CursesPickerClient, company_list_backups_empty_and_escape_back)
 {
-    CursesSlotCleanup cleanup{{"wp3cures"}};
     ASSERT_TRUE(seed_curses_company("wp3cures", "SOLO BAND", 6000));
 
     PickerFixture f;
@@ -1936,7 +1747,6 @@ TEST(CursesPickerClient, company_list_backups_empty_and_escape_back)
 // reports true so the state machine proceeds to team build.
 TEST(CursesPickerClient, company_backups_restore_no_first_then_yes)
 {
-    CursesSlotCleanup cleanup{{"wp3curr"}};
     ASSERT_TRUE(seed_curses_company("wp3curr", "OLD BAND", 7000));
     ASSERT_TRUE(og::data::backup_company_now("wp3curr"));
     ASSERT_TRUE(seed_curses_company("wp3curr", "NEW BAND", 8000));
@@ -1966,15 +1776,12 @@ TEST(CursesPickerClient, company_backups_restore_no_first_then_yes)
     ASSERT_EQ(2u, backups.size());
     EXPECT_EQ("NEW BAND", backups.front().header.display_name)
         << "the pre-restore state must be snapshotted first (§3.7 step 1)";
-    for (const og::data::CompanyBackupInfo& backup : backups)
-        (void)og::data::delete_company_backup("wp3curr", backup.seq);
 }
 
 // §2.4 delete-backup round trip (curses projection): NO-first keeps the
 // snapshot, the explicit Yes deletes it, and the emptied list backs out.
 TEST(CursesPickerClient, company_backups_delete_no_first_then_yes)
 {
-    CursesSlotCleanup cleanup{{"wp3curd"}};
     ASSERT_TRUE(seed_curses_company("wp3curd", "KEEP BAND", 7000));
     ASSERT_TRUE(og::data::backup_company_now("wp3curd"));
 
@@ -2006,7 +1813,6 @@ TEST(CursesPickerClient, company_backups_delete_no_first_then_yes)
 // validation stays the real guard; no confirm is ever reached).
 TEST(CursesPickerClient, company_backups_corrupt_snapshot_refuses)
 {
-    CursesSlotCleanup cleanup{{"wp3curc"}};
     ASSERT_TRUE(seed_curses_company("wp3curc", "INTACT BAND", 7000));
     {
         const std::filesystem::path backups_dir =
@@ -2036,15 +1842,12 @@ TEST(CursesPickerClient, company_backups_corrupt_snapshot_refuses)
         og::data::list_company_backups("wp3curc");
     ASSERT_EQ(1u, backups.size());
     EXPECT_FALSE(backups.front().header.valid);
-    (void)og::data::delete_company_backup("wp3curc", 1);
 }
 
 TEST(CursesPickerClient, company_backups_reject_invalid_row_and_explicitly_back)
 {
     const std::string company_slot =
         unique_curses_company_slot("curses-invalid-backup");
-    CursesCompanyArtifactCleanup cleanup(company_slot);
-    ASSERT_TRUE(cleanup.ready());
     ASSERT_TRUE(seed_curses_company(
         company_slot, "INVALID BACKUP ROW", 9100));
     ASSERT_TRUE(og::data::backup_company_now(
@@ -2078,14 +1881,12 @@ TEST(CursesPickerClient, company_backups_reject_invalid_row_and_explicitly_back)
         og::data::list_company_backups(company_slot);
     ASSERT_EQ(1u, backups.size());
     EXPECT_TRUE(backups.front().header.valid);
-    EXPECT_TRUE(cleanup.cleanup());
 }
 
 // Delete is NO-first: the default confirm keeps the company; an explicit
 // Yes deletes it (file gone), and the list re-scans.
 TEST(CursesPickerClient, company_list_delete_no_first_then_yes)
 {
-    CursesSlotCleanup cleanup{{"wp3curdb", "wp3curda"}};
     ASSERT_TRUE(seed_curses_company("wp3curdb", "BRAVO BAND", 6000));
     ASSERT_TRUE(seed_curses_company("wp3curda", "ALPHA BAND", 5000));
 
@@ -3882,7 +3683,6 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
 
     // Cloud-side company: real writer bytes (loadable by the open path),
     // staged through a scratch slot that is then removed.
-    CursesSlotCleanup staging_cleanup{{"wp3cloudr"}};
     ASSERT_TRUE(seed_curses_company("wp3cloudr", "CLOUD BAND", 9300));
     std::string remote_bytes;
     {
@@ -3899,8 +3699,6 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
     // NO-first confirm actually fires.
     const std::string company_slot =
         unique_curses_company_slot("curses-cloud-download");
-    CursesCompanyArtifactCleanup cleanup(company_slot);
-    ASSERT_TRUE(cleanup.ready());
     ASSERT_TRUE(seed_curses_company(company_slot, "LOCAL BAND", 9200));
 
     const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
@@ -3978,7 +3776,6 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
         << "install_company_bytes snapshots before the swap";
     EXPECT_EQ("5", cfg.get_setting("cloud", "revision"))
         << "the server revision persists for the next optimistic upload";
-    EXPECT_TRUE(cleanup.cleanup());
     cfg.data.erase("cloud");
 }
 
@@ -3989,7 +3786,6 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
 // really does remove the snapshot.
 TEST(CursesPickerClient, company_list_cancelled_prompts_destroy_nothing)
 {
-    CursesSlotCleanup cleanup{{"wp9ccan"}};
     ASSERT_TRUE(seed_curses_company("wp9ccan", "CANCEL BAND", 8100));
     ASSERT_TRUE(og::data::backup_company_now("wp9ccan"));
     const std::size_t companies_before = og::data::list_companies().size();
