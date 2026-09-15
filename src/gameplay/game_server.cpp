@@ -2985,9 +2985,11 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
     if (event_mode == EventDeliveryMode::Drain)
     {
         drained_batch = drain_sim_events(events_);
-        // Lift the tick's floating damage/heal numbers off the authoritative
-        // walkers and onto the batch (and drain EVERY walker's list, closing
-        // the headless growth: render is the only eraser). Cosmetic-only, so
+        // Lift the tick's floating damage/heal numbers off EVERY
+        // authoritative walker and onto the batch (and drain every walker's
+        // list, closing the headless growth: render is the only eraser).
+        // Seat-bound owners go first under a per-tick budget; which pane
+        // paints which number stays a render rule. Cosmetic-only, so
         // it rides the drained batch before the ordering/state helpers below
         // — both filter by specific kinds and ignore this one. Keyframe
         // resends to late joiners take the other arm and lift nothing.

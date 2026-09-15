@@ -9,6 +9,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/sound_ids.h>
 
 #include <gtest/gtest.h>
@@ -1342,13 +1343,17 @@ TEST(GameServerCoverage, yell_input_broadcasts_yo_sound_and_notification)
         << "the broadcast batch should carry the Yo! notification";
 }
 
-// P13: the 2013 floating damage/heal overlay is pushed by the sim into the
+// P13/Q3: the 2013 floating damage/heal overlay is pushed by the sim into the
 // AUTHORITATIVE walkers' lists, but every display renders a mirror world that
-// never ticks the sim. GameServer::broadcast_current_state lifts those lists
-// onto the tick's sim event batch (only for walkers bound to a seat) and
-// drains EVERY list — render is the only eraser in the classic code, so a
-// headless authority otherwise grows them for the life of the level.
-TEST(GameServerCoverage, step_lifts_bound_owner_damage_numbers_and_drains_every_list)
+// never ticks the sim. GameServer::broadcast_current_state lifts the lists of
+// EVERY walker onto the tick's sim event batch — seat-bound owners first,
+// under a per-tick budget — and drains EVERY list. Which pane paints which
+// number stays a render rule (walker_draw.cpp gates on the pane's control),
+// so a spectator or follow pane watching a walker no seat owns gets its
+// numbers too. The drain is unconditional because render is the only eraser
+// in the classic code, so a headless authority otherwise grows the lists for
+// the life of the level.
+TEST(GameServerCoverage, step_lifts_every_owner_damage_numbers_and_drains_every_list)
 {
     TestGameWorld fixture;
     CoverageTransport transport;
@@ -1395,26 +1400,46 @@ TEST(GameServerCoverage, step_lifts_bound_owner_damage_numbers_and_drains_every_
         [](const og::sim::Event& event) {
             return event.kind == og::sim::EventKind::DamageNumber;
         });
-    ASSERT_EQ(1, lifted_count)
-        << "exactly the bound control's copy is lifted; the unbound foe's "
-           "red copy never reaches the wire";
+    ASSERT_EQ(2, lifted_count)
+        << "both the bound control's orange copy and the unbound foe's red "
+           "copy ride the batch: the per-pane filter is a render rule";
 
-    const auto lifted = std::find_if(
-        batch->events.begin(), batch->events.end(),
-        [](const og::sim::Event& event) {
-            return event.kind == og::sim::EventKind::DamageNumber;
-        });
-    ASSERT_NE(batch->events.end(), lifted);
-    const auto decoded = og::sim::decode_damage_number_event(*lifted);
-    ASSERT_TRUE(decoded.has_value());
-    EXPECT_EQ(control->entity_id(), decoded->owner_entity_id);
-    EXPECT_FLOAT_EQ(7.0f, decoded->number.value);
-    EXPECT_EQ(235, static_cast<int>(decoded->number.color))
+    const auto find_for_owner = [&batch](std::uint32_t owner_entity_id) {
+        std::optional<og::sim::DecodedDamageNumber> found;
+        for (const og::sim::Event& event : batch->events)
+        {
+            const auto decoded = og::sim::decode_damage_number_event(event);
+            if (decoded.has_value() &&
+                decoded->owner_entity_id == owner_entity_id)
+            {
+                found = decoded;
+            }
+        }
+        return found;
+    };
+
+    const auto attacker_copy = find_for_owner(control->entity_id());
+    ASSERT_TRUE(attacker_copy.has_value())
+        << "the seat-bound attacker's own copy must be on the wire";
+    EXPECT_FLOAT_EQ(7.0f, attacker_copy->number.value);
+    EXPECT_EQ(235, static_cast<int>(attacker_copy->number.color))
         << "the attacker's own copy is orange (235), not RED";
-    EXPECT_FLOAT_EQ(expected_x, decoded->number.x)
+    EXPECT_FLOAT_EQ(expected_x, attacker_copy->number.x)
         << "the attacker's number is anchored at the TARGET's centre";
-    EXPECT_FLOAT_EQ(expected_y, decoded->number.y);
-    EXPECT_EQ(created_tick, decoded->number.created_tick);
+    EXPECT_FLOAT_EQ(expected_y, attacker_copy->number.y);
+    EXPECT_EQ(created_tick, attacker_copy->number.created_tick);
+
+    const auto target_copy = find_for_owner(foe->entity_id());
+    ASSERT_TRUE(target_copy.has_value())
+        << "the unbound foe owns the red copy a spectator/follow pane needs";
+    EXPECT_FLOAT_EQ(7.0f, target_copy->number.value);
+    EXPECT_EQ(static_cast<int>(RED),
+              static_cast<int>(target_copy->number.color))
+        << "the target's copy is RED (40)";
+    EXPECT_FLOAT_EQ(expected_x, target_copy->number.x)
+        << "both copies are anchored at the TARGET's centre";
+    EXPECT_FLOAT_EQ(expected_y, target_copy->number.y);
+    EXPECT_EQ(created_tick, target_copy->number.created_tick);
 
     EXPECT_TRUE(control->damage_numbers.empty())
         << "the lift drains the authoritative list";

@@ -36,6 +36,18 @@ struct SimEventBatch;
 // a client's overlay without bound; the oldest entries are dropped.
 inline constexpr std::size_t kMaxMirrorDamageNumbers = 64;
 
+// Authority side: how many numbers one tick's lift may put on the wire.
+// serialize_event_batch_message THROWS above a 65535-byte payload
+// (world_snapshot.cpp, "payload exceeds 16-bit wire length"), and CI builds
+// with VALIDATE_SERIALIZATION=ON make even the local in-process shadow
+// serialize, so an unbounded lift is a reachable crash, not a bandwidth
+// worry. One DamageNumber event costs 28 bytes on the wire (5 x u32 + a u32
+// text length of 0 + c), so 512 x 28 = 14,336 B and the tick keeps >50 KB for
+// its other events. 512 numbers in one 1/12 s tick means 256 hits landing at
+// once, which play cannot reach: this is a crash guard, never a visible
+// limit.
+inline constexpr std::size_t kMaxLiftedDamageNumbersPerTick = 512;
+
 struct DecodedDamageNumber
 {
     std::uint32_t owner_entity_id = 0u;
@@ -54,11 +66,16 @@ Event encode_damage_number_event(std::uint32_t owner_entity_id,
 std::optional<DecodedDamageNumber> decode_damage_number_event(
     const Event& event);
 
-// Authority side: append one event per queued number of every walker bound to
-// a player seat, then clear EVERY walker's list unconditionally. Render is the
-// only eraser in the classic code, so on a headless authority the lists
-// otherwise grow for the life of the level; unbound AI lists are drained but
-// never sent.
+// Authority side: append one event per queued number of EVERY oblist walker
+// — seat-bound owners first, so a player's own pane never loses its numbers
+// to a bystander's when the per-tick budget bites, then everyone else
+// (spectator/follow panes watch walkers no seat owns) — then clear EVERY list
+// unconditionally. Render is the only eraser in the classic code, so on a
+// headless authority the lists otherwise grow for the life of the level.
+// Numbers past kMaxLiftedDamageNumbersPerTick are dropped and drained.
+// fxlist/weaplist attacker copies (walker_specials.cpp do_combat_damage with
+// an FX attacker) are a non-goal: they cannot paint — no pane's control is an
+// FX walker — and they die with their walker.
 void lift_damage_number_events(
     GameWorld& world,
     const std::array<walker*, kMaxGlobalPlayers>& player_controls,

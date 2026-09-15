@@ -309,7 +309,8 @@ enum class EventKind : uint32_t {
     SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
     RequestRedraw = 12, // Force full screen redraw
     DamageNumber = 19  // Floating hit/heal number LIFTED by GameServer from
-                       // the authoritative walkers (never emitted by the sim):
+                       // EVERY authoritative walker (never emitted by the
+                       // sim); per-pane filtering is a render rule:
                        // a=owner entity id, b=(x<<16)|y world px,
                        // c=(colour<<24)|value 16.8 fixed point
 };

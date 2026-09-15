@@ -70,22 +70,48 @@ void lift_damage_number_events(
     const std::array<walker*, kMaxGlobalPlayers>& player_controls,
     std::vector<Event>& out)
 {
+    std::size_t budget = kMaxLiftedDamageNumbersPerTick;
+
+    const auto bound_to_a_seat = [&player_controls](const walker* entity) {
+        return std::any_of(
+            player_controls.begin(), player_controls.end(),
+            [entity](const walker* control) { return control == entity; });
+    };
+
+    const auto lift = [&budget, &out](walker* entity) {
+        const std::uint32_t owner_entity_id = entity->entity_id();
+        for (const walker::DamageNumber& number : entity->damage_numbers)
+        {
+            if (budget == 0u)
+                break;
+            out.push_back(encode_damage_number_event(owner_entity_id, number));
+            --budget;
+        }
+    };
+
+    // Pass 1: the seats. A player's own pane must never lose its numbers to a
+    // bystander's when the budget bites, so bound owners spend it first.
     for (auto& uptr : world.oblist)
     {
         walker* const entity = uptr.get();
         if (entity == nullptr || entity->damage_numbers.empty())
             continue;
+        if (entity->entity_id() == 0u || !bound_to_a_seat(entity))
+            continue;
+        lift(entity);
+    }
 
-        const std::uint32_t owner_entity_id = entity->entity_id();
-        const bool bound_to_a_seat = std::any_of(
-            player_controls.begin(), player_controls.end(),
-            [entity](const walker* control) { return control == entity; });
-
-        if (bound_to_a_seat && owner_entity_id != 0u)
-        {
-            for (const walker::DamageNumber& number : entity->damage_numbers)
-                out.push_back(encode_damage_number_event(owner_entity_id, number));
-        }
+    // Pass 2: everyone else. Spectator and follow panes watch walkers no seat
+    // owns, and the render already gates the paint per pane
+    // (walker_draw.cpp, "only seen by the people they affect"), so delivery is
+    // the only half that was missing.
+    for (auto& uptr : world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity == nullptr || entity->damage_numbers.empty())
+            continue;
+        if (entity->entity_id() != 0u && !bound_to_a_seat(entity))
+            lift(entity);
 
         // Unconditional: render is the only eraser in the classic code, so a
         // headless authority (every server, including the local shadow) would

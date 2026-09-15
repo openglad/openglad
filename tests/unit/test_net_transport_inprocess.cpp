@@ -3315,6 +3315,114 @@ TEST(NetTransportInProcess,
     fixture.expect_clients_match_server();
 }
 
+// Q3, the networked spectator proof: a spectator/follow pane watches a walker
+// that no seat owns, and a zero-seat peer already receives every sim batch
+// (should_send_to_client needs only ready + snapshot, pinned above). Before
+// the widened lift, only seat-bound owners reached the wire, so such a pane
+// painted nothing even with the toggle on. A mirror that holds the unbound
+// bystander's RED number therefore proves the delivery half; the attacker's
+// orange copy in the SAME batch proves the seat path did not regress.
+TEST(NetTransportInProcess,
+     hit_on_a_walker_bound_to_no_seat_lands_its_number_on_every_mirror)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+    });
+
+    fixture.load_level();
+
+    std::uint32_t bystander_id = 0u;
+    fixture.with_server_context([&] {
+        walker* const bystander =
+            fixture.server_world().add_ob(Order::Living, FAMILY_SKELETON);
+        ASSERT_NE(nullptr, bystander) << "the bystander must spawn";
+        bystander->set_team_num(1);
+        bystander->set_user(-1);
+        bystander->setxy(static_cast<short>(GRID_SIZE * 6),
+                         static_cast<short>(GRID_SIZE * 6));
+        bystander_id = bystander->entity_id();
+    });
+    ASSERT_NE(0u, bystander_id);
+
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    walker* const a = fixture.server_control(0);
+    walker* const b = fixture.server_control(1);
+    ASSERT_NE(nullptr, a);
+    ASSERT_NE(nullptr, b);
+    ASSERT_NE(bystander_id, a->entity_id())
+        << "no seat may have claimed the bystander";
+    ASSERT_NE(bystander_id, b->entity_id())
+        << "no seat may have claimed the bystander";
+    const std::uint32_t a_id = a->entity_id();
+
+    walker* const server_bystander =
+        fixture.server_world().find_by_id(bystander_id);
+    ASSERT_NE(nullptr, server_bystander)
+        << "the bystander must survive the opening tick";
+    const float expected_x = static_cast<float>(
+        server_bystander->xpos() + server_bystander->sizex() / 2);
+    const float expected_y = static_cast<float>(server_bystander->ypos());
+
+    fixture.with_server_context([&] {
+        a->do_hit_effects(a, server_bystander, 6);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    for (std::size_t client_index = 0; client_index < 2u; ++client_index)
+    {
+        fixture.with_client_context(client_index, [&] {
+            walker* const mirror =
+                fixture.client_world(client_index).find_by_id(bystander_id);
+            ASSERT_NE(nullptr, mirror)
+                << "client " << client_index << " must hold the bystander";
+            ASSERT_EQ(1u, mirror->damage_numbers.size())
+                << "client " << client_index
+                << ": a walker bound to NO seat still owes its red number to "
+                   "the spectator/follow pane watching it";
+            EXPECT_FLOAT_EQ(6.0f, mirror->damage_numbers.front().value);
+            EXPECT_EQ(static_cast<int>(RED),
+                      static_cast<int>(mirror->damage_numbers.front().color))
+                << "the target sees RED";
+            EXPECT_FLOAT_EQ(expected_x, mirror->damage_numbers.front().x)
+                << "the number is anchored at the bystander's centre";
+            EXPECT_FLOAT_EQ(expected_y, mirror->damage_numbers.front().y);
+
+            walker* const mirror_attacker =
+                fixture.client_world(client_index).find_by_id(a_id);
+            ASSERT_NE(nullptr, mirror_attacker)
+                << "client " << client_index << " must hold the attacker";
+            ASSERT_EQ(1u, mirror_attacker->damage_numbers.size())
+                << "client " << client_index
+                << ": the seat-bound attacker's orange copy rides the same "
+                   "batch";
+            EXPECT_EQ(
+                235,
+                static_cast<int>(mirror_attacker->damage_numbers.front().color))
+                << "the attacker sees ORANGE";
+            EXPECT_FLOAT_EQ(6.0f,
+                            mirror_attacker->damage_numbers.front().value);
+        });
+    }
+
+    // The following delta snapshot must not wipe what landed.
+    fixture.step_ticks(1);
+    fixture.with_client_context(0, [&] {
+        walker* const mirror = fixture.client_world(0).find_by_id(bystander_id);
+        ASSERT_NE(nullptr, mirror);
+        EXPECT_EQ(1u, mirror->damage_numbers.size())
+            << "an applied snapshot must not wipe the overlay";
+    });
+
+    fixture.expect_clients_match_server();
+}
+
 TEST(NetTransportInProcess,
      network_fixture_detects_snapshot_hash_mismatch_and_resends_keyframe)
 {
