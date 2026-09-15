@@ -28,6 +28,19 @@
 #                              (default build/ci-test)
 #   OPENGLAD_PR292_MEDIA_DIR=<dir>
 #                              output root (default build/media/pr-292)
+#   BEFORE_CAPTION=<text>      --compose only: what each half's burnt-in strip
+#   AFTER_CAPTION=<text>       says after "BEFORE  " / "AFTER  ".  The defaults
+#                              ("base tree" / "fixed tree") name no tree, so the
+#                              shipped PR #292 strips were composed with
+#                              BEFORE_CAPTION='base 64df07ad' and
+#                              AFTER_CAPTION='PR #292'; --compose with those two
+#                              values reproduces the pushed files byte for byte,
+#                              without them it does not.
+#   OPENGLAD_P13_DIR=<dir>     p13 only: take the phase's assets from <dir>
+#                              instead of running the demo.  The "before" half
+#                              can only be filmed by the BASE tree's
+#                              openglad_demo, so on a merged checkout --before
+#                              always needs this.
 #
 # Scenes:
 #   selftest  harness self-check: two openglad_demo stills of one stock level
@@ -640,9 +653,9 @@ compose_p8() {
 # toggle on against toggle off, and it lives in its own script — this harness
 # runs that one implementation rather than restating the recipe.
 #
-# OPENGLAD_P13_DIR=<dir> reuses assets already captured for this phase instead
-# of running the demo.  The "before" half needs the BASE tree's openglad_demo
-# and no merged checkout can rebuild it, so that half is always reused.
+# OPENGLAD_P13_DIR (usage header) takes the phase's assets from a directory
+# instead of running the demo; the "before" half is always taken that way,
+# because only the base tree's openglad_demo can film it.
 scene_p13() {
     if [ -n "${OPENGLAD_P13_DIR:-}" ]; then
         local crop="$OPENGLAD_P13_DIR/p13-first-hit-crop-4x-$PHASE.png"
