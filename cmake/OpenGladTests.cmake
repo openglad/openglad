@@ -694,7 +694,8 @@ target_compile_definitions(og_test_parity PRIVATE
 )
 
 # Phase 01 (semantic-parity): pre-build tool that emits the
-# single-source-of-truth JSON for scripts/parity/evaluate_facts.py.
+# single source of truth consumed by scripts/parity/run_mutation_canary.sh
+# (scenario enumeration) and scripts/parity/lint_scenario_facts.py.
 # Runs automatically as a dependency of og_test_parity so the
 # generated file is always up to date with scenario_table.h.
 add_executable(scenario_facts_dump

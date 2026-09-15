@@ -1,5 +1,6 @@
 // scenario_facts_dump — emit tests/parity/scenario_facts_generated.json
-// at CMake configure / build time so scripts/parity/evaluate_facts.py
+// at CMake configure / build time so the parity tooling
+// (scripts/parity/run_mutation_canary.sh, scripts/parity/lint_scenario_facts.py)
 // has a single source of truth for the per-scenario predicate set.
 //
 // The JSON shape is:
@@ -55,15 +56,6 @@ std::mutex& get_allbuttons_mutex()
 
 namespace {
 
-// Single source of truth: og::parity::fact_kind_name (fact_predicate.cpp).
-// This file used to carry a second copy of the same switch; two copies of
-// one table drift, and only one of them reds under -Wswitch when a kind is
-// added.
-const char* kind_name(og::parity::FactKind k)
-{
-    return og::parity::fact_kind_name(k);
-}
-
 const char* mode_name(og::parity::CompareMode m)
 {
     using og::parity::CompareMode;
@@ -89,23 +81,15 @@ const char* order_name(std::uint8_t order)
     return "Unknown";
 }
 
+// Single source of truth: og::parity::event_kind_symbol_of_ordinal
+// (fact_predicate.cpp). This file used to carry a second copy of that
+// ordinal table; two copies of one table drift, and nothing reds when they
+// do. The rendering is unchanged: the shared table returns "" for an
+// ordinal it does not name, which prints here as "unknown_event".
 const char* event_kind_name(std::int32_t kind)
 {
-    switch (kind)
-    {
-        case 0: return "none";
-        case 1: return "play_sound";
-        case 2: return "notification";
-        case 3: return "set_palette";
-        case 4: return "request_redraw";
-        case 5: return "end_game";
-        case 6: return "set_end";
-        case 7: return "request_exit_confirmation";
-        case 8: return "withdraw_to_level";
-        case 9: return "score_change";
-        case 10: return "damage_tile";
-    }
-    return "unknown_event";
+    const char* s = og::parity::event_kind_symbol_of_ordinal(kind);
+    return *s != '\0' ? s : "unknown_event";
 }
 
 void append_escaped(std::string& out, std::string_view s)
@@ -146,15 +130,15 @@ void append_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
         const auto& p = s.expected_facts[i];
         if (i != 0) out.push_back(',');
         out.append("\n      { \"kind\": ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"predicate\": ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"fact_kind\": ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"type\": ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(": true");
         char nums[128];
         std::snprintf(nums, sizeof(nums),
@@ -178,6 +162,9 @@ void append_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
 int arg0_order_for_symbol(const og::parity::FactPredicate& p)
 {
     using og::parity::FactKind;
+    // [SWITCH-GUARD] no default: arm — see the rationale above evaluate_one
+    // in tests/parity/fact_predicate.cpp. A new FactKind must be a compile
+    // error here (which order renders its arg0?), never a silent -1.
     switch (p.kind)
     {
         case FactKind::WalkerFamilyCount:
@@ -236,13 +223,13 @@ void append_predicate_audit_array(std::string& out, const og::parity::ScenarioSp
         if (has_any) out.push_back(',');
         has_any = true;
         out.append("\n      { \"kind\": ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"predicate\": ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"fact_kind\": ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"type\": ");
-        append_escaped(out, kind_name(p.kind));
+        append_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"arg0\": ");
         append_escaped(out, og::parity::family_symbol_by_order(
                                  static_cast<std::uint8_t>(order), p.arg0));
@@ -267,7 +254,7 @@ void append_predicate_kind_array(std::string& out, const og::parity::ScenarioSpe
     for (std::size_t i = 0; i < s.fact_count; ++i)
     {
         if (i != 0) out.append(", ");
-        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        append_escaped(out, og::parity::fact_kind_name(s.expected_facts[i].kind));
     }
     out.push_back(']');
 }
@@ -294,6 +281,9 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
     };
 
     char buf[192];
+    // [SWITCH-GUARD] no default: arm — see the rationale above evaluate_one
+    // in tests/parity/fact_predicate.cpp. A new FactKind must be a compile
+    // error here, never an unrendered expression.
     switch (p.kind)
     {
         case FactKind::TickReached:
@@ -407,7 +397,7 @@ void append_predicate_expression_array(std::string& out, const og::parity::Scena
     for (std::size_t i = 0; i < s.fact_count; ++i)
     {
         out.append(", ");
-        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        append_escaped(out, og::parity::fact_kind_name(s.expected_facts[i].kind));
     }
     out.append(" ]");
 }
@@ -419,15 +409,15 @@ void append_minimal_predicate_array(std::string& out, const og::parity::Scenario
     {
         if (i != 0) out.append(", ");
         out.append("{ \"kind\": ");
-        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        append_escaped(out, og::parity::fact_kind_name(s.expected_facts[i].kind));
         out.append(", \"predicate\": ");
-        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        append_escaped(out, og::parity::fact_kind_name(s.expected_facts[i].kind));
         out.append(", \"fact_kind\": ");
-        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        append_escaped(out, og::parity::fact_kind_name(s.expected_facts[i].kind));
         out.append(", \"type\": ");
-        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        append_escaped(out, og::parity::fact_kind_name(s.expected_facts[i].kind));
         out.append(", ");
-        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        append_escaped(out, og::parity::fact_kind_name(s.expected_facts[i].kind));
         out.append(": true");
         out.append(" }");
     }
@@ -437,15 +427,15 @@ void append_minimal_predicate_array(std::string& out, const og::parity::Scenario
 void append_minimal_predicate_object(std::string& out, const og::parity::FactPredicate& p)
 {
     out.append("{ \"kind\": ");
-    append_escaped(out, kind_name(p.kind));
+    append_escaped(out, og::parity::fact_kind_name(p.kind));
     out.append(", \"predicate\": ");
-    append_escaped(out, kind_name(p.kind));
+    append_escaped(out, og::parity::fact_kind_name(p.kind));
     out.append(", \"fact_kind\": ");
-    append_escaped(out, kind_name(p.kind));
+    append_escaped(out, og::parity::fact_kind_name(p.kind));
     out.append(", \"type\": ");
-    append_escaped(out, kind_name(p.kind));
+    append_escaped(out, og::parity::fact_kind_name(p.kind));
     out.append(", ");
-    append_escaped(out, kind_name(p.kind));
+    append_escaped(out, og::parity::fact_kind_name(p.kind));
     out.append(": true");
     out.append(" }");
 }
@@ -473,7 +463,7 @@ void append_audit_predicate_array(std::string& out,
     for (std::size_t i = 0; i < s.fact_count; ++i)
     {
         comma();
-        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        append_escaped(out, og::parity::fact_kind_name(s.expected_facts[i].kind));
     }
 
     if (!objects_first)
@@ -729,7 +719,7 @@ void append_audit_row_object(std::string& out, const og::parity::ScenarioSpec& s
     for (std::size_t i = 0; i < s.fact_count; ++i)
     {
         audit_id.push_back(' ');
-        audit_id.append(kind_name(s.expected_facts[i].kind));
+        audit_id.append(og::parity::fact_kind_name(s.expected_facts[i].kind));
     }
     audit_id.push_back(' ');
     audit_id.append(s.id);

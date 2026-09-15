@@ -108,6 +108,36 @@ enum class FactKind : std::uint8_t
 // Returns "Unknown" for a value no enumerator names.
 const char* fact_kind_name(FactKind k);
 
+// EventKind ordinal -> the canonical symbol a dump's events[] carries for
+// that kind. ONE table, shared by every consumer that has to turn a
+// scenario row's `EventKindAtLeast(/*ordinal=*/3, ...)` back into a name
+// (the evaluator's event counter, scenario_facts_dump's generated JSON,
+// the coverage gate).
+//
+// The ordinals are FROZEN: scenario_table.h writes them as bare integer
+// literals in hundreds of predicate rows, so the sequence is APPEND-ONLY and
+// must never be reordered — renumbering silently repoints every existing row
+// at a different event kind. They are NOT the EventKind enumerator's numeric
+// value (that enum is sparse: 0, 4, 8, 11..19) and they do NOT depend on the
+// case order in tests/parity/state_dump.cpp::event_kind_symbol. The only
+// coupling to that renderer is the NAMES, which must match the strings it
+// returns, because the evaluator compares them against the symbols in the
+// dump; FactPredicate.every_ordinal_names_a_symbol_the_renderer_emits pins
+// exactly that.
+//
+// Returns "" (never nullptr) for an ordinal outside
+// [0, kEventKindOrdinalCount).
+const char* event_kind_symbol_of_ordinal(std::int32_t ordinal);
+
+// How many ordinals the table above names. A new event kind appends one.
+inline constexpr std::int32_t kEventKindOrdinalCount = 11;
+
+// Inverse lookup: the frozen ordinal a scenario row must pass to
+// pred::EventKindAtLeast / pred::EventKindExactly to name `symbol`.
+// std::nullopt when no ordinal carries that name (e.g. "damage_number",
+// which the sim never emits into SimEventLog).
+std::optional<std::int32_t> event_kind_ordinal_of_symbol(std::string_view symbol);
+
 // behavior_flag values for WeaponNetTravel (arg1). Centi-pixel units
 // (100 * pixel distance).
 //   STRAIGHT   : net displacement >= threshold AND net >= 0.7 * pathlen

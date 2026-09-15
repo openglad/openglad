@@ -7,6 +7,7 @@
 // that it FAILS loudly rather than returning the default-constructed ok=true
 // result. Without them a cast, a corrupted table entry or a stale serialised
 // kind would report every scenario row as satisfied.
+#include "event_kind_symbol_pins.h"
 #include "fact_predicate.h"
 #include "state_dump.h"
 
@@ -16,7 +17,10 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <iterator>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -241,4 +245,162 @@ TEST(FactPredicate, order_family_count_kind_renders_by_name)
                  og::parity::fact_kind_name(
                      static_cast<og::parity::FactKind>(0xFF)))
         << "an unnamed ordinal renders as Unknown, never as a real kind";
+}
+
+// ---------------------------------------------------------------------------
+// The frozen EventKind ordinal table (og::parity::event_kind_symbol_of_ordinal).
+//
+// Two separate rules meet here and these cases pin them apart:
+//
+//  * The ORDINALS are frozen by scenario_table.h, which spells them as bare
+//    integers in every EventKindAtLeast / EventKindExactly row. Reordering
+//    the table repoints hundreds of committed rows at a different event kind
+//    without touching a single one of them.
+//  * The NAMES must be exactly the strings
+//    tests/parity/state_dump.cpp::event_kind_symbol writes into a dump's
+//    events[], because the evaluator counts events by comparing those
+//    strings. A rename on either side makes every row that binds that kind
+//    count zero — and, for an `at least 0` row, pass for the wrong reason.
+//
+// The ordinals are NOT the EventKind enumerator values (that enum is sparse)
+// and they do not follow the renderer's case order, so neither is checked.
+
+TEST(FactPredicate, ordinals_are_frozen)
+{
+    using og::parity::event_kind_symbol_of_ordinal;
+
+    // scenario_table.h writes these numbers as literals. Append only.
+    EXPECT_STREQ("none",                      event_kind_symbol_of_ordinal(0));
+    EXPECT_STREQ("play_sound",                event_kind_symbol_of_ordinal(1));
+    EXPECT_STREQ("notification",              event_kind_symbol_of_ordinal(2));
+    EXPECT_STREQ("set_palette",               event_kind_symbol_of_ordinal(3));
+    EXPECT_STREQ("request_redraw",            event_kind_symbol_of_ordinal(4));
+    EXPECT_STREQ("end_game",                  event_kind_symbol_of_ordinal(5));
+    EXPECT_STREQ("set_end",                   event_kind_symbol_of_ordinal(6));
+    EXPECT_STREQ("request_exit_confirmation", event_kind_symbol_of_ordinal(7));
+    EXPECT_STREQ("withdraw_to_level",         event_kind_symbol_of_ordinal(8));
+    EXPECT_STREQ("score_change",              event_kind_symbol_of_ordinal(9));
+    EXPECT_STREQ("damage_tile",               event_kind_symbol_of_ordinal(10));
+
+    EXPECT_EQ(11, og::parity::kEventKindOrdinalCount)
+        << "the count must match the eleven rows pinned above";
+    EXPECT_STREQ("", event_kind_symbol_of_ordinal(
+                         og::parity::kEventKindOrdinalCount))
+        << "one past the end must be UNNAMED, so the evaluator can reject it";
+    EXPECT_STREQ("", event_kind_symbol_of_ordinal(-1))
+        << "a negative ordinal must be UNNAMED, never an out-of-bounds read";
+}
+
+TEST(FactPredicate, every_ordinal_names_a_symbol_the_renderer_emits)
+{
+    for (std::int32_t ordinal = 0;
+         ordinal < og::parity::kEventKindOrdinalCount; ++ordinal)
+    {
+        const std::string_view name =
+            og::parity::event_kind_symbol_of_ordinal(ordinal);
+
+        const og::sim::EventKind* named = nullptr;
+        for (const auto& [kind, symbol] : kEventKindSymbolPins)
+            if (symbol == name) named = &kind;
+
+        ASSERT_NE(nullptr, named)
+            << "ordinal " << ordinal << " names \"" << name
+            << "\", which tests/parity/state_dump.cpp::event_kind_symbol never "
+               "emits — every row binding that ordinal would count zero events";
+        EXPECT_EQ(std::string(name),
+                  og::parity::event_kind_symbol(
+                      static_cast<std::uint32_t>(*named)))
+            << "ordinal " << ordinal
+            << " must spell the symbol the renderer writes into the dump";
+    }
+}
+
+TEST(FactPredicate, ordinal_of_symbol_round_trips)
+{
+    for (std::int32_t ordinal = 0;
+         ordinal < og::parity::kEventKindOrdinalCount; ++ordinal)
+    {
+        const std::string_view name =
+            og::parity::event_kind_symbol_of_ordinal(ordinal);
+        const std::optional<std::int32_t> back =
+            og::parity::event_kind_ordinal_of_symbol(name);
+
+        ASSERT_TRUE(back.has_value())
+            << "\"" << name << "\" is ordinal " << ordinal
+            << " but the inverse lookup does not find it";
+        EXPECT_EQ(ordinal, *back)
+            << "the inverse lookup must answer the SAME ordinal the coverage "
+               "gate then binds scenario rows by";
+    }
+
+    EXPECT_FALSE(og::parity::event_kind_ordinal_of_symbol("damage_number")
+                     .has_value())
+        << "damage_number is a real EventKind the SIM NEVER EMITS (GameServer "
+           "lifts it), so no parity ordinal names it and no row may bind it";
+    EXPECT_FALSE(og::parity::event_kind_ordinal_of_symbol("bogus").has_value())
+        << "a symbol no ordinal names must answer nullopt, not ordinal 0";
+}
+
+TEST(FactPredicate, unknown_event_ordinal_is_a_loud_failure)
+{
+    const og::parity::StateDump dump{};   // no events at all
+
+    const og::parity::FactEvalResult r = og::parity::evaluate_one(
+        og::parity::pred::EventKindExactly(/*kind_ordinal=*/99, /*exact=*/0,
+                                           "bogus ordinal"),
+        dump);
+
+    EXPECT_FALSE(r.ok)
+        << "an ordinal the frozen table does not name must FAIL: counting it "
+           "as 0 would satisfy `exactly 0` vacuously";
+    EXPECT_FALSE(r.indeterminate)
+        << "an unnamed ordinal is a hard failure, not missing dump data";
+    EXPECT_NE(std::string::npos,
+              r.message.find("unknown event-kind ordinal 99"))
+        << "the message must name the offending ordinal; got: " << r.message;
+
+    // Control: a NAMED ordinal with the same expectation on the same empty
+    // dump passes, so the failure above is about the ordinal, not the dump.
+    const og::parity::FactEvalResult ok = og::parity::evaluate_one(
+        og::parity::pred::EventKindExactly(/*kind_ordinal=*/0, /*exact=*/0,
+                                           "named ordinal"),
+        dump);
+    EXPECT_TRUE(ok.ok)
+        << "ordinal 0 (\"none\") is named; zero such events on an empty dump "
+           "satisfies `exactly 0`";
+    EXPECT_EQ(std::string(), ok.message) << "a passing predicate says nothing";
+
+    // The at-least arm carries the same guard.
+    const og::parity::FactEvalResult at_least = og::parity::evaluate_one(
+        og::parity::pred::EventKindAtLeast(/*kind_ordinal=*/99, /*min=*/0,
+                                           "bogus ordinal"),
+        dump);
+    EXPECT_FALSE(at_least.ok)
+        << "EventKindAtLeast must reject an unnamed ordinal too; `at least 0` "
+           "is the most vacuous row of all";
+    EXPECT_NE(std::string::npos,
+              at_least.message.find("unknown event-kind ordinal 99"))
+        << "got: " << at_least.message;
+}
+
+TEST(FactPredicate, fact_kind_name_renders_every_enumerator)
+{
+    // One switch for the whole harness (parity_runner_smoke --facts and
+    // scenario_facts_dump's committed JSON both print from it), so a
+    // misspelling here renames the predicate in every generated artefact.
+    EXPECT_STREQ("TickReached",
+                 og::parity::fact_kind_name(og::parity::FactKind::TickReached))
+        << "the first enumerator keeps its name";
+    EXPECT_STREQ("TreasureFamilyOfOrderRemovedFromOblist",
+                 og::parity::fact_kind_name(
+                     og::parity::FactKind::TreasureFamilyOfOrderRemovedFromOblist))
+        << "the longest name is spelt in full, not truncated";
+    EXPECT_STREQ("WalkerOnFloor",
+                 og::parity::fact_kind_name(og::parity::FactKind::WalkerOnFloor))
+        << "the multi-floor kind keeps its name";
+    EXPECT_STREQ("Unknown",
+                 og::parity::fact_kind_name(
+                     static_cast<og::parity::FactKind>(0xFF)))
+        << "a value no enumerator names falls through to the post-switch "
+           "guard, never to a neighbouring kind's name";
 }

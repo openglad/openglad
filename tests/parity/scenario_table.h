@@ -680,7 +680,7 @@ inline constexpr SpawnSpec kFamilySpawns_complete_tower1[] = {
 //   11 THIEF, 12 GHOST, 13 DRUID, 14 ORC, 15 BIG_ORC, 16 BARBARIAN,
 //   17 ARCHMAGE, 18 GOLEM, 19 GIANT_SKELETON, 20 TOWER1.
 //
-// EventKind ordinals (matches state_dump.cpp::event_kind_symbol):
+// EventKind ordinals (fact_predicate.h event_kind_symbol_of_ordinal — frozen, append-only):
 //   0 none, 1 play_sound, 2 notification, 3 set_palette, 4 request_redraw,
 //   5 end_game, 6 set_end, 7 request_exit_confirmation,
 //   8 withdraw_to_level, 9 score_change, 10 damage_tile.

@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <string>
@@ -23,33 +24,6 @@ namespace {
 constexpr std::int32_t kLivingOrder    = static_cast<std::int32_t>(Order::Living);
 constexpr std::int32_t kWeaponOrder    = static_cast<std::int32_t>(Order::Weapon);
 constexpr std::int32_t kFXOrder        = static_cast<std::int32_t>(Order::FX);
-
-// EventKind ordinal -> canonical event_kind_symbol name. Mirrors the
-// switch in state_dump.cpp::event_kind_symbol so a predicate written as
-// EventKindAtLeast(/*ordinal=*/3) maps to "set_palette".
-//
-// 0 -> "none", 1 -> "play_sound", ..., 9 -> "score_change",
-// 10 -> "damage_tile".
-const char* event_kind_symbol_of_ordinal(std::int32_t ordinal)
-{
-    static const char* table[] = {
-        "none",
-        "play_sound",
-        "notification",
-        "set_palette",
-        "request_redraw",
-        "end_game",
-        "set_end",
-        "request_exit_confirmation",
-        "withdraw_to_level",
-        "score_change",
-        "damage_tile",
-    };
-    if (ordinal < 0 || static_cast<std::size_t>(ordinal) >=
-                          (sizeof(table) / sizeof(table[0])))
-        return "";
-    return table[ordinal];
-}
 
 bool make_fail(FactEvalResult& r, const FactPredicate& p, std::string detail)
 {
@@ -235,6 +209,8 @@ WeaponTrackMetrics weapon_track_metrics(const StateDump& d, std::int32_t family,
 std::size_t count_events_kind(const StateDump& d, std::int32_t kind_ordinal)
 {
     const char* name = event_kind_symbol_of_ordinal(kind_ordinal);
+    // Defensive only: the EventKind* arms reject an unnamed ordinal loudly
+    // before they get here, so this early return is unreachable from them.
     if (name == nullptr || *name == '\0') return 0;
     std::size_t n = 0;
     for (const auto& ev : d.events)
@@ -244,10 +220,44 @@ std::size_t count_events_kind(const StateDump& d, std::int32_t kind_ordinal)
 
 } // namespace
 
+// The one EventKind ordinal table; see fact_predicate.h for why the ordinals
+// are frozen and why only the NAMES are coupled to
+// state_dump.cpp::event_kind_symbol.
+const char* event_kind_symbol_of_ordinal(std::int32_t ordinal)
+{
+    static const char* const table[] = {
+        "none",                      //  0
+        "play_sound",                //  1
+        "notification",              //  2
+        "set_palette",               //  3
+        "request_redraw",            //  4
+        "end_game",                  //  5
+        "set_end",                   //  6
+        "request_exit_confirmation", //  7
+        "withdraw_to_level",         //  8
+        "score_change",              //  9
+        "damage_tile",               // 10
+    };
+    static_assert(std::size(table) ==
+                      static_cast<std::size_t>(kEventKindOrdinalCount),
+                  "kEventKindOrdinalCount must count the rows of the frozen "
+                  "ordinal table (append a row, bump the count)");
+    if (ordinal < 0 || static_cast<std::size_t>(ordinal) >= std::size(table))
+        return "";
+    return table[ordinal];
+}
+
+std::optional<std::int32_t> event_kind_ordinal_of_symbol(std::string_view symbol)
+{
+    for (std::int32_t i = 0; i < kEventKindOrdinalCount; ++i)
+        if (symbol == event_kind_symbol_of_ordinal(i)) return i;
+    return std::nullopt;
+}
+
 const char* fact_kind_name(FactKind k)
 {
-    // Same no-`default:` discipline as evaluate_one below: a new enumerator
-    // must be a compile error here, not a silent "Unknown".
+    // [SWITCH-GUARD] Same no-`default:` discipline as evaluate_one below: a
+    // new enumerator must be a compile error here, not a silent "Unknown".
     switch (k)
     {
         case FactKind::TickReached:                     return "TickReached";
@@ -474,6 +484,13 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         }
         case FactKind::EventKindAtLeast:
         {
+            // An ordinal the frozen table does not name cannot be counted:
+            // count_events_kind would answer 0 and an `at least 0` /
+            // `exactly 0` row would then pass VACUOUSLY, for the wrong
+            // reason. Say so instead.
+            if (*event_kind_symbol_of_ordinal(p.arg0) == '\0')
+                return (make_fail(r, p, "unknown event-kind ordinal " +
+                                  std::to_string(p.arg0)), r);
             const std::size_t n = count_events_kind(dump, p.arg0);
             if (static_cast<std::int32_t>(n) < p.arg1)
                 return (make_fail(r, p, "event-count=" + std::to_string(n) +
@@ -482,6 +499,11 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         }
         case FactKind::EventKindExactly:
         {
+            // See EventKindAtLeast above: an unnamed ordinal is a loud
+            // failure, never a vacuous count of 0.
+            if (*event_kind_symbol_of_ordinal(p.arg0) == '\0')
+                return (make_fail(r, p, "unknown event-kind ordinal " +
+                                  std::to_string(p.arg0)), r);
             const std::size_t n = count_events_kind(dump, p.arg0);
             if (static_cast<std::int32_t>(n) != p.arg1)
                 return (make_fail(r, p, "event-count=" + std::to_string(n) +
