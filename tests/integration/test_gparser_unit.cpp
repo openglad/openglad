@@ -1,5 +1,6 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/filesystem.h>
+#include <openglad/core/version.h>
 #include <openglad/resources/io_common.h>
 #include "test_save_state_guard.h"
 #include <sys/types.h>
@@ -8,8 +9,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <filesystem>
-#include <regex>
 #include <fstream>
 #include <string>
 #include <utility>
@@ -464,7 +465,8 @@ TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)
     // Both flags print and _Exit(0) from inside commandline(), so the child
     // process is the only way to exercise them. Log() writes to stderr, so
     // the pipe takes over both standard streams; the parent reads what the
-    // child said and holds -v to its documented wording.
+    // child said and holds -v to og::version::cli_line() exactly, the
+    // product's own composition (src/resources/gparser.cpp).
     auto run_child = [](const char* flag, std::string* out) -> int {
         int fds[2] = {-1, -1};
         EXPECT_EQ(0, pipe(fds));
@@ -506,8 +508,23 @@ TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)
     const int version_status = run_child("-v", &version_out);
     ASSERT_TRUE(WIFEXITED(version_status));
     ASSERT_TRUE(WEXITSTATUS(version_status) == 0);
-    EXPECT_TRUE(std::regex_search(
-        version_out,
-        std::regex(R"(openglad version 2\.[0-9]+ \(([0-9a-f]{8}\+?|nogit)\))")))
+    // gparser prints cli_line() + "\n" verbatim, so one whole output line
+    // must BE that string: a reworded, truncated or re-composed -v line is a
+    // break even when it still contains a version-looking substring.
+    std::vector<std::string> lines;
+    std::size_t start = 0;
+    while (start <= version_out.size())
+    {
+        const std::size_t nl = version_out.find('\n', start);
+        if (nl == std::string::npos)
+        {
+            lines.push_back(version_out.substr(start));
+            break;
+        }
+        lines.push_back(version_out.substr(start, nl - start));
+        start = nl + 1;
+    }
+    EXPECT_NE(lines.end(),
+              std::find(lines.begin(), lines.end(), og::version::cli_line()))
         << "-v printed: " << version_out;
 }

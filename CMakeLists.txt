@@ -401,6 +401,16 @@ add_custom_target(check_injector_settles
     VERBATIM
 )
 
+# <regex> is banned: libstdc++'s under GCC 15 with the nix cc-wrapper's
+# injected -O2 plus the ci-asan sanitizers trips -Werror=maybe-uninitialized
+# in bits/std_function.h. See the script header.
+add_custom_target(check_no_std_regex
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_no_std_regex.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking no TU includes <regex>"
+    VERBATIM
+)
+
 # Render must not write sim-read entity state (the "drawcycle" class of bug:
 # render-only writes freeze in the headless sim). See the script header.
 add_custom_target(check_render_no_sim_writes
