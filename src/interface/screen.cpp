@@ -584,12 +584,6 @@ void screen::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize,
     video_impl_->putdata_alpha(startx, starty, xsize, ysize, sourcedata, alpha);
 }
 
-void screen::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-                         std::span<const unsigned char> sourcedata)
-{
-    video_impl_->putdatatext(startx, starty, xsize, ysize, sourcedata);
-}
-
 void screen::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
                      std::span<const unsigned char> sourcedata,
                      unsigned char color)

@@ -1204,33 +1204,6 @@ static inline unsigned char text_ink(unsigned char source, unsigned char color)
 	return source > 247 ? color : source;
 }
 
-void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata)
-{
-        Sint32 curx, cury;
-        unsigned char curcolor;
-       	Uint32 num = 0;
-	int color;
-	SDL_Rect rect;
-
-	for(cury = starty;cury < starty +ysize;cury++)
- 	{
-		for (curx = startx; curx < startx +xsize; curx++)
-	        {
-			curcolor = sourcedata[num++];
-			if (!curcolor)
-		        	continue;
-			//point(curx,cury,curcolor);//buffers: PORT: draw the poin
-			color = static_cast<int>(palette_color_lut(E_Screen->render)[curcolor]);
-
-			rect.x = curx;
-			rect.y = cury;
-			rect.w = 1;
-			rect.h = 1;
-			SDL_FillSurfaceRect(E_Screen->render,&rect,static_cast<Uint32>(color));
-		}
-    	}
-}
-
 //sdl_video::putdata
 //draws objects to screen, respecting transparency
 //used by text

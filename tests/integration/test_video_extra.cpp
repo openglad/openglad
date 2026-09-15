@@ -308,29 +308,6 @@ TEST(VideoExtra, putdata_alpha_blends_non_zero_bytes_and_skips_index_zero)
 }
 
 
-TEST(VideoExtra, putdatatext_fills_non_zero_bytes_through_the_palette_lut)
-{
-    screen* const s = scr();
-    ASSERT_NE(nullptr, s);
-    unsigned char testbmp[8*8];
-    memset(testbmp, 60, sizeof(testbmp));
-    testbmp[0] = 0;
-    const auto span = std::span<const unsigned char>(testbmp, 64);
-
-    s->clearbuffer();
-    ground_box(88, 48, 14, 14);
-    const RGB ground = px(90, 50);
-    s->putdatatext(90, 50, 8, 8, span);
-
-    EXPECT_EQ(ground, px(90, 50)) << "source index 0 must be left transparent";
-    EXPECT_EQ(60, idx(91, 50)) << "the glyph byte is filled in its palette colour";
-    EXPECT_EQ(60, idx(97, 57)) << "the whole 8x8 glyph is filled";
-    EXPECT_EQ(ground, px(98, 50)) << "and nothing past the glyph's right edge";
-    EXPECT_EQ(ground, px(90, 58)) << "and nothing past the glyph's bottom edge";
-    s->clearbuffer();
-}
-
-
 TEST(VideoExtra, putdata_color_replaces_bytes_over_247_with_the_team_colour_itself)
 {
     screen* const s = scr();

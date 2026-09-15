@@ -10,12 +10,11 @@ namespace
 {
 // How a write arm turns a font byte into a canvas pixel. Transparent source
 // bytes (0) always leave the background and literal palette bytes always keep
-// themselves; the three arms differ only in what they do with the font's
+// themselves; the two arms differ only in what they do with the font's
 // recolourable ink range (>247):
 enum class GlyphInk
 {
     Recolored,  // putdatatext(..., color): the caller's colour exactly
-    Raw,        // putdatatext(...) with no colour: the font byte itself
     TeamShifted // walkputbuffertext: colour + (255 - source), the team ramp
 };
 
@@ -45,8 +44,6 @@ void expect_glyph_at(screen* out, text& font, Sint32 x, Sint32 y, char letter,
                     expected = static_cast<int>(source);
                 else if (mode == GlyphInk::Recolored)
                     expected = static_cast<int>(ink);
-                else if (mode == GlyphInk::Raw)
-                    expected = static_cast<int>(source);
                 else
                     expected = static_cast<int>(
                         static_cast<unsigned char>(ink + (255 - source)));
@@ -748,16 +745,13 @@ TEST(TextRender, direct_canvas_write_arms_land_at_absolute_coordinates)
     expect_glyph_at(out, font, x + advance, y, 'B', ink, background,
                     GlyphInk::Recolored, "write_xy second");
 
-    // The single-character arms, with and without an explicit colour.
+    // The single-character arm with an explicit colour.
     const Sint32 y2 = y + font.sizey + 6;
     out->fastbox(x - 2, y2 - 2, advance * 4 + 4, font.sizey + 4,
                  static_cast<unsigned char>(background));
     EXPECT_EQ(1, font.write_char_xy(x, y2, 'C', ink));
     expect_glyph_at(out, font, x, y2, 'C', ink, background,
                     GlyphInk::Recolored, "write_char_xy");
-    EXPECT_EQ(1, font.write_char_xy(x + 2 * advance, y2, 'D'));
-    expect_glyph_at(out, font, x + 2 * advance, y2, 'D', 0, background,
-                    GlyphInk::Raw, "write_char_xy without a colour");
 
     // write_y centres the same run on the 320-wide UI raster.
     const Sint32 y3 = y2 + font.sizey + 6;
@@ -846,11 +840,6 @@ TEST(TextRender, viewscreen_write_arms_offset_by_the_pane_origin)
     expect_glyph_at(out, font, vs->xloc + x, vs->yloc + y2, 'C', ink,
                     background, GlyphInk::TeamShifted,
                     "write_char_xy(viewscreen)");
-    EXPECT_EQ(1, font.write_char_xy(x + 2 * advance, y2, 'D', vs));
-    expect_glyph_at(out, font, vs->xloc + x + 2 * advance, vs->yloc + y2, 'D',
-                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
-                    GlyphInk::TeamShifted,
-                    "write_char_xy(viewscreen) default colour");
 
     // The pane-relative string arm without a colour, and the centring arms:
     // write_y centres on the 320 raster first, THEN offsets by the pane.

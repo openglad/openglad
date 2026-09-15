@@ -116,12 +116,10 @@ class text
 		Sint32 write_y(Sint32 y, std::string_view string, unsigned char color, short to_buffer);
 		Sint32 write_y(Sint32 y, std::string_view string, viewscreen *whereto);
 		Sint32 write_y(Sint32 y, std::string_view string, unsigned char color, viewscreen *whereto);
-		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter);
 		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color);
 		Sint32 write_char_xy_alpha(Sint32 x, Sint32 y, char letter, unsigned char color, Uint8 alpha);
 		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer);
 		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color, short to_buffer);
-		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, viewscreen *whereto);
 		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color, viewscreen *whereto);
 		char *input_string(Sint32 x, Sint32 y, short maxlength, const char *begin);
 		char *input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
