@@ -308,6 +308,10 @@ void dispatch_cosmetic_screen_events(screen& self,
             case og::sim::EventKind::WithdrawToLevel:
             case og::sim::EventKind::ScoreChange:
             case og::sim::EventKind::DamageTile:
+            // Floating numbers are applied to the mirror world by GameClient
+            // (damage_number_event.cpp) and painted by walker_draw; the screen
+            // dispatcher has nothing to do with them.
+            case og::sim::EventKind::DamageNumber:
             default:
                 break;
         }
@@ -353,6 +357,7 @@ bool dispatch_game_flow_screen_events(screen& self,
             case og::sim::EventKind::Notification:
             case og::sim::EventKind::SetPalette:
             case og::sim::EventKind::RequestRedraw:
+            case og::sim::EventKind::DamageNumber:
             default:
                 break;
         }

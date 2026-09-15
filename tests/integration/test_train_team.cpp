@@ -378,7 +378,6 @@ TEST(TrainTeam, train_team) {
     // company another test founded would take the session over silently.
     // Seed through the autosave choke point that stamps, and check after the
     // flow which company it actually got.
-    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -487,7 +486,6 @@ TEST(TrainTeam, train_team_runs_on_the_open_company_not_a_stray_slot)
 {
     trace_clear();
 
-    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin("trainopen");
     ASSERT_TRUE(pin.applied()) << "trainopen must be a valid company slot";
 

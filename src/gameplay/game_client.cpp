@@ -3,6 +3,7 @@
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/damage_number_event.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
@@ -1163,6 +1164,11 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha,
                 }
                 has_sim_event_sequence_ = true;
                 last_sim_event_sequence_ = message.event_batch->sequence;
+                // Floating damage/heal numbers land on the mirror BEFORE the
+                // display is notified: this world never ticks the sim, so the
+                // batch is the only thing that can write the overlay.
+                if (world_ != nullptr)
+                    apply_damage_number_events(*world_, *message.event_batch);
                 sim_event_batches_.push_back(*message.event_batch);
                 notify_sim_event_batch(*message.event_batch);
             }

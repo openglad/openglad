@@ -139,7 +139,6 @@ TEST(LevelProgress, menu) {
     // company another test founded would take the session over silently.
     // Seed through the autosave choke point that stamps, and check after the
     // flow which company it actually got.
-    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 

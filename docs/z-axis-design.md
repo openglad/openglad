@@ -248,8 +248,9 @@ identical numeric value and the mask is a no-op → A\* node expansion byte-iden
 - **Replication.** `fall_stories_` ships with the same non-replicated
   server-transient acceptance as `z_cooldown_`/`z_stair_latched_`: a mirror or
   late joiner mid-cascade resolves a shorter fall and hp self-corrects on the
-  next snapshot; remote clients also miss the DamageNumber (matches flight
-  expiry today). No wire bump.
+  next snapshot. The floating number itself is lifted onto the sim event batch
+  by GameServer (`EventKind::DamageNumber`), so it does reach every mirror; a
+  late joiner mid-cascade still misses it. No wire bump.
 - **Parity.** Single-floor levels can never see any of this
   (`apply_z_motion`'s `floor_count()<=1` early-return). Pinned by the
   Invariant row `z_fall_two_story_scen9301` (3-floor shaft, 85%-max-HP band)

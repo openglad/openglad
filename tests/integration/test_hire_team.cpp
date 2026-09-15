@@ -209,7 +209,6 @@ TEST(HireTeam, hire_menu_browsing) {
     // This flow FOUNDS a company (BEGIN NEW GAME), which repoints the process
     // -wide active slot. Restore it on the way out so the next test starts
     // where it expects to.
-    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -310,7 +309,6 @@ static int hire_deployed_injector(void* data)
 TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     trace_clear();
 
-    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -390,10 +388,9 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
 {
     trace_clear();
 
-    // Both companies are scratch slots: save0 is left exactly as the rest of
-    // the binary expects to find it (this test must not become the next
-    // stray itself).
-    ScopedCompanyFileCleanup founded_cleanup;
+    // Both companies are scratch slots; neither survives this test (the
+    // harness reaps every non-baseline company between tests, [SAVE-R9]).
+    // The pin is what keeps the process-wide active slot from leaking.
     og::data::ScopedActiveCompany pin("hireopen");
     ASSERT_TRUE(pin.applied()) << "hireopen must be a valid company slot";
 

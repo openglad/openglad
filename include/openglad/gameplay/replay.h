@@ -36,7 +36,7 @@ namespace og::sim {
 // v19 records protocol-v17 snapshots/input frames (snapshot v13: the mode
 // block gains the one-slot camera-view array, docs/camera-views-design.md
 // §3); v18 readers must reject the new protocol byte and vice versa.
-inline constexpr std::uint8_t kReplayFormatVersion = 19;
+inline constexpr std::uint8_t kReplayFormatVersion = 20;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 // First replay format carrying the campaign-vars section (the reader's

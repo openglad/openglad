@@ -1,3 +1,4 @@
+#include <openglad/gameplay/damage_number_event.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -1339,6 +1340,98 @@ TEST(GameServerCoverage, yell_input_broadcasts_yo_sound_and_notification)
     EXPECT_TRUE(has_sound) << "the broadcast batch should carry the yo sound";
     EXPECT_TRUE(has_notification)
         << "the broadcast batch should carry the Yo! notification";
+}
+
+// P13: the 2013 floating damage/heal overlay is pushed by the sim into the
+// AUTHORITATIVE walkers' lists, but every display renders a mirror world that
+// never ticks the sim. GameServer::broadcast_current_state lifts those lists
+// onto the tick's sim event batch (only for walkers bound to a seat) and
+// drains EVERY list — render is the only eraser in the classic code, so a
+// headless authority otherwise grows them for the life of the level.
+TEST(GameServerCoverage, step_lifts_bound_owner_damage_numbers_and_drains_every_list)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected({96u});
+    server.poll_incoming_messages();
+    server.connect_client(96u);
+
+    walker* const control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(64, 64);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    walker* const foe = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, foe);
+    foe->setxy(96, 64);
+    server.bind_player(96u, 0u, fixture.world().my_team, control);
+
+    // Event batches only reach a client that holds an initial snapshot AND
+    // has reported ready: one step for the setup + keyframe, then ready.
+    server.step();
+    transport.queue_raw(
+        96u, og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
+    server.step();
+
+    control->do_hit_effects(control, foe, 7);
+    ASSERT_EQ(1u, control->damage_numbers.size())
+        << "the attacker keeps the orange copy";
+    ASSERT_EQ(1u, foe->damage_numbers.size())
+        << "the target keeps the red copy";
+    const std::uint32_t created_tick = control->damage_numbers.front().created_tick;
+    const float expected_x =
+        static_cast<float>(foe->xpos() + foe->sizex() / 2);
+    const float expected_y = static_cast<float>(foe->ypos());
+
+    transport.clear_sent();
+    server.step();
+
+    const auto batch = find_sim_event_batch(transport, 96u);
+    ASSERT_TRUE(batch.has_value()) << "the tick should broadcast a sim event batch";
+    const auto lifted_count = std::count_if(
+        batch->events.begin(), batch->events.end(),
+        [](const og::sim::Event& event) {
+            return event.kind == og::sim::EventKind::DamageNumber;
+        });
+    ASSERT_EQ(1, lifted_count)
+        << "exactly the bound control's copy is lifted; the unbound foe's "
+           "red copy never reaches the wire";
+
+    const auto lifted = std::find_if(
+        batch->events.begin(), batch->events.end(),
+        [](const og::sim::Event& event) {
+            return event.kind == og::sim::EventKind::DamageNumber;
+        });
+    ASSERT_NE(batch->events.end(), lifted);
+    const auto decoded = og::sim::decode_damage_number_event(*lifted);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(control->entity_id(), decoded->owner_entity_id);
+    EXPECT_FLOAT_EQ(7.0f, decoded->number.value);
+    EXPECT_EQ(235, static_cast<int>(decoded->number.color))
+        << "the attacker's own copy is orange (235), not RED";
+    EXPECT_FLOAT_EQ(expected_x, decoded->number.x)
+        << "the attacker's number is anchored at the TARGET's centre";
+    EXPECT_FLOAT_EQ(expected_y, decoded->number.y);
+    EXPECT_EQ(created_tick, decoded->number.created_tick);
+
+    EXPECT_TRUE(control->damage_numbers.empty())
+        << "the lift drains the authoritative list";
+    EXPECT_TRUE(foe->damage_numbers.empty())
+        << "unbound walkers are drained too (the headless growth)";
+
+    transport.clear_sent();
+    server.step();
+    const auto second = find_sim_event_batch(transport, 96u);
+    ASSERT_TRUE(second.has_value())
+        << "every tick broadcasts a batch, so the re-send check is unguarded";
+    EXPECT_EQ(0, std::count_if(
+                     second->events.begin(), second->events.end(),
+                     [](const og::sim::Event& event) {
+                         return event.kind == og::sim::EventKind::DamageNumber;
+                     }))
+        << "a drained list must not be re-sent on the next tick";
 }
 
 // Rule (src/gameplay/game_server.cpp:616-635, and the comment there): pack
