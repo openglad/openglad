@@ -5129,6 +5129,60 @@ TEST(LobbyServer, seatless_remove_seat_still_echoes_the_authoritative_state)
     EXPECT_EQ(seatless, echoed);
 }
 
+// The ONE decode of the u8 last_start_denial echo
+// (og::sim::start_denial_reason_from_wire, src/gameplay/lobby_state.cpp).
+// Every client reads the wire byte through it, so a byte this build has no
+// enumerator for can never reach a switch as a bogus reason.
+TEST(LobbyState,
+     start_denial_reason_from_wire_decodes_known_bytes_and_rejects_the_rest)
+{
+    struct Row
+    {
+        std::uint8_t wire;
+        og::sim::StartDenialReason reason;
+        const char* name;
+    };
+    const Row known[] = {
+        {0u, og::sim::StartDenialReason::None, "None"},
+        {1u, og::sim::StartDenialReason::NotHost, "NotHost"},
+        {2u, og::sim::StartDenialReason::MachinesNotReady, "MachinesNotReady"},
+        {3u, og::sim::StartDenialReason::NoDeployedCharacters,
+         "NoDeployedCharacters"},
+        {4u, og::sim::StartDenialReason::StageFailed, "StageFailed"},
+    };
+    for (const Row& row : known)
+    {
+        EXPECT_EQ(row.reason, og::sim::start_denial_reason_from_wire(row.wire))
+            << "wire byte " << static_cast<int>(row.wire)
+            << " is the protocol's " << row.name;
+        EXPECT_EQ(row.wire, og::sim::start_denial_reason_value(row.reason))
+            << "the decode is the exact inverse of start_denial_reason_value "
+               "for " << row.name;
+    }
+
+    // Bytes this build has no enumerator for: a newer peer's sixth reason, or
+    // a crafted one. They decode to None ("no reason this build understands")
+    // rather than to a value no switch has a case for.
+    for (const std::uint8_t stranger : {std::uint8_t{5u}, std::uint8_t{42u},
+                                        std::uint8_t{255u}})
+    {
+        EXPECT_EQ(og::sim::StartDenialReason::None,
+                  og::sim::start_denial_reason_from_wire(stranger))
+            << "wire byte " << static_cast<int>(stranger)
+            << " is outside 0..4 and must decode to None";
+    }
+
+    // The raw byte still resolves a pending request: the correlation rule
+    // reads the wire value, not the decoded enumerator, so a crafted denial
+    // releases the GO (and then renders as the generic notice) instead of
+    // hanging the wait loop.
+    og::sim::LobbyState crafted;
+    crafted.last_start_request_id = 7u;
+    crafted.last_start_denial = 42u;
+    EXPECT_TRUE(og::sim::start_denial_matches_request(crafted, 7u))
+        << "an unknown non-zero denial byte still drops the pending request";
+}
+
 // The two StartGame reply-correlation rules every lobby client shares
 // (og::sim::start_denial_matches_request / start_confirmation_matches_request,
 // src/gameplay/lobby_state.cpp). SDL, curses and the in-process picker client

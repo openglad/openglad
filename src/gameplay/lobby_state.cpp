@@ -5,6 +5,13 @@
 
 namespace og::sim {
 
+StartDenialReason start_denial_reason_from_wire(std::uint8_t value) noexcept
+{
+    return value <= start_denial_reason_value(StartDenialReason::StageFailed)
+        ? static_cast<StartDenialReason>(value)
+        : StartDenialReason::None;
+}
+
 bool start_denial_matches_request(
     const LobbyState& state,
     std::uint32_t pending_request_id) noexcept

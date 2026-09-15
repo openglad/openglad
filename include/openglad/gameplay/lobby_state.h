@@ -83,6 +83,17 @@ constexpr std::uint8_t start_denial_reason_value(StartDenialReason reason) noexc
     return static_cast<std::uint8_t>(reason);
 }
 
+// The ONE decode of the u8 last_start_denial echo back into the enum, the
+// inverse of start_denial_reason_value above. A byte outside 0..4 (a newer
+// build's sixth reason, or a crafted peer) decodes to None -- "no reason
+// this build understands" -- so no consumer ever switches on an enumerator
+// that does not exist here. LobbyState keeps the RAW byte either way, so the
+// wire round-trip is untouched; start_denial_matches_request still drops a
+// pending request on any non-zero byte, which then renders as the generic
+// "could not start" notice.
+[[nodiscard]] StartDenialReason start_denial_reason_from_wire(
+    std::uint8_t value) noexcept;
+
 struct LobbyState;
 struct LobbyMessage;
 

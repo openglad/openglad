@@ -2921,6 +2921,90 @@ TEST(PickerNetworkClient, host_stage_failure_reports_honest_preview_health)
     host_client->shutdown();
 }
 
+// Q1 real path: the §4.3 StageFailed verdict, end to end through the
+// PRODUCTION GO. The same ledger inflation the preview-health test uses puts
+// the host's own stage in Failed; the owner-injected start gate denies the
+// request with StageFailed, the host client latches THAT request's verdict
+// (start_denial_matches_request), and go_menu renders it instead of bouncing
+// to a silent redraw. Then the ledger shrinks, the stage recovers, and the
+// next GO is accepted with no verdict at all.
+TEST(PickerNetworkClient,
+     host_go_on_a_failed_stage_is_denied_stage_failed_and_says_so)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+    host_client->initialize_from_save();
+
+    og::server::MatchStage* const host_stage = host_client->take_match_stage();
+    ASSERT_NE(nullptr, host_stage) << "the host must own a real MatchStage";
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Staged;
+    })) << "the host stage never staged";
+
+    // Inflate the ledger: the host-save digest moves the change key and the
+    // restage refuses at the wire message cap.
+    std::set<int>& ledger =
+        host_save.completed_levels[host_save.current_campaign];
+    for (int level = 100'000; level < 117'000; ++level)
+        ledger.insert(level);
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Failed;
+    })) << "the oversize restage never landed as Failed";
+
+    {
+        ActivePickerLobbyClientGuard active_guard(host_client.get());
+        g_start_game_requested = false;
+        trace_clear();
+        EXPECT_EQ(MENU_REDRAW, go_menu(0))
+            << "a GO the server denies must hand the menu back, not launch";
+        EXPECT_TRUE(trace_contains("popup", "STAGING FAILED"))
+            << "the StageFailed verdict must be SAID, not swallowed";
+        EXPECT_TRUE(trace_contains("popup", "The level could"))
+            << "the notice body names what the player has to change";
+        EXPECT_TRUE(trace_contains("basecamp", "go_denied reason=4"))
+            << "go_menu traces the reason it rendered (StageFailed == 4)";
+        EXPECT_EQ(og::sim::StartDenialReason::StageFailed,
+                  host_client->last_start_denial())
+            << "last_start_denial() is THIS request's correlated verdict";
+        EXPECT_FALSE(g_start_game_requested)
+            << "a Failed stage must never launch";
+        EXPECT_FALSE(host_client->start_request_pending())
+            << "the denial released the request (no go_menu spin)";
+        EXPECT_EQ(nullptr, host_client->staged_world())
+            << "a Failed stage presents no world";
+    }
+
+    // Recovery: the ledger shrinks, the digest moves back, the stage restages
+    // and the very next request is ACCEPTED — with no verdict on it.
+    ledger.clear();
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Staged;
+    })) << "the stage never recovered after the ledger shrank";
+    g_start_game_requested = false;
+    EXPECT_TRUE(host_client->request_start_game())
+        << "a Staged host is allowed to start";
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              host_client->last_start_denial())
+        << "an ACCEPTED request clears the verdict: the StageFailed the "
+           "player already fixed must not linger on the next press";
+    EXPECT_FALSE(host_client->start_request_pending());
+
+    g_start_game_requested = false;
+    host_client->shutdown();
+}
+
 TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_roster)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -7858,6 +7942,22 @@ TEST(PickerNetworkClient, dedicated_server_denial_echo_reaches_elected_host_then
     EXPECT_FALSE(lobby_server.consume_start_game_requested())
         << "server_main's loop read: the dedicated loop keeps polling on denial";
 
+    // (1b) A GO that never DISPATCHES carries no verdict. With a start
+    // already latched globally the client refuses at its entry gate and
+    // sends nothing; last_start_denial() answers for the press the player
+    // just made, so the MachinesNotReady from the PREVIOUS press must not
+    // blip back as this one's reason.
+    g_start_game_requested = true;
+    EXPECT_FALSE(elected_host->request_start_game())
+        << "a start already in flight refuses the press at the entry gate";
+    EXPECT_FALSE(elected_host->start_request_pending())
+        << "and nothing was sent, so nothing is pending";
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              elected_host->last_start_denial())
+        << "a press that never dispatched has no verdict; the prior "
+           "MachinesNotReady must not blip";
+    g_start_game_requested = false;
+
     // (2) The guest readies over the live (never locked) lobby.
     {
         auto guest_scope = guest_session.activate();
@@ -8059,8 +8159,9 @@ TEST(PickerNetworkClient,
     EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
               elected_host->last_start_denial())
         << "the guest's NotHost must NOT clobber the elected host's echo -- "
-           "go_menu reads last_start_denial() uncorrelated, so a shared "
-           "canonical verdict would show the host the guest's reason";
+           "go_menu renders the host's LATCHED verdict, and a shared "
+           "canonical verdict would have overwritten it at the echo that "
+           "carried the guest's reason";
 
     const std::size_t guest_messages_before = guest_lobby_messages.size();
     ASSERT_TRUE(wait_until(

@@ -258,10 +258,16 @@ public:
     {
         return false;
     }
-    // The most recent StartGame denial the server echoed to this client
-    // (protocol v9, §4.3). None for local/solo sessions (never gated) and
-    // until the host's first denied GO. The go_menu / dedicated-server host
-    // reads this to surface WHO is blocking the start.
+    // The correlated verdict of THIS client's most recent start request
+    // (protocol v9, §4.3): the reason the server echoed for exactly the
+    // request id this client had outstanding, per
+    // og::sim::start_denial_matches_request. None before the first request,
+    // after an accepted one, after a NoAnswer/LinkLost abandon (those exits
+    // are named by start_request_outcome()), for a press that never
+    // dispatched, and always for local/solo sessions (never gated). A denial
+    // aimed at another attempt -- or a later broadcast carrying somebody
+    // else's verdict -- never rewrites it. go_menu and the curses band read
+    // this to tell the player WHY the GO bounced.
     [[nodiscard]] virtual og::sim::StartDenialReason last_start_denial()
         const noexcept
     {
