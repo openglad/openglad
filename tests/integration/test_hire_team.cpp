@@ -83,8 +83,8 @@ static bool hire_candidate_index(int& out)
 // sent while the previous click's release is still queued reads to the menu
 // loop as one held pointer, and the new press is simply dropped — which is
 // what the flat SDL_Delay between consecutive clicks was buying, expensively
-// and without ever proving it worked. Same shape as test_difficulty.cpp's
-// interact_times.
+// and without ever proving it worked. Same shape as the shared value
+// ladder's (tests/test_click_ladder.h, click_until_value_moves).
 static void settle_pointer_between_clicks()
 {
     (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
