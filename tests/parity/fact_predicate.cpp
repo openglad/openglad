@@ -291,7 +291,7 @@ const char* fact_kind_name(FactKind k)
 FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
 {
     FactEvalResult r;
-    // NO `default:` arm, deliberately: -Wswitch keeps a NEW enumerator a
+    // [SWITCH-GUARD] NO `default:` arm, deliberately: -Wswitch keeps a NEW enumerator a
     // compile error only while this switch has no default (GCC and Clang
     // both silence -Wswitch as soon as a default exists), and the
     // -Werror lanes (ci-test / ci-asan / ci-tsan) turn that warning into

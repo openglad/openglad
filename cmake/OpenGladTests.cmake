@@ -192,6 +192,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_fact_predicate.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_state_dump_symbols.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_switch_guard_tripwire.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_zone_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_lineup_ui.cpp
@@ -657,6 +658,7 @@ og_add_test_group(og_test_parity FILES
     test_parity_coverage_gate.cpp
     test_fact_predicate.cpp
     test_state_dump_symbols.cpp
+    test_switch_guard_tripwire.cpp
     test_golden_compare.cpp
     golden_compare.cpp
     parity_runner.cpp
