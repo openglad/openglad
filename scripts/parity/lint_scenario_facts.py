@@ -16,6 +16,10 @@ Asserts:
       magicpoints >= 600 (cycling gate sim_input_handler.cpp:218 +
       firing gate living.cpp:532-533 preconditions; the 600 floor is
       500 MP non-sentinel cap + 100 MP headroom).
+  (e) every kMut_* definition in the table is the discriminating_mutation
+      of at least one ScenarioSpec row (branch-internal rows count): an
+      orphan pin is a mutation nothing ever applies, so nothing measures
+      whether it still has teeth
 
 The lint is regex-based, not a full C++ parser. It expects the
 scenario_table.h emitted by Phase 01 and breaks loudly on schema drift.
@@ -386,7 +390,8 @@ _BRANCH_INTERNAL_RX = re.compile(
 )
 
 
-def parse_scenarios(text: str) -> list[dict[str, str]]:
+def parse_scenarios(text: str, *,
+                    include_branch_internal: bool = False) -> list[dict[str, str]]:
     """Return one dict per master-comparable row inside kScenarios[].
 
     Mirrors the companion's `list_scenarios()` filter in
@@ -394,6 +399,13 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
     (the bool positional field after compare_mode) are skipped. Branch-internal
     scenarios cannot be cross-binary verified against master, so they are not
     counted by lint, canary, or the Phase 02 mirror-parity check.
+
+    `include_branch_internal=True` keeps them, and every row then carries
+    `branch_internal`. Only the orphan_mutation_constant rule asks for that
+    view: a branch-internal row still NAMES its pin, so the pin is not an
+    orphan even though no canary mode exercises it. Splitting the rows twice
+    in two places is how the two views would drift apart, so they share this
+    one.
     """
     body = _balanced_block(text, "inline constexpr ScenarioSpec kScenarios[]")
     if not body:
@@ -415,7 +427,8 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
                 start = -1
     out = []
     for r in rows:
-        if _BRANCH_INTERNAL_RX.search(r):
+        branch_internal = bool(_BRANCH_INTERNAL_RX.search(r))
+        if branch_internal and not include_branch_internal:
             continue
         # ID is the first quoted token.
         m = re.search(r'"([^"]+)"', r)
@@ -466,6 +479,7 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
             "expected_facts":  facts_name,
             "fact_count":      facts_count_expr,
             "mutation_token":  mut_token,
+            "branch_internal": branch_internal,
         })
     return out
 
@@ -877,6 +891,26 @@ def main() -> int:
                         f"paired with a `// scripted_spawn:` predicate-trail "
                         f"comment (policy P6)")
 
+    # Spec-mandated rule (Q10) — orphan_mutation_constant. A kMut_* that
+    # no row names is a pin nothing ever applies: check_mutation_pins keeps
+    # its anchor honest, but no canary run ever asks whether it still has
+    # teeth, and the rationale is free to describe flips that stopped
+    # happening years ago. Branch-internal rows count as references — their
+    # pin is named, even though the Invariant compare cannot flip on it.
+    orphan_mutation_errors: list[str] = []
+    referenced_mutations = {
+        r["mutation_token"]
+        for r in parse_scenarios(text, include_branch_internal=True)
+        if r["mutation_token"]
+    }
+    for mut_name in sorted(mutations):
+        if mut_name in referenced_mutations:
+            continue
+        orphan_mutation_errors.append(
+            f"{mut_name}: orphan mutation constant (referenced by no "
+            f"ScenarioSpec row) — attach it to a row whose facts flip under "
+            f"it, or delete it with a DRIFT_LEDGER 'Removed pins' note")
+
     if not rows:
         sys.stderr.write("lint: no scenario rows parsed\n")
         return 1
@@ -1002,6 +1036,7 @@ def main() -> int:
         + zero_zero_count_errors
         + family_alias_errors
         + caster_zero_min_errors
+        + orphan_mutation_errors
     )
 
     if all_errors:

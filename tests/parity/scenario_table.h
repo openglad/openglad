@@ -1186,13 +1186,6 @@ inline constexpr Mutation kMut_effect_lifetime = {
     "Cancels the end-of-animation death in effect::act() so effects never expire; bomb/chain scenarios that rely on effects winding down see a residual effect count and flip EffectFamilyCount / dependent walker-death predicates."
 };
 
-inline constexpr Mutation kMut_save_corrupt = {
-    "src/resources/save_data.cpp", 132,
-    "std::uint8_t temp_version = 9;",
-    "std::uint8_t temp_version = 0;",
-    "Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2)."
-};
-
 inline constexpr Mutation kMut_exit_neuter = {
     "src/gameplay/walker_movement.cpp", 173,
     "returnvalue = walk(x * stepsize(), y * stepsize());",
@@ -1289,119 +1282,195 @@ inline constexpr Mutation kMut_family_soldier_init = {
     "packs/core/families/living-00-soldier.lua", 145,
     "hp = 120",
     "hp = 12000",
-    "Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER)."
-};
-
-inline constexpr Mutation kMut_family_elf_init = {
-    "packs/core/families/living-01-elf.lua", 69,
-    "hp = 75",
-    "hp = 7500",
-    "Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF)."
+    "Cranks SOLDIER descriptor HP x100 "
+    "(packs/core/families/living-00-soldier.lua:145). "
+    "family_soldier_scen99's WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, "
+    "11900, 12100) leaves its window (golden 12000 cents -> mutated "
+    "1200000 cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
     "packs/core/families/living-02-archer.lua", 96,
     "hp = 90",
     "hp = 9000",
-    "Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER)."
+    "Cranks ARCHER descriptor HP x100 "
+    "(packs/core/families/living-02-archer.lua:96). "
+    "family_archer_scen99's WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 8900, "
+    "9100) leaves its window (golden 9000 cents -> mutated 900000 cents); "
+    "measured 2026-09-15 by staging the pin into build/ci-test/packs, it "
+    "is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
     "packs/core/families/living-03-mage.lua", 285,
     "hp = 90",
     "hp = 9000",
-    "Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE)."
+    "Cranks MAGE descriptor HP x100 "
+    "(packs/core/families/living-03-mage.lua:285). family_mage_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8900, 9100) leaves its window "
+    "(golden 9000 cents -> mutated 900000 cents); measured 2026-09-15 by "
+    "staging the pin into build/ci-test/packs, it is the only fact of the "
+    "row that flips."
 };
 
 inline constexpr Mutation kMut_family_skeleton_init = {
     "packs/core/families/living-04-skeleton.lua", 43,
     "hp = 60",
     "hp = 6000",
-    "Cranks SKELETON HP; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(SKELETON)."
+    "Cranks SKELETON descriptor HP x100 "
+    "(packs/core/families/living-04-skeleton.lua:43). "
+    "family_skeleton_scen99's WalkerHpRangeAtFinalTick(FAMILY_SKELETON, "
+    "5900, 6100) leaves its window (golden 6000 cents -> mutated 600000 "
+    "cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
     "packs/core/families/living-05-cleric.lua", 309,
     "hp = 120",
     "hp = 12000",
-    "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC)."
+    "Cranks CLERIC descriptor HP x100 "
+    "(packs/core/families/living-05-cleric.lua:309). "
+    "family_cleric_scen99's WalkerHpRangeAtFinalTick(FAMILY_CLERIC, "
+    "11900, 12100) leaves its window (golden 12000 cents -> mutated "
+    "1200000 cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
     "packs/core/families/living-06-elemental.lua", 80,
     "hp = 100",
     "hp = 10000",
-    "Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL)."
+    "Cranks FIREELEMENTAL descriptor HP x100 "
+    "(packs/core/families/living-06-elemental.lua:80). "
+    "family_fireelemental_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 9900, 10100) leaves "
+    "its window (golden 10000 cents -> mutated 1000000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_faerie_init = {
     "packs/core/families/living-07-faerie.lua", 15,
     "hp = 75",
     "hp = 7500",
-    "Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE)."
+    "Cranks FAERIE descriptor HP x100 "
+    "(packs/core/families/living-07-faerie.lua:15). "
+    "family_faerie_scen99's WalkerHpRangeAtFinalTick(FAMILY_FAERIE, 7400, "
+    "7600) leaves its window (golden 7500 cents -> mutated 750000 cents); "
+    "measured 2026-09-15 by staging the pin into build/ci-test/packs, it "
+    "is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_slime_init = {
     "packs/core/families/living-08-slime.lua", 170,
     "hp = 150",
     "hp = 1",
-    "SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "Drops SLIME descriptor HP to 1 "
+    "(packs/core/families/living-08-slime.lua:170). family_slime_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_SLIME, 14900, 15100) leaves its "
+    "window (golden 15000 cents -> mutated 100 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_small_slime_init = {
     "packs/core/families/living-08-slime.lua", 218,
     "hp = 80",
     "hp = 8000",
-    "Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME)."
+    "Cranks SMALL_SLIME descriptor HP x100 "
+    "(packs/core/families/living-08-slime.lua:218). "
+    "family_small_slime_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_SMALL_SLIME, 7900, 8100) leaves its "
+    "window (golden 8000 cents -> mutated 800000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_medium_slime_init = {
     "packs/core/families/living-08-slime.lua", 262,
     "hp = 110",
     "hp = 11000",
-    "Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME)."
+    "Cranks MEDIUM_SLIME descriptor HP x100 "
+    "(packs/core/families/living-08-slime.lua:262). "
+    "family_medium_slime_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 10900, 11100) leaves "
+    "its window (golden 11000 cents -> mutated 1100000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
     "packs/core/families/living-11-thief.lua", 201,
     "hp = 75",
     "hp = 7500",
-    "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF)."
+    "Cranks THIEF descriptor HP x100 "
+    "(packs/core/families/living-11-thief.lua:201). family_thief_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600) leaves its window "
+    "(golden 7500 cents -> mutated 750000 cents); measured 2026-09-15 by "
+    "staging the pin into build/ci-test/packs, it is the only fact of the "
+    "row that flips."
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
     "packs/core/families/living-13-druid.lua", 159,
     "hp = 110",
     "hp = 11000",
-    "Cranks DRUID HP; flips WalkerDiedByFinal(DRUID)."
+    "Cranks DRUID descriptor HP x100 "
+    "(packs/core/families/living-13-druid.lua:159). family_druid_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_DRUID, 10900, 11100) leaves its "
+    "window (golden 11000 cents -> mutated 1100000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_orc_init = {
     "packs/core/families/living-14-orc.lua", 104,
     "hp = 140",
     "hp = 14000",
-    "Cranks ORC HP; flips WalkerDiedByFinal(ORC)."
+    "Cranks ORC descriptor HP x100 "
+    "(packs/core/families/living-14-orc.lua:104). family_orc_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_ORC, 13900, 14100) leaves its window "
+    "(golden 14000 cents -> mutated 1400000 cents); measured 2026-09-15 "
+    "by staging the pin into build/ci-test/packs, it is the only fact of "
+    "the row that flips."
 };
 
 inline constexpr Mutation kMut_family_big_orc_init = {
     "packs/core/families/living-15-orc_captain.lua", 16,
     "hp = 180",
     "hp = 1",
-    "BIG_ORC HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BIG_ORC,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "Drops BIG_ORC descriptor HP to 1 "
+    "(packs/core/families/living-15-orc_captain.lua:16). "
+    "family_big_orc_scen99's WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, "
+    "17900, 18100) leaves its window (golden 18000 cents -> mutated 100 "
+    "cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
     "packs/core/families/living-16-barbarian.lua", 79,
     "hp = 150",
     "hp = 1",
-    "BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "Drops BARBARIAN descriptor HP to 1 "
+    "(packs/core/families/living-16-barbarian.lua:79). "
+    "family_barbarian_scen99's WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, "
+    "14900, 15100) leaves its window (golden 15000 cents -> mutated 100 "
+    "cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
     "packs/core/families/living-17-archmage.lua", 536,
     "hp = 150",
     "hp = 1",
-    "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "Drops ARCHMAGE descriptor HP to 1 "
+    "(packs/core/families/living-17-archmage.lua:536). "
+    "family_archmage_scen99's WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, "
+    "14900, 15100) leaves its window (golden 15000 cents -> mutated 100 "
+    "cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_golem_init = {
@@ -1411,18 +1480,16 @@ inline constexpr Mutation kMut_family_golem_init = {
     "GOLEM HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GOLEM,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
-inline constexpr Mutation kMut_family_giant_skeleton_init = {
-    "packs/core/families/living-19-beast.lua", 17,
-    "hp = 300",
-    "hp = 1",
-    "GIANT_SKELETON HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GIANT_SKELETON,1) and WalkerOfTeamAlive(team=0,1,1)."
-};
-
 inline constexpr Mutation kMut_family_tower1_init = {
     "packs/core/families/living-20-beast.lua", 23,
     "hp = 130",
     "hp = 13000",
-    "Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1)."
+    "Cranks TOWER1 descriptor HP x100 "
+    "(packs/core/families/living-20-beast.lua:23). family_tower1_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12900, 13100) leaves its "
+    "window (golden 13000 cents -> mutated 1300000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 // --- Phase 04 — per-entity behavioural scenarios (Phase 04 redo) -----------
@@ -8180,7 +8247,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_soldier, std::size(kFamilySpawns_complete_soldier), 0, false, true,
       Exercises::None,
       kFacts_family_soldier_scen99, std::size(kFacts_family_soldier_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_soldier_init,
       "05a family_spawns[]=FAMILY_SOLDIER expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_elf_scen99",             "scen/scen1.fss", 0x00000042u,
@@ -8196,7 +8263,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_archer, std::size(kFamilySpawns_complete_archer), 0, false, true,
       Exercises::None,
       kFacts_family_archer_scen99, std::size(kFacts_family_archer_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_archer_init,
       "05a family_spawns[]=FAMILY_ARCHER expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_mage_scen99",            "scen/scen1.fss", 0x00000042u,
@@ -8204,7 +8271,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_mage, std::size(kFamilySpawns_complete_mage), 0, false, true,
       Exercises::None,
       kFacts_family_mage_scen99, std::size(kFacts_family_mage_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_mage_init,
       "05a family_spawns[]=FAMILY_MAGE expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_skeleton_scen99",        "scen/scen1.fss", 0x00000042u,
@@ -8212,7 +8279,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_skeleton, std::size(kFamilySpawns_complete_skeleton), 0, false, true,
       Exercises::None,
       kFacts_family_skeleton_scen99, std::size(kFacts_family_skeleton_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_skeleton_init,
       "05a family_spawns[]=FAMILY_SKELETON expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_cleric_scen99",          "scen/scen1.fss", 0x00000042u,
@@ -8220,7 +8287,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_cleric, std::size(kFamilySpawns_complete_cleric), 0, false, true,
       Exercises::None,
       kFacts_family_cleric_scen99, std::size(kFacts_family_cleric_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_cleric_init,
       "05a family_spawns[]=FAMILY_CLERIC expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_fireelemental_scen99",   "scen/scen1.fss", 0x00000042u,
@@ -8228,14 +8295,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_fireelemental, std::size(kFamilySpawns_complete_fireelemental), 0, false, true,
       Exercises::None,
       kFacts_family_fireelemental_scen99, std::size(kFacts_family_fireelemental_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_fireelemental_init,
       "05a family_spawns[]=FAMILY_FIREELEMENTAL expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_faerie_scen99",          "scen/scen1.fss", 0x00000042u,
       kInputsFamilyCompleteness, std::size(kInputsFamilyCompleteness), 600, CompareMode::SemanticParity, false,
       kFamilySpawns_complete_faerie, std::size(kFamilySpawns_complete_faerie), 0, false, true, Exercises::None,
       kFacts_family_faerie_scen99, std::size(kFacts_family_faerie_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_faerie_init,
       "05a family_spawns[]=FAMILY_FAERIE expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_slime_scen99",           "scen/scen1.fss", 0x00000042u,
@@ -8243,7 +8310,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_slime, std::size(kFamilySpawns_complete_slime), 0, false, true,
       Exercises::None,
       kFacts_family_slime_scen99, std::size(kFacts_family_slime_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_slime_init,
       "05a family_spawns[]=FAMILY_SLIME expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_small_slime_scen99",     "scen/scen1.fss", 0x00000042u,
@@ -8251,7 +8318,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_small_slime, std::size(kFamilySpawns_complete_small_slime), 0, false, true,
       Exercises::None,
       kFacts_family_small_slime_scen99, std::size(kFacts_family_small_slime_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_small_slime_init,
       "05a family_spawns[]=FAMILY_SMALL_SLIME expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_medium_slime_scen99",    "scen/scen1.fss", 0x00000042u,
@@ -8259,7 +8326,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_medium_slime, std::size(kFamilySpawns_complete_medium_slime), 0, false, true,
       Exercises::None,
       kFacts_family_medium_slime_scen99, std::size(kFacts_family_medium_slime_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_medium_slime_init,
       "05a family_spawns[]=FAMILY_MEDIUM_SLIME expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_thief_scen99",           "scen/scen1.fss", 0x00000042u,
@@ -8267,7 +8334,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_thief, std::size(kFamilySpawns_complete_thief), 0, false, true,
       Exercises::None,
       kFacts_family_thief_scen99, std::size(kFacts_family_thief_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_thief_init,
       "05a family_spawns[]=FAMILY_THIEF expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_ghost_scen99",           "scen/scen1.fss", 0x00000042u,
@@ -8283,7 +8350,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_druid, std::size(kFamilySpawns_complete_druid), 0, false, true,
       Exercises::None,
       kFacts_family_druid_scen99, std::size(kFacts_family_druid_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_druid_init,
       "05a family_spawns[]=FAMILY_DRUID expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_orc_scen99",             "scen/scen1.fss", 0x00000042u,
@@ -8291,14 +8358,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_orc, std::size(kFamilySpawns_complete_orc), 0, false, true,
       Exercises::None,
       kFacts_family_orc_scen99, std::size(kFacts_family_orc_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_orc_init,
       "05a family_spawns[]=FAMILY_ORC expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_big_orc_scen99",         "scen/scen1.fss", 0x00000042u,
       kInputsFamilyCompleteness, std::size(kInputsFamilyCompleteness), 600, CompareMode::SemanticParity, false,
       kFamilySpawns_complete_big_orc, std::size(kFamilySpawns_complete_big_orc), 0, false, true, Exercises::None,
       kFacts_family_big_orc_scen99, std::size(kFacts_family_big_orc_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_big_orc_init,
       "05a family_spawns[]=FAMILY_BIG_ORC expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_barbarian_scen99",       "scen/scen1.fss", 0x00000042u,
@@ -8306,7 +8373,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_barbarian, std::size(kFamilySpawns_complete_barbarian), 0, false, true,
       Exercises::None,
       kFacts_family_barbarian_scen99, std::size(kFacts_family_barbarian_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_barbarian_init,
       "05a family_spawns[]=FAMILY_BARBARIAN expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_archmage_scen99",        "scen/scen1.fss", 0x00000042u,
@@ -8314,7 +8381,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_archmage, std::size(kFamilySpawns_complete_archmage), 0, false, true,
       Exercises::None,
       kFacts_family_archmage_scen99, std::size(kFacts_family_archmage_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_archmage_init,
       "05a family_spawns[]=FAMILY_ARCHMAGE expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_golem_scen99",           "scen/scen1.fss", 0x00000042u,
@@ -8353,7 +8420,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kInputsFamilyCompleteness, std::size(kInputsFamilyCompleteness), 600, CompareMode::SemanticParity, false,
       kFamilySpawns_complete_tower1, std::size(kFamilySpawns_complete_tower1), 0, false, true, Exercises::None,
       kFacts_family_tower1_scen99, std::size(kFacts_family_tower1_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_tower1_init,
       "05a family_spawns[]=FAMILY_TOWER1 expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     // Phase 04a — treasure pickup scenarios. Every row spawns a lone

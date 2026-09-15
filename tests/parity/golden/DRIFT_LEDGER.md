@@ -480,3 +480,58 @@ an arena with no walkers, effects, events or score has nothing else to assert.
 The every-golden sweep is now 221 files against the 221 SemanticParity rows that
 byte-compare against them (222 master-comparable rows, the 222nd being the
 Invariant `smoke_empty_scen99`), with no leftover to explain.
+
+## Removed pins (2026-09-15)
+
+Three `kMut_*` definitions in `tests/parity/scenario_table.h` were the
+discriminating mutation of no `ScenarioSpec` row. An orphan pin is not a weak
+pin, it is an unmeasured one: `check_mutation_pins.py` keeps its anchor honest,
+but no canary run ever applies it, so its rationale is free to describe a flip
+that stopped happening and nothing contradicts it. Twenty pins were orphaned;
+seventeen were attached to their `family_<x>_scen99` row (each re-measured, each
+flipping that row's `WalkerHpRangeAtFinalTick` from True to False), and these
+three could not be attached honestly. `lint_scenario_facts.py` grew an
+`orphan_mutation_constant` rule in the same commit, so the class cannot return
+silently. No golden moved: the mutation column and the rationale strings are not
+in the dump.
+
+`kMut_family_elf_init` (`packs/core/families/living-01-elf.lua:69`,
+`hp = 75` -> `hp = 7500`) — the only row it could have attached to is
+`family_elf_scen99`, and that row is the sole user of
+`kMut_family_spawn_identity_elf`, the one bespoke loader-identity pin, and it is
+bespoke for a reason: the shared `kMut_family_spawn_identity` rotates every
+loaded family by one (`(family + 1) % 21`), which on this arena turns the player
+SOLDIER (0) *into* an ELF as it turns the target ELF (1) into an ARCHER, so
+`WalkerFamilyCount(FAMILY_ELF, 1, 1)` still counts one and the row survives the
+mutation untouched. The `_elf` pin maps 0 -> ARCHER and 1 -> SOLDIER instead, so
+no ELF is left to count. Attaching the hp pin would have traded one orphan for
+another and dropped `src/resources/gloader.cpp:822` from four guarding rows
+(`family_ghost`, `family_golem`, `family_giant_skeleton`, `family_elf`) to
+three.
+
+`kMut_family_giant_skeleton_init` (`packs/core/families/living-19-beast.lua:17`,
+`hp = 300` -> `hp = 1`) — `kFamilySpawns_complete_giant_skeleton` parks the
+target at (600, 680) and `family_giant_skeleton_scen99.json` shows it there with
+`alive=false hp=0` while the player soldier still holds 120 hp at (224, 120): it
+never fought, and its death is not a combat outcome the pin can change. The only
+dump field `hp = 300 -> hp = 1` can move on that row is `max_hp`, which no
+`FactKind` reads, so attaching it would have produced a PREDICATE-TOOTHLESS row
+by construction — worse than the orphan, because a PREDICATE-TOOTHLESS row fails
+`run_mutation_canary.sh --all`, and the standing rule for that list (see
+"Predicate teeth after the byte compare" above) is that it may only shrink. The
+row keeps `kMut_family_spawn_identity`.
+
+`kMut_save_corrupt` (`src/resources/save_data.cpp:132`,
+`std::uint8_t temp_version = 9;` -> `= 0;`) — the pinned line is inside
+`SaveData::load`, and `tests/parity/parity_runner.cpp:461` constructs `SaveData
+save;`, hands it to `set_sim_context` and `ScopedGameplayContext`, and never
+calls a method on it. No scenario reaches save serialisation at all, so the pin
+could only have been attached to a row it does not exercise:
+`save_roundtrip_scen99` is a scen1.fss combat arena on `kMut_combat_damage`
+whose id merely contains "save", which is exactly what the static gate at
+`tests/parity/test_parity_coverage_gate.cpp` (the
+`src/resources/save_data.cpp` + `id.find("save")` rule) accepts — that gate stays
+in place as the guard against re-attaching a save pin to a row that never saves.
+Teaching the runner a real save round-trip is a harness feature (new runner
+behaviour on both arms, a new row, a new golden, a companion capture against
+e761-era save code), not a pin fix.
