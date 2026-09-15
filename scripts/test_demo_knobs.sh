@@ -158,6 +158,76 @@ if [[ ! -s "$test_root/capture-player/frame00000.bmp" ]]; then
     exit 1
 fi
 
+# --- 5b. Capture focus 'cell:<x>,<y>' ---------------------------------------
+# The free camera aimed by map cell: the media recipes name the terrain
+# artefact they want in frame by the grid coordinates the editor and
+# scripts/media/smooth_mask_census.py both print. Three rules, one case each:
+# the form is accepted and captures; a malformed form is fatal rather than
+# silently aimed somewhere else; and the coordinates actually move the camera.
+run_demo capture-cell \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_SEED=12 \
+    OPENGLAD_DEMO_SCENARIOS=5 \
+    OPENGLAD_DEMO_CAPTURE_DIR="$test_root/capture-cell" \
+    OPENGLAD_DEMO_CAPTURE_FOCUS=cell:3,4 \
+    OPENGLAD_DEMO_CAPTURE_LIMIT=1
+expect_status 0 'cell-focus capture'
+expect_message 'openglad_demo: captured 1 frames' 'cell-focus capture'
+if [[ ! -s "$test_root/capture-cell/frame00000.bmp" ]]; then
+    printf 'the cell-focus capture wrote no frame\n' >&2
+    exit 1
+fi
+
+# A coordinate the parser cannot read is fatal: a capture aimed at cell 0,0
+# because the recipe mistyped its coordinates is a picture of the wrong corner
+# of the map, and nothing downstream would notice.
+bad_focus_case=0
+for bad_focus in cell:3 cell:a,b cell:3,-4 cell:,4; do
+    bad_focus_case=$((bad_focus_case + 1))
+    run_demo "capture-cell-bad-$bad_focus_case" \
+        OPENGLAD_DEMO_GRID=1x1 \
+        OPENGLAD_DEMO_MAX_FRAMES=1 \
+        OPENGLAD_DEMO_CAPTURE_DIR="$test_root/capture-cell-bad" \
+        OPENGLAD_DEMO_CAPTURE_FOCUS="$bad_focus"
+    expect_status 1 "malformed cell focus '$bad_focus'"
+    expect_message \
+        "OPENGLAD_DEMO_CAPTURE_FOCUS must be player, boss, center or cell:<x>,<y>, got '$bad_focus'" \
+        "malformed cell focus '$bad_focus'"
+done
+
+# Same campaign, same scenario, same seed, one frame each: the ONLY difference
+# between these two runs is where the camera is pointed, so identical frames
+# mean the coordinates never reached level_visuals().
+run_demo capture-cell-origin \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_SEED=12 \
+    OPENGLAD_DEMO_SCENARIOS=5 \
+    OPENGLAD_DEMO_CAPTURE_DIR="$test_root/capture-cell-origin" \
+    OPENGLAD_DEMO_CAPTURE_FOCUS=cell:0,0 \
+    OPENGLAD_DEMO_CAPTURE_LIMIT=1
+expect_status 0 'cell-focus capture at 0,0'
+
+run_demo capture-cell-far \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_SEED=12 \
+    OPENGLAD_DEMO_SCENARIOS=5 \
+    OPENGLAD_DEMO_CAPTURE_DIR="$test_root/capture-cell-far" \
+    OPENGLAD_DEMO_CAPTURE_FOCUS=cell:12,12 \
+    OPENGLAD_DEMO_CAPTURE_LIMIT=1
+expect_status 0 'cell-focus capture at 12,12'
+
+for frame in capture-cell-origin capture-cell-far; do
+    if [[ ! -s "$test_root/$frame/frame00000.bmp" ]]; then
+        printf 'the %s run wrote no frame\n' "$frame" >&2
+        exit 1
+    fi
+done
+if cmp -s "$test_root/capture-cell-origin/frame00000.bmp" \
+    "$test_root/capture-cell-far/frame00000.bmp"; then
+    printf 'cell:0,0 and cell:12,12 captured identical frames: the cell coordinates never moved the camera\n' >&2
+    exit 1
+fi
+
 # A capture directory that cannot be created (a path component is a regular
 # file) is fatal BEFORE any session boots — the alternative is a long render
 # whose frames go nowhere.

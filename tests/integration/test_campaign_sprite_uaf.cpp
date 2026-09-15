@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 
 #include "campaign_sprite_fixture.h"
+#include "test_campaign_picker_drive.h"
 #include "test_interact.h"
 #include "test_input_helpers.h"
 #include "test_save_state_guard.h"
@@ -35,6 +36,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -46,18 +48,16 @@
 
 #include <SDL3/SDL.h>
 
+#include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
 
-// campaign_picker.cpp TESTING hooks (same contract as
-// test_campaign_and_level_picker.cpp, which lives in a different binary).
-void campaign_picker_testing_input_reset();
-void campaign_picker_testing_abort();
-std::uint64_t campaign_picker_testing_entered_count();
-std::uint64_t campaign_picker_testing_action_count();
+// The campaign browser's TESTING hooks and the waiters built on them live in
+// tests/test_campaign_picker_drive.h, shared with the og_test_menu_ui flows.
 // Deterministic prompt answers (pick_campaign's ENTER ID path).
 void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
@@ -65,6 +65,20 @@ void level_editor_testing_prompt_queue_push(const char* s);
 namespace {
 
 constexpr const char* kFixtureId = "org.test.sprite162.sdl";
+
+// Poll ticks, not settles (scripts/check_injector_settles.sh, tier 2).
+constexpr Uint32 kEscapePollMs = 100;
+// Cancellation ceilings for a pump that has stopped, never budgets.
+constexpr int kScenarioDoorWaitMs = 8000;
+// SET CAMPAIGN mounts a package and reloads every sprite; the reload trace is
+// the only thing that says it finished.
+constexpr int kReloadTraceWaitMs = 10000;
+// The sabotaged leg waits for an id nothing publishes. Nothing is coming, and
+// the point of that run is the tail, so its window is short on purpose.
+constexpr int kSabotageWaitMs = 500;
+// One BACK press per confirmation window, not one per tick.
+constexpr int kEscapeConfirmTicks = 20;
+
 
 inline PickerState& pks()
 {
@@ -151,104 +165,201 @@ struct PromptQueueGuard
     ~PromptQueueGuard() { level_editor_testing_prompt_queue_clear(); }
 };
 
-bool wait_for_counter_above(std::uint64_t (*counter)(), std::uint64_t baseline)
+// pick_campaign's abort flag is ONE-SHOT and consumed at the browser's loop
+// top. The escape tail can raise it after the browser has already closed (a
+// leg that gave up once the ENTER ID click had ended the loop), which leaves
+// it pending: the next test in this binary to open the browser would break
+// out on frame one. The between-tests listener re-arms auto-accept but does
+// not clear this, so clear it on the way in and on the way out.
+struct PickerInputResetGuard
 {
-    constexpr Uint64 kTimeoutMs = 8000;
-    const Uint64 started_at = SDL_GetTicks();
-    while (counter() <= baseline)
+    PickerInputResetGuard() { campaign_picker_testing_input_reset(); }
+    ~PickerInputResetGuard()
     {
-        if (SDL_GetTicks() - started_at >= kTimeoutMs)
-        {
-            campaign_picker_testing_abort();
-            return false;
-        }
-        SDL_Delay(1);
+        campaign_picker_testing_input_reset();
+        // Not the flush the body warns about: each body already polled its
+        // tail's release through reset_mouse_click_tracking() + pump before
+        // this guard unwinds, so what is left here is at most a lone press
+        // the browser never saw -- never a release whose loss would pin
+        // mouse_state.left true.
+        SDL_FlushEvents(SDL_EVENT_MOUSE_BUTTON_DOWN,
+                        SDL_EVENT_MOUSE_BUTTON_UP);
     }
-    return true;
-}
-
-bool push_picker_mouse_event(Uint32 event_type, int x, int y)
-{
-    SDL_Event event{};
-    event.type = event_type;
-    event.button.button = SDL_BUTTON_LEFT;
-    event.button.down = event_type == SDL_EVENT_MOUSE_BUTTON_DOWN;
-    event.button.clicks = 1;
-    event.button.x = static_cast<float>(x);
-    event.button.y = static_cast<float>(y);
-    return SDL_PushEvent(&event);
-}
-
-bool click_campaign_picker(int x, int y)
-{
-    const std::uint64_t before = campaign_picker_testing_action_count();
-    if (!push_picker_mouse_event(SDL_EVENT_MOUSE_BUTTON_DOWN, x, y))
-    {
-        campaign_picker_testing_abort();
-        return false;
-    }
-    const bool acknowledged =
-        wait_for_counter_above(campaign_picker_testing_action_count, before);
-    if (!push_picker_mouse_event(SDL_EVENT_MOUSE_BUTTON_UP, x, y))
-    {
-        campaign_picker_testing_abort();
-        return false;
-    }
-    return acknowledged;
-}
+};
 
 bool wait_for_trace(const char* category, const char* needle)
 {
-    constexpr Uint64 kTimeoutMs = 10000;
     const Uint64 started_at = SDL_GetTicks();
     while (!trace_contains(category, needle))
     {
-        if (SDL_GetTicks() - started_at >= kTimeoutMs)
+        if (SDL_GetTicks() - started_at >=
+            static_cast<Uint64>(kReloadTraceWaitMs))
+        {
             return false;
+        }
         SDL_Delay(10);
     }
     return true;
 }
 
-// SCENARIO menu injector: SET CAMPAIGN -> campaign picker ENTER ID (the
-// prompt queue answers with the fixture id) -> wait for the handler's
-// reload -> BACK out.
-int set_campaign_flow_injector(void*)
+// ---------------------------------------------------------------------------
+// The SCENARIO > SET CAMPAIGN flow, driven leg by leg.
+//
+// Both blocking loops in this flow run on the MAIN thread: create_scenario_menu
+// (engine-hosted, so wait_for_menu_frames is its oracle) and, inside the
+// SET CAMPAIGN handler, pick_campaign (NOT engine-hosted, so the counters in
+// tests/test_campaign_picker_drive.h are its oracle). Neither can end itself.
+// That is why no leg here may simply `return n`: the numbered give-ups this
+// file used to carry left the main thread wedged and took the whole
+// og_test_game_core binary to the CTest ceiling, which is also why the
+// EXPECT_EQ(0, injector_result) message enumerating the legs was unreachable.
+// Every give-up now routes through the escape tail below, and
+// CampaignSpriteUaf.a_leg_that_gives_up_frees_the_main_thread is its
+// regression.
+// ---------------------------------------------------------------------------
+
+struct SpriteFlowState
+{
+    // Set by the MAIN thread once create_scenario_menu has returned, never by
+    // the injector.
+    std::atomic<bool> test_finished{false};
+    bool started = false;
+    bool finished = false;
+    // Point one leg at an id the flow never publishes, so the give-up path is
+    // itself testable.
+    int sabotage_leg = 0;
+};
+
+// Keep closing whatever is currently blocking the main thread until that
+// thread says it is out for good, then report the leg that gave up. No
+// wall-clock bound, on purpose: nothing else can end create_scenario_menu.
+//
+// Two doors, and they are not interchangeable. While pick_campaign owns the
+// main thread its buttons are its own local array -- allbuttons still holds
+// the SCENARIO screen's, so a click aimed at "back" would land inside the
+// browser at whatever sits under those coordinates. The browser's abort flag
+// is its only legitimate door, and it is one-shot (consumed at the loop top),
+// so it is raised at most ONCE per browser entry this tail has not already
+// seen, and BACK is clicked only when no unseen entry is outstanding.
+int escape_from_the_campaign_flow(SpriteFlowState& state,
+                                  std::uint64_t& seen_entries, int leg,
+                                  const char* why)
+{
+    if (leg != 0)
+        fprintf(stderr, "  [test] ERROR: leg %d: %s\n", leg, why);
+    while (!state.test_finished.load())
+    {
+        const std::uint64_t entered = campaign_picker_testing_entered_count();
+        if (entered > seen_entries)
+        {
+            campaign_picker_testing_abort();
+            seen_entries = entered;
+            SDL_Delay(kEscapePollMs);
+            continue;
+        }
+        if (!has_interactable("back") || !interact("back"))
+        {
+            SDL_Delay(kEscapePollMs);
+            continue;
+        }
+        // BACK stays published in allbuttons even while the browser owns the
+        // main thread, so there is no "the button went away" edge to watch
+        // here: watch the main thread instead, and press again only if it is
+        // still blocked when the window closes.
+        for (int tick = 0;
+             tick < kEscapeConfirmTicks && !state.test_finished.load(); ++tick)
+        {
+            SDL_Delay(kEscapePollMs);
+        }
+    }
+    return leg;
+}
+
+int set_campaign_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
+    SpriteFlowState* const state = static_cast<SpriteFlowState*>(data);
+    state->started = true;
 
-    if (!wait_for_interactable("set_campaign", 8000))
-        return 1;
-    SDL_Delay(750); // fadeblack eats events
+    // The tail must start from the entry count the flow started with, so an
+    // entry it has not seen is exactly "the browser this flow opened".
+    std::uint64_t seen_entries = campaign_picker_testing_entered_count();
+    const auto escape = [state, &seen_entries](int leg, const char* why) {
+        return escape_from_the_campaign_flow(*state, seen_entries, leg, why);
+    };
+
+    // -- Leg 1: the SCENARIO screen is up AND has composed a frame --
+    const char* const start_id =
+        state->sabotage_leg == 1 ? "never_published_row" : "set_campaign";
+    const int start_wait_ms =
+        state->sabotage_leg == 1 ? kSabotageWaitMs : kScenarioDoorWaitMs;
+    if (!wait_for_interactable(start_id, start_wait_ms) ||
+        !wait_for_menu_frames(2))
+    {
+        return escape(1, "the SCENARIO screen never published set_campaign");
+    }
+
+    // -- Leg 2: SET CAMPAIGN, acknowledged by the browser it opens --
+    // Re-baseline the pointer on the menu thread first: a press that makes no
+    // up->down edge (a release flushed by an earlier test) simply evaporates.
+    if (!run_on_main_thread(reset_mouse_click_tracking))
+        return escape(2, "the menu thread never ran the pointer re-baseline");
     const std::uint64_t entered_before =
         campaign_picker_testing_entered_count();
-    interact("set_campaign");
+    if (!interact("set_campaign"))
+        return escape(2, "set_campaign vanished before the click");
+    if (!wait_for_campaign_picker_entry(entered_before))
+    {
+        return escape(2, "the campaign browser never entered its loop");
+    }
 
-    if (!wait_for_counter_above(campaign_picker_testing_entered_count,
-                                entered_before))
-        return 2;
-    // The SET CAMPAIGN click is still HELD when the picker enters (the
-    // entered counter bumps before interact()'s release lands), and the
-    // picker's entry baseline holds fire until that click has been seen up
-    // once (pointer handoff). Let the release land in its own picker frame
-    // before pressing again — same cadence idiom as the BACK click below.
-    SDL_Delay(300);
-    // ENTER ID sits under DELETE/RESET; take its center from the pure layout.
+    // -- Leg 3: the pointer handoff --
+    // The SET CAMPAIGN click is still HELD when the browser enters (the entry
+    // counter bumps before interact()'s release lands), and the browser holds
+    // fire until that click has been seen up once. Two facts make the next
+    // press safe, and neither alone does: the release is gone from the SDL
+    // queue (some iteration polled it), and one more iteration has begun (so
+    // the iteration that polled it also ran its query_mouse, which is what
+    // sets saw_left_release).
+    if (!wait_for_campaign_picker_event_consumed(SDL_EVENT_MOUSE_BUTTON_UP) ||
+        !wait_for_campaign_picker_frames(1))
+    {
+        return escape(3,
+                      "the browser never finished the frame that took the "
+                      "door click's release");
+    }
+
+    // -- Leg 4: ENTER ID (the prompt queue answers with the fixture id) --
+    // Coordinates come from the pure layout, so a geometry change moves the
+    // click with it instead of silently missing.
     const og::ui::PickerRect id_button =
         og::ui::campaign_picker_layout().id_button;
-    if (!click_campaign_picker(id_button.x + id_button.w / 2,
-                               id_button.y + id_button.h / 2))
-        return 3;
+    if (!click_campaign_picker_action(id_button.x + id_button.w / 2,
+                                      id_button.y + id_button.h / 2))
+    {
+        return escape(4, "the ENTER ID button never acknowledged the click");
+    }
 
-    // The do_pick_campaign handler mounts the fixture and reloads; only
-    // after that is the scenario menu live again.
+    // -- Leg 5: the handler mounts the fixture and reloads --
     if (!wait_for_trace("gloader", "reloaded stale"))
-        return 4;
-    if (!wait_for_interactable("back", 8000))
-        return 5;
-    SDL_Delay(300); // release the previous click before pressing again
-    interact("back");
-    return 0;
+    {
+        return escape(
+            5, "the SET CAMPAIGN handler never reloaded the stale loader");
+    }
+
+    // -- Leg 6: the SCENARIO screen is live and composing again --
+    if (!wait_for_interactable("back", kScenarioDoorWaitMs) ||
+        !wait_for_menu_frames(2))
+    {
+        return escape(6,
+                      "the SCENARIO screen never resumed after the browser "
+                      "closed");
+    }
+
+    state->finished = true;
+    // The BACK that ends the flow belongs to the tail: create_scenario_menu
+    // returns under it, and after that no pump is left to service a ladder.
+    return escape(0, "");
 }
 
 } // namespace
@@ -265,7 +376,7 @@ TEST(CampaignSpriteUaf, set_campaign_flow_reloads_shipped_art_safely)
     og::runtime::current_session->viewport_offset_y_ = 0;
     og::runtime::current_session->viewport_w_ = 320;
     og::runtime::current_session->viewport_h_ = 200;
-    campaign_picker_testing_input_reset();
+    PickerInputResetGuard picker_input_guard;
     PromptQueueGuard prompt_queue;
     level_editor_testing_prompt_queue_push(kFixtureId);
 
@@ -293,19 +404,36 @@ TEST(CampaignSpriteUaf, set_campaign_flow_reloads_shipped_art_safely)
     ASSERT_NE(stock_snap, donor_snap);
 
     trace_clear();
+    SpriteFlowState state;
     SDL_Thread* thread = SDL_CreateThread(set_campaign_flow_injector,
-                                          "set_campaign_flow", nullptr);
+                                          "set_campaign_flow", &state);
     ASSERT_NE(nullptr, thread);
 
     const Sint32 ret = create_scenario_menu(0);
 
+    // The tail keeps pressing BACK until it is told the menu is gone for good.
+    state.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(thread, &injector_result);
+    // The tail's last press may have been HALF consumed (the menu returned
+    // between its DOWN and its UP). Poll that release through the engine --
+    // reset_mouse_click_tracking consumes the queued events before it
+    // re-baselines -- instead of flushing it: a FLUSHED release leaves
+    // mouse_state.left stuck true, and the next flow's first press then makes
+    // no up->down edge and evaporates.
+    reset_mouse_click_tracking();
+    SDL_PumpEvents();
+    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
     cleanup_picker_state();
 
+    EXPECT_TRUE(state.started) << "the injector thread never ran";
+    EXPECT_TRUE(state.finished)
+        << "the injector must have completed every leg of the flow";
     EXPECT_EQ(0, injector_result)
-        << "injector step failed (1=set_campaign, 2=picker entry, "
-           "3=enter-id click, 4=reload trace, 5=back)";
+        << "the injector gave up at leg " << injector_result
+        << " (1=SCENARIO composed, 2=SET CAMPAIGN acknowledged by the "
+           "browser, 3=pointer handoff, 4=ENTER ID click, 5=reload trace, "
+           "6=SCENARIO resumed)";
     EXPECT_TRUE(ret & 2) << "BACK must propagate MENU_REDRAW";
     EXPECT_EQ(kFixtureId, get_mounted_campaign())
         << "the flow must land on the entered campaign";
@@ -318,6 +446,81 @@ TEST(CampaignSpriteUaf, set_campaign_flow_reloads_shipped_art_safely)
     EXPECT_FALSE(trace_contains("gloader", "create_walker stale"))
         << "no walker may be created from a stale loader anywhere in the "
            "SET CAMPAIGN flow";
+
+    save.reset();
+    save.current_campaign = "gladiator";
+}
+
+// The regression for the wedge itself. A leg that gives up while the main
+// thread is blocked inside create_scenario_menu -- and, one level deeper,
+// possibly inside pick_campaign -- must free that thread and report its
+// number. Leg 1 is pointed at an id the SCENARIO screen never publishes, so
+// the escape tail has to click BACK for it and create_scenario_menu returns.
+//
+// Replace `return escape(1, ...)` with a bare `return 1` (the shape this file
+// carried before PR #292) and this test hangs until the CTest ceiling instead
+// of failing -- which is exactly why the flow test's leg-by-leg EXPECT
+// message was unreachable.
+TEST(CampaignSpriteUaf, a_leg_that_gives_up_frees_the_main_thread)
+{
+    trace_clear();
+    FixtureCleanup cleanup_last;
+    og::test::ScopedCampaignMountState mount_restore;
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+    PickerInputResetGuard picker_input_guard;
+    PromptQueueGuard prompt_queue;
+    level_editor_testing_prompt_queue_push(kFixtureId);
+
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    sdl_entity_loader()->reload_graphics_if_stale();
+    ASSERT_TRUE(og::test162::install_playable_sprite_campaign(kFixtureId));
+
+    screen* const scr = og::runtime::current_session->myscreen_;
+    SaveData& save = scr->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+
+    trace_clear();
+    SpriteFlowState state;
+    state.sabotage_leg = 1;
+    SDL_Thread* thread = SDL_CreateThread(set_campaign_flow_injector,
+                                          "set_campaign_escape", &state);
+    ASSERT_NE(nullptr, thread);
+
+    const Sint32 ret = create_scenario_menu(0);
+
+    state.test_finished.store(true);
+    int injector_result = -1;
+    SDL_WaitThread(thread, &injector_result);
+    reset_mouse_click_tracking();
+    SDL_PumpEvents();
+    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    cleanup_picker_state();
+
+    EXPECT_TRUE(state.started) << "the injector thread never ran";
+    EXPECT_EQ(1, injector_result)
+        << "the sabotaged leg must be reported by number, not swallowed";
+    EXPECT_FALSE(state.finished)
+        << "a flow that gave up at leg 1 never completed";
+    // Reaching here at all is the rule under test: the tail's BACK ended the
+    // blocking menu, and BACK folds MENU_EXIT to MENU_REDRAW.
+    EXPECT_TRUE(ret & 2) << "BACK must propagate MENU_REDRAW";
+    EXPECT_EQ("gladiator", get_mounted_campaign())
+        << "a flow that never reached SET CAMPAIGN must not change the mount";
+    EXPECT_FALSE(trace_contains("gloader", "reloaded stale"))
+        << "a flow that never reached SET CAMPAIGN must not reload anything";
 
     save.reset();
     save.current_campaign = "gladiator";

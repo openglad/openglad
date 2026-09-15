@@ -194,7 +194,7 @@ if (( bad_focus_status == 0 )); then
     exit 1
 fi
 grep -Fq \
-    "OPENGLAD_DEMO_CAPTURE_FOCUS must be player, boss or center, got 'sideways'" \
+    "OPENGLAD_DEMO_CAPTURE_FOCUS must be player, boss, center or cell:<x>,<y>, got 'sideways'" \
     <<<"$bad_focus_output"
 
 set +e

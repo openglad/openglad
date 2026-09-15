@@ -60,6 +60,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
 bool campaign_picker_testing_take_abort();
 void campaign_picker_testing_mark_entered();
 void campaign_picker_testing_mark_action();
+void campaign_picker_testing_mark_frame();
 bool campaign_picker_testing_auto_accept();
 #endif
 
@@ -537,6 +538,15 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     while (!done)
     {
 #ifdef TESTING
+        // One tick per iteration, taken BEFORE anything can break out of it.
+        // An injector reads this counter to prove that the iteration which
+        // drained its mouse-up also finished that iteration's query_mouse:
+        // once the count has moved past the value read after the up was gone,
+        // every iteration that could have taken the up has completed. Nothing
+        // else in this loop is observable per frame (the first-frame trace is
+        // one-shot), and this screen is not run_menu_screen-hosted, so
+        // wait_for_menu_frames cannot stand in for it.
+        campaign_picker_testing_mark_frame();
         if (campaign_picker_testing_take_abort())
             break;
         // The un-driven browser (every BEGIN NEW GAME flow that never

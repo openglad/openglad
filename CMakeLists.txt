@@ -392,8 +392,9 @@ add_custom_target(check_vendor_leaks
     VERBATIM
 )
 
-# Injector settles must be conditions, not clocks: no flat SDL_Delay(750)
-# "fade settle" in a converted menu-injector test. See the script header.
+# Injector settles must be conditions, not clocks: no flat "fade settle" in a
+# converted menu-injector test (tier 1 bans a literal SDL_Delay(750); tier 2,
+# the fully converted files, allows only a poll tick). See the script header.
 add_custom_target(check_injector_settles
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_injector_settles.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

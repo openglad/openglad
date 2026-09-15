@@ -6,6 +6,13 @@ namespace
 {
 std::atomic<std::uint64_t> s_campaign_picker_entered_count{0};
 std::atomic<std::uint64_t> s_campaign_picker_action_count{0};
+// One tick per pick_campaign loop iteration. pick_campaign is NOT
+// run_menu_screen-hosted, so wait_for_menu_frames can never be satisfied
+// while the browser is up: this is the only per-frame observable an
+// injector has, and it is what lets a driver prove that the iteration
+// which drained its mouse-up also ran that iteration's query_mouse (the
+// pointer handoff below) before the next press is pushed.
+std::atomic<std::uint64_t> s_campaign_picker_frame_count{0};
 std::atomic<bool> s_campaign_picker_abort_pending{false};
 // Default ON: an un-driven browser accepts the current campaign after its
 // first presented frame (pick_campaign). The integration listener re-arms it
@@ -27,6 +34,7 @@ void campaign_picker_testing_input_reset()
 {
     s_campaign_picker_entered_count.store(0, std::memory_order_release);
     s_campaign_picker_action_count.store(0, std::memory_order_release);
+    s_campaign_picker_frame_count.store(0, std::memory_order_release);
     s_campaign_picker_abort_pending.store(false, std::memory_order_release);
     // A test resetting the browser's input is about to DRIVE it.
     s_campaign_picker_auto_accept.store(false, std::memory_order_release);
@@ -47,6 +55,11 @@ std::uint64_t campaign_picker_testing_action_count()
     return s_campaign_picker_action_count.load(std::memory_order_acquire);
 }
 
+std::uint64_t campaign_picker_testing_frame_count()
+{
+    return s_campaign_picker_frame_count.load(std::memory_order_acquire);
+}
+
 bool campaign_picker_testing_take_abort()
 {
     return s_campaign_picker_abort_pending.exchange(
@@ -61,6 +74,11 @@ void campaign_picker_testing_mark_entered()
 void campaign_picker_testing_mark_action()
 {
     s_campaign_picker_action_count.fetch_add(1, std::memory_order_release);
+}
+
+void campaign_picker_testing_mark_frame()
+{
+    s_campaign_picker_frame_count.fetch_add(1, std::memory_order_release);
 }
 
 // CampaignEntry::draw paints the detail pane's metadata rows. A pixel-diff
