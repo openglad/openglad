@@ -6,6 +6,8 @@
 #include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 
+#include <string>
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace {
@@ -63,6 +65,10 @@ TEST(ViewFuncs, compute_hp_color_low)
 {
     unsigned char c = compute_hp_color(20.0f, 100.0f);
     ASSERT_EQ((int)LOW_HP_COLOR, (int)c) << "low HP should return LOW_HP_COLOR";
+    // The hp == 0 end of the same band (folded in from ViewDraw's
+    // c > 0 ranges test, which every HP colour constant satisfied).
+    ASSERT_EQ((int)LOW_HP_COLOR, (int)compute_hp_color(0.0f, 100.0f))
+        << "a dead bar is still the low-HP colour";
 }
 
 
@@ -125,8 +131,20 @@ TEST(ViewFuncs, viewscreen_set_display_text)
     vs->clear_text();
 
     vs->set_display_text("Hello", 10);
-    ASSERT_TRUE(!vs->textlist[0].empty()) << "textlist[0] should not be empty after set_display_text";
+    ASSERT_EQ("Hello", vs->textlist[0])
+        << "set_display_text must put THIS line in the first free slot";
     ASSERT_EQ(10, (int)vs->textcycles[0]) << "textcycles[0] should be 10";
+
+    // A second line takes the NEXT free slot with its OWN cycle count; it
+    // must not overwrite slot 0 (folded in from ViewDraw's assertion-free
+    // set_display_text_twice).
+    vs->set_display_text("Goodbye", 20);
+    ASSERT_EQ("Hello", vs->textlist[0])
+        << "a second line must not overwrite the first";
+    ASSERT_EQ(10, (int)vs->textcycles[0]) << "slot 0 keeps its own cycles";
+    ASSERT_EQ("Goodbye", vs->textlist[1])
+        << "successive lines occupy successive slots";
+    ASSERT_EQ(20, (int)vs->textcycles[1]) << "slot 1 carries its own cycles";
 }
 
 
@@ -144,34 +162,66 @@ TEST(ViewFuncs, viewscreen_clear_text)
 }
 
 
+// Consecutive set_display_text calls fill successive FREE slots in call order,
+// each keeping its own numcycles (view.cpp set_display_text: scan to the first
+// empty slot, write there). Slots and durations are pinned by value: a feed
+// that reordered the lines, reused one slot, or lost the per-line duration is
+// a different feed.
 TEST(ViewFuncs, viewscreen_set_display_text_multiple)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(vs != nullptr) << "viewscreen 0 should exist";
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 should exist";
 
     vs->clear_text();
     vs->set_display_text("Line 1", 10);
     vs->set_display_text("Line 2", 15);
     vs->set_display_text("Line 3", 20);
 
-    ASSERT_TRUE(!vs->textlist[0].empty()) << "slot 0 should have text";
-    ASSERT_TRUE(!vs->textlist[1].empty()) << "slot 1 should have text";
-    ASSERT_TRUE(!vs->textlist[2].empty()) << "slot 2 should have text";
+    EXPECT_EQ("Line 1", vs->textlist[0]) << "the first line takes slot 0";
+    EXPECT_EQ("Line 2", vs->textlist[1]) << "the second line takes slot 1";
+    EXPECT_EQ("Line 3", vs->textlist[2]) << "the third line takes slot 2";
+    EXPECT_EQ(10, (int)vs->textcycles[0]) << "slot 0 keeps its own duration";
+    EXPECT_EQ(15, (int)vs->textcycles[1]) << "slot 1 keeps its own duration";
+    EXPECT_EQ(20, (int)vs->textcycles[2]) << "slot 2 keeps its own duration";
+    for (int slot = 3; slot < MAX_MESSAGES; ++slot)
+        EXPECT_TRUE(vs->textlist[slot].empty())
+            << "three lines must occupy exactly three slots (slot " << slot
+            << ")";
+
+    vs->clear_text();
 }
 
 
-TEST(ViewFuncs, viewscreen_set_display_text_overflow)
+// A full feed scrolls: set_display_text shift_text(0)s the oldest line off the
+// top and writes the newest into the LAST slot, duration and all. Every line
+// is distinct here, so a feed that silently dropped the overflow (or scrolled
+// the wrong way) cannot hide behind a non-empty slot left by an earlier fill.
+TEST(ViewFuncs, viewscreen_set_display_text_overflow_scrolls_oldest_off_the_top)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(vs != nullptr) << "viewscreen 0 should exist";
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 should exist";
 
     vs->clear_text();
-    // Fill all slots plus one more
-    for (int i = 0; i < MAX_MESSAGES + 1; i++) {
-        vs->set_display_text("Msg", 10);
+    // MAX_MESSAGES + 1 distinct lines: "Msg0" .. "Msg<MAX_MESSAGES>", with a
+    // distinct duration each so the scrolled slot's cycles are checkable too.
+    for (int i = 0; i <= MAX_MESSAGES; i++)
+        vs->set_display_text("Msg" + std::to_string(i),
+                             static_cast<short>(10 + i));
+
+    EXPECT_EQ("Msg1", vs->textlist[0])
+        << "the oldest line (Msg0) must scroll off the top";
+    for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+    {
+        EXPECT_EQ("Msg" + std::to_string(slot + 1), vs->textlist[slot])
+            << "slot " << slot << " after the scroll";
+        EXPECT_EQ(10 + slot + 1, (int)vs->textcycles[slot])
+            << "slot " << slot << " keeps the scrolled line's duration";
     }
-    // Should have shifted text up, last slot should have the overflow message
-    ASSERT_TRUE(!vs->textlist[MAX_MESSAGES-1].empty()) << "last slot should have overflow text";
+    EXPECT_EQ("Msg" + std::to_string(MAX_MESSAGES),
+              vs->textlist[MAX_MESSAGES - 1])
+        << "the newest line lands in the last slot";
+
+    vs->clear_text();
 }
 
 
@@ -315,18 +365,29 @@ TEST(ViewFuncs, screen_clear_all_view_text_wipes_every_live_view)
 // viewscreen resize tests (covers the large resize function)
 // ---------------------------------------------------------------------------
 
+// FULL for one player is the WHOLE classic canvas: kOnePlayerInsetX/Y[FULL]
+// are both 0, so the pane is (0,0,320x200) — distinct from PANELS' inset
+// 232x176, which a `> 200 && > 150` oracle could not tell apart.
 TEST(ViewFuncs, viewscreen_resize_full)
 {
+    ClassicViewLayoutGuard canvas_guard;
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    short old_numviews = og::runtime::current_session->myscreen_->numviews;
+    ASSERT_NE(nullptr, vs) << "viewscreen 0 should exist";
     og::runtime::current_session->myscreen_->numviews = 1;
+    vs->mynum = 0;
+
+    // Come in off the inset layout so a resize() that did nothing at all
+    // cannot pass by leaving the pane where it already was.
+    vs->resize(PREF_VIEW_PANELS);
+    ASSERT_EQ(232, (int)vs->xview) << "the inset starting layout";
 
     vs->resize(PREF_VIEW_FULL);
-    // Full screen mode for 1 player
-    ASSERT_TRUE(vs->xview > 200) << "full view width should be > 200";
-    ASSERT_TRUE(vs->yview > 150) << "full view height should be > 150";
-
-    og::runtime::current_session->myscreen_->numviews = old_numviews;
+    EXPECT_EQ(0, (int)vs->xloc) << "1p FULL starts at the canvas origin";
+    EXPECT_EQ(0, (int)vs->yloc) << "1p FULL starts at the canvas origin";
+    EXPECT_EQ(320, (int)vs->xview) << "1p FULL is the whole canvas width";
+    EXPECT_EQ(200, (int)vs->yview) << "1p FULL is the whole canvas height";
+    EXPECT_EQ(320, (int)vs->endx) << "endx = xloc + width";
+    EXPECT_EQ(200, (int)vs->endy) << "endy = yloc + height";
 }
 
 

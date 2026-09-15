@@ -10,6 +10,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
+#include <vector>
 #include "test_game_world_fixture.h"
 #include "test_gameplay_context_scope.h"
 #include <gtest/gtest.h>
@@ -37,7 +38,6 @@ TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -53,7 +53,6 @@ TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned 
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_team_num(team);
     w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
@@ -65,7 +64,6 @@ TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_team_num(team);
     w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
@@ -144,10 +142,25 @@ TEST(SimWorld, r15_freeze_tick_and_level_done_paths)
     ASSERT_TRUE(ally->acts > 0);
     ASSERT_TRUE(enemy->acts == 0);
 
+    // The thaw tick: enemy_freeze 2 -> 1 restores the normal palette and
+    // announces it with exactly one SetPalette(a == 0).
     world.enemy_freeze = 2;
+    world.current_palette_id = 1; // the blue freeze palette is up
     const std::size_t before_events = fx.events.size();
     world.tick();
-    ASSERT_TRUE(fx.events.size() > before_events);
+    ASSERT_EQ(1, world.enemy_freeze) << "the freeze counter decrements once per tick";
+    ASSERT_EQ(0, static_cast<int>(world.current_palette_id))
+        << "reaching 1 restores the normal palette";
+    int palette_restores = 0;
+    const std::vector<og::sim::Event>& evs = fx.events.events();
+    for (std::size_t i = before_events; i < evs.size(); ++i)
+    {
+        if (evs[i].kind == og::sim::EventKind::SetPalette && evs[i].a == 0u)
+            ++palette_restores;
+    }
+    ASSERT_EQ(1, palette_restores)
+        << "the thaw tick must push exactly one SetPalette(a=0), not just "
+           "'some event'";
 }
 
 TEST(SimWorld, r15_freeze_uses_friendliness_not_team_zero)

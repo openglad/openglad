@@ -504,10 +504,6 @@ inline void handle_joy_event(const EventT& event)
     handle_joy_event(to_native_event_ptr(event));
 }
 
-// Takes platform keycode values.
-void sendFakeKeyDownEvent(int keycode);
-void sendFakeKeyUpEvent(int keycode);
-
 inline int query_key() { return input_raw_key_ref(); }
 inline const char* query_text_input() {
     if (input_raw_text_input_ref().empty()) return nullptr;
@@ -520,96 +516,12 @@ inline short get_and_reset_scroll_amount() {
     return temp;
 }
 
-// Touch input uses a 320x200 reference layout, then scales every edge into the
-// active canvas. Keeping this pure geometry available in non-touch test builds
-// lets the full zoom range be pinned without changing their platform defines.
-inline constexpr int TOUCH_REFERENCE_CANVAS_W = 320;
-inline constexpr int TOUCH_REFERENCE_CANVAS_H = 200;
-inline constexpr int MOVE_AREA_DIM = 60;
-inline constexpr int MOVE_DEAD_ZONE = 10;
-inline constexpr int FIRE_BUTTON_X = 245;
-inline constexpr int FIRE_BUTTON_Y = 165;
-inline constexpr int SPECIAL_BUTTON_X = 285;
-inline constexpr int SPECIAL_BUTTON_Y = 165;
-inline constexpr int YO_BUTTON_X = 160;
-inline constexpr int YO_BUTTON_Y = 100;
-inline constexpr int SWITCH_CHARACTER_BUTTON_X = 0;
-inline constexpr int SWITCH_CHARACTER_BUTTON_Y = 0;
-inline constexpr int NEXT_SPECIAL_BUTTON_X = 245;
-inline constexpr int NEXT_SPECIAL_BUTTON_Y = 125;
-inline constexpr int ALTERNATE_SPECIAL_BUTTON_X = 285;
-inline constexpr int ALTERNATE_SPECIAL_BUTTON_Y = 125;
-inline constexpr int BUTTON_DIM = 30;
-
-struct TouchControlRect
-{
-    int x = 0;
-    int y = 0;
-    int w = 0;
-    int h = 0;
-
-    // Preserve the legacy inclusive hit edges (the historical checks used
-    // x <= left + BUTTON_DIM even though fastbox's extent is BUTTON_DIM).
-    bool contains(int px, int py) const
-    {
-        return px >= x && px <= x + w && py >= y && py <= y + h;
-    }
-};
-
-struct TouchControlLayout
-{
-    int canvas_w = TOUCH_REFERENCE_CANVAS_W;
-    int canvas_h = TOUCH_REFERENCE_CANVAS_H;
-
-    TouchControlRect fire;
-    TouchControlRect special;
-    TouchControlRect yell;
-    TouchControlRect switch_character;
-    TouchControlRect next_special;
-    TouchControlRect alternate_special;
-
-    // Movement begins in the lower-left region: x < right and y > top.
-    int movement_region_right = 0;
-    int movement_region_top = 0;
-    int movement_center_min_x = 0;
-    int movement_center_min_y = 0;
-    int movement_center_max_y = 0;
-    int movement_dead_zone_x = 0;
-    int movement_dead_zone_y = 0;
-    int tap_slop_x = 0;
-    int tap_slop_y = 0;
-
-    // Scaled extents used to draw feedback around an arbitrary touch center.
-    int movement_area_offset_x = 0;
-    int movement_area_offset_y = 0;
-    int movement_area_w = 0;
-    int movement_area_h = 0;
-    int movement_center_offset_x = 0;
-    int movement_center_offset_y = 0;
-    int movement_center_w = 0;
-    int movement_center_h = 0;
-    int movement_target_offset_x = 0;
-    int movement_target_offset_y = 0;
-    int movement_target_w = 0;
-    int movement_target_h = 0;
-};
-
-TouchControlLayout touch_control_layout(int canvas_w, int canvas_h);
-
-#ifdef USE_TOUCH_INPUT
-
-class screen;
-void draw_touch_controls(screen* vob);
-bool input_touch_has_alternate();
-#define CONTINUE_ACTION_STRING "TAP"
-#else
 #ifdef __EMSCRIPTEN__
 // Web: Escape is reserved for browser fullscreen exit; taps and clicks
 // dismiss too (see the input_continue_ click hook).
 #define CONTINUE_ACTION_STRING "TAP OR BACKSPACE"
 #else
 #define CONTINUE_ACTION_STRING "PRESS 'ESC'"
-#endif
 #endif
 
 bool query_key_event(int key, const void* native_event);
@@ -728,9 +640,7 @@ og::CanvasViewport active_canvas_viewport();
 // aspect, so presentation and touch input must share this dedicated viewport.
 og::CanvasViewport gameplay_ui_canvas_viewport();
 bool window_point_in_active_canvas(float x, float y);
-bool window_point_in_gameplay_ui_canvas(float x, float y);
 std::pair<float, float> window_to_active_canvas(float x, float y);
-std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y);
 std::pair<float, float> active_canvas_to_window(float x, float y);
 // Forward map pinned to the fixed UI canvas regardless of the active canvas.
 // Cross-thread callers (the test click injectors) MUST use this for menu

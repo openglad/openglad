@@ -891,6 +891,12 @@ TEST(NetTransportInProcess, network_fixture_loads_ticks_and_keeps_client_in_sync
     });
 
     fixture.run();
+    // expect_clients_match_server() is satisfied by a tick-0 mirror of a
+    // tick-0 server, so pin that the run actually simulated.
+    ASSERT_EQ(10u, fixture.server_world().tick_count_)
+        << "the fixture must actually simulate 10 ticks";
+    ASSERT_EQ(10u, fixture.client(0).last_seen_server_tick())
+        << "the mirror must have applied tick 10";
     fixture.expect_clients_match_server();
 }
 
@@ -1622,6 +1628,14 @@ TEST(NetTransportInProcess, network_fixture_keeps_two_clients_in_sync)
     fixture.initial_sync();
     fixture.step_ticks(3);
 
+    // Two frozen mirrors of a frozen server "match": pin the simulation.
+    ASSERT_EQ(3u, fixture.server_world().tick_count_)
+        << "three steps must simulate three ticks";
+    for (std::size_t i = 0; i < 2; ++i)
+    {
+        EXPECT_EQ(3u, fixture.client(i).last_seen_server_tick())
+            << "client " << i << " must have applied tick 3";
+    }
     fixture.expect_clients_match_server();
 }
 
@@ -1639,6 +1653,15 @@ TEST(NetTransportInProcess, network_fixture_keeps_four_clients_in_sync)
     fixture.initial_sync();
     fixture.step_ticks(3);
 
+    // Same hole at four seats: four mirrors that never received a delta are
+    // "in sync" with a server that never produced one.
+    ASSERT_EQ(3u, fixture.server_world().tick_count_)
+        << "three steps must simulate three ticks";
+    for (std::size_t i = 0; i < 4; ++i)
+    {
+        EXPECT_EQ(3u, fixture.client(i).last_seen_server_tick())
+            << "client " << i << " must have applied tick 3";
+    }
     fixture.expect_clients_match_server();
 }
 
@@ -3195,6 +3218,100 @@ TEST(NetTransportInProcess,
 
     EXPECT_FALSE(fixture.server().pending_exit_prompt());
     EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+    fixture.expect_clients_match_server();
+}
+
+// P13: a hit stamps TWO floating numbers (the attacker's orange copy and the
+// target's red one, both anchored at the target). Both live only on the
+// AUTHORITATIVE walkers; the display renders a mirror that never ticks the
+// sim. This pins the whole round trip: server lift -> wire -> mirror apply,
+// and that a later delta snapshot no longer wipes what landed.
+TEST(NetTransportInProcess,
+     hit_crossing_the_transport_lands_both_copies_on_the_mirrors)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    walker* const a = fixture.server_control(0);
+    walker* const b = fixture.server_control(1);
+    ASSERT_NE(nullptr, a);
+    ASSERT_NE(nullptr, b);
+    const std::uint32_t a_id = a->entity_id();
+    const std::uint32_t b_id = b->entity_id();
+
+    fixture.with_server_context([&] {
+        a->do_hit_effects(a, b, 9);
+        a->do_heal_effects(b, a, 5);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    const float expected_hit_x = static_cast<float>(b->xpos() + b->sizex() / 2);
+    const float expected_hit_y = static_cast<float>(b->ypos());
+    const float expected_heal_x = static_cast<float>(a->xpos() + a->sizex() / 2);
+    const float expected_heal_y = static_cast<float>(a->ypos());
+
+    fixture.with_client_context(0, [&] {
+        walker* const ma = fixture.client_world(0).find_by_id(a_id);
+        ASSERT_NE(nullptr, ma) << "the mirror must hold the attacker";
+        ASSERT_EQ(2u, ma->damage_numbers.size())
+            << "the attacker's pane owes an orange hit number and the heal "
+               "number it dealt";
+        EXPECT_FLOAT_EQ(9.0f, ma->damage_numbers.front().value);
+        EXPECT_EQ(235, static_cast<int>(ma->damage_numbers.front().color))
+            << "the attacker sees ORANGE";
+        EXPECT_FLOAT_EQ(expected_hit_x, ma->damage_numbers.front().x)
+            << "the attacker's copy is anchored at the TARGET";
+        EXPECT_FLOAT_EQ(expected_hit_y, ma->damage_numbers.front().y);
+        EXPECT_FLOAT_EQ(5.0f, ma->damage_numbers.back().value);
+        EXPECT_EQ(56, static_cast<int>(ma->damage_numbers.back().color))
+            << "heal numbers are green (56), distinguishable from regen";
+
+        walker* const mb = fixture.client_world(0).find_by_id(b_id);
+        ASSERT_NE(nullptr, mb) << "the mirror must hold the target";
+        ASSERT_EQ(2u, mb->damage_numbers.size());
+        EXPECT_FLOAT_EQ(9.0f, mb->damage_numbers.front().value);
+        EXPECT_EQ(static_cast<int>(RED),
+                  static_cast<int>(mb->damage_numbers.front().color))
+            << "the target sees RED";
+        EXPECT_FLOAT_EQ(5.0f, mb->damage_numbers.back().value);
+        EXPECT_EQ(56, static_cast<int>(mb->damage_numbers.back().color));
+        EXPECT_FLOAT_EQ(expected_heal_x, mb->damage_numbers.back().x)
+            << "the healer's copy is anchored at the HEALED walker";
+        EXPECT_FLOAT_EQ(expected_heal_y, mb->damage_numbers.back().y);
+    });
+
+    // Client 1 is a second display of the same world: both owners' overlays
+    // replicate there too (the per-pane filter is a render rule).
+    fixture.with_client_context(1, [&] {
+        walker* const ma = fixture.client_world(1).find_by_id(a_id);
+        ASSERT_NE(nullptr, ma);
+        EXPECT_EQ(2u, ma->damage_numbers.size());
+    });
+
+    // A further tick re-applies a delta snapshot over both entities: the
+    // overlay must survive it (apply_entity_snapshot_fields no longer clears).
+    fixture.step_ticks(1);
+    fixture.with_client_context(0, [&] {
+        walker* const ma = fixture.client_world(0).find_by_id(a_id);
+        walker* const mb = fixture.client_world(0).find_by_id(b_id);
+        ASSERT_NE(nullptr, ma);
+        ASSERT_NE(nullptr, mb);
+        EXPECT_EQ(2u, ma->damage_numbers.size())
+            << "an applied snapshot must not wipe the overlay";
+        EXPECT_EQ(2u, mb->damage_numbers.size())
+            << "an applied snapshot must not wipe the overlay";
+    });
+
     fixture.expect_clients_match_server();
 }
 

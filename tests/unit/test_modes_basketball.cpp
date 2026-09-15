@@ -56,10 +56,6 @@
 
 using namespace og::modes_test;
 
-namespace og::script {
-extern std::int64_t g_test_world_instruction_budget;
-}
-
 namespace {
 
 // The mode-var slot map of lib/mode_basketball_impl.lua (table S, design
@@ -4770,8 +4766,7 @@ struct LoadedRealCourt
         : level(id, true, &modes_test_level_hooks())
         , gameplay(level, save, events, cfg)
     {
-        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                              &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
         push_test_context(&gc);
         loaded = level.load();

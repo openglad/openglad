@@ -43,12 +43,10 @@
 #include <utility>
 
 
-void LevelRuntimeData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
-                                og::sim::SimEventLog* events, IRandom* rng,
+void LevelRuntimeData::set_sim_context(SaveData* save,
+                                og::sim::SimEventLog* events,
                                 cfg_store* config)
 {
-    (void)enemy_freeze;
-    (void)rng;
     sim_context_save_ = save;
     sim_context_events_ = events;
     sim_context_config_ = config;

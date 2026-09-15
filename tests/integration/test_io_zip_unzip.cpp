@@ -282,14 +282,9 @@ TEST(IoZipUnzip, io_open_read_file_prefers_cwd_fallback)
 }
 
 
-TEST(IoZipUnzip, io_mount_unmount_campaign_invalid_id_paths)
-{
-    ASSERT_TRUE(mount_campaign_package_with_error("") != CampaignPackageIoError::None) << "mount_campaign_package(\"\") should fail";
-    ASSERT_TRUE(mount_campaign_package_with_error("definitely.not.a.campaign") != CampaignPackageIoError::None) << "mount invalid campaign should fail";
-    ASSERT_TRUE(unmount_campaign_package_with_error("") == CampaignPackageIoError::None) << "unmount_campaign_package(\"\") should succeed";
-}
-
-
+// The inequality-only twin of the test below ("!= None") stayed green when
+// mount("") reported MountFailed instead of EmptyId; the exact-code version is
+// the only one kept.
 TEST(IoZipUnzip, io_mount_unmount_campaign_typed_errors)
 {
     ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId), static_cast<int>(mount_campaign_package_with_error(""))) << "mount_campaign_package_with_error(\"\") should return EmptyId";

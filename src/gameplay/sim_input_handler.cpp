@@ -432,17 +432,7 @@ SimInputResult sim_process_player_input(
         // One tick, one verdict per seat: set by whichever cast below works.
         bool cast_succeeded = false;
 
-        #ifndef USE_TOUCH_INPUT
         control->set_shifter_down(pi.is_held(InputAction::Shift) ? 1 : 0);
-        #else
-        if (pi.was_pressed(InputAction::Shift))
-        {
-            control->set_shifter_down(1);
-            player_cast_special(control, debounce, player_num, sim_events, true,
-                                cast_succeeded);
-            control->set_shifter_down(0);
-        }
-        #endif
 
         if (pi.was_pressed(InputAction::Special))
         {

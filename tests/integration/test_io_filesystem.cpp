@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <filesystem>
 #include <cstring>
 #include <string>
@@ -93,4 +94,8 @@ TEST(IoFilesystem, io_list_campaigns_and_levels)
             found_fixture_level = true;
     }
     ASSERT_TRUE(found_fixture_level) << "list_levels_v should include the fixture level";
+    // list_levels_v std::sort()s before returning (platform_io_common.cpp):
+    // the level picker walks the vector in order.
+    ASSERT_TRUE(std::is_sorted(levels.begin(), levels.end()))
+        << "list_levels_v returns its scen ids in ascending order";
 }

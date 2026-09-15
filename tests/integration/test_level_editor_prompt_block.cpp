@@ -35,6 +35,11 @@ struct PromptBlockInjectData
     PromptBlockInjectState* state = nullptr;
     bool click_cancel = false;
     bool click_done = false;
+    // Text typed into the prompt before the exit is triggered. Without an edit
+    // in flight, DONE/ESC (which keep edits) and CANCEL (which restores
+    // original_text) all leave the caller's list untouched, so the exit
+    // branches are indistinguishable.
+    const char* type_text = nullptr;
 };
 
 bool wait_for_counter_advance(std::uint64_t (*counter)(),
@@ -119,6 +124,8 @@ int prompt_block_escape_injector(void* data)
 
     bool ok = wait_for_counter_advance(
         level_editor_testing_prompt_block_entered_count, 0);
+    if (ok && d->type_text != nullptr)
+        ok = inject_prompt_text(d->type_text);
     if (d->click_cancel || d->click_done)
     {
         if (ok)
@@ -247,19 +254,24 @@ int prompt_block_physical_navigation_injector(void* data)
 }
 } // namespace
 
-TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_escape_cancel)
+// ESC is NOT a cancel: prompt_for_string_block's KEYSTATE_ESCAPE branch
+// (level_editor_ui.cpp, `done = true; break;`) never restores original_text, so
+// it commits every in-prompt edit exactly like DONE. Only the CANCEL button
+// restores. The typed "Z" is what tells the two apart; the old name and the
+// old "should preserve original text" message described a rule the product
+// does not have.
+TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_escape_commits_edits)
 {
     (void)og::runtime::current_session->myscreen_;
     level_editor_testing_prompt_block_input_reset();
 
-    std::list<std::string> original{
+    std::list<std::string> edited{
         "Line one",
         "Line two",
     };
-    std::list<std::string> edited = original;
 
     PromptBlockInjectState st{};
-    PromptBlockInjectData inject_data{&st, false, false};
+    PromptBlockInjectData inject_data{&st, false, false, "Z"};
     SDL_Thread* thread = SDL_CreateThread(prompt_block_escape_injector, "prompt_block_escape_injector", &inject_data);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -273,19 +285,26 @@ TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_escape_cancel)
     ASSERT_TRUE(st.finished.load(std::memory_order_acquire))
         << "injector should have finished";
     ASSERT_FALSE(st.handshake_failed.load(std::memory_order_acquire));
-    ASSERT_TRUE(accepted) << "ESC should exit prompt_for_string_block";
-    ASSERT_TRUE(edited == original) << "ESC exit should preserve original text";
+    EXPECT_TRUE(accepted)
+        << "prompt_for_string_block returns !cancel, and ESC never sets cancel";
+    EXPECT_EQ(2u, level_editor_testing_prompt_block_input_completed_count())
+        << "the prompt consumed exactly the typed text and the ESC pulse";
+    EXPECT_EQ((std::list<std::string>{"ZLine one", "Line two"}), edited)
+        << "ESC ends the prompt WITHOUT restoring original_text, so the edit "
+           "typed at line 0 column 0 survives";
 }
 
 
-TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_done_button)
+// The mymouse.in(done_button) branch sets done = true and leaves `result`
+// exactly as edited -- no restore from original_text. Typing first is what
+// separates DONE from CANCEL: without an edit in flight both leave {"keep me"}.
+TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_done_button_keeps_edits)
 {
     level_editor_testing_prompt_block_input_reset();
-    std::list<std::string> original{"keep me"};
-    std::list<std::string> edited = original;
+    std::list<std::string> edited{"keep me"};
 
     PromptBlockInjectState st{};
-    PromptBlockInjectData inject_data{&st, false, true};
+    PromptBlockInjectData inject_data{&st, false, true, "Z"};
     SDL_Thread* thread = SDL_CreateThread(prompt_block_escape_injector, "prompt_block_done_injector", &inject_data);
     ASSERT_TRUE(thread != nullptr) << "failed to create done injector thread";
 
@@ -299,8 +318,11 @@ TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_done_button)
     ASSERT_TRUE(st.finished.load(std::memory_order_acquire))
         << "injector should have finished";
     ASSERT_FALSE(st.handshake_failed.load(std::memory_order_acquire));
-    ASSERT_TRUE(accepted) << "DONE button should return true";
-    ASSERT_TRUE(edited == original) << "done without edits should preserve content";
+    EXPECT_TRUE(accepted) << "DONE never sets cancel, so the prompt returns true";
+    EXPECT_EQ(2u, level_editor_testing_prompt_block_input_completed_count())
+        << "the prompt consumed exactly the typed text and the DONE click";
+    EXPECT_EQ((std::list<std::string>{"Zkeep me"}), edited)
+        << "DONE commits the in-prompt edit instead of restoring original_text";
 }
 
 TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_cancel_button_restores_original)
@@ -310,7 +332,7 @@ TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_cancel_button_
     std::list<std::string> edited = original;
 
     PromptBlockInjectState st{};
-    PromptBlockInjectData inject_data{&st, true, false};
+    PromptBlockInjectData inject_data{&st, true, false, "Z"};
     SDL_Thread* thread = SDL_CreateThread(
         prompt_block_escape_injector, "prompt_block_cancel_injector",
         &inject_data);
@@ -327,6 +349,10 @@ TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_cancel_button_
     EXPECT_TRUE(st.finished.load(std::memory_order_acquire));
     EXPECT_FALSE(st.handshake_failed.load(std::memory_order_acquire));
     EXPECT_TRUE(accepted);
+    EXPECT_EQ(2u, level_editor_testing_prompt_block_input_completed_count())
+        << "the prompt consumed exactly the typed text and the CANCEL click";
+    // The injector typed "Z" at line 0 column 0 before clicking CANCEL, so
+    // without `result = original_text` this list would read {"Zfirst",...}.
     EXPECT_EQ(original, edited)
         << "CANCEL must discard every in-progress prompt edit";
 }
@@ -380,8 +406,16 @@ TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_editing_keys_a
     ASSERT_TRUE(st.finished.load(std::memory_order_acquire))
         << "injector should have finished";
     ASSERT_FALSE(st.handshake_failed.load(std::memory_order_acquire));
-    ASSERT_TRUE(accepted) << "DONE button should accept after editing keys/text";
-    ASSERT_TRUE(!edited.empty()) << "edited block should remain non-empty";
+    EXPECT_TRUE(accepted) << "DONE never sets cancel, so the prompt returns true";
+    // The key-press branch handles only KEYCODE_RETURN and KEYCODE_BACKSPACE;
+    // arrows and DELETE are read from keystates_ (SDL_GetKeyboardState), which
+    // a pushed SDL key event never moves (tests/test_input_helpers.h). So all
+    // six pushed keys are acknowledged and inert, and the only edit is the
+    // SDL_EVENT_TEXT_INPUT insert at cursor_pos 0 of line 0.
+    EXPECT_EQ(8u, level_editor_testing_prompt_block_input_completed_count())
+        << "six pushed keys + one text event + one DONE click were consumed";
+    EXPECT_EQ((std::list<std::string>{"Zabc", "xyz"}), edited)
+        << "text input inserts at the cursor and the inert keys change nothing";
 }
 
 TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_held_navigation_edits_exact_lines)
@@ -434,6 +468,15 @@ TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_multiline_edit
     ASSERT_TRUE(st.finished.load(std::memory_order_acquire))
         << "injector should have finished";
     ASSERT_FALSE(st.handshake_failed.load(std::memory_order_acquire));
-    ASSERT_TRUE(accepted) << "DONE button should accept multiline edits";
-    ASSERT_GE(edited.size(), 2u) << "return key should create multiple lines";
+    EXPECT_TRUE(accepted) << "DONE never sets cancel, so the prompt returns true";
+    // From {"abc"}: RETURN at column 0 splits into {"", "abc"} and lands on
+    // line 1; BACKSPACE at column 0 with more than one line merges back to
+    // {"abc"}; the pushed RIGHT is inert (keystate-driven), so the following
+    // BACKSPACE is still at column 0 of a one-line block and is a no-op; the
+    // five RETURNs then each split at column 0, leaving five empty lines above
+    // "abc"; the trailing UP/DOWN/RIGHT/DELETE are inert too.
+    EXPECT_EQ(14u, level_editor_testing_prompt_block_input_completed_count())
+        << "thirteen pushed keys + one DONE click were consumed";
+    EXPECT_EQ((std::list<std::string>{"", "", "", "", "", "abc"}), edited)
+        << "RETURN splits at the cursor and BACKSPACE merges/no-ops exactly";
 }

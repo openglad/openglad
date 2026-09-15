@@ -10,6 +10,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/io.h>
@@ -22,6 +23,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <type_traits>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -489,13 +491,35 @@ TEST(LevelDataCoverage, campaign_data_save_and_save_as_fail_for_missing_campaign
 TEST(LevelDataCoverage, level_data_set_sim_context_wires_pointers)
 {
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng(1);
     cfg_store cfg_local;
 
+    // P10d: set_sim_context binds save/events/config and NOTHING else. The
+    // two parameters it used to take (a freeze bank and an IRandom*) were
+    // discarded at the top of the body, so a caller reading the signature was
+    // told a lie about what it steers. Pin the shape here: reintroducing
+    // either dead parameter fails this TU to compile.
+    static_assert(
+        std::is_same_v<decltype(&LevelRuntimeData::set_sim_context),
+                       void (LevelRuntimeData::*)(SaveData*,
+                                                  og::sim::SimEventLog*,
+                                                  cfg_store*)>,
+        "set_sim_context binds save/events/config only");
+
     LevelRuntimeData d(42);
-    d.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg_local);
+    d.set_sim_context(&save, &events, &cfg_local);
+
+    // set_sim_context forwards save/events/config into the world's gameplay
+    // context bindings; populate_gameplay_context hands back those exact
+    // pointers plus the world itself.
+    GameplayContext ctx;
+    ASSERT_TRUE(d.world().populate_gameplay_context(ctx))
+        << "a level with save/events/config bound should populate a complete gameplay context";
+    EXPECT_EQ(&save, ctx.save) << "set_sim_context should bind the SaveData it was given";
+    EXPECT_EQ(&events, ctx.sim_events) << "set_sim_context should bind the SimEventLog it was given";
+    EXPECT_EQ(&cfg_local, ctx.config) << "set_sim_context should bind the cfg_store it was given";
+    EXPECT_EQ(&d.world(), ctx.world) << "the context's world should be this level's own world";
+
     d.create_new_grid();
     ASSERT_TRUE(d.world().grid.valid()) << "set_sim_context should leave the level usable";
     ASSERT_EQ(42, d.world().id);
@@ -527,12 +551,16 @@ TEST(LevelDataCoverage, level_data_round8_ctor_hook_wiring_and_remove_paths)
         ASSERT_EQ(1, (int)d.remove_ob(living)) << "remove_ob should erase from oblist";
     }
 
+    ASSERT_EQ(1, render_count) << "the non-headless (id, headless, hooks) ctor should invoke create_level_render exactly once";
+
     // Delegating constructor path LevelRuntimeData(int, const LevelDataHooks*).
     {
         LevelRuntimeData d(17002, &hooks);
         walker* living = d.add_ob(Order::Living, FAMILY_ARCHER);
         ASSERT_TRUE(living != nullptr) << "delegating hooks ctor should create living walkers";
     }
+
+    ASSERT_EQ(2, render_count) << "the delegating (id, hooks) ctor should also invoke create_level_render exactly once";
 
     // Headless constructor should not invoke create_level_render.
     const int render_before_headless = render_count;
@@ -542,7 +570,7 @@ TEST(LevelDataCoverage, level_data_round8_ctor_hook_wiring_and_remove_paths)
         ASSERT_TRUE(living != nullptr) << "headless hooks ctor should still create walkers";
     }
 
-    ASSERT_TRUE(render_count >= 1) << "non-headless constructors should invoke create_level_render hook";
+    ASSERT_EQ(2, render_count) << "both non-headless ctors — and only those — invoke create_level_render";
     ASSERT_EQ(render_before_headless, render_count) << "headless ctor should skip create_level_render hook";
 }
 
@@ -563,12 +591,34 @@ TEST(LevelDataCoverage, level_data_batch2_misc_uncovered_paths_smoke)
     a->setxy(64, 64);
     b->setxy(96, 64);
 
-    // remaining_foes helper.
-    ASSERT_TRUE(remaining_foes(og::runtime::current_session->myscreen_->level_runtime_data(), a) >= 0) << "remaining_foes should run";
+    // remaining_foes counts alive Order::Living walkers this walker is not
+    // friendly with: one team-1 orc for a team-0 actor, none once it is dead.
+    ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_->level_runtime_data(), a))
+        << "remaining_foes should count the one alive enemy living walker";
+    b->set_dead(1);
+    ASSERT_EQ(0, (int)remaining_foes(og::runtime::current_session->myscreen_->level_runtime_data(), a))
+        << "remaining_foes should not count dead walkers";
+    b->set_dead(0);
 
-    // query_passable wrappers.
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_passable(64.0f, 64.0f, a) == (og::runtime::current_session->myscreen_->world().query_grid_passable(64.0f, 64.0f, a)
-        && og::runtime::current_session->myscreen_->world().query_object_passable(64.0f, 64.0f, a))) << "query_passable should compose grid/object checks";
+    // query_passable is grid AND object: a discriminating cell where the grid
+    // blocks and no object does must come back impassable, and passable again
+    // once the wall byte is gone.
+    a->set_sizex(1);
+    a->set_sizey(1);
+    const std::size_t wall_idx = static_cast<std::size_t>(
+        (160 / GRID_SIZE) + (160 / GRID_SIZE) * og::runtime::current_session->myscreen_->world().grid.w);
+    const unsigned char saved_tile = og::runtime::current_session->myscreen_->world().grid.data[wall_idx];
+    og::runtime::current_session->myscreen_->world().grid.data[wall_idx] = PIX_H_WALL1;
+    EXPECT_TRUE(og::runtime::current_session->myscreen_->world().query_object_passable(160.0f, 160.0f, a))
+        << "no walker stands on the probe cell, so the object check should allow it";
+    EXPECT_FALSE(og::runtime::current_session->myscreen_->world().query_grid_passable(160.0f, 160.0f, a))
+        << "a wall byte should make the cell grid-impassable";
+    EXPECT_FALSE(og::runtime::current_session->myscreen_->world().query_passable(160.0f, 160.0f, a))
+        << "query_passable must deny when the grid blocks even though no object does";
+    og::runtime::current_session->myscreen_->world().grid.data[wall_idx] = PIX_GRASS1;
+    EXPECT_TRUE(og::runtime::current_session->myscreen_->world().query_passable(160.0f, 160.0f, a))
+        << "query_passable must allow once both the grid and the object check allow";
+    og::runtime::current_session->myscreen_->world().grid.data[wall_idx] = saved_tile;
 
     // entity search null-protected paths.
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_near_foe(nullptr) == nullptr) << "find_near_foe null should return null";
@@ -1276,8 +1326,9 @@ TEST(LevelDataCoverage, level_data_round11_wrappers_draw_and_query_grid_entry_pa
     og::runtime::current_session->myscreen_->world().id = 9421;
     og::runtime::current_session->myscreen_->level_grid_file() = "grid";
     og::runtime::current_session->myscreen_->world().title = "round11";
+    std::filesystem::create_directories("temp/scen");
     const auto save_err = og::runtime::current_session->myscreen_->save_level_with_error();
-    ASSERT_TRUE((int)save_err >= (int)LevelRuntimeData::IoError::None) << "save_with_error wrapper should execute";
+    ASSERT_EQ(LevelRuntimeData::IoError::None, save_err) << "a prepared temp scenario should save cleanly through the wrapper";
 
     LevelRuntimeData missing(9876);
     const auto load_err = missing.load_with_error();
@@ -1617,6 +1668,13 @@ TEST(LevelDataCoverage, level_data_round17_grid_resize_campaign_wrappers_and_del
     // Shrink by one cell in each axis so edge fixtures fall off-map.
     og::runtime::current_session->myscreen_->world().resize_grid(old_w - 1, old_h - 1);
     ASSERT_EQ(PIX_TREE_M1, (int)og::runtime::current_session->myscreen_->world().grid.data[0]) << "resize should copy existing tiles";
+
+    // resize_grid erases the off-map entries from all three lists and keeps
+    // the in-bounds one. The drop_* pointers dangle from here on.
+    ASSERT_EQ(1u, og::runtime::current_session->myscreen_->world().oblist.size()) << "resize should erase the off-map oblist entry and keep the in-bounds one";
+    ASSERT_EQ(keep, og::runtime::current_session->myscreen_->world().oblist.front().get()) << "the surviving oblist entry should be the in-bounds walker";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().fxlist.empty()) << "resize should erase the off-map fxlist entry";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().weaplist.empty()) << "resize should erase the off-map weaplist entry";
 
     // Grow and ensure newly added cells are initialized (not left zeroed from freed memory).
     const int resized_w = og::runtime::current_session->myscreen_->world().grid.w;

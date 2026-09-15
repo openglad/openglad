@@ -1261,9 +1261,28 @@ TEST(Parity, every_table_row_has_a_named_parity_test)
             orphans.push_back(id + ": OG_PARITY_TEST(" + id + ") names no row "
                               "in kScenarios; the test GTEST_SKIPs silently");
     }
-    EXPECT_EQ(table_ids.size(), invocations)
-        << "OG_PARITY_TEST invocations (" << invocations << ") != table rows ("
-        << table_ids.size() << ")";
+    // A row whose rule needs more than the dump compare gets a HAND-WRITTEN
+    // TEST(Parity, <id>) instead of a macro line — it still calls
+    // run_one_scenario, so the byte compare this gate protects is there, and
+    // the mutation canary's per-row `Parity.<id>` filter then sees the rule
+    // too. Such a row must be named here and must NOT also carry a macro
+    // line, or the suite would register the name twice.
+    static const std::set<std::string> kHandWrittenRowTests = {
+        "snapshot_dirty_bits_scen9301",
+    };
+    for (const auto& id : kHandWrittenRowTests)
+    {
+        EXPECT_EQ(1u, table_ids.count(id))
+            << id << ": listed as a hand-written per-row test but is not a "
+                     "row in kScenarios";
+        EXPECT_EQ(1u, registered.count(id))
+            << id << ": listed as a hand-written per-row test but no "
+                     "TEST(Parity, " << id << ") is registered";
+    }
+    EXPECT_EQ(table_ids.size(), invocations + kHandWrittenRowTests.size())
+        << "OG_PARITY_TEST invocations (" << invocations
+        << ") + hand-written per-row tests (" << kHandWrittenRowTests.size()
+        << ") != table rows (" << table_ids.size() << ")";
     std::ostringstream orphan_report;
     orphan_report << "OG_PARITY_TEST names with no table row ("
                   << orphans.size() << "):\n";

@@ -93,12 +93,14 @@ TEST(TextWrap, hard_breaks_rewraps_only_overlong_lines_keeping_indent)
 
 TEST(TextWrap, degenerate_indent_wider_than_budget_is_dropped)
 {
-    // Indent alone would fill the line; it is dropped so wrapping terminates.
-    const std::vector<std::string> out =
-        wrap_text("          longword more words", 8);
-    ASSERT_FALSE(out.empty());
-    for (const std::string& line : out)
-        EXPECT_LE(line.size(), 8u);
+    // Indent alone would fill the line; it is DROPPED (not truncated) so
+    // wrapping terminates and no word is lost. Ten leading spaces against a
+    // budget of 8: the prefix is cleared, "longword" exactly fills the line,
+    // then each remaining word starts a fresh unindented line.
+    EXPECT_EQ(v({"longword", "more", "words"}),
+              wrap_text("          longword more words", 8))
+        << "an over-wide indent must be dropped, not truncated, and no word "
+           "may be dropped with it";
 }
 
 TEST(TextWrap, blank_line_survives_as_one_empty_output_line)
@@ -112,11 +114,17 @@ TEST(TextWrap, empty_input_yields_empty_vector)
     EXPECT_TRUE(wrap_text("", 10, WrapMode::Paragraphs).empty());
 }
 
-TEST(TextWrap, whitespace_only_input_yields_no_nonempty_lines)
+TEST(TextWrap, whitespace_only_input_is_three_blanks_in_hard_breaks_none_in_paragraphs)
 {
-    for (const std::string& line : wrap_text("   \n\t\n ", 10))
-        EXPECT_TRUE(line.empty());
-    EXPECT_TRUE(wrap_text("   \n\t\n ", 10, WrapMode::Paragraphs).empty());
+    // HardBreaks rstrips each physical line and passes a FITTING line through
+    // verbatim — blanks included — so three whitespace-only physical lines
+    // become exactly three empty output lines (the help viewer's spacer rows).
+    EXPECT_EQ(v({"", "", ""}), wrap_text("   \n\t\n ", 10))
+        << "HardBreaks must keep one empty output line per blank physical line";
+    // Paragraphs treats any run of blanks as a paragraph break, so an
+    // all-blank input collapses to nothing.
+    EXPECT_TRUE(wrap_text("   \n\t\n ", 10, WrapMode::Paragraphs).empty())
+        << "Paragraphs must collapse an all-blank input to no lines";
 }
 
 TEST(TextWrap, nonpositive_budget_returns_input_per_source_line)

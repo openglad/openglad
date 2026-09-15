@@ -852,6 +852,14 @@ inline constexpr FactPredicate kFacts_scripted_input_scen9301[] = {
     pred::EventKindExactly(/*withdraw_to_level*/8, 1),
 };
 
+// Subsystem 12's row is no longer an empty arena: two spawned soldiers give
+// the dirty-bit snapshot something to carry, and these facts say so, so an
+// arena that silently stops populating can never satisfy the row again.
+inline constexpr FactPredicate kFacts_snapshot_dirty_bits[] = {
+    pred::TickReached(50),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+};
+
 inline constexpr FactPredicate kFacts_smoke_nonempty_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
@@ -1172,14 +1180,14 @@ inline constexpr Mutation kMut_smoke_tick_freeze = {
 };
 
 inline constexpr Mutation kMut_effect_lifetime = {
-    "src/gameplay/effect.cpp", 96,
+    "src/gameplay/effect.cpp", 83,
     "set_dead(1);",
     "set_dead(0);",
     "Cancels the end-of-animation death in effect::act() so effects never expire; bomb/chain scenarios that rely on effects winding down see a residual effect count and flip EffectFamilyCount / dependent walker-death predicates."
 };
 
 inline constexpr Mutation kMut_save_corrupt = {
-    "src/resources/save_data.cpp", 135,
+    "src/resources/save_data.cpp", 132,
     "std::uint8_t temp_version = 9;",
     "std::uint8_t temp_version = 0;",
     "Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2)."
@@ -1192,12 +1200,16 @@ inline constexpr Mutation kMut_exit_neuter = {
     "Zeroes the east/west step inside walker::walkstep. The K_RIGHT soldier remains at its spawn xpos and never reaches the exit pad, so WalkerPositionMoved(SOLDIER,623,224) flips."
 };
 
+// Points at the dirty-bit capture itself, which is what the row is named for:
+// TEST(Parity, snapshot_dirty_bits_scen9301) is hand-written and does the
+// keyframe + delta merge, so the canary's per-row `Parity.<scenario_id>`
+// filter sees this break.
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/game_world.cpp", 1692,
-    "level_done = 2;",
-    "level_done = []{ static int _n = 0; return _n++; }();",
-    "Uses a static-counter level_done assignment so successive run_scenario() captures differ. The value flows into the snapshot and breaks dual-capture byte equality, flipping the Invariant determinism check.",
-    "    ending = 0;"
+    "src/gameplay/world_snapshot.cpp", 2472,
+    "snapshot.dirty_mask[i] = entity.dirty_mask_word(i);",
+    "snapshot.dirty_mask[i] = 0;",
+    "Captures an all-zero dirty mask for every entity of a non-keyframe snapshot. A zero mask is apply_delta's REMOVAL sentinel, so merging the delta over the keyframe baseline drops every live entity and the merged snapshot no longer matches a full capture.",
+    "        for (std::size_t i = 0; i < og::sim::kEntitySnapshotDirtyMaskWords; ++i)"
 };
 
 // Per-special mutations. Each one points at the named family's
@@ -1213,7 +1225,7 @@ inline constexpr Mutation kMut_special_archmage_do_special = {
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/families/living-05-cleric.lua", 136,
+    "packs/core/families/living-05-cleric.lua", 131,
     "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
     "local mace = nil",
     "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. Team-0 alive collapses from 2 (cleric + shield) to 1 and WalkerOfTeamAlive(0, 2, 2) fails its floor."
@@ -1309,7 +1321,7 @@ inline constexpr Mutation kMut_family_skeleton_init = {
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "packs/core/families/living-05-cleric.lua", 314,
+    "packs/core/families/living-05-cleric.lua", 309,
     "hp = 120",
     "hp = 12000",
     "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC)."
@@ -3650,7 +3662,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 314,
+    "packs/core/families/living-05-cleric.lua", 309,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3669,7 +3681,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 314,
+    "packs/core/families/living-05-cleric.lua", 309,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3688,7 +3700,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 314,
+    "packs/core/families/living-05-cleric.lua", 309,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4961,7 +4973,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_scen99[] = {
         "consequence: the successful heal adds one SOUND_HEAL on top of the 13 combat sounds; a refused heal emits nothing and the floor collapses to 13"),
 };
 inline constexpr Mutation kMut_special_cleric_heal_ally_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 356,
+    "packs/core/families/living-05-cleric.lua", 351,
     "heal_range = 60",
     "heal_range = 1",
     "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count<=1 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
@@ -5001,7 +5013,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_skeleton_scen99[] = {
         "invariant: the caster is never engaged (the ally does the killing), so it finishes at 117/120 (11700 cents) -- proof the skeleton came from the raise and not from a melee-driven code path"),
 };
 inline constexpr Mutation kMut_cleric_raise_skeleton_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 364,
+    "packs/core/families/living-05-cleric.lua", 359,
     "raise_skeleton_range = 60",
     "raise_skeleton_range = 1",
     "Collapses the RAISE UNDEAD corpse reach so nearby_corpse's `distance < range` test fails on the Manhattan-23 bloodstain and raise_skeleton returns false. No LIVING_SKELETON is summoned: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5037,7 +5049,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_ghost_scen99[] = {
         "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
 };
 inline constexpr Mutation kMut_cleric_raise_ghost_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 365,
+    "packs/core/families/living-05-cleric.lua", 360,
     "raise_ghost_range = 30",
     "raise_ghost_range = 1",
     "Collapses the RAISE GHOST corpse reach below the Manhattan-23 bloodstain, so nearby_corpse returns nil and raise_ghost returns false before do_summon. No LIVING_GHOST enters oblist: WalkerFamilyCount(FAMILY_GHOST, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5120,7 +5132,7 @@ inline constexpr FactPredicate kFacts_cleric_resurrect_friendly_scen99[] = {
         "invariant: the executioner stalls 12 px clear of the caster, so the cleric finishes at 84/120 (8400 cents) -- proof the cast landed while the caster was un-shoved. The 200-cent window is the one-regen-tick spread between the branch dump (8400) and a companion recapture (8300)."),
 };
 inline constexpr Mutation kMut_cleric_resurrect_friendly_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 235,
+    "packs/core/families/living-05-cleric.lua", 230,
     "    alive.hp = og.fdiv(alive.max_hp, 2.0)",
     "    alive.hp = og.fdiv(alive.max_hp, 4.0)",
     "Quarters the friendly-RESURRECT revival health instead of halving it. The rebuilt soldier returns at 31 of 120 HP (3100 cents) rather than 61 (6100), dropping out of WalkerHpRangeAtFinalTick's [5000, 6500] window while every other predicate still holds -- an isolated hit on the branch-specific half-health rule."
@@ -8089,12 +8101,18 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_exit_withdraw_path },
 
     // Branch-internal companion: dirty-bit snapshot vs direct iteration.
-    // Lint exempts Invariant rows from fact requirements; expected_facts
-    // stays nullptr.
-    { "snapshot_dirty_bits_scen9301","scen/scen9301.fss",   0x00000055u,
+    // It loads the real scen1.fss and spawns two soldiers on a fresh arena:
+    // Parity.snapshot_dirty_bits_delta_merge_matches_a_full_capture runs this
+    // row with an observer that captures a keyframe, ticks, captures the
+    // dirty-bit delta and merges it — an EMPTY arena would make that
+    // invariant hold vacuously. Lint exempts Invariant rows from fact
+    // requirements; the facts here are the non-empty-arena guard.
+    { "snapshot_dirty_bits_scen9301","scen/scen1.fss",   0x00000055u,
       nullptr, 0,                                                       50,  CompareMode::Invariant, true,
-      nullptr, 0, 0, false, false, Exercises::None,
-      nullptr, 0, kMut_snapshot_dirty },
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
+      kFacts_snapshot_dirty_bits, std::size(kFacts_snapshot_dirty_bits),
+      kMut_snapshot_dirty },
 
     // Z-axis / multi-floor (branch-internal Invariant; no master companion can
     // model stacked floors). fresh_arena drops scen9301's (empty) population;

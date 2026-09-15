@@ -24,6 +24,7 @@
 #include "../test_game_world_fixture.h"
 #include "unit_pack_store_guard.h"
 
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -779,15 +780,52 @@ TEST(ModeBindings, spawn_spot_clear_probes_without_eating)
     walker* blocker = fx.spawn_living(FAMILY_SOLDIER, 1, 320, 320);
     ASSERT_NE(nullptr, prober);
     ASSERT_NE(nullptr, blocker);
+
+    // The whole point of the binding: it must NOT take the obmap route
+    // (query_passable / ob_pass_check), which fires collide() and hands
+    // treasures to eat_me. Park two things on the probed spot that the two
+    // routes disagree about — an enemy weapon (ob_pass_check collides with
+    // it and reports blocked; spawn_spot_blocked_by only blocks on
+    // door/tree/boulder weapons) and a treasure (never a spawn blocker,
+    // and a spot the eating route would run eat_me over).
+    walker* enemy_shot = fx.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, enemy_shot);
+    enemy_shot->set_team_num(1);
+    enemy_shot->set_real_team_num(255);
+    enemy_shot->setxy(224, 224);
+    walker* drop = fx.world().add_fx_ob(Order::Treasure, FAMILY_SILVER_BAR);
+    ASSERT_NE(nullptr, drop);
+    drop->setxy(224, 224);
+    const std::uint32_t prober_id = prober->entity_id();
+    const std::uint32_t drop_id = drop->entity_id();
+
     fx.run_on_load(
         "    local w = og.oblist()[1]\n"
         "    og.log('open', og.spawn_spot_clear(w, 224, 224) and 1 or 0)\n"
         "    og.log('blocked', og.spawn_spot_clear(w, 320, 320) and 1 or 0)\n"
         "    og.log('floored',\n"
         "           og.spawn_spot_clear(w, 224, 224, 0) and 1 or 0)\n");
-    EXPECT_TRUE(fx.logged("open\t1"));
-    EXPECT_TRUE(fx.logged("blocked\t0"));
-    EXPECT_TRUE(fx.logged("floored\t1"));
+    EXPECT_TRUE(fx.logged("open\t1"))
+        << "a loose weapon and a drop are not spawn blockers: "
+        << fx.script_errors();
+    EXPECT_TRUE(fx.logged("blocked\t0")) << fx.script_errors();
+    EXPECT_TRUE(fx.logged("floored\t1"))
+        << "the floor-explicit arm answers the same: " << fx.script_errors();
+
+    // run_on_load ticked the world; pointers taken before it are not
+    // guaranteed to survive, so re-find by entity id rather than reading the
+    // ones captured above.
+    ASSERT_NE(nullptr, fx.world().find_by_id(prober_id))
+        << "the prober outlives the probe";
+    ASSERT_NE(nullptr, fx.world().find_by_id(drop_id))
+        << "the probed treasure outlives the probe";
+    // NOT pinned here: "the drop was not eaten" and "nothing collided". This
+    // fixture registers no treasure family hooks, so eat_me is a no-op, and
+    // the same tick that runs on_load clears collide_ob again before it
+    // returns — both were dead negatives that no break could make fire. The
+    // `open` pin above is what separates the two routes: the enemy weapon on
+    // that spot is a collide target for ob_pass_check but not a spawn
+    // blocker, so the eating route answers 0 there where this one answers 1.
 }
 
 TEST(ModeBindings, scrub_corpse_stain_kills_nearby_drops)
@@ -822,8 +860,17 @@ TEST(ModeBindings, set_act_type_refuses_control_and_restores)
         "    w:restore_act_type()\n"
         "    og.log('restored', w:act_type())\n"
         "    local ok = pcall(function() w:set_act_type(og.C.ACT_CONTROL) end)\n"
-        "    og.log('err', ok and 1 or 0)\n");
+        "    og.log('err', ok and 1 or 0)\n"
+        "    og.log('after_refusal', w:act_type())\n");
+    EXPECT_TRUE(fx.logged("set\t3"))
+        << "set_act_type must write ACT_GUARD: " << fx.script_errors();
+    EXPECT_TRUE(fx.logged("restored\t0"))
+        << "restore_act_type is a one-deep undo back to ACT_RANDOM: "
+        << fx.script_errors();
     EXPECT_TRUE(fx.logged("err\t0"));
+    EXPECT_TRUE(fx.logged("after_refusal\t0"))
+        << "the refused ACT_CONTROL write must leave the act untouched: "
+        << fx.script_errors();
     EXPECT_EQ(ACT_RANDOM, w->act_type());
 }
 

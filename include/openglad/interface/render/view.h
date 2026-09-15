@@ -110,7 +110,6 @@ class viewscreen
 		// seat-mode resize); the factory touches no player cfg key.
 		static std::unique_ptr<viewscreen> make_camera(screen* screenp);
 		~viewscreen();
-		void clear();
 		bool draw ();
 		bool redraw();
 		bool redraw(LevelRuntimeData* data, bool draw_radar = true);

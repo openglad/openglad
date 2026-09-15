@@ -1,6 +1,7 @@
 #ifndef _TEST_INTERACT_H__
 #define _TEST_INTERACT_H__
 
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -284,6 +285,32 @@ inline bool wait_for_menu_frames(int n, int timeout_ms = 15000)
             "  [interact] TIMEOUT waiting for %d completed menu frame(s) "
             "(%d ms)\n",
             n, timeout_ms);
+    return false;
+}
+
+// The consumption proof for a click whose effect the button table cannot
+// show. Engine screens trace their own dispatch ("confirm"/"popup" from the
+// dialogs, "company_list page 2/2", "basecamp deploy slot=0 off"), so waiting
+// for that line says the press was received AND acted on; a dropped press
+// leaves the trace absent and the wait fails by name instead of handing the
+// next click to whatever screen happens to be up.
+//
+// Deliberately NO default timeout: the anonymous-namespace copies this
+// replaced all passed one explicitly, and a 2-argument overload elsewhere in
+// the suite (test_campaign_sprite_uaf.cpp) must stay unambiguous.
+inline bool wait_for_trace(const char* category, const char* substring,
+                           int timeout_ms)
+{
+    int elapsed = 0;
+    const int poll_interval = 25;
+    while (elapsed < timeout_ms) {
+        if (trace_contains(category, substring))
+            return true;
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr, "  [interact] TIMEOUT waiting for trace %s/'%s' (%d ms)\n",
+            category, substring, timeout_ms);
     return false;
 }
 

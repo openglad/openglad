@@ -276,6 +276,10 @@ TEST(PerViewZoomCrisp, split_pane_no_blend_colors)
     viewscreen* const zoomed = view_at(1);
     const auto pane_colors = collect_colors(
         surf, zoomed->xloc, zoomed->yloc, zoomed->xview, zoomed->yview);
+    ASSERT_GT(pane_colors.size(), 5u)
+        << "the zoomed pane must still contain real scenery: a pane that "
+           "renders blank invents nothing and would pass the subset check "
+           "below vacuously";
 
     int invented = 0;
     for (const Uint32 c : pane_colors)
@@ -701,6 +705,9 @@ TEST(PerViewZoomCapture, composed_capture_presents_windows_on_slots)
     window_colors.insert(0x000000u);
     const auto slot_colors = collect_colors(
         composed, v0->slot_x_, v0->slot_y_, v0->slot_w_, v0->slot_h_);
+    ASSERT_GT(slot_colors.size(), 5u)
+        << "the composed slot must carry the window's scenery, not a "
+           "cleared rectangle";
     int invented = 0;
     for (const Uint32 c : slot_colors)
         if (window_colors.find(c) == window_colors.end())
@@ -708,6 +715,51 @@ TEST(PerViewZoomCapture, composed_capture_presents_windows_on_slots)
     EXPECT_EQ(0, invented)
         << invented << " blend colors in the composed slot: the capture "
                        "composition resampled twice";
+
+    // The rule itself, not just "no new colors": every view whose 1:1 render
+    // WINDOW is not its presentation SLOT is nearest-blitted from window rect
+    // onto slot rect over a plain copy of the scenery (screen.cpp:1264 builds
+    // exactly those slices from the view geometry). Rebuild that reference
+    // here and demand the composition match it pixel for pixel — a skipped
+    // slice loop leaves the plain copy behind and fails.
+    SDL_Surface* const reference = SDL_CreateSurface(
+        world_surf->w, world_surf->h, SDL_PIXELFORMAT_XRGB8888);
+    ASSERT_NE(nullptr, reference);
+    ASSERT_TRUE(SDL_BlitSurface(world_surf, nullptr, reference, nullptr));
+    ASSERT_TRUE(v0->xloc != v0->slot_x_ || v0->yloc != v0->slot_y_ ||
+                v0->xview != v0->slot_w_ || v0->yview != v0->slot_h_)
+        << "view 0's render window must differ from its presentation slot, "
+           "or there is no slice to prove anything about";
+    for (int i = 0; i < scr()->numviews; ++i)
+    {
+        const viewscreen* const v = view_at(i);
+        ASSERT_NE(nullptr, v);
+        if (v->xloc == v->slot_x_ && v->yloc == v->slot_y_ &&
+            v->xview == v->slot_w_ && v->yview == v->slot_h_)
+            continue;
+        SDL_Rect src{v->xloc, v->yloc, v->xview, v->yview};
+        SDL_Rect dst{v->slot_x_, v->slot_y_, v->slot_w_, v->slot_h_};
+        ASSERT_TRUE(SDL_BlitSurfaceScaled(world_surf, &src, reference, &dst,
+                                          SDL_SCALEMODE_NEAREST));
+    }
+    SDL_LockSurface(reference);
+    SDL_LockSurface(composed);
+    int mismatched_rows = 0;
+    for (int py = 0; py < reference->h; ++py)
+    {
+        const Uint8* const a =
+            static_cast<const Uint8*>(reference->pixels) + py * reference->pitch;
+        const Uint8* const b =
+            static_cast<const Uint8*>(composed->pixels) + py * composed->pitch;
+        if (std::memcmp(a, b, static_cast<std::size_t>(reference->w) * 4) != 0)
+            ++mismatched_rows;
+    }
+    SDL_UnlockSurface(composed);
+    SDL_UnlockSurface(reference);
+    SDL_DestroySurface(reference);
+    EXPECT_EQ(0, mismatched_rows)
+        << mismatched_rows << " composed rows differ from the window-onto-slot "
+           "nearest blit the presentation partition declares";
 
     const char* const shots_dir = std::getenv("PAUSE_SHOTS_DIR");
     if (shots_dir != nullptr && shots_dir[0] != '\0')

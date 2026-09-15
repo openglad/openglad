@@ -42,7 +42,7 @@ static void fill_pattern(std::vector<unsigned char>& buf, int w, int h)
     }
 }
 
-static void run_sai2x_ex2_and_supereagle_write_output();
+static void run_sai2x_clipped_entry_points_honour_the_destination_origin();
 static void run_sai2x_surface_wrapper_guards_and_scaling();
 static void run_sai2x_screen_class_paths();
 
@@ -141,6 +141,71 @@ std::vector<Uint32> scale_pixels(DirectScaler scaler,
     return destination;
 }
 
+// A 4x4 white/black strip whose 8x8 upscale exercises every 2xSaI corner
+// rule: plain copies, INTERPOLATE halves and (SuperEagle) Q_INTERPOLATE
+// quarters. The golden outputs below were captured from the implementation
+// and are recaptured ONLY on an intentional change to the scaler rules.
+constexpr Uint32 kW = 0x00FFFFFFu;       // source white
+constexpr Uint32 kB = 0x00000000u;       // source black
+constexpr Uint32 kH = 0x007F7F7Fu;       // INTERPOLATE(white, black)
+constexpr Uint32 kE7 = 0x00DFDFDFu;      // Q_INTERPOLATE, 3 white + 1 black
+constexpr Uint32 kQ3 = 0x00BFBFBFu;      // INTERPOLATE(white, half)
+constexpr Uint32 kE1 = 0x001F1F1Fu;      // Q_INTERPOLATE, 1 white + 3 black
+
+const std::vector<Uint32>& wb_strip()
+{
+    static const std::vector<Uint32> strip{ kW, kW, kW, kW,
+                                            kW, kW, kW, kW,
+                                            kW, kB, kB, kB,
+                                            kB, kW, kW, kW };
+    return strip;
+}
+
+const std::vector<Uint32>& super2xsai_strip_golden()
+{
+    static const std::vector<Uint32> out{
+        kW, kW, kW, kW, kW, kW, kW, kW,
+        kW, kW, kW, kW, kW, kW, kW, kW,
+        kW, kW, kW, kW, kW, kW, kW, kW,
+        kW, kW, kH, kB, kB, kB, kB, kB,
+        kW, kB, kB, kB, kB, kB, kB, kB,
+        kB, kB, kW, kW, kW, kW, kW, kW,
+        kB, kW, kW, kW, kW, kW, kW, kW,
+        kW, kW, kW, kW, kW, kW, kW, kW,
+    };
+    return out;
+}
+
+const std::vector<Uint32>& clipped_strip_golden()
+{
+    static const std::vector<Uint32> out{
+        kW, kW, kW, kW, kW, kW, kW, kW,
+        kW, kW, kW, kW, kW, kW, kW, kW,
+        kW, kW, kW, kW, kW, kW, kW, kW,
+        kW, kW, kH, kB, kB, kB, kB, kB,
+        kW, kB, kB, kB, kB, kB, kB, kB,
+        kB, kB, kW, kW, kW, kW, kW, kW,
+        kB, kH, kW, kW, kW, kW, kW, kW,
+        kB, kH, kW, kW, kW, kW, kW, kW,
+    };
+    return out;
+}
+
+const std::vector<Uint32>& supereagle_strip_golden()
+{
+    static const std::vector<Uint32> out{
+        kW,  kW,  kW,  kW,  kW,  kW,  kW,  kW,
+        kW,  kW,  kW,  kW,  kW,  kW,  kW,  kW,
+        kW,  kW,  kE7, kE7, kE7, kE7, kE7, kE7,
+        kW,  kQ3, kE1, kE1, kE1, kE1, kE1, kE1,
+        kH,  kB,  kE1, kE1, kE1, kE1, kE1, kE1,
+        kB,  kH,  kE7, kE7, kE7, kE7, kE7, kE7,
+        kE1, kE7, kW,  kW,  kW,  kW,  kW,  kW,
+        kE1, kE7, kW,  kW,  kW,  kW,  kW,  kW,
+    };
+    return out;
+}
+
 Uint64 hash_pixels(const std::vector<Uint32>& pixels)
 {
     Uint64 hash = 1469598103934665603ull;
@@ -153,39 +218,44 @@ Uint64 hash_pixels(const std::vector<Uint32>& pixels)
 }
 } // namespace
 
-TEST(Sai2xScaler, sai2x_super2xsai_ex_runs_on_small_buffer)
+// The three direct scaler entry points are a fixed integer pixel transform:
+// each 4x4 neighbourhood picks a corner rule (plain copy / INTERPOLATE /
+// Q_INTERPOLATE) and writes four exact destination pixels. Pin the whole
+// 8x8 output of one hand-picked strip per scaler, plus a hash of the larger
+// gradient pattern, so ANY change to the rules turns this red.
+TEST(Sai2xScaler, sai2x_entry_points_write_the_pinned_2xsai_neighbourhood)
 {
-    // Initialize masks for 32bpp.
-    Init_2xSaI();
+    ASSERT_EQ(0, Init_2xSaI());
 
-    const int w = 8;
-    const int h = 8;
-    const int src_pitch = w * 4;
-    const int dw = w * 2;
-    const int dh = h * 2;
-    const int dst_pitch = dw * 4;
+    EXPECT_EQ(super2xsai_strip_golden(),
+              scale_pixels(DirectScaler::Super2xSai, wb_strip(), 4, 4))
+        << "Super2xSaI_ex must reproduce the pinned 2xSaI neighbourhood";
+    EXPECT_EQ(clipped_strip_golden(),
+              scale_pixels(DirectScaler::Super2xSaiClipped, wb_strip(), 4, 4))
+        << "Super2xSaI_ex2 must reproduce the pinned 2xSaI neighbourhood";
+    EXPECT_EQ(supereagle_strip_golden(),
+              scale_pixels(DirectScaler::SuperEagle, wb_strip(), 4, 4))
+        << "Scale_SuperEagle must reproduce the pinned SuperEagle "
+           "neighbourhood";
 
-    std::vector<unsigned char> src(src_pitch * h);
-    std::vector<unsigned char> dst(dst_pitch * dh);
-    fill_pattern(src, w, h);
+    // The same three scalers over the 8x8 ARGB gradient, hashed. Golden;
+    // recaptured only on an intentional scaler change.
+    std::vector<unsigned char> bytes(8 * 8 * 4);
+    fill_pattern(bytes, 8, 8);
+    std::vector<Uint32> gradient(64);
+    std::memcpy(gradient.data(), bytes.data(), bytes.size());
+    EXPECT_EQ(0xB079AC32C1C35083ull,
+              hash_pixels(scale_pixels(DirectScaler::Super2xSai, gradient, 8, 8)))
+        << "Super2xSaI_ex gradient golden";
+    EXPECT_EQ(0xC9EAB5AA273DD083ull,
+              hash_pixels(
+                  scale_pixels(DirectScaler::Super2xSaiClipped, gradient, 8, 8)))
+        << "Super2xSaI_ex2 gradient golden";
+    EXPECT_EQ(0x7DB2584DD4CF9A83ull,
+              hash_pixels(scale_pixels(DirectScaler::SuperEagle, gradient, 8, 8)))
+        << "Scale_SuperEagle gradient golden";
 
-    // Smoke the legacy entry point here; the pattern and wrapper-equivalence
-    // tests below pin deterministic pixel behavior in detail.
-    Super2xSaI_ex(src.data(), src_pitch, nullptr, dst.data(), dst_pitch, w, h);
-
-    // Basic sanity: output buffer is non-zero somewhere.
-    bool any = false;
-    for (unsigned char b : dst)
-    {
-        if (b != 0)
-        {
-            any = true;
-            break;
-        }
-    }
-    ASSERT_TRUE(any) << "Super2xSaI_ex should write to the output buffer";
-
-    run_sai2x_ex2_and_supereagle_write_output();
+    run_sai2x_clipped_entry_points_honour_the_destination_origin();
     run_sai2x_surface_wrapper_guards_and_scaling();
     run_sai2x_screen_class_paths();
 }
@@ -204,6 +274,15 @@ TEST(Sai2xScaler, deterministic_pattern_battery_preserves_pixels_and_exercises_e
         DirectScaler::Super2xSai,
         DirectScaler::Super2xSaiClipped,
         DirectScaler::SuperEagle,
+    };
+    // Golden aggregate over all 8192 samples, one per scaler: FNV over the
+    // Uint32 outputs of integer-only math, so it is portable. Recaptured
+    // ONLY on an intentional change to the 2xSaI/SuperEagle corner rules —
+    // without these the battery only compared each scaler against itself.
+    constexpr std::array<Uint64, 3> golden_aggregates{
+        0x0C880AD94088FA98ull, // Super2xSaI_ex
+        0xEA9966C0BD553805ull, // Super2xSaI_ex2
+        0x5AF99628E68D2C2Eull, // Scale_SuperEagle
     };
 
     // A flat image is an exact fixed point for every interpolation mode.
@@ -244,6 +323,12 @@ TEST(Sai2xScaler, deterministic_pattern_battery_preserves_pixels_and_exercises_e
         }
     }
 
+    EXPECT_EQ(golden_aggregates[0], aggregate_hashes[0])
+        << "Super2xSaI_ex changed its output over the 8192-sample battery";
+    EXPECT_EQ(golden_aggregates[1], aggregate_hashes[1])
+        << "Super2xSaI_ex2 changed its output over the 8192-sample battery";
+    EXPECT_EQ(golden_aggregates[2], aggregate_hashes[2])
+        << "Scale_SuperEagle changed its output over the 8192-sample battery";
     EXPECT_NE(aggregate_hashes[0], aggregate_hashes[1]);
     EXPECT_NE(aggregate_hashes[0], aggregate_hashes[2]);
     EXPECT_NE(aggregate_hashes[1], aggregate_hashes[2]);
@@ -303,27 +388,135 @@ TEST(Sai2xScaler, surface_wrapper_rejects_mismatched_pixel_depths)
         << "a depth mismatch must not modify destination storage";
 }
 
-TEST(Sai2xScaler, screen_fullscreen_and_output_fallback_preserve_pixels)
+// renderer_output_rect (sai2x.cpp:73): SDL window coordinates stay LOGICAL on
+// a HiDPI display while the renderer backbuffer is measured in physical
+// pixels, so the present rect is scaled by output_size / logical_size — and
+// returned UNSCALED when the session's logical window metrics are
+// unavailable (window_w_/h_ <= 0; without that guard the scale is inf and
+// the frame never reaches the display).
+//
+// The software renderer presents into the window surface, so both branches
+// are observable: paint the canvas red|blue down the middle and watch where
+// the seam lands.
+TEST(Sai2xScaler, present_rect_falls_back_unscaled_and_otherwise_scales_by_output)
 {
     SessionWindowAndViewportRestore metrics_restore;
     Screen fullscreen(RenderEngine::NoZoom, 320, 200, 1);
     ASSERT_NE(nullptr, fullscreen.window);
+    ASSERT_NE(nullptr, fullscreen.renderer);
     EXPECT_NE(0u, SDL_GetWindowFlags(fullscreen.window) &
-                      SDL_WINDOW_FULLSCREEN);
-    ASSERT_TRUE(SDL_FillSurfaceRect(
-        fullscreen.render, nullptr,
-        SDL_MapSurfaceRGB(fullscreen.render, 15, 35, 75)));
+                      SDL_WINDOW_FULLSCREEN)
+        << "the fullscreen flag must reach the window";
+
+    int output_w = 0;
+    int output_h = 0;
+    ASSERT_TRUE(SDL_GetRenderOutputSize(fullscreen.renderer, &output_w,
+                                        &output_h));
+    ASSERT_GT(output_w, 3);
+    ASSERT_GT(output_h, 3);
+
+    const int canvas_w = fullscreen.canvas_w();
+    const SDL_Rect left{0, 0, canvas_w / 2, fullscreen.canvas_h()};
+    const SDL_Rect right{canvas_w / 2, 0, canvas_w - canvas_w / 2,
+                         fullscreen.canvas_h()};
+    const Uint32 red = SDL_MapSurfaceRGB(fullscreen.render, 220, 20, 20);
+    const Uint32 blue = SDL_MapSurfaceRGB(fullscreen.render, 20, 20, 220);
+    ASSERT_TRUE(SDL_FillSurfaceRect(fullscreen.render, &left, red));
+    ASSERT_TRUE(SDL_FillSurfaceRect(fullscreen.render, &right, blue));
+    // A narrow green stripe inside the left half is the RATIO probe. The
+    // red|blue seam alone only says "scaled or not": it leaves the output at
+    // any scale past ~1.5x, so a 1.5x and a 4x present look the same to it
+    // (a 4x present was green on this test before the stripe existed).
+    // A 6-pixel stripe has a POSITION, and its position is linear in the
+    // scale, so where it lands IS the ratio.
+    constexpr int kStripeX = 60;  // clear of the red/blue seam probes
+    constexpr int kStripeW = 6;
+    const SDL_Rect stripe{kStripeX, 0, kStripeW, fullscreen.canvas_h()};
+    const Uint32 green = SDL_MapSurfaceRGB(fullscreen.render, 20, 200, 20);
+    ASSERT_TRUE(SDL_FillSurfaceRect(fullscreen.render, &stripe, green));
 
     const std::vector<Uint8> before(
         static_cast<const Uint8*>(fullscreen.render->pixels),
         static_cast<const Uint8*>(fullscreen.render->pixels) +
             fullscreen.render->pitch * fullscreen.render->h);
+
+    auto presented_rgb = [&](int x, int y) {
+        SDL_Surface* const window_surface =
+            SDL_GetWindowSurface(fullscreen.window);
+        EXPECT_NE(nullptr, window_surface) << SDL_GetError();
+        std::array<int, 3> rgb{-1, -1, -1};
+        if (window_surface == nullptr)
+            return rgb;
+        const SDL_PixelFormatDetails* const details =
+            SDL_GetPixelFormatDetails(window_surface->format);
+        SDL_LockSurface(window_surface);
+        const Uint32 value = *reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(window_surface->pixels) +
+            y * window_surface->pitch + x * 4);
+        Uint8 r = 0, g = 0, b = 0;
+        SDL_GetRGB(value, details, nullptr, &r, &g, &b);
+        SDL_UnlockSurface(window_surface);
+        return std::array<int, 3>{r, g, b};
+    };
+    const std::array<int, 3> expect_red{220, 20, 20};
+    const std::array<int, 3> expect_blue{20, 20, 220};
+    const std::array<int, 3> expect_green{20, 200, 20};
+    // Canvas x -> output x. The renderer's own logical presentation already
+    // fits the 320x200 canvas to the output (factor output_w/canvas_w); the
+    // present rect's scale multiplies that. `scale` 1 is therefore the
+    // UNSCALED branch's mapping and 2 the density-2 branch's.
+    const auto out_x = [&](int canvas_x, int scale) {
+        return canvas_x * scale * output_w / canvas_w;
+    };
+    // The stripe's 2x image must land inside the output for the probes below
+    // to mean anything.
+    ASSERT_LT(out_x(kStripeX + kStripeW, 2), output_w);
+
+    // Logical metrics unavailable: the rect is used UNSCALED, so the canvas
+    // maps 1:1 onto the output and the seam sits at the middle.
     og::runtime::current_session->window_w_ = 0.0f;
     og::runtime::current_session->window_h_ = 0.0f;
     fullscreen.swap(0, 0, fullscreen.canvas_w(), fullscreen.canvas_h());
+    EXPECT_EQ(expect_red, presented_rgb(output_w / 4, output_h / 2))
+        << "unscaled present: the left half of the canvas is on the left";
+    EXPECT_EQ(expect_blue, presented_rgb(output_w * 3 / 4, output_h / 2))
+        << "unscaled present: the right half of the canvas is on the right";
+    EXPECT_EQ(expect_green,
+              presented_rgb(out_x(kStripeX + kStripeW / 2, 1), output_h / 2))
+        << "unscaled present: the stripe sits at its own canvas x";
+    EXPECT_EQ(expect_red,
+              presented_rgb(out_x(kStripeX + kStripeW / 2, 2), output_h / 2))
+        << "unscaled present: and nowhere near the 2x position";
+
+    // Logical window half the renderer output (density 2): the same canvas
+    // is presented at 2x, pushing the seam off the right edge.
+    og::runtime::current_session->window_w_ = static_cast<float>(output_w) / 2.0f;
+    og::runtime::current_session->window_h_ = static_cast<float>(output_h) / 2.0f;
+    fullscreen.swap(0, 0, fullscreen.canvas_w(), fullscreen.canvas_h());
+    EXPECT_EQ(expect_red, presented_rgb(output_w / 4, output_h / 2))
+        << "2x present: the left quarter of the canvas covers the left half";
+    EXPECT_EQ(expect_red, presented_rgb(output_w * 3 / 4, output_h / 2))
+        << "2x present: the seam is pushed off the right edge";
+    // The ratio itself, not merely "some scale > 1": the stripe's middle has
+    // to land at exactly twice the output x the unscaled present put it at.
+    // That single probe holds the scale inside about +/-5% (the stripe is 6
+    // canvas pixels wide), so a 1.5x or a 2.5x present reads red there; the
+    // two guards a stripe-width out on either side then catch a present that
+    // smeared or offset the stripe instead of scaling it.
+    EXPECT_EQ(expect_green,
+              presented_rgb(out_x(kStripeX + kStripeW / 2, 2), output_h / 2))
+        << "2x present: the stripe lands at exactly twice its unscaled x";
+    EXPECT_EQ(expect_red,
+              presented_rgb(out_x(kStripeX - kStripeW, 2), output_h / 2))
+        << "2x present: nothing green short of the stripe's 2x position";
+    EXPECT_EQ(expect_red,
+              presented_rgb(out_x(kStripeX + 2 * kStripeW, 2), output_h / 2))
+        << "2x present: nothing green past the stripe's 2x position";
+
+    // Secondary: presentation is read-only on the CPU canvas either way.
     EXPECT_EQ(0, std::memcmp(
                      before.data(), fullscreen.render->pixels, before.size()))
-        << "presentation with unavailable logical metrics is read-only";
+        << "presentation must never write the CPU canvas";
 }
 
 TEST(Sai2xScaler, render_backend_failure_retries_without_losing_cpu_pixels)
@@ -479,109 +672,180 @@ TEST(Sai2xScaler, constructing_a_screen_leaves_the_session_viewport_untouched)
     EXPECT_EQ(offset_y, og::runtime::current_session->viewport_offset_y_);
 }
 
-static void run_sai2x_ex2_and_supereagle_write_output()
+// The clipped entry points take a destination ORIGIN. Scaling into an
+// offset must reproduce the offset-0 output exactly, shifted, and must not
+// disturb one byte outside the written block (swap() relies on this to
+// double a sub-rect of the canvas in place).
+static void run_sai2x_clipped_entry_points_honour_the_destination_origin()
 {
-    Init_2xSaI();
+    ASSERT_EQ(0, Init_2xSaI());
 
-    const int w = 8;
-    const int h = 8;
-    const int src_pitch = w * 4;
-    const int dw = w * 2;
-    const int dh = h * 2;
-    const int dst_pitch = dw * 4;
+    constexpr int w = 8;
+    constexpr int h = 8;
+    constexpr int src_pitch = w * 4;
+    constexpr int dst_w = 24;
+    constexpr int dst_pitch = dst_w * 4;
+    constexpr int dst_h = 24;
+    constexpr int off_x = 4;
+    constexpr int off_y = 6;
+    constexpr Uint32 sentinel = 0xDEADBEEFu;
 
-    std::vector<unsigned char> src(src_pitch * h);
-    std::vector<unsigned char> dst_sai(dst_pitch * dh);
-    std::vector<unsigned char> dst_eagle(dst_pitch * dh);
+    std::vector<unsigned char> src(static_cast<std::size_t>(src_pitch * h));
     fill_pattern(src, w, h);
 
-    Super2xSaI_ex2(src.data(), 0, 0, w, h, src_pitch, h, dst_sai.data(), 0, 0, dst_pitch);
-    Scale_SuperEagle(src.data(), 0, 0, w, h, src_pitch, h, dst_eagle.data(), 0, 0, dst_pitch);
+    std::vector<Uint32> reference(static_cast<std::size_t>(w * 2 * h * 2), 0u);
+    std::vector<Uint32> offset(static_cast<std::size_t>(dst_w * dst_h),
+                               sentinel);
 
-    bool any_sai = false;
-    for (unsigned char b : dst_sai) {
-        if (b != 0) {
-            any_sai = true;
-            break;
+    for (int scaler = 0; scaler < 2; ++scaler)
+    {
+        std::fill(reference.begin(), reference.end(), sentinel);
+        std::fill(offset.begin(), offset.end(), sentinel);
+        if (scaler == 0)
+        {
+            Super2xSaI_ex2(src.data(), 0, 0, w, h, src_pitch, h,
+                           reinterpret_cast<unsigned char*>(reference.data()),
+                           0, 0, w * 2 * 4);
+            Super2xSaI_ex2(src.data(), 0, 0, w, h, src_pitch, h,
+                           reinterpret_cast<unsigned char*>(offset.data()),
+                           off_x, off_y, dst_pitch);
         }
-    }
-    bool any_eagle = false;
-    for (unsigned char b : dst_eagle) {
-        if (b != 0) {
-            any_eagle = true;
-            break;
+        else
+        {
+            Scale_SuperEagle(src.data(), 0, 0, w, h, src_pitch, h,
+                             reinterpret_cast<unsigned char*>(reference.data()),
+                             0, 0, w * 2 * 4);
+            Scale_SuperEagle(src.data(), 0, 0, w, h, src_pitch, h,
+                             reinterpret_cast<unsigned char*>(offset.data()),
+                             off_x, off_y, dst_pitch);
         }
-    }
 
-    ASSERT_TRUE(any_sai) << "Super2xSaI_ex2 should write to destination";
-    ASSERT_TRUE(any_eagle) << "Scale_SuperEagle should write to destination";
+        ASSERT_EQ(reference.end(),
+                  std::find(reference.begin(), reference.end(), sentinel))
+            << "scaler " << scaler << " left destination pixels unwritten";
+
+        for (int y = 0; y < dst_h; ++y)
+            for (int x = 0; x < dst_w; ++x)
+            {
+                const Uint32 got =
+                    offset[static_cast<std::size_t>(y * dst_w + x)];
+                const bool inside = x >= off_x && x < off_x + w * 2 &&
+                                    y >= off_y && y < off_y + h * 2;
+                const Uint32 want = inside
+                    ? reference[static_cast<std::size_t>(
+                          (y - off_y) * w * 2 + (x - off_x))]
+                    : sentinel;
+                ASSERT_EQ(want, got)
+                    << "scaler " << scaler << " destination (" << x << ","
+                    << y << ") "
+                    << (inside ? "must match the offset-0 output"
+                               : "lies outside the block and must be untouched");
+            }
+    }
 }
 
 static void run_sai2x_surface_wrapper_guards_and_scaling()
 {
-    Init_2xSaI();
+    ASSERT_EQ(0, Init_2xSaI());
 
-    // Guard path: null surfaces should return without crashing.
+    // Guard path: null surfaces return without touching anything.
     Super2xSaI(nullptr, nullptr, 0, 0, 0, 0, 8, 8);
 
-    SDL_Surface* src = SDL_CreateSurface(8, 8, SDL_PIXELFORMAT_ARGB8888);
-    SDL_Surface* dst = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_ARGB8888);
-    ASSERT_TRUE(src != nullptr && dst != nullptr) << "surfaces should allocate";
-    if (!src || !dst)
-        return;
+    SurfacePtr src(SDL_CreateSurface(8, 8, SDL_PIXELFORMAT_ARGB8888));
+    SurfacePtr dst(SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_ARGB8888));
+    ASSERT_NE(nullptr, src) << "surfaces should allocate";
+    ASSERT_NE(nullptr, dst) << "surfaces should allocate";
 
     std::vector<unsigned char> pattern(8 * 8 * 4);
     fill_pattern(pattern, 8, 8);
     std::memcpy(src->pixels, pattern.data(), pattern.size());
-    SDL_FillSurfaceRect(dst, nullptr, 0x00000000u);
+    ASSERT_TRUE(SDL_FillSurfaceRect(dst.get(), nullptr, 0xDEADBEEFu));
+    const std::vector<Uint8> untouched(
+        static_cast<const Uint8*>(dst->pixels),
+        static_cast<const Uint8*>(dst->pixels) + dst->pitch * dst->h);
 
-    // Guard path: tiny source should not run scaler.
-    Super2xSaI(src, dst, 0, 0, 0, 0, 3, 3);
+    // Guard path: an image narrower/shorter than 4 is too small to 2xSaI, so
+    // the destination must come back byte-identical.
+    Super2xSaI(src.get(), dst.get(), 0, 0, 0, 0, 3, 3);
+    EXPECT_EQ(0, std::memcmp(untouched.data(), dst->pixels, untouched.size()))
+        << "a source smaller than 4x4 must leave the destination alone";
 
-    // Happy path.
-    Super2xSaI(src, dst, 0, 0, 0, 0, 8, 8);
-
-    bool any = false;
-    const unsigned char* out = reinterpret_cast<const unsigned char*>(dst->pixels);
-    for (int i = 0; i < dst->pitch * dst->h; ++i) {
-        if (out[i] != 0) {
-            any = true;
-            break;
-        }
-    }
-    ASSERT_TRUE(any) << "Super2xSaI surface wrapper should write output on valid input";
-
-    SDL_DestroySurface(src);
-    SDL_DestroySurface(dst);
+    // Happy path: the wrapper is exactly Super2xSaI_ex over the surface
+    // pixels.
+    std::vector<unsigned char> expected(
+        static_cast<std::size_t>(dst->pitch * dst->h), 0xA5u);
+    Super2xSaI_ex(reinterpret_cast<unsigned char*>(src->pixels),
+                  static_cast<Uint32>(src->pitch), nullptr, expected.data(),
+                  static_cast<Uint32>(dst->pitch), 8, 8);
+    Super2xSaI(src.get(), dst.get(), 0, 0, 0, 0, 8, 8);
+    EXPECT_EQ(0, std::memcmp(expected.data(), dst->pixels, expected.size()))
+        << "the surface wrapper must scale exactly like Super2xSaI_ex";
+    EXPECT_EQ(0, std::memcmp(pattern.data(), src->pixels, pattern.size()))
+        << "the surface wrapper must not modify its source";
 }
+
+namespace
+{
+Uint32 render_pixel(const Screen& s, int x, int y)
+{
+    return static_cast<const Uint32*>(s.render->pixels)[
+        x + y * s.render->pitch / static_cast<int>(sizeof(Uint32))];
+}
+} // namespace
 
 static void run_sai2x_screen_class_paths()
 {
     SessionWindowAndViewportRestore metrics_restore;
+    constexpr Uint32 sentinel = 0x00335577u;
     {
         Screen s(RenderEngine::NoZoom, 320, 200, 0);
+        ASSERT_TRUE(SDL_FillSurfaceRect(s.render, nullptr, sentinel));
         s.clear();
+        EXPECT_EQ(0u, render_pixel(s, 0, 0))
+            << "clear() must fill the whole render surface with background";
+        EXPECT_EQ(0u, render_pixel(s, 160, 100));
+        EXPECT_EQ(0u, render_pixel(s, s.canvas_w() - 1, s.canvas_h() - 1));
+
+        ASSERT_TRUE(SDL_FillSurfaceRect(s.render, nullptr, sentinel));
         s.clear(10, 10, 20, 20);
+        EXPECT_EQ(0u, render_pixel(s, 15, 15))
+            << "clear(rect) must clear inside the rect";
+        EXPECT_EQ(0u, render_pixel(s, 29, 29)) << "rect is [10,30)";
+        EXPECT_EQ(sentinel, render_pixel(s, 30, 30))
+            << "clear(rect) must leave everything outside the rect alone";
+        EXPECT_EQ(sentinel, render_pixel(s, 9, 9));
+
         s.swap(0, 0, 40, 40);
+        ASSERT_TRUE(SDL_FillSurfaceRect(s.render, nullptr, sentinel));
         s.clear_window();
+        EXPECT_EQ(0u, render_pixel(s, 5, 5))
+            << "clear_window() blanks the CPU canvas (and only that: no present)";
     }
 
     {
         Screen s(RenderEngine::SAI, 320, 200, 0);
         s.clear();
         s.swap(0, 0, 40, 40);
+        EXPECT_EQ(0u, render_pixel(s, 20, 20))
+            << "presenting through the smart scaler must not alter the canvas";
     }
 
     {
         Screen s(RenderEngine::Eagle, 320, 200, 0);
-        s.clear();
+        ASSERT_TRUE(SDL_FillSurfaceRect(s.render, nullptr, sentinel));
         s.swap(0, 0, 40, 40);
+        EXPECT_EQ(sentinel, render_pixel(s, 20, 20))
+            << "presenting through Eagle must not alter the canvas";
 
         const std::string path = std::filesystem::temp_directory_path() / "openglad_sai2x_test.bmp";
         char bmp_path[512] = {};
         std::snprintf(bmp_path, sizeof(bmp_path), "%s", path.c_str());
         s.SaveBMP(s.render, bmp_path);
         ASSERT_TRUE(std::filesystem::exists(path)) << "SaveBMP should create output file";
+        SurfacePtr saved(SDL_LoadBMP(path.c_str()));
+        ASSERT_NE(nullptr, saved) << "SaveBMP must write a readable BMP";
+        EXPECT_EQ(s.render->w, saved->w) << "SaveBMP writes the render canvas";
+        EXPECT_EQ(s.render->h, saved->h);
         std::filesystem::remove(path);
     }
 }

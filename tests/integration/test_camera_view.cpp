@@ -201,9 +201,8 @@ protected:
         EXPECT_TRUE(pane.applies);
         const auto [block_w, block_h] = radar_block_extents(
             game_->world().grid.w, game_->world().grid.h);
-        return radar_block_for_pane(pane.y, pane.x + pane.w,
-                                    pane.y + pane.h, block_w, block_h,
-                                    /*force_lower=*/false);
+        return radar_block_for_pane(pane.x + pane.w,
+                                    pane.y + pane.h, block_w, block_h);
     }
 
     // The live-art camera rect for a seat: the radar's compact footprint,
@@ -301,7 +300,6 @@ TEST_F(CameraView, docked_camera_keeps_three_seat_hud_rules)
         for (short seat = 0; seat < 3; ++seat)
         {
             radar r(game_->viewob[seat].get(), game_, seat);
-            r.force_lower_position = true;
             r.start(&radar_level);
             trace_clear();
             ASSERT_EQ(1, r.draw(&radar_level));

@@ -499,27 +499,12 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     check(find_local_player(spoofed_state) != nullptr &&
           find_local_player(spoofed_state)->seat_id == local_player.seat_id);
 
-    // A reply from an older GO attempt may be queued immediately before a
-    // new request. Only the matching request ID may resolve the new pending
-    // attempt; followers with no local request still accept the broadcast.
-    og::sim::LobbyState stale_denial = state;
-    stale_denial.last_start_request_id = 40;
-    stale_denial.last_start_denial =
-        og::sim::start_denial_reason_value(
-            og::sim::StartDenialReason::MachinesNotReady);
-    check(!start_denial_matches_request(stale_denial, 41));
-    stale_denial.last_start_request_id = 41;
-    check(start_denial_matches_request(stale_denial, 41));
-    og::sim::LobbyMessage stale_confirmation;
-    stale_confirmation.payload = og::sim::LobbyStartGameMessage{
-        .player_index = local_player.player_index,
-        .request_id = 40,
-    };
-    check(!start_confirmation_matches_request(stale_confirmation, 41));
-    check(start_confirmation_matches_request(stale_confirmation, 0));
-    std::get<og::sim::LobbyStartGameMessage>(
-        stale_confirmation.payload).request_id = 41;
-    check(start_confirmation_matches_request(stale_confirmation, 41));
+    // The StartGame reply correlation rules (stale denial, follower
+    // broadcast) moved to og::sim::start_denial_matches_request /
+    // start_confirmation_matches_request in src/gameplay/lobby_state.cpp —
+    // one implementation for SDL, curses and the in-process client. Their
+    // truth table is pinned by LobbyState.start_correlation_matchers in
+    // tests/unit/test_lobby_server.cpp, not by this exerciser.
 
     // Team/ready requests must likewise ignore an unrelated state queued
     // before their own echo. The shared bounded waiter keeps polling until
@@ -901,7 +886,11 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         og::runtime::current_game_session = saved_game_session;
     }
 
-    return failed ? -failed_check : 0;
+    // On success report HOW MANY checks ran, not just "no failures": the
+    // caller pins that count, so an exerciser that returned early or a
+    // runtime-guarded block that skipped its checks cannot pass as a clean
+    // run. A failure is still the negated 1-based index of the first one.
+    return failed ? -failed_check : check_index;
 }
 
 } // namespace og::ui::detail

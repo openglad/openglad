@@ -471,6 +471,21 @@ TEST(PickerStateMachine, picker_state_multiplayer_noop_returns_to_menu)
 
     ASSERT_EQ(2, client.show_main_menu_calls) << "multiplayer action should keep picker in main menu";
     ASSERT_EQ(0, client.run_game_calls) << "multiplayer action should not run game";
+
+    // "No-op" is the whole rule: Multiplayer transitions straight back to
+    // MainMenu, visiting no other screen. Without these, a Multiplayer action
+    // mis-routed to TeamBuild (whose scripted result is BackToMainMenu),
+    // Options or Help produces exactly the same two main-menu rounds.
+    EXPECT_EQ(0, client.show_team_build_calls) << "Multiplayer visits no team build";
+    EXPECT_EQ(0, client.configure_networking_calls) << "Multiplayer opens no networking submenu";
+    EXPECT_EQ(0, client.host_game_calls) << "Multiplayer hosts nothing";
+    EXPECT_EQ(0, client.join_game_calls) << "Multiplayer joins nothing";
+    EXPECT_EQ(0, client.show_options_calls) << "Multiplayer opens no options";
+    EXPECT_EQ(0, client.show_help_calls) << "Multiplayer opens no help";
+    EXPECT_EQ(0, client.prepare_new_game_calls) << "Multiplayer prepares no new game";
+    EXPECT_EQ(0, client.show_campaign_select_calls) << "Multiplayer opens no campaign select";
+    EXPECT_EQ(0, client.load_game_calls) << "Multiplayer loads nothing";
+    EXPECT_EQ(0, client.save_game_calls) << "Multiplayer saves nothing";
 }
 
 

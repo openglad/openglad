@@ -3,6 +3,17 @@
 
 #include <openglad/platform/curses/headless_terminal.h>
 
+#include "transcript_capture.h"
+
+#include <unistd.h>
+
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <system_error>
+
 using namespace og::curses;
 
 TEST(HeadlessTerminal, dimensions_and_clear)
@@ -110,4 +121,95 @@ TEST(HeadlessTerminal, resize_dump_and_beep_cover_remaining_helpers)
     EXPECT_EQ(term.text_row(0), "?   ")
         << "the diagnostic text view preserves blank cells and marks Unicode";
     EXPECT_TRUE(term.text_row(-1).empty());
+}
+
+// --- transcript capture (PR #292 P8 media helper) -------------------------
+
+TEST(HeadlessTerminalTranscript, capture_writes_the_full_dump_only_when_env_set)
+{
+    namespace fs = std::filesystem;
+
+    HeadlessTerminal term(3, 12);
+    term.put_str(0, 0, "row-zero", Color::White, Color::Default, false);
+    term.put_str(1, 0, "row-one", Color::White, Color::Default, false);
+    term.put_str(2, 0, "row-two-END", Color::White, Color::Default, false);
+    // Every row, padded to the terminal width, in order, newline-terminated.
+    const std::string expected =
+        "row-zero    \n"
+        "row-one     \n"
+        "row-two-END \n";
+    ASSERT_EQ(expected, term.dump())
+        << "the fixture row set must be the exact transcript the capture ships";
+
+    const char* const previous_dir = std::getenv("OG_FX_CAPTURE_DIR");
+    const std::string saved_dir = previous_dir != nullptr ? previous_dir : "";
+    const fs::path scratch =
+        fs::temp_directory_path() /
+        ("og_transcript_capture_" + std::to_string(::getpid()));
+    std::error_code ec;
+    fs::remove_all(scratch, ec);
+    ASSERT_TRUE(fs::create_directories(scratch, ec)) << "scratch dir: " << ec.message();
+
+    // Arm 1: with the env set, the whole dump lands in <dir>/<name>.txt.
+    ASSERT_EQ(0, ::setenv("OG_FX_CAPTURE_DIR", scratch.c_str(), 1));
+    EXPECT_TRUE(capture_transcript(term, "armed"))
+        << "capture_transcript reports the write it performed";
+    const fs::path armed = scratch / "armed.txt";
+    ASSERT_TRUE(fs::exists(armed)) << "the capture must create <name>.txt";
+    std::string written;
+    {
+        std::ifstream in(armed, std::ios::binary);
+        ASSERT_TRUE(in.good()) << "the written transcript must be readable";
+        written.assign(std::istreambuf_iterator<char>(in),
+                       std::istreambuf_iterator<char>());
+    }
+    EXPECT_EQ(expected, written)
+        << "every row of the terminal, in order, must reach the file";
+    EXPECT_EQ(expected.size(), static_cast<std::size_t>(fs::file_size(armed)))
+        << "no row may be dropped from the tail of the transcript";
+
+    // Arm 2: with the env unset the helper is inert -- no file, no throw, so
+    // the capture calls inside a regression test change nothing in a plain run.
+    ASSERT_EQ(0, ::unsetenv("OG_FX_CAPTURE_DIR"));
+    EXPECT_FALSE(capture_transcript(term, "unarmed"))
+        << "an unset OG_FX_CAPTURE_DIR must write nothing";
+    EXPECT_FALSE(fs::exists(scratch / "unarmed.txt"))
+        << "no transcript file may appear when the capture is not armed";
+    EXPECT_EQ(1u, std::distance(fs::directory_iterator(scratch),
+                                fs::directory_iterator()))
+        << "the armed capture is the only file the helper ever created";
+
+    // Arm 3: an empty value counts as unset.
+    ASSERT_EQ(0, ::setenv("OG_FX_CAPTURE_DIR", "", 1));
+    EXPECT_FALSE(capture_transcript(term, "empty-env"))
+        << "an empty OG_FX_CAPTURE_DIR is not a directory";
+    EXPECT_FALSE(fs::exists(scratch / "empty-env.txt"))
+        << "an empty OG_FX_CAPTURE_DIR must not write a file";
+
+    if (saved_dir.empty())
+        ASSERT_EQ(0, ::unsetenv("OG_FX_CAPTURE_DIR"));
+    else
+        ASSERT_EQ(0, ::setenv("OG_FX_CAPTURE_DIR", saved_dir.c_str(), 1));
+    fs::remove_all(scratch, ec);
+}
+
+TEST(HeadlessTerminalTranscript, phase_tag_defaults_to_run)
+{
+    const char* const previous = std::getenv("OG_FX_PHASE");
+    const std::string saved = previous != nullptr ? previous : "";
+
+    ASSERT_EQ(0, ::unsetenv("OG_FX_PHASE"));
+    EXPECT_EQ("run", transcript_phase())
+        << "an unset phase tags the transcript 'run'";
+    ASSERT_EQ(0, ::setenv("OG_FX_PHASE", "", 1));
+    EXPECT_EQ("run", transcript_phase())
+        << "an empty phase tags the transcript 'run'";
+    ASSERT_EQ(0, ::setenv("OG_FX_PHASE", "before", 1));
+    EXPECT_EQ("before", transcript_phase())
+        << "the capture names carry the phase the run asked for";
+
+    if (saved.empty())
+        ASSERT_EQ(0, ::unsetenv("OG_FX_PHASE"));
+    else
+        ASSERT_EQ(0, ::setenv("OG_FX_PHASE", saved.c_str(), 1));
 }

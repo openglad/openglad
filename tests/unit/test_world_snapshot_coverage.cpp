@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "test_game_world_fixture.h"
-#include "zlib.h"
+#include "test_zlib_helpers.h"
 
 #include <array>
 #include <cstddef>
@@ -66,39 +66,7 @@ void write_u32(std::vector<std::uint8_t>& bytes,
     }
 }
 
-std::vector<std::uint8_t> inflate_for_test(const std::uint8_t* data,
-                                           std::size_t size)
-{
-    z_stream stream{};
-    stream.next_in = const_cast<Bytef*>(
-        reinterpret_cast<const Bytef*>(data));
-    stream.avail_in = static_cast<uInt>(size);
-    if (inflateInit(&stream) != Z_OK)
-        throw std::runtime_error("test inflate setup failed");
-
-    std::vector<std::uint8_t> output;
-    std::array<std::uint8_t, 512> chunk{};
-    int rc = Z_OK;
-    do
-    {
-        stream.next_out = chunk.data();
-        stream.avail_out = static_cast<uInt>(chunk.size());
-        rc = inflate(&stream, Z_NO_FLUSH);
-        if (rc != Z_OK && rc != Z_STREAM_END)
-        {
-            inflateEnd(&stream);
-            throw std::runtime_error("test inflate failed");
-        }
-        output.insert(output.end(), chunk.begin(),
-                      chunk.begin() +
-                          static_cast<std::ptrdiff_t>(chunk.size() -
-                                                      stream.avail_out));
-    } while (rc != Z_STREAM_END);
-
-    if (inflateEnd(&stream) != Z_OK)
-        throw std::runtime_error("test inflate teardown failed");
-    return output;
-}
+using og::test_zlib::inflate_for_test;
 
 std::vector<std::uint8_t> raw_delta_payload(
     const og::sim::WorldSnapshot& snapshot)

@@ -958,7 +958,6 @@ inline constexpr int kSeatRailGlobalSeatCap = 16;
 // now? Kept as data so the rail's chrome and the button's row state can never
 // disagree about the answer.
 struct SeatClaimability {
-    bool multiplayer_enabled = true;  // false in a DISABLE_MULTIPLAYER build
     int local_count = 0;              // seats this machine already owns
     int local_seat_cap = MAX_PLAYERS; // og::input::local_seat_cap()
     int global_count = 0;             // seats across the whole lobby
@@ -966,14 +965,13 @@ struct SeatClaimability {
 };
 
 // Seats this machine may still claim: the smaller headroom of the two caps,
-// never negative, and zero when the build has no multiplayer at all.
+// never negative.
 int seats_still_claimable(const SeatClaimability& claim);
 
 // Slots the rail shows at all. What limits the rail is the DEVICE, never the
 // lobby: a phone with no pad shows exactly one slot (#249 — an offer the
 // hardware cannot accept is worse than no offer), a phone with two pads
-// three, a desktop four. A build with no multiplayer has one seat and no
-// door to a second.
+// three, a desktop four.
 int base_camp_seat_rail_slot_cap(const SeatClaimability& claim);
 
 // Bare slots after this machine's own seats: every remaining slot inside the
@@ -1155,6 +1153,14 @@ void set_player_count(SaveData& save, int count);
 
 // Returns true when numplayers == 0 (spectator / autoplay mode).
 bool is_spectator_mode(const SaveData& save);
+
+// How many viewscreens the battle opens for this save. Spectator mode still
+// needs ONE view for the camera to look through, so numplayers == 0 answers 1;
+// every other count answers itself. The single owner of that rule: both the
+// load path (src/platform/sdl/game.cpp) and Base Camp's ready_for_battle
+// (src/interface/ui/picker_team_build.cpp) call this instead of repeating the
+// conditional.
+short spectator_view_count(const SaveData& save);
 
 // --- Label formatting ---
 

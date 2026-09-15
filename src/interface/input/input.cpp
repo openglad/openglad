@@ -182,24 +182,6 @@ std::pair<float, float> window_to_active_canvas(float x, float y)
             (y - static_cast<float>(viewport.y)) * active_canvas_h() / h};
 }
 
-bool window_point_in_gameplay_ui_canvas(float x, float y)
-{
-    const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
-    return x >= static_cast<float>(viewport.x) &&
-           y >= static_cast<float>(viewport.y) &&
-           x < static_cast<float>(viewport.x + viewport.w) &&
-           y < static_cast<float>(viewport.y + viewport.h);
-}
-
-std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y)
-{
-    const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
-    const float w = static_cast<float>(std::max(1, viewport.w));
-    const float h = static_cast<float>(std::max(1, viewport.h));
-    return {(x - static_cast<float>(viewport.x)) * gameplay_ui_canvas_w() / w,
-            (y - static_cast<float>(viewport.y)) * gameplay_ui_canvas_h() / h};
-}
-
 std::pair<float, float> active_canvas_to_window(float x, float y)
 {
     const og::CanvasViewport viewport = active_canvas_viewport();
@@ -229,89 +211,6 @@ std::pair<float, float> ui_canvas_to_window(float x, float y)
             static_cast<float>(viewport.y) +
                 y * static_cast<float>(viewport.h) /
                     static_cast<float>(kUiCanvasH)};
-}
-
-namespace
-{
-int scale_touch_coordinate(int value, int canvas_extent, int reference_extent)
-{
-    return static_cast<int>(static_cast<long long>(value) * canvas_extent /
-                            reference_extent);
-}
-
-TouchControlRect scale_touch_rect(int x, int y, int w, int h,
-                                  int canvas_w, int canvas_h)
-{
-    const int left = scale_touch_coordinate(
-        x, canvas_w, TOUCH_REFERENCE_CANVAS_W);
-    const int top = scale_touch_coordinate(
-        y, canvas_h, TOUCH_REFERENCE_CANVAS_H);
-    const int right = scale_touch_coordinate(
-        x + w, canvas_w, TOUCH_REFERENCE_CANVAS_W);
-    const int bottom = scale_touch_coordinate(
-        y + h, canvas_h, TOUCH_REFERENCE_CANVAS_H);
-    return {left, top, std::max(1, right - left), std::max(1, bottom - top)};
-}
-} // namespace
-
-TouchControlLayout touch_control_layout(int canvas_w, int canvas_h)
-{
-    TouchControlLayout layout;
-    layout.canvas_w = std::max(TOUCH_REFERENCE_CANVAS_W, canvas_w);
-    layout.canvas_h = std::max(TOUCH_REFERENCE_CANVAS_H, canvas_h);
-
-    const auto rect = [&](int x, int y, int w, int h) {
-        return scale_touch_rect(x, y, w, h, layout.canvas_w, layout.canvas_h);
-    };
-    const auto sx = [&](int value) {
-        return scale_touch_coordinate(
-            value, layout.canvas_w, TOUCH_REFERENCE_CANVAS_W);
-    };
-    const auto sy = [&](int value) {
-        return scale_touch_coordinate(
-            value, layout.canvas_h, TOUCH_REFERENCE_CANVAS_H);
-    };
-
-    layout.fire = rect(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM);
-    layout.special = rect(
-        SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM);
-    layout.yell = rect(YO_BUTTON_X - BUTTON_DIM / 2,
-                       YO_BUTTON_Y - BUTTON_DIM / 2,
-                       BUTTON_DIM, BUTTON_DIM);
-    layout.switch_character = rect(
-        SWITCH_CHARACTER_BUTTON_X, SWITCH_CHARACTER_BUTTON_Y,
-        BUTTON_DIM * 2, BUTTON_DIM * 2);
-    layout.next_special = rect(
-        NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM);
-    layout.alternate_special = rect(
-        ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y,
-        BUTTON_DIM, BUTTON_DIM);
-
-    layout.movement_region_right = sx(
-        TOUCH_REFERENCE_CANVAS_W / 2 - BUTTON_DIM / 2);
-    layout.movement_region_top = sy(BUTTON_DIM * 2);
-    layout.movement_center_min_x = sx(MOVE_AREA_DIM / 2 + 1);
-    layout.movement_center_min_y = sy(MOVE_AREA_DIM / 2 + 1);
-    layout.movement_center_max_y = sy(
-        TOUCH_REFERENCE_CANVAS_H - (MOVE_AREA_DIM / 2 + 1));
-    layout.movement_dead_zone_x = std::max(1, sx(MOVE_DEAD_ZONE));
-    layout.movement_dead_zone_y = std::max(1, sy(MOVE_DEAD_ZONE));
-    layout.tap_slop_x = std::max(1, sx(2));
-    layout.tap_slop_y = std::max(1, sy(2));
-
-    layout.movement_area_offset_x = sx(MOVE_AREA_DIM / 2);
-    layout.movement_area_offset_y = sy(MOVE_AREA_DIM / 2);
-    layout.movement_area_w = std::max(1, sx(MOVE_AREA_DIM));
-    layout.movement_area_h = std::max(1, sy(MOVE_AREA_DIM));
-    layout.movement_center_offset_x = sx(4);
-    layout.movement_center_offset_y = sy(4);
-    layout.movement_center_w = std::max(1, sx(8));
-    layout.movement_center_h = std::max(1, sy(8));
-    layout.movement_target_offset_x = sx(2);
-    layout.movement_target_offset_y = sy(2);
-    layout.movement_target_w = std::max(1, sx(4));
-    layout.movement_target_h = std::max(1, sy(4));
-    return layout;
 }
 
 void update_overscan_setting()
@@ -560,20 +459,6 @@ void get_input_events(bool type)
     }
 }
 
-#ifdef USE_TOUCH_INPUT
-
-#endif
-
-void sendFakeKeyDownEvent(int keycode)
-{
-    og::input_native::push_key_event(true, keycode);
-}
-
-void sendFakeKeyUpEvent(int keycode)
-{
-    og::input_native::push_key_event(false, keycode);
-}
-
 // handle_window_event and handle_key_event are implemented in
 // runtime/input_event_bridge.cpp to avoid runtime/render deps in input module.
 
@@ -612,7 +497,6 @@ void handle_mouse_event(const void* native_event)
         ++og::runtime::current_session->key_press_serial_;
         break;
 
-#ifndef USE_TOUCH_INPUT
         // Mouse event
     case og::input_native::EventType::MouseMotion:
         {
@@ -679,231 +563,6 @@ void handle_mouse_event(const void* native_event)
             mouse_state.y = static_cast<float>(static_cast<int>(y));
         }
         break;
-#else
-#ifdef FAKE_TOUCH_EVENTS
-    // Convert SDL mouse events to fake SDL touch events
-    case og::input_native::EventType::MouseMotion:
-        {
-            og::input_native::push_touch_event(
-                og::input_native::EventType::FingerMotion,
-                event.motion_x / og::runtime::current_session->window_w_,
-                event.motion_y / og::runtime::current_session->window_h_,
-                event.motion_dx / og::runtime::current_session->window_w_,
-                event.motion_dy / og::runtime::current_session->window_h_,
-                1);
-        }
-        break;
-    case og::input_native::EventType::MouseButtonUp:
-        {
-            og::input_native::push_touch_event(
-                og::input_native::EventType::FingerUp,
-                event.button_x / og::runtime::current_session->window_w_,
-                event.button_y / og::runtime::current_session->window_h_,
-                0.0f, 0.0f,
-                1);
-        }
-        break;
-    case og::input_native::EventType::MouseButtonDown:
-        {
-            og::input_native::push_touch_event(
-                og::input_native::EventType::FingerDown,
-                event.button_x / og::runtime::current_session->window_w_,
-                event.button_y / og::runtime::current_session->window_h_,
-                0.0f, 0.0f,
-                1);
-        }
-        break;
-#endif
-        // Mouse event
-    case og::input_native::EventType::FingerMotion:
-        {
-            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
-                event.finger_x * og::runtime::current_session->window_w_,
-                event.finger_y * og::runtime::current_session->window_h_);
-            int x = static_cast<int>(mapped_x);
-            int y = static_cast<int>(mapped_y);
-            const TouchControlLayout layout = touch_control_layout(
-                static_cast<int>(gameplay_ui_canvas_w()),
-                static_cast<int>(gameplay_ui_canvas_h()));
-        
-        og::runtime::current_session->scroll_amount_ = y - mouse_state.y;
-        
-        mouse_state.x = x;
-        mouse_state.y = y;
-        
-        if(hw().moving && event.finger_id == hw().movingTouch)
-        {
-            hw().moving_touch_target_x = x;
-            hw().moving_touch_target_y = y;
-            
-            hw().touch_keystate[0][KEY_UP] = false;
-            hw().touch_keystate[0][KEY_UP_RIGHT] = false;
-            hw().touch_keystate[0][KEY_RIGHT] = false;
-            hw().touch_keystate[0][KEY_DOWN_RIGHT] = false;
-            hw().touch_keystate[0][KEY_DOWN] = false;
-            hw().touch_keystate[0][KEY_DOWN_LEFT] = false;
-            hw().touch_keystate[0][KEY_LEFT] = false;
-            hw().touch_keystate[0][KEY_UP_LEFT] = false;
-            
-            const int movement_dx = x - hw().moving_touch_x;
-            const int movement_dy = y - hw().moving_touch_y;
-            if(abs(movement_dx) > layout.movement_dead_zone_x ||
-               abs(movement_dy) > layout.movement_dead_zone_y)
-            {
-                float offset = -M_PI + M_PI/8;
-                float interval = M_PI/4;
-                // Canvas dimensions round slightly at some zoom steps. Convert
-                // the delta back into reference-layout units before selecting
-                // a direction so that rounding cannot skew the radial sectors.
-                const float reference_dx = static_cast<float>(movement_dx) *
-                    static_cast<float>(TOUCH_REFERENCE_CANVAS_W) /
-                    static_cast<float>(layout.canvas_w);
-                const float reference_dy = static_cast<float>(movement_dy) *
-                    static_cast<float>(TOUCH_REFERENCE_CANVAS_H) /
-                    static_cast<float>(layout.canvas_h);
-                float angle = atan2(reference_dy, reference_dx);
-                if(angle < -M_PI + M_PI/8 || angle >= M_PI - M_PI/8)
-                    hw().touch_keystate[0][KEY_LEFT] = true;
-                else if(angle >= offset && angle < offset + interval)
-                    hw().touch_keystate[0][KEY_UP_LEFT] = true;
-                else if(angle >= offset + interval && angle < offset + 2*interval)
-                    hw().touch_keystate[0][KEY_UP] = true;
-                else if(angle >= offset + 2*interval && angle < offset + 3*interval)
-                    hw().touch_keystate[0][KEY_UP_RIGHT] = true;
-                else if(angle >= offset + 3*interval && angle < offset + 4*interval)
-                    hw().touch_keystate[0][KEY_RIGHT] = true;
-                else if(angle >= offset + 4*interval && angle < offset + 5*interval)
-                    hw().touch_keystate[0][KEY_DOWN_RIGHT] = true;
-                else if(angle >= offset + 5*interval && angle < offset + 6*interval)
-                    hw().touch_keystate[0][KEY_DOWN] = true;
-                else if(angle >= offset + 6*interval && angle < offset + 7*interval)
-                    hw().touch_keystate[0][KEY_DOWN_LEFT] = true;
-            }
-        }
-        }
-        break;
-    case og::input_native::EventType::FingerUp:
-        {
-            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
-                event.finger_x * og::runtime::current_session->window_w_,
-                event.finger_y * og::runtime::current_session->window_h_);
-            int x = static_cast<int>(mapped_x);
-            int y = static_cast<int>(mapped_y);
-            const TouchControlLayout layout = touch_control_layout(
-                static_cast<int>(gameplay_ui_canvas_w()),
-                static_cast<int>(gameplay_ui_canvas_h()));
-            if(hw().tapping)
-            {
-                hw().tapping = false;
-                if(abs(x - hw().start_tap_x) < layout.tap_slop_x &&
-                   abs(y - hw().start_tap_y) < layout.tap_slop_y)
-                    og::runtime::current_session->input_continue_ = true;
-                else
-                    og::runtime::current_session->input_continue_ = false;
-                hw().start_tap_x = x;
-                hw().start_tap_y = y;
-            }
-            
-            if(hw().moving && event.finger_id == hw().movingTouch)
-            {
-                hw().moving = false;
-                
-                hw().touch_keystate[0][KEY_UP] = false;
-                hw().touch_keystate[0][KEY_UP_RIGHT] = false;
-                hw().touch_keystate[0][KEY_RIGHT] = false;
-                hw().touch_keystate[0][KEY_DOWN_RIGHT] = false;
-                hw().touch_keystate[0][KEY_DOWN] = false;
-                hw().touch_keystate[0][KEY_DOWN_LEFT] = false;
-                hw().touch_keystate[0][KEY_LEFT] = false;
-                hw().touch_keystate[0][KEY_UP_LEFT] = false;
-            }
-            if(hw().firing && event.finger_id == hw().firingTouch)
-            {
-                hw().firing = false;
-                hw().touch_keystate[0][KEY_FIRE] = false;
-            }
-            
-            mouse_state.left = 0;
-        }
-        break;
-    case og::input_native::EventType::FingerDown:
-        {
-            const float window_x =
-                event.finger_x * og::runtime::current_session->window_w_;
-            const float window_y =
-                event.finger_y * og::runtime::current_session->window_h_;
-            if (!window_point_in_gameplay_ui_canvas(window_x, window_y))
-                break;
-            hw().tapping = true;
-
-            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
-                window_x, window_y);
-            int x = static_cast<int>(mapped_x);
-            int y = static_cast<int>(mapped_y);
-            const TouchControlLayout layout = touch_control_layout(
-                static_cast<int>(gameplay_ui_canvas_w()),
-                static_cast<int>(gameplay_ui_canvas_h()));
-            
-            hw().start_tap_x = x;
-            hw().start_tap_y = y;
-            og::runtime::current_session->input_continue_ = false;
-            
-            if(!hw().firing && layout.fire.contains(x, y))
-            {
-                hw().firing = true;
-                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_FIRE]);
-                hw().touch_keystate[0][KEY_FIRE] = true;
-                hw().firingTouch = event.finger_id;
-            }
-            else if(layout.special.contains(x, y))
-            {
-                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SPECIAL]);
-            }
-            else if(layout.yell.contains(x, y))
-            {
-                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_YELL]);
-            }
-            else if(layout.switch_character.contains(x, y))
-            {
-                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SWITCH]);
-            }
-            else if(layout.next_special.contains(x, y))
-            {
-                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SPECIAL_SWITCH]);
-            }
-            else if(layout.alternate_special.contains(x, y))
-            {
-                // Treat KEY_SHIFTER as an action instead of a modifier
-                if(input_touch_has_alternate())
-                    sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]);
-            }
-            // Only move with the lower left corner of the screen (and offset for other buttons)
-            else if(!hw().moving && x < layout.movement_region_right &&
-                    y > layout.movement_region_top)
-            {
-                hw().moving_touch_x = x;
-                hw().moving_touch_y = y;
-                hw().moving_touch_target_x = x;
-                hw().moving_touch_target_y = y;
-                if(hw().moving_touch_x < layout.movement_center_min_x)
-                    hw().moving_touch_x = layout.movement_center_min_x;
-                if(hw().moving_touch_y < layout.movement_center_min_y)
-                    hw().moving_touch_y = layout.movement_center_min_y;
-                else if(hw().moving_touch_y > layout.movement_center_max_y)
-                    hw().moving_touch_y = layout.movement_center_max_y;
-                hw().moving = true;
-                hw().movingTouch = event.finger_id;
-            }
-            
-            
-            og::runtime::current_session->key_press_event_ = 1;
-        ++og::runtime::current_session->key_press_serial_;
-            mouse_state.left = 1;
-            mouse_state.x = x;
-            mouse_state.y = y;
-        }
-        break;
-#endif
     default:
         break;
     }
@@ -1222,10 +881,6 @@ void clear_keyboard()
     og::runtime::current_session->raw_text_input_.clear();
     
     og::runtime::current_session->input_continue_ = false;
-
-    #ifdef USE_TOUCH_INPUT
-    hw().tapping = false;
-    #endif
 }
 
 //
@@ -1614,9 +1269,9 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
 {
     if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
         return false;
-    // Touch held-state seam, written by the web DOM overlay or native SDL
-    // touch path. It is additive with joystick and keyboard and deliberately
-    // independent of keyboard control mode.
+    // Touch held-state seam, written by the web DOM overlay
+    // (web_touch_bridge.cpp). It is additive with joystick and keyboard and
+    // deliberately independent of keyboard control mode.
     if (hw().touch_keystate[player_index][key_enum])
         return true;
     // FIXME: On Android/iOS, do not mistake an accelerometer for a gamepad.
@@ -1696,9 +1351,7 @@ void grab_mouse()
 
 void release_mouse()
 {
-    #ifndef FAKE_TOUCH_EVENTS
     og::input_native::show_cursor(false);
-    #endif
 }
 
 MouseState& query_mouse()

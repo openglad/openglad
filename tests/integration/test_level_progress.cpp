@@ -36,6 +36,17 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 struct EventSequence {
     bool started;
     bool finished;
+    // Every edge the flow must actually reach. The injector records the
+    // return of its own waits/clicks so the test body can ASSERT on them:
+    // without this a screen that never opens only makes the injector time
+    // out through its waits, and the test stays green (slowly).
+    bool continue_clicked;
+    bool scenario_open;
+    bool scenario_clicked;
+    bool progress_clicked;
+    bool progress_open;
+    bool progress_back_clicked;
+    bool scenario_reopened;
 };
 
 static int event_injector_thread(void* data)
@@ -48,60 +59,55 @@ static int event_injector_thread(void* data)
     // derivation), but fades are INSTANT under TESTING — the 750ms is a
     // generic settle for the runner loop, not fade timing.
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    wait_for_menu_frames(2);
 
     // Step 1: Click "CONTINUE GAME"
     fprintf(stderr, "  [test] Step 1: clicking continue_game\n");
-    interact("continue_game");
+    seq->continue_clicked = interact("continue_game");
 
     // Wait for create_team_menu to init after fade + level load. Base Camp's
     // depth-1 entry fades (a fade-out unless a teardown noted the surface
     // black, the cold compose, a fade-in); the level reload happens in the
     // runner loop's reload guard.
     // PROGRESS lives inside the SCENARIO subscreen now.
-    SDL_Delay(500);
-    wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
+    seq->scenario_open = wait_for_interactable("scenario", 10000);
+    wait_for_menu_frames(2);
 
     // Step 2: Open the SCENARIO subscreen, then click "PROGRESS"
     fprintf(stderr, "  [test] Step 2: clicking scenario, then progress\n");
-    interact("scenario");
+    seq->scenario_clicked = interact("scenario");
     wait_for_interactable("progress", 10000);
-    SDL_Delay(500);
-    interact("progress");
+    wait_for_menu_frames(2);
+    seq->progress_clicked = interact("progress");
 
     // Wait for create_progress_menu to load level data and enter its loop.
     // "prev" is unique to the progress menu here, so waiting on it (instead
     // of the ambiguous per-screen "back") confirms the right screen is up.
-    SDL_Delay(500);
-    wait_for_interactable("prev", 10000);
-    SDL_Delay(500);
+    seq->progress_open = wait_for_interactable("prev", 10000);
+    wait_for_menu_frames(2);
 
     // Step 3: Click "BACK" in the progress menu
     fprintf(stderr, "  [test] Step 3: clicking progress back\n");
-    interact("back");
+    seq->progress_back_clicked = interact("back");
 
     // create_progress_menu returns REDRAW, so we're back in the SCENARIO
     // subscreen. Wait for its unique "view_scenario" button, then BACK out.
-    SDL_Delay(2000);
-    wait_for_interactable("view_scenario", 10000);
-    SDL_Delay(500);
+    seq->scenario_reopened = wait_for_interactable("view_scenario", 10000);
+    wait_for_menu_frames(2);
 
     // Step 4: Click "BACK" in the scenario menu
     fprintf(stderr, "  [test] Step 4: clicking scenario back\n");
     interact("back");
 
     // Step 5: Click "BACK" in the team menu
-    SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
-    SDL_Delay(500);
+    wait_for_menu_frames(2);
     fprintf(stderr, "  [test] Step 5: clicking team back\n");
     interact("back");
 
     // Back returns to the main menu. Trip the test-mode max-loop guard so
     // picker_main() does not sit in a fresh mainmenu() waiting for input.
     g_picker_mainmenu_calls = g_picker_max_mainmenu_calls;
-    SDL_Delay(500);
 
     seq->finished = true;
     return 0;
@@ -133,8 +139,6 @@ TEST(LevelProgress, menu) {
     // company another test founded would take the session over silently.
     // Seed through the autosave choke point that stamps, and check after the
     // flow which company it actually got.
-    ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -147,7 +151,7 @@ TEST(LevelProgress, menu) {
         << "save0 must be seeded as the most recent company on disk";
 
     // Start the event injector thread
-    EventSequence seq = { false, false };
+    EventSequence seq = {};
     SDL_Thread* thread = SDL_CreateThread(event_injector_thread, "test_injector", &seq);
     ASSERT_TRUE(thread != nullptr) << "failed to create event injector thread";
 
@@ -171,6 +175,21 @@ TEST(LevelProgress, menu) {
     // If we got here without crashing, the regression test passed
     ASSERT_TRUE(seq.finished) << "event injector thread should have completed";
 
-    // Verify the progress menu was actually entered by checking traces
-    ASSERT_TRUE(trace_contains("menu", "init_buttons")) << "menu buttons should have been initialized";
+    // Every edge of CONTINUE -> SCENARIO -> PROGRESS -> BACK actually
+    // happened. trace_contains("menu", "init_buttons") could not tell these
+    // apart: button.cpp emits it for the main menu too, so it stays green
+    // even when SCENARIO or PROGRESS never opens and the injector merely
+    // times out through its waits. "prev" is the progress menu's own row on
+    // this path (kProgressMenuRows), so waiting on it names the screen.
+    ASSERT_TRUE(seq.continue_clicked) << "CONTINUE GAME must have been clicked";
+    ASSERT_TRUE(seq.scenario_open)
+        << "Base Camp must have exposed its SCENARIO door";
+    ASSERT_TRUE(seq.scenario_clicked) << "SCENARIO must have been clicked";
+    ASSERT_TRUE(seq.progress_clicked) << "PROGRESS must have been clicked";
+    ASSERT_TRUE(seq.progress_open)
+        << "the progress menu must have opened (its own 'prev' row)";
+    ASSERT_TRUE(seq.progress_back_clicked)
+        << "BACK must have been clicked inside the progress menu";
+    ASSERT_TRUE(seq.scenario_reopened)
+        << "BACK from progress must land back on the SCENARIO subscreen";
 }

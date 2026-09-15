@@ -128,8 +128,6 @@ public:
     virtual void clearbuffer(int x, int y, int w, int h) = 0;
     virtual void clear_window() = 0;
 
-    virtual std::span<unsigned char> getbuffer() = 0;
-    virtual void putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize) = 0;
     virtual void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) = 0;
     virtual void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag) = 0;
     virtual void fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) = 0;
@@ -256,6 +254,10 @@ public:
                                    Sint32 portstartx, Sint32 portstarty,
                                    Sint32 portendx, Sint32 portendy,
                                    std::span<const unsigned char> sourceptr, unsigned char teamcolor) = 0;
+    // The alpha form of putdatatext(..., color) behind the sprite clipper: font
+    // ink (>247) lands as `teamcolor`, a literal palette byte keeps itself, 0 is
+    // transparent, each pixel blended at `alpha`. The damage/heal numbers
+    // (text::write_char_xy_alpha) are its only caller.
     virtual void walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                                          Sint32 walkerwidth, Sint32 walkerheight,
                                          Sint32 portstartx, Sint32 portstarty,
@@ -263,8 +265,9 @@ public:
                                          std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) = 0;
 
     // Full-color, team-recolored sprite blit with a global alpha (for faded
-    // lower floors / ghosted upper floors). Unlike walkputbuffertext_alpha
-    // (single-color), this preserves the sprite's real colors.
+    // lower floors / ghosted upper floors). Unlike walkputbuffertext_alpha (a
+    // text blitter: ink bytes land as one colour), this preserves the sprite's
+    // real colours and applies the team ramp.
     virtual void walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                                      Sint32 walkerwidth, Sint32 walkerheight,
                                      Sint32 portstartx, Sint32 portstarty,
@@ -328,8 +331,6 @@ public:
     virtual void draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2) = 0;
 
     virtual void darken_screen() = 0;
-
-    virtual void swap() = 0;
 
     // Canvas routing (see the CanvasTarget block above).
     // canvas_w/canvas_h are the ACTIVE canvas dimensions: all offset-based
@@ -473,9 +474,6 @@ public:
     virtual std::array<unsigned char, 768>& redpalette_ref() = 0;
     virtual std::array<unsigned char, 768>& bluepalette_ref() = 0;
     virtual std::array<unsigned char, 768>& dospalette_ref() = 0;
-    // Legacy scratch buffer sized to the canvas area (kUiCanvasW*kUiCanvasH
-    // by default) — a vector so a future world-canvas resize can re-size it.
-    virtual std::vector<unsigned char>& videobuffer_ref() = 0;
     virtual short& cyclemode_ref() = 0;
     virtual text& text_normal_ref() = 0;
     virtual text& text_big_ref() = 0;

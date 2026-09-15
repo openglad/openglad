@@ -311,14 +311,30 @@ TEST(MenuSpec, gate_state_matrix)
               og::ui::gate_state(GateBinding{MenuGate::Custom, nullptr, {}}, local));
 }
 
-TEST(MenuSpec, terminal_gate_messages_leave_scenario_troops_free)
+TEST(MenuSpec, ready_guard_is_the_only_terminal_gate_message)
 {
     SaveData save;
     save.current_campaign = "gladiator";
 
     // The match-rule knobs left the terminal menus for the camp's MATCH
     // SETUP page, and their versus guard left with them; the SCENARIO
-    // troops row went with the knob itself (amendment B5).
+    // troops row went with the knob itself (amendment B5). READY is the one
+    // surviving gated terminal command (terminal_item_gate maps it to a
+    // NetworkedOnly binding), so BOTH of its arms are pinned here: the
+    // exact refusal line outside a lobby, and silence inside one.
+    const PickerMenuItem* ready =
+        item_of(PickerMenuId::TeamBuild, PickerMenuCommand::ToggleReady);
+    ASSERT_NE(nullptr, ready) << "the TEAM BUILD menu must carry a READY row";
+
+    EXPECT_EQ("Ready applies to networked lobbies only.",
+              og::ui::terminal_gate_message(*ready, context_for(save)))
+        << "a local session must be told why READY does nothing";
+
+    MenuLabelContext networked = context_for(save);
+    networked.is_networked = true;
+    networked.is_host = false;
+    EXPECT_EQ("", og::ui::terminal_gate_message(*ready, networked))
+        << "inside a networked lobby READY is live and must carry no guard";
 
     // Ungated items never produce a message.
     const PickerMenuItem* view_team =

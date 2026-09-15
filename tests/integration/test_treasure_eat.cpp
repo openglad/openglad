@@ -47,16 +47,22 @@ static Uint32 total_team_score()
 TEST(TreasureEat, drumstick)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->stats()->set_hitpoints(50);
     eater->stats()->set_max_hitpoints(100);
 
     walker* drum = make_treasure(FAMILY_DRUMSTICK, 1);
-    if (!drum) { delete eater; return; }
+    ASSERT_NE(nullptr, drum) << "treasure fixture must exist for any eat_me rule to be under test";
 
     drum->eat_me(eater);
-    ASSERT_TRUE(eater->stats()->hitpoints() > 50) << "drumstick should heal";
-    ASSERT_TRUE(eater->stats()->hitpoints() <= 100) << "should not exceed max HP";
+    // packs/core/lib/treasure_consumables.lua:15-29 - the heal is
+    // base + rand0(base) with base = heal_per_level * level, and
+    // packs/core/families/treasure-01-drumstick.lua:22 sets heal_per_level=10,
+    // so a level-1 drumstick heals 10..19 onto the starting 50 hp.
+    EXPECT_GE(eater->stats()->hitpoints(), 60.0f)
+        << "a level-1 drumstick heals at least base (10 * level) hp";
+    EXPECT_LE(eater->stats()->hitpoints(), 69.0f)
+        << "a level-1 drumstick heals at most base + rand0(base) - 1 = 19 hp";
 
     og::runtime::current_session->myscreen_->world().remove_ob(drum);
     delete eater;
@@ -66,11 +72,11 @@ TEST(TreasureEat, drumstick)
 TEST(TreasureEat, drumstick_full_hp)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->stats()->set_hitpoints(eater->stats()->max_hitpoints());
 
     walker* drum = make_treasure(FAMILY_DRUMSTICK, 1);
-    if (!drum) { delete eater; return; }
+    ASSERT_NE(nullptr, drum) << "treasure fixture must exist for any eat_me rule to be under test";
 
     float hp_before = eater->stats()->hitpoints();
     drum->eat_me(eater);
@@ -85,11 +91,11 @@ TEST(TreasureEat, drumstick_full_hp)
 TEST(TreasureEat, gold_bar)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_team_num(0);
 
     walker* gold = make_treasure(FAMILY_GOLD_BAR, 2);
-    if (!gold) { delete eater; return; }
+    ASSERT_NE(nullptr, gold) << "treasure fixture must exist for any eat_me rule to be under test";
 
     Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[0];
     if (current_game && current_game->sim_events)
@@ -121,11 +127,11 @@ TEST(TreasureEat, gold_bar)
 TEST(TreasureEat, gold_bar_invalid_team_does_not_index_score_array)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_team_num(250); // corrupted scenario team id
 
     walker* gold = make_treasure(FAMILY_GOLD_BAR, 2);
-    if (!gold) { delete eater; return; }
+    ASSERT_NE(nullptr, gold) << "treasure fixture must exist for any eat_me rule to be under test";
 
     og::runtime::current_session->myscreen_->world_.m_score[0] = 10;
     og::runtime::current_session->myscreen_->world_.m_score[1] = 20;
@@ -145,11 +151,11 @@ TEST(TreasureEat, gold_bar_invalid_team_does_not_index_score_array)
 TEST(TreasureEat, silver_bar)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_team_num(0);
 
     walker* silver = make_treasure(FAMILY_SILVER_BAR, 3);
-    if (!silver) { delete eater; return; }
+    ASSERT_NE(nullptr, silver) << "treasure fixture must exist for any eat_me rule to be under test";
 
     Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[0];
     silver->eat_me(eater);
@@ -165,12 +171,12 @@ TEST(TreasureEat, silver_bar)
 TEST(TreasureEat, flight_potion)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_flight_left(0);
     eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_FLIGHT_POTION, 2);
-    if (!potion) { delete eater; return; }
+    ASSERT_NE(nullptr, potion) << "treasure fixture must exist for any eat_me rule to be under test";
 
     potion->eat_me(eater);
     ASSERT_TRUE(eater->flight_left() > 0) << "flight potion grants flight";
@@ -184,13 +190,13 @@ TEST(TreasureEat, flight_potion)
 TEST(TreasureEat, magic_potion)
 {
     walker* eater = make_eater(FAMILY_MAGE, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->stats()->set_magicpoints(10);
     eater->stats()->set_max_magicpoints(100);
     eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_MAGIC_POTION, 2);
-    if (!potion) { delete eater; return; }
+    ASSERT_NE(nullptr, potion) << "treasure fixture must exist for any eat_me rule to be under test";
 
     potion->eat_me(eater);
     ASSERT_TRUE(eater->stats()->magicpoints() >= 100) << "magic potion restores MP";
@@ -204,12 +210,12 @@ TEST(TreasureEat, magic_potion)
 TEST(TreasureEat, invulnerable_potion)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_invulnerable_left(0);
     eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_INVULNERABLE_POTION, 1);
-    if (!potion) { delete eater; return; }
+    ASSERT_NE(nullptr, potion) << "treasure fixture must exist for any eat_me rule to be under test";
 
     potion->eat_me(eater);
     ASSERT_TRUE(eater->invulnerable_left() > 0) << "invuln potion grants invulnerability";
@@ -223,12 +229,12 @@ TEST(TreasureEat, invulnerable_potion)
 TEST(TreasureEat, invis_potion)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_invisibility_left(0);
     eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_INVIS_POTION, 2);
-    if (!potion) { delete eater; return; }
+    ASSERT_NE(nullptr, potion) << "treasure fixture must exist for any eat_me rule to be under test";
 
     potion->eat_me(eater);
     ASSERT_TRUE(eater->invisibility_left() > 0) << "invis potion grants invisibility";
@@ -242,12 +248,12 @@ TEST(TreasureEat, invis_potion)
 TEST(TreasureEat, speed_potion)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_speed_bonus_left(0);
     eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_SPEED_POTION, 3);
-    if (!potion) { delete eater; return; }
+    ASSERT_NE(nullptr, potion) << "treasure fixture must exist for any eat_me rule to be under test";
 
     potion->eat_me(eater);
     ASSERT_TRUE(eater->speed_bonus_left() > 0) << "speed potion grants speed";
@@ -261,12 +267,12 @@ TEST(TreasureEat, speed_potion)
 TEST(TreasureEat, key)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_keys(0);
     eater->set_team_num(0);
 
     walker* key = make_treasure(FAMILY_KEY, 1);
-    if (!key) { delete eater; return; }
+    ASSERT_NE(nullptr, key) << "treasure fixture must exist for any eat_me rule to be under test";
 
     key->eat_me(eater);
     ASSERT_TRUE(eater->keys() != 0) << "key pickup sets key flags";
@@ -279,11 +285,11 @@ TEST(TreasureEat, key)
 TEST(TreasureEat, life_gem)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
-    if (!eater) return;
+    ASSERT_NE(nullptr, eater) << "eater fixture must exist for any eat_me rule to be under test";
     eater->set_team_num(0);
 
     walker* gem = make_treasure(FAMILY_LIFE_GEM, 1);
-    if (!gem) { delete eater; return; }
+    ASSERT_NE(nullptr, gem) << "treasure fixture must exist for any eat_me rule to be under test";
     gem->set_team_num(0);
     gem->stats()->set_hitpoints(500);
 

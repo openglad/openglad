@@ -11,8 +11,11 @@
 #include "state_dump.h"
 
 #include <cstdint>
+#include <functional>
 #include <set>
 #include <string>
+
+class GameWorld;
 
 namespace og::parity {
 
@@ -47,5 +50,13 @@ struct RunOutcome
 // spec.scenario_file, drive spec.tick_budget invocations of world.tick()
 // applying spec.inputs at matching ticks, then dump.
 RunOutcome run_scenario(const ScenarioSpec& spec);
+
+// Same run, plus a harness-only observation hook invoked AFTER the dump is
+// captured and while the ScopedGameplayContext is still live, so a test can
+// exercise sim APIs (snapshot capture / delta merge) against a real, ticked
+// arena. The returned RunOutcome is captured before the hook runs, so an
+// observer that ticks the world cannot disturb it.
+RunOutcome run_scenario(const ScenarioSpec& spec,
+                        const std::function<void(GameWorld&)>& observe_final_world);
 
 } // namespace og::parity

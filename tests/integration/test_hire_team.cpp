@@ -44,10 +44,11 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-// CompanyClockRestore, newest_company_stamp() and seed_open_company() were
-// written here and now live in tests/test_company_cleanup.h beside
-// ScopedCompanyFileCleanup: six more og_test_menu_ui flows need the same
-// three lines.
+// newest_company_stamp() and seed_open_company() were written here and now
+// live in tests/test_company_cleanup.h beside ScopedCompanyFileCleanup: six
+// more og_test_menu_ui flows need the same two lines. (The third of them, the
+// clock-restore guard, is gone: [SAVE-R9] un-pins the company clock between
+// tests structurally.)
 
 // Test: Navigate to hire troops, browse characters with NEXT/PREV, then exit.
 //
@@ -208,7 +209,6 @@ TEST(HireTeam, hire_menu_browsing) {
     // This flow FOUNDS a company (BEGIN NEW GAME), which repoints the process
     // -wide active slot. Restore it on the way out so the next test starts
     // where it expects to.
-    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -309,8 +309,6 @@ static int hire_deployed_injector(void* data)
 TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     trace_clear();
 
-    ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -390,11 +388,9 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
 {
     trace_clear();
 
-    // Both companies are scratch slots: save0 is left exactly as the rest of
-    // the binary expects to find it (this test must not become the next
-    // stray itself).
-    ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
+    // Both companies are scratch slots; neither survives this test (the
+    // harness reaps every non-baseline company between tests, [SAVE-R9]).
+    // The pin is what keeps the process-wide active slot from leaking.
     og::data::ScopedActiveCompany pin("hireopen");
     ASSERT_TRUE(pin.applied()) << "hireopen must be a valid company slot";
 

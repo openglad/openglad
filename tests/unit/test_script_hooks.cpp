@@ -26,6 +26,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/packs.h>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1245,24 +1246,33 @@ TEST_F(ScriptBindingTest, world_query_rows_read_the_live_world)
     world.id = 91;
     world.game_ended = 0;
 
-    run("local w = og.add_weap_ob('weapon', 0)\n"
+    // og.freeze_duration forwards arg 1 as level, arg 2 as constitution and
+    // draws from THIS world's generator, so the oracle is the same call on a
+    // twin seeded identically. The row runs FIRST in the chunk so no other
+    // binding can move the stream underneath it.
+    constexpr std::uint32_t kSeed = 0xF00Du;
+    og::sim::SimRandom probe(kSeed);
+    const std::int32_t want = compute_freeze_duration(10, 3, probe);
+    world.rng_.state_ = kSeed;
+
+    run("og.log('freeze', og.freeze_duration(10, 3))\n"
+        "local w = og.add_weap_ob('weapon', 0)\n"
         "og.log('weap', w ~= nil, w:order() == og.C.ORDER_WEAPON)\n"
         "og.log('world', og.level_id(), og.level_tick(), og.game_ended())\n"
         "og.log('foes', og.remaining_foes(spawn))\n"
-        // freeze_duration draws the sim RNG; the result must be a real
-        // non-negative duration, not nil.
-        "og.log('freeze', og.freeze_duration(10, 3) >= 0)\n"
         // walker:collide(other) records the collision partner.
         "og.log('collide', spawn:collide(gen), spawn:collide_ob() == gen)\n"
         "og.log('alive', og.is_alive(spawn), tostring(spawn))\n");
 
     ASSERT_EQ(6u, vm_log().size());
-    EXPECT_EQ("weap\ttrue\ttrue", vm_log()[0]);
-    EXPECT_EQ("world\t91\t0\tfalse", vm_log()[1]);
+    EXPECT_EQ("freeze\t" + std::to_string(want), vm_log()[0])
+        << "the binding must forward (level, constitution) in that order and "
+           "draw from the world's own generator";
+    EXPECT_EQ("weap\ttrue\ttrue", vm_log()[1]);
+    EXPECT_EQ("world\t91\t0\tfalse", vm_log()[2]);
     // The binding must forward to GameWorld::remaining_foes for THIS walker.
     EXPECT_EQ("foes\t" + std::to_string(world.remaining_foes(spawn)),
-              vm_log()[2]);
-    EXPECT_EQ("freeze\ttrue", vm_log()[3]);
+              vm_log()[3]);
     EXPECT_EQ("collide\ttrue\ttrue", vm_log()[4]);
     EXPECT_EQ("alive\ttrue\tentity#" + std::to_string(spawn->entity_id()),
               vm_log()[5])

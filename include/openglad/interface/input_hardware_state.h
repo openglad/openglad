@@ -49,18 +49,8 @@ struct InputHardwareState {
     bool picker_was_left_down{false};
     bool picker_was_right_down{false};
 
-    // Runtime touch-control seam: held-key state from the web DOM overlay or
-    // native SDL touch path, OR-ed into isPlayerHoldingKey. key dim == NUM_KEYS.
+    // Runtime touch-control seam: held-key state from the web DOM overlay
+    // (web_touch_bridge.cpp), OR-ed into isPlayerHoldingKey. key dim ==
+    // NUM_KEYS.
     bool touch_keystate[4][17]{};
-
-#ifdef USE_TOUCH_INPUT
-    bool tapping{false};
-    int start_tap_x{0}, start_tap_y{0};
-    bool moving{false};
-    int moving_touch_x{0}, moving_touch_y{0};
-    int moving_touch_target_x{0}, moving_touch_target_y{0};
-    std::int64_t movingTouch{0};
-    bool firing{false};
-    std::int64_t firingTouch{0};
-#endif
 };

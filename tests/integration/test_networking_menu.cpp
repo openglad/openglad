@@ -1,5 +1,6 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -817,8 +818,18 @@ struct NetworkingEmptyRoomListState
     bool finished = false;
     bool saw_networking_menu = false;
     bool enabled_room_code = false;
+    bool refresh_ran = false;
     bool no_room_rows_appeared = false;
     bool returned_to_main_menu = false;
+    // Legacy-screen frames drawn after the empty result arrived. The
+    // networking screen runs its own loop, so wait_for_menu_frames can never
+    // be satisfied inside it; og::input_native::yield_count() counts the
+    // loop's own per-frame sleep_ms instead (CLAUDE.md: a screen that is not
+    // engine-hosted has its own oracle).
+    unsigned long settle_frames = 0;
+    // Counts the bridge's list_relay_rooms calls; the empty row set only
+    // means anything once a discovery request has actually been made.
+    std::atomic<int>* list_calls = nullptr;
 };
 
 struct NetworkingRoomRefreshRaceState
@@ -1005,7 +1016,9 @@ int networking_empty_room_list_injector(void* data)
         return 0;
     }
 
-    SDL_Delay(300);
+    // Team build is engine-hosted: a COMPLETED frame proves the screen
+    // composed, where a flat 300 ms only proved time passed.
+    wait_for_menu_frames(2);
     interact("networking");
 
     if (!wait_for_interactable("network_room_value", 10000))
@@ -1015,49 +1028,86 @@ int networking_empty_room_list_injector(void* data)
     }
 
     state->saw_networking_menu = true;
-    SDL_Delay(150);
-
+    // No settle before the toggle: interact_until_label_contains is itself a
+    // consumed-click handshake (it re-clicks until the row READS "ON").
     state->enabled_room_code = interact_until_label_contains(
         "network_room_toggle", "ON");
 
-    // Give the throttled refresh time to run and draw a few frames with the
-    // empty result ("No active games found.").
-    SDL_Delay(1200);
+    // "No rows" proves nothing until the throttled refresh has actually
+    // asked: wait for the bridge's discovery call, then let the menu draw a
+    // couple of frames with the empty result before reading the rows.
+    const Uint64 refresh_deadline = SDL_GetTicks() + 10000;
+    while (SDL_GetTicks() < refresh_deadline)
+    {
+        if (state->list_calls != nullptr && state->list_calls->load() >= 1)
+        {
+            state->refresh_ran = true;
+            break;
+        }
+        SDL_Delay(20);
+    }
+    if (!state->refresh_ran)
+        fprintf(stderr, "  [test] the room refresh never called the bridge\n");
+    // Settle on the LEGACY loop's own frames: this screen is not engine
+    // hosted, so wait_for_menu_frames would only ever time out here. Each
+    // networking frame ends in og::input_native::sleep_ms, so two more yields
+    // are two more frames drawn with the empty result in hand.
+    const unsigned long yields_before = og::input_native::yield_count();
+    const Uint64 settle_deadline = SDL_GetTicks() + 1000;
+    while (SDL_GetTicks() < settle_deadline &&
+           og::input_native::yield_count() < yields_before + 2)
+    {
+        SDL_Delay(5);
+    }
+    state->settle_frames = og::input_native::yield_count() - yields_before;
     state->no_room_rows_appeared = !has_interactable("network_room_0");
 
-    if (has_interactable("network_back"))
-    {
-        SDL_Delay(150);
-        interact("network_back");
-    }
-
+    // Walk back out. Two rules here, both learned the hard way:
+    //
+    //  * PROBE, never wait: wait_for_interactable() prints
+    //    "[interact] TIMEOUT waiting for 'quit'" every time it expires, so
+    //    the old loop logged a TIMEOUT line on every GREEN run and taught a
+    //    reader to skip the one line that would mean something.
+    //    has_interactable() answers the same question silently.
+    //  * The gap after a click is a POLL FOR THE DESTINATION — the main
+    //    menu's QUIT — not a flat 150 ms: it returns the moment that screen
+    //    arrives, and only a click that genuinely landed somewhere else pays
+    //    the bound. Neither "the clicked row disappeared" nor "the button set
+    //    changed" works here, because a half-published transition satisfies
+    //    both and the loop then presses BACK a second time, one screen too
+    //    far — which walks back INTO a submenu and wedges the whole run.
     const Uint64 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
-        if (wait_for_interactable("quit", 250))
+        if (has_interactable("quit"))
         {
             state->returned_to_main_menu = true;
-            SDL_Delay(100);
+            // Presence is not readiness: run_menu_screen calls
+            // reset_mouse_click_tracking() as the screen starts, so a press
+            // injected between the button's publication and the loop's first
+            // frame is thrown away with the outgoing screen's events — and
+            // the run then spins in a menu nobody can leave. A COMPLETED
+            // frame is the proof that the loop is past that reset.
+            wait_for_menu_frames(2);
             interact("quit");
             break;
         }
 
-        if (wait_for_interactable("network_back", 150))
+        const char* const exit_row =
+            has_interactable("network_back") ? "network_back"
+            : has_interactable("back")       ? "back"
+                                             : nullptr;
+        if (exit_row == nullptr)
         {
-            interact("network_back");
-            SDL_Delay(150);
+            inject_key_press(SDLK_ESCAPE, 10);
+            SDL_Delay(20);
             continue;
         }
 
-        if (wait_for_interactable("back", 150))
-        {
-            interact("back");
-            SDL_Delay(150);
-            continue;
-        }
-
-        inject_key_press(SDLK_ESCAPE, 10);
-        SDL_Delay(50);
+        interact(exit_row);
+        const Uint64 arrived_by = SDL_GetTicks() + 1000;
+        while (!has_interactable("quit") && SDL_GetTicks() < arrived_by)
+            SDL_Delay(10);
     }
 
     state->finished = true;
@@ -1159,7 +1209,7 @@ int networking_host_injector(void* data)
 // below then holds about somebody else's band.
 //
 // One shape for all eleven flows rather than eleven hand copies (PR #245,
-// "no rule twins"): the guards keep this test from becoming the next stray,
+// "no rule twins"): the pin keeps the process-wide active slot from leaking,
 // the seed goes through the autosave choke point that actually stamps, and
 // the destructor is the oracle — EXPECT in a destructor is gtest's own idiom
 // for a check that must run after the flow but cannot ASSERT, and the pin
@@ -1167,8 +1217,6 @@ int networking_host_injector(void* data)
 // flow left behind.
 struct SeededContinueCompany
 {
-    ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin{"save0"};
     bool seeded = false;
 
@@ -1522,15 +1570,18 @@ TEST(NetworkingMenu, reentry_hides_stale_rooms_until_current_request_completes)
     ASSERT_TRUE(state.returned_to_main_menu);
 }
 
-TEST(NetworkingMenu, empty_room_list_shows_no_rows_and_stays_usable)
+TEST(NetworkingMenu, empty_room_list_comes_from_a_refresh_that_ran)
 {
     trace_clear();
     PlatformBridgeGuard bridge_guard;
+    // The refresh may run off the menu thread, so the call counter is atomic.
+    std::atomic<int> list_calls{0};
     PlatformBridge bridge = platform_bridge();
     bridge.begin_list_relay_rooms = {};
     bridge.list_relay_rooms =
-        [](const std::string&, const std::string&)
+        [&list_calls](const std::string&, const std::string&)
             -> std::vector<og::ui::PickerRelayRoomInfo> {
+        list_calls.fetch_add(1);
         return {};
     };
     set_platform_bridge(std::move(bridge));
@@ -1542,6 +1593,7 @@ TEST(NetworkingMenu, empty_room_list_shows_no_rows_and_stays_usable)
         << "save0 must be seeded as the most recent company on disk";
 
     NetworkingEmptyRoomListState state;
+    state.list_calls = &list_calls;
     SDL_Thread* thread = SDL_CreateThread(
         networking_empty_room_list_injector,
         "networking_empty_room_list_test",
@@ -1564,7 +1616,16 @@ TEST(NetworkingMenu, empty_room_list_shows_no_rows_and_stays_usable)
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_networking_menu);
     ASSERT_TRUE(state.enabled_room_code);
-    ASSERT_TRUE(state.no_room_rows_appeared);
+    ASSERT_TRUE(state.refresh_ran)
+        << "ROOM CODE ON must start the throttled discovery refresh — an "
+           "empty room list that was never requested is not an empty result";
+    EXPECT_GE(list_calls.load(), 1)
+        << "the refresh must reach the bridge's list_relay_rooms fallback";
+    EXPECT_GE(state.settle_frames, 2u)
+        << "the legacy networking loop must have drawn at least two more "
+           "frames with the empty result before the rows were read";
+    ASSERT_TRUE(state.no_room_rows_appeared)
+        << "a successful EMPTY result draws no ACTIVE GAMES rows";
     ASSERT_TRUE(state.returned_to_main_menu);
 }
 
@@ -1909,6 +1970,8 @@ struct SessionJoinDisconnectState
     bool started = false;
     bool finished = false;
     bool entered_session_view = false;
+    bool rows_present = false;
+    bool clicked_foreign_row = false;
     bool foreign_row_inert = false;
     bool disconnected = false;
     bool back_in_team_build_local = false;
@@ -1936,9 +1999,21 @@ int session_join_disconnect_injector(void* data)
         wait_for_interactable("network_disconnect", 10000);
     SDL_Delay(300);
 
-    // Every machine row is inert for a joiner: clicking the host's row
-    // must not open the kick confirm or reach the stub.
-    interact("network_room_0");
+    // A joiner still SEES every machine row under PLAYERS (the rows are
+    // built from lobby_players(), not from host_controls) — an empty table
+    // would make "the rows never dispatch" vacuously true.
+    state->rows_present =
+        wait_for_interactable_label_contains("network_room_0",
+                                             "M1 IRON KETTLE BAND") &&
+        interactable_label_contains("network_room_0", "(HOST)") &&
+        !interactable_label_contains("network_room_0", "(YOU)") &&
+        wait_for_interactable_label_contains("network_room_1",
+                                             "M2 RIVER BAND") &&
+        interactable_label_contains("network_room_1", "(YOU)");
+
+    // Every machine row is inert for a joiner: clicking the host's VISIBLE
+    // row must not open the kick confirm or reach the stub.
+    state->clicked_foreign_row = interact("network_room_0");
     SDL_Delay(400);
     state->foreign_row_inert = !trace_contains("confirm", "KICK") &&
         state->lobby->kicked_machine.load() == 0;
@@ -2004,6 +2079,11 @@ TEST(NetworkingMenu, session_joined_rows_inert_and_disconnect_goes_local)
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.entered_session_view);
+    EXPECT_TRUE(state.rows_present)
+        << "a joiner still sees both machine rows under PLAYERS, labelled by "
+           "company with (HOST) on the host row and (YOU) on its own";
+    EXPECT_TRUE(state.clicked_foreign_row)
+        << "the inert click must have landed on a visible, registered row";
     EXPECT_TRUE(state.foreign_row_inert)
         << "a joiner's machine rows never dispatch";
     EXPECT_TRUE(state.disconnected);

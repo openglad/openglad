@@ -1,3 +1,5 @@
+#include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <string>
 
@@ -65,26 +67,55 @@ TEST(Util, parse_int_strict_paths)
 
     auto overflow = parse_int_strict("999999999999999999999");
     ASSERT_TRUE(!overflow.has_value()) << "parse_int_strict should reject out-of-range numbers";
+
+    auto blank = parse_int_strict("   \t   ");
+    ASSERT_TRUE(!blank.has_value()) << "parse_int_strict should reject whitespace-only text";
 }
 
 
-TEST(Util, timers_and_delay_paths)
+// A tick is 13.6 ms (the DOS 1193180/16383 Hz cadence util.cpp keeps), so
+// time_delay(kDelayTicks) is ~68 ms of wall clock.
+static constexpr std::int32_t kDelayTicks = 5;
+static constexpr std::int32_t kDelayTicksFloor = 4;   // 68 ms / 13.6, minus rounding
+static constexpr std::int32_t kSinceResetCeiling = 40; // ~544 ms: far under "since app start"
+
+TEST(Util, timer_counts_from_the_last_reset_and_time_delay_waits)
 {
-    reset_timer();
-    ASSERT_TRUE(query_timer() >= 0) << "query_timer should return non-negative tick count";
-    ASSERT_TRUE(query_timer_control() >= 0) << "query_timer_control should return non-negative tick count";
-
-    // Cover early-return and non-negative branches without introducing wall-clock delay.
-    time_delay(-1);
-    time_delay(0);
-}
-
-
-TEST(Util, change_time_and_strict_empty_after_trim)
-{
+    // change_time is a retained no-op stub (util.cpp) with no observable of
+    // its own; this is its only caller, kept here with the timer family.
     change_time(12345);
 
-    auto empty = parse_int_strict("   \t   ");
-    ASSERT_TRUE(!empty.has_value()) << "parse_int_strict should reject whitespace-only text";
+    reset_timer();
+    const std::int32_t control_before = query_timer_control();
+
+    time_delay(kDelayTicks);
+
+    const std::int32_t elapsed = query_timer();
+    ASSERT_GE(elapsed, kDelayTicksFloor)
+        << "time_delay(5) must actually wait ~68 ms and query_timer must report it as elapsed/13.6 ticks";
+    ASSERT_LE(elapsed, kSinceResetCeiling)
+        << "query_timer must measure from the last reset_timer, not from process start";
+
+    ASSERT_GE(query_timer_control() - control_before, kDelayTicksFloor)
+        << "query_timer_control must advance with wall clock (ms since app start / 13.6)";
+
+    reset_timer();
+    ASSERT_LT(query_timer(), elapsed)
+        << "reset_timer must re-stamp the reference so the tick count restarts";
+}
+
+
+TEST(Util, time_delay_returns_immediately_for_non_positive_delays)
+{
+    const auto start = std::chrono::steady_clock::now();
+    time_delay(0);
+    time_delay(-1);
+    const auto spent_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    // 100 ms bounds a delay that really slept (one tick is 13.6 ms, so the
+    // smallest positive delay costs 68 ms) without being a wall-clock race
+    // on the 4-way instrumented CI lanes.
+    ASSERT_LT(spent_ms, 100)
+        << "time_delay(<= 0) must return without waiting";
 }
 

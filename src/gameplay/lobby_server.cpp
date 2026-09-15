@@ -728,6 +728,9 @@ void LobbyServer::send_state(PeerId peer_id) const
             peer_state->local_seat_ids.push_back(seat.seat_id);
         peer_state->last_join_request_id =
             peer_it->second.last_join_request_id;
+        peer_state->last_start_denial = peer_it->second.last_start_denial;
+        peer_state->last_start_request_id =
+            peer_it->second.last_start_request_id;
         peer_state->local_peer_is_host =
             host_peer_id_.has_value() && *host_peer_id_ == peer_id;
     }
@@ -743,6 +746,8 @@ void LobbyServer::broadcast_state() const
         for (const LobbyPlayer& seat : peer.seats)
             peer_state->local_seat_ids.push_back(seat.seat_id);
         peer_state->last_join_request_id = peer.last_join_request_id;
+        peer_state->last_start_denial = peer.last_start_denial;
+        peer_state->last_start_request_id = peer.last_start_request_id;
         peer_state->local_peer_is_host =
             host_peer_id_.has_value() && *host_peer_id_ == peer_id;
         send_state_guarded(peer_id, std::move(peer_state));
@@ -813,7 +818,6 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
 
     const LobbyState previous_state = state_;
     bool rebuild_needed = false;
-    bool authoritative_echo_required = false;
     bool requester_echo_required = false;
     std::optional<std::uint8_t> accepted_start_player_index = std::nullopt;
     std::uint32_t accepted_start_request_id = 0;
@@ -1154,47 +1158,54 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         break;
 
     case LobbyMessageKind::StartGame:
-        if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
-        {
-            const auto& start_game =
-                std::get<LobbyStartGameMessage>(message.payload);
-            // [NET-R4] a host StartGame request clears the prior denial echo
-            // FIRST (queued non-StartGame messages between denial and read must
-            // not wipe it — only the next StartGame does).
-            state_.last_start_denial =
-                start_denial_reason_value(StartDenialReason::None);
-            state_.last_start_request_id = 0;
+    {
+        const auto& start_game =
+            std::get<LobbyStartGameMessage>(message.payload);
+        // EVERY requester is answered — §4.3 rule 2 (NotHost) is the one
+        // implementation of the host rule, so there is no gate here. A
+        // silently dropped request is what leaves a client holding a pending
+        // request id forever.
+        const std::uint8_t none_denial =
+            start_denial_reason_value(StartDenialReason::None);
+        // [NET-R4] a StartGame request clears THIS PEER's prior denial echo
+        // FIRST (queued non-StartGame messages between denial and read must
+        // not wipe it — only the next StartGame from the same peer does).
+        const std::uint8_t prior_denial = peer_it->second.last_start_denial;
+        peer_it->second.last_start_denial = none_denial;
+        peer_it->second.last_start_request_id = 0;
 
-            StartDenialReason reason = StartDenialReason::None;
-            if (start_allowed(peer_id, reason))
-            {
-                lobby_locked_ = true;
-                start_game_requested_ = true;
-                accepted_start_player_index = !peer_it->second.seats.empty()
-                    ? std::optional<std::uint8_t>(
-                          peer_it->second.seats.front().player_index)
-                    : std::optional<std::uint8_t>(0xffu);
-                accepted_start_request_id = start_game.request_id;
-            }
-            else
-            {
-                // §4.3 denial: record the reason and let the trailing
-                // broadcast echo it to every peer. The lobby lock is NEVER
-                // engaged, so the "locked lobby eats messages" hazard never
-                // triggers and the host stays free to fix the blocker and
-                // retry.
-                state_.last_start_denial = start_denial_reason_value(reason);
-                state_.last_start_request_id = start_game.request_id;
-                // A repeated denial can restore exactly the same reason that
-                // previous_state already carried (the request clears then
-                // re-sets it). The requester still needs a fresh echo to
-                // resolve this specific asynchronous StartGame attempt.
-                authoritative_echo_required = true;
-            }
+        StartDenialReason reason = StartDenialReason::None;
+        if (start_allowed(peer_id, reason))
+        {
+            lobby_locked_ = true;
+            start_game_requested_ = true;
+            accepted_start_player_index = !peer_it->second.seats.empty()
+                ? std::optional<std::uint8_t>(
+                      peer_it->second.seats.front().player_index)
+                : std::optional<std::uint8_t>(0xffu);
+            accepted_start_request_id = start_game.request_id;
         }
-        // A non-host StartGame stays silently ignored (no denial echo),
-        // preserving the historic drop-on-non-host behavior.
+        else
+        {
+            // §4.3 denial: record the reason in the REQUESTER's peer state.
+            // The lobby lock is NEVER engaged, so the "locked lobby eats
+            // messages" hazard never triggers and the requester stays free to
+            // fix the blocker and retry.
+            peer_it->second.last_start_denial =
+                start_denial_reason_value(reason);
+            peer_it->second.last_start_request_id = start_game.request_id;
+        }
+        // The verdict is recipient-specific, so only the requester needs the
+        // echo, and it needs one whenever its pair changed OR could have: a
+        // denial (including a repeat of the same reason, which must still
+        // resolve this specific asynchronous attempt) and an acceptance that
+        // clears a previous denial. A verdict never touches state_, so the
+        // trailing broadcast is not involved.
+        requester_echo_required = peer_it->second.last_start_denial !=
+                none_denial ||
+            prior_denial != none_denial;
         break;
+    }
 
     case LobbyMessageKind::SettingsChange:
         if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
@@ -1275,7 +1286,7 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
     if (rebuild_needed)
         rebuild_state();
 
-    if (state_ != previous_state || authoritative_echo_required)
+    if (state_ != previous_state)
         broadcast_state();
     else if (requester_echo_required)
         send_state(peer_id);

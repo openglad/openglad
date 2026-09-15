@@ -12,6 +12,8 @@
 #include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 #include <memory>
+#include <string>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -288,96 +290,207 @@ TEST_F(GladHud, glad_radar_gems_skip_the_redraw_for_an_unchanged_team)
         ? old_control : nullptr;
 }
 
-TEST_F(GladHud, glad_draw_gems_and_value_bars_smoke)
+// The bars are the player's only read on "how much is left", and their two
+// signals are COLOUR (which band) and LENGTH (how far it fills). The old body
+// made ~20 draw calls into a buffer nobody read and checked only that the two
+// over-max cases painted *some* ramp pixel, so a bar that used one colour for
+// every band, or drew the wrong length, stayed green.
+//
+// Counting arithmetic, from the two painters:
+//   draw_value_bar (glad.cpp:646) fills a 5-row box `bar_length` wide, then
+//   rounds the corners with masks that re-black (left+1, top+1) and
+//   (left+1, top+5) -- and, once the bar reaches the full 60 columns, the
+//   mirrored pair at left+60 too. So bar_length*5 - 2, or -4 at full length.
+//   draw_percentage_bar (score_panel.cpp:1114), which new_draw_value_bar
+//   uses, paints (L-4) + 3*(L-2) + (L-4) == 5L-14.
+//   bar_length itself is ceil(points * 60 / max), capped at 60 over max.
+TEST_F(GladHud, glad_hp_bars_paint_their_band_colour_at_their_exact_length)
 {
     auto control = make_player(0);
-    ASSERT_TRUE(control != nullptr) << "control should be created";
-    walker* controlp = control.get();
-
-    // Attach control to view so draw_radar_gems can find it.
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    walker* old_control = v->control;
-    v->control = controlp;
-
-    // draw_radar_gems caches old team; change team to force multiple draws.
-    controlp->set_team_num(0);
-    draw_radar_gems(og::runtime::current_session->myscreen_);
-    controlp->set_team_num(1);
-    draw_radar_gems(og::runtime::current_session->myscreen_);
-
-    // Direct gem draw.
-    draw_gem(10, 10, 32, og::runtime::current_session->myscreen_);
-
-    // Exercise value bar thresholds for HP and MP.
-    controlp->stats()->set_max_hitpoints(100);
-    controlp->stats()->set_hitpoints(100);
-    draw_value_bar(10, 20, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_hitpoints(20);
-    draw_value_bar(10, 28, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_hitpoints(60);
-    draw_value_bar(10, 36, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_hitpoints(90);
-    draw_value_bar(10, 44, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_hitpoints(120);
-    draw_value_bar(10, 52, controlp, 0, og::runtime::current_session->myscreen_);
-
-    controlp->stats()->set_max_magicpoints(80);
-    controlp->stats()->set_magicpoints(80);
-    draw_value_bar(10, 60, controlp, 1, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_magicpoints(10);
-    draw_value_bar(10, 68, controlp, 1, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_magicpoints(100);
-    draw_value_bar(10, 76, controlp, 1, og::runtime::current_session->myscreen_);
-
-    // New percentage-bar-based drawing.
-    controlp->stats()->set_hitpoints(100);
-    new_draw_value_bar(80, 4, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_hitpoints(20);
-    new_draw_value_bar(80, 12, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_hitpoints(80);
-    new_draw_value_bar(80, 20, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_magicpoints(80);
-    new_draw_value_bar(80, 28, controlp, 1, og::runtime::current_session->myscreen_);
-    controlp->stats()->set_magicpoints(60);
-    new_draw_value_bar(80, 44, controlp, 1, og::runtime::current_session->myscreen_);
-    draw_percentage_bar(80, 36, 12, 30, og::runtime::current_session->myscreen_);
-
-    // Temporary buffs can put either pool above its nominal maximum.  The
-    // modern bar deliberately caps its length while switching to the animated
-    // orange/water ramps, rather than wrapping or drawing beyond the frame.
+    ASSERT_NE(nullptr, control) << "control should be created";
+    walker* const controlp = control.get();
     screen* const s = og::runtime::current_session->myscreen_;
-    s->clearbuffer();
-    controlp->stats()->set_hitpoints(125);
-    new_draw_value_bar(180, 20, controlp, 0, s);
-    controlp->stats()->set_magicpoints(100);
-    new_draw_value_bar(180, 32, controlp, 1, s);
-    const auto buffed_frame = capture_rendered_frame(*s);
-    auto colored_pixels = [&](int top, unsigned char ramp_start) {
-        std::array<bool, 256> ramp_colors{};
-        for (int i = 0; i < 16; ++i)
-            ramp_colors[canonical_palette_index(
-                static_cast<unsigned char>(ramp_start + i))] = true;
-        int count = 0;
-        for (int y = top; y < top + 7; ++y)
-            for (int x = 180; x < 240; ++x)
-                if (ramp_colors[buffed_frame[static_cast<std::size_t>(y * 320 + x)]])
-                    ++count;
-        return count;
-    };
-    EXPECT_GT(colored_pixels(20, ORANGE_START), 0)
-        << "over-max HP should use the orange buff ramp";
-    EXPECT_GT(colored_pixels(32, WATER_START), 0)
-        << "over-max MP should use the water buff ramp";
 
-    v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
+    // The four HP bands must survive the get_pixel index read-back as four
+    // distinct values, or none of the counts below mean anything.
+    const unsigned char kMax = canonical_palette_index(MAX_HP_COLOR);
+    const unsigned char kLow = canonical_palette_index(LOW_HP_COLOR);
+    const unsigned char kMid = canonical_palette_index(MID_HP_COLOR);
+    const unsigned char kHigh = canonical_palette_index(HIGH_HP_COLOR);
+    ASSERT_NE(kMax, kLow);
+    ASSERT_NE(kMax, kMid);
+    ASSERT_NE(kMax, kHigh);
+    ASSERT_NE(kLow, kMid);
+    ASSERT_NE(kLow, kHigh);
+    ASSERT_NE(kMid, kHigh);
+
+    const auto count_in = [](const std::array<unsigned char, 64000>& frame,
+                             int left, int top, int width, int height,
+                             unsigned char color) {
+        const unsigned char want = canonical_palette_index(color);
+        int n = 0;
+        for (int y = top; y < top + height; ++y)
+            for (int x = left; x < left + width; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] == want)
+                    ++n;
+        return n;
+    };
+
+    constexpr int kLeft = 10;
+    constexpr int kTop = 20;
+    controlp->stats()->set_max_hitpoints(100);
+
+    struct Band { float hp; unsigned char color; int pixels; const char* why; };
+    const Band bands[] = {
+        // 20/100: points*3 < max -> the LOW band, ceil(12) columns.
+        {20.0f, LOW_HP_COLOR, 12 * 5 - 2, "a fifth of the pool is the LOW band, 12 columns"},
+        // 60/100: past a third, short of two thirds -> MID, ceil(36) columns.
+        {60.0f, MID_HP_COLOR, 36 * 5 - 2, "three fifths is the MID band, 36 columns"},
+        // 90/100: past two thirds, short of full -> HIGH, ceil(54) columns.
+        {90.0f, HIGH_HP_COLOR, 54 * 5 - 2, "nine tenths is the HIGH band, 54 columns"},
+        // exactly full -> MAX, all 60 columns (and four masked corners).
+        {100.0f, MAX_HP_COLOR, 60 * 5 - 4, "a full pool is the MAX band at full length"},
+    };
+
+    for (const Band& band : bands)
+    {
+        SCOPED_TRACE(band.why);
+        s->clearbuffer();
+        controlp->stats()->set_hitpoints(band.hp);
+        draw_value_bar(kLeft, kTop, controlp, 0, s);
+        const auto frame = capture_rendered_frame(*s);
+
+        EXPECT_EQ(band.pixels, count_in(frame, kLeft, kTop, 62, 7, band.color))
+            << band.why;
+        // ... and no other band bleeds in.
+        for (unsigned char other : {MAX_HP_COLOR, LOW_HP_COLOR, MID_HP_COLOR, HIGH_HP_COLOR})
+        {
+            if (canonical_palette_index(other) == canonical_palette_index(band.color))
+                continue;
+            EXPECT_EQ(0, count_in(frame, kLeft, kTop, 62, 7, other))
+                << "band " << (int)other << " must not appear at hp " << band.hp;
+        }
+    }
+
+    // new_draw_value_bar goes through draw_percentage_bar, so the same bands
+    // land on the 5L-14 geometry instead.
+    const Band pct_bands[] = {
+        {20.0f, LOW_HP_COLOR, 5 * 12 - 14, "percentage bar, LOW band, 12 columns"},
+        {80.0f, HIGH_HP_COLOR, 5 * 48 - 14, "percentage bar, HIGH band, 48 columns"},
+        {100.0f, MAX_HP_COLOR, 5 * 60 - 14, "percentage bar, MAX band, full length"},
+    };
+    for (const Band& band : pct_bands)
+    {
+        SCOPED_TRACE(band.why);
+        s->clearbuffer();
+        controlp->stats()->set_hitpoints(band.hp);
+        new_draw_value_bar(kLeft, kTop, controlp, 0, s);
+        const auto frame = capture_rendered_frame(*s);
+        EXPECT_EQ(band.pixels, count_in(frame, kLeft, kTop, 60, 7, band.color))
+            << band.why;
+    }
+
+    // draw_percentage_bar on its own: a 30-wide bar is 5*30-14 coloured pixels
+    // and paints nothing past its own right edge.
+    {
+        s->clearbuffer();
+        draw_percentage_bar(kLeft, kTop, LOW_HP_COLOR, 30, s);
+        const auto frame = capture_rendered_frame(*s);
+        EXPECT_EQ(5 * 30 - 14, count_in(frame, kLeft, kTop, 60, 7, LOW_HP_COLOR))
+            << "a 30-long percentage bar paints 5*30-14 pixels";
+        EXPECT_EQ(0, count_in(frame, kLeft + 30, kTop, 30, 7, LOW_HP_COLOR))
+            << "a 30-long percentage bar paints nothing past column 30";
+    }
+
+    // Temporary buffs can put either pool above its nominal maximum. The
+    // modern bar caps its LENGTH at the full 60 columns and switches to the
+    // animated ramp, rather than wrapping or drawing past the frame.
+    {
+        constexpr int kBuffLeft = 180;
+        const auto ramp_pixels = [&](const std::array<unsigned char, 64000>& frame,
+                                     int left, int top, int width,
+                                     unsigned char ramp_start) {
+            std::array<bool, 256> ramp{};
+            for (int i = 0; i < 16; ++i)
+                ramp[canonical_palette_index(
+                    static_cast<unsigned char>(ramp_start + i))] = true;
+            int n = 0;
+            for (int y = top; y < top + 7; ++y)
+                for (int x = left; x < left + width; ++x)
+                    if (ramp[frame[static_cast<std::size_t>(y * 320 + x)]])
+                        ++n;
+            return n;
+        };
+
+        s->clearbuffer();
+        controlp->stats()->set_hitpoints(125);
+        new_draw_value_bar(kBuffLeft, 20, controlp, 0, s);
+        controlp->stats()->set_max_magicpoints(80);
+        controlp->stats()->set_magicpoints(100);
+        new_draw_value_bar(kBuffLeft, 32, controlp, 1, s);
+        const auto buffed = capture_rendered_frame(*s);
+
+        EXPECT_EQ(5 * 60 - 14, ramp_pixels(buffed, kBuffLeft, 20, 60, ORANGE_START))
+            << "over-max HP fills the capped 60 columns with the orange ramp";
+        EXPECT_EQ(0, ramp_pixels(buffed, kBuffLeft + 60, 20, 40, ORANGE_START))
+            << "the over-max bar stops at column 60 instead of running on";
+        EXPECT_EQ(5 * 60 - 14, ramp_pixels(buffed, kBuffLeft, 32, 60, WATER_START))
+            << "over-max MP fills the capped 60 columns with the water ramp";
+        EXPECT_EQ(0, ramp_pixels(buffed, kBuffLeft + 60, 32, 40, WATER_START))
+            << "the over-max bar stops at column 60 instead of running on";
+    }
 }
 
 
-TEST_F(GladHud, glad_score_panel_and_new_score_panel_modes)
+// draw_gem paints a fixed 12-pixel diamond out of four shades derived from the
+// team colour: base, +2, +4, +6 (glad.cpp:624-643). Reading the pixels back is
+// the only way to notice the shading or the diamond's shape changing.
+TEST_F(GladHud, glad_draw_gem_paints_its_twelve_shaded_points)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    constexpr short kX = 10;
+    constexpr short kY = 10;
+    constexpr unsigned char kLight = 32;
+    constexpr unsigned char kMed = kLight + 2;
+    constexpr unsigned char kDarker = kMed + 2;
+    constexpr unsigned char kDarkest = kDarker + 2;
+
+    s->clearbuffer();
+    draw_gem(kX, kY, kLight, s);
+    const auto frame = capture_rendered_frame(*s);
+
+    struct Point { int dx; int dy; unsigned char color; };
+    const Point gem[] = {
+        { 0, 0, kLight},
+        {-1, 1, kLight}, { 0, 1, kMed},   { 1, 1, kDarker},
+        {-2, 2, kLight}, {-1, 2, kMed},   { 0, 2, kMed},    { 1, 2, kMed}, { 2, 2, kDarkest},
+        {-1, 3, kDarker},{ 0, 3, kMed},   { 1, 3, kDarkest},
+        { 0, 4, kDarkest},
+    };
+    for (const Point& p : gem)
+    {
+        SCOPED_TRACE(testing::Message() << "gem point (" << p.dx << "," << p.dy << ")");
+        EXPECT_EQ((int)canonical_palette_index(p.color),
+                  (int)frame[static_cast<std::size_t>((kY + p.dy) * 320 + (kX + p.dx))])
+            << "draw_gem must shade this point with " << (int)p.color;
+    }
+}
+
+
+// new_score_panel unconditionally `return 1` (score_panel.cpp:1101), so
+// ASSERT_EQ(1, new_score_panel(...)) was a literal against a literal; and the
+// old life-mode probe flipped PREF_LIFE and the score in the SAME step, so a
+// HUD that ignored the score entirely still showed a changed row.
+//
+// What the panel actually promises: the two wrappers are the same drawing as
+// new_score_panel; the three PREF_LIFE readouts are three DIFFERENT readouts;
+// and the team score reaches the SC row (via an animated count-up) without
+// disturbing the life rows.
+TEST_F(GladHud, score_panel_wrappers_life_modes_and_the_score_row_are_distinct)
 {
     auto control = make_player(0);
-    ASSERT_TRUE(control != nullptr) << "control should be created";
-    walker* controlp = control.get();
+    ASSERT_NE(nullptr, control) << "control should be created";
+    walker* const controlp = control.get();
     controlp->set_user(0);
     controlp->set_team_num(0);
     controlp->set_dead(0);
@@ -388,21 +501,16 @@ TEST_F(GladHud, glad_score_panel_and_new_score_panel_modes)
     controlp->stats()->set_max_magicpoints(80);
     controlp->stats()->set_special_cost(static_cast<unsigned char>(controlp->current_special()), 10);
 
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(v != nullptr) << "view should exist";
-    walker* old_control = v->control;
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v) << "view should exist";
+    walker* const old_control = v->control;
     v->control = controlp;
 
-    // Make sure these overlays execute.
     v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
     v->prefs[PREF_SCORE] = PREF_SCORE_ON;
     v->prefs[PREF_FOES] = PREF_FOES_ON;
 
-    // Exercise all life display variants in new_score_panel.  Start at zero
-    // before raising the score so this test observes the real animated
-    // count-up transition (and its gameplay RNG), rather than merely drawing
-    // a score that was already present when the function-static display state
-    // initialized.
     Uint32& score = og::runtime::current_session->myscreen_->world_.m_score[0];
     struct ScoreRestore
     {
@@ -410,19 +518,84 @@ TEST_F(GladHud, glad_score_panel_and_new_score_panel_modes)
         Uint32 value;
         ~ScoreRestore() { destination = value; }
     } restore_score{score, score};
+
+    // A settled score (the count-up clamps down to 0 and consumes no rng) makes
+    // the panel a pure function of state, which every comparison below needs.
     score = 0;
-    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
-    og::runtime::current_session->myscreen_->clearbuffer();
-    ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel text mode";
-    const auto zero_score_frame = capture_rendered_frame(
-        *og::runtime::current_session->myscreen_);
+    v->prefs[PREF_LIFE] = PREF_LIFE_BARS;
+    s->clearbuffer();
+    new_score_panel(s, 1);
+    const auto settled = capture_rendered_frame(*s);
+    s->clearbuffer();
+    new_score_panel(s, 1);
+    ASSERT_EQ(settled, capture_rendered_frame(*s))
+        << "with the score settled the panel must redraw identically";
+
+    // The wrappers ARE new_score_panel: same state in, same pixels out.
+    s->clearbuffer();
+    score_panel(s, 1);
+    EXPECT_EQ(settled, capture_rendered_frame(*s))
+        << "score_panel(s, do_it) must draw exactly what new_score_panel does";
+    s->clearbuffer();
+    score_panel(s);
+    EXPECT_EQ(settled, capture_rendered_frame(*s))
+        << "score_panel(s) must draw exactly what new_score_panel does";
+
+    // The HP/MP readout block: bars at (lm+2, tm+10) and (lm+2, tm+18), text at
+    // (lm+5, tm+12) / (lm+5, tm+20), inside the button box lm+1..lm+63.
+    const auto life_rows = [&](const std::array<unsigned char, 64000>& frame) {
+        std::vector<unsigned char> rows;
+        for (int y = v->yloc + 10; y < v->yloc + 27; ++y)
+            for (int x = v->xloc + 1; x < v->xloc + 64; ++x)
+                rows.push_back(frame[static_cast<std::size_t>(y * 320 + x)]);
+        return rows;
+    };
+    const auto capture_life = [&](char life_pref) {
+        v->prefs[PREF_LIFE] = life_pref;
+        s->clearbuffer();
+        new_score_panel(s, 1);
+        return life_rows(capture_rendered_frame(*s));
+    };
+
+    // Three modes, three different readouts -- with the score held fixed, so
+    // the difference can only come from PREF_LIFE.
+    const auto text_rows = capture_life(PREF_LIFE_TEXT);
+    const auto bars_rows = capture_life(PREF_LIFE_BARS);
+    const auto both_rows = capture_life(PREF_LIFE_BOTH);
+    const auto off_rows = capture_life(PREF_LIFE_OFF);
+    EXPECT_NE(text_rows, bars_rows) << "TEXT and BARS are different readouts";
+    EXPECT_NE(text_rows, both_rows) << "TEXT and BOTH are different readouts";
+    EXPECT_NE(bars_rows, both_rows) << "BARS and BOTH are different readouts";
+    EXPECT_NE(off_rows, text_rows) << "OFF draws no readout at all";
+    EXPECT_NE(off_rows, bars_rows) << "OFF draws no readout at all";
+
+    // The shifter toggle swaps the special's name for its alternate, and a
+    // drained pool recolours the line: both must reach the panel.
+    v->prefs[PREF_LIFE] = PREF_LIFE_BARS;
+    s->clearbuffer();
+    new_score_panel(s, 1);
+    const auto plain_special = capture_rendered_frame(*s);
+    controlp->set_shifter_down(1);
+    controlp->stats()->set_magicpoints(0);
+    s->clearbuffer();
+    new_score_panel(s, 1);
+    EXPECT_NE(plain_special, capture_rendered_frame(*s))
+        << "holding shifter with an empty pool must change what the panel shows";
+    controlp->set_shifter_down(0);
+    controlp->stats()->set_magicpoints(33);
+
+    // Finally the score itself. Hold PREF_LIFE fixed and change ONLY the score:
+    // the SC row must move and the life rows must NOT.
+    v->prefs[PREF_LIFE] = PREF_LIFE_BARS;
+    s->clearbuffer();
+    new_score_panel(s, 1);
+    const auto zero_score_frame = capture_rendered_frame(*s);
 
     score = 1'000'000u;
-    v->prefs[PREF_LIFE] = PREF_LIFE_BARS;
-    og::runtime::current_session->myscreen_->clearbuffer();
-    ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel bars mode";
-    const auto counting_score_frame = capture_rendered_frame(
-        *og::runtime::current_session->myscreen_);
+    s->clearbuffer();
+    new_score_panel(s, 1);
+    const auto counting_score_frame = capture_rendered_frame(*s);
+
     bool score_row_changed = false;
     for (int y = v->endy - 8; y < v->endy; ++y)
         for (int x = v->xloc; x < v->xloc + 70; ++x)
@@ -431,18 +604,13 @@ TEST_F(GladHud, glad_score_panel_and_new_score_panel_modes)
                     counting_score_frame[static_cast<std::size_t>(y * 320 + x)];
     EXPECT_TRUE(score_row_changed)
         << "raising the team score must advance the visible SC count";
-    v->prefs[PREF_LIFE] = PREF_LIFE_BOTH;
-    ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel both mode";
+    EXPECT_EQ(life_rows(zero_score_frame), life_rows(counting_score_frame))
+        << "the score count-up must not disturb the HP/MP readout";
 
-    // Toggle shifter special-name branch and low-mp branch.
-    controlp->set_shifter_down(1);
-    controlp->stats()->set_magicpoints(0);
-    (void)new_score_panel(og::runtime::current_session->myscreen_, 1);
-    controlp->set_shifter_down(0);
-
-    // Wrapper functions.
-    ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_)) << "score_panel wrapper";
-    ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_, 1)) << "score_panel overload";
+    // Settle the count-up back down for whatever runs next.
+    score = 0;
+    s->clearbuffer();
+    new_score_panel(s, 1);
 
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
 }
@@ -1931,6 +2099,116 @@ TEST_F(GladHud, score_panel_floor_row_absent_single_floor)
     v->prefs[PREF_FOES] = old_pref_foes;
     v->prefs[PREF_OVERLAY] = old_pref_overlay;
 }
+
+// The TEAM/FOES counter box is anchored to the TOP of its pane: TEAM at
+// (rm-55, tm+2), FOES at (rm-55, tm+10), inside the box tm+1..tm+16. The
+// 2013 touch build drew both rows 52 px lower (`tm+2 + 44 + 8`) behind a
+// retired touch-build `#ifndef` fork that no configured build ever selected;
+// the fork is gone (PR #292), so the surviving arm is the only geometry and
+// the band 52 px below it must stay empty.
+TEST_F(GladHud, team_row_sits_at_the_pane_top)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    ASSERT_EQ(1, static_cast<int>(s->numviews))
+        << "the pane geometry below assumes the single-view layout";
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    ASSERT_EQ(1, world.floor_count()) << "no FLR row: the box keeps its 16px height";
+
+    auto control = make_player(0);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    auto foe = make_living(FAMILY_ORC, 1);
+    ASSERT_NE(nullptr, foe);
+    world.oblist.push_back(std::move(foe));
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    struct PrefRestore {
+        viewscreen* view; walker* control;
+        char life, score, foes, overlay;
+        ~PrefRestore()
+        {
+            view->control = control;
+            view->prefs[PREF_LIFE] = life;
+            view->prefs[PREF_SCORE] = score;
+            view->prefs[PREF_FOES] = foes;
+            view->prefs[PREF_OVERLAY] = overlay;
+        }
+    } restore{v, old_control, old_pref_life, old_pref_score, old_pref_foes,
+              old_pref_overlay};
+
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // the count-up consumes rng()
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    // Zero overscan in the default build, so these are the viewport's own
+    // edges -- the same lm/tm/rm/bm score_panel computes.
+    const int tm = v->yloc;
+    const int rm = v->endx;
+    // PREF_OVERLAY_ON draws the box, and the box colour is what picks the
+    // text colour (score_panel.cpp: draw_button ? DARK_BLUE : YELLOW).
+    const unsigned char text_color = static_cast<unsigned char>(DARK_BLUE);
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    ASSERT_FALSE(trace_contains("hud", "next_wave"))
+        << "no pending wave: the box must keep its two-row height";
+    const auto actual = capture_rendered_frame(*s);
+
+    // Redraw the counter box by hand at the surviving arm's coordinates and
+    // demand the pixels match exactly: position, colour and text all pinned.
+    const std::string team_text =
+        "TEAM: " + std::to_string(
+            static_cast<int>(remaining_team(s, static_cast<char>(0))));
+    const std::string foes_text =
+        "FOES: " + std::to_string(
+            static_cast<int>(remaining_foes(s, controlp)));
+    ASSERT_EQ("TEAM: 1", team_text) << "one living team-0 walker: the control";
+    ASSERT_EQ("FOES: 1", foes_text) << "one living hostile walker";
+
+    s->clearbuffer();
+    s->draw_button(rm - 57, tm + 1, rm - 2, tm + 16, 1, 1);
+    s->text_normal.write_xy(rm - 55, tm + 2, team_text.c_str(), text_color,
+                            static_cast<short>(1));
+    s->text_normal.write_xy(rm - 55, tm + 10, foes_text.c_str(), text_color,
+                            static_cast<short>(1));
+    const auto expected = capture_rendered_frame(*s);
+
+    std::vector<unsigned char> actual_box;
+    std::vector<unsigned char> expected_box;
+    for (int y = tm + 1; y <= tm + 16; ++y)
+        for (int x = rm - 57; x <= rm - 2; ++x)
+        {
+            const std::size_t offset = static_cast<std::size_t>(y * 320 + x);
+            actual_box.push_back(actual[offset]);
+            expected_box.push_back(expected[offset]);
+        }
+    EXPECT_EQ(expected_box, actual_box)
+        << "the counter box must render TEAM at (" << rm - 55 << ","
+        << tm + 2 << ") and FOES at (" << rm - 55 << "," << tm + 10 << ")";
+
+    // The retired touch arm's rows: TEAM at tm+2+44+8 spans y in [tm+54,
+    // tm+60). Nothing draws there now, so any ink is the dead geometry
+    // coming back.
+    for (int y = tm + 54; y < tm + 60; ++y)
+        for (int x = rm - 55; x < rm - 2; ++x)
+            ASSERT_EQ(0, static_cast<int>(
+                          actual[static_cast<std::size_t>(y * 320 + x)]))
+                << "pixel at (" << x << "," << y << ") must stay clean: the"
+                << " counter rows belong at the pane top, not 52px down";
+}
+
 
 TEST_F(GladHud, fps_overlay_clears_extended_foes_counter)
 {

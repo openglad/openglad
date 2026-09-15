@@ -1880,26 +1880,6 @@ og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
     return message;
 }
 
-bool start_denial_matches_request(
-    const og::sim::LobbyState& state,
-    std::uint32_t pending_request_id) noexcept
-{
-    return pending_request_id != 0 &&
-        state.last_start_request_id == pending_request_id &&
-        state.last_start_denial != og::sim::start_denial_reason_value(
-            og::sim::StartDenialReason::None);
-}
-
-bool start_confirmation_matches_request(
-    const og::sim::LobbyMessage& message,
-    std::uint32_t pending_request_id) noexcept
-{
-    const auto* const start =
-        std::get_if<og::sim::LobbyStartGameMessage>(&message.payload);
-    return start != nullptr &&
-        (pending_request_id == 0 || start->request_id == pending_request_id);
-}
-
 template <typename Poll, typename Accepted>
 bool wait_for_authoritative_lobby_value(
     Poll&& poll,
@@ -3202,6 +3182,9 @@ public:
             state_->last_start_denial);
     }
 
+    // Constant by contract: this answers "is a NETWORK client installed",
+    // never "is a session running" -- that is session_established() below
+    // (pinned by MenuModel.host_picker_lobby_client_guards_the_port_and_starts_idle).
     [[nodiscard]] bool is_networked_session() const noexcept override
     {
         return true;
@@ -3443,7 +3426,7 @@ private:
                 message.lobby_message->kind() ==
                     og::sim::LobbyMessageKind::StartGame)
             {
-                if (!og::ui::detail::start_confirmation_matches_request(
+                if (!og::sim::start_confirmation_matches_request(
                         *message.lobby_message,
                         start_request_pending_
                             ? pending_start_request_id_
@@ -4449,6 +4432,9 @@ public:
             state_->last_start_denial);
     }
 
+    // Constant by contract: this answers "is a NETWORK client installed",
+    // never "is a session running" -- that is session_established() below
+    // (pinned by MenuModel.host_picker_lobby_client_guards_the_port_and_starts_idle).
     [[nodiscard]] bool is_networked_session() const noexcept override
     {
         return true;
@@ -4950,7 +4936,7 @@ private:
                 // an older attempt may already be queued and must not release
                 // a newer pending request.
                 if (start_request_pending_ &&
-                    og::ui::detail::start_denial_matches_request(
+                    og::sim::start_denial_matches_request(
                         *state_, pending_start_request_id_))
                 {
                     start_request_pending_ = false;
@@ -5034,7 +5020,7 @@ private:
                 message.lobby_message->kind() ==
                     og::sim::LobbyMessageKind::StartGame)
             {
-                if (!og::ui::detail::start_confirmation_matches_request(
+                if (!og::sim::start_confirmation_matches_request(
                         *message.lobby_message,
                         start_request_pending_
                             ? pending_start_request_id_

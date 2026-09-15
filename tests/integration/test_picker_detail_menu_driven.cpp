@@ -4,6 +4,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/resources/company.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -158,37 +159,143 @@ struct PickerLobbyShutdownGuard
 {
     ~PickerLobbyShutdownGuard() { picker_lobby_shutdown(); }
 };
+
+struct CanvasRoutingGuard
+{
+    CanvasTarget target = E_Screen->active_canvas();
+    ~CanvasRoutingGuard() { E_Screen->set_active_canvas(target); }
+};
+
+// Palette-index ink counter. The picker paints indexed colours: the header
+// font (pix/textbig.png) is a single-index pixie whose lit pixels are exactly
+// RED (40), and the small font shades a glyph across its colour's five-entry
+// ramp, so DARK_BLUE body text lands in 72..76.
+std::size_t count_palette(int x1, int x2, int y1, int y2, int lo, int hi)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    std::size_t hits = 0;
+    for (int y = y1; y <= y2; ++y)
+        for (int x = x1; x <= x2; ++x)
+        {
+            int index = 0;
+            scr->get_pixel(x, y, &index);
+            if (index >= lo && index <= hi)
+                ++hits;
+        }
+    return hits;
+}
+
+// create_detail_menu's abilities panel: draw_dialog(5, 68, 315, 167,
+// "Character Special Abilities") plus render_family_abilities' left column
+// (DETAIL_LM = 11, detail_line_y(n) = 90 + 6n).
+constexpr int kAbilityHeaderX1 = 9;
+constexpr int kAbilityHeaderX2 = 311;
+constexpr int kAbilityHeaderY1 = 72;   // draw_dialog header field: y1+4
+constexpr int kAbilityHeaderY2 = 86;   //                          y1+18
+constexpr int kAbilityTextX1 = 11;
+constexpr int kAbilityTextX2 = 155;
+constexpr int kAbilityTextY1 = 88;
+constexpr int kAbilityTextY2 = 163;
 } // namespace
 
-TEST(PickerDetailMenuDriven, picker_detail_menu_back_exercises_many_family_descriptions)
+// create_detail_menu returns MENU_REDRAW from FOUR places (the two early-outs
+// for an unseated/empty slot, the promote branch, and the BACK tail), so the
+// return code alone proves nothing. Pin the painted frame: the loop must have
+// run, drawn the abilities dialog, and rendered the family's OWN ability text
+// (a family with no ability table paints the panel and no text at all).
+TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abilities_then_exits_on_back)
 {
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
+    PickerLobbyShutdownGuard lobby_guard;
+    CanvasRoutingGuard canvas_guard;
 
-    og::runtime::current_session->editguy_ = 0;
-    og::runtime::current_session->myscreen_->save_data.team_size = 1;
-    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
-    og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAM_SOLDIER";
-    og::runtime::current_session->myscreen_->save_data.team_list[0]->level = 10;
+    struct Case
+    {
+        int family;
+        const char* what;
+        bool has_ability_table;   // get_family_detail() knows this family
+    };
+    const Case cases[] = {
+        { FAMILY_SOLDIER,  "soldier",  true  },
+        { FAMILY_THIEF,    "thief",    true  },
+        { FAMILY_SKELETON, "skeleton", false },
+    };
 
-    og::runtime::current_session->current_guy_ = std::make_unique<guy>(*og::runtime::current_session->myscreen_->save_data.team_list[0]);
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::size_t soldier_ability_ink = 0;
+    std::size_t thief_ability_ink = 0;
 
-    KeyStateGuard ks;
-    std::atomic<bool> done{false};
-    prepare_detail_menu_mouse_click();
-    InjectorArgs args{&ks, false, &done};
-    SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_exit", &args);
-    ASSERT_TRUE(th != nullptr) << "injector thread started";
+    for (const Case& c : cases)
+    {
+        og::runtime::current_session->editguy_ = 0;
+        save.team_size = 1;
+        save.team_list[0].reset(new guy(c.family));
+        save.team_list[0]->name = "TEAM_GUY";
+        save.team_list[0]->level = 10;
+        og::runtime::current_session->current_guy_ =
+            std::make_unique<guy>(*save.team_list[0]);
 
-    Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
-    done.store(true, std::memory_order_relaxed);
-    int code = 0;
-    if (th)
+        E_Screen->set_active_canvas(CanvasTarget::UI);
+        SDL_FillSurfaceRect(E_Screen->render, nullptr, 0);
+
+        KeyStateGuard ks;
+        std::atomic<bool> done{false};
+        prepare_detail_menu_mouse_click();
+        InjectorArgs args{&ks, false, &done};
+        SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu,
+                                          "picker_detail_exit", &args);
+        ASSERT_TRUE(th != nullptr) << "injector thread started for " << c.what;
+
+        Sint32 r = create_detail_menu(save.team_list[0].get());
+        done.store(true, std::memory_order_relaxed);
+        int code = 0;
         SDL_WaitThread(th, &code);
-    clear_events();
+        clear_events();
 
-    // create_detail_menu exits back to the edit menu and always returns REDRAW.
-    ASSERT_EQ(2, (int)r) << "detail menu should return REDRAW on back";
+        // Exclude the two silent early-outs: the slot stayed seated and held
+        // a guy for the whole loop, so MENU_REDRAW came from the BACK click.
+        ASSERT_EQ(0, og::runtime::current_session->editguy_)
+            << "the parameter seats slot 0 for " << c.what;
+        ASSERT_TRUE(save.team_list[0] != nullptr)
+            << "slot 0 stayed seated for " << c.what;
+        ASSERT_EQ(2, (int)r) << "detail menu returns REDRAW on back for " << c.what;
+
+        const std::size_t header_red =
+            count_palette(kAbilityHeaderX1, kAbilityHeaderX2,
+                          kAbilityHeaderY1, kAbilityHeaderY2, RED, RED);
+        const std::size_t ability_ink =
+            count_palette(kAbilityTextX1, kAbilityTextX2,
+                          kAbilityTextY1, kAbilityTextY2,
+                          DARK_BLUE, DARK_BLUE + 4);
+        EXPECT_GT(header_red, 40u)
+            << "the detail loop must paint its 'Character Special Abilities' "
+               "header for " << c.what;
+        if (c.has_ability_table)
+        {
+            EXPECT_GT(ability_ink, 40u)
+                << "render_family_abilities must write the class line and "
+                   "ability text for " << c.what;
+        }
+        else
+        {
+            EXPECT_EQ(0u, ability_ink)
+                << "a family with no ability table paints the panel and no "
+                   "ability text (" << c.what << ")";
+        }
+
+        if (c.family == FAMILY_SOLDIER)
+            soldier_ability_ink = ability_ink;
+        if (c.family == FAMILY_THIEF)
+            thief_ability_ink = ability_ink;
+    }
+
+    EXPECT_NE(soldier_ability_ink, thief_ability_ink)
+        << "the panel text is derived from the seated family, not a fixed "
+           "block: a soldier and a thief do not read the same";
+
+    save.team_list[0].reset();
+    save.team_size = 0;
 }
 
 
@@ -278,6 +385,33 @@ static bool reset_pointer_on_menu_thread()
     return run_on_main_thread([] { reset_mouse_click_tracking(); });
 }
 
+// The settle for the DETAIL menu, which is a legacy loop: it is not
+// run_menu_screen-hosted, so no engine frame can ever complete inside it
+// (wait_for_menu_frames would time out) and it never drains the main-thread
+// task queue (run_on_main_thread would burn its whole ceiling). What the next
+// click actually needs is the pointer EDGE: leftmouse() mints a click only on
+// an unpressed->pressed transition (src/interface/ui/picker_input.cpp), so the
+// press that opened this screen must have been sampled as RELEASED before a
+// fresh press can be seen at all. That is a state, and this waits for the
+// state — bounded, and normally satisfied on the first read, where the flat
+// SDL_Delay(300) it replaces spent 300 ms proving nothing.
+static bool wait_for_released_pointer_edge(int timeout_ms = 2000)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (SDL_GetTicks() < deadline)
+    {
+        const auto& hw = input_hardware_state();
+        if (!hw.picker_was_left_down && hw.mouse.left == 0)
+            return true;
+        SDL_Delay(2);
+    }
+    fprintf(stderr,
+            "  [test] the pointer never returned to a released edge within "
+            "%d ms\n",
+            timeout_ms);
+    return false;
+}
+
 template <typename Predicate>
 static bool wait_for_menu_thread_condition(Predicate&& predicate,
                                            int timeout_ms = 10000)
@@ -308,6 +442,9 @@ struct TrainPromoteFlowState
     bool saw_promote = false;
     bool back_in_train_menu = false;
     bool pointer_edges_acknowledged = true;
+    // Every settle in the flow was a CONDITION that came true (a completed
+    // engine frame, a released pointer edge), not a clock that ran out.
+    bool settles_observed = true;
 };
 
 // Drives the REAL nesting: train menu -> DETAILS -> promote -> back in the
@@ -324,7 +461,10 @@ static int train_menu_promote_injector(void* data)
         return 0;
     }
     state->saw_train_menu = true;
-    SDL_Delay(300);
+    // No settle before this: reset_pointer_on_menu_thread() IS one. It posts
+    // to the menu thread's task queue, which run_menu_screen drains at the top
+    // of a frame, so its return proves a frame ran — strictly more than a
+    // flat delay proved.
     state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("details");
 
@@ -333,7 +473,7 @@ static int train_menu_promote_injector(void* data)
         return 0;
     }
     state->saw_promote = true;
-    SDL_Delay(300);
+    state->settles_observed &= wait_for_released_pointer_edge();
     interact("promote");
 
     // The promotion returns MENU_REDRAW straight into the train menu;
@@ -343,7 +483,6 @@ static int train_menu_promote_injector(void* data)
         return 0;
     }
     state->back_in_train_menu = true;
-    SDL_Delay(300);
 
     short strength_before = 0;
     state->pointer_edges_acknowledged &= run_on_main_thread([&] {
@@ -384,6 +523,8 @@ struct DetailPromoteFlowState
     std::atomic<bool> finished{false};
     bool saw_promote = false;
     bool clicked_promote = false;
+    // See TrainPromoteFlowState::settles_observed.
+    bool settles_observed = true;
 };
 
 // Gated on the affordance, never on a flat delay: on the unfixed tree the
@@ -397,10 +538,11 @@ static int detail_menu_promote_injector(void* data)
 
     if (wait_for_interactable("promote", 10000)) {
         state->saw_promote = true;
-        SDL_Delay(300);
         // No run_on_main_thread() settle here: create_detail_menu is a legacy
         // loop, not a run_menu_screen spec, so it never pumps the injector
-        // task queue and the post would burn its whole 15 s ceiling.
+        // task queue and the post would burn its whole 15 s ceiling. The
+        // released-pointer edge is the condition this click needs.
+        state->settles_observed = wait_for_released_pointer_edge();
         state->clicked_promote = interact("promote");
     }
     if (!state->clicked_promote) {
@@ -456,6 +598,8 @@ TEST(PickerDetailMenuDriven, detail_menu_promotes_after_a_lobby_poll_rebuilds_th
 
     ASSERT_TRUE(state.saw_promote)
         << "the promote affordance must survive the roster rebuild";
+    ASSERT_TRUE(state.settles_observed)
+        << "the injector's settle must be a condition that came true";
     ASSERT_TRUE(state.clicked_promote);
     ASSERT_EQ(2, (int)r) << "promote returns REDRAW";
     ASSERT_TRUE(save.team_list[0] != nullptr)
@@ -503,6 +647,8 @@ TEST(PickerDetailMenuDriven, train_menu_details_promote_survives_redraw_and_acce
     ASSERT_TRUE(state.back_in_train_menu)
         << "promotion should return to the train menu";
     ASSERT_TRUE(state.pointer_edges_acknowledged);
+    ASSERT_TRUE(state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
     ASSERT_EQ(2, (int)r) << "train menu BACK should return REDRAW";
 
     // The real team member is an Archmage and ACCEPT did not revert it.
@@ -525,6 +671,8 @@ struct TrainPromoteScriptState
     bool saw_promote = false;
     bool back_in_train_menu = false;
     bool pointer_edges_acknowledged = true;
+    // See TrainPromoteFlowState::settles_observed.
+    bool settles_observed = true;
     // Optional extra steps performed back in the train menu after the
     // promotion, before BACK.
     bool do_stat_edit = false;
@@ -546,7 +694,10 @@ static int train_menu_promote_script_injector(void* data)
         return 0;
     }
     state->saw_train_menu = true;
-    SDL_Delay(300);
+    // No settle before this: reset_pointer_on_menu_thread() IS one. It posts
+    // to the menu thread's task queue, which run_menu_screen drains at the top
+    // of a frame, so its return proves a frame ran — strictly more than a
+    // flat delay proved.
     state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
     interact("details");
 
@@ -555,10 +706,10 @@ static int train_menu_promote_script_injector(void* data)
         return 0;
     }
     state->saw_promote = true;
-    SDL_Delay(300);
     // The legacy detail loop runs synchronously inside the train menu's
-    // button callback, so it cannot drain the menu-screen task queue. Its
-    // query_mouse() loop has already consumed the DETAILS release here.
+    // button callback, so it cannot drain the menu-screen task queue. Wait on
+    // the pointer edge it leaves behind instead.
+    state->settles_observed &= wait_for_released_pointer_edge();
     interact("promote");
 
     // "accept" only exists in the train menu, so this waits out the return
@@ -567,8 +718,13 @@ static int train_menu_promote_script_injector(void* data)
         state->finished.store(true, std::memory_order_relaxed);
         return 0;
     }
+    // The pre-fix revert window is a number of picker_lobby_poll()s, and the
+    // train screen polls the lobby once per engine frame
+    // (train_menu_screen_spec, .polls_lobby = true). Five COMPLETED frames is
+    // therefore five real polls; the flat 500 ms it replaces was a guess that
+    // any ran at all.
     state->back_in_train_menu = true;
-    SDL_Delay(500); // several poll iterations — the pre-fix revert window
+    state->settles_observed &= wait_for_menu_frames(5);
 
     if (state->do_stat_edit) {
         short strength_before = 0;
@@ -612,7 +768,6 @@ static int train_menu_exit_injector(void* data)
     auto* state = static_cast<TrainPromoteScriptState*>(data);
     if (wait_for_interactable("details", 10000)) {
         state->saw_train_menu = true;
-        SDL_Delay(300);
         state->pointer_edges_acknowledged &= reset_pointer_on_menu_thread();
         interact("back");
     }
@@ -673,6 +828,8 @@ TEST(PickerDetailMenuDriven, train_menu_promote_alone_persists_on_exit_and_reent
     ASSERT_TRUE(state.saw_promote) << "details menu should offer promote";
     ASSERT_TRUE(state.back_in_train_menu);
     ASSERT_TRUE(state.pointer_edges_acknowledged);
+    ASSERT_TRUE(state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
 
     // Family AND the promotion's stats survived the exit.
     ASSERT_TRUE(save.team_list[0] != nullptr);
@@ -694,6 +851,8 @@ TEST(PickerDetailMenuDriven, train_menu_promote_alone_persists_on_exit_and_reent
 
     ASSERT_TRUE(reenter_state.saw_train_menu);
     ASSERT_TRUE(reenter_state.pointer_edges_acknowledged);
+    ASSERT_TRUE(reenter_state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
     ASSERT_TRUE(og::runtime::current_session->current_guy_ != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE,
               (int)og::runtime::current_session->current_guy_->family);
@@ -730,6 +889,8 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_stat_edit_keeps_both)
     ASSERT_TRUE(state.saw_promote);
     ASSERT_TRUE(state.back_in_train_menu);
     ASSERT_TRUE(state.pointer_edges_acknowledged);
+    ASSERT_TRUE(state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
 
     ASSERT_TRUE(save.team_list[0] != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)
@@ -769,6 +930,8 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_cancel_discards_pending_edi
     ASSERT_TRUE(state.saw_promote);
     ASSERT_TRUE(state.back_in_train_menu);
     ASSERT_TRUE(state.pointer_edges_acknowledged);
+    ASSERT_TRUE(state.settles_observed)
+        << "every settle in the flow must be a condition that came true";
 
     ASSERT_TRUE(save.team_list[0] != nullptr);
     ASSERT_EQ(FAMILY_ARCHMAGE, (int)save.team_list[0]->family)
@@ -782,8 +945,18 @@ TEST(PickerDetailMenuDriven, train_menu_promote_then_cancel_discards_pending_edi
     save.m_totalcash[0] = saved_cash;
 }
 
-TEST(PickerDetailMenuDriven, picker_family_name_copy_includes_archmage)
+// family_name_copy is picker.cpp's wrapper over og::ui::family_short_name,
+// which never returns nullptr -- so a null check pins nothing. Pin the label
+// each of its three branches produces.
+TEST(PickerDetailMenuDriven, picker_family_name_copy_labels_each_short_name_branch)
 {
-    const char* a = family_name_copy(FAMILY_ARCHMAGE);
-    ASSERT_TRUE(a != nullptr) << "family_name_copy should return a string";
+    // packs/core/families/living-17-archmage.lua: short_name = og.NIL, so the
+    // display name is the label.
+    EXPECT_STREQ("ARCHMAGE", family_name_copy(FAMILY_ARCHMAGE))
+        << "no pack short_name -> the descriptor's display name is the label";
+    // living-15-orc_captain.lua: name "ORC CAPTAIN", short_name "ORC CAP."
+    EXPECT_STREQ("ORC CAP.", family_name_copy(FAMILY_BIG_ORC))
+        << "a pack short_name wins over the display name";
+    EXPECT_STREQ("BEAST", family_name_copy(static_cast<short>(99)))
+        << "no descriptor at all -> BEAST";
 }

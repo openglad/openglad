@@ -10,6 +10,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
@@ -22,9 +24,7 @@ namespace {
 struct SpecialsFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SpecialsFixture()
@@ -33,7 +33,7 @@ struct SpecialsFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -41,7 +41,6 @@ living* add_living(SpecialsFixture& fx, char family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(96, 96);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -63,6 +62,18 @@ walker* add_marker(SpecialsFixture& fx, walker* owner, int x, int y, int life)
     return m;
 }
 
+// The world LCG (og::sim::SimRandom::next), replicated here with its own
+// literal constants so the expectations below are an INDEPENDENT oracle: a
+// blink that stopped drawing from the world stream, drew in a different
+// order, or scaled a draw differently lands somewhere else than this says.
+std::uint32_t lcg_next(std::uint32_t& state, std::uint32_t max_exclusive)
+{
+    if (max_exclusive == 0)
+        return 0;
+    state = state * 1103515245u + 12345u;
+    return (state >> 16) % max_exclusive;
+}
+
 } // namespace
 
 TEST(WalkerSpecialsUnit, walker_specials_r11_special_and_teleport_paths)
@@ -71,46 +82,122 @@ TEST(WalkerSpecialsUnit, walker_specials_r11_special_and_teleport_paths)
     living* w = add_living(fx, FAMILY_CLERIC, 0);
     ASSERT_TRUE(w != nullptr);
 
+    // Each refusal names the reason it refused for, so a gate that stopped
+    // guarding (or started guarding for the wrong reason) is visible.
+    walker::SpecialFailure why = walker::SpecialFailure::None;
     w->set_dead(1);
-    ASSERT_TRUE(!w->special());
+    ASSERT_FALSE(w->special(&why)) << "a corpse must not cast";
+    EXPECT_EQ(walker::SpecialFailure::Dead, why)
+        << "the corpse gate, not some later one, is what refused";
     w->set_dead(0);
 
     walker* weapon = fx.level.add_ob(Order::Weapon, FAMILY_ARROW);
-    ASSERT_TRUE(weapon != nullptr);
-    if (weapon) {
-        weapon->set_dead(0);
-        ASSERT_TRUE(!weapon->special());
-    }
+    ASSERT_NE(nullptr, weapon);
+    weapon->set_dead(0);
+    why = walker::SpecialFailure::None;
+    ASSERT_FALSE(weapon->special(&why)) << "a weapon has no special";
+    // A freshly created arrow carries no magic points, so the MP gate is the
+    // one that refuses it here — the order gate behind it is pinned by
+    // special_reports_why_it_refused, which pays the arrow's cost first.
+    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
+        << "the refusal names the gate that actually stopped the cast";
 
-    // marker teleport success with marker expiry (lines 86-90)
+    // Marker teleport: the blink lands CENTERED on the marker (center_on's
+    // math), spends one of the marker's lifetimes and kills it at zero.
     w->setxy(20, 20);
     walker* marker = add_marker(fx, w, 140, 140, 1);
-    ASSERT_TRUE(marker != nullptr);
+    ASSERT_NE(nullptr, marker);
+    const int expect_x = 140 + marker->sizex() / 2 - w->sizex() / 2;
+    const int expect_y = 140 + marker->sizey() / 2 - w->sizey() / 2;
     ASSERT_TRUE(w->teleport());
-    ASSERT_TRUE(marker->dead() == 1);
+    EXPECT_EQ(expect_x, static_cast<int>(w->xpos()))
+        << "the marker blink centers the caster on the marker";
+    EXPECT_EQ(expect_y, static_cast<int>(w->ypos()))
+        << "the marker blink centers the caster on the marker";
+    EXPECT_EQ(1, static_cast<int>(marker->dead()))
+        << "a one-life marker is spent by the blink that used it";
 
-    // no marker path: random passable placement
+    // No marker (the one above is spent): one world-LCG draw per axis,
+    // scaled to the grid — the caster lands on that cell's pixel origin.
+    GameWorld& world = fx.level.world();
+    world.rng_.state_ = 12345u;
+    std::uint32_t expect_state = 12345u;
+    const int cell_x = static_cast<int>(
+        lcg_next(expect_state, static_cast<std::uint32_t>(world.grid.w)));
+    const int cell_y = static_cast<int>(
+        lcg_next(expect_state, static_cast<std::uint32_t>(world.grid.h)));
     ASSERT_TRUE(w->teleport());
+    EXPECT_EQ(cell_x * GRID_SIZE, static_cast<int>(w->xpos()))
+        << "the markerless blink lands on the drawn grid cell's origin";
+    EXPECT_EQ(cell_y * GRID_SIZE, static_cast<int>(w->ypos()))
+        << "the markerless blink lands on the drawn grid cell's origin";
+    EXPECT_EQ(expect_state, world.rng_.state_)
+        << "one draw per axis and no more: a single-floor level takes no "
+           "floor draw (the byte-identical-stream gate)";
 
-    // ranged teleport success path
-    (void)w->teleport_ranged(40);
+    // Ranged hop: both axes are drawn in [-range, range) around the CURRENT
+    // position, from the same world stream.
+    world.rng_.state_ = 777u;
+    std::uint32_t ranged_state = 777u;
+    const int ranged_x =
+        static_cast<int>(lcg_next(ranged_state, 80u)) - 40 + w->xpos();
+    const int ranged_y =
+        static_cast<int>(lcg_next(ranged_state, 80u)) - 40 + w->ypos();
+    ASSERT_TRUE(w->teleport_ranged(40))
+        << "an open landing spot inside the range must be accepted";
+    EXPECT_EQ(ranged_x, static_cast<int>(w->xpos()))
+        << "teleport_ranged offsets x by next(2*range) - range";
+    EXPECT_EQ(ranged_y, static_cast<int>(w->ypos()))
+        << "teleport_ranged offsets y by next(2*range) - range";
+    EXPECT_EQ(ranged_state, world.rng_.state_)
+        << "exactly one draw per axis";
 }
 
 TEST(WalkerSpecialsUnit, walker_specials_r11_turn_undead_paths)
 {
     SpecialsFixture fx;
     living* cleric = add_living(fx, FAMILY_CLERIC, 0);
-    ASSERT_TRUE(cleric != nullptr);
+    ASSERT_NE(nullptr, cleric);
 
-    // No targets branch -> -1
-    ASSERT_TRUE(cleric->turn_undead(40, 5) == -1);
+    // No foe in range at all -> the "nothing to turn" sentinel, not 0.
+    ASSERT_EQ(-1, cleric->turn_undead(40, 5))
+        << "turn_undead must distinguish 'no targets' from 'nobody resisted'";
 
-    // Undead target in range triggers kill path.
+    // The resistance roll is `world rng next(range*40) > next(level*10)`, drawn
+    // from the world LCG (SimRandom), NOT from the fixture's IRandom.
     living* skeleton = add_living(fx, FAMILY_SKELETON, 1);
+    ASSERT_NE(nullptr, skeleton);
     skeleton->setxy(100, 96);
     skeleton->stats()->set_level(1);
-    const std::int32_t killed = cleric->turn_undead(40, 5);
-    ASSERT_TRUE(killed >= 0);
+
+    // Winning roll: state 1 draws 838 from next(1600) then 6 from next(10).
+    fx.level.world().rng_.state_ = 1u;
+    ASSERT_EQ(1, cleric->turn_undead(40, 5))
+        << "838 > 6 must turn the skeleton and count it";
+    EXPECT_EQ(1, static_cast<int>(skeleton->dead()))
+        << "a turned undead is marked dead";
+
+    // Losing roll on a fresh skeleton: state 0 draws 0 then 6, so 0 > 6 fails.
+    living* survivor = add_living(fx, FAMILY_SKELETON, 1);
+    ASSERT_NE(nullptr, survivor);
+    survivor->setxy(104, 96);
+    survivor->stats()->set_level(1);
+    fx.level.world().rng_.state_ = 0u;
+    ASSERT_EQ(0, cleric->turn_undead(40, 5))
+        << "a lost roll leaves the undead standing but still counts as targets";
+    EXPECT_EQ(0, static_cast<int>(survivor->dead()))
+        << "a resisted turn must not kill";
+
+    // A living (non-undead) foe in range is never turned, whatever the roll.
+    living* orc = add_living(fx, FAMILY_ORC, 1);
+    ASSERT_NE(nullptr, orc);
+    orc->setxy(108, 96);
+    orc->stats()->set_level(1);
+    survivor->set_dead(1); // leave only the orc in range
+    fx.level.world().rng_.state_ = 1u;
+    ASSERT_EQ(0, cleric->turn_undead(40, 5))
+        << "turn_undead only touches is_undead families";
+    EXPECT_EQ(0, static_cast<int>(orc->dead()));
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +221,6 @@ living* add_actor(SpecialsFixture& fx, char family, unsigned char team,
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_team_num(team);
@@ -383,16 +469,28 @@ TEST(WalkerSpecialsUnit, teleport_ranged_stays_on_floor_and_off_obstacles)
     skeleton->setxy(12 * GRID_SIZE, 12 * GRID_SIZE);
     skeleton->set_flight_left(30); // flight must not bless boulder landings
 
+    int hops = 0;
     for (std::uint32_t seed = 1; seed <= 30; ++seed)
     {
         skeleton->setxy(12 * GRID_SIZE, 12 * GRID_SIZE);
         w.rng_.state_ = seed * 40503u + 3u;
-        if (!skeleton->teleport_ranged(90))
-            continue;
+        ASSERT_TRUE(skeleton->teleport_ranged(90))
+            << "200 tries over a mostly-grass floor always find a spot, seed "
+            << seed;
+        ++hops;
         ASSERT_EQ(1, skeleton->floor())
             << "ranged escape hop must stay on the caster's floor, seed " << seed;
         EXPECT_TRUE(grounded_passable(w, skeleton)) << "seed " << seed;
+        EXPECT_LE(std::abs(skeleton->xpos() - 12 * GRID_SIZE), 90)
+            << "the hop must land inside +/-range on x, seed " << seed;
+        EXPECT_LE(std::abs(skeleton->ypos() - 12 * GRID_SIZE), 90)
+            << "the hop must land inside +/-range on y, seed " << seed;
+        EXPECT_EQ(30, skeleton->flight_left())
+            << "the ground-rules probe must restore flight_left, seed " << seed;
     }
+    ASSERT_EQ(30, hops)
+        << "every seed must actually hop: a teleport_ranged that always "
+           "refuses would otherwise run zero checks";
 }
 
 // Probe fidelity with ob_pass_check corner cases: BIT_NO_COLLIDE casters may

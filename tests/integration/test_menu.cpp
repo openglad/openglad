@@ -46,6 +46,23 @@ static void push_mouse_motion_game_coords(int game_x, int game_y)
     SDL_PushEvent(&event);
 }
 
+static int count_pixels_of_color(screen& scr, int x0, int y0, int x1, int y1,
+                                 int wanted)
+{
+    int count = 0;
+    for (int y = y0; y < y1; ++y)
+    {
+        for (int x = x0; x < x1; ++x)
+        {
+            int color = 0;
+            scr.get_pixel(x, y, &color);
+            if (color == wanted)
+                ++count;
+        }
+    }
+    return count;
+}
+
 static int count_nonzero_pixels(screen& scr, int x0, int y0, int x1, int y1)
 {
     int count = 0;
@@ -149,31 +166,64 @@ TEST(Menu, button_misc_paths)
     ASSERT_EQ(-1, (int)b.rightclick(0)) << "rightclick should reject hidden buttons";
 }
 
+// vbutton::vdisplay()/vdisplay(status) paint the face (or the sprite) and,
+// when label.size(), the centred label in DARK_BLUE (src/interface/ui/
+// button.cpp). Counting ANY ink proves only that the face drew -- the label
+// is the half this test exists for, so count DARK_BLUE ink and pair every
+// labelled case with the same button built with an EMPTY label, whose face
+// must still paint but whose DARK_BLUE count must be zero.
 TEST(Menu, graphic_and_alert_buttons_render_their_labels)
 {
     screen* const scr = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, scr);
 
+    const auto label_ink = [&](vbutton& b) {
+        return count_pixels_of_color(*scr, b.xloc, b.yloc, b.xend, b.yend,
+                                     static_cast<int>(DARK_BLUE));
+    };
+    const auto any_ink = [&](vbutton& b) {
+        return count_nonzero_pixels(*scr, b.xloc, b.yloc, b.xend, b.yend);
+    };
+
     vbutton graphic(12, 12, 20, 10, 0, 0, "GFX", 0,
                     KEYSTATE_UNKNOWN);
     ASSERT_NE(nullptr, graphic.mypixie);
-    scr->clearbuffer();
-    graphic.vdisplay();
-    EXPECT_GT(count_nonzero_pixels(*scr, graphic.xloc, graphic.yloc,
-                                   graphic.xend, graphic.yend), 0)
-        << "a graphic button should paint its sprite and centered label";
+    vbutton graphic_bare(12, 12, 20, 10, 0, 0, "", 0,
+                         KEYSTATE_UNKNOWN);
+    ASSERT_NE(nullptr, graphic_bare.mypixie);
 
     scr->clearbuffer();
+    graphic_bare.vdisplay();
+    const int graphic_sprite_only = label_ink(graphic_bare);
+    EXPECT_GT(any_ink(graphic_bare), 0)
+        << "the sprite must paint even without a label";
+
+    scr->clearbuffer();
+    graphic.vdisplay();
+    EXPECT_GT(label_ink(graphic), graphic_sprite_only)
+        << "a graphic button must ink its centered label on top of the sprite";
+
+    scr->clearbuffer();
+    graphic_bare.vdisplay(1);
+    const int graphic_pressed_sprite_only = label_ink(graphic_bare);
+    scr->clearbuffer();
     graphic.vdisplay(1);
-    EXPECT_GT(count_nonzero_pixels(*scr, graphic.xloc, graphic.yloc,
-                                   graphic.xend, graphic.yend), 0)
+    EXPECT_GT(label_ink(graphic), graphic_pressed_sprite_only)
         << "a depressed graphic button keeps its label visible";
 
     vbutton alert(70, 12, 50, 14, 0, 0, "ALERT", KEYSTATE_UNKNOWN);
+    vbutton alert_bare(70, 12, 50, 14, 0, 0, "", KEYSTATE_UNKNOWN);
+    scr->clearbuffer();
+    alert_bare.vdisplay(2);
+    const int alert_face_only = label_ink(alert_bare);
+    EXPECT_EQ(0, alert_face_only)
+        << "the red face itself carries no DARK_BLUE ink";
+    EXPECT_GT(any_ink(alert_bare), 0)
+        << "status-2 buttons paint the red face even unlabelled";
+
     scr->clearbuffer();
     alert.vdisplay(2);
-    EXPECT_GT(count_nonzero_pixels(*scr, alert.xloc, alert.yloc,
-                                   alert.xend, alert.yend), 0)
+    EXPECT_GT(label_ink(alert), alert_face_only)
         << "status-2 buttons should paint the red face and centered label";
 }
 
@@ -206,23 +256,64 @@ TEST(Menu, button_dispatches_hotkey_and_right_click_actions)
         << "right clicks should dispatch through the right-action table";
 }
 
+// vbutton::rightclick(button*) walks allbuttons_ in order, skips rows the
+// descriptor hid, skips rows that answer -1 (pointer outside their face), and
+// returns the FIRST non-(-1) answer; when nothing matches it returns its own
+// 0 (src/interface/ui/button.cpp). 0 is therefore ambiguous, so row 1 gets an
+// action do_call_right does not handle -- its default answer, 4, can only
+// come from row 1 actually running.
 TEST(Menu, rightclick_search_skips_misses_and_draw_tolerates_empty_slots)
 {
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+
     button descriptors[2] = {
-        button("miss", "MISS", SDLK_M, 100, 100, 30, 12, 0, 0, MenuNav{}),
-        button("hit", "HIT", SDLK_H, 10, 10, 30, 12, 0, 0, MenuNav{}),
+        button("miss", "MISS", SDLK_M, 100, 100, 30, 12, 9999, 0, MenuNav{}),
+        button("hit", "HIT", SDLK_H, 10, 10, 30, 12, 9999, 0, MenuNav{}),
     };
     vbutton* const first = init_buttons(descriptors, 2);
     ASSERT_NE(nullptr, first);
 
     clear_events();
     push_mouse_motion_game_coords(20, 15);
-    EXPECT_EQ(0, first->rightclick(descriptors))
-        << "the search should pass the first miss and activate the second row";
+    EXPECT_EQ(4, first->rightclick(descriptors))
+        << "the search must pass the first miss and run the second row's "
+           "right action (4 is do_call_right's unhandled-action answer)";
 
+    // Negative control: the pointer sits in neither face, so nobody answers
+    // and the walk falls through to its own 'none worked' 0.
+    clear_events();
+    push_mouse_motion_game_coords(200, 150);
+    EXPECT_EQ(0, first->rightclick(descriptors))
+        << "with the pointer outside every face nothing may dispatch";
+
+    // A descriptor-hidden row is skipped even with the pointer inside it.
+    clear_events();
+    push_mouse_motion_game_coords(20, 15);
+    descriptors[1].hidden = true;
+    EXPECT_EQ(0, first->rightclick(descriptors))
+        << "a row the frame's gate pass hid must not answer a right click";
+    descriptors[1].hidden = false;
+
+    // draw_buttons paints the row it has a vbutton for...
+    const button& row1 = descriptors[1];
+    scr->clearbuffer();
+    draw_buttons(descriptors, 2);
+    const int drawn = count_nonzero_pixels(*scr, row1.x, row1.y,
+                                           row1.x + row1.sizex,
+                                           row1.y + row1.sizey);
+    EXPECT_GT(drawn, 0) << "an installed row must paint its face";
+
+    // ...and tolerates an emptied allbuttons_ slot by drawing nothing at all
+    // (rather than dereferencing the null slot).
     clear_allbuttons();
     ASSERT_EQ(nullptr, og::runtime::current_session->allbuttons_[0]);
+    scr->clearbuffer();
     draw_buttons(descriptors, 2);
+    EXPECT_EQ(0, count_nonzero_pixels(*scr, row1.x, row1.y,
+                                      row1.x + row1.sizex,
+                                      row1.y + row1.sizey))
+        << "an empty allbuttons_ slot must draw nothing, not crash";
     clear_allbuttons();
 }
 

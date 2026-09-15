@@ -47,6 +47,38 @@
 
 namespace {
 
+// current_game is a thread_local borrow, and several cases point it at a
+// GameplayContext that lives on the test's own stack while they drive an
+// adopted world. A fatal ASSERT inside that window used to skip the manual
+// restore and leave current_game dangling at a dead stack frame for every
+// later test in the binary. Restore it from a destructor instead; restore()
+// keeps the explicit mid-test hand-back the cases already do.
+class ScopedCurrentGame
+{
+public:
+    explicit ScopedCurrentGame(GameplayContext& ctx)
+        : previous_(current_game)
+    {
+        current_game = &ctx;
+    }
+    ScopedCurrentGame(const ScopedCurrentGame&) = delete;
+    ScopedCurrentGame& operator=(const ScopedCurrentGame&) = delete;
+    ~ScopedCurrentGame() { restore(); }
+
+    void restore()
+    {
+        if (!restored_)
+        {
+            current_game = previous_;
+            restored_ = true;
+        }
+    }
+
+private:
+    GameplayContext* previous_ = nullptr;
+    bool restored_ = false;
+};
+
 og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
                                       std::int32_t guy_id,
                                       const char* name,
@@ -723,8 +755,7 @@ TEST_F(MatchStageTest, adopted_world_keyframe_is_byte_identical_to_preview)
     dst_ctx.config = &cfg;
     dst_ctx.session_rng_ref = &dst_rng;
     dst_ctx.gameplay_active_ref = &dst_active;
-    GameplayContext* const previous_context = current_game;
-    current_game = &dst_ctx;
+    ScopedCurrentGame current_game_guard(dst_ctx);
 
     // The shadow's order: prep-clear (tick 0 + reset_level_progress, which
     // re-arms the on_load latch) BEFORE the adopt (which claims it back).
@@ -733,7 +764,7 @@ TEST_F(MatchStageTest, adopted_world_keyframe_is_byte_identical_to_preview)
     ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
     dst_events.append(stage.take_events());
     stage.dispose();
-    current_game = previous_context;
+    current_game_guard.restore();
 
     const std::vector<std::uint8_t> adopted_bytes =
         og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(dst));
@@ -857,8 +888,7 @@ TEST_F(MatchStageTest, adoption_carries_on_load_entity_hooks_into_the_vm)
     dst_ctx.config = &cfg;
     dst_ctx.session_rng_ref = &dst_rng;
     dst_ctx.gameplay_active_ref = &dst_active;
-    GameplayContext* const previous_context = current_game;
-    current_game = &dst_ctx;
+    ScopedCurrentGame current_game_guard(dst_ctx);
     dst.tick_count_ = 0;
     dst.reset_level_progress();
     ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
@@ -883,7 +913,7 @@ TEST_F(MatchStageTest, adoption_carries_on_load_entity_hooks_into_the_vm)
         << (dst.scripts().host().errors().empty()
                 ? std::string()
                 : dst.scripts().host().errors().back().message);
-    current_game = previous_context;
+    current_game_guard.restore();
 
     EXPECT_EQ(31337, dst.mode.vars[48])
         << "the staged og.set_entity_hooks on_death must dispatch in the "
@@ -963,14 +993,13 @@ TEST_F(MatchStageTest, mid_lobby_campaign_state_write_restages_at_go)
     dst_ctx.config = &cfg;
     dst_ctx.session_rng_ref = &dst_rng;
     dst_ctx.gameplay_active_ref = &dst_active;
-    GameplayContext* const previous_context = current_game;
-    current_game = &dst_ctx;
+    ScopedCurrentGame current_game_guard(dst_ctx);
     dst.tick_count_ = 0;
     dst.reset_level_progress();
     ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
     dst_events.append(stage.take_events());
     stage.dispose();
-    current_game = previous_context;
+    current_game_guard.restore();
 
     EXPECT_EQ(nullptr, find_living_named(dst, "Wall-Warden"))
         << "GO must adopt the post-decision world, never the stale stage";
@@ -1680,23 +1709,70 @@ TEST_F(MatchStageTest, adoption_refuses_an_unstaged_stage)
 }
 
 // GameWorld::adopt_scripts_from self-adoption guard: adopting a world's own
-// VM is a no-op — the scripts stay live and the staged keyframe still
-// re-serializes byte-identical afterwards.
-TEST_F(MatchStageTest, self_script_adoption_is_a_no_op)
+// VM is a no-op. The keyframe bytes cannot see that — nothing from the VM is
+// serialized — so the oracle is the VM ITSELF: the entity hooks the staged
+// on_load registered must still dispatch on the same world afterwards.
+TEST_F(MatchStageTest, self_script_adoption_leaves_the_worlds_own_vm_live)
 {
+    // Mount FIRST: pack (re)installation clears every registered script.
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("modes"));
+              mount_campaign_package_with_error("gladiator"));
+    AdoptHookProbeScript probe;
 
-    og::server::MatchStage stage({.networked = true});
-    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    og::server::MatchStage stage({.networked = false});
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "gladiator";
+    inputs.equivalent.scen_num = 1;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.team_list = {
+        make_slot(0u, 100, "Host", FAMILY_SOLDIER, 0),
+    };
+    inputs.difficulty = 1;
+    inputs.match_seed = 7u;
+    stage.observe_inputs(inputs, /*now_ms=*/0);
     ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
     GameWorld* const staged_world = stage.world();
     ASSERT_NE(nullptr, staged_world);
-    const std::vector<std::uint8_t> before = staged_keyframe_bytes(stage);
+    ASSERT_TRUE(staged_world->scripts().host().errors().empty())
+        << staged_world->scripts().host().errors().back().message;
+    const std::int32_t target_id = staged_world->mode.vars[47];
+    ASSERT_NE(0, target_id) << "the on_load probe banked its target id";
+    ASSERT_EQ(0, staged_world->mode.vars[48]) << "the hook has not fired yet";
 
+    const std::vector<std::uint8_t> before = staged_keyframe_bytes(stage);
     staged_world->adopt_scripts_from(*staged_world);
     EXPECT_EQ(before, staged_keyframe_bytes(stage))
-        << "self-adoption must not move the VM out from under the world";
+        << "self-adoption must not move a replicated byte";
+
+    // Fire the hook IN THE STILL-STAGED WORLD: dispatch resolves its world
+    // through the ambient context, so bracket the kill with one pointing at
+    // the staged world.
+    SaveData probe_save;
+    og::sim::SimEventLog probe_events;
+    IRandom* probe_rng = &staged_world->rng_;
+    bool probe_active = false;
+    GameplayContext probe_ctx;
+    probe_ctx.world = staged_world;
+    probe_ctx.save = &probe_save;
+    probe_ctx.sim_events = &probe_events;
+    probe_ctx.config = &cfg;
+    probe_ctx.session_rng_ref = &probe_rng;
+    probe_ctx.gameplay_active_ref = &probe_active;
+    ScopedCurrentGame current_game_guard(probe_ctx);
+    walker* const target =
+        staged_world->find_by_id(static_cast<std::uint32_t>(target_id));
+    ASSERT_NE(nullptr, target);
+    target->set_dead(1);
+    target->death();
+    current_game_guard.restore();
+
+    EXPECT_TRUE(staged_world->scripts().host().errors().empty())
+        << (staged_world->scripts().host().errors().empty()
+                ? std::string()
+                : staged_world->scripts().host().errors().back().message);
+    EXPECT_EQ(31337, staged_world->mode.vars[48])
+        << "self-adoption must leave the staged VM and its og.set_entity_hooks "
+           "registry live — a moved-out or rebuilt VM dispatches nothing";
 }
 
 // ---------------------------------------------------------------------------
@@ -1885,8 +1961,7 @@ TEST_F(MatchStageTest, adopted_world_does_not_re_run_the_lineup_stage)
     dst_ctx.config = &cfg;
     dst_ctx.session_rng_ref = &dst_rng;
     dst_ctx.gameplay_active_ref = &dst_active;
-    GameplayContext* const previous_context = current_game;
-    current_game = &dst_ctx;
+    ScopedCurrentGame current_game_guard(dst_ctx);
     dst.tick_count_ = 0;
     dst.reset_level_progress();
     ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
@@ -1902,7 +1977,7 @@ TEST_F(MatchStageTest, adopted_world_does_not_re_run_the_lineup_stage)
     // same world is armed again rather than silently skipped.
     dst.tick();
     EXPECT_FALSE(dst.consume_staged_lineup_stage_claim());
-    current_game = previous_context;
+    current_game_guard.restore();
 }
 
 // The lazy arm: a world nobody staged (solo play, a level entered without a

@@ -138,7 +138,11 @@ Sint32 help_testing_exercise_menu_hooks()
 	check(state.pager.page == 0);
 
 	g_help_screen_state = nullptr;
-	return failed_check == 0 ? 0 : -failed_check;
+	// Return the NUMBER OF CHECKS RUN on the passing path (negated failing
+	// index otherwise): "zero checks ran" must never look like "all checks
+	// passed". The caller pins the count, so it moves only when a check is
+	// deliberately added or removed.
+	return failed_check == 0 ? check_index : -failed_check;
 }
 
 Sint32 help_testing_exercise_internal_paths()
@@ -229,5 +233,6 @@ Sint32 help_testing_exercise_internal_paths()
 	check(read_scenario(scr) == 1);
 	scr->level_description() = saved_description;
 
-	return failed_check == 0 ? 0 : -failed_check;
+	// Checks-run count on success (see help_testing_exercise_menu_hooks).
+	return failed_check == 0 ? check_index : -failed_check;
 }

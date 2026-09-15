@@ -7714,7 +7714,19 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
     ASSERT_TRUE(start_config.has_value());
     EXPECT_EQ(1, start_config->save_data.scen_num);
     EXPECT_EQ(1u, start_config->save_data.numplayers);
-    EXPECT_LE(start_config->save_data.team_list.size(), 1u);
+    // The GO was held until the roster echo landed (above), so the launch
+    // roster is deterministic: build_save_data_equivalent_from_state must
+    // carry the elected-host joiner's own synced fighter into it.
+    ASSERT_EQ(1u, start_config->save_data.team_list.size())
+        << "the relay joiner's own fighter must ride the launch roster";
+    // The roster round-trips through the wire, so the name comes back
+    // clamped to kMaxLobbyGuyNameLength (11) -- "Relay Joiner" minus its
+    // final character.
+    EXPECT_EQ(std::string("Relay Joiner").substr(
+                  0u, og::sim::kMaxLobbyGuyNameLength),
+              start_config->save_data.team_list[0].character.name);
+    EXPECT_EQ(0, start_config->save_data.team_list[0].character.teamnum);
+    EXPECT_EQ(0, start_config->save_data.team_list[0].owner_player_index);
     EXPECT_EQ(1, start_config->difficulty);
 
     ASSERT_NE(nullptr, active_game_session());
@@ -7877,6 +7889,202 @@ TEST(PickerNetworkClient, dedicated_server_denial_echo_reaches_elected_host_then
         << "acceptance clears the denial echo";
     EXPECT_TRUE(lobby_server.consume_start_game_requested())
         << "server_main's break-into-gameplay read";
+}
+
+// PR #292 P8, the SDL-visible clobber surface. A non-host StartGame is now
+// ANSWERED with StartDenialReason::NotHost instead of being silently dropped,
+// and the verdict echo is scoped to the peer that asked for it -- so the
+// ELECTED HOST's last_start_denial(), the uncorrelated value go_menu renders
+// while its own GO is in flight, keeps the host's own MachinesNotReady.
+//
+// The guest here is a CRAFTED client: a raw WebSocket transport that joins the
+// lobby and puts the StartGame on the wire by hand. The shipping SDL join
+// client pre-checks host-ness before sending, so only a hand-written peer can
+// produce this message -- and writing one needs no TESTING seam in src/.
+TEST(PickerNetworkClient,
+     dedicated_server_guest_start_is_denied_not_host_without_touching_the_hosts_echo)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Elected Host");
+    g_start_game_requested = false;
+
+    // server_main's exact transport + lobby shape (no local session).
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options transport_options;
+    transport_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server_transport(port, transport_options);
+    server_transport.accept_connections();
+    og::sim::LobbyServer lobby_server(server_transport);
+
+    og::ui::PickerJoinGameOptions host_options;
+    host_options.mode = og::ui::PickerJoinMode::Direct;
+    host_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto elected_host = og::ui::create_join_picker_lobby_client(host_options);
+    elected_host->initialize_from_save();
+
+    struct HostCleanup
+    {
+        og::ui::IPickerLobbyClient* client = nullptr;
+        ~HostCleanup()
+        {
+            if (client != nullptr)
+                client->shutdown();
+        }
+    } host_cleanup{elected_host.get()};
+
+    // The elected host must connect FIRST (election is first-connected).
+    ASSERT_TRUE(wait_until([&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        return elected_host->host_controls_visible();
+    })) << "the first-connected peer must be elected host";
+    elected_host->sync_roster_from_save();
+
+    constexpr og::sim::PeerId kServerPeer = 1u;
+    og::sim::WebSocketClientTransport::Options guest_transport_options;
+    guest_transport_options.remote_peer_id = kServerPeer;
+    guest_transport_options.automatic_reconnection = false;
+    og::sim::WebSocketClientTransport guest_transport(
+        std::format("ws://127.0.0.1:{}", port), guest_transport_options);
+    guest_transport.accept_connections();
+
+    std::vector<og::sim::LobbyState> guest_states;
+    std::vector<og::sim::LobbyMessage> guest_lobby_messages;
+    const auto pump_all = [&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        for (const og::sim::TypedReceivedMessage& typed :
+             guest_transport.poll_typed())
+        {
+            if (typed.kind == og::sim::TypedReceivedMessageKind::LobbyState &&
+                typed.lobby_state)
+            {
+                guest_states.push_back(*typed.lobby_state);
+            }
+            else if (typed.kind ==
+                         og::sim::TypedReceivedMessageKind::LobbyMessage &&
+                     typed.lobby_message)
+            {
+                guest_lobby_messages.push_back(*typed.lobby_message);
+            }
+        }
+    };
+
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return guest_transport.link_state() ==
+            og::sim::TransportLinkState::Connected;
+    })) << "the crafted guest must reach the dedicated server";
+
+    SaveData guest_save;
+    prepare_single_member_network_save(guest_save, 1, "Crafted Guest");
+    send_lobby_message(
+        guest_transport,
+        kServerPeer,
+        og::ui::detail::make_join_message(
+            guest_save, "Crafted Guest", 1, nullptr, 1u));
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return lobby_server.state().players.size() == 2u;
+    })) << "the crafted guest must be seated in the dedicated lobby";
+
+    // (1) The elected host's own GO, denied while the guest is unready. This
+    // is the value go_menu is looking at when the guest's request arrives.
+    EXPECT_FALSE(elected_host->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return !elected_host->start_request_pending();
+    })) << "the async denial echo must release the host's pending request";
+    ASSERT_EQ(og::sim::StartDenialReason::MachinesNotReady,
+              elected_host->last_start_denial())
+        << "the host's own verdict must reach the host";
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              elected_host->start_request_outcome())
+        << "answered (denied), not abandoned";
+
+    // (2) The crafted guest asks to start. The server answers the REQUESTER.
+    const std::size_t guest_states_before = guest_states.size();
+    og::sim::LobbyMessage crafted_start;
+    crafted_start.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 1u,
+        .request_id = 1u,
+    };
+    send_lobby_message(guest_transport, kServerPeer, std::move(crafted_start));
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return guest_states.size() > guest_states_before;
+    })) << "the guest's StartGame must be ANSWERED, not silently dropped";
+
+    const og::sim::LobbyState& guest_echo = guest_states.back();
+    EXPECT_EQ(og::sim::start_denial_reason_value(
+                  og::sim::StartDenialReason::NotHost),
+              guest_echo.last_start_denial)
+        << "the crafted guest must be told WHY its start was refused";
+    EXPECT_EQ(1u, guest_echo.last_start_request_id)
+        << "and the verdict must carry the guest's own correlation id";
+    EXPECT_FALSE(g_start_game_requested)
+        << "a non-host start never reaches gameplay";
+    EXPECT_FALSE(elected_host->has_game_start_config());
+    EXPECT_FALSE(lobby_server.consume_start_game_requested())
+        << "server_main's loop read: the dedicated loop keeps polling";
+
+    // (3) The guest readies. This is the ORDERING FENCE for the assertion
+    // below as well as the control's setup: a ready changes the canonical
+    // state, so the server broadcasts it to every peer AFTER it handled the
+    // guest's StartGame, and the link is ordered -- once the elected host has
+    // rendered the guest's ready, anything the server sent it on account of
+    // that StartGame has already arrived. Asserting the host's echo before
+    // this fence would pass on a clobbering server that is merely a poll
+    // behind.
+    og::sim::LobbyMessage guest_ready;
+    guest_ready.payload = og::sim::LobbyReadyMessage{
+        .player_index = 1u,
+        .ready = true,
+    };
+    send_lobby_message(guest_transport, kServerPeer, std::move(guest_ready));
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        for (const og::sim::LobbyPlayer& player : elected_host->lobby_players())
+        {
+            if (!player.is_host && player.ready)
+                return true;
+        }
+        return false;
+    })) << "the elected host must observe the crafted guest's ready";
+
+    EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
+              elected_host->last_start_denial())
+        << "the guest's NotHost must NOT clobber the elected host's echo -- "
+           "go_menu reads last_start_denial() uncorrelated, so a shared "
+           "canonical verdict would show the host the guest's reason";
+
+    const std::size_t guest_messages_before = guest_lobby_messages.size();
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)elected_host->request_start_game();
+            pump_all();
+            return elected_host->has_game_start_config();
+        },
+        10s)) << "the elected host's GO must be accepted once the gate clears";
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              elected_host->last_start_denial())
+        << "acceptance clears the host's denial echo";
+    EXPECT_TRUE(lobby_server.consume_start_game_requested())
+        << "server_main's break-into-gameplay read";
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return std::any_of(
+            guest_lobby_messages.begin() +
+                static_cast<std::ptrdiff_t>(guest_messages_before),
+            guest_lobby_messages.end(),
+            [](const og::sim::LobbyMessage& message) {
+                return message.kind() == og::sim::LobbyMessageKind::StartGame;
+            });
+    })) << "and the accepted start reaches the guest as a StartGame handoff";
 }
 
 // LINEUP §6 on the DEDICATED shape: with no in-process host client anywhere,
@@ -8083,11 +8291,31 @@ TEST(PickerNetworkClient,
     join_client->sync_roster_from_save();
     join_client->poll_and_apply();
 
+    // The positive half of the rule: a room-host migration is a
+    // room-management event, NOT a link loss. A client that tore its
+    // transport down on `host_changed` would also send no Join to the
+    // migrated peer, so the negative below needs this to mean anything.
+    EXPECT_TRUE(status_lines_contain_exact(
+        join_client->status_lines(), "Status: connected"))
+        << "host migration must not degrade the join client's own link";
+    EXPECT_FALSE(join_client->connection_alert().has_value())
+        << "a room-host change is not a connection alert";
+    EXPECT_FALSE(join_client->session_lost())
+        << "the session survives the original host leaving the room";
+    EXPECT_EQ("GLAD-XKCD", join_client->session_room_code())
+        << "the client stays in the same room across migration";
+
     const bool migrated_host_received_join = wait_until([&] {
         return !poll_lobby_messages(migrated_host_transport).empty();
     }, 500ms);
     EXPECT_FALSE(migrated_host_received_join)
         << "join client should stay targeted at the original authoritative peer";
+    // ...and the roster resend that produced the negative above did not
+    // degrade the link either.
+    EXPECT_TRUE(status_lines_contain_exact(
+        join_client->status_lines(), "Status: connected"))
+        << "the roster resend must leave the link connected";
+    EXPECT_FALSE(join_client->session_lost());
 
     join_client->shutdown();
 }
@@ -8308,8 +8536,20 @@ TEST(PickerNetworkClient, host_initialization_reports_direct_and_relay_failures)
     }
     catch (const std::runtime_error& error)
     {
+        // The fixture guarantees BOTH halves fail: the direct port is already
+        // bound by blocking_server, and the fake relay answers /api/create
+        // with 503 "room service down". build_host_transport_failure_message
+        // must report both, direct first.
         const std::string message = error.what();
-        EXPECT_FALSE(message.empty());
+        const auto direct_at = message.find("Direct: ");
+        const auto relay_at = message.find("\nRelay: ");
+        ASSERT_NE(std::string::npos, direct_at)
+            << "the bind failure must be reported: " << message;
+        ASSERT_NE(std::string::npos, relay_at)
+            << "the 503 room-create failure must be reported too: " << message;
+        EXPECT_EQ(0u, direct_at) << "the direct half leads: " << message;
+        EXPECT_NE(std::string::npos, message.find("room service down", relay_at))
+            << "the relay half carries the server's reason: " << message;
     }
 }
 
@@ -8405,11 +8645,33 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_EQ("Status: connecting", *join_client->connection_alert());
 }
 
+// The internal-helper exerciser reports the NUMBER of checks it ran on
+// success (a negative value is the 1-based index of the first failing check).
+// Pinning the count is what makes an exerciser that early-returns, or a
+// guarded block that silently skipped its checks, visible: "0 failures" is
+// equally true of a run that checked nothing.
+//
+// This literal moves deliberately whenever a check( site is added to or
+// removed from tests/coverage_internal/picker_lobby_network_internal.inc.
+//
+// Seven of those check( sites (the inet_pton/usable_lan_ipv4_string address
+// matrix and the two LAN-detection probes) live inside the .inc's
+// `#if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))`
+// block, so the expectation carries the SAME guard: a Windows lane runs 130
+// checks and must pin 130, not fail against a POSIX-only literal.
+#if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
+inline constexpr int kExpectedInternalHelperChecks = 137;
+#else
+inline constexpr int kExpectedInternalHelperChecks = 130;
+#endif
+
 TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
 {
     EXPECT_EQ(
-        0,
-        og::ui::detail::picker_lobby_network_testing_exercise_internal_helpers());
+        kExpectedInternalHelperChecks,
+        og::ui::detail::picker_lobby_network_testing_exercise_internal_helpers())
+        << "negative = the index of the first failed check; a smaller "
+           "positive = a check block was skipped entirely";
 }
 
 // Explicit per-seat team choice + ready over a real host/join lobby: a
@@ -11510,7 +11772,10 @@ TEST(PickerNetworkClient,
         << "answered (denied), not abandoned";
     EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
               elected_host->last_start_denial());
-    EXPECT_EQ(1u, lobby_server.state().last_start_request_id);
+    // The verdict echo is recipient-specific, so the server's canonical state
+    // no longer carries the answered id; the correlation is pinned on the
+    // client instead — start_request_pending() only drops when the echo's
+    // last_start_request_id equals THIS client's pending id (1).
 
     // (1) The host goes silent: its socket stays open (nothing is torn
     // down), but lobby_server is no longer pumped, so the request gets
@@ -11576,9 +11841,10 @@ TEST(PickerNetworkClient,
         << "answered, not abandoned";
     EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
               elected_host->last_start_denial());
-    EXPECT_EQ(3u, lobby_server.state().last_start_request_id)
-        << "the request the server answered is the fresh GO's (id 3), not "
-           "the abandoned one (id 2)";
+    // The request the server answered is the fresh GO's (id 3), not the
+    // abandoned one (id 2): the id-2 echo the server also emits when it
+    // catches up cannot release this wait, because the client's matcher
+    // requires the echo's request id to equal its pending id.
     EXPECT_FALSE(g_start_game_requested);
     EXPECT_FALSE(lobby_server.consume_start_game_requested());
 }
@@ -11689,7 +11955,9 @@ TEST(PickerNetworkClient,
     EXPECT_EQ(og::ui::StartRequestOutcome::None,
               elected_host->start_request_outcome())
         << "answered (denied), not abandoned";
-    EXPECT_EQ(1u, lobby_server->state().last_start_request_id);
+    // As above: the id-1 correlation is pinned by the pending flag dropping,
+    // since the verdict echo is recipient-specific and no longer visible in
+    // the server's canonical state.
 
     // GO, then the link dies mid-wait: the server process goes away with the
     // request in flight (this is `go_menu`'s `while (pending) poll` loop).

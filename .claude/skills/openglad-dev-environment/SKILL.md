@@ -11,7 +11,7 @@ utility a package provides, never apt/snap-install, never source
 ~/emsdk), presets only, no in-source configure. This file covers what
 AGENTS.md doesn't: divergence, accepted failures, and traps.
 
-## Local green is not CI green (four known divergences)
+## Local green is not CI green (five known divergences)
 
 1. **VALIDATE_SERIALIZATION=ON** is set in CI's test/drift/asan/tsan
    lanes and the ci-asan cache, OFF in a default local ci-test build. It
@@ -28,6 +28,29 @@ AGENTS.md doesn't: divergence, accepted failures, and traps.
 4. **CI coverage accumulates .gcda across `--repeat until-pass:3`**, so
    local single-run numbers undercount CI. Judge coverage work by local
    before/after DELTA, never absolutes (see openglad-test-integrity).
+5. **The nix cc-wrapper injects -O2 into every local compile.** Its
+   hardening set (`NIX_HARDENING_ENABLE=... fortify3 ...`) prepends the
+   optimization flag; `NIX_DEBUG=1 g++ ...` prints
+
+       extra flags before to .../gcc-15.2.0/bin/g++:
+         -fPIC
+         -fstack-clash-protection
+         -O2
+         -U_FORTIFY_SOURCE
+         ...
+
+   so inside `nix develop` the ci-asan preset (CMAKE_BUILD_TYPE=Debug,
+   inherited from dev-debug) builds at `-O2 -g` plus sanitizers, while
+   CI's Ubuntu GCC does not. Consequence: a TU
+   that includes `<regex>` fails locally under GCC 15 + -O2 + ASan/UBSan
+   with `bits/std_function.h:407:42: error: ... may be used uninitialized
+   [-Werror=maybe-uninitialized]` — a libstdc++ false positive, not our
+   bug (the same TU without sanitizers compiles clean, and forcing -O0
+   only trades it for glibc's `_FORTIFY_SOURCE requires compiling with
+   optimization`). `<regex>` is therefore banned repo-wide and gated by
+   scripts/check_no_std_regex.sh; write predicates or exact-string
+   oracles instead (tests/unit/test_version.cpp,
+   tests/curses/test_curses_mount_guard.cpp are the shapes).
 
 ## Accepted local failures and standing rulings
 
@@ -104,12 +127,73 @@ text-client sessions must mount a campaign up front
 - **Never fan out N concurrent full builds.** Wave-2 of PR #262 ran four
   worktree builds in parallel while `/tmp` was tmpfs and OOMed the
   server; even on disk, cap each agent's `CMAKE_BUILD_PARALLEL_LEVEL`
-  so the sum stays near the core count.
+  so the sum stays near the core count — and on a container guest read
+  the cgroup first, see below.
 - Delegation split (maintainer budget rule, also in AGENTS.md): the
   expensive tier only for design, review, and irreducibly complex
   implementation; the cheaper tier for recon, mechanical work, gates,
   audits, media, PR mechanics. Surface architecture alternatives to the
   maintainer BEFORE building when a pivot would trash the work.
+
+## This box is a container guest: check the cgroup, not nproc
+
+Each item is a command to run, with today's reading on this machine as
+the example. Re-run them on a new box; never carry the numbers over.
+
+- Parallelism follows the memory cgroup, not the core count.
+  `cat /sys/fs/cgroup/memory.max` → `8589934592` (8 GiB);
+  `cat /sys/fs/cgroup/cpu.max` → `1200000 100000` (12 CPUs); `nproc` →
+  `12`. Overcommit the 8 GiB — -j$(nproc), or a second build alongside
+  the first — and cc1plus is OOM-killed on the heavy test TUs:
+  `g++: fatal error: Killed signal terminated program cc1plus`. Use
+  `-j3` and run one build at a time.
+- Disk: `df -h . /tmp` from the repo root →
+
+      /dev/mapper/ubuntu--vg-ubuntu--lv  7.3T  3.8T  3.1T  55% /home/yans/code/openglad
+      overlay                            512G  485G   28G  95% /
+
+  The repo is a bind mount of the host LV (the one entry for it in
+  `/proc/self/mountinfo`); `/` and `/tmp` — hence the scratchpad — are
+  the container overlay, at 95 % today. Which filesystem a sibling tree
+  under /home/yans/code/ consumes depends on whether it is a symlink or
+  a real directory. The lane worktrees are symlinks INTO the repo mount:
+  `readlink -f /home/yans/code/og-audit-lane1` →
+  `/home/yans/code/openglad/.claude/worktrees/og-audit-lane1`, and
+  `git worktree list` shows all six lanes under `.claude/worktrees/`, so
+  they consume the LV and df reports them correctly. /home/yans/code
+  itself is on the overlay — `stat -c %d /home/yans/code` → `81`, the
+  same device as `stat -c %d /`, against `64513` for the repo mount —
+  so a worktree or build tree created there as a real directory eats the
+  overlay instead. `/home/yans/code/openglad-master` is one such real
+  directory (`stat -c %d` → `81`). Before parking a multi-GB tree, write
+  a 500 MB probe and re-read `df /` and `df <repo>`. Today's probe, inside
+  the symlinked lane: LV available 3323193264 → 3322680052 KB (−513212),
+  overlay available unmoved (27688392 → 27689020, noise).
+- Run og_unit_*/og_test_* binaries from the REPO ROOT: ctest gives them
+  `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}` (cmake/OpenGladTests.cmake), so
+  they resolve assets relative to it. `cd build/ci-test && ./og_unit_data`
+  fails 8 tests (six ExampleClassPack.*, plus FamilyRegistryGolden and
+  CompanyClock) that pass from the root (`./build/ci-test/og_unit_data`
+  → 534/534) — phantom reds that look like a real regression. The
+  exceptions are the three standalone lifecycle tests
+  (og_test_sdl_video_lifecycle,
+  og_test_sdl_renderer_fallback, og_test_runtime_bootstrap_lifecycle),
+  which ctest runs on `${CMAKE_BINARY_DIR}`, and og_test_curses, which
+  finds its sources through the compile definition
+  OG_CURSES_TESTS_SOURCE_DIR.
+- Keep-going is ninja's flag and belongs after `--`:
+  `cmake --build --preset ci-test -j3 -- -k 0`. Spelled before the `--`,
+  cmake answers `Unknown argument -k` and builds nothing; left out
+  entirely, the first -Werror TU hides the rest of the failure set.
+- `pkill -f <pattern>` matches the agent's own `bash -c` argv and kills
+  the session shell: the pattern sits in the command line doing the
+  killing (`pgrep -af 'og_test_zzz_probe'` listed this shell
+  and nothing else). Use the bracket idiom — `pkill -f '[o]g_test_foo'`,
+  which matched nothing here — or `pgrep -x` and kill by PID.
+- gh here is 2.46.0, which has no `--json` on `pr checks`:
+  `gh pr checks 292 --json state` answers `unknown flag: --json`. Use
+  plain `gh pr checks <n>`, or `gh run list --json` / `gh run view
+  --json`.
 
 ## Fresh-machine setup (beyond `git clone` + nix)
 

@@ -17,6 +17,7 @@ bool apply_sprite_sheet_setting();
 
 #include <algorithm>
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -25,6 +26,62 @@ bool apply_sprite_sheet_setting();
 // create_walker for all order+family combos
 // exercises gloader's create_walker (the biggest function)
 // ---------------------------------------------------------------------------
+
+namespace {
+
+// The rule every non-living order sweep below pins: create_walker_owned
+// answers a walker for EXACTLY the core families whose graphics row is valid,
+// and nullptr for the rest (an in-range family takes no soldier/0 fallback).
+// Returning the count lets each caller pin the sweep against the graphics
+// table instead of "at least one survived".
+int sweep_core_families(loader& l, Order order)
+{
+    int created = 0;
+    for (int fam = 0; fam < NUM_FAMILIES; fam++) {
+        const bool has_art =
+            l.graphics[static_cast<std::size_t>(PIX(order, fam))].valid();
+        auto w = l.create_walker_owned(order, static_cast<char>(fam));
+        EXPECT_EQ(has_art, w != nullptr)
+            << "order " << static_cast<int>(order) << " family " << fam
+            << ": create_walker_owned must build exactly the families with art";
+        if (w) {
+            created++;
+            EXPECT_TRUE(w->query_order() == order)
+                << "sweep: the built walker must carry the requested order";
+            EXPECT_EQ(fam, static_cast<int>(w->family()))
+                << "sweep: an in-range family must not be rewritten";
+        }
+    }
+    return created;
+}
+
+int core_families_with_art(const loader& l, Order order)
+{
+    int n = 0;
+    for (int fam = 0; fam < NUM_FAMILIES; fam++)
+        if (l.graphics[static_cast<std::size_t>(PIX(order, fam))].valid())
+            n++;
+    return n;
+}
+
+// Assert every named family of an order constructs. This is the floor that
+// keeps the graphics-table comparison above from going vacuous if the whole
+// table were emptied.
+void expect_all_build(loader& l, Order order,
+                      const std::vector<std::pair<int, const char*>>& families)
+{
+    for (const auto& [fam, label] : families) {
+        auto w = l.create_walker_owned(order, static_cast<char>(fam));
+        ASSERT_NE(nullptr, w.get())
+            << label << " must always be constructible (it ships art)";
+        ASSERT_TRUE(w->query_order() == order)
+            << label << ": order should match the request";
+        ASSERT_EQ(fam, static_cast<int>(w->family()))
+            << label << ": family should match the request";
+    }
+}
+
+} // namespace
 
 TEST(GloaderFuncs, gloader_create_living_all)
 {
@@ -50,24 +107,23 @@ TEST(GloaderFuncs, gloader_create_weapon_families)
     loader* l = og::runtime::current_session->myscreen_->myloader;
     ASSERT_TRUE(l != nullptr) << "loader exists";
 
-    short weap_families[] = { FAMILY_KNIFE, FAMILY_ROCK, FAMILY_ARROW,
-                              FAMILY_FIREBALL, FAMILY_LIGHTNING, FAMILY_METEOR };
-    for (int i = 0; i < 6; i++) {
-        auto w = l->create_walker_owned(Order::Weapon, weap_families[i]);
-        if (w) {
-            ASSERT_TRUE(w->query_order() == Order::Weapon) << "order should be Weapon";
-        }
-    }
+    ASSERT_NO_FATAL_FAILURE(expect_all_build(*l, Order::Weapon, {
+        {FAMILY_KNIFE, "knife"}, {FAMILY_ROCK, "rock"}, {FAMILY_ARROW, "arrow"},
+        {FAMILY_FIREBALL, "fireball"}, {FAMILY_LIGHTNING, "lightning"},
+        {FAMILY_METEOR, "meteor"}, {FAMILY_FIRE_ARROW, "fire arrow"},
+        {FAMILY_TREE, "tree"}, {FAMILY_SPRINKLE, "sprinkle"},
+        {FAMILY_BLOOD, "blood"}, {FAMILY_BONE, "bone"}, {FAMILY_BLOB, "blob"},
+        {FAMILY_GLOW, "glow"}, {FAMILY_WAVE, "wave"}, {FAMILY_WAVE2, "wave2"},
+        {FAMILY_WAVE3, "wave3"},
+        {FAMILY_CIRCLE_PROTECTION, "circle of protection"},
+        {FAMILY_HAMMER, "hammer"}, {FAMILY_DOOR, "door"},
+        {FAMILY_BOULDER, "boulder"},
+    }));
 
-    int total_created = 0;
-    for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-        auto ww = l->create_walker_owned(Order::Weapon, static_cast<char>(fam));
-        if (ww) {
-            total_created++;
-            ASSERT_TRUE(ww->query_order() == Order::Weapon) << "sweep: order should be Weapon";
-        }
-    }
-    ASSERT_TRUE(total_created > 0) << "weapon sweep should create at least one object";
+    const int expected = core_families_with_art(*l, Order::Weapon);
+    ASSERT_GE(expected, 20) << "all 20 core weapon families ship art";
+    ASSERT_EQ(expected, sweep_core_families(*l, Order::Weapon))
+        << "the weapon sweep must build exactly the families with a valid graphics row";
 }
 
 
@@ -76,20 +132,21 @@ TEST(GloaderFuncs, gloader_create_treasure)
     loader* l = og::runtime::current_session->myscreen_->myloader;
     ASSERT_TRUE(l != nullptr) << "loader exists";
 
-    auto w = l->create_walker_owned(Order::Treasure, FAMILY_STAIN);
-    if (w) {
-        ASSERT_TRUE(w->query_order() == Order::Treasure) << "order should be Treasure";
-    }
+    ASSERT_NO_FATAL_FAILURE(expect_all_build(*l, Order::Treasure, {
+        {FAMILY_STAIN, "stain"}, {FAMILY_DRUMSTICK, "drumstick"},
+        {FAMILY_GOLD_BAR, "gold bar"}, {FAMILY_SILVER_BAR, "silver bar"},
+        {FAMILY_MAGIC_POTION, "magic potion"},
+        {FAMILY_INVIS_POTION, "invisibility potion"},
+        {FAMILY_INVULNERABLE_POTION, "invulnerability potion"},
+        {FAMILY_FLIGHT_POTION, "flight potion"}, {FAMILY_EXIT, "exit"},
+        {FAMILY_TELEPORTER, "teleporter"}, {FAMILY_LIFE_GEM, "life gem"},
+        {FAMILY_KEY, "key"}, {FAMILY_SPEED_POTION, "speed potion"},
+    }));
 
-    int total_created = 0;
-    for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-        auto wt = l->create_walker_owned(Order::Treasure, static_cast<char>(fam));
-        if (wt) {
-            total_created++;
-            ASSERT_TRUE(wt->query_order() == Order::Treasure) << "sweep: order should be Treasure";
-        }
-    }
-    ASSERT_TRUE(total_created > 0) << "treasure sweep should create at least one object";
+    const int expected = core_families_with_art(*l, Order::Treasure);
+    ASSERT_GE(expected, 13) << "all 13 core treasure families ship art";
+    ASSERT_EQ(expected, sweep_core_families(*l, Order::Treasure))
+        << "the treasure sweep must build exactly the families with a valid graphics row";
 }
 
 
@@ -98,20 +155,20 @@ TEST(GloaderFuncs, gloader_create_effect)
     loader* l = og::runtime::current_session->myscreen_->myloader;
     ASSERT_TRUE(l != nullptr) << "loader exists";
 
-    auto w = l->create_walker_owned(Order::FX, FAMILY_EXPLOSION);
-    if (w) {
-        ASSERT_TRUE(w->query_order() == Order::FX) << "order should be FX";
-    }
+    ASSERT_NO_FATAL_FAILURE(expect_all_build(*l, Order::FX, {
+        {FAMILY_EXPAND, "expand"}, {FAMILY_GHOST_SCARE, "ghost scare"},
+        {FAMILY_BOMB, "bomb"}, {FAMILY_EXPLOSION, "explosion"},
+        {FAMILY_FLASH, "flash"}, {FAMILY_MAGIC_SHIELD, "magic shield"},
+        {FAMILY_KNIFE_BACK, "knife back"}, {FAMILY_CLOUD, "cloud"},
+        {FAMILY_MARKER, "marker"}, {FAMILY_BOOMERANG, "boomerang"},
+        {FAMILY_CHAIN, "chain"}, {FAMILY_DOOR_OPEN, "door open"},
+        {FAMILY_HIT, "hit"},
+    }));
 
-    int total_created = 0;
-    for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-        auto wf = l->create_walker_owned(Order::FX, static_cast<char>(fam));
-        if (wf) {
-            total_created++;
-            ASSERT_TRUE(wf->query_order() == Order::FX) << "sweep: order should be FX";
-        }
-    }
-    ASSERT_TRUE(total_created > 0) << "fx sweep should create at least one object";
+    const int expected = core_families_with_art(*l, Order::FX);
+    ASSERT_GE(expected, 13) << "all 13 core FX families ship art";
+    ASSERT_EQ(expected, sweep_core_families(*l, Order::FX))
+        << "the FX sweep must build exactly the families with a valid graphics row";
 }
 
 
@@ -120,20 +177,15 @@ TEST(GloaderFuncs, gloader_create_generator)
     loader* l = og::runtime::current_session->myscreen_->myloader;
     ASSERT_TRUE(l != nullptr) << "loader exists";
 
-    auto w = l->create_walker_owned(Order::Generator, FAMILY_TENT);
-    if (w) {
-        ASSERT_TRUE(w->query_order() == Order::Generator) << "order should be Generator";
-    }
+    ASSERT_NO_FATAL_FAILURE(expect_all_build(*l, Order::Generator, {
+        {FAMILY_TENT, "tent"}, {FAMILY_TOWER, "tower"},
+        {FAMILY_BONES, "bone pile"}, {FAMILY_TREEHOUSE, "treehouse"},
+    }));
 
-    int total_created = 0;
-    for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-        auto wg = l->create_walker_owned(Order::Generator, static_cast<char>(fam));
-        if (wg) {
-            total_created++;
-            ASSERT_TRUE(wg->query_order() == Order::Generator) << "sweep: order should be Generator";
-        }
-    }
-    ASSERT_TRUE(total_created > 0) << "generator sweep should create at least one object";
+    const int expected = core_families_with_art(*l, Order::Generator);
+    ASSERT_GE(expected, 4) << "all 4 core generator families ship art";
+    ASSERT_EQ(expected, sweep_core_families(*l, Order::Generator))
+        << "the generator sweep must build exactly the families with a valid graphics row";
 }
 
 
@@ -141,7 +193,17 @@ TEST(GloaderFuncs, gloader_create_generator)
 // set_derived_stats
 // ---------------------------------------------------------------------------
 
-TEST(GloaderFuncs, gloader_set_derived_stats_all)
+// set_derived_stats writes stepsize/lineofsight/damage/fire_frequency from
+// the family's OWN row of the loader tables (gloader.cpp). The old version of
+// this test read max_hitpoints(), which set_derived_stats never touches, so a
+// no-op body stayed green.
+//
+// The oracle is the loader's own public tables read through the public slot
+// mapping — NOT a second walker. A reference walker comes out of
+// create_walker_owned, which calls this very function, so comparing the two
+// is a self-oracle: a wrong-slot read on any single field would agree with
+// itself and stay green.
+TEST(GloaderFuncs, gloader_set_derived_stats_writes_each_familys_own_row)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
     ASSERT_TRUE(l != nullptr) << "loader exists";
@@ -151,12 +213,47 @@ TEST(GloaderFuncs, gloader_set_derived_stats_all)
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        auto w = l->create_walker_owned(Order::Living, families[i]);
-        if (w) {
-            l->set_derived_stats(w.get(), Order::Living, families[i]);
-            ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP should be set";
-        }
+        const int fam = families[i];
+        const int idx = loader::slot_for(Order::Living, fam);
+        ASSERT_GE(idx, 0) << "family " << fam << " has a table slot";
+        auto w = l->create_walker_owned(Order::Living, fam);
+        ASSERT_NE(nullptr, w.get()) << "probe walker for family " << fam;
+
+        // Scramble every field set_derived_stats owns, so a no-op body fails.
+        w->set_stepsize(-1.0f);
+        w->set_normal_stepsize(-1.0f);
+        w->set_lineofsight(-1);
+        w->set_damage(-1.0f);
+        w->set_fire_frequency(-1.0f);
+
+        l->set_derived_stats(w.get(), Order::Living, fam);
+
+        EXPECT_EQ(l->stepsizes[static_cast<std::size_t>(idx)], w->stepsize())
+            << "family " << fam << ": stepsize comes from that family's row";
+        EXPECT_EQ(w->stepsize(), w->normal_stepsize())
+            << "family " << fam << ": normal_stepsize is seeded from stepsize";
+        EXPECT_EQ(l->lineofsight[static_cast<std::size_t>(idx)], w->lineofsight())
+            << "family " << fam << ": line of sight comes from that family's row";
+        EXPECT_EQ(l->damage[static_cast<std::size_t>(idx)], w->damage())
+            << "family " << fam << ": melee damage comes from that family's row";
+        EXPECT_EQ(l->fire_frequency[static_cast<std::size_t>(idx)], w->fire_frequency())
+            << "family " << fam << ": fire frequency comes from that family's row";
     }
+
+    // ... and the rows are really distinct: reading row 0 for every family
+    // would satisfy everything above. BOTH probes are created as soldiers on
+    // purpose — only the set_derived_stats argument differs, so the difference
+    // below can come from nothing but the row this call selected.
+    auto soldier = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier.get());
+    auto elf_row_probe = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, elf_row_probe.get());
+    l->set_derived_stats(soldier.get(), Order::Living, FAMILY_SOLDIER);
+    l->set_derived_stats(elf_row_probe.get(), Order::Living, FAMILY_ELF);
+    EXPECT_NE(soldier->lineofsight(), elf_row_probe->lineofsight())
+        << "the soldier and elf rows differ, so set_derived_stats is row-selective";
+    EXPECT_NE(soldier->damage(), elf_row_probe->damage())
+        << "soldier melee damage differs from the elf's, so the damage read is row-selective too";
 }
 
 
@@ -177,49 +274,72 @@ TEST(GloaderFuncs, gloader_set_walker)
     ASSERT_EQ((int)FAMILY_MAGE, (int)wp->family()) << "family should change to mage";
 
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure, Order::FX, Order::Generator, Order::Special};
+    int rewritten = 0;
     for (Order o : orders) {
         for (int fam = 0; fam < NUM_FAMILIES; fam++) {
             if (!l->graphics[static_cast<std::size_t>(PIX(o, fam))].valid()) {
                 continue;
             }
             walker* changed = l->set_walker(wp, o, static_cast<char>(fam));
-            ASSERT_TRUE(changed != nullptr) << "set_walker should return object";
-            ASSERT_TRUE(changed->stats() != nullptr) << "set_walker should leave stats valid";
+            ASSERT_EQ(wp, changed)
+                << "set_walker rewrites the walker it was handed, in place";
+            ASSERT_NE(nullptr, changed->stats()) << "set_walker leaves stats valid";
+            // The rewrite is the whole point: set_order_family must land both
+            // fields. (query_order() is the C++ class's own answer — `living`
+            // always says Living — so the stored order is read with order().)
+            EXPECT_TRUE(changed->order() == o)
+                << "set_walker must write the requested order";
+            EXPECT_EQ(fam, static_cast<int>(changed->family()))
+                << "set_walker must write the requested family";
+            EXPECT_EQ(l->act_types[static_cast<std::size_t>(PIX(o, fam))],
+                      changed->act_type())
+                << "set_walker re-seeds the act type from that row";
+            ++rewritten;
         }
     }
 
+    // The same graphics-table oracle the create_walker sweeps use: create_pixieN
+    // answers a pixie for EXACTLY the families with a valid graphics row, and
+    // nullptr for the rest. "More than zero were created" passed for a loader
+    // that built one pixie and dropped the other ~60.
     int pixie_created = 0;
+    int rows_with_art = 0;
     for (Order o : orders) {
         for (int fam = 0; fam < NUM_FAMILIES; fam++) {
+            const bool has_art =
+                l->graphics[static_cast<std::size_t>(PIX(o, fam))].valid();
+            if (has_art)
+                ++rows_with_art;
             auto p = l->create_pixieN_owned(o, static_cast<char>(fam));
+            EXPECT_EQ(has_art, p != nullptr)
+                << "order " << static_cast<int>(o) << " family " << fam
+                << ": create_pixieN must build exactly the rows with art";
             if (p) {
                 pixie_created++;
             }
         }
     }
-    ASSERT_TRUE(pixie_created > 0) << "create_pixieN sweep should create objects";
+    ASSERT_EQ(rows_with_art, pixie_created)
+        << "the pixie sweep must build one pixie per valid graphics row";
+    ASSERT_EQ(rows_with_art, rewritten)
+        << "the set_walker sweep must have visited the same rows";
+    ASSERT_GE(rows_with_art, 50)
+        << "the core art tables must not have emptied out under the sweep";
 }
 
 
 TEST(GloaderFuncs, gloader_invalid_family_clamp_paths)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
+    ASSERT_NE(nullptr, l) << "loader exists";
 
     auto living_w = l->create_walker_owned(Order::Living, NUM_FAMILIES + 5);
-    ASSERT_TRUE(living_w != nullptr) << "invalid living family should fall back to soldier";
-    if (!living_w)
-        return;
+    ASSERT_NE(nullptr, living_w.get()) << "invalid living family should fall back to soldier";
     ASSERT_EQ((int)FAMILY_SOLDIER, (int)living_w->family()) << "invalid living family should clamp to soldier";
 
     auto weapon_w = l->create_walker_owned(Order::Weapon, NUM_FAMILIES + 5);
-    ASSERT_TRUE(weapon_w != nullptr) << "invalid weapon family should clamp to 0 and still construct";
-    if (weapon_w)
-    {
-        ASSERT_EQ(0, (int)weapon_w->family()) << "invalid non-living family should clamp to family 0";
-    }
+    ASSERT_NE(nullptr, weapon_w.get()) << "invalid weapon family should clamp to 0 and still construct";
+    ASSERT_EQ(0, (int)weapon_w->family()) << "invalid non-living family should clamp to family 0";
 
     l->set_derived_stats(living_w.get(), Order::Living, NUM_FAMILIES + 9);
     ASSERT_TRUE(living_w->normal_stepsize() >= 0.0f) << "set_derived_stats should clamp invalid family safely";
@@ -233,16 +353,11 @@ TEST(GloaderFuncs, gloader_invalid_family_clamp_paths)
 TEST(GloaderFuncs, gloader_order_special_and_invalid_graphics_paths)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
+    ASSERT_NE(nullptr, l) << "loader exists";
 
     auto special = l->create_walker_owned(Order::Special, FAMILY_RESERVED_TEAM);
-    ASSERT_TRUE(special != nullptr) << "special order should build generic walker when graphics exist";
-    if (special)
-    {
-        ASSERT_TRUE(special->query_order() == Order::Special) << "special walker should keep special order";
-    }
+    ASSERT_NE(nullptr, special.get()) << "special order should build generic walker when graphics exist";
+    ASSERT_TRUE(special->query_order() == Order::Special) << "special walker should keep special order";
 
     // Cover the "invalid graphics -> popup + nullptr" branch deterministically.
     const int idx = PIX(Order::Special, FAMILY_RESERVED_TEAM);
@@ -264,14 +379,10 @@ TEST(GloaderFuncs, gloader_order_special_and_invalid_graphics_paths)
 TEST(GloaderFuncs, gloader_set_walker_descriptor_flag_and_default_paths)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
+    ASSERT_NE(nullptr, l) << "loader exists";
 
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "base walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w.get()) << "base walker created";
 
     // Weapon descriptor flags + lifetime + ani type paths.
     l->set_walker(w.get(), Order::Weapon, FAMILY_WAVE3);
@@ -635,9 +746,7 @@ TEST(GloaderFuncs, custom_spritesheet_rejects_path_traversal)
 TEST(GloaderFuncs, an_out_of_range_family_reads_the_orders_first_row)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-    if (!l)
-        return;
+    ASSERT_NE(nullptr, l) << "loader exists";
 
     const PixieData* living_zero = l->graphics_for(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(living_zero != nullptr) << "the soldier row is loaded";

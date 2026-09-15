@@ -939,15 +939,13 @@ struct ModeMirror
     LevelRuntimeData level;
     SaveData save;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
 
     explicit ModeMirror(int level_id)
         : level(level_id, true)
     {
         level.create_new_grid();
         wire_modes_test_entity_services(&level.world(), &level);
-        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                              &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 
     GameWorld& world() { return level.world(); }

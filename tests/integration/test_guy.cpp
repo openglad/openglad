@@ -10,12 +10,22 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-// Test: Guy constructors create characters with correct family defaults
+// Test: Guy constructors create characters with correct family defaults.
+// The full per-family base-stat table lives in
+// GuyCalcs.guy_family_constructor_applies_each_familys_base_stat_block; this
+// case pins the family/name pairing plus the soldier's exact sheet, so a
+// constructor that hands every family the BEAST fallback {12,6,12,8,6} (armor
+// 6, not 9) is caught here too.
 TEST(Guy, creation) {
     guy soldier(FAMILY_SOLDIER);
     ASSERT_EQ(FAMILY_SOLDIER, soldier.family) << "soldier should have soldier family";
     ASSERT_STREQ("SOLDIER", soldier.name.c_str()) << "soldier should be named SOLDIER";
-    ASSERT_TRUE(soldier.strength > 0) << "soldier should have positive strength";
+    EXPECT_EQ(12, (int)soldier.strength) << "soldier base STR is 12";
+    EXPECT_EQ(6, (int)soldier.dexterity) << "soldier base DEX is 6";
+    EXPECT_EQ(12, (int)soldier.constitution) << "soldier base CON is 12";
+    EXPECT_EQ(8, (int)soldier.intelligence) << "soldier base INT is 8";
+    EXPECT_EQ(9, (int)soldier.armor) << "soldier base ARMOR is 9 (the BEAST fallback would be 6)";
+    EXPECT_EQ(1, (int)soldier.level) << "a fresh soldier is level 1";
 
     guy archer(FAMILY_ARCHER);
     ASSERT_EQ(FAMILY_ARCHER, archer.family) << "archer should have archer family";
@@ -65,19 +75,6 @@ TEST(Guy, copy) {
     ASSERT_EQ(15, copy.intelligence) << "copy intelligence should match";
     ASSERT_EQ(10, copy.armor) << "copy armor should match";
     ASSERT_EQ(42, copy.kills) << "copy kills should match";
-}
-
-
-
-// Test: Guy upgrade_to_level increases stats
-TEST(Guy, level_up) {
-    guy soldier(FAMILY_SOLDIER);
-    short initial_str = soldier.strength;
-
-    soldier.upgrade_to_level(5);
-
-    ASSERT_EQ(5, soldier.level) << "level should be 5 after upgrade";
-    ASSERT_TRUE(soldier.strength >= initial_str) << "strength should not decrease after leveling up";
 }
 
 
@@ -285,32 +282,49 @@ TEST(Guy, armor_bonus)
 
 TEST(Guy, upgrade_to_level_stats_increase)
 {
+    // A soldier has no Lua level_up hook, so kDefaultLevelUpGains{8,6,8,8,1}
+    // is applied level_diff times over the base {12,6,12,8,9}.
+    guy five(FAMILY_SOLDIER);
+    five.upgrade_to_level(5);
+    ASSERT_EQ(5, (int)five.level) << "level should be 5 after upgrade";
+    EXPECT_EQ(44, (int)five.strength) << "soldier STR at level 5 is 12 + 4*8";
+    EXPECT_EQ(40, (int)five.intelligence) << "soldier INT at level 5 is 8 + 4*8";
+
     guy soldier(FAMILY_SOLDIER);
-    short str1 = soldier.strength;
-    short dex1 = soldier.dexterity;
-    short con1 = soldier.constitution;
+    ASSERT_EQ(12, (int)soldier.strength) << "soldier base STR";
+    ASSERT_EQ(6, (int)soldier.dexterity) << "soldier base DEX";
+    ASSERT_EQ(12, (int)soldier.constitution) << "soldier base CON";
 
     soldier.upgrade_to_level(10);
 
-    ASSERT_TRUE(soldier.strength > str1) << "strength should increase after leveling to 10";
-    ASSERT_TRUE(soldier.dexterity > dex1) << "dexterity should increase after leveling to 10";
-    ASSERT_TRUE(soldier.constitution > con1) << "constitution should increase after leveling to 10";
+    ASSERT_EQ(84, (int)soldier.strength) << "soldier STR at level 10 is 12 + 9*8";
+    ASSERT_EQ(60, (int)soldier.dexterity) << "soldier DEX at level 10 is 6 + 9*6";
+    ASSERT_EQ(84, (int)soldier.constitution) << "soldier CON at level 10 is 12 + 9*8";
     ASSERT_EQ(10, (int)soldier.level) << "level should be 10";
-    ASSERT_TRUE(soldier.exp == calculate_exp(10)) << "exp should be set to level 10 threshold";
+    ASSERT_EQ(calculate_exp(10), soldier.exp) << "exp should be set to level 10 threshold";
 }
 
 
 TEST(Guy, upgrade_to_level_different_families)
 {
-    // Different families should get different stat distributions
+    // The GAINS differ, not merely the level-1 bases: the soldier has no Lua
+    // level_up hook and takes kDefaultLevelUpGains{8,6,8,8,1}; the mage's hook
+    // (packs/core/families/living-03-mage.lua) applies {4,6,4,16,1}. Losing the
+    // hook dispatch would give the mage 4+8*4=36 STR / 16+8*4=48 INT here.
     guy soldier(FAMILY_SOLDIER);
     guy mage(FAMILY_MAGE);
+    ASSERT_EQ(12, (int)soldier.strength) << "soldier base STR";
+    ASSERT_EQ(8, (int)soldier.intelligence) << "soldier base INT";
+    ASSERT_EQ(4, (int)mage.strength) << "mage base STR";
+    ASSERT_EQ(16, (int)mage.intelligence) << "mage base INT";
+
     soldier.upgrade_to_level(5);
     mage.upgrade_to_level(5);
 
-    // Soldier should have higher strength growth, mage higher intelligence
-    // (Relative to their family defaults at level 1)
-    ASSERT_TRUE(soldier.strength != mage.strength || soldier.intelligence != mage.intelligence) << "different families should have different stat distributions at same level";
+    EXPECT_EQ(44, (int)soldier.strength) << "soldier STR at level 5 is 12 + 4*8";
+    EXPECT_EQ(40, (int)soldier.intelligence) << "soldier INT at level 5 is 8 + 4*8";
+    EXPECT_EQ(20, (int)mage.strength) << "mage STR at level 5 is 4 + 4*4 (Lua hook)";
+    EXPECT_EQ(80, (int)mage.intelligence) << "mage INT at level 5 is 16 + 4*16 (Lua hook)";
 }
 
 

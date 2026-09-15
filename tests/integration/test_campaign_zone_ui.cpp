@@ -2602,6 +2602,38 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     EXPECT_TRUE(state.second_window)
         << "the pager pages the docket IN PLACE, never onto a new screen";
     EXPECT_TRUE(state.wrapped_home) << "and back again";
+
+    // ...and COUNTS itself. state.pager_shown only proves the two arrows
+    // exist; the gutter strip under them prints
+    // ActionsLayout::page.indicator() for every multi-page band of 2+ units
+    // (src/interface/ui/menu_screen_specs.cpp, the docket-pager gutter
+    // loop). Compose the same docket the flow just paged and pin the count
+    // that strip has to ink -- without this, deleting the strip (the very
+    // thing the comment above kPagedDocketScript says two bare arrows cannot
+    // replace) left every expectation above green.
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    og::ui::CampaignZoneSession::ActionsLayout band = zone.actions()[0];
+    EXPECT_EQ(2, band.units) << "weight 2 buys a two-row band";
+    EXPECT_EQ(5u, band.rows.size()) << "all five authored rows are carried";
+    ASSERT_TRUE(band.page.multi_page())
+        << "five rows in a two-row window overflow";
+    EXPECT_EQ(3, band.page.page_count())
+        << "five rows across a two-row window is three pages";
+    EXPECT_EQ(std::string("1/3"), band.page.indicator())
+        << "the gutter must open on page one of three";
+    ASSERT_TRUE(band.page.step(1));
+    EXPECT_EQ(std::string("2/3"), band.page.indicator())
+        << "one NEXT moves the printed count with the window";
+    ASSERT_TRUE(band.page.step(1));
+    EXPECT_EQ(std::string("3/3"), band.page.indicator());
+    EXPECT_FALSE(band.page.step(1))
+        << "the count saturates on the last page instead of wrapping";
 }
 
 namespace {
@@ -2768,7 +2800,15 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
               mount_campaign_package_with_error("gladiator"));
 }
 
-// --- TEMPORARY UX-REVIEW CAPTURE (not for commit) -------------------------
+// --- ZONE_SHOTS: the big-roster pager stills -------------------------------
+//
+// Not a temporary UX-review scratch, whatever the fence here used to say:
+// uxr_big_roster_p1 and uxr_big_roster_p2 are two of the ZONE_SHOTS
+// scripts/media/capture_campaign_scripting.sh lists (:118-119) and it
+// "refuses to finish with any of them missing". This flow is the only place
+// the roster pager is driven with a company big enough to need it, so the
+// two stills — page 1 and page 2 of a 14-hero band — come from here or from
+// nowhere.
 namespace {
 
 void uxr_write_save0_with_many(const std::string& campaign, short scen_num)
@@ -2802,25 +2842,106 @@ void uxr_write_save0_with_many(const std::string& campaign, short scen_num)
     ASSERT_TRUE(save.save("save0"));
 }
 
+// Everything the flow observed, read back on the main thread: an EXPECT
+// raised from an injector that then dies mid-flow takes its message with it,
+// so this file's capture flows all report this way.
+struct UxrBigRosterState {
+    bool stores_seen = false;      // the camp composed its STORES door
+    bool pager_enabled = false;    // the roster pager is live, not inert
+    bool page_flipped = false;     // the '>' press moved the window
+    std::string page_indicator;    // the newest "page p/N" the pager spoke
+    bool finished = false;         // the flow came back to the camp strip
+    // Set by the MAIN thread after picker_main returns. The escape tail has
+    // no wall-clock bound on purpose: picker_main blocks until a click takes
+    // it out, so a tail that stopped trying early would guarantee the wedge
+    // it exists to prevent.
+    std::atomic<bool> test_finished{false};
+};
+
+// Poll ticks, never settles: the trace edge below is a wait-on-condition and
+// the escape tail is a wait-on-the-main-thread.
+constexpr int kUxrTracePollMs = 50;
+constexpr int kUxrEscapePollMs = 100;
+
+// The newest "basecamp"/"page ..." trace message, "" when the pager has not
+// spoken. The pager cluster's rows are drawn as bare arrows with no label to
+// wait on (menu_screen_specs.cpp:2839-2851), so the ONLY witness a page flip
+// publishes is TRACE("basecamp", "page %s", indicator) at :5284 — and the
+// indicator is "{page+1}/{page_count}".
+std::string newest_basecamp_page_trace()
+{
+    const std::lock_guard<std::mutex> lock(g_trace_mutex);
+    for (auto entry = g_trace_buffer.rbegin(); entry != g_trace_buffer.rend();
+         ++entry) {
+        if (entry->category == "basecamp" &&
+            entry->message.find("page ") != std::string::npos)
+            return entry->message;
+    }
+    return std::string();
+}
+
 int uxr_big_roster_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
-    wait_for_interactable_label("zone_action_0", "STORES", 10000);
-    SDL_Delay(600);
+    UxrBigRosterState* state = static_cast<UxrBigRosterState*>(data);
+
+    (void)wait_for_interactable("continue_game", 5000);
+    (void)wait_for_menu_frames(2);
+    // The composed Page-kind face: the book's word plus the door grammar the
+    // row text appends (two spaces, then '>' —
+    // campaign_picker_row_text in src/interface/ui/campaign_picker_session.cpp,
+    // pinned at tests/unit/test_campaign_picker_session.cpp:562-564). The bare
+    // "STORES" this wait used to ask for never arrives: the wait burned its
+    // whole 10 s ceiling on every green run and the result was thrown away.
+    state->stores_seen = click_until_edge(
+        "continue_game",
+        [](int wait_ms) {
+            return wait_for_interactable_label("zone_action_0", "STORES  >",
+                                               wait_ms);
+        },
+        nullptr, 3, 10000);
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_big_roster_p1");
+
     // 14 heroes over the scripted zone's 3-row roster band: the pager is not
-    // optional here, and a fixture that stopped paging would silently drop
-    // the second still.
-    *static_cast<bool*>(data) = has_interactable("roster_page_next");
-    interact("roster_page_next");
-    SDL_Delay(500);
+    // optional here. The row itself is ALWAYS published — an inert
+    // placeholder, because base_camp_page_row_state
+    // (menu_screen_specs.cpp:2310) answers Disabled rather than Hidden for a
+    // single-page roster so HIRE keeps its home — so only the ENABLED
+    // question can tell a paging fixture from one that quietly stopped
+    // paging and would drop the second still.
+    state->pager_enabled = has_enabled_interactable("roster_page_next");
+
+    const int pages_before = count_trace_containing("basecamp", "page ");
+    state->page_flipped = click_until_edge(
+        "roster_page_next",
+        [pages_before](int wait_ms) {
+            int elapsed = 0;
+            while (elapsed < wait_ms) {
+                if (count_trace_containing("basecamp", "page ") > pages_before)
+                    return true;
+                SDL_Delay(static_cast<Uint32>(kUxrTracePollMs));
+                elapsed += kUxrTracePollMs;
+            }
+            return false;
+        },
+        nullptr, 3, 10000);
+    state->page_indicator = newest_basecamp_page_trace();
+    (void)wait_for_menu_frames(2);
     capture_zone_frame("uxr_big_roster_p2");
-    wait_for_interactable("go", 10000);
-    SDL_Delay(300);
-    interact("back");
+
+    state->finished = wait_for_interactable("go", 10000);
+    (void)wait_for_menu_frames(2);
+
+    // The exit, and the only loop with no bound: picker_main blocks on the
+    // main thread and only a click makes it return, so the final `back` is
+    // driven from here rather than through the ladder — after picker_main
+    // returns there is no pump left to service an acknowledge post.
+    while (!state->test_finished.load(std::memory_order_acquire)) {
+        if (has_interactable("go"))
+            (void)interact("back");
+        SDL_Delay(static_cast<Uint32>(kUxrEscapePollMs));
+    }
     return 0;
 }
 
@@ -2836,19 +2957,35 @@ TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
     SyntheticCampaignScriptGuard::install(kZoneScript);
     uxr_write_save0_with_many("gladiator", 1);
 
-    bool roster_pages = false;
+    UxrBigRosterState state;
     SDL_Thread* thread =
-        SDL_CreateThread(uxr_big_roster_injector, "uxr_big", &roster_pages);
+        SDL_CreateThread(uxr_big_roster_injector, "uxr_big", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
+    state.test_finished.store(true, std::memory_order_release);
     SDL_WaitThread(thread, nullptr);
+    // The escape tail clicks into a queue nobody reads once picker_main is
+    // out; leave nothing behind for the next test's first frame.
+    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    EXPECT_TRUE(roster_pages)
-        << "14 heroes over a 3-row band must show the roster pager";
+    EXPECT_TRUE(state.stores_seen)
+        << "the scripted camp composes its STORES page door as 'STORES  >'";
+    EXPECT_TRUE(state.pager_enabled)
+        << "14 heroes over a 3-row band must ENABLE the roster pager";
+    EXPECT_TRUE(state.page_flipped)
+        << "the '>' press must move the roster window";
+    // 14 heroes over the scripted zone's 3-row band (the roster takes the 8
+    // unit budget's remainder after the hoisted readout, the one text line
+    // and the three action rows, less its own header) is ceil(14/3) = 5
+    // pages, and one '>' press lands on the second of them.
+    EXPECT_EQ("page 2/5", state.page_indicator)
+        << "one pager click steps the 14-hero roster exactly one page";
+    EXPECT_TRUE(state.finished)
+        << "the flow must come back to the camp's command strip";
     verify_zone_shots("uxr_full_roster", 2);
 }
 
@@ -3208,6 +3345,10 @@ int match_setup_wrong_id_injector(void* data)
 
 struct BlindCyclerState
 {
+    // false: the press names its landing with a trace ("acted_autosave").
+    // true: the same press with NO witness at all — the ladder then has only
+    // its re-check-before-re-press to keep the wheel from overshooting.
+    bool witnessless = false;
     bool opened = false;
     bool stepped = false;
     bool wheel_still_on_two = false;
@@ -3247,7 +3388,7 @@ int match_setup_blind_cycler_injector(void* data)
                 return wait_for_interactable_label_containing(
                     "zone_row_0", "TEAMS: 2", wait_ms);
             },
-            "acted_autosave");
+            state->witnessless ? nullptr : "acted_autosave");
         // Where the wheel actually stands once the ladder is done: one
         // press, one stop. An overshoot reads 3 or 4 here and this stays
         // false however the ladder reported.
@@ -3373,6 +3514,58 @@ TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
         << "exactly one attempt waited on a press that had already landed";
     EXPECT_EQ(0, g_click_ladder_click_retries)
         << "a landed press is never charged as a re-press";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The SAME rule for a row that publishes NO landing witness. Not every cycler
+// can name its landing — this one is asked to prove it without trying — and
+// for those the ladder's guard is the re-check it runs immediately before
+// every RE-press: the edge that arrived after the wait gave up is found
+// there, and the press is cancelled instead of sent.
+//
+// Without that re-check this flow presses a second time on a wheel that has
+// already moved, and TEAMS walks 4 -> 2 -> 3 (then 4) while the flow waits
+// for a face the row has gone by.
+TEST(CampaignZoneUi, match_setup_click_helper_recheck_saves_a_witnessless_cycler)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_edge_waits = 0;
+    g_click_ladder_edge_blinds = 0;
+
+    BlindCyclerState state;
+    state.witnessless = true;  // no landed_trace on the cycler press
+    SDL_Thread* thread = SDL_CreateThread(match_setup_blind_cycler_injector,
+                                          "zone_recheck_cycler", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.opened) << "the MATCH SETUP door still opens";
+    EXPECT_EQ(0, g_click_ladder_edge_blinds)
+        << "the injected blind must be consumed";
+    EXPECT_TRUE(state.stepped)
+        << "the re-check must report the late edge as an arrival";
+    EXPECT_TRUE(state.wheel_still_on_two)
+        << "a witnessless cycler must not be pressed again either: the "
+           "re-check found TEAMS: 2 before the re-press went out";
+    EXPECT_EQ(1, g_click_ladder_click_retries)
+        << "exactly one attempt expired with no witness and no edge";
+    EXPECT_EQ(1, g_click_ladder_edge_waits)
+        << "the second attempt waited instead of pressing, because the "
+           "re-check found the edge already there";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));

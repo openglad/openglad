@@ -2,6 +2,7 @@
 #include <openglad/core/fnv1a.h>
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/pack_transfer.h>
 
 #include <gtest/gtest.h>
@@ -16,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -229,6 +231,43 @@ og::sim::LobbyMessage decode_lobby_message(
     return decoded.value_or(og::sim::LobbyMessage{});
 }
 
+// Every LobbyState the server handed the transport FOR THIS PEER, in send
+// order. StartGame confirmations and pack manifests are different message
+// kinds and decode to nullopt here, so they are skipped.
+std::vector<og::sim::LobbyState> states_echoed_to(
+    const MockLobbyTransport& transport, og::sim::PeerId peer_id)
+{
+    std::vector<og::sim::LobbyState> states;
+    for (const auto& message : transport.sent_messages())
+    {
+        if (message.peer_id != peer_id)
+            continue;
+        const auto decoded =
+            og::sim::deserialize_lobby_state_message(message.data);
+        if (decoded.has_value())
+            states.push_back(*decoded);
+    }
+    return states;
+}
+
+// The wire observable every client actually consumes: the most recent
+// LobbyState delivered to peer_id. Fails the test when the peer received no
+// state at all (a value-returning helper cannot ASSERT_*, so the empty case
+// records a failure and returns a default state, which no expected verdict
+// matches).
+og::sim::LobbyState last_state_echoed_to(const MockLobbyTransport& transport,
+                                         og::sim::PeerId peer_id)
+{
+    const std::vector<og::sim::LobbyState> states =
+        states_echoed_to(transport, peer_id);
+    EXPECT_FALSE(states.empty())
+        << "expected a LobbyState echo to peer " << peer_id
+        << ", none was sent";
+    if (states.empty())
+        return og::sim::LobbyState{};
+    return states.back();
+}
+
 void expect_all_sent_states_equal(
     const std::vector<og::sim::ReceivedMessage>& sent_messages,
     const og::sim::LobbyState& expected)
@@ -237,15 +276,19 @@ void expect_all_sent_states_equal(
     for (const auto& message : sent_messages)
     {
         og::sim::LobbyState actual = decode_lobby_state(message);
-        // Ownership and Join acknowledgement are deliberately recipient-
-        // specific; compare the canonical replicated content here and cover
-        // those personalized fields explicitly below.
+        // Ownership, the Join acknowledgement and the StartGame verdict are
+        // deliberately recipient-specific; compare the canonical replicated
+        // content here and cover those personalized fields explicitly below.
         actual.local_seat_ids.clear();
         actual.last_join_request_id = 0;
+        actual.last_start_denial = 0;
+        actual.last_start_request_id = 0;
         actual.local_peer_is_host = false;
         og::sim::LobbyState canonical_expected = expected;
         canonical_expected.local_seat_ids.clear();
         canonical_expected.last_join_request_id = 0;
+        canonical_expected.last_start_denial = 0;
+        canonical_expected.last_start_request_id = 0;
         canonical_expected.local_peer_is_host = false;
         EXPECT_EQ(canonical_expected, actual);
     }
@@ -849,7 +892,14 @@ TEST(LobbyServer, first_connected_peer_remains_host_even_if_another_peer_joins_f
 
     EXPECT_EQ(1, server.state().settings.scenario_id);
     EXPECT_FALSE(server.start_game_requested());
-    EXPECT_TRUE(transport.sent_messages().empty());
+    // The host-only settings change is dropped silently (no echo at all), but
+    // the StartGame is ANSWERED: §4.3 rule 2 denies it NotHost, to the
+    // requester alone, so the sole message is that verdict.
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(22u, transport.sent_messages().front().peer_id);
+    EXPECT_EQ(start_denial_reason_value(og::sim::StartDenialReason::NotHost),
+              decode_lobby_state(transport.sent_messages().front())
+                  .last_start_denial);
 
     transport.queue_lobby_message(
         11u,
@@ -1160,8 +1210,17 @@ TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_stat
     server.poll_incoming_messages();
 
     EXPECT_FALSE(server.start_game_requested());
-    EXPECT_TRUE(transport.sent_messages().empty());
+    // The non-host request is denied NotHost and answered to ITS requester
+    // only: one message, to 22, correlated with 22's own request id.
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(22u, transport.sent_messages().front().peer_id);
+    const og::sim::LobbyState nonhost_echo =
+        decode_lobby_state(transport.sent_messages().front());
+    EXPECT_EQ(start_denial_reason_value(og::sim::StartDenialReason::NotHost),
+              nonhost_echo.last_start_denial);
+    EXPECT_EQ(90u, nonhost_echo.last_start_request_id);
 
+    transport.clear_sent_messages();
     og::sim::LobbyMessage host_start;
     host_start.payload = og::sim::LobbyStartGameMessage{
         .player_index = 0u,
@@ -1864,8 +1923,9 @@ TEST(LobbyServer, settings_change_reteams_out_of_range_players)
     server.poll_incoming_messages();
 
     ASSERT_EQ(2u, server.state().players.size());
-    EXPECT_GE(server.state().players[1].team, 0);
-    EXPECT_NE(3, server.state().players[1].team);
+    EXPECT_EQ(0, server.state().players[1].team)
+        << "a stranded seat lands on lobby_first_selectable_team(mask 0b0111) "
+           "== 0, deterministically -- not merely 'somewhere in range'";
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
     ASSERT_EQ(2u, transport.sent_messages().size());
@@ -2888,10 +2948,12 @@ TEST(LobbyServer, content_identical_join_resend_preserves_ready)
         << "a content-identical join re-send preserves ready";
 
     // And the host can now start over the re-synced-but-still-ready lobby.
+    transport.clear_sent_messages();
     transport.queue_lobby_message(11u, make_start_message(0u, 101u));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.start_game_requested());
-    EXPECT_EQ(0u, server.state().last_start_denial);
+    EXPECT_TRUE(states_echoed_to(transport, 11u).empty())
+        << "an accepted GO with no prior denial echoes no verdict at all";
 }
 
 TEST(LobbyServer, content_identical_comparison_excludes_owner_fields)
@@ -3041,24 +3103,34 @@ TEST(LobbyServer, start_denied_when_nonhost_not_ready_keeps_lobby_live)
     transport.queue_lobby_message(11u, make_start_message(0u, 101u));
     server.poll_incoming_messages();
     EXPECT_FALSE(server.start_game_requested());
+    // The denial rides the requester's OWN state echo (the host must see WHO
+    // is blocking); the unready guest is told nothing.
+    const og::sim::LobbyState denial_echo =
+        last_state_echoed_to(transport, 11u);
     EXPECT_EQ(start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
-              server.state().last_start_denial);
-    EXPECT_EQ(101u, server.state().last_start_request_id);
-    // The denial is echoed (the host must see WHO is blocking).
-    ASSERT_FALSE(transport.sent_messages().empty());
+              denial_echo.last_start_denial);
+    EXPECT_EQ(101u, denial_echo.last_start_request_id);
+    EXPECT_TRUE(states_echoed_to(transport, 22u).empty())
+        << "the verdict is scoped to the requester";
 
     // The lobby is still LIVE — a subsequent ready is processed, not eaten by a
     // lock, and the next start is accepted.
     transport.queue_lobby_message(22u, make_ready_message(1u, true));
     server.poll_incoming_messages();
     ASSERT_TRUE(server.state().players[1].ready);
+    transport.clear_sent_messages();
     transport.queue_lobby_message(11u, make_start_message(0u));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.start_game_requested());
-    EXPECT_EQ(0u, server.state().last_start_denial) << "acceptance clears the denial";
+    const og::sim::LobbyState cleared_echo =
+        last_state_echoed_to(transport, 11u);
+    EXPECT_EQ(0u, cleared_echo.last_start_denial)
+        << "acceptance clears the requester's denial and echoes the clear";
+    EXPECT_EQ(0u, cleared_echo.last_start_request_id);
 }
 
-TEST(LobbyServer, dedicated_denial_keeps_loop_polling_and_echoes_reason_to_every_peer)
+TEST(LobbyServer,
+     dedicated_denial_keeps_loop_polling_and_echoes_reason_to_the_requester_only)
 {
     // The dedicated-server shape (server_main.cpp): a LobbyServer with NO
     // local session whose host is the FIRST-CONNECTED peer — the ELECTED host,
@@ -3068,10 +3140,11 @@ TEST(LobbyServer, dedicated_denial_keeps_loop_polling_and_echoes_reason_to_every
     //      (server_main.cpp `if (lobby_server.consume_start_game_requested())
     //      break;`) — stays FALSE on a denied GO, so the dedicated loop keeps
     //      polling instead of breaking into gameplay;
-    //   2. the denial reason rides the serialized LobbyState ECHO to EVERY
-    //      peer. The elected host has no in-process server.state() to read —
-    //      the echo is its ONLY source of the reason — and guests render the
-    //      same echo.
+    //   2. the denial reason rides the serialized LobbyState ECHO to the
+    //      REQUESTER ONLY. The elected host has no in-process server.state()
+    //      to read — the echo is its ONLY source of the reason — and the
+    //      verdict is recipient-specific, so a peer that did not ask receives
+    //      no state at all (its own denial pair is never clobbered).
     MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport);
     server.connect_client(11u); // first-connected peer ⇒ elected host
@@ -3106,8 +3179,15 @@ TEST(LobbyServer, dedicated_denial_keeps_loop_polling_and_echoes_reason_to_every
         EXPECT_EQ(101u, echoed.last_start_request_id);
         echoed_peers.insert(message.peer_id);
     }
-    EXPECT_EQ((std::set<og::sim::PeerId>{11u, 22u}), echoed_peers)
-        << "the denial echo must reach the elected host AND the guest";
+    EXPECT_EQ((std::set<og::sim::PeerId>{11u}), echoed_peers)
+        << "the denial echo reaches the elected host that asked, nobody else";
+    for (const og::sim::LobbyState& guest_state :
+         states_echoed_to(transport, 22u))
+    {
+        EXPECT_EQ(0u, guest_state.last_start_denial)
+            << "a peer that did not request a start is never told a denial";
+        EXPECT_EQ(0u, guest_state.last_start_request_id);
+    }
 
     // Retry without changing the blocker. Clearing then restoring the same
     // denial reason leaves LobbyState byte-identical, but this request still
@@ -3124,8 +3204,14 @@ TEST(LobbyServer, dedicated_denial_keeps_loop_polling_and_echoes_reason_to_every
         EXPECT_EQ(101u, echoed.last_start_request_id);
         echoed_peers.insert(message.peer_id);
     }
-    EXPECT_EQ((std::set<og::sim::PeerId>{11u, 22u}), echoed_peers)
+    EXPECT_EQ((std::set<og::sim::PeerId>{11u}), echoed_peers)
         << "an identical repeated denial still resolves the new request";
+    for (const og::sim::LobbyState& guest_state :
+         states_echoed_to(transport, 22u))
+    {
+        EXPECT_EQ(0u, guest_state.last_start_denial)
+            << "the repeat denial stays scoped to the requester too";
+    }
 
     // The dedicated loop stays live: the guest readies, the elected host's
     // next GO is accepted, and consume_start_game_requested() flips true —
@@ -3137,8 +3223,11 @@ TEST(LobbyServer, dedicated_denial_keeps_loop_polling_and_echoes_reason_to_every
     server.poll_incoming_messages();
     EXPECT_TRUE(server.consume_start_game_requested())
         << "server_main's break-into-gameplay read";
-    EXPECT_EQ(0u, server.state().last_start_denial);
-    EXPECT_EQ(0u, server.state().last_start_request_id)
+    const og::sim::LobbyState accepted_echo =
+        last_state_echoed_to(transport, 11u);
+    EXPECT_EQ(0u, accepted_echo.last_start_denial)
+        << "the accepted request clears the requester's standing denial";
+    EXPECT_EQ(0u, accepted_echo.last_start_request_id)
         << "accepted requests correlate through the StartGame confirmation";
     ASSERT_FALSE(transport.sent_messages().empty());
     std::size_t confirmation_count = 0;
@@ -3173,34 +3262,38 @@ TEST(LobbyServer, start_denial_survives_interleaved_join_cleared_on_next_start)
         22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
     server.poll_incoming_messages();
 
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.queue_lobby_message(11u, make_start_message(0u, 501u));
     server.poll_incoming_messages();
-    ASSERT_EQ(
-        start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
-        server.state().last_start_denial);
+    const std::uint8_t not_ready = start_denial_reason_value(
+        og::sim::StartDenialReason::MachinesNotReady);
+    ASSERT_EQ(not_ready, last_state_echoed_to(transport, 11u).last_start_denial);
 
     // Interleaved non-StartGame message (a content-identical guest re-join):
-    // the recorded denial must survive it.
+    // the recorded denial must survive it — the join's own broadcast carries
+    // the host's standing verdict back to the host untouched.
     transport.queue_lobby_message(
         22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
     server.poll_incoming_messages();
-    EXPECT_EQ(
-        start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
-        server.state().last_start_denial)
+    EXPECT_EQ(not_ready, last_state_echoed_to(transport, 11u).last_start_denial)
         << "an interleaved join must not wipe the recorded denial";
+    EXPECT_EQ(501u,
+              last_state_echoed_to(transport, 11u).last_start_request_id);
 
     // A ready message likewise leaves it in place.
     transport.queue_lobby_message(22u, make_ready_message(1u, true));
     server.poll_incoming_messages();
-    EXPECT_EQ(
-        start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
-        server.state().last_start_denial);
+    EXPECT_EQ(not_ready, last_state_echoed_to(transport, 11u).last_start_denial);
+    EXPECT_EQ(0u, last_state_echoed_to(transport, 22u).last_start_denial)
+        << "the guest's own (empty) verdict is what the guest keeps reading";
 
     // The NEXT StartGame clears and re-evaluates it (now accepted).
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 502u));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.start_game_requested());
-    EXPECT_EQ(0u, server.state().last_start_denial);
+    const og::sim::LobbyState reopened = last_state_echoed_to(transport, 11u);
+    EXPECT_EQ(0u, reopened.last_start_denial);
+    EXPECT_EQ(0u, reopened.last_start_request_id);
 }
 
 TEST(LobbyServer, start_denied_when_no_deployed_characters)
@@ -3216,12 +3309,15 @@ TEST(LobbyServer, start_denied_when_no_deployed_characters)
 
     // Single-peer lobby ⇒ rule 3 passes vacuously, but zero deployed ⇒ rule 4
     // denies with NoDeployedCharacters.
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 601u));
     server.poll_incoming_messages();
     EXPECT_FALSE(server.start_game_requested());
+    const og::sim::LobbyState echo = last_state_echoed_to(transport, 11u);
     EXPECT_EQ(start_denial_reason_value(
                   og::sim::StartDenialReason::NoDeployedCharacters),
-              server.state().last_start_denial);
+              echo.last_start_denial);
+    EXPECT_EQ(601u, echo.last_start_request_id);
 }
 
 TEST(LobbyServer, local_session_start_bypasses_ready_and_deploy_gates)
@@ -3238,10 +3334,12 @@ TEST(LobbyServer, local_session_start_bypasses_ready_and_deploy_gates)
         22u, make_join_message("P2", 1, {make_slot(1u, 200, "B", FAMILY_ARCHER)}));
     server.poll_incoming_messages();
 
+    transport.clear_sent_messages();
     transport.queue_lobby_message(11u, make_start_message(0u));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.start_game_requested());
-    EXPECT_EQ(0u, server.state().last_start_denial);
+    EXPECT_TRUE(states_echoed_to(transport, 11u).empty())
+        << "rule 1 accepts outright: no denial is echoed to the requester";
 }
 
 // Protocol v13 (#218): the owner-injected start gate is start_allowed's final
@@ -3267,21 +3365,26 @@ TEST(LobbyServer, start_gate_stage_failed_denies_go_and_recovery_admits_retry)
     EXPECT_EQ(1, gate_calls) << "rules 2-4 pass, so the gate is consulted";
     EXPECT_FALSE(server.start_game_requested())
         << "a failed stage must never lock the lobby";
+    const og::sim::LobbyState stage_echo =
+        last_state_echoed_to(transport, 11u);
     EXPECT_EQ(start_denial_reason_value(
                   og::sim::StartDenialReason::StageFailed),
-              server.state().last_start_denial);
-    EXPECT_EQ(301u, server.state().last_start_request_id);
-    ASSERT_FALSE(transport.sent_messages().empty())
+              stage_echo.last_start_denial)
         << "the StageFailed denial is echoed like every other reason";
+    EXPECT_EQ(301u, stage_echo.last_start_request_id);
 
     // The owner restages successfully; the retry passes through the gate.
     gate_reason = og::sim::StartDenialReason::None;
+    transport.clear_sent_messages();
     transport.queue_lobby_message(11u, make_start_message(0u, 302u));
     server.poll_incoming_messages();
     EXPECT_EQ(2, gate_calls);
     EXPECT_TRUE(server.start_game_requested());
-    EXPECT_EQ(0u, server.state().last_start_denial)
+    const og::sim::LobbyState retry_echo =
+        last_state_echoed_to(transport, 11u);
+    EXPECT_EQ(0u, retry_echo.last_start_denial)
         << "acceptance clears the denial";
+    EXPECT_EQ(0u, retry_echo.last_start_request_id);
 }
 
 TEST(LobbyServer, start_gate_runs_after_ready_rule_and_never_for_nonhost)
@@ -3309,13 +3412,158 @@ TEST(LobbyServer, start_gate_runs_after_ready_rule_and_never_for_nonhost)
     EXPECT_EQ(0, gate_calls);
     EXPECT_EQ(start_denial_reason_value(
                   og::sim::StartDenialReason::MachinesNotReady),
-              server.state().last_start_denial);
+              last_state_echoed_to(transport, 11u).last_start_denial);
 
-    // A non-host StartGame stays silently ignored — no gate consult either.
+    // A non-host StartGame is denied at rule 2 — before the gate, so no gate
+    // consult and no start — and the GUEST is told NotHost for ITS request id.
     transport.queue_lobby_message(22u, make_start_message(1u, 402u));
     server.poll_incoming_messages();
     EXPECT_EQ(0, gate_calls);
     EXPECT_FALSE(server.start_game_requested());
+    const og::sim::LobbyState guest_echo =
+        last_state_echoed_to(transport, 22u);
+    EXPECT_EQ(start_denial_reason_value(og::sim::StartDenialReason::NotHost),
+              guest_echo.last_start_denial)
+        << "rule 2 answers the non-host requester instead of dropping it";
+    EXPECT_EQ(402u, guest_echo.last_start_request_id);
+    const og::sim::LobbyState host_echo = last_state_echoed_to(transport, 11u);
+    EXPECT_EQ(start_denial_reason_value(
+                  og::sim::StartDenialReason::MachinesNotReady),
+              host_echo.last_start_denial)
+        << "the guest's NotHost must not clobber the host's own verdict";
+    EXPECT_EQ(401u, host_echo.last_start_request_id);
+}
+
+// §4.3 rule 2 is the ONE implementation of the host rule: a StartGame from a
+// peer that is not the elected host is DENIED (NotHost) and answered, never
+// silently dropped — a dropped request leaves that client holding a pending
+// request id no later message can resolve.
+TEST(LobbyServer, nonhost_start_is_denied_not_host_to_the_requester_only)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // first-connected peer ⇒ elected host
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    int gate_calls = 0;
+    server.set_start_gate([&gate_calls] {
+        ++gate_calls;
+        return og::sim::StartDenialReason::None;
+    });
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(22u, make_start_message(1u, 7u));
+    server.poll_incoming_messages();
+
+    EXPECT_FALSE(server.start_game_requested())
+        << "a non-host StartGame never starts the match";
+    EXPECT_EQ(0, gate_calls)
+        << "rule 2 denies before the owner-injected gate is consulted";
+    // Exactly one message leaves the server: the requester's own verdict.
+    ASSERT_EQ(1u, transport.sent_messages().size())
+        << "the NotHost verdict is the only traffic the request produces";
+    EXPECT_EQ(22u, transport.sent_messages().front().peer_id);
+    const og::sim::LobbyState guest_echo =
+        decode_lobby_state(transport.sent_messages().front());
+    EXPECT_EQ(start_denial_reason_value(og::sim::StartDenialReason::NotHost),
+              guest_echo.last_start_denial)
+        << "the guest is told WHY, correlated with its own request id";
+    EXPECT_EQ(7u, guest_echo.last_start_request_id);
+    EXPECT_TRUE(states_echoed_to(transport, 11u).empty())
+        << "the host never sees another machine's verdict";
+}
+
+// [NET-R4] per peer: each machine reads only the verdict for its OWN
+// StartGame, and an unrelated broadcast can neither deliver nor clear it.
+TEST(LobbyServer, denial_echo_is_scoped_to_its_requester)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // elected host
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    const std::uint8_t not_ready = start_denial_reason_value(
+        og::sim::StartDenialReason::MachinesNotReady);
+    const std::uint8_t not_host =
+        start_denial_reason_value(og::sim::StartDenialReason::NotHost);
+
+    // The host asks first and is denied: the guest has not readied.
+    transport.queue_lobby_message(11u, make_start_message(0u, 1u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(not_ready, last_state_echoed_to(transport, 11u).last_start_denial);
+    EXPECT_EQ(1u, last_state_echoed_to(transport, 11u).last_start_request_id);
+
+    // The guest asks with the SAME client-seeded request id 1 and is denied
+    // NotHost. Its verdict must not reach — or overwrite — the host's.
+    transport.queue_lobby_message(22u, make_start_message(1u, 1u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(not_host, last_state_echoed_to(transport, 22u).last_start_denial)
+        << "the guest reads NotHost for its own id";
+    EXPECT_EQ(1u, last_state_echoed_to(transport, 22u).last_start_request_id);
+    EXPECT_EQ(not_ready, last_state_echoed_to(transport, 11u).last_start_denial)
+        << "the guest's request must not clobber the host's verdict";
+    EXPECT_EQ(1u, last_state_echoed_to(transport, 11u).last_start_request_id);
+
+    // A real broadcast (the guest readies) re-sends both copies: each peer
+    // still receives its OWN standing verdict, not the other's.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[1].ready);
+    EXPECT_EQ(not_ready, last_state_echoed_to(transport, 11u).last_start_denial)
+        << "the broadcast personalizes the host's copy";
+    EXPECT_EQ(not_host, last_state_echoed_to(transport, 22u).last_start_denial)
+        << "the broadcast personalizes the guest's copy";
+
+    // The host's next GO is accepted: the HOST's pair is cleared and echoed,
+    // the guest gets only the StartGame confirmation.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 2u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+    const og::sim::LobbyState host_cleared =
+        last_state_echoed_to(transport, 11u);
+    EXPECT_EQ(0u, host_cleared.last_start_denial)
+        << "the accepted request clears the requester's own denial";
+    EXPECT_EQ(0u, host_cleared.last_start_request_id);
+    EXPECT_TRUE(states_echoed_to(transport, 22u).empty())
+        << "the guest receives no state for a start it did not request";
+    std::size_t confirmations_to_guest = 0;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id != 22u)
+            continue;
+        const auto confirmation = og::sim::deserialize_lobby_message(sent.data);
+        ASSERT_TRUE(confirmation.has_value());
+        ASSERT_EQ(og::sim::LobbyMessageKind::StartGame, confirmation->kind());
+        EXPECT_EQ(2u,
+                  std::get<og::sim::LobbyStartGameMessage>(
+                      confirmation->payload)
+                      .request_id);
+        ++confirmations_to_guest;
+    }
+    EXPECT_EQ(1u, confirmations_to_guest)
+        << "the guest still joins the match through the confirmation";
+
+    // [NET-R4] is per peer: the host's acceptance did NOT clear the guest's
+    // NotHost — only the guest's own next StartGame can.
+    transport.clear_sent_messages();
+    server.unlock_for_new_round();
+    EXPECT_EQ(not_host, last_state_echoed_to(transport, 22u).last_start_denial)
+        << "another peer's accepted start never clears this peer's verdict";
+    EXPECT_EQ(1u, last_state_echoed_to(transport, 22u).last_start_request_id);
+    EXPECT_EQ(0u, last_state_echoed_to(transport, 11u).last_start_denial)
+        << "the host's own pair stays cleared";
 }
 
 TEST(LobbyServer, local_session_start_ignores_start_gate)
@@ -3335,11 +3583,13 @@ TEST(LobbyServer, local_session_start_ignores_start_gate)
         return og::sim::StartDenialReason::StageFailed;
     });
 
+    transport.clear_sent_messages();
     transport.queue_lobby_message(11u, make_start_message(0u));
     server.poll_incoming_messages();
     EXPECT_EQ(0, gate_calls) << "local sessions never consult the gate";
     EXPECT_TRUE(server.start_game_requested());
-    EXPECT_EQ(0u, server.state().last_start_denial);
+    EXPECT_TRUE(states_echoed_to(transport, 11u).empty())
+        << "rule 1 accepts outright: no denial is echoed to the requester";
 }
 
 TEST(LobbyServer, unlock_for_new_round_clears_all_ready)
@@ -3693,10 +3943,12 @@ TEST(LobbyServer, zero_deploy_host_starts_when_another_machine_deploys)
     // cross_control stays OFF (default 0): the per-machine minimum is gone
     // regardless — only the GLOBAL >= 1 deployed rule exists server-side.
     ASSERT_EQ(0, server.state().settings.cross_control);
+    transport.clear_sent_messages();
     transport.queue_lobby_message(11u, make_start_message(0u));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.start_game_requested());
-    EXPECT_EQ(0u, server.state().last_start_denial);
+    EXPECT_TRUE(states_echoed_to(transport, 11u).empty())
+        << "an accepted GO with no prior denial echoes no verdict";
 
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
@@ -3748,21 +4000,29 @@ TEST(LobbyServer, all_benched_start_denied_even_with_cross_control_on)
     ASSERT_EQ(1, server.state().settings.cross_control);
     ASSERT_TRUE(server.state().players[1].ready);
 
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 701u));
     server.poll_incoming_messages();
     EXPECT_FALSE(server.start_game_requested());
+    const og::sim::LobbyState benched_echo =
+        last_state_echoed_to(transport, 11u);
     EXPECT_EQ(start_denial_reason_value(
                   og::sim::StartDenialReason::NoDeployedCharacters),
-              server.state().last_start_denial);
+              benched_echo.last_start_denial);
+    EXPECT_EQ(701u, benched_echo.last_start_request_id);
 
     // Deploying one character anywhere clears the blocker.
     transport.queue_lobby_message(
         22u, make_join_message("Guest", 1, {make_slot(0u, 200, "Guest Guy", FAMILY_ARCHER)}));
     transport.queue_lobby_message(22u, make_ready_message(1u, true));
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.queue_lobby_message(11u, make_start_message(0u, 702u));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.start_game_requested());
-    EXPECT_EQ(0u, server.state().last_start_denial);
+    const og::sim::LobbyState deployed_echo =
+        last_state_echoed_to(transport, 11u);
+    EXPECT_EQ(0u, deployed_echo.last_start_denial)
+        << "the accepted retry clears the requester's standing denial";
+    EXPECT_EQ(0u, deployed_echo.last_start_request_id);
 }
 
 // §4.2: LOCAL sessions deliberately DO NOT filter benched slots out of the
@@ -4867,4 +5127,69 @@ TEST(LobbyServer, seatless_remove_seat_still_echoes_the_authoritative_state)
     echoed.local_seat_ids.clear();
     echoed.local_peer_is_host = false;
     EXPECT_EQ(seatless, echoed);
+}
+
+// The two StartGame reply-correlation rules every lobby client shares
+// (og::sim::start_denial_matches_request / start_confirmation_matches_request,
+// src/gameplay/lobby_state.cpp). SDL, curses and the in-process picker client
+// each used to spell them out for themselves; this is the one truth table.
+TEST(LobbyState, start_correlation_matchers)
+{
+    // Denial: only a verdict echoed for THIS caller's own outstanding
+    // request resolves it.
+    og::sim::LobbyState denial;
+    denial.last_start_request_id = 40u;
+    denial.last_start_denial = og::sim::start_denial_reason_value(
+        og::sim::StartDenialReason::MachinesNotReady);
+
+    EXPECT_FALSE(og::sim::start_denial_matches_request(denial, 41u))
+        << "a denial echoed for request 40 must not resolve pending 41 — a "
+           "reply from an older GO attempt may already be queued";
+
+    denial.last_start_request_id = 41u;
+    EXPECT_TRUE(og::sim::start_denial_matches_request(denial, 41u))
+        << "the echo whose id IS the pending request resolves it";
+
+    EXPECT_FALSE(og::sim::start_denial_matches_request(denial, 0u))
+        << "a caller holding no pending request has nothing to resolve, even "
+           "when the state carries a real denial";
+
+    og::sim::LobbyState no_verdict = denial;
+    no_verdict.last_start_denial = og::sim::start_denial_reason_value(
+        og::sim::StartDenialReason::None);
+    EXPECT_FALSE(og::sim::start_denial_matches_request(no_verdict, 41u))
+        << "None is 'no denial recorded': a matching id alone must not "
+           "release the pending request, or every unrelated broadcast would";
+
+    // Confirmation: the accepted StartGame broadcast. A caller with no
+    // pending request is a FOLLOWER and must enter the level anyway.
+    og::sim::LobbyMessage confirmation;
+    confirmation.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 0u,
+        .request_id = 40u,
+    };
+
+    EXPECT_FALSE(
+        og::sim::start_confirmation_matches_request(confirmation, 41u))
+        << "an accepted request 40 must not resolve this caller's pending 41";
+    EXPECT_TRUE(og::sim::start_confirmation_matches_request(confirmation, 0u))
+        << "follower rule: a peer that never asked to start accepts the "
+           "host's accepted StartGame unconditionally";
+
+    std::get<og::sim::LobbyStartGameMessage>(confirmation.payload).request_id =
+        41u;
+    EXPECT_TRUE(
+        og::sim::start_confirmation_matches_request(confirmation, 41u))
+        << "the requester's own accepted request resolves its pending id";
+
+    og::sim::LobbyMessage not_a_start;
+    not_a_start.payload = og::sim::LobbyReadyMessage{
+        .player_index = 0u,
+        .ready = true,
+    };
+    EXPECT_FALSE(og::sim::start_confirmation_matches_request(not_a_start, 0u))
+        << "only a StartGame payload confirms a start — a Ready broadcast "
+           "must not drop a follower into the level";
+    EXPECT_FALSE(og::sim::start_confirmation_matches_request(not_a_start, 41u))
+        << "nor may it resolve a pending request";
 }

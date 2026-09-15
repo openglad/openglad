@@ -20,7 +20,6 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_click_ladder.h"
-#include "test_company_cleanup.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -319,15 +318,14 @@ int cloud_flow_injector(void* data)
 // fake bridge that records both halves. Two flow tests share it rather than
 // two copies of forty lines (PR #245, "no rule twins").
 //
-// The scratch slots are cleaned up by the SHARED snapshot guard
-// (tests/test_company_cleanup.h) instead of this file's own slot list and
-// slot restore: the same rule, one implementation, and the snapshot form
-// also catches a company created under a name this file does not know.
+// The scratch slots need no teardown here: the harness reaps every company
+// file that is not in the process baseline between tests ([SAVE-R9],
+// tests/integration/integration_main.cpp), which also covers a company
+// created under a name this file does not know.
 // No gtest macro runs inside the fixture — `staged` is the flag the test
 // asserts on — so nothing here depends on fatal assertions inside a
 // constructor.
 struct CloudFlowFixture {
-    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin{"cloudflow"};
     PlatformBridge original_bridge = platform_bridge();
     FakeCloudTransport transport;

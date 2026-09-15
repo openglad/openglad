@@ -363,62 +363,6 @@ bool wait_for_interactable_label(const std::string& id, const std::string& want,
     return false;
 }
 
-// Click `id` until its label reads `want`, on the shared ladder
-// (tests/test_click_ladder.h). The row is a CYCLER, so the two halves of the
-// ladder's rule both bite here:
-//
-//   * the pointer baseline is posted BEFORE the press, not after a failed
-//     attempt — a press sent against a release the engine has not consumed
-//     yet evaporates, and the first press is exactly the one that used to go
-//     out with no baseline at all;
-//   * the LABEL EDGE is the landing witness, and a press that reached it is
-//     never re-sent, however slow the rest of the attempt is. A second press
-//     walks the wheel one stop past the face the flow asked for.
-//
-// The acknowledgement that follows the landing is the handoff that protects
-// the NEXT press, not an oracle for this one: acknowledge_press reports its
-// own stall by name and leaves the reset queued for whenever the menu thread
-// comes back, and its verdict stays out of the return. A menu thread starved
-// by the knob's own synchronous autosave has not un-cycled the knob.
-//
-// Teeth: a cycler that genuinely skips or breaks the target still fails every
-// attempt (CtfUi.settings_cycler_reports_a_label_that_never_lands pins the
-// retry count), and the save-value pins at the end of each flow back this up.
-bool click_until_label(const std::string& id, const std::string& want,
-                       int attempts = 3, int wait_ms = 2500)
-{
-    for (int i = 0; i < attempts; ++i) {
-        const int saves_before = trace_count("save");
-        // Both posts take the ladder's cancellation ceiling, never this
-        // click's wait: the wait bounds the label edge, the post only has to
-        // outlive a slow pump (test_click_ladder.h, kAckPostCeilingMs).
-        (void)acknowledge_press();
-        (void)interact(id);
-        const bool label_reached =
-            wait_for_interactable_label(id, want, wait_ms);
-        if (!label_reached) {
-            ++g_click_ladder_click_retries;
-            fprintf(stderr,
-                    "  [interact] retry %d: '%s' has not reached '%s'\n",
-                    i + 1, id.c_str(), want.c_str());
-            continue;
-        }
-        int elapsed = 0;
-        while (elapsed < wait_ms && trace_count("save") <= saves_before) {
-            SDL_Delay(50);
-            elapsed += 50;
-        }
-        const bool autosaved = trace_count("save") > saves_before;
-        if (!autosaved)
-            fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' autosave\n",
-                    id.c_str());
-        (void)acknowledge_press(kAckPostCeilingMs, attempts,
-                                /*injectable=*/true);
-        return label_reached && autosaved;
-    }
-    return false;
-}
-
 // Wait until a (visible) interactable `id` exists at game coords (x, y) —
 // disambiguates the per-screen "back" buttons by their geometry.
 bool wait_for_interactable_at(const std::string& id, int x, int y,
@@ -694,7 +638,8 @@ int teams_ctf_settings_flow_injector(void* data)
 
     // Each label can flip while the previous click's press is still held;
     // settle after every wait so the next down-transition isn't swallowed.
-    state->score_relabelled = click_until_label("ctf_caps", "SCORE: 1");
+    state->score_relabelled = click_until_label(
+        "ctf_caps", "SCORE: 1", 3, 2500, "ctf_caps_cycled", "teams");
     SDL_Delay(300);
 
     // TROOPS retired (B5): its cell is a parked spare on the versus
@@ -801,14 +746,19 @@ struct NeverLandsState
     bool subscreen_opened = false;
     bool ladder_reported_false = false;
     // Sampled the moment the SCORE ladder returns, so the BACK ladders on the
-    // way out of the flow cannot be counted against it.
-    int score_retries = 0;
+    // way out of the flow cannot be counted against it. BOTH halves of the
+    // ladder's accounting: re-presses, and attempts that only waited.
+    int score_click_retries = 0;
+    int score_edge_waits = 0;
     bool finished = false;
 };
 
 // The SCORE ladder pointed at a face the wheel does not carry. It must spend
 // its attempts and REPORT — never hang against the group's budget, and never
-// claim a cycle that did not happen.
+// claim a cycle that did not happen. With the row's landing witness
+// ("ctf_caps_cycled", src/interface/ui/picker.cpp) the ladder can also tell
+// the two failures apart: the ONE press it sends lands, so every remaining
+// attempt only waits and the wheel is left exactly one stop on.
 int ctf_never_lands_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -829,9 +779,13 @@ int ctf_never_lands_injector(void* data)
     state->subscreen_opened = wait_for_interactable("ctf_caps", 10000);
     if (state->subscreen_opened) {
         const int retries_before = g_click_ladder_click_retries;
+        const int waits_before = g_click_ladder_edge_waits;
         state->ladder_reported_false =
-            !click_until_label("ctf_caps", "SCORE: NOT A FACE");
-        state->score_retries = g_click_ladder_click_retries - retries_before;
+            !click_until_label("ctf_caps", "SCORE: NOT A FACE", 3,
+                               2500, "ctf_caps_cycled", "teams");
+        state->score_click_retries =
+            g_click_ladder_click_retries - retries_before;
+        state->score_edge_waits = g_click_ladder_edge_waits - waits_before;
     }
 
     (void)click_until_edge("back", [](int wait_ms) {
@@ -1102,6 +1056,14 @@ TEST(CtfUi, settings_cycler_is_not_charged_for_a_starved_acknowledge)
 // The other tooth on the same ladder: a face the row never shows must cost
 // every attempt and come back false. Without it, "report the stall, never
 // charge it to the click" would be indistinguishable from "never fail".
+//
+// "SCORE: NOT A FACE" is unreachable by construction — cycle_ctf_capture_limit
+// walks 0 -> 1 -> 3 -> 5 -> 10 -> 0 — so this is the shape the ladder must
+// handle WITHOUT battering the row: the row's landing witness proves the one
+// press it sent was consumed, and the remaining attempts are spent waiting,
+// not pressing. The wheel is therefore left on the single stop that one press
+// reached. Before the witness landed (PR #292) this flow pressed three times
+// and walked SCORE 0 -> 1 -> 3 -> 5 while asserting nothing about it.
 TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
 {
     trace_clear();
@@ -1110,6 +1072,8 @@ TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
 
     g_click_ladder_ack_drops = 0;
     g_click_ladder_ack_post_retries = 0;
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_edge_waits = 0;
 
     NeverLandsState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -1123,12 +1087,19 @@ TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.subscreen_opened)
         << "CTF campaign + host shows SCORE on SCENARIO";
     EXPECT_TRUE(state.ladder_reported_false)
         << "a face the wheel never shows must be reported, not claimed";
-    EXPECT_EQ(3, state.score_retries)
-        << "the ladder spends its three attempts and reports, never hangs";
+    EXPECT_EQ(3, state.score_edge_waits)
+        << "one landed press, then only waiting: the ladder spends its three "
+           "attempts and reports, never hangs";
+    EXPECT_EQ(0, state.score_click_retries)
+        << "a landed press is never re-sent, whatever its label does";
+    EXPECT_EQ(1, (int)save.ctf_capture_limit)
+        << "the wheel stopped on the one face the press reached — a ladder "
+           "that re-presses an unreachable target overshoots to 3 or 5";
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
 
     (void)unmount_campaign_package_with_error(get_mounted_campaign());

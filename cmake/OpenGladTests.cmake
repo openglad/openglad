@@ -9,6 +9,7 @@ find_package(GTest REQUIRED)
 
 set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_trace_buffer.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_company_litter_guard.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_startup.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_combat_math.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_loader_and_walker.cpp
@@ -50,7 +51,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_render_effects.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_decor_render.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stair_overlay.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_text_rendering.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_and_level_picker.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_sprite_uaf.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_intro_smoke.cpp
@@ -125,7 +125,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_buffers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_pixel_ops.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_modes_more.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_external_physfs_archivers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_editor_interactions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_input_more.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_help_parsing.cpp
@@ -158,7 +157,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_load_versions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_effect_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_core_more.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_view_input_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_text_input_ex_value.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_picker_detail_menu_driven.cpp
@@ -192,6 +190,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_golden_compare.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_fact_predicate.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_zone_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_lineup_ui.cpp
@@ -298,7 +297,7 @@ target_link_libraries(og_game_test PUBLIC ${OG_IO_EXTERNAL_LIBS} og_runtime_deps
 if(NOT EMSCRIPTEN)
     target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
 endif()
-add_dependencies(og_game_test check_vendor_leaks check_injector_settles)
+add_dependencies(og_game_test check_vendor_leaks check_injector_settles check_no_std_regex)
 
 enable_testing()
 
@@ -487,7 +486,6 @@ og_add_test_group(og_test_view FILES
     test_glad_hud.cpp
     test_sai2x_scaler.cpp
     test_view_input_paths.cpp
-    test_view_input_more_paths.cpp
     test_view_input_smoke.cpp
     test_view_input_prefs_and_redraw.cpp
     test_view_team.cpp
@@ -509,7 +507,6 @@ og_add_test_group(og_test_rendering FILES
     test_video_pixel_ops.cpp
     test_video_primitives.cpp
     test_text_render.cpp
-    test_text_rendering.cpp
     test_text_input_and_width.cpp
     test_text_input_ex_value.cpp
 )
@@ -570,6 +567,7 @@ og_add_test_group(og_test_menu_engine FILES
 # picker_main injector flows for the §2.2-§2.5 feature screens live
 # here, never in og_test_menu_ui (~130s vs the 180s timeout).
 og_add_test_group(og_test_basecamp FILES
+    test_company_litter_guard.cpp
     test_company_list.cpp
     test_uxshots_probe.cpp
     test_networking_uxshots.cpp
@@ -633,7 +631,6 @@ og_add_test_group(og_test_smooth FILES
 og_add_test_group(og_test_external FILES
     test_external_libzip.cpp
     test_external_physfs_api_edges.cpp
-    test_external_physfs_archivers.cpp
     test_external_physfs_byteorder.cpp
     test_external_physfs_ops.cpp
     test_external_physfs_unicode.cpp
@@ -657,6 +654,7 @@ og_add_test_group(og_test_mass_coverage FILES
 og_add_test_group(og_test_parity FILES
     test_parity_scenarios.cpp
     test_parity_coverage_gate.cpp
+    test_fact_predicate.cpp
     test_golden_compare.cpp
     golden_compare.cpp
     parity_runner.cpp
@@ -801,6 +799,7 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer_errors.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_damage_number_events.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_link_loss_window.cpp

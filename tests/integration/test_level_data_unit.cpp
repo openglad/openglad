@@ -20,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <vector>
+#include <list>
 #include <algorithm>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_render.h>
@@ -33,9 +34,7 @@ namespace {
 struct LevelFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{1};
     ScopedGameplayContext gameplay;
 
     LevelFixture()
@@ -44,7 +43,7 @@ struct LevelFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -54,7 +53,6 @@ walker* add_to_list(LevelFixture& fx, WalkerList& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->setxy(x, y);
@@ -123,13 +121,43 @@ TEST(LevelDataUnit, level_data_passable_and_range_queries)
     ASSERT_TRUE(fx.level.find_nearest_blood(self) == stain);
     ASSERT_TRUE(fx.level.find_nearest_player(self) == player);
 
-    std::int32_t count = 0;
-    (void)fx.level.find_in_range(fx.level.world().oblist, 200, &count, self);
-    ASSERT_TRUE(count >= 2);
-    (void)fx.level.find_foes_in_range(fx.level.world().oblist, 200, &count, self);
-    ASSERT_TRUE(count >= 1);
-    (void)fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &count, self);
-    (void)fx.level.find_friends_in_range(fx.level.world().oblist, 200, &count, self);
+    // The four range finders differ ONLY in their per-entry predicate
+    // (GameWorld::find_*_in_range): find_in_range takes every live entity in
+    // the list, find_foes_in_range only Living/Generator entries that are NOT
+    // is_friendly, find_foe_weapons_in_range only Order::Weapon entries that
+    // ARE is_friendly (the legacy name; the predicate is friendliness), and
+    // find_friends_in_range only Living entries that ARE is_friendly. The
+    // oblist here holds self(team 0), foe(team 1) and player(team 0), so each
+    // finder has a different exact answer -- a predicate that is dropped,
+    // negated or copied from a sibling changes at least one of these lists.
+    std::int32_t count = -1;
+    auto all = fx.level.find_in_range(fx.level.world().oblist, 200, &count, self);
+    EXPECT_EQ(3, count) << "find_in_range counts every live ob in range, self included";
+    EXPECT_EQ(std::list<walker*>({self, foe, player}), all)
+        << "find_in_range returns the oblist entries in list order";
+
+    count = -1;
+    auto foes = fx.level.find_foes_in_range(fx.level.world().oblist, 200, &count, self);
+    EXPECT_EQ(1, count) << "only the team-1 orc is a foe of the team-0 soldier";
+    EXPECT_EQ(std::list<walker*>({foe}), foes) << "and it is exactly that orc";
+
+    count = -1;
+    auto foe_weapons =
+        fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &count, self);
+    EXPECT_EQ(0, count) << "the team-1 knife is not friendly to self, so this finder skips it";
+    EXPECT_TRUE(foe_weapons.empty()) << "and returns no weapon";
+
+    count = -1;
+    auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &count, self);
+    EXPECT_EQ(2, count) << "self and the other team-0 soldier are friends";
+    EXPECT_EQ(std::list<walker*>({self, player}), friends)
+        << "the team-1 orc must not appear among friends";
+
+    // Range really is a range: nothing but self is within 8 pixels.
+    count = -1;
+    auto near_only = fx.level.find_in_range(fx.level.world().oblist, 8, &count, self);
+    EXPECT_EQ(1, count) << "range 8 admits only self";
+    EXPECT_EQ(std::list<walker*>({self}), near_only) << "and the list agrees";
 }
 
 TEST(LevelDataUnit, level_data_remove_and_remaining_foes_paths)
@@ -141,11 +169,14 @@ TEST(LevelDataUnit, level_data_remove_and_remaining_foes_paths)
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
 
     const short foes_before = remaining_foes(fx.level, self);
-    ASSERT_TRUE(foes_before >= 1);
+    ASSERT_EQ(1, (int)foes_before)
+        << "the team-1 orc is the only unfriendly living walker; the actor "
+           "itself must never be counted";
 
     ASSERT_TRUE(fx.level.remove_ob(foe) == 1);
     const short foes_after = remaining_foes(fx.level, self);
-    ASSERT_TRUE(foes_after <= foes_before);
+    ASSERT_EQ(0, (int)foes_after)
+        << "removing the only foe must empty the count, not merely not grow it";
 
     fx.level.delete_objects();
     ASSERT_TRUE(fx.level.world().oblist.empty());
@@ -201,9 +232,7 @@ namespace {
 struct LevelR11Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{1};
     ScopedGameplayContext gameplay;
 
     LevelR11Fixture()
@@ -212,7 +241,7 @@ struct LevelR11Fixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -222,7 +251,6 @@ walker* add_to(LevelR11Fixture& fx, WalkerList& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -339,18 +367,33 @@ TEST(LevelDataUnit, level_data_r11_object_passability_and_search_sets)
     ASSERT_TRUE(fx.level.find_nearest_blood(self) == stain);
     ASSERT_TRUE(fx.level.find_nearest_player(self) == ally);
 
-    std::int32_t c = 0;
+    std::int32_t c = -1;
     auto inr = fx.level.find_in_range(fx.level.world().oblist, 200, &c, self);
-    ASSERT_TRUE(c >= 1 && !inr.empty());
+    EXPECT_EQ(3, c) << "every live ob in the list is in range";
+    EXPECT_EQ(std::list<walker*>({self, foe, ally}), inr) << "in oblist order";
+    c = -1;
     auto foes = fx.level.find_foes_in_range(fx.level.world().oblist, 200, &c, self);
-    ASSERT_TRUE(c >= 1 && !foes.empty());
-    (void)fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &c, self);
+    EXPECT_EQ(1, c) << "only the team-1 orc is a foe of this team-0 soldier";
+    EXPECT_EQ(std::list<walker*>({foe}), foes) << "and it is exactly that orc";
+    c = -1;
+    auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &c, self);
+    EXPECT_EQ(0, c) << "the team-1 arrow is not friendly to self, so this finder skips it";
+    EXPECT_TRUE(foe_weapons.empty()) << "and returns no weapon";
+    c = -1;
     auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &c, self);
-    ASSERT_TRUE(!friends.empty());
+    EXPECT_EQ(2, c) << "self and the team-0 ally are friends";
+    EXPECT_EQ(std::list<walker*>({self, ally}), friends) << "the orc must not appear";
 
     // helper functions
-    (void)get_scenario_title("nonexistent_file");
-    ASSERT_TRUE(remaining_foes(fx.level, self) >= 0);
+    // level_file_io's documented failure sentinel for an unreadable scenario
+    // is the literal "none", not an empty string.
+    EXPECT_EQ(std::string("none"), get_scenario_title("nonexistent_file"))
+        << "a scenario file that does not exist reports the 'none' sentinel";
+    // remaining_foes counts live, non-friendly Order::Living obs: just the orc.
+    EXPECT_EQ(1, (int)remaining_foes(fx.level, self))
+        << "one team-1 living remains hostile to this team-0 soldier";
+    EXPECT_EQ(0, (int)remaining_foes(fx.level, nullptr))
+        << "a null seeker has no foes at all";
 }
 } // namespace detail_level_data_r11
 
@@ -407,15 +450,6 @@ private:
     std::size_t pos_;
 };
 
-struct MaxRandom : IRandom {
-    std::uint32_t next(std::uint32_t max_exclusive) override
-    {
-        if (max_exclusive <= 1)
-            return 0;
-        return max_exclusive - 1;
-    }
-};
-
 bool write_bytes(const std::filesystem::path& p, const std::vector<unsigned char>& bytes)
 {
     std::error_code ec;
@@ -442,16 +476,14 @@ struct ScopedFileRemover {
 struct LevelR12Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    MaxRandom rng;
     ScopedGameplayContext gameplay;
 
     LevelR12Fixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -461,7 +493,6 @@ walker* add_to(LevelR12Fixture& fx, WalkerList& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -625,14 +656,37 @@ TEST(LevelDataUnit, level_data_r12_find_helpers_null_and_ranges)
     ASSERT_TRUE(fx.level.find_nearest_blood(self) == blood);
     ASSERT_TRUE(fx.level.find_nearest_player(self) == ally);
 
+    // Same four predicates as LevelDataUnit.level_data_passable_and_range_queries,
+    // but with a team-0 ARROW in the weaplist so the foe-weapon finder (which
+    // keeps the entries that ARE is_friendly) has a non-empty answer too.
+    howmany = -1;
     auto inr = fx.level.find_in_range(fx.level.world().oblist, 200, &howmany, self);
-    ASSERT_TRUE(!inr.empty() && howmany >= 1);
+    EXPECT_EQ(3, howmany) << "self, the orc and the archer are all live obs in range";
+    EXPECT_EQ(std::list<walker*>({self, foe, ally}), inr) << "in oblist order";
+
+    howmany = -1;
     auto foes = fx.level.find_foes_in_range(fx.level.world().oblist, 200, &howmany, self);
-    ASSERT_TRUE(!foes.empty());
+    EXPECT_EQ(1, howmany) << "only the team-1 orc is a foe";
+    EXPECT_EQ(std::list<walker*>({foe}), foes) << "and it is exactly that orc";
+
+    howmany = -1;
     auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &howmany, self);
-    ASSERT_TRUE(!foe_weapons.empty());
+    EXPECT_EQ(1, howmany) << "the weaplist holds one team-0 arrow";
+    EXPECT_EQ(std::list<walker*>({enemy_weapon}), foe_weapons) << "and it is exactly that arrow";
+
+    howmany = -1;
     auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &howmany, self);
-    ASSERT_TRUE(!friends.empty());
+    EXPECT_EQ(2, howmany) << "self and the team-0 archer are friends";
+    EXPECT_EQ(std::list<walker*>({self, ally}), friends) << "the orc must not appear";
+
+    // A dead entity drops out of every finder (the shared !dead() guard).
+    foe->set_dead(1);
+    howmany = -1;
+    EXPECT_EQ(std::list<walker*>({self, ally}),
+              fx.level.find_in_range(fx.level.world().oblist, 200, &howmany, self))
+        << "a dead ob is not in range of anything";
+    EXPECT_EQ(2, howmany) << "and the count drops with it";
+    foe->set_dead(0);
 }
 
 TEST(LevelDataUnit, level_data_r12_remove_ob_paths_and_zip_api_paths)
@@ -651,7 +705,14 @@ TEST(LevelDataUnit, level_data_r12_remove_ob_paths_and_zip_api_paths)
     ASSERT_TRUE(fx.level.remove_ob(nullptr) == 0);
 
     ASSERT_TRUE(og::io::unzip_into_with_error("temp/r12_zip/not_there.zip", "temp/r12_zip/out2") == ArchiveIoError::OpenArchiveFailed);
-    (void)og::io::zip_contents_with_error("temp/r12_zip/in", "temp/r12_zip/missing_parent/archive.zip");
+    // A missing input directory is not an error: zip_contents_with_error
+    // reports None and creates NO archive (the empty-source contract).
+    ASSERT_EQ(ArchiveIoError::None,
+              og::io::zip_contents_with_error("temp/r12_zip/in",
+                                             "temp/r12_zip/missing_parent/archive.zip"))
+        << "a missing input directory must report None, not an IO error";
+    ASSERT_FALSE(std::filesystem::exists("temp/r12_zip/missing_parent/archive.zip"))
+        << "nothing to zip must leave no archive behind";
 }
 } // namespace detail_level_data_r12
 
@@ -898,9 +959,12 @@ TEST(LevelDataUnit, level_data_r14_lines_95_99_353_371_378_campaign_description_
     ASSERT_TRUE(c.get_description_line(0) == "No description.");
     ASSERT_TRUE(c.get_description_line(5).empty());
 
-    // Out-of-range from load/save wrappers should remain deterministic without I/O setup.
-    ASSERT_TRUE(c.load_with_error() == c.last_io_error());
-    ASSERT_TRUE(c.save_with_error() == c.last_io_error());
+    // The *_with_error wrappers forward the concrete failure for a campaign
+    // that is not installed: the mount never happens, the unpack never happens.
+    ASSERT_EQ(CampaignData::IoError::PackageMountFailed, c.load_with_error())
+        << "load_with_error must forward the mount failure";
+    ASSERT_EQ(CampaignData::IoError::PackageUnpackFailed, c.save_with_error())
+        << "save_with_error must forward the unpack failure";
 }
 } // namespace detail_level_data_r14
 
@@ -931,9 +995,13 @@ TEST(LevelDataUnit, level_data_r15_campaign_wrappers_and_description_iteration)
     ASSERT_TRUE(c.get_description_line(-1).empty());
     ASSERT_TRUE(c.get_description_line(9).empty());
 
-    (void)c.load_with_error();
-    (void)c.save_with_error();
-    (void)c.save_as_with_error("missing_campaign_r15_copy");
+    ASSERT_EQ(CampaignData::IoError::PackageMountFailed, c.load_with_error())
+        << "an uninstalled campaign cannot be mounted";
+    ASSERT_EQ(CampaignData::IoError::PackageUnpackFailed, c.save_with_error())
+        << "an uninstalled campaign cannot be unpacked for a save";
+    ASSERT_EQ(CampaignData::IoError::PackageUnpackFailed,
+              c.save_as_with_error("missing_campaign_r15_copy"))
+        << "save_as of an uninstalled campaign fails at the same unpack";
 }
 
 TEST(LevelDataUnit, level_data_r15_ctor_hooks_add_paths_and_clear)
@@ -944,20 +1012,29 @@ TEST(LevelDataUnit, level_data_r15_ctor_hooks_add_paths_and_clear)
     hooks.create_level_render = make_render;
 
     LevelRuntimeData level_non_headless(9415, &hooks);
+    ASSERT_EQ(1, g_render_calls)
+        << "a non-headless ctor calls create_level_render exactly once";
     LevelRuntimeData level_headless(9416, true, &hooks);
-    ASSERT_TRUE(g_render_calls >= 1);
+    ASSERT_EQ(1, g_render_calls)
+        << "the headless ctor must not create a renderer";
 
     SaveData save;
-    std::int32_t freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
-    level_non_headless.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+    level_non_headless.set_sim_context(&save, &events, &cfg);
 
     walker* living = level_non_headless.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* fxob = level_non_headless.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     walker* weap = level_non_headless.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(living && fxob && weap);
-    ASSERT_TRUE(level_non_headless.numobs >= 1);
+    // numobs counts oblist (Living) adds only; the fx and weapon adds land on
+    // their own lists.
+    ASSERT_EQ(1, (int)level_non_headless.numobs)
+        << "add_ob is the only add that bumps numobs";
+    ASSERT_EQ(1u, level_non_headless.world().oblist.size());
+    ASSERT_EQ(1u, level_non_headless.world().fxlist.size())
+        << "add_fx_ob must append to fxlist";
+    ASSERT_EQ(1u, level_non_headless.world().weaplist.size())
+        << "add_weap_ob must append to weaplist";
 
     level_non_headless.world().title = "Mutated";
     level_non_headless.world().type = 7;
@@ -990,11 +1067,9 @@ TEST(LevelDataUnit, level_data_r16_external_world_teardown_detaches_level)
 {
     LevelRuntimeData level(9510, true);
     SaveData save;
-    std::int32_t freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     level.create_new_grid();
-    level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+    level.set_sim_context(&save, &events, &cfg);
 
     {
         GameWorld external_world;

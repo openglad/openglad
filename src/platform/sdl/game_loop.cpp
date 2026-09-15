@@ -562,15 +562,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         if (og::runtime::current_session->debug_draw_obmap_)
             obmap_debug_draw(*s.world().myobmap, &s);  // debug drawing for object collision map
 
-#ifdef USE_TOUCH_INPUT
-        {
-            ScopedGameplayUiCanvas gameplay_ui(s);
-            draw_touch_controls(&s);
-        }
-#endif
         score_panel(&s);
         // Inset camera pane (docs/camera-views-design.md §6): after the seat
-        // HUD, before the present — the touch-controls canvas-scope idiom.
+        // HUD, before the present — the same canvas-scope idiom score_panel
+        // itself uses.
         {
             ScopedGameplayUiCanvas gameplay_ui(s);
             s.draw_camera_view_ui();

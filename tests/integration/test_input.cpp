@@ -77,35 +77,124 @@ TEST(Input, gameplay_ui_pointer_mapping_tracks_the_active_canvas_contract)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, s);
-    const CanvasTarget saved_target = s->active_canvas();
+    ASSERT_NE(nullptr, E_Screen);
+    // Everything this test changes -- active canvas, world zoom canvas, and
+    // the fitted window viewport -- is restored even on a fatal assertion.
     struct CanvasGuard
     {
         screen* value;
         CanvasTarget target;
-        ~CanvasGuard() { value->set_active_canvas(target); }
-    } guard{s, saved_target};
+        int win_w = 0;
+        int win_h = 0;
+        float window_w = og::runtime::current_session->window_w_;
+        float window_h = og::runtime::current_session->window_h_;
+        float overscan = og::runtime::current_session->overscan_percentage_;
+        CanvasGuard(screen* v, CanvasTarget t) : value(v), target(t)
+        {
+            SDL_GetWindowSize(E_Screen->window, &win_w, &win_h);
+        }
+        ~CanvasGuard()
+        {
+            E_Screen->discard_gameplay_ui_frame();
+            E_Screen->set_world_zoom(og::kZoomStepsMax,
+                                     og::WorldScaleMode::Integer, win_w, win_h);
+            value->set_active_canvas(target);
+            og::runtime::current_session->window_w_ = window_w;
+            og::runtime::current_session->window_h_ = window_h;
+            og::runtime::current_session->overscan_percentage_ = overscan;
+            update_overscan_setting();
+            value->relayout_views();
+        }
+    } guard{s, s->active_canvas()};
 
+    // Put the world canvas on dimensions the HUD does NOT share: at zoom 0.9
+    // the scaler-safe rounding makes World 352x222, whose aspect differs from
+    // the fixed 320x200 overlay, so the two fitted rectangles cannot coincide.
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 400;
+    og::runtime::current_session->overscan_percentage_ = 0.0f;
+    update_overscan_setting();
+    E_Screen->set_world_zoom(9, og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(352, s->world_canvas_w()) << "precondition: a split world canvas";
+    ASSERT_EQ(222, s->world_canvas_h());
+    ASSERT_EQ(320, s->gameplay_ui_canvas_w()) << "the HUD stays at classic density";
+    ASSERT_EQ(200, s->gameplay_ui_canvas_h());
+    ASSERT_NE(s->world_canvas_w(), s->gameplay_ui_canvas_w())
+        << "precondition: the two canvases must differ for the branches to differ";
+
+    // While UI is the active canvas the HUD mapping IS the active mapping.
     s->set_active_canvas(CanvasTarget::UI);
     const og::CanvasViewport ui_viewport = gameplay_ui_canvas_viewport();
     EXPECT_EQ(active_canvas_viewport().x, ui_viewport.x);
     EXPECT_EQ(active_canvas_viewport().y, ui_viewport.y);
     EXPECT_EQ(active_canvas_viewport().w, ui_viewport.w);
     EXPECT_EQ(active_canvas_viewport().h, ui_viewport.h);
+    EXPECT_EQ(0, ui_viewport.x) << "320x200 fills a 640x400 viewport exactly";
+    EXPECT_EQ(0, ui_viewport.y);
+    EXPECT_EQ(640, ui_viewport.w);
+    EXPECT_EQ(400, ui_viewport.h);
 
+    // An absolute anchor, so a round trip cannot cancel a wrong rectangle out.
+    const auto ui_origin = ui_canvas_to_window(0.0f, 0.0f);
+    EXPECT_FLOAT_EQ((float)ui_viewport.x, ui_origin.first);
+    EXPECT_FLOAT_EQ((float)ui_viewport.y, ui_origin.second);
+
+    // Forward-map the logical centre and undo it with the HUD rectangle's own
+    // arithmetic ((px - vp.x) * canvas_w / vp.w): the window point must land
+    // back on (160, 100) exactly, and inside the rectangle asserted above.
     const auto window_center = ui_canvas_to_window(160.0f, 100.0f);
-    const auto ui_center = window_to_gameplay_ui_canvas(
-        window_center.first, window_center.second);
-    EXPECT_NEAR(160.0f, ui_center.first, 0.6f);
-    EXPECT_NEAR(100.0f, ui_center.second, 0.6f);
-    EXPECT_TRUE(window_point_in_gameplay_ui_canvas(
-        window_center.first, window_center.second));
+    const float ui_w = static_cast<float>(s->gameplay_ui_canvas_w());
+    const float ui_h = static_cast<float>(s->gameplay_ui_canvas_h());
+    // (px - vp.x) * canvas_w / vp.w, the HUD rectangle's own arithmetic.
+    const auto to_hud_x = [ui_w](float px, const og::CanvasViewport& vp) {
+        return (px - static_cast<float>(vp.x)) * ui_w /
+               static_cast<float>(vp.w);
+    };
+    const auto to_hud_y = [ui_h](float py, const og::CanvasViewport& vp) {
+        return (py - static_cast<float>(vp.y)) * ui_h /
+               static_cast<float>(vp.h);
+    };
+    EXPECT_FLOAT_EQ(160.0f, to_hud_x(window_center.first, ui_viewport))
+        << "the HUD forward map must be the inverse of its own viewport";
+    EXPECT_FLOAT_EQ(100.0f, to_hud_y(window_center.second, ui_viewport))
+        << "the HUD forward map must be the inverse of its own viewport";
+    EXPECT_FLOAT_EQ(320.0f, window_center.first)
+        << "the HUD's (0,0,640,400) puts logical (160,100) at window (320,200)";
+    EXPECT_FLOAT_EQ(200.0f, window_center.second)
+        << "the HUD's (0,0,640,400) puts logical (160,100) at window (320,200)";
 
-    // During a gameplay frame the HUD uses its independently fitted overlay
-    // canvas even though world rendering is active.
+    // During a gameplay frame the HUD keeps its OWN aspect-fitted rectangle
+    // (src/interface/input/input.cpp:152-165) instead of inheriting the
+    // world canvas's rounded one -- otherwise every touch target is skewed.
     s->set_active_canvas(CanvasTarget::World);
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active())
+        << "a split world canvas must allocate the fixed HUD overlay";
     const og::CanvasViewport overlay_viewport = gameplay_ui_canvas_viewport();
-    EXPECT_GT(overlay_viewport.w, 0);
-    EXPECT_GT(overlay_viewport.h, 0);
+    const og::CanvasViewport world_viewport = active_canvas_viewport();
+    EXPECT_EQ(ui_viewport.x, overlay_viewport.x)
+        << "the World-frame HUD rectangle is the same one the UI frame used";
+    EXPECT_EQ(ui_viewport.y, overlay_viewport.y);
+    EXPECT_EQ(ui_viewport.w, overlay_viewport.w);
+    EXPECT_EQ(ui_viewport.h, overlay_viewport.h);
+    EXPECT_EQ(3, world_viewport.x) << "352x222 fits with a horizontal letterbox";
+    EXPECT_EQ(634, world_viewport.w);
+    EXPECT_NE(world_viewport.x, overlay_viewport.x)
+        << "inheriting the world rectangle would offset every touch target";
+    EXPECT_NE(world_viewport.w, overlay_viewport.w);
+
+    // The strip World's rounding excludes is still live HUD surface: mapping
+    // it through the active canvas rejects it outright, while the HUD's own
+    // rectangle spans it. Exactly (px - vp.x) * 320 / vp.w with the HUD's
+    // (0, 0, 640, 400): 1 * 320 / 640 and 200 * 200 / 400. A +-0.6 window
+    // around 0.5 accepted everything from -0.1 to 1.1, including the negative
+    // x the message claimed to rule out.
+    EXPECT_FALSE(window_point_in_active_canvas(1.0f, 200.0f))
+        << "the world canvas rectangle excludes the left strip";
+    EXPECT_FLOAT_EQ(0.5f, to_hud_x(1.0f, overlay_viewport))
+        << "the left strip maps to the HUD's own left edge, not a negative x";
+    EXPECT_FLOAT_EQ(100.0f, to_hud_y(200.0f, overlay_viewport))
+        << "the y maps through the HUD rectangle's own height";
 }
 
 
@@ -206,114 +295,6 @@ TEST(Input, key_queries_and_ascii_conversion)
     ASSERT_EQ('`', (int)convert_to_ascii(SDLK_GRAVE)) << "backquote";
 }
 
-
-TEST(Input, touch_control_layout_preserves_classic_geometry)
-{
-    const TouchControlLayout layout = touch_control_layout(320, 200);
-
-    EXPECT_EQ(320, layout.canvas_w);
-    EXPECT_EQ(200, layout.canvas_h);
-    EXPECT_EQ(245, layout.fire.x);
-    EXPECT_EQ(165, layout.fire.y);
-    EXPECT_EQ(30, layout.fire.w);
-    EXPECT_EQ(30, layout.fire.h);
-    EXPECT_EQ(285, layout.special.x);
-    EXPECT_EQ(165, layout.special.y);
-    EXPECT_EQ(245, layout.next_special.x);
-    EXPECT_EQ(125, layout.next_special.y);
-    EXPECT_EQ(285, layout.alternate_special.x);
-    EXPECT_EQ(125, layout.alternate_special.y);
-    EXPECT_EQ(145, layout.yell.x);
-    EXPECT_EQ(85, layout.yell.y);
-    EXPECT_EQ(0, layout.switch_character.x);
-    EXPECT_EQ(0, layout.switch_character.y);
-    EXPECT_EQ(60, layout.switch_character.w);
-    EXPECT_EQ(60, layout.switch_character.h);
-    EXPECT_EQ(145, layout.movement_region_right);
-    EXPECT_EQ(60, layout.movement_region_top);
-    EXPECT_EQ(31, layout.movement_center_min_x);
-    EXPECT_EQ(31, layout.movement_center_min_y);
-    EXPECT_EQ(169, layout.movement_center_max_y);
-    EXPECT_EQ(60, layout.movement_area_w);
-    EXPECT_EQ(60, layout.movement_area_h);
-
-    EXPECT_TRUE(layout.fire.contains(245, 165));
-    EXPECT_TRUE(layout.fire.contains(275, 195));
-    EXPECT_FALSE(layout.fire.contains(244, 165));
-    EXPECT_FALSE(layout.fire.contains(276, 195));
-}
-
-
-TEST(Input, touch_control_layout_scales_to_deep_zoom_canvas_edges)
-{
-    const TouchControlLayout layout = touch_control_layout(3200, 2000);
-
-    EXPECT_EQ(2450, layout.fire.x);
-    EXPECT_EQ(1650, layout.fire.y);
-    EXPECT_EQ(300, layout.fire.w);
-    EXPECT_EQ(300, layout.fire.h);
-    EXPECT_EQ(2850, layout.special.x);
-    EXPECT_EQ(1650, layout.special.y);
-    EXPECT_EQ(2450, layout.next_special.x);
-    EXPECT_EQ(1250, layout.next_special.y);
-    EXPECT_EQ(2850, layout.alternate_special.x);
-    EXPECT_EQ(1250, layout.alternate_special.y);
-    EXPECT_EQ(1450, layout.yell.x);
-    EXPECT_EQ(850, layout.yell.y);
-    EXPECT_EQ(600, layout.switch_character.w);
-    EXPECT_EQ(600, layout.switch_character.h);
-    EXPECT_EQ(1450, layout.movement_region_right);
-    EXPECT_EQ(600, layout.movement_region_top);
-    EXPECT_EQ(310, layout.movement_center_min_x);
-    EXPECT_EQ(310, layout.movement_center_min_y);
-    EXPECT_EQ(1690, layout.movement_center_max_y);
-    EXPECT_EQ(100, layout.movement_dead_zone_x);
-    EXPECT_EQ(100, layout.movement_dead_zone_y);
-    EXPECT_EQ(600, layout.movement_area_w);
-    EXPECT_EQ(600, layout.movement_area_h);
-
-    // Edge margins and hit target sizes scale with the canvas, keeping the
-    // controls at the same visible locations after presentation.
-    EXPECT_EQ(50, layout.canvas_w -
-                      (layout.special.x + layout.special.w));
-    EXPECT_EQ(50, layout.canvas_h -
-                      (layout.special.y + layout.special.h));
-    EXPECT_TRUE(layout.special.contains(3150, 1950));
-    EXPECT_FALSE(layout.special.contains(3151, 1950));
-}
-
-
-TEST(Input, touch_control_layout_stays_bounded_at_fractional_zoom_sizes)
-{
-    const std::pair<int, int> canvases[] = {
-        {356, 222}, {400, 250}, {460, 285}, {536, 333},
-        {640, 400}, {800, 500}, {1068, 666}, {1600, 1000},
-    };
-    for (const auto& [canvas_w, canvas_h] : canvases)
-    {
-        const TouchControlLayout layout = touch_control_layout(canvas_w, canvas_h);
-        const TouchControlRect controls[] = {
-            layout.fire, layout.special, layout.yell,
-            layout.switch_character, layout.next_special,
-            layout.alternate_special,
-        };
-        for (const TouchControlRect& control : controls)
-        {
-            EXPECT_GE(control.x, 0) << canvas_w << 'x' << canvas_h;
-            EXPECT_GE(control.y, 0) << canvas_w << 'x' << canvas_h;
-            EXPECT_LE(control.x + control.w, canvas_w)
-                << canvas_w << 'x' << canvas_h;
-            EXPECT_LE(control.y + control.h, canvas_h)
-                << canvas_w << 'x' << canvas_h;
-        }
-        EXPECT_GT(layout.movement_center_min_x, 0);
-        EXPECT_GT(layout.movement_center_min_y, 0);
-        EXPECT_LT(layout.movement_center_max_y, canvas_h);
-        // Movement uses x < right while the yell target includes its left
-        // edge, so equality is the intended non-overlapping boundary.
-        EXPECT_LE(layout.movement_region_right, layout.yell.x);
-    }
-}
 
 // #249: the seat cap is one rule with one live home. The setter is the web
 // shell's seam (it can fire before the session exists, so it latches); every

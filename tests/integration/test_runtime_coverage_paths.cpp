@@ -1775,36 +1775,125 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_is_hud_state_and_weap_clea
 }
 
 
-TEST(RuntimeCoveragePaths, runtime_score_panel_null_control_score_overlay_safe)
+// score_panel.cpp gates the whole HUD block -- the name plate, the HP/MP
+// column, the frozen-time cell and the TEAM/FOES counter box -- on
+// `control && !control->dead() && control->user() != -1`. A view whose control
+// walker is null is a spectator camera: it must draw NO HUD at all (and must
+// never dereference control), even with PREF_OVERLAY/SCORE/FOES/LIFE all on.
+// new_score_panel() has exactly one `return 1;`, so the return value proves
+// nothing; the pixels do.
+TEST(RuntimeCoveragePaths, runtime_score_panel_draws_no_hud_for_a_null_control_walker)
 {
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!v)
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    ASSERT_GE(static_cast<int>(s->numviews), 1) << "a view must exist";
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v) << "view should exist";
+
+#ifdef REDUCE_OVERSCAN
+    constexpr int kOverscanPadding = 6;
+#else
+    constexpr int kOverscanPadding = 0;
+#endif
+
+    walker* const old_control = v->control;
+    const signed char old_overlay = v->prefs[PREF_OVERLAY];
+    const signed char old_score = v->prefs[PREF_SCORE];
+    const signed char old_foes = v->prefs[PREF_FOES];
+    const signed char old_life = v->prefs[PREF_LIFE];
+    const bool old_show_fps = og::runtime::current_session->show_fps_;
+    struct ViewRestore
     {
-        ASSERT_TRUE(false) << "view should exist";
-        return;
-    }
+        viewscreen* view;
+        walker* control;
+        signed char overlay;
+        signed char score;
+        signed char foes;
+        signed char life;
+        bool show_fps;
+        ~ViewRestore()
+        {
+            view->control = control;
+            view->prefs[PREF_OVERLAY] = overlay;
+            view->prefs[PREF_SCORE] = score;
+            view->prefs[PREF_FOES] = foes;
+            view->prefs[PREF_LIFE] = life;
+            og::runtime::current_session->show_fps_ = show_fps;
+        }
+    } restore{v, old_control, old_overlay, old_score, old_foes, old_life,
+              old_show_fps};
 
-    walker* old_control = v->control;
-    const unsigned char old_overlay = static_cast<unsigned char>(v->prefs[PREF_OVERLAY]);
-    const unsigned char old_score = static_cast<unsigned char>(v->prefs[PREF_SCORE]);
-    const unsigned char old_foes = static_cast<unsigned char>(v->prefs[PREF_FOES]);
-    const unsigned char old_life = static_cast<unsigned char>(v->prefs[PREF_LIFE]);
-
-    v->control = nullptr;
     v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
     v->prefs[PREF_SCORE] = PREF_SCORE_ON;
     v->prefs[PREF_FOES] = PREF_FOES_ON;
     v->prefs[PREF_LIFE] = PREF_LIFE_BOTH;
+    og::runtime::current_session->show_fps_ = false;
 
-    ASSERT_EQ(1, static_cast<int>(new_score_panel(og::runtime::current_session->myscreen_, 1))) << "new_score_panel should tolerate null control when score overlay is on";
+    // Mirror the panel's own margin arithmetic, inside the same scopes it
+    // computes them in.
+    Sint32 lm = 0;
+    Sint32 tm = 0;
+    Sint32 rm = 0;
+    {
+        ScopedGameplayUiCanvas canvas(*s);
+        ScopedGameplayUiViewLayout layout(*v, *s);
+        lm = v->xloc + kOverscanPadding;
+        tm = v->yloc + kOverscanPadding;
+        rm = v->endx - kOverscanPadding;
+    }
 
-    v->control = old_control;
-    v->prefs[PREF_OVERLAY] = static_cast<signed char>(old_overlay);
-    v->prefs[PREF_SCORE] = static_cast<signed char>(old_score);
-    v->prefs[PREF_FOES] = static_cast<signed char>(old_foes);
-    v->prefs[PREF_LIFE] = static_cast<signed char>(old_life);
+    constexpr int kUntouched = 7;
+    const auto fill_canvas = [s]() {
+        ScopedGameplayUiCanvas canvas(*s);
+        s->draw_box(0, 0, s->canvas_w() - 1, s->canvas_h() - 1, kUntouched, 1, 1);
+    };
+    const auto index_at = [s](int x, int y) {
+        ScopedGameplayUiCanvas canvas(*s);
+        int value = -1;
+        s->get_pixel(x, y, &value);
+        return value;
+    };
+
+    // The three probes below sit on the name-plate button's bevels and on the
+    // TEAM/FOES box's top bevel -- pixels only the gated block ever writes.
+    const int plate_top_x = static_cast<int>(lm) + 30;
+    const int plate_top_y = static_cast<int>(tm) + 2;
+    const int plate_right_x = static_cast<int>(lm) + 63;
+    const int plate_right_y = static_cast<int>(tm) + 5;
+    const int counter_x = static_cast<int>(rm) - 30;
+    const int counter_y = static_cast<int>(tm) + 1;
+
+    // Negative: no control walker at all.
+    v->control = nullptr;
+    fill_canvas();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_EQ(kUntouched, index_at(plate_top_x, plate_top_y))
+        << "a null control walker must not draw the name plate";
+    EXPECT_EQ(kUntouched, index_at(plate_right_x, plate_right_y))
+        << "a null control walker must not draw the name plate";
+    EXPECT_EQ(kUntouched, index_at(counter_x, counter_y))
+        << "a null control walker must not draw the TEAM/FOES box";
+
+    // Positive control: the very same call with a live, human-claimed walker
+    // paints the button bevels the gated block is made of.
+    clear_level_lists();
+    walker* const hero = add_living(0);
+    ASSERT_NE(nullptr, hero);
+    hero->set_user(0);
+    hero->set_dead(0);
+    v->control = hero;
+    fill_canvas();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_EQ(15, index_at(plate_top_x, plate_top_y))
+        << "the name plate's raised top bevel";
+    EXPECT_EQ(12, index_at(plate_right_x, plate_right_y))
+        << "the name plate's shadowed right bevel";
+    EXPECT_EQ(15, index_at(counter_x, counter_y))
+        << "the TEAM/FOES box's raised top bevel";
+
+    v->control = nullptr;
+    clear_level_lists();
 }
-
 
 TEST(RuntimeCoveragePaths, sim_world_batch5_game_end_paths)
 {
@@ -1892,10 +1981,18 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
 
     walker* ally = add_living(0);
     walker* hostile = add_living(1);
-    (void)add_treasure(FAMILY_EXIT, 1);
+    treasure* const exit_treasure = add_treasure(FAMILY_EXIT, 1);
+    ASSERT_NE(nullptr, exit_treasure) << "exit treasure created";
     ASSERT_TRUE(ally && hostile) << "ally/hostile created";
-    if (!(ally && hostile))
-        return;
+    // A live, unlinked walker: the control that proves the sweep below erases
+    // only the DEAD entries. It needs health, because add_living() leaves
+    // hitpoints at zero.
+    walker* const bystander = add_living(0);
+    ASSERT_NE(nullptr, bystander) << "bystander created";
+    bystander->set_act_type(ACT_CONTROL);
+    bystander->stats()->set_hitpoints(50.0f);
+    bystander->stats()->set_max_hitpoints(50.0f);
+    bystander->setxy(200, 200);
     ally->set_act_type(ACT_CONTROL);
     hostile->set_act_type(ACT_CONTROL);
 
@@ -1906,8 +2003,6 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     // Dead linked object used for pointer cleanup.
     walker* dead_link = add_living(2);
     ASSERT_TRUE(dead_link != nullptr) << "dead link created";
-    if (!dead_link)
-        return;
     dead_link->set_dead(1);
     ally->set_owner(dead_link);
     ally->set_collide_ob(dead_link);
@@ -1939,10 +2034,70 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
 
     world.enemy_freeze = 0;
     world.end = 0;
+
+    // The erase half of the cleanup, which this test's name promises: after
+    // the stale cross-refs are nulled, tick() moves every dead myguy-less
+    // living into dead_list (decrementing living_count) and erases every dead
+    // entry from fxlist and weaplist. Erased entries are FREED, so identify
+    // them by entity id -- a raw pointer can be handed straight back to a
+    // walker allocated later in the same tick.
+    const std::uint32_t exit_id = exit_treasure->entity_id();
+    const std::uint32_t dead_fx_id = dead_fx->entity_id();
+    const std::uint32_t weap_owner_id = weap_owner->entity_id();
+    const std::uint32_t dead_weap_id = dead_weap->entity_id();
+    const std::uint32_t dead_link_id = dead_link->entity_id();
+    const std::uint32_t dead_living_id = dead_living->entity_id();
+    const std::uint32_t bystander_id = bystander->entity_id();
+    const auto holds = [](const auto& list, std::uint32_t id) {
+        for (const auto& uptr : list)
+            if (uptr && uptr->entity_id() == id)
+                return true;
+        return false;
+    };
+    ASSERT_EQ(std::size_t{2}, world.fxlist.size())
+        << "the FAMILY_EXIT treasure and the dead effect share fxlist";
+    const std::size_t weap_before = world.weaplist.size();
+    ASSERT_EQ(std::size_t{2}, weap_before)
+        << "one live and one dead weapon share weaplist";
+    ASSERT_EQ(std::size_t{5}, world.oblist.size())
+        << "ally, hostile, the bystander and the two dead livings share oblist";
+    ASSERT_EQ(std::size_t{0}, world.dead_list.size());
+
     world.tick();
+
     ASSERT_TRUE(ally->owner() == nullptr && ally->collide_ob() == nullptr) << "dead links should be cleared on oblist entities";
     ASSERT_TRUE(hostile->foe() == nullptr && hostile->leader() == nullptr) << "all dead references should be cleared";
-    (void)weap_owner;
+
+    EXPECT_FALSE(holds(world.fxlist, dead_fx_id))
+        << "the dead effect is erased from fxlist";
+    EXPECT_TRUE(holds(world.fxlist, exit_id))
+        << "the live FAMILY_EXIT treasure survives";
+    EXPECT_FALSE(holds(world.weaplist, dead_weap_id))
+        << "the dead weapon is erased from weaplist";
+    EXPECT_TRUE(holds(world.weaplist, weap_owner_id))
+        << "the live weapon survives";
+    EXPECT_EQ(weap_before - 1, world.weaplist.size())
+        << "exactly one weapon left weaplist";
+
+    // ally and hostile both carry the dead link as their OWNER, and
+    // living::act kills a living whose owner has died -- so this tick ends
+    // with four corpses (they also drop loot into fxlist) and one survivor.
+    EXPECT_FALSE(holds(world.oblist, dead_link_id))
+        << "the dead link leaves oblist";
+    EXPECT_FALSE(holds(world.oblist, dead_living_id))
+        << "the dead myguy-less living leaves oblist";
+    EXPECT_TRUE(holds(world.dead_list, dead_link_id))
+        << "it is moved into dead_list, not destroyed";
+    EXPECT_TRUE(holds(world.dead_list, dead_living_id))
+        << "it is moved into dead_list, not destroyed";
+    EXPECT_TRUE(holds(world.oblist, bystander_id))
+        << "the live, unlinked walker is left alone by the sweep";
+    EXPECT_EQ(std::size_t{1}, world.oblist.size())
+        << "only the bystander is still in oblist";
+    EXPECT_EQ(std::size_t{4}, world.dead_list.size())
+        << "the four corpses all reached dead_list";
+    EXPECT_EQ(1, static_cast<int>(world.living_count))
+        << "living_count drops once per erased Living";
 
     clear_level_lists();
     world.allied_mode = saved_allied_mode;

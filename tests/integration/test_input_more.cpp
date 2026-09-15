@@ -1,4 +1,5 @@
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
@@ -52,20 +53,24 @@ TEST(InputMore, input_assign_key_polling_escape_keeps_mapping)
 }
 
 
-TEST(InputMore, input_send_fake_key_events_flow_through_get_input_events)
+// Pushed key events are the seam the web touch overlay and the native
+// "fake Escape" path both use (native_input.cpp push_key_event): a synthesized
+// keydown must travel the real event pump and land in raw_key/key_press_event,
+// and its keyup must clear the sampled keystate.
+TEST(InputMore, pushed_key_events_flow_through_get_input_events)
 {
     clear_keyboard();
 
-    sendFakeKeyDownEvent(SDLK_C);
+    og::input_native::push_key_event(true, SDLK_C);
     get_input_events(POLL);
 
-    ASSERT_EQ((int)SDLK_C, (int)query_key()) << "fake keydown should be handled and set raw_key";
-    ASSERT_EQ(1, (int)query_key_press_event()) << "fake keydown should set key_press_event";
+    ASSERT_EQ((int)SDLK_C, (int)query_key()) << "pushed keydown should be handled and set raw_key";
+    ASSERT_EQ(1, (int)query_key_press_event()) << "pushed keydown should set key_press_event";
 
-    sendFakeKeyUpEvent(SDLK_C);
+    og::input_native::push_key_event(false, SDLK_C);
     get_input_events(POLL);
     ASSERT_EQ(0, og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(SDLK_C, nullptr)])
-        << "fake keyup should clear the key state";
+        << "pushed keyup should clear the key state";
 
     clear_keyboard();
 }

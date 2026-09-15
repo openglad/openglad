@@ -61,39 +61,114 @@ void seed_save0_single_member(const char* name, short scen_num)
 
 } // namespace
 
-TEST(ResultsScreenBranches, results_screen_ending_branches_smoke)
+// Every ending shape routes to ONE named popup (results_screen.cpp
+// show_ending_popup): the title/body pair is the only thing either
+// results_screen overload produces in TESTING, so it is what the branching
+// must be pinned by. popup_dialog traces "<title>: <message>" under TESTING
+// (picker_dialogs.cpp).
+TEST(ResultsScreenBranches, results_screen_ending_branches_name_their_popup)
 {
-    // Defeat generic.
+    screen* const s = og::runtime::current_session->myscreen_;
+    const char saved_type = s->world().type;
+    const og::sim::ModeState saved_mode = s->world().mode;
+    // A scripted/mode world would intercept ending==0 with its own run-end
+    // popup, so shuffle order must not decide which branch we measure.
+    s->world().type = static_cast<char>(s->world().type & ~GameWorld::TYPE_SCRIPTED);
+    s->world().mode = og::sim::ModeState{};
+
+    SaveData& sd = s->save_data;
+    sd.current_campaign = "gladiator";
+    sd.scen_num = 1;
+    sd.current_levels.clear();
+    sd.completed_levels.clear();
+
+    // Defeat, no retreat destination.
+    trace_clear();
     ASSERT_FALSE(results_screen(1, -1));
-    // Defeat retreat.
+    EXPECT_TRUE(trace_contains("popup", "Defeat!: YOUR MEN ARE CRUSHED!"))
+        << "ending==1 with nextlevel==-1 is the generic defeat popup";
+    EXPECT_FALSE(trace_contains("popup", "Retreat!"));
+
+    // Defeat with a destination: a retreat, not a crush.
+    trace_clear();
     ASSERT_FALSE(results_screen(1, 2));
+    EXPECT_TRUE(trace_contains("popup", "Retreat!: Retreating to"))
+        << "ending==1 with a next level withdraws instead of crushing";
+    EXPECT_TRUE(trace_contains("popup", "(You may take this field later)"));
+    EXPECT_FALSE(trace_contains("popup", "YOUR MEN ARE CRUSHED!"));
 
-    // Victory, completed vs not completed.
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    // Make sure completion state is deterministic: clear and set once.
-    og::runtime::current_session->myscreen_->save_data.current_levels.clear();
-    og::runtime::current_session->myscreen_->save_data.completed_levels.clear();
-    ASSERT_FALSE(results_screen(0, 2)); // not completed -> "Victory!"
+    // Win on a level that has never been completed: Victory!, no travel line.
+    trace_clear();
+    ASSERT_FALSE(results_screen(0, 2));
+    EXPECT_TRUE(trace_contains("popup", "Victory!: You have won the battle!"))
+        << "a first win on this level is the Victory popup";
+    EXPECT_FALSE(trace_contains("popup", "Moving on to"));
 
-    og::runtime::current_session->myscreen_->save_data.completed_levels[og::runtime::current_session->myscreen_->save_data.current_campaign].insert(
-        og::runtime::current_session->myscreen_->save_data.scen_num);
-    ASSERT_FALSE(results_screen(0, 2)); // completed -> "Traveling on..."
+    // Win on a level already in completed_levels: Traveling on..., no Victory.
+    sd.completed_levels[sd.current_campaign].insert(sd.scen_num);
+    trace_clear();
+    ASSERT_FALSE(results_screen(0, 2));
+    EXPECT_TRUE(trace_contains("popup", "Traveling on...: Moving on to"))
+        << "a re-win of a completed level travels on instead of celebrating";
+    EXPECT_FALSE(trace_contains("popup", "Victory!"));
 
+    // The non-bypass TESTING arm of the 2-arg overload shows the same popup.
     results_screen_testing_set_force_full(true);
-    ASSERT_FALSE(results_screen(0, 2)); // force the non-bypass TESTING overload path.
+    trace_clear();
+    ASSERT_FALSE(results_screen(0, 2));
     results_screen_testing_set_force_full(false);
+    EXPECT_TRUE(trace_contains("popup", "Traveling on...: Moving on to"))
+        << "the forced-full 2-arg path routes the same ending branching";
 
-    // Special defeat type.
+    // The save-the-ally scenario type has its own defeat body.
+    trace_clear();
     ASSERT_FALSE(results_screen(SCEN_TYPE_SAVE_ALL, -1));
+    EXPECT_TRUE(trace_contains(
+        "popup", "Defeat!: YOU ARE DEFEATED!\nYOU FAILED TO KEEP YOUR ALLY ALIVE"))
+        << "SCEN_TYPE_SAVE_ALL names the ally, not the generic crush";
+    EXPECT_FALSE(trace_contains("popup", "YOUR MEN ARE CRUSHED!"));
+
+    sd.completed_levels.clear();
+    s->world().mode = saved_mode;
+    s->world().type = saved_type;
 }
 
 
-TEST(ResultsScreenBranches, results_screen_overload_calls_smoke)
+// The before/after overload must route (ending, nextlevel) through the SAME
+// show_ending_popup branching before it reports retry=false.
+TEST(ResultsScreenBranches, results_screen_overload_routes_the_same_ending_popup)
 {
+    screen* const s = og::runtime::current_session->myscreen_;
+    const char saved_type = s->world().type;
+    const og::sim::ModeState saved_mode = s->world().mode;
+    s->world().type = static_cast<char>(s->world().type & ~GameWorld::TYPE_SCRIPTED);
+    s->world().mode = og::sim::ModeState{};
+
+    SaveData& sd = s->save_data;
+    sd.current_campaign = "gladiator";
+    sd.scen_num = 1;
+    sd.current_levels.clear();
+    sd.completed_levels.clear();
+
     std::map<int, guy*> before;
     std::map<int, walker*> after;
+
+    trace_clear();
     ASSERT_FALSE(results_screen(0, 2, before, after));
+    EXPECT_TRUE(trace_contains("popup", "Victory!: You have won the battle!"))
+        << "the map overload shows the win popup for an uncompleted level";
+    EXPECT_FALSE(trace_contains("popup", "Moving on to"));
+
+    trace_clear();
+    ASSERT_FALSE(results_screen(1, -1, before, after));
+    EXPECT_TRUE(trace_contains("popup", "Defeat!: YOUR MEN ARE CRUSHED!"))
+        << "the map overload routes defeat through the same branching";
+    EXPECT_FALSE(trace_contains("popup", "Victory!"));
+
+    s->world().mode = saved_mode;
+    s->world().type = saved_type;
 }
+
 
 TEST(ResultsScreenBranches, time_bonus_uses_authoritative_level_tick)
 {

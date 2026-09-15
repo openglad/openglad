@@ -257,9 +257,13 @@ TEST(CombatMath, xp_from_attack_same_level)
 
 TEST(CombatMath, xp_from_attack_higher_level_attacker)
 {
-    // level_diff=5 (attacker is 5 levels higher) -> less XP
+    // level_diff=5 (attacker is 5 levels higher) -> a SMALL award, not a zero
+    // one: the quintic pays 2.0212 at a five-level gap, so 6*20*2.0212/20 = 12.
+    // The old band (>= 0 && < 30) accepted the clamp-to-0 return, which is the
+    // difference between "nearly worthless" and "worthless".
     short xp = compute_xp_from_attack(5, 20.0f);
-    ASSERT_TRUE(xp >= 0 && xp < 30) << "XP should be very low when attacker is much higher level";
+    ASSERT_EQ(12, static_cast<int>(xp))
+        << "a five-level gap still pays 12, against 181 at the same level";
 }
 
 
@@ -500,8 +504,10 @@ TEST(CombatMath, xp_from_attack_saturates_instead_of_wrapping_negative)
 {
     // A level-1 attacker against a level-21 target: the value that showed up
     // as "45111.3 is outside the range of representable values" under UBSan.
+    // Pinned by VALUE: the saturation ceiling itself is what says the wrap is
+    // gone. (A `> 0` companion added nothing — every wrap this test exists to
+    // catch is negative, and EXPECT_EQ(32767) already excludes it.)
     const short xp = compute_xp_from_attack(-20, 20.0f);
-    EXPECT_GT(xp, 0) << "a huge reward must not come back negative";
     EXPECT_EQ(32767, xp) << "it saturates at the short ceiling";
 }
 
@@ -510,15 +516,21 @@ TEST(CombatMath, xp_from_attack_saturates_instead_of_wrapping_negative)
 // the ceiling.
 TEST(CombatMath, xp_from_attack_is_unchanged_across_the_fitted_range)
 {
+    // The whole curve, value by value: 6*damage*poly(level_diff)/20 truncated,
+    // for damage 20 over the level_diff range the fit was built on. A "still in
+    // range / still non-increasing" sweep is satisfied by an all-zero curve, so
+    // it could not tell a retune of diff 1..4 and 6..9 from the real thing.
+    // (Recomputed from the shipped coefficients, not recorded from a run.)
+    static constexpr short kFit[10] = {181, 142, 98, 58, 28, 12, 8, 8, 0, 0};
     for (std::int32_t diff = 0; diff <= 9; ++diff)
     {
         const short xp = compute_xp_from_attack(diff, 20.0f);
-        EXPECT_GE(xp, 0) << "level_diff " << diff;
+        EXPECT_EQ(kFit[diff], xp) << "level_diff " << diff;
         EXPECT_LT(xp, 32767) << "level_diff " << diff << " must not saturate";
     }
     // Monotonically decreasing across the fit, which is the property the
-    // curve exists to have; the absolute values are already pinned by
-    // xp_from_attack_same_level and xp_from_attack_higher_level_attacker.
+    // curve exists to have. (The fit itself is non-monotone in poly at
+    // 6 -> 7, 1.428 -> 1.486; truncation lands both on 8, so the award is.)
     for (std::int32_t diff = 1; diff <= 9; ++diff)
     {
         EXPECT_LE(compute_xp_from_attack(diff, 20.0f),

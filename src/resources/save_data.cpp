@@ -36,9 +36,6 @@
 #include <string>
 
 
-#ifdef USE_TOUCH_INPUT
-#define DISABLE_MULTIPLAYER
-#endif
 
 namespace
 {
@@ -369,9 +366,6 @@ bool SaveData::load(const std::string& filename)
         last_io_error_ = SaveDataIoError::ReadFailed;
         return 0;
     }
-	#ifdef DISABLE_MULTIPLAYER
-	numplayers = 1;
-	#endif
 
 	// Read the reserved area, 31 bytes. Version 14+ reinterprets the first
 	// 8 bytes as the last-played timestamp (offset 133); older files carry

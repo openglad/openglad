@@ -25,9 +25,7 @@ namespace {
 struct LivingFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     LivingFixture()
@@ -36,7 +34,7 @@ struct LivingFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -44,7 +42,6 @@ living* add_living(LivingFixture& fx, char family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(96, 96);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -117,11 +114,59 @@ TEST(LivingUnit, living_r11_collide_and_act_type_switches)
     LivingFixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0);
     living* foe = add_living(fx, FAMILY_ORC, 1);
-    ASSERT_TRUE(self != nullptr && foe != nullptr);
+    living* ally = add_living(fx, FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_NE(nullptr, ally);
 
-    // collide() auto-attackable path
+    // living::collide (living.cpp) ALWAYS records the other walker, and arms
+    // the attack only when that walker is auto-attackable, alive and hostile
+    // (is_friendly == 0). Arming is walker::init_fire: it charges
+    // fire_frequency onto busy and swings ANI_WALK -> ANI_ATTACK. curdir is
+    // set to the facing that lastx/lasty imply, so init_fire does not spend
+    // the call turning instead.
+    const auto arm = [](living* w) {
+        w->set_lastx(1.0f);
+        w->set_lasty(0.0f);
+        w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+        w->set_enddir(static_cast<char>(FACE_RIGHT));
+        w->set_fire_frequency(5.0f);
+        w->set_busy(0.0f);
+        w->set_ani_type(static_cast<char>(ANI_WALK));
+    };
+
+    // Same-team control: recorded, but no swing. (Run first, so the hostile
+    // arm below cannot be passing on leftover state.)
+    arm(self);
+    self->collide(ally);
+    EXPECT_EQ(ally, self->collide_ob())
+        << "collide records the other walker whoever it is";
+    EXPECT_FLOAT_EQ(0.0f, self->busy())
+        << "a same-team body must never arm the attack";
+    EXPECT_EQ(ANI_WALK, static_cast<int>(self->ani_type()))
+        << "a same-team body must never start the swing";
+
+    // Hostile: recorded AND armed.
+    arm(self);
     self->collide(foe);
+    EXPECT_EQ(foe, self->collide_ob());
+    EXPECT_FLOAT_EQ(5.0f, self->busy())
+        << "init_fire charges fire_frequency onto busy";
+    EXPECT_EQ(ANI_ATTACK, static_cast<int>(self->ani_type()))
+        << "init_fire swings ANI_WALK -> ANI_ATTACK";
 
+    // A dead enemy is not a target either.
+    foe->set_dead(1);
+    arm(self);
+    self->collide(foe);
+    EXPECT_EQ(foe, self->collide_ob());
+    EXPECT_FLOAT_EQ(0.0f, self->busy())
+        << "a dead body must never arm the attack";
+    EXPECT_EQ(ANI_WALK, static_cast<int>(self->ani_type()));
+    foe->set_dead(0);
+
+    self->set_busy(0.0f);
+    self->set_ani_type(static_cast<char>(ANI_WALK));
     self->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(self->act());
 
@@ -148,10 +193,31 @@ TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
     ASSERT_TRUE(summoned->owner() == self);
     ASSERT_TRUE(summoned->lifetime() == 25);
 
-    // Default set_difficulty fallback path on unknown family id.
+    // Default set_difficulty formula (living.cpp): a family with no
+    // descriptor takes the else-branch, so level 2 (levmult = 4) adds
+    // 11*levmult to max hp and max mp, 4*level to damage and 2*levmult to
+    // armor, then refills hp/mp to the new maxima. The fixture world runs at
+    // difficulty 0 => query_difficulty_percent() == 100, and this is a team-0
+    // walker, so nothing rescales afterwards.
     self->set_order_family(Order::Living, static_cast<char>(127));
+    const float before_hp = self->stats()->max_hitpoints();
+    const float before_mp = self->stats()->max_magicpoints();
+    const float before_damage = self->damage();
+    const float before_armor = self->stats()->armor();
     self->set_difficulty(2);
-    ASSERT_TRUE(self->stats()->max_hitpoints() >= self->stats()->hitpoints());
+    EXPECT_FLOAT_EQ(before_hp + 44.0f, self->stats()->max_hitpoints())
+        << "max hitpoints += 11 * level^2";
+    EXPECT_FLOAT_EQ(before_mp + 44.0f, self->stats()->max_magicpoints())
+        << "max magicpoints += 11 * level^2";
+    EXPECT_FLOAT_EQ(before_damage + 8.0f, self->damage())
+        << "damage += 4 * level";
+    EXPECT_FLOAT_EQ(before_armor + 8.0f, self->stats()->armor())
+        << "armor += 2 * level^2";
+    EXPECT_FLOAT_EQ(self->stats()->max_hitpoints(), self->stats()->hitpoints())
+        << "the scaled walker comes up at full health";
+    EXPECT_FLOAT_EQ(self->stats()->max_magicpoints(),
+                    self->stats()->magicpoints())
+        << "the scaled walker comes up at full magic";
     self->set_order_family(Order::Living, FAMILY_SOLDIER);
 
     // check_special path when not enough magic resets special to 1.
@@ -168,11 +234,9 @@ TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
     self->set_curdir(FACE_UP);
     ASSERT_TRUE(self->walk(1.0f, 0.0f));
 
-    // ACT_RANDOM path with foe present/no fire then search.
-    self->set_foe(foe);
-    self->set_lineofsight(1);
-    self->set_act_type(ACT_RANDOM);
-    (void)self->act();
+    // (The ACT_RANDOM arm this used to touch with a discarded act() is
+    // covered with real oracles by CoverageMisc.coverage_r19_living_act_random
+    // _acquires_a_foe_and_queues_a_command.)
 }
 } // namespace detail_living_r11
 
@@ -183,7 +247,6 @@ namespace {
 struct LivingR14Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     ScopedGameplayContext gameplay;
@@ -193,7 +256,7 @@ struct LivingR14Fixture {
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
         push_test_context(&gc);
     }
@@ -208,7 +271,6 @@ living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);

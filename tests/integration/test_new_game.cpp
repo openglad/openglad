@@ -11,7 +11,6 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
-#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include <openglad/resources/company.h>
 #include <openglad/resources/og_file.h>
@@ -182,7 +181,6 @@ static int new_game_injector(void* data)
 }
 
 TEST(NewGame, begin_new_game) {
-    ScopedCompanyFileCleanup founded_cleanup;
     trace_clear();
 
     // Pre-populate save data so we can verify it gets reset
@@ -342,9 +340,17 @@ static int direct_beginmenu_cancel_injector(void*)
 TEST(NewGame, beginmenu_propagates_name_entry_cancel_without_resetting_save)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    // Sentinels, not "whatever the last test left": SaveData::reset never
+    // touches save_name and leaves the starting default in totalcash, so a
+    // beginmenu that reset BEFORE honouring the cancel is invisible against
+    // live values. beginmenu(99) is called directly and nothing reloads
+    // save0, so seeding memory is enough.
     const auto saved_cash = save.totalcash;
     const std::string saved_name = save.save_name;
+    save.totalcash = 424242;
+    save.save_name = "PRIOR COMPANY";
 
+    trace_clear();
     SDL_Thread* thread = SDL_CreateThread(
         direct_beginmenu_cancel_injector, "direct_beginmenu_cancel", nullptr);
     ASSERT_TRUE(thread != nullptr);
@@ -352,8 +358,15 @@ TEST(NewGame, beginmenu_propagates_name_entry_cancel_without_resetting_save)
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
     EXPECT_EQ(0, thread_result);
-    EXPECT_EQ(saved_cash, save.totalcash);
-    EXPECT_EQ(saved_name, save.save_name);
+    EXPECT_TRUE(trace_contains("name_entry", "cancel"))
+        << "the MENU_REDRAW must come from the name-entry BACK leg";
+    EXPECT_EQ(424242u, save.totalcash)
+        << "cancel must not reset the loaded company's cash";
+    EXPECT_EQ("PRIOR COMPANY", save.save_name)
+        << "cancel must not overwrite the loaded company name";
+
+    save.totalcash = saved_cash;
+    save.save_name = saved_name;
 }
 
 // §2.2: clicking the name strip opens an in-place editor; the typed name
@@ -441,7 +454,6 @@ static int name_entry_edit_injector(void* data)
 }
 
 TEST(NewGame, name_entry_edit_strip_sets_company_name) {
-    ScopedCompanyFileCleanup founded_cleanup;
     trace_clear();
 
     NewGameState state = { false, false, false, false, -1, -1, {} };
@@ -593,31 +605,12 @@ static int continue_player_count_injector(void* data)
 
 TEST(NewGame, player_count_survives_back_then_continue)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP()
-        << "this build supports one local seat, so the three-seat Continue "
-           "regression does not apply";
-#endif
-    struct ClockReset {
-        ~ClockReset()
-        {
-            og::data::set_company_clock_for_tests(std::nullopt);
-        }
-    } clock_reset;
-    struct FoundedCompanyCleanup {
-        std::string slot;
-        ~FoundedCompanyCleanup()
-        {
-            if (slot.empty() || slot == "save0")
-                return;
-            (void)og::data::set_active_company_slot("save0");
-            (void)og::data::delete_company(slot);
-        }
-    } company_cleanup;
-
     trace_clear();
     // Outrank any save0 or opt-in stray company created earlier in this
     // process, including when the suite runs shuffled within the same second.
+    // SETUP only: the clock pin and the company this flow founds both return
+    // to the process baseline at the next reset ([SAVE-R9],
+    // tests/integration/integration_main.cpp).
     og::data::set_company_clock_for_tests(4102444800LL); // 2100-01-01 UTC
 
     ContinuePlayerCountState state;
@@ -640,7 +633,6 @@ TEST(NewGame, player_count_survives_back_then_continue)
         og::runtime::current_session->myscreen_->save_data.numplayers;
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
-    company_cleanup.slot = state.founded_slot;
 
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.finished) << "the complete user flow should unwind";
@@ -727,6 +719,10 @@ TEST(NewGame, name_entry_editor_wait_reports_a_miss_instead_of_hanging)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     const auto saved_cash = save.totalcash;
     const std::string saved_name = save.save_name;
+    // Same sentinel discipline as the cancel test: live values can equal the
+    // post-reset defaults, and then "nothing was founded" proves nothing.
+    save.totalcash = 424242;
+    save.save_name = "PRIOR COMPANY";
 
     NameEditorMissState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -751,6 +747,11 @@ TEST(NewGame, name_entry_editor_wait_reports_a_miss_instead_of_hanging)
         << "cancelling the editor must land back on the name-entry screen";
 
     // Cancelling the editor founds nothing and changes nothing.
-    EXPECT_EQ(saved_cash, save.totalcash);
-    EXPECT_EQ(saved_name, save.save_name);
+    EXPECT_EQ(424242u, save.totalcash)
+        << "a cancelled editor must not reset the loaded company's cash";
+    EXPECT_EQ("PRIOR COMPANY", save.save_name)
+        << "a cancelled editor must not rename the loaded company";
+
+    save.totalcash = saved_cash;
+    save.save_name = saved_name;
 }

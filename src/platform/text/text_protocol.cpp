@@ -606,7 +606,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     // that path changes).
     headless_entity_loader()->reload_graphics_if_stale();
 
-    level.set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_, &cfg);
+    level.set_sim_context(&save, &events, &cfg);
 
     // Install the gameplay context BEFORE level.load(), not merely before the
     // crew spawns. walker::setxy registers a walker in the collision obmap
@@ -820,8 +820,7 @@ int run_text_staged_protocol_session(const TextStagedProtocolArgs& args)
     set_gameplay_rng_override(&text_ctx.rng);
     // Rewire the adopted level's sim context from the stage's private
     // save/events onto this session's.
-    level->set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_,
-        &cfg);
+    level->set_sim_context(&save, &events, &cfg);
 
     // The obmap/current_game discipline (see the long note in the CLI shape
     // above). The load already happened under the stage's own context, and

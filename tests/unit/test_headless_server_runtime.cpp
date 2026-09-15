@@ -185,12 +185,7 @@ protected:
             level_id,
             true,
             &headless_level_data_hooks());
-        level_data_->set_sim_context(
-            &active_save_,
-            &level_data_->world().enemy_freeze,
-            &events_,
-            &rng_,
-            &cfg);
+        level_data_->set_sim_context(&active_save_, &events_, &cfg);
     }
 
     void initialize_from_lobby(const og::sim::LobbySaveDataEquivalent& config_save,

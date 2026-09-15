@@ -348,6 +348,16 @@ std::uint32_t calculate_exp(std::int32_t level)
 
 	/*
 	
+	Stale-comment note (2026): the formula and table below are Dearborn's
+	2013-09-12 work (bc69afd5, written in picker.cpp), kept verbatim as
+	heritage. They were superseded two weeks later by his own 58035061
+	(2013-09-26, "Made level ups take more XP"), which moved this comment
+	here unchanged next to a new recurrence:
+	    fn(L) = 8000 + 2000*(L-1) + 4000*(L-2) + fn(L-1)
+	That later recurrence is what the loop below unrolls; the numbers in the
+	old table have never described the shipped code. The live ladder follows
+	the table.
+	
 	fn = ( (8000*(level+10)) / 10) + calculate_exp(level-1);
 	excel: =( (8000*(F4+10)) / 10) + G3
     Level	XP
@@ -362,6 +372,23 @@ std::uint32_t calculate_exp(std::int32_t level)
     9	99200
     10	115200
     This is practically linear, so each level costs about 10000 more than the previous.
+
+	The live ladder, as produced by the loop below:
+    Level	XP
+    1	0
+    2	10000
+    3	26000
+    4	48000
+    5	76000
+    6	110000
+    7	150000
+    8	196000
+    9	248000
+    10	306000
+    Each level step costs 6000 more than the one before it --
+    step(L) = calculate_exp(L) - calculate_exp(L-1) = 6000*L - 2000 --
+    so the curve is quadratic, not "about 10000 per level".
+    Pinned by GuyCalcs.calculate_exp_ladder_matches_the_documented_table.
 
 	*/
 	if(level <= 1)

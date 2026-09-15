@@ -1914,7 +1914,13 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_owner(nullptr);
     entity.set_collide_ob(nullptr);
     entity.path_to_foe.clear();
-    entity.damage_numbers.clear();
+    // NO damage_numbers.clear() here. The mirror never ticks the sim, so its
+    // only writer is apply_damage_number_events(); clearing on every applied
+    // snapshot (this runs for EVERY entity of EVERY snapshot) is what killed
+    // the 2013 floating-number overlay on every client from #106 onward.
+    // Entity ids are monotonic (game_world.cpp), so a re-used id cannot
+    // inherit a stale list, and the render prunes dead owners
+    // (walker_draw.cpp DamageNumberRenderContext::prune_dead_owners).
 
     // Clamp the wire-supplied family to the valid range before it becomes the
     // entity's family(): family() indexes per-family tables (descriptors, special
@@ -2804,6 +2810,9 @@ void serialize_event_payload(std::vector<std::uint8_t>& buffer,
     append_u32(buffer, event.b);
     append_u32(buffer, static_cast<std::uint32_t>(event.target_player));
     append_string(buffer, event.text);
+    // The third scalar rides AFTER the string so every field that predates it
+    // (including the #230 target_player position) keeps its byte offset.
+    append_u32(buffer, event.c);
 }
 
 og::sim::Event deserialize_event_payload(ByteReader& reader,
@@ -2822,6 +2831,7 @@ og::sim::Event deserialize_event_payload(ByteReader& reader,
     event.target_player = static_cast<std::int32_t>(
         reader.read_u32((prefix + ".target_player").c_str()));
     event.text = reader.read_string((prefix + ".text").c_str());
+    event.c = reader.read_u32((prefix + ".c").c_str());
     return event;
 }
 
@@ -3072,6 +3082,7 @@ bool is_game_flow_event(EventKind kind) noexcept
     case EventKind::Notification:
     case EventKind::SetPalette:
     case EventKind::RequestRedraw:
+    case EventKind::DamageNumber:
         return false;
     }
 

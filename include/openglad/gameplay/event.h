@@ -19,6 +19,10 @@ enum class EventKind : std::uint32_t {
     RequestExitConfirmation = 16, // Request prompt: a=dest_level, b=1 for withdraw prompt
     WithdrawToLevel = 17, // Request withdraw transition: a=dest_level
     ScoreChange = 18, // Score delta: a=team, b=points
+    // Floating hit/heal number lifted by GameServer (never emitted by the
+    // sim): a=owner entity id, b=(x<<16)|y world px,
+    // c=(colour<<24)|value_q8, tick=created_tick.
+    DamageNumber = 19,
 };
 
 // Simulation event record, pushed into SimEventLog during a tick.
@@ -27,6 +31,10 @@ struct Event final {
     EventKind kind = EventKind::None;
     std::uint32_t a = 0;
     std::uint32_t b = 0;
+    // Third scalar; only DamageNumber uses it today. It rides the wire AFTER
+    // `text` so every existing event byte offset (including the #230
+    // target_player position) stays where it was.
+    std::uint32_t c = 0;
     // Addressee of a per-seat event. -1 broadcasts to every view (the
     // historic behavior); 0..15 is a GLOBAL player index — the same number
     // walker::user() and viewscreen::global_player_index_ carry, never a

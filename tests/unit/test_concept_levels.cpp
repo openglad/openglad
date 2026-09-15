@@ -24,6 +24,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
@@ -127,8 +128,7 @@ struct LoadedConceptLevel
         : level(id, true, &concept_levels_hooks())
         , gameplay(level, save, events, cfg)
     {
-        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                              &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
         push_test_context(&gc);
         loaded = level.load();
@@ -568,4 +568,206 @@ TEST_F(ConceptCampaignTest, court_pillars_promote_every_third_spawn)
          world.scripts().host().errors())
         ADD_FAILURE() << "script error at " << err.where << ": "
                       << err.message;
+}
+
+// ---------------------------------------------------------------------------
+// The Low-Magic Clinic: the campaign-var-fenced capture rig on Stairs (600)
+// (packs/concept.showcase/scripts/clinic.lua inside the .glad).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Live livings only, by stamped name -- the same census clinic.lua keeps.
+walker* find_living_named(GameWorld& world, const char* name)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr || ob->dead() != 0)
+            continue;
+        if (ob->query_order() == Order::Living && ob->stats()->name == name)
+            return ob;
+    }
+    return nullptr;
+}
+
+int count_livings_named(GameWorld& world, const char* name)
+{
+    int found = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr || ob->dead() != 0)
+            continue;
+        if (ob->query_order() == Order::Living && ob->stats()->name == name)
+            ++found;
+    }
+    return found;
+}
+
+int count_text(const std::vector<std::string>& lines, const char* needle)
+{
+    int found = 0;
+    for (const std::string& line : lines)
+        if (line.find(needle) != std::string::npos)
+            ++found;
+    return found;
+}
+
+// Production never ticks with live start markers (the crew deploy consumes
+// them); mirror that, as the court tests do.
+void retire_start_markers(GameWorld& world)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Special &&
+            ob->family() == FAMILY_RESERVED_TEAM)
+            ob->set_dead(1);
+    }
+}
+
+// Ticks to an absolute level tick, accumulating every notification emitted on
+// the way (the log is drained by reading, so it has to be collected as it
+// goes).
+void tick_to(LoadedConceptLevel& fx, unsigned target,
+             std::vector<std::string>& lines)
+{
+    while (fx.world().level_tick_count() < target)
+    {
+        fx.world().tick();
+        for (std::string& line : drain_notifications(fx.events))
+            lines.push_back(std::move(line));
+    }
+}
+
+void expect_no_script_errors(GameWorld& world)
+{
+    for (const og::script::ScriptError& err : world.scripts().host().errors())
+        ADD_FAILURE() << "script error at " << err.where << ": "
+                      << err.message;
+}
+
+} // namespace
+
+// The end-to-end pin for the cleric heal floor (PR #292, P5) AND for the rig
+// that films it: a cleric holding 3 MP -- over HEAL's declared mp_cost of 2,
+// under the 4 that would price the pool-scaled surcharge above zero -- heals
+// its hurt neighbour for exactly level*5 through the real walker::special
+// gate, driven from a level hook on a real campaign level.
+//
+// Both halves of the fence are here. With the campaign var unset, Stairs is
+// stock: no rig, no notifications. That is not decoration -- campaigns/concept
+// is walked by tooling and by the rest of this file, and a rig that staged
+// itself unasked would change every one of those.
+TEST_F(ConceptCampaignTest, clinic_rig_heals_a_thin_pool_patient_through_the_engine)
+{
+    // --- Control: clinic unset. The fence holds; Stairs plays as authored.
+    {
+        LoadedConceptLevel fx(600);
+        ASSERT_TRUE(fx.loaded) << "Stairs should load from the mounted campaign";
+        ASSERT_TRUE(fx.world().campaign_vars.empty())
+            << "the control arm must run with no campaign decision at all";
+        retire_start_markers(fx.world());
+
+        std::vector<std::string> lines;
+        tick_to(fx, 95u, lines);
+
+        EXPECT_EQ(nullptr, find_living_named(fx.world(), "Clinic"))
+            << "on_load is fenced on og.campaign_var('clinic'): an unset var "
+               "must leave the level exactly as tools/concept_mapgen authored it";
+        EXPECT_EQ(nullptr, find_living_named(fx.world(), "Patient"))
+            << "no Patient either: the fence covers the whole staging";
+        EXPECT_EQ(0, count_text(lines, "The clinic opens."))
+            << "the rig must announce nothing when it is not staged";
+        EXPECT_EQ(0, count_text(lines, "Cleric healed"))
+            << "and cast nothing";
+        expect_no_script_errors(fx.world());
+    }
+
+    // --- Staged: clinic=1. The rig runs and the heal lands.
+    LoadedConceptLevel fx(600);
+    ASSERT_TRUE(fx.loaded) << "Stairs should load from the mounted campaign";
+    fx.world().campaign_vars.emplace_back("clinic", 1);
+    retire_start_markers(fx.world());
+
+    std::vector<std::string> lines;
+    tick_to(fx, 30u, lines);
+
+    walker* clinic = find_living_named(fx.world(), "Clinic");
+    ASSERT_NE(nullptr, clinic) << "on_load stages a cleric named Clinic";
+    walker* patient = find_living_named(fx.world(), "Patient");
+    ASSERT_NE(nullptr, patient) << "on_load stages a soldier named Patient";
+    EXPECT_EQ(1, count_text(lines, "The clinic opens."))
+        << "on_load announces itself exactly once";
+    EXPECT_EQ(4, static_cast<int>(clinic->stats()->level()))
+        << "level 4 is what makes the heal exactly 20 (level*5)";
+    EXPECT_FLOAT_EQ(120.0f, patient->stats()->max_hitpoints())
+        << "the Patient is staged at 20 of 120";
+
+    // Tick 30, the first cast. mp 3 clears walker::special's mp_cost gate (2)
+    // and compute_heal_amount prices the surcharge at 0 (trunc(3)/4 == 0), so
+    // the heal is base 0 + level*5 == 20 -- the exact case the fix restored.
+    EXPECT_FLOAT_EQ(40.0f, patient->stats()->hitpoints())
+        << "the first cast must LAND for level*5: a pool too thin to price "
+           "the surcharge still pays the slot price and heals";
+    EXPECT_EQ(1, count_text(lines, "Cleric healed 1 man!"))
+        << "exactly one heal notification after the first cast";
+    EXPECT_LE(clinic->stats()->magicpoints(), 3.0f)
+        << "on_tick re-pins the pool into the 2..7 window the scene films";
+
+    // A peer joining mid-level runs on_load again; the census keeps the rig
+    // single. (This is the dispatch GameWorld::run_pending_level_on_load
+    // latches away after the first tick.)
+    og::script::hooks::level_load(&fx.world());
+    EXPECT_EQ(1, count_livings_named(fx.world(), "Clinic"))
+        << "on_load is idempotent by census: a second dispatch must not "
+           "stage a second clinic";
+    EXPECT_EQ(1, count_livings_named(fx.world(), "Patient"))
+        << "nor a second patient";
+
+    // Tick 90, the second cast on the 60-tick cadence.
+    tick_to(fx, 90u, lines);
+    patient = find_living_named(fx.world(), "Patient");
+    ASSERT_NE(nullptr, patient) << "the Patient sits through the scene";
+    EXPECT_FLOAT_EQ(60.0f, patient->stats()->hitpoints())
+        << "the second cast lands another level*5 and nothing else moves the "
+           "bar (the Patient's own regeneration is staged off)";
+    EXPECT_EQ(2, count_text(lines, "Cleric healed 1 man!"))
+        << "one notification per cast, on ticks 30 and 90";
+
+    // Strike the cleric: on_tick's census finds nobody and the rig goes quiet
+    // instead of erroring.
+    clinic = find_living_named(fx.world(), "Clinic");
+    ASSERT_NE(nullptr, clinic);
+    clinic->set_dead(1);
+    tick_to(fx, 155u, lines);
+    patient = find_living_named(fx.world(), "Patient");
+    ASSERT_NE(nullptr, patient);
+    EXPECT_FLOAT_EQ(60.0f, patient->stats()->hitpoints())
+        << "no cleric, no third heal";
+    EXPECT_EQ(2, count_text(lines, "Cleric healed 1 man!"))
+        << "the 150-tick cadence slot passes silently once the clinic is gone";
+
+    expect_no_script_errors(fx.world());
+}
+
+// The fence is only usable because the campaign REGISTERS the var: a save's
+// decision book is copied into the sim world filtered to the registered names
+// (screen::sync_world_from_save_data and its headless twin), so an
+// unregistered "clinic" would read 0 in every real session and
+// OPENGLAD_DEMO_CAMPAIGN_STATE=clinic=1 would stage nothing at all.
+TEST_F(ConceptCampaignTest, clinic_var_is_registered_without_giving_the_camp_a_book)
+{
+    const std::vector<std::string> vars =
+        og::script::hooks::campaign_registered_vars();
+    ASSERT_EQ(1u, vars.size())
+        << "the concept campaign registers exactly the clinic rig's var";
+    EXPECT_EQ("clinic", vars.front())
+        << "the name the capture script seeds and clinic.lua fences on";
+
+    og::script::hooks::CampaignPage root;
+    EXPECT_FALSE(og::script::hooks::campaign_picker_page(std::string(), root))
+        << "the rig's registration composes no page, so the Base Camp grows "
+           "no book door for a dev-only capture campaign";
 }

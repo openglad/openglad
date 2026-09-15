@@ -28,7 +28,7 @@ TEST(VideoPrimitives, video_draw_primitives_modify_buffer)
         << "alpha-filled rectangle should modify its target pixels";
 }
 
-TEST(VideoPrimitives, sdl_rectangle_button_and_full_swap_wrappers)
+TEST(VideoPrimitives, sdl_rectangle_button_and_full_canvas_present_wrappers)
 {
     sdl_video video(false);
     const CanvasTarget saved_target = video.active_canvas();
@@ -57,10 +57,10 @@ TEST(VideoPrimitives, sdl_rectangle_button_and_full_swap_wrappers)
     EXPECT_NE(raised_face, inverted_face);
 
     video.set_active_canvas(CanvasTarget::UI);
-    video.swap();
+    video.buffer_to_screen(0, 0, video.canvas_w(), video.canvas_h());
     ASSERT_EQ(CanvasTarget::UI, video.last_presented_canvas());
     video.set_active_canvas(CanvasTarget::World);
-    video.swap();
+    video.buffer_to_screen(0, 0, video.canvas_w(), video.canvas_h());
     EXPECT_EQ(CanvasTarget::World, video.last_presented_canvas());
 
     ASSERT_NE(nullptr, E_Screen);

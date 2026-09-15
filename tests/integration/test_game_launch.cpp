@@ -97,10 +97,18 @@ TEST(GameLaunch, level_loading) {
 
     trace_clear();
     short result = load_saved_game("test_level_save", og::runtime::current_session->myscreen_);
-    (void)result;
-    // Check the traces were fired regardless of full success
+    // Both entry traces below are emitted BEFORE the scenario read can fail,
+    // so on their own they are satisfied by a load that returns an error. Pin
+    // the outcome: a non-zero return, the trace that only the completed load
+    // reaches, and a world that actually has the scenario's objects in it.
+    ASSERT_EQ(1, static_cast<int>(result))
+        << "load_saved_game returns exactly 1 on success (game.cpp)";
     ASSERT_TRUE(trace_contains("game", "load_saved_game")) << "load_saved_game trace should be logged";
     ASSERT_TRUE(trace_contains("game", "LevelRuntimeData::load")) << "LevelRuntimeData::load trace should be logged";
+    ASSERT_TRUE(trace_contains("game", "level loaded: scen1"))
+        << "the load must run to the end of load_saved_game with the requested scenario";
+    ASSERT_FALSE(og::runtime::current_session->myscreen_->world().oblist.empty())
+        << "a loaded level must populate the world's object list";
 
     // Clean up loaded objects
     og::runtime::current_session->myscreen_->world().delete_objects();

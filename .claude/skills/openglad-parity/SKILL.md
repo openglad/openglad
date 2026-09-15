@@ -232,11 +232,33 @@ rebuild before trusting the in-suite gate.
 
 ## Sim-determinism test idioms (unit groups)
 
-`og::sim::set_sim_random_override` only works in TUs compiled with
-`-DTESTING`; `SimRandom::next()` is inline, so og_gameplay's copies ignore
-the override and an installed spy silently records NOTHING — assertions
-on it go vacuous. Instead set `world.rng_.state_ = <constant>` and assert
-observable outcomes. `next(0)` returns early WITHOUT advancing state, so
-"state unchanged across the call" proves no draw happened. Walker
-construction draws from `walker_rng()`, which fixtures redirect, so
-construction never perturbs the world stream.
+Two independent streams, and a test has to say which one it means. The
+GAMEPLAY stream (walker construction via `walker_rng()`, combat rolls,
+autotiling) is installed by handing a `GameContext` to
+`push_test_context`, which every fixture does. The SIM stream is
+`GameWorld::rng_` — `living::act`, `act_random`, `act_guard`,
+`walker::death`, `statistics::try_command` — and `push_test_context` does
+not touch it.
+
+`og::sim::set_sim_random_override` is the hook for the sim stream. It is
+an UNCONDITIONAL gameplay hook (no `#ifdef TESTING` on the declarations or
+on the check inside the inline `SimRandom::next`), so there is exactly one
+body of that function in the tree and an installed override steers draws
+made inside og_gameplay-compiled code in every binary — headless unit
+groups included, where og_gameplay is built without `-DTESTING`. Install
+it through the one shared guard, `ScopedSimRandom`
+(tests/test_sim_random_scope.h); guards nest and restore the ref they
+replaced. (It was TESTING-only until PR #292; a spy installed from a unit
+group then recorded NOTHING and every assertion on it went vacuous. If
+you meet a test comment that still says so, it is stale.)
+
+The state-pin idiom stays the right tool when you want the REAL LCG at a
+known point: set `world.rng_.state_ = <constant>` and assert observable
+outcomes. `next(0)` returns early WITHOUT advancing state — and before it
+consults the override — so "state unchanged across the call" proves no
+draw happened. Conversely, while an override is installed the LCG never
+steps at all, so an unchanged `state_` also proves the override answered.
+
+The parity runner points the sim override and the gameplay override at
+the SAME slot (parity_runner.cpp `RngOverrideGuard`): master drew both
+from libc `rand()`, and that routing is what the goldens encode.

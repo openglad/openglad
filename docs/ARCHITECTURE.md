@@ -307,13 +307,19 @@ enum class EventKind : uint32_t {
     PlaySound = 4,     // Request sound: a=sound_id, b=0
     Notification = 8,  // Text notification: message in text field
     SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
-    RequestRedraw = 12 // Force full screen redraw
+    RequestRedraw = 12, // Force full screen redraw
+    DamageNumber = 19  // Floating hit/heal number LIFTED by GameServer from
+                       // the authoritative walkers (never emitted by the sim):
+                       // a=owner entity id, b=(x<<16)|y world px,
+                       // c=(colour<<24)|value 16.8 fixed point
 };
 
 struct Event {
     uint32_t tick;
     EventKind kind;
     uint32_t a, b;       // event-specific payload
+    uint32_t c;          // third scalar; only DamageNumber uses it today
+    int32_t target_player; // -1 broadcasts; 0..15 is a GLOBAL player index
     std::string text;    // optional text payload for Notification events
 };
 ```
@@ -422,7 +428,7 @@ Every knob is opt-in: unset, the demo takes its production path.
 | `OPENGLAD_DEMO_COMPOSITE_DUMP` | BMP path for the final presented composite, written when the run ends via `OPENGLAD_DEMO_MAX_FRAMES` |
 | `OPENGLAD_DEMO_CAPTURE_DIR` | Enables showcase frame capture into this directory (indexed BMPs) |
 | `OPENGLAD_DEMO_CAPTURE_SESSION` | Cell index to capture, or `-1` for the whole grid at native cell resolution |
-| `OPENGLAD_DEMO_CAPTURE_FOCUS` | Capture camera: `player`, `boss` or `center`. `boss` follows the named hostile living (strongest first), falling back to the strongest unnamed hostile when the level names nobody |
+| `OPENGLAD_DEMO_CAPTURE_FOCUS` | Capture camera: `player`, `boss`, `center` or `cell:<x>,<y>`. `boss` follows the named hostile living (strongest first), falling back to the strongest unnamed hostile when the level names nobody. `cell:<x>,<y>` is the free camera aimed at a map cell (the cell lands at the viewport's top-left, clamped to the level), which is how a media recipe frames a named terrain artefact |
 | `OPENGLAD_DEMO_CAPTURE_EVERY` / `_START` / `_LIMIT` | Capture frame stride, first frame, and frame count cap |
 
 ### Spectator Mode (0-Player)
