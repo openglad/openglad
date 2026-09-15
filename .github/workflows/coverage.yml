@@ -133,6 +133,16 @@ jobs:
         # the whole job measured ~24 min WITH one 420 s timeout burned; a
         # hard-hanging test costs at most two further attempts (+14 min)
         # under until-pass:3, far inside the 90 min job cap.
+        #
+        # The two OG_EXPECT_* exports arm og_unit_core's version teeth, which
+        # were dormant on this lane (unarmed = skipped): the stamped minor must
+        # equal this checkout's commit count and the stamped hash must equal its
+        # short hash exactly, so a shallow clone, a broken hash probe (nogit) or
+        # a stale build tree fails as a TEST failure in this step rather than
+        # shipping a build whose menu names the wrong commit. Both are computed
+        # with the same git commands cmake/OpenGladVersion.cmake runs, on the
+        # same checkout. They belong here and not in a step of their own so the
+        # collected/threshold steps below keep their own failure classes.
         run: |
           parallel_jobs="$(nproc)"
           if (( parallel_jobs > 4 )); then
@@ -140,6 +150,10 @@ jobs:
           fi
           rm -rf build/ci-coverage/coverage/lua-raw
           mkdir -p build/ci-coverage/coverage/lua-raw
+          OG_EXPECT_VERSION_MINOR="$(git rev-list --count HEAD)"
+          export OG_EXPECT_VERSION_MINOR
+          OG_EXPECT_GIT_HASH="$(git rev-parse --short=8 HEAD)"
+          export OG_EXPECT_GIT_HASH
           OPENGLAD_LUA_COVERAGE="$PWD/build/ci-coverage/coverage/lua-raw" \
             ctest --test-dir build/ci-coverage --parallel "${parallel_jobs}" --output-on-failure --timeout 420 --repeat until-pass:3 --no-tests=error
 

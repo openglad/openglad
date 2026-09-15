@@ -6,10 +6,14 @@
  * every commit; what is pinned is the exact composition each surface is
  * built from — `std::format("{}.{}", major(), minor())` for the version
  * string, "v<string> <hash>" for the stamp, "openglad version <string>
- * (<hash>)" for `-v` — plus the shape of the generated git hash. The one
- * value check is opt-in: the CI test lane sets OG_EXPECT_VERSION_MINOR from
- * `git rev-list --count HEAD`, so a build that stamped 2.0 because the
- * checkout was shallow fails there instead of shipping a lying number.
+ * (<hash>)" for `-v` — plus the shape of the generated git hash. The value
+ * checks are two independent opt-ins, exported by the CI lanes that run
+ * og_unit_core: OG_EXPECT_VERSION_MINOR from `git rev-list --count HEAD`,
+ * so a build that stamped 2.0 because the checkout was shallow fails there
+ * instead of shipping a lying number, and OG_EXPECT_GIT_HASH from
+ * `git rev-parse --short=8 HEAD` — the same command cmake runs — so a
+ * stale build tree or a broken hash probe fails there instead of shipping a
+ * menu stamp that names the wrong commit.
  *
  * The hash shape is checked by two hand-written predicates rather than
  * <regex>: libstdc++'s <regex> under GCC 15 with the nix cc-wrapper's
@@ -162,4 +166,43 @@ TEST(Version, minor_matches_history)
         << "the build stamped 2." << og::version::minor()
         << " but the checkout's history says " << expected
         << " (shallow clone, or a stale build tree)";
+}
+
+// The exact value of the stamp, opt-in on OG_EXPECT_GIT_HASH. The shape test
+// above accepts "nogit" and accepts ANY eight hex digits, so a build tree
+// that was never re-stamped (or one stamped from a different checkout) sails
+// through it while the menu names the wrong commit. When the lane exports the
+// hash of the checkout it just built, the two must be equal — exactly, with
+// no tolerance for the '+' dirty marker, because a dirty stamp is a stamp
+// that names a commit the binary is not.
+TEST(Version, git_hash_matches_checkout)
+{
+    const char* expected = std::getenv("OG_EXPECT_GIT_HASH");
+    if (expected == nullptr || *expected == '\0')
+    {
+        GTEST_SKIP() << "OG_EXPECT_GIT_HASH unset; the shape test above "
+                     << "still ran";
+    }
+    const std::string h(og::version::git_hash());
+    const auto diagnosis = [&]() -> std::string {
+        if (h == "nogit")
+        {
+            return "the checkout has a commit (OG_EXPECT_GIT_HASH=" +
+                   std::string(expected) +
+                   ") but the build stamped nogit: the hash probe is broken "
+                   "(wrong working directory, git missing from the image, or "
+                   "a quoting regression in cmake/OpenGladVersion.cmake)";
+        }
+        if (h == std::string(expected) + "+")
+        {
+            return "the build stamped a dirty-tree hash: something tracked "
+                   "was modified before og_git_hash.h was written (git status "
+                   "--porcelain --untracked-files=no was non-empty at build "
+                   "time)";
+        }
+        return "the build stamped '" + h + "' but the checkout is at " +
+               std::string(expected) +
+               ": stale build tree or a different checkout";
+    };
+    EXPECT_EQ(std::string(expected), h) << diagnosis();
 }
