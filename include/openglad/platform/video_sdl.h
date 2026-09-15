@@ -156,8 +156,6 @@ public:
                  std::span<const unsigned char> sourcedata) override;
     void putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
                        std::span<const unsigned char> sourcedata, unsigned char alpha) override;
-    void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-                 std::span<const unsigned char> sourcedata, unsigned char color) override;
     void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
                      std::span<const unsigned char> sourcedata, unsigned char color) override;
 

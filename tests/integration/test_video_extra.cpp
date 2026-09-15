@@ -308,33 +308,6 @@ TEST(VideoExtra, putdata_alpha_blends_non_zero_bytes_and_skips_index_zero)
 }
 
 
-TEST(VideoExtra, putdata_color_replaces_bytes_over_247_with_the_team_colour_itself)
-{
-    screen* const s = scr();
-    ASSERT_NE(nullptr, s);
-    unsigned char testbmp[16*16];
-    memset(testbmp, 248, sizeof(testbmp)); // > 247 triggers team color
-    testbmp[0] = 0;                        // transparent
-    testbmp[1] = 50;                       // <= 247: passes through unchanged
-    testbmp[2] = 250;                      // no ramp: still exactly the colour
-    const auto span = std::span<const unsigned char>(testbmp, 256);
-
-    s->clearbuffer();
-    ground_box(48, 68, 24, 24);
-    const RGB ground = px(50, 70);
-    s->putdata(50, 70, 16, 16, span, kInk);
-
-    EXPECT_EQ(ground, px(50, 70)) << "source index 0 must be left transparent";
-    EXPECT_EQ(50, idx(51, 70)) << "bytes <= 247 must pass through unremapped";
-    EXPECT_EQ(static_cast<int>(kInk), idx(52, 70))
-        << "byte 250 becomes the team colour itself, with no ramp";
-    EXPECT_EQ(static_cast<int>(kInk), idx(53, 70)) << "and so does byte 248";
-    EXPECT_EQ(static_cast<int>(kInk), idx(65, 85)) << "to the last pixel of the rect";
-    EXPECT_EQ(ground, px(66, 85)) << "and no further";
-    s->clearbuffer();
-}
-
-
 TEST(VideoExtra, putdatatext_color_replaces_bytes_over_247_with_the_team_colour_itself)
 {
     screen* const s = scr();

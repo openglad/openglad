@@ -1679,31 +1679,6 @@ TEST(MassCoverage, video_putdata_alpha_honours_both_ends_of_its_alpha) {
         << "alpha 0 must leave the destination exactly as it was";
 }
 
-// putdata(x,y,w,h,pixels,color): source indices ABOVE 247 are replaced by
-// `color`; anything 1..247 keeps its own index
-// (src/platform/sdl/video_sdl.cpp putdata with the colour override).
-TEST(MassCoverage, video_putdata_color_overrides_only_indices_above_247) {
-    screen* s = og::runtime::current_session->myscreen_;
-
-    auto high = sample_pixels(248);  // 248..255, all above the 247 threshold
-    s->clearbuffer();
-    s->putdata(10, 10, 8, 8, high, DARK_GREEN);
-    ASSERT_EQ(pal_readback_index(DARK_GREEN), px_index(10, 10))
-        << "a 248 source index takes the override colour";
-    ASSERT_EQ(pal_readback_index(DARK_GREEN), px_index(12, 12))
-        << "every index above 247 takes the override colour";
-    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(9, 10))
-        << "the override blit stays inside its block";
-
-    auto low = sample_pixels(50);  // 50..57, all at or below 247
-    s->clearbuffer();
-    s->putdata(10, 10, 8, 8, low, DARK_GREEN);
-    ASSERT_EQ(pal_readback_index(50), px_index(10, 10))
-        << "an index at or below 247 must keep its own colour, not the override";
-    ASSERT_EQ(pal_readback_index(57), px_index(17, 10))
-        << "the whole low-index row keeps its own colours";
-}
-
 // putdatatext(x,y,w,h,pixels,color): index 0 is transparent, source indices
 // ABOVE 247 are replaced by `color`, and 1..247 keep their own index
 // (src/platform/sdl/video_sdl.cpp putdatatext with the colour override).

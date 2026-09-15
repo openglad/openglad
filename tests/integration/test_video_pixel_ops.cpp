@@ -263,24 +263,26 @@ TEST(VideoPixelOps, clipped_and_transparent_blits_pin_visible_pixels)
     sdl_video video(false);
     video.clearbuffer();
 
-    int black = -1;
-    ASSERT_EQ(0, video.get_pixel(0, 0, &black));
+    int probe = -1;
+    ASSERT_EQ(0, video.get_pixel(0, 0, &probe))
+        << "control: a cleared buffer reads back as palette index 0";
+
+    // Pre-paint the cell the transparent source byte covers with an index that
+    // is NOT the cleared background. Without this the "index 0 is transparent"
+    // rule is unobservable here: painting index 0 over a black cell reads back
+    // the same as skipping it.
+    video.pointb(10, 10, 14);
+    ASSERT_EQ(14, video.get_pixel(10, 10, &probe))
+        << "control: the destination cell starts at index 14, not the background";
 
     const std::array<unsigned char, 2> transparent_then_color{0, 42};
     video.putdata_alpha(10, 10, 2, 1, transparent_then_color, 255);
     int first = -1;
     int second = -1;
-    EXPECT_EQ(0, video.get_pixel(10, 10, &first));
-    EXPECT_EQ(42, video.get_pixel(11, 10, &second));
-    EXPECT_EQ(black, first)
+    EXPECT_EQ(14, video.get_pixel(10, 10, &first))
         << "the transparent alpha entry must preserve its destination";
-
-    const std::array<unsigned char, 2> transparent_then_team{0, 250};
-    video.putdata(12, 10, 2, 1, transparent_then_team, 77);
-    EXPECT_EQ(0, video.get_pixel(12, 10, &first));
-    EXPECT_EQ(77, video.get_pixel(13, 10, &second));
-    EXPECT_EQ(black, first)
-        << "the transparent team-color entry must preserve its destination";
+    EXPECT_EQ(42, video.get_pixel(11, 10, &second))
+        << "the non-zero entry lands opaquely at alpha 255";
 
     const std::array<unsigned char, 4> clipped_tile{11, 12, 13, 14};
     video.putbuffer(-1, -1, 2, 2, -1, -1, 1, 1, clipped_tile);

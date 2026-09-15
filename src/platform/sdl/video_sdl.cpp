@@ -1204,31 +1204,6 @@ static inline unsigned char text_ink(unsigned char source, unsigned char color)
 	return source > 247 ? color : source;
 }
 
-//sdl_video::putdata
-//draws objects to screen, respecting transparency
-//used by text
-void sdl_video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color)
-{
-	Sint32 curx, cury;
-	unsigned char curcolor;
-	Uint32 num = 0;
-
-	for(cury = starty;cury < starty +ysize;cury++)
-		for (curx = startx; curx < startx +xsize; curx++)
-		{
-			curcolor = sourcedata[num++];
-			if (!curcolor)
-				continue;
-			//if (curcolor>=248) curcolor = color+(curcolor-248);
-			if (curcolor>247)
-				curcolor = color;
-			//buffers: PORT: targ = (curx + (cury*VIDEO_WIDTH));
-			//buffers: PORT: if (targ>0 && targ<VIDEO_SIZE)
-			//buffers: PORT: videoptr[targ] = curcolor;
-			point(curx,cury,curcolor);
-		}
-}
-
 void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color)
 {
         Sint32 curx, cury;
