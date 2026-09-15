@@ -307,7 +307,7 @@ enum class EventKind : uint32_t {
     PlaySound = 4,     // Request sound: a=sound_id, b=0
     Notification = 8,  // Text notification: message in text field
     SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
-    RequestRedraw = 12,// Force full screen redraw
+    RequestRedraw = 12, // Force full screen redraw
     DamageNumber = 19  // Floating hit/heal number LIFTED by GameServer from
                        // the authoritative walkers (never emitted by the sim):
                        // a=owner entity id, b=(x<<16)|y world px,
