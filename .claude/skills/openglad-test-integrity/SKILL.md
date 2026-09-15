@@ -195,7 +195,14 @@ test after the failure never ran.
    its way out, so a tail that stops clicking guarantees the hang it
    exists to prevent. Loop until the main thread signals it left the
    menu, and click BACK as well as RESUME — the player sub-screen
-   publishes no RESUME (`tests/integration/test_pause_menu.cpp`).
+   publishes no RESUME. The rule lives once, in
+   `tests/test_escape_tail.h` (`escape_to_the_main_thread`); the last
+   hand-rolled copy is `tests/integration/test_pause_menu.cpp`, filed
+   as debt on PR #292. A capture/scene test never skips on a missing
+   env var — it asserts its oracle always and writes media only when
+   asked (`RenderEffects.damage_number_glyphs_paint_in_the_requested_band`,
+   `MenuCapture.zz_capture_*`) — through the one presented-frame
+   handshake in `tests/test_frame_capture.h`, never a fifth copy.
 2. Never feed malformed YAML to gparser as a coverage target; it does
    not return.
 3. Run ctest with stdin PIPED, never under a pty — headless clients

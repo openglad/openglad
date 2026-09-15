@@ -47,9 +47,15 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
    - `g_test_menu_nav_key` drives one keyboard-nav step per pulse
      (`src/interface/ui/picker_input.cpp`) so captures show the highlight
      box moving; real key events get eaten by the hold-and-release loops.
-   Both hooks are pinned by always-run tests
+   - `og::ui::menu_screen_testing_highlighted_button()` mirrors the menu
+     loop's own highlight index (`src/interface/ui/menu_screen_runner.cpp`;
+     -1 whenever no engine screen is running). It is the nav oracle the
+     menu scenes assert after every step: the self-clearing nav key proves
+     only that the pulse was eaten, never which button the walk landed on.
+   All three hooks are pinned by always-run tests
    (`RenderEffects.capture_dump_hook_writes_ppm_frames`,
-   `PickerMenuNav.capture_nav_hook_drives_one_step_and_self_clears`).
+   `PickerMenuNav.capture_nav_hook_drives_one_step_and_self_clears`,
+   `MenuScreenHighlightMirror.publishes_the_live_highlight_and_clears_on_exit`).
 3. **`make_site.py`** encodes each scene directory into a 2x-upscaled APNG
    (pure Python, zlib only) and writes the card page. Missing scenes are
    skipped, so partial captures still produce a reviewable site.
