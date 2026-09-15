@@ -81,6 +81,22 @@ enum class FactKind : std::uint8_t
     EffectNetTravel,                 // FX-order analogue of WeaponNetTravel:
                                      //   arg0 = FX family, arg1 = behavior flag
                                      //   (kWeaponPath*), arg2 = threshold_centi.
+    // Order-aware analogue of WalkerFamilyCount. arg0 = family id, arg1 =
+    // Order ordinal (kOrderLiving / kOrderTreasure / kOrderGenerator /
+    // kOrderWeapon / kOrderFX), arg2 = min, arg3 = max; counts
+    // dump.walkers[] entries (alive OR dead) whose family renders under
+    // arg1 via family_symbol_by_order — the oblist analogue of
+    // WalkerFamilyCount for FX/treasure entities, which the living-order
+    // kinds cannot name.
+    //
+    // APPEND-ONLY: this enumerator is last so every existing ordinal keeps
+    // its value (the companion header mirror must match ordinal for
+    // ordinal). The branch header carries WalkerOnFloor (a branch-only
+    // multi-floor kind) ahead of it; the companion has no floor concept and
+    // no table row names it, so the ordinals diverge by one here — harmless
+    // because the companion never evaluates a FactKind, it only has to
+    // declare the ones the shared table constructs.
+    WalkerOfOrderFamilyCount,        // arg0 = family, arg1 = order, arg2 = min, arg3 = max
 };
 
 // behavior_flag values for WeaponNetTravel (arg1). Centi-pixel units
@@ -290,6 +306,18 @@ inline constexpr FactPredicate EffectNetTravel(std::int32_t family, std::int32_t
                                                std::string_view label = {}) noexcept
 {
     return {FactKind::EffectNetTravel, family, behavior_flag, threshold_centi, 0, 0, label};
+}
+// How many dump.walkers[] entries render as `family` under `order` — alive
+// OR dead, exactly like WalkerFamilyCount, but resolved in the requested
+// Order namespace instead of always Living. This is the only tool that can
+// name an FX or Treasure entity that the sim parked in oblist (an expired
+// FAMILY_FLASH, a consumed gem). The companion mirrors the declaration so
+// the shared table compiles; it never evaluates it.
+inline constexpr FactPredicate WalkerOfOrderFamilyCount(std::int32_t family, std::int32_t order,
+                                                        std::int32_t mn, std::int32_t mx,
+                                                        std::string_view label = {}) noexcept
+{
+    return {FactKind::WalkerOfOrderFamilyCount, family, order, mn, mx, 0, label};
 }
 
 // FactSide-gating helpers. Wrap any pred::* call to mark the predicate as
