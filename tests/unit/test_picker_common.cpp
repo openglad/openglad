@@ -5803,9 +5803,6 @@ TEST(SeatRailSlots, the_device_decides_how_many_slots_the_rail_has)
     EXPECT_EQ(4, base_camp_seat_rail_slot_cap(
                      SeatClaimability{.local_seat_cap = 9}))
         << "the rail has four slots however many pads are plugged in";
-    // A build with no multiplayer has one seat and no door to a second.
-    EXPECT_EQ(1, base_camp_seat_rail_slot_cap(
-                     SeatClaimability{.multiplayer_enabled = false}));
     // The LOBBY the machine is in never removes a slot — that is the dimmed
     // face's job, not the grid's.
     EXPECT_EQ(4, base_camp_seat_rail_slot_cap(
@@ -5835,9 +5832,6 @@ TEST(SeatRailSlots, placeholders_fill_every_slot_the_device_can_still_seat)
     EXPECT_EQ(1, base_camp_seat_rail_placeholder_count(SeatClaimability{
                      .local_count = 1, .local_seat_cap = 2,
                      .global_count = 1}));
-    // A DISABLE_MULTIPLAYER build: one seat, nothing beside it.
-    EXPECT_EQ(0, base_camp_seat_rail_placeholder_count(SeatClaimability{
-                     .multiplayer_enabled = false, .local_count = 1}));
     // THE FULL LOBBY STILL SHOWS ITS SLOTS. The rail is this machine's
     // hardware; a full lobby dims the face (LOBBY FULL) rather than deleting
     // a seat the player can see they own the room for.
@@ -5870,9 +5864,6 @@ TEST(SeatRailSlots, claimability_answers_the_dimmed_face_question)
                      SeatClaimability{.local_count = 1, .global_count = 14}));
     EXPECT_EQ(0, seats_still_claimable(
                      SeatClaimability{.local_count = 1, .global_count = 16}));
-    // A DISABLE_MULTIPLAYER build has no second seat to offer at all.
-    EXPECT_EQ(0, seats_still_claimable(
-                     SeatClaimability{.multiplayer_enabled = false}));
 }
 
 // --- Main-menu build stamp geometry ---

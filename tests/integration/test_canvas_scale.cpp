@@ -414,19 +414,28 @@ TEST(CanvasScale, fractional_zoom_aspect_fits_hud_and_touch_independently)
         << "the independently fitted HUD must retain its native aspect";
 
     // The left and right strips excluded by World's rounded destination are
-    // live HUD pixels and touch targets. Mapping them through World would
-    // reject x=1 and produce a negative logical coordinate.
-    EXPECT_FALSE(window_point_in_active_canvas(1.0f, 200.0f));
-    EXPECT_TRUE(window_point_in_gameplay_ui_canvas(1.0f, 200.0f));
-    EXPECT_TRUE(window_point_in_gameplay_ui_canvas(639.0f, 200.0f));
-    const auto [left_x, middle_y] =
-        window_to_gameplay_ui_canvas(1.0f, 200.0f);
-    const auto [right_x, right_y] =
-        window_to_gameplay_ui_canvas(639.0f, 200.0f);
-    EXPECT_NEAR(0.5f, left_x, 0.001f);
-    EXPECT_NEAR(100.0f, middle_y, 0.001f);
-    EXPECT_NEAR(319.5f, right_x, 0.001f);
-    EXPECT_NEAR(100.0f, right_y, 0.001f);
+    // live HUD pixels and touch targets. Mapping them through World rejects
+    // x=1 outright; the HUD's own rectangle spans both columns and maps them
+    // with (px - vp.x) * canvas_w / vp.w -- 1 -> 0.5 and 639 -> 319.5, never
+    // a negative logical x.
+    EXPECT_FALSE(window_point_in_active_canvas(1.0f, 200.0f))
+        << "the world canvas rectangle excludes the left strip";
+    const float hud_w = static_cast<float>(s->gameplay_ui_canvas_w());
+    const float hud_h = static_cast<float>(s->gameplay_ui_canvas_h());
+    const auto to_hud_x = [&hud_dest, hud_w](float px) {
+        return (px - static_cast<float>(hud_dest.x)) * hud_w /
+               static_cast<float>(hud_dest.w);
+    };
+    const auto to_hud_y = [&hud_dest, hud_h](float py) {
+        return (py - static_cast<float>(hud_dest.y)) * hud_h /
+               static_cast<float>(hud_dest.h);
+    };
+    EXPECT_FLOAT_EQ(0.5f, to_hud_x(1.0f))
+        << "the left strip maps to the HUD's own left edge, not a negative x";
+    EXPECT_FLOAT_EQ(319.5f, to_hud_x(639.0f))
+        << "the right strip maps inside the HUD canvas, not past its width";
+    EXPECT_FLOAT_EQ(100.0f, to_hud_y(200.0f))
+        << "the y maps through the HUD rectangle's own height";
 
     // Exercise Screen::swap's overlay branch with opaque edge pixels. Its
     // compositor consumes gameplay_ui_canvas_viewport(), the same geometry

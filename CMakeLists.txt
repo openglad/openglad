@@ -420,6 +420,17 @@ add_custom_target(check_render_no_sim_writes
     VERBATIM
 )
 
+# The four Code::Blocks-era touch/multiplayer build macros stay retired: no
+# CMake build ever defined them and PR #292 deleted their arms. The script
+# names them and explains why each one is gone; naming them here too would
+# trip the check itself, which is the point.
+add_custom_target(check_retired_build_macros
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_retired_build_macros.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking retired build macros have not reappeared"
+    VERBATIM
+)
+
 # Every fadeblack() caller is classified in scripts/fadeblack_sites.txt: fade
 # ownership (#237) only holds while the set of screens that fade stays the
 # deliberate one. See the script header.
@@ -761,7 +772,8 @@ if(NOT EMSCRIPTEN)
     # on synced entity state (the drawcycle-class guard).
     # The fade call sites straddle src/interface/ui/ and src/platform/sdl/, so
     # the allowlist guard hangs off both components.
-    add_dependencies(og_interface check_render_no_sim_writes check_fadeblack_sites)
+    add_dependencies(og_interface check_render_no_sim_writes check_fadeblack_sites
+        check_retired_build_macros)
     target_link_libraries(og_interface PUBLIC
         og_core
         og_gameplay

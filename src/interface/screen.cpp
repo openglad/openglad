@@ -1388,8 +1388,7 @@ CameraPaneRect screen::camera_minimap_block_for_seat(int seat, int ui_w,
 	    level_runtime_data_.world().grid.w,
 	    level_runtime_data_.world().grid.h);
 	const RadarBlock block = radar_block_for_pane(
-	    pane.y, pane.x + pane.w, pane.y + pane.h, radar_w, radar_h,
-	    /*force_lower=*/false);
+	    pane.x + pane.w, pane.y + pane.h, radar_w, radar_h);
 	return CameraPaneRect{block.x, block.y - block.margin - block.h,
 	                      block.w, block.h};
 }

@@ -1961,29 +1961,6 @@ struct TrainEngineState
     Sint32 start_time = 0;
 };
 
-// DISABLE_MULTIPLAYER hides the team cycler (the spec's state_override);
-// the legacy static links into it were refused by handle_menu_nav, so the
-// explicit no-ops keep behavior identical under the §1.5 nav invariant.
-// With multiplayer compiled in this is a no-op (row 18 is always visible).
-void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
-                                     int& /*highlighted_button*/)
-{
-#ifdef DISABLE_MULTIPLAYER
-    if (num_buttons > kTrainMenuChangeTeamIndex &&
-        buttons[kTrainMenuChangeTeamIndex].hidden)
-    {
-        buttons[13].nav.right = -1;  // inc_level
-        buttons[15].nav.down = -1;   // rename
-        buttons[16].nav.down = -1;   // details
-        if (num_buttons > kTrainMenuSellIndex)
-            buttons[kTrainMenuSellIndex].nav.up = 16; // sell -> details
-    }
-#else
-    (void)buttons;
-    (void)num_buttons;
-#endif
-}
-
 Sint32 picker_train_menu_engine_on_spec_row(int row, void* /*screen_state*/)
 {
     if (row != kTrainMenuSellIndex || !pks().train_session ||

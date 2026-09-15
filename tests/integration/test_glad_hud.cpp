@@ -12,6 +12,8 @@
 #include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 #include <memory>
+#include <string>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -2097,6 +2099,116 @@ TEST_F(GladHud, score_panel_floor_row_absent_single_floor)
     v->prefs[PREF_FOES] = old_pref_foes;
     v->prefs[PREF_OVERLAY] = old_pref_overlay;
 }
+
+// The TEAM/FOES counter box is anchored to the TOP of its pane: TEAM at
+// (rm-55, tm+2), FOES at (rm-55, tm+10), inside the box tm+1..tm+16. The
+// 2013 touch build drew both rows 52 px lower (`tm+2 + 44 + 8`) behind a
+// retired touch-build `#ifndef` fork that no configured build ever selected;
+// the fork is gone (PR #292), so the surviving arm is the only geometry and
+// the band 52 px below it must stay empty.
+TEST_F(GladHud, team_row_sits_at_the_pane_top)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    ASSERT_EQ(1, static_cast<int>(s->numviews))
+        << "the pane geometry below assumes the single-view layout";
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    ASSERT_EQ(1, world.floor_count()) << "no FLR row: the box keeps its 16px height";
+
+    auto control = make_player(0);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    auto foe = make_living(FAMILY_ORC, 1);
+    ASSERT_NE(nullptr, foe);
+    world.oblist.push_back(std::move(foe));
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    struct PrefRestore {
+        viewscreen* view; walker* control;
+        char life, score, foes, overlay;
+        ~PrefRestore()
+        {
+            view->control = control;
+            view->prefs[PREF_LIFE] = life;
+            view->prefs[PREF_SCORE] = score;
+            view->prefs[PREF_FOES] = foes;
+            view->prefs[PREF_OVERLAY] = overlay;
+        }
+    } restore{v, old_control, old_pref_life, old_pref_score, old_pref_foes,
+              old_pref_overlay};
+
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // the count-up consumes rng()
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    // Zero overscan in the default build, so these are the viewport's own
+    // edges -- the same lm/tm/rm/bm score_panel computes.
+    const int tm = v->yloc;
+    const int rm = v->endx;
+    // PREF_OVERLAY_ON draws the box, and the box colour is what picks the
+    // text colour (score_panel.cpp: draw_button ? DARK_BLUE : YELLOW).
+    const unsigned char text_color = static_cast<unsigned char>(DARK_BLUE);
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    ASSERT_FALSE(trace_contains("hud", "next_wave"))
+        << "no pending wave: the box must keep its two-row height";
+    const auto actual = capture_rendered_frame(*s);
+
+    // Redraw the counter box by hand at the surviving arm's coordinates and
+    // demand the pixels match exactly: position, colour and text all pinned.
+    const std::string team_text =
+        "TEAM: " + std::to_string(
+            static_cast<int>(remaining_team(s, static_cast<char>(0))));
+    const std::string foes_text =
+        "FOES: " + std::to_string(
+            static_cast<int>(remaining_foes(s, controlp)));
+    ASSERT_EQ("TEAM: 1", team_text) << "one living team-0 walker: the control";
+    ASSERT_EQ("FOES: 1", foes_text) << "one living hostile walker";
+
+    s->clearbuffer();
+    s->draw_button(rm - 57, tm + 1, rm - 2, tm + 16, 1, 1);
+    s->text_normal.write_xy(rm - 55, tm + 2, team_text.c_str(), text_color,
+                            static_cast<short>(1));
+    s->text_normal.write_xy(rm - 55, tm + 10, foes_text.c_str(), text_color,
+                            static_cast<short>(1));
+    const auto expected = capture_rendered_frame(*s);
+
+    std::vector<unsigned char> actual_box;
+    std::vector<unsigned char> expected_box;
+    for (int y = tm + 1; y <= tm + 16; ++y)
+        for (int x = rm - 57; x <= rm - 2; ++x)
+        {
+            const std::size_t offset = static_cast<std::size_t>(y * 320 + x);
+            actual_box.push_back(actual[offset]);
+            expected_box.push_back(expected[offset]);
+        }
+    EXPECT_EQ(expected_box, actual_box)
+        << "the counter box must render TEAM at (" << rm - 55 << ","
+        << tm + 2 << ") and FOES at (" << rm - 55 << "," << tm + 10 << ")";
+
+    // The retired touch arm's rows: TEAM at tm+2+44+8 spans y in [tm+54,
+    // tm+60). Nothing draws there now, so any ink is the dead geometry
+    // coming back.
+    for (int y = tm + 54; y < tm + 60; ++y)
+        for (int x = rm - 55; x < rm - 2; ++x)
+            ASSERT_EQ(0, static_cast<int>(
+                          actual[static_cast<std::size_t>(y * 320 + x)]))
+                << "pixel at (" << x << "," << y << ") must stay clean: the"
+                << " counter rows belong at the pane top, not 52px down";
+}
+
 
 TEST_F(GladHud, fps_overlay_clears_extended_foes_counter)
 {

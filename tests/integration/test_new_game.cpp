@@ -608,11 +608,6 @@ static int continue_player_count_injector(void* data)
 
 TEST(NewGame, player_count_survives_back_then_continue)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP()
-        << "this build supports one local seat, so the three-seat Continue "
-           "regression does not apply";
-#endif
     struct ClockReset {
         ~ClockReset()
         {

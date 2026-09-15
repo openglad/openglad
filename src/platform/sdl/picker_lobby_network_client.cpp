@@ -3182,6 +3182,9 @@ public:
             state_->last_start_denial);
     }
 
+    // Constant by contract: this answers "is a NETWORK client installed",
+    // never "is a session running" -- that is session_established() below
+    // (pinned by MenuModel.host_picker_lobby_client_guards_the_port_and_starts_idle).
     [[nodiscard]] bool is_networked_session() const noexcept override
     {
         return true;
@@ -4429,6 +4432,9 @@ public:
             state_->last_start_denial);
     }
 
+    // Constant by contract: this answers "is a NETWORK client installed",
+    // never "is a session running" -- that is session_established() below
+    // (pinned by MenuModel.host_picker_lobby_client_guards_the_port_and_starts_idle).
     [[nodiscard]] bool is_networked_session() const noexcept override
     {
         return true;

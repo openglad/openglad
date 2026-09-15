@@ -35,11 +35,7 @@ namespace {
 constexpr Sint32 OK_VALUE = 4;
 constexpr Sint32 REDRAW_VALUE = 2;
 
-#ifdef USE_CONTROLLER_INPUT
-constexpr bool MENU_NAV_DEFAULT = true;
-#else
 constexpr bool MENU_NAV_DEFAULT = false;
-#endif
 } // namespace
 
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }

@@ -358,7 +358,6 @@ TEST_F(StairOverlay, zz_capture_stair_and_lava_scene)
                                                     : PIX_LAVA2));
 
     radar r(vs, scr(), 0);
-    r.force_lower_position = true;
     r.start(&scr()->level_runtime_data());
 
     effects_reset_for_testing();

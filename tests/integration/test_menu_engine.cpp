@@ -2938,11 +2938,9 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
         save.numplayers = 1;
         EXPECT_EQ(og::ui::RowState::Hidden,
                   hire->rows[2].state_override(context));
-#ifndef DISABLE_MULTIPLAYER
         save.numplayers = 2;
         EXPECT_EQ(og::ui::RowState::Visible,
                   hire->rows[2].state_override(context));
-#endif
     }
 
     // TRAIN: exit-bearing paths carry MENU_EXIT (the wrapper folds unless a
@@ -2958,6 +2956,13 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     EXPECT_TRUE(train->right_click_enabled);
     EXPECT_EQ(1, train->default_highlight);
     EXPECT_NE(nullptr, train->on_reset) << "the bug-A9 promotion resync";
+    // NO REWIRE TWIN. The train screen's only nav hook existed to relink
+    // around a hidden team cycler; the cycler is always visible, so the
+    // screen carries no rewire function at all and the engine's null guard
+    // is what runs. A second nav implementation registered here would be a
+    // rule twin with train_change_team_row_state.
+    EXPECT_EQ(nullptr, train->nav.rewire)
+        << "the train screen must keep exactly one nav rule";
     ASSERT_EQ(20, train->row_count);
     for (int i = 2; i < 14; ++i) {
         EXPECT_EQ((i % 2 == 0) ? FAMILY_MINUS : FAMILY_PLUS,
@@ -3312,9 +3317,9 @@ void check_materialized_shape(const og::ui::MenuScreenSpec& spec,
     EXPECT_EQ("load_company", rows[rows.size() - 3].id) << shape_name;
 }
 
-// The centered main chassis shared by every build. HELP is permanent;
-// native/web supply enabled/disabled QUIT variants at the same index.
-constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
+// The centered main chassis. HELP is permanent; native/web supply the
+// enabled/disabled QUIT variants at the same index.
+constexpr ExpectedSpecRow kMainMenuCommonRows[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 55, 140, 20,
      ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 79, 68, 20,
@@ -3333,37 +3338,24 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
 };
 
 // The trailing space in "QUIT " is part of the shipped label.
-constexpr ExpectedSpecRow kMainMenuMPQuitNative = {
+constexpr ExpectedSpecRow kMainMenuQuitNative = {
     "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 172, 68, 15,
     ButtonAction::QuitMenu, 0, MenuNav{.up = 8, .down = 0, .left = 4}};
-constexpr ExpectedSpecRow kMainMenuMPQuitWeb = {
+constexpr ExpectedSpecRow kMainMenuQuitWeb = {
     "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 172, 68, 15,
     ButtonAction::QuitMenu, 0, MenuNav{.up = 8, .down = 0, .left = 4}};
-constexpr ExpectedSpecRow kMainMenuMPLoad = {
+constexpr ExpectedSpecRow kMainMenuLoadRow = {
     "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
     ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
-constexpr ExpectedSpecRow kMainMenuMPNote = {
+constexpr ExpectedSpecRow kMainMenuNoteRow = {
     "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
     ButtonAction::MenuSpecRow, 7, MenuNav{}, true};
 // #155: the always-visible CLOUD door (MenuSpecRow arg == materialized
 // ordinal 8 on every variant — exactly one QUIT row survives), the second
 // full-width settings row under GAME SETTINGS.
-constexpr ExpectedSpecRow kMainMenuMPCloud = {
+constexpr ExpectedSpecRow kMainMenuCloudRow = {
     "cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 147, 140, 15,
     ButtonAction::MenuSpecRow, 8, MenuNav{.up = 3, .down = 4}};
-
-// Main geometry no longer changes with multiplayer support: every build
-// manages seats in Base Camp and reaches persistent profiles via CONTROLS.
-constexpr ExpectedSpecRow kMainMenuNoMPCommon[] = {
-    kMainMenuMPCommon[0], kMainMenuMPCommon[1], kMainMenuMPCommon[2],
-    kMainMenuMPCommon[3], kMainMenuMPCommon[4],
-};
-
-constexpr ExpectedSpecRow kMainMenuNoMPQuitNative = kMainMenuMPQuitNative;
-constexpr ExpectedSpecRow kMainMenuNoMPQuitWeb = kMainMenuMPQuitWeb;
-constexpr ExpectedSpecRow kMainMenuNoMPLoad = kMainMenuMPLoad;
-constexpr ExpectedSpecRow kMainMenuNoMPNote = kMainMenuMPNote;
-constexpr ExpectedSpecRow kMainMenuNoMPCloud = kMainMenuMPCloud;
 
 // Materialized order: common chassis, the platform's QUIT row, then the
 // appended load_company, no_company_note, and the #155 CLOUD door
@@ -3439,35 +3431,24 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
     EXPECT_TRUE(seat_host.spec->exit_on_redraw);
     EXPECT_EQ(MENU_REDRAW, seat_host.spec->exit_value);
 
-    const og::ui::MenuScreenSpec& seat_mp =
-        og::ui::seat_settings_menu_screen_spec_mp();
-    const og::ui::MenuScreenSpec& seat_nomp =
-        og::ui::seat_settings_menu_screen_spec_nomp();
-    EXPECT_EQ(12, kSeatSettingsButtonCountMP);
-    EXPECT_EQ(11, kSeatSettingsButtonCountNoMP);
-    EXPECT_EQ(kSeatSettingsButtonCountMP, seat_mp.row_count);
-    EXPECT_EQ(kSeatSettingsButtonCountNoMP, seat_nomp.row_count);
-    EXPECT_STREQ("seat_settings_back", seat_mp.rows[kSeatSettingsBackIndex].id);
-    EXPECT_STREQ("seat_remove", seat_mp.rows[kSeatSettingsRemoveIndex].id);
-    EXPECT_STREQ("seat_reset", seat_nomp.rows[kSeatSettingsResetIndex].id);
+    const og::ui::MenuScreenSpec& seat =
+        og::ui::seat_settings_menu_screen_spec();
+    EXPECT_EQ(12, kSeatSettingsButtonCount);
+    EXPECT_EQ(kSeatSettingsButtonCount, seat.row_count)
+        << "the seat screen ships exactly the twelve rows below";
+    EXPECT_STREQ("seat_settings_back", seat.rows[kSeatSettingsBackIndex].id);
+    EXPECT_STREQ("seat_remove", seat.rows[kSeatSettingsRemoveIndex].id);
+    EXPECT_STREQ("seat_reset", seat.rows[kSeatSettingsResetIndex].id);
     // The INPUT cycler is appended, so ordinals 0..5 and the highlight seed
-    // are unchanged. Its dispatch arg is 6 in both tables; the no-MP table
-    // has no REMOVE row so the same row materializes one slot earlier.
+    // are unchanged; one table means its row position IS its dispatch arg.
     EXPECT_EQ(6, kSeatSettingsInputIndex);
-    EXPECT_EQ(6, kSeatSettingsInputRowMP);
-    EXPECT_EQ(5, kSeatSettingsInputRowNoMP);
-    EXPECT_STREQ("seat_input", seat_mp.rows[kSeatSettingsInputRowMP].id);
-    EXPECT_STREQ("seat_input", seat_nomp.rows[kSeatSettingsInputRowNoMP].id);
+    EXPECT_EQ(6, kSeatSettingsInputRow);
+    EXPECT_STREQ("seat_input", seat.rows[kSeatSettingsInputRow].id);
     EXPECT_EQ(kSeatSettingsInputIndex,
-              seat_mp.rows[kSeatSettingsInputRowMP].arg);
-    EXPECT_EQ(kSeatSettingsInputIndex,
-              seat_nomp.rows[kSeatSettingsInputRowNoMP].arg);
+              seat.rows[kSeatSettingsInputRow].arg);
     EXPECT_EQ(ButtonAction::MenuSpecRow,
-              seat_mp.rows[kSeatSettingsInputRowMP].action);
-    EXPECT_EQ(ButtonAction::MenuSpecRow,
-              seat_nomp.rows[kSeatSettingsInputRowNoMP].action);
-    EXPECT_EQ(kSeatSettingsModeIndex, seat_mp.default_highlight);
-    EXPECT_EQ(kSeatSettingsModeIndex, seat_nomp.default_highlight);
+              seat.rows[kSeatSettingsInputRow].action);
+    EXPECT_EQ(kSeatSettingsModeIndex, seat.default_highlight);
 
     const auto expect_geometry = [](const og::ui::MenuButtonSpec& row,
                                     int x, int y, int w, int h) {
@@ -3476,10 +3457,9 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
         EXPECT_EQ(w, row.w) << row.id;
         EXPECT_EQ(h, row.h) << row.id;
     };
-    for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp}) {
-        const bool mp = spec == &seat_mp;
-        const int input_row =
-            mp ? kSeatSettingsInputRowMP : kSeatSettingsInputRowNoMP;
+    {
+        const og::ui::MenuScreenSpec* const spec = &seat;
+        const int input_row = kSeatSettingsInputRow;
         expect_geometry(spec->rows[kSeatSettingsModeIndex],
                         12, 30, 98, 18);
         expect_geometry(spec->rows[kSeatSettingsRemapIndex],
@@ -3504,12 +3484,9 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
         // §7.1: the y=54 band is INPUT + ZOOM; the y=30 band drops into it
         // (MODE onto INPUT, REMAP onto ZOOM) and RESET drops onto the HUD
         // stack; INPUT still drops into the bottom band.
-        const int zoom_row =
-            mp ? kSeatSettingsZoomRowMP : kSeatSettingsZoomRowNoMP;
-        const int radar_row =
-            mp ? kSeatSettingsHudRadarRowMP : kSeatSettingsHudRadarRowNoMP;
-        const int score_row =
-            mp ? kSeatSettingsHudScoreRowMP : kSeatSettingsHudScoreRowNoMP;
+        const int zoom_row = kSeatSettingsZoomRow;
+        const int radar_row = kSeatSettingsHudRadarRow;
+        const int score_row = kSeatSettingsHudScoreRow;
         EXPECT_EQ(input_row, spec->rows[kSeatSettingsModeIndex].nav.down);
         EXPECT_EQ(zoom_row, spec->rows[kSeatSettingsRemapIndex].nav.down);
         EXPECT_EQ(radar_row, spec->rows[kSeatSettingsResetIndex].nav.down);
@@ -3518,8 +3495,8 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
         EXPECT_EQ(-1, spec->rows[input_row].nav.left);
         EXPECT_EQ(zoom_row, spec->rows[input_row].nav.right);
         EXPECT_EQ(input_row, spec->rows[kSeatSettingsTeamIndex].nav.up);
-        // ZOOM + HUD stack geometry and dispatch args (args are the MP
-        // positions in BOTH variants — the seat_input precedent).
+        // ZOOM + HUD stack geometry and dispatch args (one table, so each
+        // row's position is its arg — the seat_input precedent).
         expect_geometry(spec->rows[zoom_row], 116, 54, 92, 18);
         EXPECT_STREQ("seat_zoom", spec->rows[zoom_row].id);
         EXPECT_EQ(kSeatSettingsZoomIndex, spec->rows[zoom_row].arg);
@@ -3533,34 +3510,32 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
         EXPECT_STREQ("seat_hud_score", spec->rows[score_row].id);
         EXPECT_EQ(kSeatSettingsHudRadarIndex, spec->rows[radar_row].arg);
         EXPECT_EQ(kSeatSettingsHudScoreIndex, spec->rows[score_row].arg);
-        // Every link stays inside the variant's own row table.
+        // Every link stays inside the row table.
         for (int row = 0; row < spec->row_count; ++row) {
             for (const int link : {spec->rows[row].nav.up,
                                    spec->rows[row].nav.down,
                                    spec->rows[row].nav.left,
                                    spec->rows[row].nav.right}) {
-                EXPECT_LT(link, spec->row_count)
-                    << spec->rows[row].id << (mp ? " (mp)" : " (no-mp)");
+                EXPECT_LT(link, spec->row_count) << spec->rows[row].id;
                 EXPECT_GE(link, -1) << spec->rows[row].id;
             }
         }
     }
-    expect_geometry(seat_mp.rows[kSeatSettingsTeamIndex],
+    expect_geometry(seat.rows[kSeatSettingsTeamIndex],
                     12, 169, 138, 18);
-    expect_geometry(seat_mp.rows[kSeatSettingsRemoveIndex],
+    expect_geometry(seat.rows[kSeatSettingsRemoveIndex],
                     166, 169, 138, 18);
     EXPECT_EQ(kSeatSettingsRemoveIndex,
-              seat_mp.rows[kSeatSettingsTeamIndex].nav.right);
+              seat.rows[kSeatSettingsTeamIndex].nav.right);
     EXPECT_EQ(kSeatSettingsTeamIndex,
-              seat_mp.rows[kSeatSettingsRemoveIndex].nav.left);
-    EXPECT_EQ(kSeatSettingsHudScoreRowMP,
-              seat_mp.rows[kSeatSettingsRemoveIndex].nav.up);
-    expect_geometry(seat_nomp.rows[kSeatSettingsTeamIndex],
-                    91, 169, 138, 18);
+              seat.rows[kSeatSettingsRemoveIndex].nav.left);
+    EXPECT_EQ(kSeatSettingsHudScoreRow,
+              seat.rows[kSeatSettingsRemoveIndex].nav.up);
 
-    // BFS over both variants: every row reachable from the highlight seed,
-    // and the cycler is not a dead end in either.
-    for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp}) {
+    // BFS: every row reachable from the highlight seed, and the cycler is
+    // not a dead end.
+    {
+        const og::ui::MenuScreenSpec* const spec = &seat;
         std::vector<bool> seen(
             static_cast<std::size_t>(spec->row_count), false);
         std::vector<int> queue{spec->default_highlight};
@@ -3624,68 +3599,45 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
     }
 }
 
-// G9: the four materialized shapes, re-derived from the two specs. The
-// compiled shape is independently pinned by test_menu_pins (G11); the other
-// three have no legacy oracle anymore — these pins are it.
-TEST(MenuEngine, main_menu_four_variant_materialization_pins)
+// G9: the two materialized shapes (native and web) of the one main-menu
+// spec. The native shape is independently pinned by test_menu_pins (G11);
+// the web shape has no legacy oracle anymore — this pin is it.
+TEST(MenuEngine, main_menu_native_and_web_materialization_pins)
 {
     using og::ui::MenuBuildVariant;
 
-    const std::vector<ExpectedSpecRow> mp_native = build_expected_shape(
-        kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
-        kMainMenuMPQuitNative, kMainMenuMPLoad, kMainMenuMPNote,
-        kMainMenuMPCloud);
-    check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
-                             MenuBuildVariant::Native, mp_native.data(),
-                             static_cast<int>(mp_native.size()),
-                             "mainmenu_mp_native");
+    const std::vector<ExpectedSpecRow> native_shape = build_expected_shape(
+        kMainMenuCommonRows, static_cast<int>(std::size(kMainMenuCommonRows)),
+        kMainMenuQuitNative, kMainMenuLoadRow, kMainMenuNoteRow,
+        kMainMenuCloudRow);
+    check_materialized_shape(og::ui::main_menu_screen_spec(),
+                             MenuBuildVariant::Native, native_shape.data(),
+                             static_cast<int>(native_shape.size()),
+                             "mainmenu_native");
 
-    const std::vector<ExpectedSpecRow> mp_web = build_expected_shape(
-        kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
-        kMainMenuMPQuitWeb, kMainMenuMPLoad, kMainMenuMPNote,
-        kMainMenuMPCloud);
-    check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
-                             MenuBuildVariant::Web, mp_web.data(),
-                             static_cast<int>(mp_web.size()),
-                             "mainmenu_mp_web");
-
-    const std::vector<ExpectedSpecRow> nomp_native = build_expected_shape(
-        kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
-        kMainMenuNoMPQuitNative, kMainMenuNoMPLoad,
-        kMainMenuNoMPNote, kMainMenuNoMPCloud);
-    check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
-                             MenuBuildVariant::Native, nomp_native.data(),
-                             static_cast<int>(nomp_native.size()),
-                             "mainmenu_nomp_native");
-
-    const std::vector<ExpectedSpecRow> nomp_web = build_expected_shape(
-        kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
-        kMainMenuNoMPQuitWeb, kMainMenuNoMPLoad,
-        kMainMenuNoMPNote, kMainMenuNoMPCloud);
-    check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
-                             MenuBuildVariant::Web, nomp_web.data(),
-                             static_cast<int>(nomp_web.size()),
-                             "mainmenu_nomp_web");
+    const std::vector<ExpectedSpecRow> web_shape = build_expected_shape(
+        kMainMenuCommonRows, static_cast<int>(std::size(kMainMenuCommonRows)),
+        kMainMenuQuitWeb, kMainMenuLoadRow, kMainMenuNoteRow,
+        kMainMenuCloudRow);
+    check_materialized_shape(og::ui::main_menu_screen_spec(),
+                             MenuBuildVariant::Web, web_shape.data(),
+                             static_cast<int>(web_shape.size()),
+                             "mainmenu_web");
 }
 
 // Player count and per-level team assignment now live in Base Camp. The main
 // screen retains only the BEGIN NEW GAME pixie art and no player bindings.
 TEST(MenuEngine, main_menu_binding_pins)
 {
-    const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
-    const og::ui::MenuScreenSpec& nomp = og::ui::main_menu_screen_spec_nomp();
-    const og::ui::MenuScreenSpec& seat_mp =
-        og::ui::seat_settings_menu_screen_spec_mp();
-    const og::ui::MenuScreenSpec& seat_nomp =
-        og::ui::seat_settings_menu_screen_spec_nomp();
+    const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec();
+    const og::ui::MenuScreenSpec& seat =
+        og::ui::seat_settings_menu_screen_spec();
 
     // The wrench face is gone: GAME SETTINGS is a normal labeled button.
     EXPECT_EQ(FAMILY_NORMAL1, mp.rows[0].art_family);
-    EXPECT_EQ(FAMILY_NORMAL1, nomp.rows[0].art_family);
-    for (const og::ui::MenuScreenSpec* spec : {&mp, &nomp})
-        for (int i = 1; i < spec->row_count; ++i)
-            EXPECT_EQ(-1, spec->rows[i].art_family)
-                << spec->name << " " << spec->rows[i].id;
+    for (int i = 1; i < mp.row_count; ++i)
+        EXPECT_EQ(-1, mp.rows[i].art_family)
+            << mp.name << " " << mp.rows[i].id;
 
     // Web QUIT keeps the stable footer slot but is explicitly Disabled;
     // native QUIT remains enabled and carries Escape.
@@ -3706,23 +3658,21 @@ TEST(MenuEngine, main_menu_binding_pins)
     EXPECT_EQ(og::ui::RowState::Disabled,
               web_quit->state_override(og::ui::MenuLabelContext{}));
 
-    // Main-menu variants carry no player-specific formatters or old
+    // The main menu carries no player-specific formatters or old
     // player-count actions; those belong to the live Base Camp roster.
-    for (const og::ui::MenuScreenSpec* spec : {&mp, &nomp})
-        for (int i = 0; i < spec->row_count; ++i) {
-            EXPECT_EQ(nullptr, spec->rows[i].label_binding.formatter)
-                << spec->name << " " << spec->rows[i].id;
-            EXPECT_NE(ButtonAction::SetPlayerMode, spec->rows[i].action)
-                << spec->name << " " << spec->rows[i].id;
-        }
+    for (int i = 0; i < mp.row_count; ++i) {
+        EXPECT_EQ(nullptr, mp.rows[i].label_binding.formatter)
+            << mp.name << " " << mp.rows[i].id;
+        EXPECT_NE(ButtonAction::SetPlayerMode, mp.rows[i].action)
+            << mp.name << " " << mp.rows[i].id;
+    }
 
-    // Both seat-editor variants dispatch against the selected stable seat;
-    // neither revives the old save-backed player-count action.
-    for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp})
-        for (int i = 0; i < spec->row_count; ++i) {
-            EXPECT_NE(ButtonAction::SetPlayerMode, spec->rows[i].action)
-                << spec->name << " " << spec->rows[i].id;
-        }
+    // The seat editor dispatches against the selected stable seat; it never
+    // revives the old save-backed player-count action.
+    for (int i = 0; i < seat.row_count; ++i) {
+        EXPECT_NE(ButtonAction::SetPlayerMode, seat.rows[i].action)
+            << seat.name << " " << seat.rows[i].id;
+    }
 }
 
 // §2.1: CONTINUE and LOAD gate on company existence, and the nav rewire
@@ -3731,7 +3681,7 @@ TEST(MenuEngine, main_menu_binding_pins)
 // both states.
 TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
 {
-    const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
+    const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec();
 
     const og::ui::MenuButtonSpec* continue_row = nullptr;
     const og::ui::MenuButtonSpec* load_row = nullptr;
@@ -3825,12 +3775,11 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
     // generically by MenuEngine.disabled_row_activation_no_op) when none
     // does. Inert both ways: no nav links out, and NOTHING links into it in
     // either state — keyboard flows keep the hidden-variant routing above.
-    for (const og::ui::MenuScreenSpec* variant :
-         {&mp, &og::ui::main_menu_screen_spec_nomp()}) {
+    {
         const og::ui::MenuButtonSpec* note_row = nullptr;
-        for (int i = 0; i < variant->row_count; ++i) {
-            if (std::string_view(variant->rows[i].id) == "no_company_note")
-                note_row = &variant->rows[i];
+        for (int i = 0; i < mp.row_count; ++i) {
+            if (std::string_view(mp.rows[i].id) == "no_company_note")
+                note_row = &mp.rows[i];
         }
         ASSERT_NE(nullptr, note_row);
         ASSERT_NE(nullptr, note_row->state_override);
@@ -3887,23 +3836,20 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
 // itself from ever happening with -1.
 TEST(MenuEngine, main_menu_lookup_row_ids_exist)
 {
-    for (const og::ui::MenuScreenSpec* spec :
-         {&og::ui::main_menu_screen_spec_mp(),
-          &og::ui::main_menu_screen_spec_nomp()}) {
-        std::vector<button> buttons;
-        og::ui::materialize_menu_buttons_for(
-            *spec, og::ui::MenuBuildVariant::Native, buttons);
-        ASSERT_FALSE(buttons.empty()) << spec->name;
-        for (const char* id : {"begin_new_game", "continue_game", "level_edit",
-                               "options", "no_company_note"}) {
-            bool found = false;
-            for (const button& b : buttons)
-                if (std::string_view(b.id) == id)
-                    found = true;
-            EXPECT_TRUE(found)
-                << spec->name << " row '" << id
-                << "' is resolved by id and then used as a subscript";
-        }
+    const og::ui::MenuScreenSpec& spec = og::ui::main_menu_screen_spec();
+    std::vector<button> buttons;
+    og::ui::materialize_menu_buttons_for(
+        spec, og::ui::MenuBuildVariant::Native, buttons);
+    ASSERT_FALSE(buttons.empty()) << spec.name;
+    for (const char* id : {"begin_new_game", "continue_game", "level_edit",
+                           "options", "no_company_note"}) {
+        bool found = false;
+        for (const button& b : buttons)
+            if (std::string_view(b.id) == id)
+                found = true;
+        EXPECT_TRUE(found)
+            << spec.name << " row '" << id
+            << "' is resolved by id and then used as a subscript";
     }
 }
 
@@ -3982,7 +3928,7 @@ TEST(MenuEngine, networking_stays_legacy_v2_decision)
 // must not change a main-menu frame.
 TEST(MenuEngine, main_menu_draw_does_not_depend_on_company_name)
 {
-    const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
+    const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec();
     ASSERT_NE(nullptr, mp.draw_content);
 
     auto frame_hash = [] {
@@ -4184,7 +4130,7 @@ TEST(MenuEngine, seat_settings_rejects_stale_spectator_and_persists_mode)
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
     int highlighted = kSeatSettingsTeamIndex;
@@ -4408,7 +4354,6 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     EXPECT_EQ(untouched_highlight, defensive_highlight)
         << "an unavailable descriptor surface is a defensive no-op";
 
-#ifndef DISABLE_MULTIPLAYER
     // Each denial is separately observable and must avoid calling the next
     // layer — and every one of them is reached THROUGH A SLOT, because the
     // slot is the door. Rewind the debounce stamp so the capacity rule is
@@ -4463,7 +4408,6 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
         EXPECT_TRUE(trace_contains("popup", "ATTACH A GAMEPAD TO ADD SEATS"));
         input_hardware_state().single_seat_device = saved_device_class;
     }
-#endif
 }
 
 // §7.1: the seat editor's ZOOM + HUD rows flip the seat's runtime prefs
@@ -4511,7 +4455,7 @@ TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
     int highlighted = kSeatSettingsModeIndex;
@@ -4519,18 +4463,18 @@ TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
     // RADAR: prefs flip on viewob[0], cfg mirror, label flip on the rewire.
     view->prefs[PREF_RADAR] = PREF_RADAR_ON;
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("RADAR: ON", buttons[kSeatSettingsHudRadarRowMP].label);
+    EXPECT_EQ("RADAR: ON", buttons[kSeatSettingsHudRadarRow].label);
     EXPECT_EQ(MENU_OK,
               spec.on_spec_row(kSeatSettingsHudRadarIndex, &state));
     EXPECT_EQ(PREF_RADAR_OFF, view->prefs[PREF_RADAR]);
     EXPECT_EQ("0", cfg.get_setting("controls", "player1_hud_radar"));
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRowMP].label);
+    EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRow].label);
 
     // HP normalization through the seat screen: legacy SMALL -> OFF -> BOTH.
     view->prefs[PREF_LIFE] = PREF_LIFE_SMALL;
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRowMP].label);
+    EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRow].label);
     EXPECT_EQ(MENU_OK,
               spec.on_spec_row(kSeatSettingsHudLifeIndex, &state));
     EXPECT_EQ(PREF_LIFE_OFF, view->prefs[PREF_LIFE]);
@@ -4545,7 +4489,7 @@ TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
     EXPECT_EQ(1, static_cast<int>(view->view_zoom_step_));
     EXPECT_EQ("1", cfg.get_setting("controls", "player1_view_zoom"));
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("ZOOM: 0.9X", buttons[kSeatSettingsZoomRowMP].label);
+    EXPECT_EQ("ZOOM: 0.9X", buttons[kSeatSettingsZoomRow].label);
 
     // FOES and SCORE, the two rows the HUD dispatcher's tail arms select.
     // A ternary that landed one row short would toggle SCORE when the
@@ -4553,10 +4497,10 @@ TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
     // reading each row's OWN carrier catches it.
     for (const auto& [row_index, row_label, cfg_key, on_text, off_text] :
          {std::tuple<int, int, const char*, const char*, const char*>{
-              kSeatSettingsHudFoesIndex, kSeatSettingsHudFoesRowMP,
+              kSeatSettingsHudFoesIndex, kSeatSettingsHudFoesRow,
               "player1_hud_foes", "FOES: ON", "FOES: OFF"},
           std::tuple<int, int, const char*, const char*, const char*>{
-              kSeatSettingsHudScoreIndex, kSeatSettingsHudScoreRowMP,
+              kSeatSettingsHudScoreIndex, kSeatSettingsHudScoreRow,
               "player1_hud_score", "SCORE: ON", "SCORE: OFF"}})
     {
         cfg.apply_setting("controls", cfg_key, "1");
@@ -4621,7 +4565,7 @@ TEST(MenuEngine, seat_settings_rows_refuse_a_seat_that_has_left_the_roster)
     og::ui::install_active_picker_lobby_client(&lobby);
 
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, spec.on_spec_row);
 
     // Control: the state naming a seat that IS in the roster resolves, and

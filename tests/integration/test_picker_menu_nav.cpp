@@ -168,7 +168,7 @@ TEST(PickerMenuNav, picker_handle_menu_nav_fire_dispatches_its_action_and_nav_ex
     draw_highlight(buttons[0]);
 
     // Idle expiry: nav survives 4 s of silence and drops to MENU_NAV_DEFAULT
-    // (false in this build -- USE_CONTROLLER_INPUT is defined nowhere) after 5 s.
+    // (false: MENU_NAV_DEFAULT is a plain constant since PR #292) after 5 s.
     ks.set(SDLK_SPACE, false);
     highlighted = 0;
     retvalue = 0;

@@ -117,6 +117,43 @@ private:
 };
 } // namespace
 
+// radar_block_for_pane is a pure function, so it gets a pure pin: the block
+// is anchored BOTTOM-right inside the pane, one margin in from both the right
+// and the bottom edge, and the y it returns is a function of pane_endy alone.
+// PR #292 deleted the retired touch-build arm that anchored the editor's
+// minimap to the pane TOP, and with it the two placement parameters only
+// that arm ever read; the surviving placement is what this pins. Every
+// other radar placement assertion in the suite (test_camera_view.cpp,
+// test_game_loop.cpp) derives its expectation by calling this same
+// function, so a change to the formula moves both sides there and only
+// this test sees it.
+TEST(RadarBlockGeometry, block_sits_one_margin_in_from_the_pane_bottom_right)
+{
+    // No preset defines REDUCE_OVERSCAN, so the margin is the 4 px fork.
+    const RadarBlock block = radar_block_for_pane(/*pane_endx=*/300,
+                                                  /*pane_endy=*/180,
+                                                  /*w=*/40, /*h=*/30);
+    EXPECT_EQ(4, block.margin) << "the non-overscan pane margin is 4 px";
+    EXPECT_EQ(40, block.w) << "w passes through unchanged";
+    EXPECT_EQ(30, block.h) << "h passes through unchanged";
+    EXPECT_EQ(300 - 40 - 4, block.x)
+        << "x is one margin in from the pane's right edge";
+    EXPECT_EQ(180 - 30 - 4, block.y)
+        << "y is one margin UP from the pane's bottom edge -- not the top "
+           "anchor the retired build arm used";
+    EXPECT_EQ(block.y + block.h + block.margin, 180)
+        << "the block's bottom edge plus its margin is exactly pane_endy";
+
+    // A pane that starts lower and ends lower moves the block down by the
+    // same amount: the placement reads pane_endy, never a pane top.
+    const RadarBlock lower = radar_block_for_pane(/*pane_endx=*/300,
+                                                  /*pane_endy=*/280,
+                                                  /*w=*/40, /*h=*/30);
+    EXPECT_EQ(block.x, lower.x) << "a taller pane does not move x";
+    EXPECT_EQ(block.y + 100, lower.y)
+        << "100 px more pane height pushes the block down exactly 100 px";
+}
+
 // The radar bake is a pinned tile -> palette table (radar.cpp:838-1015) and
 // the blip pass paints each visible entity's team/descriptor colour at its
 // grid cell. draw() returns the literal 1 on every path including the error
@@ -233,7 +270,6 @@ TEST_F(RadarMore, radar_bakes_representative_terrain_families_and_blips_each_ord
     vs->radarstart = 0; // force the radar::start path on the first draw
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     // --- the bake: every switch arm lands its pinned palette index --------
@@ -474,7 +510,6 @@ TEST_F(RadarMore, radar_terrain_follows_the_control_floor)
     vs->editor_floor_override_ = -1;
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
-    r.force_lower_position = true;
     r.start(&d);
     ASSERT_EQ(0, static_cast<int>(r.bmp_floor_)) << "starts on floor 0";
     ASSERT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0])) << "floor 0 snow baked";
@@ -522,7 +557,6 @@ TEST_F(RadarMore, radar_terrain_follows_the_editor_floor_override)
     vs->radarstart = 1;
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     vs->editor_floor_override_ = 1;
@@ -574,7 +608,6 @@ TEST_F(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
     vs->editor_floor_override_ = -1;
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     ASSERT_EQ(1, r.draw(&d));
@@ -625,7 +658,6 @@ TEST_F(RadarMore, radar_blips_filter_to_the_shown_floor)
     vs->editor_floor_override_ = -1;
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     // Draw with the buddy on the radar floor, sample its blip pixel.
@@ -684,7 +716,6 @@ TEST_F(RadarMore, zstair_tiles_bake_pinned_radar_colors)
     vs->editor_floor_override_ = -1;
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
-    r.force_lower_position = true;
     r.start(&d);
     ASSERT_GE(static_cast<int>(r.bmp.size()), 2)
         << "radar bmp must cover the painted tiles";

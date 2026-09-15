@@ -2031,8 +2031,8 @@ void picker_quit()
 
 // MAIN MENU: engine-hosted — the four k_mainmenu_buttons build variants
 // unified into the MP/no-MP spec pair (web/native = the build-gated
-// enabled/disabled-QUIT fork), the USE_TOUCH_INPUT => DISABLE_MULTIPLAYER variant
-// selection, the accessor shims, picker_mainmenu_options_index() (which
+// enabled/disabled-QUIT fork), the accessor shims,
+// picker_mainmenu_options_index() (which
 // retired both OPTIONS_BUTTON_INDEX #defines), and mainmenu() itself all
 // live in menu_screen_specs.cpp (docs/menu-engine.md).
 

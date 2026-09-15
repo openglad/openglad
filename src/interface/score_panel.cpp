@@ -876,11 +876,6 @@ short new_score_panel(screen* s, short /*do_it*/)
             // Score, bottom left corner
             int special_offset = -24;
             Sint32 score_bottom = bm;
-#ifdef USE_TOUCH_INPUT
-            // Upper left instead
-            score_bottom = tm + 54;
-            special_offset = 0;
-#endif
 
             int special_y = score_bottom + special_offset;
             // Deliberately keyed on numviews (humans), never on the camera-
@@ -908,14 +903,6 @@ short new_score_panel(screen* s, short /*do_it*/)
                 else
                 {
                     Sint32 special_box_bottom = special_y + 6;
-#ifdef USE_TOUCH_INPUT
-                    if (s->alternate_name[fam][spc] != "NONE")
-                    {
-                        special_box_bottom = std::max(
-                            special_box_bottom,
-                            score_bottom + special_offset + 14);
-                    }
-#endif
                     s->draw_button(lm+1, special_y-2, lm+98,
                                    special_box_bottom, 1, 1);
                 }
@@ -981,20 +968,6 @@ short new_score_panel(screen* s, short /*do_it*/)
             else
                 mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
 
-#ifdef USE_TOUCH_INPUT
-            // Alternate special name (if not "NONE")
-            if (s->alternate_name[fam][spc] != "NONE")
-            {
-                message = std::format("ALT: {}", s->alternate_name[fam][spc]);
-                if (control->specials_disabled())
-                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
-                else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
-                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-                else
-                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
-            }
-#endif
-
             // Number of allies, upper right
             if (s->viewob[players]->prefs[PREF_FOES] == PREF_FOES_ON)
             {
@@ -1035,11 +1008,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     s->draw_button(rm-57, tm+1, rm-2, tm + box_bottom, 1, 1);
 
                 message = std::format("TEAM: {}", tempallies);
-#ifndef USE_TOUCH_INPUT
                 mytext.write_xy(rm - 55, tm+2, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#else
-                mytext.write_xy(rm - 55, tm+2 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#endif
 
                 // Number of foes, 2nd upper right
                 if (show_wave)
@@ -1053,11 +1022,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 const Sint32 foes_x = show_wave
                     ? std::max<Sint32>(lm, rm - 2 - 6 * static_cast<Sint32>(message.size()))
                     : rm - 55;
-#ifndef USE_TOUCH_INPUT
                 mytext.write_xy(foes_x, tm+10, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#else
-                mytext.write_xy(foes_x, tm+10 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#endif
 
                 if (show_wave)
                 {
@@ -1065,11 +1030,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     message = std::format("NEXT WAVE: {}s", wave_seconds);
                     const Sint32 wave_x = std::max<Sint32>(
                         lm, rm - 2 - 6 * static_cast<Sint32>(message.size()));
-#ifndef USE_TOUCH_INPUT
                     mytext.write_xy(wave_x, tm+18, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#else
-                    mytext.write_xy(wave_x, tm+18 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#endif
                     TRACE("hud", "next_wave awake=%d pending=%d secs=%u",
                           awake_foes,
                           wave_foes,
@@ -1081,11 +1042,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     const Sint32 floor_y = tm + (show_wave ? 26 : 18);
                     const Sint32 floor_x = std::max<Sint32>(
                         lm, rm - 2 - 6 * static_cast<Sint32>(floor_label.size()));
-#ifndef USE_TOUCH_INPUT
                     mytext.write_xy(floor_x, floor_y, floor_label.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#else
-                    mytext.write_xy(floor_x, floor_y + 44 + 8, floor_label.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#endif
                     TRACE("hud", "floor %s", floor_label.c_str());
                 }
             }
